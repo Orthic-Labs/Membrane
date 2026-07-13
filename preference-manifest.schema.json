@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "D:/Claude/tools/pipelines/memory/adapt/preference-manifest.schema.json",
+  "title": "Adapt preference manifest: human-reviewed adaptation candidates",
+  "description": "Output of `adapt --manifest`, consumed by `adapt --apply-from-manifest`. Each record is explicit accepted/rejected; payload_sha256 detects content edits; the schema refuses pending statuses on apply.",
+  "type": "object",
+  "required": ["schema_version", "batch_id", "source_session_ids", "created_at", "records"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "batch_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Must match the journal's most recent pending batch_id; mismatches refuse apply."
+    },
+    "source_session_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Session IDs bound to this batch; state advances only over this set after successful writes."
+    },
+    "created_at": { "type": "string" },
+    "generator": { "type": "string" },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "rule", "category", "scope", "status", "payload_sha256"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^adapt-[a-z-]+-[a-z0-9-]+-[a-f0-9]{10}$",
+            "description": "Stable primary ID from preference_record.derive_id."
+          },
+          "rule": {
+            "type": "string",
+            "minLength": 10,
+            "description": "Mutable on review (admit/reject only); the payload_sha256 detects edits."
+          },
+          "category": {
+            "type": "string",
+            "description": "Controlled taxonomy; reject if not in admission.ALLOWED_CATEGORIES."
+          },
+          "scope": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "accepted", "rejected"],
+            "description": "Reviewer decision. 'pending' is the emit-time default; apply_time_validate (apply-time) refuses pending."
+          },
+          "payload_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "SHA-256 over the immutable candidate payload (id/rule/category/scope/source_ids/source_file_hashes/evidence_ids/evidence_count/evidence_excerpt). Detects any content edit."
+          },
+          "human_note": { "type": "string" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "needs_review": { "type": "boolean" },
+          "evidence_count": { "type": "integer", "minimum": 0 },
+          "evidence_excerpt": {
+            "type": "string",
+            "description": "Bounded evidence fragment (not the full prompt); redaction already applied at extract."
+          },
+          "source_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "source_file_hashes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["session_id", "sha256"],
+              "additionalProperties": false,
+              "properties": {
+                "session_id": { "type": "string" },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$",
+                  "description": "SHA-256 of the source session's transcript bytes at emission time."
+                }
+              }
+            },
+            "description": "Per-session transcript hashes; reviewers can pinpoint which transcript the rule was mined from."
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["evidence_id", "source_session_id"],
+              "additionalProperties": false,
+              "properties": {
+                "evidence_id": {
+                  "type": "string",
+                  "pattern": "^ev-[a-f0-9]{8}$",
+                  "description": "Stable ID for a specific evidence excerpt; derived from sha256(scope + NUL + excerpt)[:8]."
+                },
+                "source_session_id": { "type": "string" },
+                "excerpt": { "type": "string" }
+              }
+            },
+            "description": "Stable evidence IDs so reviewers can cross-reference specific excerpts without ambiguity."
+          }
+        }
+      }
+    }
+  }
+}

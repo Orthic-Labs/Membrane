@@ -1,0 +1,255 @@
+"""Manifest loader + validator for adapt (Gate 1a contract).
+
+The manifest is the *only* path from dry-run output to live apply. Gate 1a
+requires that the loader refuses:
+
+  - unknown schema versions,
+  - records whose ``payload_sha256`` mismatches their actual content,
+  - any record with ``status == "pending"`` (apply-time inputs must be explicit),
+  - empty records sets, empty source_session_ids, or missing batch_id.
+
+The loader never makes LLM/provider calls. It is the gate that prevents
+silently altered content from reaching MemRight.
+
+Helpers:
+  - ``candidate_payload(record)`` — the immutable fields that ``payload_sha256``
+    is computed over. If the reviewer edits anything in this set, the hash
+    no longer matches and apply refuses.
+  - ``payload_sha256(record)`` — the canonical hash.
+  - ``load_and_validate(path)`` — schema + invariant checks.
+  - ``accepted_records(manifest)`` / ``rejected_records(manifest)``.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+SCHEMA_PATH = Path(__file__).resolve().parent / "preference-manifest.schema.json"
+
+
+# ----- Immutable candidate payload -----
+
+# These fields are part of the contract's "immutable until regenerated" set.
+# Reviewers can flip status, add human_note, but NOT edit these.
+IMMUTABLE_FIELDS = (
+    "id",
+    "rule",
+    "category",
+    "scope",
+    "source_ids",
+    "source_file_hashes",
+    "evidence_ids",
+    "evidence_count",
+    "evidence_excerpt",
+)
+
+
+def derive_evidence_id(scope: str, excerpt: str) -> str:
+    """Stable evidence ID: ``ev-{sha256(scope + NUL + excerpt)[:8]}``.
+
+    NUL separator prevents identical-looking excerpts from colliding when
+    their scopes differ.
+    """
+    import hashlib as _h
+    h = _h.sha256()
+    h.update((scope or "").encode("utf-8"))
+    h.update(b"\x00")
+    h.update((excerpt or "").encode("utf-8"))
+    return f"ev-{h.hexdigest()[:8]}"
+
+
+def _normalize_source_file_hashes(rec: dict) -> list[dict]:
+    items = rec.get("source_file_hashes") or []
+    norm = [{"session_id": str(it.get("session_id", "")),
+             "sha256": str(it.get("sha256", "")).lower()}
+            for it in items]
+    norm.sort(key=lambda x: x["session_id"])
+    return norm
+
+
+def _normalize_evidence_ids(rec: dict) -> list[dict]:
+    items = rec.get("evidence_ids") or []
+    norm = [{"evidence_id": str(it.get("evidence_id", "")),
+             "source_session_id": str(it.get("source_session_id", "")),
+             "excerpt": str(it.get("excerpt", ""))}
+            for it in items]
+    norm.sort(key=lambda x: x["evidence_id"])
+    return norm
+
+
+def candidate_payload(record: dict) -> dict:
+    """Stable projection used to compute payload_sha256.
+
+    Lists are sorted so list-order edits don't change the hash.
+    """
+    return {
+        "id": record["id"],
+        "rule": record["rule"],
+        "category": record["category"],
+        "scope": record["scope"],
+        "source_ids": sorted(record.get("source_ids") or []),
+        "source_file_hashes": _normalize_source_file_hashes(record),
+        "evidence_ids": _normalize_evidence_ids(record),
+        "evidence_count": int(record.get("evidence_count", 0)),
+        "evidence_excerpt": record.get("evidence_excerpt", "") or "",
+    }
+
+
+def payload_sha256(record: dict) -> str:
+    p = candidate_payload(record)
+    return hashlib.sha256(
+        json.dumps(p, sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+
+
+# ----- Validation -----
+
+class ManifestError(ValueError):
+    """Raised when a manifest fails schema or invariant checks."""
+
+
+def _load_schema() -> dict:
+    return json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+def validate_schema(path: Path) -> dict:
+    """Parse + schema-only validation. Lets ``pending`` status through.
+
+    Use this for inspection of a freshly-emitted (still pending) manifest.
+    For apply-time use ``apply_time_validate``, which additionally rejects
+    pending and verifies every ``payload_sha256`` matches.
+    """
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ManifestError(f"manifest is not valid JSON: {exc}") from exc
+    try:
+        import jsonschema
+        schema = _load_schema()
+        jsonschema.validate(raw, schema)
+    except ImportError:
+        raise ManifestError(
+            "jsonschema not installed; `pip install jsonschema` to validate manifests"
+        )
+    except jsonschema.ValidationError as exc:
+        raise ManifestError(f"manifest schema check failed: {exc.message}") from exc
+    return raw
+
+
+def apply_time_validate(path: Path) -> dict:
+    """Parse + schema-validate + invariant-check. Apply-time validator.
+
+    Refuses any record with ``status='pending'``, refuses edited payloads
+    (payload_sha256 mismatch), refuses empty accepted/rejected sets, refuses
+    missing fields. For inspection of a freshly-emitted manifest, use
+    ``validate_schema`` instead.
+
+    Returns the parsed manifest dict on success. Raises ``ManifestError``.
+    """
+    raw = validate_schema(path)
+
+    # Invariant: no record's content can have been edited post-emission.
+    bad = []
+    for rec in raw["records"]:
+        if rec["payload_sha256"] != payload_sha256(rec):
+            bad.append(rec["id"])
+    if bad:
+        raise ManifestError(
+            f"manifest payload_sha256 mismatch on records: {bad}; "
+            f"regenerate the manifest instead of editing it"
+        )
+
+    # Invariant: apply-time manifest must contain ONLY explicit decisions.
+    statuses = {r["status"] for r in raw["records"]}
+    if "pending" in statuses:
+        raise ManifestError(
+            "manifest contains status='pending'; resolve every record "
+            "to accepted/rejected before applying"
+        )
+    if not statuses.intersection({"accepted", "rejected"}):
+        raise ManifestError("manifest has no accepted or rejected records")
+
+    return raw
+
+
+# Backwards-compatible alias. adapt.apply_from_manifest + tests use this name.
+def load_and_validate(path: Path) -> dict:  # noqa: F811
+    return apply_time_validate(path)
+
+    # Invariant: no record's content can have been edited post-emission.
+    bad = []
+    for rec in raw["records"]:
+        if rec["payload_sha256"] != payload_sha256(rec):
+            bad.append(rec["id"])
+    if bad:
+        raise ManifestError(
+            f"manifest payload_sha256 mismatch on records: {bad}; "
+            f"regenerate the manifest instead of editing it"
+        )
+
+    # Invariant: apply-time manifest must contain ONLY explicit decisions.
+    statuses = {r["status"] for r in raw["records"]}
+    if "pending" in statuses:
+        raise ManifestError(
+            "manifest contains status='pending'; resolve every record "
+            "to accepted/rejected before applying"
+        )
+    if not statuses.intersection({"accepted", "rejected"}):
+        raise ManifestError("manifest has no accepted or rejected records")
+
+    return raw
+
+
+def accepted_records(manifest: dict) -> list[dict]:
+    return [r for r in manifest["records"] if r["status"] == "accepted"]
+
+
+def rejected_records(manifest: dict) -> list[dict]:
+    return [r for r in manifest["records"] if r["status"] == "rejected"]
+
+
+# ----- CLI for manual inspection -----
+
+def main(argv: list[str] | None = None) -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description="Validate an adapt preference manifest")
+    ap.add_argument("manifest", type=Path)
+    ap.add_argument("--summary", action="store_true",
+                    help="print accepted/rejected counts instead of full listing")
+    args = ap.parse_args(argv)
+
+    try:
+        # CLI inspection accepts pending — use schema-only validator.
+        manifest = validate_schema(args.manifest)
+    except ManifestError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.summary:
+        a = len(accepted_records(manifest))
+        r = len(rejected_records(manifest))
+        print(f"batch_id={manifest['batch_id']} "
+              f"sessions={len(manifest['source_session_ids'])} "
+              f"accepted={a} rejected={r}")
+        return 0
+
+    print(f"batch_id: {manifest['batch_id']}")
+    print(f"created_at: {manifest.get('created_at', '')}")
+    print(f"source_session_ids ({len(manifest['source_session_ids'])}):")
+    for sid in manifest["source_session_ids"]:
+        print(f"  - {sid}")
+    print(f"records ({len(manifest['records'])}):")
+    for rec in manifest["records"]:
+        marker = "ACCEPT" if rec["status"] == "accepted" else "REJECT"
+        print(f"  [{marker}] {rec['id']}")
+        print(f"      rule: {rec['rule']}")
+        print(f"      category: {rec['category']}  scope: {rec['scope']}")
+        if rec.get("human_note"):
+            print(f"      note: {rec['human_note']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

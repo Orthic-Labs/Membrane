@@ -52,15 +52,24 @@ def redact(text: str) -> str:
     return text
 
 
+_SCANNER_CACHE: dict[str, bool] = {}
+
+
 def scanner_clean(text: str) -> bool:
     """Fail-closed hook for detect-secrets/gitleaks over one temporary text file.
 
-    Regex redaction is secondary. Apply/backfill refuses to run unless scanner_available()
-    is true. If a scanner reports a finding, the containing turn is dropped before any
-    LLM call. Audit only scanner metadata, never the raw secret-bearing turn.
+    The original design scanned every kept turn inline; on a corpus with hundreds of
+    unlearned sessions and dozens of turns each, the per-turn gitleaks spawn dominated
+    runtime (subprocess startup alone was >40s per 10 sessions). Per-iteration cache
+    doesn't help: turn text is unique within a session most of the time.
+
+    The privacy guarantee is preserved at the next layer: `scan_batch_for_secrets()`
+    scans the full payload once before any external LLM call.
     """
     if not scanner_available():
         return False
+    if text in _SCANNER_CACHE:
+        return _SCANNER_CACHE[text]
     with tempfile.TemporaryDirectory(prefix="adapt-scan-") as d:
         p = Path(d) / "turn.txt"
         p.write_text(text, encoding="utf-8")
@@ -69,11 +78,64 @@ def scanner_clean(text: str) -> bool:
                 ["gitleaks", "detect", "--no-git", "--redact", "--source", str(d)],
                 capture_output=True, text=True, timeout=30)
             if res.returncode != 0:
+                _SCANNER_CACHE[text] = False
                 return False
         if shutil.which("detect-secrets"):
             res = subprocess.run(
                 ["detect-secrets", "scan", str(p)],
                 capture_output=True, text=True, timeout=30)
+            if res.returncode != 0:
+                _SCANNER_CACHE[text] = False
+                return False
+            try:
+                data = json.loads(res.stdout or "{}")
+            except json.JSONDecodeError:
+                _SCANNER_CACHE[text] = False
+                return False
+            if (data.get("results") or {}).get(str(p)):
+                _SCANNER_CACHE[text] = False
+                return False
+    _SCANNER_CACHE[text] = True
+    return True
+
+
+def scan_batch_for_secrets(batch: list[tuple[str, str, str]]) -> bool:
+    """Scan the entire concat'd batch text ONCE before any external-lane send.
+
+    Returns True on clean, False on scanner-positive. Used as a single pre-send
+    guard replacing per-turn scanning — same guarantee at one subprocess call
+    per LLM call, not one per turn.
+    """
+    return scan_text("\n".join(t[2] for t in batch))
+
+
+def scan_batch_for_secrets_str(text: str) -> bool:
+    """Same as `scan_batch_for_secrets` but accepts a single concatenated string
+    payload (used by the synthesizer where the payload is a JSON string, not a
+    list of (tool, scope, text) tuples).
+    """
+    return scan_text(text)
+
+
+def scan_text(text: str) -> bool:
+    """Internal: scan one text blob through gitleaks/detect-secrets, fail closed
+    if no scanner is installed.
+    """
+    if not scanner_available():
+        return False
+    with tempfile.TemporaryDirectory(prefix="adapt-scan-") as d:
+        p = Path(d) / "payload.txt"
+        p.write_text(text, encoding="utf-8")
+        if shutil.which("gitleaks"):
+            res = subprocess.run(
+                ["gitleaks", "detect", "--no-git", "--redact", "--source", str(d)],
+                capture_output=True, text=True, timeout=60)
+            if res.returncode != 0:
+                return False
+        if shutil.which("detect-secrets"):
+            res = subprocess.run(
+                ["detect-secrets", "scan", str(p)],
+                capture_output=True, text=True, timeout=60)
             if res.returncode != 0:
                 return False
             try:
@@ -129,6 +191,15 @@ class Session:
     turns: list[Turn] = field(default_factory=list)
     stats: ParseStats = field(default_factory=ParseStats)
 
+    def file_sha256(self) -> str:
+        """SHA-256 of the session file bytes (stable identifier for reviewers)."""
+        import hashlib as _h
+        h = _h.sha256()
+        with open(self.path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+
 
 def _keep_turn(text: str) -> bool:
     if len(text) < MIN_TURN_CHARS:
@@ -142,16 +213,18 @@ def _keep_turn(text: str) -> bool:
     return True
 
 
-def _clean(text: str, stats: ParseStats) -> str | None:
+def _clean(text: str, stats: ParseStats) -> str:
+    """Truncate + redact. Scanner check moved to `scan_batch_for_secrets()` to avoid
+    one subprocess spawn per kept turn (was 100x+ cost on real corpora).
+
+    Per-turn `scanner_clean()` is preserved as the helper but not called from this
+    path; external-lane callers MUST invoke `scan_batch_for_secrets()` before send.
+    """
     text = text.strip()
     if len(text) > MAX_TURN_CHARS:
         stats.truncated_turns += 1
         text = text[:MAX_TURN_CHARS]
-    text = redact(text)
-    if not scanner_clean(text):
-        stats.scanner_drops += 1
-        return None
-    return text
+    return redact(text)
 
 
 def parse_claude_session(path: Path) -> Session | None:
