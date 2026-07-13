@@ -168,7 +168,9 @@ def test_extract_parses_model_json():
         assert json.loads(user)[0]["text"] == "always use JSONL"
         return json.dumps([
             {"category": "tooling", "observation": "use JSONL for structured logs, not logfmt",
-             "evidence": "always use JSONL", "prompt": 1}])
+             "evidence": "always use JSONL", "prompt": 1,
+             "record_type": "agent_preference", "durability": "cross_task_explicit",
+             "subject": "agent_behavior"}])
     out = tl.extract_observations([("claude-code", "D--Claude", "always use JSONL")], llm=fake)
     assert out.outcome == outcomes.Outcome.SUCCESS
     assert len(out.actions) == 1
@@ -184,10 +186,27 @@ def test_deterministic_extract_catches_explicit_preferences():
 
 
 def test_extract_returns_success_on_fenced_payload():
-    fake = lambda system, user: '[{"category":"tooling","observation":"y","evidence":"z","prompt":1}]'
+    fake = lambda system, user: json.dumps([{
+        "category": "tooling", "observation": "Keep durable workflow evidence.",
+        "evidence": "hello world", "prompt": 1,
+        "record_type": "agent_preference", "durability": "cross_task_explicit",
+        "subject": "agent_behavior",
+    }])
     out = tl.extract_observations([("codex", "D--Claude", "hello world turn")], llm=fake)
     assert out.outcome == outcomes.Outcome.SUCCESS
     assert len(out.actions) == 1
+
+
+def test_extract_fail_closed_without_preference_classification():
+    fake = lambda system, user: json.dumps([{
+        "category": "tooling", "observation": "Use JSONL for logs.",
+        "evidence": "always use JSONL", "prompt": 1,
+    }])
+    out = tl.extract_observations(
+        [("claude-code", "D--Claude", "always use JSONL")], llm=fake
+    )
+    assert out.outcome == outcomes.Outcome.VALID_EMPTY
+    assert out.actions == []
 
 
 def test_extract_returns_parse_failed_on_unparseable_response(tmp_path, monkeypatch):
@@ -234,6 +253,31 @@ def test_synthesize_low_confidence_action_is_review_flagged():
     assert out.outcome == outcomes.Outcome.SUCCESS
     assert out.actions[0]["confidence"] == 0.35
     assert out.actions[0]["needs_review"] is True
+
+
+def test_call_lane_forwards_minimax_retry_and_output_ceilings(monkeypatch):
+    seen = {}
+
+    def fake(system, user, *, max_tokens, attempts, thinking, temperature):
+        seen.update(
+            max_tokens=max_tokens,
+            attempts=attempts,
+            thinking=thinking,
+            temperature=temperature,
+        )
+        return "[]"
+
+    monkeypatch.setattr(tl, "_minimax_llm", fake)
+
+    assert tl.call_lane(
+        "system", "user", lane="minimax", max_tokens=2048, attempts=1
+    ) == "[]"
+    assert seen == {
+        "max_tokens": 2048,
+        "attempts": 1,
+        "thinking": "adaptive",
+        "temperature": 0.2,
+    }
 
 
 # --- Task 3: orchestrator tests ---
@@ -425,7 +469,9 @@ def test_deterministic_not_in_extract_observations_payload(monkeypatch):
         seen_payloads.append(user)
         return json.dumps([
             {"category": "logging", "observation": "use JSONL",
-             "evidence": "always use JSONL", "prompt": 1}])
+             "evidence": "always use JSONL", "prompt": 1,
+             "record_type": "agent_preference", "durability": "cross_task_explicit",
+             "subject": "agent_behavior"}])
     batch = [("claude-code", "D--Claude", "always use JSONL always")]
     tl.extract_observations(batch, llm=fake, lane="minimax")
     assert len(seen_payloads) == 1
@@ -678,7 +724,10 @@ def test_journal_replay_path_does_not_resend_extract(tmp_path):
         return json.dumps([{"category": "tooling",
                             "observation": "use JSONL for logs in this codebase.",
                             "evidence": "use JSONL",
-                            "prompt": 1}])
+                            "prompt": 1,
+                            "record_type": "agent_preference",
+                            "durability": "cross_task_explicit",
+                            "subject": "agent_behavior"}])
 
     bx = al.extract_observations([("claude-code", "D--Claude",
                                     "always use JSONL for logs and never logfmt.")],
