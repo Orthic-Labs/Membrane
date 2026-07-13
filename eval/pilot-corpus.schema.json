@@ -1,0 +1,260 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Adapt frozen pilot corpus manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "pilot_id", "content_sha256", "privacy", "selection", "corpus", "quality", "sessions",
+    "extraction", "versions", "authority", "initial_artifacts", "manifest_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "pilot_id": { "type": "string", "pattern": "^adapt-pilot-[a-f0-9]{12}$" },
+    "content_sha256": { "$ref": "#/definitions/sha256" },
+    "manifest_sha256": { "$ref": "#/definitions/sha256" },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_local_only", "external_review_safe", "contains_raw_transcripts"],
+      "properties": {
+        "raw_local_only": { "const": true },
+        "external_review_safe": { "const": false },
+        "contains_raw_transcripts": { "const": true }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy", "target_sessions", "discovered_sessions", "available_sessions",
+        "selected_sessions", "shortfall", "eligible_before_ns", "raw_bytes",
+        "max_raw_bytes", "strata_counts"
+      ],
+      "properties": {
+        "strategy": { "const": "balanced-tool-round-robin(scope,recency,size)-v1" },
+        "target_sessions": { "type": "integer", "minimum": 1 },
+        "discovered_sessions": { "type": "integer", "minimum": 0 },
+        "available_sessions": { "type": "integer", "minimum": 0 },
+        "selected_sessions": { "type": "integer", "minimum": 0 },
+        "shortfall": { "type": "integer", "minimum": 0 },
+        "eligible_before_ns": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "raw_bytes": { "type": "integer", "minimum": 0 },
+        "max_raw_bytes": { "type": "integer", "minimum": 1 },
+        "strata_counts": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "session_count", "turn_count", "char_count", "order_sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/definitions/sha256" },
+        "session_count": { "type": "integer", "minimum": 0 },
+        "turn_count": { "type": "integer", "minimum": 0 },
+        "char_count": { "type": "integer", "minimum": 0 },
+        "order_sha256": { "$ref": "#/definitions/sha256" }
+      }
+    },
+    "quality": { "$ref": "#/definitions/stats" },
+    "sessions": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/session" }
+    },
+    "extraction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["batch_char_budget", "batch_count", "batches"],
+      "properties": {
+        "batch_char_budget": { "type": "integer", "minimum": 1 },
+        "batch_count": { "type": "integer", "minimum": 0 },
+        "batches": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/batch" }
+        }
+      }
+    },
+    "versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["git_head", "git_dirty", "files", "constants"],
+      "properties": {
+        "git_head": { "type": "string", "minLength": 1 },
+        "git_dirty": { "type": "boolean" },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/versionFile" }
+        },
+        "constants": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "batch_char_budget", "min_turn_chars", "max_turn_chars",
+            "max_turns_per_session", "extract_system_sha256", "synth_system_sha256"
+          ],
+          "properties": {
+            "batch_char_budget": { "type": "integer", "minimum": 1 },
+            "min_turn_chars": { "type": "integer", "minimum": 0 },
+            "max_turn_chars": { "type": "integer", "minimum": 1 },
+            "max_turns_per_session": { "type": "integer", "minimum": 1 },
+            "extract_system_sha256": { "$ref": "#/definitions/sha256" },
+            "synth_system_sha256": { "$ref": "#/definitions/sha256" }
+          }
+        }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest", "copies"],
+      "properties": {
+        "manifest": { "$ref": "#/definitions/authorityManifest" },
+        "copies": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/authorityCopy" }
+        }
+      }
+    },
+    "initial_artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "tree_sha256"],
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/artifactFile" }
+        },
+        "tree_sha256": { "$ref": "#/definitions/sha256" }
+      }
+    }
+  },
+  "definitions": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kept_turns", "dropped_turns", "truncated_turns", "scanner_drops", "unknown_rows"],
+      "properties": {
+        "kept_turns": { "type": "integer", "minimum": 0 },
+        "dropped_turns": { "type": "integer", "minimum": 0 },
+        "truncated_turns": { "type": "integer", "minimum": 0 },
+        "scanner_drops": { "type": "integer", "minimum": 0 },
+        "unknown_rows": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal", "tool", "session_id", "source_path", "source_sha256", "source_bytes",
+        "raw_copy", "mtime_ns", "primary_scope", "recency_bucket", "size_bucket",
+        "turn_count", "char_count", "turns_sha256", "stats"
+      ],
+      "properties": {
+        "ordinal": { "type": "integer", "minimum": 1 },
+        "tool": { "type": "string", "enum": ["claude-code", "codex"] },
+        "session_id": { "type": "string", "minLength": 1 },
+        "source_path": { "type": "string", "minLength": 1 },
+        "source_sha256": { "$ref": "#/definitions/sha256" },
+        "source_bytes": { "type": "integer", "minimum": 0 },
+        "raw_copy": { "type": "string", "minLength": 1 },
+        "mtime_ns": { "type": "integer", "minimum": 0 },
+        "primary_scope": { "type": "string", "minLength": 1 },
+        "recency_bucket": { "type": "string", "enum": ["recent", "middle", "older"] },
+        "size_bucket": { "type": "string", "enum": ["small", "medium", "large"] },
+        "turn_count": { "type": "integer", "minimum": 1 },
+        "char_count": { "type": "integer", "minimum": 0 },
+        "turns_sha256": { "$ref": "#/definitions/sha256" },
+        "stats": { "$ref": "#/definitions/stats" }
+      }
+    },
+    "batch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "path", "turn_count", "char_count", "payload_sha256"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "turn_count": { "type": "integer", "minimum": 1 },
+        "char_count": { "type": "integer", "minimum": 0 },
+        "payload_sha256": { "$ref": "#/definitions/sha256" }
+      }
+    },
+    "versionFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "copy", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "copy": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/definitions/sha256" }
+      }
+    },
+    "authoritySource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "scope", "rank", "bytes", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "rank": { "type": "integer" },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/definitions/sha256" }
+      }
+    },
+    "authorityDirective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "text", "scope", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "text": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["current", "superseded"] }
+      }
+    },
+    "authorityManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "sources", "directives", "forbidden_scopes", "manifest_sha256"],
+      "properties": {
+        "schema_version": { "const": "1.0.0" },
+        "sources": { "type": "array", "items": { "$ref": "#/definitions/authoritySource" } },
+        "directives": { "type": "array", "items": { "$ref": "#/definitions/authorityDirective" } },
+        "forbidden_scopes": { "type": "array", "items": { "type": "string" } },
+        "manifest_sha256": { "$ref": "#/definitions/sha256" }
+      }
+    },
+    "authorityCopy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_path", "copy", "bytes", "sha256"],
+      "properties": {
+        "source_path": { "type": "string", "minLength": 1 },
+        "copy": { "type": "string", "minLength": 1 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/definitions/sha256" }
+      }
+    },
+    "artifactFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root_id", "source_root", "path", "copy", "bytes", "sha256"],
+      "properties": {
+        "root_id": { "type": "string", "minLength": 1 },
+        "source_root": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "copy": { "type": "string", "minLength": 1 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/definitions/sha256" }
+      }
+    }
+  }
+}

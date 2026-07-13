@@ -252,6 +252,13 @@ def build_batches(turns: list[tuple[str, str, str]], budget: int = BATCH_CHAR_BU
     return batches
 
 
+def build_extract_payload(batch: list[tuple[str, str, str]]) -> str:
+    """Serialize the exact user payload sent to the extraction provider."""
+    records = [{"id": i + 1, "tool": tool, "scope": scope, "text": text}
+               for i, (tool, scope, text) in enumerate(batch)]
+    return json.dumps(records, ensure_ascii=False)
+
+
 def extract_deterministic(batch: list[tuple[str, str, str]]) -> list[dict]:
     out = []
     for i, (tool, scope, text) in enumerate(batch, 1):
@@ -288,9 +295,7 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
         if not adapt_sessions.scan_batch_for_secrets(batch):
             _audit_call_failure("extract", RuntimeError("scanner-positive batch refused"))
             return BatchOutcome.scanner_blocked("scanner-positive batch")
-    records = [{"id": i + 1, "tool": tool, "scope": scope, "text": text}
-               for i, (tool, scope, text) in enumerate(batch)]
-    user = json.dumps(records, ensure_ascii=False)
+    user = build_extract_payload(batch)
     try:
         if llm is None:
             raw = _default_llm(EXTRACT_SYSTEM, user, lane)
