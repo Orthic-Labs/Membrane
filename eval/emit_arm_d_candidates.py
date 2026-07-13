@@ -57,6 +57,7 @@ sys.path.insert(0, str(WS / "tools/pipelines/memory/adapt"))
 import preference_record as pr_mod  # noqa: E402
 import manifest  # noqa: E402
 import adapt  # noqa: E402
+import authority  # noqa: E402
 
 
 def _default_fixture() -> dict:
@@ -116,6 +117,7 @@ def _emit_from_fixture(fx: dict, out_path: Path) -> dict:
     observations = list(fx["observations"])
     synth_actions = list(fx["synthesis_response"])
     source_session_ids = list(fx["source_session_ids"])
+    authority_snapshot = authority.build_manifest(WS)
 
     # Wrap synthesis actions through PreferenceRecord to derive ids + apply
     # admission. admission.admit() refuses rules outside the controlled
@@ -129,7 +131,12 @@ def _emit_from_fixture(fx: dict, out_path: Path) -> dict:
         obs_by_cat[o["category"]].append(o)
 
     for act in synth_actions:
-        admitted, why = admission.admit(act, canonical_rules=canonical_rules)
+        admitted, why = admission.admit(
+            {**act, "scope": SCOPE},
+            canonical_rules=canonical_rules,
+            authority_manifest=authority_snapshot,
+            authority_root=WS,
+        )
         pr = pr_mod.PreferenceRecord.from_synthesis(
             act, scope=SCOPE, source_ids=tuple(source_session_ids),
         )
@@ -138,12 +145,15 @@ def _emit_from_fixture(fx: dict, out_path: Path) -> dict:
             "name": pr.id, "category": pr.category, "rule": pr.rule,
             "confidence": pr.confidence, "observations": pr.evidence_count,
             "scope": pr.scope, "needs_review": pr.needs_review,
+            "record_type": pr.record_type,
+            "authority_effect": pr.authority_effect,
         }
         rec = pr_mod.to_manifest_candidate(
             pr, evidence_excerpt=(obs_by_cat[act["category"]][0]["evidence"]
                                    if obs_by_cat[act["category"]] else ""),
             status="pending",
         )
+        rec["authority_manifest_sha256"] = authority_snapshot["manifest_sha256"]
         rec["payload_sha256"] = manifest.payload_sha256(rec)
         rec["_admission_status"] = "pending" if admitted else "rejected-by-admission"
         rec["_rejection_reason"] = None if admitted else why
@@ -165,6 +175,7 @@ def _emit_from_fixture(fx: dict, out_path: Path) -> dict:
         "batch_id": f"fixture-{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S')}",
         "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "generator": "emit_arm_d_candidates.py (fixture-driven)",
+        "authority_manifest": authority_snapshot,
         "source_session_ids": source_session_ids,
         "records": schema_records,
     }

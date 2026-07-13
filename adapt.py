@@ -36,9 +36,11 @@ except ImportError:
     admission = None
 import preference_record  # noqa: E402
 import manifest  # noqa: E402
+import authority  # noqa: E402
 
 RULES_FILE = ts.STATE_DIR / "rules.json"
 DIGEST_FILE = ts.STATE_DIR / "adapt-digest.md"
+WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 
 
 def _rules_path() -> Path:
@@ -112,7 +114,9 @@ def rule_body(rule: dict, evidence: str, tool: str) -> str:
         f"(observations: {rule['observations']}, needs_review: {str(rule.get('needs_review', False)).lower()}, "
         f"updated {today})\n"
         f"**Why:** mined from {tool or 'session'} prompts; e.g. \"{evidence}\"\n"
-        f"**How to apply:** treat as a standing preference whenever the matching work comes up.\n"
+        f"**Record:** type={rule.get('record_type', 'unclassified')}, "
+        f"authority_effect={rule.get('authority_effect', 'neutral')}\n"
+        f"**How to apply:** {preference_record.application_guidance(rule.get('record_type', 'unclassified'))}\n"
     )
 
 
@@ -195,7 +199,9 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
                   out_dir: Path, dry_run: bool,
                   manifest_records: list | None = None,
                   source_session_ids: list[str] | None = None,
-                  source_file_hashes: dict[str, str] | None = None) -> tuple[int, bool]:
+                  source_file_hashes: dict[str, str] | None = None,
+                  authority_manifest: dict | None = None,
+                  authority_root: Path | None = None) -> tuple[int, bool]:
     """Apply actions.
 
     If `manifest_records` is provided, every action is appended as a
@@ -219,20 +225,31 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
         name, kind = act["name"], act["action"]
         if kind == "keep":
             continue
-        # Admission policy: refuse anything outside the controlled taxonomy,
-        # empty/short/dup rules, or that doesn't pass minimum-shape checks.
-        try:
-            import admission  # local import
-            admitted, why = admission.admit(act, canonical_rules=canonical_names)
-        except Exception:
-            admitted, why = True, "admission-missing"
         obs_list = obs_by_cat.get(act["category"], [])
         evidence = obs_list[0]["evidence"] if obs_list else ""
         tool = obs_list[0].get("tool", "") if obs_list else ""
         scope = rules.get(name, {}).get("scope") or _scope_for(obs_list)
+        # Admission policy: refuse anything outside the controlled taxonomy,
+        # empty/short/dup rules, or that doesn't pass minimum-shape checks.
+        try:
+            if admission is None:
+                raise RuntimeError("admission module unavailable")
+            admitted, why = admission.admit(
+                {**act, "scope": scope},
+                canonical_rules=canonical_names,
+                authority_manifest=authority_manifest,
+                authority_root=authority_root,
+            )
+        except Exception as exc:
+            admitted, why = False, f"admission-error:{type(exc).__name__}"
         record = {"name": name, "category": act["category"], "rule": act["rule"],
                   "confidence": act["confidence"], "observations": act.get("observations", 1),
-                  "scope": scope, "needs_review": act.get("needs_review", False)}
+                  "scope": scope, "needs_review": act.get("needs_review", False),
+                  "record_type": authority.normalize_record_type(act.get("record_type")),
+                  "authority_effect": authority.evaluate_rule(
+                      act["rule"], scope=scope,
+                      declared_effect=act.get("authority_effect")
+                  ).authority_effect}
         # Manifest capture: schema-shaped candidate via PreferenceRecord.
         if manifest_records is not None:
             existing = rules.get(name)
@@ -255,6 +272,10 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
                                        if obs_list else src_ids[0] or ""),
                 "excerpt": evidence,
             }] if evidence else []
+            if authority_manifest:
+                cand["authority_manifest_sha256"] = authority_manifest[
+                    "manifest_sha256"
+                ]
             # Compute and stamp payload_sha256 AFTER the Gate 1b additions so
             # the loader's candidate_payload() computes the same hash.
             cand["payload_sha256"] = manifest.payload_sha256(cand)
@@ -321,9 +342,6 @@ def apply_from_manifest(manifest_path: Path) -> int:
         print(f"error: manifest invalid: {exc}", file=sys.stderr)
         return 2
 
-    if not _preflight_apply_manifest():
-        return 2
-
     batch_id = m["batch_id"]
     if run_journal is None:
         print("error: run_journal module unavailable; refusing manifest apply",
@@ -348,6 +366,28 @@ def apply_from_manifest(manifest_path: Path) -> int:
 
     accepted = manifest.accepted_records(m)
     rejected = manifest.rejected_records(m)
+    frozen_authority = m.get("authority_manifest")
+    authority_rejected = []
+    for rec in accepted:
+        result = authority.evaluate_rule(
+            rec["rule"],
+            scope=rec["scope"],
+            declared_effect=rec.get("authority_effect"),
+            authority_manifest=frozen_authority,
+            authority_root=WORKSPACE_ROOT if frozen_authority else None,
+        )
+        if not result.admitted:
+            authority_rejected.append((rec["id"], result.reason))
+    if authority_rejected:
+        print("error: manifest contains authority-quarantined records:",
+              file=sys.stderr)
+        for record_id, reason in authority_rejected:
+            print(f"  - {record_id}: {reason}", file=sys.stderr)
+        return 2
+
+    if not _preflight_apply_manifest():
+        return 2
+
     print(f"adapt: applying manifest {manifest_path}")
     print(f"  batch_id={batch_id}, sessions={len(j_sessions)}, "
           f"accepted={len(accepted)}, rejected={len(rejected)}")
@@ -383,7 +423,9 @@ def apply_from_manifest(manifest_path: Path) -> int:
             pr = preference_record.PreferenceRecord.from_synthesis(
                 {"action": "add", "name": rec["id"],
                  "category": rec["category"], "rule": rec["rule"],
-                 "confidence": rec.get("confidence", 0.6)},
+                 "confidence": rec.get("confidence", 0.6),
+                 "record_type": rec.get("record_type", "unclassified"),
+                 "authority_effect": rec.get("authority_effect", "neutral")},
                 scope=rec["scope"],
                 source_ids=tuple(rec.get("source_ids", [])),
             )
@@ -455,6 +497,8 @@ def apply_from_manifest(manifest_path: Path) -> int:
                 "observations": rec.get("evidence_count", 1),
                 "scope": rec["scope"],
                 "needs_review": rec.get("needs_review", False),
+                "record_type": rec.get("record_type", "unclassified"),
+                "authority_effect": rec.get("authority_effect", "neutral"),
             }
         rp.parent.mkdir(parents=True, exist_ok=True)
         rp.write_text(json.dumps(rules_obj, indent=2), encoding="utf-8")
@@ -622,6 +666,7 @@ def main() -> int:
         return 2
 
     # ----- Stage 3: apply with admission gating -----
+    authority_snapshot = authority.build_manifest(WORKSPACE_ROOT)
     obs_by_cat = defaultdict(list)
     for o in observations:
         obs_by_cat[o["category"]].append(o)
@@ -636,7 +681,9 @@ def main() -> int:
         apply_actions(actions, obs_by_cat, rules, ts.STATE_DIR, dry_run,
                       manifest_records=manifest_records,
                       source_session_ids=source_session_ids,
-                      source_file_hashes=source_file_hashes)
+                      source_file_hashes=source_file_hashes,
+                      authority_manifest=authority_snapshot,
+                      authority_root=WORKSPACE_ROOT)
         # Strip admission-metadata keys; only schema fields survive in the file.
         schema_records = []
         for r in manifest_records:
@@ -658,6 +705,7 @@ def main() -> int:
             "batch_id": batch_id,
             "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
             "generator": "adapt.py --manifest",
+            "authority_manifest": authority_snapshot,
             "source_session_ids": source_session_ids,
             "records": schema_records,
         }
@@ -675,7 +723,9 @@ def main() -> int:
         return 0
 
     delta, ok_all = apply_actions(actions, obs_by_cat, rules, ts.STATE_DIR, dry_run,
-                                  source_session_ids=[s.session_id for s in sessions])
+                                  source_session_ids=[s.session_id for s in sessions],
+                                  authority_manifest=authority_snapshot,
+                                  authority_root=WORKSPACE_ROOT)
     changed = delta
     if journal:
         journal.record(batch_id, "applied", applied=changed, ok=ok_all)

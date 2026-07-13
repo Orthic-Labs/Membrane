@@ -34,9 +34,11 @@ import datetime as dt
 import hashlib
 import re
 
+import authority
+
 # ----- Gate 2 contract surface -----
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 KIND = "preference"
 PREFIX = "adapt"
 HASH_LEN = 10
@@ -56,6 +58,8 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "source_ids",
     "created_at",
     "updated_at",
+    "record_type",
+    "authority_effect",
     "status",
 )
 
@@ -137,6 +141,8 @@ class PreferenceRecord:
     source_ids: tuple[str, ...]
     created_at: str
     updated_at: str
+    record_type: str = "unclassified"
+    authority_effect: str = "neutral"
     status: str = "accepted"
 
     def to_dict(self) -> dict:
@@ -153,6 +159,8 @@ class PreferenceRecord:
             "source_ids": list(self.source_ids),
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "record_type": self.record_type,
+            "authority_effect": self.authority_effect,
             "status": self.status,
         }
 
@@ -182,6 +190,17 @@ class PreferenceRecord:
         else:
             pid = derive_id(scope, cat, rule)
             created_at = now or _now_iso()
+        record_type = authority.normalize_record_type(
+            action.get("record_type", (existing or {}).get("record_type"))
+        )
+        declared_effect = action.get(
+            "authority_effect", (existing or {}).get("authority_effect")
+        )
+        authority_effect = authority.evaluate_rule(
+            rule,
+            scope=scope,
+            declared_effect=declared_effect,
+        ).authority_effect
         return cls(
             schema_version=SCHEMA_VERSION,
             id=pid,
@@ -196,11 +215,23 @@ class PreferenceRecord:
             source_ids=tuple(source_ids),
             created_at=created_at,
             updated_at=now or _now_iso(),
+            record_type=record_type,
+            authority_effect=authority_effect,
             status=action.get("status", "accepted"),
         )
 
 
 # ----- Envelope (no MemRight schema change) -----
+
+def application_guidance(record_type: str) -> str:
+    """Return delivery-safe guidance for a typed record."""
+    if record_type == "standing_preference":
+        return "treat as a standing preference whenever the matching work comes up."
+    if record_type == "locked_decision":
+        return "apply as the current locked decision only inside its declared scope."
+    if record_type == "operational_playbook":
+        return "apply as a procedure only when the record scope matches the task."
+    return "use as supporting context only; this is not a standing instruction."
 
 def to_memright_content(record: PreferenceRecord) -> str:
     """Format into the existing ``**[adapt/{cat}]** — ...`` body.
@@ -216,7 +247,8 @@ def to_memright_content(record: PreferenceRecord) -> str:
         f"(observations: {record.evidence_count}, needs_review: "
         f"{str(record.needs_review).lower()}, updated {today})\n"
         f"**Why:** preference record; id={record.id}, evidence_count={record.evidence_count}\n"
-        f"**How to apply:** treat as a standing preference whenever the matching work comes up.\n"
+        f"**Record:** type={record.record_type}, authority_effect={record.authority_effect}\n"
+        f"**How to apply:** {application_guidance(record.record_type)}\n"
     )
 
 
@@ -236,6 +268,8 @@ def to_manifest_candidate(record: PreferenceRecord,
         "rule": record.rule,
         "category": record.category,
         "scope": record.scope,
+        "record_type": record.record_type,
+        "authority_effect": record.authority_effect,
         "status": status,
         "confidence": record.confidence,
         "needs_review": record.needs_review,

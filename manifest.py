@@ -43,6 +43,9 @@ IMMUTABLE_FIELDS = (
     "evidence_ids",
     "evidence_count",
     "evidence_excerpt",
+    "record_type",
+    "authority_effect",
+    "authority_manifest_sha256",
 )
 
 
@@ -84,7 +87,7 @@ def candidate_payload(record: dict) -> dict:
 
     Lists are sorted so list-order edits don't change the hash.
     """
-    return {
+    payload = {
         "id": record["id"],
         "rule": record["rule"],
         "category": record["category"],
@@ -95,6 +98,15 @@ def candidate_payload(record: dict) -> dict:
         "evidence_count": int(record.get("evidence_count", 0)),
         "evidence_excerpt": record.get("evidence_excerpt", "") or "",
     }
+    # v1.0 records omitted these fields. Preserve their historical hashes;
+    # v1.1 records include both fields in the immutable signed payload.
+    if "record_type" in record:
+        payload["record_type"] = record["record_type"]
+    if "authority_effect" in record:
+        payload["authority_effect"] = record["authority_effect"]
+    if "authority_manifest_sha256" in record:
+        payload["authority_manifest_sha256"] = record["authority_manifest_sha256"]
+    return payload
 
 
 def payload_sha256(record: dict) -> str:
@@ -135,6 +147,30 @@ def validate_schema(path: Path) -> dict:
         )
     except jsonschema.ValidationError as exc:
         raise ManifestError(f"manifest schema check failed: {exc.message}") from exc
+    if raw.get("schema_version") == "1.1.0":
+        for rec in raw.get("records", []):
+            missing = [
+                field for field in ("record_type", "authority_effect")
+                if field not in rec
+            ]
+            if missing:
+                raise ManifestError(
+                    "manifest schema check failed: v1.1.0 record "
+                    f"{rec.get('id', '<unknown>')} missing {', '.join(missing)}"
+                )
+    frozen_authority = raw.get("authority_manifest")
+    if frozen_authority:
+        expected = frozen_authority["manifest_sha256"]
+        unbound = [
+            rec.get("id", "<unknown>")
+            for rec in raw.get("records", [])
+            if rec.get("authority_manifest_sha256") != expected
+        ]
+        if unbound:
+            raise ManifestError(
+                "manifest schema check failed: records are not bound to the "
+                f"embedded authority manifest: {unbound}"
+            )
     return raw
 
 

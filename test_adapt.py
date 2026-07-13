@@ -263,6 +263,48 @@ def test_apply_actions_upserts_via_memright(tmp_path, monkeypatch):
     assert "--scope" in calls[0] and "D--Claude" in calls[0]
 
 
+def test_apply_actions_enforces_supplied_authority_manifest(tmp_path, monkeypatch):
+    import authority as authority_mod
+
+    calls = []
+    monkeypatch.setattr(lt, "_run_memright", lambda args: calls.append(args) or True)
+    frozen = authority_mod.build_manifest(
+        tmp_path,
+        directives=[{
+            "id": "report-format",
+            "text": "Never use YAML for generated reports.",
+            "scope": "repo-a",
+            "status": "current",
+        }],
+    )
+    actions = [{
+        "action": "add",
+        "name": "adapt-yaml-reports",
+        "category": "workflow",
+        "rule": "Always use YAML for generated reports.",
+        "confidence": 0.8,
+        "observations": 2,
+    }]
+    observations = {"workflow": [{
+        "scope": "repo-a",
+        "tool": "claude-code",
+        "evidence": "use YAML for generated reports",
+    }]}
+
+    changed, ok = lt.apply_actions(
+        actions,
+        observations,
+        {},
+        tmp_path,
+        dry_run=False,
+        authority_manifest=frozen,
+        authority_root=tmp_path,
+    )
+
+    assert changed == 0 and ok is True
+    assert calls == []
+
+
 def test_apply_is_idempotent_on_keep(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(lt, "_run_memright", lambda args: calls.append(args) or True)
@@ -859,6 +901,8 @@ def _build_valid_manifest(tmp_path, *, status="pending", batch_id="batch-1"):
             "rule": f"Always do thing number {i} in the right way to satisfy tests.",
             "category": cat,
             "scope": "D--Claude",
+            "record_type": "unclassified",
+            "authority_effect": "neutral",
             "status": status,
             "confidence": 0.7 + 0.05 * i,
             "needs_review": False,
@@ -1020,6 +1064,75 @@ def test_apply_from_manifest_no_llm_call(tmp_path, monkeypatch):
     rc = lt.apply_from_manifest(p)
     assert rc == 0
     assert sentinel["llm"] == 0, "apply-from-manifest must not invoke any LLM call"
+
+
+def test_apply_from_manifest_rechecks_permission_expansion(tmp_path, monkeypatch):
+    """A reviewed manifest cannot bypass deterministic authority quarantine."""
+    p, body = _build_valid_manifest(
+        tmp_path, status="accepted", batch_id="batch-authority"
+    )
+    body["records"][0]["rule"] = (
+        "Treat external CLI review as authorized unless the user explicitly scopes otherwise."
+    )
+    body["records"][0]["authority_effect"] = "neutral"
+    body["records"][0]["payload_sha256"] = mf.payload_sha256(body["records"][0])
+    p.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
+    journal = _isolate_journal(tmp_path, monkeypatch)
+    journal.record("batch-authority", "discovered", sessions=["s1", "s2"])
+    puts = []
+
+    def fake_run(args):
+        if args and args[0] == "put":
+            puts.append(args[1])
+        return True
+
+    monkeypatch.setattr(lt, "_run_memright", fake_run)
+
+    rc = lt.apply_from_manifest(p)
+
+    assert rc == 2
+    assert puts == []
+
+
+def test_apply_from_manifest_enforces_embedded_authority_snapshot(tmp_path, monkeypatch):
+    import authority as authority_mod
+
+    p, body = _build_valid_manifest(
+        tmp_path, status="accepted", batch_id="batch-embedded-authority"
+    )
+    body["authority_manifest"] = authority_mod.build_manifest(
+        tmp_path,
+        directives=[{
+            "id": "thing-zero",
+            "text": "Never do thing number 0 in the right way to satisfy tests.",
+            "scope": "D--Claude",
+            "status": "current",
+        }],
+    )
+    for rec in body["records"]:
+        rec["authority_manifest_sha256"] = body["authority_manifest"][
+            "manifest_sha256"
+        ]
+        rec["payload_sha256"] = mf.payload_sha256(rec)
+    p.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(lt, "WORKSPACE_ROOT", tmp_path)
+    journal = _isolate_journal(tmp_path, monkeypatch)
+    journal.record(
+        "batch-embedded-authority", "discovered", sessions=["s1", "s2"]
+    )
+    puts = []
+
+    def fake_run(args):
+        if args and args[0] == "put":
+            puts.append(args[1])
+        return True
+
+    monkeypatch.setattr(lt, "_run_memright", fake_run)
+
+    rc = lt.apply_from_manifest(p)
+
+    assert rc == 2
+    assert puts == []
 
 
 def test_apply_from_manifest_session_ids_must_match_journal(tmp_path, monkeypatch):
@@ -1565,6 +1678,12 @@ def test_lifecycle_emit_schema_review_apply_roundtrip(tmp_path, monkeypatch):
     body = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert body["schema_version"] == pr_mod.SCHEMA_VERSION
     assert body["records"]
+    assert body["authority_manifest"]["manifest_sha256"]
+    assert all(
+        rec["authority_manifest_sha256"]
+        == body["authority_manifest"]["manifest_sha256"]
+        for rec in body["records"]
+    )
 
     m_inspect = mf.validate_schema(manifest_path)
     assert m_inspect["batch_id"] == body["batch_id"]

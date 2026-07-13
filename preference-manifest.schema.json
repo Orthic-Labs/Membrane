@@ -9,7 +9,7 @@
   "properties": {
     "schema_version": {
       "type": "string",
-      "const": "1.0.0"
+      "enum": ["1.0.0", "1.1.0"]
     },
     "batch_id": {
       "type": "string",
@@ -24,6 +24,48 @@
     },
     "created_at": { "type": "string" },
     "generator": { "type": "string" },
+    "authority_manifest": {
+      "type": "object",
+      "required": ["schema_version", "sources", "directives", "forbidden_scopes", "manifest_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0.0" },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "scope", "rank", "bytes", "sha256"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "scope": { "type": "string", "minLength": 1 },
+              "rank": { "type": "integer" },
+              "bytes": { "type": "integer", "minimum": 0 },
+              "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+            }
+          }
+        },
+        "directives": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "text", "scope", "status"],
+            "additionalProperties": false,
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "text": { "type": "string", "minLength": 1 },
+              "scope": { "type": "string", "minLength": 1 },
+              "status": { "type": "string", "enum": ["current", "superseded"] }
+            }
+          }
+        },
+        "forbidden_scopes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "manifest_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
     "records": {
       "type": "array",
       "minItems": 1,
@@ -47,6 +89,19 @@
             "description": "Controlled taxonomy; reject if not in admission.ALLOWED_CATEGORIES."
           },
           "scope": { "type": "string" },
+          "record_type": {
+            "type": "string",
+            "enum": ["standing_preference", "locked_decision", "operational_playbook", "episodic_fact", "unclassified"]
+          },
+          "authority_effect": {
+            "type": "string",
+            "enum": ["neutral", "restrictive", "permission_expanding"]
+          },
+          "authority_manifest_sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "description": "Binds this immutable candidate payload to the embedded authority manifest used at admission."
+          },
           "status": {
             "type": "string",
             "enum": ["pending", "accepted", "rejected"],
@@ -55,7 +110,7 @@
           "payload_sha256": {
             "type": "string",
             "pattern": "^[a-f0-9]{64}$",
-            "description": "SHA-256 over the immutable candidate payload (id/rule/category/scope/source_ids/source_file_hashes/evidence_ids/evidence_count/evidence_excerpt). Detects any content edit."
+            "description": "SHA-256 over the immutable candidate payload, including record type, authority effect, and authority-manifest binding when present. Detects any content edit."
           },
           "human_note": { "type": "string" },
           "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
