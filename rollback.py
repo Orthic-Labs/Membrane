@@ -9,11 +9,16 @@ The captured shape is::
 
     {
       "batch_id":       "<journal batch id>",
-      "accepted_ids":   ["adapt-workflow-...", ...],   # primary ids only
+      "accepted_ids":   ["D--Claude/adapt-workflow-...", ...],
       "manifest_digest": "<sha256 over the immutable manifest payload>",
       "db_path":        "<absolute path to the live MemRight DB>",
       "db_checksum":    "<sha256 of the live DB at capture time>",
+      "db_backup_path": "<consistent SQLite backup>",
+      "db_backup_checksum": "<sha256 of backup>",
       "state_snapshot": "<verbatim text of ~/.claude/adapt/state.json>",
+      "rules_snapshot": "<verbatim text of ~/.claude/adapt/rules.json>",
+      "core_snapshot":  "<verbatim text of ~/.claude/adapt/core.json>",
+      "core_digest":    "<sha256 of core.json>",
       "created_at":     "<iso8601>"
     }
 
@@ -31,9 +36,9 @@ Usage::
 The revert phase:
   - reads the safe-point,
   - prints the plan (which IDs would be deleted),
-  - on ``--apply``: deletes ONLY the recorded IDs via the resident memright
-    service (never raw ``psql`` / ``sqlite3`` on the live DB), restores the
-    state.json snapshot, and verifies ``PRAGMA integrity_check`` returns ok.
+  - on ``--apply``: verifies the bound backup, deletes ONLY the recorded IDs
+    via the resident memright service (never raw SQL on the live DB), restores
+    Adapt's state/rules/core snapshots, and verifies ``PRAGMA integrity_check``.
 
 This module is intentionally conservative — it does NOT have a ``--force``
 flag. If the integrity check fails, the operator is told and the partial
@@ -46,13 +51,18 @@ import datetime as dt
 import hashlib
 import json
 import shutil
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
+import preference_record
+
 WS = Path("D:/Claude")
 STATE_DIR = Path.home() / ".claude" / "adapt"
 STATE_FILE = STATE_DIR / "state.json"
+RULES_FILE = STATE_DIR / "rules.json"
+CORE_FILE = STATE_DIR / "core.json"
 SAFEPOINT_DIR = STATE_DIR / "safepoints"
 
 
@@ -79,18 +89,68 @@ def _resolve_memright() -> str | None:
     return shutil.which("memright")
 
 
+def _snapshot_text(path: Path) -> tuple[bool, str]:
+    return (path.exists(), path.read_text(encoding="utf-8") if path.exists() else "")
+
+
+def _atomic_write_text(path: Path, value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pending = path.with_suffix(path.suffix + ".tmp")
+    pending.write_text(value, encoding="utf-8")
+    pending.replace(path)
+
+
+def _restore_snapshot(path: Path, existed: bool, value: str) -> None:
+    if existed:
+        _atomic_write_text(path, value)
+    elif path.exists():
+        path.unlink()
+
+
+def _backup_sqlite(source: Path, target: Path) -> None:
+    """Create a transactionally consistent SQLite backup."""
+    if source.resolve() == target.resolve():
+        raise ValueError("safe-point DB backup path must differ from source DB")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    pending = target.with_suffix(target.suffix + ".tmp")
+    if pending.exists():
+        pending.unlink()
+    src = None
+    dst = None
+    try:
+        try:
+            src = sqlite3.connect(source)
+            dst = sqlite3.connect(pending)
+            src.backup(dst)
+            dst.commit()
+        finally:
+            if dst is not None:
+                dst.close()
+                dst = None
+            if src is not None:
+                src.close()
+                src = None
+        pending.replace(target)
+    except Exception:
+        if pending.exists():
+            pending.unlink()
+        raise
+
+
 # ----- create -----
 
 def create_safe_point(manifest: dict, db_path: Path,
-                      state_path: Path = STATE_FILE,
+                      state_path: Path | None = None,
+                      rules_path: Path | None = None,
+                      core_path: Path | None = None,
                       out_path: Path | None = None) -> Path:
     """Capture the live pre-apply invariants into a safe-point file.
 
     ``manifest`` is the parsed manifest dict (must already carry
     ``batch_id`` and ``records``). The safe-point records:
 
-      - ``accepted_ids``: primary ids of every accepted record (computed here,
-        not trusted from caller — that's the invariant),
+      - ``accepted_ids``: canonical scoped ids of every accepted record
+        (computed through the production serializer, not trusted from caller),
       - ``manifest_digest``: SHA-256 over the immutable manifest payload
         (sorted JSON),
       - ``db_checksum``: SHA-256 of the live DB at this instant,
@@ -98,29 +158,53 @@ def create_safe_point(manifest: dict, db_path: Path,
 
     The safe-point file path defaults to ``~/.claude/adapt/safepoints/<batch_id>.json``.
     """
-    SAFEPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    accepted_ids = [r["id"] for r in manifest.get("records", [])
-                    if r.get("status") == "accepted"]
+    state_path = state_path or STATE_FILE
+    rules_path = rules_path or RULES_FILE
+    core_path = core_path or CORE_FILE
+    accepted_ids = [
+        f"{stored.scope}/{stored.id}"
+        for stored in (
+            preference_record.from_manifest_candidate(record)
+            for record in manifest.get("records", [])
+            if record.get("status") == "accepted"
+        )
+    ]
     manifest_digest = _sha256_text(json.dumps(manifest, sort_keys=True,
                                               ensure_ascii=False))
-    db_checksum = _sha256_file(db_path) if db_path.exists() else None
-    state_snapshot = state_path.read_text(encoding="utf-8") \
-        if state_path.exists() else ""
+    if not db_path.exists():
+        raise FileNotFoundError(f"MemRight DB does not exist: {db_path}")
+    target = out_path or (SAFEPOINT_DIR / f"{manifest['batch_id']}.json")
+    backup_path = target.with_suffix(".db")
+    _backup_sqlite(db_path, backup_path)
+    backup_ok, backup_message = _verify_integrity(backup_path)
+    if not backup_ok:
+        backup_path.unlink(missing_ok=True)
+        raise RuntimeError(f"safe-point DB backup failed integrity: {backup_message}")
+    db_checksum = _sha256_file(db_path)
+    state_existed, state_snapshot = _snapshot_text(state_path)
+    rules_existed, rules_snapshot = _snapshot_text(rules_path)
+    core_existed, core_snapshot = _snapshot_text(core_path)
 
     body = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.1.0",
         "batch_id": manifest["batch_id"],
         "created_at": _now_iso(),
         "accepted_ids": accepted_ids,
         "manifest_digest": manifest_digest,
         "db_path": str(db_path),
         "db_checksum": db_checksum,
+        "db_backup_path": str(backup_path),
+        "db_backup_checksum": _sha256_file(backup_path),
+        "state_existed": state_existed,
         "state_snapshot": state_snapshot,
+        "rules_existed": rules_existed,
+        "rules_snapshot": rules_snapshot,
+        "core_existed": core_existed,
+        "core_snapshot": core_snapshot,
+        "core_digest": _sha256_file(core_path) if core_existed else None,
     }
-    target = out_path or (SAFEPOINT_DIR / f"{manifest['batch_id']}.json")
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(body, indent=2, ensure_ascii=False),
-                      encoding="utf-8")
+    _atomic_write_text(target, json.dumps(body, indent=2, ensure_ascii=False))
     return target
 
 
@@ -135,9 +219,15 @@ def cmd_create(args: argparse.Namespace) -> int:
 
     db_path = Path(args.db) if args.db else _discover_db_path(m)
     if not db_path or not db_path.exists():
-        print(f"warn: DB path {db_path!r} does not exist; "
-              f"safe-point will record db_checksum=null", file=sys.stderr)
-    out = create_safe_point(m, db_path, out_path=Path(args.out) if args.out else None)
+        print(f"error: DB path {db_path!r} does not exist", file=sys.stderr)
+        return 2
+    try:
+        out = create_safe_point(
+            m, db_path, out_path=Path(args.out) if args.out else None
+        )
+    except (OSError, RuntimeError, sqlite3.Error) as exc:
+        print(f"error: failed to create safe-point: {exc}", file=sys.stderr)
+        return 2
     print(f"safepoint: {out}")
     print(f"  batch_id={m['batch_id']}")
     print(f"  accepted_ids={len([r for r in m['records'] if r.get('status') == 'accepted'])}")
@@ -184,32 +274,38 @@ def _print_plan(sp: dict) -> None:
 
 
 def _verify_integrity(db_path: Path) -> tuple[bool, str]:
-    """Run ``PRAGMA integrity_check`` via the sqlite3 CLI if available.
-
-    Returns ``(ok, message)``. If sqlite3 isn't on PATH, we conservatively
-    treat the verification as failed and tell the operator to verify
-    manually.
-    """
+    """Run ``PRAGMA integrity_check`` with Python's SQLite binding."""
     if not db_path.exists():
         return False, f"db path {db_path} does not exist"
-    sqlite3_bin = shutil.which("sqlite3")
-    if not sqlite3_bin:
-        # Conservative fallback: report a warning rather than fake ok.
-        return True, "sqlite3 binary not on PATH — skipped (verify manually)"
+    conn = None
     try:
-        r = subprocess.run([sqlite3_bin, str(db_path),
-                            "PRAGMA integrity_check;"],
-                           capture_output=True, text=True, timeout=30)
-    except subprocess.TimeoutExpired:
-        return False, "integrity_check timed out"
-    except OSError as exc:
-        return False, f"integrity_check failed to run: {exc}"
-    out = (r.stdout or "").strip()
+        conn = sqlite3.connect(db_path)
+        row = conn.execute("PRAGMA integrity_check").fetchone()
+    except sqlite3.Error as exc:
+        return False, f"integrity_check failed: {exc}"
+    finally:
+        if conn is not None:
+            conn.close()
+    out = str(row[0]).strip() if row else ""
     return out.lower() == "ok", out or "(empty)"
 
 
-def _delete_via_memright(name: str) -> bool:
-    bin_path = _resolve_memright()
+def _verify_backup(sp: dict) -> tuple[bool, str]:
+    backup_value = sp.get("db_backup_path")
+    expected = sp.get("db_backup_checksum")
+    if not backup_value or not expected:
+        return False, "safe-point has no DB backup binding"
+    backup = Path(backup_value)
+    if not backup.exists():
+        return False, f"DB backup missing: {backup}"
+    actual = _sha256_file(backup)
+    if actual != expected:
+        return False, "DB backup checksum mismatch"
+    return _verify_integrity(backup)
+
+
+def _delete_via_memright(name: str, memright_bin: str | Path | None = None) -> bool:
+    bin_path = str(memright_bin) if memright_bin else _resolve_memright()
     if not bin_path:
         print(f"  error: memright shim not on PATH; cannot delete {name}",
               file=sys.stderr)
@@ -231,13 +327,17 @@ def _delete_via_memright(name: str) -> bool:
     return True
 
 
-def revert(safe_point_path: Path, apply: bool = False) -> int:
+def revert(safe_point_path: Path, apply: bool = False,
+           *, state_path: Path | None = None,
+           rules_path: Path | None = None,
+           core_path: Path | None = None,
+           memright_bin: str | Path | None = None) -> int:
     """Revert a previously-applied manifest.
 
     Default: dry-run prints the plan. ``apply=True`` deletes the recorded
-    IDs, restores state.json, and verifies integrity. State ``STATE_FILE``
-    is the only file restored; ``RULES_FILE`` and the digest are not
-    rewritten by revert because they may have been edited independently.
+    IDs, restores the captured Adapt state/rules/core files, and verifies
+    integrity. The DB backup is retained as an emergency artifact; it is not
+    copied over a running live database.
     """
     if not safe_point_path.exists():
         print(f"error: safe-point {safe_point_path} not found", file=sys.stderr)
@@ -250,10 +350,15 @@ def revert(safe_point_path: Path, apply: bool = False) -> int:
         print("\nDRY RUN: pass --apply to execute the rollback.")
         return 0
 
+    backup_ok, backup_message = _verify_backup(sp)
+    if not backup_ok:
+        print(f"error: refusing rollback: {backup_message}", file=sys.stderr)
+        return 2
+
     # 1. Delete each ID via the resident memright service.
     failed = []
     for name in accepted_ids:
-        if _delete_via_memright(name):
+        if _delete_via_memright(name, memright_bin=memright_bin):
             print(f"  deleted {name}")
         else:
             failed.append(name)
@@ -264,11 +369,17 @@ def revert(safe_point_path: Path, apply: bool = False) -> int:
             print(f"  - {n}", file=sys.stderr)
         return 1
 
-    # 2. Restore state.json snapshot.
-    snapshot = sp.get("state_snapshot", "")
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(snapshot, encoding="utf-8")
-    print(f"  state snapshot restored ({len(snapshot)} bytes)")
+    # 2. Restore Adapt-owned file snapshots atomically.
+    state_path = state_path or STATE_FILE
+    rules_path = rules_path or RULES_FILE
+    core_path = core_path or CORE_FILE
+    state_snapshot = sp.get("state_snapshot", "")
+    _restore_snapshot(state_path, sp.get("state_existed", True), state_snapshot)
+    _restore_snapshot(rules_path, sp.get("rules_existed", False),
+                      sp.get("rules_snapshot", ""))
+    _restore_snapshot(core_path, sp.get("core_existed", False),
+                      sp.get("core_snapshot", ""))
+    print(f"  Adapt state/rules/core snapshots restored")
 
     # 3. Verify integrity.
     db_path = Path(sp.get("db_path", ""))

@@ -1091,7 +1091,46 @@ def _isolate_journal(tmp_path, monkeypatch):
     monkeypatch.setattr(lt.run_journal, "JOURNAL_FILE", tmp_path / "run_journal.jsonl")
     monkeypatch.setattr(lt.ts, "scanner_available", lambda: True)
     monkeypatch.setattr(lt, "_run_memright", lambda args: True)
+    monkeypatch.setattr(
+        lt, "_create_apply_safepoint",
+        lambda manifest_body: tmp_path / "safepoint.json",
+        raising=False,
+    )
     return lt.run_journal.RunJournal(tmp_path / "run_journal.jsonl")
+
+
+def test_apply_from_manifest_creates_safepoint_before_first_put(tmp_path, monkeypatch):
+    p, _ = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-order")
+    journal = _isolate_journal(tmp_path, monkeypatch)
+    journal.record("batch-order", "discovered", sessions=["s1", "s2"])
+    events = []
+    monkeypatch.setattr(
+        lt, "_create_apply_safepoint",
+        lambda manifest_body: events.append("safepoint") or tmp_path / "sp.json",
+    )
+    monkeypatch.setattr(
+        lt, "_run_memright",
+        lambda args: events.append(args[0]) or True,
+    )
+    assert lt.apply_from_manifest(p) == 0
+    assert events.index("safepoint") < events.index("put")
+
+
+def test_apply_from_manifest_refuses_writes_when_safepoint_fails(tmp_path, monkeypatch):
+    p, _ = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-no-sp")
+    journal = _isolate_journal(tmp_path, monkeypatch)
+    journal.record("batch-no-sp", "discovered", sessions=["s1", "s2"])
+    puts = []
+    monkeypatch.setattr(
+        lt, "_create_apply_safepoint",
+        lambda manifest_body: (_ for _ in ()).throw(RuntimeError("backup failed")),
+    )
+    monkeypatch.setattr(
+        lt, "_run_memright",
+        lambda args: puts.append(args) or True,
+    )
+    assert lt.apply_from_manifest(p) == 2
+    assert not [args for args in puts if args and args[0] == "put"]
 
 
 def test_apply_from_manifest_refuses_when_journal_missing(tmp_path, monkeypatch):
@@ -1109,16 +1148,23 @@ def test_apply_from_manifest_atomic_rollback_on_write_failure(tmp_path, monkeypa
     journal.record("batch-rb", "discovered", sessions=["s1", "s2"])
     # Override _run_memright: first put succeeds, second fails.
     state = {"phase": 0}
+    deletes = []
     def fake_run(args):
         if args and args[0] == "put":
             state["phase"] += 1
             return state["phase"] != 2
         if args and args[0] == "delete":
+            deletes.append(args[1])
             return True
         return True
     monkeypatch.setattr(lt, "_run_memright", fake_run)
     rc = lt.apply_from_manifest(p)
     assert rc == 1, "expected non-zero exit on partial write failure"
+    assert deletes == [
+        f"{stored.scope}/{stored.id}"
+        for index in (0, 2)
+        for stored in [pr_mod.from_manifest_candidate(body["records"][index])]
+    ]
 
 
 def test_apply_from_manifest_writes_only_accepted(tmp_path, monkeypatch):
@@ -1244,29 +1290,54 @@ def test_apply_from_manifest_session_ids_must_match_journal(tmp_path, monkeypatc
 import rollback as rk
 
 
+def _make_sqlite_db(path):
+    import sqlite3
+    with sqlite3.connect(path) as conn:
+        conn.execute("CREATE TABLE IF NOT EXISTS smoke (id INTEGER PRIMARY KEY)")
+
+
 def test_rollback_create_writes_safepoint(tmp_path):
     """Create captures the live invariants and writes the safe-point JSON."""
     p, body = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-rb")
     db = tmp_path / "engine.db"
-    db.write_bytes(b"hello")
+    _make_sqlite_db(db)
     state_path = tmp_path / "state.json"
     state_path.write_text('{"learned": {}}', encoding="utf-8")
+    rules_path = tmp_path / "rules.json"
+    rules_path.write_text('{"r1": {}}', encoding="utf-8")
+    core_path = tmp_path / "core.json"
+    core_path.write_text('{"content_sha256": "abc"}', encoding="utf-8")
     out = rk.create_safe_point(body, db, state_path=state_path,
+                               rules_path=rules_path, core_path=core_path,
                                out_path=tmp_path / "sp.json")
     sp = json.loads(out.read_text(encoding="utf-8"))
     assert sp["batch_id"] == "batch-rb"
     assert len(sp["accepted_ids"]) == len(body["records"])
+    assert sp["accepted_ids"] == [
+        f"{stored.scope}/{stored.id}" for stored in (
+            pr_mod.from_manifest_candidate(record) for record in body["records"]
+        )
+    ]
     assert sp["state_snapshot"] == '{"learned": {}}'
+    assert sp["rules_snapshot"] == '{"r1": {}}'
+    assert sp["core_snapshot"] == '{"content_sha256": "abc"}'
+    assert sp["core_digest"] == rk._sha256_file(core_path)
     assert sp["db_checksum"] is not None
+    backup = Path(sp["db_backup_path"])
+    assert backup.exists()
+    assert sp["db_backup_checksum"] == rk._sha256_file(backup)
+    assert rk._verify_integrity(backup) == (True, "ok")
 
 
 def test_rollback_dry_run_does_not_modify(tmp_path):
     p, body = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-dry")
     db = tmp_path / "engine.db"
-    db.write_bytes(b"x")
+    _make_sqlite_db(db)
     state_path = tmp_path / "state.json"
     state_path.write_text("{}", encoding="utf-8")
     sp_path = rk.create_safe_point(body, db, state_path=state_path,
+                                   rules_path=tmp_path / "rules.json",
+                                   core_path=tmp_path / "core.json",
                                    out_path=tmp_path / "sp.json")
     state_path.write_text("MODIFIED", encoding="utf-8")
     rc = rk.revert(sp_path, apply=False)
@@ -1277,13 +1348,22 @@ def test_rollback_dry_run_does_not_modify(tmp_path):
 def test_rollback_apply_deletes_via_memright(tmp_path, monkeypatch):
     p, body = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-app")
     db = tmp_path / "engine.db"
-    db.write_bytes(b"")
+    _make_sqlite_db(db)
     state = tmp_path / "state.json"
+    rules = tmp_path / "rules.json"
+    core = tmp_path / "core.json"
     monkeypatch.setattr(rk, "STATE_FILE", state)
+    monkeypatch.setattr(rk, "RULES_FILE", rules)
+    monkeypatch.setattr(rk, "CORE_FILE", core)
     state.write_text("pre-apply-state", encoding="utf-8")
+    rules.write_text("pre-apply-rules", encoding="utf-8")
+    core.write_text("pre-apply-core", encoding="utf-8")
     sp_path = rk.create_safe_point(body, db, state_path=state,
+                                   rules_path=rules, core_path=core,
                                    out_path=tmp_path / "sp.json")
     state.write_text("post-apply-bad", encoding="utf-8")
+    rules.write_text("post-apply-rules", encoding="utf-8")
+    core.write_text("post-apply-core", encoding="utf-8")
     # Patch shutil.which for sqlite3 (none) and memright delete (stub).
     monkeypatch.setattr(rk, "_resolve_memright", lambda: "memright")
     monkeypatch.setattr(rk.shutil, "which", lambda name: None)
@@ -1301,8 +1381,53 @@ def test_rollback_apply_deletes_via_memright(tmp_path, monkeypatch):
     assert rc == 0
     # Three accepted records in _build_valid_manifest → three deletes.
     assert len(captured["deleted"]) == 3
+    assert captured["deleted"] == [
+        f"{stored.scope}/{stored.id}" for stored in (
+            pr_mod.from_manifest_candidate(record) for record in body["records"]
+        )
+    ]
     # state.json restored to pre-apply
     assert state.read_text(encoding="utf-8") == "pre-apply-state"
+    assert rules.read_text(encoding="utf-8") == "pre-apply-rules"
+    assert core.read_text(encoding="utf-8") == "pre-apply-core"
+
+
+def test_rollback_integrity_uses_python_sqlite(tmp_path):
+    valid = tmp_path / "valid.db"
+    _make_sqlite_db(valid)
+    assert rk._verify_integrity(valid) == (True, "ok")
+    invalid = tmp_path / "invalid.db"
+    invalid.write_bytes(b"not sqlite")
+    ok, message = rk._verify_integrity(invalid)
+    assert not ok
+    assert message
+
+
+def test_rollback_refuses_corrupt_backup_before_delete(tmp_path, monkeypatch):
+    _, body = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-corrupt")
+    db = tmp_path / "engine.db"
+    _make_sqlite_db(db)
+    state = tmp_path / "state.json"
+    rules = tmp_path / "rules.json"
+    core = tmp_path / "core.json"
+    state.write_text("state", encoding="utf-8")
+    rules.write_text("rules", encoding="utf-8")
+    core.write_text("core", encoding="utf-8")
+    sp_path = rk.create_safe_point(
+        body, db, state_path=state, rules_path=rules, core_path=core,
+        out_path=tmp_path / "sp.json",
+    )
+    sp = json.loads(sp_path.read_text(encoding="utf-8"))
+    Path(sp["db_backup_path"]).write_bytes(b"corrupt")
+    deleted = []
+    monkeypatch.setattr(
+        rk, "_delete_via_memright",
+        lambda name, memright_bin=None: deleted.append(name) or True,
+    )
+    assert rk.revert(
+        sp_path, apply=True, state_path=state, rules_path=rules, core_path=core
+    ) == 2
+    assert deleted == []
 
 
 def test_emit_arm_d_emits_schema_conformant_manifest(tmp_path):
@@ -1883,11 +2008,14 @@ def test_rollback_create_then_dryrun_does_not_modify(tmp_path, monkeypatch):
     monkeypatch.setattr(rk, "STATE_FILE", state)
     state.write_text("post-apply-bad", encoding="utf-8")
     db = tmp_path / "engine.db"
-    db.write_bytes(b"")
+    _make_sqlite_db(db)
     sp_path = rk.create_safe_point(
         {"batch_id": "b1", "records": [
-            {"id": "a-b-0000000000", "status": "accepted"}]},
-        db, state_path=state, out_path=tmp_path / "sp.json",
+            {"id": "a-b-0000000000", "status": "accepted",
+             "scope": "D--Claude", "category": "tooling",
+             "rule": "Always run the exact rollback smoke before applying."}]},
+        db, state_path=state, rules_path=tmp_path / "rules.json",
+        core_path=tmp_path / "core.json", out_path=tmp_path / "sp.json",
     )
     rc = rk.revert(sp_path, apply=False)
     assert rc == 0

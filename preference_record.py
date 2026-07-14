@@ -261,6 +261,27 @@ class PreferenceRecord:
         )
 
 
+def from_manifest_candidate(record: dict, *, now: str | None = None) -> PreferenceRecord:
+    """Convert an accepted manifest candidate into its canonical stored record."""
+    return PreferenceRecord.from_synthesis(
+        {
+            "action": "add",
+            "name": record["id"],
+            "category": record["category"],
+            "rule": record["rule"],
+            "confidence": record.get("confidence", 0.6),
+            "record_type": record.get("record_type", "unclassified"),
+            "authority_effect": record.get("authority_effect", "neutral"),
+            "retrieval_aliases": normalize_retrieval_aliases(
+                record.get("retrieval_aliases", ()), rule=record.get("rule", "")
+            ),
+        },
+        scope=record["scope"],
+        source_ids=tuple(record.get("source_ids", [])),
+        now=now,
+    )
+
+
 # ----- Envelope (no MemRight schema change) -----
 
 def application_guidance(record_type: str) -> str:

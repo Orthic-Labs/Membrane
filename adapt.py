@@ -16,6 +16,7 @@ import datetime as dt
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -38,6 +39,7 @@ import preference_record  # noqa: E402
 import manifest  # noqa: E402
 import authority  # noqa: E402
 import core_compiler  # noqa: E402
+import rollback  # noqa: E402
 
 RULES_FILE = ts.STATE_DIR / "rules.json"
 DIGEST_FILE = ts.STATE_DIR / "adapt-digest.md"
@@ -348,6 +350,26 @@ def _preflight_apply_manifest() -> bool:
     return True
 
 
+def _create_apply_safepoint(manifest_body: dict) -> Path:
+    """Create the mandatory pre-write Gate 4 safe-point."""
+    db_override = os.environ.get("ADAPT_SAFEPOINT_DB_OVERRIDE")
+    db_path = Path(db_override) if db_override else rollback._discover_db_path(manifest_body)
+    if not db_path or not db_path.exists():
+        raise RuntimeError(f"MemRight DB unavailable for safe-point: {db_path}")
+    out_override = os.environ.get("ADAPT_SAFEPOINT_DIR_OVERRIDE")
+    out_path = None
+    if out_override:
+        out_path = Path(out_override) / f"{manifest_body['batch_id']}.json"
+    return rollback.create_safe_point(
+        manifest_body,
+        db_path,
+        state_path=ts.STATE_FILE,
+        rules_path=_rules_path(),
+        core_path=ts.STATE_DIR / "core.json",
+        out_path=out_path,
+    )
+
+
 def apply_from_manifest(manifest_path: Path) -> int:
     """Apply a reviewed manifest. Zero LLM calls; atomic write across accepted records.
 
@@ -423,11 +445,25 @@ def apply_from_manifest(manifest_path: Path) -> int:
               "writes and no state advance")
         return 0
 
+    try:
+        safe_point = _create_apply_safepoint(m)
+    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        print(f"error: refusing manifest apply; safe-point failed: {exc}",
+              file=sys.stderr)
+        _audit({"event": "manifest_safepoint_failed", "batch_id": batch_id,
+                "error": str(exc)})
+        jrn.record(batch_id, "applied", applied=0, ok=False,
+                   failed=["safepoint"])
+        return 2
+    _audit({"event": "manifest_safepoint_created", "batch_id": batch_id,
+            "path": str(safe_point)})
+    print(f"  safepoint={safe_point}")
+
     # Atomic write loop: write all accepted, then advance state.
     out_dir = ts.STATE_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     tmp_paths: list[Path] = []
-    written: list[str] = []
+    written: list[tuple[str, str]] = []
     failed: list[tuple[str, str]] = []
 
     # Cheap stub class: ts.mark_learned reads session_id, tool, path.stem, mtime.
@@ -450,15 +486,8 @@ def apply_from_manifest(manifest_path: Path) -> int:
                 json.dumps(list(retrieval_aliases), ensure_ascii=False)
             ):
                 raise ValueError("retrieval aliases failed privacy scanner")
-            pr = preference_record.PreferenceRecord.from_synthesis(
-                {"action": "add", "name": rec["id"],
-                 "category": rec["category"], "rule": rec["rule"],
-                 "confidence": rec.get("confidence", 0.6),
-                 "record_type": rec.get("record_type", "unclassified"),
-                 "authority_effect": rec.get("authority_effect", "neutral"),
-                 "retrieval_aliases": retrieval_aliases},
-                scope=rec["scope"],
-                source_ids=tuple(rec.get("source_ids", [])),
+            pr = preference_record.from_manifest_candidate(
+                {**rec, "retrieval_aliases": retrieval_aliases}
             )
         except (KeyError, ValueError) as exc:
             failed.append((rec["id"], f"contract-invalid: {exc}"))
@@ -472,7 +501,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
         tmp_paths.append(Path(tmp_path))
         ok = _run_memright(["put", pr.id, "--scope", pr.scope, "--file", tmp_path])
         if ok:
-            written.append(pr.id)
+            written.append((pr.id, pr.scope))
             _audit({"event": "manifest_applied", "id": pr.id,
                     "scope": pr.scope, "manifest": str(manifest_path)})
         else:
@@ -489,13 +518,15 @@ def apply_from_manifest(manifest_path: Path) -> int:
 
     if failed:
         # Roll back partial writes via the resident service.
-        for w in written:
+        for w, scope in written:
             try:
-                subprocess.run(["memright", "delete", w],
-                               capture_output=True, text=True, timeout=30)
-                _audit({"event": "manifest_rollback_deleted", "id": w})
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                print(f"warn: failed to rollback {w}: {exc}", file=sys.stderr)
+                qualified = f"{scope}/{w}"
+                if _run_memright(["delete", qualified]):
+                    _audit({"event": "manifest_rollback_deleted", "id": qualified})
+                else:
+                    print(f"warn: failed to rollback {qualified}", file=sys.stderr)
+            except OSError as exc:
+                print(f"warn: failed to rollback {scope}/{w}: {exc}", file=sys.stderr)
         print(f"error: {len(failed)} put(s) failed; rolled back "
               f"{len(written)} write(s); refusing state advance",
               file=sys.stderr)
@@ -542,7 +573,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
         print(f"warn: rules.json mirror write failed: {exc}", file=sys.stderr)
 
     jrn.record(batch_id, "applied", applied=len(accepted), ok=True,
-               names=written)
+               names=[name for name, _scope in written])
     jrn.record(batch_id, "committed", applied=len(accepted),
                sessions=j_sessions)
     print(f"adapt: applied {len(accepted)} manifest records; "
