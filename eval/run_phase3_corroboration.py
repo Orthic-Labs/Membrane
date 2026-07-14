@@ -18,7 +18,7 @@ from typing import Callable, Sequence
 
 WS = Path("D:/Claude")
 ADAPT_DIR = WS / "tools/pipelines/memory/adapt"
-JURY_DIR = WS / "tools/jury"
+JURY_DIR = WS / "tools/review"
 SYSTEM = """You are a conservative adjudicator for coding-agent preference memory.
 Return only a JSON array with exactly one object per input item.
 

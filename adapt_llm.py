@@ -196,7 +196,7 @@ def _minimax_response(
 ) -> dict:
     """Lazy-load the jury's providers package and pull MiniMaxAnthropicProvider.
 
-    The jury package is a sibling layout (tools/jury/providers/__init__.py is
+    The jury package is a sibling layout (tools/review/providers/__init__.py is
     the package root), so we synthesise a `providers` parent package into
     sys.modules before exec to satisfy the relative imports inside each module.
 
