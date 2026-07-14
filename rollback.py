@@ -50,6 +50,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -82,6 +83,28 @@ def _sha256_text(s: str) -> str:
 
 def _now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
+def _record_rollback(batch_id: str, deleted_count: int, integrity: str,
+                     safe_point_path: Path) -> None:
+    """Append a content-free rollback event without weakening rollback success."""
+    audit_path = Path(os.environ.get(
+        "ADAPT_AUDIT_FILE_OVERRIDE", str(STATE_DIR / "audit.jsonl")
+    ))
+    event = {
+        "ts": _now_iso(),
+        "event": "rollback",
+        "batch_id": batch_id,
+        "deleted_count": deleted_count,
+        "integrity": integrity,
+        "safe_point_sha256": _sha256_file(safe_point_path),
+    }
+    try:
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(audit_path, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        print(f"  warning: rollback audit write failed: {exc}", file=sys.stderr)
 
 
 def _resolve_memright() -> str | None:
@@ -392,6 +415,8 @@ def revert(safe_point_path: Path, apply: bool = False,
         print(f"  integrity_check FAILED: {msg}", file=sys.stderr)
         return 2
 
+    _record_rollback(str(sp.get("batch_id", "")), len(accepted_ids), msg,
+                     safe_point_path)
     print("rollback complete")
     return 0
 

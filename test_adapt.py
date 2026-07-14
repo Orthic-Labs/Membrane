@@ -36,6 +36,9 @@ CLAUDE_ROWS = [
 CODEX_ROWS = [
     {"type": "session_meta", "payload": {"session_id": "cdx1", "cwd": "D:\\Claude\\heardright"}},
     {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [
+        {"type": "input_text", "text": "# AGENTS.md instructions for D:\\Claude\n\n"
+         "<INSTRUCTIONS>\nYou MUST use sequential thinking before complex work.\n</INSTRUCTIONS>"}]}},
+    {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [
         {"type": "input_text", "text": "<recommended_plugins>stuff</recommended_plugins>"}]}},
     {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [
         {"type": "input_text", "text": "never train the wake encoder from scratch, distill the teacher"}]}},
@@ -1363,6 +1366,8 @@ def test_rollback_apply_deletes_via_memright(tmp_path, monkeypatch):
     monkeypatch.setattr(rk, "STATE_FILE", state)
     monkeypatch.setattr(rk, "RULES_FILE", rules)
     monkeypatch.setattr(rk, "CORE_FILE", core)
+    audit = tmp_path / "audit.jsonl"
+    monkeypatch.setenv("ADAPT_AUDIT_FILE_OVERRIDE", str(audit))
     state.write_text("pre-apply-state", encoding="utf-8")
     rules.write_text("pre-apply-rules", encoding="utf-8")
     core.write_text("pre-apply-core", encoding="utf-8")
@@ -1398,6 +1403,11 @@ def test_rollback_apply_deletes_via_memright(tmp_path, monkeypatch):
     assert state.read_text(encoding="utf-8") == "pre-apply-state"
     assert rules.read_text(encoding="utf-8") == "pre-apply-rules"
     assert core.read_text(encoding="utf-8") == "pre-apply-core"
+    event = json.loads(audit.read_text(encoding="utf-8"))
+    assert event["event"] == "rollback"
+    assert event["batch_id"] == "batch-app"
+    assert event["deleted_count"] == 3
+    assert event["integrity"] == "ok"
 
 
 def test_rollback_integrity_uses_python_sqlite(tmp_path):

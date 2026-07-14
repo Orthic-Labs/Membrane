@@ -103,6 +103,20 @@ def test_parse_verdicts_accepts_exact_jsonl_objects():
     assert parsed["b"]["flags"] == ["task_specific"]
 
 
+def test_parse_verdicts_accepts_single_items_wrapper():
+    runner = _module()
+    raw = json.dumps({"items": [{
+        "id": "a",
+        "verdict": "reject",
+        "flags": ["task_specific"],
+        "reason": "one-off",
+    }]})
+
+    parsed = runner.parse_verdicts(raw, {"a"})
+
+    assert parsed["a"]["verdict"] == "reject"
+
+
 def test_aggregate_requires_two_calibrated_votes_and_hard_flags_quarantine():
     runner = _module()
     expected = {"control-positive": True, "control-negative": False}

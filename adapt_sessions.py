@@ -206,6 +206,9 @@ def _keep_turn(text: str) -> bool:
         return False
     if text.startswith("<"):        # <command-name>, <system-reminder>, <recommended_plugins>...
         return False
+    if (text.startswith("# AGENTS.md instructions for ")
+            and "<INSTRUCTIONS>" in text):
+        return False                # Codex-injected workspace authority, not user-authored chat
     if text.startswith("Caveat:"):
         return False
     if text_excluded(text):

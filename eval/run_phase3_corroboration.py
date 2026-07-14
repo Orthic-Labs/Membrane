@@ -122,7 +122,14 @@ def build_cases(
 def parse_verdicts(raw: str, expected_ids: set[str]) -> dict[str, dict]:
     text = re.sub(r"```(?:json)?", "", raw)
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if lines and all(line.startswith("{") and line.endswith("}") for line in lines):
+    try:
+        decoded = json.loads(text.strip())
+    except json.JSONDecodeError:
+        decoded = None
+    if (isinstance(decoded, dict) and set(decoded) == {"items"}
+            and isinstance(decoded["items"], list)):
+        data = decoded["items"]
+    elif lines and all(line.startswith("{") and line.endswith("}") for line in lines):
         # MiniMax sometimes honors the object schema but emits strict JSONL.
         # Exact IDs below still refuse omissions or extra decisions.
         data = [json.loads(line) for line in lines]
