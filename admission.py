@@ -8,6 +8,7 @@ backfill).
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import authority
@@ -26,6 +27,25 @@ ALLOWED_CATEGORIES: frozenset[str] = frozenset({
 })
 
 DEFAULT_FALLBACK_CATEGORY = "misc-review"
+
+_TRANSIENT_ENVIRONMENT_CLAIM = re.compile(
+    r"(?i)\b(?:is|are|was|were)\s+(?:blocked|broken|unavailable|down|missing)\b"
+    r"|\bworkaround\b"
+)
+_RETIRED_REVIEW_SURFACE = re.compile(
+    r"(?i)(?:/review-cli|/review-self|cli-review\.py|three distinct review gates"
+    r"|use council for uncertainty, jury to challenge decisions)"
+)
+_OBSOLETE_MODEL_ROUTING = re.compile(
+    r"(?i)(?:route architecture work to fable or opus|use opus subagents)"
+)
+_UNAPPROVED_WORKTREE_MANDATE = re.compile(
+    r"(?i)(?:give each (?:an )?isolated worktree|lanes? with worktree .*instructions)"
+)
+_OVERBROAD_WORKFLOW_MANDATE = re.compile(
+    r"(?i)(?:stop and ask for clarification rather than guessing when blocked or instructions are unclear"
+    r"|use STATE\.md as the source of truth for project state across tasks)"
+)
 
 
 def normalize_category(raw: str) -> str:
@@ -74,6 +94,16 @@ def admit(rule: dict, *, canonical_rules: set[str] | None = None,
     words = body.split()
     if len(words) < 8:
         return False, "rule-too-short"
+    if _TRANSIENT_ENVIRONMENT_CLAIM.search(body):
+        return False, "transient-environment-claim"
+    if _RETIRED_REVIEW_SURFACE.search(body):
+        return False, "retired-workflow-reference"
+    if _OBSOLETE_MODEL_ROUTING.search(body):
+        return False, "obsolete-model-routing"
+    if _UNAPPROVED_WORKTREE_MANDATE.search(body):
+        return False, "unapproved-worktree-mandate"
+    if _OVERBROAD_WORKFLOW_MANDATE.search(body):
+        return False, "overbroad-workflow-mandate"
     authority_result = authority.evaluate_rule(
         body,
         scope=str(rule.get("scope", "workspace")),

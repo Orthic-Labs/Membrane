@@ -176,6 +176,70 @@ def aggregate_primary(*, panel_module, votes: dict, expected_controls: dict,
     }
 
 
+def _merge_ledgers(*ledgers: dict) -> dict:
+    return {
+        key: sum(int(ledger.get(key, 0)) for ledger in ledgers)
+        for key in ("provider_calls", "cache_hits", "input_chars")
+    }
+
+
+def _has_call_cache(path: Path) -> bool:
+    calls = path / "calls"
+    return calls.is_dir() and any(calls.glob("*.json"))
+
+
+def run_calibrated_panel(
+    *, panel_module, cases: Sequence[dict], expected_controls: dict[str, bool],
+    model_ids: Sequence[str], calibration_dir: Path, calls_dir: Path,
+    call_fn, scanner, chunk_size: int, max_provider_calls: int,
+    max_tokens: int, max_workers: int, resume: bool,
+    inter_call_delay_s: float,
+) -> dict:
+    control_cases = [item for item in cases if item.get("kind") == "control"]
+    candidate_cases = [item for item in cases if item.get("kind") == "candidate"]
+    calibration = panel_module.run_panel(
+        cases=control_cases, model_ids=model_ids, output_dir=calibration_dir,
+        call_fn=call_fn, scanner=scanner, chunk_size=chunk_size,
+        max_provider_calls=max_provider_calls, max_tokens=max_tokens,
+        max_workers=max_workers, resume=_has_call_cache(calibration_dir),
+        inter_call_delay_s=inter_call_delay_s,
+    )
+    calibration_models = {
+        name: panel_module._calibrate(items, expected_controls)
+        for name, items in calibration["votes"].items()
+    }
+    eligible = [
+        name for name in model_ids
+        if calibration_models.get(name, {}).get("eligible")
+    ]
+    remaining_calls = max_provider_calls - calibration["ledger"]["provider_calls"]
+    candidate = {
+        "votes": {}, "failures": {},
+        "ledger": {"provider_calls": 0, "cache_hits": 0, "input_chars": 0},
+    }
+    if eligible and candidate_cases:
+        candidate = panel_module.run_panel(
+            cases=candidate_cases, model_ids=eligible, output_dir=calls_dir,
+            call_fn=call_fn, scanner=scanner, chunk_size=chunk_size,
+            max_provider_calls=remaining_calls, max_tokens=max_tokens,
+            max_workers=max_workers, resume=resume,
+            inter_call_delay_s=inter_call_delay_s,
+        )
+    combined_votes = {
+        model_id: dict(items) for model_id, items in calibration["votes"].items()
+    }
+    for model_id, items in candidate["votes"].items():
+        combined_votes.setdefault(model_id, {}).update(items)
+    failures = dict(calibration["failures"])
+    failures.update(candidate["failures"])
+    return {
+        "votes": combined_votes,
+        "failures": failures,
+        "ledger": _merge_ledgers(calibration["ledger"], candidate["ledger"]),
+        "calibration_models": calibration_models,
+    }
+
+
 def _write_json_atomic(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -207,16 +271,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--audit", type=Path, required=True)
     parser.add_argument("--calls-dir", type=Path, required=True)
+    parser.add_argument("--calibration-dir", type=Path)
     parser.add_argument("--controls", type=Path, default=DEFAULT_CONTROLS)
     parser.add_argument("--models", nargs="+", default=list(DEFAULT_MODELS))
     parser.add_argument("--decision-policy", choices=("calibrated-primary", "dual-consensus"),
                         default="calibrated-primary")
     parser.add_argument("--primary-model", default=DEFAULT_PRIMARY_MODEL)
-    parser.add_argument("--chunk-size", type=int, default=20)
-    parser.add_argument("--max-provider-calls", type=int, default=12)
+    parser.add_argument("--chunk-size", type=int, default=5)
+    parser.add_argument("--max-provider-calls", type=int, default=20)
     parser.add_argument("--max-input-chars", type=int, default=250_000)
     parser.add_argument("--max-tokens", type=int, default=4096)
-    parser.add_argument("--inter-call-delay", type=float, default=2.0)
+    parser.add_argument("--workers", type=int, default=5)
+    parser.add_argument("--inter-call-delay", type=float, default=0.0)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
@@ -226,6 +292,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(str(exc))
 
     panel = _load_phase3()
+    calibration_dir = args.calibration_dir or (args.calls_dir / "calibration")
     unknown = sorted(set(args.models) - set(panel.MODEL_SPECS))
     if unknown:
         parser.error(f"unknown models: {unknown}")
@@ -259,6 +326,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0 if preflight["within_ceilings"] else 2
     if not candidate_ids:
         parser.error("manifest has no pending candidates")
+    if not 1 <= args.workers <= 5:
+        parser.error("--workers must be in [1, 5]")
     if not preflight["within_ceilings"]:
         parser.error("preflight exceeds provider-call or input-character ceiling")
     for path in (args.out, args.audit):
@@ -267,15 +336,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     sys.path.insert(0, str(ROOT))
     import adapt_sessions
-    run = panel.run_panel(
-        cases=cases,
-        model_ids=args.models,
-        output_dir=args.calls_dir,
+    run = run_calibrated_panel(
+        panel_module=panel, cases=cases, expected_controls=expected,
+        model_ids=args.models, calibration_dir=calibration_dir,
+        calls_dir=args.calls_dir / "candidates",
         call_fn=panel._call_model,
         scanner=adapt_sessions.scan_batch_for_secrets_str,
         chunk_size=args.chunk_size,
         max_provider_calls=args.max_provider_calls,
         max_tokens=args.max_tokens,
+        max_workers=args.workers,
         resume=args.resume,
         inter_call_delay_s=args.inter_call_delay,
     )

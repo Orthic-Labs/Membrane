@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import importlib.util
 import json
 import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Sequence
@@ -25,13 +27,14 @@ coding agent should behave and the proposed rule does not broaden it. REJECT tas
 product/business decisions, episodic facts, pasted documentation or quoted policy, model-generated
 meta text, and permission-expanding rules. QUARANTINE genuine ambiguity.
 
-Judge semantic sufficiency, not evidence frequency. A control intentionally contains one excerpt,
-and a candidate may come from one source session because this independent decision is the requested
-corroboration. Do not reject or quarantine merely because source_session_count is 1. Direct present-
+Judge semantic sufficiency, not evidence frequency. One explicit excerpt can establish a durable
+instruction. Do not reject or quarantine merely because source_session_count is 1. Direct present-
 tense rules using "from now on", "always", "never", "I prefer", or an explicit correction can be
 durable when they govern agent workflow, verification, tooling, style, documentation, architecture,
-or model routing. By contrast, a temporary gate containing "until", a current stack declaration,
-a product/UI decision, or a request to perform the current task is not an agent preference.
+model routing, memory handling, or how the agent communicates its work. Direct user instructions
+about the agent itself are valid; `pasted_or_meta` applies only to copied or model-authored text.
+By contrast, a temporary gate containing "until", a current stack declaration, a product/UI
+decision, or a request to perform the current task is not an agent preference.
 
 Examples that qualify: "always use JSONL for structured logs", "never expire tokens that are still
 referenced", "from now on mark sessions learned only after every batch succeeds", and "I prefer
@@ -42,7 +45,7 @@ Each output object must be:
 {"id":"...","verdict":"admit|quarantine|reject","flags":[],"reason":"brief evidence-based reason"}
 Allowed flags: task_specific, product_or_fact, pasted_or_meta, overgeneralized,
 permission_expanding, authority_conflict, ambiguous. Never infer durability from words such as
-always or never alone. Candidate arm and expected control labels are intentionally hidden."""
+always or never alone. Every item must be judged by the same standard; origin and labels are hidden."""
 
 VERDICTS = {"admit", "quarantine", "reject"}
 FLAGS = {
@@ -121,6 +124,12 @@ def build_cases(
 
 def parse_verdicts(raw: str, expected_ids: set[str]) -> dict[str, dict]:
     text = re.sub(r"```(?:json)?", "", raw)
+    allowed = "|".join(sorted((re.escape(flag) for flag in FLAGS), key=len, reverse=True))
+    text = re.sub(
+        rf"(?P<prefix>[\[,]\s*)(?P<flag>{allowed})(?=\s*[,\]])",
+        lambda match: f'{match.group("prefix")}"{match.group("flag")}"',
+        text,
+    )
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     try:
         decoded = json.loads(text.strip())
@@ -257,25 +266,41 @@ def run_panel(
     chunk_size: int,
     max_provider_calls: int,
     max_tokens: int = 4096,
+    max_workers: int = 5,
     resume: bool,
     inter_call_delay_s: float = 0.0,
 ) -> dict:
     if chunk_size < 1:
         raise ValueError("chunk_size must be positive")
+    if not 1 <= max_workers <= 5:
+        raise ValueError("max_workers must be in [1, 5]")
     chunks = [list(cases[index:index + chunk_size]) for index in range(0, len(cases), chunk_size)]
     ledger = {"provider_calls": 0, "cache_hits": 0, "input_chars": 0}
     votes: dict[str, dict[str, dict]] = {}
     failures: dict[str, str] = {}
     calls_dir = output_dir / "calls"
     calls_dir.mkdir(parents=True, exist_ok=True)
-    last_provider_call: float | None = None
+    pending_jobs: list[dict] = []
+    expected_counts = {model_id: len(cases) for model_id in model_ids}
 
     for model_id in model_ids:
         model_votes: dict[str, dict] = {}
+        model_jobs: list[dict] = []
         safe_model_id = re.sub(r"[^a-zA-Z0-9_.-]+", "-", model_id)
         try:
             for chunk_index, chunk in enumerate(chunks, 1):
-                user = json.dumps({"items": chunk}, ensure_ascii=False, separators=(",", ":"))
+                original_by_opaque: dict[str, str] = {}
+                blinded = []
+                for item_index, item in enumerate(chunk, 1):
+                    opaque_id = f"item-{item_index:03d}"
+                    original_by_opaque[opaque_id] = item["id"]
+                    visible = {
+                        key: value for key, value in item.items()
+                        if key not in {"id", "kind"}
+                    }
+                    visible["id"] = opaque_id
+                    blinded.append(visible)
+                user = json.dumps({"items": blinded}, ensure_ascii=False, separators=(",", ":"))
                 request = {
                     "model_id": model_id,
                     "system": SYSTEM,
@@ -284,7 +309,7 @@ def run_panel(
                 }
                 request_sha256 = _sha(request)
                 call_path = calls_dir / f"{safe_model_id}-{chunk_index:03d}.json"
-                expected_ids = {item["id"] for item in chunk}
+                expected_ids = set(original_by_opaque)
                 if resume and call_path.exists():
                     cached = json.loads(call_path.read_text(encoding="utf-8"))
                     if cached.get("request_sha256") != request_sha256:
@@ -295,51 +320,87 @@ def run_panel(
                         if cached.get("status") == "success":
                             raise
                     else:
-                        model_votes.update(cached_verdicts)
+                        model_votes.update({
+                            original_by_opaque[item_id]: verdict
+                            for item_id, verdict in cached_verdicts.items()
+                        })
                         ledger["cache_hits"] += 1
                         continue
                 elif call_path.exists():
                     raise FileExistsError(f"call cache exists; use --resume: {call_path}")
-
-                if ledger["provider_calls"] >= max_provider_calls:
-                    raise RuntimeError("provider-call ceiling exceeded")
                 if not scanner(SYSTEM + "\n" + user):
                     raise RuntimeError(f"secret scanner blocked {model_id} chunk {chunk_index}")
-                if last_provider_call is not None and inter_call_delay_s > 0:
-                    remaining = inter_call_delay_s - (time.monotonic() - last_provider_call)
-                    if remaining > 0:
-                        time.sleep(remaining)
-                ledger["provider_calls"] += 1
-                ledger["input_chars"] += len(SYSTEM) + len(user)
-                started = time.time()
-                last_provider_call = time.monotonic()
-                response = call_fn(model_id, SYSTEM, user, max_tokens)
-                envelope = {
-                    "model_id": model_id,
-                    "chunk_index": chunk_index,
-                    "request_sha256": request_sha256,
-                    "response": response,
-                    "response_sha256": hashlib.sha256(response.encode("utf-8")).hexdigest(),
-                    "elapsed_s": round(time.time() - started, 3),
-                    "status": "success",
-                }
-                try:
-                    parsed = parse_verdicts(response, expected_ids)
-                except Exception as exc:
-                    envelope["status"] = "invalid_response"
-                    envelope["error"] = f"{type(exc).__name__}: {exc}"
-                    _write_json_atomic(call_path, envelope)
-                    raise
-                _write_json_atomic(call_path, envelope)
-                model_votes.update(parsed)
+                model_jobs.append({
+                    "model_id": model_id, "chunk_index": chunk_index,
+                    "user": user, "request_sha256": request_sha256,
+                    "call_path": call_path, "expected_ids": expected_ids,
+                    "original_by_opaque": original_by_opaque,
+                })
         except Exception as exc:
             failures[model_id] = f"{type(exc).__name__}: {exc}"
             continue
         votes[model_id] = model_votes
+        pending_jobs.extend(model_jobs)
+
+    if len(pending_jobs) > max_provider_calls:
+        raise RuntimeError("provider-call ceiling exceeded")
+
+    def execute(job: dict) -> tuple[str, dict[str, dict]]:
+        started = time.time()
+        response = call_fn(job["model_id"], SYSTEM, job["user"], max_tokens)
+        envelope = {
+            "model_id": job["model_id"],
+            "chunk_index": job["chunk_index"],
+            "request_sha256": job["request_sha256"],
+            "response": response,
+            "response_sha256": hashlib.sha256(response.encode("utf-8")).hexdigest(),
+            "elapsed_s": round(time.time() - started, 3),
+            "status": "success",
+        }
+        try:
+            parsed = parse_verdicts(response, job["expected_ids"])
+        except Exception as exc:
+            envelope["status"] = "invalid_response"
+            envelope["error"] = f"{type(exc).__name__}: {exc}"
+            _write_json_atomic(job["call_path"], envelope)
+            raise
+        _write_json_atomic(job["call_path"], envelope)
+        remapped = {
+            job["original_by_opaque"][item_id]: verdict
+            for item_id, verdict in parsed.items()
+        }
+        return job["model_id"], remapped
+
+    ledger["provider_calls"] = len(pending_jobs)
+    ledger["input_chars"] = sum(len(SYSTEM) + len(job["user"]) for job in pending_jobs)
+    if pending_jobs:
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(pending_jobs))) as executor:
+            futures = {}
+            last_submit: float | None = None
+            for job in pending_jobs:
+                if last_submit is not None and inter_call_delay_s > 0:
+                    remaining = inter_call_delay_s - (time.monotonic() - last_submit)
+                    if remaining > 0:
+                        time.sleep(remaining)
+                futures[executor.submit(execute, job)] = job
+                last_submit = time.monotonic()
+            for future in as_completed(futures):
+                job = futures[future]
+                try:
+                    model_id, remapped = future.result()
+                except Exception as exc:
+                    failures[job["model_id"]] = f"{type(exc).__name__}: {exc}"
+                else:
+                    votes.setdefault(model_id, {}).update(remapped)
+
+    for model_id in list(votes):
+        if model_id in failures or len(votes[model_id]) != expected_counts[model_id]:
+            votes.pop(model_id, None)
     return {"votes": votes, "failures": failures, "ledger": ledger}
 
 
 _PROVIDERS: dict[str, object] = {}
+_PROVIDERS_LOCK = threading.Lock()
 
 
 def _call_model(model_id: str, system: str, user: str, max_tokens: int) -> str:
@@ -354,20 +415,19 @@ def _call_model(model_id: str, system: str, user: str, max_tokens: int) -> str:
         return response["text"]
 
     if provider_name not in _PROVIDERS:
-        sys.path.insert(0, str(JURY_DIR))
-        import yaml
-        from providers import build_provider
-        config = yaml.safe_load((JURY_DIR / "models.yaml").read_text(encoding="utf-8"))
-        provider_config = dict(config["providers"][provider_name])
-        if provider_name == "groq":
-            # Adapt classification needs only compact JSON. Keep this override
-            # local so ordinary Qwen jury calls retain their reasoning mode.
-            extra = dict(provider_config.get("model_extra_body") or {})
-            extra["qwen/qwen3.6-27b"] = {"reasoning_effort": "none"}
-            provider_config["model_extra_body"] = extra
-        _PROVIDERS[provider_name] = build_provider(
-            provider_name, provider_config
-        )
+        with _PROVIDERS_LOCK:
+            if provider_name not in _PROVIDERS:
+                sys.path.insert(0, str(JURY_DIR))
+                import yaml
+                from providers import build_provider
+                config = yaml.safe_load((JURY_DIR / "models.yaml").read_text(encoding="utf-8"))
+                provider_config = dict(config["providers"][provider_name])
+                if provider_name == "groq":
+                    # Keep this local so ordinary Qwen jury calls retain reasoning mode.
+                    extra = dict(provider_config.get("model_extra_body") or {})
+                    extra["qwen/qwen3.6-27b"] = {"reasoning_effort": "none"}
+                    provider_config["model_extra_body"] = extra
+                _PROVIDERS[provider_name] = build_provider(provider_name, provider_config)
     return _PROVIDERS[provider_name].call(model, system, user, max_tokens=max_tokens)
 
 
@@ -398,6 +458,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-provider-calls", type=int, default=12)
     parser.add_argument("--max-input-chars", type=int, default=250_000)
     parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument("--workers", type=int, default=5)
     parser.add_argument("--inter-call-delay", type=float, default=0.0)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
@@ -432,6 +493,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0 if preflight["within_ceilings"] else 2
     if not preflight["within_ceilings"]:
         parser.error("preflight exceeds provider-call or input-character ceiling")
+    if not 1 <= args.workers <= 5:
+        parser.error("--workers must be in [1, 5]")
     if args.out.exists() and not args.resume:
         parser.error(f"output exists; use --resume: {args.out}")
     args.out.mkdir(parents=True, exist_ok=True)
@@ -452,6 +515,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         chunk_size=args.chunk_size,
         max_provider_calls=args.max_provider_calls,
         max_tokens=args.max_tokens,
+        max_workers=args.workers,
         resume=args.resume,
         inter_call_delay_s=args.inter_call_delay,
     )

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import shutil
@@ -21,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -44,6 +46,7 @@ import rollback  # noqa: E402
 RULES_FILE = ts.STATE_DIR / "rules.json"
 DIGEST_FILE = ts.STATE_DIR / "adapt-digest.md"
 WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
+MEMRIGHT_MUTATION_TIMEOUT_SECONDS = 150
 
 
 def _rules_path() -> Path:
@@ -77,7 +80,10 @@ def _run_memright(args: list[str]) -> bool:
               file=sys.stderr)
         return False
     try:
-        res = subprocess.run([bin_path, *args], capture_output=True, text=True, timeout=30)
+        res = subprocess.run(
+            [bin_path, *args], capture_output=True, text=True,
+            timeout=MEMRIGHT_MUTATION_TIMEOUT_SECONDS,
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
         print(f"error: memright shim failed: {exc}", file=sys.stderr)
         return False
@@ -205,16 +211,116 @@ def _replayable_synth(journal, batch_id: str) -> tuple[bool, str, list[dict]]:
 
 
 def _cached_extract_progress(journal, batch_id: str) -> tuple[int, list[dict]]:
-    completed_batch = 0
-    observations: list[dict] = []
+    latest_by_index: dict[int, dict] = {}
     for entry in journal.batches():
         if entry.get("batch_id") != batch_id or entry.get("stage") != "extracted":
             continue
+        index = int(entry.get("batch", 0))
+        if index > 0:
+            latest_by_index[index] = entry
+
+    completed_batch = 0
+    observations: list[dict] = []
+    for index in range(1, max(latest_by_index, default=0) + 1):
+        entry = latest_by_index.get(index)
+        if entry is None or not (
+            "observations" in entry or entry.get("valid_empty") is True
+        ):
+            break
         if "observations" in entry:
             observations = list(entry["observations"])
-        if "observations" in entry or entry.get("valid_empty") is True:
-            completed_batch = max(completed_batch, int(entry.get("batch", 0)))
+        completed_batch = index
     return completed_batch, observations
+
+
+def _extraction_contract() -> dict:
+    """Stable fingerprint for deciding whether cached extraction is reusable."""
+    return {
+        "version": 1,
+        "batch_char_budget": adapt_llm.BATCH_CHAR_BUDGET,
+        "max_tokens": adapt_llm.MAX_TOKENS,
+        "extract_prompt_sha256": hashlib.sha256(
+            adapt_llm.EXTRACT_SYSTEM.encode("utf-8")
+        ).hexdigest(),
+        "synth_prompt_sha256": hashlib.sha256(
+            adapt_llm.SYNTH_SYSTEM.encode("utf-8")
+        ).hexdigest(),
+        "synth_max_tokens": adapt_llm.SYNTH_MAX_TOKENS,
+        "preference_prefilter_version": ts.PREFERENCE_PREFILTER_VERSION,
+    }
+
+
+def _session_refs(sessions) -> list[dict]:
+    return [{
+        "session_id": session.session_id,
+        "tool": session.tool,
+        "path_stem": session.path.stem,
+        "mtime": session.mtime,
+    } for session in sessions]
+
+
+def _resume_mismatch_reason(discovered: dict, current_session_refs: list[dict]
+                            ) -> str | None:
+    cached_refs = discovered.get("session_refs")
+    if cached_refs != current_session_refs:
+        return "cached session identity does not match current discovery"
+    if discovered.get("extraction_contract") != _extraction_contract():
+        return "cached extraction contract does not match current extractor"
+    return None
+
+
+def _extract_batches(batches: list[list[tuple[str, str, str]]], *, lane: str,
+                     journal, batch_id: str, observations: list[dict],
+                     completed_batch: int, quiet: bool, workers: int
+                     ) -> tuple[list[dict], list[outcomes.BatchOutcome],
+                                tuple[int, outcomes.BatchOutcome] | None]:
+    """Extract independent batches concurrently, checkpointing in order."""
+    batch_outcomes: list[outcomes.BatchOutcome] = []
+    pending = [
+        (index, batch) for index, batch in enumerate(batches, 1)
+        if index > completed_batch
+    ]
+    for offset in range(0, len(pending), workers):
+        window = pending[offset:offset + workers]
+        if not quiet:
+            for index, batch in window:
+                print(f"  extract batch {index}: {len(batch)} turns")
+        if len(window) == 1:
+            index, batch = window[0]
+            results = {index: adapt_llm.extract_observations(batch, lane=lane)}
+        else:
+            with ThreadPoolExecutor(max_workers=len(window)) as pool:
+                futures = {
+                    index: pool.submit(adapt_llm.extract_observations, batch, lane=lane)
+                    for index, batch in window
+                }
+                results = {}
+                for index, future in futures.items():
+                    try:
+                        results[index] = future.result()
+                    except Exception as exc:
+                        results[index] = outcomes.BatchOutcome.provider_failed(
+                            f"{type(exc).__name__}: {exc}"
+                        )
+        for index, _batch in window:
+            batch_outcome = results[index]
+            batch_outcomes.append(batch_outcome)
+            if batch_outcome.outcome == outcomes.Outcome.SUCCESS:
+                observations.extend(batch_outcome.actions)
+                if journal:
+                    journal.record(batch_id, "extracted", batch=index,
+                                   observations=observations)
+            elif batch_outcome.outcome == outcomes.Outcome.VALID_EMPTY:
+                if journal:
+                    journal.record(batch_id, "extracted", batch=index,
+                                   valid_empty=True, observations=observations)
+            else:
+                if journal:
+                    journal.record(batch_id, "extracted", batch=index,
+                                   outcome=batch_outcome.outcome,
+                                   reason=batch_outcome.reason)
+                return observations, batch_outcomes, (index, batch_outcome)
+    return observations, batch_outcomes, None
 
 
 def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
@@ -247,11 +353,21 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
         name, kind = act["name"], act["action"]
         if kind == "keep":
             continue
-        obs_list = obs_by_cat.get(act["category"], [])
+        category_observations = obs_by_cat.get(act["category"], [])
+        requested_ids = act.get("observation_ids") or []
+        obs_list = (
+            [obs for obs in category_observations
+             if obs.get("observation_id") in requested_ids]
+            if requested_ids else category_observations
+        )
         evidence = obs_list[0]["evidence"] if obs_list else ""
         tool = obs_list[0].get("tool", "") if obs_list else ""
         scope = rules.get(name, {}).get("scope") or _scope_for(obs_list)
         retrieval_aliases = _safe_retrieval_aliases(act["rule"], obs_list)
+        linked_source_ids = list(dict.fromkeys(
+            obs.get("session_id") for obs in obs_list if obs.get("session_id")
+        ))
+        candidate_source_ids = linked_source_ids or src_ids
         # Admission policy: refuse anything outside the controlled taxonomy,
         # empty/short/dup rules, or that doesn't pass minimum-shape checks.
         try:
@@ -279,7 +395,7 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
             existing = rules.get(name)
             pr = preference_record.PreferenceRecord.from_synthesis(
                 {**act, "retrieval_aliases": retrieval_aliases},
-                scope=scope, source_ids=tuple(src_ids),
+                scope=scope, source_ids=tuple(candidate_source_ids),
                 existing=existing,
             )
             cand = preference_record.to_manifest_candidate(
@@ -289,14 +405,18 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
             # Gate 1b: per-session transcript hashes + stable evidence IDs.
             cand["source_file_hashes"] = [
                 {"session_id": sid, "sha256": src_hashes[sid]}
-                for sid in src_ids if sid in src_hashes
+                for sid in candidate_source_ids if sid in src_hashes
             ]
-            cand["evidence_ids"] = [{
-                "evidence_id": manifest.derive_evidence_id(scope, evidence),
-                "source_session_id": (obs_list[0].get("session_id", src_ids[0])
-                                       if obs_list else src_ids[0] or ""),
-                "excerpt": evidence,
-            }] if evidence else []
+            cand["evidence_ids"] = [
+                {
+                    "evidence_id": manifest.derive_evidence_id(
+                        scope, obs.get("evidence", "")
+                    ),
+                    "source_session_id": obs.get("session_id", ""),
+                    "excerpt": obs.get("evidence", ""),
+                }
+                for obs in obs_list if obs.get("evidence")
+            ]
             if authority_manifest:
                 cand["authority_manifest_sha256"] = authority_manifest[
                     "manifest_sha256"
@@ -408,6 +528,13 @@ def apply_from_manifest(manifest_path: Path) -> int:
         print(f"  journal:  {j_sessions}", file=sys.stderr)
         print(f"  manifest: {m_sessions}", file=sys.stderr)
         return 2
+    session_refs = discovered.get("session_refs") or [
+        {"session_id": sid, "tool": "claude-code", "path_stem": sid, "mtime": 0}
+        for sid in j_sessions
+    ]
+    if sorted(ref.get("session_id") for ref in session_refs) != m_sessions:
+        print("error: journal session_refs mismatch manifest sessions", file=sys.stderr)
+        return 2
 
     accepted = manifest.accepted_records(m)
     rejected = manifest.rejected_records(m)
@@ -437,14 +564,6 @@ def apply_from_manifest(manifest_path: Path) -> int:
     print(f"  batch_id={batch_id}, sessions={len(j_sessions)}, "
           f"accepted={len(accepted)}, rejected={len(rejected)}")
 
-    # Empty accepted set: log the no-op and exit 0 — no state change.
-    if not accepted:
-        jrn.record(batch_id, "applied", applied=0, ok=True)
-        jrn.record(batch_id, "committed", applied=0, sessions=j_sessions)
-        print("adapt: no accepted records — exiting 0 with no MemRight "
-              "writes and no state advance")
-        return 0
-
     try:
         safe_point = _create_apply_safepoint(m)
     except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
@@ -468,14 +587,11 @@ def apply_from_manifest(manifest_path: Path) -> int:
 
     # Cheap stub class: ts.mark_learned reads session_id, tool, path.stem, mtime.
     class _SessStub:
-        def __init__(self, sid: str) -> None:
-            self.session_id = sid
-            self.tool = "claude-code"
-            self.mtime = 0
-
-            class _P:
-                stem = sid  # mark_learned uses path.stem as the per-tool key
-            self.path = _P()
+        def __init__(self, ref: dict) -> None:
+            self.session_id = ref["session_id"]
+            self.tool = ref["tool"]
+            self.mtime = float(ref["mtime"])
+            self.path = Path(ref["path_stem"])
 
     for rec in accepted:
         try:
@@ -508,6 +624,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
             failed.append((pr.id, "memright put failed"))
             _audit({"event": "manifest_apply_failed", "id": pr.id,
                     "scope": pr.scope})
+            break
 
     # Cleanup tmp files regardless of outcome.
     for tp in tmp_paths:
@@ -538,7 +655,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
 
     # Advance state over the manifest's bound session IDs only.
     state = ts.load_state()
-    sess_stubs = [_SessStub(sid) for sid in j_sessions]
+    sess_stubs = [_SessStub(ref) for ref in session_refs]
     ts.mark_learned(state, sess_stubs)
     state["initialized_at"] = state.get("initialized_at") or \
         dt.datetime.now(dt.timezone.utc).isoformat()
@@ -594,7 +711,11 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true", help="write to MemRight (default: dry-run)")
     ap.add_argument("--dry-run", action="store_true", help="explicit no-write preview")
     ap.add_argument("--limit", type=int, default=None, help="max sessions this run")
+    ap.add_argument("--before-mtime", type=float, default=None,
+                    help="ignore live sessions modified after this Unix timestamp")
     ap.add_argument("--lane", default="local", choices=("local", "minimax"), help="LLM lane")
+    ap.add_argument("--extract-workers", type=int, choices=range(1, 6), default=1,
+                    help="parallel extraction calls (1-5; synthesis stays ordered)")
     ap.add_argument("--allow-external-lane", action="store_true",
                     help="allow sending redacted transcript text to an external LLM lane")
     ap.add_argument("--first-run-ok", action="store_true",
@@ -650,7 +771,7 @@ def main() -> int:
     if args.smoke:
         sessions = ts.new_sessions(state, limit=3, newest=True)
     else:
-        sessions = ts.new_sessions(state, limit=limit)
+        sessions = ts.new_sessions(state, limit=limit, before_mtime=args.before_mtime)
     if not sessions:
         if not args.quiet:
             print("adapt: no new sessions")
@@ -663,7 +784,16 @@ def main() -> int:
     scans = sum(s.stats.scanner_drops for s in sessions)
     print(f"adapt: parser stats dropped={drops} truncated={trunc} scanner_drops={scans}")
 
-    turns = [(s.tool, t.scope, t.text) for s in sessions for t in s.turns]
+    all_turn_count = sum(len(s.turns) for s in sessions)
+    turns = []
+    for session in sessions:
+        for turn in session.turns:
+            candidate = ts.preference_candidate_text(turn.text)
+            if candidate is not None:
+                turns.append((session.tool, turn.scope, candidate, session.session_id))
+    print(f"adapt: preference prefilter kept={len(turns)}/{all_turn_count} turns "
+          f"({sum(len(turn[2]) for turn in turns)} chars)")
+    session_refs = _session_refs(sessions)
     observations: list[dict] = []
     extract_outcomes: list[outcomes.BatchOutcome] = []
     journal = (run_journal.RunJournal() if run_journal else None)
@@ -681,6 +811,12 @@ def main() -> int:
                   f"{pb.get('stage')} — pass --resume explicitly to retry it.",
                   file=sys.stderr)
         if args.resume and pb is not None:
+            discovered = journal.cached_payload(pb["batch_id"], "discovered") or {}
+            mismatch = _resume_mismatch_reason(discovered, session_refs)
+            if mismatch:
+                print(f"error: refusing unsafe resume of {pb['batch_id']}: {mismatch}",
+                      file=sys.stderr)
+                return 2
             replay = pb
             batch_id = replay["batch_id"]
             completed_extract_batch, observations = _cached_extract_progress(
@@ -693,35 +829,28 @@ def main() -> int:
     if journal and replay is None:
         journal.record(batch_id, "discovered",
                        sessions=[s.session_id for s in sessions],
+                       session_refs=session_refs,
+                       extraction_contract=_extraction_contract(),
                        turn_count=len(turns))
 
-    # ----- Stage 1: extract (per-batch BatchOutcome; abort if any non-committable) -----
-    for i, batch in enumerate(adapt_llm.build_batches(turns), 1):
-        if i <= completed_extract_batch:
-            continue
-        if not args.quiet:
-            print(f"  extract batch {i}: {len(batch)} turns")
-        bx = adapt_llm.extract_observations(batch, lane=args.lane)
-        extract_outcomes.append(bx)
-        if bx.outcome == outcomes.Outcome.SUCCESS:
-            observations.extend(bx.actions)
-            if journal:
-                journal.record(batch_id, "extracted", batch=i,
-                               observations=observations)
-        elif bx.outcome == outcomes.Outcome.VALID_EMPTY:
-            if journal:
-                journal.record(batch_id, "extracted", batch=i, valid_empty=True,
-                               observations=observations)
-        else:
-            print(f"adapt: extract batch {i} outcome={bx.outcome} reason={bx.reason}",
-                  file=sys.stderr)
-            if journal:
-                journal.record(batch_id, "extracted", batch=i,
-                               outcome=bx.outcome, reason=bx.reason)
-            print(f"adapt: NOT advancing state — outcome {bx.outcome}", file=sys.stderr)
-            return 2
+    # ----- Stage 1: extract (ordered checkpoints over parallel windows) -----
+    observations, extract_outcomes, extract_failure = _extract_batches(
+        adapt_llm.build_batches(turns), lane=args.lane, journal=journal,
+        batch_id=batch_id, observations=observations,
+        completed_batch=completed_extract_batch, quiet=args.quiet,
+        workers=args.extract_workers,
+    )
+    if extract_failure:
+        index, batch_outcome = extract_failure
+        print(f"adapt: extract batch {index} outcome={batch_outcome.outcome} "
+              f"reason={batch_outcome.reason}", file=sys.stderr)
+        print(f"adapt: NOT advancing state — outcome {batch_outcome.outcome}",
+              file=sys.stderr)
+        return 2
 
     print(f"adapt: {len(observations)} candidate observations")
+    for index, observation in enumerate(observations, 1):
+        observation["observation_id"] = f"obs-{index:06d}"
 
     # ----- Stage 2: synthesize ONCE with the full existing-rules list -----
     rules = load_rules()
@@ -733,6 +862,7 @@ def main() -> int:
     # Replay cached synth actions when resuming.
     actions: list[dict] = []
     replayed_synth = False
+    synth_reason = ""
     if replay is not None:
         replayed_synth, synth_outcome, actions = _replayable_synth(journal, batch_id)
         if replayed_synth:
@@ -742,13 +872,15 @@ def main() -> int:
                                      lane=args.lane)
         synth_outcome = synth.outcome
         actions = synth.actions
+        synth_reason = synth.reason
         if journal:
             # Persist the actual actions — produces are small, fully serializable.
             journal.record(batch_id, "synthesized",
                            synth_outcome=synth_outcome,
-                           actions=actions)
+                           synth_reason=synth_reason, actions=actions)
     if not _synth_committable(synth_outcome):
-        print(f"adapt: synth {synth_outcome}; not advancing state", file=sys.stderr)
+        print(f"adapt: synth {synth_outcome}; reason={synth_reason}; "
+              "not advancing state", file=sys.stderr)
         return 2
 
     # ----- Stage 3: apply with admission gating -----
@@ -784,11 +916,6 @@ def main() -> int:
                     r["human_note"] = (
                         f"admission-rejected: {raw['_rejection_reason']}"
                     )
-        if not schema_records:
-            if args.manifest.exists():
-                args.manifest.unlink()
-            print("adapt: no manifest written; synthesis produced no candidates")
-            return 0
         args.manifest.parent.mkdir(parents=True, exist_ok=True)
         body = {
             "schema_version": preference_record.SCHEMA_VERSION,
@@ -807,6 +934,10 @@ def main() -> int:
         print(f"adapt: wrote {args.manifest} "
               f"({accepted} admissible / {rejected} admission-rejected / "
               f"{pending} pending review)")
+        # new_sessions marks only parser-empty and deterministically excluded
+        # files in this state object. Persist those skips so later chunks do
+        # not repeatedly parse generated worker transcripts.
+        ts.save_state(state)
         print("adapt: resolve pending records with adjudicate_manifest.py; "
               "apply only the resulting content-hashed manifest.")
         return 0

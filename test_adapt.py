@@ -68,6 +68,106 @@ def test_codex_parser_extracts_input_text_and_meta(tmp_path):
     assert s.turns[0].scope == "D--Claude-heardright"
 
 
+def test_codex_parser_excludes_noninteractive_exec_sessions(tmp_path):
+    rows = [
+        {"type": "session_meta", "payload": {
+            "id": "worker-1", "cwd": "D:\\Claude\\council",
+            "originator": "codex_exec", "source": "exec",
+        }},
+        {"type": "response_item", "payload": {
+            "type": "message", "role": "user", "content": [{
+                "type": "input_text",
+                "text": "Output strict JSON only with no prose or code fences.",
+            }],
+        }},
+    ]
+    assert ts.parse_codex_session(_write(tmp_path / "worker.jsonl", rows)) is None
+
+
+def test_health_content_is_excluded_even_from_root_scope():
+    texts = [
+        "Read adrian.yaml before quoting any protocol file.",
+        "Use my stated workout regimen, not wearable exercise counts.",
+        "Review my blood pressure, glucose, and supplement protocol.",
+    ]
+    assert all(ts.text_excluded(text) for text in texts)
+
+
+def test_preference_prefilter_keeps_every_positive_frozen_label():
+    corpus = Path(__file__).with_name("tests") / "labeled_corpus.jsonl"
+    labels = [json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines()]
+    positives = [
+        item for item in labels
+        if item.get("is_agent_preference", item.get("is_preference", False))
+    ]
+    missed = [
+        item["id"] for item in positives
+        if ts.preference_candidate_text(item["excerpt"]) is None
+    ]
+    assert missed == []
+
+
+def test_preference_prefilter_bounds_long_turn_around_directive():
+    text = "background " * 2000 + " from now on always verify the actual UI " + "tail " * 2000
+    candidate = ts.preference_candidate_text(text)
+    assert candidate is not None
+    assert "always verify the actual UI" in candidate
+    assert len(candidate) <= ts.PREFERENCE_PREFILTER_MAX_CHARS
+
+
+def test_preference_prefilter_drops_plain_task_request_without_directive_cue():
+    assert ts.preference_candidate_text(
+        "Can you inspect the current implementation and tell me what it does?"
+    ) is None
+
+
+def test_parallel_extract_window_preserves_ordered_checkpoints(tmp_path, monkeypatch):
+    import threading
+
+    barrier = threading.Barrier(3)
+
+    def fake_extract(batch, *, lane):
+        barrier.wait(timeout=2)
+        number = int(batch[0][2])
+        return lt.outcomes.BatchOutcome.success([{"number": number}])
+
+    monkeypatch.setattr(lt.adapt_llm, "extract_observations", fake_extract)
+    journal = lt.run_journal.RunJournal(tmp_path / "journal.jsonl")
+    batches = [[("codex", "D--Claude", str(number))] for number in (1, 2, 3)]
+
+    observations, batch_outcomes, failure = lt._extract_batches(
+        batches, lane="minimax", journal=journal, batch_id="parallel",
+        observations=[], completed_batch=0, quiet=True, workers=3,
+    )
+
+    assert failure is None
+    assert [item["number"] for item in observations] == [1, 2, 3]
+    assert [item.outcome for item in batch_outcomes] == ["success"] * 3
+    entries = [e for e in journal.batches() if e["stage"] == "extracted"]
+    assert [e["batch"] for e in entries] == [1, 2, 3]
+
+
+def test_parallel_extract_stops_checkpoint_at_first_failure(tmp_path, monkeypatch):
+    def fake_extract(batch, *, lane):
+        number = int(batch[0][2])
+        if number == 2:
+            return lt.outcomes.BatchOutcome.provider_failed("timeout")
+        return lt.outcomes.BatchOutcome.success([{"number": number}])
+
+    monkeypatch.setattr(lt.adapt_llm, "extract_observations", fake_extract)
+    journal = lt.run_journal.RunJournal(tmp_path / "journal.jsonl")
+    batches = [[("codex", "D--Claude", str(number))] for number in (1, 2, 3)]
+
+    observations, _outcomes, failure = lt._extract_batches(
+        batches, lane="minimax", journal=journal, batch_id="failure",
+        observations=[], completed_batch=0, quiet=True, workers=3,
+    )
+
+    assert observations == [{"number": 1}]
+    assert failure and failure[0] == 2
+    assert [e["batch"] for e in journal.batches()] == [1, 2]
+
+
 def test_parsers_return_none_when_no_turns(tmp_path):
     f = _write(tmp_path / "empty.jsonl", [{"type": "assistant", "message": {"content": "hi"}}])
     assert ts.parse_claude_session(f) is None
@@ -89,6 +189,11 @@ def test_redaction_strips_secrets():
     assert "ghp_ABCDEFGHIJKLMNOPQRST12" not in out
     assert "hunter2secret" not in out
     assert out.count("[REDACTED]") >= 3
+
+
+def test_redaction_strips_standalone_jwt():
+    token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.c2lnbmF0dXJlMTIzNDU2"
+    assert token not in ts.redact(f"cached credential {token}")
 
 
 def test_scanner_positive_drops_batch_at_send(tmp_path, monkeypatch):
@@ -166,6 +271,36 @@ def test_batching_respects_char_budget():
     assert sum(len(b) for b in batches) == 400
 
 
+def test_default_extraction_budget_is_large_but_output_bounded():
+    assert tl.BATCH_CHAR_BUDGET == 24_000
+    assert "at most 24" in tl.EXTRACT_SYSTEM
+    assert "at most 24 changed actions" in tl.SYNTH_SYSTEM
+
+
+def test_default_adapt_call_delegates_retries_to_resumable_driver(monkeypatch):
+    seen = {}
+
+    def fake_call(system, user, *, lane, attempts):
+        seen.update(lane=lane, attempts=attempts)
+        return "[]"
+
+    monkeypatch.setattr(tl, "call_lane", fake_call)
+    assert tl._default_llm("system", "user", "minimax") == "[]"
+    assert seen == {"lane": "minimax", "attempts": 1}
+
+
+def test_synthesis_uses_larger_output_ceiling(monkeypatch):
+    seen = {}
+
+    def fake_call(system, user, *, lane, attempts, max_tokens):
+        seen.update(lane=lane, attempts=attempts, max_tokens=max_tokens)
+        return "[]"
+
+    monkeypatch.setattr(tl, "call_lane", fake_call)
+    assert tl._default_synth_llm("system", "user", "minimax") == "[]"
+    assert seen == {"lane": "minimax", "attempts": 1, "max_tokens": 16_384}
+
+
 def test_extract_parses_model_json():
     def fake(system, user):
         assert json.loads(user)[0]["text"] == "always use JSONL"
@@ -179,6 +314,22 @@ def test_extract_parses_model_json():
     assert len(out.actions) == 1
     assert out.actions[0]["category"] == "tooling"
     assert out.actions[0]["source"] == "model"
+
+
+def test_extract_preserves_source_session_identity():
+    def fake(_system, _user):
+        return json.dumps([{
+            "category": "workflow", "observation": "Always verify actual code.",
+            "evidence": "always verify actual code", "prompt": 1,
+            "record_type": "agent_preference",
+            "durability": "cross_task_explicit", "subject": "agent_behavior",
+        }])
+
+    out = tl.extract_observations(
+        [("codex", "D--Claude", "always verify actual code", "session-123")],
+        llm=fake,
+    )
+    assert out.actions[0]["session_id"] == "session-123"
 
 
 def test_deterministic_extract_catches_explicit_preferences():
@@ -229,6 +380,41 @@ def test_extract_returns_provider_failed_on_provider_exception(tmp_path, monkeyp
     assert out.outcome == outcomes.Outcome.PROVIDER_FAILED
     assert out.reason
     assert "llm_call_failed" in audit.read_text(encoding="utf-8")
+
+
+def test_extract_adaptively_splits_max_token_window():
+    calls = []
+
+    def fake(_system, user):
+        records = json.loads(user)
+        calls.append(len(records))
+        if len(records) > 1:
+            raise RuntimeError("stop_reason=max_tokens")
+        return json.dumps([{
+            "category": "workflow", "observation": "Always verify actual code.",
+            "evidence": "always verify", "prompt": 1,
+            "record_type": "agent_preference",
+            "durability": "cross_task_explicit", "subject": "agent_behavior",
+        }])
+
+    out = tl.extract_observations([
+        ("codex", "D--Claude", "always verify one", "s1"),
+        ("codex", "D--Claude", "always verify two", "s2"),
+    ], llm=fake)
+    assert out.outcome == "success"
+    assert calls == [2, 1, 1]
+    assert {item["session_id"] for item in out.actions} == {"s1", "s2"}
+
+
+def test_extract_adaptively_splits_malformed_multi_turn_window():
+    def fake(_system, user):
+        return "not json" if len(json.loads(user)) > 1 else "[]"
+
+    out = tl.extract_observations([
+        ("codex", "D--Claude", "always verify one", "s1"),
+        ("codex", "D--Claude", "always verify two", "s2"),
+    ], llm=fake)
+    assert out.outcome == "valid_empty"
 
 
 def test_synthesize_returns_update_action_with_envelope():
@@ -837,6 +1023,158 @@ def test_cached_extract_progress_stops_before_failed_batch(tmp_path):
     assert observations == [{"id": 1}]
 
 
+def test_cached_extract_progress_requires_contiguous_latest_success(tmp_path):
+    import run_journal as _journal
+
+    journal = _journal.RunJournal(tmp_path / "journal.jsonl")
+    journal.record("batch", "extracted", batch=1, observations=[{"id": 1}])
+    journal.record("batch", "extracted", batch=2,
+                   outcome="provider_failed", reason="reset")
+    journal.record("batch", "extracted", batch=3,
+                   observations=[{"id": 1}, {"id": 3}])
+
+    completed_batch, observations = lt._cached_extract_progress(journal, "batch")
+    assert completed_batch == 1
+    assert observations == [{"id": 1}]
+
+
+def test_synthesize_requires_exact_observation_links_when_ids_are_present():
+    observations = [{
+        "observation_id": "obs-000001", "category": "workflow",
+        "observation": "Always verify actual code.", "evidence": "always verify",
+    }]
+
+    def missing_link(_system, _user):
+        return json.dumps([{
+            "action": "add", "name": "adapt-workflow-verify-code",
+            "category": "workflow", "rule": "Always verify actual code before reporting.",
+            "confidence": 0.9, "observations": 1,
+        }])
+
+    out = tl.synthesize([], observations, llm=missing_link)
+    assert out.outcome == "parse_failed"
+    assert "observation_ids" in out.reason
+
+
+def test_synthesize_allows_linked_observation_category_correction():
+    observations = [{
+        "observation_id": "obs-000001", "category": "workflow",
+        "observation": "Always verify the actual UI.", "evidence": "always verify UI",
+    }]
+    fake = lambda _system, _user: json.dumps([{
+        "action": "add", "name": "adapt-verification-verify-ui",
+        "category": "verification", "rule": "Always verify the actual UI before completion.",
+        "confidence": 0.9, "observations": 1,
+        "observation_ids": ["obs-000001"],
+    }])
+
+    out = tl.synthesize([], observations, llm=fake)
+    assert out.outcome == "success"
+    assert out.actions[0]["category"] == "verification"
+
+
+def test_manifest_uses_only_action_linked_evidence(tmp_path):
+    observations = [
+        {"observation_id": "obs-000001", "category": "tooling",
+         "scope": "D--Claude", "tool": "codex", "session_id": "s1",
+         "evidence": "PowerShell is blocked", "observation": "Use cmd workaround."},
+        {"observation_id": "obs-000002", "category": "tooling",
+         "scope": "D--Claude", "tool": "codex", "session_id": "s2",
+         "evidence": "always use py -3.11", "observation": "Always use py -3.11."},
+    ]
+    actions = [{
+        "action": "add", "name": "adapt-tooling-use-py311", "category": "tooling",
+        "rule": "Always use py -3.11 for Python commands in this workspace.",
+        "confidence": 0.9, "observations": 1,
+        "observation_ids": ["obs-000002"],
+    }]
+    records = []
+
+    lt.apply_actions(
+        actions, {"tooling": observations}, {}, tmp_path, True,
+        manifest_records=records, source_session_ids=["s1", "s2"],
+        source_file_hashes={"s1": "1" * 64, "s2": "2" * 64},
+    )
+
+    assert records[0]["evidence_excerpt"] == "always use py -3.11"
+    assert records[0]["source_ids"] == ["s2"]
+    assert records[0]["source_file_hashes"] == [
+        {"session_id": "s2", "sha256": "2" * 64}
+    ]
+    assert records[0]["retrieval_aliases"] == ["always use py -3.11"]
+
+
+def test_admission_rejects_transient_environment_workaround_claim():
+    admitted, reason = lt.admission.admit({
+        "name": "adapt-tooling-launch-installers",
+        "category": "tooling",
+        "rule": "Launch installers via cmd.exe because PowerShell is blocked in the agent sandbox.",
+        "scope": "D--Claude",
+    })
+    assert admitted is False
+    assert reason == "transient-environment-claim"
+
+
+def test_admission_rejects_current_authority_drift():
+    cases = [
+        (
+            "Maintain three distinct review gates: /review, /review-self, and /review-cli.",
+            "retired-workflow-reference",
+        ),
+        (
+            "Route architecture work to Fable or Opus and execution work to MiniMax.",
+            "obsolete-model-routing",
+        ),
+        (
+            "When dispatching parallel agents, give each an isolated worktree by default.",
+            "unapproved-worktree-mandate",
+        ),
+        (
+            "Stop and ask for clarification rather than guessing when blocked or instructions are unclear.",
+            "overbroad-workflow-mandate",
+        ),
+    ]
+    for rule, reason in cases:
+        admitted, actual = lt.admission.admit({
+            "name": "stale-rule",
+            "rule": rule,
+            "category": "workflow",
+        })
+        assert not admitted
+        assert actual == reason
+
+
+def test_resume_contract_requires_exact_session_identity():
+    discovered = {
+        "session_refs": [
+            {"session_id": "s1", "tool": "codex", "path_stem": "one", "mtime": 1.0},
+            {"session_id": "s2", "tool": "claude-code", "path_stem": "two", "mtime": 2.0},
+        ],
+        "extraction_contract": lt._extraction_contract(),
+    }
+    current = [
+        {"session_id": "s1", "tool": "codex", "path_stem": "one", "mtime": 1.0},
+        {"session_id": "DIFFERENT", "tool": "claude-code", "path_stem": "two", "mtime": 2.0},
+    ]
+
+    reason = lt._resume_mismatch_reason(discovered, current)
+    assert reason and "session identity" in reason
+
+
+def test_resume_contract_rejects_changed_extraction_contract():
+    current = [
+        {"session_id": "s1", "tool": "codex", "path_stem": "one", "mtime": 1.0},
+    ]
+    stale_contract = {**lt._extraction_contract(), "batch_char_budget": 48_000}
+    discovered = {
+        "session_refs": current,
+        "extraction_contract": stale_contract,
+    }
+
+    reason = lt._resume_mismatch_reason(discovered, current)
+    assert reason and "extraction contract" in reason
+
+
 def test_failed_cached_synth_must_be_retried(tmp_path):
     import run_journal as _journal
 
@@ -928,6 +1266,19 @@ def test_pref_record_from_synthesis_preserves_id_on_update():
     assert updated.id == initial.id
     assert updated.confidence == 0.85
     assert updated.created_at == initial.created_at
+
+
+def test_pref_record_update_accepts_legacy_rule_without_id():
+    updated = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "update", "name": "adapt-tooling-existing-abc123",
+         "category": "tooling", "rule": "Prefer JSONL for structured logs.",
+         "confidence": 0.85},
+        scope="D--Claude", source_ids=("s1",),
+        existing={"name": "adapt-tooling-existing-abc123",
+                  "created_at": "2026-07-01T00:00:00+00:00"},
+    )
+    assert updated.id == "adapt-tooling-existing-abc123"
+    assert updated.created_at == "2026-07-01T00:00:00+00:00"
 
 
 def test_pref_record_dict_round_trip_carries_all_required_fields():
@@ -1071,16 +1422,16 @@ def test_manifest_refuses_unknown_status(tmp_path):
         mf.load_and_validate(p)
 
 
-def test_manifest_refuses_empty_records(tmp_path):
+def test_manifest_accepts_empty_records_as_valid_noop_batch(tmp_path):
     body = {
         "schema_version": pr_mod.SCHEMA_VERSION,
         "batch_id": "x", "created_at": "2026-07-13T00:00:00Z",
+        "generator": "adapt.py --manifest",
         "source_session_ids": ["s1"], "records": [],
     }
     p = tmp_path / "empty.json"
     p.write_text(json.dumps(body), encoding="utf-8")
-    with pytest.raises(mf.ManifestError):
-        mf.load_and_validate(p)
+    assert mf.load_and_validate(p)["records"] == []
 
 
 def test_manifest_refuses_missing_required_field(tmp_path):
@@ -1160,8 +1511,10 @@ def test_apply_from_manifest_atomic_rollback_on_write_failure(tmp_path, monkeypa
     # Override _run_memright: first put succeeds, second fails.
     state = {"phase": 0}
     deletes = []
+    puts = []
     def fake_run(args):
         if args and args[0] == "put":
+            puts.append(args[1])
             state["phase"] += 1
             return state["phase"] != 2
         if args and args[0] == "delete":
@@ -1171,9 +1524,10 @@ def test_apply_from_manifest_atomic_rollback_on_write_failure(tmp_path, monkeypa
     monkeypatch.setattr(lt, "_run_memright", fake_run)
     rc = lt.apply_from_manifest(p)
     assert rc == 1, "expected non-zero exit on partial write failure"
+    assert len(puts) == 2, "apply must fail fast after the first put failure"
     assert deletes == [
         f"{stored.scope}/{stored.id}"
-        for index in (0, 2)
+        for index in (0,)
         for stored in [pr_mod.from_manifest_candidate(body["records"][index])]
     ]
 
@@ -1197,6 +1551,46 @@ def test_apply_from_manifest_writes_only_accepted(tmp_path, monkeypatch):
     assert len(puts) == 2
     rejected_id = body["records"][1]["id"]
     assert rejected_id not in puts
+
+
+def test_apply_from_manifest_all_rejected_advances_state_without_put(
+        tmp_path, monkeypatch):
+    p, body = _build_valid_manifest(
+        tmp_path, status="rejected", batch_id="batch-rejected"
+    )
+    journal = _isolate_journal(tmp_path, monkeypatch)
+    journal.record("batch-rejected", "discovered", sessions=["s1", "s2"])
+    calls = []
+    monkeypatch.setattr(
+        lt, "_run_memright", lambda args: calls.append(args) or True
+    )
+
+    assert lt.apply_from_manifest(p) == 0
+    assert not [args for args in calls if args and args[0] == "put"]
+    learned = lt.ts.load_state()["learned"]
+    assert set(learned["claude-code"]) == {"s1", "s2"}
+
+
+def test_apply_from_manifest_marks_original_tool_and_file_identity(
+        tmp_path, monkeypatch):
+    p, _ = _build_valid_manifest(
+        tmp_path, status="rejected", batch_id="batch-session-refs"
+    )
+    journal = _isolate_journal(tmp_path, monkeypatch)
+    journal.record(
+        "batch-session-refs",
+        "discovered",
+        sessions=["s1", "s2"],
+        session_refs=[
+            {"session_id": "s1", "tool": "codex", "path_stem": "codex-file", "mtime": 11.0},
+            {"session_id": "s2", "tool": "claude-code", "path_stem": "claude-file", "mtime": 22.0},
+        ],
+    )
+
+    assert lt.apply_from_manifest(p) == 0
+    learned = lt.ts.load_state()["learned"]
+    assert learned["codex"] == {"codex-file": 11.0}
+    assert learned["claude-code"] == {"claude-file": 22.0}
 
 
 def test_apply_from_manifest_no_llm_call(tmp_path, monkeypatch):
@@ -1419,6 +1813,37 @@ def test_rollback_integrity_uses_python_sqlite(tmp_path):
     ok, message = rk._verify_integrity(invalid)
     assert not ok
     assert message
+
+
+def test_memright_mutation_timeouts_exceed_resident_read_timeout(monkeypatch):
+    seen = []
+
+    def fake_run(command, **kwargs):
+        seen.append(kwargs["timeout"])
+        return __import__("subprocess").CompletedProcess(command, 0, "{}", "")
+
+    monkeypatch.setattr(lt.shutil, "which", lambda _name: "memright")
+    monkeypatch.setattr(lt.subprocess, "run", fake_run)
+    monkeypatch.setattr(rk.subprocess, "run", fake_run)
+    assert lt._run_memright(["delete", "x"])
+    assert rk._delete_via_memright("x", memright_bin="memright")
+    assert seen == [150, 150]
+
+
+def test_rollback_delete_treats_already_absent_row_as_success(monkeypatch):
+    error = (
+        'Error: "resident memright service failed /delete; refusing direct DB '
+        'fallback: resident service returned HTTP/1.1 404 Not Found: '
+        '{\\"deleted\\":false}"'
+    )
+    monkeypatch.setattr(
+        rk.subprocess,
+        "run",
+        lambda *args, **kwargs: __import__("subprocess").CompletedProcess(
+            args[0], 1, "", error
+        ),
+    )
+    assert rk._delete_via_memright("missing", memright_bin="memright")
 
 
 def test_rollback_refuses_corrupt_backup_before_delete(tmp_path, monkeypatch):

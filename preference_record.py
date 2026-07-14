@@ -221,7 +221,9 @@ class PreferenceRecord:
             raise ValueError("synthesis action has empty rule")
         conf = float(action.get("confidence", 0.6))
         if existing:
-            pid = existing["id"]
+            pid = existing.get("id") or existing.get("name")
+            if not isinstance(pid, str) or not pid.strip():
+                raise ValueError("existing preference has no stable id or name")
             created_at = existing.get("created_at", now or _now_iso())
         else:
             pid = derive_id(scope, cat, rule)

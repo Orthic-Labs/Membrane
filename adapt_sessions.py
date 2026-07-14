@@ -22,6 +22,35 @@ STATE_FILE = STATE_DIR / "state.json"
 MIN_TURN_CHARS = 10
 MAX_TURN_CHARS = 4000
 MAX_TURNS_PER_SESSION = 400
+PREFERENCE_PREFILTER_VERSION = 1
+PREFERENCE_PREFILTER_MAX_CHARS = 2000
+
+_PREFERENCE_CUE = re.compile(
+    r"(?i)\b(?:always|never|from now on|going forward|i\s+prefer|i\s+want|"
+    r"i\s+like|i\s+(?:do not|don't)\s+want|do not|don't|must|should|"
+    r"standard|use|keep|stop|verify|default\s+to|call\s+it|"
+    r"tell(?:ing)?\s+(?:you|the agent)|no\s+(?:business|retry)|no,)\b"
+)
+
+
+def preference_candidate_text(text: str) -> str | None:
+    """Recall-first selector; classification remains entirely model-owned."""
+    matches = list(_PREFERENCE_CUE.finditer(text))
+    if not matches:
+        return None
+    if len(text) <= PREFERENCE_PREFILTER_MAX_CHARS:
+        return text
+    windows: list[tuple[int, int]] = []
+    radius = PREFERENCE_PREFILTER_MAX_CHARS // 4
+    for match in matches:
+        start = max(0, match.start() - radius)
+        end = min(len(text), match.end() + radius)
+        if windows and start <= windows[-1][1]:
+            windows[-1] = (windows[-1][0], max(windows[-1][1], end))
+        else:
+            windows.append((start, end))
+    candidate = "\n[...]\n".join(text[start:end] for start, end in windows)
+    return candidate[:PREFERENCE_PREFILTER_MAX_CHARS]
 
 # Scopes never mined: health/medical transcripts are out of bounds (and are not coding preferences).
 DENIED_SCOPE_ROOTS = (
@@ -33,6 +62,17 @@ EXCLUDED_SCOPE_PATTERNS = (
     re.compile(r"medical", re.I),
     re.compile(r"clinic|patient|dose|injection|drug|diagnos", re.I),
 )
+SENSITIVE_HEALTH_PATTERNS = (
+    re.compile(r"\badrian\.ya?ml\b", re.I),
+    re.compile(
+        r"\b(workout|wearable|exercise|step count|sleep score|calorie|macros?|"
+        r"body[- ]?fat|heart[- ]?rate|blood pressure|glucose|insulin)\b", re.I
+    ),
+    re.compile(
+        r"\b(medication|medicine|supplement|symptom|lab results?|biomarker|"
+        r"hormone|peptide|vitamin|mineral|nutrition|dietary|dosage)\b", re.I
+    ),
+)
 
 SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{16,}"),
@@ -41,6 +81,7 @@ SECRET_PATTERNS = [
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"xox[bap]-[A-Za-z0-9-]{10,}"),
     re.compile(r"(?i)bearer\s+[A-Za-z0-9._~+/=-]{16,}"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b"),
     re.compile(r"(?i)(password|passphrase|api[_-]?key|secret|token)\s*[:=]\s*\S{6,}"),
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
 ]
@@ -163,7 +204,10 @@ def scope_excluded(cwd: str) -> bool:
 
 
 def text_excluded(text: str) -> bool:
-    return any(p.search(text) for p in EXCLUDED_SCOPE_PATTERNS)
+    return any(
+        pattern.search(text)
+        for pattern in (*EXCLUDED_SCOPE_PATTERNS, *SENSITIVE_HEALTH_PATTERNS)
+    )
 
 
 @dataclass
@@ -282,6 +326,9 @@ def parse_codex_session(path: Path) -> Session | None:
             if not isinstance(payload, dict):
                 continue
             if obj.get("type") == "session_meta":
+                if (payload.get("originator") == "codex_exec"
+                        and payload.get("source") == "exec"):
+                    return None
                 cwd = payload.get("cwd") or cwd
                 sid = payload.get("session_id") or sid
                 continue
@@ -333,7 +380,13 @@ def discover() -> list[tuple[str, Path]]:
     return found
 
 
-def new_sessions(state: dict, limit: int | None = None, *, newest: bool = False) -> list[Session]:
+def new_sessions(
+    state: dict,
+    limit: int | None = None,
+    *,
+    newest: bool = False,
+    before_mtime: float | None = None,
+) -> list[Session]:
     """Parse sessions not yet learned (or modified since). Excluded/empty ones are
     marked learned immediately so they are never re-parsed."""
     learned = state.setdefault("learned", {})
@@ -342,6 +395,8 @@ def new_sessions(state: dict, limit: int | None = None, *, newest: bool = False)
     for tool, path in discover():
         key = path.stem
         mtime = path.stat().st_mtime
+        if before_mtime is not None and mtime > before_mtime:
+            continue
         if learned.get(tool, {}).get(key, -1.0) >= mtime:
             continue
         pending.append((mtime, tool, path))

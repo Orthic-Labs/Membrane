@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import threading
 from pathlib import Path
 
 import pytest
@@ -117,6 +118,20 @@ def test_parse_verdicts_accepts_single_items_wrapper():
     assert parsed["a"]["verdict"] == "reject"
 
 
+def test_parse_verdicts_repairs_only_bare_allowed_flag_tokens():
+    runner = _module()
+    raw = '[{"id":"a","verdict":"reject","flags":[task_specific],"reason":"one-off"}]'
+
+    parsed = runner.parse_verdicts(raw, {"a"})
+
+    assert parsed["a"]["flags"] == ["task_specific"]
+    with pytest.raises(ValueError):
+        runner.parse_verdicts(
+            '[{"id":"a","verdict":"reject","flags":[invented_flag],"reason":"x"}]',
+            {"a"},
+        )
+
+
 def test_aggregate_requires_two_calibrated_votes_and_hard_flags_quarantine():
     runner = _module()
     expected = {"control-positive": True, "control-negative": False}
@@ -182,6 +197,71 @@ def test_panel_calls_are_content_addressed_and_resume_without_provider(tmp_path)
     )
     assert second["ledger"] == {"provider_calls": 0, "cache_hits": 2, "input_chars": 0}
     assert second["votes"] == first["votes"]
+
+
+def test_panel_blinds_case_identity_and_remaps_votes(tmp_path):
+    runner = _module()
+    cases = [
+        {
+            "id": "control-ex49", "kind": "control",
+            "rule": "Always verify the actual interface.",
+            "category": "verification", "evidence": ["Always verify the actual interface."],
+            "source_session_count": 1,
+        },
+        {
+            "id": "adapt-workflow-focused-tests-0123456789", "kind": "candidate",
+            "rule": "Always run focused tests.", "category": "verification",
+            "evidence": ["from now on run focused tests"], "source_session_count": 1,
+        },
+    ]
+
+    def fake_call(_model_id, system, user, _max_tokens):
+        assert "control" not in system.lower()
+        payload = json.loads(user)["items"]
+        assert all("kind" not in item for item in payload)
+        assert all(item["id"].startswith("item-") for item in payload)
+        assert "control-ex49" not in user
+        assert "adapt-workflow-focused-tests" not in user
+        return json.dumps([
+            {"id": item["id"], "verdict": "admit", "flags": [], "reason": "durable"}
+            for item in payload
+        ])
+
+    result = runner.run_panel(
+        cases=cases, model_ids=["m1"], output_dir=tmp_path,
+        call_fn=fake_call, scanner=lambda _text: True, chunk_size=2,
+        max_provider_calls=1, max_workers=1, resume=False,
+    )
+
+    assert set(result["votes"]["m1"]) == {
+        "control-ex49", "adapt-workflow-focused-tests-0123456789",
+    }
+
+
+def test_panel_overlaps_independent_provider_calls(tmp_path):
+    runner = _module()
+    cases = [{
+        "id": f"case-{index}", "kind": "control", "rule": "rule",
+        "category": "unknown", "evidence": ["evidence"],
+        "source_session_count": 1,
+    } for index in range(4)]
+    barrier = threading.Barrier(4)
+
+    def fake_call(_model_id, _system, user, _max_tokens):
+        barrier.wait(timeout=2)
+        item = json.loads(user)["items"][0]
+        return json.dumps([{
+            "id": item["id"], "verdict": "reject", "flags": [], "reason": "test",
+        }])
+
+    result = runner.run_panel(
+        cases=cases, model_ids=["m1"], output_dir=tmp_path,
+        call_fn=fake_call, scanner=lambda _text: True, chunk_size=1,
+        max_provider_calls=4, max_workers=4, resume=False,
+    )
+
+    assert result["ledger"]["provider_calls"] == 4
+    assert len(result["votes"]["m1"]) == 4
 
 
 def test_cli_dry_run_reports_bounded_calls_without_writing(tmp_path, capsys):

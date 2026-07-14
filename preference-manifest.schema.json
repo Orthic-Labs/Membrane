@@ -68,7 +68,8 @@
     },
     "records": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 0,
+      "description": "May be empty when a successfully mined batch yields no durable candidates; apply commits the bound sessions without writing MemRight rows.",
       "items": {
         "type": "object",
         "required": ["id", "rule", "category", "scope", "status", "payload_sha256"],

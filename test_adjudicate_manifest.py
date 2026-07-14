@@ -173,3 +173,56 @@ def test_output_paths_must_not_alias_input_or_each_other(tmp_path):
         runner.validate_distinct_paths(pending, pending, audit)
     with pytest.raises(ValueError, match="distinct paths"):
         runner.validate_distinct_paths(pending, audit, audit)
+
+
+def test_calibration_and_candidates_are_separate_and_resumable(tmp_path):
+    runner = _module()
+    panel = runner._load_phase3()
+    cases = [
+        {
+            "id": "control-positive", "kind": "control",
+            "rule": "Always verify tests.", "category": "verification",
+            "evidence": ["Always verify tests."], "source_session_count": 1,
+        },
+        {
+            "id": "candidate-a", "kind": "candidate",
+            "rule": "Always inspect the rendered UI.", "category": "verification",
+            "evidence": ["Always inspect the rendered UI."], "source_session_count": 1,
+        },
+    ]
+    calls = []
+
+    def fake_call(model_id, _system, user, _max_tokens):
+        calls.append(model_id)
+        items = json.loads(user)["items"]
+        return json.dumps([
+            {"id": item["id"], "verdict": "admit", "flags": [], "reason": "durable"}
+            for item in items
+        ])
+
+    first = runner.run_calibrated_panel(
+        panel_module=panel, cases=cases,
+        expected_controls={"control-positive": True}, model_ids=["m1"],
+        calibration_dir=tmp_path / "calibration", calls_dir=tmp_path / "candidate",
+        call_fn=fake_call, scanner=lambda _text: True, chunk_size=1,
+        max_provider_calls=2, max_tokens=4096, max_workers=2,
+        resume=False, inter_call_delay_s=0,
+    )
+    assert first["ledger"] == {"provider_calls": 2, "cache_hits": 0,
+                               "input_chars": first["ledger"]["input_chars"]}
+    assert first["calibration_models"]["m1"]["eligible"] is True
+    assert first["votes"]["m1"]["candidate-a"]["verdict"] == "admit"
+
+    def forbidden(*_args):
+        raise AssertionError("shared calibration and candidate calls must resume from cache")
+
+    second = runner.run_calibrated_panel(
+        panel_module=panel, cases=cases,
+        expected_controls={"control-positive": True}, model_ids=["m1"],
+        calibration_dir=tmp_path / "calibration", calls_dir=tmp_path / "candidate",
+        call_fn=forbidden, scanner=lambda _text: True, chunk_size=1,
+        max_provider_calls=2, max_tokens=4096, max_workers=2,
+        resume=True, inter_call_delay_s=0,
+    )
+    assert second["ledger"] == {"provider_calls": 0, "cache_hits": 2, "input_chars": 0}
+    assert calls == ["m1", "m1"]

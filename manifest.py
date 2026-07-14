@@ -185,8 +185,9 @@ def apply_time_validate(path: Path) -> dict:
     """Parse + schema-validate + invariant-check. Apply-time validator.
 
     Refuses any record with ``status='pending'``, refuses edited payloads
-    (payload_sha256 mismatch), refuses empty accepted/rejected sets, refuses
-    missing fields. For inspection of a freshly-emitted manifest, use
+    (payload_sha256 mismatch), and refuses missing fields. A zero-record
+    manifest is a valid committed no-op for a successfully mined batch.
+    For inspection of a freshly-emitted manifest, use
     ``validate_schema`` instead.
 
     Returns the parsed manifest dict on success. Raises ``ManifestError``.
@@ -211,9 +212,6 @@ def apply_time_validate(path: Path) -> dict:
             "manifest contains status='pending'; resolve every record "
             "to accepted/rejected before applying"
         )
-    if not statuses.intersection({"accepted", "rejected"}):
-        raise ManifestError("manifest has no accepted or rejected records")
-
     return raw
 
 

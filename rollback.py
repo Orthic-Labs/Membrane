@@ -65,6 +65,7 @@ STATE_FILE = STATE_DIR / "state.json"
 RULES_FILE = STATE_DIR / "rules.json"
 CORE_FILE = STATE_DIR / "core.json"
 SAFEPOINT_DIR = STATE_DIR / "safepoints"
+MEMRIGHT_MUTATION_TIMEOUT_SECONDS = 150
 
 
 # ----- small helpers -----
@@ -334,8 +335,10 @@ def _delete_via_memright(name: str, memright_bin: str | Path | None = None) -> b
               file=sys.stderr)
         return False
     try:
-        res = subprocess.run([bin_path, "delete", name],
-                             capture_output=True, text=True, timeout=30)
+        res = subprocess.run(
+            [bin_path, "delete", name], capture_output=True, text=True,
+            timeout=MEMRIGHT_MUTATION_TIMEOUT_SECONDS,
+        )
     except subprocess.TimeoutExpired:
         print(f"  error: memright delete {name} timed out", file=sys.stderr)
         return False
@@ -344,6 +347,9 @@ def _delete_via_memright(name: str, memright_bin: str | Path | None = None) -> b
               file=sys.stderr)
         return False
     if res.returncode != 0:
+        response = f"{res.stdout}\n{res.stderr}".replace("\\", "").lower()
+        if "404 not found" in response and '"deleted":false' in response:
+            return True
         print(f"  error: memright delete {name} rc={res.returncode}: "
               f"{res.stderr.strip()}", file=sys.stderr)
         return False

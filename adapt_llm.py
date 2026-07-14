@@ -21,8 +21,9 @@ MODEL = "MiniMax-M3"
 LOCAL_MODEL = os.environ.get("ADAPT_LOCAL_MODEL", "qwen2.5:7b-instruct")
 _LOCAL_URL_RAW = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
 LOCAL_URL = (_LOCAL_URL_RAW if "://" in _LOCAL_URL_RAW else f"http://{_LOCAL_URL_RAW}").rstrip("/")
-BATCH_CHAR_BUDGET = 12_000
+BATCH_CHAR_BUDGET = 24_000
 MAX_TOKENS = 8192
+SYNTH_MAX_TOKENS = 16_384
 RAW_AUDIT_CHARS = 4000
 EXPLICIT_PREF = re.compile(r"(?i)\b(always|never|from now on|do not|don't|prefer)\b.{0,160}")
 PREFERENCE_RECORD_TYPE = "agent_preference"
@@ -92,7 +93,8 @@ Emit an item only when all three classification fields above are exactly true. A
 decision, repo fact, or current-task instruction is not an agent preference. If durability across
 future tasks is uncertain, DROP it.
 
-Return [] if nothing qualifies — be conservative. JSON only, no prose, no markdown fences."""
+Return [] if nothing qualifies — be conservative. Emit at most 24 highest-confidence
+observations per batch. JSON only, no prose, no markdown fences."""
 
 
 def preference_classification_reason(item: dict) -> str | None:
@@ -120,6 +122,9 @@ and `new_observations` from the extraction pass. New observations use one of the
 OUTPUT: a JSON array. ONLY changed actions. Do NOT echo `keep` markers — anything you don't
 return is treated as unchanged and kept as-is.
 
+Emit at most 24 changed actions across the entire corpus pass. Consolidate related observations
+into coherent rules and omit weaker, narrow, or redundant candidates rather than truncating JSON.
+
 Each action:
   {"action": "add" | "update" | "deprecate",
    "name": "<adapt-{category}-{3-5-word-slug}>",
@@ -127,7 +132,11 @@ Each action:
    "rule": "<= 40 words, imperative>",
    "confidence": <0.3-0.95>,
    "observations": <int supporting obs>,
+   "observation_ids": ["<exact observation_id from new_observations>", ...],
    "why": "<= 20 words"}
+
+Every action MUST cite one or more exact `observation_id` values from `new_observations` that
+directly support that specific rule. Never cite a merely same-category observation.
 
 Decisions:
 - "add" only for genuinely new durable preferences not covered by any existing rule.
@@ -316,7 +325,13 @@ def call_lane(
 
 
 def _default_llm(system: str, user: str, lane: str = "local") -> str:
-    return call_lane(system, user, lane=lane)
+    return call_lane(system, user, lane=lane, attempts=1)
+
+
+def _default_synth_llm(system: str, user: str, lane: str = "local") -> str:
+    return call_lane(
+        system, user, lane=lane, attempts=1, max_tokens=SYNTH_MAX_TOKENS
+    )
 
 
 def _audit_path() -> Path:
@@ -383,10 +398,10 @@ def build_batches(turns: list[tuple[str, str, str]], budget: int = BATCH_CHAR_BU
     return batches
 
 
-def build_extract_payload(batch: list[tuple[str, str, str]]) -> str:
+def build_extract_payload(batch: list[tuple]) -> str:
     """Serialize the exact user payload sent to the extraction provider."""
-    records = [{"id": i + 1, "tool": tool, "scope": scope, "text": text}
-               for i, (tool, scope, text) in enumerate(batch)]
+    records = [{"id": i + 1, "tool": turn[0], "scope": turn[1], "text": turn[2]}
+               for i, turn in enumerate(batch)]
     return json.dumps(records, ensure_ascii=False)
 
 
@@ -418,6 +433,19 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
     On any non-success: caller treats the batch as not-advanced and retries.
     """
     from outcomes import BatchOutcome, Outcome
+
+    def split_and_extract() -> BatchOutcome:
+        midpoint = len(batch) // 2
+        left = extract_observations(batch[:midpoint], llm=llm, lane=lane)
+        if left.outcome not in (Outcome.SUCCESS, Outcome.VALID_EMPTY):
+            return left
+        right = extract_observations(batch[midpoint:], llm=llm, lane=lane)
+        if right.outcome not in (Outcome.SUCCESS, Outcome.VALID_EMPTY):
+            return right
+        combined = [*left.actions, *right.actions]
+        return (BatchOutcome.success(combined) if combined else
+                BatchOutcome.valid_empty("split window returned no observations"))
+
     if not batch:
         return BatchOutcome.valid_empty("empty batch")
     # Batch-level scanner guard: one subprocess per LLM call, not per turn.
@@ -434,6 +462,8 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
             raw = llm(EXTRACT_SYSTEM, user)
     except Exception as exc:
         _audit_call_failure("extract", exc)
+        if len(batch) > 1 and "max_tokens" in str(exc).lower():
+            return split_and_extract()
         return BatchOutcome.provider_failed(f"{type(exc).__name__}: {str(exc)[:120]}")
     raw = (raw or "").strip()
     if not raw:
@@ -444,9 +474,13 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
     # response that wasn't an array at all (PARSE_FAILED).
     raw_stripped = re.sub(r"```(?:json)?", "", raw).strip()
     if not parsed and not (raw_stripped.startswith("[") and raw_stripped.endswith("]")):
+        if len(batch) > 1:
+            return split_and_extract()
         _audit_parse_failure("extract", raw)
         return BatchOutcome.parse_failed("response not an array")
     if not raw_stripped.startswith("["):
+        if len(batch) > 1:
+            return split_and_extract()
         _audit_parse_failure("extract", raw)
         return BatchOutcome.parse_failed("response missing leading [")
     out: list[dict] = []
@@ -461,7 +495,11 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
         idx = item.get("prompt")
         tool, scope = ("", "")
         if isinstance(idx, int) and 1 <= idx <= len(batch):
-            tool, scope = batch[idx - 1][0], batch[idx - 1][1]
+            turn = batch[idx - 1]
+            tool, scope = turn[0], turn[1]
+            session_id = turn[3] if len(turn) > 3 else ""
+        else:
+            session_id = ""
         # Canonicalize category AT extraction time. The synth pass can now see
         # all existing rules from the same canonical bucket regardless of the
         # model's loose phrasing.
@@ -470,7 +508,8 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
             item["category"] = admission.normalize_category(item.get("category", ""))
         except Exception:
             pass
-        out.append({**item, "tool": tool, "scope": scope, "source": "model"})
+        out.append({**item, "tool": tool, "scope": scope,
+                    "session_id": session_id, "source": "model"})
     if not out:
         return BatchOutcome.valid_empty("model returned no qualifying observations")
     return BatchOutcome.success(out)
@@ -498,7 +537,7 @@ def synthesize(existing: list[dict], observations: list[dict],
                           "new_observations": observations}, indent=1)
     try:
         if llm is None:
-            raw = _default_llm(SYNTH_SYSTEM, payload, lane)
+            raw = _default_synth_llm(SYNTH_SYSTEM, payload, lane)
         else:
             raw = llm(SYNTH_SYSTEM, payload)
     except Exception as exc:
@@ -514,6 +553,12 @@ def synthesize(existing: list[dict], observations: list[dict],
     if not parsed:
         return BatchOutcome.parse_failed("could not extract synth array")
     actions: list[dict] = []
+    observation_by_id = {
+        item["observation_id"]: item
+        for item in observations
+        if isinstance(item.get("observation_id"), str)
+    }
+    require_links = bool(observation_by_id)
     for item in parsed:
         if not isinstance(item, dict) or item.get("action") not in ("add", "update", "deprecate"):
             continue
@@ -530,6 +575,15 @@ def synthesize(existing: list[dict], observations: list[dict],
             item["category"] = admission.normalize_category(item.get("category", ""))
         except Exception:
             pass
+        if require_links:
+            linked = item.get("observation_ids")
+            if not isinstance(linked, list) or not linked or any(
+                not isinstance(value, str) or value not in observation_by_id
+                for value in linked
+            ):
+                return BatchOutcome.parse_failed(
+                    "synth action missing valid observation_ids"
+                )
         actions.append(item)
     if not actions:
         return BatchOutcome.valid_empty("no actions returned")
