@@ -2087,7 +2087,9 @@ def test_adapt_report_runs_on_clean_state(tmp_path, monkeypatch):
     (state_dir / "state.json").write_text('{"learned": {}}')
     (state_dir / "rules.json").write_text("{}")
     import adapt_report as ar
-    rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out")])
+    rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out"),
+                  "--heartbeat", str(tmp_path / "heartbeat.jsonl"),
+                  "--db", str(tmp_path / "missing.db")])
     assert rc == 0
     body = json.loads((tmp_path / "out" / "adapt.report.json").read_text())
     assert body["rules_count"] == 0
@@ -2111,7 +2113,9 @@ def test_adapt_report_counts_admission_rejections(tmp_path):
     (state_dir / "state.json").write_text('{"learned": {}}')
     (state_dir / "rules.json").write_text("{}")
     import adapt_report as ar
-    rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out")])
+    rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out"),
+                  "--heartbeat", str(tmp_path / "heartbeat.jsonl"),
+                  "--db", str(tmp_path / "missing.db")])
     assert rc == 0
     body = json.loads((tmp_path / "out" / "adapt.report.json").read_text())
     assert body["admission_rejection_reasons"]["rule-too-short"] == 1
@@ -2137,12 +2141,65 @@ def test_adapt_report_tracks_incomplete_batches(tmp_path):
     (state_dir / "state.json").write_text('{"learned": {"claude-code": {"s2": 1.0}}}')
     (state_dir / "rules.json").write_text("{}")
     import adapt_report as ar
-    rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out")])
+    rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out"),
+                  "--heartbeat", str(tmp_path / "heartbeat.jsonl"),
+                  "--db", str(tmp_path / "missing.db")])
     body = json.loads((tmp_path / "out" / "adapt.report.json").read_text())
     assert body["batches_completed"] == 1
     assert body["batches_incomplete"] == ["b1"]
     assert body["learned_sessions_total"] == 1
     assert body["latency_per_batch_seconds"]["b2"] == 5.0
+
+
+def test_adapt_report_aggregates_shadow_delivery_and_effectiveness(tmp_path):
+    import sqlite3
+    import adapt_report as ar
+
+    state_dir = tmp_path / "adapt"
+    state_dir.mkdir()
+    (state_dir / "audit.jsonl").write_text(
+        json.dumps({"event": "shadow_conflict", "id": "D--Claude/adapt-a"}) + "\n"
+        + json.dumps({"event": "shadow_recorrection", "id": "D--Claude/adapt-b"}) + "\n"
+    )
+    (state_dir / "run_journal.jsonl").write_text("")
+    (state_dir / "state.json").write_text('{"learned": {}}')
+    (state_dir / "rules.json").write_text("{}")
+    heartbeat = tmp_path / "heartbeat.jsonl"
+    heartbeat.write_text(json.dumps({
+        "event": "recall.delivery",
+        "applicable_adapt_ids": ["D--Claude/adapt-a", "D--Claude/adapt-b"],
+        "delivered_adapt_ids": ["D--Claude/adapt-a"],
+        "core_source_ids": ["adapt-core-a"],
+        "core_delivered": True,
+        "context_chars": 400,
+        "estimated_tokens": 100,
+        "core_tokens": 30,
+        "retrieval_tokens": 70,
+    }) + "\n")
+    db = tmp_path / "engine.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE memory_event_log (event_kind TEXT, memory_id TEXT)")
+        conn.executemany("INSERT INTO memory_event_log VALUES (?, ?)", [
+            ("inject", "D--Claude/adapt-a"),
+            ("inject", "D--Claude/adapt-b"),
+            ("get", "D--Claude/adapt-a"),
+        ])
+    report = ar.build_report(
+        state_dir=state_dir, heartbeat_path=heartbeat, db_path=db
+    )
+    shadow = report["shadow"]
+    assert shadow["delivery_receipts"] == 1
+    assert shadow["applicable_unique"] == 2
+    assert shadow["delivered_unique"] == 1
+    assert shadow["core_deliveries"] == 1
+    assert shadow["estimated_tokens"] == 100
+    assert shadow["core_tokens"] == 30
+    assert shadow["retrieval_tokens"] == 70
+    assert shadow["explicit_get_unique"] == 1
+    assert shadow["injected_unique"] == 2
+    assert shadow["explicit_usefulness_rate"] == 0.5
+    assert shadow["conflicts"] == 1
+    assert shadow["recorrections"] == 1
 
 
 def test_curation_near_duplicate_candidates_groups_by_normalized_text():

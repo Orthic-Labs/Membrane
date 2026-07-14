@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import sqlite3
 import statistics
 import sys
 from collections import Counter, defaultdict
@@ -38,6 +39,8 @@ JOURNAL = ADAPT_STATE / "run_journal.jsonl"
 STATE_FILE = ADAPT_STATE / "state.json"
 RULES_FILE = ADAPT_STATE / "rules.json"
 SAFEPOINTS = ADAPT_STATE / "safepoints"
+HEARTBEAT = WS / "tools/.cache/metrics/memright-heartbeat.jsonl"
+MEMRIGHT_DB = WS / "tools/.cache/memory/memright-engine.db"
 
 
 def _load_jsonl(path: Path) -> list[dict]:
@@ -88,11 +91,44 @@ def _batch_latency_seconds(journal_entries: list[dict]) -> dict[str, float]:
     return latencies
 
 
-def build_report(state_dir: Path = ADAPT_STATE) -> dict:
+def _effectiveness(db_path: Path | None) -> dict:
+    injected: set[str] = set()
+    fetched: set[str] = set()
+    if db_path and db_path.exists():
+        try:
+            conn = sqlite3.connect(db_path)
+            try:
+                rows = conn.execute(
+                    "SELECT event_kind, memory_id FROM memory_event_log "
+                    "WHERE memory_id LIKE '%/adapt-%' OR memory_id LIKE 'adapt-%'"
+                )
+                for event, memory_id in rows:
+                    if event == "inject":
+                        injected.add(memory_id)
+                    elif event == "get":
+                        fetched.add(memory_id)
+            finally:
+                conn.close()
+        except sqlite3.Error:
+            pass
+    explicitly_used = fetched & injected
+    return {
+        "injected_unique": len(injected),
+        "explicit_get_unique": len(explicitly_used),
+        "explicit_usefulness_rate": (
+            round(len(explicitly_used) / len(injected), 3) if injected else 0.0
+        ),
+    }
+
+
+def build_report(state_dir: Path = ADAPT_STATE,
+                 heartbeat_path: Path = HEARTBEAT,
+                 db_path: Path | None = MEMRIGHT_DB) -> dict:
     audit = _load_jsonl(state_dir / "audit.jsonl")
     journal = _load_jsonl(state_dir / "run_journal.jsonl")
     state = _safe_load(state_dir / "state.json")
     rules = _safe_load(state_dir / "rules.json")
+    heartbeat = _load_jsonl(heartbeat_path)
 
     # Audit-derived counts.
     rejection_reasons: Counter[str] = Counter()
@@ -117,6 +153,35 @@ def build_report(state_dir: Path = ADAPT_STATE) -> dict:
         rejection_reasons[str(entry).startswith("{") and ""]  # no-op safeguard
     # LLM call failures (from adapt_llm).
     llm_failures = [e for e in audit if e.get("event") == "llm_call_failed"]
+
+    receipts = [e for e in heartbeat if e.get("event") == "recall.delivery"]
+    applicable_ids = {
+        memory_id for receipt in receipts
+        for memory_id in receipt.get("applicable_adapt_ids", [])
+    }
+    delivered_ids = {
+        memory_id for receipt in receipts
+        for memory_id in receipt.get("delivered_adapt_ids", [])
+    }
+    shadow = {
+        "delivery_receipts": len(receipts),
+        "applicable_occurrences": sum(
+            len(e.get("applicable_adapt_ids", [])) for e in receipts
+        ),
+        "applicable_unique": len(applicable_ids),
+        "delivered_occurrences": sum(
+            len(e.get("delivered_adapt_ids", [])) for e in receipts
+        ),
+        "delivered_unique": len(delivered_ids),
+        "core_deliveries": sum(bool(e.get("core_delivered")) for e in receipts),
+        "context_chars": sum(int(e.get("context_chars", 0)) for e in receipts),
+        "estimated_tokens": sum(int(e.get("estimated_tokens", 0)) for e in receipts),
+        "core_tokens": sum(int(e.get("core_tokens", 0)) for e in receipts),
+        "retrieval_tokens": sum(int(e.get("retrieval_tokens", 0)) for e in receipts),
+        "conflicts": sum(e.get("event") == "shadow_conflict" for e in audit),
+        "recorrections": sum(e.get("event") == "shadow_recorrection" for e in audit),
+        **_effectiveness(db_path),
+    }
 
     # Journal-derived counts.
     batches = {e["batch_id"] for e in journal if "batch_id" in e}
@@ -151,6 +216,7 @@ def build_report(state_dir: Path = ADAPT_STATE) -> dict:
         "manifest_events": len(manifest_events),
         "rollback_events": len(rollback_events),
         "safepoints": safepoint_count,
+        "shadow": shadow,
         "latency_per_batch_seconds": latencies,
         "latency_avg_seconds": statistics.mean(latencies.values()) if latencies else 0.0,
         "latency_max_seconds": max(latencies.values()) if latencies else 0.0,
@@ -197,6 +263,21 @@ def _format_report(rep: dict) -> str:
     L.append(f"- avg wall per batch: {rep['latency_avg_seconds']:.1f}s")
     L.append(f"- max wall per batch: {rep['latency_max_seconds']:.1f}s")
     L.append(f"- safepoints on disk: {rep['safepoints']}")
+    L.append("")
+    L.append("## Shadow delivery")
+    L.append("")
+    shadow = rep["shadow"]
+    L.append(f"- delivery receipts: {shadow['delivery_receipts']}")
+    L.append(f"- applicable unique IDs: {shadow['applicable_unique']}")
+    L.append(f"- delivered unique IDs: {shadow['delivered_unique']}")
+    L.append(f"- core deliveries: {shadow['core_deliveries']}")
+    L.append(f"- estimated tokens: {shadow['estimated_tokens']}")
+    L.append(f"- core / retrieval tokens: {shadow['core_tokens']} / "
+             f"{shadow['retrieval_tokens']}")
+    L.append(f"- explicit get/usefulness proxy: {shadow['explicit_get_unique']}/"
+             f"{shadow['injected_unique']} ({shadow['explicit_usefulness_rate']:.3f})")
+    L.append(f"- conflicts: {shadow['conflicts']}")
+    L.append(f"- re-corrections: {shadow['recorrections']}")
     return "\n".join(L) + "\n"
 
 
@@ -204,9 +285,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--state-dir", type=Path, default=ADAPT_STATE)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--heartbeat", type=Path, default=HEARTBEAT)
+    ap.add_argument("--db", type=Path, default=MEMRIGHT_DB)
     args = ap.parse_args(argv)
 
-    rep = build_report(state_dir=args.state_dir)
+    rep = build_report(
+        state_dir=args.state_dir, heartbeat_path=args.heartbeat, db_path=args.db
+    )
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "adapt.report.json").write_text(
         json.dumps(rep, indent=2, ensure_ascii=False), encoding="utf-8")
