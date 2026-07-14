@@ -51,7 +51,7 @@ import tempfile
 from pathlib import Path
 from collections import defaultdict
 
-WS = Path("D:/Claude")
+WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
 sys.path.insert(0, str(WS / "tools/pipelines/memory/adapt"))
 
 import preference_record as pr_mod  # noqa: E402

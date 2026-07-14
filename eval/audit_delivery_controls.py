@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 
-ROOT = Path(r"D:\Claude")
+ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
 DEFAULT_ACTOR = ROOT / ".cache/adapt-delivery-parity/full/actor-results.json"
 DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/full/control-audit.json"
 

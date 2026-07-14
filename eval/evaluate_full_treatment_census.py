@@ -9,7 +9,7 @@ from collections import defaultdict
 from pathlib import Path
 
 
-ROOT = Path(r"D:\Claude")
+ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
 HERE = Path(__file__).resolve().parent
 DEFAULT_TASTE = ROOT / "docs/evidence/commandcode-taste-bakeoff-2026-07-13/minimax-m3/root-taste.md"
 DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"

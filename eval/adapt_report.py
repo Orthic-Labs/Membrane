@@ -32,7 +32,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-WS = Path("D:/Claude")
+WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
 ADAPT_STATE = Path.home() / ".claude" / "adapt"
 AUDIT = ADAPT_STATE / "audit.jsonl"
 JOURNAL = ADAPT_STATE / "run_journal.jsonl"

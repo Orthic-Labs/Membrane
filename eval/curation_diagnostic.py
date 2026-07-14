@@ -46,7 +46,7 @@ from collections import defaultdict
 from pathlib import Path
 
 
-WS = Path("D:/Claude")
+WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
 DEFAULT_LIVE = WS / "tools/.cache/memory/memright-engine.db"
 DEFAULT_MEMRIGHT = WS / "tools/bin/memright.exe"
 DEFAULT_OUT = WS / ".cache/adapt-curation"

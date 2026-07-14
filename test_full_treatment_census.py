@@ -6,6 +6,17 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parent / "eval" / "evaluate_full_treatment_census.py"
 
+import pytest
+
+# Same portability contract as test_delivery_parity.py: the census reads the
+# machine-local frozen evidence pack under .cache/ — skip with a named reason
+# on checkouts without it instead of failing.
+_FROZEN_TREATMENT = Path(__file__).resolve().parents[4] / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
+requires_frozen_treatment = pytest.mark.skipif(
+    not _FROZEN_TREATMENT.exists(),
+    reason="machine-local frozen delivery-parity treatment absent (.cache/adapt-delivery-parity/full/frozen)",
+)
+
 
 def _load():
     spec = importlib.util.spec_from_file_location("full_treatment_census", SCRIPT)
@@ -15,6 +26,7 @@ def _load():
     return module
 
 
+@requires_frozen_treatment
 def test_actual_census_covers_every_taste_and_adapt_record():
     module = _load()
     taste_rules, adapt_records = module.load_sources(

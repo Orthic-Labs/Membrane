@@ -17,6 +17,25 @@ CONTROL_AUDIT = ADAPT_DIR / "eval" / "audit_delivery_controls.py"
 ALIAS_RETRIEVAL = ADAPT_DIR / "eval" / "run_evidence_alias_retrieval.py"
 ALIAS_HYBRID = ADAPT_DIR / "eval" / "run_alias_hybrid.py"
 
+import pytest
+
+# The delivery-parity fixtures are a machine-local frozen evidence pack under
+# .cache/ (never committed). On a checkout without the pack these tests skip
+# with a named reason instead of failing — same portability contract as the
+# scanner-dependent extraction test. Evidence pack:
+# docs/baselines/adapt-taste-parity-2026-07-14/README.md
+_WS = ADAPT_DIR.parents[3]
+_FROZEN_VALUE_INPUTS = _WS / ".cache/adapt-commandcode-delta-m3-seeded-sanitized-split1-v1/results-rescoped.json"
+_FROZEN_TREATMENT = _WS / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
+requires_frozen_inputs = pytest.mark.skipif(
+    not _FROZEN_VALUE_INPUTS.exists(),
+    reason="machine-local frozen evidence pack absent (.cache/adapt-commandcode-delta-m3-seeded-sanitized-split1-v1)",
+)
+requires_frozen_treatment = pytest.mark.skipif(
+    not _FROZEN_TREATMENT.exists(),
+    reason="machine-local frozen delivery-parity treatment absent (.cache/adapt-delivery-parity/full/frozen)",
+)
+
 
 def _load(path: Path, name: str):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -26,6 +45,7 @@ def _load(path: Path, name: str):
     return module
 
 
+@requires_frozen_inputs
 def test_real_value_set_is_balanced_frozen_and_has_no_rule_leakage():
     module = _load(BUILDER, "build_delivery_parity_set")
     value_set, treatment = module.build_value_set(module.DEFAULT_TASTE, module.DEFAULT_ADAPT)
@@ -46,6 +66,7 @@ def test_real_value_set_is_balanced_frozen_and_has_no_rule_leakage():
             assert not rule or rule.casefold() not in row["prompt"].casefold()
 
 
+@requires_frozen_inputs
 def test_treatment_uses_raw_output_and_keeps_curation_as_secondary_audit():
     module = _load(BUILDER, "build_delivery_parity_set")
     _, treatment = module.build_value_set(module.DEFAULT_TASTE, module.DEFAULT_ADAPT)
@@ -89,6 +110,7 @@ def test_batched_replay_uses_one_replay_and_direct_sqlite_lookup(tmp_path, monke
     assert result["c2"]["ranked_scopes"] == ["D--Claude"]
 
 
+@requires_frozen_inputs
 def test_smoke_selector_covers_every_positive_cohort_and_controls():
     runner = _load(RUNNER, "run_delivery_parity")
     builder = _load(BUILDER, "build_delivery_parity_set_for_smoke")
@@ -160,6 +182,7 @@ def test_paired_stats_reports_direction_and_exact_discordance():
     assert result["full_adherence_discordance"]["left_only"] == 0
 
 
+@requires_frozen_inputs
 def test_adapt_treatment_variants_are_explicit_and_hashed():
     runner = _load(RUNNER, "run_delivery_parity_variants")
     builder = _load(BUILDER, "build_delivery_parity_variants")
@@ -195,6 +218,7 @@ def test_weighted_kappa_is_one_for_identical_scores():
     assert module.weighted_kappa([0, 1, 2], [0, 1, 2]) == 1.0
 
 
+@requires_frozen_treatment
 def test_budgeted_core_is_the_13_inherited_rules_and_fits_800_tokens():
     module = _load(BUDGETED, "run_budgeted_delivery_hybrid_test")
     treatment = json.loads((ADAPT_DIR.parents[3] /

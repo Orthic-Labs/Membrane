@@ -30,7 +30,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-WS = Path("D:/Claude")
+WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
 ADAPT_DIR = WS / "tools" / "pipelines" / "memory" / "adapt"
 SCHEMA_PATH = ADAPT_DIR / "eval" / "value_set_schema.json"
 BASELINE_DIR = WS / "docs" / "baselines" / "adapt"

@@ -470,6 +470,14 @@ def test_synthesize_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
     assert "synthesize" in audit.read_text(encoding="utf-8")
 
 
+import pytest as _pytest
+
+
+@_pytest.mark.skipif(
+    not ts.scanner_available(),
+    reason="requires gitleaks or detect-secrets on the host — without a scanner the "
+           "external-lane batch correctly fails closed before the LLM is called",
+)
 def test_deterministic_not_in_extract_observations_payload(monkeypatch):
     """The LLM payload sent to MiniMax must contain only model-source
     observations. Deterministic hits go to `extract_deterministic()` separately

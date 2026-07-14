@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(r"D:\Claude")
+ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
 HERE = Path(__file__).resolve().parent
 ADAPT_DIR = HERE.parent
 DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"

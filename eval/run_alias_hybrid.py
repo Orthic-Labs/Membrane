@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(r"D:\Claude")
+ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
 HERE = Path(__file__).resolve().parent
 PRIMARY = ROOT / ".cache/adapt-delivery-parity/full"
 DEFAULT_ALIAS_DB = ROOT / ".cache/adapt-delivery-parity/evidence-alias/alias.db"

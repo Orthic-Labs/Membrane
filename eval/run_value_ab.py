@@ -70,7 +70,7 @@ from pathlib import Path
 
 # ----- paths & constants -----
 
-ROOT = Path(r"D:\Claude")
+ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
 DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/memright-engine.db"
 DEFAULT_MEMRIGHT = ROOT / "tools/bin/memright.exe"
 DEFAULT_TASTE_MD = ROOT / ".commandcode/taste/taste.md"
