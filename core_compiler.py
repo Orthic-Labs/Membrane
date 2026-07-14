@@ -31,9 +31,15 @@ def _sources(records) -> list[dict]:
     out = []
     for row in rows:
         source_id = row.get("id") or row.get("name")
+        record_type = row.get("record_type")
+        legacy_adapt_preference = (
+            record_type == "unclassified"
+            and isinstance(source_id, str)
+            and source_id.startswith("adapt-")
+        )
         if (
             source_id
-            and row.get("record_type") == "standing_preference"
+            and (record_type == "standing_preference" or legacy_adapt_preference)
             and row.get("scope") == "D--Claude"
             and row.get("status", "accepted") == "accepted"
         ):

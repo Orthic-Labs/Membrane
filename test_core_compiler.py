@@ -44,6 +44,20 @@ def test_compile_core_emits_versioned_loadable_artifact(monkeypatch, tmp_path):
     assert loaded is not None and len(loaded.source_ids) == 6
 
 
+def test_compile_core_accepts_legacy_unclassified_adapt_preferences(monkeypatch, tmp_path):
+    records = _records()
+    for record in records:
+        record["record_type"] = "unclassified"
+    monkeypatch.setattr(core_compiler.adapt_sessions, "scan_batch_for_secrets_str",
+                        lambda _text: True)
+    out = tmp_path / "core.json"
+    result = core_compiler.compile_and_write(
+        records, out, lane="minimax", call=lambda *_args, **_kwargs: _response(records)
+    )
+    assert len(result["rules"]) == 6
+    assert adapt_core.load_core(out) is not None
+
+
 def test_compile_core_rejects_unknown_provenance(monkeypatch, tmp_path):
     records = _records()
     bad = _response(records)

@@ -384,7 +384,7 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
         record = {"name": name, "category": act["category"], "rule": act["rule"],
                   "confidence": act["confidence"], "observations": act.get("observations", 1),
                   "scope": scope, "needs_review": act.get("needs_review", False),
-                   "record_type": authority.normalize_record_type(act.get("record_type")),
+                   "record_type": "standing_preference",
                    "retrieval_aliases": list(retrieval_aliases),
                   "authority_effect": authority.evaluate_rule(
                       act["rule"], scope=scope,
@@ -394,7 +394,8 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
         if manifest_records is not None:
             existing = rules.get(name)
             pr = preference_record.PreferenceRecord.from_synthesis(
-                {**act, "retrieval_aliases": retrieval_aliases},
+                {**act, "record_type": "standing_preference",
+                 "retrieval_aliases": retrieval_aliases},
                 scope=scope, source_ids=tuple(candidate_source_ids),
                 existing=existing,
             )

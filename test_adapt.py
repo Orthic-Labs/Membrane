@@ -505,6 +505,7 @@ def test_apply_actions_upserts_via_memright(tmp_path, monkeypatch):
     assert rules["adapt-logging-jsonl-over-logfmt"]["retrieval_aliases"] == [
         "always use JSONL"
     ]
+    assert rules["adapt-logging-jsonl-over-logfmt"]["record_type"] == "standing_preference"
 
 
 def test_apply_actions_enforces_supplied_authority_manifest(tmp_path, monkeypatch):
