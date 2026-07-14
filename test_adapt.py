@@ -291,7 +291,14 @@ _spec.loader.exec_module(lt)
 
 def test_apply_actions_upserts_via_memright(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr(lt, "_run_memright", lambda args: calls.append(args) or True)
+    bodies = []
+    def fake_run(args):
+        calls.append(args)
+        if args and args[0] == "put":
+            bodies.append(Path(args[args.index("--file") + 1]).read_text(encoding="utf-8"))
+        return True
+    monkeypatch.setattr(lt, "_run_memright", fake_run)
+    monkeypatch.setattr(lt.ts, "scan_batch_for_secrets_str", lambda _text: True)
     rules = {}
     actions = [{"action": "add", "name": "adapt-logging-jsonl-over-logfmt",
                 "category": "workflow", "rule": "Always prefer JSONL over logfmt for structured logging because line-delimited records survive tool rotations cleanly.",
@@ -305,6 +312,10 @@ def test_apply_actions_upserts_via_memright(tmp_path, monkeypatch):
     assert len(calls) == 1
     assert calls[0][:2] == ["put", "adapt-logging-jsonl-over-logfmt"]
     assert "--scope" in calls[0] and "D--Claude" in calls[0]
+    assert "**Trigger phrases:** always use JSONL" in bodies[0]
+    assert rules["adapt-logging-jsonl-over-logfmt"]["retrieval_aliases"] == [
+        "always use JSONL"
+    ]
 
 
 def test_apply_actions_enforces_supplied_authority_manifest(tmp_path, monkeypatch):
@@ -937,6 +948,39 @@ def test_pref_record_to_memright_content_uses_existing_envelope():
     assert "Confidence:" in body and "How to apply:" in body
 
 
+def test_pref_record_bounded_retrieval_aliases_round_trip_and_embed():
+    rec = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "tooling",
+         "rule": "Prefer JSONL for structured logs.", "confidence": 0.7,
+         "retrieval_aliases": [
+             "  always use JSONL when the logs are machine readable  ",
+             "always use JSONL when the logs are machine readable",
+             "do not switch this pipeline to logfmt",
+         ]},
+        scope="D--Claude", source_ids=("s1",),
+    )
+    assert rec.retrieval_aliases == (
+        "always use JSONL when the logs are machine readable",
+        "do not switch this pipeline to logfmt",
+    )
+    assert sum(map(len, rec.retrieval_aliases)) <= pr_mod.MAX_ALIAS_CHARS
+    data = rec.to_dict()
+    data["source_ids"] = tuple(data["source_ids"])
+    data["retrieval_aliases"] = tuple(data["retrieval_aliases"])
+    assert pr_mod.PreferenceRecord(**data) == rec
+    body = pr_mod.to_memright_content(rec)
+    assert "**Trigger phrases:**" in body
+    assert "always use JSONL when the logs are machine readable" in body
+
+
+def test_pref_record_aliases_exclude_rule_echo_and_overflow():
+    aliases = pr_mod.normalize_retrieval_aliases(
+        ["Prefer JSONL for structured logs.", "x" * 500],
+        rule="Prefer JSONL for structured logs.",
+    )
+    assert aliases == ("x" * pr_mod.MAX_ALIAS_CHARS,)
+
+
 # --- Gate 1a: manifest contract ---
 
 import manifest as mf
@@ -1547,6 +1591,7 @@ def test_apply_actions_emits_gate1b_fields(tmp_path, monkeypatch):
     source_file_hashes[] + evidence_ids[].
     """
     monkeypatch.setattr(lt, "_run_memright", lambda args: True)
+    monkeypatch.setattr(lt.ts, "scan_batch_for_secrets_str", lambda _text: True)
     rules: dict = {}
     actions = [{"action": "add", "name": "adapt-logging-jsonl-over-logfmt",
                "category": "tooling",
@@ -1568,6 +1613,38 @@ def test_apply_actions_emits_gate1b_fields(tmp_path, monkeypatch):
                                          "sha256": "ab" * 32}]
     assert r["evidence_ids"][0]["evidence_id"].startswith("ev-")
     assert r["evidence_ids"][0]["source_session_id"] == "abc"
+    assert r["retrieval_aliases"] == ["always use JSONL"]
+
+
+def test_apply_from_manifest_embeds_signed_retrieval_aliases(tmp_path, monkeypatch):
+    p, body = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-alias")
+    body["schema_version"] = pr_mod.SCHEMA_VERSION
+    body["records"][0]["retrieval_aliases"] = ["the exact phrase Adrian normally uses"]
+    body["records"][0]["payload_sha256"] = mf.payload_sha256(body["records"][0])
+    p.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
+    journal = _isolate_journal(tmp_path, monkeypatch)
+    journal.record("batch-alias", "discovered", sessions=["s1", "s2"])
+    monkeypatch.setattr(lt.ts, "scan_batch_for_secrets_str", lambda _text: True)
+    written = []
+    def fake_run(args):
+        if args and args[0] == "put":
+            written.append(Path(args[args.index("--file") + 1]).read_text(encoding="utf-8"))
+        return True
+    monkeypatch.setattr(lt, "_run_memright", fake_run)
+    assert lt.apply_from_manifest(p) == 0
+    assert "**Trigger phrases:** the exact phrase Adrian normally uses" in written[0]
+
+
+def test_manifest_payload_hash_binds_retrieval_aliases():
+    record = {
+        "id": "adapt-tooling-use-jsonl-1234567890",
+        "rule": "Always use JSONL for structured logs.",
+        "category": "tooling", "scope": "D--Claude",
+        "retrieval_aliases": ["my usual source phrase"],
+    }
+    first = mf.payload_sha256(record)
+    record["retrieval_aliases"] = ["a changed source phrase"]
+    assert mf.payload_sha256(record) != first
 
 
 def test_gate3_evidence_fidelity_shared_verb():

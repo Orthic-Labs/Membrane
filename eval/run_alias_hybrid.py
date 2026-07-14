@@ -27,6 +27,7 @@ def _load(path: Path, name: str):
 
 runner = _load(HERE / "run_delivery_parity.py", "alias_hybrid_runner")
 budgeted = _load(HERE / "run_budgeted_delivery_hybrid.py", "alias_hybrid_budgeted")
+production = _load(HERE / "smoke_production_delivery.py", "alias_hybrid_production")
 
 
 def combine_answers(primary: dict, arm_g: dict, cases: list[dict]) -> dict:
@@ -73,6 +74,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--alias-db", type=Path, default=DEFAULT_ALIAS_DB)
+    parser.add_argument("--production-shape", action="store_true",
+                        help="rebuild the alias DB through PreferenceRecord v1.2")
     parser.add_argument("--core-file", type=Path, default=DEFAULT_CORE)
     parser.add_argument("--memright-bin", type=Path, default=runner.DEFAULT_MEMRIGHT)
     parser.add_argument("--grader-model", default=runner.DEFAULT_GRADER_MODEL)
@@ -91,12 +94,20 @@ def main(argv: list[str] | None = None) -> int:
     if tokens > 800:
         raise RuntimeError("compiled core exceeds 800 tokens")
 
+    alias_db = args.alias_db
+    if args.production_shape:
+        alias_db = out / "production-alias.db"
+        build = production.build_production_alias_db(
+            args.memright_bin, runner.DEFAULT_LIVE_DB, alias_db, treatment
+        )
+        runner.write_json(out / "production-alias-build.json", build)
+
     retrieval_path = out / "retrieval.json"
     actor_path = out / "actor-results.json"
     grader_path = out / "grader-results.json"
     retrieval = combined = grades = None
     if args.stage in {"retrieval", "all"}:
-        retrieval = run_alias_retrieval(cases, args.alias_db, out, args.memright_bin)
+        retrieval = run_alias_retrieval(cases, alias_db, out, args.memright_bin)
     elif retrieval_path.exists():
         retrieval = runner.read_json(retrieval_path)
     if args.stage in {"actor", "all"}:

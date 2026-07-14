@@ -37,6 +37,7 @@ except ImportError:
 import preference_record  # noqa: E402
 import manifest  # noqa: E402
 import authority  # noqa: E402
+import core_compiler  # noqa: E402
 
 RULES_FILE = ts.STATE_DIR / "rules.json"
 DIGEST_FILE = ts.STATE_DIR / "adapt-digest.md"
@@ -108,6 +109,10 @@ def initialized(state: dict) -> bool:
 
 def rule_body(rule: dict, evidence: str, tool: str) -> str:
     today = dt.date.today().isoformat()
+    aliases = preference_record.normalize_retrieval_aliases(
+        rule.get("retrieval_aliases", ()), rule=rule.get("rule", "")
+    )
+    alias_line = f"**Trigger phrases:** {' | '.join(aliases)}\n" if aliases else ""
     return (
         f"**[adapt/{rule['category']}]** — {rule['rule']} "
         f"Confidence: {rule['confidence']:.2f} "
@@ -116,8 +121,23 @@ def rule_body(rule: dict, evidence: str, tool: str) -> str:
         f"**Why:** mined from {tool or 'session'} prompts; e.g. \"{evidence}\"\n"
         f"**Record:** type={rule.get('record_type', 'unclassified')}, "
         f"authority_effect={rule.get('authority_effect', 'neutral')}\n"
+        f"{alias_line}"
         f"**How to apply:** {preference_record.application_guidance(rule.get('record_type', 'unclassified'))}\n"
     )
+
+
+def _safe_retrieval_aliases(rule: str, observations: list[dict]) -> tuple[str, ...]:
+    """Return bounded evidence cues only after the full alias payload scans clean."""
+    aliases = preference_record.normalize_retrieval_aliases(
+        [item.get("evidence", "") for item in observations], rule=rule
+    )
+    if not aliases:
+        return ()
+    payload = json.dumps(list(aliases), ensure_ascii=False)
+    if not ts.scan_batch_for_secrets_str(payload):
+        _audit({"event": "retrieval_aliases_scanner_blocked", "count": len(aliases)})
+        return ()
+    return aliases
 
 
 def load_rules() -> dict:
@@ -229,6 +249,7 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
         evidence = obs_list[0]["evidence"] if obs_list else ""
         tool = obs_list[0].get("tool", "") if obs_list else ""
         scope = rules.get(name, {}).get("scope") or _scope_for(obs_list)
+        retrieval_aliases = _safe_retrieval_aliases(act["rule"], obs_list)
         # Admission policy: refuse anything outside the controlled taxonomy,
         # empty/short/dup rules, or that doesn't pass minimum-shape checks.
         try:
@@ -245,7 +266,8 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
         record = {"name": name, "category": act["category"], "rule": act["rule"],
                   "confidence": act["confidence"], "observations": act.get("observations", 1),
                   "scope": scope, "needs_review": act.get("needs_review", False),
-                  "record_type": authority.normalize_record_type(act.get("record_type")),
+                   "record_type": authority.normalize_record_type(act.get("record_type")),
+                   "retrieval_aliases": list(retrieval_aliases),
                   "authority_effect": authority.evaluate_rule(
                       act["rule"], scope=scope,
                       declared_effect=act.get("authority_effect")
@@ -254,7 +276,8 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
         if manifest_records is not None:
             existing = rules.get(name)
             pr = preference_record.PreferenceRecord.from_synthesis(
-                act, scope=scope, source_ids=tuple(src_ids),
+                {**act, "retrieval_aliases": retrieval_aliases},
+                scope=scope, source_ids=tuple(src_ids),
                 existing=existing,
             )
             cand = preference_record.to_manifest_candidate(
@@ -420,12 +443,20 @@ def apply_from_manifest(manifest_path: Path) -> int:
 
     for rec in accepted:
         try:
+            retrieval_aliases = preference_record.normalize_retrieval_aliases(
+                rec.get("retrieval_aliases", ()), rule=rec.get("rule", "")
+            )
+            if retrieval_aliases and not ts.scan_batch_for_secrets_str(
+                json.dumps(list(retrieval_aliases), ensure_ascii=False)
+            ):
+                raise ValueError("retrieval aliases failed privacy scanner")
             pr = preference_record.PreferenceRecord.from_synthesis(
                 {"action": "add", "name": rec["id"],
                  "category": rec["category"], "rule": rec["rule"],
                  "confidence": rec.get("confidence", 0.6),
                  "record_type": rec.get("record_type", "unclassified"),
-                 "authority_effect": rec.get("authority_effect", "neutral")},
+                 "authority_effect": rec.get("authority_effect", "neutral"),
+                 "retrieval_aliases": retrieval_aliases},
                 scope=rec["scope"],
                 source_ids=tuple(rec.get("source_ids", [])),
             )
@@ -499,6 +530,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
                 "needs_review": rec.get("needs_review", False),
                 "record_type": rec.get("record_type", "unclassified"),
                 "authority_effect": rec.get("authority_effect", "neutral"),
+                "retrieval_aliases": list(rec.get("retrieval_aliases", [])),
             }
         rp.parent.mkdir(parents=True, exist_ok=True)
         rp.write_text(json.dumps(rules_obj, indent=2), encoding="utf-8")
@@ -524,6 +556,10 @@ def main() -> int:
     mode.add_argument("--backfill", action="store_true", help="process all unlearned sessions")
     mode.add_argument("--incremental", action="store_true", help="only new/modified sessions")
     mode.add_argument("--smoke", action="store_true", help="3 most recent sessions, forced dry-run")
+    mode.add_argument("--compile-core", type=Path, metavar="OUT",
+                      help="compile accepted root preferences into a bounded core artifact")
+    mode.add_argument("--apply-from-manifest", type=Path, default=None,
+                      help="skip LLM mining and atomically apply a reviewed manifest")
     ap.add_argument("--apply", action="store_true", help="write to MemRight (default: dry-run)")
     ap.add_argument("--dry-run", action="store_true", help="explicit no-write preview")
     ap.add_argument("--limit", type=int, default=None, help="max sessions this run")
@@ -539,10 +575,6 @@ def main() -> int:
                     help="write an approval manifest (JSON) to this path; "
                          "the dry-run halts after writing; --apply consumes "
                          "a reviewed manifest via --apply-from-manifest")
-    ap.add_argument("--apply-from-manifest", type=Path, default=None,
-                    help="skip the LLM run entirely; apply the reviewed set "
-                         "from this manifest JSON. The manifest must have "
-                         "each action's status set to 'accepted'")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
 
@@ -551,6 +583,28 @@ def main() -> int:
     # the journal so a stale manifest cannot route to the wrong batch.
     if args.apply_from_manifest:
         return apply_from_manifest(args.apply_from_manifest)
+
+    if args.compile_core:
+        if not ts.scanner_available():
+            print("error: core compilation requires detect-secrets or gitleaks", file=sys.stderr)
+            return 2
+        if args.lane != "local" and not args.allow_external_lane:
+            print("error: external core compiler lane requires --allow-external-lane",
+                  file=sys.stderr)
+            return 2
+        if not adapt_llm.lane_available(args.lane):
+            print(f"error: LLM lane unavailable: {args.lane}", file=sys.stderr)
+            return 2
+        try:
+            result = core_compiler.compile_and_write(
+                load_rules(), args.compile_core, lane=args.lane
+            )
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
+            print(f"error: core compilation failed: {exc}", file=sys.stderr)
+            return 2
+        print(f"adapt: compiled {len(result['rules'])} core rules "
+              f"({result['estimated_tokens']} estimated tokens) -> {args.compile_core}")
+        return 0
 
     dry_run = args.dry_run or args.smoke or not args.apply or bool(args.manifest)
     limit = 3 if args.smoke else args.limit

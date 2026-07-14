@@ -38,11 +38,13 @@ import authority
 
 # ----- Gate 2 contract surface -----
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 KIND = "preference"
 PREFIX = "adapt"
 HASH_LEN = 10
 NUL = "\x00"
+MAX_ALIAS_CHARS = 320
+MAX_ALIASES = 3
 
 # Frozen-set: the v2 plan treats this list as the contract fields.
 REQUIRED_FIELDS: tuple[str, ...] = (
@@ -61,6 +63,7 @@ REQUIRED_FIELDS: tuple[str, ...] = (
     "record_type",
     "authority_effect",
     "status",
+    "retrieval_aliases",
 )
 
 # Status values used inside the record itself. The manifest surface uses the
@@ -88,6 +91,31 @@ def normalize_rule(rule: str) -> str:
     s = _WS_RE.sub(" ", s)
     s = _TRAILING_PUNCT_RE.sub("", s)
     return s
+
+
+def normalize_retrieval_aliases(values, *, rule: str = "",
+                                max_chars: int = MAX_ALIAS_CHARS,
+                                max_aliases: int = MAX_ALIASES) -> tuple[str, ...]:
+    """Deduplicate and bound sanitized source-language retrieval cues."""
+    aliases: list[str] = []
+    seen: set[str] = set()
+    rule_norm = normalize_rule(rule)
+    used = 0
+    for value in values or ():
+        text = _WS_RE.sub(" ", str(value or "")).strip()
+        norm = normalize_rule(text)
+        if not text or not norm or norm == rule_norm or norm in seen:
+            continue
+        remaining = max_chars - used
+        if remaining <= 0 or len(aliases) >= max_aliases:
+            break
+        text = text[:remaining].rstrip()
+        if not text:
+            break
+        aliases.append(text)
+        seen.add(norm)
+        used += len(text)
+    return tuple(aliases)
 
 
 def slug_from_rule(rule: str, max_words: int = 4) -> str:
@@ -144,6 +172,13 @@ class PreferenceRecord:
     record_type: str = "unclassified"
     authority_effect: str = "neutral"
     status: str = "accepted"
+    retrieval_aliases: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "source_ids", tuple(self.source_ids))
+        object.__setattr__(self, "retrieval_aliases", normalize_retrieval_aliases(
+            self.retrieval_aliases, rule=self.rule
+        ))
 
     def to_dict(self) -> dict:
         return {
@@ -162,6 +197,7 @@ class PreferenceRecord:
             "record_type": self.record_type,
             "authority_effect": self.authority_effect,
             "status": self.status,
+            "retrieval_aliases": list(self.retrieval_aliases),
         }
 
     @classmethod
@@ -218,6 +254,10 @@ class PreferenceRecord:
             record_type=record_type,
             authority_effect=authority_effect,
             status=action.get("status", "accepted"),
+            retrieval_aliases=normalize_retrieval_aliases(
+                action.get("retrieval_aliases", (existing or {}).get("retrieval_aliases", ())),
+                rule=rule,
+            ),
         )
 
 
@@ -241,6 +281,10 @@ def to_memright_content(record: PreferenceRecord) -> str:
     rows read identically.
     """
     today = dt.date.today().isoformat()
+    aliases = (
+        f"**Trigger phrases:** {' | '.join(record.retrieval_aliases)}\n"
+        if record.retrieval_aliases else ""
+    )
     return (
         f"**[adapt/{record.category}]** — {record.rule} "
         f"Confidence: {record.confidence:.2f} "
@@ -248,6 +292,7 @@ def to_memright_content(record: PreferenceRecord) -> str:
         f"{str(record.needs_review).lower()}, updated {today})\n"
         f"**Why:** preference record; id={record.id}, evidence_count={record.evidence_count}\n"
         f"**Record:** type={record.record_type}, authority_effect={record.authority_effect}\n"
+        f"{aliases}"
         f"**How to apply:** {application_guidance(record.record_type)}\n"
     )
 
@@ -276,6 +321,7 @@ def to_manifest_candidate(record: PreferenceRecord,
         "evidence_count": record.evidence_count,
         "evidence_excerpt": evidence_excerpt,
         "source_ids": sorted(record.source_ids),
+        "retrieval_aliases": list(record.retrieval_aliases),
         "human_note": human_note,
         "payload_sha256": payload_sha256,
     }

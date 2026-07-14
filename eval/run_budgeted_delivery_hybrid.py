@@ -100,7 +100,7 @@ def analyze(cases: list[dict], actor: dict, grades: dict, core_chars: int,
     runner.write_json(out / "analysis.json", result)
     lines = ["# Budgeted Adapt hybrid", "",
              f"- grader: {grades['grader']}",
-             f"- core: 13 rules, {core_chars} chars, ~{core_tokens} tokens", "",
+             f"- core: {core_records} rules, {core_chars} chars, ~{core_tokens} tokens", "",
              "| Arm | Adherence | Full | Correct | Intrusion |",
              "|---|---:|---:|---:|---:|"]
     for arm in arms:

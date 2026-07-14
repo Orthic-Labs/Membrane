@@ -9,7 +9,7 @@
   "properties": {
     "schema_version": {
       "type": "string",
-      "enum": ["1.0.0", "1.1.0"]
+      "enum": ["1.0.0", "1.1.0", "1.2.0"]
     },
     "batch_id": {
       "type": "string",
@@ -123,6 +123,12 @@
           "source_ids": {
             "type": "array",
             "items": { "type": "string" }
+          },
+          "retrieval_aliases": {
+            "type": "array",
+            "maxItems": 3,
+            "items": { "type": "string", "minLength": 1, "maxLength": 320 },
+            "description": "Bounded, scanner-clean source-language cues embedded for retrieval only."
           },
           "source_file_hashes": {
             "type": "array",

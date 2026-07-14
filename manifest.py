@@ -46,6 +46,7 @@ IMMUTABLE_FIELDS = (
     "record_type",
     "authority_effect",
     "authority_manifest_sha256",
+    "retrieval_aliases",
 )
 
 
@@ -106,6 +107,12 @@ def candidate_payload(record: dict) -> dict:
         payload["authority_effect"] = record["authority_effect"]
     if "authority_manifest_sha256" in record:
         payload["authority_manifest_sha256"] = record["authority_manifest_sha256"]
+    if "retrieval_aliases" in record:
+        payload["retrieval_aliases"] = sorted({
+            " ".join(str(value).split())
+            for value in (record.get("retrieval_aliases") or [])
+            if str(value).strip()
+        })
     return payload
 
 
