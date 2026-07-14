@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "D:/Claude/tools/pipelines/memory/adapt/preference-manifest.schema.json",
-  "title": "Adapt preference manifest: human-reviewed adaptation candidates",
-  "description": "Output of `adapt --manifest`, consumed by `adapt --apply-from-manifest`. Each record is explicit accepted/rejected; payload_sha256 detects content edits; the schema refuses pending statuses on apply.",
+  "title": "Adapt preference manifest: adjudicated adaptation candidates",
+  "description": "Output of `adapt --manifest`, resolved by automated calibrated-primary adjudication, and consumed by `adapt --apply-from-manifest`. Each record is explicit accepted/rejected; payload_sha256 detects content edits; the schema refuses pending statuses on apply.",
   "type": "object",
   "required": ["schema_version", "batch_id", "source_session_ids", "created_at", "records"],
   "additionalProperties": false,
@@ -105,7 +105,7 @@
           "status": {
             "type": "string",
             "enum": ["pending", "accepted", "rejected"],
-            "description": "Reviewer decision. 'pending' is the emit-time default; apply_time_validate (apply-time) refuses pending."
+            "description": "Adjudication decision. 'pending' is the emit-time default; apply_time_validate (apply-time) refuses pending."
           },
           "payload_sha256": {
             "type": "string",

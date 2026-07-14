@@ -230,12 +230,12 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
     schema-shaped candidate (Gate 1a manifest contract) keyed on a stable
     ``PreferenceRecord`` id with a ``payload_sha256`` over the immutable
     fields (Gate 1b hardening: source_file_hashes + evidence_ids are
-    included). Reviewers flip status to accepted/rejected; apply refuses edits.
+    included). Automated adjudication resolves status; apply refuses content edits.
 
     ``source_session_ids`` (defaults to []) populates each candidate's
     ``source_ids`` so manifest apply can verify the rule's provenance.
     ``source_file_hashes`` (session_id → sha256) populates the
-    ``source_file_hashes[]`` block so reviewers can pinpoint the transcript
+    ``source_file_hashes[]`` block so audits can pinpoint the transcript
     the rule was mined from.
     """
     changed = 0
@@ -647,9 +647,10 @@ def main() -> int:
         print("error: first adapt apply requires --first-run-ok after smoke/dry-run review",
               file=sys.stderr)
         return 2
-    sessions = ts.new_sessions(state, limit=limit)
     if args.smoke:
-        sessions = sessions[-3:]
+        sessions = ts.new_sessions(state, limit=3, newest=True)
+    else:
+        sessions = ts.new_sessions(state, limit=limit)
     if not sessions:
         if not args.quiet:
             print("adapt: no new sessions")
@@ -756,8 +757,7 @@ def main() -> int:
     for o in observations:
         obs_by_cat[o["category"]].append(o)
 
-    # Manifest mode: emit a review file then halt. The operator flips each
-    # entry's `status` to accepted / rejected and runs --apply-from-manifest.
+    # Manifest mode: emit immutable candidates for automated adjudication.
     if args.manifest:
         manifest_records: list[dict] = []
         source_session_ids = [s.session_id for s in sessions]
@@ -784,6 +784,11 @@ def main() -> int:
                     r["human_note"] = (
                         f"admission-rejected: {raw['_rejection_reason']}"
                     )
+        if not schema_records:
+            if args.manifest.exists():
+                args.manifest.unlink()
+            print("adapt: no manifest written; synthesis produced no candidates")
+            return 0
         args.manifest.parent.mkdir(parents=True, exist_ok=True)
         body = {
             "schema_version": preference_record.SCHEMA_VERSION,
@@ -802,9 +807,8 @@ def main() -> int:
         print(f"adapt: wrote {args.manifest} "
               f"({accepted} admissible / {rejected} admission-rejected / "
               f"{pending} pending review)")
-        print("adapt: review each record; flip status from 'pending' to "
-              f"accepted/rejected; re-run with --apply-from-manifest "
-              f"{args.manifest} to write only the accepted set.")
+        print("adapt: resolve pending records with adjudicate_manifest.py; "
+              "apply only the resulting content-hashed manifest.")
         return 0
 
     delta, ok_all = apply_actions(actions, obs_by_cat, rules, ts.STATE_DIR, dry_run,

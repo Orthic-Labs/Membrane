@@ -13,7 +13,7 @@ silently altered content from reaching MemRight.
 
 Helpers:
   - ``candidate_payload(record)`` — the immutable fields that ``payload_sha256``
-    is computed over. If the reviewer edits anything in this set, the hash
+    is computed over. If anything edits this set after emission, the hash
     no longer matches and apply refuses.
   - ``payload_sha256(record)`` — the canonical hash.
   - ``load_and_validate(path)`` — schema + invariant checks.
@@ -32,7 +32,7 @@ SCHEMA_PATH = Path(__file__).resolve().parent / "preference-manifest.schema.json
 # ----- Immutable candidate payload -----
 
 # These fields are part of the contract's "immutable until regenerated" set.
-# Reviewers can flip status, add human_note, but NOT edit these.
+# Adjudication can flip status and add an audit note, but cannot edit these.
 IMMUTABLE_FIELDS = (
     "id",
     "rule",

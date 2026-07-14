@@ -330,16 +330,21 @@ def discover() -> list[tuple[str, Path]]:
     return found
 
 
-def new_sessions(state: dict, limit: int | None = None) -> list[Session]:
+def new_sessions(state: dict, limit: int | None = None, *, newest: bool = False) -> list[Session]:
     """Parse sessions not yet learned (or modified since). Excluded/empty ones are
     marked learned immediately so they are never re-parsed."""
     learned = state.setdefault("learned", {})
     out: list[Session] = []
+    pending: list[tuple[float, str, Path]] = []
     for tool, path in discover():
         key = path.stem
         mtime = path.stat().st_mtime
         if learned.get(tool, {}).get(key, -1.0) >= mtime:
             continue
+        pending.append((mtime, tool, path))
+    pending.sort(key=lambda item: item[0], reverse=newest)
+    for mtime, tool, path in pending:
+        key = path.stem
         sess = parse_claude_session(path) if tool == "claude-code" else parse_codex_session(path)
         if sess is None or scope_excluded(sess.cwd):
             learned.setdefault(tool, {})[key] = mtime

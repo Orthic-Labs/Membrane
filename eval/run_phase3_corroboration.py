@@ -52,8 +52,10 @@ FLAGS = {
 HARD_FLAGS = {"permission_expanding", "authority_conflict"}
 MODEL_SPECS = {
     "minimax-m3-direct": ("minimax", "MiniMax-M3"),
+    "deepseek-v4-pro-nim": ("nim", "deepseek-ai/deepseek-v4-pro"),
     "kimi-k2.6-nim": ("nim", "moonshotai/kimi-k2.6"),
     "nemotron-super-nim": ("nim", "nvidia/nemotron-3-super-120b-a12b"),
+    "qwen3.6-27b-groq": ("groq", "qwen/qwen3.6-27b"),
     "gpt-oss-120b-groq": ("groq", "openai/gpt-oss-120b"),
 }
 
@@ -119,10 +121,16 @@ def build_cases(
 
 def parse_verdicts(raw: str, expected_ids: set[str]) -> dict[str, dict]:
     text = re.sub(r"```(?:json)?", "", raw)
-    start, end = text.find("["), text.rfind("]")
-    if start < 0 or end <= start:
-        raise ValueError("response does not contain a JSON array")
-    data = json.loads(text[start:end + 1])
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if lines and all(line.startswith("{") and line.endswith("}") for line in lines):
+        # MiniMax sometimes honors the object schema but emits strict JSONL.
+        # Exact IDs below still refuse omissions or extra decisions.
+        data = [json.loads(line) for line in lines]
+    else:
+        start, end = text.find("["), text.rfind("]")
+        if start < 0 or end <= start:
+            raise ValueError("response does not contain a JSON array or JSONL objects")
+        data = json.loads(text[start:end + 1])
     if not isinstance(data, list):
         raise ValueError("response is not a JSON array")
     parsed: dict[str, dict] = {}
@@ -343,8 +351,15 @@ def _call_model(model_id: str, system: str, user: str, max_tokens: int) -> str:
         import yaml
         from providers import build_provider
         config = yaml.safe_load((JURY_DIR / "models.yaml").read_text(encoding="utf-8"))
+        provider_config = dict(config["providers"][provider_name])
+        if provider_name == "groq":
+            # Adapt classification needs only compact JSON. Keep this override
+            # local so ordinary Qwen jury calls retain their reasoning mode.
+            extra = dict(provider_config.get("model_extra_body") or {})
+            extra["qwen/qwen3.6-27b"] = {"reasoning_effort": "none"}
+            provider_config["model_extra_body"] = extra
         _PROVIDERS[provider_name] = build_provider(
-            provider_name, config["providers"][provider_name]
+            provider_name, provider_config
         )
     return _PROVIDERS[provider_name].call(model, system, user, max_tokens=max_tokens)
 
