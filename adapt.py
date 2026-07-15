@@ -699,6 +699,72 @@ def apply_from_manifest(manifest_path: Path) -> int:
     return 0
 
 
+def add_rule(rule_text: str, category: str, *, record_type: str = "operational_playbook",
+             scope: str = "D--Claude", dry_run: bool = False) -> int:
+    """Operator-authored single-rule add — the lightweight path that skips mining.
+
+    Adapt's discover->extract(LLM)->synthesize(LLM) pipeline exists to pull rules
+    out of MESSY transcripts. When the operator already has one clean rule, there is
+    nothing to mine — so this goes straight to the SAME admission gate (category,
+    non-empty, dedup, min-length, authority/permission-expansion quarantine) and, if
+    admitted, writes the MemRight row + local rules state + digest.
+
+    Default record_type is `operational_playbook`: a domain gotcha surfaces via
+    query-relevant recall (cos>=0.40) but stays OUT of the always-on compiled core.
+    Pass record_type='standing_preference' ONLY for a truly universal rule that must
+    apply to every prompt (then run --compile-core to fold it into the core).
+    """
+    rule_text = (rule_text or "").strip()
+    cat = admission.normalize_category(category)
+    rtype = authority.normalize_record_type(record_type)
+    rid = preference_record.derive_id(scope, cat, rule_text)
+
+    existing = load_rules()
+    canonical = set(existing.keys())
+    for row in existing.values():
+        if isinstance(row, dict) and row.get("id"):
+            canonical.add(row["id"])
+
+    candidate = {"name": rid, "rule": rule_text, "category": cat, "scope": scope,
+                 "authority_effect": "neutral"}
+    admitted, why = admission.admit(candidate, canonical_rules=canonical)
+    if not admitted:
+        print(f"rejected: {why}  (category={cat}, id={rid})", file=sys.stderr)
+        return 1
+
+    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    record = {
+        "schema_version": preference_record.SCHEMA_VERSION,
+        "id": rid, "kind": "add", "rule": rule_text, "category": cat, "scope": scope,
+        "confidence": 0.9, "needs_review": False, "observations": 1, "evidence_count": 1,
+        "source_ids": [rid], "created_at": now, "updated_at": now,
+        "record_type": rtype, "authority_effect": "neutral", "status": "accepted",
+        "retrieval_aliases": [],
+    }
+
+    core_note = ("  -> in the always-on core after --compile-core" if rtype == "standing_preference"
+                 else "  -> recall-gated (surfaces on a query match); NOT always-on")
+    if dry_run:
+        print(f"[dry-run] would add {rid}  type={rtype}{core_note}")
+        return 0
+
+    body = rule_body(record, evidence="operator-added", tool="operator")
+    with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
+        tmp.write(body)
+        tmp_path = tmp.name
+    ok = _run_memright(["put", rid, "--scope", scope, "--file", tmp_path])
+    Path(tmp_path).unlink(missing_ok=True)
+    if not ok:
+        return 1
+
+    existing[rid] = record
+    save_rules(existing)
+    _audit({"action": "operator_add", **record})
+    write_digest(existing, _digest_path())
+    print(f"added {rid}  type={rtype}{core_note}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     mode = ap.add_mutually_exclusive_group(required=True)
@@ -709,6 +775,17 @@ def main() -> int:
                       help="compile accepted root preferences into a bounded core artifact")
     mode.add_argument("--apply-from-manifest", type=Path, default=None,
                       help="skip LLM mining and atomically apply a reviewed manifest")
+    mode.add_argument("--add-rule", metavar="RULE", default=None,
+                      help="operator-authored single-rule add (skips LLM mining, still admission-gated); "
+                           "requires --category; default record-type is operational_playbook (recall-gated)")
+    ap.add_argument("--category", default=None,
+                    help="category for --add-rule (workflow, verification, safety, architecture, "
+                         "tooling, code-style, documentation, model-routing)")
+    ap.add_argument("--record-type", default="operational_playbook",
+                    choices=("operational_playbook", "standing_preference", "locked_decision",
+                             "episodic_fact", "unclassified"),
+                    help="record type for --add-rule; standing_preference reaches the always-on core")
+    ap.add_argument("--scope", default="D--Claude", help="workspace scope for --add-rule")
     ap.add_argument("--apply", action="store_true", help="write to MemRight (default: dry-run)")
     ap.add_argument("--dry-run", action="store_true", help="explicit no-write preview")
     ap.add_argument("--limit", type=int, default=None, help="max sessions this run")
@@ -736,6 +813,14 @@ def main() -> int:
     # the journal so a stale manifest cannot route to the wrong batch.
     if args.apply_from_manifest:
         return apply_from_manifest(args.apply_from_manifest)
+
+    if args.add_rule is not None:
+        if not args.category:
+            print("error: --add-rule requires --category", file=sys.stderr)
+            return 2
+        # Default is dry-run like the rest of the CLI; --apply writes.
+        return add_rule(args.add_rule, args.category, record_type=args.record_type,
+                        scope=args.scope, dry_run=not args.apply)
 
     if args.compile_core:
         if not ts.scanner_available():

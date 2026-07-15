@@ -2691,3 +2691,46 @@ def test_curation_same_scope_clusters_by_scope_prefix():
 
 
 import pytest  # noqa: E402
+
+
+def test_add_rule_valid_dry_run(tmp_path, monkeypatch):
+    """Operator single-rule add: a valid rule passes admission and previews clean."""
+    import adapt as _adapt
+    monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
+    rc = _adapt.add_rule(
+        "Always inspect free disk space before kicking off a large multi-gigabyte build here.",
+        "tooling", dry_run=True,
+    )
+    assert rc == 0
+
+
+def test_add_rule_default_is_recall_gated_not_core(tmp_path, monkeypatch):
+    """Default record_type keeps a domain gotcha OUT of the always-on compiled core."""
+    import adapt as _adapt
+    import core_compiler
+    monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
+    # Build the record the way add_rule would (default record_type), and confirm the
+    # core compiler does NOT select it (only standing_preference reaches the core).
+    row = {
+        "id": "adapt-tooling-x", "rule": "some domain gotcha that is long enough to pass admission",
+        "record_type": "operational_playbook", "scope": "D--Claude", "status": "accepted",
+    }
+    assert core_compiler._sources({row["id"]: row}) == []
+    row_core = {**row, "id": "adapt-workflow-y", "record_type": "standing_preference"}
+    assert len(core_compiler._sources({row_core["id"]: row_core})) == 1
+
+
+def test_add_rule_rejects_too_short(tmp_path, monkeypatch):
+    import adapt as _adapt
+    monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
+    assert _adapt.add_rule("use wincred", "tooling", dry_run=True) == 1
+
+
+def test_add_rule_rejects_unknown_category(tmp_path, monkeypatch):
+    import adapt as _adapt
+    monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
+    rc = _adapt.add_rule(
+        "This is a perfectly long durable rule but the category is not in the taxonomy at all.",
+        "not-a-real-category", dry_run=True,
+    )
+    assert rc == 1
