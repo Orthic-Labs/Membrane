@@ -42,11 +42,52 @@ import manifest  # noqa: E402
 import authority  # noqa: E402
 import core_compiler  # noqa: E402
 import rollback  # noqa: E402
+import cross_machine  # noqa: E402
+import adapt_persistence  # noqa: E402
 
 RULES_FILE = ts.STATE_DIR / "rules.json"
 DIGEST_FILE = ts.STATE_DIR / "adapt-digest.md"
 WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 MEMRIGHT_MUTATION_TIMEOUT_SECONDS = 150
+
+
+def _installation_file() -> Path:
+    override = os.environ.get("ADAPT_INSTALLATION_FILE", "").strip()
+    if override:
+        return Path(override)
+    return WORKSPACE_ROOT / "tools/.cache/memory/installation.json"
+
+
+def _multiwriter_context(
+    *, manifest_body: dict | None = None, required: bool = False
+) -> tuple[str, dict] | None:
+    """Load the local UUID and canonical Adapt pool, or stay legacy before setup."""
+    identity_path = _installation_file()
+    if not identity_path.is_file():
+        if required:
+            raise cross_machine.CrossMachineAdaptError(
+                "multiwriter manifest requires a local schema-v2 installation identity"
+            )
+        return None
+    installation_id = cross_machine.load_installation_id(identity_path)
+    db_path = rollback._discover_db_path(manifest_body or {})
+    if db_path is None:
+        raise cross_machine.CrossMachineAdaptError(
+            "canonical MemRight DB is unavailable"
+        )
+    rules = cross_machine.load_canonical_rules(db_path)
+    return installation_id, rules
+
+
+def _qualified_session_sources(
+    session_refs: list[dict], installation_id: str
+) -> list[str]:
+    return [
+        cross_machine.qualify_source_session(
+            installation_id, ref["tool"], ref["session_id"]
+        )
+        for ref in session_refs
+    ]
 
 
 def _rules_path() -> Path:
@@ -80,8 +121,15 @@ def _run_memright(args: list[str]) -> bool:
               file=sys.stderr)
         return False
     try:
+        command = list(args)
+        if command and command[0] == "put" and "--artifact-family" not in command:
+            command.extend([
+                "--artifact-family", "adapt",
+                "--producer", "adapt",
+                "--record-type", "preference",
+            ])
         res = subprocess.run(
-            [bin_path, *args], capture_output=True, text=True,
+            [bin_path, *command], capture_output=True, text=True,
             timeout=MEMRIGHT_MUTATION_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -523,18 +571,41 @@ def apply_from_manifest(manifest_path: Path) -> int:
         return 2
     j_sessions = sorted(discovered["sessions"])
     m_sessions = sorted(m["source_session_ids"])
-    if j_sessions != m_sessions:
-        print("error: source_session_ids mismatch journal discovered sessions",
-              file=sys.stderr)
-        print(f"  journal:  {j_sessions}", file=sys.stderr)
-        print(f"  manifest: {m_sessions}", file=sys.stderr)
-        return 2
     session_refs = discovered.get("session_refs") or [
         {"session_id": sid, "tool": "claude-code", "path_stem": sid, "mtime": 0}
         for sid in j_sessions
     ]
-    if sorted(ref.get("session_id") for ref in session_refs) != m_sessions:
-        print("error: journal session_refs mismatch manifest sessions", file=sys.stderr)
+    if sorted(ref.get("session_id") for ref in session_refs) != j_sessions:
+        print("error: journal session_refs mismatch discovered sessions", file=sys.stderr)
+        return 2
+
+    multiwriter = "installation_id" in m or "canonical_pool_sha256" in m
+    multiwriter_context = None
+    try:
+        if multiwriter:
+            multiwriter_context = _multiwriter_context(
+                manifest_body=m, required=True
+            )
+            assert multiwriter_context is not None
+            installation_id, canonical_rules = multiwriter_context
+            expected_sessions = sorted(
+                _qualified_session_sources(session_refs, installation_id)
+            )
+            cross_machine.validate_multiwriter_binding(
+                m,
+                installation_id=installation_id,
+                canonical_rules=canonical_rules,
+            )
+        else:
+            expected_sessions = j_sessions
+    except (cross_machine.CrossMachineAdaptError, KeyError) as exc:
+        print(f"error: refusing multiwriter manifest: {exc}", file=sys.stderr)
+        return 2
+    if expected_sessions != m_sessions:
+        print("error: source_session_ids mismatch journal installation binding",
+              file=sys.stderr)
+        print(f"  journal:  {expected_sessions}", file=sys.stderr)
+        print(f"  manifest: {m_sessions}", file=sys.stderr)
         return 2
 
     accepted = manifest.accepted_records(m)
@@ -579,12 +650,13 @@ def apply_from_manifest(manifest_path: Path) -> int:
             "path": str(safe_point)})
     print(f"  safepoint={safe_point}")
 
-    # Atomic write loop: write all accepted, then advance state.
+    # Parse the complete accepted set before any mutation.
     out_dir = ts.STATE_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     tmp_paths: list[Path] = []
     written: list[tuple[str, str]] = []
     failed: list[tuple[str, str]] = []
+    prepared: list[preference_record.PreferenceRecord] = []
 
     # Cheap stub class: ts.mark_learned reads session_id, tool, path.stem, mtime.
     class _SessStub:
@@ -604,28 +676,56 @@ def apply_from_manifest(manifest_path: Path) -> int:
             ):
                 raise ValueError("retrieval aliases failed privacy scanner")
             pr = preference_record.from_manifest_candidate(
-                {**rec, "retrieval_aliases": retrieval_aliases}
+                {**rec, "retrieval_aliases": retrieval_aliases},
+                now=m["created_at"],
             )
         except (KeyError, ValueError) as exc:
             failed.append((rec["id"], f"contract-invalid: {exc}"))
             continue
-        body = preference_record.to_memright_content(pr)
-        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False,
-                                         encoding="utf-8",
-                                         dir=str(out_dir)) as tmp:
-            tmp.write(body)
-            tmp_path = tmp.name
-        tmp_paths.append(Path(tmp_path))
-        ok = _run_memright(["put", pr.id, "--scope", pr.scope, "--file", tmp_path])
-        if ok:
-            written.append((pr.id, pr.scope))
-            _audit({"event": "manifest_applied", "id": pr.id,
-                    "scope": pr.scope, "manifest": str(manifest_path)})
+        prepared.append(pr)
+
+    if not failed and multiwriter and prepared:
+        assert multiwriter_context is not None
+        installation_id, _canonical_rules = multiwriter_context
+        try:
+            adapt_persistence.persist_manifest_batch(
+                prepared,
+                manifest_batch_id=batch_id,
+                installation_id=installation_id,
+            )
+        except adapt_persistence.AdaptPersistenceError as exc:
+            failed.append((batch_id, str(exc)))
+            _audit({"event": "manifest_batch_apply_failed", "batch_id": batch_id,
+                    "error": str(exc)})
         else:
-            failed.append((pr.id, "memright put failed"))
-            _audit({"event": "manifest_apply_failed", "id": pr.id,
-                    "scope": pr.scope})
-            break
+            written.extend((pr.id, pr.scope) for pr in prepared)
+            for pr in prepared:
+                _audit({"event": "manifest_applied", "id": pr.id,
+                        "scope": pr.scope, "manifest": str(manifest_path),
+                        "transport": "atomic_batch"})
+
+    # Legacy manifests remain compatible until every installation has schema-v2
+    # identity. Their compensating rollback path is intentionally not used by
+    # multiwriter manifests, whose resident service transaction is all-or-nothing.
+    if not failed and not multiwriter:
+        for pr in prepared:
+            body = preference_record.to_memright_content(pr)
+            with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False,
+                                             encoding="utf-8",
+                                             dir=str(out_dir)) as tmp:
+                tmp.write(body)
+                tmp_path = tmp.name
+            tmp_paths.append(Path(tmp_path))
+            ok = _run_memright(["put", pr.id, "--scope", pr.scope, "--file", tmp_path])
+            if ok:
+                written.append((pr.id, pr.scope))
+                _audit({"event": "manifest_applied", "id": pr.id,
+                        "scope": pr.scope, "manifest": str(manifest_path)})
+            else:
+                failed.append((pr.id, "memright put failed"))
+                _audit({"event": "manifest_apply_failed", "id": pr.id,
+                        "scope": pr.scope})
+                break
 
     # Cleanup tmp files regardless of outcome.
     for tp in tmp_paths:
@@ -635,18 +735,19 @@ def apply_from_manifest(manifest_path: Path) -> int:
             pass
 
     if failed:
-        # Roll back partial writes via the resident service.
-        for w, scope in written:
-            try:
-                qualified = f"{scope}/{w}"
-                if _run_memright(["delete", qualified]):
-                    _audit({"event": "manifest_rollback_deleted", "id": qualified})
-                else:
-                    print(f"warn: failed to rollback {qualified}", file=sys.stderr)
-            except OSError as exc:
-                print(f"warn: failed to rollback {scope}/{w}: {exc}", file=sys.stderr)
-        print(f"error: {len(failed)} put(s) failed; rolled back "
-              f"{len(written)} write(s); refusing state advance",
+        if not multiwriter:
+            # Roll back partial legacy writes via the resident service.
+            for w, scope in written:
+                try:
+                    qualified = f"{scope}/{w}"
+                    if _run_memright(["delete", qualified]):
+                        _audit({"event": "manifest_rollback_deleted", "id": qualified})
+                    else:
+                        print(f"warn: failed to rollback {qualified}", file=sys.stderr)
+                except OSError as exc:
+                    print(f"warn: failed to rollback {scope}/{w}: {exc}", file=sys.stderr)
+        print(f"error: {len(failed)} write(s) failed; rolled back "
+              f"{len(written) if not multiwriter else 0} write(s); refusing state advance",
               file=sys.stderr)
         for name, why in failed:
             print(f"  - {name}: {why}", file=sys.stderr)
@@ -938,8 +1039,17 @@ def main() -> int:
     for index, observation in enumerate(observations, 1):
         observation["observation_id"] = f"obs-{index:06d}"
 
-    # ----- Stage 2: synthesize ONCE with the full existing-rules list -----
-    rules = load_rules()
+    # ----- Stage 2: synthesize ONCE with the full canonical existing-rules list -----
+    try:
+        multiwriter_context = _multiwriter_context()
+    except cross_machine.CrossMachineAdaptError as exc:
+        print(f"error: canonical Adapt context unavailable: {exc}", file=sys.stderr)
+        return 2
+    if multiwriter_context is not None:
+        installation_id, rules = multiwriter_context
+    else:
+        installation_id = None
+        rules = load_rules()
     existing_rules_for_synth = [
         {"name": r["name"], "category": r["category"], "rule": r["rule"],
          "confidence": r.get("confidence", 0.6), "observations": r.get("observations", 1)}
@@ -969,6 +1079,14 @@ def main() -> int:
               "not advancing state", file=sys.stderr)
         return 2
 
+    if installation_id is not None and args.apply and not args.manifest:
+        print(
+            "error: schema-v2 installations apply mined preferences only through "
+            "--manifest and --apply-from-manifest",
+            file=sys.stderr,
+        )
+        return 2
+
     # ----- Stage 3: apply with admission gating -----
     authority_snapshot = authority.build_manifest(WORKSPACE_ROOT)
     obs_by_cat = defaultdict(list)
@@ -978,9 +1096,25 @@ def main() -> int:
     # Manifest mode: emit immutable candidates for automated adjudication.
     if args.manifest:
         manifest_records: list[dict] = []
-        source_session_ids = [s.session_id for s in sessions]
+        if installation_id is not None:
+            source_map = {
+                s.session_id: cross_machine.qualify_source_session(
+                    installation_id, s.tool, s.session_id
+                )
+                for s in sessions
+            }
+            source_session_ids = [source_map[s.session_id] for s in sessions]
+            for observation in observations:
+                raw_source = observation.get("session_id")
+                if raw_source in source_map:
+                    observation["session_id"] = source_map[raw_source]
+        else:
+            source_map = {s.session_id: s.session_id for s in sessions}
+            source_session_ids = [s.session_id for s in sessions]
         # Gate 1b: per-session transcript hashes for reviewer cross-reference.
-        source_file_hashes = {s.session_id: s.file_sha256() for s in sessions}
+        source_file_hashes = {
+            source_map[s.session_id]: s.file_sha256() for s in sessions
+        }
         apply_actions(actions, obs_by_cat, rules, ts.STATE_DIR, dry_run,
                       manifest_records=manifest_records,
                       source_session_ids=source_session_ids,
@@ -1012,6 +1146,11 @@ def main() -> int:
             "source_session_ids": source_session_ids,
             "records": schema_records,
         }
+        if installation_id is not None:
+            body["installation_id"] = installation_id
+            body["canonical_pool_sha256"] = cross_machine.canonical_pool_sha256(
+                rules
+            )
         args.manifest.write_text(json.dumps(body, indent=2, ensure_ascii=False),
                                 encoding="utf-8")
         accepted = sum(1 for r in schema_records if r["status"] == "accepted")

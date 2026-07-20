@@ -11,7 +11,9 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(r"D:\Claude")
+ROOT = Path(
+    os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
+).expanduser().resolve()
 ADAPT = ROOT / "tools/pipelines/memory/adapt"
 sys.path.insert(0, str(ADAPT))
 

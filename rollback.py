@@ -24,8 +24,8 @@ The captured shape is::
 
 Usage::
 
-    py -3.11 tools/pipelines/memory/adapt/rollback.py create \
-        --manifest path/to/manifest.json --db D:/Claude/.cache/memright/.../memright.db
+    python tools/pipelines/memory/adapt/rollback.py create \
+        --manifest path/to/manifest.json --db /path/to/memright-engine.db
 
     py -3.11 tools/pipelines/memory/adapt/rollback.py revert path/to/safepoint.json
                                       # default: DRY RUN
@@ -59,7 +59,7 @@ from pathlib import Path
 
 import preference_record
 
-WS = Path("D:/Claude")
+WS = Path(os.environ.get("WORKSPACE_ROOT", Path(__file__).resolve().parents[4]))
 STATE_DIR = Path.home() / ".claude" / "adapt"
 STATE_FILE = STATE_DIR / "state.json"
 RULES_FILE = STATE_DIR / "rules.json"
@@ -272,14 +272,10 @@ def _discover_db_path(manifest: dict) -> Path | None:
                 return Path(p)
         except Exception:
             pass
-    # Fallback to the canonical Mac/Windows location.
-    candidates = [
-        WS / "tools" / ".cache" / "memory" / "memright-engine.db",
-        Path("/Users/adrdsouza/claude/tools/.cache/memory/memright-engine.db"),
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
+    # The repo-relative cache location is portable to every installation.
+    candidate = WS / "tools" / ".cache" / "memory" / "memright-engine.db"
+    if candidate.exists():
+        return candidate
     return None
 
 

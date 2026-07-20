@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Sequence
 
 
-WS = Path("D:/Claude")
+WS = Path(
+    os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
+).expanduser().resolve()
 ADAPT_DIR = WS / "tools/pipelines/memory/adapt"
 EVAL_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ADAPT_DIR))

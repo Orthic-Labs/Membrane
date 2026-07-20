@@ -6,6 +6,7 @@ import argparse
 import copy
 import hashlib
 import json
+import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -122,7 +123,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--results", type=Path, required=True)
     parser.add_argument("--commandcode-corpus", type=Path, required=True)
-    parser.add_argument("--workspace-root", type=Path, default=Path("D:/Claude"))
+    parser.add_argument(
+        "--workspace-root",
+        type=Path,
+        default=Path(
+            os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
+        ).expanduser().resolve(),
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 

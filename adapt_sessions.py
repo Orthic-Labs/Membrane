@@ -214,6 +214,7 @@ def text_excluded(text: str) -> bool:
 class Turn:
     text: str
     scope: str
+    observed_at: str | None = None
 
 
 @dataclass
@@ -274,7 +275,9 @@ def _clean(text: str, stats: ParseStats) -> str:
     return redact(text)
 
 
-def parse_claude_session(path: Path) -> Session | None:
+def parse_claude_session(
+    path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
+) -> Session | None:
     turns: list[Turn] = []
     stats = ParseStats()
     cwd, sid = "", path.stem
@@ -300,11 +303,15 @@ def parse_claude_session(path: Path) -> Session | None:
             if _keep_turn(text):
                 cleaned = _clean(text, stats)
                 if cleaned is not None:
-                    turns.append(Turn(cleaned, scope_for_cwd(turn_cwd)))
+                    turns.append(Turn(
+                        cleaned,
+                        scope_for_cwd(turn_cwd),
+                        obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
+                    ))
                     stats.kept_turns += 1
             else:
                 stats.dropped_turns += 1
-            if len(turns) >= MAX_TURNS_PER_SESSION:
+            if max_turns is not None and len(turns) >= max_turns:
                 stats.dropped_turns += 1
                 break
     if not turns:
@@ -312,7 +319,9 @@ def parse_claude_session(path: Path) -> Session | None:
     return Session("claude-code", sid, path, cwd, path.stat().st_mtime, turns, stats)
 
 
-def parse_codex_session(path: Path) -> Session | None:
+def parse_codex_session(
+    path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
+) -> Session | None:
     turns: list[Turn] = []
     stats = ParseStats()
     cwd, sid = "", path.stem
@@ -343,11 +352,15 @@ def parse_codex_session(path: Path) -> Session | None:
                     if _keep_turn(text):
                         cleaned = _clean(text, stats)
                         if cleaned is not None:
-                            turns.append(Turn(cleaned, scope_for_cwd(cwd)))
+                            turns.append(Turn(
+                                cleaned,
+                                scope_for_cwd(cwd),
+                                obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
+                            ))
                             stats.kept_turns += 1
                     else:
                         stats.dropped_turns += 1
-            if len(turns) >= MAX_TURNS_PER_SESSION:
+            if max_turns is not None and len(turns) >= max_turns:
                 stats.dropped_turns += 1
                 break
     if not turns:

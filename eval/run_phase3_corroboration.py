@@ -16,7 +16,9 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 
-WS = Path("D:/Claude")
+WS = Path(
+    os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
+).expanduser().resolve()
 ADAPT_DIR = WS / "tools/pipelines/memory/adapt"
 JURY_DIR = WS / "tools/review"
 SYSTEM = """You are a conservative adjudicator for coding-agent preference memory.

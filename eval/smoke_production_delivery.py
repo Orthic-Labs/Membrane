@@ -4,11 +4,14 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
 
-ROOT = Path(r"D:\Claude")
+ROOT = Path(
+    os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
+).expanduser().resolve()
 HERE = Path(__file__).resolve().parent
 ADAPT_DIR = HERE.parent
 TOOLS_LIB = ROOT / "tools/lib"

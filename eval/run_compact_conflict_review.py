@@ -17,6 +17,9 @@ KINDS = {
     "authority-conflict", "permission-expansion", "overbroad-scope", "duplicate",
     "contradiction", "transient", "unsupported",
 }
+WORKSPACE = Path(
+    os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
+).expanduser().resolve()
 
 
 def _json_object(raw: str) -> dict:
@@ -122,7 +125,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     source.add_argument("--api-manifest", type=Path)
     source.add_argument("--worker-results", type=Path)
     parser.add_argument("--packet-manifest", type=Path, required=True)
-    parser.add_argument("--worker", type=Path, default=Path("D:/Claude/tools/skills/coder/scripts/api-worker.py"))
+    parser.add_argument(
+        "--worker",
+        type=Path,
+        default=WORKSPACE / "tools" / "skills" / "coder" / "scripts" / "api-worker.py",
+    )
     parser.add_argument("--pool-size", type=int, default=4)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)

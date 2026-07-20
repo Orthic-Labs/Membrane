@@ -281,6 +281,13 @@ def from_manifest_candidate(record: dict, *, now: str | None = None) -> Preferen
         scope=record["scope"],
         source_ids=tuple(record.get("source_ids", [])),
         now=now,
+        existing={
+            "id": record["id"],
+            "created_at": record.get("created_at", now or _now_iso()),
+            "record_type": record.get("record_type", "unclassified"),
+            "authority_effect": record.get("authority_effect", "neutral"),
+            "retrieval_aliases": record.get("retrieval_aliases", ()),
+        },
     )
 
 

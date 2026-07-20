@@ -84,6 +84,24 @@ def test_codex_parser_excludes_noninteractive_exec_sessions(tmp_path):
     assert ts.parse_codex_session(_write(tmp_path / "worker.jsonl", rows)) is None
 
 
+def test_parser_can_disable_adapt_turn_cap_for_independent_census(tmp_path):
+    rows = [
+        {
+            "type": "user",
+            "userType": "external",
+            "cwd": "D:\\Claude",
+            "message": {"content": f"durable eligible user turn number {index}"},
+        }
+        for index in range(ts.MAX_TURNS_PER_SESSION + 7)
+    ]
+    session = ts.parse_claude_session(
+        _write(tmp_path / "uncapped.jsonl", rows), max_turns=None
+    )
+
+    assert session is not None
+    assert len(session.turns) == ts.MAX_TURNS_PER_SESSION + 7
+
+
 def test_health_content_is_excluded_even_from_root_scope():
     texts = [
         "Read adrian.yaml before quoting any protocol file.",
@@ -1435,6 +1453,20 @@ def test_manifest_accepts_empty_records_as_valid_noop_batch(tmp_path):
     assert mf.load_and_validate(p)["records"] == []
 
 
+def test_manifest_accepts_paired_multiwriter_binding_and_refuses_partial_pair(tmp_path):
+    p, body = _build_valid_manifest(tmp_path, status="accepted")
+    body["installation_id"] = "08c7ef55-8f6b-4ef1-b234-22232b8ea832"
+    body["canonical_pool_sha256"] = "a" * 64
+    p.write_text(json.dumps(body), encoding="utf-8")
+    loaded = mf.load_and_validate(p)
+    assert loaded["installation_id"] == body["installation_id"]
+
+    body.pop("canonical_pool_sha256")
+    p.write_text(json.dumps(body), encoding="utf-8")
+    with pytest.raises(mf.ManifestError):
+        mf.load_and_validate(p)
+
+
 def test_manifest_refuses_missing_required_field(tmp_path):
     """The JSON Schema rejects records without payload_sha256."""
     p, body = _build_valid_manifest(tmp_path, status="accepted")
@@ -1531,6 +1563,121 @@ def test_apply_from_manifest_atomic_rollback_on_write_failure(tmp_path, monkeypa
         for index in (0,)
         for stored in [pr_mod.from_manifest_candidate(body["records"][index])]
     ]
+
+
+def test_multiwriter_apply_uses_one_atomic_attributed_batch(tmp_path, monkeypatch):
+    import cross_machine
+
+    installation = "08c7ef55-8f6b-4ef1-b234-22232b8ea832"
+    p, body = _build_valid_manifest(
+        tmp_path, status="accepted", batch_id="batch-multiwriter"
+    )
+    qualified = {
+        "s1": cross_machine.qualify_source_session(installation, "codex", "s1"),
+        "s2": cross_machine.qualify_source_session(
+            installation, "claude-code", "s2"
+        ),
+    }
+    body["installation_id"] = installation
+    body["canonical_pool_sha256"] = cross_machine.canonical_pool_sha256({})
+    body["source_session_ids"] = [qualified["s1"], qualified["s2"]]
+    for record in body["records"]:
+        record["source_ids"] = list(body["source_session_ids"])
+        record["payload_sha256"] = mf.payload_sha256(record)
+    p.write_text(json.dumps(body), encoding="utf-8")
+
+    journal = _isolate_journal(tmp_path, monkeypatch)
+    journal.record(
+        "batch-multiwriter",
+        "discovered",
+        sessions=["s1", "s2"],
+        session_refs=[
+            {"session_id": "s1", "tool": "codex", "path_stem": "s1", "mtime": 1},
+            {
+                "session_id": "s2",
+                "tool": "claude-code",
+                "path_stem": "s2",
+                "mtime": 2,
+            },
+        ],
+    )
+    monkeypatch.setattr(
+        lt, "_multiwriter_context", lambda **_kwargs: (installation, {})
+    )
+    batches = []
+    monkeypatch.setattr(
+        lt.adapt_persistence,
+        "persist_manifest_batch",
+        lambda records, **kwargs: batches.append((list(records), kwargs))
+        or {
+            "complete": True,
+            "inserted": len(records),
+            "duplicates": 0,
+            "receipts": [],
+        },
+    )
+    memright_calls = []
+    monkeypatch.setattr(
+        lt, "_run_memright", lambda args: memright_calls.append(args) or True
+    )
+
+    assert lt.apply_from_manifest(p) == 0
+    assert len(batches) == 1
+    records, kwargs = batches[0]
+    assert {record.id for record in records} == {
+        record["id"] for record in body["records"]
+    }
+    assert all(set(record.source_ids) == set(body["source_session_ids"]) for record in records)
+    assert kwargs["installation_id"] == installation
+    assert not [call for call in memright_calls if call and call[0] == "put"]
+
+
+def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
+    tmp_path, monkeypatch
+):
+    import cross_machine
+
+    installation = "08c7ef55-8f6b-4ef1-b234-22232b8ea832"
+    source = cross_machine.qualify_source_session(installation, "codex", "s1")
+    p, body = _build_valid_manifest(
+        tmp_path, status="accepted", batch_id="batch-stale-pool"
+    )
+    body["installation_id"] = installation
+    body["canonical_pool_sha256"] = cross_machine.canonical_pool_sha256({})
+    body["source_session_ids"] = [source]
+    for record in body["records"]:
+        record["source_ids"] = [source]
+        record["payload_sha256"] = mf.payload_sha256(record)
+    p.write_text(json.dumps(body), encoding="utf-8")
+    journal = _isolate_journal(tmp_path, monkeypatch)
+    journal.record(
+        "batch-stale-pool",
+        "discovered",
+        sessions=["s1"],
+        session_refs=[
+            {"session_id": "s1", "tool": "codex", "path_stem": "s1", "mtime": 1}
+        ],
+    )
+    changed = {
+        "new": {
+            "name": "new",
+            "scope": "D--Claude",
+            "category": "tooling",
+            "rule": "A new canonical rule appeared.",
+        }
+    }
+    monkeypatch.setattr(
+        lt, "_multiwriter_context", lambda **_kwargs: (installation, changed)
+    )
+    batches = []
+    monkeypatch.setattr(
+        lt.adapt_persistence,
+        "persist_manifest_batch",
+        lambda *args, **kwargs: batches.append((args, kwargs)),
+    )
+
+    assert lt.apply_from_manifest(p) == 2
+    assert batches == []
 
 
 def test_apply_from_manifest_writes_only_accepted(tmp_path, monkeypatch):
@@ -1700,6 +1847,23 @@ def _make_sqlite_db(path):
     import sqlite3
     with sqlite3.connect(path) as conn:
         conn.execute("CREATE TABLE IF NOT EXISTS smoke (id INTEGER PRIMARY KEY)")
+
+
+def test_rollback_db_discovery_is_installation_relative(tmp_path, monkeypatch):
+    monkeypatch.setattr(rk, "WS", tmp_path)
+    db = tmp_path / "tools" / ".cache" / "memory" / "memright-engine.db"
+    db.parent.mkdir(parents=True)
+    _make_sqlite_db(db)
+
+    assert rk._discover_db_path({}) == db
+
+
+def test_rollback_db_discovery_does_not_probe_another_installation(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(rk, "WS", tmp_path)
+
+    assert rk._discover_db_path({}) is None
 
 
 def test_rollback_create_writes_safepoint(tmp_path):

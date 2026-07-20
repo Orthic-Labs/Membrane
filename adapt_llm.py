@@ -15,7 +15,9 @@ import urllib.request
 from pathlib import Path
 from importlib import util as _importlib_util
 
-WS = Path("D:/Claude") if os.name == "nt" else Path.home() / "claude"
+WS = Path(
+    os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[4]
+).expanduser().resolve()
 
 MODEL = "MiniMax-M3"
 LOCAL_MODEL = os.environ.get("ADAPT_LOCAL_MODEL", "qwen2.5:7b-instruct")
