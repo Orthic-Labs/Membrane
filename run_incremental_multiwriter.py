@@ -25,8 +25,9 @@ from typing import Any, Callable, Mapping, Sequence
 
 ADAPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = Path(__file__).resolve().parents[4]
-if str(ADAPT_DIR) not in sys.path:
-    sys.path.insert(0, str(ADAPT_DIR))
+for directory in (REPO_ROOT, ADAPT_DIR):
+    if str(directory) not in sys.path:
+        sys.path.insert(0, str(directory))
 
 import multiwriter_conformance  # noqa: E402
 

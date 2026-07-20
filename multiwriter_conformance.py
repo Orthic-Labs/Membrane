@@ -32,7 +32,7 @@ ADAPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = Path(__file__).resolve().parents[4]
 TOOLS_LIB = REPO_ROOT / "tools" / "lib"
 MEMORY_DIR = REPO_ROOT / "tools" / "pipelines" / "memory"
-for directory in (ADAPT_DIR, TOOLS_LIB, MEMORY_DIR):
+for directory in (REPO_ROOT, ADAPT_DIR, TOOLS_LIB, MEMORY_DIR):
     if str(directory) not in sys.path:
         sys.path.insert(0, str(directory))
 
