@@ -45,10 +45,14 @@ def _source_client(source_ids: Sequence[str]) -> str:
         parts = source.split(":")
         if len(parts) == 4 and parts[0] == "install":
             tools.add(parts[2])
-    if tools == {"codex"}:
-        return "codex"
-    if tools == {"claude-code"}:
-        return "claude"
+    clients = {
+        "claude-code": "claude",
+        "cline": "cline",
+        "codex": "codex",
+        "commandcode": "commandcode",
+    }
+    if len(tools) == 1:
+        return clients.get(next(iter(tools)), "mixed")
     return "mixed"
 
 

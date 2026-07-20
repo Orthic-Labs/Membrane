@@ -23,7 +23,7 @@ _RULE_LINE = re.compile(
 )
 _SOURCE_ID = re.compile(
     r"^install:(?P<installation>[0-9a-f-]{36}):"
-    r"(?P<tool>claude-code|codex):(?P<digest>[a-f0-9]{32})$"
+    r"(?P<tool>claude-code|cline|codex|commandcode):(?P<digest>[a-f0-9]{32})$"
 )
 _RECORD_LINE = re.compile(
     r"^\*\*Record:\*\* type=(?P<record_type>[a-z_]+), "
@@ -53,7 +53,7 @@ def load_installation_id(path: Path) -> str:
 
 def qualify_source_session(installation_id: str, tool: str, session_id: str) -> str:
     installation = _uuid4(installation_id)
-    if tool not in {"claude-code", "codex"} or not str(session_id).strip():
+    if tool not in {"claude-code", "cline", "codex", "commandcode"} or not str(session_id).strip():
         raise CrossMachineAdaptError("invalid source session identity")
     digest = hashlib.sha256(
         f"{tool}\0{session_id}".encode("utf-8")

@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 STATE_DIR = Path.home() / ".claude" / "adapt"
@@ -228,7 +229,7 @@ class ParseStats:
 
 @dataclass
 class Session:
-    tool: str          # "claude-code" | "codex"
+    tool: str          # "claude-code" | "codex" | "cline" | "commandcode"
     session_id: str
     path: Path
     cwd: str
@@ -368,6 +369,142 @@ def parse_codex_session(
     return Session("codex", sid, path, cwd, path.stat().st_mtime, turns, stats)
 
 
+def _message_timestamp(value: object) -> str | None:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        seconds = float(value) / 1000 if value > 10_000_000_000 else float(value)
+        try:
+            return datetime.fromtimestamp(seconds, timezone.utc).isoformat().replace(
+                "+00:00", "Z"
+            )
+        except (OverflowError, OSError, ValueError):
+            return None
+    return None
+
+
+def _message_texts(content: object) -> list[str]:
+    if isinstance(content, str):
+        return [content]
+    if not isinstance(content, list):
+        return []
+    return [
+        str(item.get("text") or "")
+        for item in content
+        if isinstance(item, dict) and item.get("type") == "text"
+    ]
+
+
+def _cline_user_text(text: str) -> str:
+    match = re.fullmatch(
+        r'\s*<user_input(?: mode="[a-z-]+")?>\s*(.*?)\s*</user_input>\s*',
+        text,
+        re.S,
+    )
+    return match.group(1) if match else text
+
+
+def _parse_role_message_session(
+    path: Path,
+    *,
+    tool: str,
+    session_id: str,
+    cwd: str,
+    rows: list[object],
+    max_turns: int | None,
+) -> Session | None:
+    turns: list[Turn] = []
+    stats = ParseStats()
+    for row in rows:
+        if not isinstance(row, dict) or row.get("role") != "user":
+            continue
+        for raw in _message_texts(row.get("content")):
+            if tool == "cline":
+                raw = _cline_user_text(raw)
+            text = raw.strip()
+            if _keep_turn(text):
+                turns.append(
+                    Turn(
+                        _clean(text, stats),
+                        scope_for_cwd(cwd),
+                        _message_timestamp(row.get("timestamp") or row.get("ts")),
+                    )
+                )
+                stats.kept_turns += 1
+            else:
+                stats.dropped_turns += 1
+            if max_turns is not None and len(turns) >= max_turns:
+                stats.dropped_turns += 1
+                break
+        if max_turns is not None and len(turns) >= max_turns:
+            break
+    if not turns:
+        return None
+    return Session(tool, session_id, path, cwd, path.stat().st_mtime, turns, stats)
+
+
+def parse_commandcode_session(
+    path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
+) -> Session | None:
+    rows: list[object] = []
+    with path.open(encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    session_id = path.stem
+    for row in rows:
+        if isinstance(row, dict) and isinstance(row.get("sessionId"), str):
+            session_id = row["sessionId"]
+            break
+    return _parse_role_message_session(
+        path,
+        tool="commandcode",
+        session_id=session_id,
+        cwd=path.parent.name,
+        rows=rows,
+        max_turns=max_turns,
+    )
+
+
+def parse_cline_session(
+    path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
+) -> Session | None:
+    payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("messages"), list):
+        return None
+    session_id = str(payload.get("sessionId") or path.name.removesuffix(".messages.json"))
+    cwd = path.parent.name
+    metadata_path = path.with_name(path.name.removesuffix(".messages.json") + ".json")
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        metadata = {}
+    rows = list(payload["messages"])
+    if isinstance(metadata, dict):
+        session_id = str(metadata.get("session_id") or session_id)
+        cwd = str(metadata.get("workspace_root") or metadata.get("cwd") or cwd)
+        prompt = metadata.get("prompt")
+        if isinstance(prompt, str) and prompt.strip():
+            rows.insert(
+                0,
+                {
+                    "role": "user",
+                    "content": [{"type": "text", "text": prompt}],
+                    "timestamp": metadata.get("started_at"),
+                },
+            )
+    return _parse_role_message_session(
+        path,
+        tool="cline",
+        session_id=session_id,
+        cwd=cwd,
+        rows=rows,
+        max_turns=max_turns,
+    )
+
+
 def load_state() -> dict:
     try:
         return json.loads(STATE_FILE.read_text(encoding="utf-8"))
@@ -390,7 +527,27 @@ def discover() -> list[tuple[str, Path]]:
     codex_root = Path.home() / ".codex" / "sessions"
     if codex_root.exists():
         found.extend(("codex", f) for f in sorted(codex_root.glob("*/*/*/*.jsonl")))
+    commandcode_root = Path.home() / ".commandcode" / "projects"
+    if commandcode_root.exists():
+        found.extend(
+            ("commandcode", path)
+            for path in sorted(commandcode_root.glob("*/*.jsonl"))
+            if not path.name.endswith(".checkpoints.jsonl")
+        )
+    cline_root = Path.home() / ".cline" / "data" / "sessions"
+    if cline_root.exists():
+        found.extend(("cline", path) for path in sorted(cline_root.glob("*/*.messages.json")))
     return found
+
+
+def parser_for(tool: str):
+    parsers = {
+        "claude-code": parse_claude_session,
+        "codex": parse_codex_session,
+        "commandcode": parse_commandcode_session,
+        "cline": parse_cline_session,
+    }
+    return parsers[tool]
 
 
 def new_sessions(
@@ -416,7 +573,7 @@ def new_sessions(
     pending.sort(key=lambda item: item[0], reverse=newest)
     for mtime, tool, path in pending:
         key = path.stem
-        sess = parse_claude_session(path) if tool == "claude-code" else parse_codex_session(path)
+        sess = parser_for(tool)(path)
         if sess is None or scope_excluded(sess.cwd):
             learned.setdefault(tool, {})[key] = mtime
             continue

@@ -66,6 +66,13 @@ def run_command(argv: Sequence[str], **kwargs: Any) -> subprocess.CompletedProce
     )
 
 
+def managed_python(repo_root: Path) -> str:
+    candidate = Path(repo_root) / ".venv-tools" / (
+        "Scripts/python.exe" if os.name == "nt" else "bin/python"
+    )
+    return str(candidate if candidate.is_file() else Path(sys.executable))
+
+
 def create_workdir(work_root: Path) -> Path:
     root = Path(work_root)
     root.mkdir(parents=True, exist_ok=True)
@@ -120,6 +127,8 @@ def _source_client(source_id: object, source_clients: Mapping[str, str]) -> str:
             return "codex"
         if parts[2] == "claude-code":
             return "claude"
+        if parts[2] in {"cline", "commandcode"}:
+            return parts[2]
     return "unknown"
 
 
@@ -220,6 +229,8 @@ def run_incremental(
     repo_root: Path = REPO_ROOT,
     limit: int | None = None,
     extract_workers: int = 5,
+    lane: str = "local",
+    allow_external_lane: bool = False,
     command_runner: Callable[..., Any] = run_command,
     receipt_validator: Callable[[Path], Any] | None = None,
     client_inventory_provider: Callable[[], Mapping[str, Any]] | None = None,
@@ -232,6 +243,10 @@ def run_incremental(
         or not 1 <= extract_workers <= 5
     ):
         raise RunnerError("extract_workers must be in [1, 5]")
+    if lane not in {"local", "minimax"}:
+        raise RunnerError("unsupported Adapt lane")
+    if lane != "local" and not allow_external_lane:
+        raise RunnerError("external Adapt lane requires explicit permission")
     root = Path(repo_root)
     receipt = Path(receipt_path)
     validator = receipt_validator or (
@@ -264,6 +279,7 @@ def run_incremental(
     phase_receipts: list[dict[str, Any]] = []
     adapt_path = root / "tools/pipelines/memory/adapt/adapt.py"
     adjudicate_path = root / "tools/pipelines/memory/adapt/adjudicate_manifest.py"
+    python = managed_python(root)
 
     def record_failure(
         failed_phase: str,
@@ -294,14 +310,18 @@ def run_incremental(
         write_summary(workdir, summary)
 
     manifest_argv = [
-        sys.executable,
+        python,
         str(adapt_path),
         "--incremental",
         "--manifest",
         str(pending_path),
         "--extract-workers",
         str(extract_workers),
+        "--lane",
+        lane,
     ]
+    if allow_external_lane:
+        manifest_argv.append("--allow-external-lane")
     if limit is not None:
         manifest_argv.extend(["--limit", str(limit)])
     try:
@@ -345,7 +365,7 @@ def run_incremental(
             _invoke(
                 "manifest adjudication",
                 [
-                    sys.executable,
+                    python,
                     str(adjudicate_path),
                     "--manifest",
                     str(pending_path),
@@ -390,7 +410,7 @@ def run_incremental(
         _invoke(
             "manifest apply",
             [
-                sys.executable,
+                python,
                 str(adapt_path),
                 "--apply-from-manifest",
                 str(resolved_path),
@@ -433,6 +453,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--extract-workers", type=int, choices=range(1, 6), default=5)
+    parser.add_argument("--lane", choices=("local", "minimax"), default="local")
+    parser.add_argument("--allow-external-lane", action="store_true")
     args = parser.parse_args(argv)
     try:
         summary = run_incremental(
@@ -441,6 +463,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             repo_root=args.repo_root,
             limit=args.limit,
             extract_workers=args.extract_workers,
+            lane=args.lane,
+            allow_external_lane=args.allow_external_lane,
         )
     except (RunnerError, multiwriter_conformance.ConformanceError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))

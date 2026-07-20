@@ -63,6 +63,11 @@ def test_session_sources_are_installation_qualified_and_content_free() -> None:
     assert first.startswith(f"install:{INSTALLATION}:codex:")
     assert "local-session-123" not in first
 
+    for tool in ("cline", "commandcode"):
+        source = cm.qualify_source_session(INSTALLATION, tool, "local-session-123")
+        assert f":{tool}:" in source
+        assert "local-session-123" not in source
+
 
 def test_canonical_rule_pool_is_rebuilt_from_engine_not_local_cache(tmp_path: Path) -> None:
     rules = cm.load_canonical_rules(_db(tmp_path / "engine.db"))

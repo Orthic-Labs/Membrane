@@ -84,6 +84,79 @@ def test_codex_parser_excludes_noninteractive_exec_sessions(tmp_path):
     assert ts.parse_codex_session(_write(tmp_path / "worker.jsonl", rows)) is None
 
 
+def test_commandcode_parser_extracts_flat_role_messages(tmp_path):
+    rows = [
+        {
+            "role": "user",
+            "sessionId": "command-session",
+            "timestamp": "2026-07-20T10:00:00Z",
+            "content": [{"type": "text", "text": "always keep the smallest safe patch"}],
+        },
+        {
+            "role": "assistant",
+            "content": [{"type": "text", "text": "assistant content is excluded"}],
+        },
+    ]
+    session = ts.parse_commandcode_session(_write(tmp_path / "command.jsonl", rows))
+
+    assert session is not None
+    assert session.tool == "commandcode"
+    assert session.session_id == "command-session"
+    assert [turn.text for turn in session.turns] == [
+        "always keep the smallest safe patch"
+    ]
+
+
+def test_cline_parser_uses_companion_workspace_metadata(tmp_path):
+    session_dir = tmp_path / "cline-session"
+    session_dir.mkdir()
+    messages = session_dir / "cline-session.messages.json"
+    messages.write_text(
+        json.dumps(
+            {
+                "sessionId": "cline-session",
+                "messages": [
+                    {
+                        "role": "user",
+                        "ts": 1_784_520_521_694,
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": '<user_input mode="act">never skip the regression test</user_input>',
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (session_dir / "cline-session.json").write_text(
+        json.dumps(
+            {
+                "session_id": "cline-session",
+                "workspace_root": "/workspace/project",
+                "prompt": "always preserve the user's scoped changes",
+                "started_at": "2026-07-20T04:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    session = ts.parse_cline_session(messages)
+
+    assert session is not None
+    assert session.tool == "cline"
+    assert session.cwd == "/workspace/project"
+    assert session.turns[0].scope == "workspace-project"
+    assert [turn.text for turn in session.turns] == [
+        "always preserve the user's scoped changes",
+        "never skip the regression test",
+    ]
+    assert session.turns[0].observed_at == "2026-07-20T04:00:00Z"
+    assert session.turns[1].observed_at == "2026-07-20T04:08:41.694000Z"
+
+
 def test_parser_can_disable_adapt_turn_cap_for_independent_census(tmp_path):
     rows = [
         {
