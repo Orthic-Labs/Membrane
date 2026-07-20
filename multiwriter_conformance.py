@@ -533,7 +533,11 @@ def run_focused_tests(
 ) -> dict[str, Any]:
     root = Path(repo_root).resolve()
     hashed = hash_sources(root, test_files)
-    argv = [sys.executable, "-m", "pytest", *[row["path"] for row in hashed["files"]], "-q"]
+    managed_python = root / ".venv-tools" / (
+        "Scripts/python.exe" if os.name == "nt" else "bin/python"
+    )
+    test_python = managed_python if managed_python.is_file() else Path(sys.executable)
+    argv = [str(test_python), "-m", "pytest", *[row["path"] for row in hashed["files"]], "-q"]
     try:
         result = subprocess.run(
             argv,

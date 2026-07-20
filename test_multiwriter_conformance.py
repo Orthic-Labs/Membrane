@@ -4,6 +4,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -240,6 +241,31 @@ def test_source_hashes_are_repo_relative_and_deterministic(tmp_path):
 
     assert evidence["files"] == [{"path": "a.py", "sha256": _sha(source.read_bytes())}]
     assert evidence["aggregate_sha256"] == conformance.aggregate_file_sha256(evidence["files"])
+
+
+def test_focused_tests_use_workspace_managed_python(tmp_path, monkeypatch):
+    conformance = _module()
+    test_file = tmp_path / "test_gate.py"
+    test_file.write_text("def test_gate(): assert True\n", encoding="utf-8")
+    managed = tmp_path / ".venv-tools" / (
+        "Scripts/python.exe" if os.name == "nt" else "bin/python"
+    )
+    managed.parent.mkdir(parents=True)
+    managed.write_text("", encoding="utf-8")
+    calls = []
+
+    def fake_run(argv, **_kwargs):
+        calls.append(argv)
+        return type(
+            "Result", (), {"returncode": 0, "stdout": "1 passed\n", "stderr": ""}
+        )()
+
+    monkeypatch.setattr(conformance.subprocess, "run", fake_run)
+
+    result = conformance.run_focused_tests(tmp_path, [test_file])
+
+    assert calls[0][0] == str(managed)
+    assert result["passed_count"] == 1
 
 
 def test_service_probe_binds_release_asset_hash_and_nonmutating_batch_route(tmp_path):
