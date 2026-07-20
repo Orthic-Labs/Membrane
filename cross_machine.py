@@ -74,6 +74,8 @@ def _parse_rule_row(
     if not name.startswith("adapt-"):
         return None
     first_line = content.splitlines()[0] if content else ""
+    if not first_line.startswith("**[adapt/"):
+        return None
     match = _RULE_LINE.fullmatch(first_line)
     if match is None:
         raise CrossMachineAdaptError(f"canonical Adapt row has invalid envelope: {name}")
@@ -123,8 +125,17 @@ def load_canonical_rules(db_path: Path) -> dict[str, dict[str, Any]]:
     uri = f"file:{path.as_posix()}?mode=ro"
     try:
         conn = sqlite3.connect(uri, uri=True)
+        columns = {
+            str(row[1]) for row in conn.execute("PRAGMA table_info(memories)").fetchall()
+        }
+        record_type = (
+            "record_type"
+            if "record_type" in columns
+            else "'operational_playbook' AS record_type"
+        )
         rows = conn.execute(
-            "SELECT id, scope_id, content, source_ids, created_at, updated_at, record_type "
+            "SELECT id, scope_id, content, source_ids, created_at, updated_at, "
+            f"{record_type} "
             "FROM memories WHERE id LIKE '%/adapt-%' OR id LIKE 'adapt-%' ORDER BY id"
         ).fetchall()
     except sqlite3.Error as exc:
