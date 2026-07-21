@@ -2,6 +2,7 @@
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Make the eval/ subpackage importable from tests too.
@@ -1149,6 +1150,47 @@ def test_cached_extract_progress_requires_contiguous_latest_success(tmp_path):
     completed_batch, observations = lt._cached_extract_progress(journal, "batch")
     assert completed_batch == 1
     assert observations == [{"id": 1}]
+
+
+def test_session_refs_disambiguate_duplicate_client_session_ids(tmp_path):
+    first = SimpleNamespace(
+        session_id="shared-id", tool="codex", path=tmp_path / "one.jsonl", mtime=1.0
+    )
+    second = SimpleNamespace(
+        session_id="shared-id", tool="codex", path=tmp_path / "two.jsonl", mtime=2.0
+    )
+    unique = SimpleNamespace(
+        session_id="unique-id", tool="codex", path=tmp_path / "three.jsonl", mtime=3.0
+    )
+
+    refs = lt._session_refs([first, second, unique])
+
+    assert refs[0]["source_key"] != refs[1]["source_key"]
+    assert refs[0]["source_key"].startswith("shared-id\0")
+    assert refs[1]["source_key"].startswith("shared-id\0")
+    assert refs[2]["source_key"] == "unique-id"
+    sources = lt._qualified_session_sources(
+        refs, "12345678-1234-4234-9234-123456789abc"
+    )
+    assert len(sources) == len(set(sources)) == 3
+
+
+def test_session_refs_disambiguate_cross_client_session_id_collisions(tmp_path):
+    sessions = [
+        SimpleNamespace(
+            session_id="shared-id", tool="codex", path=tmp_path / "codex.jsonl", mtime=1.0
+        ),
+        SimpleNamespace(
+            session_id="shared-id",
+            tool="claude-code",
+            path=tmp_path / "claude.jsonl",
+            mtime=2.0,
+        ),
+    ]
+
+    refs = lt._session_refs(sessions)
+
+    assert refs[0]["source_key"] != refs[1]["source_key"]
 
 
 def test_synthesize_requires_exact_observation_links_when_ids_are_present():

@@ -84,7 +84,9 @@ def _qualified_session_sources(
 ) -> list[str]:
     return [
         cross_machine.qualify_source_session(
-            installation_id, ref["tool"], ref["session_id"]
+            installation_id,
+            ref["tool"],
+            ref.get("source_key") or ref["session_id"],
         )
         for ref in session_refs
     ]
@@ -298,13 +300,31 @@ def _extraction_contract() -> dict:
     }
 
 
+def _session_source_keys(sessions) -> list[str]:
+    """Keep ordinary IDs stable while disambiguating client-side collisions."""
+    counts: dict[str, int] = defaultdict(int)
+    for session in sessions:
+        counts[session.session_id] += 1
+    keys = [
+        session.session_id
+        if counts[session.session_id] == 1
+        else f"{session.session_id}\0{session.tool}\0{ts.state_key(session.tool, session.path)}"
+        for session in sessions
+    ]
+    if len(keys) != len(set(keys)):
+        raise ValueError("client session identity remains duplicated after state-key binding")
+    return keys
+
+
 def _session_refs(sessions) -> list[dict]:
+    source_keys = _session_source_keys(sessions)
     return [{
         "session_id": session.session_id,
+        "source_key": source_key,
         "tool": session.tool,
         "path_stem": session.path.stem,
         "mtime": session.mtime,
-    } for session in sessions]
+    } for session, source_key in zip(sessions, source_keys)]
 
 
 def _resume_mismatch_reason(discovered: dict, current_session_refs: list[dict]
@@ -575,7 +595,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
         {"session_id": sid, "tool": "claude-code", "path_stem": sid, "mtime": 0}
         for sid in j_sessions
     ]
-    if sorted(ref.get("session_id") for ref in session_refs) != j_sessions:
+    if sorted(ref.get("source_key") or ref.get("session_id") for ref in session_refs) != j_sessions:
         print("error: journal session_refs mismatch discovered sessions", file=sys.stderr)
         return 2
 
@@ -983,11 +1003,12 @@ def main() -> int:
 
     all_turn_count = sum(len(s.turns) for s in sessions)
     turns = []
-    for session in sessions:
+    session_source_keys = _session_source_keys(sessions)
+    for session, source_key in zip(sessions, session_source_keys):
         for turn in session.turns:
             candidate = ts.preference_candidate_text(turn.text)
             if candidate is not None:
-                turns.append((session.tool, turn.scope, candidate, session.session_id))
+                turns.append((session.tool, turn.scope, candidate, source_key))
     print(f"adapt: preference prefilter kept={len(turns)}/{all_turn_count} turns "
           f"({sum(len(turn[2]) for turn in turns)} chars)")
     session_refs = _session_refs(sessions)
@@ -1034,7 +1055,7 @@ def main() -> int:
 
     if journal and replay is None:
         journal.record(batch_id, "discovered",
-                       sessions=[s.session_id for s in sessions],
+                       sessions=session_source_keys,
                        session_refs=session_refs,
                        extraction_contract=_extraction_contract(),
                        turn_count=len(turns))
@@ -1117,22 +1138,23 @@ def main() -> int:
         manifest_records: list[dict] = []
         if installation_id is not None:
             source_map = {
-                s.session_id: cross_machine.qualify_source_session(
-                    installation_id, s.tool, s.session_id
+                ref["source_key"]: cross_machine.qualify_source_session(
+                    installation_id, ref["tool"], ref["source_key"]
                 )
-                for s in sessions
+                for ref in session_refs
             }
-            source_session_ids = [source_map[s.session_id] for s in sessions]
+            source_session_ids = [source_map[ref["source_key"]] for ref in session_refs]
             for observation in observations:
                 raw_source = observation.get("session_id")
                 if raw_source in source_map:
                     observation["session_id"] = source_map[raw_source]
         else:
-            source_map = {s.session_id: s.session_id for s in sessions}
-            source_session_ids = [s.session_id for s in sessions]
+            source_map = {ref["source_key"]: ref["source_key"] for ref in session_refs}
+            source_session_ids = [ref["source_key"] for ref in session_refs]
         # Gate 1b: per-session transcript hashes for reviewer cross-reference.
         source_file_hashes = {
-            source_map[s.session_id]: s.file_sha256() for s in sessions
+            source_map[ref["source_key"]]: session.file_sha256()
+            for session, ref in zip(sessions, session_refs)
         }
         apply_actions(actions, obs_by_cat, rules, ts.STATE_DIR, dry_run,
                       manifest_records=manifest_records,
