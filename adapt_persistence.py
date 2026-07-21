@@ -39,20 +39,22 @@ def _base_url() -> str:
     return f"http://127.0.0.1:{memright_port(os.environ)}"
 
 
+def _normalize_scope(scope: str) -> str:
+    """Mirror MemRight's leading Windows drive-token normalization."""
+    if len(scope) >= 2 and scope[0].islower() and scope[0].isascii() and scope[0].isalpha() and scope[1] == "-":
+        return scope[0].upper() + scope[1:]
+    return scope
+
+
 def _source_client(source_ids: Sequence[str]) -> str:
     tools = set()
     for source in source_ids:
         parts = source.split(":")
         if len(parts) == 4 and parts[0] == "install":
             tools.add(parts[2])
-    clients = {
-        "claude-code": "claude",
-        "cline": "cline",
-        "codex": "codex",
-        "commandcode": "commandcode",
-    }
     if len(tools) == 1:
-        return clients.get(next(iter(tools)), "mixed")
+        tool = next(iter(tools))
+        return "claude" if tool == "claude-code" else tool
     return "mixed"
 
 
@@ -151,7 +153,7 @@ def persist_manifest_batch(
     receipts = payload.get("receipts")
     expected_item_ids = {item["item_id"] for item in body["items"]}
     expected_memory_ids = {
-        f"{item['scope']}/{item['name']}" for item in body["items"]
+        f"{_normalize_scope(item['scope'])}/{item['name']}" for item in body["items"]
     }
     if (
         status not in {200, 201}

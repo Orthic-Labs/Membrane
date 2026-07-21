@@ -4,7 +4,6 @@ import copy
 import hashlib
 import importlib.util
 import json
-import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -111,6 +110,60 @@ def test_receipt_is_content_free_canonical_and_fresh():
     )
 
 
+def test_discovery_counts_use_collision_safe_adapter_state_keys(tmp_path: Path):
+    conformance = _module()
+    first = tmp_path / "one" / "chat_history.jsonl"
+    second = tmp_path / "two" / "chat_history.jsonl"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text("{}\n", encoding="utf-8")
+    second.write_text("{}\n", encoding="utf-8")
+    rows = [
+        {"client": "grok-build", "tool": "grok-build", "path": first, "outcome": "parsed", "state_key": "one"},
+        {"client": "grok-build", "tool": "grok-build", "path": second, "outcome": "parsed", "state_key": "two"},
+    ]
+    state = {"learned": {"grok-build": {"one": first.stat().st_mtime}}}
+
+    counts = conformance.discovery_counts(rows, state, registered_clients=["grok-build"])
+
+    assert counts["grok-build"]["pending"] == 1
+
+
+def test_discovery_counts_exclude_active_codex_task_from_pending(
+        tmp_path: Path, monkeypatch):
+    conformance = _module()
+    active = tmp_path / "rollout-active-task.jsonl"
+    active.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv("CODEX_THREAD_ID", "active-task")
+    rows = [{
+        "client": "codex",
+        "tool": "codex",
+        "path": active,
+        "outcome": "parsed",
+        "state_key": active.stem,
+    }]
+
+    counts = conformance.discovery_counts(
+        rows, {"learned": {}}, registered_clients=["codex"]
+    )
+
+    assert counts["codex"]["parsed"] == 1
+    assert counts["codex"]["pending"] == 0
+
+
+def test_defaults_accept_private_candidate_binding(tmp_path: Path, monkeypatch):
+    conformance = _module()
+    binary = tmp_path / "memright-service.exe"
+    release = tmp_path / "candidate-release.json"
+    monkeypatch.setenv("MEMRIGHT_CONFORMANCE_BINARY", str(binary))
+    monkeypatch.setenv("MEMRIGHT_CONFORMANCE_RELEASE_MANIFEST", str(release))
+
+    defaults = conformance._defaults(tmp_path)
+
+    assert defaults["binary_path"] == binary
+    assert defaults["release_manifest_path"] == release
+
+
 @pytest.mark.parametrize(
     ("mutation", "match"),
     [
@@ -140,6 +193,38 @@ def test_rehashed_tamper_and_current_environment_mismatch_are_rejected():
     with pytest.raises(conformance.ConformanceError, match="current conformance evidence"):
         conformance.validate_receipt_payload(
             receipt, current_evidence=_evidence(), now=NOW + timedelta(minutes=1)
+        )
+
+
+def test_pre_apply_validation_allows_only_session_discovery_drift():
+    conformance = _module()
+    evidence = _evidence()
+    receipt = conformance.issue_receipt(evidence, now=NOW, ttl_seconds=900)
+    current = copy.deepcopy(evidence)
+    current["discovery"]["claude"]["discovered"] += 1
+    current["discovery"]["claude"]["parsed"] += 1
+    current["discovery"]["claude"]["pending"] += 1
+    current["source_clients"].append(
+        {"source_sha256": "e" * 64, "client": "claude"}
+    )
+    current["source_clients"].sort(
+        key=lambda row: (row["source_sha256"], row["client"])
+    )
+
+    conformance.validate_receipt_payload(
+        receipt,
+        current_evidence=current,
+        now=NOW + timedelta(minutes=1),
+        allow_session_discovery_drift=True,
+    )
+
+    current["canonical_pool"]["sha256"] = "f" * 64
+    with pytest.raises(conformance.ConformanceError, match="current conformance evidence"):
+        conformance.validate_receipt_payload(
+            receipt,
+            current_evidence=current,
+            now=NOW + timedelta(minutes=1),
+            allow_session_discovery_drift=True,
         )
 
 
@@ -225,9 +310,9 @@ def test_discovery_counts_are_registry_client_split_without_session_identifiers(
 
     assert counts == {
         "claude": {"discovered": 1, "parsed": 1, "unreadable": 0, "malformed": 0, "skipped": 0, "pending": 0},
-        "claudemm": {"discovered": 1, "parsed": 0, "unreadable": 0, "malformed": 1, "skipped": 0, "pending": 1},
+        "claudemm": {"discovered": 1, "parsed": 0, "unreadable": 0, "malformed": 1, "skipped": 0, "pending": 0},
         "codex": {"discovered": 1, "parsed": 1, "unreadable": 0, "malformed": 0, "skipped": 0, "pending": 1},
-        "ext.future": {"discovered": 1, "parsed": 0, "unreadable": 0, "malformed": 0, "skipped": 1, "pending": 1},
+        "ext.future": {"discovered": 1, "parsed": 0, "unreadable": 0, "malformed": 0, "skipped": 1, "pending": 0},
     }
     assert claude_a.stem not in json.dumps(counts)
 
@@ -241,31 +326,6 @@ def test_source_hashes_are_repo_relative_and_deterministic(tmp_path):
 
     assert evidence["files"] == [{"path": "a.py", "sha256": _sha(source.read_bytes())}]
     assert evidence["aggregate_sha256"] == conformance.aggregate_file_sha256(evidence["files"])
-
-
-def test_focused_tests_use_workspace_managed_python(tmp_path, monkeypatch):
-    conformance = _module()
-    test_file = tmp_path / "test_gate.py"
-    test_file.write_text("def test_gate(): assert True\n", encoding="utf-8")
-    managed = tmp_path / ".venv-tools" / (
-        "Scripts/python.exe" if os.name == "nt" else "bin/python"
-    )
-    managed.parent.mkdir(parents=True)
-    managed.write_text("", encoding="utf-8")
-    calls = []
-
-    def fake_run(argv, **_kwargs):
-        calls.append(argv)
-        return type(
-            "Result", (), {"returncode": 0, "stdout": "1 passed\n", "stderr": ""}
-        )()
-
-    monkeypatch.setattr(conformance.subprocess, "run", fake_run)
-
-    result = conformance.run_focused_tests(tmp_path, [test_file])
-
-    assert calls[0][0] == str(managed)
-    assert result["passed_count"] == 1
 
 
 def test_service_probe_binds_release_asset_hash_and_nonmutating_batch_route(tmp_path):

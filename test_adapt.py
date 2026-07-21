@@ -100,7 +100,7 @@ def test_commandcode_parser_extracts_flat_role_messages(tmp_path):
     session = ts.parse_commandcode_session(_write(tmp_path / "command.jsonl", rows))
 
     assert session is not None
-    assert session.tool == "commandcode"
+    assert session.tool == "command-code"
     assert session.session_id == "command-session"
     assert [turn.text for turn in session.turns] == [
         "always keep the smallest safe patch"
@@ -350,6 +350,25 @@ def test_state_incrementality(tmp_path, monkeypatch):
     assert reloaded["learned"]["claude-code"]["abc"] == sess.mtime
 
 
+def test_active_codex_session_is_excluded_from_pending_queue(tmp_path, monkeypatch):
+    active = tmp_path / "rollout-current-thread-id.jsonl"
+    other = tmp_path / "rollout-other-thread-id.jsonl"
+    monkeypatch.setenv("CODEX_THREAD_ID", "current-thread-id")
+
+    assert ts.is_active_session("codex", active)
+    assert not ts.is_active_session("codex", other)
+    assert not ts.is_active_session("claude-code", active)
+
+
+def test_orchestrator_can_exclude_multiple_active_codex_sessions(tmp_path):
+    first = tmp_path / "rollout-first-active.jsonl"
+    second = tmp_path / "rollout-second-active.jsonl"
+    env = {"ADAPT_ACTIVE_CODEX_THREAD_IDS": "first-active, second-active"}
+
+    assert ts.is_active_session("codex", first, env=env)
+    assert ts.is_active_session("codex", second, env=env)
+
+
 # --- Task 2: LLM lane tests ---
 import adapt_llm as tl
 import outcomes
@@ -368,7 +387,7 @@ def test_default_extraction_budget_is_large_but_output_bounded():
     assert "at most 24 changed actions" in tl.SYNTH_SYSTEM
 
 
-def test_default_adapt_call_delegates_retries_to_resumable_driver(monkeypatch):
+def test_default_adapt_call_retries_transient_provider_failures(monkeypatch):
     seen = {}
 
     def fake_call(system, user, *, lane, attempts):
@@ -377,7 +396,7 @@ def test_default_adapt_call_delegates_retries_to_resumable_driver(monkeypatch):
 
     monkeypatch.setattr(tl, "call_lane", fake_call)
     assert tl._default_llm("system", "user", "minimax") == "[]"
-    assert seen == {"lane": "minimax", "attempts": 1}
+    assert seen == {"lane": "minimax", "attempts": 3}
 
 
 def test_synthesis_uses_larger_output_ceiling(monkeypatch):
@@ -389,7 +408,7 @@ def test_synthesis_uses_larger_output_ceiling(monkeypatch):
 
     monkeypatch.setattr(tl, "call_lane", fake_call)
     assert tl._default_synth_llm("system", "user", "minimax") == "[]"
-    assert seen == {"lane": "minimax", "attempts": 1, "max_tokens": 16_384}
+    assert seen == {"lane": "minimax", "attempts": 3, "max_tokens": 16_384}
 
 
 def test_extract_parses_model_json():
@@ -971,6 +990,8 @@ def test_run_journal_pending_returns_none_when_all_committed(tmp_path):
     j = rj.RunJournal(tmp_path / "j.jsonl")
     j.record("a", "discovered")
     j.record("a", "committed")
+    j.record("b", "discovered")
+    j.record("b", "abandoned", reason="session_identity_changed")
     assert j.pending_batch() is None
 
 
@@ -1812,6 +1833,32 @@ def test_apply_from_manifest_marks_original_tool_and_file_identity(
     learned = lt.ts.load_state()["learned"]
     assert learned["codex"] == {"codex-file": 11.0}
     assert learned["claude-code"] == {"claude-file": 22.0}
+
+
+def test_apply_from_manifest_marks_parent_keyed_client_identity(
+        tmp_path, monkeypatch):
+    p, body = _build_valid_manifest(
+        tmp_path, status="rejected", batch_id="batch-parent-session-refs"
+    )
+    body["source_session_ids"] = ["cline-id", "grok-id", "roo-id"]
+    p.write_text(json.dumps(body), encoding="utf-8")
+    journal = _isolate_journal(tmp_path, monkeypatch)
+    journal.record(
+        "batch-parent-session-refs",
+        "discovered",
+        sessions=body["source_session_ids"],
+        session_refs=[
+            {"session_id": "cline-id", "tool": "cline", "path_stem": "cline-id.messages", "mtime": 10.0},
+            {"session_id": "grok-id", "tool": "grok-build", "path_stem": "chat_history", "mtime": 20.0},
+            {"session_id": "roo-id", "tool": "roo-cline", "path_stem": "api_conversation_history", "mtime": 30.0},
+        ],
+    )
+
+    assert lt.apply_from_manifest(p) == 0
+    learned = lt.ts.load_state()["learned"]
+    assert learned["cline"] == {"cline-id": 10.0}
+    assert learned["grok-build"] == {"grok-id": 20.0}
+    assert learned["roo-cline"] == {"roo-id": 30.0}
 
 
 def test_apply_from_manifest_no_llm_call(tmp_path, monkeypatch):

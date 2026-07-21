@@ -1,8 +1,8 @@
 """LLM lane for adapt: extraction + synthesis over MiniMax M3 (and local Ollama by default).
 
-Reuses the jury MiniMax Anthropic provider (direct api.minimax.io/anthropic,
-key env MINIMAX_API_KEY) for the external lane. Every string reaching this
-module was already redacted/scanner-checked by adapt_sessions.
+The external lane uses the local Anthropic-compatible proxy that backs the
+workspace's ``mm`` launcher. Every string reaching this module was already
+redacted/scanner-checked by adapt_sessions.
 `llm` is injectable for tests: (system, user) -> str.
 """
 from __future__ import annotations
@@ -10,16 +10,18 @@ from __future__ import annotations
 import json
 import os
 import re
-import sys
 import urllib.request
 from pathlib import Path
-from importlib import util as _importlib_util
 
 WS = Path(
     os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[4]
 ).expanduser().resolve()
 
 MODEL = "MiniMax-M3"
+MINIMAX_ALIAS = "claude-opus-4-8"
+MINIMAX_PROXY_URL = os.environ.get(
+    "ADAPT_MINIMAX_PROXY_URL", "http://127.0.0.1:8801"
+).rstrip("/")
 LOCAL_MODEL = os.environ.get("ADAPT_LOCAL_MODEL", "qwen2.5:7b-instruct")
 _LOCAL_URL_RAW = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
 LOCAL_URL = (_LOCAL_URL_RAW if "://" in _LOCAL_URL_RAW else f"http://{_LOCAL_URL_RAW}").rstrip("/")
@@ -183,7 +185,12 @@ def lane_available(lane: str) -> bool:
         except Exception:
             return False
     if lane == "minimax":
-        return bool(os.environ.get("MINIMAX_API_KEY"))
+        try:
+            req = urllib.request.Request(f"{MINIMAX_PROXY_URL}/health", method="GET")
+            with urllib.request.urlopen(req, timeout=5):
+                return True
+        except Exception:
+            return False
     return False
 
 
@@ -196,48 +203,50 @@ def _minimax_response(
     thinking: str = "adaptive",
     temperature: float = 0.2,
 ) -> dict:
-    """Lazy-load the jury's providers package and pull MiniMaxAnthropicProvider.
-
-    The jury package is a sibling layout (tools/review/providers/__init__.py is
-    the package root), so we synthesise a `providers` parent package into
-    sys.modules before exec to satisfy the relative imports inside each module.
+    """Call MiniMax through the local proxy used by the workspace ``mm`` launcher.
 
     Wrapped in a configurable retry with exponential backoff for transient
     `[WinError 10054]` / `Remote end closed connection` drops observed on the
     external lane. Production keeps three attempts; sealed evaluation can use
     one attempt and own its retry through a durable request cache.
     """
-    jury_dir = WS / "tools" / "jury" / "providers"
-    if "providers" not in sys.modules:
-        init_spec = _importlib_util.spec_from_file_location(
-            "providers", str(jury_dir / "__init__.py"))
-        init_mod = _importlib_util.module_from_spec(init_spec)
-        sys.modules["providers"] = init_mod
-        init_spec.loader.exec_module(init_mod)
-    spec = _importlib_util.spec_from_file_location(
-        "providers.minimax_anthropic",
-        str(jury_dir / "minimax_anthropic.py"))
-    mod = _importlib_util.module_from_spec(spec)
-    sys.modules["providers.minimax_anthropic"] = mod
-    spec.loader.exec_module(mod)
-    provider = mod.MiniMaxAnthropicProvider("minimax", {
-        "base_url": "https://api.minimax.io/anthropic/v1",
-        "keys": ["MINIMAX_API_KEY"],
-        "model_extra_body": {MODEL: {"thinking": {"type": thinking}}},
-    })
-
     last_exc = None
     if attempts < 1:
         raise ValueError("attempts must be positive")
     for attempt in range(attempts):
         try:
-            return provider.call_with_metadata(
-                MODEL,
-                system,
-                user,
-                max_tokens=max_tokens,
-                temperature=temperature,
+            payload = {
+                "model": MINIMAX_ALIAS,
+                "system": system,
+                "messages": [{"role": "user", "content": user}],
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "thinking": {"type": thinking},
+            }
+            req = urllib.request.Request(
+                f"{MINIMAX_PROXY_URL}/v1/messages",
+                data=json.dumps(payload).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "x-api-key": "router-dummy",
+                    "anthropic-version": "2023-06-01",
+                },
+                method="POST",
             )
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            text = "".join(
+                block.get("text", "")
+                for block in data.get("content", [])
+                if isinstance(block, dict) and block.get("type") == "text"
+            )
+            return {
+                "text": text,
+                "model": data.get("model") or MODEL,
+                "stop_reason": data.get("stop_reason"),
+                "stop_sequence": data.get("stop_sequence"),
+                "usage": data.get("usage") or {},
+            }
         except Exception as exc:
             last_exc = exc
             err_str = str(exc).lower()
@@ -327,12 +336,12 @@ def call_lane(
 
 
 def _default_llm(system: str, user: str, lane: str = "local") -> str:
-    return call_lane(system, user, lane=lane, attempts=1)
+    return call_lane(system, user, lane=lane, attempts=3)
 
 
 def _default_synth_llm(system: str, user: str, lane: str = "local") -> str:
     return call_lane(
-        system, user, lane=lane, attempts=1, max_tokens=SYNTH_MAX_TOKENS
+        system, user, lane=lane, attempts=3, max_tokens=SYNTH_MAX_TOKENS
     )
 
 

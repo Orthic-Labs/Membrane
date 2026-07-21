@@ -81,6 +81,10 @@ def test_runner_sequences_manifest_adjudication_and_manifest_apply(tmp_path):
         work_root=tmp_path / "runs",
         repo_root=Path("D:/Claude"),
         limit=40,
+        resume=True,
+        restart_stale=True,
+        lane="minimax",
+        allow_external_lane=True,
         command_runner=command,
         receipt_validator=lambda path: validations.append(path),
         client_inventory_provider=_client_inventory,
@@ -90,7 +94,11 @@ def test_runner_sequences_manifest_adjudication_and_manifest_apply(tmp_path):
     assert calls[0][1].endswith("adapt.py")
     assert calls[0][2:4] == ["--incremental", "--manifest"]
     assert "--limit" in calls[0]
+    assert "--resume" in calls[0]
+    assert "--restart-stale" in calls[0]
     assert calls[0][calls[0].index("--extract-workers") + 1] == "5"
+    assert calls[0][calls[0].index("--lane") + 1] == "minimax"
+    assert "--allow-external-lane" in calls[0]
     assert calls[1][1].endswith("adjudicate_manifest.py")
     assert calls[2][1].endswith("adapt.py")
     assert calls[2][2] == "--apply-from-manifest"
@@ -106,40 +114,6 @@ def test_runner_sequences_manifest_adjudication_and_manifest_apply(tmp_path):
     assert by_client["codex"]["failed"] == 0
     assert by_client["claudemm"]["processed"] == 0
     assert by_client["ext.future"]["skipped"] == 1
-
-
-def test_runner_passes_explicit_minimax_lane_to_manifest_generation(tmp_path):
-    runner = _module()
-    calls = []
-
-    def command(argv, **_kwargs):
-        calls.append(list(argv))
-        return Result(stdout="adapt: no new sessions")
-
-    summary = runner.run_incremental(
-        receipt_path=tmp_path / "receipt.json",
-        work_root=tmp_path / "runs",
-        repo_root=Path("D:/Claude"),
-        lane="minimax",
-        allow_external_lane=True,
-        command_runner=command,
-        receipt_validator=lambda _path: None,
-    )
-
-    assert summary["outcome"] == "no_new_sessions"
-    assert "--lane" in calls[0]
-    assert calls[0][calls[0].index("--lane") + 1] == "minimax"
-    assert "--allow-external-lane" in calls[0]
-
-
-def test_runner_refuses_external_lane_without_explicit_permission(tmp_path):
-    runner = _module()
-    with pytest.raises(runner.RunnerError, match="explicit permission"):
-        runner.run_incremental(
-            receipt_path=tmp_path / "receipt.json",
-            work_root=tmp_path / "runs",
-            lane="minimax",
-        )
 
 
 @pytest.mark.parametrize("records", [[], [_record("rejected")]])

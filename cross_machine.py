@@ -23,8 +23,9 @@ _RULE_LINE = re.compile(
 )
 _SOURCE_ID = re.compile(
     r"^install:(?P<installation>[0-9a-f-]{36}):"
-    r"(?P<tool>claude-code|cline|codex|commandcode):(?P<digest>[a-f0-9]{32})$"
+    r"(?P<tool>[a-z0-9][a-z0-9._-]{0,79}):(?P<digest>[a-f0-9]{32})$"
 )
+_TOOL = re.compile(r"^[a-z0-9][a-z0-9._-]{0,79}$")
 _RECORD_LINE = re.compile(
     r"^\*\*Record:\*\* type=(?P<record_type>[a-z_]+), "
     r"authority_effect=(?P<authority_effect>[a-z_]+)$"
@@ -53,7 +54,7 @@ def load_installation_id(path: Path) -> str:
 
 def qualify_source_session(installation_id: str, tool: str, session_id: str) -> str:
     installation = _uuid4(installation_id)
-    if tool not in {"claude-code", "cline", "codex", "commandcode"} or not str(session_id).strip():
+    if not isinstance(tool, str) or not _TOOL.fullmatch(tool) or not str(session_id).strip():
         raise CrossMachineAdaptError("invalid source session identity")
     digest = hashlib.sha256(
         f"{tool}\0{session_id}".encode("utf-8")
@@ -77,14 +78,14 @@ def _parse_rule_row(
     if not first_line.startswith("**[adapt/"):
         return None
     match = _RULE_LINE.fullmatch(first_line)
-    if match is None:
-        raise CrossMachineAdaptError(f"canonical Adapt row has invalid envelope: {name}")
     try:
         source_ids = json.loads(source_ids_raw)
     except json.JSONDecodeError as exc:
         raise CrossMachineAdaptError(f"canonical Adapt row has invalid source IDs: {name}") from exc
     if not isinstance(source_ids, list) or not all(isinstance(value, str) for value in source_ids):
         raise CrossMachineAdaptError(f"canonical Adapt row has invalid source IDs: {name}")
+    if match is None:
+        raise CrossMachineAdaptError(f"canonical Adapt row has invalid envelope: {name}")
     retrieval_aliases: list[str] = []
     authority_effect = "neutral"
     envelope_record_type = record_type
@@ -125,17 +126,14 @@ def load_canonical_rules(db_path: Path) -> dict[str, dict[str, Any]]:
     uri = f"file:{path.as_posix()}?mode=ro"
     try:
         conn = sqlite3.connect(uri, uri=True)
-        columns = {
-            str(row[1]) for row in conn.execute("PRAGMA table_info(memories)").fetchall()
-        }
+        columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(memories)")}
         record_type = (
             "record_type"
             if "record_type" in columns
             else "'operational_playbook' AS record_type"
         )
         rows = conn.execute(
-            "SELECT id, scope_id, content, source_ids, created_at, updated_at, "
-            f"{record_type} "
+            f"SELECT id, scope_id, content, source_ids, created_at, updated_at, {record_type} "
             "FROM memories WHERE id LIKE '%/adapt-%' OR id LIKE 'adapt-%' ORDER BY id"
         ).fetchall()
     except sqlite3.Error as exc:

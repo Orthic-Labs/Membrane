@@ -70,6 +70,7 @@ DEFAULT_IMPLEMENTATION_FILES = (
     "tools/pipelines/memory/adapt/run_incremental_multiwriter.py",
 )
 DEFAULT_TEST_FILES = (
+    "tools/pipelines/memory/test_context_session_harnesses.py",
     "tools/pipelines/memory/adapt/test_multiwriter_conformance.py",
     "tools/pipelines/memory/adapt/test_run_incremental_multiwriter.py",
 )
@@ -215,8 +216,13 @@ def discovery_counts(
         counts[client]["discovered"] += 1
         counts[client][outcome] += 1
         tool_state = learned.get(tool, {}) if isinstance(learned, Mapping) else {}
-        prior = tool_state.get(path.stem, -1.0) if isinstance(tool_state, Mapping) else -1.0
-        if not isinstance(prior, (int, float)) or prior < mtime:
+        state_key = str(item.get("state_key") or path.stem)
+        prior = tool_state.get(state_key, -1.0) if isinstance(tool_state, Mapping) else -1.0
+        if (
+            outcome == "parsed"
+            and not adapt_sessions.is_active_session(tool, path)
+            and (not isinstance(prior, (int, float)) or prior < mtime)
+        ):
             counts[client]["pending"] += 1
     return {client: counts[client] for client in sorted(counts)}
 
@@ -255,6 +261,7 @@ def discover_session_evidence(
             "tool": candidate.tool,
             "path": candidate.path,
             "outcome": outcome,
+            "state_key": adapt_sessions.state_key(candidate.tool, candidate.path),
         })
         if parsed is not None and installation_id is not None:
             source_id = cross_machine.qualify_source_session(
@@ -536,7 +543,17 @@ def run_focused_tests(
     managed_python = root / ".venv-tools" / (
         "Scripts/python.exe" if os.name == "nt" else "bin/python"
     )
-    test_python = managed_python if managed_python.is_file() else Path(sys.executable)
+    test_python = Path(sys.executable)
+    if managed_python.is_file():
+        probe = subprocess.run(
+            [str(managed_python), "-c", "import pytest"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=_hidden_creation_flags(),
+        )
+        if probe.returncode == 0:
+            test_python = managed_python
     argv = [str(test_python), "-m", "pytest", *[row["path"] for row in hashed["files"]], "-q"]
     try:
         result = subprocess.run(
@@ -819,7 +836,11 @@ def issue_receipt(
 
 
 def validate_receipt_payload(
-    receipt: Mapping[str, Any], *, current_evidence: Mapping[str, Any], now: datetime
+    receipt: Mapping[str, Any],
+    *,
+    current_evidence: Mapping[str, Any],
+    now: datetime,
+    allow_session_discovery_drift: bool = False,
 ) -> dict[str, Any]:
     if set(receipt) != RECEIPT_KEYS:
         raise ConformanceError("receipt fields are invalid")
@@ -840,7 +861,17 @@ def validate_receipt_payload(
     embedded = {key: receipt[key] for key in EVIDENCE_KEYS}
     _validate_evidence(embedded)
     _validate_evidence(current_evidence)
-    if _canonical(embedded) != _canonical(current_evidence):
+    compared_embedded = embedded
+    compared_current = current_evidence
+    if allow_session_discovery_drift:
+        volatile = {"discovery", "source_clients"}
+        compared_embedded = {
+            key: value for key, value in embedded.items() if key not in volatile
+        }
+        compared_current = {
+            key: value for key, value in current_evidence.items() if key not in volatile
+        }
+    if _canonical(compared_embedded) != _canonical(compared_current):
         raise ConformanceError("receipt does not match current conformance evidence")
     return copy.deepcopy(dict(receipt))
 
@@ -855,8 +886,13 @@ def _defaults(repo_root: Path) -> dict[str, Path]:
     return {
         "installation_file": root / "tools/.cache/memory/installation.json",
         "db_path": db,
-        "binary_path": root / "tools/bin" / binary_name,
-        "release_manifest_path": root / "tools/lib/memright-release.json",
+        "binary_path": Path(os.environ.get(
+            "MEMRIGHT_CONFORMANCE_BINARY", str(root / "tools/bin" / binary_name)
+        )),
+        "release_manifest_path": Path(os.environ.get(
+            "MEMRIGHT_CONFORMANCE_RELEASE_MANIFEST",
+            str(root / "tools/lib/memright-release.json"),
+        )),
         "token_file": Path(os.environ.get(
             "MEMRIGHT_API_TOKEN_FILE", str(db.parent / "api-token")
         )),
@@ -874,6 +910,7 @@ def validate_receipt_file(
     token_file: Path | None = None,
     service_url: str | None = None,
     now: datetime | None = None,
+    allow_session_discovery_drift: bool = False,
 ) -> dict[str, Any]:
     try:
         receipt = json.loads(Path(receipt_path).read_text(encoding="utf-8"))
@@ -891,7 +928,10 @@ def validate_receipt_file(
         focused_tests=receipt.get("focused_tests", {}),
     )
     return validate_receipt_payload(
-        receipt, current_evidence=evidence, now=now or datetime.now(timezone.utc)
+        receipt,
+        current_evidence=evidence,
+        now=now or datetime.now(timezone.utc),
+        allow_session_discovery_drift=allow_session_discovery_drift,
     )
 
 

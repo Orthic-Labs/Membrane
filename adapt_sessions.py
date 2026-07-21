@@ -1,20 +1,22 @@
-"""Session transcript discovery + user-turn extraction for adapt.
+"""Registry-ready transcript discovery and user-turn extraction for Adapt.
 
-Sources: Claude Code (~/.claude/projects/*/*.jsonl) and Codex
-(~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl). Only user-authored turns are
-kept; injected wrappers (<...>), tool results, meta, caveat and sidechain rows
-are dropped. Every kept turn passes redact() and scanner_clean() before it
-can leave the machine.
+Only bounded, known harness transcript roots are searched. Ordinary workspace
+files are never considered transcripts. Only user-authored text blocks are
+kept; wrappers, tool results, model rows, synthetic prompts, and health content
+are dropped before the external-lane batch scanner runs.
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass, field
+import urllib.parse
+from collections.abc import Mapping
 from datetime import datetime, timezone
+from dataclasses import dataclass, field
 from pathlib import Path
 
 STATE_DIR = Path.home() / ".claude" / "adapt"
@@ -229,7 +231,7 @@ class ParseStats:
 
 @dataclass
 class Session:
-    tool: str          # "claude-code" | "codex" | "cline" | "commandcode"
+    tool: str
     session_id: str
     path: Path
     cwd: str
@@ -369,11 +371,36 @@ def parse_codex_session(
     return Session("codex", sid, path, cwd, path.stat().st_mtime, turns, stats)
 
 
-def _message_timestamp(value: object) -> str | None:
+def _text_blocks(content: object) -> list[str]:
+    if isinstance(content, str):
+        return [content]
+    if not isinstance(content, list):
+        return []
+    return [
+        str(block.get("text") or "")
+        for block in content
+        if isinstance(block, dict) and block.get("type") in {None, "text"}
+        and isinstance(block.get("text"), str)
+    ]
+
+
+def _unwrap_external_user_text(text: str) -> str:
+    for _ in range(3):
+        match = re.fullmatch(
+            r"\s*<user_input(?:\s+[^>]{1,200})?>([\s\S]*?)</user_input>\s*",
+            text,
+        )
+        if match is None:
+            break
+        text = match.group(1).strip()
+    return text
+
+
+def _normalize_observed_at(value: object) -> str | None:
     if isinstance(value, str):
         return value
     if isinstance(value, (int, float)) and not isinstance(value, bool):
-        seconds = float(value) / 1000 if value > 10_000_000_000 else float(value)
+        seconds = value / 1000 if value > 10_000_000_000 else value
         try:
             return datetime.fromtimestamp(seconds, timezone.utc).isoformat().replace(
                 "+00:00", "Z"
@@ -383,126 +410,191 @@ def _message_timestamp(value: object) -> str | None:
     return None
 
 
-def _message_texts(content: object) -> list[str]:
-    if isinstance(content, str):
-        return [content]
-    if not isinstance(content, list):
-        return []
-    return [
-        str(item.get("text") or "")
-        for item in content
-        if isinstance(item, dict) and item.get("type") == "text"
-    ]
+def _append_user_texts(
+    turns: list[Turn], stats: ParseStats, content: object, cwd: str,
+    observed_at: object = None, *, max_turns: int | None,
+) -> bool:
+    for raw in _text_blocks(content):
+        text = _unwrap_external_user_text(raw.strip())
+        if _keep_turn(text):
+            turns.append(Turn(
+                _clean(text, stats), scope_for_cwd(cwd),
+                _normalize_observed_at(observed_at),
+            ))
+            stats.kept_turns += 1
+        else:
+            stats.dropped_turns += 1
+        if max_turns is not None and len(turns) >= max_turns:
+            stats.dropped_turns += 1
+            return True
+    return False
 
 
-def _cline_user_text(text: str) -> str:
-    match = re.fullmatch(
-        r'\s*<user_input(?: mode="[a-z-]+")?>\s*(.*?)\s*</user_input>\s*',
-        text,
-        re.S,
-    )
-    return match.group(1) if match else text
-
-
-def _parse_role_message_session(
-    path: Path,
-    *,
-    tool: str,
-    session_id: str,
-    cwd: str,
-    rows: list[object],
-    max_turns: int | None,
+def parse_command_code_session(
+    path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
 ) -> Session | None:
     turns: list[Turn] = []
     stats = ParseStats()
-    for row in rows:
-        if not isinstance(row, dict) or row.get("role") != "user":
-            continue
-        for raw in _message_texts(row.get("content")):
-            if tool == "cline":
-                raw = _cline_user_text(raw)
-            text = raw.strip()
-            if _keep_turn(text):
-                turns.append(
-                    Turn(
-                        _clean(text, stats),
-                        scope_for_cwd(cwd),
-                        _message_timestamp(row.get("timestamp") or row.get("ts")),
-                    )
-                )
-                stats.kept_turns += 1
-            else:
-                stats.dropped_turns += 1
-            if max_turns is not None and len(turns) >= max_turns:
-                stats.dropped_turns += 1
-                break
-        if max_turns is not None and len(turns) >= max_turns:
-            break
-    if not turns:
-        return None
-    return Session(tool, session_id, path, cwd, path.stat().st_mtime, turns, stats)
-
-
-def parse_commandcode_session(
-    path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
-) -> Session | None:
-    rows: list[object] = []
+    sid = path.stem
+    cwd = path.parent.name
     with path.open(encoding="utf-8", errors="replace") as handle:
         for line in handle:
             try:
-                rows.append(json.loads(line))
+                row = json.loads(line)
             except json.JSONDecodeError:
+                stats.unknown_rows += 1
                 continue
-    session_id = path.stem
-    for row in rows:
-        if isinstance(row, dict) and isinstance(row.get("sessionId"), str):
-            session_id = row["sessionId"]
-            break
-    return _parse_role_message_session(
-        path,
-        tool="commandcode",
-        session_id=session_id,
-        cwd=path.parent.name,
-        rows=rows,
-        max_turns=max_turns,
-    )
+            if not isinstance(row, dict) or row.get("role") != "user":
+                continue
+            sid = str(row.get("sessionId") or sid)
+            if _append_user_texts(
+                turns, stats, row.get("content"), cwd, row.get("timestamp"),
+                max_turns=max_turns,
+            ):
+                break
+    return Session("command-code", sid, path, cwd, path.stat().st_mtime, turns, stats) if turns else None
+
+
+# Compatibility for the original adapter API used by local callers and tests.
+parse_commandcode_session = parse_command_code_session
 
 
 def parse_cline_session(
     path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
 ) -> Session | None:
-    payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-    if not isinstance(payload, dict) or not isinstance(payload.get("messages"), list):
-        return None
-    session_id = str(payload.get("sessionId") or path.name.removesuffix(".messages.json"))
-    cwd = path.parent.name
-    metadata_path = path.with_name(path.name.removesuffix(".messages.json") + ".json")
-    try:
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, json.JSONDecodeError):
-        metadata = {}
-    rows = list(payload["messages"])
-    if isinstance(metadata, dict):
-        session_id = str(metadata.get("session_id") or session_id)
-        cwd = str(metadata.get("workspace_root") or metadata.get("cwd") or cwd)
-        prompt = metadata.get("prompt")
-        if isinstance(prompt, str) and prompt.strip():
-            rows.insert(
-                0,
-                {
-                    "role": "user",
-                    "content": [{"type": "text", "text": prompt}],
-                    "timestamp": metadata.get("started_at"),
-                },
+    body = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    if not isinstance(body, dict) or not isinstance(body.get("messages"), list):
+        raise ValueError("invalid Cline session")
+    companion = path.with_name(path.name.removesuffix(".messages.json") + ".json")
+    metadata: dict = {}
+    if companion.is_file():
+        loaded = json.loads(companion.read_text(encoding="utf-8", errors="replace"))
+        if isinstance(loaded, dict):
+            metadata = loaded
+    sid = str(body.get("sessionId") or metadata.get("session_id") or path.parent.name)
+    cwd = str(metadata.get("workspace_root") or metadata.get("cwd") or path.parent.parent.name)
+    turns: list[Turn] = []
+    stats = ParseStats()
+    prompt = metadata.get("prompt")
+    if isinstance(prompt, str) and prompt.strip():
+        if _append_user_texts(
+            turns, stats, prompt, cwd, metadata.get("started_at"), max_turns=max_turns
+        ):
+            return Session(
+                "cline", sid, path, cwd, path.stat().st_mtime, turns, stats
             )
-    return _parse_role_message_session(
-        path,
-        tool="cline",
-        session_id=session_id,
-        cwd=cwd,
-        rows=rows,
-        max_turns=max_turns,
-    )
+    for row in body["messages"]:
+        if not isinstance(row, dict) or row.get("role") != "user":
+            continue
+        if _append_user_texts(
+            turns, stats, row.get("content"), cwd, row.get("ts"), max_turns=max_turns
+        ):
+            break
+    return Session("cline", sid, path, cwd, path.stat().st_mtime, turns, stats) if turns else None
+
+
+def parse_gemini_session(
+    path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
+) -> Session | None:
+    rows: list[dict] = []
+    if path.suffix == ".jsonl":
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(row, dict):
+                    rows.append(row)
+    else:
+        body = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        if isinstance(body, list):
+            rows = [row for row in body if isinstance(row, dict)]
+        elif isinstance(body, dict):
+            messages = body.get("messages") or body.get("history") or []
+            rows = [row for row in messages if isinstance(row, dict)]
+            rows.insert(0, body)
+        else:
+            raise ValueError("invalid Gemini session")
+    sid = path.stem
+    cwd = path.parent.parent.name
+    turns: list[Turn] = []
+    stats = ParseStats()
+    for row in rows:
+        sid = str(row.get("sessionId") or sid)
+        if row.get("type") != "user" and row.get("role") not in {"user", "human"}:
+            continue
+        if _append_user_texts(
+            turns, stats, row.get("content"), cwd, row.get("timestamp"),
+            max_turns=max_turns,
+        ):
+            break
+    return Session("gemini", sid, path, cwd, path.stat().st_mtime, turns, stats) if turns else None
+
+
+def parse_grok_build_session(
+    path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
+) -> Session | None:
+    sid = path.parent.name
+    cwd = urllib.parse.unquote(path.parent.parent.name)
+    turns: list[Turn] = []
+    stats = ParseStats()
+    with path.open(encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                stats.unknown_rows += 1
+                continue
+            if (
+                not isinstance(row, dict) or row.get("type") != "user"
+                or row.get("synthetic_reason")
+            ):
+                continue
+            if _append_user_texts(
+                turns, stats, row.get("content"), cwd, row.get("timestamp"),
+                max_turns=max_turns,
+            ):
+                break
+    return Session("grok-build", sid, path, cwd, path.stat().st_mtime, turns, stats) if turns else None
+
+
+def parse_roo_cline_session(
+    path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
+) -> Session | None:
+    body = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    if not isinstance(body, list):
+        raise ValueError("invalid Roo-Cline session")
+    sid = path.parent.name
+    cwd = "cursor-roo-cline"
+    turns: list[Turn] = []
+    stats = ParseStats()
+    for row in body:
+        if not isinstance(row, dict) or row.get("role") != "user":
+            continue
+        if _append_user_texts(
+            turns, stats, row.get("content"), cwd, row.get("ts"), max_turns=max_turns
+        ):
+            break
+    return Session("roo-cline", sid, path, cwd, path.stat().st_mtime, turns, stats) if turns else None
+
+
+PARSERS = {
+    "claude-code": "parse_claude_session",
+    "codex": "parse_codex_session",
+    "command-code": "parse_command_code_session",
+    "cline": "parse_cline_session",
+    "gemini": "parse_gemini_session",
+    "grok-build": "parse_grok_build_session",
+    "roo-cline": "parse_roo_cline_session",
+}
+
+
+def parser_for(tool: str):
+    try:
+        return globals()[PARSERS[tool]]
+    except KeyError as exc:
+        raise ValueError(f"unsupported transcript tool: {tool}") from exc
 
 
 def load_state() -> dict:
@@ -527,27 +619,71 @@ def discover() -> list[tuple[str, Path]]:
     codex_root = Path.home() / ".codex" / "sessions"
     if codex_root.exists():
         found.extend(("codex", f) for f in sorted(codex_root.glob("*/*/*/*.jsonl")))
-    commandcode_root = Path.home() / ".commandcode" / "projects"
-    if commandcode_root.exists():
+    command_root = Path.home() / ".commandcode" / "projects"
+    if command_root.exists():
         found.extend(
-            ("commandcode", path)
-            for path in sorted(commandcode_root.glob("*/*.jsonl"))
+            ("command-code", path)
+            for path in sorted(command_root.glob("*/*.jsonl"))
             if not path.name.endswith(".checkpoints.jsonl")
         )
     cline_root = Path.home() / ".cline" / "data" / "sessions"
     if cline_root.exists():
-        found.extend(("cline", path) for path in sorted(cline_root.glob("*/*.messages.json")))
+        found.extend(
+            ("cline", path)
+            for path in sorted(cline_root.glob("*/*.messages.json"))
+            if path.name == f"{path.parent.name}.messages.json"
+        )
+    gemini_root = Path.home() / ".gemini" / "tmp"
+    if gemini_root.exists():
+        found.extend(
+            ("gemini", path)
+            for path in sorted(gemini_root.glob("*/chats/session-*.json*"))
+            if path.suffix in {".json", ".jsonl"}
+        )
+    grok_root = Path.home() / ".grok" / "sessions"
+    if grok_root.exists():
+        found.extend(
+            ("grok-build", path)
+            for path in sorted(grok_root.glob("*/*/chat_history.jsonl"))
+        )
+    roo_roots = (
+        Path.home() / "AppData" / "Roaming" / "Cursor" / "User" / "globalStorage"
+        / "rooveterinaryinc.roo-cline" / "tasks",
+        Path.home() / "Library" / "Application Support" / "Cursor" / "User"
+        / "globalStorage" / "rooveterinaryinc.roo-cline" / "tasks",
+    )
+    for roo_root in roo_roots:
+        if roo_root.exists():
+            found.extend(
+                ("roo-cline", path)
+                for path in sorted(roo_root.glob("*/api_conversation_history.json"))
+            )
     return found
 
 
-def parser_for(tool: str):
-    parsers = {
-        "claude-code": parse_claude_session,
-        "codex": parse_codex_session,
-        "commandcode": parse_commandcode_session,
-        "cline": parse_cline_session,
+def state_key(tool: str, path: Path) -> str:
+    if tool == "cline" and path.name.endswith(".messages.json"):
+        return path.name.removesuffix(".messages.json")
+    if tool == "grok-build":
+        return path.parent.name
+    if tool == "roo-cline":
+        return path.parent.name
+    return path.stem
+
+
+def is_active_session(
+    tool: str, path: Path, *, env: Mapping[str, str] = os.environ
+) -> bool:
+    """Return true for a Codex transcript known to still be writing."""
+    active_ids = {
+        value.strip()
+        for value in (
+            env.get("CODEX_THREAD_ID", ""),
+            *env.get("ADAPT_ACTIVE_CODEX_THREAD_IDS", "").split(","),
+        )
+        if value.strip()
     }
-    return parsers[tool]
+    return tool == "codex" and any(value in path.stem for value in active_ids)
 
 
 def new_sessions(
@@ -563,7 +699,9 @@ def new_sessions(
     out: list[Session] = []
     pending: list[tuple[float, str, Path]] = []
     for tool, path in discover():
-        key = path.stem
+        if is_active_session(tool, path):
+            continue
+        key = state_key(tool, path)
         mtime = path.stat().st_mtime
         if before_mtime is not None and mtime > before_mtime:
             continue
@@ -572,7 +710,7 @@ def new_sessions(
         pending.append((mtime, tool, path))
     pending.sort(key=lambda item: item[0], reverse=newest)
     for mtime, tool, path in pending:
-        key = path.stem
+        key = state_key(tool, path)
         sess = parser_for(tool)(path)
         if sess is None or scope_excluded(sess.cwd):
             learned.setdefault(tool, {})[key] = mtime
@@ -586,4 +724,6 @@ def new_sessions(
 
 def mark_learned(state: dict, sessions: list[Session]) -> None:
     for s in sessions:
-        state.setdefault("learned", {}).setdefault(s.tool, {})[s.path.stem] = s.mtime
+        state.setdefault("learned", {}).setdefault(s.tool, {})[
+            state_key(s.tool, s.path)
+        ] = s.mtime

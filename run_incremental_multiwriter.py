@@ -25,9 +25,8 @@ from typing import Any, Callable, Mapping, Sequence
 
 ADAPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = Path(__file__).resolve().parents[4]
-for directory in (REPO_ROOT, ADAPT_DIR):
-    if str(directory) not in sys.path:
-        sys.path.insert(0, str(directory))
+if str(ADAPT_DIR) not in sys.path:
+    sys.path.insert(0, str(ADAPT_DIR))
 
 import multiwriter_conformance  # noqa: E402
 
@@ -64,13 +63,6 @@ def run_command(argv: Sequence[str], **kwargs: Any) -> subprocess.CompletedProce
         creationflags=_hidden_creation_flags(),
         **kwargs,
     )
-
-
-def managed_python(repo_root: Path) -> str:
-    candidate = Path(repo_root) / ".venv-tools" / (
-        "Scripts/python.exe" if os.name == "nt" else "bin/python"
-    )
-    return str(candidate if candidate.is_file() else Path(sys.executable))
 
 
 def create_workdir(work_root: Path) -> Path:
@@ -127,8 +119,6 @@ def _source_client(source_id: object, source_clients: Mapping[str, str]) -> str:
             return "codex"
         if parts[2] == "claude-code":
             return "claude"
-        if parts[2] in {"cline", "commandcode"}:
-            return parts[2]
     return "unknown"
 
 
@@ -228,6 +218,8 @@ def run_incremental(
     work_root: Path,
     repo_root: Path = REPO_ROOT,
     limit: int | None = None,
+    resume: bool = False,
+    restart_stale: bool = False,
     extract_workers: int = 5,
     lane: str = "local",
     allow_external_lane: bool = False,
@@ -246,11 +238,18 @@ def run_incremental(
     if lane not in {"local", "minimax"}:
         raise RunnerError("unsupported Adapt lane")
     if lane != "local" and not allow_external_lane:
-        raise RunnerError("external Adapt lane requires explicit permission")
+        raise RunnerError("external Adapt lane requires explicit allowance")
     root = Path(repo_root)
     receipt = Path(receipt_path)
     validator = receipt_validator or (
         lambda path: multiwriter_conformance.validate_receipt_file(path, repo_root=root)
+    )
+    pre_apply_validator = receipt_validator or (
+        lambda path: multiwriter_conformance.validate_receipt_file(
+            path,
+            repo_root=root,
+            allow_session_discovery_drift=True,
+        )
     )
     validated_receipt = validator(receipt)
     if client_inventory_provider is not None:
@@ -279,7 +278,6 @@ def run_incremental(
     phase_receipts: list[dict[str, Any]] = []
     adapt_path = root / "tools/pipelines/memory/adapt/adapt.py"
     adjudicate_path = root / "tools/pipelines/memory/adapt/adjudicate_manifest.py"
-    python = managed_python(root)
 
     def record_failure(
         failed_phase: str,
@@ -310,20 +308,24 @@ def run_incremental(
         write_summary(workdir, summary)
 
     manifest_argv = [
-        python,
+        sys.executable,
         str(adapt_path),
         "--incremental",
         "--manifest",
         str(pending_path),
         "--extract-workers",
         str(extract_workers),
-        "--lane",
-        lane,
     ]
-    if allow_external_lane:
-        manifest_argv.append("--allow-external-lane")
     if limit is not None:
         manifest_argv.extend(["--limit", str(limit)])
+    if resume:
+        manifest_argv.append("--resume")
+    if restart_stale:
+        if not resume:
+            raise RunnerError("restart_stale requires resume")
+        manifest_argv.append("--restart-stale")
+    if lane != "local":
+        manifest_argv.extend(["--lane", lane, "--allow-external-lane"])
     try:
         _invoke(
             "manifest generation",
@@ -365,7 +367,7 @@ def run_incremental(
             _invoke(
                 "manifest adjudication",
                 [
-                    python,
+                    sys.executable,
                     str(adjudicate_path),
                     "--manifest",
                     str(pending_path),
@@ -397,7 +399,7 @@ def run_incremental(
 
     # Re-check every receipt binding after model work and immediately before mutation.
     try:
-        validator(receipt)
+        pre_apply_validator(receipt)
     except multiwriter_conformance.ConformanceError:
         record_failure(
             "pre_apply_conformance",
@@ -410,7 +412,7 @@ def run_incremental(
         _invoke(
             "manifest apply",
             [
-                python,
+                sys.executable,
                 str(adapt_path),
                 "--apply-from-manifest",
                 str(resolved_path),
@@ -452,6 +454,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--resume", action="store_true")
+    parser.add_argument("--restart-stale", action="store_true")
     parser.add_argument("--extract-workers", type=int, choices=range(1, 6), default=5)
     parser.add_argument("--lane", choices=("local", "minimax"), default="local")
     parser.add_argument("--allow-external-lane", action="store_true")
@@ -462,6 +466,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             work_root=args.work_root,
             repo_root=args.repo_root,
             limit=args.limit,
+            resume=args.resume,
+            restart_stale=args.restart_stale,
             extract_workers=args.extract_workers,
             lane=args.lane,
             allow_external_lane=args.allow_external_lane,

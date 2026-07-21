@@ -53,6 +53,33 @@ def _db(path: Path) -> Path:
     return path
 
 
+def _legacy_db(path: Path) -> Path:
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE memories ("
+        "id TEXT PRIMARY KEY, scope_id TEXT NOT NULL, content TEXT NOT NULL, "
+        "source_ids TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, "
+        "updated_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO memories VALUES (?, ?, ?, ?, ?, ?)",
+        (
+            "D--Claude/adapt-tooling-jsonl-legacy",
+            "D--Claude",
+            "**[adapt/tooling]** — Keep structured logs in JSONL. "
+            "Confidence: 0.80 (observations: 2, needs_review: false, updated 2026-07-20)\n"
+            "**Why:** preference record; id=adapt-tooling-jsonl-legacy, evidence_count=2\n"
+            "**Record:** type=standing_preference, authority_effect=neutral\n",
+            "[]",
+            "2026-07-13T00:00:00Z",
+            "2026-07-20T00:00:00Z",
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return path
+
+
 def test_session_sources_are_installation_qualified_and_content_free() -> None:
     first = cm.qualify_source_session(INSTALLATION, "codex", "local-session-123")
     same = cm.qualify_source_session(INSTALLATION, "codex", "local-session-123")
@@ -63,10 +90,12 @@ def test_session_sources_are_installation_qualified_and_content_free() -> None:
     assert first.startswith(f"install:{INSTALLATION}:codex:")
     assert "local-session-123" not in first
 
-    for tool in ("cline", "commandcode"):
-        source = cm.qualify_source_session(INSTALLATION, tool, "local-session-123")
-        assert f":{tool}:" in source
-        assert "local-session-123" not in source
+
+@pytest.mark.parametrize("tool", ["command-code", "cline", "gemini", "grok-build", "roo-cline"])
+def test_external_harness_sources_use_the_same_qualified_contract(tool: str) -> None:
+    source = cm.qualify_source_session(INSTALLATION, tool, "private-session")
+    assert source.startswith(f"install:{INSTALLATION}:{tool}:")
+    assert "private-session" not in source
 
 
 def test_canonical_rule_pool_is_rebuilt_from_engine_not_local_cache(tmp_path: Path) -> None:
@@ -83,61 +112,34 @@ def test_canonical_rule_pool_is_rebuilt_from_engine_not_local_cache(tmp_path: Pa
     assert rule["retrieval_aliases"] == []
 
 
-def test_canonical_rule_pool_reads_pre_record_type_database(tmp_path: Path) -> None:
-    path = tmp_path / "legacy-engine.db"
+def test_canonical_rule_pool_supports_live_schema_without_record_type(tmp_path: Path) -> None:
+    rules = cm.load_canonical_rules(_legacy_db(tmp_path / "legacy-engine.db"))
+
+    assert rules["adapt-tooling-jsonl-legacy"]["record_type"] == "standing_preference"
+
+
+def test_canonical_rule_pool_excludes_legacy_plain_adapt_row(tmp_path: Path) -> None:
+    path = tmp_path / "plain-engine.db"
     conn = sqlite3.connect(path)
     conn.execute(
-        "CREATE TABLE memories ("
-        "id TEXT PRIMARY KEY, scope_id TEXT NOT NULL, content TEXT NOT NULL, "
-        "source_ids TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL, "
-        "updated_at TEXT NOT NULL)"
+        "CREATE TABLE memories (id TEXT PRIMARY KEY, scope_id TEXT, content TEXT, "
+        "source_ids TEXT, created_at TEXT, updated_at TEXT)"
     )
     conn.execute(
         "INSERT INTO memories VALUES (?, ?, ?, ?, ?, ?)",
         (
-            "D--Claude/adapt-workflow-legacy-1111111111",
-            "D--Claude",
-            "**[adapt/workflow]** — Preserve legacy Adapt rules during candidate upgrades. "
-            "Confidence: 0.80 (observations: 2, needs_review: false, updated 2026-07-20)\n"
-            "**Record:** type=standing_preference, authority_effect=neutral\n",
+            "global/adapt-review-external-explicit-opt-in",
+            "global",
+            "External review is explicit opt-in.",
             "[]",
             "2026-07-13T00:00:00Z",
-            "2026-07-20T00:00:00Z",
+            "2026-07-13T00:00:00Z",
         ),
     )
     conn.commit()
     conn.close()
 
-    rules = cm.load_canonical_rules(path)
-
-    assert rules["adapt-workflow-legacy-1111111111"]["record_type"] == (
-        "standing_preference"
-    )
-
-
-def test_canonical_rule_pool_excludes_non_pipeline_adapt_prefixed_rows(
-    tmp_path: Path,
-) -> None:
-    path = _db(tmp_path / "engine.db")
-    conn = sqlite3.connect(path)
-    conn.execute(
-        "INSERT INTO memories VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (
-            "D--Claude/adapt-manual-feedback",
-            "D--Claude",
-            "A manually authored memory outside the Adapt pipeline.",
-            "[]",
-            "2026-07-13T00:00:00Z",
-            "2026-07-20T00:00:00Z",
-            "memory",
-        ),
-    )
-    conn.commit()
-    conn.close()
-
-    rules = cm.load_canonical_rules(path)
-
-    assert "adapt-manual-feedback" not in rules
+    assert cm.load_canonical_rules(path) == {}
 
 
 def test_pool_digest_is_order_independent_and_changes_with_canonical_content() -> None:

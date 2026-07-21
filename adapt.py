@@ -658,13 +658,20 @@ def apply_from_manifest(manifest_path: Path) -> int:
     failed: list[tuple[str, str]] = []
     prepared: list[preference_record.PreferenceRecord] = []
 
-    # Cheap stub class: ts.mark_learned reads session_id, tool, path.stem, mtime.
+    # Cheap stub class: reconstruct enough path shape for each client's
+    # canonical state key. Cline keys its messages filename without the suffix;
+    # Grok Build and Roo/Cline key the transcript's parent directory.
     class _SessStub:
         def __init__(self, ref: dict) -> None:
             self.session_id = ref["session_id"]
             self.tool = ref["tool"]
             self.mtime = float(ref["mtime"])
-            self.path = Path(ref["path_stem"])
+            if self.tool == "cline":
+                self.path = Path(f"{self.session_id}.messages.json")
+            elif self.tool in {"grok-build", "roo-cline"}:
+                self.path = Path(self.session_id) / ref["path_stem"]
+            else:
+                self.path = Path(ref["path_stem"])
 
     for rec in accepted:
         try:
@@ -902,6 +909,9 @@ def main() -> int:
     ap.add_argument("--resume", action="store_true",
                     help="resume the most recent incomplete journal batch "
                          "(replay cached observations/actions instead of re-running the LLM)")
+    ap.add_argument("--restart-stale", action="store_true",
+                    help="with --resume, abandon only a session-identity-stale journal batch "
+                         "without advancing state, then start a fresh batch")
     ap.add_argument("--manifest", type=Path, default=None,
                     help="write an approval manifest (JSON) to this path; "
                          "the dry-run halts after writing; --apply consumes "
@@ -1001,17 +1011,26 @@ def main() -> int:
             discovered = journal.cached_payload(pb["batch_id"], "discovered") or {}
             mismatch = _resume_mismatch_reason(discovered, session_refs)
             if mismatch:
-                print(f"error: refusing unsafe resume of {pb['batch_id']}: {mismatch}",
-                      file=sys.stderr)
-                return 2
-            replay = pb
-            batch_id = replay["batch_id"]
-            completed_extract_batch, observations = _cached_extract_progress(
-                journal, batch_id
-            )
-            if completed_extract_batch:
-                print(f"adapt: replayed {len(observations)} cached observations "
-                      f"through extract batch {completed_extract_batch} from {batch_id}")
+                if (args.restart_stale and mismatch ==
+                        "cached session identity does not match current discovery"):
+                    journal.record(
+                        pb["batch_id"], "abandoned", reason="session_identity_changed"
+                    )
+                    print(f"adapt: abandoned stale journal batch {pb['batch_id']} "
+                          "without advancing session state")
+                else:
+                    print(f"error: refusing unsafe resume of {pb['batch_id']}: {mismatch}",
+                          file=sys.stderr)
+                    return 2
+            else:
+                replay = pb
+                batch_id = replay["batch_id"]
+                completed_extract_batch, observations = _cached_extract_progress(
+                    journal, batch_id
+                )
+                if completed_extract_batch:
+                    print(f"adapt: replayed {len(observations)} cached observations "
+                          f"through extract batch {completed_extract_batch} from {batch_id}")
 
     if journal and replay is None:
         journal.record(batch_id, "discovered",

@@ -67,6 +67,19 @@ def test_parse_verdicts_requires_exact_ids_and_known_schema():
     parsed = runner.parse_verdicts(raw, {"a"})
     assert parsed["a"]["verdict"] == "admit"
 
+    unknown = runner.parse_verdicts(
+        '[{"id":"a","verdict":"admit","flags":["episodic"],"reason":"x"}]',
+        {"a"},
+    )
+    assert unknown["a"]["verdict"] == "quarantine"
+    assert unknown["a"]["flags"] == ["ambiguous"]
+
+    single_flag = runner.parse_verdicts(
+        '[{"id":"a","verdict":"reject","flags":"task_specific","reason":"x"}]',
+        {"a"},
+    )
+    assert single_flag["a"]["flags"] == ["task_specific"]
+
     with pytest.raises(ValueError, match="missing or extra"):
         runner.parse_verdicts(raw, {"a", "b"})
     with pytest.raises(ValueError, match="unknown verdict"):
@@ -197,6 +210,34 @@ def test_panel_calls_are_content_addressed_and_resume_without_provider(tmp_path)
     )
     assert second["ledger"] == {"provider_calls": 0, "cache_hits": 2, "input_chars": 0}
     assert second["votes"] == first["votes"]
+
+
+def test_panel_retries_invalid_json_within_provider_call_ceiling(tmp_path):
+    runner = _module()
+    cases = [{
+        "id": "case-1", "kind": "control", "rule": "rule",
+        "category": "unknown", "evidence": ["evidence"],
+        "source_session_count": 1,
+    }]
+    calls = []
+
+    def flaky_call(_model_id, _system, user, _max_tokens):
+        calls.append(1)
+        if len(calls) == 1:
+            return '[{"id":"item-001","verdict":"reject"'
+        return json.dumps([{
+            "id": "item-001", "verdict": "reject", "flags": [], "reason": "valid"
+        }])
+
+    result = runner.run_panel(
+        cases=cases, model_ids=["m1"], output_dir=tmp_path,
+        call_fn=flaky_call, scanner=lambda _text: True, chunk_size=1,
+        max_provider_calls=2, max_workers=1, resume=False,
+    )
+
+    assert len(calls) == 2
+    assert result["ledger"]["provider_calls"] == 2
+    assert result["votes"]["m1"]["case-1"]["verdict"] == "reject"
 
 
 def test_panel_blinds_case_identity_and_remaps_votes(tmp_path):

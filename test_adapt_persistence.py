@@ -28,13 +28,16 @@ class _Response:
         return self._payload
 
 
-def _record(record_id: str = "adapt-tooling-reviewed-1111111111"):
+def _record(
+    record_id: str = "adapt-tooling-reviewed-1111111111",
+    scope: str = "D--Claude",
+):
     return preference_record.from_manifest_candidate(
         {
             "id": record_id,
             "rule": "Always preserve the reviewed preference identity during apply.",
             "category": "tooling",
-            "scope": "D--Claude",
+            "scope": scope,
             "record_type": "standing_preference",
             "authority_effect": "neutral",
             "confidence": 0.8,
@@ -95,6 +98,13 @@ def test_batch_apply_is_one_authenticated_attributed_request(
     assert INSTALLATION in item["session_id"]
 
 
+@pytest.mark.parametrize("tool", ["command-code", "cline", "gemini", "grok-build", "roo-cline"])
+def test_single_external_source_preserves_client_attribution(tool: str) -> None:
+    source = f"install:{INSTALLATION}:{tool}:{'b' * 32}"
+
+    assert persistence._source_client([source]) == tool
+
+
 def test_batch_request_is_stable_for_identical_manifest(monkeypatch, tmp_path: Path) -> None:
     token = tmp_path / "api-token"
     token.write_text("secret", encoding="utf-8")
@@ -131,6 +141,36 @@ def test_batch_request_is_stable_for_identical_manifest(monkeypatch, tmp_path: P
     persistence.persist_manifest_batch([_record()], **kwargs)
 
     assert bodies[0] == bodies[1]
+
+
+def test_batch_receipt_compares_service_normalized_drive_scope(monkeypatch, tmp_path: Path) -> None:
+    token = tmp_path / "api-token"
+    token.write_text("secret", encoding="utf-8")
+
+    def fake_urlopen(request, timeout):
+        body = json.loads(request.data.decode("utf-8"))
+        return _Response({
+            "batch_id": body["batch_id"],
+            "inserted": 1,
+            "duplicates": 0,
+            "complete": True,
+            "receipts": [{
+                "item_id": body["items"][0]["item_id"],
+                "memory_id": f"D-claude-coderight/{body['items'][0]['name']}",
+                "status": "updated",
+            }],
+        })
+
+    monkeypatch.setattr(persistence.urllib.request, "urlopen", fake_urlopen)
+    receipt = persistence.persist_manifest_batch(
+        [_record(scope="d-claude-coderight")],
+        manifest_batch_id="20260720T100000-normalized",
+        installation_id=INSTALLATION,
+        token_file=token,
+        base_url="http://127.0.0.1:8765",
+    )
+
+    assert receipt["complete"] is True
 
 
 def test_batch_apply_refuses_incomplete_receipt(tmp_path: Path, monkeypatch) -> None:

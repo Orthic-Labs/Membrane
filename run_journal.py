@@ -29,7 +29,10 @@ from typing import Iterable, Optional
 STATE_DIR = Path.home() / ".claude" / "adapt"
 JOURNAL_FILE = STATE_DIR / "run_journal.jsonl"
 
-VALID_STAGES = ("discovered", "extracted", "synthesized", "applied", "committed")
+VALID_STAGES = (
+    "discovered", "extracted", "synthesized", "applied", "committed", "abandoned"
+)
+TERMINAL_STAGES = {"committed", "abandoned"}
 
 
 class RunJournal:
@@ -79,7 +82,7 @@ class RunJournal:
         for entry in self.batches():
             bid = entry["batch_id"]
             latest[bid] = entry["stage"]
-            if entry["stage"] == "committed":
+            if entry["stage"] in TERMINAL_STAGES:
                 completed.add(bid)
         return [bid for bid, stage in latest.items() if bid not in completed]
 
@@ -105,7 +108,7 @@ class RunJournal:
         for entry in entries:
             latest_by_batch[entry["batch_id"]] = entry
         for batch_id, last in reversed(list(latest_by_batch.items())):
-            if last["stage"] != "committed":
+            if last["stage"] not in TERMINAL_STAGES:
                 # Resume from the next stage.
                 return last
         return None

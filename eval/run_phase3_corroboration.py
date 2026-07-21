@@ -160,8 +160,13 @@ def parse_verdicts(raw: str, expected_ids: set[str]) -> dict[str, dict]:
         if verdict not in VERDICTS:
             raise ValueError(f"unknown verdict: {verdict}")
         flags = item.get("flags", [])
-        if not isinstance(flags, list) or any(flag not in FLAGS for flag in flags):
-            raise ValueError(f"unknown flags for {item_id}")
+        if isinstance(flags, str):
+            flags = [flags]
+        if not isinstance(flags, list) or any(not isinstance(flag, str) for flag in flags):
+            raise ValueError(f"invalid flags for {item_id}")
+        if any(flag not in FLAGS for flag in flags):
+            verdict = "quarantine"
+            flags = ["ambiguous"]
         reason = item.get("reason", "")
         if not isinstance(reason, str):
             raise ValueError(f"invalid reason for {item_id}")
@@ -347,26 +352,45 @@ def run_panel(
     if len(pending_jobs) > max_provider_calls:
         raise RuntimeError("provider-call ceiling exceeded")
 
+    retry_lock = threading.Lock()
+    retry_budget = {"remaining": max_provider_calls - len(pending_jobs)}
+
+    def reserve_parse_retry(job: dict) -> bool:
+        with retry_lock:
+            if retry_budget["remaining"] <= 0:
+                return False
+            retry_budget["remaining"] -= 1
+            ledger["provider_calls"] += 1
+            ledger["input_chars"] += len(SYSTEM) + len(job["user"])
+            return True
+
     def execute(job: dict) -> tuple[str, dict[str, dict]]:
-        started = time.time()
-        response = call_fn(job["model_id"], SYSTEM, job["user"], max_tokens)
-        envelope = {
-            "model_id": job["model_id"],
-            "chunk_index": job["chunk_index"],
-            "request_sha256": job["request_sha256"],
-            "response": response,
-            "response_sha256": hashlib.sha256(response.encode("utf-8")).hexdigest(),
-            "elapsed_s": round(time.time() - started, 3),
-            "status": "success",
-        }
-        try:
-            parsed = parse_verdicts(response, job["expected_ids"])
-        except Exception as exc:
-            envelope["status"] = "invalid_response"
-            envelope["error"] = f"{type(exc).__name__}: {exc}"
+        attempt = 0
+        while True:
+            attempt += 1
+            started = time.time()
+            response = call_fn(job["model_id"], SYSTEM, job["user"], max_tokens)
+            envelope = {
+                "model_id": job["model_id"],
+                "chunk_index": job["chunk_index"],
+                "request_sha256": job["request_sha256"],
+                "response": response,
+                "response_sha256": hashlib.sha256(response.encode("utf-8")).hexdigest(),
+                "elapsed_s": round(time.time() - started, 3),
+                "attempt_count": attempt,
+                "status": "success",
+            }
+            try:
+                parsed = parse_verdicts(response, job["expected_ids"])
+            except Exception as exc:
+                envelope["status"] = "invalid_response"
+                envelope["error"] = f"{type(exc).__name__}: {exc}"
+                _write_json_atomic(job["call_path"], envelope)
+                if reserve_parse_retry(job):
+                    continue
+                raise
             _write_json_atomic(job["call_path"], envelope)
-            raise
-        _write_json_atomic(job["call_path"], envelope)
+            break
         remapped = {
             job["original_by_opaque"][item_id]: verdict
             for item_id, verdict in parsed.items()
@@ -412,7 +436,7 @@ def _call_model(model_id: str, system: str, user: str, max_tokens: int) -> str:
         import adapt_llm
         response = adapt_llm.call_lane_response(
             system, user, lane="minimax", max_tokens=max_tokens,
-            attempts=1, thinking="disabled", temperature=0.0,
+            attempts=3, thinking="disabled", temperature=0.0,
         )
         return response["text"]
 
