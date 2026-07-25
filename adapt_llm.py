@@ -1,4 +1,5 @@
-"""LLM lane for adapt: extraction + synthesis over MiniMax M3 (and local Ollama by default).
+"""LLM lane for adapt: extraction + synthesis over MiniMax M3, or a local
+OpenAI/Anthropic-compatible endpoint by default.
 
 The external lane uses the local Anthropic-compatible proxy that backs the
 workspace's ``mm`` launcher. Every string reaching this module was already
@@ -23,7 +24,8 @@ MINIMAX_PROXY_URL = os.environ.get(
     "ADAPT_MINIMAX_PROXY_URL", "http://127.0.0.1:8801"
 ).rstrip("/")
 LOCAL_MODEL = os.environ.get("ADAPT_LOCAL_MODEL", "qwen2.5:7b-instruct")
-_LOCAL_URL_RAW = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434").rstrip("/")
+# Local lane endpoint — any OpenAI/Anthropic-compatible server on loopback.
+_LOCAL_URL_RAW = os.environ.get("ADAPT_LOCAL_URL", "http://127.0.0.1:11434").rstrip("/")
 LOCAL_URL = (_LOCAL_URL_RAW if "://" in _LOCAL_URL_RAW else f"http://{_LOCAL_URL_RAW}").rstrip("/")
 BATCH_CHAR_BUDGET = 24_000
 MAX_TOKENS = 8192
