@@ -902,6 +902,14 @@ def add_rule(rule_text: str, category: str, *, record_type: str = "operational_p
         "retrieval_aliases": [],
         "machine": preference_record.default_machine_id(),
         "machine_only": bool(machine_only),
+        # A user-authored rule enters the store already active — it was stated
+        # explicitly, not inferred, so it does not sit in `candidate`. Stamping
+        # verification at creation is what makes `never_verified()` meaningful:
+        # without it every direct rule looks unverified forever and the freshness
+        # surface is pure noise.
+        "lifecycle_state": preference_record.normalize_lifecycle_state("active"),
+        "last_verified_at": now,
+        "verification_count": 1,
     }
 
     core_note = ("  -> in the always-on core after --compile-core" if rtype == "standing_preference"
