@@ -65,7 +65,8 @@ def normalize_category(raw: str) -> str:
 
 def admit(rule: dict, *, canonical_rules: set[str] | None = None,
           authority_manifest: dict | None = None,
-          authority_root: Path | None = None) -> tuple[bool, str]:
+          authority_root: Path | None = None,
+          stored_rules: list[dict] | None = None) -> tuple[bool, str]:
     """Decide whether to admit an action's rule to MemRight.
 
     Returns (admitted, reason). Reasons:
@@ -75,6 +76,13 @@ def admit(rule: dict, *, canonical_rules: set[str] | None = None,
       "rule-duplicate" — a canonical rule with the same name already exists.
       "rule-too-short" — fewer than 8 words (not durable).
       "permission-expanding" — inferred authority broadening is quarantined.
+      "origin-not-user:*" (AD9) — the candidate's origin (or its content, by
+        lexical fallback) is not an authenticated user turn: an assistant
+        narration, a tool-output echo, or a repo file pasted into a turn.
+        Never lets repo content or the model's own text create a rule.
+      "rule-conflict-needs-review" (AD3) — the candidate lexically
+        contradicts an already-active stored rule; surfaced for the user to
+        resolve instead of silently admitting both sides.
       authority-manifest reasons — deterministic conflict/scope quarantine.
 
     Single-source admission policy. Tighter than the prompt's accuracy/precision,
@@ -110,7 +118,15 @@ def admit(rule: dict, *, canonical_rules: set[str] | None = None,
         declared_effect=rule.get("authority_effect"),
         authority_manifest=authority_manifest,
         authority_root=authority_root,
+        origin=rule.get("origin"),
+        evidence_text=str(rule.get("evidence_text") or rule.get("evidence") or ""),
     )
     if not authority_result.admitted:
         return False, authority_result.reason
+    if stored_rules:
+        conflicts = authority.detect_rule_contradictions(
+            body, scope=str(rule.get("scope", "workspace")), stored_rules=stored_rules,
+        )
+        if conflicts:
+            return False, "rule-conflict-needs-review"
     return True, "ok"

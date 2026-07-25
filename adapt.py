@@ -449,10 +449,11 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
             if admission is None:
                 raise RuntimeError("admission module unavailable")
             admitted, why = admission.admit(
-                {**act, "scope": scope},
+                {**act, "scope": scope, "evidence_text": evidence},
                 canonical_rules=canonical_names,
                 authority_manifest=authority_manifest,
                 authority_root=authority_root,
+                stored_rules=list(rules.values()),
             )
         except Exception as exc:
             admitted, why = False, f"admission-error:{type(exc).__name__}"

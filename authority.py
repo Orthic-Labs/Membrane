@@ -81,6 +81,79 @@ _INSECURE_PATTERNS = (
 )
 
 
+# ----- AD9: origin-authority boundary -----
+#
+# Only an authenticated USER turn may establish standing preference authority.
+# Repository file content, tool output echoed back into a session, and
+# assistant-authored text must never be able to create a durable rule — that
+# is exactly the memory-poisoning / prompt-injection vector (a crafted
+# CLAUDE.md, a tool result, or the assistant's own narration gets mined as if
+# Adrian said it). This extends the same deterministic-quarantine approach as
+# `_PERMISSION_PATTERNS`/`_INSECURE_PATTERNS` above: explicit origin tagging
+# is checked first, then a lexical fallback flags content that LOOKS like an
+# echoed file/tool/assistant artifact even when mistagged as user_turn.
+ORIGIN_VALUES: frozenset[str] = frozenset({
+    "user_turn", "assistant_output", "tool_output", "repo_file", "unknown",
+})
+_NON_USER_ORIGINS: frozenset[str] = frozenset({
+    "assistant_output", "tool_output", "repo_file",
+})
+
+_REPO_FILE_ECHO_PATTERNS = (
+    # Read-tool / `cat -n` style line-numbered output, or a pasted SKILL.md /
+    # CLAUDE.md front-matter block.
+    re.compile(r"(?m)^\s*\d+\t"),
+    re.compile(r"(?m)^---\s*$[\s\S]{0,200}?^(?:name|description)\s*:", re.MULTILINE),
+    re.compile(r"(?i)\bcontents? of\b.{0,80}\.(?:md|py|json|ya?ml|txt)\b"),
+    re.compile(r"(?im)^#\s+(?:CLAUDE|AGENTS)\.md\b"),
+)
+_TOOL_OUTPUT_ECHO_PATTERNS = (
+    re.compile(r'"tool_use_id"\s*:'),
+    re.compile(r'"is_error"\s*:'),
+    re.compile(r"(?m)^\$\s+\S"),
+    re.compile(r"(?i)\b(?:stdout|stderr)\b\s*:"),
+    re.compile(r"(?i)<tool_result>|<function_results>"),
+)
+_ASSISTANT_AUTHORED_PATTERNS = (
+    re.compile(r"(?i)^(?:i'll|i will|let me|certainly!?|sure,? i(?:'ll| will))\b"),
+    re.compile(r"(?i)\bas (?:claude|the assistant|an ai)\b"),
+    re.compile(r"(?i)\bi(?:'ve| have) (?:implemented|added|fixed|updated|created)\b"),
+)
+
+
+def classify_content_origin_hint(text: str) -> str | None:
+    """Lexical best-effort signal that `text` is echoed repo/tool/assistant
+    content rather than hand-typed user text. Returns 'tool_output',
+    'repo_file', or 'assistant_output', or None when nothing fires (treated
+    as ordinary user content)."""
+    body = text or ""
+    if any(p.search(body) for p in _TOOL_OUTPUT_ECHO_PATTERNS):
+        return "tool_output"
+    if any(p.search(body) for p in _REPO_FILE_ECHO_PATTERNS):
+        return "repo_file"
+    if any(p.search(body) for p in _ASSISTANT_AUTHORED_PATTERNS):
+        return "assistant_output"
+    return None
+
+
+def evaluate_origin(origin: str | None, evidence_text: str = "") -> "AuthorityResult":
+    """Refuse to let anything but an authenticated user turn establish
+    authority. `origin`, if given, must be one of ORIGIN_VALUES; an explicit
+    non-user origin refuses immediately. Regardless of the declared origin,
+    the lexical fallback still scans `evidence_text` — a mistagged or
+    untagged turn that merely *echoes* repo/tool/assistant content is refused
+    too, since the injection risk lives in the content, not the label."""
+    resolved = (origin or "user_turn").strip().lower()
+    if resolved not in ORIGIN_VALUES:
+        resolved = "unknown"
+    if resolved in _NON_USER_ORIGINS:
+        return AuthorityResult(False, f"origin-not-user:{resolved}", "neutral")
+    hint = classify_content_origin_hint(evidence_text)
+    if hint is not None:
+        return AuthorityResult(False, f"origin-not-user:{hint}", "neutral")
+    return AuthorityResult(True, "ok", "neutral")
+
+
 @dataclasses.dataclass(frozen=True)
 class AuthorityResult:
     admitted: bool
@@ -243,6 +316,61 @@ def _authority_lines(manifest: dict, root: Path, scope: str) -> list[str]:
     return [line for line in lines if normalize_text(line)]
 
 
+# ----- AD3: rule-vs-rule contradiction detection -----
+#
+# evaluate_rule's tail loop only compares a candidate against the frozen
+# AUTHORITY SOURCES (AGENTS.md / CLAUDE.md / .claude/rules) — it cannot catch
+# two MINED rules that contradict each other, since neither is a source.
+# This reuses the exact same literal-signature + restrictive-mismatch test
+# against a caller-supplied set of stored rule dicts. Deterministic/lexical
+# only — no embeddings, no external model call.
+
+def detect_rule_contradictions(
+    rule: str,
+    *,
+    scope: str,
+    stored_rules: Iterable[dict],
+) -> list[dict]:
+    """Lexically scan `stored_rules` for a contradiction against `rule`.
+
+    Two rules contradict when they reduce to the same literal signature
+    (same subject after stripping a leading modal like "always"/"never") but
+    one is restrictive and the other is not — e.g. "Always squash commits"
+    vs "Never squash commits". Retired/deprecated/superseded stored rules
+    (via an optional `lifecycle_state` key) are skipped — a resolved dispute
+    should not keep re-triggering. Scope must overlap in either direction.
+
+    Returns a list of `{"id", "rule", "reason"}` conflict dicts for the
+    caller to surface for user resolution; this function does not decide
+    admission by itself.
+    """
+    candidate_signature = _literal_signature(rule)
+    candidate_restrictive = classify_authority_effect(rule) == "restrictive"
+    conflicts: list[dict] = []
+    for stored in stored_rules:
+        stored_state = str(stored.get("lifecycle_state", "active") or "active").lower()
+        if stored_state in {"retired", "deprecated", "superseded"}:
+            continue
+        stored_rule_text = str(stored.get("rule", "") or "")
+        if not stored_rule_text:
+            continue
+        stored_scope = str(stored.get("scope", "workspace") or "workspace")
+        if not (_scope_applies(stored_scope, scope) or _scope_applies(scope, stored_scope)):
+            continue
+        if _literal_signature(stored_rule_text) != candidate_signature:
+            continue
+        if not candidate_signature:
+            continue
+        stored_restrictive = classify_authority_effect(stored_rule_text) == "restrictive"
+        if stored_restrictive != candidate_restrictive:
+            conflicts.append({
+                "id": stored.get("id", ""),
+                "rule": stored_rule_text,
+                "reason": "restrictive-mismatch",
+            })
+    return conflicts
+
+
 def evaluate_rule(
     rule: str,
     *,
@@ -250,8 +378,15 @@ def evaluate_rule(
     declared_effect: str | None = None,
     authority_manifest: dict | None = None,
     authority_root: Path | None = None,
+    origin: str | None = None,
+    evidence_text: str = "",
 ) -> AuthorityResult:
     """Evaluate one candidate, quarantining deterministic safety failures."""
+    origin_result = evaluate_origin(origin, evidence_text or rule)
+    if not origin_result.admitted:
+        return AuthorityResult(
+            False, origin_result.reason, classify_authority_effect(rule)
+        )
     computed_effect = classify_authority_effect(rule)
     effect = computed_effect
     if declared_effect == "permission_expanding":

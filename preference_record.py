@@ -37,6 +37,7 @@ import os
 import platform
 import re
 from pathlib import Path
+from typing import Iterable
 
 import authority
 
@@ -136,6 +137,74 @@ REQUIRED_FIELDS: tuple[str, ...] = (
 # same vocabulary; reviewer-side adds ``pending`` which is never allowed in
 # apply-time inputs.
 ALLOWED_STATUS: frozenset[str] = frozenset({"accepted", "rejected"})
+
+
+# ----- AD2: rule lifecycle (orthogonal to record_type and to `status`) -----
+#
+# `status` (above) is the manifest ADJUDICATION outcome — did this candidate
+# get accepted or rejected on the way in. `record_type` (authority.py) is
+# WHAT KIND of rule this is (standing preference vs. recall-gated playbook,
+# etc). Neither models what happens to an ALREADY-ADMITTED rule over its
+# life: it can be disputed, superseded by a newer rule, or simply go stale.
+# `lifecycle_state` is a THIRD, independent axis for exactly that. It follows
+# the same optional/backward-compatible pattern as `machine`/`machine_only`:
+# not in REQUIRED_FIELDS, not in manifest.IMMUTABLE_FIELDS, absent from the
+# payload_sha256 hash. Every pre-existing record (no lifecycle_state key at
+# all) still validates and defaults to "active" — the historical, implicit
+# behavior where every accepted rule was unconditionally authoritative.
+LIFECYCLE_STATES: frozenset[str] = frozenset({
+    "candidate", "active", "disputed", "deprecated", "superseded", "retired",
+})
+DEFAULT_LIFECYCLE_STATE = "active"
+
+# Legal transitions. Deliberately conservative: nothing transitions OUT of
+# "retired" (terminal — a retired rule is re-mined as a brand-new candidate,
+# not resurrected in place), and "candidate" can only become "active" or be
+# discarded via "retired" (never silently escalate to disputed/deprecated
+# without first being active).
+LIFECYCLE_TRANSITIONS: dict[str, frozenset[str]] = {
+    "candidate": frozenset({"active", "retired"}),
+    "active": frozenset({"disputed", "deprecated", "superseded", "retired"}),
+    "disputed": frozenset({"active", "deprecated", "retired"}),
+    "deprecated": frozenset({"retired", "active"}),
+    "superseded": frozenset({"retired"}),
+    "retired": frozenset(),
+}
+
+
+def normalize_lifecycle_state(value: str | None) -> str:
+    """Unknown/blank values fall back to the safe default rather than raise —
+    same pattern as ``authority.normalize_record_type``."""
+    normalized = (value or DEFAULT_LIFECYCLE_STATE).strip().lower()
+    return normalized if normalized in LIFECYCLE_STATES else DEFAULT_LIFECYCLE_STATE
+
+
+class LifecycleTransitionError(ValueError):
+    """Raised by ``transition_lifecycle`` on an illegal state change."""
+
+
+def transition_lifecycle(record: "PreferenceRecord", new_state: str, *,
+                          now: str | None = None) -> "PreferenceRecord":
+    """Return a new record with ``lifecycle_state`` advanced, enforcing
+    ``LIFECYCLE_TRANSITIONS``. Raises ``LifecycleTransitionError`` on an
+    illegal transition (including into/out of an unrecognized state) rather
+    than silently normalizing — lifecycle changes are deliberate operator
+    actions, unlike the lenient normalization used at construction time."""
+    current = record.lifecycle_state
+    target = (new_state or "").strip().lower()
+    if current not in LIFECYCLE_STATES:
+        raise LifecycleTransitionError(f"unknown current lifecycle_state: {current!r}")
+    if target not in LIFECYCLE_STATES:
+        raise LifecycleTransitionError(f"unknown target lifecycle_state: {target!r}")
+    if target == current:
+        return record
+    if target not in LIFECYCLE_TRANSITIONS.get(current, frozenset()):
+        raise LifecycleTransitionError(
+            f"illegal lifecycle transition: {current!r} -> {target!r}"
+        )
+    return dataclasses.replace(
+        record, lifecycle_state=target, updated_at=now or _now_iso(),
+    )
 
 
 # ----- ID derivation -----
@@ -248,6 +317,18 @@ class PreferenceRecord:
     # Default False (the historical, unqualified behavior) means the rule
     # applies workspace-wide regardless of which machine recorded it.
     machine_only: bool = False
+    # AD2: lifecycle state, orthogonal to record_type/status. Optional,
+    # defaults to "active" (pre-existing records behaved this way implicitly).
+    lifecycle_state: str = DEFAULT_LIFECYCLE_STATE
+    # AD4: freshness/re-verification. "" / 0 means never explicitly
+    # re-verified across any generation of mining, regardless of how many
+    # times the same rule was re-mined. No decay score is computed anywhere —
+    # only presence/absence and a count, deliberately (see docs/plans/
+    # 2026-07-25-SKILL-UPDATES-CONSOLIDATION.md §1.4 B32: content-addressed
+    # fingerprints already prove currency; decay manufactures false
+    # staleness on stable rules).
+    last_verified_at: str = ""
+    verification_count: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_ids", tuple(self.source_ids))
@@ -256,6 +337,11 @@ class PreferenceRecord:
         ))
         object.__setattr__(self, "machine", (self.machine or "").strip())
         object.__setattr__(self, "machine_only", bool(self.machine_only))
+        object.__setattr__(
+            self, "lifecycle_state", normalize_lifecycle_state(self.lifecycle_state)
+        )
+        object.__setattr__(self, "last_verified_at", (self.last_verified_at or "").strip())
+        object.__setattr__(self, "verification_count", max(0, int(self.verification_count or 0)))
 
     def to_dict(self) -> dict:
         return {
@@ -277,6 +363,9 @@ class PreferenceRecord:
             "retrieval_aliases": list(self.retrieval_aliases),
             "machine": self.machine,
             "machine_only": self.machine_only,
+            "lifecycle_state": self.lifecycle_state,
+            "last_verified_at": self.last_verified_at,
+            "verification_count": self.verification_count,
         }
 
     @classmethod
@@ -290,6 +379,9 @@ class PreferenceRecord:
         existing: dict | None = None,
         machine: str | None = None,
         machine_only: bool | None = None,
+        lifecycle_state: str | None = None,
+        last_verified_at: str | None = None,
+        verification_count: int | None = None,
     ) -> "PreferenceRecord":
         """Wrap a synthesis action into a PreferenceRecord.
 
@@ -337,6 +429,18 @@ class PreferenceRecord:
             machine_only if machine_only is not None
             else (existing or {}).get("machine_only", False)
         )
+        resolved_lifecycle_state = normalize_lifecycle_state(
+            lifecycle_state if lifecycle_state is not None
+            else (existing or {}).get("lifecycle_state")
+        )
+        resolved_last_verified_at = (
+            last_verified_at if last_verified_at is not None
+            else (existing or {}).get("last_verified_at", "")
+        ) or ""
+        resolved_verification_count = int(
+            verification_count if verification_count is not None
+            else (existing or {}).get("verification_count", 0) or 0
+        )
         return cls(
             schema_version=SCHEMA_VERSION,
             id=pid,
@@ -360,6 +464,9 @@ class PreferenceRecord:
             ),
             machine=resolved_machine,
             machine_only=resolved_machine_only,
+            lifecycle_state=resolved_lifecycle_state,
+            last_verified_at=resolved_last_verified_at,
+            verification_count=resolved_verification_count,
         )
 
 
@@ -444,6 +551,35 @@ def to_memright_content(record: PreferenceRecord) -> str:
         f"{machine_line}"
         f"**How to apply:** {application_guidance(record.record_type)}\n"
     )
+
+
+def mark_verified(record: PreferenceRecord, *, now: str | None = None) -> PreferenceRecord:
+    """AD4: record a re-verification pass. Bumps ``verification_count`` and
+    stamps ``last_verified_at`` — no decay math, just presence/count."""
+    stamp = now or _now_iso()
+    return dataclasses.replace(
+        record,
+        last_verified_at=stamp,
+        verification_count=record.verification_count + 1,
+        updated_at=stamp,
+    )
+
+
+def never_verified(records: Iterable[dict]) -> list[dict]:
+    """AD4: surface rules that have never been re-verified across any
+    generation of mining, so curation can pick them up. A rule counts as
+    "never verified" if it has no ``last_verified_at`` OR a
+    ``verification_count`` of 0 — either is sufficient signal on its own,
+    since a caller might set one without the other. Deliberately NOT a
+    time-based decay score (see the ``last_verified_at`` field docstring
+    above) — this only surfaces an absence, it does not rank by age."""
+    out = []
+    for rec in records:
+        last_verified = str(rec.get("last_verified_at") or "").strip()
+        count = int(rec.get("verification_count") or 0)
+        if not last_verified or count <= 0:
+            out.append(rec)
+    return out
 
 
 def to_manifest_candidate(record: PreferenceRecord,

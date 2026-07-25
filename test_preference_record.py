@@ -182,3 +182,162 @@ def test_default_machine_id_falls_back_to_platform_hostname_when_no_file(tmp_pat
     missing = tmp_path / "does-not-exist.json"
     result = pr_mod.default_machine_id(installation_file=missing)
     assert isinstance(result, str) and result != "" and result.strip() == result
+
+
+# ----- AD2: rule lifecycle beyond accepted/rejected -----
+
+def test_legacy_two_value_status_records_remain_valid():
+    """Existing records with only status in {accepted, rejected} still
+    validate — lifecycle_state is a fully separate, optional axis."""
+    rec = pr_mod.PreferenceRecord(**_legacy_dict_without_machine())
+    assert rec.status in pr_mod.ALLOWED_STATUS
+    assert rec.lifecycle_state == "active"
+    assert "lifecycle_state" not in pr_mod.REQUIRED_FIELDS
+
+
+def test_lifecycle_state_defaults_to_active_for_new_record():
+    rec = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+    )
+    assert rec.lifecycle_state == "active"
+
+
+def test_lifecycle_state_unknown_value_normalizes_to_active():
+    rec = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+        lifecycle_state="bogus-state",
+    )
+    assert rec.lifecycle_state == "active"
+
+
+def test_legal_lifecycle_transitions_succeed():
+    rec = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+    )
+    assert rec.lifecycle_state == "active"
+    disputed = pr_mod.transition_lifecycle(rec, "disputed")
+    assert disputed.lifecycle_state == "disputed"
+    assert disputed.id == rec.id  # identity preserved
+    retired = pr_mod.transition_lifecycle(disputed, "retired")
+    assert retired.lifecycle_state == "retired"
+
+
+def test_illegal_lifecycle_transition_raises():
+    rec = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+    )
+    retired = pr_mod.transition_lifecycle(rec, "retired")
+    import pytest
+    with pytest.raises(pr_mod.LifecycleTransitionError):
+        pr_mod.transition_lifecycle(retired, "active")
+
+
+def test_lifecycle_transition_to_unknown_state_raises():
+    rec = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+    )
+    import pytest
+    with pytest.raises(pr_mod.LifecycleTransitionError):
+        pr_mod.transition_lifecycle(rec, "not-a-real-state")
+
+
+def test_lifecycle_state_absent_from_manifest_candidate_payload():
+    """record_type is orthogonal AND lifecycle_state stays out of the
+    hash-immutable manifest candidate, same as machine/machine_only."""
+    rec = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+        lifecycle_state="disputed",
+    )
+    candidate = pr_mod.to_manifest_candidate(rec)
+    assert "lifecycle_state" not in candidate
+    assert candidate["record_type"] == rec.record_type  # orthogonal, both present independently
+
+
+def test_lifecycle_state_preserved_across_update_when_omitted():
+    initial = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+        lifecycle_state="disputed",
+    )
+    updated = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "update", "name": initial.id, "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.85},
+        scope="D--Claude", source_ids=("s1",),
+        existing=initial.to_dict(),
+    )
+    assert updated.lifecycle_state == "disputed"
+
+
+# ----- AD4: freshness / re-verification (no time-decay scoring) -----
+
+def test_new_record_starts_never_verified():
+    rec = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+    )
+    assert rec.last_verified_at == ""
+    assert rec.verification_count == 0
+
+
+def test_mark_verified_bumps_count_and_stamps_timestamp():
+    rec = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+    )
+    verified = pr_mod.mark_verified(rec, now="2026-07-25T00:00:00+00:00")
+    assert verified.verification_count == 1
+    assert verified.last_verified_at == "2026-07-25T00:00:00+00:00"
+    verified_again = pr_mod.mark_verified(verified, now="2026-08-01T00:00:00+00:00")
+    assert verified_again.verification_count == 2
+    assert verified_again.last_verified_at == "2026-08-01T00:00:00+00:00"
+
+
+def test_never_verified_surfaces_rules_missing_either_signal():
+    rows = [
+        {"id": "a", "last_verified_at": "", "verification_count": 0},
+        {"id": "b", "last_verified_at": "2026-07-01T00:00:00+00:00", "verification_count": 1},
+        {"id": "c", "last_verified_at": "2026-07-01T00:00:00+00:00", "verification_count": 0},
+        {"id": "d", "last_verified_at": "", "verification_count": 3},
+    ]
+    flagged = {r["id"] for r in pr_mod.never_verified(rows)}
+    assert flagged == {"a", "c", "d"}
+
+
+def test_never_verified_no_decay_scoring_present():
+    """The refuted exponential-decay approach must not have snuck back in —
+    never_verified only checks presence/count, never computes an age-based
+    score or accepts a decay parameter."""
+    import inspect
+    sig = inspect.signature(pr_mod.never_verified)
+    assert "decay" not in str(sig).lower()
+    assert "half_life" not in str(sig).lower()
+
+
+def test_verification_fields_round_trip_through_to_dict():
+    rec = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+    )
+    verified = pr_mod.mark_verified(rec, now="2026-07-25T00:00:00+00:00")
+    d = verified.to_dict()
+    assert d["last_verified_at"] == "2026-07-25T00:00:00+00:00"
+    assert d["verification_count"] == 1
+    d["source_ids"] = tuple(d["source_ids"])
+    rec2 = pr_mod.PreferenceRecord(**d)
+    assert rec2 == verified
