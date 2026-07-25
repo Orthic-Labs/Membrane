@@ -248,6 +248,25 @@ def _scope_for(obs_list: list[dict]) -> str:
     return scopes.pop() if len(scopes) == 1 else "D--Claude"
 
 
+def _dimensions_for(obs_list: list[dict]) -> dict[str, str]:
+    """AD1: structured facets for a synthesized rule.
+
+    Only emitted when EVERY contributing observation agrees. A rule mined from
+    two different repos is genuinely repo-agnostic, so narrowing it to one of
+    them would silently stop it firing in the other — the exact failure mode
+    scope_dimensions exists to prevent. Disagreement therefore yields {},
+    meaning unqualified, meaning matches everything.
+    """
+    seen: set[tuple[tuple[str, str], ...]] = set()
+    for obs in obs_list:
+        obs_scope = obs.get("scope") or ""
+        dims = ts.dimensions_for_scope(obs_scope) if obs_scope else {}
+        seen.add(tuple(sorted(dims.items())))
+    if len(seen) != 1:
+        return {}
+    return dict(next(iter(seen)))
+
+
 def _synth_committable(outcome: str) -> bool:
     return outcome in outcomes.COMMITTABLE
 
@@ -438,6 +457,7 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
         evidence = obs_list[0]["evidence"] if obs_list else ""
         tool = obs_list[0].get("tool", "") if obs_list else ""
         scope = rules.get(name, {}).get("scope") or _scope_for(obs_list)
+        scope_dimensions = _dimensions_for(obs_list)
         retrieval_aliases = _safe_retrieval_aliases(act["rule"], obs_list)
         linked_source_ids = list(dict.fromkeys(
             obs.get("session_id") for obs in obs_list if obs.get("session_id")
@@ -482,6 +502,7 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
                 scope=scope, source_ids=tuple(candidate_source_ids),
                 existing=existing,
                 machine=(existing or {}).get("machine") or current_machine,
+                scope_dimensions=scope_dimensions,
             )
             cand = preference_record.to_manifest_candidate(
                 pr, evidence_excerpt=evidence,

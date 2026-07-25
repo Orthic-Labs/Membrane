@@ -288,6 +288,85 @@ def _now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
+# ----- AD1: scope dimensions (structured narrowing, additive) -----
+#
+# `scope` (REQUIRED_FIELDS + manifest.IMMUTABLE_FIELDS + payload_sha256 +
+# derive_id) is a single flat workspace-recall partition, and it stays exactly
+# that. It cannot carry structure without invalidating every stored manifest
+# and forcing a coordinated migration across both mirrored machines.
+#
+# The narrowing AD1 actually asks for does not require that. `scope_dimensions`
+# is a SEPARATE optional field carrying the structured facets — which repo,
+# which path, which language, which framework a rule was learned in — and it
+# follows the same additive contract already proven by `machine`/`machine_only`
+# (attribution) and `lifecycle_state` (AD2): NOT in REQUIRED_FIELDS, NOT in
+# manifest.IMMUTABLE_FIELDS, NOT part of any content hash. Consequences:
+# every pre-existing record stays byte-identical, no manifest re-hashes, and
+# the two machines need no coordinated cutover.
+#
+# Semantics are deliberately conservative. An ABSENT/empty mapping means
+# "unqualified" — the historical behaviour, matching every context. A rule only
+# ever gets NARROWER by declaring a dimension, never broader, so adding this
+# field can never widen the reach of an existing rule.
+SCOPE_DIMENSION_KEYS: tuple[str, ...] = ("repo", "path_prefix", "language", "framework")
+MAX_SCOPE_DIMENSION_CHARS = 200
+
+
+def normalize_scope_dimensions(value) -> tuple[tuple[str, str], ...]:
+    """Normalize to a sorted tuple of (key, value) pairs.
+
+    Sorted + tupled so the field is hashable, order-independent and stable in
+    the frozen dataclass. Unknown keys are DROPPED rather than raising: this
+    field is advisory narrowing metadata, and a malformed extractor payload
+    must degrade to "unqualified" (the safe, historical behaviour) instead of
+    failing an otherwise-valid record.
+    """
+    if not value:
+        return ()
+    items = value.items() if hasattr(value, "items") else value
+    cleaned: dict[str, str] = {}
+    for pair in items:
+        try:
+            key, raw = pair
+        except (TypeError, ValueError):
+            continue
+        key = str(key or "").strip().lower()
+        if key not in SCOPE_DIMENSION_KEYS:
+            continue
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        cleaned[key] = text[:MAX_SCOPE_DIMENSION_CHARS]
+    return tuple(sorted(cleaned.items()))
+
+
+def scope_dimensions_match(record_dimensions, context) -> bool:
+    """True when a rule's declared dimensions are satisfied by `context`.
+
+    Unqualified rules (no dimensions) match everything — that is the entire
+    pre-AD1 corpus, so recall behaviour is unchanged for it. A declared
+    dimension the context cannot speak to is a NON-match: a rule that says
+    "Rust only" must not fire in a context whose language is unknown, because
+    silently applying a narrowed rule is the failure this field exists to
+    prevent. `path_prefix` matches by prefix; everything else is exact,
+    case-insensitively.
+    """
+    declared = normalize_scope_dimensions(record_dimensions)
+    if not declared:
+        return True
+    ctx = dict(normalize_scope_dimensions(context))
+    for key, wanted in declared:
+        actual = ctx.get(key)
+        if not actual:
+            return False
+        if key == "path_prefix":
+            if not actual.replace("\\", "/").lower().startswith(wanted.replace("\\", "/").lower()):
+                return False
+        elif actual.lower() != wanted.lower():
+            return False
+    return True
+
+
 # ----- Record -----
 
 @dataclasses.dataclass(frozen=True)
@@ -329,6 +408,10 @@ class PreferenceRecord:
     # staleness on stable rules).
     last_verified_at: str = ""
     verification_count: int = 0
+    # AD1: structured narrowing facets. Empty tuple == unqualified == matches
+    # every context (the historical behaviour of the whole pre-AD1 corpus).
+    # Additive and unhashed — see the SCOPE_DIMENSION_KEYS block above.
+    scope_dimensions: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_ids", tuple(self.source_ids))
@@ -342,6 +425,9 @@ class PreferenceRecord:
         )
         object.__setattr__(self, "last_verified_at", (self.last_verified_at or "").strip())
         object.__setattr__(self, "verification_count", max(0, int(self.verification_count or 0)))
+        object.__setattr__(
+            self, "scope_dimensions", normalize_scope_dimensions(self.scope_dimensions)
+        )
 
     def to_dict(self) -> dict:
         return {
@@ -366,6 +452,10 @@ class PreferenceRecord:
             "lifecycle_state": self.lifecycle_state,
             "last_verified_at": self.last_verified_at,
             "verification_count": self.verification_count,
+            # Emitted as a plain mapping for JSON. Absent from
+            # manifest.candidate_payload's whitelist projection, so it can
+            # never perturb payload_sha256 on any record, old or new.
+            "scope_dimensions": dict(self.scope_dimensions),
         }
 
     @classmethod
@@ -382,6 +472,7 @@ class PreferenceRecord:
         lifecycle_state: str | None = None,
         last_verified_at: str | None = None,
         verification_count: int | None = None,
+        scope_dimensions=None,
     ) -> "PreferenceRecord":
         """Wrap a synthesis action into a PreferenceRecord.
 
@@ -467,6 +558,13 @@ class PreferenceRecord:
             lifecycle_state=resolved_lifecycle_state,
             last_verified_at=resolved_last_verified_at,
             verification_count=resolved_verification_count,
+            # Explicit argument wins; otherwise inherit whatever the prior
+            # record declared, so an update never silently widens a rule that
+            # had already been narrowed.
+            scope_dimensions=normalize_scope_dimensions(
+                scope_dimensions if scope_dimensions is not None
+                else (existing or {}).get("scope_dimensions", ())
+            ),
         )
 
 

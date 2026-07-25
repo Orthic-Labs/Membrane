@@ -21,6 +21,9 @@ from pathlib import Path
 
 STATE_DIR = Path.home() / ".claude" / "adapt"
 STATE_FILE = STATE_DIR / "state.json"
+# Same anchor as adapt.WORKSPACE_ROOT / preference_record._WORKSPACE_ROOT:
+# .../tools/pipelines/memory/adapt/<file> -> workspace root.
+_WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 
 MIN_TURN_CHARS = 10
 MAX_TURN_CHARS = 4000
@@ -198,6 +201,47 @@ def scanner_available() -> bool:
 
 def scope_for_cwd(cwd: str) -> str:
     return cwd.replace(":", "-").replace("\\", "-").replace("/", "-").strip("-") or "global"
+
+
+def dimensions_for_scope(scope: str) -> dict[str, str]:
+    """AD1: derive structured scope facets from an observation's scope slug.
+
+    Observations carry the FLATTENED slug (``Turn.scope`` = ``scope_for_cwd``),
+    not a real path, so this works off that slug.
+
+    Derives ONLY the repo — what the slug actually proves. Language and
+    framework are NOT guessed: a wrong facet NARROWS a rule, and a narrowed rule
+    silently stops firing, which is strictly worse than leaving it unqualified
+    (unqualified matches everything, the historical behaviour). Those facets
+    belong to a caller with real per-file evidence.
+
+    Slug flattening is lossy — a separator and a literal hyphen both become "-",
+    so ``...-heardright-ws`` is ambiguous between repo ``heardright`` (subdir
+    ``ws``) and repo ``heardright-ws``. Resolved by taking the LONGEST candidate
+    that is a real directory under the workspace root, falling back to the first
+    segment when nothing matches on disk.
+    """
+    slug = (scope or "").strip().strip("-")
+    if not slug:
+        return {}
+    workspace_slug = scope_for_cwd(str(_WORKSPACE_ROOT))
+    if slug.lower() == workspace_slug.lower():
+        return {}  # the workspace root is not a repo
+    prefix = workspace_slug.lower() + "-"
+    if not slug.lower().startswith(prefix):
+        return {}  # a foreign/unknown scope proves nothing about repo identity
+    remainder = slug[len(prefix):].strip("-")
+    if not remainder:
+        return {}
+    segments = remainder.split("-")
+    for count in range(len(segments), 0, -1):
+        candidate = "-".join(segments[:count])
+        try:
+            if (_WORKSPACE_ROOT / candidate).is_dir():
+                return {"repo": candidate}
+        except OSError:
+            break
+    return {"repo": segments[0]}
 
 
 def scope_excluded(cwd: str) -> bool:

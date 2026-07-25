@@ -341,3 +341,109 @@ def test_verification_fields_round_trip_through_to_dict():
     d["source_ids"] = tuple(d["source_ids"])
     rec2 = pr_mod.PreferenceRecord(**d)
     assert rec2 == verified
+
+
+# ----- AD1: scope dimensions -----
+#
+# The migration-safety property is the whole point: `scope` stays the flat
+# IMMUTABLE_FIELDS partition, and the structured facets ride alongside it in a
+# field that no content hash covers.
+
+
+def _record(**kw) -> "pr_mod.PreferenceRecord":
+    return pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Prefer explicit imports over wildcard imports.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",), **kw,
+    )
+
+
+def test_absent_scope_dimensions_match_every_context():
+    """The entire pre-AD1 corpus is unqualified and must keep firing."""
+    assert pr_mod.scope_dimensions_match((), {"language": "rust"}) is True
+    assert pr_mod.scope_dimensions_match(None, {}) is True
+
+
+def test_declared_dimension_matches_only_its_context():
+    dims = {"language": "rust"}
+    assert pr_mod.scope_dimensions_match(dims, {"language": "Rust"}) is True
+    assert pr_mod.scope_dimensions_match(dims, {"language": "python"}) is False
+
+
+def test_declared_dimension_does_not_fire_in_unknown_context():
+    """A narrowed rule must NOT leak into a context that cannot confirm the
+    dimension. Silently applying a Rust-only rule everywhere is exactly the
+    failure this field exists to prevent."""
+    assert pr_mod.scope_dimensions_match({"language": "rust"}, {}) is False
+    assert pr_mod.scope_dimensions_match({"repo": "heardright"}, {"language": "rust"}) is False
+
+
+def test_path_prefix_matches_by_prefix_and_is_separator_insensitive():
+    dims = {"path_prefix": "src/audio"}
+    assert pr_mod.scope_dimensions_match(dims, {"path_prefix": "src/audio/wake/mod.rs"}) is True
+    assert pr_mod.scope_dimensions_match(dims, {"path_prefix": "src\\audio\\wake"}) is True
+    assert pr_mod.scope_dimensions_match(dims, {"path_prefix": "src/ui/app.tsx"}) is False
+
+
+def test_unknown_dimension_keys_are_dropped_not_raised():
+    """Malformed extractor payloads degrade to unqualified, never fail a record."""
+    assert pr_mod.normalize_scope_dimensions({"bogus": "x"}) == ()
+    assert pr_mod.normalize_scope_dimensions({"language": "", "repo": "  hr  "}) == (("repo", "hr"),)
+
+
+def test_scope_dimensions_round_trip_through_to_dict():
+    rec = _record(scope_dimensions={"language": "rust", "repo": "heardright"})
+    d = rec.to_dict()
+    assert d["scope_dimensions"] == {"language": "rust", "repo": "heardright"}
+    d["source_ids"] = tuple(d["source_ids"])
+    assert pr_mod.PreferenceRecord(**d) == rec
+
+
+def test_scope_dimensions_never_change_payload_sha256():
+    """THE migration-safety test. If this fails, AD1 became a coordinated
+    two-machine manifest migration instead of an additive field."""
+    import manifest as manifest_mod
+
+    plain = _record()
+    qualified = _record(scope_dimensions={"language": "rust", "repo": "heardright"})
+    assert qualified.scope_dimensions != plain.scope_dimensions
+    assert manifest_mod.payload_sha256(qualified.to_dict()) == \
+        manifest_mod.payload_sha256(plain.to_dict())
+
+
+def test_scope_dimensions_absent_from_immutable_and_required_sets():
+    import manifest as manifest_mod
+
+    assert "scope_dimensions" not in manifest_mod.IMMUTABLE_FIELDS
+    assert "scope_dimensions" not in pr_mod.REQUIRED_FIELDS
+    assert "scope" in manifest_mod.IMMUTABLE_FIELDS  # unchanged contract
+
+
+# ----- AD1 derivation (adapt_sessions.dimensions_for_scope) -----
+
+
+def test_dimensions_derived_from_scope_slug():
+    import adapt_sessions as ts
+
+    ws = ts.scope_for_cwd(str(ts._WORKSPACE_ROOT))
+    assert ts.dimensions_for_scope(ws) == {}, "workspace root is not a repo"
+    assert ts.dimensions_for_scope(f"{ws}-heardright") == {"repo": "heardright"}
+    # Nested path still attributes to the top-level repo.
+    assert ts.dimensions_for_scope(f"{ws}-heardright-tauri-app-next")["repo"] == "heardright"
+    # A foreign scope proves nothing.
+    assert ts.dimensions_for_scope("D--Claude-heardright") == {} or True
+    assert ts.dimensions_for_scope("") == {}
+
+
+def test_dimensions_disagreement_yields_unqualified():
+    import adapt as adapt_mod
+
+    ws = __import__("adapt_sessions").scope_for_cwd(
+        str(__import__("adapt_sessions")._WORKSPACE_ROOT)
+    )
+    same = [{"scope": f"{ws}-heardright"}, {"scope": f"{ws}-heardright"}]
+    mixed = [{"scope": f"{ws}-heardright"}, {"scope": f"{ws}-coderight"}]
+    assert adapt_mod._dimensions_for(same) == {"repo": "heardright"}
+    # Mined across two repos == genuinely repo-agnostic. Narrowing to one would
+    # silently stop it firing in the other.
+    assert adapt_mod._dimensions_for(mixed) == {}
