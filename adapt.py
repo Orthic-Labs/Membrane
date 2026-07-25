@@ -171,6 +171,11 @@ def rule_body(rule: dict, evidence: str, tool: str) -> str:
         rule.get("retrieval_aliases", ()), rule=rule.get("rule", "")
     )
     alias_line = f"**Trigger phrases:** {' | '.join(aliases)}\n" if aliases else ""
+    machine = (rule.get("machine") or "").strip()
+    machine_line = (
+        f"**Machine:** {machine}{' (machine-only)' if rule.get('machine_only') else ''}\n"
+        if machine else ""
+    )
     return (
         f"**[adapt/{rule['category']}]** — {rule['rule']} "
         f"Confidence: {rule['confidence']:.2f} "
@@ -180,6 +185,7 @@ def rule_body(rule: dict, evidence: str, tool: str) -> str:
         f"**Record:** type={rule.get('record_type', 'unclassified')}, "
         f"authority_effect={rule.get('authority_effect', 'neutral')}\n"
         f"{alias_line}"
+        f"{machine_line}"
         f"**How to apply:** {preference_record.application_guidance(rule.get('record_type', 'unclassified'))}\n"
     )
 
@@ -417,6 +423,7 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
     canonical_names = set(rules.keys())
     src_ids = list(source_session_ids or [])
     src_hashes = dict(source_file_hashes or {})
+    current_machine = preference_record.default_machine_id()
     for act in actions:
         name, kind = act["name"], act["action"]
         if kind == "keep":
@@ -449,6 +456,11 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
             )
         except Exception as exc:
             admitted, why = False, f"admission-error:{type(exc).__name__}"
+        existing_row = rules.get(name) or {}
+        # Attribution, not partitioning: preserve the recording machine
+        # across updates (like created_at); a brand-new rule gets the
+        # machine applying this run. machine_only never auto-flips True —
+        # narrowing is an explicit operator decision (see add_rule).
         record = {"name": name, "category": act["category"], "rule": act["rule"],
                   "confidence": act["confidence"], "observations": act.get("observations", 1),
                   "scope": scope, "needs_review": act.get("needs_review", False),
@@ -457,7 +469,9 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
                   "authority_effect": authority.evaluate_rule(
                       act["rule"], scope=scope,
                       declared_effect=act.get("authority_effect")
-                  ).authority_effect}
+                  ).authority_effect,
+                  "machine": existing_row.get("machine") or current_machine,
+                  "machine_only": bool(existing_row.get("machine_only", False))}
         # Manifest capture: schema-shaped candidate via PreferenceRecord.
         if manifest_records is not None:
             existing = rules.get(name)
@@ -466,6 +480,7 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
                  "retrieval_aliases": retrieval_aliases},
                 scope=scope, source_ids=tuple(candidate_source_ids),
                 existing=existing,
+                machine=(existing or {}).get("machine") or current_machine,
             )
             cand = preference_record.to_manifest_candidate(
                 pr, evidence_excerpt=evidence,
@@ -693,6 +708,10 @@ def apply_from_manifest(manifest_path: Path) -> int:
             else:
                 self.path = Path(ref["path_stem"])
 
+    # The manifest never carries `machine` (kept out of the schema-validated,
+    # hash-immutable candidate payload). Attribute at apply time instead: the
+    # machine actually writing the row into MemRight.
+    apply_machine = preference_record.default_machine_id()
     for rec in accepted:
         try:
             retrieval_aliases = preference_record.normalize_retrieval_aliases(
@@ -705,6 +724,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
             pr = preference_record.from_manifest_candidate(
                 {**rec, "retrieval_aliases": retrieval_aliases},
                 now=m["created_at"],
+                machine=apply_machine,
             )
         except (KeyError, ValueError) as exc:
             failed.append((rec["id"], f"contract-invalid: {exc}"))
@@ -796,7 +816,10 @@ def apply_from_manifest(manifest_path: Path) -> int:
         rp = _rules_path()
         if rp.exists():
             rules_obj = json.loads(rp.read_text(encoding="utf-8"))
-        for rec in accepted:
+        # `prepared` (the resolved PreferenceRecords) carries the attributed
+        # machine; `accepted` (raw manifest records) never does. Same order
+        # and length here — this block only runs once `not failed`.
+        for rec, pr in zip(accepted, prepared):
             rules_obj[rec["id"]] = {
                 "name": rec["id"],
                 "category": rec["category"],
@@ -808,6 +831,8 @@ def apply_from_manifest(manifest_path: Path) -> int:
                 "record_type": rec.get("record_type", "unclassified"),
                 "authority_effect": rec.get("authority_effect", "neutral"),
                 "retrieval_aliases": list(rec.get("retrieval_aliases", [])),
+                "machine": pr.machine,
+                "machine_only": pr.machine_only,
             }
         rp.parent.mkdir(parents=True, exist_ok=True)
         rp.write_text(json.dumps(rules_obj, indent=2), encoding="utf-8")
@@ -828,7 +853,8 @@ def apply_from_manifest(manifest_path: Path) -> int:
 
 
 def add_rule(rule_text: str, category: str, *, record_type: str = "operational_playbook",
-             scope: str = "D--Claude", dry_run: bool = False) -> int:
+             scope: str = "D--Claude", dry_run: bool = False,
+             machine_only: bool = False) -> int:
     """Operator-authored single-rule add — the lightweight path that skips mining.
 
     Adapt's discover->extract(LLM)->synthesize(LLM) pipeline exists to pull rules
@@ -841,6 +867,11 @@ def add_rule(rule_text: str, category: str, *, record_type: str = "operational_p
     query-relevant recall (cos>=0.40) but stays OUT of the always-on compiled core.
     Pass record_type='standing_preference' ONLY for a truly universal rule that must
     apply to every prompt (then run --compile-core to fold it into the core).
+
+    `machine_only=True` narrows the rule to the recording machine alone; the
+    default (False) is today's unqualified, workspace-wide behavior. The
+    recording machine itself is always attributed via
+    `preference_record.default_machine_id()` regardless of this flag.
     """
     rule_text = (rule_text or "").strip()
     cat = admission.normalize_category(category)
@@ -868,6 +899,8 @@ def add_rule(rule_text: str, category: str, *, record_type: str = "operational_p
         "source_ids": [rid], "created_at": now, "updated_at": now,
         "record_type": rtype, "authority_effect": "neutral", "status": "accepted",
         "retrieval_aliases": [],
+        "machine": preference_record.default_machine_id(),
+        "machine_only": bool(machine_only),
     }
 
     core_note = ("  -> in the always-on core after --compile-core" if rtype == "standing_preference"
@@ -914,6 +947,9 @@ def main() -> int:
                              "episodic_fact", "unclassified"),
                     help="record type for --add-rule; standing_preference reaches the always-on core")
     ap.add_argument("--scope", default="D--Claude", help="workspace scope for --add-rule")
+    ap.add_argument("--machine-only", action="store_true",
+                    help="for --add-rule: narrow this rule to the recording machine alone "
+                         "(default: applies workspace-wide, unchanged from today)")
     ap.add_argument("--apply", action="store_true", help="write to MemRight (default: dry-run)")
     ap.add_argument("--dry-run", action="store_true", help="explicit no-write preview")
     ap.add_argument("--limit", type=int, default=None, help="max sessions this run")
@@ -951,7 +987,8 @@ def main() -> int:
             return 2
         # Default is dry-run like the rest of the CLI; --apply writes.
         return add_rule(args.add_rule, args.category, record_type=args.record_type,
-                        scope=args.scope, dry_run=not args.apply)
+                        scope=args.scope, dry_run=not args.apply,
+                        machine_only=args.machine_only)
 
     if args.compile_core:
         if not ts.scanner_available():

@@ -372,3 +372,49 @@ def test_secure_preferences_are_not_flagged_as_security_weakening():
         "Prefer pnpm over npm in this workspace.",
     ):
         assert authority.classify_authority_effect(rule) != "security_weakening", rule
+
+
+# ----- Machine attribution (Adrian: "adapt has to be by machine and should
+# be recorded with machine") does not disturb authority evaluation. `scope`
+# stays the only field authority.evaluate_rule reasons about; machine
+# identity is orthogonal metadata carried on the PreferenceRecord.
+
+def test_default_machine_id_is_stable_across_two_calls(tmp_path):
+    missing = tmp_path / "installation.json"
+    first = preference_record.default_machine_id(installation_file=missing)
+    second = preference_record.default_machine_id(installation_file=missing)
+    assert first == second
+    assert first  # never empty
+
+
+def test_default_machine_id_reuses_existing_installation_identity(tmp_path):
+    """Same identity file/shape cross_machine.load_installation_id already
+    reads for multiwriter conformance (schema v2, tools/.cache/memory/
+    installation.json) — reused here rather than a second parallel identity."""
+    identity = tmp_path / "installation.json"
+    identity.write_text(json.dumps({
+        "schema_version": 2,
+        "installation_id": "be8b2353-c0f5-4250-867c-22c5629bd4e8",
+        "legacy_labels": ["adrian-mac"],
+    }), encoding="utf-8")
+    assert preference_record.default_machine_id(installation_file=identity) == "adrian-mac"
+
+
+def test_authority_evaluation_unaffected_by_machine_attribution():
+    """A machine-attributed, machine-narrowed record evaluates authority
+    identically to an unattributed one — machine is not a new authority
+    scope, only PreferenceRecord metadata."""
+    attributed = preference_record.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+        machine="adrian-mac", machine_only=True,
+    )
+    plain = preference_record.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "workflow",
+         "rule": "Always run focused tests before merging.", "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1",),
+    )
+    assert attributed.authority_effect == plain.authority_effect == "neutral"
+    # Default (no machine kwargs at all) stays unqualified: applies everywhere.
+    assert plain.machine_only is False
