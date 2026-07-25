@@ -245,7 +245,9 @@ def _audit(entry: dict) -> None:
 
 def _scope_for(obs_list: list[dict]) -> str:
     scopes = {o.get("scope") for o in obs_list if o.get("scope")}
-    return scopes.pop() if len(scopes) == 1 else "D--Claude"
+    # Never a hardcoded peer literal: writing another machine's scope is what
+    # minted the duplicate rows cleaned up on 2026-07-26.
+    return scopes.pop() if len(scopes) == 1 else ts.local_workspace_scope()
 
 
 def _dimensions_for(obs_list: list[dict]) -> dict[str, str]:
@@ -875,7 +877,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
 
 
 def add_rule(rule_text: str, category: str, *, record_type: str = "operational_playbook",
-             scope: str = "D--Claude", dry_run: bool = False,
+             scope: str | None = None, dry_run: bool = False,
              machine_only: bool = False) -> int:
     """Operator-authored single-rule add — the lightweight path that skips mining.
 
@@ -896,6 +898,9 @@ def add_rule(rule_text: str, category: str, *, record_type: str = "operational_p
     `preference_record.default_machine_id()` regardless of this flag.
     """
     rule_text = (rule_text or "").strip()
+    # Resolve at call time, not in the signature: a module-level default would
+    # bake one machine's slug in at import. Never a hardcoded peer literal.
+    scope = scope or ts.local_workspace_scope()
     cat = admission.normalize_category(category)
     rtype = authority.normalize_record_type(record_type)
     rid = preference_record.derive_id(scope, cat, rule_text)
@@ -976,7 +981,8 @@ def main() -> int:
                     choices=("operational_playbook", "standing_preference", "locked_decision",
                              "episodic_fact", "unclassified"),
                     help="record type for --add-rule; standing_preference reaches the always-on core")
-    ap.add_argument("--scope", default="D--Claude", help="workspace scope for --add-rule")
+    ap.add_argument("--scope", default=None,
+                    help="workspace scope for --add-rule (default: this machine's workspace scope)")
     ap.add_argument("--machine-only", action="store_true",
                     help="for --add-rule: narrow this rule to the recording machine alone "
                          "(default: applies workspace-wide, unchanged from today)")

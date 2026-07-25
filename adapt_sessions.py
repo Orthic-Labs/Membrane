@@ -58,10 +58,16 @@ def preference_candidate_text(text: str) -> str | None:
     candidate = "\n[...]\n".join(text[start:end] for start, end in windows)
     return candidate[:PREFERENCE_PREFILTER_MAX_CHARS]
 
-# Scopes never mined: health/medical transcripts are out of bounds (and are not coding preferences).
-DENIED_SCOPE_ROOTS = (
-    "D--Claude-Health",
-    "D--Claude-Health-medical-research-system",
+# Scopes never mined: health/medical transcripts are out of bounds (and are not
+# coding preferences). Expressed WORKSPACE-RELATIVE so they hold on every
+# machine. The literal Windows-form scopes that used to be listed here
+# ("D--Claude-Health") could not match a Mac scope ("Volumes-D-claude-Health")
+# at all; the EXCLUDED_SCOPE_PATTERNS regex on the raw cwd still caught those
+# sessions, so this was never a live leak, but the roots check was silently
+# dead on one of the two machines and must not be relied on as path literals.
+DENIED_SCOPE_SUFFIXES = (
+    "Health",
+    "Health-medical-research-system",
 )
 EXCLUDED_SCOPE_PATTERNS = (
     re.compile(r"health", re.I),
@@ -244,9 +250,34 @@ def dimensions_for_scope(scope: str) -> dict[str, str]:
     return {"repo": segments[0]}
 
 
+def local_workspace_scope() -> str:
+    """This machine's scope slug for the workspace root.
+
+    Replaces the hardcoded ``"D--Claude"`` literal that used to be the default
+    and fallback. That literal is the WINDOWS form; writing it on a Mac minted a
+    foreign scope, which the mirror then re-materialised under the local slug and
+    produced genuine duplicate rows (three of them, cleaned up 2026-07-26). A
+    scope must always name the machine that wrote it, never a hardcoded peer.
+    """
+    return scope_for_cwd(str(_WORKSPACE_ROOT))
+
+
+def scope_denied(scope: str) -> bool:
+    """Workspace-relative deny check, so it holds on every machine."""
+    workspace = local_workspace_scope()
+    relative = scope
+    if scope.lower().startswith(workspace.lower() + "-"):
+        relative = scope[len(workspace) + 1:]
+    elif scope.lower() == workspace.lower():
+        relative = ""
+    return any(
+        relative == suffix or relative.startswith(suffix + "-")
+        for suffix in DENIED_SCOPE_SUFFIXES
+    )
+
+
 def scope_excluded(cwd: str) -> bool:
-    scope = scope_for_cwd(cwd)
-    return any(scope.startswith(root) for root in DENIED_SCOPE_ROOTS) or any(
+    return scope_denied(scope_for_cwd(cwd)) or any(
         p.search(cwd) for p in EXCLUDED_SCOPE_PATTERNS)
 
 

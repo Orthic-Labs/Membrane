@@ -447,3 +447,40 @@ def test_dimensions_disagreement_yields_unqualified():
     # Mined across two repos == genuinely repo-agnostic. Narrowing to one would
     # silently stop it firing in the other.
     assert adapt_mod._dimensions_for(mixed) == {}
+
+
+# ----- Scope must name THIS machine, never a hardcoded peer -----
+#
+# Root cause of the three duplicate rows cleaned up 2026-07-26: adapt wrote the
+# Windows literal "D--Claude" on a Mac, the mirror canonicalised it, and ingest
+# re-materialised it under the local slug -- two rows, one write.
+
+
+def test_local_workspace_scope_matches_this_machine():
+    import adapt_sessions as ts
+
+    assert ts.local_workspace_scope() == ts.scope_for_cwd(str(ts._WORKSPACE_ROOT))
+
+
+def test_no_hardcoded_peer_scope_literal_in_production_paths():
+    """Guard: the fallback and the operator-add default must both resolve to
+    this machine's scope. A hardcoded peer literal here is what minted the
+    duplicates, so it must never come back."""
+    import adapt as adapt_mod
+    import adapt_sessions as ts
+
+    local = ts.local_workspace_scope()
+    # Disagreeing observations -> fallback. Must be local, not a peer literal.
+    assert adapt_mod._scope_for([{"scope": "a"}, {"scope": "b"}]) == local
+    assert adapt_mod._scope_for([]) == local
+
+
+def test_denied_scopes_hold_on_this_machine():
+    """Health scopes must be refused regardless of which machine's path form
+    they take. The old check listed Windows-only literals and was dead here."""
+    import adapt_sessions as ts
+
+    local = ts.local_workspace_scope()
+    assert ts.scope_denied(f"{local}-Health") is True
+    assert ts.scope_denied(f"{local}-Health-medical-research-system") is True
+    assert ts.scope_denied(f"{local}-heardright") is False
