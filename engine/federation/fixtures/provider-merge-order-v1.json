@@ -1,0 +1,49 @@
+{
+  "declaredProviderOrder": [
+    "blueprint",
+    "audit",
+    "architect",
+    "memright",
+    "git",
+    "live",
+    "rules",
+    "anchors",
+    "skills"
+  ],
+  "completionOrders": [
+    [
+      "blueprint",
+      "audit",
+      "architect",
+      "memright",
+      "git",
+      "live",
+      "rules",
+      "anchors",
+      "skills"
+    ],
+    [
+      "skills",
+      "anchors",
+      "rules",
+      "live",
+      "git",
+      "memright",
+      "architect",
+      "audit",
+      "blueprint"
+    ],
+    [
+      "memright",
+      "skills",
+      "audit",
+      "live",
+      "blueprint",
+      "anchors",
+      "architect",
+      "rules",
+      "git"
+    ]
+  ],
+  "warningProviderOrder": ["audit", "skills"]
+}

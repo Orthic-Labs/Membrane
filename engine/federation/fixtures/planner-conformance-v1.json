@@ -1,0 +1,142 @@
+{
+  "schemaVersion": 1,
+  "description": "Shared post-gateway planner fixture. upstreamScopeForm records whether the gateway request began as a raw path or canonical slug; the Rust scope boundary must normalize both before either client receives this identical envelope.",
+  "dimensions": {
+    "scopeForms": [
+      {"id": "path", "input": "D:/Claude", "canonicalScope": "D--Claude"},
+      {"id": "slug", "input": "D--Claude", "canonicalScope": "D--Claude"}
+    ],
+    "graphStates": [
+      {"id": "clean", "stale": false},
+      {
+        "id": "dirty_overlay",
+        "stale": false,
+        "baseCommit": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "overlayDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "freshnessClass": "dirty_overlay"
+      }
+    ],
+    "outcomes": [
+      {
+        "id": "delivered",
+        "fallbackMode": "none",
+        "degradationReason": "none",
+        "expectedDeliver": true
+      },
+      {
+        "id": "degraded",
+        "fallbackMode": "portable_text_only",
+        "degradationReason": "blueprint_stale",
+        "expectedDeliver": false
+      }
+    ]
+  },
+  "packetTemplate": {
+    "traceId": "trace-conformance",
+    "providerStatus": "multiple",
+    "sourceGeneration": "fixture-v1",
+    "budget": {"maxTokens": 4096, "admittedTokens": 40},
+    "blocks": [
+      {
+        "id": "memory:role:canonical-memory",
+        "provider": "memright",
+        "sourceKind": "memory",
+        "sourceRef": "D--Claude",
+        "sourceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "trustClass": "agent_verified",
+        "instructionPolicy": "data_only",
+        "estimatedTokens": 8,
+        "selectedTokens": 8,
+        "deliveryStage": "planned",
+        "deliveryClass": "resolver_backed",
+        "renderedTokens": 0,
+        "deliveredChars": 0,
+        "dropReason": "none",
+        "resolver": "memright get canonical-memory",
+        "text": "durable memory preview"
+      },
+      {
+        "id": "skills:brief",
+        "provider": "skills",
+        "sourceKind": "skill",
+        "sourceRef": "tools/skills/brief/SKILL.md",
+        "sourceHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "trustClass": "workspace_tracked",
+        "instructionPolicy": "data_only",
+        "estimatedTokens": 12,
+        "selectedTokens": 12,
+        "deliveryStage": "planned",
+        "deliveryClass": "resolver_backed",
+        "renderedTokens": 0,
+        "deliveredChars": 0,
+        "dropReason": "none",
+        "resolver": "memright skill-read fixture-token",
+        "text": "audited skill description"
+      },
+      {
+        "id": "repo:missing-resolver",
+        "provider": "blueprint",
+        "sourceKind": "repo_code",
+        "sourceRef": "src/private.py",
+        "sourceHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "trustClass": "workspace_tracked",
+        "instructionPolicy": "data_only",
+        "estimatedTokens": 16,
+        "selectedTokens": 16,
+        "deliveryStage": "planned",
+        "deliveryClass": "metadata_only",
+        "renderedTokens": 0,
+        "deliveredChars": 0,
+        "dropReason": "missing_resolver",
+        "resolver": "",
+        "text": "SECRET FIXTURE CANDIDATE TEXT"
+      },
+      {
+        "id": "repo:oversized-resolver",
+        "provider": "git",
+        "sourceKind": "git",
+        "sourceRef": "fixture-ref",
+        "sourceHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "trustClass": "workspace_tracked",
+        "instructionPolicy": "data_only",
+        "estimatedTokens": 4,
+        "selectedTokens": 4,
+        "deliveryStage": "planned",
+        "deliveryClass": "resolver_backed",
+        "renderedTokens": 0,
+        "deliveredChars": 0,
+        "dropReason": "none",
+        "resolver": "__OVERSIZED_RESOLVER__",
+        "text": "SECRET OVERSIZED CANDIDATE TEXT"
+      }
+    ]
+  },
+  "expected": {
+    "caseCount": 8,
+    "memorySeal": {
+      "id": "canonical-memory",
+      "sourceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "skillSeal": {
+      "name": "brief",
+      "description": "audited skill description",
+      "bodyHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "deliveryClasses": ["rendered", "resolver_backed", "metadata_only", "metadata_only"],
+    "dropReasons": ["none", "none", "missing_resolver", "additional_context_char_cap"],
+    "selectedTokens": 20,
+    "plannerSelectedTokens": 40,
+    "truncationDroppedId": "repo:oversized-resolver",
+    "dirtyProvenance": {
+      "baseCommit": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "overlayDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "freshnessClass": "dirty_overlay"
+    },
+    "providerAccounting": {
+      "memright": {"selected_tokens": 8, "planner_selected_tokens": 8},
+      "skills": {"selected_tokens": 12, "planner_selected_tokens": 12},
+      "blueprint": {"selected_tokens": 0, "planner_selected_tokens": 16},
+      "git": {"selected_tokens": 0, "planner_selected_tokens": 4}
+    }
+  }
+}

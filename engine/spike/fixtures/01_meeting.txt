@@ -1,0 +1,9 @@
+Q3 planning meeting, October 12. Attendees: Maria, James, Priya, Devon.
+
+Maria opened with the revenue recap. Q3 closed at $4.2M ARR, up 18% sequentially and 41% year over year. The enterprise tier was the standout, contributing 62% of new bookings, mostly through the expanded sales team that came online in late Q2. James flagged that three of the top ten deals slipped into Q4 due to procurement delays, which means the Q4 number needs to absorb roughly $700K of pipeline that originally landed in Q3. Priya pushed back on whether the slippage should be classified as soft demand or process friction, and Maria agreed to pull the deal-level notes so the team can reclassify before the board prep on the 28th.
+
+On the product side, Devon walked through the roadmap. The context-engineering unification work is on track for end of November; the LLMLingua spike is the last open question. The shared memory model shipped behind a flag last week and the early telemetry is encouraging — recall precision is up roughly 11 points on the test corpus, with no measurable regression in latency. The team agreed to keep the flag in place for two more weeks while they collect more signal.
+
+Hiring update: closed the senior infra engineer, onboarding November 4. Still searching for a second product designer; the recruiter has five active candidates in late-stage interviews. No other open reqs this quarter. Priya will own the design search end to end.
+
+Maria closed with a quick note on the customer advisory board — the next session is November 15, focus is on the unified memory story and the API surface changes. Two of the top five accounts have already confirmed attendance. Adjourned at 11:47.

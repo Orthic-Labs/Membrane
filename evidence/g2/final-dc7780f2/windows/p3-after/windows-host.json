@@ -1,0 +1,23 @@
+{
+  "installation_id": "975ab6c0-1f50-41fe-888b-a711655d45e7",
+  "turn_inventory": {
+    "installation_id": "975ab6c0-1f50-41fe-888b-a711655d45e7",
+    "path": "turn-inventory.json",
+    "sha256": "7c2c0ab9df78801acf6af134de6aa705b660e62471d3803fad669286e484a667"
+  },
+  "reconciliation_report": {
+    "installation_id": "975ab6c0-1f50-41fe-888b-a711655d45e7",
+    "path": "reconciliation.json",
+    "sha256": "97ba56594de2a67e15db650f840006cd8c9ff4fc261d81c986cd11fa4c555514"
+  },
+  "conformance_report": {
+    "installation_id": "975ab6c0-1f50-41fe-888b-a711655d45e7",
+    "path": "conformance.json",
+    "sha256": "36f60da01c0d5bcfd438369bb15d2274c413e64b7863ea93653036ebec70f3bf"
+  },
+  "snapshot": {
+    "installation_id": "975ab6c0-1f50-41fe-888b-a711655d45e7",
+    "path": "snapshot-975ab6c0-1f50-41fe-888b-a711655d45e7.json",
+    "sha256": "f529ac5b45b2efd5948a9d4450a143782e671b430337db8174c203435d037a9a"
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "kind": "rightcontext-runtime-assets",
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-19T21:35:31.139498Z",
+  "purpose": "Content-free genuine macOS runtime binding for the 5ea40c08 RightContext freshness-repair candidate; uninstalled.",
+  "os": "macos",
+  "machineTarget": "aarch64-apple-darwin",
+  "machineArch": "aarch64",
+  "release": {
+    "memrightSourceCommit": "5ea40c08119f573696bc96e3e8ccad1da608dc0e",
+    "sourceTreeSha256": "9e652c82d738c32cdb9eae8e4793180edd708d71774c2d4babeb8d2913526be4",
+    "releaseGeneration": "sha256:9e652c82d738c32cdb9eae8e4793180edd708d71774c2d4babeb8d2913526be4",
+    "productVersion": "0.1.1"
+  },
+  "binaries": {
+    "cliSha256": "4634ee6c45c749716720a4f281a5928e123a95a363c8f9c4eb43df898cf7ec87",
+    "serviceSha256": "a72d624cc23c2c69b357d01a88763993527f038219fb918107af2fdd2b6add32",
+    "rehashMatchesCommittedCapture": false,
+    "rebuilt": true
+  },
+  "model": {
+    "id": "embeddinggemma-300m-q4",
+    "dimension": 768,
+    "fingerprint": "pf:v1:4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b"
+  },
+  "modelResolution": {
+    "directSnapshot": "models--onnx-community--embeddinggemma-300m-ONNX/snapshots/5090578d9565bb06545b4552f76e6bc2c93e4a66",
+    "graphRelativePath": "onnx/model_q4.onnx",
+    "externalDataRelativePath": "onnx/model_q4.onnx_data",
+    "externalDataRequired": true,
+    "externalInitializerCount": 491,
+    "externalInitializerLocationUniverse": [
+      "model_q4.onnx_data"
+    ],
+    "preReadSha256": {
+      "model_q4.onnx": "ad1dfee81a70f7944b9b9d1cc6e48075b832881cf33fab2f2b248be78f3f0043",
+      "model_q4.onnx_data": "599962c3143b040de2dd05e5975be3e9091dd067cacc6a8f7186e3203bab9e02"
+    },
+    "postReadSha256": {
+      "model_q4.onnx": "ad1dfee81a70f7944b9b9d1cc6e48075b832881cf33fab2f2b248be78f3f0043",
+      "model_q4.onnx_data": "599962c3143b040de2dd05e5975be3e9091dd067cacc6a8f7186e3203bab9e02"
+    },
+    "note": "Counted by parsing the ONNX graph with load_external_data=False: 491 of 514 initializers carry data_location=EXTERNAL, every one bound to model_q4.onnx_data. Pre/post hashes bracket a full graph parse plus a complete external-data byte read."
+  },
+  "modelFiles": {
+    "config.json": {
+      "sha256": "6e1f06404b7163e0325ed2ea3e6781cde50f4a50b31780a95ad0d30e8404d77b",
+      "presentInDirectSnapshot": true
+    },
+    "special_tokens_map.json": {
+      "sha256": "2f7b0adf4fb469770bb1490e3e35df87b1dc578246c5e7e6fc76ecf33213a397",
+      "presentInDirectSnapshot": true
+    },
+    "tokenizer.json": {
+      "sha256": "4dda02faaf32bc91031dc8c88457ac272b00c1016cc679757d1c441b248b9c47",
+      "presentInDirectSnapshot": true
+    },
+    "tokenizer_config.json": {
+      "sha256": "3ca953eea6c3c9fcda9cf3df22949ff18b216f7c74bd6459230f3f1013953f3a",
+      "presentInDirectSnapshot": true
+    },
+    "model_q4.onnx": {
+      "sha256": "ad1dfee81a70f7944b9b9d1cc6e48075b832881cf33fab2f2b248be78f3f0043",
+      "presentInDirectSnapshot": true
+    },
+    "model_q4.onnx_data": {
+      "sha256": "599962c3143b040de2dd05e5975be3e9091dd067cacc6a8f7186e3203bab9e02",
+      "presentInDirectSnapshot": true
+    }
+  },
+  "onnxRuntime": {
+    "library": "libonnxruntime.dylib",
+    "sha256": "dd681a94cb76232c010e16a1db5621286d478238cfa20c0fdd821d9773a41cd3",
+    "version": "1.24.2",
+    "arch": "aarch64",
+    "executionProvider": "CPUExecutionProvider"
+  }
+}

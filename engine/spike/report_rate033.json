@@ -1,0 +1,59 @@
+{
+  "threshold": 0.9,
+  "rate": 0.33,
+  "min_jaccard": 0.8361,
+  "mean_jaccard": 0.8657,
+  "passed": false,
+  "rows": [
+    {
+      "fixture": "01_meeting.txt",
+      "origin_tokens": 367,
+      "llmlingua_compressed_tokens": 129,
+      "onnx_compressed_tokens": 83,
+      "jaccard_word": 0.8413,
+      "jaccard_retoken": 0.8488,
+      "jaccard_substring": 0.5728,
+      "primary_jaccard": 0.8413
+    },
+    {
+      "fixture": "02_readme.txt",
+      "origin_tokens": 282,
+      "llmlingua_compressed_tokens": 92,
+      "onnx_compressed_tokens": 81,
+      "jaccard_word": 0.8772,
+      "jaccard_retoken": 0.9302,
+      "jaccard_substring": 0.5625,
+      "primary_jaccard": 0.8772
+    },
+    {
+      "fixture": "03_incident.txt",
+      "origin_tokens": 320,
+      "llmlingua_compressed_tokens": 107,
+      "onnx_compressed_tokens": 88,
+      "jaccard_word": 0.8451,
+      "jaccard_retoken": 0.8817,
+      "jaccard_substring": 0.5755,
+      "primary_jaccard": 0.8451
+    },
+    {
+      "fixture": "04_doc.txt",
+      "origin_tokens": 296,
+      "llmlingua_compressed_tokens": 94,
+      "onnx_compressed_tokens": 77,
+      "jaccard_word": 0.9286,
+      "jaccard_retoken": 0.9136,
+      "jaccard_substring": 0.5824,
+      "primary_jaccard": 0.9286
+    },
+    {
+      "fixture": "05_plan.txt",
+      "origin_tokens": 302,
+      "llmlingua_compressed_tokens": 91,
+      "onnx_compressed_tokens": 87,
+      "jaccard_word": 0.8361,
+      "jaccard_retoken": 0.8696,
+      "jaccard_substring": 0.4811,
+      "primary_jaccard": 0.8361
+    }
+  ]
+}

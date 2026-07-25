@@ -1,0 +1,48 @@
+{
+  "product_version": "0.1.1",
+  "memright_source_commit": "dc7780f23c71e8eef9e9bad5a6cf0c562d2eedea",
+  "source_repo": "https://github.com/bogusyogi/claude.git",
+  "source_tree_path": "tools/memright",
+  "source_tree_sha256": "ccb9c3622ee4f5d5aefbc34e3f62a3b12e4debfcce4c003b388671256c1c3489",
+  "release_generation": "sha256:ccb9c3622ee4f5d5aefbc34e3f62a3b12e4debfcce4c003b388671256c1c3489",
+  "schema_compat": 1,
+  "model": {
+    "id": "embeddinggemma-300m-q4",
+    "fingerprint": "pf:v1:4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b",
+    "dimension": 768
+  },
+  "assets": [
+    {
+      "os": "windows",
+      "arch": "x86_64",
+      "name": "memright.exe",
+      "role": "cli",
+      "sha256": "c62efb6cf712c9ff59208a5c54cda4585e5d30b7a00345c6df998e802a36fe83",
+      "release_generation": "sha256:ccb9c3622ee4f5d5aefbc34e3f62a3b12e4debfcce4c003b388671256c1c3489"
+    },
+    {
+      "os": "windows",
+      "arch": "x86_64",
+      "name": "memright-service.exe",
+      "role": "service",
+      "sha256": "c10617f1da85fe848c88a1f8172223e1cf8afea996d5d819d9fcc2ccb5fb2867",
+      "release_generation": "sha256:ccb9c3622ee4f5d5aefbc34e3f62a3b12e4debfcce4c003b388671256c1c3489"
+    },
+    {
+      "os": "macos",
+      "arch": "aarch64",
+      "name": "memright",
+      "role": "cli",
+      "sha256": "2d936389abcd89020369c4c97bdd0d7eab7cc7ba84b58d4766586a54db8cca74",
+      "release_generation": "sha256:ccb9c3622ee4f5d5aefbc34e3f62a3b12e4debfcce4c003b388671256c1c3489"
+    },
+    {
+      "os": "macos",
+      "arch": "aarch64",
+      "name": "memright-service",
+      "role": "service",
+      "sha256": "ac2edc9350038ef1cb9403c959e438e3cb3d3f6706bf3bdc06dd0200dce083cd",
+      "release_generation": "sha256:ccb9c3622ee4f5d5aefbc34e3f62a3b12e4debfcce4c003b388671256c1c3489"
+    }
+  ]
+}

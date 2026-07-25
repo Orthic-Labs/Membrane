@@ -1,0 +1,1404 @@
+{
+  "discovery": [
+    {
+      "client": "claude",
+      "discovered_session_count": 163,
+      "exclusions": [
+        {
+          "reason_code": "skipped",
+          "session_count": 9
+        }
+      ],
+      "parsed_session_count": 154
+    },
+    {
+      "client": "claudemm",
+      "discovered_session_count": 40,
+      "exclusions": [
+        {
+          "reason_code": "skipped",
+          "session_count": 12
+        }
+      ],
+      "parsed_session_count": 28
+    },
+    {
+      "client": "cline",
+      "discovered_session_count": 13,
+      "exclusions": [],
+      "parsed_session_count": 13
+    },
+    {
+      "client": "codex",
+      "discovered_session_count": 24,
+      "exclusions": [
+        {
+          "reason_code": "skipped",
+          "session_count": 17
+        }
+      ],
+      "parsed_session_count": 7
+    },
+    {
+      "client": "command-code",
+      "discovered_session_count": 7,
+      "exclusions": [
+        {
+          "reason_code": "skipped",
+          "session_count": 2
+        }
+      ],
+      "parsed_session_count": 5
+    },
+    {
+      "client": "gemini",
+      "discovered_session_count": 0,
+      "exclusions": [],
+      "parsed_session_count": 0
+    },
+    {
+      "client": "grok-build",
+      "discovered_session_count": 0,
+      "exclusions": [],
+      "parsed_session_count": 0
+    },
+    {
+      "client": "roo-cline",
+      "discovered_session_count": 0,
+      "exclusions": [],
+      "parsed_session_count": 0
+    }
+  ],
+  "expected_provider_families": [
+    {
+      "artifact_family": "context",
+      "provider": "anchors"
+    },
+    {
+      "artifact_family": "skill_output",
+      "provider": "architect"
+    },
+    {
+      "artifact_family": "skill_output",
+      "provider": "audit"
+    },
+    {
+      "artifact_family": "blueprint",
+      "provider": "blueprint"
+    },
+    {
+      "artifact_family": "context",
+      "provider": "git"
+    },
+    {
+      "artifact_family": "context",
+      "provider": "live"
+    },
+    {
+      "artifact_family": "memory",
+      "provider": "memright"
+    },
+    {
+      "artifact_family": "rule",
+      "provider": "rules"
+    },
+    {
+      "artifact_family": "skill_output",
+      "provider": "skills"
+    }
+  ],
+  "generated_at": "2026-07-22T12:37:39.758746Z",
+  "installation_id": "be8b2353-c0f5-4250-867c-22c5629bd4e8",
+  "kind": "context_turn_inventory",
+  "manifest_sha256": "067ebd465e3974b284fbd4dff1ff07fb2c06b8b266c09f868f1e3a97c7403224",
+  "observed_since": "2026-07-22T07:54:08Z",
+  "observed_through": "2026-07-22T08:21:13.640Z",
+  "policy_version": "rightcontext-planner-v2-balanced",
+  "registered_clients": [
+    "claude",
+    "claudemm",
+    "cline",
+    "codex",
+    "command-code",
+    "gemini",
+    "grok-build",
+    "roo-cline"
+  ],
+  "schema_version": 5,
+  "service_instance_id": "c5781940-92e7-473c-8427-55c71eb11bb9",
+  "sessions": [
+    {
+      "client": "command-code",
+      "observed_turn_count": 0,
+      "session_id": "4e655b9d-dba3-4f32-b496-25fb534f4180",
+      "workspace_id": "ws.00451a436ace082260d9acdb1a3bd1b6"
+    },
+    {
+      "client": "command-code",
+      "observed_turn_count": 0,
+      "session_id": "61c4296b-e8b4-4972-8d23-b6b4a3c4f5c5",
+      "workspace_id": "ws.00451a436ace082260d9acdb1a3bd1b6"
+    },
+    {
+      "client": "command-code",
+      "observed_turn_count": 0,
+      "session_id": "8d7eed0e-b723-43e4-8622-d85add3ff6b4",
+      "workspace_id": "ws.00451a436ace082260d9acdb1a3bd1b6"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "97433de1-e861-495e-b76c-ec1532e2809c",
+      "workspace_id": "ws.097c7df938ce550018a29703377d97ed"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "e0c2fd01-0d6c-496d-b5fc-bb9aaedeb901",
+      "workspace_id": "ws.0aff747236c9ed5880d8ec1e65b03170"
+    },
+    {
+      "client": "codex",
+      "observed_turn_count": 4,
+      "session_id": "019f867f-1ab9-7533-8a63-da19a1392b3e",
+      "workspace_id": "ws.1e718fb2f777a0aee9713311f9e5c039"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "259d2661-38ac-49bf-911d-4ea46f0c0a42",
+      "workspace_id": "ws.28732e1805b7655ff09f06260ce89ca6"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "4250eaa0-13d5-4c04-946d-6b6c7e0182b2",
+      "workspace_id": "ws.28732e1805b7655ff09f06260ce89ca6"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "454d05f5-455f-47c7-9d5c-a78b8a864a0d",
+      "workspace_id": "ws.28732e1805b7655ff09f06260ce89ca6"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "05b14235-d1d3-49e7-8ea7-51145e3182df",
+      "workspace_id": "ws.40a4eb4fa6e44a8ce8b7dcdb2547864b"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "0773ca29-263b-459a-92f1-4599c12956d1",
+      "workspace_id": "ws.40a4eb4fa6e44a8ce8b7dcdb2547864b"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "1f62697b-12ed-430d-912a-c31fc7a91b00",
+      "workspace_id": "ws.40a4eb4fa6e44a8ce8b7dcdb2547864b"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "59d86fa5-7df7-40d7-9da3-f1a8a3bb2afd",
+      "workspace_id": "ws.40a4eb4fa6e44a8ce8b7dcdb2547864b"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "62032bb5-85cb-49c1-95d5-ccc0d73fc626",
+      "workspace_id": "ws.40a4eb4fa6e44a8ce8b7dcdb2547864b"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "7b8152fe-0cb6-4523-b148-9728c07dd28e",
+      "workspace_id": "ws.40a4eb4fa6e44a8ce8b7dcdb2547864b"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "7c102b61-6460-447c-94b0-04f6e5aff9c3",
+      "workspace_id": "ws.40a4eb4fa6e44a8ce8b7dcdb2547864b"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "9bc575bf-0bd1-4821-9f18-80129c652f7c",
+      "workspace_id": "ws.40a4eb4fa6e44a8ce8b7dcdb2547864b"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "a50daa21-e646-4ebc-beeb-bd9f17eba09b",
+      "workspace_id": "ws.40a4eb4fa6e44a8ce8b7dcdb2547864b"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "cbea6838-894d-4385-a20e-a4db3fe66b5e",
+      "workspace_id": "ws.40a4eb4fa6e44a8ce8b7dcdb2547864b"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "97433de1-e861-495e-b76c-ec1532e2809c",
+      "workspace_id": "ws.41cc54e4bfc70550360df4608183bf7c"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "0ffd777e-5a8a-43eb-8b70-33337f9a84e6",
+      "workspace_id": "ws.5035490e70d89df192847e076ddd659f"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "3e53dcbc-61b5-42a5-8e81-f5a2351b97b1",
+      "workspace_id": "ws.5a0e076181c52c1d01dd63e0b913d0f7"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "011b9b5d-eb66-4c17-aa3c-0342af8b4d18",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "169a7018-4a89-495f-b4ba-dd5820959b16",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "60cd4edb-e3af-4587-b384-df7cef9d92b4",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "6a3e7436-5f8c-4509-b32f-e07d248119ba",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "70543b78-2c16-47f0-b32f-7f73bc5d871c",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "735b1192-13fb-4fbe-a63c-bb9f9092227a",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "78f9788c-656f-491a-a72d-b401da5805cd",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "8f07801f-943b-4461-bb4a-f9dae68ffc5b",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "c8dc049c-644b-4f12-8db6-da9a6676baa0",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "d30c87ee-eedb-45fd-98d3-7377741d1e72",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "d3b1626c-4407-4488-aad4-4c77c05e09a8",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "d9d9f484-0a26-4075-a71a-6df4db19c8a9",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "e510e771-3f0b-4456-b0cb-f80aa74ea53c",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "eb259a75-62e3-44bf-83e7-b0d03bc0a308",
+      "workspace_id": "ws.68685aa51148bb73beabf0dec1a89116"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "011d468f-cd5e-4208-9b62-66f0adafd228",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "021a4fd6-4e32-4b4b-b9f6-5f31af30fbe4",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "0315185c-1e81-4571-82f5-f01f2129dab9",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "0a4377d4-ae18-410c-90e6-0ed3bfb2d204",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "0aa4d71a-114f-4a0f-9a61-f7f6d0bff466",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "0d8342d6-6821-4ac3-8772-c9bacce2e269",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "13242741-36a7-44df-bfa4-7da0268e43bf",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "13f59121-7778-45f1-b79f-eac9c51af5f5",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "155500b1-3b99-4295-a6cd-2043aedc8357",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "184c29be-cf17-433c-898e-6b19899f32a1",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "1857716e-bc5f-46e4-ba1e-bed4e7d29eb6",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "1ca5cd7d-4afc-4923-a0cb-fbea4ca4d44c",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "29cab4aa-bff1-438b-ab15-44be5c076d33",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "2b3cde9a-6466-4f2c-b4b7-b64d5b02802c",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "2fd2da5c-20ae-472c-a2dc-1540ef0a59c4",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "3128f3e2-3aa5-43c4-833e-02b8d86a3ec7",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "3e870fb8-4b85-4a89-a9ea-6de15e2ac779",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "3ef0f52b-7464-4a3c-9760-d819d47db872",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "3fd155c8-6da1-4ddd-aed5-61ed958decec",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "406f52a5-b7c6-4c79-aa76-8b0a6edf3a4b",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "42192457-36e4-40f9-ae49-4f920b668c57",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "453addc1-fe4e-47a7-b25e-b653058126df",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "46ba806c-c6e2-4a42-acda-66f98ce2bb5b",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "502a7a71-c071-4ccd-ad48-b076ab184857",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "5086964e-eed7-4c08-9893-a15a37708e8c",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "51dfbbe2-5b6f-46ff-affe-728e15b2630f",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "57c942da-4d5c-415e-8d88-64ecd014a1ae",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "5837bfcd-9e54-4057-820b-f71bbce493af",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "65ba4641-160b-4979-91e7-9bf184e82575",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "67353fdd-c8d0-42bc-9a2a-451b937281d0",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "67f6f48d-1368-4233-81d4-2f03147e90ff",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "69980551-467a-4fa1-bb58-1d4e31aaaf42",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "71735e2f-8bb9-4536-a142-1f727c19b96e",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "748a3f86-6533-485e-92d5-78a0111f1aa7",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "7aaf10fa-5f08-4fb8-ad3f-119c1d1eb1b7",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "7baa0375-6569-487a-9f08-3ac6dfacaa67",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "7c1b04dc-d312-4114-ac48-cb470a816064",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "7c2280ed-d92f-44d1-888b-3f32989d31ec",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "7c8de97a-7821-4d3d-9b4f-6f44a98b1ae9",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "82f1d571-09d7-42f9-b066-f185611290e7",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "834d114a-83c6-411a-a879-c419edc055df",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "84794bc9-5b56-4f22-89ba-a882e144701b",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "8511e1ea-bd07-40a9-a808-647621c99dc6",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "860c89c3-2a93-4669-9fa6-a02dacbfeee5",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "8c7471a4-1beb-441f-a8fa-1d8274690281",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "8d832e00-35a5-413d-8dfb-8b002af9885a",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "950186c1-7ee0-42e6-8694-00acf8767559",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "9689be7d-9f81-42e5-a599-dbc9842cf41d",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "970a7eed-d69a-474f-b8d4-36670cc519a5",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "9716fecd-8b92-4e37-aab5-f37409ae8df0",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "a0685fb4-b2e8-4d5f-9fe9-8d8c762d33b4",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "a556be16-a4a4-4b8d-b229-4fdba74589ff",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "abbbec98-c3c7-4fc5-8eb7-02070ab4a47a",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "af19a1ea-0902-484d-b5d1-581c08f4f9b5",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "bb2ea0c6-5274-40c6-84b4-8263f6e71db1",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "bb5867e9-0572-486f-b563-b51640d87600",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "be804925-e76f-4907-82ba-b303ad2be11a",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "c0a76896-70e1-4a93-9ad3-30e475f741f4",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "c168dfe9-3f89-484a-8543-8e7fc0077885",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "c4f80996-4d5a-4e52-949d-167f281da7ed",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "c5dd1f8a-ad30-4ae1-8e75-1b35822a60ec",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "ca16382b-f80e-4573-a5b2-a99a4b1cf9d1",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "cefb3a08-70be-4f5f-9d1a-5d8624118380",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "d0aa68da-9a5e-4d2c-817f-81885966bdcc",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "d0cb3c19-d341-4ac6-8ba4-58585f89c6a9",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "d2fa707f-65d7-4104-93ca-02669b3705a6",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "d347e241-d1af-4202-a630-891cd7a27742",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "d987041c-7c22-41f3-8371-64fad94976a5",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "db112ece-a2ef-4d2b-8939-621f7909892b",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "dc9098a6-0646-41cd-aa8f-a6f6f2cd0b50",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "e925cac6-36c9-42d5-b8c3-eead117de425",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "ea4c35bf-b4a7-4bc7-ab5a-74d815f20dd4",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "ed85bfeb-43bf-4900-aaf7-a093d06823dc",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "f242837c-7a07-40f4-b64f-df18ea06d783",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "f26a892e-637d-43af-89e9-c1f2b3ce6847",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "f33882d6-6c03-432a-81e6-1d7f2958bea9",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "f3e4041b-0a96-43b1-9c3b-714f10e5d5a9",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "f471c7aa-3669-45b6-80cd-a2e42b29d866",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "f6c67992-aa48-4c6d-8797-9cee7b01da08",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "fd9109f1-d44c-4ccb-b6f8-fac41029c594",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "0ffd777e-5a8a-43eb-8b70-33337f9a84e6",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "390d5747-60d6-48cf-8da9-f3783888e50f",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "3e53dcbc-61b5-42a5-8e81-f5a2351b97b1",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "486d98dd-c0e1-4008-bbeb-921a2974f351",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "5fb18caa-100c-4fe3-ad43-bd30cd6add6c",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "6c696a56-dad0-4187-8cca-c7c90f6ba1cf",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "95219c5a-87ef-4046-a913-c61f4236cac5",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "96ba3bfc-f33a-4d82-a0db-1111e06fb7fd",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "d7d2e9a2-deeb-4ffb-8f19-f46279a3493c",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "f18b3015-3ae7-437d-849f-f62f6cd38637",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-0c47a28802992a453b56c563378399ad",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-171f460f25c7fd2422707f3fb2d7f162",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-55b17135585acc6d1be245b5c325bc93",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-68bc876daaf829fc28ff0777d1d18c36",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-769e3e362c57e2b6667c1ad691b7ce3c",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-885f5a4a5d1802538b5971e0a1eeee2a",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-cec5e9fff5c3d07bea7f12f5eb319674",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-f5fc8aef8c6ead11b821a0b56cad1099",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-f7520d4cfc3ce3e83c9fed017259308f",
+      "workspace_id": "ws.71bc8e1727beedd8b8579b3dbbc271ed"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "086db9fa-73ba-4260-9a0d-8ef26c18ee07",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "0c399e8c-62fb-401d-a72b-bcb14cbef6ff",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "0e87e0e7-94f7-46f9-9d74-6f830a935946",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "1bbef075-5236-43ef-9e49-097866ce6eed",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "3496de85-e798-4120-81e8-fe8d8ff8b819",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "3821aff1-df24-4832-9aa6-662118f08cc0",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "3a355d61-32df-4a2c-aa37-9185885f0f06",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "3c29fe1b-ce31-40a4-b1f9-65c89edeb22c",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "4e613f42-61af-4be0-8f87-420442e4986a",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "582d5bf3-28a6-44e5-bd53-e5af0182a40a",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "63099ee5-5323-4898-8168-c2989e490601",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "88019626-3b29-449d-bd0c-3f9c66f1c18f",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "b20c31ce-5128-45af-8792-166b3e85e09e",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "b81bfddc-e4e0-4624-b1ee-6b8bc41a70ea",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "e8835c03-49de-42c8-82bd-53f0eac4903a",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "0554be98-e743-4bc3-8d3d-e65e89941a31",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "0d0a9dd6-722a-4712-803c-930cdcd52084",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "33d9dd7d-3584-43ef-9187-b93dda01f3b0",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "3c4b9b0c-5312-4829-8201-8c03a341872c",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "634b9034-6be0-41b0-ba3e-89dfef9d5e8f",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "722d4b7c-cbb2-418f-b253-d0779410ec71",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "80bdc810-dca8-4738-83fd-6a5f6ee7f2d4",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "81008371-059e-4527-9300-2381aeb3f1f9",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "8623daac-2520-464e-94fb-381f308c4c2b",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "9643eb9e-a42a-45bf-9df4-a3b0275c9433",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-284b79f41165ead80baa42219af7da81",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-f84d19edb3506387dd364a3561fc06b2",
+      "workspace_id": "ws.7280092ef2b48d2b9d638f420c4b040c"
+    },
+    {
+      "client": "codex",
+      "observed_turn_count": 1,
+      "session_id": "019f86be-babc-7400-af70-01fd41118c3d",
+      "workspace_id": "ws.7741b928d0b23f6661ffac240e5c7e88"
+    },
+    {
+      "client": "codex",
+      "observed_turn_count": 0,
+      "session_id": "019f893e-b4de-7853-81b8-baec6e7e37fe",
+      "workspace_id": "ws.7741b928d0b23f6661ffac240e5c7e88"
+    },
+    {
+      "client": "command-code",
+      "observed_turn_count": 0,
+      "session_id": "530c68ff-e1fa-47c5-92c4-a279a2f1be18",
+      "workspace_id": "ws.98579ccafa0edbc45eb16b3f05687287"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "0315185c-1e81-4571-82f5-f01f2129dab9",
+      "workspace_id": "ws.a1e6b91a362bd1a287e832930db72dcd"
+    },
+    {
+      "client": "codex",
+      "observed_turn_count": 0,
+      "session_id": "019f8681-693d-76f3-85a4-f085edb41a2d",
+      "workspace_id": "ws.ae209925f1b2405cd42c62259c3a53b5"
+    },
+    {
+      "client": "codex",
+      "observed_turn_count": 0,
+      "session_id": "019f8681-e913-7ae1-851f-5b085287ebad",
+      "workspace_id": "ws.ae209925f1b2405cd42c62259c3a53b5"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "3d25a1b0-8e59-4b8e-8cf8-9c61e3f8a8c4",
+      "workspace_id": "ws.af38b6238cae5e4d0cf3a34237ad703b"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "99aa9cce-2b58-4d74-9327-d3be5cfeeb18",
+      "workspace_id": "ws.befd81c6d779a62a087c92e4b43f1c12"
+    },
+    {
+      "client": "command-code",
+      "observed_turn_count": 0,
+      "session_id": "b86d0fbd-6bbc-402e-a9b9-6fabc6061c82",
+      "workspace_id": "ws.cc49cd9bec9463bbb0ba400f80228c2a"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "128d6ddd-90a4-4057-bf5d-cb7c8547b7c3",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "148e5a1a-6984-4e3a-84d9-c4252292909f",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "1607020b-2c76-4a0c-b09f-eef7f6109c9a",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "23b691f2-9187-4c0d-a5c2-45cf1d59e140",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "23fdca33-ebfc-431e-88d3-081d3ef2538d",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "2ebfe5e5-244e-4136-85af-6f78eaa8b53f",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "4267d0e3-5132-44bc-a4e7-60f55122581a",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "574133de-dea3-41de-8354-e6f0353b35e7",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "6bfaa179-f95c-43b7-85b9-fcd563082862",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "7a7057df-d195-4d31-8f6a-704972c1fdac",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "8e0e4e99-756b-4597-b0c8-cee85d8d0748",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "9daa5532-fb8d-4022-b99b-b83f1d5c1090",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "a146e534-838a-4b5e-857d-b7519a10367a",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "a2a084d0-15de-47e8-ba54-4ffa6e3895cb",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "a6e6bd0b-ad1a-4f39-a2dd-7dfb744503b6",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "adb2afad-3558-4062-9591-27d0d35d0832",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "b4232e27-3e3d-4a5d-a463-fd845d885407",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "b8fe88f3-ff79-4140-80db-d68c0f2e3133",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "b9a52911-109b-4762-8495-baef375a6330",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "bcb87172-bf08-42a3-b7f6-2c067bdc6548",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "be180872-a0cd-4da1-99d1-41ea4ba11d3f",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "bfa10b3e-a7bf-4c35-897d-57a56ddf6c37",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "c7e48a80-6246-45af-af3f-2fd34c46b1d4",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "ccfa0a08-a2a6-49dc-a03d-27a01ba73628",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "d85e7121-bbd5-4a30-97c9-215b495867c0",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "df83a656-8546-4792-ad7f-b8993890fb64",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "e834398b-18c4-4b0f-b13d-01f95b8a169f",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "e93c066b-9363-42b3-9fd2-1bd3b63c7e26",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "ec079b21-a087-4dc5-979b-c67d49a8e6a2",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "ee5f1384-d201-4011-9af1-e7a7cf9237c7",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claude",
+      "observed_turn_count": 0,
+      "session_id": "f4596948-aea0-4de4-806f-8736b1633761",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "5d476b75-1a5a-46f6-ba66-2c4be6fa2379",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "98344f27-02e8-4d08-b3ed-97817ad911cb",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "cea1951a-1444-4085-8540-6663fa65d6e7",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "db5ae596-4659-41bf-9591-e59245809b17",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-70135548d7ae5195605998180bb27ba3",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "cline",
+      "observed_turn_count": 0,
+      "session_id": "session-7350d12885a07c385a61ef0c9f231df2",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "codex",
+      "observed_turn_count": 0,
+      "session_id": "session-c9d6e2ac16a81194d7916cc3684ceef9",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "codex",
+      "observed_turn_count": 0,
+      "session_id": "session-d83ffe386d0688007c7f23384c042f95",
+      "workspace_id": "ws.daeb95194123d68f073228d9a7921cd9"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "97433de1-e861-495e-b76c-ec1532e2809c",
+      "workspace_id": "ws.efffd6a6e4c51fa7368cf50d794f85c1"
+    },
+    {
+      "client": "claudemm",
+      "observed_turn_count": 0,
+      "session_id": "e930b922-03db-4631-9487-07acc60e2460",
+      "workspace_id": "ws.efffd6a6e4c51fa7368cf50d794f85c1"
+    }
+  ],
+  "source_sha256": "0548c54fd74913b2e4df788c44cc6eb60c2a573c9c86887045555cc9e5e907cd"
+}

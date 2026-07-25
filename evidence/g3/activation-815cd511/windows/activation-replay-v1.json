@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "kind": "rightcontext-activation-replay",
+  "capturedAt": "2026-07-19T09:36:17.0553297Z",
+  "status": "blocked_awaiting_mac_execution",
+  "contentFree": true,
+  "installedRelease": {
+    "sourceCommit": "815cd5112f822d306db69c8b4eafcbf54585036e",
+    "sourceTreeSha256": "a2a81039c606e1dbe5266d4698a79daddbcbc4dd13caf587a7c1a121402312c2",
+    "releaseGeneration": "sha256:a2a81039c606e1dbe5266d4698a79daddbcbc4dd13caf587a7c1a121402312c2",
+    "cliSha256": "0baa7975171cc305ffda3ca6581bb20285c1c272b2e58a7c95486dbfd96b1231",
+    "serviceSha256": "1e04ce3bbe5b8f0bd524ae419b56fca77fc777a10d4a678463e3f3bc41f2e139",
+    "lastObservedServiceGeneration": "sha256:c472545cf6f4614d63f01ef4f68c133279d21c774883dd1defb2674e9e41373f"
+  },
+  "installedGates": {
+    "status": "pass",
+    "evidence": "rightcontext-evidence/g2/final-815cd511/windows/installed-gates-v1.json",
+    "sha256": "96ab7528a2b5c063111c9c9baf9c59d76e17d7b8347a7e9dc9686e4f8fcd6bb7",
+    "scope": "remaining installed Gate 1 and Gate 2 edges"
+  },
+  "activation": {
+    "policyPath": "~/.config/rightcontext/active-policy.json",
+    "policySha256": "5594fa092a930e10a186f9f6b2ca89f324b7e2d908de5d0521f3d19459fbb712",
+    "profile": "candidate",
+    "mode": "on",
+    "cohortsEnabled": true,
+    "controlPct": 50,
+    "policyVersion": "rightcontext-planner-v2-balanced",
+    "rollbackReason": null
+  },
+  "scheduler": {
+    "task": "memright-daily",
+    "state": "Disabled",
+    "enabled": false,
+    "lastRunTime": "2026-07-18T10:00:00+05:30",
+    "lastTaskResult": 0,
+    "invariant": "disabled before activation, throughout replay, after candidate build, and at capture"
+  },
+  "replay": {
+    "manifest": "tools/.cache/memory/phase0-replay-manifest-20260717.jsonl",
+    "manifestSha256": "fa0d2c13512cdd6c3a105219ffbe97cf7ac8ea04ec3e8061a9b271e0b834c320",
+    "selectionSha256": "e16142508d9b50a54ac0e4d0f5ef8fe3c463837c5a11624490c04630bbb4ff5b",
+    "gridSha256": "ce0695f6a52a6d761aaeacea0f91157242d1452877c4511a8aef2644db6af654",
+    "promptCount": 20,
+    "idleGapsSeconds": [
+      30,
+      300,
+      1800
+    ],
+    "plannedCells": 60,
+    "protocol": "serial actual waits; exact two-row smoke followed by at most five rows; frozen failures are never resumed",
+    "attempts": [
+      {
+        "run": "gate3-successor-815cd511-fresh-20260719T065036Z",
+        "status": "frozen_failed",
+        "completedCells": 7,
+        "failedCell": "g30:p7",
+        "recordedReason": "memright_embed_missing",
+        "elapsedMs": 14922,
+        "freshnessMs": 2203,
+        "memrightProviderMs": 12016,
+        "frozenFailureSha256": "e081d2de38cee7f06abbea35584d82f02bedba1ff34ca9c1c86197e53e985a21",
+        "smokeSha256": "befc069fb41a2e12bc62ee8d1634af6cdef2f30e78cc15eb792c618e0edbd435",
+        "stateSha256": "6d2a4fefd1cf6a0d048c0ae73b6cb8823f807e0d2118a3ef2f83e12f4724ca53",
+        "resultsSha256": "5317d826f35050157863a3d3bb6eefe0dc67441a3d0a163500172f18b7093473",
+        "resumeAllowed": false
+      },
+      {
+        "run": "gate3-successor-815cd511-providerbound-20260719T070737Z",
+        "status": "frozen_failed",
+        "completedCells": 3,
+        "failedCell": "g30:p3",
+        "recordedReason": "memright_embed_missing",
+        "elapsedMs": 45735,
+        "freshnessMs": 45015,
+        "frozenFailureSha256": "f5d122b6b5213fd69fc89d32472004b25ca55a48b501abf3b5cc48a3d04a34c9",
+        "smokeSha256": "47b0bbf1962072dc3f695b5f54c117ddb883d14b5dd0f82ac652df6edaf436b4",
+        "stateSha256": "c237e4d5445560d829e616c1c4a1c42ee2f712882b0f97bca9d335f85bc33181",
+        "resultsSha256": "8889b1600ea2d4b7fe20a90200b65256946e4eddb1e18c506991e08290aaf808",
+        "resumeAllowed": false
+      },
+      {
+        "run": "gate3-successor-815cd511-serverbound-20260719T071957Z",
+        "status": "frozen_failed",
+        "completedCells": 33,
+        "failedCell": "g300:p13",
+        "recordedReason": "memright_embed_missing",
+        "diagnosedTerminal": "freshness_timeout",
+        "elapsedMs": 86390,
+        "freshnessMs": 85031,
+        "frozenFailureSha256": "f09e216c354c1d98bdd0fd672689a01a336556eb572b1819416b976b2d28a17b",
+        "smokeSha256": "3c2ff401c1bb5133d7bdf12b37e665425ad4ccff3a0cad3e239c069b87befc20",
+        "stateSha256": "b5fc69737a93c9d2fdd03e3d252fa1b881d284802410f5fe40386f7ed2fcd0fb",
+        "resultsSha256": "007539e84ff3859684cfa22c90fe096ae4bdb860ee6678f41f6384259fd68192",
+        "resumeAllowed": false
+      }
+    ],
+    "acceptanceEligible": false
+  },
+  "rootCause": {
+    "component": "installed Rust freshness overlay hashing",
+    "finding": "dirty-tree freshness could read and hash up to the cumulative 64 MiB cap before returning an indeterminate verdict, outliving replay observers under intermittent I/O contention",
+    "repair": "metadata-only cumulative byte preflight before file-body hashing"
+  },
+  "successorCandidate": {
+    "status": "windows_valid_awaiting_genuine_macos_pair",
+    "installed": false,
+    "releaseManifestAdvanced": false,
+    "sourceCommit": "5ea40c08119f573696bc96e3e8ccad1da608dc0e",
+    "sourceTreeSha256": "9e652c82d738c32cdb9eae8e4793180edd708d71774c2d4babeb8d2913526be4",
+    "releaseGeneration": "sha256:9e652c82d738c32cdb9eae8e4793180edd708d71774c2d4babeb8d2913526be4",
+    "windows": {
+      "target": "x86_64-pc-windows-msvc",
+      "cliSha256": "2333f2c61981943a470abc92d8e74283e0a8835b2d7e7fbb33b6c03f15665911",
+      "serviceSha256": "b4d1508cda698b8096dc013da02eca075a13ce546127aac01c6e34fa08a2e991",
+      "runtimeAssets": "rightcontext-evidence/g2/final-5ea40c08/windows/runtime-assets-v2.json",
+      "runtimeAssetsSha256": "91d8da0ac25eb026d95ebf1efd94f3a41bc470d5bcca8228812a86040cd6a8e3",
+      "vectorRanking": "rightcontext-evidence/g2/final-5ea40c08/windows/vector-ranking-v2.json",
+      "vectorRankingSha256": "a2f0b045af51e26d6a7f9c591a8e7cfff9d138ce642b1ded01c598a4cc08ff68",
+      "vectorRankingStatus": "valid",
+      "repeatCount": 3
+    },
+    "macos": {
+      "status": "blocked_awaiting_mac_execution",
+      "requiredArtifacts": [
+        "rightcontext-evidence/g2/final-5ea40c08/macos/runtime-assets-v2.json",
+        "rightcontext-evidence/g2/final-5ea40c08/macos/vector-ranking-v2.json"
+      ]
+    },
+    "nextReplay": "start a wholly fresh run only after the genuine same-source Mac pair validates, the four-asset manifest advances, and the coordinated install succeeds"
+  },
+  "residuals": [
+    "The requested fresh replay did not complete and Gate 3 remains open.",
+    "The three-production-date observation floor remains calendar-bound.",
+    "No failed replay directory may be resumed."
+  ]
+}

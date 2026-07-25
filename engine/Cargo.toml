@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/memright-core",
+    "crates/memright-format",
+    "crates/memright",
+]
+
+[workspace.package]
+edition = "2021"
+authors = ["MemRight"]
+license = "MIT"
+
+[workspace.dependencies]
+serde       = { version = "1",  features = ["derive"] }
+serde_json  = "1"
+thiserror   = "1"
+tiktoken-rs = "0.7"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

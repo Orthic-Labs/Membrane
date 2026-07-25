@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "id": "scope-isolation-v1",
+  "description": "Synthetic, content-free scope-isolation matrix. Project and workspace path/slug forms must produce identical ranked IDs; clean and dirty provenance are advisory; sibling rows never cross the canonical scope boundary.",
+  "query": "scope isolation exact target",
+  "k": 3,
+  "rows": [
+    {
+      "name": "project-target",
+      "content": "scope isolation exact target",
+      "scope": "D--Claude-mailright"
+    },
+    {
+      "name": "workspace-target",
+      "content": "scope isolation exact target",
+      "scope": "D--Claude"
+    },
+    {
+      "name": "global-target",
+      "content": "scope isolation exact target",
+      "scope": "global"
+    },
+    {
+      "name": "sibling-target",
+      "content": "scope isolation exact target",
+      "scope": "D--Claude-coderight"
+    }
+  ],
+  "globalDecoys": {
+    "count": 8,
+    "namePrefix": "global-decoy-",
+    "contentPrefix": "scope isolation exact target global decoy"
+  },
+  "provenanceStates": [
+    {
+      "id": "clean",
+      "stale": false,
+      "freshnessClass": "clean",
+      "baseCommit": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "overlayDigest": null
+    },
+    {
+      "id": "dirty",
+      "stale": false,
+      "freshnessClass": "dirty_overlay",
+      "baseCommit": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "overlayDigest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ],
+  "scopeCases": [
+    {
+      "id": "project",
+      "canonicalScope": "D--Claude-mailright",
+      "forms": [
+        {
+          "id": "path",
+          "input": "D:/Claude/mailright"
+        },
+        {
+          "id": "slug",
+          "input": "D--Claude-mailright"
+        }
+      ],
+      "allowedScopes": [
+        "D--Claude-mailright",
+        "D--Claude",
+        "global"
+      ],
+      "requiredIds": [
+        "D--Claude-mailright/project-target"
+      ],
+      "forbiddenIds": [
+        "D--Claude-coderight/sibling-target"
+      ]
+    },
+    {
+      "id": "workspace",
+      "canonicalScope": "D--Claude",
+      "forms": [
+        {
+          "id": "path",
+          "input": "D:/Claude"
+        },
+        {
+          "id": "slug",
+          "input": "D--Claude"
+        }
+      ],
+      "allowedScopes": [
+        "D--Claude",
+        "global"
+      ],
+      "requiredIds": [
+        "D--Claude/workspace-target"
+      ],
+      "forbiddenIds": [
+        "D--Claude-mailright/project-target",
+        "D--Claude-coderight/sibling-target"
+      ]
+    },
+    {
+      "id": "global",
+      "canonicalScope": "global",
+      "forms": [
+        {
+          "id": "global",
+          "input": "global"
+        }
+      ],
+      "allowedScopes": [
+        "global"
+      ],
+      "requiredIds": [
+        "global/global-target"
+      ],
+      "forbiddenIds": [
+        "D--Claude-mailright/project-target",
+        "D--Claude/workspace-target",
+        "D--Claude-coderight/sibling-target"
+      ]
+    }
+  ],
+  "expected": {
+    "caseCount": 10,
+    "crossScopeAdmissions": 0,
+    "pathSlugOrderParity": true
+  }
+}

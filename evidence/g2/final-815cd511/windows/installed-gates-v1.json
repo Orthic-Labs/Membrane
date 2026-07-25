@@ -1,0 +1,194 @@
+{
+  "schemaVersion": 1,
+  "status": "pass",
+  "contentFree": true,
+  "capturedAt": "2026-07-19T06:15:12.3744165Z",
+  "release": {
+    "sourceCommit": "815cd5112f822d306db69c8b4eafcbf54585036e",
+    "sourceTreeSha256": "a2a81039c606e1dbe5266d4698a79daddbcbc4dd13caf587a7c1a121402312c2",
+    "releaseGeneration": "sha256:a2a81039c606e1dbe5266d4698a79daddbcbc4dd13caf587a7c1a121402312c2",
+    "cliSha256": "0baa7975171cc305ffda3ca6581bb20285c1c272b2e58a7c95486dbfd96b1231",
+    "serviceSha256": "1e04ce3bbe5b8f0bd524ae419b56fca77fc777a10d4a678463e3f3bc41f2e139"
+  },
+  "plannerSources": {
+    "claudeSha256": "7e9f74a49c9bd9f216aaf277c6e498b9a19860ee31d7932639846daab3d4fa6d",
+    "codexSha256": "dcce037f2975aff5f68efdf129e5f2affa94665fc86ebfff8084ad2a00f921b1",
+    "telemetryLane": "tools/.cache/metrics/rightcontext-heartbeat-smoke.jsonl",
+    "freshnessTimeoutSeconds": 6
+  },
+  "gate1": {
+    "status": "pass",
+    "renderedCap": {
+      "maximumAdditionalContextCodePoints": 10000,
+      "claude": {
+        "outputCodePoints": 9874,
+        "deliveredChars": 8909,
+        "packetBudgetDroppedBlocks": 0,
+        "charCapDroppedBlocks": 43,
+        "blockReconciles": true,
+        "tokenReconciles": true,
+        "serviceGeneration": "sha256:f034b5395d5f4877e746b0b9896080b77efc54ad1a70a0b4f58efaa3985facac"
+      },
+      "codex": {
+        "outputCodePoints": 9872,
+        "deliveredChars": 7021,
+        "packetBudgetDroppedBlocks": 0,
+        "charCapDroppedBlocks": 18,
+        "blockReconciles": true,
+        "tokenReconciles": true,
+        "serviceGeneration": "sha256:f034b5395d5f4877e746b0b9896080b77efc54ad1a70a0b4f58efaa3985facac"
+      }
+    },
+    "packetBudget": {
+      "configuredCodePoints": 700,
+      "claude": {
+        "outputCodePoints": 1537,
+        "deliveredChars": 598,
+        "packetBudgetDroppedBlocks": 69,
+        "charCapDroppedBlocks": 0,
+        "blockReconciles": true,
+        "tokenReconciles": true,
+        "serviceGeneration": "sha256:f034b5395d5f4877e746b0b9896080b77efc54ad1a70a0b4f58efaa3985facac"
+      },
+      "codex": {
+        "outputCodePoints": 3423,
+        "deliveredChars": 598,
+        "packetBudgetDroppedBlocks": 69,
+        "charCapDroppedBlocks": 0,
+        "blockReconciles": true,
+        "tokenReconciles": true,
+        "serviceGeneration": "sha256:f034b5395d5f4877e746b0b9896080b77efc54ad1a70a0b4f58efaa3985facac"
+      }
+    }
+  },
+  "gate2": {
+    "status": "pass",
+    "scope": "remaining installed-runtime edges only; the three-production-date observation floor remains calendar-bound",
+    "authenticatedFreshness": {
+      "schemaVersion": 1,
+      "graphState": "indeterminate",
+      "typedGraphStateReason": "dirty workspace with a complete bounded verdict",
+      "attempts": 1,
+      "firstAfterIdle": true,
+      "overlayCount": 1,
+      "stageElapsedKeys": [
+        "git_status"
+      ],
+      "serviceGeneration": "sha256:309d6dc596361b6edc901ac0427b6c704871fd557e98313b834610fbdc219466",
+      "releaseGeneration": "sha256:a2a81039c606e1dbe5266d4698a79daddbcbc4dd13caf587a7c1a121402312c2"
+    },
+    "clientRecovery": {
+      "deadlineMs": 7500,
+      "privateDown": {
+        "port": 62999,
+        "claude": {
+          "wallMs": 2838,
+          "outcome": "legacy_degraded:release_generation_unavailable",
+          "heartbeatCount": 1
+        },
+        "codex": {
+          "wallMs": 3369,
+          "outcome": "degraded:release_generation_unavailable",
+          "heartbeatCount": 1
+        }
+      },
+      "privateHung": {
+        "port": 52970,
+        "claude": {
+          "wallMs": 2243,
+          "outcome": "legacy_degraded:release_generation_unavailable",
+          "heartbeatCount": 1
+        },
+        "codex": {
+          "wallMs": 3369,
+          "outcome": "degraded:release_generation_unavailable",
+          "heartbeatCount": 1
+        }
+      },
+      "canonicalColdRestart": {
+        "serviceBefore": {
+          "pid": 5208,
+          "serviceGeneration": "sha256:382e24227ebbb39dae21b1d0f68c35de4946a5a57114b097a0d75db361e2e18c"
+        },
+        "whileStopped": {
+          "claude": {
+            "wallMs": 4490.4,
+            "outcome": "legacy_degraded:release_generation_unavailable",
+            "heartbeatCount": 1
+          },
+          "codex": {
+            "wallMs": 2757.2,
+            "outcome": "degraded:release_generation_unavailable",
+            "heartbeatCount": 1
+          }
+        },
+        "serviceAfter": {
+          "pid": 61328,
+          "serviceGeneration": "sha256:309d6dc596361b6edc901ac0427b6c704871fd557e98313b834610fbdc219466"
+        },
+        "recovered": {
+          "claude": {
+            "attempt": 1,
+            "wallMs": 1629.8,
+            "outcome": "delivered",
+            "deliveryCount": 1,
+            "serviceGeneration": "sha256:309d6dc596361b6edc901ac0427b6c704871fd557e98313b834610fbdc219466"
+          },
+          "codex": {
+            "attempt": 1,
+            "wallMs": 1441.5,
+            "outcome": "delivered",
+            "deliveryCount": 1,
+            "serviceGeneration": "sha256:309d6dc596361b6edc901ac0427b6c704871fd557e98313b834610fbdc219466"
+          }
+        }
+      }
+    },
+    "watchdog": {
+      "generatedNotBefore": "2026-07-19T06:13:55.5465139Z",
+      "report": "tools/.cache/metrics/daily-analysis/2026-07-19.json",
+      "before": {
+        "status": "stale",
+        "alert": true,
+        "reason": "stale_output",
+        "lastSuccessAgeSeconds": 92557
+      },
+      "after": {
+        "status": "fresh",
+        "alert": false,
+        "lastSuccessAgeSeconds": 3
+      },
+      "invocationBoundVerifier": "pass"
+    },
+    "smokeIsolation": {
+      "currentWindowProductionSmokeRows": 0,
+      "physicalSmokeRows": 355,
+      "legacyOutOfWindowRows": 11,
+      "legacyTaxonomyDisposition": "retained outside the current report window; current-window contamination remains fail-closed"
+    }
+  },
+  "scheduler": {
+    "dailyBefore": {
+      "state": "Disabled",
+      "enabled": false
+    },
+    "dailyAfter": {
+      "state": "Disabled",
+      "enabled": false,
+      "lastRunTime": "2026-07-18T10:00:00+05:30",
+      "lastTaskResult": 0
+    },
+    "serveAfter": {
+      "state": "Running",
+      "enabled": true,
+      "action": "D:\\Claude\\tools\\bin\\memright-service.exe",
+      "pid": 61328
+    }
+  },
+  "residuals": [
+    "The three-production-date observation floor cannot close on one calendar date.",
+    "The authenticated dirty-workspace verdict is typed indeterminate; it is not represented as a clean graph.",
+    "The installed planner smoke uses a six-second freshness request override; the default two-second path remains latency-sensitive.",
+    "No sustained capacity SLO, SQLite pool, cross-process replay cache, or operator-state recovery is claimed."
+  ]
+}

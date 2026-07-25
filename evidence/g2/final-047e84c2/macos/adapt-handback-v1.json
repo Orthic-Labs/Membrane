@@ -1,0 +1,243 @@
+{
+  "kind": "rightcontext-adapt-handback",
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-21T08:19:19Z",
+  "purpose": "Content-free Mac Adapt terminal handback and replica-import target for Windows.",
+  "installationId": "be8b2353-c0f5-4250-867c-22c5629bd4e8",
+  "terminalRun": {
+    "runId": "adapt-20260721T065907Z-g3b4gekz",
+    "outcome": "no_new_sessions",
+    "summarySha256": "a11a95a7d2e620aa145fc36bb6576e5052f2fcd0ab055807059e3c69e14b69b8",
+    "summaryFileSha256": "99a02a78ec00d97787db828fa8ca92bce6f7441c23d84b73cc5525f022b71b58",
+    "adjudicationProviderCalls": false,
+    "phaseReceipts": [
+      {
+        "phase": "manifest generation",
+        "returncode": 0,
+        "outputSha256": "de7e32e8f46dce103a8c9065705939e55782ef58b0ff2994ac22252e40e168e1"
+      }
+    ],
+    "candidateCounts": {
+      "accepted": 0,
+      "pending": 0,
+      "rejected": 0,
+      "total": 0
+    }
+  },
+  "conformanceReceipt": {
+    "issuedAt": "2026-07-21T06:59:03Z",
+    "expiresAt": "2026-07-21T07:14:03Z",
+    "receiptSha256": "b43e848be2491dc3793583e4b8b65addc1d06bb2655d7128f4f04e91e99f6730",
+    "selfHashValid": true,
+    "validDuringTerminalRun": true
+  },
+  "terminalClientCensus": [
+    {
+      "client": "claude",
+      "discovered": 164,
+      "parsed": 157,
+      "unreadable": 0,
+      "malformed": 0,
+      "skipped": 7,
+      "pending": 0,
+      "processed": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "failed": 0,
+      "persisted": 0,
+      "persistenceFailed": 0
+    },
+    {
+      "client": "claudemm",
+      "discovered": 34,
+      "parsed": 25,
+      "unreadable": 0,
+      "malformed": 0,
+      "skipped": 9,
+      "pending": 0,
+      "processed": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "failed": 0,
+      "persisted": 0,
+      "persistenceFailed": 0
+    },
+    {
+      "client": "cline",
+      "discovered": 10,
+      "parsed": 10,
+      "unreadable": 0,
+      "malformed": 0,
+      "skipped": 0,
+      "pending": 0,
+      "processed": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "failed": 0,
+      "persisted": 0,
+      "persistenceFailed": 0
+    },
+    {
+      "client": "codex",
+      "discovered": 24,
+      "parsed": 12,
+      "unreadable": 0,
+      "malformed": 0,
+      "skipped": 12,
+      "pending": 0,
+      "processed": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "failed": 0,
+      "persisted": 0,
+      "persistenceFailed": 0
+    },
+    {
+      "client": "command-code",
+      "discovered": 7,
+      "parsed": 5,
+      "unreadable": 0,
+      "malformed": 0,
+      "skipped": 2,
+      "pending": 0,
+      "processed": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "failed": 0,
+      "persisted": 0,
+      "persistenceFailed": 0
+    },
+    {
+      "client": "gemini",
+      "discovered": 0,
+      "parsed": 0,
+      "unreadable": 0,
+      "malformed": 0,
+      "skipped": 0,
+      "pending": 0,
+      "processed": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "failed": 0,
+      "persisted": 0,
+      "persistenceFailed": 0
+    },
+    {
+      "client": "grok-build",
+      "discovered": 0,
+      "parsed": 0,
+      "unreadable": 0,
+      "malformed": 0,
+      "skipped": 0,
+      "pending": 0,
+      "processed": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "failed": 0,
+      "persisted": 0,
+      "persistenceFailed": 0
+    },
+    {
+      "client": "roo-cline",
+      "discovered": 0,
+      "parsed": 0,
+      "unreadable": 0,
+      "malformed": 0,
+      "skipped": 0,
+      "pending": 0,
+      "processed": 0,
+      "accepted": 0,
+      "rejected": 0,
+      "failed": 0,
+      "persisted": 0,
+      "persistenceFailed": 0
+    }
+  ],
+  "terminalTotals": {
+    "discovered": 239,
+    "parsed": 209,
+    "unreadable": 0,
+    "malformed": 0,
+    "skipped": 30,
+    "pending": 0,
+    "processed": 0,
+    "accepted": 0,
+    "rejected": 0,
+    "failed": 0,
+    "persisted": 0,
+    "persistenceFailed": 0
+  },
+  "acceptedDispositionAcrossAppliedRuns": [
+    {
+      "client": "claude",
+      "accepted": 25,
+      "rejected": 17,
+      "persisted": 25,
+      "persistenceFailed": 0,
+      "failed": 0
+    },
+    {
+      "client": "claudemm",
+      "accepted": 0,
+      "rejected": 0,
+      "persisted": 0,
+      "persistenceFailed": 0,
+      "failed": 0
+    },
+    {
+      "client": "cline",
+      "accepted": 0,
+      "rejected": 0,
+      "persisted": 0,
+      "persistenceFailed": 0,
+      "failed": 0
+    },
+    {
+      "client": "codex",
+      "accepted": 0,
+      "rejected": 0,
+      "persisted": 0,
+      "persistenceFailed": 0,
+      "failed": 0
+    },
+    {
+      "client": "command-code",
+      "accepted": 1,
+      "rejected": 0,
+      "persisted": 1,
+      "persistenceFailed": 0,
+      "failed": 0
+    },
+    {
+      "client": "mixed",
+      "accepted": 3,
+      "rejected": 2,
+      "persisted": 3,
+      "persistenceFailed": 0,
+      "failed": 0
+    }
+  ],
+  "acceptedDispositionTotals": {
+    "accepted": 29,
+    "rejected": 19,
+    "persisted": 29,
+    "persistenceFailed": 0,
+    "failed": 0
+  },
+  "macReplica": {
+    "replica": "be8b2353-c0f5-4250-867c-22c5629bd4e8",
+    "origin": "be8b2353-c0f5-4250-867c-22c5629bd4e8-adc13a726653",
+    "events": 1760,
+    "minimumOriginSeq": 1,
+    "maximumOriginSeq": 1760,
+    "originSeqContiguous": true,
+    "logicalClock": 1881,
+    "highWaterEventId": "6a49fb8df2a73c554f07b046b91862ee2aa08232",
+    "adaptEvents": 29,
+    "windowsImportTargetOriginSeq": 1760
+  },
+  "scheduler": {
+    "name": "com.adrian.memright-daily",
+    "disabled": true
+  }
+}

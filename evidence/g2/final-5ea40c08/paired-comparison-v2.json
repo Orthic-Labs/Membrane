@@ -1,0 +1,68 @@
+{
+  "architectures": {
+    "macos": "aarch64",
+    "windows": "x86_64"
+  },
+  "calibrationCrossHostDriftMax": 0.008402414619922638,
+  "calibrationProbeCount": 3,
+  "candidateBinaries": {
+    "macos": {
+      "captureLaunchRole": "cli",
+      "cliSha256": "4634ee6c45c749716720a4f281a5928e123a95a363c8f9c4eb43df898cf7ec87",
+      "serviceSha256": "a72d624cc23c2c69b357d01a88763993527f038219fb918107af2fdd2b6add32"
+    },
+    "windows": {
+      "captureLaunchRole": "cli",
+      "cliSha256": "2333f2c61981943a470abc92d8e74283e0a8835b2d7e7fbb33b6c03f15665911",
+      "serviceSha256": "b4d1508cda698b8096dc013da02eca075a13ce546127aac01c6e34fa08a2e991"
+    }
+  },
+  "captureTopK": 6,
+  "comparedAt": "2026-07-20T05:11:29.222521Z",
+  "decisionConsumer": "tools/hooks/recall_memory.py::MIN_COS",
+  "decisionPredicate": "cosine >= decisionThreshold",
+  "decisionThreshold": 0.4,
+  "evaluationCrossHostDriftLimit": 0.008402415619922637,
+  "evaluationCrossHostDriftMax": 0.007472604513168335,
+  "evaluationProbeCount": 3,
+  "kind": "rightcontext-vector-ranking-parity-comparison",
+  "macosArtifactSha256": "2e7c2f7b9faae4c8891b21ffd5c6d290679a5d2290ad9edb116aba21615b3360",
+  "marginEpsilonAbsolute": 1e-09,
+  "minimumObservedRankBoundaryMargin": 0.028292298316955566,
+  "minimumObservedThresholdMargin": 0.009857958555221535,
+  "model": {
+    "dimension": 768,
+    "fingerprint": "pf:v1:4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b",
+    "id": "embeddinggemma-300m-q4"
+  },
+  "modelAssetSetSha256": "3f59ea7cde427e61c6827390a833ca3d3b20ddeae0477c6713fc2c5221cfe9e3",
+  "probeSetSha256": "098b51307a44d05096889a92a5273be221d6c50d875e84e50d9d324a524a40be",
+  "productionTopK": 3,
+  "protocolVersion": 2,
+  "releaseGeneration": "sha256:9e652c82d738c32cdb9eae8e4793180edd708d71774c2d4babeb8d2913526be4",
+  "repeatCount": 3,
+  "requiredRankBoundaryMargin": 0.016804830239845275,
+  "requiredThresholdMargin": 0.008402415619922637,
+  "runtimeAssets": {
+    "macosEvidenceCanonicalSha256": "e93b8d79781227a81782ec5f193c9eb13fd38fb22dc85caf2bff11e7fb4d6a5c",
+    "macosEvidenceFileSha256": "1061c76f82114d1d9a46f3bcee84a557b6575a28031cfdbb3e72aed349954278",
+    "macosOrtSha256": "dd681a94cb76232c010e16a1db5621286d478238cfa20c0fdd821d9773a41cd3",
+    "windowsEvidenceCanonicalSha256": "84508d110c61e9a5283f2c84914593af89719dee40e3d5339c4850350a7a73e5",
+    "windowsEvidenceFileSha256": "91d8da0ac25eb026d95ebf1efd94f3a41bc470d5bcca8228812a86040cd6a8e3",
+    "windowsOrtSha256": "bcce7ce85b962c5a1e354cd85165a6396ce7b2daedf15d272acc0de0963f1c9b"
+  },
+  "schemaVersion": 2,
+  "sourceCommit": "5ea40c08119f573696bc96e3e8ccad1da608dc0e",
+  "status": "pass",
+  "targets": {
+    "macos": "aarch64-apple-darwin",
+    "windows": "x86_64-pc-windows-msvc"
+  },
+  "windowsArtifactSha256": "09c7f779037c26fbabcbb1c5549fd7b9627e872abe661eca7397c003e68983d8",
+  "withinHostJitter": {
+    "macos": 0.0,
+    "max": 0.0,
+    "windows": 0.0
+  },
+  "withinHostJitterLimit": 1e-06
+}

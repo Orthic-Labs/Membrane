@@ -1,0 +1,530 @@
+#!/usr/bin/env node
+// tools/bin/mcp-client.mjs — RightContext G5 Lane F provider-neutral MCP thin client.
+//
+// Thin client: authenticates to the workspace loopback MemRight service at
+// http://127.0.0.1:${MEMRIGHT_PORT}/plan_context with the workspace bearer
+// token, POSTs a frozen ContextCandidateSet v1 envelope, surfaces receipt
+// IDs + degradation state to the caller, and emits a typed fallback event
+// when the planner is unavailable or any provider has gone away.
+//
+// This file does NOT rank, dedupe, normalise, or select candidates. The
+// planner in `memright plan-context` (and the loopback `POST /plan_context`
+// route) is the only authority for ranking and admission. The MCP client
+// translates transport shape only — JSON envelope in, packet + receipts
+// out — exactly as dispatch G5 Lane F requires.
+//
+// Authentication contract (mirrors tools/codex-brief-plugin/.../memright-start.cjs):
+//   1. $MEMRIGHT_PORT env var if set, else 47851.
+//   2. $MEMRIGHT_API_TOKEN env var if set, else $MEMRIGHT_API_TOKEN_FILE
+//      (default tools/.cache/memory/api-token) — same path the workspace
+//      hooks use. The token is read once per process; it is NEVER echoed,
+//      printed, written to a log row, or embedded in any output line.
+//
+// Transport contract:
+//   - Reads a ContextCandidateSet v1 (or {candidate_set, max_tokens, scope_grant_id?})
+//     from `--input <path>` or stdin (when input is `-`).
+//   - Issues one POST application/json with Authorization: Bearer <token>.
+//   - Parses the {packet, receipts, providerStatus, fallbackMode, degradationReason,
+//     sourceGeneration, structuredEvent, persistedReceipts, scopeGrant} payload.
+//   - Emits that payload verbatim on stdout. Exits 0 on success, 1 on
+//     planner_rejected, 2 on transport/auth failure, 3 on typed fallback.
+//
+// Failure-isolation contract:
+//   - Bearer token never appears in stdout, stderr, or any log row.
+//   - Any planner error path emits a structured `context_fallback` event
+//     (typed object printed to stderr — content-free: traceId, provider,
+//     reason, mode) AND returns a typed fallback envelope to stdout so
+//     the MCP caller can still surface the same degradation state.
+
+import { readFileSync, statSync, existsSync } from "node:fs";
+import { Buffer } from "node:buffer";
+import { request as httpRequest } from "node:http";
+
+const DEFAULT_PORT = 47851;
+const REQUEST_TIMEOUT_MS = 1500;
+const MAX_BODY_BYTES = 1 << 20; // 1 MiB — same cap the workspace hook uses
+const TRANSPORT_VERSION = "rightcontext-mcp/1";
+const MODE_DEFAULT = "shadow"; // gate state until G5 parity is green
+
+function readToken() {
+  // Resolution order matches the workspace hook recipe:
+  //   1. MEMRIGHT_API_TOKEN env var (raw, used directly; never logged).
+  //   2. MEMRIGHT_API_TOKEN_FILE env var or default tools/.cache/memory/api-token.
+  // The token is held in closure; it never enters any log or output row.
+  const envTok = process.env.MEMRIGHT_API_TOKEN;
+  if (envTok && envTok.trim().length > 0) return envTok.trim();
+  const fileEnv = process.env.MEMRIGHT_API_TOKEN_FILE;
+  const candidates = [];
+  if (fileEnv && fileEnv.trim().length > 0) candidates.push(fileEnv.trim());
+  const ws = process.env.WORKSPACE_ROOT || (process.platform === "win32" ? "D:/Claude" : `${process.env.HOME}/claude`);
+  candidates.push(`${ws}/tools/.cache/memory/api-token`);
+  for (const path of candidates) {
+    try {
+      if (!existsSync(path)) continue;
+      const st = statSync(path);
+      if (!st.isFile()) continue;
+      const raw = readFileSync(path, "utf8").trim();
+      if (raw.length > 0) return raw;
+    } catch (_) {
+      // swallow — try next candidate
+    }
+  }
+  return null;
+}
+
+function readPort() {
+  const raw = process.env.MEMRIGHT_PORT;
+  if (raw && raw.trim().length > 0) {
+    const n = Number(raw.trim());
+    if (Number.isInteger(n) && n >= 1024 && n <= 65535) return n;
+  }
+  return DEFAULT_PORT;
+}
+
+function readStdinSync() {
+  return readFileSync(0, "utf8");
+}
+
+function loadInput({ inputArg, maxTokens }) {
+  // Accept either a ContextCandidateSet v1 envelope (--candidate-set shape)
+  // or an MCP-shaped envelope `{candidate_set, max_tokens, scope_grant_id?}`.
+  let raw;
+  if (inputArg === "-" || inputArg === undefined) {
+    raw = readStdinSync();
+  } else {
+    raw = readFileSync(inputArg, "utf8");
+  }
+  if (raw.length > MAX_BODY_BYTES) {
+    throw new Error(`input exceeds ${MAX_BODY_BYTES} bytes`);
+  }
+  const parsed = JSON.parse(raw);
+  // Already wrapped? Use as-is.
+  if (parsed && typeof parsed === "object" && parsed.candidate_set) {
+    return {
+      candidate_set: parsed.candidate_set,
+      max_tokens: parsed.max_tokens ?? maxTokens,
+      scope_grant_id: parsed.scope_grant_id,
+      accepted_receipt_versions: parsed.accepted_receipt_versions ?? [2],
+    };
+  }
+  // ContextCandidateSet v1 envelope — wrap.
+  return {
+    candidate_set: parsed,
+    max_tokens: maxTokens,
+    scope_grant_id: undefined,
+    accepted_receipt_versions: [2],
+  };
+}
+
+function postPlanner({ host, port, path, body, token, traceId }) {
+  return new Promise((resolve, reject) => {
+    const json = Buffer.from(JSON.stringify(body), "utf8");
+    const req = httpRequest(
+      {
+        hostname: host,
+        port,
+        path,
+        method: "POST",
+        timeout: REQUEST_TIMEOUT_MS,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": String(json.byteLength),
+          "accept": "application/json",
+          // Tag the call so /metrics and /health surface the third client.
+          // Never carries the bearer token — it is set from closure below.
+          "x-rightcontext-client": "mcp",
+          "x-rightcontext-version": TRANSPORT_VERSION,
+          "x-rightcontext-trace": traceId,
+        },
+      },
+      (res) => {
+        const chunks = [];
+        let received = 0;
+        res.on("data", (chunk) => {
+          received += chunk.length;
+          if (received <= MAX_BODY_BYTES) chunks.push(chunk);
+        });
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          resolve({ status: res.statusCode || 0, body: text });
+        });
+      }
+    );
+    req.on("timeout", () => {
+      req.destroy(new Error("planner request timed out"));
+    });
+    req.on("error", reject);
+    // Set Authorization LAST so we never accidentally log the token header.
+    if (token) {
+      req.setHeader("authorization", `Bearer ${token}`);
+    }
+    req.write(json);
+    req.end();
+  });
+}
+
+// POST /scope_grants to mint a short-lived grant before /plan_context.
+// The planner service REQUIRES a valid scope_grant_id for /plan_context —
+// the CLI path bypasses this for pure-admission tests, but the loopback
+// service enforces the G3B ScopeGrant contract end-to-end. The MCP client
+// mints a grant once per call so a transport-only caller never has to
+// know about grants. The grant body uses the trace_id as the session id
+// so receipts and grants can be joined by id without content.
+function mintScopeGrant({ host, port, traceId, token }) {
+  return new Promise((resolve, reject) => {
+    const grantBody = {
+      id: `grant-${traceId}-${Date.now().toString(36)}-${Math.floor(Math.random() * 0xffffff).toString(16)}`,
+      client: "mcp",
+      task_id: traceId,
+      session_id: traceId,
+      nonce: `nonce-${Date.now().toString(36)}-${Math.floor(Math.random() * 0xffffff).toString(16)}`,
+      manifest_digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      repository_ids: ["transport"],
+      permitted_edge_types: ["read"],
+      ttl_seconds: 600,
+    };
+    const json = Buffer.from(JSON.stringify(grantBody), "utf8");
+    const req = httpRequest(
+      {
+        hostname: host,
+        port,
+        path: "/scope_grants",
+        method: "POST",
+        timeout: REQUEST_TIMEOUT_MS,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "content-length": String(json.byteLength),
+          "accept": "application/json",
+          "x-rightcontext-client": "mcp",
+          "x-rightcontext-version": TRANSPORT_VERSION,
+          "x-rightcontext-trace": traceId,
+        },
+      },
+      (res) => {
+        const chunks = [];
+        let received = 0;
+        res.on("data", (chunk) => {
+          received += chunk.length;
+          if (received <= MAX_BODY_BYTES) chunks.push(chunk);
+        });
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          resolve({ status: res.statusCode || 0, body: text });
+        });
+      }
+    );
+    req.on("timeout", () => req.destroy(new Error("scope_grants timed out")));
+    req.on("error", reject);
+    if (token) {
+      req.setHeader("authorization", `Bearer ${token}`);
+    }
+    req.write(json);
+    req.end();
+  });
+}
+
+function emitFallbackEvent({ traceId, provider, reason, mode }) {
+  // Structured content-free event. Mirrors the workspace hook's
+  // FALLBACK_EVENT_LOG rows so a single grep joins both.
+  const event = {
+    ts: Date.now() / 1000,
+    event: "context_fallback",
+    traceId,
+    provider: provider || "rightcontext-planner",
+    reason,
+    mode,
+    source: "mcp-client",
+  };
+  // Print to stderr so it does NOT contaminate the JSON packet on stdout.
+  process.stderr.write(JSON.stringify(event) + "\n");
+}
+
+function redactForLog(payload) {
+  // Defensive: strip the token from any object that might surface it.
+  // The token is held only in closure; this is belt-and-braces in case a
+  // future change routes the raw `headers` map through a logger.
+  const seen = new WeakSet();
+  const walk = (value) => {
+    if (value === null || typeof value !== "object") return value;
+    if (seen.has(value)) return value;
+    seen.add(value);
+    if (Array.isArray(value)) return value.map(walk);
+    const out = {};
+    for (const [k, v] of Object.entries(value)) {
+      if (k.toLowerCase() === "authorization") continue;
+      out[k] = walk(v);
+    }
+    return out;
+  };
+  return walk(payload);
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  let inputArg;
+  let maxTokens = 2048;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--input") inputArg = argv[++i];
+    else if (a === "--max-tokens") maxTokens = Number(argv[++i]);
+    else if (a === "--help" || a === "-h") {
+      process.stdout.write(
+        [
+          "mcp-client.mjs — RightContext MCP thin client (G5 Lane F)",
+          "",
+          "Usage:",
+          "  node mcp-client.mjs --input <path|-> [--max-tokens N]",
+          "",
+          "Reads a ContextCandidateSet v1 (or {candidate_set,max_tokens,scope_grant_id}",
+          "wrapper) from --input or stdin, POSTs to /plan_context, and prints the",
+          "planner packet + receipts + degradation state to stdout. Falls back to a",
+          "typed `context_fallback` envelope on transport or planner failure.",
+        ].join("\n") + "\n"
+      );
+      return 0;
+    }
+  }
+
+  let payload;
+  try {
+    payload = loadInput({ inputArg, maxTokens });
+  } catch (e) {
+    process.stderr.write(`mcp-client: failed to parse input: ${String(e).slice(0, 200)}\n`);
+    return 2;
+  }
+
+  const traceId =
+    (payload.candidate_set && payload.candidate_set.traceId) || `mcp-${Date.now().toString(16)}`;
+  const token = readToken();
+  const port = readPort();
+  const host = "127.0.0.1";
+
+  let response;
+  try {
+    // Mint a scope grant first — /plan_context requires a valid grant id
+    // (the loopback service enforces the G3B ScopeGrant contract end-to-end;
+    // the CLI path bypasses this for pure admission tests, but the live
+    // HTTP route requires it). The MCP client is a transport adapter and
+    // never inspects the grant body; it only forwards the returned id.
+    let grantId = payload.scope_grant_id;
+    if (!grantId) {
+      const grantResp = await mintScopeGrant({ host, port, traceId, token });
+      if (grantResp.status === 200) {
+        try {
+          const grantPayload = JSON.parse(grantResp.body);
+          grantId = grantPayload.id;
+        } catch (_) {
+          // fall through; the planner call below will return a typed error
+        }
+      }
+      if (!grantId) {
+        emitFallbackEvent({
+          traceId,
+          provider: "rightcontext-planner",
+          reason: "scope_grant_failed",
+          mode: "non_graph_sources_only",
+        });
+        process.stdout.write(
+          JSON.stringify({
+            ok: false,
+            transport: "mcp",
+            version: TRANSPORT_VERSION,
+            traceId,
+            providerStatus: "unavailable",
+            fallbackMode: "non_graph_sources_only",
+            degradationReason: "scope_grant_failed",
+            sourceGeneration: null,
+            packet: null,
+            receipts: [],
+            error: "scope_grant_failed",
+            httpStatus: grantResp.status,
+          }) + "\n"
+        );
+        return 2;
+      }
+    }
+    response = await postPlanner({
+      host,
+      port,
+      path: "/plan_context",
+      body: { ...payload, scope_grant_id: grantId },
+      token,
+      traceId,
+    });
+  } catch (e) {
+    emitFallbackEvent({
+      traceId,
+      provider: "rightcontext-planner",
+      reason: "transport_failure",
+      mode: "non_graph_sources_only",
+    });
+    const fallback = {
+      ok: false,
+      transport: "mcp",
+      version: TRANSPORT_VERSION,
+      traceId,
+      providerStatus: "unavailable",
+      fallbackMode: "non_graph_sources_only",
+      degradationReason: "planner_unavailable",
+      sourceGeneration: null,
+      packet: null,
+      receipts: [],
+      error: "planner_transport_failure",
+    };
+    process.stdout.write(JSON.stringify(fallback) + "\n");
+    return 2;
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(response.body);
+  } catch (_) {
+    emitFallbackEvent({
+      traceId,
+      provider: "rightcontext-planner",
+      reason: "malformed_response",
+      mode: "non_graph_sources_only",
+    });
+    process.stdout.write(
+      JSON.stringify({
+        ok: false,
+        transport: "mcp",
+        version: TRANSPORT_VERSION,
+        traceId,
+        providerStatus: "degraded",
+        fallbackMode: "non_graph_sources_only",
+        degradationReason: "malformed_response",
+        sourceGeneration: null,
+        packet: null,
+        receipts: [],
+        error: "planner_malformed_response",
+        httpStatus: response.status,
+      }) + "\n"
+    );
+    return 2;
+  }
+
+  // Auth/origin rejection: surface as typed fallback (loud, attributable).
+  if (response.status === 401 || response.status === 403) {
+    emitFallbackEvent({
+      traceId,
+      provider: "rightcontext-planner",
+      reason: "auth_rejected",
+      mode: "non_graph_sources_only",
+    });
+    process.stdout.write(
+      JSON.stringify({
+        ok: false,
+        transport: "mcp",
+        version: TRANSPORT_VERSION,
+        traceId,
+        providerStatus: "unavailable",
+        fallbackMode: "non_graph_sources_only",
+        degradationReason: "auth_rejected",
+        sourceGeneration: null,
+        packet: null,
+        receipts: [],
+        error: parsed.error || "planner_auth_rejected",
+        httpStatus: response.status,
+      }) + "\n"
+    );
+    return 2;
+  }
+
+  // Planner-rejected input (400 from the planner, e.g. unknown schema):
+  // echo the typed planner error AND a typed fallback event so the caller
+  // can distinguish "I sent garbage" from "planner went away".
+  if (response.status >= 400) {
+    emitFallbackEvent({
+      traceId,
+      provider: "rightcontext-planner",
+      reason: parsed && parsed.kind ? parsed.kind : "planner_error",
+      mode: "non_graph_sources_only",
+    });
+    process.stdout.write(
+      JSON.stringify(
+        redactForLog({
+          ok: false,
+          transport: "mcp",
+          version: TRANSPORT_VERSION,
+          traceId,
+          providerStatus: "degraded",
+          fallbackMode: "non_graph_sources_only",
+          degradationReason:
+            parsed && parsed.kind ? parsed.kind : "planner_error",
+          sourceGeneration: null,
+          packet: null,
+          receipts: [],
+          error: parsed && parsed.error ? parsed.error : "planner_rejected",
+          httpStatus: response.status,
+        })
+      ) + "\n"
+    );
+    return 1;
+  }
+
+  // Successful planner response: surface the packet, receipts, and
+  // degradation state verbatim, with the third-client transport metadata
+  // attached so the parity tests can prove "MCP client got the same packet
+  // the Claude hook did for the same frozen request".
+  const out = redactForLog({
+    ok: true,
+    transport: "mcp",
+    version: TRANSPORT_VERSION,
+    traceId,
+    providerStatus: parsed.providerStatus ?? "unknown",
+    fallbackMode: parsed.fallbackMode ?? "none",
+    degradationReason: parsed.degradationReason ?? "none",
+    sourceGeneration: parsed.sourceGeneration ?? null,
+    packet: parsed.packet ?? null,
+    receipts: parsed.receipts ?? [],
+    structuredEvent: parsed.structuredEvent ?? null,
+    persistedReceipts: parsed.persistedReceipts ?? 0,
+    scopeGrant: parsed.scopeGrant ?? null,
+    httpStatus: response.status,
+  });
+  process.stdout.write(JSON.stringify(out) + "\n");
+  return 0;
+}
+
+// Only run when invoked directly; pure module export for tests.
+// Detection: file:// URL of the current module vs the entry script.
+function isMainModule() {
+  try {
+    const arg = process.argv[1];
+    if (!arg) return false;
+    const argUrl = new URL(`file:///${arg.replace(/\\/g, "/")}`).href;
+    return import.meta.url === argUrl;
+  } catch (_) {
+    return false;
+  }
+}
+
+if (isMainModule()) {
+  main().then(
+    (code) => process.exit(code),
+    (e) => {
+      // Final guardrail: ensure the bearer token can never surface even if
+      // an unexpected throw carries it via the error's headers.
+      try {
+        process.stderr.write(`mcp-client: unhandled: ${String(e).slice(0, 200)}\n`);
+      } catch (_) {
+        process.stderr.write("mcp-client: unhandled\n");
+      }
+      process.exit(2);
+    }
+  );
+}
+
+export {
+  loadInput,
+  postPlanner,
+  readPort,
+  readToken,
+  redactForLog,
+  emitFallbackEvent,
+  TRANSPORT_VERSION,
+  REQUEST_TIMEOUT_MS,
+  MAX_BODY_BYTES,
+  DEFAULT_PORT,
+};

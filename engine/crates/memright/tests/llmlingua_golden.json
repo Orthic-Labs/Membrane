@@ -1,0 +1,27 @@
+{
+  "01_meeting.txt": {
+    "compressed": "Q3 meeting, October 12. Maria, James, Priya, Devon. \n \n revenue recap. Q3 closed $ 4. 2M ARR, 18 % 41 % year. enterprise tier standout, 62 % new bookings, expanded sales team Q2. James three top ten deals Q4 procurement delays, Q4 $ 700K pipeline Q3. Priya soft demand process friction, Maria deal - level notes reclassify prep 28th. \n \n, Devon roadmap. context - engineering unification end November LLMLingua spike last. shared memory model recall precision 11 points, no regression. keep flag two weeks. \n \n senior infra engineer, onboarding November 4. second product designer recruiter five candidates interviews.. Priya design search. \n \n Maria closed next session November 15, unified memory story API surface changes. Two top five accounts confirmed attendance. Adjourned 11 : 47.",
+    "origin_tokens": 367,
+    "compressed_tokens": 188
+  },
+  "02_readme.txt": {
+    "compressed": "ContextRight application pairs local SQLite memory store Rust orchestration engine. designed for durable, searchable session memory without transcripts. ships single binary exposes HTTP surface loopback. no cloud dependency, telemetry, remote model call unless. \n \n three layers. structured recall store turn content, topic, recency. vector recall path sentence embedder ONNX. curation layer consolidates memories into higher summaries recall surface manageable. \n \n, owns context - engineering transforms. skeletonize source code tree - sitter signature view structure. compress prose token - drop classifier LLMLingua - 2. run command return head - - tail view preserving child exit code full transcript side file. exposed as CLI verbs HTTP routes against resident daemon.",
+    "origin_tokens": 282,
+    "compressed_tokens": 141
+  },
+  "03_incident.txt": {
+    "compressed": "on - call investigation began 02 : 14 UTC alerting system fired increase p99 latency. triage pointed new worker, promoted production previous afternoon. worker healthy serving traffic, downstream consumers non - trivial requests returning empty vectors. \n \n worker logs showed tokenizer warnings., volume increased nine - fold since. inspection revealed warnings clustering inputs longer 512 tokens, maximum. previous code path truncating inputs unchanged, tokenizer undefined behavior. \n \n one - line guard rejects input above 480 tokens structured error. guard rolled out 03 : 02 UTC latency alerts cleared four minutes. follow - up filed automated load test long inputs. \n \n postmortem action items tracked engineering tracker October on - call rotation. owner load test platform team input validation contract change API team. full timeline,, attached incident record.",
+    "origin_tokens": 320,
+    "compressed_tokens": 157
+  },
+  "04_doc.txt": {
+    "compressed": "token - classification approach prompt compression per - token keep or drop decision. model, small encoder classifier scores token original input preserve meaning. low dropped high kept. output reconstructed detokenizing tokens original order, compressed imperfect result. \n \n training data classifier constructed natural - language passages, generating compressed variants, labeling token kept or dropped above quality threshold. classifier BERT - transformer token - classification head binary cross - entropy loss. full model 110 million parameters runs on CPU inference. \n \n, approach works on prose narrative content. code, dropping tokens break syntax, dense structured data, meaningful., different transform appropriate tree - sitter - based code skeletonizer preserves signatures replaces bodies ellipsis, structured - data summarizer preserves schema samples values.",
+    "origin_tokens": 296,
+    "compressed_tokens": 144
+  },
+  "05_plan.txt": {
+    "compressed": "unification moves context engineering layers from Python Node scripts into Rust crate. maintaining two implementations slow leak, correctness onboarding. engine unified, desktop application, workspace tooling, future consumer call Rust code through CLI HTTP contract, Python Node scripts retired. \n \n scope unification narrow. includes deterministic transforms over text command execution bounded output, code skeletonization, prose compression, routing layer input right transform. excludes LLM call, policy string, prompt format. \n \n assumption learned prose compressor exported to ONNX executed through runtime sentence embeddings, without quality regression. mitigation spike before production implementation export model, run with Python fixtures, proceed with full implementation if retained Jaccard meets threshold. If, heuristic fallback learned path deferred.",
+    "origin_tokens": 302,
+    "compressed_tokens": 141
+  }
+}

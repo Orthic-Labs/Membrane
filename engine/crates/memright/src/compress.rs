@@ -1,0 +1,622 @@
+//! L3/L5 prose compressor.
+//!
+//! Two paths, picked at runtime when both are available:
+//!
+//! 1. **ONNX LLMLingua-2** (gated by `--features llmlingua-onnx`) — runs the
+//!    token-classification head exported from
+//!    `microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank`. Tokenizes
+//!    with HF `bert-base-multilingual-cased`, scores every token with keep-prob,
+//!    keeps top-`rate` (force-kept for punctuation / newlines), detokenizes.
+//!    Parity with the reference Python llmlingua ≥ 0.90 word-Jaccard at the
+//!    default rate (0.5). See `spike/SPIKE-RESULT.md` for the full gate evidence.
+//!
+//! 2. **Deterministic heuristic** (always available) — `memright_format::compress_prose`,
+//!    a quality-degraded fallback. Selected when `--no-onnx` is set, when the
+//!    `llmlingua-onnx` feature isn't built, or when the ONNX assets are missing.
+//!
+//! Asset resolution: `$MEMRIGHT_LLMLINGUA_MODEL` and `$MEMRIGHT_LLMLINGUA_TOKENIZER`
+//! override the defaults (`crates/memright/assets/llmlingua/`). The DLL is
+//! loaded from `$ORT_DYLIB_PATH` (same pattern as the BGE/fastembed path).
+//!
+//! The core algorithm pieces — softmax-keep-prob, top-K + force-token selection,
+//! and asset-path resolution — are exposed as pure helpers and tested without the
+//! 677MB ONNX model so CI catches structural regressions even when the parity
+//! test (which needs the model) is skipped.
+
+/// Compress prose, keeping approximately `rate` (0.0–1.0) of the original.
+///
+/// `rate` is the fraction to KEEP (workspace parity), not a "ratio to drop".
+pub fn compress(text: &str, rate: f32) -> String {
+    compress_with_options(text, rate, false)
+}
+
+/// Same as [`compress`] but allows forcing the heuristic path even when the
+/// ONNX feature is enabled.
+pub fn compress_with_options(text: &str, rate: f32, no_onnx: bool) -> String {
+    let rate = rate.clamp(0.0, 1.0);
+
+    #[cfg(not(feature = "llmlingua-onnx"))]
+    let _ = no_onnx;
+
+    #[cfg(feature = "llmlingua-onnx")]
+    {
+        if !no_onnx {
+            match compress_llmlingua_onnx(text, rate) {
+                Ok(out) => return out,
+                Err(err) => {
+                    eprintln!(
+                        "[memright] llmlingua-onnx unavailable ({err}); falling back to heuristic"
+                    );
+                }
+            }
+        }
+    }
+
+    // Deterministic heuristic fallback (always available).
+    memright_format::compress_prose(text, rate)
+}
+
+// ============================================================================
+// ONNX path
+// ============================================================================
+
+#[cfg(feature = "llmlingua-onnx")]
+fn compress_llmlingua_onnx(text: &str, rate: f32) -> Result<String, String> {
+    use ort::value::Tensor;
+
+    const MAX_SEQ_LEN: usize = 512;
+
+    if rate <= 0.0 || text.is_empty() {
+        return Ok(String::new());
+    }
+
+    with_llmlingua_runtime(|runtime| {
+        let enc = runtime
+            .tokenizer
+            .encode(text, false)
+            .map_err(|e| format!("tokenize: {e}"))?;
+        let mut ids: Vec<i64> = enc.get_ids().iter().map(|&i| i as i64).collect();
+        if ids.is_empty() {
+            return Ok(String::new());
+        }
+        if ids.len() > MAX_SEQ_LEN {
+            ids.truncate(MAX_SEQ_LEN);
+        }
+        let n = ids.len();
+
+        let shape = [1i64, n as i64];
+        let attention_mask = vec![1i64; n];
+        let token_type_ids = vec![0i64; n];
+
+        let iids_t = Tensor::<i64>::from_array((shape, ids.clone()))
+            .map_err(|e| format!("input_ids tensor: {e}"))?;
+        let am_t = Tensor::<i64>::from_array((shape, attention_mask))
+            .map_err(|e| format!("attention_mask tensor: {e}"))?;
+        let tt_t = Tensor::<i64>::from_array((shape, token_type_ids))
+            .map_err(|e| format!("token_type_ids tensor: {e}"))?;
+
+        let outputs = runtime
+            .session
+            .run(ort::inputs![iids_t, am_t, tt_t])
+            .map_err(|e| format!("session.run: {e}"))?;
+
+        let (out_shape, logits_flat) = outputs[0]
+            .try_extract_tensor::<f32>()
+            .map_err(|e| format!("extract logits: {e}"))?;
+        let dims: &[i64] = out_shape;
+        match dims {
+            [_, seq, classes] if *seq as usize == n && *classes == 2 => {}
+            s => return Err(format!("unexpected logits shape: {s:?}")),
+        }
+        let logits = &logits_flat[0..n * 2];
+        let keep_prob: Vec<f32> = (0..n)
+            .map(|i| softmax_keep_prob_two_class(&[logits[i * 2], logits[i * 2 + 1]]))
+            .collect();
+
+        // Force-keep any token whose decoded piece contains a force char.
+        // Mirrors `compress.py`'s default `force_tokens=["\n", ".", "!", "?", ","]`.
+        const FORCE_TOKEN_CHARS: &[char] = &['\n', '.', '!', '?', ','];
+        let mut force_mask = vec![false; n];
+        for i in 0..n {
+            let piece = runtime
+                .tokenizer
+                .decode(&[ids[i] as u32], true)
+                .unwrap_or_default();
+            if FORCE_TOKEN_CHARS.iter().any(|c| piece.contains(*c)) {
+                force_mask[i] = true;
+            }
+        }
+
+        let keep_set = select_keep_indices(&keep_prob, &force_mask, rate);
+
+        let kept_ids: Vec<u32> = keep_set.iter().map(|&i| ids[i] as u32).collect();
+        runtime
+            .tokenizer
+            .decode(&kept_ids, true)
+            .map_err(|e| format!("decode: {e}"))
+    })
+}
+
+#[cfg(feature = "llmlingua-onnx")]
+struct LlmlinguaRuntime {
+    tokenizer: tokenizers::Tokenizer,
+    session: ort::session::Session,
+}
+
+#[cfg(feature = "llmlingua-onnx")]
+fn load_llmlingua_runtime() -> Result<LlmlinguaRuntime, String> {
+    let (model_path, tok_path) = llmlingua_asset_paths()?;
+    let tokenizer =
+        tokenizers::Tokenizer::from_file(&tok_path).map_err(|e| format!("tokenizer load: {e}"))?;
+    let session = ort::session::Session::builder()
+        .map_err(|e| format!("session builder: {e}"))?
+        .commit_from_file(&model_path)
+        .map_err(|e| format!("commit model: {e}"))?;
+    Ok(LlmlinguaRuntime { tokenizer, session })
+}
+
+#[cfg(feature = "llmlingua-onnx")]
+thread_local! {
+    static LLMLINGUA_RUNTIME: std::cell::RefCell<Option<Result<LlmlinguaRuntime, String>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(feature = "llmlingua-onnx")]
+fn with_llmlingua_runtime<T>(
+    f: impl FnOnce(&mut LlmlinguaRuntime) -> Result<T, String>,
+) -> Result<T, String> {
+    LLMLINGUA_RUNTIME.with(|cell| {
+        if cell.borrow().is_none() {
+            *cell.borrow_mut() = Some(load_llmlingua_runtime());
+        }
+        let mut borrowed = cell.borrow_mut();
+        match borrowed.as_mut().expect("runtime initialized") {
+            Ok(runtime) => f(runtime),
+            Err(err) => Err(err.clone()),
+        }
+    })
+}
+
+/// Softmax over a 2-element binary-classification row, returning the
+/// keep-probability (index 1). Numerically stable (subtract max first).
+///
+/// Exposed (crate-internal) for unit testing without the ONNX model.
+#[cfg(feature = "llmlingua-onnx")]
+fn softmax_keep_prob_two_class(logits: &[f32; 2]) -> f32 {
+    let max = logits[0].max(logits[1]);
+    let exp_sum = (logits[0] - max).exp() + (logits[1] - max).exp();
+    (logits[1] - max).exp() / exp_sum
+}
+
+/// Top-K + force-token selection. Given per-position keep-probabilities, a
+/// force-mask (positions that must be kept), and `rate` (fraction to KEEP),
+/// returns the set of original positions to retain. Force positions are always
+/// kept; remaining budget is allocated to the highest keep-prob positions.
+///
+/// `rate` is the fraction to KEEP, matching `compress.py --rate`. Edge cases:
+/// - `rate <= 0` returns empty (caller should pre-check and return empty string)
+/// - `rate >= 1` returns all positions
+/// - `force_count > total_keep` shrinks the top-K to zero (force alone fills
+///   the budget; could exceed it, which we accept for simplicity)
+#[cfg(feature = "llmlingua-onnx")]
+fn select_keep_indices(
+    keep_prob: &[f32],
+    force_mask: &[bool],
+    rate: f32,
+) -> std::collections::BTreeSet<usize> {
+    use std::collections::BTreeSet;
+    let n = keep_prob.len();
+    debug_assert_eq!(force_mask.len(), n);
+
+    if n == 0 {
+        return BTreeSet::new();
+    }
+    let rate = rate.clamp(0.0, 1.0);
+    let n_total_keep = ((n as f32 * rate).round() as usize).clamp(1, n);
+    let n_force = force_mask.iter().filter(|x| **x).count();
+    let n_topk = n_total_keep.saturating_sub(n_force);
+
+    let mut indexed: Vec<(usize, f32)> = (0..n)
+        .filter(|i| !force_mask[*i])
+        .map(|i| (i, keep_prob[i]))
+        .collect();
+    // Sort descending by keep-prob. NaN ties broken by ascending index
+    // (deterministic; matches Rust's `sort_by` on f64 NaN but for f32).
+    indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    let top_idx: BTreeSet<usize> = indexed.iter().take(n_topk).map(|(i, _)| *i).collect();
+
+    (0..n)
+        .filter(|i| force_mask[*i] || top_idx.contains(i))
+        .collect()
+}
+
+/// Pure asset-path resolver. Returns `(model_path, tokenizer_path, default_dir)`.
+///
+/// `model_env` / `tokenizer_env` are the values of `$MEMRIGHT_LLMLINGUA_MODEL`
+/// / `$MEMRIGHT_LLMLINGUA_TOKENIZER`, or `None` if unset. Pulled out of
+/// `llmlingua_asset_paths` for testability (no env mutation in tests).
+///
+/// `manifest_dir` is the crate root at build time (use `env!("CARGO_MANIFEST_DIR")`).
+/// PathBuf::join + Path::is_file are cross-platform, so this is OS-independent.
+#[cfg(feature = "llmlingua-onnx")]
+fn resolve_asset_paths(
+    manifest_dir: &std::path::Path,
+    model_env: Option<&str>,
+    tokenizer_env: Option<&str>,
+) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+    let default_dir = manifest_dir.join("assets").join("llmlingua");
+    let model = model_env
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| default_dir.join("model.onnx"));
+    let tokenizer = tokenizer_env
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| default_dir.join("tokenizer.json"));
+    (model, tokenizer, default_dir)
+}
+
+#[cfg(feature = "llmlingua-onnx")]
+fn llmlingua_asset_paths() -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let model_env = std::env::var("MEMRIGHT_LLMLINGUA_MODEL").ok();
+    let tok_env = std::env::var("MEMRIGHT_LLMLINGUA_TOKENIZER").ok();
+    let (model, tokenizer, default_dir) =
+        resolve_asset_paths(&manifest, model_env.as_deref(), tok_env.as_deref());
+
+    if !model.is_file() {
+        return Err(format!(
+            "model not found at {} (set $MEMRIGHT_LLMLINGUA_MODEL, or populate {} from the spike export per crates/memright/assets/llmlingua/README.md)",
+            model.display(),
+            default_dir.display()
+        ));
+    }
+    if !tokenizer.is_file() {
+        return Err(format!("tokenizer not found at {}", tokenizer.display()));
+    }
+    Ok((model, tokenizer))
+}
+
+/// Returns true iff both `model.onnx` and `tokenizer.json` are reachable at the
+/// resolved default paths (or via env vars). Lets the parity test skip cleanly
+/// in CI checkouts without the 677MB asset.
+#[cfg(feature = "llmlingua-onnx")]
+#[cfg_attr(not(test), allow(dead_code))]
+fn assets_present() -> bool {
+    llmlingua_asset_paths().is_ok()
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(all(test, feature = "llmlingua-onnx"))]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+
+    // ------------------------------------------------------------------------
+    // Always-on tests (no 677MB model, no tokenizer.json required).
+    // These catch structural regressions in the pure algorithm pieces
+    // so CI fails loudly even when the parity test is skipped.
+    // ------------------------------------------------------------------------
+
+    fn approx_eq(a: f32, b: f32) -> bool {
+        (a - b).abs() < 1e-6
+    }
+
+    #[test]
+    fn softmax_keep_prob_picks_higher_logit() {
+        // If keep-logit is much higher than drop-logit, keep-prob → 1.
+        let p = softmax_keep_prob_two_class(&[-10.0, 10.0]);
+        assert!(approx_eq(p, 1.0), "expected ~1.0, got {p}");
+        // Symmetric.
+        let p = softmax_keep_prob_two_class(&[10.0, -10.0]);
+        assert!(approx_eq(p, 0.0), "expected ~0.0, got {p}");
+        // Equal logits → 0.5.
+        let p = softmax_keep_prob_two_class(&[1.5, 1.5]);
+        assert!(approx_eq(p, 0.5), "expected 0.5, got {p}");
+    }
+
+    #[test]
+    fn softmax_keep_prob_numerically_stable_for_large_logits() {
+        // Without subtract-max, exp(1000) overflows. With it, both inputs share
+        // the same shift so the ratio is stable.
+        let p = softmax_keep_prob_two_class(&[1000.0, 1001.0]);
+        assert!(p > 0.0 && p < 1.0, "expected in (0,1), got {p}");
+        // The logit-difference is 1, so keep-prob = e^1 / (1 + e^1) ≈ 0.7311.
+        assert!(approx_eq(p, 0.731_058_6), "expected ~0.7311, got {p}");
+    }
+
+    #[test]
+    fn select_keep_indices_respects_rate() {
+        // 10 tokens, all with equal keep-prob (no force). rate=0.5 → keep 5.
+        let keep_prob = vec![0.5; 10];
+        let force_mask = vec![false; 10];
+        let kept = select_keep_indices(&keep_prob, &force_mask, 0.5);
+        assert_eq!(kept.len(), 5);
+    }
+
+    #[test]
+    fn select_keep_indices_force_overrides_topk() {
+        // 10 tokens, force-keep the lowest-3 by keep-prob. rate=0.5 → keep 5,
+        // but 3 of those slots are forced; top-K fills the remaining 2 from
+        // the non-forced set.
+        // Initial keep_prob is descending: index 0 = 1.0, index 9 = 0.1.
+        // Then we zero out indices 0..3 so the forced tokens have the LOWEST
+        // keep-prob — they would never be picked by top-K alone, but the
+        // force-mask keeps them anyway.
+        let mut keep_prob: Vec<f32> = (0..10).map(|i| 1.0 - i as f32 * 0.1).collect();
+        keep_prob[0] = 0.0;
+        keep_prob[1] = 0.0;
+        keep_prob[2] = 0.0;
+        let force_mask = vec![
+            true, true, true, false, false, false, false, false, false, false,
+        ];
+        let kept = select_keep_indices(&keep_prob, &force_mask, 0.5);
+        assert!(kept.contains(&0), "forced token 0 must be kept");
+        assert!(kept.contains(&1), "forced token 1 must be kept");
+        assert!(kept.contains(&2), "forced token 2 must be kept");
+        assert_eq!(kept.len(), 5, "rate=0.5 → 5 kept, got {kept:?}");
+        // The 2 non-forced slots go to the highest remaining keep-prob tokens
+        // (indexes 3 and 4 with probs 0.7 and 0.6).
+        assert!(
+            kept.contains(&3) && kept.contains(&4),
+            "expected top-prob tokens 3 and 4 in {kept:?}"
+        );
+    }
+
+    #[test]
+    fn select_keep_indices_force_exceeds_budget_shrinks_topk() {
+        // 5 tokens, all forced. rate=0.5 → budget 3, but 5 forced → topk=0,
+        // all 5 forced are kept (over budget, accepted for simplicity).
+        let keep_prob = vec![0.1; 5];
+        let force_mask = vec![true; 5];
+        let kept = select_keep_indices(&keep_prob, &force_mask, 0.5);
+        assert_eq!(kept.len(), 5);
+    }
+
+    #[test]
+    fn select_keep_indices_rate_zero_keeps_only_force() {
+        // rate=0 → budget is clamped to 1; with no force, top-K picks 1 token.
+        // With force, force wins.
+        let keep_prob = vec![0.5; 5];
+        let force_mask = vec![false, true, false, false, false];
+        let kept = select_keep_indices(&keep_prob, &force_mask, 0.0);
+        assert_eq!(kept, [1].into_iter().collect());
+    }
+
+    #[test]
+    fn select_keep_indices_empty_input() {
+        let kept = select_keep_indices(&[], &[], 0.5);
+        assert!(kept.is_empty());
+    }
+
+    #[test]
+    fn resolve_asset_paths_default_dir_under_manifest() {
+        // No env vars → both assets resolve to manifest/assets/llmlingua/{name}.
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let (model, tok, default_dir) = resolve_asset_paths(&manifest, None, None);
+        assert_eq!(default_dir, manifest.join("assets").join("llmlingua"));
+        assert_eq!(model, default_dir.join("model.onnx"));
+        assert_eq!(tok, default_dir.join("tokenizer.json"));
+        // The default dir is built with PathBuf::join → native separators.
+        // The string round-trips identically regardless of platform.
+        let manifest_str = manifest.to_str().expect("manifest is valid UTF-8");
+        let default_str = default_dir.to_str().expect("default_dir is valid UTF-8");
+        assert!(
+            default_str.contains(manifest_str),
+            "default dir {default_str} should be under manifest {manifest_str}"
+        );
+    }
+
+    #[test]
+    fn resolve_asset_paths_env_var_overrides_default() {
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        // POSIX-style override (PathBuf handles separators correctly on both OSes).
+        let (model, tok, default_dir) = resolve_asset_paths(
+            &manifest,
+            Some("/opt/llmlingua/model.onnx"),
+            Some("/opt/llmlingua/tok.json"),
+        );
+        assert_eq!(model, std::path::PathBuf::from("/opt/llmlingua/model.onnx"));
+        assert_eq!(tok, std::path::PathBuf::from("/opt/llmlingua/tok.json"));
+        // default_dir is unchanged regardless of env override.
+        assert_eq!(default_dir, manifest.join("assets").join("llmlingua"));
+    }
+
+    #[test]
+    fn resolve_asset_paths_windows_style_env_var_preserved() {
+        // On Windows, a backslash-separated absolute path must come through
+        // verbatim (PathBuf::from doesn't normalize env-var input; the user
+        // gets exactly what they put in the env var). PathBuf::join, by
+        // contrast, normalizes separators — that's the difference between
+        // the "env var override" branch and the "default" branch.
+        let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let win_model = r"C:\Users\test\llmlingua\model.onnx";
+        let win_tok = r"C:\Users\test\llmlingua\tokenizer.json";
+        let (model, tok, default_dir) =
+            resolve_asset_paths(&manifest, Some(win_model), Some(win_tok));
+        // The env-var input is preserved exactly. (On POSIX this test still
+        // passes because PathBuf::from is a no-op on the input string —
+        // there's no implicit separator conversion.)
+        assert_eq!(model.as_os_str(), win_model);
+        assert_eq!(tok.as_os_str(), win_tok);
+        // The default-dir branch still goes through PathBuf::join, which
+        // normalizes separators — that's the platform-correct behavior.
+        let expected_default = manifest.join("assets").join("llmlingua");
+        assert_eq!(default_dir, expected_default);
+        // Sanity: the default dir, when stringified, contains the manifest path.
+        assert!(
+            default_dir
+                .to_str()
+                .unwrap()
+                .contains(manifest.to_str().unwrap()),
+            "default dir {} should contain manifest {}",
+            default_dir.display(),
+            manifest.display()
+        );
+    }
+
+    #[test]
+    fn missing_model_error_mentions_default_dir_and_readme_pointer() {
+        // Set the env var to a path that definitely doesn't exist, so we hit
+        // the "model not found" branch regardless of whether the local assets
+        // dir is populated. (Env mutation in parallel tests is racy; use a
+        // marker that no other test uses.)
+        let bogus = std::env::temp_dir()
+            .join("memright-asset-test-DO-NOT-EXIST")
+            .join("model.onnx");
+        // SAFETY: this test is the only writer of `MEMRIGHT_LLMLINGUA_MODEL`
+        // and it sets/restores it within the test body. cargo's default test
+        // runner runs tests on multiple threads but writes to env vars here
+        // are best-effort — other tests in this module don't read this var.
+        // If running with `--test-threads=1` (CI), it's deterministic.
+        unsafe {
+            std::env::set_var("MEMRIGHT_LLMLINGUA_MODEL", &bogus);
+        }
+        let result = llmlingua_asset_paths();
+        unsafe {
+            std::env::remove_var("MEMRIGHT_LLMLINGUA_MODEL");
+        }
+        match result {
+            Err(msg) => {
+                let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+                let expected_default = manifest.join("assets").join("llmlingua");
+                assert!(
+                    msg.contains(expected_default.to_str().unwrap()),
+                    "error should mention default dir; got: {msg}"
+                );
+                assert!(
+                    msg.contains("README.md"),
+                    "error should point at README.md; got: {msg}"
+                );
+            }
+            Ok((m, _)) => panic!(
+                "expected Err for bogus path {}; got Ok with model={}",
+                bogus.display(),
+                m.display()
+            ),
+        }
+    }
+
+    // ------------------------------------------------------------------------
+    // Conditional tests (require the 2.9MB tokenizer.json; skip silently if
+    // absent so CI checkouts without the asset still pass).
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn tokenizer_loads_when_asset_present() {
+        if !assets_present() {
+            eprintln!(
+                "tokenizer_loads_when_asset_present: assets not present at default path, skipping (CI without model.onnx + tokenizer.json)"
+            );
+            return;
+        }
+        let (_model_path, tok_path) = llmlingua_asset_paths().expect("assets present");
+        let tok = tokenizers::Tokenizer::from_file(&tok_path).expect("tokenizer loads");
+        // Round-trip a tiny input — exercises encode + decode without running
+        // the model. Catches path-resolution and tokenizer-config regressions.
+        let enc = tok.encode("Hello, world.", false).expect("encode ok");
+        assert!(!enc.get_ids().is_empty(), "expected non-empty ids");
+        let decoded = tok.decode(enc.get_ids(), true).expect("decode ok");
+        assert!(!decoded.is_empty(), "expected non-empty decode");
+    }
+
+    // ------------------------------------------------------------------------
+    // Parity test (requires both model.onnx + tokenizer.json; skips silently
+    // if absent). This is the plan's gate — see `docs/plans/2026-07-01-...md`
+    // task 3. Spikes' word-Jaccard results at rate=0.5: min 0.93, mean 0.95
+    // (see `spike/SPIKE-RESULT.md`). Threshold is the plan's gate.
+    // ------------------------------------------------------------------------
+
+    const THRESHOLD: f64 = 0.90;
+
+    fn word_set(s: &str) -> HashSet<String> {
+        s.split(|c: char| !c.is_alphanumeric())
+            .filter(|p| !p.is_empty())
+            .map(|p| p.to_lowercase())
+            .collect()
+    }
+
+    fn jaccard(a: &HashSet<String>, b: &HashSet<String>) -> f64 {
+        if a.is_empty() && b.is_empty() {
+            return 1.0;
+        }
+        let inter = a.intersection(b).count() as f64;
+        let union = a.union(b).count() as f64;
+        if union == 0.0 {
+            1.0
+        } else {
+            inter / union
+        }
+    }
+
+    #[test]
+    fn compress_matches_python_jaccard() {
+        if !assets_present() {
+            eprintln!(
+                "compress_matches_python_jaccard: assets not present at default path, skipping (CI without model.onnx + tokenizer.json)"
+            );
+            return;
+        }
+
+        // The 5 fixtures are embedded to keep the test self-contained —
+        // no filesystem dependency at test time (other than the model + tokenizer
+        // assets, which we already verified are present above).
+        const FIXTURES: &[(&str, &str)] = &[
+            (
+                "01_meeting.txt",
+                include_str!("../../../spike/fixtures/01_meeting.txt"),
+            ),
+            (
+                "02_readme.txt",
+                include_str!("../../../spike/fixtures/02_readme.txt"),
+            ),
+            (
+                "03_incident.txt",
+                include_str!("../../../spike/fixtures/03_incident.txt"),
+            ),
+            (
+                "04_doc.txt",
+                include_str!("../../../spike/fixtures/04_doc.txt"),
+            ),
+            (
+                "05_plan.txt",
+                include_str!("../../../spike/fixtures/05_plan.txt"),
+            ),
+        ];
+
+        let golden_str = include_str!("../tests/llmlingua_golden.json");
+        let golden: serde_json::Value =
+            serde_json::from_str(golden_str).expect("golden JSON parses");
+
+        let rate = 0.5_f32;
+        let mut min_score = f64::INFINITY;
+        let mut mean_sum = 0.0_f64;
+        let mut n_tested = 0_usize;
+
+        for (name, text) in FIXTURES {
+            let rust_out = compress(text, rate);
+            let py_compressed = golden[name]["compressed"]
+                .as_str()
+                .unwrap_or_else(|| panic!("missing golden entry for {name}"));
+
+            let rust_words = word_set(&rust_out);
+            let py_words = word_set(py_compressed);
+            let score = jaccard(&rust_words, &py_words);
+            min_score = min_score.min(score);
+            mean_sum += score;
+            n_tested += 1;
+
+            assert!(
+                score >= THRESHOLD,
+                "fixture {name}: word-Jaccard {score:.4} < threshold {THRESHOLD}\n\
+                 rust out: {rust_out:?}\n\
+                 py out:    {py_compressed:?}",
+            );
+        }
+        let mean = mean_sum / n_tested as f64;
+        eprintln!(
+            "compress_matches_python_jaccard: min={min_score:.4} mean={mean:.4} threshold={THRESHOLD} (n={n_tested})"
+        );
+    }
+}

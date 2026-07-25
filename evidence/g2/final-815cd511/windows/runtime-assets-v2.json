@@ -1,0 +1,67 @@
+{
+  "binary": {
+    "cliSha256": "0baa7975171cc305ffda3ca6581bb20285c1c272b2e58a7c95486dbfd96b1231",
+    "serviceSha256": "1e04ce3bbe5b8f0bd524ae419b56fca77fc777a10d4a678463e3f3bc41f2e139"
+  },
+  "capturedAt": "2026-07-18T15:46:33.056329Z",
+  "contentFree": true,
+  "host": {
+    "arch": "x86_64",
+    "os": "windows",
+    "target": "x86_64-pc-windows-msvc"
+  },
+  "kind": "rightcontext-runtime-asset-binding",
+  "model": {
+    "assets": [
+      {
+        "bytes": 1765,
+        "path": "config.json",
+        "sha256": "6e1f06404b7163e0325ed2ea3e6781cde50f4a50b31780a95ad0d30e8404d77b"
+      },
+      {
+        "bytes": 662,
+        "path": "special_tokens_map.json",
+        "sha256": "2f7b0adf4fb469770bb1490e3e35df87b1dc578246c5e7e6fc76ecf33213a397"
+      },
+      {
+        "bytes": 1156830,
+        "path": "tokenizer_config.json",
+        "sha256": "3ca953eea6c3c9fcda9cf3df22949ff18b216f7c74bd6459230f3f1013953f3a"
+      },
+      {
+        "bytes": 20323312,
+        "path": "tokenizer.json",
+        "sha256": "4dda02faaf32bc91031dc8c88457ac272b00c1016cc679757d1c441b248b9c47"
+      },
+      {
+        "bytes": 519322,
+        "path": "onnx/model_q4.onnx",
+        "sha256": "ad1dfee81a70f7944b9b9d1cc6e48075b832881cf33fab2f2b248be78f3f0043"
+      },
+      {
+        "bytes": 196725760,
+        "path": "onnx/model_q4.onnx_data",
+        "sha256": "599962c3143b040de2dd05e5975be3e9091dd067cacc6a8f7186e3203bab9e02"
+      }
+    ],
+    "dimension": 768,
+    "fingerprint": "pf:v1:4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b",
+    "id": "embeddinggemma-300m-q4",
+    "repository": "onnx-community/embeddinggemma-300m-ONNX",
+    "snapshot": "5090578d9565bb06545b4552f76e6bc2c93e4a66"
+  },
+  "runtime": {
+    "apiVersion": "1.25.1",
+    "binaryFormatTarget": "pei-x86-64",
+    "bytes": 16200504,
+    "executionProvider": "CPUExecutionProvider",
+    "library": "onnxruntime.dll",
+    "sha256": "bcce7ce85b962c5a1e354cd85165a6396ce7b2daedf15d272acc0de0963f1c9b"
+  },
+  "schemaVersion": 1,
+  "source": {
+    "commit": "815cd5112f822d306db69c8b4eafcbf54585036e",
+    "releaseGeneration": "sha256:a2a81039c606e1dbe5266d4698a79daddbcbc4dd13caf587a7c1a121402312c2",
+    "treeSha256": "a2a81039c606e1dbe5266d4698a79daddbcbc4dd13caf587a7c1a121402312c2"
+  }
+}

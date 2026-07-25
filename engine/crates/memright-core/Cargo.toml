@@ -1,0 +1,18 @@
+[package]
+name = "memright-core"
+version = "0.1.0"
+edition.workspace = true
+description = "Pure in-memory logic for the MemRight memory tier system."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sha2 = "0.10"
+fastembed = { version = "5", optional = true }
+tiktoken-rs = { workspace = true }
+
+[features]
+fastembed = ["dep:fastembed"]
+
+[dev-dependencies]

@@ -1,0 +1,166 @@
+{
+  "checks": {
+    "append_only": "pass",
+    "convergence": "pass",
+    "identity": "pass",
+    "lifecycle": "pass",
+    "local_delta": "pass",
+    "peer_accounting": "pass",
+    "privacy": "pass",
+    "prompt_p99": "pass",
+    "replica_cursor": "pass",
+    "scheduler": "pass"
+  },
+  "failures": [],
+  "installation_id": "975ab6c0-1f50-41fe-888b-a711655d45e7",
+  "kind": "context_installation_conformance",
+  "latency_ms": {
+    "p50": 31.821,
+    "p95": 296.849,
+    "p99": 296.849,
+    "samples": 10
+  },
+  "lifecycle": {
+    "event_count": 1426,
+    "gap_count": 0,
+    "historical_loss": {
+      "cutoff_ts": "2026-07-22T07:21:29Z",
+      "event_count": 21175,
+      "gap_count": 75659,
+      "gap_counts": [
+        {
+          "count": 46,
+          "gap_type": "committed_write_missing_export"
+        },
+        {
+          "count": 1000,
+          "gap_type": "conflicting_terminal"
+        },
+        {
+          "count": 64,
+          "gap_type": "delivery_missing_value_terminal"
+        },
+        {
+          "count": 1762,
+          "gap_type": "duplicate_terminal"
+        },
+        {
+          "count": 72519,
+          "gap_type": "hook_missing_from_session_inventory"
+        },
+        {
+          "count": 250,
+          "gap_type": "inventory_policy_unmatched"
+        },
+        {
+          "count": 18,
+          "gap_type": "orphan_lifecycle_phase"
+        }
+      ],
+      "report_id": "cvl-d3b88b4ea3c512568edafa90b3abcf2b32fb8ac64be1a90a0f2b5aae94862d46",
+      "source_sha256": "753dc3685d0c90f0baa5983c75d910641e2f8c6d86b862a979d8404c5c44dea2",
+      "through_exclusive": "2026-07-22T07:21:54Z"
+    },
+    "observation_window": {
+      "cutoff_ts": "2026-07-22T11:22:17.996Z",
+      "event_count": 1426,
+      "gap_count": 0,
+      "installation_id": "975ab6c0-1f50-41fe-888b-a711655d45e7",
+      "service_instance_id": "5c151e27-6da2-4e9d-9ed6-ec39f9d48a7d",
+      "start_ts": "2026-07-22T07:21:54Z"
+    },
+    "outside_observation_window": {
+      "event_count": 9756,
+      "service_instance_count": 2,
+      "session_count": 4,
+      "turn_count": 57
+    },
+    "reconciliation_report_id": "cvl-746d4a888b9ceb84fdd481b434d34b152b187df792e36beeb59db7358b1bcf61",
+    "source_accounting": {
+      "canonical_event_count": 32357,
+      "duplicate_input_event_count": 0,
+      "input_event_count": 32357,
+      "rejected_input_event_count": 0
+    },
+    "source_sha256": "9af08355808f1df79e6b0ecf56c56aacff36f19eee577bfe9405b57de1e4e781"
+  },
+  "mirror": {
+    "append_only_audit_sha256": "653283cb84d16fe339c1977744e442b274b6baaa1b1900926bd008295a65adb0",
+    "cursor_sha256": "385802e4890a2987ff642ae06c071cc55edc95dae626a4a620be6a6b8a20fc12",
+    "high_water_origins": 5,
+    "high_water_sha256": "dacf228735afb09b4a3ab86cac9d5ef695ddf0e13c5aefae22f141f474368148",
+    "local_delta_count": 176,
+    "local_delta_event_id_sha256": "f71903e4b570fdb2999c1cd1aa0d82f7e29202e55bf53da4ec7296929a0af029",
+    "local_delta_sha256": "0a99804e8f40f72a113426413703233cc69da8dd3e019799bbf61438eb0a8dbd",
+    "origin_sha256": "3bfeee98b016264eed13cea761a988ee31b2526d36399647344ddcfc97d1f06c",
+    "peer_count": 1,
+    "peer_installation_ids": [
+      "be8b2353-c0f5-4250-867c-22c5629bd4e8"
+    ],
+    "supplied_peer_count": 1,
+    "winner_map_sha256": "f010ce89091120e75ac80e6b45f1c0f5a5c20d3a61c7a32691caf2d5ade40d83"
+  },
+  "platform": {
+    "arch": "x86_64",
+    "os_type": "windows",
+    "os_version": "10.0.26200"
+  },
+  "privacy": {
+    "finding_counts": {
+      "email": 0,
+      "forbidden_key": 0,
+      "hostname": 0,
+      "path": 0,
+      "url": 0
+    },
+    "ledger_sha256": "f9acf5e5e14b90698b214e680389254889b66fffd8c19d8d929649a7bc774698",
+    "records_scanned": 1394670,
+    "scan_sha256": "e3f86217137c24bc7f87df0e5d111f28e715bba78dc5ce8392d3917e122ece24",
+    "scanner_version": 1,
+    "sentinel_attempts": 5,
+    "sentinel_leaked": 0,
+    "sentinel_rejected": 5,
+    "snapshot_sha256": "f529ac5b45b2efd5948a9d4450a143782e671b430337db8174c203435d037a9a",
+    "sources_scanned": 2
+  },
+  "release": {
+    "engine_sha256": "ccb9c3622ee4f5d5aefbc34e3f62a3b12e4debfcce4c003b388671256c1c3489",
+    "git_commit": "dc7780f23c71e8eef9e9bad5a6cf0c562d2eedea",
+    "ledger_schema_version": 14,
+    "model_sha256": "4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b",
+    "release_assets_sha256": "00140a0ef5463c0d8868639f95efcecd38115bc03bca59d66925904bccf293cb",
+    "release_generation": "sha256:ccb9c3622ee4f5d5aefbc34e3f62a3b12e4debfcce4c003b388671256c1c3489",
+    "release_manifest_sha256": "1527a1487979a86386ce07b87e1b6fbe962712b6093a6e608f9d854f0fe658f4"
+  },
+  "replication_peers": [
+    {
+      "applied_origin_seq": 1793,
+      "available_origin_seq": 1793,
+      "cursor_event_count": 2,
+      "failure_count": 0,
+      "health_event_count": 2,
+      "lag_events": 0,
+      "last_failure_reason": null,
+      "last_observed_ts": "2026-07-22T07:40:05.493854Z",
+      "last_success_ts": "2026-07-22T07:40:05.493854Z",
+      "latest_status": "success",
+      "observer_installation_id": "975ab6c0-1f50-41fe-888b-a711655d45e7",
+      "origin_id": "replica.36bf72d2846ff32786d3d9d63aa5f3dd",
+      "origin_installation_id": "be8b2353-c0f5-4250-867c-22c5629bd4e8"
+    }
+  ],
+  "report_sha256": "efe43820b4c3a24c5c1ca2cf6c3f00a121bf708945f15f7989a610690e5d81c6",
+  "scheduler": {
+    "disabled": true,
+    "name": "memright-daily",
+    "state": "disabled"
+  },
+  "schema_version": 1,
+  "snapshot": {
+    "cutoff": "2026-07-22T11:22:17.996Z",
+    "manual_unscheduled": true,
+    "source_watermark": 32357
+  },
+  "startup_generation": 8,
+  "status": "pass"
+}

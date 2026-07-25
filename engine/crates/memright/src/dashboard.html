@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>memright — memory dashboard</title>
+<style>
+  :root { --bg:#111722; --panel:#1a2130; --border:#2b3340; --text:#f2f5ea; --muted:#9097a3;
+          --accent:#e53855; --good:#5bbe86; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.5 "General Sans","Segoe UI",system-ui,sans-serif; }
+  header { display:flex; align-items:baseline; gap:16px; padding:14px 20px;
+           border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  header h1 b { color:var(--accent); }
+  #chips { display:flex; gap:10px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+  .chip { border:1px solid var(--border); border-radius:6px; padding:2px 8px; }
+  .chip b { color:var(--text); }
+  main { display:grid; grid-template-columns: 1fr 1.2fr; gap:0; height:calc(100vh - 55px); }
+  #left { border-right:1px solid var(--border); overflow-y:auto; }
+  #right { overflow-y:auto; padding:16px 20px; }
+  #controls { display:flex; gap:8px; padding:12px; position:sticky; top:0; background:var(--bg);
+              border-bottom:1px solid var(--border); }
+  input,select,textarea,button { background:var(--panel); color:var(--text);
+    border:1px solid var(--border); border-radius:6px; padding:6px 10px; font:inherit; }
+  input:focus,textarea:focus { outline:1px solid var(--accent); }
+  #q { flex:1; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.danger { color:var(--accent); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td,th { padding:6px 12px; border-bottom:1px solid var(--border); text-align:left; }
+  th { color:var(--muted); font-weight:500; position:sticky; background:var(--bg); }
+  tr:hover td { background:var(--panel); cursor:pointer; }
+  td.id { font-family:"JetBrains Mono",monospace; font-size:12px; }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .cos { color:var(--good); font-family:"JetBrains Mono",monospace; }
+  #detail h2 { font-family:"JetBrains Mono",monospace; font-size:13px; color:var(--muted);
+               word-break:break-all; margin:0 0 10px; }
+  #content { width:100%; min-height:52vh; font:13px/1.5 "JetBrains Mono",monospace; resize:vertical; }
+  #actions { display:flex; gap:8px; margin-top:10px; }
+  #status { color:var(--muted); font-size:12px; margin-left:auto; align-self:center; }
+  .empty { color:var(--muted); padding:24px; }
+  #learning-kpis { border:1px solid var(--border); border-radius:10px; margin-bottom:16px; overflow:hidden; }
+  .kpi-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .kpi { padding:10px 12px; background:var(--panel); border-right:1px solid var(--border); }
+  .kpi:last-child { border-right:0; }
+  .kpi small { display:block; color:var(--muted); margin-bottom:3px; }
+  .kpi strong { font-size:13px; font-weight:500; }
+  #learning-detail { border-top:1px solid var(--border); overflow-x:auto; }
+  #learning-detail table { min-width:650px; }
+  #memory-graph { border:1px solid var(--border); border-radius:10px; margin-bottom:16px; overflow:hidden; }
+  .graph-head { padding:10px 12px; border-bottom:1px solid var(--border); display:flex; gap:10px;
+                align-items:center; justify-content:space-between; flex-wrap:wrap; }
+  .graph-head h2 { font-size:12px; margin:0; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+  .graph-filters { display:flex; gap:5px; }
+  .graph-filters button { padding:3px 8px; font-size:11px; border-radius:999px; }
+  .graph-filters button.active { border-color:var(--accent); color:var(--text); }
+  #graph-canvas { width:100%; min-height:430px; display:block; cursor:grab; touch-action:none;
+                  background:radial-gradient(circle at 50% 45%,#19252b 0%,var(--panel) 54%,#0b0e13 100%); }
+  #graph-canvas:active { cursor:grabbing; }
+  .graph-foot { padding:7px 10px; display:flex; gap:14px; color:var(--muted); font-size:11px;
+                border-top:1px solid var(--border); flex-wrap:wrap; }
+  .graph-foot b { color:var(--text); font-weight:500; }
+  @media (max-width:900px) { main { grid-template-columns:1fr; height:auto; } #left { border-right:0; }
+    #graph-canvas { min-height:360px; } .kpi-grid { grid-template-columns:1fr; } .kpi { border-right:0; border-bottom:1px solid var(--border); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>mem<b>right</b> — memory dashboard</h1>
+  <div id="chips"></div>
+</header>
+<main>
+  <div id="left">
+    <div id="controls">
+      <input id="q" placeholder="semantic search… (empty = browse all)" autofocus>
+      <input id="scope" placeholder="scope (optional)" style="width:150px">
+      <button class="primary" onclick="search()">search</button>
+      <button onclick="newMem()">+ new</button>
+    </div>
+    <div id="results"><div class="empty">loading…</div></div>
+  </div>
+  <div id="right">
+    <section id="learning-kpis" aria-labelledby="learning-title">
+      <div class="graph-head"><h2 id="learning-title">measured context economy · private detail</h2></div>
+      <div class="kpi-grid">
+        <div class="kpi"><small>40% provider-token gate</small><strong id="goal-kpi">loading analysis…</strong></div>
+        <div class="kpi"><small>provider-observed input</small><strong id="provider-kpi">loading analysis…</strong></div>
+        <div class="kpi"><small>evidence / tournament</small><strong id="evidence-kpi">loading analysis…</strong></div>
+      </div>
+      <div id="learning-detail" class="empty">loading lifecycle and cohort detail…</div>
+    </section>
+    <section id="memory-graph" aria-labelledby="graph-title">
+      <div class="graph-head">
+        <h2 id="graph-title">memory relationship graph · drag to orbit · wheel to zoom</h2>
+        <div class="graph-filters" role="group" aria-label="Filter memory graph">
+          <button class="active" data-graph-filter="all">all</button>
+          <button data-graph-filter="fetched">fetched</button>
+          <button data-graph-filter="preview-only">preview-only</button>
+          <button data-graph-filter="dormant">dormant</button>
+          <button onclick="recenterGraph()" title="Reset orbit and fit">recenter</button>
+        </div>
+      </div>
+      <canvas id="graph-canvas" aria-label="Interactive three-dimensional graph of local memories"></canvas>
+      <div class="graph-foot"><span style="color:#7ee7d5">● fetched</span><span style="color:#e8e45b">● preview-only</span><span style="color:#75818d">● dormant</span><span id="graph-summary">loading graph…</span></div>
+    </section>
+    <div id="detail" class="empty">select a memory — or search, then click a row</div>
+    <h3 style="color:var(--muted);font-size:12px;margin:22px 0 6px;text-transform:uppercase;letter-spacing:.08em">live activity (auto-refreshes)</h3>
+    <div id="activity" class="empty">loading…</div>
+  </div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const MEMRIGHT_API_TOKEN = __MEMRIGHT_API_TOKEN_JSON__;
+const PENDING_PUTS_KEY = 'memright.pendingPuts.v1';
+const PENDING_PUTS_LOCK = 'memright.pendingPuts.v1.lock';
+const MAX_PENDING_PUTS = 64;
+const MAX_PENDING_CLOCK_SKEW_MS = 5 * 60 * 1000;
+const DEFAULT_PUT_RETRY_MS = 25;
+const MAX_PUT_RETRY_MS = 2000;
+const api = (p, b) => {
+  const headers = {};
+  if (MEMRIGHT_API_TOKEN) headers.Authorization = `Bearer ${MEMRIGHT_API_TOKEN}`;
+  if (b) headers['Content-Type'] = 'application/json';
+  return fetch(p, b ? {method:'POST', headers, body:JSON.stringify(b)} : {headers}).then(r => r.json());
+};
+const isPlainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value) &&
+  (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+const validPendingPutEntry = (digest, entry, now) => /^[0-9a-f]{64}$/.test(digest) &&
+  isPlainObject(entry) && Object.keys(entry).length === 4 &&
+  ['key','createdAt','bodyFingerprint','authFingerprint'].every(field => Object.hasOwn(entry, field)) &&
+  typeof entry.key === 'string' && /^[\x21-\x7e]{1,128}$/.test(entry.key) &&
+  Number.isFinite(entry.createdAt) && entry.createdAt >= 0 &&
+  entry.createdAt <= now + MAX_PENDING_CLOCK_SKEW_MS &&
+  /^[0-9a-f]{64}$/.test(entry.bodyFingerprint) && /^[0-9a-f]{64}$/.test(entry.authFingerprint);
+const pendingPuts = (now = Date.now()) => {
+  let raw;
+  try { raw = localStorage.getItem(PENDING_PUTS_KEY); }
+  catch { throw new Error('pending save state cannot be read safely; operator action is required'); }
+  if (raw === null) return {};
+  let stored;
+  try {
+    stored = JSON.parse(raw);
+  } catch { throw new Error('pending save state is corrupt; operator action is required'); }
+  if (!isPlainObject(stored) || Object.entries(stored).some(([digest, entry]) =>
+    !validPendingPutEntry(digest, entry, now))) {
+    throw new Error('pending save state is corrupt; operator action is required');
+  }
+  return stored;
+};
+const mutatePendingPuts = (mutate, now = Date.now()) => {
+  const latest = pendingPuts(now);
+  mutate(latest);
+  try { localStorage.setItem(PENDING_PUTS_KEY, JSON.stringify(latest)); }
+  catch { throw new Error('could not persist safe retry state'); }
+  return pendingPuts(now);
+};
+const withPendingPutsLock = async operation => {
+  if (!navigator.locks || typeof navigator.locks.request !== 'function') {
+    throw new Error('this browser cannot safely serialize pending saves; no request was sent');
+  }
+  return navigator.locks.request(PENDING_PUTS_LOCK, {mode:'exclusive'}, operation);
+};
+const pendingPutForIdentity = (entries, identity) => {
+  let match = null;
+  for (const [digest, entry] of Object.entries(entries)) {
+    if (entry.bodyFingerprint !== identity.bodyFingerprint) continue;
+    if (entry.authFingerprint !== identity.authFingerprint) {
+      throw new Error('this save is unresolved under a different auth principal; operator recovery is required');
+    }
+    if (digest !== identity.digest) throw new Error('pending save identity is inconsistent; operator recovery is required');
+    match = entry;
+  }
+  if (entries[identity.digest] && match === null) {
+    throw new Error('pending save digest is inconsistent; operator recovery is required');
+  }
+  return match;
+};
+const reservePendingPut = async (identity, now = Date.now()) => withPendingPutsLock(() => {
+  try {
+    const existing = pendingPutForIdentity(pendingPuts(now), identity);
+    if (existing) return existing;
+    const candidate = {key: crypto.randomUUID(), createdAt: now,
+      bodyFingerprint: identity.bodyFingerprint, authFingerprint: identity.authFingerprint};
+    let full = false;
+    const persisted = mutatePendingPuts(entries => {
+      if (pendingPutForIdentity(entries, identity)) return;
+      if (Object.keys(entries).length >= MAX_PENDING_PUTS) { full = true; return; }
+      entries[identity.digest] = candidate;
+    }, now);
+    const winner = pendingPutForIdentity(persisted, identity);
+    if (winner) return winner;
+    if (full || Object.keys(persisted).length >= MAX_PENDING_PUTS) {
+      throw new Error('64 saves have unresolved outcomes; operator action is required before a new save');
+    }
+    throw new Error('could not durably reserve this save');
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`${detail}; no request was sent`);
+  }
+});
+const clearPendingPut = async (digest, key, now = Date.now()) => withPendingPutsLock(() => {
+  mutatePendingPuts(entries => {
+    if (entries[digest]?.key === key) delete entries[digest];
+  }, now);
+});
+const sha256Hex = async value => {
+  const bytes = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
+};
+const putIdentity = async (requestBody, apiToken = MEMRIGHT_API_TOKEN) => {
+  const principal = apiToken == null ? ['anonymous'] : ['token', apiToken];
+  const [authFingerprint, bodyFingerprint] = await Promise.all([
+    sha256Hex(JSON.stringify(['memright-dashboard-auth-v1', ...principal])),
+    sha256Hex(JSON.stringify(['memright-dashboard-body-v1', requestBody])),
+  ]);
+  const digest = await sha256Hex(JSON.stringify(['memright-dashboard-put-v3', authFingerprint, bodyFingerprint]));
+  return {digest, authFingerprint, bodyFingerprint};
+};
+const putDigest = async (requestBody, apiToken = MEMRIGHT_API_TOKEN) =>
+  (await putIdentity(requestBody, apiToken)).digest;
+const retryablePutStatus = status => status === 408 || status === 429 || (status >= 500 && status < 600);
+const putRetryDelay = value => {
+  if (!value) return DEFAULT_PUT_RETRY_MS;
+  const trimmed = value.trim();
+  const seconds = /^\d+$/.test(trimmed);
+  const millis = seconds ? Number(trimmed) * 1000 : Date.parse(trimmed) - Date.now();
+  if (seconds && !Number.isFinite(millis)) return MAX_PUT_RETRY_MS;
+  return Number.isFinite(millis) ? Math.max(0, Math.min(MAX_PUT_RETRY_MS, millis)) : DEFAULT_PUT_RETRY_MS;
+};
+const wait = millis => new Promise(resolve => setTimeout(resolve, millis));
+const putResult = async response => {
+  const text = await response.text();
+  if (!text) return {};
+  try { return JSON.parse(text); }
+  catch { return {error: text}; }
+};
+async function apiPut(body, apiToken = MEMRIGHT_API_TOKEN, now = Date.now()) {
+  const requestBody = JSON.stringify(body);
+  const identity = await putIdentity(requestBody, apiToken), entry = await reservePendingPut(identity, now);
+  const headers = {'Content-Type':'application/json', 'Idempotency-Key':entry.key};
+  if (apiToken != null) headers.Authorization = `Bearer ${apiToken}`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let response, result;
+    try {
+      response = await fetch('/put', {method:'POST', headers, body:requestBody});
+      result = await putResult(response);
+    } catch (error) {
+      if (attempt === 1) {
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`${detail}; save remains pending and can be retried safely`);
+      }
+      await wait(DEFAULT_PUT_RETRY_MS);
+      continue;
+    }
+    if (response.ok || (response.status >= 400 && response.status < 500 && !retryablePutStatus(response.status))) {
+      await clearPendingPut(identity.digest, entry.key, now);
+      return result;
+    }
+    if (!retryablePutStatus(response.status)) {
+      return {error: `HTTP ${response.status}; save outcome is ambiguous and its retry key was retained`, pending: true};
+    }
+    if (attempt === 1) {
+      throw new Error(`${result.error || `HTTP ${response.status}; retry exhausted`}; save remains pending and can be retried safely`);
+    }
+    await wait(putRetryDelay(response.headers.get('Retry-After')));
+  }
+}
+let current = null;
+
+async function chips() {
+  try {
+    const [m, h] = await Promise.all([api('/metrics'), api('/health')]);
+    const t = Object.entries(m.transforms || {}).reduce((a,[,v]) => a + (v.chars_saved||0), 0);
+    const dim = h.embedder_dim || 0;
+    const healthy = dim === 768 || dim === 384;
+    $('#chips').innerHTML =
+      `<span class="chip" style="border-color:${healthy ? 'var(--good)' : 'var(--accent)'}">` +
+      `embedder <b style="color:${healthy ? 'var(--good)' : 'var(--accent)'}">${dim}-dim ${
+        dim === 768 ? 'gemma' : dim === 384 ? 'bge' : 'DEGRADED HASH'}</b></span>` +
+      `<span class="chip">recalls <b>${m.recalls||0}</b></span>` +
+      `<span class="chip">preview-delta tokens <b>${(m.potential_tokens_saved_est||m.tokens_saved_est||0).toLocaleString()}</b> <small>(diagnostic)</small></span>` +
+      `<span class="chip">transform chars saved <b>${t.toLocaleString()}</b></span>` +
+      `<span class="chip" id="pulse">updated ${new Date().toLocaleTimeString()}</span>`;
+  } catch {
+    $('#chips').innerHTML = '<span class="chip" style="border-color:var(--accent);color:var(--accent)">service unreachable</span>';
+  }
+}
+
+async function activity() {
+  try {
+    const a = await api('/activity');
+    const rows = [
+      ...(a.recalls || []).map(r => ({ts: r.ts, what: `recall · ${r.hits} hits · ${r.injected_chars} chars injected`, scope: r.scope})),
+      ...(a.transforms || []).map(r => ({ts: r.ts, what: `${r.verb} · ${r.before}→${r.after} chars`, scope: ''})),
+    ].sort((x,y) => y.ts.localeCompare(x.ts)).slice(0, 15);
+    $('#activity').innerHTML = rows.length
+      ? '<table><tr><th>when</th><th>event</th><th>scope</th></tr>' + rows.map(r =>
+          `<tr><td class="id">${r.ts.slice(11,19)}</td><td>${r.what}</td><td class="id">${r.scope}</td></tr>`).join('') + '</table>'
+      : '<div class="empty">no activity logged yet</div>';
+  } catch {}
+}
+
+const n = value => Number(value || 0).toLocaleString();
+async function analysis() {
+  try {
+    const report = await api('/analysis'), goal = report.goal || {}, providers = report.provider_tokens || {};
+    if (report.error) throw new Error(report.error);
+    const totals = Object.values(providers).reduce((sum,row)=>({non:sum.non+(row.non_cached_input_tokens||0),cached:sum.cached+(row.cached_input_tokens||0)}),{non:0,cached:0});
+    $('#goal-kpi').textContent = goal.measured_reduction_pct == null
+      ? `target ≥${goal.target_reduction_pct||40}% · ${(goal.status||'baseline_only').replaceAll('_',' ')}`
+      : `${goal.measured_reduction_pct}% / ${goal.target_reduction_pct||40}%`;
+    $('#provider-kpi').textContent = `${n(totals.non)} non-cached · ${n(totals.cached)} cached`;
+    const evidence=report.promotion_evidence||{};
+    $('#evidence-kpi').textContent = `${n(evidence.total)}/${n(evidence.target||200)} rows · ${evidence.tournament_decision||evidence.status||'collecting'}`;
+    const memory=report.memright||{}, diagnostics=report.diagnostics||{}, lifecycle=memory.lifecycle||{};
+    const cohortRows=[];for(const [surface,groups] of Object.entries(report.cohorts||{}))for(const [cohort,row] of Object.entries(groups||{})){
+      const q=row.quality||{};cohortRows.push(`<tr><td>${surface}/${cohort}</td><td class="n">${n(row.matched_sessions)}/${n(row.assigned_sessions)}</td><td class="n">${n(q.clean_completed)}/${n(q.completed)}</td><td class="n">${n(q.aborted)}</td><td class="n">${n(q.unrecovered_tool_error_turns)}</td></tr>`);}
+    const lifecycleRows=Object.entries(lifecycle.by_surface||{}).map(([surface,events])=>`<tr><td>${surface}</td><td colspan="4">${Object.entries(events).map(([kind,count])=>`${kind} ${n(count)}`).join(' · ')}</td></tr>`);
+    $('#learning-detail').classList.remove('empty');
+    $('#learning-detail').innerHTML=`<table><tr><th>surface/cohort</th><th class="n">matched/assigned</th><th class="n">clean/completed</th><th class="n">aborted</th><th class="n">unresolved errors</th></tr>${cohortRows.join('')||'<tr><td colspan="5">fresh cohorts not collected yet</td></tr>'}${lifecycleRows.join('')}</table><div class="graph-foot"><span>memories <b>${n(diagnostics.memory_count||memory.memory_count)}</b></span><span>never injected <b>${n(diagnostics.never_injected||memory.never_injected)}</b></span><span>injected, never fetched <b>${n(diagnostics.injected_never_fetched||memory.injected_never_fetched)}</b></span><span>lifecycle <b>${lifecycle.available?'schema v6':'unavailable'}</b></span></div>`;
+  } catch { $('#goal-kpi').textContent='analysis unavailable';$('#provider-kpi').textContent='analysis unavailable';$('#evidence-kpi').textContent='analysis unavailable';$('#learning-detail').textContent='Run the daily analyzer to populate private KPI detail.'; }
+}
+
+let graphRows = [], graphModel = null, graphFilter = 'all', graphAnimation = 0;
+let graphView = {yaw:-.25,pitch:.18,zoom:1};
+
+function graphData(rows, model) {
+  if(model && model.schema_version===2 && Array.isArray(model.nodes) && Array.isArray(model.edges)){
+    const scopes=[...new Set(model.nodes.map(node=>node.scope))].sort();
+    const scopeIndex=new Map(scopes.map((scope,index)=>[scope,index]));
+    const nodes=model.nodes.map((node,index)=>({...node,i:index,cluster:scopeIndex.get(node.scope)}));
+    const byId=new Map(nodes.map(node=>[node.id,node.i]));
+    const edges=model.edges.map(edge=>({s:byId.get(edge.source),t:byId.get(edge.target),kind:edge.kind,score:edge.score}))
+      .filter(edge=>Number.isInteger(edge.s)&&Number.isInteger(edge.t)&&edge.s!==edge.t);
+    return {nodes,edges,clusters:scopes.length,relationship:'embedding-neighbors'};
+  }
+  const scopes = [...new Set(rows.map(row => row.id.includes('/') ? row.id.slice(0, row.id.lastIndexOf('/')) : 'global'))].sort();
+  const scopeIndex = new Map(scopes.map((scope, index) => [scope, index]));
+  const nodes = rows.map((row, index) => {
+    const scope = row.id.includes('/') ? row.id.slice(0, row.id.lastIndexOf('/')) : 'global';
+    const state = row.access > 0 ? 'fetched' : row.inject > 0 ? 'preview-only' : 'dormant';
+    return {...row, i:index, scope, cluster:scopeIndex.get(scope), state,
+      weight:Math.min(9, 1 + Math.floor(Math.log2(1 + (row.access||0) + (row.inject||0))))};
+  });
+  const edgeKeys = new Set(), edges = [], add = (a,b,kind) => {
+    if (a === b) return; const s=Math.min(a,b), t=Math.max(a,b), key=`${s}:${t}`;
+    if (!edgeKeys.has(key)) { edgeKeys.add(key); edges.push({s,t,kind}); }
+  };
+  const byScope = new Map(), byToken = new Map();
+  for (const node of nodes) {
+    if (!byScope.has(node.cluster)) byScope.set(node.cluster, []);
+    byScope.get(node.cluster).push(node.i);
+    const slug = node.id.slice(node.id.lastIndexOf('/')+1).toLowerCase();
+    for (const token of new Set(slug.split(/[^a-z0-9]+/).filter(value => value.length >= 4))) {
+      if (!byToken.has(token)) byToken.set(token, []); byToken.get(token).push(node.i);
+    }
+  }
+  for (const members of byScope.values()) for (let i=1;i<members.length;i++) add(members[i-1],members[i],'cluster');
+  for (const members of byToken.values()) {
+    const limited=members.slice(0,40); for (let i=1;i<limited.length;i++) add(limited[i-1],limited[i],'semantic');
+    if (edges.length >= 3500) break;
+  }
+  return {nodes,edges,clusters:scopes.length,relationship:'fallback-scope-slug'};
+}
+
+function renderGraph() {
+  cancelAnimationFrame(graphAnimation);
+  const canvas = $('#graph-canvas'), host = canvas.parentElement, raw = graphData(graphRows,graphModel);
+  const nodes = raw.nodes.filter(node => graphFilter === 'all' || node.state === graphFilter);
+  const active = new Set(nodes.map(node => node.i));
+  const edges = raw.edges.filter(edge => active.has(edge.s) && active.has(edge.t));
+  const ctx = canvas.getContext('2d'), byId = new Map(), groups = new Map(), golden=Math.PI*(3-Math.sqrt(5));
+  for(const node of nodes) groups.set(node.cluster,[...(groups.get(node.cluster)||[]),node]);
+  const orderedClusters=[...groups.entries()].sort((a,b)=>b[1].length-a[1].length);
+  const rootRadius=orderedClusters.length?Math.max(34,Math.sqrt(orderedClusters[0][1].length)*9.2):34;
+  orderedClusters.forEach(([cluster,members],clusterRank)=>{const radius=Math.max(34,Math.sqrt(members.length)*9.2);
+    const orbit=clusterRank===0?0:rootRadius+radius+62+Math.floor((clusterRank-1)/12)*90;
+    const sphereZ=clusterRank===0?0:1-2*(clusterRank-.5)/Math.max(1,orderedClusters.length-1),sphereR=Math.sqrt(Math.max(0,1-sphereZ*sphereZ));
+    const clusterAngle=clusterRank*golden,center={x:Math.cos(clusterAngle)*sphereR*orbit,y:Math.sin(clusterAngle)*sphereR*orbit,z:sphereZ*orbit*.72};
+    members.forEach((node,memberIndex)=>{
+      const phi=Math.acos(1-2*(memberIndex+.5)/members.length),theta=memberIndex*golden;
+      const rawSeed=Math.sin((node.i+1)*12.9898)*43758.5453,noise=rawSeed-Math.floor(rawSeed);
+      const tx=center.x+Math.sin(phi)*Math.cos(theta)*radius,ty=center.y+Math.sin(phi)*Math.sin(theta)*radius,tz=center.z+Math.cos(phi)*radius*.86;
+      byId.set(node.i,{...node,x:tx+(noise-.5)*14,y:ty+(noise-.5)*14,z:tz+(noise-.5)*14,tx,ty,tz,vx:0,vy:0,vz:0});});});
+  if(byId.size){const mass=[...byId.values()].reduce((sum,node)=>({x:sum.x+node.tx,y:sum.y+node.ty,z:sum.z+node.tz}),{x:0,y:0,z:0});
+    mass.x/=byId.size;mass.y/=byId.size;mass.z/=byId.size;for(const node of byId.values()){node.x-=mass.x;node.y-=mass.y;node.z-=mass.z;node.tx-=mass.x;node.ty-=mass.y;node.tz-=mass.z;}}
+  let width=1,height=1,yaw=graphView.yaw,pitch=graphView.pitch,zoom=graphView.zoom,dragging=false,lastX=0,lastY=0,frame=0,lastDraw=0;
+  const projected=new Map();
+  const resize=()=>{ width=host.clientWidth; height=Math.max(360,Math.min(620,Math.round(width*.64)));
+    const ratio=Math.min(devicePixelRatio||1,2); canvas.width=Math.round(width*ratio);canvas.height=Math.round(height*ratio);
+    canvas.style.width=`${width}px`;canvas.style.height=`${height}px`;ctx.setTransform(ratio,0,0,ratio,0,0); };
+  const rotate=node=>{const cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
+    const x=node.x*cy-node.z*sy,z=node.x*sy+node.z*cy;return{x,y:node.y*cp-z*sp,z:node.y*sp+z*cp};};
+  const tick=time=>{graphAnimation=requestAnimationFrame(tick);if(time-lastDraw<30)return;lastDraw=time;
+    if(frame++<260){for(const edge of edges){const a=byId.get(edge.s),b=byId.get(edge.t);if(!a||!b)continue;
+      const dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z,d=Math.max(1,Math.hypot(dx,dy,dz)),f=(d-66)*.002;
+      a.vx+=dx/d*f;a.vy+=dy/d*f;a.vz+=dz/d*f;b.vx-=dx/d*f;b.vy-=dy/d*f;b.vz-=dz/d*f;}
+      for(const node of byId.values()){node.vx+=(node.tx-node.x)*.0024;node.vy+=(node.ty-node.y)*.0024;node.vz+=(node.tz-node.z)*.0024;
+        node.x=Math.max(-900,Math.min(900,node.x+(node.vx*=.88)));node.y=Math.max(-720,Math.min(720,node.y+(node.vy*=.88)));node.z=Math.max(-650,Math.min(650,node.z+(node.vz*=.88)));}}
+    ctx.clearRect(0,0,width,height);projected.clear();const rawPoints=new Map();let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    for(const node of byId.values()){const p=rotate(node),depth=620/Math.max(170,620+p.z),x=p.x*depth,y=p.y*depth;
+      rawPoints.set(node.i,{x,y,z:p.z,depth});minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
+    const scale=Math.min((width-72)/Math.max(1,maxX-minX),(height-72)/Math.max(1,maxY-minY))*.94*zoom;
+    const mean=[...rawPoints.values()].reduce((sum,p)=>({x:sum.x+p.x,y:sum.y+p.y}),{x:0,y:0});mean.x/=Math.max(1,rawPoints.size);mean.y/=Math.max(1,rawPoints.size);
+    const desiredX=width/2-mean.x*scale,desiredY=height/2-mean.y*scale;
+    const offsetX=Math.max(28-minX*scale,Math.min(width-28-maxX*scale,desiredX));
+    const offsetY=Math.max(28-minY*scale,Math.min(height-28-maxY*scale,desiredY));
+    for(const node of byId.values()){const p=rawPoints.get(node.i);projected.set(node.i,{x:offsetX+p.x*scale,y:offsetY+p.y*scale,z:p.z,r:Math.max(1,(1.5+node.weight*.46)*p.depth*Math.sqrt(Math.max(.45,scale)))});}
+    ctx.lineWidth=.55;for(const edge of edges){const a=projected.get(edge.s),b=projected.get(edge.t);if(!a||!b)continue;
+      ctx.strokeStyle=edge.kind==='semantic'?'rgba(128,159,170,.22)':'rgba(229,56,85,.18)';ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();}
+    for(const node of [...byId.values()].sort((a,b)=>projected.get(a.i).z-projected.get(b.i).z)){const p=projected.get(node.i);
+      ctx.fillStyle=node.state==='fetched'?'#7ee7d5':node.state==='preview-only'?'#e8e45b':'#75818d';ctx.globalAlpha=node.state==='dormant'?.56:.92;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();}ctx.globalAlpha=1;};
+  canvas.onpointerdown=e=>{dragging=true;lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId);};
+  canvas.onpointermove=e=>{if(!dragging)return;yaw+=(e.clientX-lastX)*.007;pitch=Math.max(-1.15,Math.min(1.15,pitch+(e.clientY-lastY)*.007));graphView={yaw,pitch,zoom};lastX=e.clientX;lastY=e.clientY;};
+  canvas.onpointerup=()=>{dragging=false;};canvas.onwheel=e=>{e.preventDefault();zoom=Math.max(.55,Math.min(2.4,zoom*(e.deltaY>0?.92:1.08)));graphView={yaw,pitch,zoom};};
+  canvas.onclick=e=>{const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;let chosen=null,distance=18;
+    for(const node of nodes){const p=projected.get(node.i);if(!p)continue;const d=Math.hypot(p.x-x,p.y-y);if(d<distance){distance=d;chosen=node;}}
+    if(chosen){$('#graph-summary').textContent=`${chosen.id} · ${chosen.state} · ${chosen.scope}`;show(chosen.id);}};
+  resize();window.addEventListener('resize',resize,{once:true});graphAnimation=requestAnimationFrame(tick);
+  const counts=nodes.reduce((out,node)=>(out[node.state]=(out[node.state]||0)+1,out),{});
+  $('#graph-summary').textContent=`${nodes.length.toLocaleString()} nodes · ${edges.length.toLocaleString()} ${raw.relationship==='embedding-neighbors'?'semantic ':''}edges · ${raw.clusters} scopes`;
+}
+
+function recenterGraph(){graphView={yaw:-.25,pitch:.18,zoom:1};renderGraph();}
+
+async function loadGraph() {
+  try { [graphRows,graphModel] = await Promise.all([api('/list',{scope:null}),api('/graph')]); renderGraph(); }
+  catch { $('#graph-summary').textContent='graph unavailable'; }
+}
+
+document.querySelectorAll('[data-graph-filter]').forEach(button => button.addEventListener('click',()=>{
+  graphFilter=button.dataset.graphFilter;document.querySelectorAll('[data-graph-filter]').forEach(item=>item.classList.toggle('active',item===button));renderGraph();
+}));
+
+function rowsTable(rows, isSearch) {
+  if (!rows.length) return '<div class="empty">nothing found</div>';
+  const head = isSearch
+    ? '<tr><th>cos</th><th>id</th><th>preview</th></tr>'
+    : '<tr><th>id</th><th class="n">chars</th><th class="n">inj</th><th class="n">used</th></tr>';
+  const body = rows.map(r => isSearch
+    ? `<tr onclick="show('${r.id}')"><td class="cos">${(r.cos||0).toFixed(3)}</td>
+       <td class="id">${r.id}</td><td>${(r.skel||'').slice(0,90)}</td></tr>`
+    : `<tr onclick="show('${r.id}')"><td class="id">${r.id}</td><td class="n">${r.chars}</td>
+       <td class="n">${r.inject}</td><td class="n">${r.access}</td></tr>`).join('');
+  return `<table>${head}${body}</table>`;
+}
+
+async function browse() {
+  const rows = await api('/list', { scope: $('#scope').value.trim() || null });
+  $('#results').innerHTML = rowsTable(rows, false);
+}
+
+async function search() {
+  const q = $('#q').value.trim();
+  if (!q) return browse();
+  const rows = await api('/recall', { query: q, k: 15, scope: $('#scope').value.trim() || 'global', client: 'dashboard' });
+  $('#results').innerHTML = rowsTable(rows, true);
+}
+
+async function show(id) {
+  const r = await api('/get', { id });
+  current = { id, name: id.split('/').pop(), scope: id.split('/').slice(0,-1).join('/') };
+  $('#detail').classList.remove('empty');
+  $('#detail').innerHTML = `<h2>${id} · used ${r.access_count}×</h2>
+    <textarea id="content"></textarea>
+    <div id="actions">
+      <button class="primary" onclick="save()">save</button>
+      <button class="danger" onclick="del()">delete</button>
+      <span id="status"></span>
+    </div>`;
+  $('#content').value = r.content || '';
+}
+
+function newMem() {
+  current = null;
+  $('#detail').classList.remove('empty');
+  $('#detail').innerHTML = `<h2>new memory</h2>
+    <input id="newname" placeholder="kebab-case-name" style="width:60%;margin-bottom:8px">
+    <input id="newscope" placeholder="scope (default: global)" style="width:36%;margin-bottom:8px">
+    <textarea id="content" placeholder="content…"></textarea>
+    <div id="actions"><button class="primary" onclick="save()">save</button><span id="status"></span></div>`;
+}
+
+async function save() {
+  const name  = current ? current.name  : $('#newname').value.trim();
+  const scope = current ? current.scope : ($('#newscope').value.trim() || 'global');
+  if (!name) return $('#status').textContent = 'name required';
+  try {
+    const r = await apiPut({ name, scope, content: $('#content').value });
+    $('#status').textContent = r.put ? `saved ${r.put} (re-embedded)` : (r.error || 'error');
+    if (!r.pending) { browse(); chips(); loadGraph(); }
+  } catch (error) {
+    $('#status').textContent = error instanceof Error ? error.message : 'save failed; pending retry retained';
+  }
+}
+
+async function del() {
+  if (!current || !confirm(`delete ${current.id}?`)) return;
+  const r = await api('/delete', { id: current.id });
+  $('#status').textContent = r.deleted ? 'deleted' : 'not found';
+  $('#detail').innerHTML = '<div class="empty">deleted</div>';
+  browse(); chips(); loadGraph();
+}
+
+$('#q').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+chips(); browse(); activity(); analysis(); loadGraph();
+setInterval(() => { chips(); activity(); analysis(); }, 10000);
+</script>
+</body>
+</html>
