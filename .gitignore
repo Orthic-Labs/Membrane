@@ -1,0 +1,11 @@
+# Rust build output
+**/target/
+
+# Local runtime state (never belongs in the repo)
+*.db
+*.db-wal
+*.db-shm
+.cache/
+
+# OS noise
+.DS_Store

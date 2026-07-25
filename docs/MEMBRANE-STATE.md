@@ -314,8 +314,8 @@ policy/cohort activation → wholly fresh replay. `memright-daily` stays disable
   `rightcontext-evidence/g2/final-815cd511/paired-comparison-v2.json` passes and the four-asset
   `tools/lib/memright-release.json` binding is complete. Windows installation is complete.
   The disposable service-resilience capture harness is **INSTALLED EVIDENCE COMPLETE** at
-  `tools/pipelines/memory/rightcontext-service-resilience.py` with focused tests at
-  `tools/pipelines/memory/test_rightcontext_service_resilience.py`. The original harness landed at
+  `tools/pipelines/memory/membrane-service-resilience.py` with focused tests at
+  `tools/pipelines/memory/test_membrane_service_resilience.py`. The original harness landed at
   `f5b2caec`; the predecessor-compatibility and listener-executable binding repair is committed and
   pushed at `aa5e2d64`, and the authenticated legacy-route boundary repair is pushed at
   `10375eab`. The bounded predecessor-health quorum repair is pushed at `4c935880`. A fresh
@@ -818,7 +818,7 @@ the prospective v2 protocol/comparison and, only after it passes, the four-asset
 coordinated paired install.
 
 **Paired parity comparison — FAILED 2026-07-18:** the genuine Windows and macOS captures agree on all
-18 top-k identifiers and their rank order, but `rightcontext-parity.py compare` fails the frozen
+18 top-k identifiers and their rank order, but `membrane-parity.py compare` fails the frozen
 absolute cosine tolerance of `0.002` on 10/18 pairs; the maximum delta is `0.006234705448`. A second
 Windows capture is numerically identical to the first across all 18 values. The shared configuration
 fingerprint does not bind model-file bytes, ONNX Runtime identity, or CPU kernels, so the exact cause
@@ -1110,9 +1110,9 @@ Re-ordered 2026-07-16 (second pass) after BOTH audits — Fable session + Sol's 
   `model_q4.onnx_data`, graph/external-data pre and post read hashes, and ONNX Runtime `1.24.2`
   (`libonnxruntime.dylib`, `dd681a94cb76232c010e16a1db5621286d478238cfa20c0fdd821d9773a41cd3`,
   aarch64, `CPUExecutionProvider`). No Mac runtime fact was invented and no Windows label was reused.
-- **Validation result: valid.** `rightcontext-parity.py capture-v2` then `validate-v2`, both against
+- **Validation result: valid.** `membrane-parity.py capture-v2` then `validate-v2`, both against
   the explicit successor fixture
-  `tools/pipelines/memory/fixtures/rightcontext-vector-ranking-probes-v2-threshold-coverage-20260718.json`
+  `tools/pipelines/memory/fixtures/membrane-vector-ranking-probes-v2-threshold-coverage-20260718.json`
   (SHA-256 `098b51307a44d05096889a92a5273be221d6c50d875e84e50d9d324a524a40be`), reported
   `status: valid` for `rightcontext-evidence/g2/final-815cd511/macos/vector-ranking-v2.json` with
   `machineOs: macos`, `aarch64-apple-darwin`, protocol version 2, three repeats, the exact frozen
@@ -1240,7 +1240,7 @@ rc_evidence="$rc_repo/rightcontext-evidence/g2/final-5ea40c08/macos"
 rc_runtime_source="$rc_repo/rightcontext-evidence/g2/final-815cd511/macos/runtime-assets-v2.json"
 rc_runtime="$rc_evidence/runtime-assets-v2.json"
 rc_parity="$rc_evidence/vector-ranking-v2.json"
-rc_probe="$rc_repo/tools/pipelines/memory/fixtures/rightcontext-vector-ranking-probes-v2-threshold-coverage-20260718.json"
+rc_probe="$rc_repo/tools/pipelines/memory/fixtures/membrane-vector-ranking-probes-v2-threshold-coverage-20260718.json"
 rc_snapshot="$rc_repo/tools/.cache/fastembed/models--onnx-community--embeddinggemma-300m-ONNX/snapshots/5090578d9565bb06545b4552f76e6bc2c93e4a66"
 rc_ort="$rc_repo/tools/bin/libonnxruntime.dylib"
 mkdir -p "$rc_evidence"
@@ -1283,11 +1283,11 @@ temp.write_text(rendered, encoding="utf-8")
 temp.replace(out)
 PY
 
-python3 "$rc_repo/tools/pipelines/memory/rightcontext-parity.py" capture-v2 \
+python3 "$rc_repo/tools/pipelines/memory/membrane-parity.py" capture-v2 \
   --binary "$rc_cli" --service-binary "$rc_service" --runtime-assets "$rc_runtime" \
   --probe-set "$rc_probe" --model-cache "$rc_repo/tools/.cache/fastembed" \
   --model-snapshot "$rc_snapshot" --ort-library "$rc_ort" --out "$rc_parity"
-python3 "$rc_repo/tools/pipelines/memory/rightcontext-parity.py" validate-v2 \
+python3 "$rc_repo/tools/pipelines/memory/membrane-parity.py" validate-v2 \
   --artifact "$rc_parity" --probe-set "$rc_probe"
 if launchctl print "gui/$(id -u)/com.adrian.memright-daily" >/dev/null 2>&1; then
   echo "memright-daily unexpectedly loaded" >&2
@@ -1440,17 +1440,17 @@ tmp.write_text(rendered, encoding="utf-8")
 tmp.replace(out)
 PY
 
-rc_probe="$rc_repo/tools/pipelines/memory/fixtures/rightcontext-vector-ranking-probes-v2-threshold-coverage-20260718.json"
+rc_probe="$rc_repo/tools/pipelines/memory/fixtures/membrane-vector-ranking-probes-v2-threshold-coverage-20260718.json"
 rc_snapshot="$rc_repo/tools/.cache/fastembed/models--onnx-community--embeddinggemma-300m-ONNX/snapshots/5090578d9565bb06545b4552f76e6bc2c93e4a66"
 rc_ort="$rc_repo/tools/bin/libonnxruntime.dylib"
 test -d "$rc_snapshot" && test -f "$rc_ort"
 test "$(shasum -a 256 "$rc_probe" | awk '{print $1}')" = \
   098b51307a44d05096889a92a5273be221d6c50d875e84e50d9d324a524a40be
-python3 "$rc_repo/tools/pipelines/memory/rightcontext-parity.py" capture-v2 \
+python3 "$rc_repo/tools/pipelines/memory/membrane-parity.py" capture-v2 \
   --binary "$rc_cli" --service-binary "$rc_service" --runtime-assets "$rc_runtime" \
   --probe-set "$rc_probe" --model-cache "$rc_repo/tools/.cache/fastembed" \
   --model-snapshot "$rc_snapshot" --ort-library "$rc_ort" --out "$rc_parity"
-python3 "$rc_repo/tools/pipelines/memory/rightcontext-parity.py" validate-v2 \
+python3 "$rc_repo/tools/pipelines/memory/membrane-parity.py" validate-v2 \
   --artifact "$rc_parity" --probe-set "$rc_probe"
 if launchctl print "gui/$(id -u)/com.adrian.memright-daily" >/dev/null 2>&1; then
   echo "memright-daily unexpectedly loaded" >&2; exit 1
