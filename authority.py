@@ -291,6 +291,21 @@ def _literal_signature(text: str) -> str:
     return _LEADING_MODAL_RE.sub("", normalized).strip()
 
 
+# Conflict detection compares POLARITY, not authority effect. Reusing
+# `classify_authority_effect(...) == "restrictive"` for this was a real bug: an
+# authority line like "Never skip tests." classifies as security_weakening (the
+# insecure-pattern set matches "skip ... test" by design), never as restrictive.
+# Both sides of the comparison then collapsed to the same value, so a genuine
+# contradiction was invisible for every security-adjacent topic -- exactly the
+# topics where catching it matters most. Negation is what actually decides
+# whether two rules with the same signature agree or contradict.
+_NEGATED_RE = re.compile(r"^(?:never|no|not|do not|don't|must not|should not|avoid)\b")
+
+
+def _is_negated(text: str) -> bool:
+    return bool(_NEGATED_RE.search(normalize_text(text)))
+
+
 def _scope_applies(authority_scope: str, candidate_scope: str) -> bool:
     authority_scope = (authority_scope or "workspace").strip()
     if authority_scope in {"workspace", "global", "*"}:
@@ -345,7 +360,7 @@ def detect_rule_contradictions(
     admission by itself.
     """
     candidate_signature = _literal_signature(rule)
-    candidate_restrictive = classify_authority_effect(rule) == "restrictive"
+    candidate_negated = _is_negated(rule)
     conflicts: list[dict] = []
     for stored in stored_rules:
         stored_state = str(stored.get("lifecycle_state", "active") or "active").lower()
@@ -361,8 +376,8 @@ def detect_rule_contradictions(
             continue
         if not candidate_signature:
             continue
-        stored_restrictive = classify_authority_effect(stored_rule_text) == "restrictive"
-        if stored_restrictive != candidate_restrictive:
+        stored_negated = _is_negated(stored_rule_text)
+        if stored_negated != candidate_negated:
             conflicts.append({
                 "id": stored.get("id", ""),
                 "rule": stored_rule_text,
@@ -395,11 +410,20 @@ def evaluate_rule(
         effect = "restrictive"
     if declared_effect == "security_weakening":
         effect = "security_weakening"
+    # Refusal is decided here; the REASON is refined below. A candidate that
+    # contradicts a specific line in the operator's own authority files gets
+    # "authority-conflict" and a pointer to that line, which is actionable --
+    # strictly more useful than the generic category, and the categorical
+    # refusal is unchanged either way because `admitted` stays False.
+    categorical_refusal = None
     if effect == "security_weakening":
-        return AuthorityResult(False, "security-weakening", effect)
-    if effect == "permission_expanding":
-        return AuthorityResult(False, "permission-expanding", effect)
+        categorical_refusal = "security-weakening"
+    elif effect == "permission_expanding":
+        categorical_refusal = "permission-expanding"
+
     if authority_manifest is None:
+        if categorical_refusal:
+            return AuthorityResult(False, categorical_refusal, effect)
         return AuthorityResult(True, "ok", effect)
     if authority_root is None:
         return AuthorityResult(False, "authority-manifest-invalid", effect)
@@ -420,11 +444,16 @@ def evaluate_rule(
             return AuthorityResult(False, "superseded-decision", effect)
 
     candidate_signature = _literal_signature(rule)
-    candidate_restrictive = classify_authority_effect(rule) == "restrictive"
+    candidate_negated = _is_negated(rule)
     for line in _authority_lines(authority_manifest, authority_root, scope):
         if _literal_signature(line) != candidate_signature:
             continue
-        authority_restrictive = classify_authority_effect(line) == "restrictive"
-        if authority_restrictive != candidate_restrictive:
+        authority_negated = _is_negated(line)
+        if authority_negated != candidate_negated:
+            # More specific than any categorical reason: it names the operator's
+            # own contradicting line, so it wins even when the candidate is also
+            # security-weakening or permission-expanding.
             return AuthorityResult(False, "authority-conflict", effect)
+    if categorical_refusal:
+        return AuthorityResult(False, categorical_refusal, effect)
     return AuthorityResult(True, "ok", effect)

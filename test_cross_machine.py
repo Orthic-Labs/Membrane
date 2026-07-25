@@ -101,8 +101,10 @@ def test_external_harness_sources_use_the_same_qualified_contract(tool: str) -> 
 def test_canonical_rule_pool_is_rebuilt_from_engine_not_local_cache(tmp_path: Path) -> None:
     rules = cm.load_canonical_rules(_db(tmp_path / "engine.db"))
 
-    assert set(rules) == {"adapt-tooling-jsonl-1111111111"}
-    rule = rules["adapt-tooling-jsonl-1111111111"]
+    # Keys are scope-qualified: one rule name can legitimately exist under two
+    # scope spellings for the same workspace across machines.
+    assert set(rules) == {"D--Claude/adapt-tooling-jsonl-1111111111"}
+    rule = rules["D--Claude/adapt-tooling-jsonl-1111111111"]
     assert rule["scope"] == "D--Claude"
     assert rule["category"] == "tooling"
     assert rule["rule"] == "Always use JSONL for structured logs in shared pipelines."
@@ -115,7 +117,7 @@ def test_canonical_rule_pool_is_rebuilt_from_engine_not_local_cache(tmp_path: Pa
 def test_canonical_rule_pool_supports_live_schema_without_record_type(tmp_path: Path) -> None:
     rules = cm.load_canonical_rules(_legacy_db(tmp_path / "legacy-engine.db"))
 
-    assert rules["adapt-tooling-jsonl-legacy"]["record_type"] == "standing_preference"
+    assert rules["D--Claude/adapt-tooling-jsonl-legacy"]["record_type"] == "standing_preference"
 
 
 def test_canonical_rule_pool_excludes_legacy_plain_adapt_row(tmp_path: Path) -> None:
@@ -181,3 +183,41 @@ def test_multiwriter_apply_refuses_wrong_installation_or_stale_pool() -> None:
             installation_id=INSTALLATION,
             canonical_rules={**rules, "b": {"name": "b", "rule": "two"}},
         )
+
+
+def test_same_rule_under_two_machine_scopes_is_not_a_duplicate(tmp_path: Path) -> None:
+    """The live failure this guards: one workspace is scoped 'D--Claude' on Windows
+    and 'Volumes-D-claude' on macOS. Syncing one rule across both machines produced
+    two rows sharing a name, which raised and disabled canonical context entirely."""
+    path = _db(tmp_path / "engine.db")
+    import sqlite3
+    with sqlite3.connect(path) as conn:
+        row = conn.execute(
+            "SELECT id, scope_id, content, source_ids, created_at, updated_at, record_type "
+            "FROM memories WHERE id LIKE '%adapt-tooling-jsonl-1111111111'"
+        ).fetchone()
+        mac = ("Volumes-D-claude/" + row[0].split("/", 1)[1], "Volumes-D-claude") + tuple(row[2:])
+        conn.execute(
+            "INSERT INTO memories (id, scope_id, content, source_ids, created_at, "
+            "updated_at, record_type) VALUES (?,?,?,?,?,?,?)", mac
+        )
+
+    rules = cm.load_canonical_rules(path)
+    assert set(rules) == {
+        "D--Claude/adapt-tooling-jsonl-1111111111",
+        "Volumes-D-claude/adapt-tooling-jsonl-1111111111",
+    }
+
+    # A real duplicate -- same name in the SAME scope -- must still raise, even
+    # though the id (the SQLite primary key) differs, because `_parse_rule_row`
+    # derives the rule's identity by stripping the `scope/` id-prefix, not from
+    # the raw id string. A bare-name row with no scope prefix at all still
+    # produces the same derived name under the "D--Claude" scope column.
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "INSERT INTO memories (id, scope_id, content, source_ids, created_at, "
+            "updated_at, record_type) VALUES (?,?,?,?,?,?,?)",
+            ("adapt-tooling-jsonl-1111111111", "D--Claude") + tuple(row[2:]),
+        )
+    with pytest.raises(cm.CrossMachineAdaptError, match="duplicate canonical Adapt identity"):
+        cm.load_canonical_rules(path)

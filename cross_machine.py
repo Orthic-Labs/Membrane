@@ -149,15 +149,28 @@ def load_canonical_rules(db_path: Path) -> dict[str, dict[str, Any]]:
         if parsed is None:
             continue
         name, rule = parsed
-        if name in rules:
-            raise CrossMachineAdaptError(f"duplicate canonical Adapt identity: {name}")
-        rules[name] = rule
+        # Identity is (scope, name), not name. The same workspace is scoped
+        # "D--Claude" on one machine and "Volumes-D-claude" on the other, so one
+        # rule synced across both machines produced two rows with one name and
+        # raised here -- disabling canonical context entirely on a healthy pool.
+        # A real duplicate is the same name in the SAME scope, and that still raises.
+        scope = rule.get("scope") or ""
+        key = f"{scope}/{name}" if scope else name
+        if key in rules:
+            raise CrossMachineAdaptError(f"duplicate canonical Adapt identity: {key}")
+        rules[key] = rule
     return rules
 
 
 def canonical_pool_sha256(rules: dict[str, dict[str, Any]]) -> str:
+    # Sorted by the row's own (id, scope) rather than by the mapping key, so the
+    # digest depends only on pool CONTENT. Sorting by key silently coupled the
+    # hash to how the caller happened to key the dict; a pool keyed by name and
+    # the same pool keyed by scoped id would hash differently despite being
+    # identical data. For a single-scope pool the order is unchanged, so this
+    # does not invalidate existing manifests.
     rows = []
-    for key, rule in sorted(rules.items()):
+    for key, rule in rules.items():
         rows.append({
             "id": rule.get("id") or rule.get("name") or key,
             "scope": rule.get("scope", ""),
@@ -171,6 +184,7 @@ def canonical_pool_sha256(rules: dict[str, dict[str, Any]]) -> str:
             "retrieval_aliases": list(rule.get("retrieval_aliases") or []),
             "source_ids": sorted(rule.get("source_ids") or []),
         })
+    rows.sort(key=lambda row: (row["id"], row["scope"]))
     canonical = json.dumps(
         rows, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     )

@@ -19,7 +19,13 @@ WS = Path(
 ).expanduser().resolve()
 
 MODEL = "MiniMax-M3"
-MINIMAX_ALIAS = "claude-opus-4-8"
+# The gateway routes by SUBSTRING match against its slot keys (proxy.py::route),
+# so the alias we send decides the provider. "opus" in the name selected the opus
+# slot -- glm-5.2, not MiniMax -- and its exhausted quota was misread as MiniMax
+# being down. "sonnet" is the slot actually bound to minimax:MiniMax-M3, and is
+# also the correct tier: extraction is subagent-class work, capped at sonnet by
+# the agent-routing rules. Never use an alias containing "fable" (qwen).
+MINIMAX_ALIAS = os.environ.get("ADAPT_MINIMAX_ALIAS", "claude-sonnet-4-5")
 MINIMAX_PROXY_URL = os.environ.get(
     "ADAPT_MINIMAX_PROXY_URL", "http://127.0.0.1:8801"
 ).rstrip("/")
@@ -127,10 +133,15 @@ def _evidence_ceiling(item: dict) -> float:
     """Upper bound on confidence, from evidence strength alone. Never raises a model's claim."""
     sources = item.get("observation_ids") or item.get("source_ids") or []
     n_sources = len({s for s in sources if isinstance(s, str)}) if isinstance(sources, list) else 0
-    try:
-        n_sources = max(n_sources, int(item.get("evidence_count") or 0))
-    except (TypeError, ValueError):
-        pass
+    # `observations` is the field the SYNTHESIS envelope actually carries; omitting it
+    # made the ceiling under-count every synthesized rule and cap well-evidenced ones
+    # at the single-correction tier. The ceiling must see each spelling of "how many
+    # independent times did we see this" or it silently penalises the strongest rules.
+    for key in ("evidence_count", "observations", "support_count"):
+        try:
+            n_sources = max(n_sources, int(item.get(key) or 0))
+        except (TypeError, ValueError):
+            continue
 
     rule = item.get("rule") if isinstance(item.get("rule"), str) else ""
     explicit = bool(_EXPLICIT_DIRECTIVE_RE.search(rule))

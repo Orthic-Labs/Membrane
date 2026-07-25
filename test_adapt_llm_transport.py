@@ -50,7 +50,14 @@ def test_minimax_lane_uses_local_mm_proxy_and_preserves_metadata(monkeypatch):
 
     assert captured["url"] == "http://127.0.0.1:8801/v1/messages"
     assert captured["headers"]["X-api-key"] == "router-dummy"
-    assert captured["payload"]["model"] == "claude-opus-4-8"
+    # The gateway routes by substring against its slot keys, so this alias is what
+    # picks the provider. "sonnet" is the slot bound to minimax:MiniMax-M3. Assert
+    # the routing intent too: an alias containing "opus" lands on glm and one
+    # containing "fable" lands on qwen, and both failures look like MiniMax being
+    # down rather than a misroute.
+    assert captured["payload"]["model"] == "claude-sonnet-4-5"
+    assert "opus" not in captured["payload"]["model"]
+    assert "fable" not in captured["payload"]["model"]
     assert captured["payload"]["thinking"] == {"type": "adaptive"}
     assert result == {
         "text": "[]",
