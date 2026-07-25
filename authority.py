@@ -26,6 +26,7 @@ AUTHORITY_EFFECTS = frozenset({
     "neutral",
     "restrictive",
     "permission_expanding",
+    "security_weakening",
 })
 
 _WS_RE = re.compile(r"\s+")
@@ -44,6 +45,39 @@ _PERMISSION_PATTERNS = (
     re.compile(r"\b(?:skip|bypass|disable)\b.+\b(?:approval|review|gate|scanner|security)\b"),
     re.compile(r"\b(?:edit|modify|deploy)\b.+\bproduction\b.+\b(?:directly|ssh)\b"),
     re.compile(r"\b(?:may|can)\b.+\bwithout (?:approval|permission|review)\b"),
+)
+# Insecure *coding taste* — a distinct class from permission expansion. A rule can leave every
+# approval gate intact and still teach the agent to write unsafe code. Mined preferences are the
+# wrong place for these regardless of how often a transcript appears to endorse them.
+_INSECURE_PATTERNS = (
+    # transport / certificate verification
+    re.compile(r"\b(?:disable|skip|turn off|ignore|bypass)\b.{0,40}\b"
+               r"(?:tls|ssl|https|certificate|cert)\b.{0,20}\b(?:verif\w*|validat\w*|check\w*)\b"),
+    # verb-before-noun and negated forms: "never validate certificates", "don't verify TLS"
+    re.compile(r"\b(?:never|do not|don't|no need to|stop)\b.{0,20}"
+               r"\b(?:verif\w*|validat\w*|check\w*)\b.{0,20}"
+               r"\b(?:tls|ssl|https|certificate|cert|signature|checksum|hash)\w*\b"),
+    re.compile(r"\b(?:verify\s*=\s*false|rejectunauthorized\s*:?\s*false|insecureskipverify)\b"),
+    # NOTE: no leading \b before a hyphen-flag — space→"-" is not a word boundary, so "\b-k" never
+    # matches. Anchor on whitespace/start instead.
+    re.compile(r"\bcurl\b.{0,20}(?:^|\s)(?:-k|--insecure)\b"),
+    # credential handling
+    re.compile(r"\b(?:hardcode|hard-code|inline|embed|commit)\b.{0,30}"
+               r"\b(?:secret|credential|password|api[- ]?key|token|private key)s?\b"),
+    re.compile(r"\b(?:secret|credential|password|api[- ]?key|token)s?\b.{0,30}"
+               r"\bin(?:to)?\b.{0,20}\b(?:source|repo|git|code|argv|command line|log)s?\b"),
+    # crypto downgrade
+    re.compile(r"\b(?:use|prefer|switch to)\b.{0,20}\b(?:md5|sha1|des|rc4|ecb)\b"),
+    re.compile(r"\b(?:weaken|lower|reduce)\b.{0,30}\b(?:crypto\w*|encryption|hashing|key length)\b"),
+    # validation / sanitization removal
+    re.compile(r"\b(?:disable|skip|remove|drop|turn off)\b.{0,40}"
+               r"\b(?:input validation|sanitiz\w*|escap\w*|csrf|cors|auth\w*|authoriz\w*|permission check)\b"),
+    re.compile(r"\b(?:raw|unparameterized|string[- ]concatenated)\b.{0,20}\bsql\b"),
+    re.compile(r"\b(?:eval|exec)\b.{0,30}\buser\b.{0,20}\binput\b"),
+    # suppressing the tools that would catch the above
+    re.compile(r"\b(?:disable|skip|suppress|ignore|delete|remove)\b.{0,40}"
+               r"\b(?:test|assertion|lint\w*|type ?check\w*|security scan\w*|audit)\w*\b"),
+    re.compile(r"(?:^|\s)--no-verify\b|\b(?:nosec|noqa\b.{0,10}s\d|eslint-disable\b.{0,30}security)\b"),
 )
 
 
@@ -68,6 +102,10 @@ def normalize_record_type(value: str | None) -> str:
 
 def classify_authority_effect(text: str) -> str:
     normalized = normalize_text(text)
+    # Security-weakening is checked BEFORE restrictive: "never validate certificates" reads as
+    # restrictive by surface form ("never ...") while being exactly the rule we must refuse.
+    if any(pattern.search(normalized) for pattern in _INSECURE_PATTERNS):
+        return "security_weakening"
     if _RESTRICTIVE_RE.search(normalized):
         return "restrictive"
     if any(pattern.search(normalized) for pattern in _PERMISSION_PATTERNS):
@@ -220,6 +258,10 @@ def evaluate_rule(
         effect = "permission_expanding"
     elif declared_effect == "restrictive" and computed_effect == "neutral":
         effect = "restrictive"
+    if declared_effect == "security_weakening":
+        effect = "security_weakening"
+    if effect == "security_weakening":
+        return AuthorityResult(False, "security-weakening", effect)
     if effect == "permission_expanding":
         return AuthorityResult(False, "permission-expanding", effect)
     if authority_manifest is None:

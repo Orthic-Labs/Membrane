@@ -344,3 +344,31 @@ def test_manifest_candidates_are_bound_to_embedded_authority_snapshot(tmp_path):
 
     with pytest.raises(manifest.ManifestError, match="authority manifest"):
         manifest.validate_schema(path)
+
+
+def test_security_weakening_rule_is_quarantined_without_manifest():
+    result = authority.evaluate_rule(
+        "Disable TLS certificate verification for the internal API.",
+        scope="D--Claude",
+    )
+
+    assert result.admitted is False
+    assert result.reason == "security-weakening"
+    assert result.authority_effect == "security_weakening"
+
+
+def test_security_weakening_wins_over_restrictive_surface_form():
+    # "never validate ..." reads as restrictive by surface form but is the exact rule to refuse.
+    assert authority.classify_authority_effect(
+        "Never validate certificates in staging."
+    ) == "security_weakening"
+
+
+def test_secure_preferences_are_not_flagged_as_security_weakening():
+    for rule in (
+        "Always use parameterized SQL.",
+        "Validate all user input at the trust boundary.",
+        "Never commit without running the test suite.",
+        "Prefer pnpm over npm in this workspace.",
+    ):
+        assert authority.classify_authority_effect(rule) != "security_weakening", rule

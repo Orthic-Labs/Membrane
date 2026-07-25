@@ -101,6 +101,53 @@ Return [] if nothing qualifies — be conservative. Emit at most 24 highest-conf
 observations per batch. JSON only, no prose, no markdown fences."""
 
 
+# Deterministic confidence ceiling by evidence strength. Sol's critique was that confidence came
+# entirely from the extraction model's own estimate, so an ambiguous single line could be scored 0.9
+# purely on model enthusiasm. These ceilings are an upper bound applied AFTER the model's claim, so a
+# well-evidenced rule keeps its score and a thinly-evidenced one cannot inflate.
+#
+# Ordering is the authority ladder: what the user explicitly stated as a standing rule outranks a
+# repeated correction, which outranks one correction, which outranks mere non-objection. Silence is
+# the weakest signal there is — the user may simply not have noticed.
+_CEILING_EXPLICIT_LOCKED = 0.95   # an explicit standing rule / locked decision, multiple sources
+_CEILING_REPEATED = 0.85          # corrected or restated across >=2 independent sessions
+_CEILING_SINGLE_CORRECTION = 0.65 # one clear correction in one session
+_CEILING_WEAK = 0.45              # inferred from acceptance/non-objection; below needs_review floor
+
+_EXPLICIT_DIRECTIVE_RE = re.compile(
+    r"\b(?:always|never|from now on|going forward|must|must not|do not|don't|only ever|"
+    r"the rule is|standing rule)\b",
+    re.IGNORECASE,
+)
+
+
+def _evidence_ceiling(item: dict) -> float:
+    """Upper bound on confidence, from evidence strength alone. Never raises a model's claim."""
+    sources = item.get("observation_ids") or item.get("source_ids") or []
+    n_sources = len({s for s in sources if isinstance(s, str)}) if isinstance(sources, list) else 0
+    try:
+        n_sources = max(n_sources, int(item.get("evidence_count") or 0))
+    except (TypeError, ValueError):
+        pass
+
+    rule = item.get("rule") if isinstance(item.get("rule"), str) else ""
+    explicit = bool(_EXPLICIT_DIRECTIVE_RE.search(rule))
+    durability = (item.get("durability") or "").strip().lower()
+    record_type = (item.get("record_type") or "").strip().lower()
+
+    # A one-time fact is episodic by definition; it must never read as a durable high-confidence rule.
+    if record_type == "episodic_fact" or durability in {"one_off", "one-off", "ephemeral"}:
+        return _CEILING_WEAK
+
+    if explicit and n_sources >= 2:
+        return _CEILING_EXPLICIT_LOCKED
+    if n_sources >= 2:
+        return _CEILING_REPEATED
+    if explicit or n_sources == 1:
+        return _CEILING_SINGLE_CORRECTION
+    return _CEILING_WEAK
+
+
 def preference_classification_reason(item: dict) -> str | None:
     """Return a fail-closed reason when an extracted item is not durable agent behavior."""
     required = ("record_type", "durability", "subject")
@@ -576,11 +623,14 @@ def synthesize(existing: list[dict], observations: list[dict],
         if not (isinstance(item.get("name"), str) and isinstance(item.get("rule"), str)):
             continue
         try:
-            item["confidence"] = min(0.95, max(0.3, float(item.get("confidence", 0.6))))
-            item["needs_review"] = item["confidence"] < 0.5
+            claimed = min(0.95, max(0.3, float(item.get("confidence", 0.6))))
         except (TypeError, ValueError):
-            item["confidence"] = 0.6
-            item["needs_review"] = True
+            claimed = 0.6
+        # The extractor's self-assigned confidence is an INPUT, not the answer. Cap it by a
+        # deterministic evidence ceiling so a model cannot talk itself into high confidence from one
+        # ambiguous line. The cap can only lower a claim, never raise it.
+        item["confidence"] = min(claimed, _evidence_ceiling(item))
+        item["needs_review"] = item["confidence"] < 0.5
         try:
             import admission
             item["category"] = admission.normalize_category(item.get("category", ""))
