@@ -60,9 +60,15 @@ Verdicts: ✅ meets/exceeds target · 🟡 partial · 🔴 absent.
 
 **Close by:** making the transforms *the default path, not a suggestion* — a PostToolUse hook that (a) hashes tool results and replaces exact repeats with an anchor + `runc` spill reference, (b) auto-routes oversized outputs through the existing typed engines (code→`skel`, prose→`compress`, command output→`runc`) with the CCR-style spill dir as the reversibility store, (c) collapses superseded error traces. The engines, spill mechanism, opportunity ledger, and identity spine already exist — this is wiring plus a non-inferiority gate, not new architecture. (Respect Gate discipline: ship behind the same cohort/receipt machinery as the planner.)
 
-#### G2 🟡 — Token/cost/cache analysis built but not operational (the stated pain)
+#### G2 🟢 — Burn attribution SHIPPED 2026-07-26; scheduling and $/task-class remain
 
-*(Verdict downgraded from 🔴 "absent" to 🟡 "partial" 2026-07-26 per Sol's review, confirmed against source: `dashboard.html:310` reads `provider_tokens`; the cohort analyzer joins provider tokens to hook delivery with cached/non-cached separation.)*
+*(Verdict 🔴 → 🟡 on Sol's review, then → 🟢 on delivery of the Token Observatory. Confirmed against source: `dashboard.html:310` reads `provider_tokens`; the cohort analyzer joins provider tokens to hook delivery with cached/non-cached separation.)*
+
+**Shipped:** `context-pulse burn` (`tools/pipelines/memory/context_burn.py`, parent workspace) reports per-day and per-model input/output/cache-read/cache-write tokens, cache-hit ratio, calculated cost, and the most expensive sessions, across every local Claude and Codex transcript. First live run: **$2,064 calculated over two days, 97% cache hit, top session $290** — the blindness this document opened with is closed.
+
+Two counting defects surfaced on that first run and are now pinned by contract tests, because both made the naive number unusable: a Claude transcript rewrites each assistant message, so summing raw `usage` records counted one session's 688 billed requests as 1,790 (a 2.6x cache-read inflation), and a Codex rollout writes cumulative running totals, so summing them produced 23.18B input tokens for one session. Claude rows now dedupe on `requestId`; Codex takes the final cumulative object and nets out cached input (its `input_tokens` is inclusive where Anthropic's is exclusive). Cost is labelled **calculated**, never measured, per the measurement-class rule.
+
+**Still open:** the report is on-demand only (scheduling is G7), and TPST/$-per-task-class attribution needs a task-class join that does not exist yet. The experiment-contract conflict below is unresolved and blocks the G1/P5 cohort, not this lane.
 
 **Target:** per-call provider usage capture; TPST by task class; $/task; cache-hit ratio with 60–90% target; cache-break taxonomy; context waterfall; per-session and daily burn reports; budget guard.
 
@@ -133,10 +139,10 @@ Cross-encoder rerank, dynamic-K knapsack over the fixed lanes, HyDE, multi-hop: 
 **Current:** frozen 30-row recall gate, replay grids, parity protocol — deep but narrow (retrieval + latency only).
 **Target adds:** compaction fidelity/next-action/regret suites (needed the moment G1 ships), stale-memory traps, injection/poisoning suites (S's 14 security evals; the OWASP ASI06 smoke test is ~20 lines), and growth of the golden set from real failures (target ≥100).
 
-#### G13 🔴 — No budget guard
+#### G13 🟡 — Advisory thresholds shipped; enforced ceilings still absent
 
-**Current:** thread-guard's transcript-token warnings only.
-**Target:** daily/session $ and token ceilings with warn thresholds, per model — trivially computable once the Observatory exists; surfaces "you are at 40% of weekly quota" *while it is happening*, not 11 hours later.
+**Current:** the Observatory carries one advisory — cache-hit ratio under 50% on a session large enough for the ratio to mean anything — alongside the thread guard's transcript-token warnings. Both are read-out-when-asked, not enforcement.
+**Target:** daily/session $ and token ceilings with warn thresholds, per model, surfacing "you are at 40% of weekly quota" *while it is happening*. The denominator now exists (`context_burn.collect` returns per-day cost and totals), so the remaining work is a threshold policy plus a place to fire it from — which is the same scheduling gap as G7.
 
 ---
 
