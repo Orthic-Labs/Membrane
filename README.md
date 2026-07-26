@@ -209,3 +209,7 @@ Current limits:
 - [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
 - [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
 <!-- blueprint:docs:end -->
+
+## License
+
+Source-available proprietary software for internal use & evaluation; redistribution, repackaging & competing use are prohibited. See [LICENSE](LICENSE).

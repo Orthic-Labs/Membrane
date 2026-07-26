@@ -9,7 +9,7 @@ members = [
 [workspace.package]
 edition = "2021"
 authors = ["MemRight"]
-license = "MIT"
+license = "UNLICENSED"
 
 [workspace.dependencies]
 serde       = { version = "1",  features = ["derive"] }
