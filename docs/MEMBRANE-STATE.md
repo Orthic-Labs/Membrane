@@ -2,6 +2,25 @@
 
 **What this is:** the single cross-platform current-state map of RightContext (the umbrella context system) and MemRight (its durable-memory engine) for both Windows and Mac. Design rationale lives in `docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` (2026-07-12, design-era) and `tools/lib/CONTEXT-ENGINEERING.md`; the operational telemetry/identity coverage contract and 2026-07-21 audit are in `docs/RIGHTCONTEXT-TELEMETRY-IDENTITY.md`; per-feature ADRs + measurements live in the `docs/plans/2026-07-*` files linked below. This doc is the index of *what is live now* and *what is next*. Last updated **2026-07-23**.
 
+## Resident federation gateway — source-complete 2026-07-26
+
+`POST /federate` hosts the federation gateway as a supervised resident
+`gateway.py --serve-stdio` worker (plan + review disposition:
+`docs/plans/2026-07-26-federation-resident-gateway.md`). The hook is
+HTTP-first with automatic CLI fallback; `RIGHTCONTEXT_FEDERATE_TRANSPORT=cli`
+pins the old path instantly and the CLI is never deleted. One deadline
+end-to-end (`maxWaitMs` = the hook's remaining budget); one-slot admission
+returns 503 `federate_busy`; circuit breaker opens 60 s after three failed
+cycles; worker tree-killed and recycled after any unfinished lane.
+
+Acceptance receipts (Mac, scratch serve, generation-matched): golden parity
+`packet`+`receipts` identical CLI vs HTTP; warm `/federate` **p50 81.8 ms /
+p95 108.8 ms** over 20 runs (`tools/.cache/metrics/federate-parity/`), vs
+434–506 ms gateway stage + ~150 ms spawn on the CLI path. Against the
+installed pre-route binary the hook observes an instant 404 and falls back —
+zero behavior change until the next guarded install; the rollout receipt for
+that install must be minted from a commit including this work.
+
 ## Live telemetry repair checkpoint — 2026-07-21
 
 The `dc7780f2` four-asset promotion is installed and verified end to end. The resident Windows CLI
