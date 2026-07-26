@@ -1,10 +1,11 @@
 # Membrane
 
-> **TL;DR:** Membrane gives AI agents smallest useful set of fresh code, rules, decisions & memory for each task—then records what was included, omitted & why.
+> **TL;DR:** Membrane gives your AI agent smallest useful set of current code, rules, decisions & memory for each task—plus a receipt showing what entered context, what did not & why.
 
-AI agents need context, but “send everything” is slow, expensive & often less accurate. Membrane is
-local context infrastructure between an agent & sources it may need. It gathers evidence, checks
-scope/freshness, ranks candidates against one token budget & returns a bounded context packet.
+When an agent gets a whole repository, stale plan & every old lesson, attention fills before useful
+evidence arrives. Membrane is local context infrastructure between an agent & sources it may need. It
+gathers evidence, checks scope/freshness, ranks candidates against one token budget & returns a bounded
+context packet you can inspect.
 
 Membrane is umbrella system. **MemRight** is its local durable-memory engine.
 
