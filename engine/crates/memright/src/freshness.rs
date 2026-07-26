@@ -546,38 +546,43 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
         let graph_manifest = read_optional_json(&graph_manifest_path)?.map(|(_, value)| value);
         let legacy_graph_body_generation = read_graph_body_generation(&graph_body_path)?;
 
-        let blueprint_generation = portable
+        // graph.db is the sealed generation wherever Blueprint has migrated to
+        // it; the JSON manifests are a compatibility fallback for repositories
+        // that predate the migration. The precedence must therefore be
+        // graph.db FIRST. Reading the legacy `.blueprint/manifest.json` first
+        // meant a stale doc-run generation outranked the freshly sealed store,
+        // so blueprint_generation and graph_body_generation disagreed and every
+        // verdict became a false `partial_reindex` that made the lane unusable.
+        let blueprint_generation = graph_db
             .as_ref()
-            .and_then(|value| json_string(value, &[&["generation", "id"], &["generationId"]]))
+            .and_then(|value| value.generation_id.clone())
             .or_else(|| {
-                graph_db
-                    .as_ref()
-                    .and_then(|value| value.generation_id.clone())
+                portable.as_ref().and_then(|value| {
+                    json_string(value, &[&["generation", "id"], &["generationId"]])
+                })
             });
-        let base_commit = portable
+        let base_commit = graph_db
             .as_ref()
-            .and_then(|value| {
-                json_string(
-                    value,
-                    &[
-                        &["generation", "baseCommit"],
-                        &["baseCommit"],
-                        &["repo", "baseCommit"],
-                    ],
-                )
-            })
+            .and_then(|value| value.base_commit.clone())
             .or_else(|| {
-                graph_db
-                    .as_ref()
-                    .and_then(|value| value.base_commit.clone())
+                portable.as_ref().and_then(|value| {
+                    json_string(
+                        value,
+                        &[
+                            &["generation", "baseCommit"],
+                            &["baseCommit"],
+                            &["repo", "baseCommit"],
+                        ],
+                    )
+                })
             });
-        let graph_manifest_generation = graph_manifest
+        let graph_manifest_generation = graph_db
             .as_ref()
-            .and_then(|value| json_string(value, &[&["generationId"]]))
+            .and_then(|value| value.generation_id.clone())
             .or_else(|| {
-                graph_db
+                graph_manifest
                     .as_ref()
-                    .and_then(|value| value.generation_id.clone())
+                    .and_then(|value| json_string(value, &[&["generationId"]]))
             });
         let graph_body_generation = graph_db
             .as_ref()
@@ -587,11 +592,10 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
         Ok(FreshnessEpoch {
             head_commit: Some(head_commit),
             base_commit,
-            manifest_digest: manifest_digest.or_else(|| {
-                graph_db
-                    .as_ref()
-                    .and_then(|value| value.manifest_digest.clone())
-            }),
+            manifest_digest: graph_db
+                .as_ref()
+                .and_then(|value| value.manifest_digest.clone())
+                .or(manifest_digest),
             blueprint_generation,
             graph_manifest_generation,
             graph_body_generation,
