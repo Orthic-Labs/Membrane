@@ -261,3 +261,52 @@ rollback restores raw delivery without data loss.
 - `engine/crates/memright/src/serve.rs`
 - `/Volumes/D/claude/tools/hooks/post_tool_push.py`
 - `/Volumes/D/claude/tools/pipelines/memory/context_session_inventory.py`
+
+## 2026-07-27 — activation, burn attribution, and one dropped item
+
+### Shipped
+
+- **Token Observatory** (`tools/pipelines/memory/context_burn.py`, parent workspace, surfaced as
+  `context-pulse burn`). Per-day/per-model input, output, cache-read and cache-write tokens,
+  cache-hit ratio, calculated cost, top sessions. First live run: $2,064 over two days, 97% cache
+  hit, top session $290. Now emitted daily by the existing read-only Observatory lane — no new
+  scheduled agent was needed.
+- **PUSH lane activated** behind the cohort gate, with session-stable 50/50 assignment.
+- **ASI06 memory-poisoning smoke test** (`engine/crates/memright/tests/memory_provider.rs`).
+- **Blueprint freshness** rebound to HEAD with a repo-revision rebuild trigger
+  (`tools/blueprint-refresh.sh`, installed as post-commit/post-merge/post-checkout).
+
+### Defects found by activating rather than reasoning
+
+Each of these made a shipped feature a silent no-op, and none was visible from the code alone:
+
+| Defect | Effect | Fix |
+|---|---|---|
+| Gate read `payload.cohort`, which no harness sets | PUSH lane unreachable in every session | `assign_cohort` derives a stable arm from the session id |
+| `_result` did not read `stdout` | Bash — the largest sink — always `non_text_result` | `stdout` added to the key list; sibling keys preserved |
+| Anchor named a bare filename | Elided output unrecoverable by the model reading it | Marker carries full path, sha256, elided size |
+| Claude usage records repeat per request | 2.6x cache-read inflation ($9,921 vs $2,064) | Dedupe on `requestId` |
+| Codex accounts cumulatively | One session summed to 23.18B input tokens | Take the final cumulative total, net out cached input |
+
+### Contract amendment
+
+The PUSH cohort gate moved from 40% reduction / 5pp quality margin to **>=20% reduction / <=1pp
+non-inferiority**, amended before any data existed (`push.jsonl` was absent). A 5pp margin would let
+a measurably degrading compressor ship; a 40% floor would reject a genuine 25% win at zero quality
+cost. The live planner cohort preregistration is untouched.
+
+### Dropped: the server-side compaction probe
+
+Anthropic's server-side compaction is `compact_20260112` under beta header
+`context-management-2025-06-27`, and it is **Messages API only** (verified against the context
+editing docs). It is not applicable here for two independent reasons, so it is removed from the
+plan rather than deferred:
+
+1. **Membrane owns no Messages API call path.** It is a context layer for harnesses; Claude Code
+   performs its own compaction. There is no request for the parameter to ride on.
+2. **It cannot be tested on the free tier.** The ClaudeCodeX gateway routes to MiniMax and Alibaba
+   endpoints, which expose Anthropic-*compatible* APIs but cannot implement Anthropic's own
+   server-side context management. Running the probe there would prove nothing.
+
+It becomes relevant only if the studio builds a direct Messages API agent, at which point it is
+that project's decision, not this one's.
