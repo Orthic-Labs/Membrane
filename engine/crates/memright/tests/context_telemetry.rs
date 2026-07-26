@@ -143,6 +143,24 @@ fn shared_fixture_validates_and_matches_language_neutral_canonical_digest() {
 }
 
 #[test]
+fn checked_in_registry_matches_canonical_parent_workspace_registry() {
+    let local_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../lib/context-telemetry-registry.json");
+    let local = std::fs::read(&local_path).unwrap();
+    let local_sha = format!("{:x}", sha2::Sha256::digest(&local));
+    assert_eq!(
+        local_sha,
+        "9e56363c7a5c328f95b1bfaac2606278fa9f3641a75a5a632e1b75f71b028dc0"
+    );
+
+    let parent_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../../tools/lib/context-telemetry-registry.json");
+    if parent_path.is_file() {
+        assert_eq!(local, std::fs::read(parent_path).unwrap());
+    }
+}
+
+#[test]
 fn checked_in_registry_controls_provider_family_and_identity_retirement() {
     let mut extension = event("evt-extension");
     extension["provider"] = json!("ext.acme.vector");
@@ -215,7 +233,7 @@ fn latest_schema_has_content_free_ledger_tables_and_indexes() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 18);
+    assert_eq!(version, 19);
 
     for table in [
         "context_installation",
@@ -317,7 +335,7 @@ fn v11_database_upgrades_in_place_without_changing_legacy_rows() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        18
+        19
     );
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM memory_event_log", [], |row| {
@@ -404,7 +422,7 @@ fn v13_backout_and_reupgrade_preserve_ledger_rows() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        18
+        19
     );
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM context_event_log", [], |row| row

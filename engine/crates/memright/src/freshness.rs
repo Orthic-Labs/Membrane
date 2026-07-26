@@ -6,6 +6,7 @@
 //! reindex, or skills ingest assembled from different moments in time.
 
 use crate::MemoryStore;
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
@@ -534,36 +535,63 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
     fn read_epoch(&mut self) -> Result<FreshnessEpoch, String> {
         let head_commit = git_text(&self.repo_root, &["rev-parse", "HEAD"])?;
         let portable_path = self.repo_root.join(".blueprint/manifest.json");
+        let graph_db_path = self.repo_root.join(".agent/graph/graph.db");
         let graph_manifest_path = self.repo_root.join(".agent/graph/manifest.json");
         let graph_body_path = self.repo_root.join(".agent/graph/graph.json");
 
         let (manifest_digest, portable) = read_optional_json(&portable_path)?
             .map(|(bytes, value)| (Some(digest_bytes(&bytes)), Some(value)))
             .unwrap_or((None, None));
+        let graph_db = read_graph_db_metadata(&graph_db_path)?;
         let graph_manifest = read_optional_json(&graph_manifest_path)?.map(|(_, value)| value);
-        let graph_body_generation = read_graph_body_generation(&graph_body_path)?;
+        let legacy_graph_body_generation = read_graph_body_generation(&graph_body_path)?;
 
         let blueprint_generation = portable
             .as_ref()
-            .and_then(|value| json_string(value, &[&["generation", "id"], &["generationId"]]));
-        let base_commit = portable.as_ref().and_then(|value| {
-            json_string(
-                value,
-                &[
-                    &["generation", "baseCommit"],
-                    &["baseCommit"],
-                    &["repo", "baseCommit"],
-                ],
-            )
-        });
+            .and_then(|value| json_string(value, &[&["generation", "id"], &["generationId"]]))
+            .or_else(|| {
+                graph_db
+                    .as_ref()
+                    .and_then(|value| value.generation_id.clone())
+            });
+        let base_commit = portable
+            .as_ref()
+            .and_then(|value| {
+                json_string(
+                    value,
+                    &[
+                        &["generation", "baseCommit"],
+                        &["baseCommit"],
+                        &["repo", "baseCommit"],
+                    ],
+                )
+            })
+            .or_else(|| {
+                graph_db
+                    .as_ref()
+                    .and_then(|value| value.base_commit.clone())
+            });
         let graph_manifest_generation = graph_manifest
             .as_ref()
-            .and_then(|value| json_string(value, &[&["generationId"]]));
+            .and_then(|value| json_string(value, &[&["generationId"]]))
+            .or_else(|| {
+                graph_db
+                    .as_ref()
+                    .and_then(|value| value.generation_id.clone())
+            });
+        let graph_body_generation = graph_db
+            .as_ref()
+            .and_then(|value| value.generation_id.clone())
+            .or(legacy_graph_body_generation);
 
         Ok(FreshnessEpoch {
             head_commit: Some(head_commit),
             base_commit,
-            manifest_digest,
+            manifest_digest: manifest_digest.or_else(|| {
+                graph_db
+                    .as_ref()
+                    .and_then(|value| value.manifest_digest.clone())
+            }),
             blueprint_generation,
             graph_manifest_generation,
             graph_body_generation,
@@ -629,6 +657,61 @@ fn json_string(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
         }
         cursor.as_str().map(str::to_string)
     })
+}
+
+#[derive(Debug)]
+struct GraphDbMetadata {
+    manifest_digest: Option<String>,
+    generation_id: Option<String>,
+    base_commit: Option<String>,
+}
+
+fn read_graph_db_metadata(path: &Path) -> Result<Option<GraphDbMetadata>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| format!("graph database metadata unavailable: {error}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("graph database is not a regular file".to_string());
+    }
+    let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|error| format!("graph database unavailable: {error}"))?;
+    let manifest: Option<String> = connection
+        .query_row(
+            "SELECT value FROM generation WHERE key='manifest'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("graph database manifest unavailable: {error}"))?;
+    let Some(manifest) = manifest else {
+        return Ok(Some(GraphDbMetadata {
+            manifest_digest: None,
+            generation_id: None,
+            base_commit: None,
+        }));
+    };
+    let manifest_digest = Some(digest_bytes(manifest.as_bytes()));
+    let manifest: serde_json::Value = serde_json::from_str(&manifest)
+        .map_err(|_| "graph database manifest is invalid JSON".to_string())?;
+    let source_observation: Option<String> = connection
+        .query_row(
+            "SELECT value FROM generation WHERE key='sourceObservation'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("graph database source observation unavailable: {error}"))?;
+    let base_commit = source_observation
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .and_then(|value| json_string(&value, &[&["head"], &["baseCommit"]]));
+    Ok(Some(GraphDbMetadata {
+        manifest_digest,
+        generation_id: json_string(&manifest, &[&["generationId"], &["generation", "id"]]),
+        base_commit,
+    }))
 }
 
 fn read_graph_body_generation(path: &Path) -> Result<Option<String>, String> {

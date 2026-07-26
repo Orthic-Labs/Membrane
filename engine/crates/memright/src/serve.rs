@@ -2753,10 +2753,23 @@ fn route_with_context_ingest_lease(
                 );
             }
         }
-        (
-            200,
-            serde_json::to_string(&hits).unwrap_or_else(|_| "[]".into()),
-        )
+        if hits.is_empty()
+            && store.last_recall_status().as_deref() == Some("insufficient_confidence")
+        {
+            (
+                200,
+                serde_json::json!({
+                    "status": "insufficient_confidence",
+                    "hits": []
+                })
+                .to_string(),
+            )
+        } else {
+            (
+                200,
+                serde_json::to_string(&hits).unwrap_or_else(|_| "[]".into()),
+            )
+        }
     } else if method == "POST" && path == "/policy/assign" {
         let session = v
             .get("session")
@@ -4965,6 +4978,35 @@ mod tests {
             "recall: {}",
             rec.1
         );
+    }
+
+    #[test]
+    fn recall_route_returns_typed_abstention_for_a0_candidates() {
+        let db = MemDb::open_in_memory();
+        let store = MemoryStore::open(db.clone());
+        let id = store.put(
+            "untrusted",
+            "unique route authority marker",
+            "global",
+            memright_core::MemoryTier::Semantic,
+        );
+        db.lock()
+            .execute(
+                "UPDATE memories SET authority='A0' WHERE id=?1",
+                rusqlite::params![id],
+            )
+            .unwrap();
+
+        let response = route(
+            &store,
+            "POST",
+            "/recall",
+            r#"{"query":"unique route authority marker","k":3,"client":"test"}"#,
+        );
+        assert_eq!(response.0, 200);
+        let value: serde_json::Value = serde_json::from_str(&response.1).unwrap();
+        assert_eq!(value["status"], "insufficient_confidence");
+        assert_eq!(value["hits"].as_array().unwrap().len(), 0);
     }
 
     #[test]

@@ -2,6 +2,7 @@ use memright::freshness::{
     canonical_repo_root, evaluate_freshness, FreshnessEpoch, FreshnessProbe, GraphState,
     OverlayObservation,
 };
+use rusqlite::Connection;
 use serde::Deserialize;
 use std::collections::{BTreeMap, VecDeque};
 use std::path::Path;
@@ -354,6 +355,51 @@ fn filesystem_probe_binds_blueprint_to_commit_and_reports_verified_dirty_overlay
     assert_eq!(dirty.overlay_entries.len(), 1);
     assert_eq!(dirty.overlay_entries[0].path, "app.rs");
     assert!(dirty.idle_gap_ms.is_some());
+}
+
+#[test]
+fn filesystem_probe_reads_blueprint_generation_from_graph_db() {
+    let repo = tempfile::tempdir().unwrap();
+    git(repo.path(), &["init", "--quiet"]);
+    git(
+        repo.path(),
+        &["config", "user.email", "test@example.invalid"],
+    );
+    git(repo.path(), &["config", "user.name", "Test"]);
+    std::fs::write(repo.path().join("app.rs"), "fn main() {}\n").unwrap();
+    git(repo.path(), &["add", "app.rs"]);
+    git(repo.path(), &["commit", "--quiet", "-m", "fixture"]);
+    let head = git(repo.path(), &["rev-parse", "HEAD"]);
+    let generation = "xxh128:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    std::fs::create_dir_all(repo.path().join(".agent/graph")).unwrap();
+    let db_path = repo.path().join(".agent/graph/graph.db");
+    let connection = Connection::open(&db_path).unwrap();
+    connection
+        .execute_batch("CREATE TABLE generation (key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO generation(key, value) VALUES ('manifest', ?1)",
+            [serde_json::json!({"generationId": generation}).to_string()],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO generation(key, value) VALUES ('sourceObservation', ?1)",
+            [serde_json::json!({"head": head.clone(), "dirty": false}).to_string()],
+        )
+        .unwrap();
+
+    let store = memright::MemoryStore::new();
+    let clean = memright::freshness::evaluate_repository_freshness(
+        &store,
+        repo.path().canonicalize().unwrap(),
+    );
+
+    assert_eq!(clean.graph_state, GraphState::Clean);
+    assert_eq!(clean.base_commit.as_deref(), Some(head.as_str()));
+    assert_eq!(clean.blueprint_generation.as_deref(), Some(generation));
+    assert_eq!(clean.providers.blueprint.usable, true);
 }
 
 #[test]

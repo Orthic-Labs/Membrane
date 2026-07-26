@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from types import SimpleNamespace
 
 import pytest
@@ -139,3 +140,27 @@ def test_provider_passes_central_generation_to_blueprint_cli(monkeypatch, tmp_pa
     assert warnings == []
     index = observed["command"].index("--expected-generation")
     assert observed["command"][index + 1] == expected
+
+
+def test_manifest_reads_generation_envelope_from_graph_db(tmp_path):
+    graph_dir = tmp_path / ".agent" / "graph"
+    graph_dir.mkdir(parents=True)
+    with sqlite3.connect(graph_dir / "graph.db") as connection:
+        connection.execute("CREATE TABLE generation (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        connection.execute(
+            "INSERT INTO generation(key, value) VALUES (?, ?)",
+            ("manifest", json.dumps({"generationId": "generation-db"})),
+        )
+        connection.execute(
+            "INSERT INTO generation(key, value) VALUES (?, ?)",
+            ("sourceObservation", json.dumps({"head": "commit-db", "dirty": False})),
+        )
+        connection.commit()
+
+    manifest = blueprint._read_manifest(tmp_path)
+
+    assert manifest == {
+        "generationId": "generation-db",
+        "baseCommit": "commit-db",
+        "sourceState": "clean",
+    }

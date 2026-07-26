@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import sqlite3
 import shutil
 import subprocess
 import sys
@@ -76,12 +77,39 @@ def _resolve_node() -> str:
 
 
 def _read_manifest(repo_root: Path) -> dict | None:
-    """Read .agent/graph/manifest.json (the live Blueprint manifest).
+    """Read the sealed Blueprint generation, preferring the graph.db envelope.
 
-    Returns the manifest dict or None if the file is missing. The
-    provider uses only its generation identity; the central Rust
-    ``/freshness`` verdict owns all freshness classification.
+    Blueprint's current store is SQLite. JSON manifests remain a compatibility
+    fallback for older repositories. The provider uses only generation
+    identity; the central Rust ``/freshness`` verdict owns freshness
+    classification.
     """
+    graph_db = repo_root / ".agent" / "graph" / "graph.db"
+    if graph_db.exists():
+        try:
+            with sqlite3.connect(
+                f"{graph_db.as_uri()}?mode=ro", uri=True, timeout=0.05
+            ) as connection:
+                row = connection.execute(
+                    "SELECT value FROM generation WHERE key = 'manifest'"
+                ).fetchone()
+                if row is not None:
+                    manifest = json.loads(row[0])
+                    if isinstance(manifest, dict) and manifest.get("generationId"):
+                        source = connection.execute(
+                            "SELECT value FROM generation WHERE key = 'sourceObservation'"
+                        ).fetchone()
+                        if source is not None:
+                            observation = json.loads(source[0])
+                            if isinstance(observation, dict):
+                                manifest.setdefault("baseCommit", observation.get("head"))
+                                manifest.setdefault("sourceState", "dirty" if observation.get("dirty") else "clean")
+                        return manifest
+        except (OSError, sqlite3.Error, TypeError, ValueError):
+            # A present but unreadable DB must not make the provider invent a
+            # generation. Legacy JSON is retained for older Blueprint repos.
+            pass
+
     candidates = [
         repo_root / ".agent" / "graph" / "manifest.json",
         repo_root / ".blueprint" / "manifest.json",

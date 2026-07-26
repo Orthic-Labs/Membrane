@@ -89,6 +89,7 @@
         <div class="kpi"><small>40% provider-token gate</small><strong id="goal-kpi">loading analysis…</strong></div>
         <div class="kpi"><small>provider-observed input</small><strong id="provider-kpi">loading analysis…</strong></div>
         <div class="kpi"><small>evidence / tournament</small><strong id="evidence-kpi">loading analysis…</strong></div>
+        <div class="kpi"><small>session token census</small><strong id="census-kpi">loading analysis…</strong></div>
       </div>
       <div id="learning-detail" class="empty">loading lifecycle and cohort detail…</div>
     </section>
@@ -307,7 +308,7 @@ async function activity() {
 const n = value => Number(value || 0).toLocaleString();
 async function analysis() {
   try {
-    const report = await api('/analysis'), goal = report.goal || {}, providers = report.provider_tokens || {};
+    const report = await api('/analysis'), goal = report.goal || {}, providers = report.provider_tokens || {}, census = report.context_token_census || {};
     if (report.error) throw new Error(report.error);
     const totals = Object.values(providers).reduce((sum,row)=>({non:sum.non+(row.non_cached_input_tokens||0),cached:sum.cached+(row.cached_input_tokens||0)}),{non:0,cached:0});
     $('#goal-kpi').textContent = goal.measured_reduction_pct == null
@@ -316,13 +317,16 @@ async function analysis() {
     $('#provider-kpi').textContent = `${n(totals.non)} non-cached · ${n(totals.cached)} cached`;
     const evidence=report.promotion_evidence||{};
     $('#evidence-kpi').textContent = `${n(evidence.total)}/${n(evidence.target||200)} rows · ${evidence.tournament_decision||evidence.status||'collecting'}`;
+    $('#census-kpi').textContent = census.availability === 'observed'
+      ? `${n(census.known_row_count)}/${n(census.row_count)} known · ${census.priced_cost_usd == null ? '$ unavailable' : '$' + census.priced_cost_usd}`
+      : 'unavailable';
     const memory=report.memright||{}, diagnostics=report.diagnostics||{}, lifecycle=memory.lifecycle||{};
     const cohortRows=[];for(const [surface,groups] of Object.entries(report.cohorts||{}))for(const [cohort,row] of Object.entries(groups||{})){
       const q=row.quality||{};cohortRows.push(`<tr><td>${surface}/${cohort}</td><td class="n">${n(row.matched_sessions)}/${n(row.assigned_sessions)}</td><td class="n">${n(q.clean_completed)}/${n(q.completed)}</td><td class="n">${n(q.aborted)}</td><td class="n">${n(q.unrecovered_tool_error_turns)}</td></tr>`);}
     const lifecycleRows=Object.entries(lifecycle.by_surface||{}).map(([surface,events])=>`<tr><td>${surface}</td><td colspan="4">${Object.entries(events).map(([kind,count])=>`${kind} ${n(count)}`).join(' · ')}</td></tr>`);
     $('#learning-detail').classList.remove('empty');
     $('#learning-detail').innerHTML=`<table><tr><th>surface/cohort</th><th class="n">matched/assigned</th><th class="n">clean/completed</th><th class="n">aborted</th><th class="n">unresolved errors</th></tr>${cohortRows.join('')||'<tr><td colspan="5">fresh cohorts not collected yet</td></tr>'}${lifecycleRows.join('')}</table><div class="graph-foot"><span>memories <b>${n(diagnostics.memory_count||memory.memory_count)}</b></span><span>never injected <b>${n(diagnostics.never_injected||memory.never_injected)}</b></span><span>injected, never fetched <b>${n(diagnostics.injected_never_fetched||memory.injected_never_fetched)}</b></span><span>lifecycle <b>${lifecycle.available?'schema v6':'unavailable'}</b></span></div>`;
-  } catch { $('#goal-kpi').textContent='analysis unavailable';$('#provider-kpi').textContent='analysis unavailable';$('#evidence-kpi').textContent='analysis unavailable';$('#learning-detail').textContent='Run the daily analyzer to populate private KPI detail.'; }
+  } catch { $('#goal-kpi').textContent='analysis unavailable';$('#provider-kpi').textContent='analysis unavailable';$('#evidence-kpi').textContent='analysis unavailable';$('#census-kpi').textContent='analysis unavailable';$('#learning-detail').textContent='Run the daily analyzer to populate private KPI detail.'; }
 }
 
 let graphRows = [], graphModel = null, graphFilter = 'all', graphAnimation = 0;

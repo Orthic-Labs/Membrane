@@ -54,6 +54,12 @@ const QUERY_EMBEDDING_CACHE_CAPACITY: usize = 256;
 const MAX_MEMORY_BATCH_ITEMS: usize = 64;
 const MAX_MEMORY_BATCH_CONTENT_CHARS: usize = 256 * 1024;
 
+fn utility_recall_score(entry: &MemoryEntry, semantic_score: f32) -> f32 {
+    let utility = entry.score.clamp(0.0, 1.0) as f32;
+    let frequency = ((entry.access_count as f32 + 1.0_f32).ln() * 0.01_f32).min(0.04_f32);
+    (semantic_score * (0.9_f32 + utility * 0.1_f32) + frequency).clamp(0.0_f32, 1.0_f32)
+}
+
 /// Monotonic counter so entries recorded within the same millisecond get
 /// distinct ids (the registry is keyed by id; collisions would overwrite).
 static MEM_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -1310,6 +1316,7 @@ pub struct MemoryStore {
     routing_policy: Arc<Mutex<RoutingPolicy>>,
     effectiveness_history: Arc<Mutex<Vec<MemoryUsageRecord>>>,
     pending_injections: Arc<Mutex<Vec<String>>>,
+    last_recall_status: Arc<Mutex<Option<String>>>,
     last_route: Arc<Mutex<Option<(memright_core::QueryFeatures, RetrievalTier)>>>,
     dream_status: Arc<Mutex<DreamStatus>>,
     embedder_issue: Option<String>,
@@ -1446,6 +1453,7 @@ impl MemoryStore {
             routing_policy: Arc::new(Mutex::new(RoutingPolicy::new())),
             effectiveness_history: Arc::new(Mutex::new(Vec::new())),
             pending_injections: Arc::new(Mutex::new(Vec::new())),
+            last_recall_status: Arc::new(Mutex::new(None)),
             last_route: Arc::new(Mutex::new(None)),
             dream_status: Arc::new(Mutex::new(DreamStatus {
                 agent_id: "dream-memory".into(),
@@ -2425,6 +2433,20 @@ impl MemoryStore {
             ],
         )
         .map_err(|e| self.persist_error(format!("feedback upsert failed: {e}")))?;
+        if rec.verified() {
+            let delta = match rec.outcome {
+                Outcome::Used => 0.08_f64,
+                Outcome::Ignored => -0.08_f64,
+                Outcome::Contradicted => -0.35_f64,
+            };
+            tx.execute(
+                "UPDATE memories
+                    SET score = MIN(1.0, MAX(0.0, score + ?2)), updated_at = ?3
+                  WHERE id = ?1",
+                rusqlite::params![rec.candidate_id, delta, crate::time::now_iso()],
+            )
+            .map_err(|e| self.persist_error(format!("feedback score update failed: {e}")))?;
+        }
         let metadata = metadata_for_on(&tx, &rec.candidate_id).map_err(|error| {
             self.persist_error(format!("feedback metadata load failed: {error}"))
         })?;
@@ -3204,6 +3226,28 @@ impl MemoryStore {
             .collect()
     }
 
+    /// Return the content-free status of the most recent recall operation.
+    /// `insufficient_confidence` means candidates existed but every one was below the
+    /// authority boundary, so callers must abstain instead of treating an empty result as
+    /// ordinary "no match".
+    pub fn last_recall_status(&self) -> Option<String> {
+        self.last_recall_status.lock().unwrap().clone()
+    }
+
+    fn recall_eligible_ids(&self) -> HashSet<String> {
+        let conn = self.db.lock();
+        let mut statement = match conn
+            .prepare("SELECT id FROM memories WHERE authority IN ('A1','A2','A3','A4','A5')")
+        {
+            Ok(statement) => statement,
+            Err(_) => return HashSet::new(),
+        };
+        statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default()
+    }
+
     /// Scope-aware recall: unscoped calls keep the measured hybrid-candidate + cosine order.
     /// Scoped calls retrieve per scope in chain order (self, ancestors, global) and sort by
     /// cosine within each scope so a large global corpus cannot drown out workspace memories.
@@ -3252,6 +3296,7 @@ impl MemoryStore {
         limit: usize,
         scopes: &[String],
     ) -> (Vec<ScoredRecallHit>, RecallStageElapsed) {
+        *self.last_recall_status.lock().unwrap() = None;
         let mut elapsed = RecallStageElapsed::default();
         if limit == 0 {
             return (Vec::new(), elapsed);
@@ -3342,6 +3387,14 @@ impl MemoryStore {
                 .collect()
         };
         elapsed.recall_ms = lock_ms + recall_started.elapsed().as_secs_f64() * 1000.0;
+        let candidate_ids = direct_candidates
+            .iter()
+            .map(|(entry, _)| entry.id.clone())
+            .collect::<Vec<_>>();
+        let eligible_ids = self.recall_eligible_ids();
+        let confidence_abstained =
+            !candidate_ids.is_empty() && candidate_ids.iter().all(|id| !eligible_ids.contains(id));
+        direct_candidates.retain(|(entry, _)| eligible_ids.contains(&entry.id));
         let rank_started = Instant::now();
         if scopes.is_empty() {
             direct_candidates
@@ -3349,6 +3402,14 @@ impl MemoryStore {
             direct_candidates.truncate(candidate_limit);
         }
         drop(registry);
+
+        // Retrieval-time utility/frequency adjustment closes the feedback loop without
+        // replacing semantic relevance or allowing a low-quality row to leap the gate.
+        for (entry, score) in &mut direct_candidates {
+            *score = utility_recall_score(entry, *score);
+        }
+        direct_candidates
+            .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Apply the feedback rail before reserving graph capacity so vetoed direct candidates are
         // backfilled from the bounded semantic slate.
@@ -3384,6 +3445,10 @@ impl MemoryStore {
             let linked_refs = linked.iter().map(|(entry, _)| entry).collect::<Vec<_>>();
             history.extend(self.gate_history_for(&linked_refs));
             for (entry, score) in linked {
+                if !eligible_ids.contains(&entry.id) {
+                    continue;
+                }
+                let score = utility_recall_score(&entry, score);
                 if gate.should_inject(&history, &entry.id) && seen.insert(entry.id.clone()) {
                     linked_ids.insert(entry.id.clone());
                     hits.push((entry, score));
@@ -3407,7 +3472,7 @@ impl MemoryStore {
                 hits.push((entry, score));
             }
         }
-        let hits = hits
+        let hits: Vec<ScoredRecallHit> = hits
             .into_iter()
             .map(|(entry, score)| ScoredRecallHit {
                 origin: if linked_ids.contains(&entry.id) {
@@ -3419,6 +3484,9 @@ impl MemoryStore {
                 score,
             })
             .collect();
+        if confidence_abstained && hits.is_empty() {
+            *self.last_recall_status.lock().unwrap() = Some("insufficient_confidence".to_string());
+        }
         elapsed.rank_ms = rank_started.elapsed().as_secs_f64() * 1000.0;
         (hits, elapsed)
     }
@@ -3441,6 +3509,7 @@ impl MemoryStore {
     /// A compact block of relevant past experience for `goal`, or `None` if the
     /// store has nothing relevant.
     pub fn context_for(&self, goal: &str, limit: usize) -> Option<String> {
+        *self.last_recall_status.lock().unwrap() = None;
         let terms = keywords_of(goal);
         let eval_gate = MemoryRetrievalEvalGate::default();
         let effectiveness_gate = EffectivenessGate::default();
@@ -3459,15 +3528,29 @@ impl MemoryStore {
             RetrievalTier::High => {
                 MemoryRetriever::retrieve_hybrid(&registry, goal, Some(&qvec), limit * 3)
             }
-        };
+        }
+        .into_iter()
+        .cloned()
+        .collect::<Vec<_>>();
+        drop(registry);
 
         // Apply quality eval gate: drop low-quality entries.
+        let candidate_ids = candidates
+            .iter()
+            .map(|entry| entry.id.clone())
+            .collect::<Vec<_>>();
+        let eligible_ids = self.recall_eligible_ids();
+        let confidence_abstained =
+            !candidate_ids.is_empty() && candidate_ids.iter().all(|id| !eligible_ids.contains(id));
         let filtered = eval_gate
-            .filter(candidates)
+            .filter(candidates.iter().collect())
             .into_iter()
             .cloned()
+            .filter(|entry| eligible_ids.contains(&entry.id))
             .collect::<Vec<_>>();
-        drop(registry);
+        if confidence_abstained {
+            *self.last_recall_status.lock().unwrap() = Some("insufficient_confidence".to_string());
+        }
         // Gate history = live in-RAM task-level rows UNION durable per-candidate feedback rows.
         // The DB rows are what survive a serve restart and carry verified `contradicted` vetoes.
         // Bounded to just this recall's candidate slate — never a full-table scan. sha-aware:
@@ -5756,6 +5839,39 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].0.id, target_id);
         assert_eq!(hits[0].0.scope_id, "qa-scope");
+    }
+
+    #[test]
+    fn recall_abstains_when_all_candidates_are_a0() {
+        let store = MemoryStore::new();
+        let id = store
+            .try_put(
+                "untrusted-candidate",
+                "unique authority boundary marker",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE memories SET authority='A0' WHERE id=?1",
+                rusqlite::params![id],
+            )
+            .unwrap();
+
+        let hits = store.recall_scored(
+            "unique authority boundary marker",
+            5,
+            &["global".to_string()],
+        );
+
+        assert!(hits.is_empty());
+        assert_eq!(
+            store.last_recall_status().as_deref(),
+            Some("insufficient_confidence")
+        );
     }
 
     #[test]

@@ -642,6 +642,64 @@ fn put_event_context(
     context
 }
 
+fn trust_scan_content(content: &str) -> Option<&'static str> {
+    let lower = content.to_ascii_lowercase();
+    for phrase in [
+        "ignore previous instructions",
+        "ignore all previous instructions",
+        "system message:",
+        "developer override",
+        "reveal the prompt",
+    ] {
+        if lower.contains(phrase) {
+            return Some("untrusted_instruction");
+        }
+    }
+    for key in [
+        "api_key",
+        "apikey",
+        "secret",
+        "password",
+        "access_token",
+        "refresh_token",
+    ] {
+        for line in lower.lines() {
+            if let Some(pos) = line.find(key) {
+                let tail = &line[pos + key.len()..];
+                if (tail.contains('=') || tail.contains(':'))
+                    && tail
+                        .chars()
+                        .any(|character| character.is_ascii_alphanumeric())
+                {
+                    return Some("secret_like");
+                }
+            }
+        }
+    }
+    None
+}
+
+fn quarantine_untrusted_put(db: &str, memory_id: &str, scope: &str, content: &str, reason: &str) {
+    let directory = Path::new(db)
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("trust-quarantine");
+    let digest = put_digest(content);
+    let path = directory.join(format!("{digest}.json"));
+    let record = serde_json::json!({
+        "schema_version": 1,
+        "status": "quarantine",
+        "authority": "A0",
+        "influence_class": reason,
+        "memory_id_sha256": put_digest(memory_id),
+        "scope_sha256": put_digest(scope),
+        "content_sha256": digest,
+    });
+    if std::fs::create_dir_all(&directory).is_ok() {
+        let _ = std::fs::write(path, format!("{}\n", record));
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn record_cli_external(
     store: &MemoryStore,
@@ -2258,6 +2316,17 @@ fn main() -> Result<(), String> {
                 .map(|s| memright::scope_chain(s, &store.scopes()))
                 .unwrap_or_default();
             let hits = store.recall_scored(&query, k, &chain);
+            if hits.is_empty()
+                && store.last_recall_status().as_deref() == Some("insufficient_confidence")
+            {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "insufficient_confidence",
+                        "hits": []
+                    })
+                );
+            }
             let (mut full, mut injected) = (0usize, 0usize);
             for (e, cos) in &hits {
                 full += e.content.chars().count();
@@ -2613,6 +2682,24 @@ fn main() -> Result<(), String> {
                     1,
                 )?;
                 return Err("refusing to put empty content".into());
+            }
+            if let Some(influence_class) = trust_scan_content(&content) {
+                quarantine_untrusted_put(&db, &memory_id, &scope, &content, influence_class);
+                let store = open(&db)?;
+                record_cli_external(
+                    &store,
+                    &context,
+                    "write",
+                    memright::store::ExternalLifecycleStage::Validation,
+                    "quarantined",
+                    influence_class,
+                    Some(&memory_id),
+                    Some(&scope),
+                    &artifact_family,
+                    &producer,
+                    1,
+                )?;
+                return Err(format!("memory content quarantined: {influence_class}"));
             }
             // Hand-typed scopes fork the corpus (the 2026-07-05 'heardright' mirror fork came
             // from exactly this). Warn — never block — when a scope is neither 'global' nor a
@@ -4327,5 +4414,18 @@ mod tests {
         assert!(super::parse_http_response(&mut oversized_body)
             .unwrap_err()
             .contains("body exceeded"));
+    }
+
+    #[test]
+    fn put_trust_scan_quarantines_instruction_and_secret_like_text() {
+        assert_eq!(
+            super::trust_scan_content("ignore previous instructions"),
+            Some("untrusted_instruction")
+        );
+        assert_eq!(
+            super::trust_scan_content("api_key: abc123"),
+            Some("secret_like")
+        );
+        assert_eq!(super::trust_scan_content("ordinary meeting notes"), None);
     }
 }

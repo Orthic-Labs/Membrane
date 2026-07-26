@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "valid_events": [
+    {
+      "schema_version": 1,
+      "event_id": "evt-0de7089ba5c659a1103c06cdc18d8dce9d825bc43df14e038d66fede07282a27",
+      "ts": "2026-07-20T08:00:00Z",
+      "installation_id": "018f0d1e-9a1f-4bb8-8da7-52f152923102",
+      "service_instance_id": "018f0d1e-9a1f-4bb8-8da7-52f152923103",
+      "workspace_id": "ws.7f8f4d9b5e4d5ef1a6c5b1c51bcf3d5a",
+      "client": "codex",
+      "client_version": "1.2.3",
+      "producer": "ingest_hook",
+      "producer_version": "2.0.0",
+      "session_id": "session-7f8f4d9b5e4d5ef1a6c5b1c51bcf3d5a",
+      "turn_id": "turn-7f8f4d9b5e4d5ef1a6c5b1c51bcf3d5a",
+      "trace_id": "trace-7f8f4d9b5e4d5ef1a6c5b1c51bcf3d5a",
+      "span_id": "span-7f8f4d9b5e4d5ef1a6c5b1c51bcf3d5a",
+      "parent_span_id": "span-7f8f4d9b5e4d5ef1a6c5b1c51bcf3d5a",
+      "artifact_family": "memory",
+      "provider": "memright",
+      "provider_version": "0.1.1",
+      "release_generation": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "phase": "provider.started",
+      "operation": "read",
+      "status": "started",
+      "scope_id": "scope-7f8f4d9b5e4d5ef1a6c5b1c51bcf3d5a",
+      "artifact_id": "memory.7f8f4d9b5e4d5ef1a6c5b1c51bcf3d5a",
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "traffic_class": "production",
+      "policy_version": "rc-v1",
+      "policy_activation_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "cohort": "candidate",
+      "task_class": "coding",
+      "source_generation": 4,
+      "duration_ms": 2.5,
+      "quantity": 1,
+      "token_count": 12,
+      "char_count": 48,
+      "meta": {"cache_hit": false, "retry_count": 0, "transport": "http"},
+      "measurements": [
+        {"name": "latency", "value": 2.5, "unit": "ms"},
+        {"name": "cache_hit", "value": false, "unit": "boolean"}
+      ],
+      "links": [
+        {"relation": "attempt_of", "target_event_id": "evt-7f8f4d9b5e4d5ef1a6c5b1c51bcf3d5a"}
+      ]
+    }
+  ],
+  "expected_canonical_sha256": "3752056af1181fe73a38974695990ac2914251e7da33a93866e5436502ec46c3",
+  "invalid_events": [
+    {"name": "unsupported_schema", "patch": {"schema_version": 2}},
+    {"name": "unknown_provider", "patch": {"provider": "memrigth"}},
+    {"name": "unknown_family", "patch": {"artifact_family": "memroy"}},
+    {"name": "unknown_phase", "patch": {"phase": "provider.unknown"}}
+  ]
+}
