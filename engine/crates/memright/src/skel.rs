@@ -8,6 +8,16 @@ use std::path::Path;
 
 use tree_sitter::{Language, Node, Parser, TreeCursor};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetSkeleton {
+    pub text: String,
+    pub input_tokens: usize,
+    pub output_tokens: usize,
+    pub budget_tokens: usize,
+    pub level: &'static str,
+    pub budget_met: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Lang {
     Rust,
@@ -172,6 +182,63 @@ pub fn skeletonize(path: &Path, src: &str) -> String {
     }
 }
 
+/// Skeletonize within a token budget, degrading predictably:
+/// signature skeleton, public signatures, then a recoverable path stub.
+pub fn skeletonize_to_budget(path: &Path, src: &str, budget_tokens: usize) -> BudgetSkeleton {
+    let input_tokens = crate::compress::estimate_tokens(src);
+    let signature = skeletonize(path, src);
+    if crate::compress::estimate_tokens(&signature) <= budget_tokens {
+        return budget_result(signature, input_tokens, budget_tokens, "signature");
+    }
+
+    let public = signature
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            trimmed.starts_with("pub ")
+                || trimmed.starts_with("pub(")
+                || trimmed.starts_with("export ")
+                || trimmed.starts_with("public ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    if !public.is_empty() && crate::compress::estimate_tokens(&public) <= budget_tokens {
+        return budget_result(public, input_tokens, budget_tokens, "public-signature");
+    }
+
+    let comment = if matches!(
+        path.extension().and_then(|x| x.to_str()),
+        Some("py") | Some("sh") | Some("bash")
+    ) {
+        '#'
+    } else {
+        '/'
+    };
+    let stub = if comment == '#' {
+        format!("# memright: {} elided; retrieve original", path.display())
+    } else {
+        format!("// memright: {} elided; retrieve original", path.display())
+    };
+    budget_result(stub, input_tokens, budget_tokens, "path-stub")
+}
+
+fn budget_result(
+    text: String,
+    input_tokens: usize,
+    budget_tokens: usize,
+    level: &'static str,
+) -> BudgetSkeleton {
+    let output_tokens = crate::compress::estimate_tokens(&text);
+    BudgetSkeleton {
+        text,
+        input_tokens,
+        output_tokens,
+        budget_tokens,
+        level,
+        budget_met: output_tokens <= budget_tokens,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -253,5 +320,14 @@ const arrow = (x) => x * 2;\n";
         // Empty input → empty output (or passthrough of "" which is also empty).
         // The key invariant is no panic and a non-broken String return.
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn budget_skeleton_degrades_to_path_stub() {
+        let src = "fn private_implementation_with_many_arguments(alpha: String, beta: String, gamma: String) { todo!() }";
+        let out = skeletonize_to_budget(Path::new("src/internal.rs"), src, 1);
+        assert_eq!(out.level, "path-stub");
+        assert!(out.text.contains("src/internal.rs"));
+        assert!(!out.budget_met, "stub cannot fit one token");
     }
 }

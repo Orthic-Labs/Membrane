@@ -23,11 +23,291 @@
 //! 677MB ONNX model so CI catches structural regressions even when the parity
 //! test (which needs the model) is skipped.
 
+use serde::Serialize;
+
 /// Compress prose, keeping approximately `rate` (0.0–1.0) of the original.
 ///
 /// `rate` is the fraction to KEEP (workspace parity), not a "ratio to drop".
 pub fn compress(text: &str, rate: f32) -> String {
     compress_with_options(text, rate, false)
+}
+
+/// Result of a budget-targeted compression attempt.
+///
+/// `budget_met` is false only when protected spans alone exceed the requested
+/// budget. Callers must surface that state instead of silently dropping them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BudgetCompression {
+    pub text: String,
+    pub input_tokens: usize,
+    pub output_tokens: usize,
+    pub budget_tokens: usize,
+    pub protected_tokens: usize,
+    pub budget_met: bool,
+}
+
+/// Content-free accounting for material removed by a transform.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DropManifest {
+    pub dropped_identifiers: usize,
+    pub dropped_error_lines: usize,
+    pub dropped_numeric_literals: usize,
+    pub kept_identifier_ratio_milli: usize,
+    pub risk: &'static str,
+}
+
+/// Compare source and output with cheap, deterministic classes suitable for
+/// telemetry. It never stores source content in a manifest or event.
+pub fn drop_manifest(before: &str, after: &str) -> DropManifest {
+    let before_identifiers = identifier_count(before);
+    let after_identifiers = identifier_count(after);
+    let dropped_identifiers = before_identifiers.saturating_sub(after_identifiers);
+    let dropped_error_lines = error_line_count(before).saturating_sub(error_line_count(after));
+    let dropped_numeric_literals =
+        numeric_literal_count(before).saturating_sub(numeric_literal_count(after));
+    let kept_identifier_ratio_milli = if before_identifiers == 0 {
+        1_000
+    } else {
+        after_identifiers.min(before_identifiers) * 1_000 / before_identifiers
+    };
+    let risk = if dropped_identifiers > 0 || dropped_error_lines > 0 {
+        "high"
+    } else if dropped_numeric_literals > 0 {
+        "medium"
+    } else {
+        "low"
+    };
+    DropManifest {
+        dropped_identifiers,
+        dropped_error_lines,
+        dropped_numeric_literals,
+        kept_identifier_ratio_milli,
+        risk,
+    }
+}
+
+/// Compact, content-free metadata value for `transform_log.meta`.
+pub fn drop_manifest_meta(manifest: &DropManifest) -> String {
+    format!(
+        "dropped_identifiers={};dropped_error_lines={};dropped_numeric_literals={};kept_identifier_ratio_milli={};risk={}",
+        manifest.dropped_identifiers,
+        manifest.dropped_error_lines,
+        manifest.dropped_numeric_literals,
+        manifest.kept_identifier_ratio_milli,
+        manifest.risk,
+    )
+}
+
+fn identifier_count(text: &str) -> usize {
+    text.split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+        .filter(|token| {
+            token.contains('_')
+                || token
+                    .chars()
+                    .skip(1)
+                    .any(|character| character.is_ascii_uppercase())
+        })
+        .count()
+        + text.match_indices("::").count()
+}
+
+fn numeric_literal_count(text: &str) -> usize {
+    text.split(|c: char| !c.is_ascii_alphanumeric() && c != '.' && c != '-')
+        .filter(|token| token.chars().any(|character| character.is_ascii_digit()))
+        .count()
+}
+
+fn error_line_count(text: &str) -> usize {
+    text.lines()
+        .filter(|line| {
+            let lower = line.to_ascii_lowercase();
+            [
+                "error",
+                "exception",
+                "panic",
+                "traceback",
+                "failed",
+                "failure",
+            ]
+            .iter()
+            .any(|needle| lower.contains(needle))
+        })
+        .count()
+}
+
+/// Stable lexical token estimate used by budget routing and telemetry.
+///
+/// This deliberately counts word-like spans instead of characters, so a
+/// budget cannot be defeated by whitespace. The ONNX path may select content,
+/// but this accounting remains available when its large model assets are not.
+pub fn estimate_tokens(text: &str) -> usize {
+    text.split_whitespace().count()
+}
+
+/// Compress prose to a token budget while preserving safety-critical lines.
+///
+/// The legacy rate API stays byte-for-byte independent. New callers use this
+/// path so identifiers, error traces, paths, URLs, numeric literals, negation,
+/// and fenced code never disappear merely to satisfy a target. If those spans
+/// exceed `budget_tokens`, their exact source is returned with `budget_met`
+/// false; dropping them is not an allowed fallback.
+pub fn compress_to_budget(text: &str, budget_tokens: usize) -> BudgetCompression {
+    compress_to_budget_with_options(text, budget_tokens, false)
+}
+
+/// [`compress_to_budget`] with an explicit ONNX opt-out for deterministic
+/// hooks and tests.
+pub fn compress_to_budget_with_options(
+    text: &str,
+    budget_tokens: usize,
+    no_onnx: bool,
+) -> BudgetCompression {
+    let input_tokens = estimate_tokens(text);
+    let mut lines = Vec::new();
+    let mut protected = String::new();
+    let mut in_fence = false;
+
+    for line in text.split_inclusive('\n') {
+        let is_fence = line.trim_start().starts_with("```") || line.trim_start().starts_with("~~~");
+        let keep = in_fence || is_fence || protected_line(line);
+        if keep {
+            protected.push_str(line);
+        }
+        lines.push((line, keep));
+        if is_fence {
+            in_fence = !in_fence;
+        }
+    }
+    // `split_inclusive` omits no content, including an empty final segment.
+    let protected_tokens = estimate_tokens(&protected);
+    if protected_tokens > budget_tokens {
+        return BudgetCompression {
+            text: text.to_string(),
+            input_tokens,
+            output_tokens: input_tokens,
+            budget_tokens,
+            protected_tokens,
+            budget_met: false,
+        };
+    }
+
+    let ordinary_tokens = lines
+        .iter()
+        .filter(|(_, keep)| !keep)
+        .map(|(line, _)| estimate_tokens(line))
+        .sum::<usize>();
+    let ordinary_budget = budget_tokens.saturating_sub(protected_tokens);
+    let mut out = String::with_capacity(text.len());
+    let mut remaining_budget = ordinary_budget;
+    let mut remaining_tokens = ordinary_tokens;
+    for (line, keep) in lines {
+        if keep {
+            out.push_str(line);
+            continue;
+        }
+        let line_tokens = estimate_tokens(line);
+        let line_budget = if remaining_tokens == 0 {
+            0
+        } else {
+            (remaining_budget * line_tokens + remaining_tokens - 1) / remaining_tokens
+        };
+        if line_budget >= line_tokens {
+            out.push_str(line);
+        } else {
+            let rate = if line_tokens == 0 {
+                0.0
+            } else {
+                line_budget as f32 / line_tokens as f32
+            };
+            out.push_str(&truncate_to_tokens(
+                &compress_with_options(line, rate, no_onnx),
+                line_budget,
+            ));
+        }
+        remaining_budget = remaining_budget.saturating_sub(line_budget);
+        remaining_tokens = remaining_tokens.saturating_sub(line_tokens);
+    }
+    if text.is_empty() {
+        out.clear();
+    }
+    let output_tokens = estimate_tokens(&out);
+    BudgetCompression {
+        text: out,
+        input_tokens,
+        output_tokens,
+        budget_tokens,
+        protected_tokens,
+        budget_met: output_tokens <= budget_tokens,
+    }
+}
+
+fn truncate_to_tokens(text: &str, budget: usize) -> String {
+    if budget == 0 {
+        return String::new();
+    }
+    let mut words = 0usize;
+    let mut in_word = false;
+    for (idx, c) in text.char_indices() {
+        if c.is_whitespace() {
+            in_word = false;
+            continue;
+        }
+        if !in_word {
+            words += 1;
+            if words > budget {
+                return text[..idx].trim_end().to_string();
+            }
+            in_word = true;
+        }
+    }
+    text.to_string()
+}
+
+fn protected_line(line: &str) -> bool {
+    let lower = line.to_ascii_lowercase();
+    let error = [
+        "error",
+        "exception",
+        "panic",
+        "traceback",
+        "failed",
+        "failure",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle));
+    let negation = [
+        " not ",
+        " never ",
+        " cannot ",
+        " can't ",
+        " don't ",
+        " doesn't ",
+        " without ",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+        || lower.starts_with("no ")
+        || lower.starts_with("not ");
+    let identifier = line.contains("::")
+        || line.contains('_')
+        || line.chars().any(|c| c.is_ascii_digit())
+        || line
+            .split_whitespace()
+            .any(|word| word.chars().skip(1).any(|c| c.is_ascii_uppercase()));
+    let path_or_url = line.contains("://")
+        || line.split_whitespace().any(|word| {
+            word.starts_with('/')
+                || word.starts_with("./")
+                || word.contains("/src/")
+                || word.contains("\\\\")
+                || word.rsplit_once(':').is_some_and(|(_, suffix)| {
+                    suffix
+                        .trim_matches(|c: char| !c.is_ascii_digit())
+                        .chars()
+                        .any(|c| c.is_ascii_digit())
+                })
+        });
+    error || negation || identifier || path_or_url
 }
 
 #[cfg(feature = "llmlingua-onnx")]
@@ -397,6 +677,58 @@ mod tests {
     fn select_keep_indices_empty_input() {
         let kept = select_keep_indices(&[], &[], 0.5);
         assert!(kept.is_empty());
+    }
+
+    #[test]
+    fn budget_compression_keeps_critical_lines_exactly() {
+        let src = concat!(
+            "This ordinary prose has enough words to be shortened substantially.\n",
+            "Error: request_id=req_42 at /srv/app.rs:19 must not retry 503\n",
+            "See https://example.test/run/42 for details.\n",
+            "```rust\nlet stable_id = 9;\n```\n",
+            "More ordinary prose which should be compacted under a small budget.\n"
+        );
+        let result = compress_to_budget_with_options(src, 80, true);
+        assert!(result.budget_met, "result: {result:?}");
+        for critical in [
+            "Error: request_id=req_42 at /srv/app.rs:19 must not retry 503\n",
+            "See https://example.test/run/42 for details.\n",
+            "```rust\nlet stable_id = 9;\n```\n",
+        ] {
+            assert!(
+                result.text.contains(critical),
+                "missing {critical:?}: {}",
+                result.text
+            );
+        }
+    }
+
+    #[test]
+    fn budget_compression_reports_protected_overflow_without_dropping() {
+        let src = "Error: request_id=req_42 at /srv/app.rs:19 must not retry 503\n";
+        let result = compress_to_budget_with_options(src, 1, true);
+        assert!(!result.budget_met);
+        assert_eq!(result.text, src);
+        assert!(result.protected_tokens > result.budget_tokens);
+    }
+
+    #[test]
+    fn rate_api_remains_independent_from_budget_path() {
+        let src = "Ordinary prose remains on legacy rate semantics.";
+        assert_eq!(compress(src, 1.0), compress_with_options(src, 1.0, false));
+    }
+
+    #[test]
+    fn drop_manifest_marks_identifier_and_error_loss_high_risk() {
+        let manifest = drop_manifest(
+            "Error: request_id=req_42 failed at workerTask 503\n",
+            "summary\n",
+        );
+        assert_eq!(manifest.dropped_error_lines, 1);
+        assert!(manifest.dropped_identifiers >= 2, "{manifest:?}");
+        assert!(manifest.dropped_numeric_literals >= 1, "{manifest:?}");
+        assert_eq!(manifest.risk, "high");
+        assert!(drop_manifest_meta(&manifest).contains("risk=high"));
     }
 
     #[test]

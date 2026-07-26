@@ -5,6 +5,7 @@
 //! the full output to disk when truncated, and preserves the child exit code.
 
 use crate::truncate;
+use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -12,6 +13,7 @@ use std::process::Command;
 pub struct RuncResult {
     pub capped: String,
     pub spill_path: Option<PathBuf>,
+    pub anchor: String,
     pub exit_code: i32,
 }
 
@@ -31,6 +33,14 @@ fn default_shell_argv() -> Vec<String> {
     } else {
         vec!["sh".into(), "-c".into()]
     }
+}
+
+fn anchor_ttl_millis() -> u128 {
+    std::env::var("MEMRIGHT_ANCHOR_TTL_MS")
+        .ok()
+        .and_then(|value| value.parse::<u128>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(7 * 24 * 60 * 60 * 1_000)
 }
 
 /// Resolve the shell argv prefix used to execute `cmd`.
@@ -87,14 +97,45 @@ pub fn run_capped(
 
     let exit_code = out.status.code().unwrap_or(1);
     std::fs::create_dir_all(spill_dir).map_err(|e| format!("spill_dir create failed: {e}"))?;
-    let name = format!("runc-{}.log", crate::time::now_millis());
+    let digest = format!("{:x}", Sha256::digest(full.as_bytes()));
+    let name = format!("{digest}.log");
     let path = spill_dir.join(name);
-    std::fs::write(&path, &full).map_err(|e| format!("spill write failed: {e}"))?;
+    let temp = spill_dir.join(format!(".{digest}.{}.tmp", crate::time::now_millis()));
+    std::fs::write(&temp, &full).map_err(|e| format!("spill write failed: {e}"))?;
+    std::fs::rename(&temp, &path)
+        .or_else(|error| {
+            if path.is_file() {
+                let _ = std::fs::remove_file(&temp);
+                Ok(())
+            } else {
+                Err(error)
+            }
+        })
+        .map_err(|e| format!("spill publish failed: {e}"))?;
+    let metadata = spill_dir.join(format!("{digest}.json"));
+    let metadata_temp = spill_dir.join(format!(
+        ".{digest}.metadata.{}.tmp",
+        crate::time::now_millis()
+    ));
+    let created_at_millis = crate::time::now_millis();
+    let record = serde_json::json!({
+        "schemaVersion": 1,
+        "anchor": format!("mr://anchor/{digest}"),
+        "sha256": digest,
+        "createdAtMillis": created_at_millis,
+        "expiresAtMillis": created_at_millis.saturating_add(anchor_ttl_millis()),
+        "sizeBytes": full.len(),
+    });
+    std::fs::write(&metadata_temp, record.to_string())
+        .map_err(|e| format!("anchor metadata write failed: {e}"))?;
+    std::fs::rename(&metadata_temp, &metadata)
+        .map_err(|e| format!("anchor metadata publish failed: {e}"))?;
     let spill_path = Some(path);
 
     Ok(RuncResult {
         capped,
         spill_path,
+        anchor: format!("mr://anchor/{digest}"),
         exit_code,
     })
 }
@@ -216,6 +257,17 @@ mod tests {
         let spill_path = r.spill_path.unwrap();
         let spilled = std::fs::read_to_string(&spill_path).unwrap();
         assert_eq!(spilled.lines().count(), 100);
+        assert!(r.anchor.starts_with("mr://anchor/"));
+        assert!(spill_path
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| r.anchor.ends_with(name)));
+        let metadata: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(spill_path.with_extension("json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(metadata["anchor"], r.anchor);
+        assert!(metadata["expiresAtMillis"].as_u64() > metadata["createdAtMillis"].as_u64());
 
         let r2 = run_capped("exit 7", 3, 3, dir.path()).expect("run_capped ok");
         assert_eq!(r2.exit_code, 7);

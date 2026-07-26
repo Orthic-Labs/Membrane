@@ -210,6 +210,12 @@ fn configured_workspace_root() -> std::path::PathBuf {
         })
 }
 
+fn configured_anchor_directory() -> std::path::PathBuf {
+    std::env::var_os("MEMRIGHT_ANCHOR_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| configured_workspace_root().join("tools/.cache/runc"))
+}
+
 fn sha256_bytes(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     use sha2::Digest;
@@ -226,58 +232,107 @@ fn anchor_retrieve_response(body: &str) -> (u16, String) {
         Ok(value) => value,
         Err(response) => return response,
     };
-    let Some(repo) = value.get("repo").and_then(Value::as_str).filter(|value| !value.is_empty()) else {
+    let Some(repo) = value
+        .get("repo")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    else {
         return (400, json!({"error":"repo required"}).to_string());
     };
-    let Some(anchor) = value.get("anchor").and_then(Value::as_str).filter(|value| !value.is_empty()) else {
+    let Some(anchor) = value
+        .get("anchor")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+    else {
         return (400, json!({"error":"anchor required"}).to_string());
     };
     let max_bytes = match value.get("maxBytes") {
         None => DEFAULT_ANCHOR_RETRIEVE_BYTES,
         Some(value) => match value.as_u64().and_then(|value| usize::try_from(value).ok()) {
             Some(value) if value > 0 => value.min(MAX_ANCHOR_RETRIEVE_BYTES),
-            _ => return (400, json!({"error":"maxBytes must be a positive integer"}).to_string()),
+            _ => {
+                return (
+                    400,
+                    json!({"error":"maxBytes must be a positive integer"}).to_string(),
+                )
+            }
         },
     };
     let workspace = match configured_workspace_root().canonicalize() {
         Ok(path) => path,
-        Err(_) => return (503, json!({"error":"workspace root unavailable"}).to_string()),
+        Err(_) => {
+            return (
+                503,
+                json!({"error":"workspace root unavailable"}).to_string(),
+            )
+        }
     };
     let repo = match std::path::Path::new(repo).canonicalize() {
         Ok(path) if path.starts_with(&workspace) => path,
-        _ => return (403, json!({"error":"repo is outside configured workspace"}).to_string()),
+        _ => {
+            return (
+                403,
+                json!({"error":"repo is outside configured workspace"}).to_string(),
+            )
+        }
     };
     let requested = std::path::Path::new(anchor);
-    let file = match (if requested.is_absolute() { requested.to_path_buf() } else { repo.join(requested) }).canonicalize() {
+    let file = match (if requested.is_absolute() {
+        requested.to_path_buf()
+    } else {
+        repo.join(requested)
+    })
+    .canonicalize()
+    {
         Ok(path) if path.starts_with(&repo) => path,
         _ => return (403, json!({"error":"anchor is outside repo"}).to_string()),
     };
     let metadata = match std::fs::metadata(&file) {
         Ok(metadata) if metadata.is_file() => metadata,
-        _ => return (400, json!({"error":"anchor must resolve to a regular file"}).to_string()),
+        _ => {
+            return (
+                400,
+                json!({"error":"anchor must resolve to a regular file"}).to_string(),
+            )
+        }
     };
     let read_limit = max_bytes.saturating_add(4);
     let mut bytes = Vec::with_capacity(read_limit);
     let read_result = (|| -> std::io::Result<()> {
         use std::io::Read;
-        std::fs::File::open(&file)?.take(read_limit as u64).read_to_end(&mut bytes)?;
+        std::fs::File::open(&file)?
+            .take(read_limit as u64)
+            .read_to_end(&mut bytes)?;
         Ok(())
     })();
     if read_result.is_err() {
-        return (400, json!({"error":"anchor file could not be read"}).to_string());
+        return (
+            400,
+            json!({"error":"anchor file could not be read"}).to_string(),
+        );
     }
     let complete = metadata.len() <= read_limit as u64;
     let valid_end = match std::str::from_utf8(&bytes) {
         Ok(_) => bytes.len(),
         Err(error) if !complete && error.error_len().is_none() => error.valid_up_to(),
-        Err(_) => return (400, json!({"error":"anchor file must be valid UTF-8"}).to_string()),
+        Err(_) => {
+            return (
+                400,
+                json!({"error":"anchor file must be valid UTF-8"}).to_string(),
+            )
+        }
     };
     let content_end = valid_end.min(max_bytes);
     let content_end = std::str::from_utf8(&bytes[..content_end])
         .map_or_else(|error| error.valid_up_to(), |_| content_end);
     let content = match std::str::from_utf8(&bytes[..content_end]) {
         Ok(content) => content,
-        Err(_) => return (400, json!({"error":"anchor file must be valid UTF-8"}).to_string()),
+        Err(_) => {
+            return (
+                400,
+                json!({"error":"anchor file must be valid UTF-8"}).to_string(),
+            )
+        }
     };
     let truncated = metadata.len() > content_end as u64;
     (
@@ -289,6 +344,51 @@ fn anchor_retrieve_response(body: &str) -> (u16, String) {
             "truncated": truncated,
         })
         .to_string(),
+    )
+}
+
+fn expand_anchor_response(body: &str, anchor_directory: &std::path::Path) -> (u16, String) {
+    let value = match json_body(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let Some(anchor) = value.get("anchor").and_then(Value::as_str) else {
+        return (400, json!({"error":"anchor required"}).to_string());
+    };
+    let Some(digest) = anchor.strip_prefix("mr://anchor/") else {
+        return (400, json!({"error":"invalid anchor"}).to_string());
+    };
+    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return (400, json!({"error":"invalid anchor"}).to_string());
+    }
+    let root = match anchor_directory.canonicalize() {
+        Ok(root) => root,
+        Err(_) => return (503, json!({"error":"anchor store unavailable"}).to_string()),
+    };
+    let file = match root.join(format!("{digest}.log")).canonicalize() {
+        Ok(file) if file.starts_with(&root) && file.is_file() => file,
+        _ => return (404, json!({"error":"anchor not found"}).to_string()),
+    };
+    let metadata = file.with_extension("json");
+    if let Ok(raw) = std::fs::read_to_string(&metadata) {
+        if let Ok(value) = serde_json::from_str::<Value>(&raw) {
+            if value
+                .get("expiresAtMillis")
+                .and_then(Value::as_u64)
+                .is_some_and(|expires| expires < crate::time::now_millis() as u64)
+            {
+                return (410, json!({"error":"anchor expired"}).to_string());
+            }
+        }
+    }
+    let content = match std::fs::read_to_string(&file) {
+        Ok(content) => content,
+        Err(_) => return (400, json!({"error":"anchor unreadable"}).to_string()),
+    };
+    (
+        200,
+        json!({"anchor":anchor,"sha256":sha256_bytes(content.as_bytes()),"content":content})
+            .to_string(),
     )
 }
 
@@ -1028,6 +1128,7 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ("GET", "/livez", HttpWorkClass::General),
     ("POST", "/freshness", HttpWorkClass::General),
     ("POST", "/anchor/retrieve", HttpWorkClass::General),
+    ("POST", "/expand", HttpWorkClass::General),
     ("POST", "/skills-snapshot", HttpWorkClass::General),
     ("POST", "/v1/telemetry/events:batch", HttpWorkClass::General),
     ("POST", "/v1/memories:batch", HttpWorkClass::Model),
@@ -1984,7 +2085,12 @@ fn route(store: &MemoryStore, method: &str, url: &str, body: &str) -> (u16, Stri
 /// Service shutdown closes the worker's stdin pipe, so the worker exits on
 /// EOF even though a `static` never runs `Drop`.
 static RESIDENT_GATEWAY: std::sync::OnceLock<
-    std::sync::Mutex<Option<(std::path::PathBuf, crate::federation_worker::ResidentGateway)>>,
+    std::sync::Mutex<
+        Option<(
+            std::path::PathBuf,
+            crate::federation_worker::ResidentGateway,
+        )>,
+    >,
 > = std::sync::OnceLock::new();
 
 const FEDERATE_DEFAULT_WAIT_MS: u64 = 2_000;
@@ -2155,6 +2261,9 @@ fn route_with_context_ingest_lease(
     }
     if method == "POST" && path == "/anchor/retrieve" {
         return anchor_retrieve_response(body);
+    }
+    if method == "POST" && path == "/expand" {
+        return expand_anchor_response(body, &configured_anchor_directory());
     }
     if method == "POST" && path == "/federate" {
         return federate_route_response(body);
@@ -4461,7 +4570,8 @@ mod tests {
         assert!(html.contains("let MEMRIGHT_API_TOKEN = dashboardToken();"));
         assert!(!html.contains("__MEMRIGHT_API_TOKEN_JSON__"));
         assert!(html.contains("new URLSearchParams(location.hash.slice(1))"));
-        assert!(html.contains("history.replaceState(null, '', `${location.pathname}${location.search}`)"));
+        assert!(html
+            .contains("history.replaceState(null, '', `${location.pathname}${location.search}`)"));
         assert!(html.contains("sessionStorage.setItem(DASHBOARD_TOKEN_KEY"));
         assert!(html.contains("api('/graph')"));
         assert!(html.contains("recenterGraph"));
@@ -4602,7 +4712,9 @@ mod tests {
             .unwrap();
         assert_eq!(success.status(), StatusCode::OK);
         let payload: Value = serde_json::from_slice(
-            &axum::body::to_bytes(success.into_body(), MAX_BODY_BYTES).await.unwrap(),
+            &axum::body::to_bytes(success.into_body(), MAX_BODY_BYTES)
+                .await
+                .unwrap(),
         )
         .unwrap();
         assert_eq!(payload["path"], "note.txt");
@@ -4649,6 +4761,37 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn expand_anchor_recovers_exact_content_and_rejects_missing() {
+        let root = tempfile::tempdir().unwrap();
+        let content = "exact anchor content\n";
+        let digest = sha256_bytes(content.as_bytes());
+        std::fs::write(root.path().join(format!("{digest}.log")), content).unwrap();
+        let (status, body) = expand_anchor_response(
+            &json!({"anchor": format!("mr://anchor/{digest}")}).to_string(),
+            root.path(),
+        );
+        assert_eq!(status, 200);
+        let value: Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(value["content"], content);
+        assert_eq!(value["sha256"], digest);
+        let (status, _) = expand_anchor_response(
+            &json!({"anchor": format!("mr://anchor/{}", "0".repeat(64))}).to_string(),
+            root.path(),
+        );
+        assert_eq!(status, 404);
+        std::fs::write(
+            root.path().join(format!("{digest}.json")),
+            json!({"expiresAtMillis": 1}).to_string(),
+        )
+        .unwrap();
+        let (status, _) = expand_anchor_response(
+            &json!({"anchor": format!("mr://anchor/{digest}")}).to_string(),
+            root.path(),
+        );
+        assert_eq!(status, 410);
     }
 
     #[tokio::test]
@@ -5212,14 +5355,13 @@ mod tests {
     async fn idempotency_key_reuse_with_different_put_body_conflicts() {
         use axum::http::StatusCode;
 
-        let app =
-            router_for_tests_with_policy(
-                MemoryStore::new(),
-                8765,
-                Some(TEST_API_TOKEN.to_string()),
-                Duration::from_secs(1),
-                2,
-            );
+        let app = router_for_tests_with_policy(
+            MemoryStore::new(),
+            8765,
+            Some(TEST_API_TOKEN.to_string()),
+            Duration::from_secs(1),
+            2,
+        );
         let first = post_json_with_key(
             app.clone(),
             "/put",
@@ -5242,14 +5384,13 @@ mod tests {
     async fn unsupported_mutator_rejects_idempotency_key() {
         use axum::http::StatusCode;
 
-        let app =
-            router_for_tests_with_policy(
-                MemoryStore::new(),
-                8765,
-                Some(TEST_API_TOKEN.to_string()),
-                Duration::from_secs(1),
-                1,
-            );
+        let app = router_for_tests_with_policy(
+            MemoryStore::new(),
+            8765,
+            Some(TEST_API_TOKEN.to_string()),
+            Duration::from_secs(1),
+            1,
+        );
         let response = post_json_with_key(
             app,
             "/compress",

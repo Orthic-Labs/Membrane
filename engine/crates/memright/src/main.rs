@@ -361,12 +361,18 @@ enum Cmd {
     },
     /// Skeletonize a code file (signatures only).
     Skel {
+        /// Maximum lexical tokens; degrades signature -> public -> path stub.
+        #[arg(long)]
+        budget: Option<usize>,
         #[arg(long)]
         opportunity: Option<String>,
         file: PathBuf,
     },
     /// Compress prose (rate = fraction to KEEP).
     Compress {
+        /// Maximum lexical tokens. Protected spans may exceed it rather than be dropped.
+        #[arg(long)]
+        budget: Option<usize>,
         #[arg(long, default_value_t = 0.5)]
         rate: f32,
         /// Force the heuristic compressor even if `llmlingua-onnx` is enabled.
@@ -385,6 +391,9 @@ enum Cmd {
         files: Vec<PathBuf>,
         #[arg(long, default_value_t = 0.5)]
         rate: f32,
+        /// Total lexical-token target for transformed entries.
+        #[arg(long)]
+        budget: Option<usize>,
         #[arg(long, default_value_t = 800)]
         min_bytes: usize,
     },
@@ -529,6 +538,12 @@ enum Cmd {
         /// Command (captured after `--`).
         #[arg(last = true, required = true)]
         cmd: Vec<String>,
+    },
+    /// Recover an exact runc spill by its content-addressed anchor.
+    Expand {
+        anchor: String,
+        #[arg(long)]
+        spill_dir: PathBuf,
     },
     /// RightContext planner admission slice. Reads a ContextCandidateSet v1
     /// (JSON file path or stdin when omitted), runs the deterministic
@@ -2376,7 +2391,11 @@ fn main() -> Result<(), String> {
                 );
             }
         }
-        Cmd::Skel { file, opportunity } => {
+        Cmd::Skel {
+            file,
+            budget,
+            opportunity,
+        } => {
             let src = match std::fs::read_to_string(&file) {
                 Ok(src) => src,
                 Err(error) => {
@@ -2391,18 +2410,35 @@ fn main() -> Result<(), String> {
                     return Err(error.to_string());
                 }
             };
-            let out = memright::skel::skeletonize(&file, &src);
+            let (out, meta) = if let Some(budget) = budget {
+                let result = memright::skel::skeletonize_to_budget(&file, &src, budget);
+                let meta = format!(
+                    "status=ok;budget_tok={budget};output_tok={};budget_met={};level={}",
+                    result.output_tokens, result.budget_met, result.level
+                );
+                (result.text, meta)
+            } else {
+                (
+                    memright::skel::skeletonize(&file, &src),
+                    "status=ok".to_string(),
+                )
+            };
+            let drop_meta = memright::compress::drop_manifest_meta(
+                &memright::compress::drop_manifest(&src, &out),
+            );
+            let meta = format!("{meta};{drop_meta}");
             log_transform_best_effort(
                 &db,
                 "skel",
                 src.chars().count(),
                 out.chars().count(),
-                Some("status=ok"),
+                Some(&meta),
                 opportunity.as_deref(),
             );
             print!("{out}");
         }
         Cmd::Compress {
+            budget,
             rate,
             no_onnx,
             opportunity,
@@ -2430,13 +2466,30 @@ fn main() -> Result<(), String> {
                         .map_err(|e| e.to_string())?;
                 }
             }
-            let out = memright::compress::compress_with_options(&input, rate, no_onnx);
+            let (out, meta) = if let Some(budget) = budget {
+                let result =
+                    memright::compress::compress_to_budget_with_options(&input, budget, no_onnx);
+                let meta = format!(
+                    "status=ok;budget_tok={budget};output_tok={};protected_tok={};budget_met={}",
+                    result.output_tokens, result.protected_tokens, result.budget_met
+                );
+                (result.text, meta)
+            } else {
+                (
+                    memright::compress::compress_with_options(&input, rate, no_onnx),
+                    "status=ok".to_string(),
+                )
+            };
+            let drop_meta = memright::compress::drop_manifest_meta(
+                &memright::compress::drop_manifest(&input, &out),
+            );
+            let meta = format!("{meta};{drop_meta}");
             log_transform_best_effort(
                 &db,
                 "compress",
                 input.chars().count(),
                 out.chars().count(),
-                Some("status=ok"),
+                Some(&meta),
                 opportunity.as_deref(),
             );
             print!("{out}");
@@ -2445,9 +2498,11 @@ fn main() -> Result<(), String> {
             out_dir,
             files,
             rate,
+            budget,
             min_bytes,
         } => {
-            let manifest = memright::prep::prep_files(&out_dir, &files, rate, min_bytes);
+            let manifest =
+                memright::prep::prep_files_with_budget(&out_dir, &files, rate, min_bytes, budget);
             for (verb, before, after, meta) in memright::prep::transform_rows(&manifest) {
                 log_transform_best_effort(&db, &verb, before, after, meta, None);
             }
@@ -3037,8 +3092,31 @@ fn main() -> Result<(), String> {
             } else {
                 println!();
             }
+            println!("[anchor] {}", res.anchor);
             eprintln!("runc: exit={} full={spill_display}", res.exit_code);
             std::process::exit(res.exit_code);
+        }
+        Cmd::Expand { anchor, spill_dir } => {
+            let Some(digest) = anchor.strip_prefix("mr://anchor/") else {
+                return Err("invalid anchor: expected mr://anchor/<sha256>".into());
+            };
+            if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                return Err("invalid anchor digest".into());
+            }
+            let root = spill_dir
+                .canonicalize()
+                .map_err(|error| format!("anchor store unavailable: {error}"))?;
+            let file = root.join(format!("{digest}.log"));
+            let file = file
+                .canonicalize()
+                .map_err(|_| "anchor not found".to_string())?;
+            if !file.starts_with(&root) || !file.is_file() {
+                return Err("anchor not found".into());
+            }
+            print!(
+                "{}",
+                std::fs::read_to_string(file).map_err(|_| "anchor unreadable")?
+            );
         }
         Cmd::PlanContext { .. } => {
             // Handled in the early PlanContext branch above to bypass DB resolution.
@@ -3069,6 +3147,30 @@ mod tests {
             "--packet-char-budget",
             value,
         ])
+    }
+
+    #[test]
+    fn transform_cli_accepts_token_budgets() {
+        let compress =
+            super::Cli::try_parse_from(["memright", "compress", "--budget", "128", "--no-onnx"])
+                .unwrap();
+        assert!(matches!(
+            compress.cmd,
+            super::Cmd::Compress {
+                budget: Some(128),
+                no_onnx: true,
+                ..
+            }
+        ));
+        let skel = super::Cli::try_parse_from(["memright", "skel", "--budget", "64", "src/lib.rs"])
+            .unwrap();
+        assert!(matches!(
+            skel.cmd,
+            super::Cmd::Skel {
+                budget: Some(64),
+                ..
+            }
+        ));
     }
 
     fn federate_cli_with_budget(value: &str) -> Result<super::Cli, clap::Error> {

@@ -22,6 +22,10 @@ pub struct PrepEntry {
     pub before_tok: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub after_tok: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub budget_tok: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drop_manifest: Option<compress::DropManifest>,
 }
 
 fn is_code_ext(path: &Path) -> bool {
@@ -134,8 +138,31 @@ pub fn prep_files(
     rate: f32,
     min_bytes: usize,
 ) -> Vec<PrepEntry> {
+    prep_files_with_budget(out_dir, files, rate, min_bytes, None)
+}
+
+/// Budget-aware variant of [`prep_files`]. Budget is allocated proportionally
+/// across transformable files, while structured/tiny copies remain exact.
+pub fn prep_files_with_budget(
+    out_dir: &Path,
+    files: &[PathBuf],
+    rate: f32,
+    min_bytes: usize,
+    budget_tokens: Option<usize>,
+) -> Vec<PrepEntry> {
     let _ = std::fs::create_dir_all(out_dir);
     let mut out = Vec::new();
+    let eligible_tokens = files
+        .iter()
+        .filter_map(|path| {
+            let bytes = std::fs::read(path).ok()?;
+            if bytes.len() < min_bytes {
+                return None;
+            }
+            let src = String::from_utf8_lossy(&bytes).to_string();
+            (!is_structured_text(path, &src)).then(|| estimate_tokens(&src) as usize)
+        })
+        .sum::<usize>();
 
     for orig_path in files {
         let orig_str = orig_path.to_string_lossy().to_string();
@@ -150,6 +177,8 @@ pub fn prep_files(
                 after_bytes: None,
                 before_tok: None,
                 after_tok: None,
+                budget_tok: None,
+                drop_manifest: None,
             });
             continue;
         }
@@ -170,6 +199,8 @@ pub fn prep_files(
                 after_bytes: None,
                 before_tok: None,
                 after_tok: None,
+                budget_tok: None,
+                drop_manifest: None,
             });
             continue;
         }
@@ -191,6 +222,8 @@ pub fn prep_files(
                 after_bytes: Some(before_bytes),
                 before_tok: None,
                 after_tok: None,
+                budget_tok: None,
+                drop_manifest: None,
             });
             continue;
         }
@@ -199,9 +232,18 @@ pub fn prep_files(
         if is_code_ext(orig_path) {
             let name = format!("{}.skel", base_name(orig_path));
             let prepared_path = out_dir.join(&name);
-            let sk = skel::skeletonize(orig_path, &src);
+            let allotted = budget_tokens.map(|total| {
+                if eligible_tokens == 0 {
+                    0
+                } else {
+                    total * estimate_tokens(&src) as usize / eligible_tokens
+                }
+            });
+            let sk = allotted
+                .map(|budget| skel::skeletonize_to_budget(orig_path, &src, budget).text)
+                .unwrap_or_else(|| skel::skeletonize(orig_path, &src));
             let (kind, payload) = if sk.trim().is_empty() || sk == src {
-                ("skel-fallback-copy".to_string(), src)
+                ("skel-fallback-copy".to_string(), src.clone())
             } else {
                 ("skel".to_string(), sk)
             };
@@ -214,6 +256,8 @@ pub fn prep_files(
                 after_bytes: Some(payload.len() as u64),
                 before_tok: None,
                 after_tok: None,
+                budget_tok: allotted.map(|value| value as u64),
+                drop_manifest: Some(compress::drop_manifest(&src, &payload)),
             });
             continue;
         }
@@ -226,7 +270,16 @@ pub fn prep_files(
         };
         let prepared_path = out_dir.join(&name);
         let before_tok = estimate_tokens(&src);
-        let compressed = compress::compress(&src, rate);
+        let allotted = budget_tokens.map(|total| {
+            if eligible_tokens == 0 {
+                0
+            } else {
+                total * before_tok as usize / eligible_tokens
+            }
+        });
+        let compressed = allotted
+            .map(|budget| compress::compress_to_budget(&src, budget).text)
+            .unwrap_or_else(|| compress::compress(&src, rate));
         let after_tok = estimate_tokens(&compressed);
         let _ = std::fs::write(&prepared_path, &compressed);
         out.push(PrepEntry {
@@ -237,6 +290,8 @@ pub fn prep_files(
             after_bytes: None,
             before_tok: Some(before_tok),
             after_tok: Some(after_tok),
+            budget_tok: allotted.map(|value| value as u64),
+            drop_manifest: Some(compress::drop_manifest(&src, &compressed)),
         });
     }
 
@@ -310,6 +365,10 @@ mod tests {
         );
         assert!(manifest[3].before_tok.is_some());
         assert!(manifest[3].after_tok.is_some());
+        assert_eq!(
+            manifest[3].drop_manifest.as_ref().map(|value| value.risk),
+            Some("low")
+        );
     }
 
     #[test]

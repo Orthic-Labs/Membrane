@@ -331,6 +331,10 @@ pub struct BlockV1 {
     pub delivery_class: Option<DeliveryClass>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_tokens: Option<usize>,
+    /// Planner-owned transform target. `estimated_tokens` remains original
+    /// candidate size; consumers may compress to this bounded allocation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allotted_tokens: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rendered_tokens: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -372,6 +376,8 @@ pub struct ContextReceiptV2 {
     pub delivery_class: Option<DeliveryClass>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_tokens: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allotted_tokens: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rendered_tokens: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -706,6 +712,7 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
     allocations.insert("other".into(), 0);
     let mut provider_accounting: BTreeMap<String, ProviderAccountingV1> = BTreeMap::new();
     let mut blocks: Vec<BlockV1> = Vec::new();
+    let allotments = score_proportional_allotments(&admitted);
     for cand in &admitted {
         let layer_key = match cand.layer {
             3 => "3",
@@ -746,6 +753,7 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
             snapshot_id: cand.snapshot_id.clone(),
             priority: (cand.provider_score * 100.0).round() as u8,
             estimated_tokens: cand.estimated_tokens,
+            allotted_tokens: allotments.get(&cand.id).copied(),
             delivery_stage: Some(DeliveryStage::Planned),
             delivery_class: Some(delivery_class),
             selected_tokens: Some(cand.estimated_tokens),
@@ -794,13 +802,10 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
     //    content into the receipt payload.
     let mut receipts = Vec::with_capacity(decisions.len());
     for (cand, decision, reason) in decisions {
+        let admitted = decision == "admitted";
         let before_chars = cand.estimated_tokens.saturating_mul(4).max(1);
-        let admitted_chars = if decision == "admitted" {
-            before_chars
-        } else {
-            0
-        };
-        let (delivery_class, selected_tokens, drop_reason) = if decision == "admitted" {
+        let admitted_chars = if admitted { before_chars } else { 0 };
+        let (delivery_class, selected_tokens, drop_reason) = if admitted {
             let (delivery_class, drop_reason) = planner_delivery_intent(&cand);
             (delivery_class, cand.estimated_tokens, drop_reason)
         } else {
@@ -827,6 +832,9 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
             delivery_stage: Some(DeliveryStage::Planned),
             delivery_class: Some(delivery_class),
             selected_tokens: Some(selected_tokens),
+            allotted_tokens: admitted
+                .then(|| allotments.get(&cand.id).copied())
+                .flatten(),
             rendered_tokens: Some(0),
             delivered_chars: Some(0),
             drop_reason: Some(drop_reason),
@@ -937,6 +945,63 @@ fn kind_priority(cand: &CandidateV1) -> u8 {
     }
 }
 
+/// Allocate each admitted source-kind lane proportionally to non-negative
+/// retrieval score. Largest-remainder rounding is deterministic by id & never
+/// changes a lane's total admitted budget.
+fn score_proportional_allotments(candidates: &[&CandidateV1]) -> BTreeMap<String, usize> {
+    let mut by_lane: BTreeMap<&str, Vec<&CandidateV1>> = BTreeMap::new();
+    for candidate in candidates {
+        by_lane
+            .entry(candidate.source_kind.as_str())
+            .or_default()
+            .push(*candidate);
+    }
+    let mut out = BTreeMap::new();
+    for lane in by_lane.values_mut() {
+        lane.sort_by(|left, right| left.id.cmp(&right.id));
+        let total = lane
+            .iter()
+            .map(|candidate| candidate.estimated_tokens)
+            .sum::<usize>();
+        let weights = lane
+            .iter()
+            .map(|candidate| candidate.provider_score.max(0.0))
+            .collect::<Vec<_>>();
+        let weight_total = weights.iter().sum::<f64>();
+        let denominator = if weight_total > 0.0 {
+            weight_total
+        } else {
+            lane.len() as f64
+        };
+        let mut allocated = 0usize;
+        let mut fractions = Vec::new();
+        for (index, candidate) in lane.iter().enumerate() {
+            let weight = if weight_total > 0.0 {
+                weights[index]
+            } else {
+                1.0
+            };
+            let exact = total as f64 * weight / denominator;
+            let floor = exact.floor() as usize;
+            allocated += floor;
+            out.insert(candidate.id.clone(), floor);
+            fractions.push((index, exact - floor as f64));
+        }
+        fractions.sort_by(
+            |(left_index, left_fraction), (right_index, right_fraction)| {
+                right_fraction
+                    .partial_cmp(left_fraction)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(lane[*left_index].id.cmp(&lane[*right_index].id))
+            },
+        );
+        for (index, _) in fractions.into_iter().take(total.saturating_sub(allocated)) {
+            *out.entry(lane[index].id.clone()).or_default() += 1;
+        }
+    }
+    out
+}
+
 fn sha256_hex(s: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(s.as_bytes());
@@ -1030,6 +1095,19 @@ mod tests {
             candidates,
             omissions: vec![],
         }
+    }
+
+    #[test]
+    fn score_proportional_allotments_are_deterministic_and_lane_bounded() {
+        let high = candidate("memory:high", "memory", 60, 3.0, false);
+        let low = candidate("memory:low", "memory", 40, 1.0, false);
+        let skill = candidate("skill:one", "skill", 20, 1.0, false);
+        let first = score_proportional_allotments(&[&high, &low, &skill]);
+        let second = score_proportional_allotments(&[&skill, &low, &high]);
+        assert_eq!(first, second);
+        assert_eq!(first["memory:high"] + first["memory:low"], 100);
+        assert_eq!(first["skill:one"], 20);
+        assert!(first["memory:high"] > first["memory:low"]);
     }
 
     fn empty_planner_input(candidates: Vec<CandidateV1>) -> PlannerInput {
