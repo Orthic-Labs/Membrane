@@ -78,6 +78,27 @@ def _resolve_node() -> str:
     )
 
 
+def _connect_graph_db(graph_db: Path) -> sqlite3.Connection:
+    """Open the Blueprint store for reading, never writing to it.
+
+    A WAL database opened `mode=ro` needs an existing `-shm`, which a
+    read-only connection may not create. `blueprint graph build` checkpoints
+    those sidecars away, so a freshly built store is unopenable read-only and
+    the lane degraded exactly when the graph was most current. Retry with
+    `immutable=1`, which needs no shared-memory file. Read-only is tried first
+    so an existing WAL is still honoured.
+    """
+    uri = graph_db.as_uri()
+    try:
+        connection = sqlite3.connect(f"{uri}?mode=ro", uri=True, timeout=0.05)
+        # sqlite3.connect is lazy: a WAL store missing its -shm only fails on
+        # first use, so force the open here or the fallback never fires.
+        connection.execute("SELECT 1").fetchone()
+        return connection
+    except sqlite3.Error:
+        return sqlite3.connect(f"{uri}?immutable=1", uri=True, timeout=0.05)
+
+
 def _read_manifest(repo_root: Path) -> dict | None:
     """Read the sealed Blueprint generation, preferring the graph.db envelope.
 
@@ -89,9 +110,7 @@ def _read_manifest(repo_root: Path) -> dict | None:
     graph_db = repo_root / ".agent" / "graph" / "graph.db"
     if graph_db.exists():
         try:
-            with sqlite3.connect(
-                f"{graph_db.as_uri()}?mode=ro", uri=True, timeout=0.05
-            ) as connection:
+            with _connect_graph_db(graph_db) as connection:
                 row = connection.execute(
                     "SELECT value FROM generation WHERE key = 'manifest'"
                 ).fetchone()

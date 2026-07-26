@@ -666,6 +666,41 @@ struct GraphDbMetadata {
     base_commit: Option<String>,
 }
 
+/// Open a Blueprint graph store for reading without ever writing to it.
+///
+/// A WAL database opened READ_ONLY needs its `-shm` file to already exist,
+/// because a read-only connection is not allowed to create one. `blueprint
+/// graph build` checkpoints and removes the `-wal`/`-shm` sidecars when it
+/// finishes, so the store left behind by a *fresh* build cannot be opened
+/// read-only at all — the prompt path then degraded the blueprint lane with
+/// "graph database unavailable" precisely when the graph was most current.
+///
+/// Fall back to `immutable=1`, which reads the main database directly and
+/// needs no shared-memory file. Order matters: the read-only attempt comes
+/// first so that whenever sidecars DO exist we honour the WAL and observe the
+/// last committed generation rather than a pre-checkpoint main image.
+fn open_graph_db_read_only(path: &Path) -> Result<Connection, String> {
+    match Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY) {
+        Ok(connection) => Ok(connection),
+        Err(read_only_error) => {
+            let uri = format!(
+                "file:{}?immutable=1",
+                path.to_string_lossy().replace('?', "%3f").replace('#', "%23")
+            );
+            Connection::open_with_flags(
+                uri,
+                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
+            )
+            .map_err(|immutable_error| {
+                format!(
+                    "graph database unavailable: {read_only_error}; \
+                     immutable retry failed: {immutable_error}"
+                )
+            })
+        }
+    }
+}
+
 fn read_graph_db_metadata(path: &Path) -> Result<Option<GraphDbMetadata>, String> {
     if !path.exists() {
         return Ok(None);
@@ -675,8 +710,7 @@ fn read_graph_db_metadata(path: &Path) -> Result<Option<GraphDbMetadata>, String
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err("graph database is not a regular file".to_string());
     }
-    let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
-        .map_err(|error| format!("graph database unavailable: {error}"))?;
+    let connection = open_graph_db_read_only(path)?;
     let manifest: Option<String> = connection
         .query_row(
             "SELECT value FROM generation WHERE key='manifest'",

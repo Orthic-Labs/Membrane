@@ -402,6 +402,65 @@ fn filesystem_probe_reads_blueprint_generation_from_graph_db() {
     assert_eq!(clean.providers.blueprint.usable, true);
 }
 
+/// `blueprint graph build` leaves a WAL store checkpointed with its `-wal`
+/// and `-shm` sidecars removed. A READ_ONLY connection cannot create a `-shm`,
+/// so before the immutable fallback the freshest possible graph was the one
+/// the prompt path could not read at all.
+#[test]
+fn filesystem_probe_reads_a_checkpointed_wal_graph_db_without_sidecars() {
+    let repo = tempfile::tempdir().unwrap();
+    git(repo.path(), &["init", "--quiet"]);
+    git(
+        repo.path(),
+        &["config", "user.email", "test@example.invalid"],
+    );
+    git(repo.path(), &["config", "user.name", "Test"]);
+    std::fs::write(repo.path().join("app.rs"), "fn main() {}\n").unwrap();
+    git(repo.path(), &["add", "app.rs"]);
+    git(repo.path(), &["commit", "--quiet", "-m", "fixture"]);
+    let head = git(repo.path(), &["rev-parse", "HEAD"]);
+    let generation = "xxh128:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    std::fs::create_dir_all(repo.path().join(".agent/graph")).unwrap();
+    let db_path = repo.path().join(".agent/graph/graph.db");
+    {
+        let connection = Connection::open(&db_path).unwrap();
+        connection
+            .pragma_update(None, "journal_mode", "wal")
+            .unwrap();
+        connection
+            .execute_batch("CREATE TABLE generation (key TEXT PRIMARY KEY, value TEXT NOT NULL);")
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO generation(key, value) VALUES ('manifest', ?1)",
+                [serde_json::json!({"generationId": generation}).to_string()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO generation(key, value) VALUES ('sourceObservation', ?1)",
+                [serde_json::json!({"head": head.clone(), "dirty": false}).to_string()],
+            )
+            .unwrap();
+        connection
+            .pragma_update(None, "journal_mode", "delete")
+            .unwrap();
+    }
+    // The state a fresh build leaves behind: main database only.
+    assert!(!db_path.with_extension("db-shm").exists());
+    assert!(!db_path.with_extension("db-wal").exists());
+
+    let store = memright::MemoryStore::new();
+    let verdict = memright::freshness::evaluate_repository_freshness(
+        &store,
+        repo.path().canonicalize().unwrap(),
+    );
+
+    assert_eq!(verdict.blueprint_generation.as_deref(), Some(generation));
+    assert_eq!(verdict.graph_state, GraphState::Clean);
+    assert!(verdict.providers.blueprint.usable);
+}
+
 #[test]
 fn canonical_repo_root_rejects_a_sibling_escape() {
     let workspace = tempfile::tempdir().unwrap();
