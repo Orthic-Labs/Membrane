@@ -8,7 +8,8 @@
 //! content-free ContextPacket v1 plus per-candidate ContextReceipt v2.
 //!
 //! This Rust module is the dispatcher: it spawns the Python federation
-//! implementation at `tools/memright/federation/gateway.py`, parses the
+//! implementation at `engine/federation/gateway.py` (resolved by walking
+//! up from the repo through the layouts in `GATEWAY_LAYOUTS`), parses the
 //! assembled ContextCandidateSet v1, runs the existing pure-in-process
 //! planner, and prints the final planner envelope to stdout.
 //!
@@ -28,19 +29,34 @@ fn federation_session_id(session: Option<String>) -> String {
         .unwrap_or_else(|| crate::store::opaque_correlation_token("anonymous-session", "session"))
 }
 
-/// Walk up from `start` looking for a directory that contains
-/// `tools/memright/federation/gateway.py`. Returns the directory whose
-/// `tools/memright/federation/gateway.py` exists, or None.
-fn find_workspace_with_federation(start: &Path) -> Option<PathBuf> {
+/// Known gateway layouts relative to a candidate ancestor directory,
+/// preferred first. The membrane consolidation moved the gateway out of
+/// `tools/memright/`; the legacy layout stays last so older checkouts and
+/// frozen evidence hosts keep resolving.
+const GATEWAY_LAYOUTS: [&[&str]; 3] = [
+    // Parent workspace holding membrane as a nested checkout.
+    &["membrane", "engine", "federation", "gateway.py"],
+    // Standalone membrane checkout.
+    &["engine", "federation", "gateway.py"],
+    // Pre-consolidation workspace layout.
+    &["tools", "memright", "federation", "gateway.py"],
+];
+
+fn gateway_layout_path(dir: &Path, layout: &[&str]) -> PathBuf {
+    layout.iter().fold(dir.to_path_buf(), |acc, seg| acc.join(seg))
+}
+
+/// Walk up from `start` looking for the first directory holding any known
+/// federation gateway layout. Returns the gateway script path itself, not
+/// the workspace root — the two are no longer a fixed relative pair.
+fn find_federation_gateway(start: &Path) -> Option<PathBuf> {
     let mut cursor: Option<&Path> = Some(start);
     while let Some(dir) = cursor {
-        let probe = dir
-            .join("tools")
-            .join("memright")
-            .join("federation")
-            .join("gateway.py");
-        if probe.exists() {
-            return Some(dir.to_path_buf());
+        for layout in GATEWAY_LAYOUTS {
+            let probe = gateway_layout_path(dir, layout);
+            if probe.exists() {
+                return Some(probe);
+            }
         }
         cursor = dir.parent();
     }
@@ -64,31 +80,24 @@ pub fn run_federate(
     federation_script: Option<PathBuf>,
     accepted_receipt_versions: Vec<u32>,
 ) -> Result<(), String> {
-    let workspace = if federation_script.is_some() {
+    let script = match federation_script {
         // Caller supplied an explicit script — skip the walk-up entirely.
-        // The walk-up is only needed for the default resolution.
-        repo.canonicalize()
-            .ok()
-            .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-            .unwrap_or_else(|| repo.clone())
-    } else {
-        find_workspace_with_federation(&repo).ok_or_else(|| {
+        Some(explicit) => explicit,
+        None => find_federation_gateway(&repo).ok_or_else(|| {
+            let layouts = GATEWAY_LAYOUTS
+                .iter()
+                .map(|layout| layout.join("/"))
+                .collect::<Vec<_>>()
+                .join(", ");
             format!(
-                "could not locate federation gateway by walking up from {}; pass --federation-script",
+                "could not locate federation gateway by walking up from {}; probed layouts: {layouts}; pass --federation-script",
                 repo.display()
             )
-        })?
+        })?,
     };
-    let script = federation_script.unwrap_or_else(|| {
-        workspace
-            .join("tools")
-            .join("memright")
-            .join("federation")
-            .join("gateway.py")
-    });
     if !script.exists() {
         return Err(format!(
-            "federation gateway script missing at {}. Run `bash tools/setup-workspace.py` or pass --federation-script.",
+            "federation gateway script missing at {}. Run `python3 tools/setup-workspace.py` or pass --federation-script.",
             script.display()
         ));
     }
@@ -608,6 +617,56 @@ mod tests {
             .as_str()
             .unwrap()
             .starts_with("memright get "));
+    }
+
+    fn touch_gateway(root: &Path, layout: &[&str]) -> PathBuf {
+        let path = gateway_layout_path(root, layout);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"# fixture").unwrap();
+        path
+    }
+
+    #[test]
+    fn gateway_resolves_membrane_layout_by_walking_up_from_a_nested_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let expected = touch_gateway(workspace, GATEWAY_LAYOUTS[0]);
+        let nested = workspace.join("someapp").join("src");
+        std::fs::create_dir_all(&nested).unwrap();
+
+        assert_eq!(find_federation_gateway(&nested), Some(expected));
+    }
+
+    #[test]
+    fn gateway_resolves_a_standalone_membrane_checkout() {
+        let tmp = tempfile::tempdir().unwrap();
+        let expected = touch_gateway(tmp.path(), GATEWAY_LAYOUTS[1]);
+
+        assert_eq!(find_federation_gateway(tmp.path()), Some(expected));
+    }
+
+    #[test]
+    fn gateway_prefers_membrane_over_the_legacy_layout_when_both_exist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let membrane = touch_gateway(tmp.path(), GATEWAY_LAYOUTS[0]);
+        let legacy = touch_gateway(tmp.path(), GATEWAY_LAYOUTS[2]);
+        assert!(legacy.exists(), "legacy fixture must exist for the contest");
+
+        assert_eq!(find_federation_gateway(tmp.path()), Some(membrane));
+    }
+
+    #[test]
+    fn gateway_still_resolves_a_pre_consolidation_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let expected = touch_gateway(tmp.path(), GATEWAY_LAYOUTS[2]);
+
+        assert_eq!(find_federation_gateway(tmp.path()), Some(expected));
+    }
+
+    #[test]
+    fn gateway_resolution_is_none_when_no_layout_exists() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(find_federation_gateway(tmp.path()), None);
     }
 
     #[test]

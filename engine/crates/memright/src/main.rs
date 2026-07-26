@@ -562,7 +562,7 @@ enum Cmd {
     /// ContextCandidateSet objects themselves; they submit only task, repo,
     /// identity, and scope. The dispatcher is this binary. The Rust shell
     /// delegates federation work to the Python gateway at
-    /// `tools/memright/federation/gateway.py`, runs the existing deterministic
+    /// `engine/federation/gateway.py`, runs the existing deterministic
     /// in-process admission on the assembled CCS, and prints the final
     /// envelope to stdout.
     ///
@@ -590,8 +590,8 @@ enum Cmd {
         anchors: Vec<String>,
         #[arg(long)]
         scope_grant_id: Option<String>,
-        /// Override the federation Python script path. Defaults to
-        /// `<workspace>/tools/memright/federation/gateway.py`.
+        /// Override the federation Python script path. Defaults to the
+        /// first `engine/federation/gateway.py` found walking up from --repo.
         #[arg(long)]
         federation_script: Option<PathBuf>,
         /// Optional accepted receipt versions; defaults to [2].

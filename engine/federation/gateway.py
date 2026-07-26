@@ -59,7 +59,32 @@ _LANE_FAILURE_KINDS = frozenset({
     "timeout", "crash", "unavailable", "authentication", "invalid_output",
     "stale_snapshot", "generation_mismatch", "cancellation_budget_drop", "circuit_open",
 })
-_RELEASE_MANIFEST = _THIS_DIR.parents[1] / "lib" / "memright-release.json"
+def _resolve_release_manifest() -> Path:
+    """Locate tools/lib/memright-release.json across both repo layouts.
+
+    Before the membrane consolidation this script lived at
+    `tools/memright/federation/`, so `parents[1]/lib` WAS `tools/lib`. It now
+    lives at `membrane/engine/federation/`, where that same expression points
+    at a `membrane/lib` that holds no release manifest — which silently
+    degraded every packet to `release_generation_unavailable`. Probe the real
+    layouts instead of assuming a fixed depth; first hit wins.
+    """
+    override = os.environ.get("MEMRIGHT_RELEASE_MANIFEST", "").strip()
+    if override:
+        return Path(override)
+    candidates = (
+        # membrane nested inside the parent workspace
+        _THIS_DIR.parents[2] / "tools" / "lib" / "memright-release.json",
+        # pre-consolidation tools/memright layout
+        _THIS_DIR.parents[1] / "lib" / "memright-release.json",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return candidates[0]
+
+
+_RELEASE_MANIFEST = _resolve_release_manifest()
 _PRODUCTION_FANOUT_TIMEOUT_S = 0.35
 _REPLAY_FANOUT_TIMEOUT_S = 45.0
 

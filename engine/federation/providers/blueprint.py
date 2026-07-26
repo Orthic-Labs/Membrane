@@ -18,8 +18,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-BLUEPRINT_CLI_DEFAULT = (
-    Path(__file__).resolve().parents[3] / "skills" / "blueprint" / "scripts" / "blueprint.mjs"
+from . import workspace_tools_path
+
+BLUEPRINT_CLI_DEFAULT = workspace_tools_path(
+    "skills", "blueprint", "scripts", "blueprint.mjs"
 )
 BLUEPRINT_CANDIDATE_CAP_DEFAULT = 64
 

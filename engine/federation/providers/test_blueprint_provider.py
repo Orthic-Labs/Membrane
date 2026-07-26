@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from tools.memright.federation.providers import blueprint
-from tools.memright.federation.providers.blueprint import candidate_cap
+from federation.providers import blueprint
+from federation.providers.blueprint import candidate_cap
 
 
 def test_repo_code_candidate_cap_is_independent_of_large_context_budget():

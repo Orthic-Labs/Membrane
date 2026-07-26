@@ -11,7 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-from . import canonical_repository_id
+from . import canonical_repository_id, workspace_tools_path
 
 
 def _load_trust_overrides(repo_root: Path) -> dict[str, str]:
@@ -35,7 +35,7 @@ def _load_trust_overrides(repo_root: Path) -> dict[str, str]:
 
 def produce(repo_root: Path, task: str) -> tuple[list[dict], str]:
     audit_provider_path = (
-        Path(__file__).resolve().parents[3] / "skills" / "audit" / "audit_provider.py"
+        workspace_tools_path("skills", "audit", "audit_provider.py")
     )
     if not audit_provider_path.exists():
         raise FileNotFoundError(f"audit_provider.py missing at {audit_provider_path}")

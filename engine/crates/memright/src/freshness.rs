@@ -980,6 +980,8 @@ fn bounded_child_output(
 }
 
 fn hidden_command(program: &str) -> Command {
+    // `mut` is load-bearing only under `cfg(windows)` below.
+    #[allow(unused_mut)]
     let mut command = Command::new(program);
     #[cfg(windows)]
     {

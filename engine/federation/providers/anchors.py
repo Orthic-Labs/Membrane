@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import workspace_tools_path
+
 
 def produce(repo_root: Path, anchors: list[str], task: str) -> list[dict]:
     """Each anchor is treated as either a file path or a symbol."""
@@ -46,7 +48,7 @@ def produce(repo_root: Path, anchors: list[str], task: str) -> list[dict]:
         try:
             bp = os.environ.get(
                 "BLUEPRINT_CLI",
-                str(Path(__file__).resolve().parents[3] / "skills" / "blueprint" / "scripts" / "blueprint.mjs"),
+                str(workspace_tools_path("skills", "blueprint", "scripts", "blueprint.mjs")),
             )
             proc = subprocess.run(
                 [sys.executable.replace("python.exe", "node.exe"), str(bp), "graph", "resolve", anchor, "--out", ".agent"],
