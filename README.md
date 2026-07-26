@@ -1,9 +1,9 @@
 # Adapt
 
-> **TL;DR:** Adapt mines durable corrections, preferences & locked decisions from local Codex/Claude sessions, then turns only safe, scoped, evidence-linked candidates into reversible MemRight rules.
+> **TL;DR:** Adapt makes valid corrections stick across Codex/Claude sessions: it promotes only safe, scoped, evidence-linked guidance into reversible MemRight rules instead of treating every transcript line as policy.
 
-AI assistants often repeat same mistakes because useful corrections disappear with session.
-Adapt converts repeated, durable user guidance into small preference layer future agents can recall.
+AI assistants often repeat same mistakes because useful corrections disappear with session. Adapt
+converts repeated, durable user guidance into a small preference layer future agents can recall.
 
 It does **not** retrain model & does not save private chain-of-thought.
 
