@@ -216,3 +216,7 @@ Current limits:
 - lexical contradiction detection catches direct polarity conflicts, not every semantic conflict;
 - final quality depends on review/adjudication policy & source transcript quality;
 - only standing preferences qualify for always-on core; other records require relevant recall.
+
+## License
+
+Source-available proprietary software for internal use & evaluation; redistribution, repackaging & competing use are prohibited. See [LICENSE](LICENSE).
