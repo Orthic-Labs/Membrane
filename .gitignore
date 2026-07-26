@@ -15,3 +15,8 @@
 # OS noise
 .DS_Store
 __pycache__/
+
+# Blueprint-generated human docs — rewritten by every `blueprint build`,
+# so tracking them keeps the freshness overlay permanently dirty.
+docs/architecture.md
+docs/product.md
