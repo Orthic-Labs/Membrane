@@ -71,6 +71,8 @@
 <header>
   <h1>mem<b>right</b> — memory dashboard</h1>
   <div id="chips"></div>
+  <button type="button" onclick="setDashboardToken()" title="Set or clear the API token for this browser session">API token</button>
+  <span id="auth-state" class="chip">token required</span>
 </header>
 <main>
   <div id="left">
@@ -114,7 +116,43 @@
 </main>
 <script>
 const $ = s => document.querySelector(s);
-const MEMRIGHT_API_TOKEN = __MEMRIGHT_API_TOKEN_JSON__;
+const DASHBOARD_TOKEN_KEY = 'memright.dashboard.apiToken.v1';
+const normalizeDashboardToken = supplied => {
+  const token = supplied.trim();
+  return token && !/[\r\n]/.test(token) ? token : null;
+};
+const dashboardToken = () => {
+  let supplied = null;
+  if (location.hash.length > 1) {
+    try { supplied = new URLSearchParams(location.hash.slice(1)).get('token'); }
+    catch {}
+    if (supplied !== null) {
+      const token = normalizeDashboardToken(supplied);
+      history.replaceState(null, '', `${location.pathname}${location.search}`);
+      try {
+        if (token) sessionStorage.setItem(DASHBOARD_TOKEN_KEY, token);
+        else sessionStorage.removeItem(DASHBOARD_TOKEN_KEY);
+      } catch {}
+      return token;
+    }
+  }
+  try { return normalizeDashboardToken(sessionStorage.getItem(DASHBOARD_TOKEN_KEY) || ''); }
+  catch { return null; }
+};
+let MEMRIGHT_API_TOKEN = dashboardToken();
+const renderAuthState = () => { $('#auth-state').textContent = MEMRIGHT_API_TOKEN ? 'token set for this session' : 'token required'; };
+function setDashboardToken() {
+  const supplied = window.prompt('Paste the MemRight API token. Leave blank to clear this browser session.');
+  if (supplied === null) return;
+  if (/[\r\n]/.test(supplied)) return window.alert('API token must not contain a newline.');
+  MEMRIGHT_API_TOKEN = normalizeDashboardToken(supplied);
+  try {
+    if (MEMRIGHT_API_TOKEN) sessionStorage.setItem(DASHBOARD_TOKEN_KEY, MEMRIGHT_API_TOKEN);
+    else sessionStorage.removeItem(DASHBOARD_TOKEN_KEY);
+  } catch {}
+  renderAuthState();
+  chips(); browse(); activity(); analysis(); loadGraph();
+}
 const PENDING_PUTS_KEY = 'memright.pendingPuts.v1';
 const PENDING_PUTS_LOCK = 'memright.pendingPuts.v1.lock';
 const MAX_PENDING_PUTS = 64;
@@ -512,6 +550,7 @@ async function del() {
 }
 
 $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+renderAuthState();
 chips(); browse(); activity(); analysis(); loadGraph();
 setInterval(() => { chips(); activity(); analysis(); }, 10000);
 </script>

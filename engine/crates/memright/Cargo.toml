@@ -38,6 +38,7 @@ ort = { version = "=2.0.0-rc.12", optional = true, default-features = false, fea
 ort = { version = "=2.0.0-rc.12", optional = true, default-features = false, features = ["std", "api-24", "load-dynamic", "ndarray"] }
 
 [features]
+default = ["llmlingua-onnx"]
 fastembed = ["memright-core/fastembed", "dep:ort"]
 llmlingua-onnx = ["dep:tokenizers", "dep:ort"]
 

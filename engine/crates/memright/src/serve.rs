@@ -56,6 +56,8 @@ const DETAILED_HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
 const DETAILED_HEALTH_TIMEOUT: Duration = Duration::from_millis(100);
 const IDEMPOTENCY_REGISTRY_CAPACITY: usize = 1024;
 const MAX_IDEMPOTENT_RESPONSE_BYTES: usize = 32 * 1024;
+const DEFAULT_ANCHOR_RETRIEVE_BYTES: usize = 64 * 1024;
+const MAX_ANCHOR_RETRIEVE_BYTES: usize = 256 * 1024;
 const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
 const DIAGNOSTICS_WORKER_EXIT_TIMEOUT: Duration = Duration::from_millis(100);
 #[cfg(test)]
@@ -206,6 +208,88 @@ fn configured_workspace_root() -> std::path::PathBuf {
         .unwrap_or_else(|| {
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
         })
+}
+
+fn sha256_bytes(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    use sha2::Digest;
+    let mut encoded = String::with_capacity(64);
+    for byte in sha2::Sha256::digest(bytes) {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    encoded
+}
+
+fn anchor_retrieve_response(body: &str) -> (u16, String) {
+    let value = match json_body(body) {
+        Ok(value) => value,
+        Err(response) => return response,
+    };
+    let Some(repo) = value.get("repo").and_then(Value::as_str).filter(|value| !value.is_empty()) else {
+        return (400, json!({"error":"repo required"}).to_string());
+    };
+    let Some(anchor) = value.get("anchor").and_then(Value::as_str).filter(|value| !value.is_empty()) else {
+        return (400, json!({"error":"anchor required"}).to_string());
+    };
+    let max_bytes = match value.get("maxBytes") {
+        None => DEFAULT_ANCHOR_RETRIEVE_BYTES,
+        Some(value) => match value.as_u64().and_then(|value| usize::try_from(value).ok()) {
+            Some(value) if value > 0 => value.min(MAX_ANCHOR_RETRIEVE_BYTES),
+            _ => return (400, json!({"error":"maxBytes must be a positive integer"}).to_string()),
+        },
+    };
+    let workspace = match configured_workspace_root().canonicalize() {
+        Ok(path) => path,
+        Err(_) => return (503, json!({"error":"workspace root unavailable"}).to_string()),
+    };
+    let repo = match std::path::Path::new(repo).canonicalize() {
+        Ok(path) if path.starts_with(&workspace) => path,
+        _ => return (403, json!({"error":"repo is outside configured workspace"}).to_string()),
+    };
+    let requested = std::path::Path::new(anchor);
+    let file = match (if requested.is_absolute() { requested.to_path_buf() } else { repo.join(requested) }).canonicalize() {
+        Ok(path) if path.starts_with(&repo) => path,
+        _ => return (403, json!({"error":"anchor is outside repo"}).to_string()),
+    };
+    let metadata = match std::fs::metadata(&file) {
+        Ok(metadata) if metadata.is_file() => metadata,
+        _ => return (400, json!({"error":"anchor must resolve to a regular file"}).to_string()),
+    };
+    let read_limit = max_bytes.saturating_add(4);
+    let mut bytes = Vec::with_capacity(read_limit);
+    let read_result = (|| -> std::io::Result<()> {
+        use std::io::Read;
+        std::fs::File::open(&file)?.take(read_limit as u64).read_to_end(&mut bytes)?;
+        Ok(())
+    })();
+    if read_result.is_err() {
+        return (400, json!({"error":"anchor file could not be read"}).to_string());
+    }
+    let complete = metadata.len() <= read_limit as u64;
+    let valid_end = match std::str::from_utf8(&bytes) {
+        Ok(_) => bytes.len(),
+        Err(error) if !complete && error.error_len().is_none() => error.valid_up_to(),
+        Err(_) => return (400, json!({"error":"anchor file must be valid UTF-8"}).to_string()),
+    };
+    let content_end = valid_end.min(max_bytes);
+    let content_end = std::str::from_utf8(&bytes[..content_end])
+        .map_or_else(|error| error.valid_up_to(), |_| content_end);
+    let content = match std::str::from_utf8(&bytes[..content_end]) {
+        Ok(content) => content,
+        Err(_) => return (400, json!({"error":"anchor file must be valid UTF-8"}).to_string()),
+    };
+    let truncated = metadata.len() > content_end as u64;
+    (
+        200,
+        json!({
+            "path": file.strip_prefix(&repo).unwrap_or(&file).to_string_lossy(),
+            "sha256": sha256_bytes(content.as_bytes()),
+            "content": content,
+            "truncated": truncated,
+        })
+        .to_string(),
+    )
 }
 
 #[derive(Clone)]
@@ -713,20 +797,33 @@ impl Drop for WorkerExecutionGuard {
     }
 }
 
-fn configured_api_token() -> Result<Option<String>, String> {
-    if let Some(raw) = std::env::var_os("MEMRIGHT_API_TOKEN") {
+fn configured_api_token(db_path: &std::path::Path) -> Result<String, String> {
+    let fallback = db_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .join("api-token");
+    configured_api_token_from_sources(
+        std::env::var_os("MEMRIGHT_API_TOKEN"),
+        std::env::var_os("MEMRIGHT_API_TOKEN_FILE").map(std::path::PathBuf::from),
+        &fallback,
+    )
+}
+
+fn configured_api_token_from_sources(
+    raw: Option<std::ffi::OsString>,
+    configured_path: Option<std::path::PathBuf>,
+    fallback: &std::path::Path,
+) -> Result<String, String> {
+    if let Some(raw) = raw {
         let token = raw.to_string_lossy().trim().to_string();
         if token.is_empty() {
             return Err("MEMRIGHT_API_TOKEN is set but empty".to_string());
         }
         validate_api_token(&token)?;
-        return Ok(Some(token));
+        return Ok(token);
     }
-    if let Some(path) = std::env::var_os("MEMRIGHT_API_TOKEN_FILE") {
-        let path = std::path::PathBuf::from(path);
-        return token_from_file_or_create(&path).map(Some);
-    }
-    Ok(None)
+    let path = configured_path.unwrap_or_else(|| fallback.to_path_buf());
+    token_from_file_or_create(&path)
 }
 
 fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
@@ -886,7 +983,7 @@ fn origin_allowed(headers: &HeaderMap, allowed_origins: &[String]) -> bool {
 
 fn authorized(headers: &HeaderMap, expected: Option<&str>) -> bool {
     let Some(expected) = expected else {
-        return true;
+        return false;
     };
     let Some(value) = headers
         .get(header::AUTHORIZATION)
@@ -930,6 +1027,7 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ("GET", "/health", HttpWorkClass::General),
     ("GET", "/livez", HttpWorkClass::General),
     ("POST", "/freshness", HttpWorkClass::General),
+    ("POST", "/anchor/retrieve", HttpWorkClass::General),
     ("POST", "/skills-snapshot", HttpWorkClass::General),
     ("POST", "/v1/telemetry/events:batch", HttpWorkClass::General),
     ("POST", "/v1/memories:batch", HttpWorkClass::Model),
@@ -1075,9 +1173,7 @@ async fn dispatch(
         );
     }
     if method == Method::GET && matches!(path, "/" | "/index.html") {
-        let token =
-            serde_json::to_string(&state.api_token.as_deref()).unwrap_or_else(|_| "null".into());
-        let html = DASHBOARD_HTML.replace("__MEMRIGHT_API_TOKEN_JSON__", &token);
+        let html = DASHBOARD_HTML.replace("__MEMRIGHT_API_TOKEN_JSON__", "null");
         return (
             [
                 (header::CONTENT_TYPE, "text/html; charset=utf-8"),
@@ -1618,12 +1714,15 @@ fn router_for_tests_with_control(
         None,
         None,
         8765,
-        None,
+        Some(TEST_API_TOKEN.to_string()),
         request_timeout,
         max_concurrent_requests,
         Arc::clone(&control),
     );
-    (router, control)
+    (
+        router.layer(axum::middleware::from_fn(test_authorization)),
+        control,
+    )
 }
 
 #[cfg(test)]
@@ -1643,6 +1742,21 @@ fn router_for_tests_with_policy(
         request_timeout,
         max_concurrent_requests,
     )
+}
+
+#[cfg(test)]
+const TEST_API_TOKEN: &str = "test-api-token";
+
+#[cfg(test)]
+async fn test_authorization(
+    mut request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    request.headers_mut().insert(
+        header::AUTHORIZATION,
+        header::HeaderValue::from_static("Bearer test-api-token"),
+    );
+    next.run(request).await
 }
 
 /// Test-only alias so integration tests can exercise the route table without a socket.
@@ -2038,6 +2152,9 @@ fn route_with_context_ingest_lease(
     }
     if method == "GET" && path == "/analysis" {
         return analysis_response(&configured_analysis_directory());
+    }
+    if method == "POST" && path == "/anchor/retrieve" {
+        return anchor_retrieve_response(body);
     }
     if method == "POST" && path == "/federate" {
         return federate_route_response(body);
@@ -3783,7 +3900,7 @@ pub fn run(
         "memright serve on 127.0.0.1:{port} db={db_path} catalog={}",
         catalog_path.display()
     );
-    let api_token = configured_api_token()?;
+    let api_token = Some(configured_api_token(std::path::Path::new(db_path))?);
     let app = build_router(
         store,
         Some(catalog),
@@ -3847,6 +3964,7 @@ mod tests {
         app.oneshot(
             Request::post(path)
                 .header(header::CONTENT_TYPE, "application/json")
+                .header(header::AUTHORIZATION, "Bearer test-api-token")
                 .header("Idempotency-Key", key)
                 .body(Body::from(body.to_string()))
                 .unwrap(),
@@ -4339,8 +4457,12 @@ mod tests {
             .await
             .unwrap();
         let html = String::from_utf8(html.to_vec()).unwrap();
-        assert!(html.contains("top-secret"));
+        assert!(!html.contains("top-secret"));
+        assert!(html.contains("let MEMRIGHT_API_TOKEN = dashboardToken();"));
         assert!(!html.contains("__MEMRIGHT_API_TOKEN_JSON__"));
+        assert!(html.contains("new URLSearchParams(location.hash.slice(1))"));
+        assert!(html.contains("history.replaceState(null, '', `${location.pathname}${location.search}`)"));
+        assert!(html.contains("sessionStorage.setItem(DASHBOARD_TOKEN_KEY"));
         assert!(html.contains("api('/graph')"));
         assert!(html.contains("recenterGraph"));
         assert!(html.contains("api('/analysis')"));
@@ -4363,7 +4485,7 @@ mod tests {
         let app = router_for_tests_with_policy(
             MemoryStore::new(),
             8765,
-            None,
+            Some(TEST_API_TOKEN.to_string()),
             std::time::Duration::from_secs(2),
             MAX_CONCURRENT_REQUESTS,
         );
@@ -4374,6 +4496,7 @@ mod tests {
             .oneshot(
                 Request::post("/freshness")
                     .header(header::CONTENT_TYPE, "application/json")
+                    .header(header::AUTHORIZATION, "Bearer test-api-token")
                     .body(Body::from(body))
                     .unwrap(),
             )
@@ -4411,6 +4534,151 @@ mod tests {
                 0o600
             );
         }
+    }
+
+    #[tokio::test]
+    async fn router_without_a_token_rejects_private_routes() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        let app = router_for_tests_with_policy(
+            MemoryStore::new(),
+            8765,
+            None,
+            Duration::from_secs(1),
+            MAX_CONCURRENT_REQUESTS,
+        );
+        let response = app
+            .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn anchor_retrieve_is_authenticated_and_confined_to_workspace_repo() {
+        use axum::body::Body;
+        use axum::http::{header, Request, StatusCode};
+        use tower::ServiceExt;
+
+        let workspace = configured_workspace_root().canonicalize().unwrap();
+        let repo = tempfile::Builder::new()
+            .prefix("anchor-retrieve-")
+            .tempdir_in(&workspace)
+            .unwrap();
+        std::fs::write(repo.path().join("note.txt"), "anchored content\n").unwrap();
+        let app = router_for_tests_with_policy(
+            MemoryStore::new(),
+            8765,
+            Some(TEST_API_TOKEN.to_string()),
+            Duration::from_secs(1),
+            MAX_CONCURRENT_REQUESTS,
+        );
+        let body = json!({"repo": repo.path(), "anchor": "note.txt", "maxBytes": 1024}).to_string();
+
+        let unauthenticated = app
+            .clone()
+            .oneshot(
+                Request::post("/anchor/retrieve")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(unauthenticated.status(), StatusCode::UNAUTHORIZED);
+
+        let success = app
+            .clone()
+            .oneshot(
+                Request::post("/anchor/retrieve")
+                    .header(header::AUTHORIZATION, "Bearer test-api-token")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(success.status(), StatusCode::OK);
+        let payload: Value = serde_json::from_slice(
+            &axum::body::to_bytes(success.into_body(), MAX_BODY_BYTES).await.unwrap(),
+        )
+        .unwrap();
+        assert_eq!(payload["path"], "note.txt");
+        assert_eq!(payload["content"], "anchored content\n");
+        assert_eq!(payload["truncated"], false);
+        assert_eq!(payload["sha256"], sha256_bytes(b"anchored content\n"));
+
+        let sibling = tempfile::Builder::new()
+            .prefix("anchor-outside-")
+            .tempdir_in(&workspace)
+            .unwrap();
+        std::fs::write(sibling.path().join("outside.txt"), "outside").unwrap();
+        let traversal = app
+            .clone()
+            .oneshot(
+                Request::post("/anchor/retrieve")
+                    .header(header::AUTHORIZATION, "Bearer test-api-token")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({
+                            "repo": repo.path(),
+                            "anchor": format!("../{}/outside.txt", sibling.path().file_name().unwrap().to_string_lossy()),
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(traversal.status(), StatusCode::FORBIDDEN);
+
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("outside.txt"), "outside").unwrap();
+        let response = app
+            .oneshot(
+                Request::post("/anchor/retrieve")
+                    .header(header::AUTHORIZATION, "Bearer test-api-token")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        json!({"repo": outside.path(), "anchor": "outside.txt"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn absent_token_configuration_generates_a_default_token_beside_the_database() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let database = dir.path().join("memright.db");
+        let fallback = database.parent().unwrap().join("api-token");
+
+        let token = configured_api_token_from_sources(None, None, &fallback).unwrap();
+
+        assert_eq!(token.len(), 64);
+        assert!(token.bytes().all(|byte| byte.is_ascii_hexdigit()));
+        assert_eq!(std::fs::read_to_string(fallback).unwrap().trim(), token);
+
+        let app = router_for_tests_with_policy(
+            MemoryStore::new(),
+            8765,
+            Some(token),
+            Duration::from_secs(1),
+            MAX_CONCURRENT_REQUESTS,
+        );
+        let response = app
+            .oneshot(Request::get("/metrics").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -4791,7 +5059,15 @@ mod tests {
 
         let db = MemDb::open_in_memory();
         let store = MemoryStore::open(db.clone());
-        let app = build_router(store, None, None, 8765, None, Duration::from_millis(100), 2);
+        let app = build_router(
+            store,
+            None,
+            None,
+            8765,
+            Some(TEST_API_TOKEN.to_string()),
+            Duration::from_millis(100),
+            2,
+        );
         let (release, holder) = hold_memdb_connection(db.clone());
         let body = r#"{"name":"retry-safe","content":"one durable put","scope":"global"}"#;
         let first_app = app.clone();
@@ -4838,7 +5114,7 @@ mod tests {
         let app = router_for_tests_with_policy(
             MemoryStore::open(db.clone()),
             8765,
-            None,
+            Some(TEST_API_TOKEN.to_string()),
             Duration::from_secs(1),
             1,
         );
@@ -4879,7 +5155,15 @@ mod tests {
 
         let db = MemDb::open_in_memory();
         let store = MemoryStore::open(db.clone());
-        let app = build_router(store, None, None, 8765, None, Duration::from_secs(1), 2);
+        let app = build_router(
+            store,
+            None,
+            None,
+            8765,
+            Some(TEST_API_TOKEN.to_string()),
+            Duration::from_secs(1),
+            2,
+        );
         let (release, holder) = hold_memdb_connection(db.clone());
         let body = r#"{"name":"inflight-safe","content":"one durable put","scope":"global"}"#;
         let first_app = app.clone();
@@ -4929,7 +5213,13 @@ mod tests {
         use axum::http::StatusCode;
 
         let app =
-            router_for_tests_with_policy(MemoryStore::new(), 8765, None, Duration::from_secs(1), 2);
+            router_for_tests_with_policy(
+                MemoryStore::new(),
+                8765,
+                Some(TEST_API_TOKEN.to_string()),
+                Duration::from_secs(1),
+                2,
+            );
         let first = post_json_with_key(
             app.clone(),
             "/put",
@@ -4953,7 +5243,13 @@ mod tests {
         use axum::http::StatusCode;
 
         let app =
-            router_for_tests_with_policy(MemoryStore::new(), 8765, None, Duration::from_secs(1), 1);
+            router_for_tests_with_policy(
+                MemoryStore::new(),
+                8765,
+                Some(TEST_API_TOKEN.to_string()),
+                Duration::from_secs(1),
+                1,
+            );
         let response = post_json_with_key(
             app,
             "/compress",

@@ -62,17 +62,24 @@ fn reindex_memoizes_unchanged_rows() {
 #[test]
 fn export_md_writes_canonical_tree() {
     let s = store();
-    std::env::set_var("WORKSPACE_ROOT", r"D:\Claude");
+    // WORKSPACE_ROOT must be an existing directory (validated_workspace_root),
+    // so a hardcoded per-OS path can't work; derive the scope slug from a real
+    // canonicalized temp dir instead.
+    let ws = std::env::temp_dir().join(format!("mr-ws-{}", std::process::id()));
+    std::fs::create_dir_all(&ws).unwrap();
+    let ws = ws.canonicalize().unwrap();
+    std::env::set_var("WORKSPACE_ROOT", &ws);
+    let slug = memright::path_to_scope(&ws.to_string_lossy());
     s.put(
         "ws-note",
         "workspace scoped",
-        "D--Claude",
+        &slug,
         memright_core::MemoryTier::Semantic,
     );
     s.put(
         "proj-note",
         "project scoped",
-        "D--Claude-coderight",
+        &format!("{slug}-coderight"),
         memright_core::MemoryTier::Semantic,
     );
     s.put(
@@ -88,8 +95,9 @@ fn export_md_writes_canonical_tree() {
     assert!(dir.join("WS-coderight/proj-note.md").is_file());
     assert!(dir.join("C--Other-place/other.md").is_file());
     let body = std::fs::read_to_string(dir.join("WS/ws-note.md")).unwrap();
-    assert!(body.contains("workspace scoped") && body.contains("id: D--Claude/ws-note"));
+    assert!(body.contains("workspace scoped") && body.contains(&format!("id: {slug}/ws-note")));
     let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&ws);
 }
 
 #[test]

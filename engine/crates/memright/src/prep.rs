@@ -58,6 +58,37 @@ fn is_code_ext(path: &Path) -> bool {
     )
 }
 
+fn is_structured_text(path: &Path, src: &str) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if matches!(
+        ext.as_str(),
+        "csv"
+            | "diff"
+            | "env"
+            | "ini"
+            | "json"
+            | "jsonl"
+            | "log"
+            | "ndjson"
+            | "patch"
+            | "toml"
+            | "tsv"
+            | "yaml"
+            | "yml"
+    ) {
+        return true;
+    }
+
+    let trimmed = src.trim_start();
+    serde_json::from_str::<serde_json::Value>(trimmed).is_ok()
+        || (trimmed.starts_with("diff --git ")
+            || (trimmed.starts_with("--- ") && trimmed.contains("\n+++ ")))
+}
+
 fn base_name(path: &Path) -> String {
     path.file_name()
         .and_then(|s| s.to_str())
@@ -146,7 +177,25 @@ pub fn prep_files(
         // Load text once for remaining branches.
         let src = String::from_utf8_lossy(&bytes).to_string();
 
-        // Branch 3: code ext -> skel
+        // Branch 3: structured content -> exact copy. Token-dropping structured
+        // data loses syntax and identifiers, even if its extension is misleading.
+        if is_structured_text(orig_path, &src) {
+            let name = base_name(orig_path);
+            let prepared_path = out_dir.join(&name);
+            let _ = std::fs::write(&prepared_path, &bytes);
+            out.push(PrepEntry {
+                orig: orig_str,
+                kind: "copy-structured".into(),
+                prepared: Some(prepared_path.to_string_lossy().to_string()),
+                before_bytes: Some(before_bytes),
+                after_bytes: Some(before_bytes),
+                before_tok: None,
+                after_tok: None,
+            });
+            continue;
+        }
+
+        // Branch 4: code ext -> skel
         if is_code_ext(orig_path) {
             let name = format!("{}.skel", base_name(orig_path));
             let prepared_path = out_dir.join(&name);
@@ -169,7 +218,7 @@ pub fn prep_files(
             continue;
         }
 
-        // Branch 4: everything else -> compress
+        // Branch 5: prose -> compress
         let ext = orig_path.extension().and_then(|s| s.to_str());
         let name = match ext {
             Some(ext) if !ext.is_empty() => format!("{}.min.{ext}", base_name(orig_path)),
@@ -261,6 +310,29 @@ mod tests {
         );
         assert!(manifest[3].before_tok.is_some());
         assert!(manifest[3].after_tok.is_some());
+    }
+
+    #[test]
+    fn prep_preserves_structured_content_by_extension_and_sniffing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let out_dir = tmp.path().join("out");
+        let json = tmp.path().join("event.log");
+        let diff = tmp.path().join("changes.txt");
+        let json_src = "{\"request_id\":\"req-42\",\"items\":[1,2,3]}\n".repeat(50);
+        let diff_src =
+            "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n+fn changed() {}\n".repeat(50);
+        std::fs::write(&json, &json_src).unwrap();
+        std::fs::write(&diff, &diff_src).unwrap();
+
+        let manifest = prep_files(&out_dir, &[json.clone(), diff.clone()], 0.5, 50);
+        assert!(manifest.iter().all(|entry| entry.kind == "copy-structured"));
+        for (entry, source) in manifest.iter().zip([json_src, diff_src]) {
+            assert_eq!(
+                std::fs::read_to_string(entry.prepared.as_ref().unwrap()).unwrap(),
+                source
+            );
+            assert_eq!(entry.before_bytes, entry.after_bytes);
+        }
     }
 
     /// Task 4b parity (per `docs/plans/2026-07-01-context-engine-unification.md`):

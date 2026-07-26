@@ -30,6 +30,14 @@ pub fn compress(text: &str, rate: f32) -> String {
     compress_with_options(text, rate, false)
 }
 
+#[cfg(feature = "llmlingua-onnx")]
+const LLMLINGUA_MAX_SEQ_LEN: usize = 512;
+
+#[cfg(feature = "llmlingua-onnx")]
+fn token_chunks<T>(tokens: &[T]) -> impl Iterator<Item = &[T]> {
+    tokens.chunks(LLMLINGUA_MAX_SEQ_LEN)
+}
+
 /// Same as [`compress`] but allows forcing the heuristic path even when the
 /// ONNX feature is enabled.
 pub fn compress_with_options(text: &str, rate: f32, no_onnx: bool) -> String {
@@ -64,8 +72,6 @@ pub fn compress_with_options(text: &str, rate: f32, no_onnx: bool) -> String {
 fn compress_llmlingua_onnx(text: &str, rate: f32) -> Result<String, String> {
     use ort::value::Tensor;
 
-    const MAX_SEQ_LEN: usize = 512;
-
     if rate <= 0.0 || text.is_empty() {
         return Ok(String::new());
     }
@@ -75,56 +81,48 @@ fn compress_llmlingua_onnx(text: &str, rate: f32) -> Result<String, String> {
             .tokenizer
             .encode(text, false)
             .map_err(|e| format!("tokenize: {e}"))?;
-        let mut ids: Vec<i64> = enc.get_ids().iter().map(|&i| i as i64).collect();
+        let ids: Vec<i64> = enc.get_ids().iter().map(|&i| i as i64).collect();
         if ids.is_empty() {
             return Ok(String::new());
         }
-        if ids.len() > MAX_SEQ_LEN {
-            ids.truncate(MAX_SEQ_LEN);
-        }
-        let n = ids.len();
+        let mut keep_prob = Vec::with_capacity(ids.len());
+        let mut force_mask = Vec::with_capacity(ids.len());
 
-        let shape = [1i64, n as i64];
-        let attention_mask = vec![1i64; n];
-        let token_type_ids = vec![0i64; n];
-
-        let iids_t = Tensor::<i64>::from_array((shape, ids.clone()))
-            .map_err(|e| format!("input_ids tensor: {e}"))?;
-        let am_t = Tensor::<i64>::from_array((shape, attention_mask))
-            .map_err(|e| format!("attention_mask tensor: {e}"))?;
-        let tt_t = Tensor::<i64>::from_array((shape, token_type_ids))
-            .map_err(|e| format!("token_type_ids tensor: {e}"))?;
-
-        let outputs = runtime
-            .session
-            .run(ort::inputs![iids_t, am_t, tt_t])
-            .map_err(|e| format!("session.run: {e}"))?;
-
-        let (out_shape, logits_flat) = outputs[0]
-            .try_extract_tensor::<f32>()
-            .map_err(|e| format!("extract logits: {e}"))?;
-        let dims: &[i64] = out_shape;
-        match dims {
-            [_, seq, classes] if *seq as usize == n && *classes == 2 => {}
-            s => return Err(format!("unexpected logits shape: {s:?}")),
-        }
-        let logits = &logits_flat[0..n * 2];
-        let keep_prob: Vec<f32> = (0..n)
-            .map(|i| softmax_keep_prob_two_class(&[logits[i * 2], logits[i * 2 + 1]]))
-            .collect();
-
-        // Force-keep any token whose decoded piece contains a force char.
-        // Mirrors `compress.py`'s default `force_tokens=["\n", ".", "!", "?", ","]`.
-        const FORCE_TOKEN_CHARS: &[char] = &['\n', '.', '!', '?', ','];
-        let mut force_mask = vec![false; n];
-        for i in 0..n {
-            let piece = runtime
-                .tokenizer
-                .decode(&[ids[i] as u32], true)
-                .unwrap_or_default();
-            if FORCE_TOKEN_CHARS.iter().any(|c| piece.contains(*c)) {
-                force_mask[i] = true;
+        // The model accepts at most 512 tokens. Score every chunk and select
+        // over the full input so long documents are never silently truncated.
+        for chunk in token_chunks(&ids) {
+            let n = chunk.len();
+            let shape = [1i64, n as i64];
+            let iids_t = Tensor::<i64>::from_array((shape, chunk.to_vec()))
+                .map_err(|e| format!("input_ids tensor: {e}"))?;
+            let am_t = Tensor::<i64>::from_array((shape, vec![1i64; n]))
+                .map_err(|e| format!("attention_mask tensor: {e}"))?;
+            let tt_t = Tensor::<i64>::from_array((shape, vec![0i64; n]))
+                .map_err(|e| format!("token_type_ids tensor: {e}"))?;
+            let outputs = runtime
+                .session
+                .run(ort::inputs![iids_t, am_t, tt_t])
+                .map_err(|e| format!("session.run: {e}"))?;
+            let (out_shape, logits_flat) = outputs[0]
+                .try_extract_tensor::<f32>()
+                .map_err(|e| format!("extract logits: {e}"))?;
+            let dims: &[i64] = out_shape;
+            match dims {
+                [_, seq, classes] if *seq as usize == n && *classes == 2 => {}
+                s => return Err(format!("unexpected logits shape: {s:?}")),
             }
+            keep_prob.extend((0..n).map(|i| {
+                softmax_keep_prob_two_class(&[logits_flat[i * 2], logits_flat[i * 2 + 1]])
+            }));
+            force_mask.extend(chunk.iter().map(|id| {
+                let piece = runtime
+                    .tokenizer
+                    .decode(&[*id as u32], true)
+                    .unwrap_or_default();
+                ['\n', '.', '!', '?', ',']
+                    .iter()
+                    .any(|c| piece.contains(*c))
+            }));
         }
 
         let keep_set = select_keep_indices(&keep_prob, &force_mask, rate);
@@ -291,6 +289,17 @@ fn assets_present() -> bool {
 #[cfg(all(test, feature = "llmlingua-onnx"))]
 mod tests {
     use super::*;
+
+    #[test]
+    fn token_chunks_cover_long_inputs_without_truncation() {
+        let tokens: Vec<usize> = (0..1_025).collect();
+        let chunks: Vec<Vec<usize>> = token_chunks(&tokens).map(|chunk| chunk.to_vec()).collect();
+        assert_eq!(
+            chunks.iter().map(Vec::len).collect::<Vec<_>>(),
+            vec![512, 512, 1]
+        );
+        assert_eq!(chunks.into_iter().flatten().collect::<Vec<_>>(), tokens);
+    }
     use std::collections::HashSet;
 
     // ------------------------------------------------------------------------

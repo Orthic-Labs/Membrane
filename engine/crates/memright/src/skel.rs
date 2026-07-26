@@ -64,7 +64,7 @@ fn render_rust_item(src: &str, node: Node) -> Option<String> {
             let start = node.start_byte();
             let body_start = body.start_byte();
             let prefix = src.get(start..body_start).unwrap_or("").trim_end();
-            format!("{prefix}{{ … }}")
+            format!("{prefix}{{ /* body elided */ }}")
         }
         None => node.utf8_text(src.as_bytes()).ok()?.trim().to_string(),
     };
@@ -81,9 +81,9 @@ fn render_python_def(src: &str, node: Node) -> Option<String> {
     if header.is_empty() {
         None
     } else if header.ends_with(':') {
-        Some(format!("{header}\n    …"))
+        Some(format!("{header}\n    pass  # body elided"))
     } else {
-        Some(format!("{header}: \n    …"))
+        Some(format!("{header}:\n    pass  # body elided"))
     }
 }
 
@@ -95,7 +95,7 @@ fn render_js_like(src: &str, node: Node) -> Option<String> {
     } else if first.contains('{') {
         // Keep only the signature line, replace body.
         let sig = first.split('{').next().unwrap_or(first).trim_end();
-        Some(format!("{sig}{{ … }}"))
+        Some(format!("{sig}{{ /* body elided */ }}"))
     } else {
         Some(first.to_string())
     }
@@ -183,6 +183,8 @@ mod tests {
         assert!(out.contains("fn a(x:i32)->i32"), "out: {out}");
         assert!(out.contains("struct S"), "out: {out}");
         assert!(!out.contains("x+1"), "out: {out}");
+        assert!(!out.contains('…'), "out: {out}");
+        assert!(out.contains("/* body elided */"), "out: {out}");
     }
 
     #[test]
@@ -206,6 +208,8 @@ class Foo:\n    def bar(self, x):\n        return x * 2\n";
         // Function bodies must NOT survive.
         assert!(!out.contains("f\"hello"), "body leaked: {out}");
         assert!(!out.contains("return x * 2"), "body leaked: {out}");
+        assert!(!out.contains('…'), "out: {out}");
+        assert!(out.contains("pass  # body elided"), "out: {out}");
     }
 
     #[test]
@@ -222,6 +226,8 @@ class Calculator {\n    multiply(x: number): number { return x * 2; }\n}\n";
         // Body content must NOT survive (return / arithmetic).
         assert!(!out.contains("return a + b"), "body leaked: {out}");
         assert!(!out.contains("return x * 2"), "body leaked: {out}");
+        assert!(!out.contains('…'), "out: {out}");
+        assert!(out.contains("/* body elided */"), "out: {out}");
     }
 
     #[test]

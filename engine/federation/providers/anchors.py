@@ -10,6 +10,39 @@ from pathlib import Path
 from . import workspace_tools_path
 
 
+def _repo_anchor_path(repo_root: Path, anchor: str) -> tuple[Path, Path] | None:
+    """Return canonical repo root and contained anchor path, if safe."""
+    try:
+        root = repo_root.resolve()
+        requested = Path(anchor)
+        path = (requested if requested.is_absolute() else root / requested).resolve()
+        path.relative_to(root)
+    except (OSError, ValueError):
+        return None
+    return root, path
+
+
+def _raw_candidate(anchor: str) -> dict:
+    """Preserve a rejected anchor as user intent without resolving it."""
+    return {
+        "id": f"anchor:raw:{anchor}",
+        "layer": 1,
+        "sourceKind": "anchor",
+        "sourceRef": anchor,
+        "sourceHash": "0" * 64,
+        "trustClass": "user_direct",
+        "instructionPolicy": "data_only",
+        "providerScore": 0.6,
+        "scoreComponents": {"anchor_relevance": 0.6},
+        "estimatedTokens": 8,
+        "protected": True,
+        "exact": False,
+        "recoverable": True,
+        "resolver": f"anchor {anchor}",
+        "text": anchor,
+    }
+
+
 def produce(repo_root: Path, anchors: list[str], task: str) -> list[dict]:
     """Each anchor is treated as either a file path or a symbol."""
     if not anchors:
@@ -19,13 +52,17 @@ def produce(repo_root: Path, anchors: list[str], task: str) -> list[dict]:
         if not anchor:
             continue
         # File path resolution
-        path = (repo_root / anchor).resolve() if not Path(anchor).is_absolute() else Path(anchor)
+        resolved_path = _repo_anchor_path(repo_root, anchor)
+        if resolved_path is None:
+            candidates.append(_raw_candidate(anchor))
+            continue
+        root, path = resolved_path
         if path.exists() and path.is_file():
             try:
                 text = path.read_text(encoding="utf-8", errors="replace")[:1500]
             except OSError:
                 text = anchor
-            rel = str(path.relative_to(repo_root)) if str(path).startswith(str(repo_root)) else anchor
+            rel = str(path.relative_to(root))
             candidates.append({
                 "id": f"anchor:file:{rel}",
                 "layer": 3,
@@ -81,21 +118,5 @@ def produce(repo_root: Path, anchors: list[str], task: str) -> list[dict]:
         except Exception:
             pass
         # Fallback: emit as an anchor-only candidate so the planner sees it.
-        candidates.append({
-            "id": f"anchor:raw:{anchor}",
-            "layer": 1,
-            "sourceKind": "anchor",
-            "sourceRef": anchor,
-            "sourceHash": "0" * 64,
-            "trustClass": "user_direct",
-            "instructionPolicy": "data_only",
-            "providerScore": 0.6,
-            "scoreComponents": {"anchor_relevance": 0.6},
-            "estimatedTokens": 8,
-            "protected": True,
-            "exact": False,
-            "recoverable": True,
-            "resolver": f"anchor {anchor}",
-            "text": anchor,
-        })
+        candidates.append(_raw_candidate(anchor))
     return candidates
