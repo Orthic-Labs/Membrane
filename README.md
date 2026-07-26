@@ -202,3 +202,9 @@ Current limits:
 - [`docs/MEMBRANE-STATE.md`](docs/MEMBRANE-STATE.md) — current live state & backlog
 - [`docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md`](docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md) — boundaries & contracts
 - [`engine/README.md`](engine/README.md) — MemRight engine
+
+<!-- blueprint:docs:start -->
+## Repository truth docs
+- [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
+- [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
+<!-- blueprint:docs:end -->
