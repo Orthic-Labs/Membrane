@@ -946,6 +946,7 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ("POST", "/use", HttpWorkClass::General),
     ("POST", "/feedback", HttpWorkClass::General),
     ("POST", "/memory-candidates", HttpWorkClass::Model),
+    ("POST", "/federate", HttpWorkClass::General),
     ("POST", "/verify-memory", HttpWorkClass::General),
     ("POST", "/compress", HttpWorkClass::Model),
     ("POST", "/scope_grants", HttpWorkClass::General),
@@ -1862,6 +1863,146 @@ fn route(store: &MemoryStore, method: &str, url: &str, body: &str) -> (u16, Stri
     route_with_context_ingest_lease(store, None, method, url, body)
 }
 
+/// Process-wide resident federation worker (plan 2026-07-26, Tasks 4+5,
+/// amendments A2/A3). The `Mutex` doubles as the one-slot orchestration
+/// admission: `try_lock` contention returns 503 immediately so the hook falls
+/// back to the CLI fast instead of queueing behind another prompt's fan-out.
+/// Service shutdown closes the worker's stdin pipe, so the worker exits on
+/// EOF even though a `static` never runs `Drop`.
+static RESIDENT_GATEWAY: std::sync::OnceLock<
+    std::sync::Mutex<Option<(std::path::PathBuf, crate::federation_worker::ResidentGateway)>>,
+> = std::sync::OnceLock::new();
+
+const FEDERATE_DEFAULT_WAIT_MS: u64 = 2_000;
+const FEDERATE_MAX_WAIT_MS: u64 = 2_000;
+const FEDERATE_MIN_WAIT_MS: u64 = 100;
+
+fn resolve_federation_script() -> Option<std::path::PathBuf> {
+    let configured = std::env::var("MEMRIGHT_FEDERATION_SCRIPT").unwrap_or_default();
+    if !configured.trim().is_empty() {
+        let path = std::path::PathBuf::from(configured.trim());
+        return path.is_file().then_some(path);
+    }
+    crate::federation::find_federation_gateway(&configured_workspace_root())
+}
+
+fn federate_route_response(body: &str) -> (u16, String) {
+    let value = match json_body(body) {
+        Ok(value) => value,
+        Err(resp) => return resp,
+    };
+    let Some(task) = value.get("task").and_then(Value::as_str) else {
+        return (400, "{\"error\":\"task required\"}".to_string());
+    };
+    let Some(repo) = value
+        .get("repo")
+        .and_then(Value::as_str)
+        .filter(|repo| !repo.trim().is_empty())
+    else {
+        return (400, "{\"error\":\"repo required\"}".to_string());
+    };
+    let max_tokens = value
+        .get("maxTokens")
+        .and_then(Value::as_u64)
+        .map_or(4096, |n| n.clamp(1, 1_000_000) as usize);
+    // A2: the caller passes its REMAINING deadline; there is exactly one
+    // budget across hook → route → worker.
+    let wait_ms = value
+        .get("maxWaitMs")
+        .and_then(Value::as_u64)
+        .unwrap_or(FEDERATE_DEFAULT_WAIT_MS)
+        .clamp(FEDERATE_MIN_WAIT_MS, FEDERATE_MAX_WAIT_MS);
+    let scope_grant_id = value.get("scopeGrantId").and_then(Value::as_str);
+    let worker_request = serde_json::json!({
+        "task": task,
+        "repo": repo,
+        "maxTokens": max_tokens,
+        "client": value.get("client").and_then(Value::as_str).unwrap_or("claude"),
+        "session": value.get("session").and_then(Value::as_str),
+        "anchors": value.get("anchors").and_then(Value::as_str).unwrap_or(""),
+        "scopeGrantId": scope_grant_id,
+    })
+    .to_string();
+
+    let Some(script) = resolve_federation_script() else {
+        return (
+            503,
+            "{\"error\":\"federation gateway script unavailable\"}".to_string(),
+        );
+    };
+    let slot = RESIDENT_GATEWAY.get_or_init(|| std::sync::Mutex::new(None));
+    let Ok(mut guard) = slot.try_lock() else {
+        return (503, "{\"error\":\"federate_busy\"}".to_string());
+    };
+    let stale = guard
+        .as_ref()
+        .is_none_or(|(current_script, _)| current_script != &script);
+    if stale {
+        *guard = Some((
+            script.clone(),
+            crate::federation_worker::ResidentGateway::new(script),
+        ));
+    }
+    let (_, gateway) = guard.as_mut().expect("gateway just initialized");
+    if !gateway.is_healthy() {
+        return (503, "{\"error\":\"federate_circuit_open\"}".to_string());
+    }
+    let started = std::time::Instant::now();
+    let line = match gateway.request(&worker_request, Duration::from_millis(wait_ms)) {
+        Ok(line) => line,
+        Err(error) if error.contains("circuit open") => {
+            return (503, "{\"error\":\"federate_circuit_open\"}".to_string());
+        }
+        Err(error) => {
+            return (
+                502,
+                serde_json::json!({ "error": format!("resident federation failed: {error}") })
+                    .to_string(),
+            );
+        }
+    };
+    let gateway_process_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let restarts = gateway.worker_restarts;
+    let envelope = crate::federation::envelope_from_ccs(
+        &line,
+        crate::federation::EnvelopeInput {
+            max_tokens,
+            packet_char_budget_override: value
+                .get("packetCharBudget")
+                .and_then(Value::as_u64)
+                .map(|n| n as usize),
+            packet_char_budget_model: value
+                .get("packetCharBudgetModel")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            accepted_receipt_versions: vec![2],
+            scope_grant_present: scope_grant_id.is_some(),
+            gateway_process_ms,
+        },
+    );
+    match envelope {
+        Ok(mut payload) => {
+            if let Some(fields) = payload.as_object_mut() {
+                // Task 7: content-free transport telemetry — counters only.
+                fields.insert("transport".to_string(), "resident".into());
+                fields.insert("workerRestarts".to_string(), restarts.into());
+            }
+            match serde_json::to_string(&payload) {
+                Ok(serialized) => (200, serialized),
+                Err(_) => (
+                    500,
+                    "{\"error\":\"federation envelope serialization failed\"}".to_string(),
+                ),
+            }
+        }
+        Err(error) => (
+            502,
+            serde_json::json!({ "error": format!("resident federation failed: {error}") })
+                .to_string(),
+        ),
+    }
+}
+
 fn route_with_context_ingest_lease(
     store: &MemoryStore,
     context_ingest_lease: Option<&crate::context_telemetry::ContextIngestLease>,
@@ -1897,6 +2038,9 @@ fn route_with_context_ingest_lease(
     }
     if method == "GET" && path == "/analysis" {
         return analysis_response(&configured_analysis_directory());
+    }
+    if method == "POST" && path == "/federate" {
+        return federate_route_response(body);
     }
     if method == "POST" && path == "/freshness" {
         let v = match json_body(body) {

@@ -7,6 +7,7 @@ pub mod catalog;
 pub mod compress;
 pub mod context_telemetry;
 pub mod federation;
+pub mod federation_worker;
 pub mod feedback;
 pub mod freshness;
 pub mod installation_identity;

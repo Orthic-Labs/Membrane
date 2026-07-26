@@ -49,7 +49,7 @@ fn gateway_layout_path(dir: &Path, layout: &[&str]) -> PathBuf {
 /// Walk up from `start` looking for the first directory holding any known
 /// federation gateway layout. Returns the gateway script path itself, not
 /// the workspace root — the two are no longer a fixed relative pair.
-fn find_federation_gateway(start: &Path) -> Option<PathBuf> {
+pub(crate) fn find_federation_gateway(start: &Path) -> Option<PathBuf> {
     let mut cursor: Option<&Path> = Some(start);
     while let Some(dir) = cursor {
         for layout in GATEWAY_LAYOUTS {
@@ -142,11 +142,44 @@ pub fn run_federate(
             stderr.chars().take(800).collect::<String>()
         ));
     }
+    let payload = envelope_from_ccs(
+        &stdout,
+        EnvelopeInput {
+            max_tokens,
+            packet_char_budget_override,
+            packet_char_budget_model,
+            accepted_receipt_versions: versions,
+            scope_grant_present: scope_grant_id.is_some(),
+            gateway_process_ms,
+        },
+    )?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
+    );
+    Ok(())
+}
+
+/// Planner-side half of one federation cycle, shared verbatim by the CLI
+/// (`run_federate`) and the resident `/federate` route: parse the gateway's
+/// CCS line, surface fail-closed aborts, run the in-process planner, and
+/// assemble the client envelope.
+pub struct EnvelopeInput {
+    pub max_tokens: usize,
+    pub packet_char_budget_override: Option<usize>,
+    pub packet_char_budget_model: Option<String>,
+    pub accepted_receipt_versions: Vec<u32>,
+    pub scope_grant_present: bool,
+    /// Wall time spent obtaining the CCS (process spawn or worker roundtrip).
+    pub gateway_process_ms: f64,
+}
+
+pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, String> {
     // The gateway may emit a fail-closed envelope (exit 2) when a
     // ScopeGrant is rejected. Detect that envelope and surface it
     // before attempting strict CCS deserialization.
     let parse_started = Instant::now();
-    let raw_value: Value = match serde_json::from_str(&stdout) {
+    let raw_value: Value = match serde_json::from_str(stdout) {
         Ok(v) => v,
         Err(e) => {
             return Err(format!(
@@ -182,17 +215,17 @@ pub fn run_federate(
         }
     };
     let rust_parse_ms = parse_started.elapsed().as_secs_f64() * 1000.0;
-    let input = PlannerInput {
+    let planner_input = PlannerInput {
         candidate_set: ccs,
-        max_tokens,
-        packet_char_budget_override,
-        packet_char_budget_model,
-        accepted_receipt_versions: versions,
+        max_tokens: input.max_tokens,
+        packet_char_budget_override: input.packet_char_budget_override,
+        packet_char_budget_model: input.packet_char_budget_model,
+        accepted_receipt_versions: input.accepted_receipt_versions,
         trace_id_override: None,
-        scope_grant_present: scope_grant_id.is_some(),
+        scope_grant_present: input.scope_grant_present,
     };
     let planner_started = Instant::now();
-    let out = match plan(&input) {
+    let out = match plan(&planner_input) {
         Ok(o) => o,
         Err(e) => return Err(format!("planner rejected federation CSS: {e}")),
     };
@@ -217,16 +250,15 @@ pub fn run_federate(
             .entry("stageElapsedMs".to_string())
             .or_insert_with(|| serde_json::json!({}));
         if let Some(stage_fields) = stages.as_object_mut() {
-            stage_fields.insert("gateway_process".to_string(), gateway_process_ms.into());
+            stage_fields.insert(
+                "gateway_process".to_string(),
+                input.gateway_process_ms.into(),
+            );
             stage_fields.insert("rust_parse".to_string(), rust_parse_ms.into());
             stage_fields.insert("rust_planner".to_string(), rust_planner_ms.into());
         }
     }
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
-    );
-    Ok(())
+    Ok(payload)
 }
 
 /// RightContext MemRight durable-memory candidate provider. Pure in-process
@@ -479,7 +511,7 @@ mod observability_tests {
 /// PATH (POSIX), then the Windows `py -3.11` launcher, then a hard-coded
 /// Windows fallback. Returns a `Command` with the chosen program as
 /// argv[0]; callers append the script path + flags themselves.
-fn resolve_python_invoker() -> Command {
+pub(crate) fn resolve_python_invoker() -> Command {
     if let Ok(p) = std::env::var("PYTHON") {
         if !p.is_empty() {
             eprintln!("[federation] using PYTHON override: {}", p);

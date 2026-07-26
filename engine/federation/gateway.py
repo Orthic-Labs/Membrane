@@ -794,41 +794,32 @@ def _merge_candidates(
     }
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="RightContext federation gateway")
-    parser.add_argument("--task", required=True)
-    parser.add_argument("--repo", required=True)
-    parser.add_argument("--max-tokens", type=int, default=4096)
-    parser.add_argument("--client", default="claude")
-    parser.add_argument("--session", default=None)
-    parser.add_argument("--anchors", default="",
-                        help="Comma-separated explicit anchor list")
-    parser.add_argument("--scope-grant-id", default=None)
-    args = parser.parse_args(argv)
-
-    repo_root = _resolve_repo_root(args.repo)
-    explicit_anchors = [a.strip() for a in (args.anchors or "").split(",") if a.strip()]
+def assemble_candidate_set(
+    *,
+    task: str,
+    repo: str,
+    max_tokens: int = 4096,
+    client: str = "claude",
+    session: str | None = None,
+    anchors: str = "",
+    scope_grant_id: str | None = None,
+) -> tuple[dict, int]:
+    """One federation assembly: (envelope, exit_code). Shared by the argv
+    one-shot mode and the resident stdio worker; behavior identical."""
+    repo_root = _resolve_repo_root(repo)
+    explicit_anchors = [a.strip() for a in (anchors or "").split(",") if a.strip()]
     trace_id = _trace_id()
 
-    # ScopeGrant enforcement happens BEFORE any provider fan-out. An
-    # invalid grant aborts the whole federation (fail-closed) per the
-    # dispatch §G1 trust contract; the planner never sees a partially
-    # assembled CCS under an unverified grant.
+    # ScopeGrant enforcement happens BEFORE any provider fan-out (fail-closed).
     try:
         _enforce_scope_grant(
-            repo_root,
-            args.scope_grant_id,
-            client=args.client,
-            task=args.task,
-            session=args.session,
+            repo_root, scope_grant_id, client=client, task=task, session=session
         )
     except PermissionError as exc:
-        # Emit one structured failure envelope so the client sees the
-        # abort reason.
         err_envelope = {
             "schemaVersion": 1,
             "traceId": trace_id,
-            "task": args.task,
+            "task": task,
             "mode": "verify",
             "provider": "federated",
             "freshness": {
@@ -836,11 +827,11 @@ def main(argv: list[str] | None = None) -> int:
                 "indexedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "stale": False,
             },
-            "providerCeiling": {"maxCandidates": 256, "maxEstimatedTokens": args.max_tokens},
+            "providerCeiling": {"maxCandidates": 256, "maxEstimatedTokens": max_tokens},
             "candidates": [],
             "omissions": [
                 {
-                    "id": f"scope_grant_abort:{args.scope_grant_id}",
+                    "id": f"scope_grant_abort:{scope_grant_id}",
                     "reason": str(exc)[:200],
                     "layer": 0,
                     "kind": "scope_grant_aborted",
@@ -856,31 +847,114 @@ def main(argv: list[str] | None = None) -> int:
             },
         }
         sys.stderr.write("federation_aborted scope_grant: " + str(exc)[:200] + chr(10))
-        print(json.dumps(err_envelope))
-        return 2
+        return err_envelope, 2
 
     per_provider, freshness = _gather_all_parallel(
-        task=args.task,
+        task=task,
         repo_root=repo_root,
-        max_tokens=args.max_tokens,
+        max_tokens=max_tokens,
         explicit_anchors=explicit_anchors,
-        scope_grant_id=args.scope_grant_id,
+        scope_grant_id=scope_grant_id,
     )
-
     merge_started = time.monotonic()
     ccs = _merge_candidates(
-        per_provider, freshness, repo_root, args.task, trace_id, args.max_tokens
+        per_provider, freshness, repo_root, task, trace_id, max_tokens
     )
     ccs["_rightcontext"]["stageElapsedMs"]["merge"] = max(
         0.0, (time.monotonic() - merge_started) * 1000.0
     )
+    return ccs, 0
 
+
+def _gateway_source_sha256() -> str:
+    try:
+        return hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest()
+    except OSError:
+        return "unknown"
+
+
+def serve_stdio() -> int:
+    """Persistent-worker mode (Bazel WorkRequest shape): one JSON request per
+    stdin line, one CCS JSON per stdout line.
+
+    - readline(), never `for line in sys.stdin`: the iterator's read-ahead
+      buffer can hold a delivered line back (the classic LSP/worker stall,
+      worst on Windows pipes).
+    - First stdout line is the readiness handshake carrying this file's
+      sha256; the supervisor gates requests on it and restarts on mismatch.
+    - A bad request yields an abort envelope; the worker itself survives.
+    - Providers are imported at module load, so the fan-out is warm from the
+      first request.
+    """
+    sys.stdout.write(
+        json.dumps(
+            {"workerReady": {"gatewaySha256": _gateway_source_sha256(), "pid": os.getpid()}}
+        )
+        + "\n"
+    )
+    sys.stdout.flush()
+    while True:
+        line = sys.stdin.readline()
+        if not line:  # EOF — supervisor closed the pipe
+            return 0
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            req = json.loads(line)
+            envelope, _code = assemble_candidate_set(
+                task=str(req.get("task") or "(empty)"),
+                repo=str(req["repo"]),
+                max_tokens=int(req.get("maxTokens") or 4096),
+                client=str(req.get("client") or "claude"),
+                session=req.get("session"),
+                anchors=str(req.get("anchors") or ""),
+                scope_grant_id=req.get("scopeGrantId"),
+            )
+            payload = json.dumps(envelope, ensure_ascii=False)
+        except Exception as exc:  # noqa: BLE001 — a bad request must not kill the worker
+            payload = json.dumps(
+                {
+                    "_rightcontext": {
+                        "abortReason": "worker_request_failed",
+                        "abortDetail": str(exc)[:200],
+                    }
+                }
+            )
+        sys.stdout.write(payload + "\n")
+        sys.stdout.flush()
+
+
+def main(argv: list[str] | None = None) -> int:
+    raw_argv = sys.argv[1:] if argv is None else argv
+    if "--serve-stdio" in raw_argv:
+        return serve_stdio()
+    parser = argparse.ArgumentParser(description="RightContext federation gateway")
+    parser.add_argument("--task", required=True)
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument("--client", default="claude")
+    parser.add_argument("--session", default=None)
+    parser.add_argument("--anchors", default="",
+                        help="Comma-separated explicit anchor list")
+    parser.add_argument("--scope-grant-id", default=None)
+    args = parser.parse_args(argv)
+
+    envelope, code = assemble_candidate_set(
+        task=args.task,
+        repo=args.repo,
+        max_tokens=args.max_tokens,
+        client=args.client,
+        session=args.session,
+        anchors=args.anchors,
+        scope_grant_id=args.scope_grant_id,
+    )
     # Emit the assembled envelope with the `_rightcontext` federation
     # detail block intact. The planner strict-deserializes the canonical
     # CCS fields only; the dispatcher surfaces the warnings and provider
     # counts to the client envelope.
-    print(json.dumps(ccs))
-    return 0
+    print(json.dumps(envelope))
+    return code
 
 
 if __name__ == "__main__":
