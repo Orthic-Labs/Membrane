@@ -7,6 +7,11 @@
 *.db-shm
 .cache/
 
+# Derived Blueprint/audit indexes — rebuilt by `blueprint build`, never committed
+.agent/
+.blueprint/
+.audit/
+
 # OS noise
 .DS_Store
 __pycache__/
