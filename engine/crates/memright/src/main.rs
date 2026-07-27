@@ -4874,6 +4874,27 @@ mod tests {
             None
         );
     }
+
+    #[test]
+    fn doc_read_path_resolution_confines_relative_paths() {
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("docs").join("guide.md");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, "# Guide\n").unwrap();
+
+        assert_eq!(
+            super::resolve_doc_read_path(root.path(), "docs/guide.md").unwrap(),
+            file.canonicalize().unwrap()
+        );
+        assert_eq!(
+            super::resolve_doc_read_path(root.path(), "../guide.md").unwrap_err(),
+            memright::outline::DocReadError::Deny
+        );
+        assert_eq!(
+            super::resolve_doc_read_path(root.path(), "docs/missing.md").unwrap_err(),
+            memright::outline::DocReadError::SourceMissing
+        );
+    }
 }
 
 fn main() {
