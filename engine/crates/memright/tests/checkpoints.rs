@@ -3,12 +3,15 @@ use memright::{CheckpointError, CheckpointSourceRefV1, CheckpointV1, MemDb, Memo
 fn checkpoint() -> CheckpointV1 {
     CheckpointV1 {
         checkpoint_id: "checkpoint/session-1/100".into(),
+        installation_id: "550e8400-e29b-41d4-a716-446655440000".into(),
         client: "codex".into(),
         session_id: "session-1".into(),
         repository_id: "repo-1".into(),
         worktree_rev: "rev-1".into(),
         scope_id: "repo-1".into(),
         summary: "continue phase four".into(),
+        goal_snapshot: Some("finish checkpoint contract".into()),
+        task_snapshot: Some("add source-reference outcomes".into()),
         created_at_ms: 100,
         expires_at_ms: 200,
         source_refs: vec![],
@@ -83,9 +86,55 @@ fn checkpoint_source_refs_use_hash_bound_doc_read_statuses() {
         memright::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
         "ok"
     );
+    std::fs::write(temp.path().join("guide.md"), "# Guide\nchanged").unwrap();
+    assert_eq!(
+        memright::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
+        "changed"
+    );
+    std::fs::remove_file(temp.path().join("guide.md")).unwrap();
+    assert_eq!(
+        memright::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
+        "missing"
+    );
+    std::fs::write(temp.path().join("moved-guide.md"), "# Guide\nbody").unwrap();
+    assert_eq!(
+        memright::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
+        "relocated"
+    );
     value.source_refs[0].source_ref = "../guide.md".into();
     assert_eq!(
         memright::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
         "deny"
     );
+}
+
+#[test]
+fn checkpoint_preserves_installation_lineage_and_optional_goal_task_snapshots() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    let checkpoint = checkpoint();
+    store.save_checkpoint(&checkpoint).unwrap();
+
+    let loaded = store.load_checkpoint(&checkpoint.checkpoint_id, 150).unwrap();
+    assert_eq!(loaded.installation_id, checkpoint.installation_id);
+    assert_eq!(loaded.goal_snapshot, checkpoint.goal_snapshot);
+    assert_eq!(loaded.task_snapshot, checkpoint.task_snapshot);
+}
+
+#[test]
+fn checkpoints_cannot_promote_their_summary_into_durable_memory() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    let checkpoint = checkpoint();
+    store.save_checkpoint(&checkpoint).unwrap();
+
+    let durable_rows: i64 = store
+        .db()
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM memories
+             WHERE id=?1 AND artifact_family NOT IN ('session')",
+            [&checkpoint.checkpoint_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(durable_rows, 0, "checkpoint save must never promote summary");
 }

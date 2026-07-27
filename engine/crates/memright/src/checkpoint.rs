@@ -8,12 +8,18 @@ use rusqlite::{OptionalExtension, TransactionBehavior};
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CheckpointV1 {
     pub checkpoint_id: String,
+    /// Installation identity binds this machine-local orientation record to its origin.
+    pub installation_id: String,
     pub client: String,
     pub session_id: String,
     pub repository_id: String,
     pub worktree_rev: String,
     pub scope_id: String,
     pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal_snapshot: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_snapshot: Option<String>,
     pub created_at_ms: i64,
     pub expires_at_ms: i64,
     #[serde(default)]
@@ -46,30 +52,7 @@ pub fn resolve_source_refs(
         .source_refs
         .iter()
         .map(|reference| {
-            let status = reference
-                .source_ref
-                .strip_prefix("doc://repo/worktree/")
-                .filter(|path| !path.split('/').any(|segment| segment == ".."))
-                .and_then(|path| std::fs::read_to_string(workspace_root.join(path)).ok())
-                .map(|markdown| {
-                    match crate::outline::read_section(
-                        &reference.source_ref,
-                        &markdown,
-                        &reference.anchor_id,
-                        &reference.expected_content_hash,
-                        12_000,
-                    ) {
-                        Ok(_) => "ok".to_string(),
-                        Err(error) => error.to_string(),
-                    }
-                })
-                .unwrap_or_else(|| {
-                    if reference.source_ref.starts_with("doc://repo/worktree/") {
-                        "source_missing".into()
-                    } else {
-                        "deny".into()
-                    }
-                });
+            let status = resolve_source_ref(reference, workspace_root);
             CheckpointSourceResolutionV1 {
                 source_ref: reference.source_ref.clone(),
                 anchor_id: reference.anchor_id.clone(),
@@ -77,6 +60,99 @@ pub fn resolve_source_refs(
             }
         })
         .collect()
+}
+
+fn resolve_source_ref(
+    reference: &CheckpointSourceRefV1,
+    workspace_root: &std::path::Path,
+) -> String {
+    let Some(relative) = reference.source_ref.strip_prefix("doc://repo/worktree/") else {
+        return "deny".into();
+    };
+    let relative = std::path::Path::new(relative);
+    if relative
+        .components()
+        .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return "deny".into();
+    }
+    let Ok(root) = workspace_root.canonicalize() else {
+        return "deny".into();
+    };
+    let path = workspace_root.join(relative);
+    match read_workspace_text(&root, &path) {
+        Some(markdown) => {
+            if crate::outline::read_section(
+                &reference.source_ref,
+                &markdown,
+                &reference.anchor_id,
+                &reference.expected_content_hash,
+                12_000,
+            )
+            .is_ok()
+            {
+                "ok".into()
+            } else {
+                "changed".into()
+            }
+        }
+        None if workspace_contains_hash(&root, &reference.expected_content_hash) => {
+            "relocated".into()
+        }
+        None => "missing".into(),
+    }
+}
+
+/// Read only regular, canonicalized files that remain within the granted workspace root.
+fn read_workspace_text(root: &std::path::Path, path: &std::path::Path) -> Option<String> {
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return None;
+    }
+    let canonical = path.canonicalize().ok()?;
+    if !canonical.starts_with(root) {
+        return None;
+    }
+    std::fs::read_to_string(canonical).ok()
+}
+
+/// A missing source can be resumed only when identical content is still present in this workspace.
+fn workspace_contains_hash(root: &std::path::Path, expected_hash: &str) -> bool {
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_symlink() {
+                continue;
+            }
+            if file_type.is_dir() {
+                pending.push(entry.path());
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            let Some(markdown) = read_workspace_text(root, &entry.path()) else {
+                continue;
+            };
+            if crate::outline::build_outline(
+                "doc://repo/worktree/relocated",
+                &markdown,
+                "comrak-0.54.0",
+            )
+            .content_hash
+                == expected_hash
+            {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -97,6 +173,7 @@ impl CheckpointV1 {
     fn validate(&self) -> Result<(), CheckpointError> {
         for (name, value) in [
             ("checkpoint_id", &self.checkpoint_id),
+            ("installation_id", &self.installation_id),
             ("client", &self.client),
             ("session_id", &self.session_id),
             ("repository_id", &self.repository_id),
