@@ -397,19 +397,6 @@ enum Cmd {
         #[arg(long, default_value_t = 800)]
         min_bytes: usize,
     },
-    /// Print a deterministic markdown section index.
-    DocOutline {
-        path: PathBuf,
-        #[arg(long)]
-        json: bool,
-        #[arg(long)]
-        max_depth: Option<u8>,
-    },
-    /// Run read-only database health checks.
-    Doctor {
-        #[arg(long)]
-        json: bool,
-    },
     /// Run one dream consolidation pass now (L8 curation).
     Curate {
         /// Override the date (YYYY-MM-DD). Defaults to today (UTC).
@@ -424,8 +411,6 @@ enum Cmd {
     BackoutSchemaV10,
     /// Restore every physically isolated smoke recall and return schema v11 to v10.
     BackoutSchemaV11,
-    /// Back out absorption lifecycle columns from schema v20 to schema v19.
-    BackoutSchemaV19,
     /// Plan (default) or transactionally apply the RC-2.3 production-smoke isolation.
     IsolateSmokeRecalls {
         #[arg(long)]
@@ -434,11 +419,6 @@ enum Cmd {
     /// Fetch a memory's FULL content by id and record the fetch as a use — the effectiveness
     /// signal behind the injected previews (`full: memright get <id>`).
     Get { id: String },
-    /// Save/load a compactable session checkpoint as a stable lifecycle-managed memory.
-    Checkpoint {
-        #[command(subcommand)]
-        command: CheckpointCmd,
-    },
     /// Record per-candidate recall feedback (the feedback rail). `--outcome`
     /// used|ignored|contradicted; `--source` observed_action|cited_verdict|advisory (default
     /// advisory — only verified sources rank; a cited_verdict needs `--verdict-ref`).
@@ -497,16 +477,6 @@ enum Cmd {
         session: Option<String>,
         #[arg(long)]
         trace: Option<String>,
-        #[arg(long, default_value_t = false)]
-        pinned: bool,
-        #[arg(long)]
-        valid_from: Option<String>,
-        #[arg(long)]
-        valid_until: Option<String>,
-        #[arg(long)]
-        supersedes: Option<String>,
-        #[arg(long)]
-        confidence: Option<f64>,
     },
     /// Delete a memory by id (row + in-RAM entry).
     Delete { id: String },
@@ -662,20 +632,6 @@ enum Cmd {
         max_candidates: usize,
         #[arg(long)]
         scope_grant_id: Option<String>,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum CheckpointCmd {
-    Save {
-        session: String,
-        #[arg(long)]
-        file: Option<String>,
-        #[arg(long)]
-        valid_until: Option<String>,
-    },
-    Load {
-        session: String,
     },
 }
 
@@ -2288,10 +2244,6 @@ fn main() -> Result<(), String> {
                 serde_json::json!({"schema_version": 10, "restored": restored})
             );
         }
-        Cmd::BackoutSchemaV19 => {
-            memright::memdb::backout_schema_v19(&db).map_err(|e| e.to_string())?;
-            println!("{}", serde_json::json!({"schema_version": 19}));
-        }
         Cmd::IsolateSmokeRecalls { apply } => {
             let report = if apply {
                 MemDb::open(&db)
@@ -2559,65 +2511,6 @@ fn main() -> Result<(), String> {
                 serde_json::to_string(&manifest).unwrap_or_else(|_| "[]".into())
             );
         }
-        Cmd::DocOutline {
-            path,
-            json,
-            max_depth,
-        } => {
-            let text = std::fs::read_to_string(&path)
-                .map_err(|error| format!("read {}: {error}", path.display()))?;
-            let doc = memright::outline::document(&path.to_string_lossy(), &text, max_depth);
-            let outline_chars = doc
-                .sections
-                .iter()
-                .map(|s| s.title.len() + s.slug.len() + 48)
-                .sum();
-            log_transform_best_effort(
-                &db,
-                "outline",
-                text.chars().count(),
-                outline_chars,
-                Some("unit=chars"),
-                None,
-            );
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string(&doc).map_err(|error| error.to_string())?
-                );
-            } else {
-                for section in &doc.sections {
-                    println!(
-                        "{}{} — lines {}–{} · ~{} tok · {}",
-                        "  ".repeat(section.depth.saturating_sub(1) as usize),
-                        if section.depth == 0 { "" } else { "- " },
-                        section.start_line,
-                        section.end_line,
-                        section.est_tokens,
-                        section.title
-                    );
-                }
-            }
-        }
-        Cmd::Doctor { json } => {
-            let checks = memright::doctor::run(&db)?;
-            if json {
-                println!(
-                    "{}",
-                    serde_json::to_string(&checks).map_err(|e| e.to_string())?
-                );
-            } else {
-                for check in &checks {
-                    println!("{}: {} ({})", check.check, check.status, check.count);
-                }
-            }
-            if checks
-                .iter()
-                .any(|check| matches!(check.status.as_str(), "warn" | "critical"))
-            {
-                return Err("doctor found warnings".into());
-            }
-        }
         Cmd::Curate { today } => {
             let today =
                 today.unwrap_or_else(|| memright::time::now_iso().chars().take(10).collect());
@@ -2725,74 +2618,6 @@ fn main() -> Result<(), String> {
                 }
             }
         }
-        Cmd::Checkpoint { command } => match command {
-            CheckpointCmd::Save {
-                session,
-                file,
-                valid_until,
-            } => {
-                let content = match file {
-                    Some(path) => std::fs::read_to_string(path).map_err(|e| e.to_string())?,
-                    None => {
-                        let mut content = String::new();
-                        std::io::stdin()
-                            .read_to_string(&mut content)
-                            .map_err(|e| e.to_string())?;
-                        content
-                    }
-                };
-                if content.trim().is_empty() {
-                    return Err("refusing to save empty checkpoint".into());
-                }
-                let safe = session
-                    .chars()
-                    .map(|c| {
-                        if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                            c
-                        } else {
-                            '_'
-                        }
-                    })
-                    .collect::<String>();
-                let name = format!("checkpoint-{safe}");
-                let store = open(&db)?;
-                let id = store.try_put_attributed_observed(
-                    &name,
-                    content.trim(),
-                    "global",
-                    memright_core::MemoryTier::Working,
-                    "memory",
-                    "checkpoint",
-                    "session_checkpoint",
-                    &cli_event_context(),
-                )?;
-                store.set_lifecycle(
-                    &id,
-                    false,
-                    Some(&memright::time::now_iso()),
-                    valid_until.as_deref(),
-                    None,
-                    Some(0.8),
-                )?;
-                println!("{}", serde_json::json!({"saved": id, "session": session}));
-            }
-            CheckpointCmd::Load { session } => {
-                let safe = session
-                    .chars()
-                    .map(|c| {
-                        if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
-                            c
-                        } else {
-                            '_'
-                        }
-                    })
-                    .collect::<String>();
-                let id = format!("global/checkpoint-{safe}");
-                let store = open(&db)?;
-                let (content, _) = store.get_full_observed(&id, &cli_event_context())?;
-                print!("{content}");
-            }
-        },
         Cmd::Feedback {
             trace,
             candidate,
@@ -2849,11 +2674,6 @@ fn main() -> Result<(), String> {
             record_type,
             session,
             trace,
-            pinned,
-            valid_from,
-            valid_until,
-            supersedes,
-            confidence,
         } => {
             let context = put_event_context(session.as_deref(), trace.as_deref());
             let memory_id = format!("{}/{}", memright::scope::normalize_scope(&scope), name);
@@ -2955,24 +2775,10 @@ fn main() -> Result<(), String> {
                 "recordType": record_type,
                 "session": session,
                 "trace_id": trace,
-                "pinned": pinned,
-                "valid_from": valid_from,
-                "valid_until": valid_until,
-                "supersedes": supersedes,
-                "confidence": confidence,
             })
             .to_string();
             match try_idempotent_put(&db, &payload) {
                 Ok(IdempotentPutOutcome::ServiceSuccess(resp)) => {
-                    let store = open(&db)?;
-                    store.set_lifecycle(
-                        &memory_id,
-                        pinned,
-                        valid_from.as_deref(),
-                        valid_until.as_deref(),
-                        supersedes.as_deref(),
-                        confidence,
-                    )?;
                     println!("{resp}");
                     return Ok(());
                 }
@@ -3024,14 +2830,6 @@ fn main() -> Result<(), String> {
                     // A crash in this narrow window can leave an ambiguous pending key; durable
                     // exactly-once semantics ultimately require the server registry in the DB.
                     confirm_pending_put(&db, &handle)?;
-                    store.set_lifecycle(
-                        &id,
-                        pinned,
-                        valid_from.as_deref(),
-                        valid_until.as_deref(),
-                        supersedes.as_deref(),
-                        confidence,
-                    )?;
                     println!("{{\"put\":{id:?}}}");
                     return Ok(());
                 }

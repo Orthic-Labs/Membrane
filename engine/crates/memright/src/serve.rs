@@ -2597,11 +2597,6 @@ fn route_with_context_ingest_lease(
             .and_then(|x| x.as_str())
             .unwrap_or("memory")
             .trim();
-        let pinned = v.get("pinned").and_then(|x| x.as_bool()).unwrap_or(false);
-        let valid_from = v.get("valid_from").and_then(|x| x.as_str());
-        let valid_until = v.get("valid_until").and_then(|x| x.as_str());
-        let supersedes = v.get("supersedes").and_then(|x| x.as_str());
-        let confidence = v.get("confidence").and_then(|x| x.as_f64());
         let memory_id = format!("{}/{}", crate::scope::normalize_scope(scope), name);
         return match store.try_put_attributed_observed(
             name,
@@ -2613,17 +2608,7 @@ fn route_with_context_ingest_lease(
             record_type,
             &context,
         ) {
-            Ok(id) => match store.set_lifecycle(
-                &id,
-                pinned,
-                valid_from,
-                valid_until,
-                supersedes,
-                confidence,
-            ) {
-                Ok(()) => (200, serde_json::json!({ "put": id }).to_string()),
-                Err(error) => (500, serde_json::json!({ "error": error }).to_string()),
-            },
+            Ok(id) => (200, serde_json::json!({ "put": id }).to_string()),
             Err(e) if e.starts_with("memory write attribution") => {
                 if let Some(response) = record_external_or_500(
                     store,

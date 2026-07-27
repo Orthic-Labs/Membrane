@@ -26,8 +26,6 @@ pub struct PrepEntry {
     pub budget_tok: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drop_manifest: Option<compress::DropManifest>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fetch: Option<String>,
 }
 
 fn is_code_ext(path: &Path) -> bool {
@@ -126,11 +124,6 @@ pub fn transform_rows(manifest: &[PrepEntry]) -> Vec<(String, usize, usize, Opti
                     e.after_tok.unwrap_or(0) as usize,
                     Some("unit=tok"),
                 ),
-                "outline" => (
-                    e.before_bytes.unwrap_or(0) as usize,
-                    e.after_bytes.unwrap_or(0) as usize,
-                    Some("unit=bytes"),
-                ),
                 _ => (0, 0, None),
             };
             (format!("prep:{}", e.kind), before, after, meta)
@@ -186,7 +179,6 @@ pub fn prep_files_with_budget(
                 after_tok: None,
                 budget_tok: None,
                 drop_manifest: None,
-                fetch: None,
             });
             continue;
         }
@@ -209,7 +201,6 @@ pub fn prep_files_with_budget(
                 after_tok: None,
                 budget_tok: None,
                 drop_manifest: None,
-                fetch: None,
             });
             continue;
         }
@@ -233,7 +224,6 @@ pub fn prep_files_with_budget(
                 after_tok: None,
                 budget_tok: None,
                 drop_manifest: None,
-                fetch: None,
             });
             continue;
         }
@@ -268,59 +258,11 @@ pub fn prep_files_with_budget(
                 after_tok: None,
                 budget_tok: allotted.map(|value| value as u64),
                 drop_manifest: Some(compress::drop_manifest(&src, &payload)),
-                fetch: None,
             });
             continue;
         }
 
-        // Branch 5: large prose gets a deterministic index so consumers can fetch sections.
-        let outline_min = std::env::var("PREP_OUTLINE_MIN_BYTES")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(16_384usize);
-        if orig_path
-            .extension()
-            .and_then(|s| s.to_str())
-            .map(|s| s.eq_ignore_ascii_case("md"))
-            .unwrap_or(false)
-            && bytes.len() >= outline_min
-            && outline_min > 0
-        {
-            let name = format!("{}.outline.md", base_name(orig_path));
-            let prepared_path = out_dir.join(&name);
-            let doc = crate::outline::document(&orig_str, &src, None);
-            let mut payload = format!("# Outline: {}\n\nFetch sections with `memright doc-outline {}`; use anchor/retrieve or Read offset/limit.\n\n", orig_str, orig_str);
-            for section in &doc.sections {
-                payload.push_str(&format!(
-                    "{} {} — lines {}–{} · ~{} tok · `{}`\n",
-                    "#".repeat(section.depth.max(1) as usize),
-                    section.title,
-                    section.start_line,
-                    section.end_line,
-                    section.est_tokens,
-                    section.slug
-                ));
-            }
-            let _ = std::fs::write(&prepared_path, payload.as_bytes());
-            out.push(PrepEntry {
-                orig: orig_str,
-                kind: "outline".into(),
-                prepared: Some(prepared_path.to_string_lossy().to_string()),
-                before_bytes: Some(before_bytes),
-                after_bytes: Some(payload.len() as u64),
-                before_tok: None,
-                after_tok: Some(doc.total_est_tokens as u64),
-                budget_tok: None,
-                drop_manifest: None,
-                fetch: Some(format!(
-                    "memright doc-outline {} · anchor/retrieve or Read offset/limit per section",
-                    orig_path.display()
-                )),
-            });
-            continue;
-        }
-
-        // Branch 6: prose -> compress
+        // Branch 5: prose -> compress
         let ext = orig_path.extension().and_then(|s| s.to_str());
         let name = match ext {
             Some(ext) if !ext.is_empty() => format!("{}.min.{ext}", base_name(orig_path)),
@@ -350,7 +292,6 @@ pub fn prep_files_with_budget(
             after_tok: Some(after_tok),
             budget_tok: allotted.map(|value| value as u64),
             drop_manifest: Some(compress::drop_manifest(&src, &compressed)),
-            fetch: None,
         });
     }
 
@@ -428,22 +369,6 @@ mod tests {
             manifest[3].drop_manifest.as_ref().map(|value| value.risk),
             Some("low")
         );
-    }
-
-    #[test]
-    fn large_markdown_routes_to_outline_and_logs_shape() {
-        let tmp = tempfile::tempdir().unwrap();
-        let out_dir = tmp.path().join("out");
-        let md = tmp.path().join("large.md");
-        std::fs::write(&md, "# Root\n\nbody\n".repeat(7000)).unwrap();
-        let manifest = prep_files(&out_dir, &[md], 0.5, 50);
-        assert_eq!(manifest[0].kind, "outline");
-        assert!(manifest[0]
-            .fetch
-            .as_deref()
-            .unwrap()
-            .contains("doc-outline"));
-        assert_eq!(transform_rows(&manifest)[0].0, "prep:outline");
     }
 
     #[test]

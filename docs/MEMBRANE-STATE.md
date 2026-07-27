@@ -1481,16 +1481,3 @@ conflict-safe state note with the genuine hashes and validation result. It did n
 `tools/lib/memright-release.json`, install either binary, alter policy/cohorts, or start/resume
 replay. Windows subsequently completed the paired comparison, four-asset manifest, coordinated
 install, installed freshness smoke, and fresh replay start recorded above.
-
-## Absorption implementation — 2026-07-27
-
-Wave 1 is implemented: deterministic `memright doc-outline`, outline-first large-Markdown prep,
-shared document routing/backfill, read-only `memright doctor`, transform logs, & daily-sync health
-reporting. Wave 2 lifecycle code is implemented as schema v20 because current main already consumed
-schema v19: pinned/validity/supersession/confidence columns, recall gating, pin bonus, transactional
-metadata, quarantine preservation, frontmatter mapping, checkpoint save/load, & reversible
-`backout-schema-v19`. Wave 3 scaffolding is implemented as provider-neutral MCP stdio server,
-idempotent local registration helper, & per-user root/virtual-scope registry.
-
-No guarded installation, cohort change, deployment, or replay acceptance was run. Gate 3 remains open
-under current state evidence; source/runtime promotion still requires existing acceptance artifacts.
