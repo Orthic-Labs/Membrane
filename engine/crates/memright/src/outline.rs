@@ -37,6 +37,7 @@ pub struct DocSectionV1 {
     pub start_line: usize,
     pub end_line: usize,
     pub span_hash: String,
+    pub span: DocSpanV1,
     pub token_estimates: TokenEstimatesV1,
     pub truncated: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -268,8 +269,15 @@ pub fn build_outline(source_ref: &str, markdown: &str, _parser: &str) -> DocOutl
                 start_byte: section.start_byte,
                 end_byte,
                 start_line: section.start_line,
-                end_line: line_for_byte(&line_starts, end_byte),
+                end_line: line_for_byte(&line_starts, end_byte.saturating_sub(1)),
                 span_hash: hash(span),
+                span: DocSpanV1 {
+                    start_byte: section.start_byte,
+                    end_byte,
+                    start_line: section.start_line,
+                    end_line: line_for_byte(&line_starts, end_byte.saturating_sub(1)),
+                    span_hash: hash(span),
+                },
                 token_estimates: TokenEstimatesV1 {
                     per_model: std::collections::BTreeMap::from([(
                         "heuristic-v1".to_owned(),
