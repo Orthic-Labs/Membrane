@@ -777,6 +777,27 @@ fn trust_scan_content(content: &str) -> Option<&'static str> {
     None
 }
 
+fn resolve_doc_read_path(root: &Path, relative: &str) -> Result<PathBuf, memright::outline::DocReadError> {
+    let relative = Path::new(relative);
+    if relative
+        .components()
+        .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(memright::outline::DocReadError::Deny);
+    }
+    let root = root
+        .canonicalize()
+        .map_err(|_| memright::outline::DocReadError::Deny)?;
+    let path = root.join(relative);
+    let path = path
+        .canonicalize()
+        .map_err(|_| memright::outline::DocReadError::SourceMissing)?;
+    if !path.starts_with(&root) {
+        return Err(memright::outline::DocReadError::Deny);
+    }
+    Ok(path)
+}
+
 fn quarantine_untrusted_put(db: &str, memory_id: &str, scope: &str, content: &str, reason: &str) {
     let directory = Path::new(db)
         .parent()
@@ -2272,15 +2293,17 @@ fn run_main() -> Result<(), String> {
                     println!("{}", serde_json::json!({"error":memright::outline::DocReadError::Deny.as_str()}));
                     return Ok(());
                 };
-                if relative.split('/').any(|part| part == "..") {
-                    println!("{}", serde_json::json!({"error":memright::outline::DocReadError::Deny.as_str()}));
-                    return Ok(());
-                }
                 let root = std::env::var_os("WORKSPACE_ROOT")
                     .map(PathBuf::from)
                     .or_else(|| std::env::current_dir().ok())
                     .unwrap_or_else(|| PathBuf::from("."));
-                let path = root.join(relative);
+                let path = match resolve_doc_read_path(&root, relative) {
+                    Ok(path) => path,
+                    Err(error) => {
+                        println!("{}", serde_json::json!({"error":error.as_str()}));
+                        return Ok(());
+                    }
+                };
                 let markdown = match std::fs::read_to_string(&path) {
                     Ok(markdown) => markdown,
                     Err(_) => {
