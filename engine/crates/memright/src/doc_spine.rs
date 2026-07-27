@@ -1,6 +1,12 @@
 //! Shadow-only Doc Spine registration. Artifacts are source references, never memories.
 
-use crate::MemDb;
+use crate::{
+    doc_projection::{
+        replace_doc_projections, DocumentProjectionStoreInputV1, DocumentProjectionV1,
+        ProjectionKind, ProjectionProvenanceV1,
+    },
+    MemDb,
+};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
@@ -201,6 +207,7 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
     let generation: i64 = tx.query_row("SELECT COALESCE(MAX(index_generation),0)+1 FROM doc_artifacts WHERE repository_root=?1", [&root_s], |r| r.get(0)).map_err(|e| e.to_string())?;
     let now = crate::time::now_millis() as i64;
     let mut registered = 0;
+    let mut projection_inputs = Vec::new();
     for file in files {
         let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
         let relative = file
@@ -226,10 +233,29 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
           VALUES (?1,?2,?2,?3,?4,?5,'comrak-0.54.0',?6,'active','catalogued',?7,?8,?9,?10,?11)
           ON CONFLICT(repository_root,path) DO UPDATE SET revision=excluded.revision, content_hash=excluded.content_hash, parser_version=excluded.parser_version, document_class=excluded.document_class, lifecycle_state='active', trust_label=excluded.trust_label, influence_class=excluded.influence_class, sensitivity=excluded.sensitivity, generated=excluded.generated, index_generation=excluded.index_generation, updated_at_ms=excluded.updated_at_ms",
           rusqlite::params![id, root_s, revision, relative, hash, class, influence, sensitivity, generated as i64, generation, now]).map_err(|e| e.to_string())?;
+        projection_inputs.push(DocumentProjectionStoreInputV1 {
+            parent_doc_id: id,
+            source_content_hash: hash,
+            source_revision: revision.clone(),
+            index_generation: generation,
+            projections: vec![DocumentProjectionV1 {
+                kind: ProjectionKind::Lexical,
+                content: String::from_utf8_lossy(&bytes).into_owned(),
+                token_count: 0,
+                provenance: ProjectionProvenanceV1 {
+                    anchor_id: "document".to_owned(),
+                    collapsed_to_parent: None,
+                },
+            }],
+        });
         registered += 1;
     }
     let tombstoned = tx.execute("UPDATE doc_artifacts SET lifecycle_state='tombstoned', index_generation=?2, updated_at_ms=?3 WHERE repository_root=?1 AND lifecycle_state='active' AND index_generation < ?2", rusqlite::params![root_s, generation, now]).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
+    drop(conn);
+    for input in &projection_inputs {
+        replace_doc_projections(db, input).map_err(|e| e.to_string())?;
+    }
     Ok(DocSyncReport {
         registered,
         tombstoned,

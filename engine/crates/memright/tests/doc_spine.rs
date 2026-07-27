@@ -131,6 +131,25 @@ fn sync_never_admits_document_content_as_durable_memory() {
 }
 
 #[test]
+fn sync_persists_machine_local_lexical_projection_with_current_provenance() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("runbook.md"), "# Runbook\n\nverify install").unwrap();
+    let db = MemDb::open_in_memory();
+
+    doc_spine::sync(&db, temp.path()).unwrap();
+
+    let row: (String, String, String, i64) = db.lock().query_row(
+        "SELECT kind, source_content_hash, source_revision, index_generation FROM doc_projections",
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+    ).unwrap();
+    assert_eq!(row.0, "lexical");
+    assert!(!row.1.is_empty());
+    assert_eq!(row.2, "worktree");
+    assert!(row.3 > 0);
+}
+
+#[test]
 fn sync_rolls_back_projection_when_one_artifact_write_fails() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("first.md"), "first").unwrap();
