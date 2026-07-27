@@ -1,4 +1,5 @@
 use memright::{MemDb, MemoryLifecycleEventV1, MemoryPriorityError, MemoryStore};
+use memright_core::MemoryTier;
 
 fn insert_memory(store: &MemoryStore, id: &str, scope: &str) {
     store
@@ -124,6 +125,106 @@ fn supersession_rejects_cycles() {
         .unwrap();
     assert_eq!(state.0, "active");
     assert_eq!(state.1, None);
+}
+
+#[test]
+fn ordinary_puts_keep_the_schema_default_active_recallable_lifecycle() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    let id = store
+        .try_put("ordinary", "ordinary recall fixture", "scope", MemoryTier::Semantic)
+        .unwrap();
+
+    let lifecycle: (String, String, Option<i64>, Option<i64>) = store
+        .db()
+        .lock()
+        .query_row(
+            "SELECT authority, lifecycle_state, effective_from_ms, effective_until_ms
+             FROM memories WHERE id=?1",
+            [&id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(lifecycle.0, "A2");
+    assert_eq!(lifecycle.1, "active");
+    assert_eq!(lifecycle.2, None);
+    assert_eq!(lifecycle.3, None);
+    assert!(store.recall_eligible_ids_at(i64::MAX, false).contains(&id));
+}
+
+#[test]
+fn supersession_replay_respects_event_time_for_as_of_recall() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    insert_memory(&store, "scope/old", "scope");
+    insert_memory(&store, "scope/new", "scope");
+    store
+        .db()
+        .lock()
+        .execute(
+            "UPDATE memories SET effective_from_ms=1722000000000 WHERE id='scope/new'",
+            [],
+        )
+        .unwrap();
+    store
+        .apply_lifecycle_event(&supersession(
+            "lifecycle:as-of",
+            "scope/old",
+            "scope/new",
+            "scope",
+        ))
+        .unwrap();
+
+    let before = store.recall_eligible_ids_at(1_721_999_999_999, false);
+    let after = store.recall_eligible_ids_at(1_722_000_000_001, false);
+    assert!(before.contains("scope/old"));
+    assert!(!before.contains("scope/new"));
+    assert!(!after.contains("scope/old"));
+    assert!(after.contains("scope/new"));
+}
+
+#[test]
+fn failed_lifecycle_event_preserves_subject_event_log_and_private_metadata() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    insert_memory(&store, "scope/old", "scope");
+    insert_memory(&store, "scope/new", "scope");
+    store
+        .db()
+        .lock()
+        .execute(
+            "CREATE TRIGGER reject_lifecycle_log BEFORE INSERT ON memory_event_log
+             WHEN NEW.event_uid='lifecycle:privacy-rollback'
+             BEGIN SELECT RAISE(ABORT, 'forced lifecycle log failure'); END",
+            [],
+        )
+        .unwrap();
+
+    let error = store
+        .apply_lifecycle_event(&supersession(
+            "lifecycle:privacy-rollback",
+            "scope/old",
+            "scope/new",
+            "scope",
+        ))
+        .unwrap_err();
+    assert!(error.to_string().contains("forced lifecycle log failure"));
+
+    let conn = store.db().lock();
+    let state: (String, Option<String>, Option<i64>) = conn
+        .query_row(
+            "SELECT lifecycle_state, superseded_by, effective_until_ms
+             FROM memories WHERE id='scope/old'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(state, ("active".into(), None, None));
+    let log_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM memory_event_log WHERE event_uid='lifecycle:privacy-rollback'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(log_count, 0);
 }
 
 #[test]

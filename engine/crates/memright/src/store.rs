@@ -3358,23 +3358,16 @@ impl MemoryStore {
             " AND (effective_from_ms IS NULL OR effective_from_ms <= ?1) AND (effective_until_ms IS NULL OR ?1 < effective_until_ms) AND (expires_at_ms IS NULL OR ?1 < expires_at_ms)"
         };
         let query = format!(
-            "SELECT id FROM memories WHERE authority IN ('A1','A2','A3','A4','A5') AND lifecycle_state='active' AND superseded_by IS NULL{expiry_clause}"
+            "SELECT id FROM memories WHERE authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
         );
         let mut statement = match conn.prepare(&query) {
             Ok(statement) => statement,
             Err(_) => return HashSet::new(),
         };
-        if include_expired {
-            statement
-                .query_map([], |row| row.get::<_, String>(0))
-                .map(|rows| rows.flatten().collect())
-                .unwrap_or_default()
-        } else {
-            statement
-                .query_map(rusqlite::params![as_of_ms], |row| row.get::<_, String>(0))
-                .map(|rows| rows.flatten().collect())
-                .unwrap_or_default()
-        }
+        statement
+            .query_map(rusqlite::params![as_of_ms], |row| row.get::<_, String>(0))
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default()
     }
 
     /// Scope-aware recall: unscoped calls keep the measured hybrid-candidate + cosine order.
