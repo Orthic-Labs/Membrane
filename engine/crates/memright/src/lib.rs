@@ -8,6 +8,7 @@ pub mod checkpoint;
 pub mod compress;
 pub mod context_telemetry;
 pub mod doc_projection;
+pub mod doc_shadow;
 pub mod doc_spine;
 pub mod doctor;
 pub mod federation;
