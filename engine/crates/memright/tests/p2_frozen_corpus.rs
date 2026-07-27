@@ -20,7 +20,8 @@ const MANIFEST_BYTES: &[u8] = include_bytes!("fixtures/p2-frozen-corpus-v1.manif
 struct Corpus {
     schema_version: u32,
     corpus_id: String,
-    declared_scope: String,
+    #[serde(rename = "declaredScope")]
+    _declared_scope: String,
     synthetic: bool,
     operational_replay: bool,
     cases: Vec<Case>,

@@ -160,6 +160,87 @@ fn frozen_replay_receipt_round_trips_cases_and_report() {
 }
 
 #[test]
+fn frozen_replay_receipt_is_byte_deterministic_when_case_input_order_changes() {
+    let runbook = ShadowReplayCaseV1 {
+        expected_doc_id: "runbook".into(),
+        expected_section_id: Some("install".into()),
+        baseline: vec![candidate(
+            "runbook",
+            Some("install"),
+            DocumentClass::Runbook,
+        )],
+        with_docs: vec![candidate(
+            "runbook",
+            Some("install"),
+            DocumentClass::Runbook,
+        )],
+    };
+    let decision = ShadowReplayCaseV1 {
+        expected_doc_id: "decision".into(),
+        expected_section_id: Some("record".into()),
+        baseline: vec![candidate(
+            "decision",
+            Some("record"),
+            DocumentClass::Decision,
+        )],
+        with_docs: vec![candidate(
+            "decision",
+            Some("record"),
+            DocumentClass::Decision,
+        )],
+    };
+
+    let forward = evaluate_frozen_shadow_replay(vec![runbook.clone(), decision.clone()]);
+    let reversed = evaluate_frozen_shadow_replay(vec![decision, runbook]);
+
+    assert_eq!(
+        serde_json::to_vec(&forward).expect("forward receipt serializes"),
+        serde_json::to_vec(&reversed).expect("reversed receipt serializes"),
+        "frozen replay evidence must not depend on input enumeration order"
+    );
+}
+
+#[test]
+fn frozen_replay_receipt_is_byte_deterministic_for_distinct_cases_with_same_target() {
+    let exact_section = ShadowReplayCaseV1 {
+        expected_doc_id: "runbook".into(),
+        expected_section_id: Some("install".into()),
+        baseline: vec![candidate(
+            "runbook",
+            Some("install"),
+            DocumentClass::Runbook,
+        )],
+        with_docs: vec![candidate(
+            "runbook",
+            Some("install"),
+            DocumentClass::Runbook,
+        )],
+    };
+    let displaced_section = ShadowReplayCaseV1 {
+        expected_doc_id: "runbook".into(),
+        expected_section_id: Some("install".into()),
+        baseline: vec![candidate(
+            "runbook",
+            Some("install"),
+            DocumentClass::Runbook,
+        )],
+        with_docs: vec![
+            candidate("other", None, DocumentClass::Knowledge),
+            candidate("runbook", Some("install"), DocumentClass::Runbook),
+        ],
+    };
+
+    let forward = evaluate_frozen_shadow_replay(vec![exact_section.clone(), displaced_section.clone()]);
+    let reversed = evaluate_frozen_shadow_replay(vec![displaced_section, exact_section]);
+
+    assert_eq!(
+        serde_json::to_vec(&forward).expect("forward receipt serializes"),
+        serde_json::to_vec(&reversed).expect("reversed receipt serializes"),
+        "frozen replay evidence must canonically order distinct cases sharing one target"
+    );
+}
+
+#[test]
 fn provider_policy_keeps_fresh_task_aligned_candidates_in_shadow_with_two_doc_cap() {
     let current = DocCandidateFreshnessV1 {
         content_hash: "sha256:current".into(),

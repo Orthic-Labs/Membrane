@@ -73,8 +73,14 @@ pub struct FrozenShadowReplayReceiptV1 {
 
 /// Evaluate an owned, immutable replay fixture & retain both input and result in one receipt.
 pub fn evaluate_frozen_shadow_replay(
-    cases: Vec<ShadowReplayCaseV1>,
+    mut cases: Vec<ShadowReplayCaseV1>,
 ) -> FrozenShadowReplayReceiptV1 {
+    // Frozen evidence must remain byte-stable when an upstream source enumerates
+    // independent queries in a different order. Candidate order stays intact:
+    // it encodes each query's ranking and therefore must not be normalized.
+    cases.sort_by_cached_key(|case| {
+        serde_json::to_vec(case).expect("shadow replay cases are always serializable")
+    });
     let report = evaluate_shadow_replay(&cases);
     FrozenShadowReplayReceiptV1 {
         schema_version: "memright.doc_shadow_receipt.v1".into(),
