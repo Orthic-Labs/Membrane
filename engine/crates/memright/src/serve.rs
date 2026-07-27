@@ -4884,7 +4884,7 @@ mod tests {
         use tower::ServiceExt;
 
         let (app, control) =
-            router_for_tests_with_control(MemoryStore::new(), Duration::from_millis(100), 1);
+            router_for_tests_with_control(MemoryStore::new(), Duration::from_millis(1_500), 1);
         let first_app = app.clone();
         let first = tokio::spawn(async move {
             first_app
