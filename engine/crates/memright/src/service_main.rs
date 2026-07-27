@@ -23,6 +23,16 @@ struct Runtime {
     port: u16,
 }
 
+fn build_info() -> serde_json::Value {
+    serde_json::json!({
+        "product_version": env!("CARGO_PKG_VERSION"),
+        "memright_source_commit": option_env!("MEMRIGHT_SOURCE_COMMIT").unwrap_or("unknown"),
+        "source_tree_sha256": option_env!("MEMRIGHT_SOURCE_TREE_SHA256").unwrap_or("unknown"),
+        "release_generation": memright::release_identity::release_generation(),
+        "target": memright::release_identity::target_triple(),
+    })
+}
+
 fn prepare_runtime_identity(
     runtime: &Runtime,
 ) -> Result<
@@ -83,6 +93,10 @@ fn runtime_from_exe(exe: &Path) -> Result<Runtime, String> {
 }
 
 fn main() -> Result<(), String> {
+    if std::env::args().nth(1).as_deref() == Some("build-info") {
+        println!("{}", build_info());
+        return Ok(());
+    }
     let runtime = runtime_from_exe(
         &std::env::current_exe().map_err(|error| format!("resolve service binary: {error}"))?,
     )?;
@@ -117,6 +131,16 @@ fn main() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_info_exposes_source_commit_and_tree_identity_fields() {
+        let info = build_info();
+        assert_eq!(info["product_version"], env!("CARGO_PKG_VERSION"));
+        assert!(info.get("memright_source_commit").is_some());
+        assert!(info.get("source_tree_sha256").is_some());
+        assert!(info.get("release_generation").is_some());
+        assert!(info.get("target").is_some());
+    }
 
     #[test]
     fn deployed_service_resolves_canonical_runtime() {
