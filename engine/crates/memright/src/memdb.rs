@@ -28,7 +28,12 @@ CREATE TABLE IF NOT EXISTS memories (
     producer     TEXT NOT NULL DEFAULT 'manual',
     record_type  TEXT NOT NULL DEFAULT 'memory',
     authority    TEXT NOT NULL DEFAULT 'A2',
-    influence_class TEXT NOT NULL DEFAULT 'reference'
+    influence_class TEXT NOT NULL DEFAULT 'reference',
+    pinned       INTEGER NOT NULL DEFAULT 0,
+    valid_from   TEXT NOT NULL DEFAULT '',
+    valid_until  TEXT,
+    superseded_by TEXT,
+    confidence   REAL NOT NULL DEFAULT 0.5
 );
 CREATE TABLE IF NOT EXISTS recall_log (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -235,12 +240,17 @@ CREATE TABLE IF NOT EXISTS memory_quarantine (
     source_ids     TEXT NOT NULL DEFAULT '[]',
     authority      TEXT NOT NULL DEFAULT 'A0',
     influence_class TEXT NOT NULL DEFAULT 'unknown',
+    pinned         INTEGER NOT NULL DEFAULT 0,
+    valid_from     TEXT NOT NULL DEFAULT '',
+    valid_until    TEXT,
+    superseded_by  TEXT,
+    confidence     REAL NOT NULL DEFAULT 0.0,
     quarantined_at TEXT NOT NULL,
     reason         TEXT NOT NULL
 );
 ";
 
-const LATEST_SCHEMA_VERSION: i64 = 19;
+const LATEST_SCHEMA_VERSION: i64 = 20;
 const SMOKE_ISOLATION_MIGRATION_ID: &str = "rc-2.3-smoke-spotcheck-production-v1";
 const SMOKE_ISOLATION_REASON: &str = "legacy_production_smoke_spotcheck";
 const SMOKE_RECALL_PREDICATE: &str =
@@ -1332,6 +1342,56 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                 require_columns(&tx, "memories", &["authority", "influence_class"])?;
                 require_columns(&tx, "memory_quarantine", &["authority", "influence_class"])?;
             }
+            20 => {
+                for (table, columns) in [
+                    (
+                        "memories",
+                        vec![
+                            ("pinned", "INTEGER NOT NULL DEFAULT 0"),
+                            ("valid_from", "TEXT NOT NULL DEFAULT ''"),
+                            ("valid_until", "TEXT"),
+                            ("superseded_by", "TEXT"),
+                            ("confidence", "REAL NOT NULL DEFAULT 0.5"),
+                        ],
+                    ),
+                    (
+                        "memory_quarantine",
+                        vec![
+                            ("pinned", "INTEGER NOT NULL DEFAULT 0"),
+                            ("valid_from", "TEXT NOT NULL DEFAULT ''"),
+                            ("valid_until", "TEXT"),
+                            ("superseded_by", "TEXT"),
+                            ("confidence", "REAL NOT NULL DEFAULT 0.0"),
+                        ],
+                    ),
+                ] {
+                    for (name, definition) in columns {
+                        add_column(&tx, table, name, definition)?;
+                    }
+                }
+                require_columns(
+                    &tx,
+                    "memories",
+                    &[
+                        "pinned",
+                        "valid_from",
+                        "valid_until",
+                        "superseded_by",
+                        "confidence",
+                    ],
+                )?;
+                require_columns(
+                    &tx,
+                    "memory_quarantine",
+                    &[
+                        "pinned",
+                        "valid_from",
+                        "valid_until",
+                        "superseded_by",
+                        "confidence",
+                    ],
+                )?;
+            }
             _ => unreachable!(),
         }
         tx.pragma_update(None, "user_version", next)?;
@@ -1339,6 +1399,30 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
         version = next;
     }
     Ok(())
+}
+
+/// Remove absorption lifecycle columns while retaining all pre-v20 data.
+pub fn backout_schema_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
+    let mut conn = Connection::open(path)?;
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version != 20 {
+        return Ok(());
+    }
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    tx.execute_batch(
+        "ALTER TABLE memories DROP COLUMN pinned;
+         ALTER TABLE memories DROP COLUMN valid_from;
+         ALTER TABLE memories DROP COLUMN valid_until;
+         ALTER TABLE memories DROP COLUMN superseded_by;
+         ALTER TABLE memories DROP COLUMN confidence;
+         ALTER TABLE memory_quarantine DROP COLUMN pinned;
+         ALTER TABLE memory_quarantine DROP COLUMN valid_from;
+         ALTER TABLE memory_quarantine DROP COLUMN valid_until;
+         ALTER TABLE memory_quarantine DROP COLUMN superseded_by;
+         ALTER TABLE memory_quarantine DROP COLUMN confidence;
+         PRAGMA user_version = 19;",
+    )?;
+    tx.commit()
 }
 
 fn backout_identity_metadata_to_v14(path: &Path) -> rusqlite::Result<()> {
@@ -1420,6 +1504,7 @@ fn backout_identity_metadata_to_v14(path: &Path) -> rusqlite::Result<()> {
 /// `user_version` would strand quarantined data.
 pub fn backout_v10_to_v9<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
     let path = path.as_ref();
+    backout_schema_v19(path)?;
     backout_identity_metadata_to_v14(path)?;
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA busy_timeout=5000;")?;
@@ -1471,6 +1556,7 @@ pub fn backout_v10_to_v9<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
 /// backout. Prospective rows receive fresh ids and retain their original nonproduction class.
 pub fn backout_v11_to_v10<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
     let path = path.as_ref();
+    backout_schema_v19(path)?;
     backout_identity_metadata_to_v14(path)?;
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA busy_timeout=5000;")?;
@@ -1543,6 +1629,7 @@ pub fn backout_v11_to_v10<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
 /// canonical envelopes removed.
 pub fn backout_v12_to_v11<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
     let path = path.as_ref();
+    backout_schema_v19(path)?;
     backout_identity_metadata_to_v14(path)?;
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA busy_timeout=5000;")?;

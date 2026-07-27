@@ -2036,10 +2036,12 @@ impl MemoryStore {
                 "INSERT INTO memory_quarantine
                     (id, tier, content, keywords, score, created_at, updated_at, access_count,
                      embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
-                     source_ids, quarantined_at, reason)
+                     source_ids, authority, influence_class, pinned, valid_from, valid_until,
+                     superseded_by, confidence, quarantined_at, reason)
                  SELECT id, tier, content, keywords, score, created_at, updated_at, access_count,
                         embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
-                        source_ids, ?2, 'low_effectiveness'
+                        source_ids, authority, influence_class, pinned, valid_from, valid_until,
+                        superseded_by, confidence, ?2, 'low_effectiveness'
                    FROM memories WHERE id = ?1
                  ON CONFLICT(id) DO UPDATE SET
                     tier=excluded.tier, content=excluded.content, keywords=excluded.keywords,
@@ -2048,7 +2050,11 @@ impl MemoryStore {
                     embedding=excluded.embedding, embedding_q=excluded.embedding_q,
                     scope_id=excluded.scope_id, inject_count=excluded.inject_count,
                     content_hash=excluded.content_hash, embed_model=excluded.embed_model,
-                    source_ids=excluded.source_ids, quarantined_at=excluded.quarantined_at,
+                    source_ids=excluded.source_ids, authority=excluded.authority,
+                    influence_class=excluded.influence_class, pinned=excluded.pinned,
+                    valid_from=excluded.valid_from, valid_until=excluded.valid_until,
+                    superseded_by=excluded.superseded_by, confidence=excluded.confidence,
+                    quarantined_at=excluded.quarantined_at,
                     reason=excluded.reason",
                 rusqlite::params![id, quarantined_at],
             )
@@ -2159,10 +2165,12 @@ impl MemoryStore {
                 "INSERT INTO memories
                     (id, tier, content, keywords, score, created_at, updated_at, access_count,
                      embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
-                     source_ids)
+                     source_ids, authority, influence_class, pinned, valid_from, valid_until,
+                     superseded_by, confidence)
                  SELECT id, tier, content, keywords, score, created_at, updated_at, access_count,
                         embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
-                        source_ids
+                        source_ids, authority, influence_class, pinned, valid_from, valid_until,
+                        superseded_by, confidence
                    FROM memory_quarantine WHERE id = ?1
                  ON CONFLICT(id) DO NOTHING",
                 rusqlite::params![id],
@@ -3236,15 +3244,29 @@ impl MemoryStore {
 
     fn recall_eligible_ids(&self) -> HashSet<String> {
         let conn = self.db.lock();
-        let mut statement = match conn
-            .prepare("SELECT id FROM memories WHERE authority IN ('A1','A2','A3','A4','A5')")
-        {
+        let now = crate::time::now_iso();
+        let mut statement = match conn.prepare(
+            "SELECT id FROM memories WHERE authority IN ('A1','A2','A3','A4','A5')
+                      AND (valid_until IS NULL OR valid_until = '' OR valid_until > ?1)
+                      AND (superseded_by IS NULL OR superseded_by = '')",
+        ) {
             Ok(statement) => statement,
             Err(_) => return HashSet::new(),
         };
         statement
-            .query_map([], |row| row.get::<_, String>(0))
+            .query_map(rusqlite::params![now], |row| row.get::<_, String>(0))
             .map(|rows| rows.flatten().collect())
+            .unwrap_or_default()
+    }
+
+    fn pinned_ids(&self) -> HashSet<String> {
+        let conn = self.db.lock();
+        conn.prepare("SELECT id FROM memories WHERE pinned = 1")
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .map(|rows| rows.flatten().collect())
+            })
             .unwrap_or_default()
     }
 
@@ -3392,6 +3414,7 @@ impl MemoryStore {
             .map(|(entry, _)| entry.id.clone())
             .collect::<Vec<_>>();
         let eligible_ids = self.recall_eligible_ids();
+        let pinned_ids = self.pinned_ids();
         let confidence_abstained =
             !candidate_ids.is_empty() && candidate_ids.iter().all(|id| !eligible_ids.contains(id));
         direct_candidates.retain(|(entry, _)| eligible_ids.contains(&entry.id));
@@ -3406,6 +3429,9 @@ impl MemoryStore {
         // Retrieval-time utility/frequency adjustment closes the feedback loop without
         // replacing semantic relevance or allowing a low-quality row to leap the gate.
         for (entry, score) in &mut direct_candidates {
+            if pinned_ids.contains(&entry.id) {
+                *score += 0.04;
+            }
             *score = utility_recall_score(entry, *score);
         }
         direct_candidates
@@ -4582,6 +4608,43 @@ impl MemoryStore {
             }),
             context,
         )
+    }
+
+    /// Apply lifecycle metadata after a normal content write. The update is transactional,
+    /// rejects self-supersession, & marks prior rows superseded when requested.
+    pub fn set_lifecycle(
+        &self,
+        id: &str,
+        pinned: bool,
+        valid_from: Option<&str>,
+        valid_until: Option<&str>,
+        supersedes: Option<&str>,
+        confidence: Option<f64>,
+    ) -> Result<(), String> {
+        if supersedes.is_some_and(|old| old.trim() == id) {
+            return Err("lifecycle cannot supersede itself".into());
+        }
+        let mut conn = self.db.lock();
+        let tx = conn
+            .transaction()
+            .map_err(|e| self.persist_error(format!("lifecycle transaction failed: {e}")))?;
+        let changed = tx.execute(
+            "UPDATE memories SET pinned=?2, valid_from=COALESCE(?3, valid_from), valid_until=?4,
+             confidence=COALESCE(?5, confidence) WHERE id=?1",
+            rusqlite::params![id, pinned as i64, valid_from, valid_until, confidence],
+        ).map_err(|e| self.persist_error(format!("lifecycle update failed: {e}")))?;
+        if changed != 1 {
+            return Err(format!("lifecycle target not found: {id}"));
+        }
+        if let Some(old) = supersedes.filter(|value| !value.trim().is_empty()) {
+            tx.execute(
+                "UPDATE memories SET superseded_by=?1 WHERE id=?2",
+                rusqlite::params![id, old],
+            )
+            .map_err(|e| self.persist_error(format!("supersession update failed: {e}")))?;
+        }
+        tx.commit()
+            .map_err(|e| self.persist_error(format!("lifecycle commit failed: {e}")))
     }
 
     /// Metadata-aware write used by sync/import paths. The caller-supplied update timestamp and

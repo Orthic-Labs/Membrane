@@ -6,12 +6,14 @@
 pub mod catalog;
 pub mod compress;
 pub mod context_telemetry;
+pub mod doctor;
 pub mod federation;
 pub mod federation_worker;
 pub mod feedback;
 pub mod freshness;
 pub mod installation_identity;
 pub mod memdb;
+pub mod outline;
 pub mod plan_context;
 pub mod planner_metrics;
 pub mod prep;
