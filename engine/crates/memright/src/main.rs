@@ -763,9 +763,10 @@ fn trust_scan_content(content: &str) -> Option<&'static str> {
         for line in lower.lines() {
             if let Some(pos) = line.find(key) {
                 let tail = &line[pos + key.len()..];
+                let tail = tail.trim_start();
                 if tail
-                    .find(['=', ':'])
-                    .map(|separator| secret_value_looks_credible(&tail[separator + 1..]))
+                    .strip_prefix('=').or_else(|| tail.strip_prefix(':'))
+                    .map(secret_value_looks_credible)
                     .unwrap_or(false)
                 {
                     return Some("secret_like");
@@ -4841,6 +4842,14 @@ mod tests {
             super::trust_scan_content("OPENAI_API_KEY=sk-proj-1234567890abcdef"),
             Some("secret_like")
         );
+        assert_eq!(
+            super::trust_scan_content("secret=secret12345"),
+            Some("secret_like")
+        );
+        assert_eq!(
+            super::trust_scan_content("my_api_key_backup=abc123456"),
+            None
+        );
     }
 }
 
@@ -4892,7 +4901,7 @@ fn secret_value_looks_credible(value: &str) -> bool {
             "value",
         ]
         .iter()
-        .any(|placeholder| value.starts_with(placeholder))
+        .any(|placeholder| value == *placeholder)
     {
         return false;
     }
