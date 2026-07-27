@@ -2600,6 +2600,11 @@ fn run_main() -> Result<(), String> {
                 as_of_ms.unwrap_or_else(|| memright::time::now_millis() as i64),
                 include_expired,
             );
+            let document_hits = memright::doc_spine::recall(
+                &MemDb::open(&db).map_err(|error| error.to_string())?,
+                &query,
+                k,
+            )?;
             if hits.is_empty()
                 && store.last_recall_status().as_deref() == Some("insufficient_confidence")
             {
@@ -2623,6 +2628,12 @@ fn run_main() -> Result<(), String> {
                     .take(200)
                     .count();
                 println!("{:.3}  {}  {}", cos, e.scope_id, e.id);
+            }
+            for hit in &document_hits {
+                println!(
+                    "{}",
+                    serde_json::to_string(hit).map_err(|error| error.to_string())?
+                );
             }
             // source='cli' keeps human debugging out of the agent-effectiveness numbers.
             // NO record_injections: inject_count means "shown to an agent session".

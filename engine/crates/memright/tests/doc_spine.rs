@@ -150,6 +150,39 @@ fn sync_persists_machine_local_lexical_projection_with_current_provenance() {
 }
 
 #[test]
+fn isolated_doc_recall_returns_a_hash_bound_pointer_to_the_matching_section() {
+    let temp = tempfile::tempdir().unwrap();
+    let markdown = "# Runbook\n\n## Deploy\n\nDoc Spine fetches the requested anchor as source-bound content.\n\n## Rollback\n\nRestore the prior release.\n";
+    std::fs::write(temp.path().join("runbook.md"), markdown).unwrap();
+    let db = MemDb::open_in_memory();
+
+    doc_spine::sync(&db, temp.path()).unwrap();
+    let hits = doc_spine::recall(&db, "requested anchor", 1).unwrap();
+
+    assert_eq!(hits.len(), 1);
+    let hit = &hits[0];
+    assert_eq!(hit.source_ref, "doc://repo/worktree/runbook.md");
+    assert_eq!(hit.anchor_id, "sec:deploy:1");
+    let read = memright::outline::read_section(
+        &hit.source_ref,
+        markdown,
+        &hit.anchor_id,
+        &hit.expected_hash,
+        12_000,
+    )
+    .expect("recall pointer fetches its exact source section");
+    assert_eq!(
+        read.content,
+        "## Deploy\n\nDoc Spine fetches the requested anchor as source-bound content.\n\n"
+    );
+    let durable: i64 = db
+        .lock()
+        .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(durable, 0);
+}
+
+#[test]
 fn sync_rolls_back_projection_when_one_artifact_write_fails() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("first.md"), "first").unwrap();

@@ -39,6 +39,124 @@ pub struct DocSyncReport {
 fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
+
+fn query_terms(query: &str) -> Vec<String> {
+    query
+        .to_ascii_lowercase()
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|term| !term.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+fn lexical_score(content: &str, terms: &[String]) -> usize {
+    let content = content.to_ascii_lowercase();
+    terms
+        .iter()
+        .map(|term| content.match_indices(term).count())
+        .sum()
+}
+
+/// Recall active Doc Spine artifacts as source pointers, never memory entries.
+///
+/// Source is reopened & hash-checked before emitting a hit, so stale projections cannot yield a
+/// pointer whose expected hash targets changed document content.
+pub fn recall(db: &MemDb, query: &str, k: usize) -> Result<Vec<DocRecallHitV1>, String> {
+    if k == 0 {
+        return Ok(Vec::new());
+    }
+    let terms = query_terms(query);
+    if terms.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = {
+        let conn = db.lock();
+        let mut statement = conn
+            .prepare(
+                "SELECT artifact.doc_id, artifact.repository_root, artifact.path, artifact.content_hash, projection.content
+                 FROM doc_artifacts artifact
+                 JOIN doc_projections projection ON projection.parent_doc_id=artifact.doc_id
+                 WHERE artifact.lifecycle_state='active'
+                   AND artifact.sensitivity='normal'
+                   AND projection.kind='lexical'
+                   AND projection.source_content_hash=artifact.content_hash
+                   AND projection.source_revision=artifact.revision
+                   AND projection.index_generation=artifact.index_generation",
+            )
+            .map_err(|error| error.to_string())?;
+        let results = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        results
+    };
+
+    let mut hits = Vec::new();
+    for (doc_id, repository_root, path, expected_hash, projection) in rows {
+        let score = lexical_score(&projection, &terms);
+        if score == 0
+            || Path::new(&path)
+                .components()
+                .any(|part| matches!(part, std::path::Component::ParentDir))
+        {
+            continue;
+        }
+        let source_path = Path::new(&repository_root).join(&path);
+        let Ok(markdown) = std::fs::read_to_string(source_path) else {
+            continue;
+        };
+        if digest(markdown.as_bytes()) != expected_hash {
+            continue;
+        }
+        let source_ref = format!("doc://repo/worktree/{}", path.trim_start_matches('/'));
+        let outline = crate::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
+        let Some(section) = outline
+            .sections
+            .iter()
+            .map(|section| {
+                (
+                    lexical_score(&markdown[section.start_byte..section.end_byte], &terms),
+                    section,
+                )
+            })
+            .filter(|(section_score, _)| *section_score > 0)
+            .max_by_key(|(section_score, section)| {
+                (
+                    *section_score,
+                    usize::MAX - (section.end_byte - section.start_byte),
+                )
+            })
+            .map(|(_, section)| section)
+        else {
+            continue;
+        };
+        hits.push(DocRecallHitV1 {
+            doc_id,
+            source_ref,
+            anchor_id: section.anchor_id.clone(),
+            expected_hash,
+            score: score as f32,
+        });
+    }
+    hits.sort_by(|left, right| {
+        right
+            .score
+            .total_cmp(&left.score)
+            .then_with(|| left.doc_id.cmp(&right.doc_id))
+    });
+    hits.truncate(k);
+    Ok(hits)
+}
+
 fn classify(path: &str) -> (&'static str, &'static str, &'static str, bool) {
     let lower = path.to_ascii_lowercase();
     let generated = lower.contains("/generated/") || lower.ends_with(".generated.md");
@@ -74,6 +192,17 @@ fn classify(path: &str) -> (&'static str, &'static str, &'static str, bool) {
         },
         generated,
     )
+}
+
+/// Read-only Doc Spine recall result. Document text stays in source; callers receive only a
+/// hash-bound pointer consumable by `memright doc read`.
+#[derive(Clone, Debug, serde::Serialize, PartialEq)]
+pub struct DocRecallHitV1 {
+    pub doc_id: String,
+    pub source_ref: String,
+    pub anchor_id: String,
+    pub expected_hash: String,
+    pub score: f32,
 }
 
 #[derive(Debug)]
