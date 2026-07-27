@@ -69,16 +69,72 @@ fn classify(path: &str) -> (&'static str, &'static str, &'static str, bool) {
         generated,
     )
 }
+
+#[derive(Debug)]
+struct IgnoreRule {
+    base: PathBuf,
+    pattern: String,
+}
+
+fn ignored(root: &Path, path: &Path, rules: &[IgnoreRule]) -> bool {
+    rules.iter().any(|rule| {
+        let Ok(relative) = path.strip_prefix(&rule.base) else {
+            return false;
+        };
+        let relative = relative.to_string_lossy().replace('\\', "/");
+        let pattern = rule.pattern.trim_matches('/');
+        if pattern.is_empty() {
+            return false;
+        }
+        if pattern.contains('/') {
+            relative == pattern || relative.starts_with(&format!("{pattern}/"))
+        } else {
+            relative.split('/').any(|part| part == pattern)
+                || path
+                    .strip_prefix(root)
+                    .ok()
+                    .and_then(|p| p.file_name())
+                    .is_some_and(|name| name == pattern)
+        }
+    })
+}
+
+fn load_gitignore(dir: &Path, rules: &mut Vec<IgnoreRule>) {
+    let Ok(contents) = std::fs::read_to_string(dir.join(".gitignore")) else {
+        return;
+    };
+    for line in contents.lines() {
+        let line = line.trim();
+        if !line.is_empty() && !line.starts_with('#') && !line.starts_with('!') {
+            rules.push(IgnoreRule {
+                base: dir.to_path_buf(),
+                pattern: line.to_string(),
+            });
+        }
+    }
+}
+
+fn has_health_component(path: &Path) -> bool {
+    path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .is_some_and(|name| name.eq_ignore_ascii_case("health"))
+    })
+}
+
 fn walk(
     root: &Path,
     output: &mut Vec<PathBuf>,
     excluded_health: &mut usize,
 ) -> std::io::Result<()> {
     let mut pending = vec![(root.to_path_buf(), 0usize)];
+    let mut ignore_rules = Vec::new();
     while let Some((dir, depth)) = pending.pop() {
         if depth > 64 {
             continue;
         }
+        load_gitignore(&dir, &mut ignore_rules);
         for item in std::fs::read_dir(&dir)? {
             let item = item?;
             let path = item.path();
@@ -87,18 +143,16 @@ fn walk(
             if kind.is_symlink() {
                 continue;
             }
+            if has_health_component(relative) {
+                *excluded_health += 1;
+                continue;
+            }
+            if ignored(root, &path, &ignore_rules) {
+                continue;
+            }
             if kind.is_dir() {
                 let name = path.file_name().and_then(|v| v.to_str()).unwrap_or("");
                 if matches!(name, ".git" | "node_modules" | "target" | ".cache") {
-                    continue;
-                }
-                if relative
-                    .components()
-                    .next()
-                    .and_then(|v| v.as_os_str().to_str())
-                    == Some("Health")
-                {
-                    *excluded_health += 1;
                     continue;
                 }
                 pending.push((path, depth + 1));
@@ -132,7 +186,7 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
     let mut conn = db.lock();
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS doc_artifacts (
-            doc_id TEXT PRIMARY KEY, repository_root TEXT NOT NULL, repository_id TEXT NOT NULL,
+            doc_id TEXT NOT NULL, repository_root TEXT NOT NULL, repository_id TEXT NOT NULL,
             revision TEXT NOT NULL, path TEXT NOT NULL, content_hash TEXT NOT NULL,
             parser_version TEXT NOT NULL, document_class TEXT NOT NULL,
             lifecycle_state TEXT NOT NULL DEFAULT 'active', trust_label TEXT NOT NULL,
@@ -156,11 +210,18 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
             .replace('\\', "/");
         let (class, influence, sensitivity, generated) = classify(&relative);
         let hash = digest(&bytes);
-        let id = format!(
+        let default_id = format!(
             "doc:{}:{}",
             digest(root_s.as_bytes())[..16].to_string(),
             digest(relative.as_bytes())[..16].to_string()
         );
+        let id: String = tx
+            .query_row(
+                "SELECT doc_id FROM doc_artifacts WHERE repository_root=?1 AND content_hash=?2 AND lifecycle_state='active' AND path<>?3 ORDER BY updated_at_ms DESC LIMIT 1",
+                rusqlite::params![root_s, hash, relative],
+                |row| row.get(0),
+            )
+            .unwrap_or(default_id);
         tx.execute("INSERT INTO doc_artifacts (doc_id, repository_root, repository_id, revision, path, content_hash, parser_version, document_class, lifecycle_state, trust_label, influence_class, sensitivity, generated, index_generation, updated_at_ms)
           VALUES (?1,?2,?2,?3,?4,?5,'comrak-0.54.0',?6,'active','catalogued',?7,?8,?9,?10,?11)
           ON CONFLICT(repository_root,path) DO UPDATE SET revision=excluded.revision, content_hash=excluded.content_hash, parser_version=excluded.parser_version, document_class=excluded.document_class, lifecycle_state='active', trust_label=excluded.trust_label, influence_class=excluded.influence_class, sensitivity=excluded.sensitivity, generated=excluded.generated, index_generation=excluded.index_generation, updated_at_ms=excluded.updated_at_ms",
