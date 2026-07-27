@@ -147,7 +147,8 @@ fn checked_in_registry_matches_canonical_parent_workspace_registry() {
     let local_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../lib/context-telemetry-registry.json");
     let local = std::fs::read(&local_path).unwrap();
-    let local_sha = format!("{:x}", sha2::Sha256::digest(&local));
+    let local_normalized = String::from_utf8(local).unwrap().replace("\r\n", "\n");
+    let local_sha = format!("{:x}", sha2::Sha256::digest(&local_normalized));
     assert_eq!(
         local_sha,
         "9e56363c7a5c328f95b1bfaac2606278fa9f3641a75a5a632e1b75f71b028dc0"
@@ -156,7 +157,10 @@ fn checked_in_registry_matches_canonical_parent_workspace_registry() {
     let parent_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../../tools/lib/context-telemetry-registry.json");
     if parent_path.is_file() {
-        assert_eq!(local, std::fs::read(parent_path).unwrap());
+        let parent = String::from_utf8(std::fs::read(parent_path).unwrap())
+            .unwrap()
+            .replace("\r\n", "\n");
+        assert_eq!(local_normalized, parent);
     }
 }
 
