@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "memright.doc_spine_shadow_replay_fixture.v1",
+  "fixtureStatus": "synthetic_test_fixture_not_operational_evidence",
+  "repositoryId": "fixture/doc-spine-shadow-v1",
+  "revision": "fixture@doc-spine-shadow-v1",
+  "indexGeneration": 1,
+  "sources": [
+    {
+      "docId": "deploy-runbook",
+      "path": "sources/deploy-runbook.md",
+      "sha256": "d6258c5d81821ce5602526c0e498db3a9c4e355b305a90e479e433ee5a8bb5c1"
+    },
+    {
+      "docId": "architecture-decision",
+      "path": "sources/architecture-decision.md",
+      "sha256": "ec926ac28ad6023f93b718b80d07ff30acbc267cd3c0ab2630939ecbc11d76b2"
+    },
+    {
+      "docId": "retention-policy",
+      "path": "sources/retention-policy.md",
+      "sha256": "5a170b675f1c592a6d6a52cf301aebb988a8c9850fb2d0a6b86f50030d0ac774"
+    }
+  ],
+  "cases": [
+    {
+      "expected_doc_id": "deploy-runbook",
+      "expected_section_id": "install",
+      "baseline": [
+        { "doc_id": "legacy-operation", "section_id": null, "document_class": "Knowledge", "superseded": false, "duplicate": false },
+        { "doc_id": "deploy-runbook", "section_id": "install", "document_class": "Runbook", "superseded": false, "duplicate": false }
+      ],
+      "with_docs": [
+        { "doc_id": "deploy-runbook", "section_id": "install", "document_class": "Runbook", "superseded": false, "duplicate": false },
+        { "doc_id": "legacy-operation", "section_id": null, "document_class": "Knowledge", "superseded": false, "duplicate": false }
+      ]
+    },
+    {
+      "expected_doc_id": "architecture-decision",
+      "expected_section_id": "shadow-boundary",
+      "baseline": [
+        { "doc_id": "prior-decision", "section_id": null, "document_class": "Knowledge", "superseded": false, "duplicate": false },
+        { "doc_id": "architecture-decision", "section_id": "summary", "document_class": "Decision", "superseded": false, "duplicate": false }
+      ],
+      "with_docs": [
+        { "doc_id": "architecture-decision", "section_id": "shadow-boundary", "document_class": "Decision", "superseded": false, "duplicate": false },
+        { "doc_id": "prior-decision", "section_id": null, "document_class": "Knowledge", "superseded": false, "duplicate": false }
+      ]
+    },
+    {
+      "expected_doc_id": "retention-policy",
+      "expected_section_id": "current-policy",
+      "baseline": [
+        { "doc_id": "retention-policy", "section_id": "old-policy", "document_class": "Policy", "superseded": false, "duplicate": false }
+      ],
+      "with_docs": [
+        { "doc_id": "retention-policy", "section_id": "current-policy", "document_class": "Policy", "superseded": false, "duplicate": false }
+      ]
+    }
+  ],
+  "expectedReport": {
+    "baseline": { "mean_rank": 1.6666666666666667, "correct_doc_rate": 1.0, "correct_section_rate": 0.3333333333333333 },
+    "with_docs": { "mean_rank": 1.0, "correct_doc_rate": 1.0, "correct_section_rate": 1.0 },
+    "displacement_count": 0,
+    "superseded_leakage_count": 0,
+    "duplicate_leakage_count": 0,
+    "disposition": "ShadowOnly"
+  },
+  "h2Gate": {
+    "passed": false,
+    "disposition": "RemainDocumentLevel",
+    "reason": "Synthetic fixture exercises replay determinism only; it is not deployed H2-split evidence."
+  },
+  "safetyLeakChecks": {
+    "crossRepositoryCandidateCount": 0,
+    "secretLeakageCount": 0,
+    "authorityEscapeCount": 0,
+    "supersededLeakageCount": 0,
+    "duplicateLeakageCount": 0
+  }
+}

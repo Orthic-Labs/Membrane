@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "memright-p2-frozen-synthetic-v1",
+  "corpusSha256": "91c96d6b93b0e1a12420d597e7660ecf2afc9cbefe470ea5ec848ca9650e3dc1",
+  "caseCount": 8,
+  "requiredCoverage": ["ASI06", "abstention", "as_of", "cross_scope", "lifecycle", "poisoning", "raw_recovery", "refetch"],
+  "immutable": true,
+  "synthetic": true,
+  "operationalReplay": false
+}
