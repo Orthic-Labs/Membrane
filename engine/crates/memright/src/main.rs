@@ -345,6 +345,8 @@ enum DocCmd {
         anchor: String,
         #[arg(long)]
         expected_hash: String,
+        #[arg(long)]
+        continuation_cursor: Option<String>,
     },
 }
 
@@ -2263,13 +2265,14 @@ fn run_main() -> Result<(), String> {
                 source_ref,
                 anchor,
                 expected_hash,
+                continuation_cursor,
             } => {
                 let Some(relative) = source_ref.strip_prefix("doc://repo/worktree/") else {
-                    println!("{}", serde_json::json!({"error":"deny"}));
+                    println!("{}", serde_json::json!({"error":memright::outline::DocReadError::Deny.as_str()}));
                     return Ok(());
                 };
                 if relative.split('/').any(|part| part == "..") {
-                    println!("{}", serde_json::json!({"error":"deny"}));
+                    println!("{}", serde_json::json!({"error":memright::outline::DocReadError::Deny.as_str()}));
                     return Ok(());
                 }
                 let root = std::env::var_os("WORKSPACE_ROOT")
@@ -2280,22 +2283,23 @@ fn run_main() -> Result<(), String> {
                 let markdown = match std::fs::read_to_string(&path) {
                     Ok(markdown) => markdown,
                     Err(_) => {
-                        println!("{}", serde_json::json!({"error":"source_missing"}));
+                        println!("{}", serde_json::json!({"error":memright::outline::DocReadError::SourceMissing.as_str()}));
                         return Ok(());
                     }
                 };
-                match memright::outline::read_section(
+                match memright::outline::read_section_with_cursor(
                     source_ref,
                     &markdown,
                     anchor,
                     expected_hash,
                     12_000,
+                    continuation_cursor.as_deref(),
                 ) {
                     Ok(read) => println!(
                         "{}",
                         serde_json::to_string(&read).map_err(|error| error.to_string())?
                     ),
-                    Err(error) => println!("{}", serde_json::json!({"error":error})),
+                    Err(error) => println!("{}", serde_json::json!({"error":error.as_str()})),
                 }
                 Ok(())
             }
@@ -4813,6 +4817,12 @@ mod tests {
             None
         );
         assert_eq!(
+            super::trust_scan_content(
+                "Documentation example:\n```rust\npub struct Credentials {\n    refresh_token: Option<String>,\n}\n```"
+            ),
+            None
+        );
+        assert_eq!(
             super::trust_scan_content("The secret field is documented in this schema."),
             None
         );
@@ -4847,6 +4857,19 @@ fn secret_value_looks_credible(value: &str) -> bool {
         .trim_matches(|character: char| matches!(character, '`' | '\'' | '"' | ',' | ';'));
     if value.is_empty()
         || value.starts_with(['<', '[', '{'])
+        || [
+            "option<",
+            "vec<",
+            "result<",
+            "hashmap<",
+            "btreemap<",
+            "hashset<",
+            "arc<",
+            "box<",
+            "cow<",
+        ]
+        .iter()
+        .any(|type_prefix| value.starts_with(type_prefix))
         || [
             "placeholder",
             "redacted",

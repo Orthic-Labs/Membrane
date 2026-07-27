@@ -111,9 +111,13 @@ fn base_name(path: &Path) -> String {
 }
 
 fn estimate_tokens(text: &str) -> u64 {
-    // This is an estimate only; parity with Python LLMLingua happens behind
-    // `llmlingua-onnx` and a separate 4b test.
-    text.split_whitespace().count() as u64
+    memright_core::estimate_tokens(text) as u64
+}
+
+fn outline_token_threshold() -> usize {
+    // Leave room in EmbeddingGemma's active 2,048-token profile for document
+    // title, ancestry, embed prefix, and a safety margin.
+    memright_core::EMBEDDING_MAX_SEQUENCE_TOKENS.saturating_sub(448)
 }
 
 /// `(verb, before, after, meta)` transform_log rows for a manifest — shared by the CLI and serve
@@ -277,9 +281,10 @@ pub fn prep_files_with_budget(
             continue;
         }
 
-        // Branch 5: large Markdown becomes a navigation artifact. This retains
-        // document identity and stable anchors where generic compression loses them.
-        if is_markdown(orig_path) {
+        // Branch 5: Markdown that exceeds the active embedding profile becomes
+        // a navigation artifact. This retains document identity and stable
+        // anchors where generic compression loses them.
+        if is_markdown(orig_path) && estimate_tokens(&src) as usize >= outline_token_threshold() {
             let name = format!("{}.outline.json", base_name(orig_path));
             let prepared_path = out_dir.join(name);
             let source_ref = format!(
@@ -363,9 +368,13 @@ mod tests {
         let big_body = "fn a(x:i32)->i32 { x+1 }\n".repeat(200);
         std::fs::write(&big, &big_body).unwrap();
 
-        // prose (compress branch)
+        // Markdown above the tokenizer threshold (outline branch)
         let notes = tmp.path().join("notes.md");
-        std::fs::write(&notes, "Hello world.\n".repeat(200)).unwrap();
+        let mut notes_source = "# Notes\n\n".to_owned();
+        while estimate_tokens(&notes_source) < outline_token_threshold() as u64 {
+            notes_source.push_str("Hello world.\n");
+        }
+        std::fs::write(&notes, notes_source).unwrap();
 
         let files = vec![missing.clone(), tiny.clone(), big.clone(), notes.clone()];
         let manifest = prep_files(&out_dir, &files, 0.5, 50);
@@ -414,13 +423,47 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let out_dir = temp.path().join("prepared");
         let markdown = temp.path().join("guide.md");
-        std::fs::write(&markdown, "# Guide\n\n".to_owned() + &"detail ".repeat(80)).unwrap();
+        let mut source = "# Guide\n\n".to_owned();
+        while estimate_tokens(&source) < outline_token_threshold() as u64 {
+            source.push_str("detail ");
+        }
+        std::fs::write(&markdown, source).unwrap();
 
         let manifest = prep_files(&out_dir, &[markdown], 0.5, 50);
 
         assert_eq!(manifest[0].kind, "outline");
         let payload = std::fs::read_to_string(manifest[0].prepared.as_ref().unwrap()).unwrap();
         assert!(payload.contains("DocOutlineV1"));
+    }
+
+    #[test]
+    fn markdown_outline_route_uses_token_threshold_not_byte_count() {
+        let temp = tempfile::tempdir().unwrap();
+        let out_dir = temp.path().join("prepared");
+        let under_budget = temp.path().join("under-budget.md");
+        let over_budget = temp.path().join("over-budget.md");
+
+        let short_source = "# Guide\n\n".to_owned() + &"detail ".repeat(200);
+        assert!(short_source.len() > 50);
+        assert!(estimate_tokens(&short_source) < outline_token_threshold() as u64);
+        std::fs::write(&under_budget, short_source).unwrap();
+
+        let mut large_source = "# Guide\n\n".to_owned();
+        while estimate_tokens(&large_source) < outline_token_threshold() as u64 {
+            large_source.push_str("detail ");
+        }
+        std::fs::write(&over_budget, large_source).unwrap();
+
+        let manifest = prep_files(&out_dir, &[under_budget, over_budget], 0.5, 50);
+
+        assert_eq!(manifest[0].kind, "compress");
+        assert_eq!(manifest[1].kind, "outline");
+        assert_eq!(
+            Path::new(manifest[1].prepared.as_ref().unwrap())
+                .file_name()
+                .and_then(|name| name.to_str()),
+            Some("over-budget.md.outline.json")
+        );
     }
 
     #[test]

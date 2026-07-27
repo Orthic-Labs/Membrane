@@ -3,6 +3,9 @@ use comrak::{parse_document, Arena, Options};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
+const PARSER_NAME: &str = "comrak";
+const PARSER_VERSION: &str = "0.54.0";
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocOutlineV1 {
@@ -79,37 +82,77 @@ pub struct NeighborAnchorsV1 {
     pub next: Option<String>,
 }
 
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum DocReadError {
+    #[error("source_changed")]
+    SourceChanged,
+    #[error("source_missing")]
+    SourceMissing,
+    #[error("relocated")]
+    Relocated,
+    #[error("deny")]
+    Deny,
+}
+
+impl DocReadError {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::SourceChanged => "source_changed",
+            Self::SourceMissing => "source_missing",
+            Self::Relocated => "relocated",
+            Self::Deny => "deny",
+        }
+    }
+}
+
 pub fn read_section(
     source_ref: &str,
     markdown: &str,
     anchor: &str,
     expected_hash: &str,
     max_bytes: usize,
-) -> Result<DocReadV1, &'static str> {
-    let outline = build_outline(source_ref, markdown, "comrak-0.54.0");
+) -> Result<DocReadV1, DocReadError> {
+    read_section_with_cursor(
+        source_ref,
+        markdown,
+        anchor,
+        expected_hash,
+        max_bytes,
+        None,
+    )
+}
+
+pub fn read_section_with_cursor(
+    source_ref: &str,
+    markdown: &str,
+    anchor: &str,
+    expected_hash: &str,
+    max_bytes: usize,
+    continuation_cursor: Option<&str>,
+) -> Result<DocReadV1, DocReadError> {
+    let outline = build_outline(source_ref, markdown, "ignored");
     if outline.content_hash != expected_hash {
-        return Err("source_changed");
+        return Err(DocReadError::SourceChanged);
     }
     let index = outline
         .sections
         .iter()
         .position(|section| section.anchor_id == anchor)
-        .ok_or("relocated")?;
+        .ok_or(DocReadError::Relocated)?;
     let section = &outline.sections[index];
     let full = &markdown[section.start_byte..section.end_byte];
-    let end = full
-        .char_indices()
-        .take_while(|(offset, _)| *offset <= max_bytes)
-        .last()
-        .map(|(offset, character)| offset + character.len_utf8())
+    let start = continuation_cursor
+        .map(|cursor| parse_cursor(cursor, anchor, full))
+        .transpose()?
         .unwrap_or(0);
+    let end = start + utf8_prefix_len(&full[start..], max_bytes);
     let truncated = full.len() > end;
     Ok(DocReadV1 {
         schema_version: "DocReadV1",
         source_ref: source_ref.to_owned(),
         content_hash: outline.content_hash,
         anchor_id: section.anchor_id.clone(),
-        content: full[..end].to_owned(),
+        content: full[start..end].to_owned(),
         breadcrumb: section.breadcrumb.clone(),
         span: DocSpanV1 {
             start_byte: section.start_byte,
@@ -144,12 +187,16 @@ struct PendingSection {
     start_line: usize,
 }
 
-pub fn build_outline(source_ref: &str, markdown: &str, parser: &str) -> DocOutlineV1 {
+pub fn build_outline(source_ref: &str, markdown: &str, _parser: &str) -> DocOutlineV1 {
     let line_starts = line_starts(markdown);
     let mut pending = Vec::new();
     let arena = Arena::new();
     let mut options = Options::default();
     options.extension.front_matter_delimiter = Some("---".to_owned());
+    options.extension.table = true;
+    options.extension.strikethrough = true;
+    options.extension.tasklist = true;
+    options.extension.autolink = true;
     options.render.sourcepos = true;
     let root = parse_document(&arena, markdown, &options);
     let mut ordinals = std::collections::BTreeMap::<String, usize>::new();
@@ -243,8 +290,8 @@ pub fn build_outline(source_ref: &str, markdown: &str, parser: &str) -> DocOutli
             &serde_json::to_string(&sections).expect("DocOutline sections serialize"),
         ),
         parser: ParserProjectionV1 {
-            name: parser_name(parser).to_owned(),
-            version: parser_version(parser).to_owned(),
+            name: PARSER_NAME.to_owned(),
+            version: PARSER_VERSION.to_owned(),
         },
         sections,
     }
@@ -352,15 +399,23 @@ fn slugify(text: &str) -> String {
     }
 }
 
-fn parser_name(parser: &str) -> &str {
-    parser
-        .split_once('-')
-        .map(|(name, _)| name)
-        .unwrap_or(parser)
+fn parse_cursor(cursor: &str, anchor: &str, content: &str) -> Result<usize, DocReadError> {
+    let (cursor_anchor, offset) = cursor.rsplit_once(':').ok_or(DocReadError::Relocated)?;
+    if cursor_anchor != anchor {
+        return Err(DocReadError::Relocated);
+    }
+    let offset = offset.parse::<usize>().map_err(|_| DocReadError::Relocated)?;
+    if offset > content.len() || !content.is_char_boundary(offset) {
+        return Err(DocReadError::Relocated);
+    }
+    Ok(offset)
 }
-fn parser_version(parser: &str) -> &str {
-    parser
-        .split_once('-')
-        .map(|(_, version)| version)
-        .unwrap_or("unknown")
+
+fn utf8_prefix_len(content: &str, max_bytes: usize) -> usize {
+    content
+        .char_indices()
+        .take_while(|(offset, character)| offset + character.len_utf8() <= max_bytes)
+        .last()
+        .map(|(offset, character)| offset + character.len_utf8())
+        .unwrap_or(0)
 }
