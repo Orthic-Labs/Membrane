@@ -532,12 +532,47 @@ fn resolve_asset_paths(
     (model, tokenizer, default_dir)
 }
 
+/// Count tokens with the exact tokenizer used by the LLMLingua ONNX path.
+///
+/// Budget admission must use this value, rather than [`estimate_tokens`], when
+/// the P2 tokenizer gate is active. The lexical estimate remains available to
+/// non-model fallback paths, but is not evidence of tokenizer-budget fit.
+pub fn tokenizer_token_count(text: &str) -> Result<usize, String> {
+    #[cfg(feature = "llmlingua-onnx")]
+    {
+        let tokenizer_path = llmlingua_tokenizer_path()?;
+        let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
+            .map_err(|e| format!("tokenizer load: {e}"))?;
+        tokenizer
+            .encode(text, false)
+            .map(|encoding| encoding.get_ids().len())
+            .map_err(|e| format!("tokenize: {e}"))
+    }
+
+    #[cfg(not(feature = "llmlingua-onnx"))]
+    {
+        let _ = text;
+        Err("real tokenizer counts require the llmlingua-onnx feature".to_string())
+    }
+}
+
+#[cfg(feature = "llmlingua-onnx")]
+fn llmlingua_tokenizer_path() -> Result<std::path::PathBuf, String> {
+    let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let tokenizer_env = std::env::var("MEMRIGHT_LLMLINGUA_TOKENIZER").ok();
+    let (_, tokenizer, _) = resolve_asset_paths(&manifest, None, tokenizer_env.as_deref());
+    if !tokenizer.is_file() {
+        return Err(format!("tokenizer not found at {}", tokenizer.display()));
+    }
+    Ok(tokenizer)
+}
+
 #[cfg(feature = "llmlingua-onnx")]
 fn llmlingua_asset_paths() -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let model_env = std::env::var("MEMRIGHT_LLMLINGUA_MODEL").ok();
     let tok_env = std::env::var("MEMRIGHT_LLMLINGUA_TOKENIZER").ok();
-    let (model, tokenizer, default_dir) =
+    let (model, _tokenizer, default_dir) =
         resolve_asset_paths(&manifest, model_env.as_deref(), tok_env.as_deref());
 
     if !model.is_file() {
@@ -547,9 +582,7 @@ fn llmlingua_asset_paths() -> Result<(std::path::PathBuf, std::path::PathBuf), S
             default_dir.display()
         ));
     }
-    if !tokenizer.is_file() {
-        return Err(format!("tokenizer not found at {}", tokenizer.display()));
-    }
+    let tokenizer = llmlingua_tokenizer_path()?;
     Ok((model, tokenizer))
 }
 
@@ -840,23 +873,28 @@ mod tests {
     }
 
     // ------------------------------------------------------------------------
-    // Conditional tests (require the 2.9MB tokenizer.json; skip silently if
-    // absent so CI checkouts without the asset still pass).
+    // P2 release gate. Unlike structural tests, this deliberately requires
+    // the tokenizer asset: a release cannot accept a tokenizer-based budget
+    // without loading the exact tokenizer that measures it.
     // ------------------------------------------------------------------------
 
     #[test]
-    fn tokenizer_loads_when_asset_present() {
-        if !assets_present() {
-            eprintln!(
-                "tokenizer_loads_when_asset_present: assets not present at default path, skipping (CI without model.onnx + tokenizer.json)"
-            );
-            return;
-        }
-        let (_model_path, tok_path) = llmlingua_asset_paths().expect("assets present");
+    #[ignore = "P2 release gate; run explicitly with --ignored after binding tokenizer assets"]
+    fn tokenizer_release_gate_requires_asset_and_measures_real_counts() {
+        let count = tokenizer_token_count("Hello, world.")
+            .expect("P2 release gate requires a readable LLMLingua tokenizer asset");
+        assert!(count > 0, "expected tokenizer count for non-empty fixture");
+
+        let tok_path = llmlingua_tokenizer_path().expect("tokenizer path resolves");
         let tok = tokenizers::Tokenizer::from_file(&tok_path).expect("tokenizer loads");
         // Round-trip a tiny input — exercises encode + decode without running
         // the model. Catches path-resolution and tokenizer-config regressions.
         let enc = tok.encode("Hello, world.", false).expect("encode ok");
+        assert_eq!(
+            count,
+            enc.get_ids().len(),
+            "public count must be tokenizer-derived"
+        );
         assert!(!enc.get_ids().is_empty(), "expected non-empty ids");
         let decoded = tok.decode(enc.get_ids(), true).expect("decode ok");
         assert!(!decoded.is_empty(), "expected non-empty decode");

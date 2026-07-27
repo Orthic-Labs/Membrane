@@ -4,6 +4,7 @@
 //! engine. Self-contained and publishable (depends only on memright-core primitives).
 
 pub mod admission_policy;
+pub mod blueprint_closure;
 pub mod catalog;
 pub mod checkpoint;
 pub mod compress;

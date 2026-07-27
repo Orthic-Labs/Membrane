@@ -1,6 +1,6 @@
 use memright::doc_projection::{
-    project_markdown, replace_doc_projections, DocumentProjectionStoreInputV1, ProjectionConfig,
-    ProjectionKind, TokenCounter,
+    project_markdown, replace_doc_projections, DocumentProjectionStoreInputV1,
+    H2ReplayGateReceiptV1, ProjectionConfig, ProjectionKind, TokenCounter,
 };
 use memright::MemDb;
 
@@ -37,7 +37,7 @@ fn tokenizer_measured_whole_document_fit_is_emitted_before_sections() {
 }
 
 #[test]
-fn oversized_document_cascades_at_h1_without_splitting_fenced_headings() {
+fn oversized_document_cascades_at_structural_boundaries_without_splitting_fences() {
     let markdown = "# First\n\none two\n\n```md\n# Not a section\n```\n\n# Second\n\nthree four";
     let projections = project_markdown(
         markdown,
@@ -49,20 +49,31 @@ fn oversized_document_cascades_at_h1_without_splitting_fenced_headings() {
     );
 
     let structural = &projections[1..];
-    assert_eq!(structural.len(), 2);
     assert!(structural
         .iter()
         .all(|projection| projection.kind == ProjectionKind::Section));
     assert_eq!(
-        structural[0].content,
-        "# First\n\none two\n\n```md\n# Not a section\n```\n\n"
+        structural
+            .iter()
+            .filter(|projection| projection.content.contains("# Not a section"))
+            .count(),
+        1
     );
-    assert_eq!(structural[1].content, "# Second\n\nthree four");
-    assert_eq!(structural[0].provenance.anchor_id, "sec:first:1");
+    assert!(structural
+        .iter()
+        .find(|projection| projection.content.contains("# Not a section"))
+        .expect("fence projection")
+        .content
+        .contains("```md\n# Not a section\n```"));
 }
 
 #[test]
-fn h2_split_is_disabled_by_default() {
+fn h2_replay_gate_defaults_closed() {
+    assert!(!H2ReplayGateReceiptV1::default().passed);
+}
+
+#[test]
+fn h2_split_is_disabled_without_a_passing_replay_gate() {
     let markdown = "# Parent\n\nintro\n\n## Child\n\nbody";
     let projections = project_markdown(
         markdown,
@@ -73,19 +84,20 @@ fn h2_split_is_disabled_by_default() {
         },
     );
 
-    assert_eq!(projections.len(), 2);
-    assert_eq!(projections[1].provenance.anchor_id, "sec:parent:1");
+    assert!(projections[1..]
+        .iter()
+        .all(|projection| !projection.provenance.anchor_id.starts_with("sec:child:1")));
 }
 
 #[test]
-fn h2_split_records_collapsed_parent_provenance_when_enabled() {
+fn h2_split_records_collapsed_parent_provenance_after_replay_gate_passes() {
     let markdown = "# Parent\n\nintro\n\n## Child\n\nbody";
     let projections = project_markdown(
         markdown,
         &Words,
         ProjectionConfig {
-            max_tokens: 2,
-            enable_h2_split: true,
+            max_tokens: 3,
+            h2_replay_gate: H2ReplayGateReceiptV1 { passed: true },
         },
     );
 
@@ -95,6 +107,42 @@ fn h2_split_records_collapsed_parent_provenance_when_enabled() {
     assert_eq!(
         projections[2].provenance.collapsed_to_parent.as_deref(),
         Some("sec:parent:1")
+    );
+}
+
+#[test]
+fn oversized_h1_cascades_to_child_heading_then_paragraphs_without_splitting_fences() {
+    let markdown = "# Parent\n\nintro one two three\n\n## Child\n\nchild one two three\n\n```rust\nlet example = \"keep this fence whole\";\n```\n\nclosing one two three";
+    let projections = project_markdown(
+        markdown,
+        &Words,
+        ProjectionConfig {
+            max_tokens: 4,
+            h2_replay_gate: H2ReplayGateReceiptV1 { passed: true },
+        },
+    );
+
+    let structural = &projections[1..];
+    assert!(structural.iter().any(|projection| {
+        projection.provenance.anchor_id == "sec:child:1"
+            || projection
+                .provenance
+                .anchor_id
+                .starts_with("sec:child:1:part:")
+    }));
+    let fence = structural
+        .iter()
+        .find(|projection| projection.content.contains("keep this fence whole"))
+        .expect("fence projection");
+    assert!(fence
+        .content
+        .contains("```rust\nlet example = \"keep this fence whole\";\n```"));
+    assert_eq!(
+        structural
+            .iter()
+            .filter(|projection| projection.content.contains("keep this fence whole"))
+            .count(),
+        1
     );
 }
 
@@ -162,8 +210,8 @@ fn projection_store_replaces_stale_parent_rows_atomically() {
             "# Parent\n\nintro\n\n## Child\n\nbody",
             &Words,
             ProjectionConfig {
-                max_tokens: 2,
-                enable_h2_split: true,
+                max_tokens: 3,
+                h2_replay_gate: H2ReplayGateReceiptV1 { passed: true },
             },
         ),
     };
@@ -291,8 +339,8 @@ fn projection_store_preserves_section_parent_provenance() {
             "# Parent\n\nintro\n\n## Child\n\nbody",
             &Words,
             ProjectionConfig {
-                max_tokens: 2,
-                enable_h2_split: true,
+                max_tokens: 3,
+                h2_replay_gate: H2ReplayGateReceiptV1 { passed: true },
             },
         ),
     };
