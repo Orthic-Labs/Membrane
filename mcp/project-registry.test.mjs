@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,11 +38,43 @@ assert.deepEqual(dryEnrollment, {
 });
 await assert.rejects(() => bindingFor(lifecycleRoot, lifecycleRegistry), /not enrolled/);
 
-await invokeInstall(["init", lifecycleRoot, "--repository", "repo-lifecycle", "--scope", "scope-lifecycle"], installEnv);
+const configuredEnrollment = await invokeInstall(["init", lifecycleRoot, "--repository", "repo-lifecycle", "--scope", "scope-lifecycle", "--config", "mcp.json", "--native", "membrane-native"], installEnv);
+assert.equal(configuredEnrollment.installation.selected, "native");
+assert.equal(configuredEnrollment.installation.precedence, "native_then_config");
+assert.equal((await bindingFor(lifecycleRoot, lifecycleRegistry)).provider_config.native.name, "membrane-native");
+assert.equal((await bindingFor(lifecycleRoot, lifecycleRegistry)).provider_config.config.path, "mcp.json");
+const configOnly = await invokeInstall(["init", lifecycleRoot, "--repository", "repo-lifecycle", "--scope", "scope-lifecycle", "--config", "mcp.json"], installEnv);
+assert.equal(configOnly.installation.selected, "config");
+
+const dryRotation = await invokeInstall(["token", "rotate", lifecycleRoot, "--dry-run"], installEnv);
+assert.deepEqual(dryRotation, {
+  action: "token_rotate", root: lifecycleRoot, repository_id: "repo-lifecycle", registry: lifecycleRegistry,
+  token_generation: 1, revoked_token_generations: [], reason: "rotation", dry_run: true,
+});
+assert.equal((await bindingFor(lifecycleRoot, lifecycleRegistry)).token_grant, undefined);
+
+const firstRotation = await invokeInstall(["token", "rotate", lifecycleRoot], installEnv);
+assert.equal(firstRotation.token_generation, 1);
+assert.deepEqual(firstRotation.revoked_token_generations, []);
+assert.equal(Object.prototype.hasOwnProperty.call(firstRotation, "token"), false);
+const afterFirstRotation = await bindingFor(lifecycleRoot, lifecycleRegistry);
+assert.match(afterFirstRotation.token_grant.token_sha256, /^[a-f0-9]{64}$/);
+assert.match(afterFirstRotation.token_audit[0].audit_id, /^[a-f0-9]{24}$/);
+assert.equal(await readFile(afterFirstRotation.token_grant.path, "utf8").then((value) => value.trim().length > 20), true);
+
+const recovery = await invokeInstall(["token", "recover", lifecycleRoot, "--reason", "leak"], installEnv);
+assert.deepEqual(recovery.revoked_token_generations, [1]);
+assert.equal(recovery.token_generation, 2);
+assert.equal(recovery.reason, "leak_recovery");
+assert.equal(Object.prototype.hasOwnProperty.call(recovery, "token"), false);
+assert.equal((await bindingFor(lifecycleRoot, lifecycleRegistry)).token_audit.length, 2);
 const dryUninstall = await invokeInstall(["uninstall", lifecycleRoot, "--dry-run"], installEnv);
 assert.deepEqual(dryUninstall, {
-  action: "uninstall", root: lifecycleRoot, repository_id: "repo-lifecycle", registry: lifecycleRegistry, dry_run: true,
+  action: "uninstall", root: lifecycleRoot, repository_id: "repo-lifecycle", registry: lifecycleRegistry,
+  revoked_token_generations: [1, 2], dry_run: true,
 });
 assert.equal((await bindingFor(lifecycleRoot, lifecycleRegistry)).repository_id, "repo-lifecycle");
-await invokeInstall(["uninstall", lifecycleRoot], installEnv);
+const uninstalled = await invokeInstall(["uninstall", lifecycleRoot], installEnv);
+assert.deepEqual(uninstalled.revoked_token_generations, [1, 2]);
 await assert.rejects(() => bindingFor(lifecycleRoot, lifecycleRegistry), /not enrolled/);
+await assert.rejects(() => readFile(afterFirstRotation.token_grant.path, "utf8"), /ENOENT/);
