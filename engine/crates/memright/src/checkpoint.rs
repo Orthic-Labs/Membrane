@@ -204,7 +204,7 @@ impl MemoryStore {
              (id, tier, content, keywords, score, created_at, updated_at, access_count, scope_id,
               artifact_family, producer, record_type, authority, influence_class, lifecycle_state,
               expires_at_ms)
-             VALUES (?1, 'Episodic', ?2, '[]', 0.0, ?3, ?3, 0, ?4,
+             VALUES (?1, '\"Episodic\"', ?2, '[]', 0.0, ?3, ?3, 0, ?4,
                      'session', 'checkpoint', 'checkpoint', 'A0', 'orientation', 'active', ?5)
              ON CONFLICT(id) DO UPDATE SET
                content=excluded.content, updated_at=excluded.updated_at, scope_id=excluded.scope_id,
