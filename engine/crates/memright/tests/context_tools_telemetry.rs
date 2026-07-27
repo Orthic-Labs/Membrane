@@ -140,7 +140,11 @@ fn runc_links_to_the_exact_recommendation_opportunity() {
         ])
         .output()
         .unwrap();
-    assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
 
     let connection = rusqlite::Connection::open(db).unwrap();
     let row: (String, String, String, String, String) = connection
@@ -150,14 +154,25 @@ fn runc_links_to_the_exact_recommendation_opportunity() {
              join transform_log t using (opportunity_uid)
              where o.opportunity_uid=?1",
             [opportunity_uid],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .unwrap();
-    assert_eq!(row, (
-        "used".into(),
-        "claude".into(),
-        "session-1".into(),
-        "turn-1".into(),
-        opportunity_uid.into(),
-    ));
+    assert_eq!(
+        row,
+        (
+            "used".into(),
+            "claude".into(),
+            "session-1".into(),
+            "turn-1".into(),
+            opportunity_uid.into(),
+        )
+    );
 }

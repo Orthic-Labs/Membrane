@@ -3,7 +3,7 @@
 
 use clap::{Parser, Subcommand};
 use memright::scope::{normalize_scope, path_to_scope};
-use memright::{MemDb, MemoryStore};
+use memright::{CheckpointV1, MemDb, MemoryStore};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -327,6 +327,58 @@ enum InstallationCmd {
 }
 
 #[derive(Subcommand)]
+enum DocCmd {
+    /// Parse one Markdown document into its stable DocOutlineV1 contract.
+    Outline {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        path: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read a stable document section after validating its expected content hash.
+    Read {
+        #[arg(long)]
+        source_ref: String,
+        #[arg(long)]
+        anchor: String,
+        #[arg(long)]
+        expected_hash: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum CheckpointCmd {
+    /// Persist a typed checkpoint JSON payload in the local A0/session lane.
+    Save {
+        #[arg(long)]
+        input: Option<PathBuf>,
+    },
+    /// Load one unexpired checkpoint at a fixed Unix epoch millisecond instant.
+    Load {
+        id: String,
+        #[arg(long)]
+        as_of_ms: Option<i64>,
+    },
+    /// List currently resumable checkpoints within an exact scope.
+    List {
+        #[arg(long)]
+        scope: String,
+        #[arg(long)]
+        as_of_ms: Option<i64>,
+    },
+    /// Retire a checkpoint without deleting its audit row.
+    Done { id: String },
+    /// Emit a normal-admission proposal; never writes durable knowledge directly.
+    Promote {
+        id: String,
+        #[arg(long)]
+        as_of_ms: Option<i64>,
+    },
+}
+
+#[derive(Subcommand)]
 enum Cmd {
     /// Print immutable build/source identity as JSON.
     BuildInfo,
@@ -334,6 +386,26 @@ enum Cmd {
     Installation {
         #[command(subcommand)]
         command: InstallationCmd,
+    },
+    /// Document-navigation contracts. These commands do not open the memory DB.
+    Doc {
+        #[command(subcommand)]
+        command: DocCmd,
+    },
+    /// Machine-local checkpoint verbs; no checkpoint enters ordinary semantic recall.
+    Checkpoint {
+        #[command(subcommand)]
+        command: CheckpointCmd,
+    },
+    /// Reconcile Markdown registrations into the shadow Doc Spine.
+    DocsSync {
+        #[arg(long)]
+        repo: PathBuf,
+    },
+    /// Run versioned read-only health checks against the current schema.
+    Doctor {
+        #[arg(long)]
+        json: bool,
     },
     /// Serve /health /recall /use on 127.0.0.1:<port>.
     Serve {
@@ -351,6 +423,12 @@ enum Cmd {
         k: usize,
         #[arg(long)]
         scope: Option<String>,
+        /// Fixed Unix epoch milliseconds for replay/audit admission.
+        #[arg(long)]
+        as_of_ms: Option<i64>,
+        /// Include expired rows for audit only; superseded and non-active rows remain excluded.
+        #[arg(long)]
+        include_expired: bool,
     },
     /// Evaluation-only batch recall. Reads JSONL queries and emits ranked IDs without logging.
     Replay {
@@ -411,6 +489,8 @@ enum Cmd {
     BackoutSchemaV10,
     /// Restore every physically isolated smoke recall and return schema v11 to v10.
     BackoutSchemaV11,
+    /// Remove v20 lifecycle columns transactionally and return to the v19 schema shape.
+    BackoutSchemaV20,
     /// Plan (default) or transactionally apply the RC-2.3 production-smoke isolation.
     IsolateSmokeRecalls {
         #[arg(long)]
@@ -681,10 +761,10 @@ fn trust_scan_content(content: &str) -> Option<&'static str> {
         for line in lower.lines() {
             if let Some(pos) = line.find(key) {
                 let tail = &line[pos + key.len()..];
-                if (tail.contains('=') || tail.contains(':'))
-                    && tail
-                        .chars()
-                        .any(|character| character.is_ascii_alphanumeric())
+                if tail
+                    .find(['=', ':'])
+                    .map(|separator| secret_value_looks_credible(&tail[separator + 1..]))
+                    .unwrap_or(false)
                 {
                     return Some("secret_like");
                 }
@@ -2048,6 +2128,7 @@ fn command_requires_db(command: &Cmd) -> bool {
         command,
         Cmd::BuildInfo
             | Cmd::Installation { .. }
+            | Cmd::Doc { .. }
             | Cmd::Federate { .. }
             | Cmd::MemoryCandidates { .. }
     )
@@ -2143,7 +2224,7 @@ fn replay_queries<R: Read>(
         .collect()
 }
 
-fn main() -> Result<(), String> {
+fn run_main() -> Result<(), String> {
     let deployed = current_deployed_runtime();
     if let Some(runtime) = &deployed {
         apply_deployed_runtime_defaults(runtime);
@@ -2154,6 +2235,71 @@ fn main() -> Result<(), String> {
     }
     if let Cmd::SkillRead { name, root } = &cli.cmd {
         return run_skill_read(name.clone(), root.clone());
+    }
+    if let Cmd::Doc { command } = &cli.cmd {
+        return match command {
+            DocCmd::Outline { repo, path, json } => {
+                let markdown = std::fs::read_to_string(path)
+                    .map_err(|error| format!("read document {}: {error}", path.display()))?;
+                let relative = path
+                    .strip_prefix(repo)
+                    .unwrap_or(path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let source_ref =
+                    format!("doc://repo/worktree/{}", relative.trim_start_matches('/'));
+                let outline =
+                    memright::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
+                if !json {
+                    return Err("doc outline requires --json".to_owned());
+                }
+                println!(
+                    "{}",
+                    serde_json::to_string(&outline).map_err(|error| error.to_string())?
+                );
+                Ok(())
+            }
+            DocCmd::Read {
+                source_ref,
+                anchor,
+                expected_hash,
+            } => {
+                let Some(relative) = source_ref.strip_prefix("doc://repo/worktree/") else {
+                    println!("{}", serde_json::json!({"error":"deny"}));
+                    return Ok(());
+                };
+                if relative.split('/').any(|part| part == "..") {
+                    println!("{}", serde_json::json!({"error":"deny"}));
+                    return Ok(());
+                }
+                let root = std::env::var_os("WORKSPACE_ROOT")
+                    .map(PathBuf::from)
+                    .or_else(|| std::env::current_dir().ok())
+                    .unwrap_or_else(|| PathBuf::from("."));
+                let path = root.join(relative);
+                let markdown = match std::fs::read_to_string(&path) {
+                    Ok(markdown) => markdown,
+                    Err(_) => {
+                        println!("{}", serde_json::json!({"error":"source_missing"}));
+                        return Ok(());
+                    }
+                };
+                match memright::outline::read_section(
+                    source_ref,
+                    &markdown,
+                    anchor,
+                    expected_hash,
+                    12_000,
+                ) {
+                    Ok(read) => println!(
+                        "{}",
+                        serde_json::to_string(&read).map_err(|error| error.to_string())?
+                    ),
+                    Err(error) => println!("{}", serde_json::json!({"error":error})),
+                }
+                Ok(())
+            }
+        };
     }
     if matches!(
         cli.cmd,
@@ -2227,8 +2373,94 @@ fn main() -> Result<(), String> {
         deployed.as_ref().map(|runtime| runtime.db.as_path()),
     )?;
     match cli.cmd {
-        Cmd::BuildInfo | Cmd::Installation { .. } => {
+        Cmd::BuildInfo | Cmd::Installation { .. } | Cmd::Doc { .. } => {
             unreachable!("handled before database resolution")
+        }
+        Cmd::Checkpoint { command } => {
+            let store = MemoryStore::open(MemDb::open(&db).map_err(|error| error.to_string())?);
+            let now_ms = || memright::time::now_millis() as i64;
+            match command {
+                CheckpointCmd::Save { input } => {
+                    let body = match input {
+                        Some(input) => std::fs::read_to_string(&input).map_err(|error| {
+                            format!("read checkpoint {}: {error}", input.display())
+                        })?,
+                        None => {
+                            let mut body = String::new();
+                            std::io::stdin()
+                                .read_to_string(&mut body)
+                                .map_err(|error| format!("read checkpoint stdin: {error}"))?;
+                            body
+                        }
+                    };
+                    let checkpoint: CheckpointV1 = serde_json::from_str(&body)
+                        .map_err(|error| format!("parse checkpoint: {error}"))?;
+                    store
+                        .save_checkpoint(&checkpoint)
+                        .map_err(|error| error.to_string())?;
+                    println!(
+                        "{}",
+                        serde_json::json!({"checkpoint_id": checkpoint.checkpoint_id, "saved": true})
+                    );
+                }
+                CheckpointCmd::Load { id, as_of_ms } => {
+                    let checkpoint = store
+                        .load_checkpoint(&id, as_of_ms.unwrap_or_else(now_ms))
+                        .map_err(|error| error.to_string())?;
+                    let root = std::env::var_os("WORKSPACE_ROOT")
+                        .map(PathBuf::from)
+                        .or_else(|| std::env::current_dir().ok())
+                        .unwrap_or_else(|| PathBuf::from("."));
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "checkpoint": checkpoint,
+                            "source_resolutions": memright::checkpoint::resolve_source_refs(&checkpoint, &root),
+                        })
+                    );
+                }
+                CheckpointCmd::List { scope, as_of_ms } => {
+                    let checkpoints = store
+                        .list_checkpoints(&scope, as_of_ms.unwrap_or_else(now_ms))
+                        .map_err(|error| error.to_string())?;
+                    println!(
+                        "{}",
+                        serde_json::to_string(&checkpoints).map_err(|error| error.to_string())?
+                    );
+                }
+                CheckpointCmd::Done { id } => {
+                    store
+                        .close_checkpoint(&id)
+                        .map_err(|error| error.to_string())?;
+                    println!(
+                        "{}",
+                        serde_json::json!({"checkpoint_id": id, "closed": true})
+                    );
+                }
+                CheckpointCmd::Promote { id, as_of_ms } => {
+                    let checkpoint = store
+                        .load_checkpoint(&id, as_of_ms.unwrap_or_else(now_ms))
+                        .map_err(|error| error.to_string())?;
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "status": "needs_review",
+                            "proposal": {"kind": "KnowledgeEmission", "checkpoint_id": checkpoint.checkpoint_id,
+                                "scope_id": checkpoint.scope_id, "content": checkpoint.summary, "source_refs": checkpoint.source_refs}
+                        })
+                    );
+                }
+            }
+        }
+        Cmd::DocsSync { repo } => {
+            let report = memright::doc_spine::sync(
+                &MemDb::open(&db).map_err(|error| error.to_string())?,
+                &repo,
+            )?;
+            println!(
+                "{}",
+                serde_json::to_string(&report).map_err(|error| error.to_string())?
+            );
         }
         Cmd::BackoutSchemaV10 => {
             let restored = memright::memdb::backout_v10_to_v9(&db).map_err(|e| e.to_string())?;
@@ -2237,11 +2469,32 @@ fn main() -> Result<(), String> {
                 serde_json::json!({"schema_version": 9, "restored": restored})
             );
         }
+        Cmd::Doctor { json } => {
+            let report = memright::doctor::run(&db)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string(&report).map_err(|error| error.to_string())?
+                );
+            } else {
+                println!("{}", report.status);
+                for check in report.checks {
+                    println!("{} {} {}", check.code, check.severity, check.count);
+                }
+            }
+        }
         Cmd::BackoutSchemaV11 => {
             let restored = memright::memdb::backout_v11_to_v10(&db).map_err(|e| e.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version": 10, "restored": restored})
+            );
+        }
+        Cmd::BackoutSchemaV20 => {
+            memright::memdb::backout_v20_to_v19(&db).map_err(|error| error.to_string())?;
+            println!(
+                "{}",
+                serde_json::json!({"schema_version": 19, "backed_out": true})
             );
         }
         Cmd::IsolateSmokeRecalls { apply } => {
@@ -2321,7 +2574,13 @@ fn main() -> Result<(), String> {
             }
             println!("{{\"migrated_blueprint\":{total}}}");
         }
-        Cmd::Recall { query, k, scope } => {
+        Cmd::Recall {
+            query,
+            k,
+            scope,
+            as_of_ms,
+            include_expired,
+        } => {
             let store = open(&db)?;
             // normalize_scope: CLI parity with serve (a lowercase-drive --scope must not
             // silently produce an empty chain — the 5th slug call-site, fixed 2026-07-05).
@@ -2330,7 +2589,13 @@ fn main() -> Result<(), String> {
                 .as_deref()
                 .map(|s| memright::scope_chain(s, &store.scopes()))
                 .unwrap_or_default();
-            let hits = store.recall_scored(&query, k, &chain);
+            let hits = store.recall_scored_at(
+                &query,
+                k,
+                &chain,
+                as_of_ms.unwrap_or_else(|| memright::time::now_millis() as i64),
+                include_expired,
+            );
             if hits.is_empty()
                 && store.last_recall_status().as_deref() == Some("insufficient_confidence")
             {
@@ -3147,6 +3412,20 @@ mod tests {
             "--packet-char-budget",
             value,
         ])
+    }
+
+    #[test]
+    fn doc_outline_cli_requires_explicit_json() {
+        let parsed = super::Cli::try_parse_from([
+            "memright", "doc", "outline", "--repo", "C:/repo", "--path", "guide.md", "--json",
+        ])
+        .expect("doc outline arguments parse");
+        assert!(matches!(
+            parsed.cmd,
+            super::Cmd::Doc {
+                command: super::DocCmd::Outline { json: true, .. }
+            }
+        ));
     }
 
     #[test]
@@ -4529,5 +4808,69 @@ mod tests {
             Some("secret_like")
         );
         assert_eq!(super::trust_scan_content("ordinary meeting notes"), None);
+        assert_eq!(
+            super::trust_scan_content("Use `api_key: <placeholder>` in examples."),
+            None
+        );
+        assert_eq!(
+            super::trust_scan_content("The secret field is documented in this schema."),
+            None
+        );
+        assert_eq!(
+            super::trust_scan_content("OPENAI_API_KEY=sk-proj-1234567890abcdef"),
+            Some("secret_like")
+        );
     }
+}
+
+fn main() {
+    let result = std::thread::Builder::new()
+        .name("memright-cli".into())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(run_main)
+        .map_err(|error| format!("start memright CLI: {error}"))
+        .and_then(|thread| {
+            thread
+                .join()
+                .map_err(|_| "memright CLI panicked".to_string())
+        })
+        .and_then(|result| result);
+    if let Err(error) = result {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}
+
+fn secret_value_looks_credible(value: &str) -> bool {
+    let value = value
+        .trim()
+        .trim_matches(|character: char| matches!(character, '`' | '\'' | '"' | ',' | ';'));
+    if value.is_empty()
+        || value.starts_with(['<', '[', '{'])
+        || [
+            "placeholder",
+            "redacted",
+            "example",
+            "your_api_key",
+            "string",
+            "secret",
+            "token",
+            "value",
+        ]
+        .iter()
+        .any(|placeholder| value.starts_with(placeholder))
+    {
+        return false;
+    }
+    let compact = value
+        .chars()
+        .take_while(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-'))
+        .collect::<String>();
+    compact.len() >= 6
+        && compact
+            .chars()
+            .any(|character| character.is_ascii_alphabetic())
+        && (compact.chars().any(|character| character.is_ascii_digit())
+            || compact.starts_with("sk-")
+            || compact.starts_with("ghp_"))
 }

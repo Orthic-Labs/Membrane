@@ -4,7 +4,7 @@
 //! doc). This module writes prepared files under `out_dir` and returns a JSON
 //! manifest whose entry shape is branch-specific.
 
-use crate::{compress, skel};
+use crate::{compress, outline, skel};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -59,6 +59,16 @@ fn is_code_ext(path: &Path) -> bool {
             | "scala"
             | "sh"
             | "bash"
+    )
+}
+
+fn is_markdown(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("md") | Some("markdown") | Some("mdx")
     )
 }
 
@@ -123,6 +133,11 @@ pub fn transform_rows(manifest: &[PrepEntry]) -> Vec<(String, usize, usize, Opti
                     e.before_tok.unwrap_or(0) as usize,
                     e.after_tok.unwrap_or(0) as usize,
                     Some("unit=tok"),
+                ),
+                "outline" => (
+                    e.before_bytes.unwrap_or(0) as usize,
+                    e.after_bytes.unwrap_or(0) as usize,
+                    Some("unit=bytes"),
                 ),
                 _ => (0, 0, None),
             };
@@ -262,7 +277,33 @@ pub fn prep_files_with_budget(
             continue;
         }
 
-        // Branch 5: prose -> compress
+        // Branch 5: large Markdown becomes a navigation artifact. This retains
+        // document identity and stable anchors where generic compression loses them.
+        if is_markdown(orig_path) {
+            let name = format!("{}.outline.json", base_name(orig_path));
+            let prepared_path = out_dir.join(name);
+            let source_ref = format!(
+                "doc://repo/worktree/{}",
+                orig_path.to_string_lossy().replace('\\', "/")
+            );
+            let projection = outline::build_outline(&source_ref, &src, "comrak-0.54.0");
+            let payload = serde_json::to_vec(&projection).unwrap_or_default();
+            let _ = std::fs::write(&prepared_path, &payload);
+            out.push(PrepEntry {
+                orig: orig_str,
+                kind: "outline".into(),
+                prepared: Some(prepared_path.to_string_lossy().to_string()),
+                before_bytes: Some(before_bytes),
+                after_bytes: Some(payload.len() as u64),
+                before_tok: None,
+                after_tok: None,
+                budget_tok: None,
+                drop_manifest: None,
+            });
+            continue;
+        }
+
+        // Branch 6: prose -> compress
         let ext = orig_path.extension().and_then(|s| s.to_str());
         let name = match ext {
             Some(ext) if !ext.is_empty() => format!("{}.min.{ext}", base_name(orig_path)),
@@ -356,19 +397,30 @@ mod tests {
         assert!(manifest[2].before_bytes.is_some());
         assert!(manifest[2].after_bytes.is_some());
 
-        // notes compress: .min.md file and token fields
-        assert_eq!(manifest[3].kind, "compress");
+        // large Markdown: outline artifact preserves document navigation
+        assert_eq!(manifest[3].kind, "outline");
         let notes_prepared = PathBuf::from(manifest[3].prepared.clone().unwrap());
         assert_eq!(
             notes_prepared.file_name().and_then(|s| s.to_str()),
-            Some("notes.md.min.md")
+            Some("notes.md.outline.json")
         );
-        assert!(manifest[3].before_tok.is_some());
-        assert!(manifest[3].after_tok.is_some());
-        assert_eq!(
-            manifest[3].drop_manifest.as_ref().map(|value| value.risk),
-            Some("low")
-        );
+        assert!(manifest[3].before_bytes.is_some());
+        assert!(manifest[3].after_bytes.is_some());
+        assert!(manifest[3].drop_manifest.is_none());
+    }
+
+    #[test]
+    fn large_markdown_routes_to_outline_before_compression() {
+        let temp = tempfile::tempdir().unwrap();
+        let out_dir = temp.path().join("prepared");
+        let markdown = temp.path().join("guide.md");
+        std::fs::write(&markdown, "# Guide\n\n".to_owned() + &"detail ".repeat(80)).unwrap();
+
+        let manifest = prep_files(&out_dir, &[markdown], 0.5, 50);
+
+        assert_eq!(manifest[0].kind, "outline");
+        let payload = std::fs::read_to_string(manifest[0].prepared.as_ref().unwrap()).unwrap();
+        assert!(payload.contains("DocOutlineV1"));
     }
 
     #[test]

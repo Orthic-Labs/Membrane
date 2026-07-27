@@ -240,7 +240,9 @@ CREATE TABLE IF NOT EXISTS memory_quarantine (
 );
 ";
 
-const LATEST_SCHEMA_VERSION: i64 = 19;
+/// Current durable MemRight schema contract. External migration tests must not
+/// duplicate this value, because a promoted schema version changes atomically.
+pub const LATEST_SCHEMA_VERSION: i64 = 20;
 const SMOKE_ISOLATION_MIGRATION_ID: &str = "rc-2.3-smoke-spotcheck-production-v1";
 const SMOKE_ISOLATION_REASON: &str = "legacy_production_smoke_spotcheck";
 const SMOKE_RECALL_PREDICATE: &str =
@@ -1332,6 +1334,44 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                 require_columns(&tx, "memories", &["authority", "influence_class"])?;
                 require_columns(&tx, "memory_quarantine", &["authority", "influence_class"])?;
             }
+            20 => {
+                for table in ["memories", "memory_quarantine"] {
+                    add_column(
+                        &tx,
+                        table,
+                        "lifecycle_state",
+                        "TEXT NOT NULL DEFAULT 'active'",
+                    )?;
+                    add_column(&tx, table, "effective_from_ms", "INTEGER")?;
+                    add_column(&tx, table, "effective_until_ms", "INTEGER")?;
+                    add_column(&tx, table, "expires_at_ms", "INTEGER")?;
+                    add_column(&tx, table, "review_after_ms", "INTEGER")?;
+                    add_column(&tx, table, "superseded_by", "TEXT")?;
+                    add_column(
+                        &tx,
+                        table,
+                        "priority_class",
+                        "TEXT NOT NULL DEFAULT 'normal'",
+                    )?;
+                    add_column(&tx, table, "confidence", "REAL")?;
+                    add_column(&tx, table, "confidence_basis", "TEXT")?;
+                    require_columns(
+                        &tx,
+                        table,
+                        &[
+                            "lifecycle_state",
+                            "effective_from_ms",
+                            "effective_until_ms",
+                            "expires_at_ms",
+                            "review_after_ms",
+                            "superseded_by",
+                            "priority_class",
+                            "confidence",
+                            "confidence_basis",
+                        ],
+                    )?;
+                }
+            }
             _ => unreachable!(),
         }
         tx.pragma_update(None, "user_version", next)?;
@@ -1339,6 +1379,52 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
         version = next;
     }
     Ok(())
+}
+
+/// Transactionally return a schema-v20 database to its v19-compatible shape.
+///
+/// This removes only v20 lifecycle columns; row contents and all v19 metadata remain intact.
+/// Unknown newer schemas fail closed rather than risking a partial downgrade.
+pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
+    let mut conn = Connection::open(path)?;
+    conn.execute_batch("PRAGMA busy_timeout=5000;")?;
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version < 20 {
+        return Ok(());
+    }
+    if version > 20 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    for table in ["memories", "memory_quarantine"] {
+        tx.execute_batch(&format!(
+            "ALTER TABLE {table} DROP COLUMN lifecycle_state;
+             ALTER TABLE {table} DROP COLUMN effective_from_ms;
+             ALTER TABLE {table} DROP COLUMN effective_until_ms;
+             ALTER TABLE {table} DROP COLUMN expires_at_ms;
+             ALTER TABLE {table} DROP COLUMN review_after_ms;
+             ALTER TABLE {table} DROP COLUMN superseded_by;
+             ALTER TABLE {table} DROP COLUMN priority_class;
+             ALTER TABLE {table} DROP COLUMN confidence;
+             ALTER TABLE {table} DROP COLUMN confidence_basis;"
+        ))?;
+    }
+    tx.pragma_update(None, "user_version", 19)?;
+    tx.commit()
+}
+
+/// Older rollback entrypoints chain through v20 first when necessary. This keeps their existing
+/// lossless v19→… rollback contracts valid without accepting an unknown newer schema.
+fn backout_v20_if_present(path: &Path) -> rusqlite::Result<()> {
+    let conn = Connection::open(path)?;
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    drop(conn);
+    match version {
+        0..=19 => Ok(()),
+        20 => backout_v20_to_v19(path),
+        _ => Err(rusqlite::Error::InvalidQuery),
+    }
 }
 
 fn backout_identity_metadata_to_v14(path: &Path) -> rusqlite::Result<()> {
@@ -1420,6 +1506,7 @@ fn backout_identity_metadata_to_v14(path: &Path) -> rusqlite::Result<()> {
 /// `user_version` would strand quarantined data.
 pub fn backout_v10_to_v9<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
     let path = path.as_ref();
+    backout_v20_if_present(path)?;
     backout_identity_metadata_to_v14(path)?;
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA busy_timeout=5000;")?;
@@ -1471,6 +1558,7 @@ pub fn backout_v10_to_v9<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
 /// backout. Prospective rows receive fresh ids and retain their original nonproduction class.
 pub fn backout_v11_to_v10<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
     let path = path.as_ref();
+    backout_v20_if_present(path)?;
     backout_identity_metadata_to_v14(path)?;
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA busy_timeout=5000;")?;
@@ -1543,6 +1631,7 @@ pub fn backout_v11_to_v10<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
 /// canonical envelopes removed.
 pub fn backout_v12_to_v11<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
     let path = path.as_ref();
+    backout_v20_if_present(path)?;
     backout_identity_metadata_to_v14(path)?;
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA busy_timeout=5000;")?;
@@ -1582,6 +1671,7 @@ pub fn backout_v12_to_v11<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
 /// The activation receipt is additive attribution, so rollback removes only that nullable column.
 pub fn backout_v13_to_v12<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
     let path = path.as_ref();
+    backout_v20_if_present(path)?;
     backout_identity_metadata_to_v14(path)?;
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA busy_timeout=5000;")?;
@@ -1615,6 +1705,7 @@ pub fn backout_v13_to_v12<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
 /// Release generation is additive attribution, so rollback removes only that nullable column.
 pub fn backout_v14_to_v13<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
     let path = path.as_ref();
+    backout_v20_if_present(path)?;
     backout_identity_metadata_to_v14(path)?;
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA busy_timeout=5000;")?;
@@ -3340,6 +3431,80 @@ mod tests {
             )
             .unwrap();
         assert_eq!(n, 1, "inject_count column must exist after migrate");
+    }
+
+    #[test]
+    fn v20_adds_identical_integer_ms_lifecycle_columns_to_memory_and_quarantine() {
+        let db = MemDb::open_in_memory();
+        let conn = db.lock();
+        let expected = vec![
+            ("lifecycle_state", "TEXT", 1, Some("'active'")),
+            ("effective_from_ms", "INTEGER", 0, None),
+            ("effective_until_ms", "INTEGER", 0, None),
+            ("expires_at_ms", "INTEGER", 0, None),
+            ("review_after_ms", "INTEGER", 0, None),
+            ("superseded_by", "TEXT", 0, None),
+            ("priority_class", "TEXT", 1, Some("'normal'")),
+            ("confidence", "REAL", 0, None),
+            ("confidence_basis", "TEXT", 0, None),
+        ];
+
+        for table in ["memories", "memory_quarantine"] {
+            let columns = conn
+                .prepare(&format!("PRAGMA table_info({table})"))
+                .and_then(|mut statement| {
+                    statement
+                        .query_map([], |row| {
+                            Ok((
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                                row.get::<_, i64>(3)?,
+                                row.get::<_, Option<String>>(4)?,
+                            ))
+                        })
+                        .and_then(|rows| rows.collect::<rusqlite::Result<Vec<_>>>())
+                })
+                .unwrap();
+
+            for (name, ty, not_null, default) in &expected {
+                assert!(
+                    columns.iter().any(|column| {
+                        column.0 == *name
+                            && column.1 == *ty
+                            && column.2 == *not_null
+                            && column.3.as_deref() == *default
+                    }),
+                    "{table}.{name} must be {ty} not_null={not_null} default={default:?}; have: {columns:?}"
+                );
+            }
+        }
+
+        let version: i64 = conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 20);
+    }
+
+    #[test]
+    fn v20_backout_restores_v19_shape_transactionally() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("v20-backout.db");
+        let db = MemDb::open(&path).unwrap();
+        drop(db);
+        backout_v20_to_v19(&path).unwrap();
+        let connection = Connection::open(&path).unwrap();
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 19);
+        for table in ["memories", "memory_quarantine"] {
+            let count: i64 = connection.query_row(
+                &format!("SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name='lifecycle_state'"),
+                [],
+                |row| row.get(0),
+            ).unwrap();
+            assert_eq!(count, 0, "{table} retains no v20 lifecycle columns");
+        }
     }
 
     #[test]

@@ -5,7 +5,7 @@ use memright::context_telemetry::{
     ContextTelemetryError, OperationAttribution,
 };
 use memright::installation_identity::{InstallationIdentity, StartupClaim};
-use memright::memdb::{backout_v12_to_v11, backout_v13_to_v12};
+use memright::memdb::{backout_v12_to_v11, backout_v13_to_v12, LATEST_SCHEMA_VERSION};
 use memright::{MemDb, MemoryStore};
 use rusqlite::Connection;
 use serde_json::{json, Value};
@@ -237,7 +237,7 @@ fn latest_schema_has_content_free_ledger_tables_and_indexes() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 19);
+    assert_eq!(version, LATEST_SCHEMA_VERSION);
 
     for table in [
         "context_installation",
@@ -339,7 +339,7 @@ fn v11_database_upgrades_in_place_without_changing_legacy_rows() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        19
+        LATEST_SCHEMA_VERSION
     );
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM memory_event_log", [], |row| {
@@ -426,7 +426,7 @@ fn v13_backout_and_reupgrade_preserve_ledger_rows() {
     assert_eq!(
         conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        19
+        LATEST_SCHEMA_VERSION
     );
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM context_event_log", [], |row| row

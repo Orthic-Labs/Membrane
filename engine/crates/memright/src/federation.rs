@@ -43,7 +43,9 @@ const GATEWAY_LAYOUTS: [&[&str]; 3] = [
 ];
 
 fn gateway_layout_path(dir: &Path, layout: &[&str]) -> PathBuf {
-    layout.iter().fold(dir.to_path_buf(), |acc, seg| acc.join(seg))
+    layout
+        .iter()
+        .fold(dir.to_path_buf(), |acc, seg| acc.join(seg))
 }
 
 /// Walk up from `start` looking for the first directory holding any known

@@ -53,6 +53,18 @@ const SCOPED_CANDIDATE_FLOOR: usize = 128;
 const QUERY_EMBEDDING_CACHE_CAPACITY: usize = 256;
 const MAX_MEMORY_BATCH_ITEMS: usize = 64;
 const MAX_MEMORY_BATCH_CONTENT_CHARS: usize = 256 * 1024;
+/// Enabled only after frozen-replay acceptance; pin/protection never bypasses admission gates.
+const PROTECTED_PRIORITY_BONUS: f32 = 0.04;
+
+fn protected_priority_bonus_enabled() -> bool {
+    matches!(
+        std::env::var("MEMRIGHT_PROTECTED_PRIORITY_BONUS")
+            .ok()
+            .as_deref()
+            .map(str::trim),
+        Some("1") | Some("true") | Some("on")
+    )
+}
 
 fn utility_recall_score(entry: &MemoryEntry, semantic_score: f32) -> f32 {
     let utility = entry.score.clamp(0.0, 1.0) as f32;
@@ -175,6 +187,95 @@ pub enum MemoryBatchError {
     Conflict,
     #[error("memory batch persistence failed: {0}")]
     Persist(String),
+}
+
+/// Content-free, replayable lifecycle transition for one memory row.
+///
+/// `event_id` is the idempotency key. A supersession is deliberately one-to-one:
+/// the old row becomes terminal and points at one verified replacement.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MemoryLifecycleEventV1 {
+    pub event_id: String,
+    pub kind: MemoryLifecycleKind,
+    pub subject_id: String,
+    pub replacement_id: String,
+    pub scope_id: String,
+    pub effective_at_ms: i64,
+    pub actor: String,
+    pub authority: String,
+    pub reason_ref: String,
+    pub origin_event_uid: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryLifecycleKind {
+    Superseded,
+}
+
+impl MemoryLifecycleEventV1 {
+    #[allow(clippy::too_many_arguments)]
+    pub fn superseded(
+        event_id: impl Into<String>,
+        subject_id: impl Into<String>,
+        replacement_id: impl Into<String>,
+        scope_id: impl Into<String>,
+        effective_at_ms: i64,
+        actor: impl Into<String>,
+        authority: impl Into<String>,
+        reason_ref: impl Into<String>,
+        origin_event_uid: impl Into<String>,
+    ) -> Self {
+        Self {
+            event_id: event_id.into(),
+            kind: MemoryLifecycleKind::Superseded,
+            subject_id: subject_id.into(),
+            replacement_id: replacement_id.into(),
+            scope_id: scope_id.into(),
+            effective_at_ms,
+            actor: actor.into(),
+            authority: authority.into(),
+            reason_ref: reason_ref.into(),
+            origin_event_uid: origin_event_uid.into(),
+        }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MemoryLifecycleError {
+    #[error("invalid lifecycle event: {0}")]
+    Invalid(String),
+    #[error("lifecycle subject does not exist: {0}")]
+    MissingSubject(String),
+    #[error("lifecycle replacement does not exist: {0}")]
+    MissingReplacement(String),
+    #[error("lifecycle supersession requires subject and replacement in the same scope")]
+    CrossScope,
+    #[error("lifecycle supersession cannot target itself")]
+    SelfSupersession,
+    #[error("lifecycle supersession would create a cycle")]
+    Cycle,
+    #[error("lifecycle subject is not active or already has a replacement")]
+    SubjectNotActive,
+    #[error("lifecycle event id conflicts with an existing event: {0}")]
+    EventConflict(String),
+    #[error("lifecycle persistence failed: {0}")]
+    Persist(#[from] rusqlite::Error),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MemoryPriorityError {
+    #[error("priority target does not exist: {0}")]
+    Missing(String),
+    #[error("priority class is invalid: {0}")]
+    InvalidClass(String),
+    #[error("priority write is not authorized for actor={0} authority={1}")]
+    Unauthorized(String, String),
+    #[error("priority reason reference is required")]
+    MissingReason,
+    #[error("priority persistence failed: {0}")]
+    Persist(#[from] rusqlite::Error),
 }
 
 #[derive(Clone, Debug)]
@@ -2036,10 +2137,14 @@ impl MemoryStore {
                 "INSERT INTO memory_quarantine
                     (id, tier, content, keywords, score, created_at, updated_at, access_count,
                      embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
-                     source_ids, quarantined_at, reason)
+                     source_ids, authority, influence_class, lifecycle_state, effective_from_ms,
+                     effective_until_ms, expires_at_ms, review_after_ms, superseded_by,
+                     priority_class, confidence, confidence_basis, quarantined_at, reason)
                  SELECT id, tier, content, keywords, score, created_at, updated_at, access_count,
                         embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
-                        source_ids, ?2, 'low_effectiveness'
+                        source_ids, authority, influence_class, lifecycle_state, effective_from_ms,
+                        effective_until_ms, expires_at_ms, review_after_ms, superseded_by,
+                        priority_class, confidence, confidence_basis, ?2, 'low_effectiveness'
                    FROM memories WHERE id = ?1
                  ON CONFLICT(id) DO UPDATE SET
                     tier=excluded.tier, content=excluded.content, keywords=excluded.keywords,
@@ -2048,7 +2153,13 @@ impl MemoryStore {
                     embedding=excluded.embedding, embedding_q=excluded.embedding_q,
                     scope_id=excluded.scope_id, inject_count=excluded.inject_count,
                     content_hash=excluded.content_hash, embed_model=excluded.embed_model,
-                    source_ids=excluded.source_ids, quarantined_at=excluded.quarantined_at,
+                    source_ids=excluded.source_ids, authority=excluded.authority,
+                    influence_class=excluded.influence_class, lifecycle_state=excluded.lifecycle_state,
+                    effective_from_ms=excluded.effective_from_ms, effective_until_ms=excluded.effective_until_ms,
+                    expires_at_ms=excluded.expires_at_ms, review_after_ms=excluded.review_after_ms,
+                    superseded_by=excluded.superseded_by, priority_class=excluded.priority_class,
+                    confidence=excluded.confidence, confidence_basis=excluded.confidence_basis,
+                    quarantined_at=excluded.quarantined_at,
                     reason=excluded.reason",
                 rusqlite::params![id, quarantined_at],
             )
@@ -2159,10 +2270,14 @@ impl MemoryStore {
                 "INSERT INTO memories
                     (id, tier, content, keywords, score, created_at, updated_at, access_count,
                      embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
-                     source_ids)
+                     source_ids, authority, influence_class, lifecycle_state, effective_from_ms,
+                     effective_until_ms, expires_at_ms, review_after_ms, superseded_by,
+                     priority_class, confidence, confidence_basis)
                  SELECT id, tier, content, keywords, score, created_at, updated_at, access_count,
                         embedding, embedding_q, scope_id, inject_count, content_hash, embed_model,
-                        source_ids
+                        source_ids, authority, influence_class, lifecycle_state, effective_from_ms,
+                        effective_until_ms, expires_at_ms, review_after_ms, superseded_by,
+                        priority_class, confidence, confidence_basis
                    FROM memory_quarantine WHERE id = ?1
                  ON CONFLICT(id) DO NOTHING",
                 rusqlite::params![id],
@@ -3234,18 +3349,32 @@ impl MemoryStore {
         self.last_recall_status.lock().unwrap().clone()
     }
 
-    fn recall_eligible_ids(&self) -> HashSet<String> {
+    /// Content-free lifecycle admission set for deterministic replay and audit.
+    pub fn recall_eligible_ids_at(&self, as_of_ms: i64, include_expired: bool) -> HashSet<String> {
         let conn = self.db.lock();
-        let mut statement = match conn
-            .prepare("SELECT id FROM memories WHERE authority IN ('A1','A2','A3','A4','A5')")
-        {
+        let expiry_clause = if include_expired {
+            ""
+        } else {
+            " AND (effective_from_ms IS NULL OR effective_from_ms <= ?1) AND (effective_until_ms IS NULL OR ?1 < effective_until_ms) AND (expires_at_ms IS NULL OR ?1 < expires_at_ms)"
+        };
+        let query = format!(
+            "SELECT id FROM memories WHERE authority IN ('A1','A2','A3','A4','A5') AND lifecycle_state='active' AND superseded_by IS NULL{expiry_clause}"
+        );
+        let mut statement = match conn.prepare(&query) {
             Ok(statement) => statement,
             Err(_) => return HashSet::new(),
         };
-        statement
-            .query_map([], |row| row.get::<_, String>(0))
-            .map(|rows| rows.flatten().collect())
-            .unwrap_or_default()
+        if include_expired {
+            statement
+                .query_map([], |row| row.get::<_, String>(0))
+                .map(|rows| rows.flatten().collect())
+                .unwrap_or_default()
+        } else {
+            statement
+                .query_map(rusqlite::params![as_of_ms], |row| row.get::<_, String>(0))
+                .map(|rows| rows.flatten().collect())
+                .unwrap_or_default()
+        }
     }
 
     /// Scope-aware recall: unscoped calls keep the measured hybrid-candidate + cosine order.
@@ -3264,7 +3393,42 @@ impl MemoryStore {
         limit: usize,
         scopes: &[String],
     ) -> Vec<(MemoryEntry, f32)> {
-        self.recall_scored_timed(query, limit, scopes).0
+        self.recall_scored_at(
+            query,
+            limit,
+            scopes,
+            crate::time::now_millis() as i64,
+            false,
+        )
+    }
+
+    fn protected_ids(&self) -> HashSet<String> {
+        let conn = self.db.lock();
+        let mut statement =
+            match conn.prepare("SELECT id FROM memories WHERE priority_class='protected'") {
+                Ok(statement) => statement,
+                Err(_) => return HashSet::new(),
+            };
+        statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default()
+    }
+
+    /// Replay/audit recall at a fixed instant. `include_expired` is audit-only and never changes ranking.
+    pub fn recall_scored_at(
+        &self,
+        query: &str,
+        limit: usize,
+        scopes: &[String],
+        as_of_ms: i64,
+        include_expired: bool,
+    ) -> Vec<(MemoryEntry, f32)> {
+        self.recall_scored_detailed_timed_at(query, limit, scopes, as_of_ms, include_expired)
+            .0
+            .into_iter()
+            .map(|hit| (hit.entry, hit.score))
+            .collect()
     }
 
     /// Stable recall output plus a content-free decomposition used by phase-0 telemetry.
@@ -3274,7 +3438,13 @@ impl MemoryStore {
         limit: usize,
         scopes: &[String],
     ) -> (Vec<(MemoryEntry, f32)>, RecallStageElapsed) {
-        let (hits, elapsed) = self.recall_scored_detailed_timed(query, limit, scopes);
+        let (hits, elapsed) = self.recall_scored_detailed_timed_at(
+            query,
+            limit,
+            scopes,
+            crate::time::now_millis() as i64,
+            false,
+        );
         let hits = hits.into_iter().map(|hit| (hit.entry, hit.score)).collect();
         (hits, elapsed)
     }
@@ -3287,14 +3457,23 @@ impl MemoryStore {
         limit: usize,
         scopes: &[String],
     ) -> Vec<ScoredRecallHit> {
-        self.recall_scored_detailed_timed(query, limit, scopes).0
+        self.recall_scored_detailed_timed_at(
+            query,
+            limit,
+            scopes,
+            crate::time::now_millis() as i64,
+            false,
+        )
+        .0
     }
 
-    fn recall_scored_detailed_timed(
+    fn recall_scored_detailed_timed_at(
         &self,
         query: &str,
         limit: usize,
         scopes: &[String],
+        as_of_ms: i64,
+        include_expired: bool,
     ) -> (Vec<ScoredRecallHit>, RecallStageElapsed) {
         *self.last_recall_status.lock().unwrap() = None;
         let mut elapsed = RecallStageElapsed::default();
@@ -3391,7 +3570,7 @@ impl MemoryStore {
             .iter()
             .map(|(entry, _)| entry.id.clone())
             .collect::<Vec<_>>();
-        let eligible_ids = self.recall_eligible_ids();
+        let eligible_ids = self.recall_eligible_ids_at(as_of_ms, include_expired);
         let confidence_abstained =
             !candidate_ids.is_empty() && candidate_ids.iter().all(|id| !eligible_ids.contains(id));
         direct_candidates.retain(|(entry, _)| eligible_ids.contains(&entry.id));
@@ -3425,6 +3604,20 @@ impl MemoryStore {
         history.extend(self.gate_history_for(&direct_refs));
         let gate = EffectivenessGate::default();
         direct_candidates.retain(|(entry, _)| gate.should_inject(&history, &entry.id));
+        let protected = if protected_priority_bonus_enabled() {
+            self.protected_ids()
+        } else {
+            HashSet::new()
+        };
+        if protected_priority_bonus_enabled() {
+            for (entry, score) in &mut direct_candidates {
+                if protected.contains(&entry.id) {
+                    *score += PROTECTED_PRIORITY_BONUS;
+                }
+            }
+            direct_candidates
+                .sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        }
 
         let mut hits = direct_candidates
             .iter()
@@ -3448,8 +3641,11 @@ impl MemoryStore {
                 if !eligible_ids.contains(&entry.id) {
                     continue;
                 }
-                let score = utility_recall_score(&entry, score);
+                let mut score = utility_recall_score(&entry, score);
                 if gate.should_inject(&history, &entry.id) && seen.insert(entry.id.clone()) {
+                    if protected_priority_bonus_enabled() && protected.contains(&entry.id) {
+                        score += PROTECTED_PRIORITY_BONUS;
+                    }
                     linked_ids.insert(entry.id.clone());
                     hits.push((entry, score));
                 }
@@ -3539,7 +3735,7 @@ impl MemoryStore {
             .iter()
             .map(|entry| entry.id.clone())
             .collect::<Vec<_>>();
-        let eligible_ids = self.recall_eligible_ids();
+        let eligible_ids = self.recall_eligible_ids_at(crate::time::now_millis() as i64, false);
         let confidence_abstained =
             !candidate_ids.is_empty() && candidate_ids.iter().all(|id| !eligible_ids.contains(id));
         let filtered = eval_gate
@@ -3963,6 +4159,202 @@ impl MemoryStore {
     /// the higher-level public methods (`entries`, `scopes`).
     pub fn db(&self) -> &crate::memdb::MemDb {
         &self.db
+    }
+
+    /// Apply one typed lifecycle event as one SQLite transaction. Replaying the
+    /// same event is a no-op; a reused id with different content fails closed.
+    pub fn apply_lifecycle_event(
+        &self,
+        event: &MemoryLifecycleEventV1,
+    ) -> Result<(), MemoryLifecycleError> {
+        let required = [
+            ("event_id", event.event_id.as_str()),
+            ("subject_id", event.subject_id.as_str()),
+            ("replacement_id", event.replacement_id.as_str()),
+            ("scope_id", event.scope_id.as_str()),
+            ("actor", event.actor.as_str()),
+            ("authority", event.authority.as_str()),
+            ("reason_ref", event.reason_ref.as_str()),
+            ("origin_event_uid", event.origin_event_uid.as_str()),
+        ];
+        if let Some((field, _)) = required.iter().find(|(_, value)| value.trim().is_empty()) {
+            return Err(MemoryLifecycleError::Invalid(format!(
+                "{field} is required"
+            )));
+        }
+        if event.effective_at_ms < 0 {
+            return Err(MemoryLifecycleError::Invalid(
+                "effective_at_ms must be an integer Unix timestamp in milliseconds".into(),
+            ));
+        }
+        if event.subject_id == event.replacement_id {
+            return Err(MemoryLifecycleError::SelfSupersession);
+        }
+
+        let meta = serde_json::to_string(event)
+            .map_err(|error| MemoryLifecycleError::Invalid(format!("serialize event: {error}")))?;
+        let mut conn = self.db.lock();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        let existing: Option<(String, Option<String>, Option<String>, String)> = tx
+            .query_row(
+                "SELECT event_kind, memory_id, scope_id, meta
+                 FROM memory_event_log WHERE event_uid=?1",
+                rusqlite::params![&event.event_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()?;
+        if let Some((kind, memory_id, scope_id, existing_meta)) = existing {
+            if kind == "superseded"
+                && memory_id.as_deref() == Some(event.subject_id.as_str())
+                && scope_id.as_deref() == Some(event.scope_id.as_str())
+                && existing_meta == meta
+            {
+                return Ok(());
+            }
+            return Err(MemoryLifecycleError::EventConflict(event.event_id.clone()));
+        }
+
+        let subject: Option<(String, String, Option<String>)> = tx
+            .query_row(
+                "SELECT scope_id, lifecycle_state, superseded_by FROM memories WHERE id=?1",
+                rusqlite::params![&event.subject_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        let Some((subject_scope, subject_state, subject_successor)) = subject else {
+            return Err(MemoryLifecycleError::MissingSubject(
+                event.subject_id.clone(),
+            ));
+        };
+        let replacement_scope: Option<String> = tx
+            .query_row(
+                "SELECT scope_id FROM memories WHERE id=?1",
+                rusqlite::params![&event.replacement_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(replacement_scope) = replacement_scope else {
+            return Err(MemoryLifecycleError::MissingReplacement(
+                event.replacement_id.clone(),
+            ));
+        };
+        if subject_scope != event.scope_id || replacement_scope != event.scope_id {
+            return Err(MemoryLifecycleError::CrossScope);
+        }
+        if subject_state != "active" || subject_successor.is_some() {
+            return Err(MemoryLifecycleError::SubjectNotActive);
+        }
+
+        let mut cursor = event.replacement_id.clone();
+        let mut seen = HashSet::new();
+        loop {
+            if !seen.insert(cursor.clone()) || cursor == event.subject_id {
+                return Err(MemoryLifecycleError::Cycle);
+            }
+            let next: Option<Option<String>> = tx
+                .query_row(
+                    "SELECT superseded_by FROM memories WHERE id=?1",
+                    rusqlite::params![&cursor],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            match next {
+                Some(Some(next)) => cursor = next,
+                Some(None) => break,
+                None => {
+                    return Err(MemoryLifecycleError::Invalid(
+                        "replacement chain contains a missing memory".into(),
+                    ))
+                }
+            }
+        }
+
+        let updated = tx.execute(
+            "UPDATE memories
+             SET lifecycle_state='superseded', superseded_by=?1, effective_until_ms=?2
+             WHERE id=?3 AND lifecycle_state='active' AND superseded_by IS NULL",
+            rusqlite::params![
+                &event.replacement_id,
+                event.effective_at_ms,
+                &event.subject_id,
+            ],
+        )?;
+        if updated != 1 {
+            return Err(MemoryLifecycleError::SubjectNotActive);
+        }
+        tx.execute(
+            "INSERT INTO memory_event_log
+             (ts, event_kind, memory_id, surface, scope_id, quantity, meta, event_uid,
+              installation_id, client, artifact_id, identity_status)
+             VALUES (?1, 'superseded', ?2, ?3, ?4, 1, ?5, ?6, ?7, ?8, ?9, 'observed')",
+            rusqlite::params![
+                crate::time::now_iso(),
+                &event.subject_id,
+                &event.actor,
+                &event.scope_id,
+                meta,
+                &event.event_id,
+                &self.operation_attribution.installation_id,
+                &event.actor,
+                stable_artifact_id(&event.subject_id),
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Protect retention for an approved memory. This never changes recall eligibility;
+    /// optional rank treatment remains post-gate and policy-flagged.
+    pub fn set_priority_class(
+        &self,
+        memory_id: &str,
+        priority_class: &str,
+        actor: &str,
+        authority: &str,
+        reason_ref: &str,
+    ) -> Result<(), MemoryPriorityError> {
+        if !matches!(priority_class, "normal" | "protected") {
+            return Err(MemoryPriorityError::InvalidClass(priority_class.into()));
+        }
+        let authorized = actor == "human"
+            || actor == "admin"
+            || (actor == "adapt_manifest" && matches!(authority, "A1" | "A2"));
+        if !authorized {
+            return Err(MemoryPriorityError::Unauthorized(
+                actor.into(),
+                authority.into(),
+            ));
+        }
+        if reason_ref.trim().is_empty() {
+            return Err(MemoryPriorityError::MissingReason);
+        }
+        let mut conn = self.db.lock();
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let changed = tx.execute(
+            "UPDATE memories SET priority_class=?1 WHERE id=?2",
+            rusqlite::params![priority_class, memory_id],
+        )?;
+        if changed != 1 {
+            return Err(MemoryPriorityError::Missing(memory_id.into()));
+        }
+        tx.execute(
+            "INSERT INTO memory_event_log
+             (ts, event_kind, memory_id, surface, scope_id, quantity, meta, installation_id, client, artifact_id, identity_status)
+             SELECT ?1, ?2, id, ?3, scope_id, 1, ?4, ?5, ?3, ?6, 'observed'
+             FROM memories WHERE id=?7",
+            rusqlite::params![
+                crate::time::now_iso(),
+                format!("priority_{priority_class}"),
+                actor,
+                serde_json::json!({"authority": authority, "reason_ref": reason_ref}).to_string(),
+                &self.operation_attribution.installation_id,
+                stable_artifact_id(memory_id),
+                memory_id,
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn health(&self) -> MemoryHealth {
@@ -4869,19 +5261,73 @@ impl MemoryStore {
     pub fn export_md(&self, dir: &std::path::Path) -> usize {
         let ws_slug = crate::scope::workspace_root()
             .map(|root| crate::scope::path_to_scope(&root.to_string_lossy()));
-        let rows: Vec<(String, String, String, String, f64)> = {
+        // Session checkpoints are short-lived orientation artifacts.  They remain
+        // resident in the DB for the compaction handoff, but never enter the
+        // Markdown mirror / cross-machine sync surface.
+        let rows: Vec<(
+            String,
+            String,
+            String,
+            String,
+            f64,
+            String,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<String>,
+            String,
+            Option<f64>,
+            Option<String>,
+        )> = {
             let conn = self.db.lock();
-            conn.prepare("SELECT id, scope_id, content, created_at, score FROM memories")
-                .and_then(|mut st| {
-                    st.query_map([], |r| {
-                        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
-                    })
-                    .map(|rows| rows.flatten().collect())
+            conn.prepare(
+                "SELECT id, scope_id, content, created_at, score, lifecycle_state, \
+                 effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms, \
+                 superseded_by, priority_class, confidence, confidence_basis \
+                 FROM memories WHERE COALESCE(artifact_family, '') != 'session'",
+            )
+            .and_then(|mut st| {
+                st.query_map([], |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                        r.get(7)?,
+                        r.get(8)?,
+                        r.get(9)?,
+                        r.get(10)?,
+                        r.get(11)?,
+                        r.get(12)?,
+                        r.get(13)?,
+                    ))
                 })
-                .unwrap_or_default()
+                .map(|rows| rows.flatten().collect())
+            })
+            .unwrap_or_default()
         };
         let mut n = 0;
-        for (id, scope, content, created_at, score) in rows {
+        for (
+            id,
+            scope,
+            content,
+            created_at,
+            score,
+            lifecycle_state,
+            effective_from_ms,
+            effective_until_ms,
+            expires_at_ms,
+            review_after_ms,
+            superseded_by,
+            priority_class,
+            confidence,
+            confidence_basis,
+        ) in rows
+        {
             // Leading '-' guard: mac project slugs are "-Users-…" while path_to_scope
             // trims the dash — without this the prefix match misses and the export
             // writes raw per-machine scope dirs (the 2026-07-02 cross-machine bug).
@@ -4911,8 +5357,21 @@ impl MemoryStore {
             if std::fs::create_dir_all(&sub).is_err() {
                 continue;
             }
+            let integer = |value: Option<i64>| {
+                value
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "null".to_string())
+            };
+            let decimal = |value: Option<f64>| {
+                value
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "null".to_string())
+            };
+            let text = |value: Option<String>| value.unwrap_or_else(|| "null".to_string());
             let body = format!(
-                "---\nid: {id}\nscope: {scope}\nscore: {score}\ncreated_at: {created_at}\nexported_by: memright export-md\n---\n\n{content}\n"
+                "---\nid: {id}\nscope: {scope}\nscore: {score}\ncreated_at: {created_at}\nlifecycle_state: {lifecycle_state}\neffective_from_ms: {}\neffective_until_ms: {}\nexpires_at_ms: {}\nreview_after_ms: {}\nsuperseded_by: {}\npriority_class: {priority_class}\nconfidence: {}\nconfidence_basis: {}\nexported_by: memright export-md\n---\n\n{content}\n",
+                integer(effective_from_ms), integer(effective_until_ms), integer(expires_at_ms),
+                integer(review_after_ms), text(superseded_by), decimal(confidence), text(confidence_basis),
             );
             if std::fs::write(sub.join(format!("{safe}.md")), body).is_ok() {
                 n += 1;
@@ -5872,6 +6331,42 @@ mod tests {
             store.last_recall_status().as_deref(),
             Some("insufficient_confidence")
         );
+    }
+
+    #[test]
+    fn protected_expired_and_superseded_rows_never_bypass_lifecycle_admission() {
+        let store = MemoryStore::new();
+        let expired = store
+            .try_put(
+                "expired-protected",
+                "lifecycle inverse marker",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        let replacement = store
+            .try_put(
+                "replacement",
+                "lifecycle inverse marker successor",
+                "global",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+        store.db.lock().execute(
+            "UPDATE memories SET priority_class='protected', effective_until_ms=1000 WHERE id=?1",
+            rusqlite::params![expired],
+        ).unwrap();
+        assert!(!store.recall_eligible_ids_at(2000, false).contains(&expired));
+        assert!(store.recall_eligible_ids_at(2000, true).contains(&expired));
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE memories SET superseded_by=?2 WHERE id=?1",
+                rusqlite::params![expired, replacement],
+            )
+            .unwrap();
+        assert!(!store.recall_eligible_ids_at(0, true).contains(&expired));
     }
 
     #[test]

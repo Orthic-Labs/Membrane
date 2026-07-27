@@ -2,14 +2,14 @@
 // tools/bin/mcp-client.mjs — RightContext G5 Lane F provider-neutral MCP thin client.
 //
 // Thin client: authenticates to the workspace loopback MemRight service at
-// http://127.0.0.1:${MEMRIGHT_PORT}/plan_context with the workspace bearer
-// token, POSTs a frozen ContextCandidateSet v1 envelope, surfaces receipt
+// http://127.0.0.1:${MEMRIGHT_PORT}/federate with the workspace bearer
+// token, POSTs a task/repository federation request, surfaces receipt
 // IDs + degradation state to the caller, and emits a typed fallback event
 // when the planner is unavailable or any provider has gone away.
 //
 // This file does NOT rank, dedupe, normalise, or select candidates. The
-// planner in `memright plan-context` (and the loopback `POST /plan_context`
-// route) is the only authority for ranking and admission. The MCP client
+// federation gateway (and the loopback `POST /federate` route) owns provider
+// orchestration plus admission. `/plan_context` stays provider-facing. The MCP client
 // translates transport shape only — JSON envelope in, packet + receipts
 // out — exactly as dispatch G5 Lane F requires.
 //
@@ -21,7 +21,7 @@
 //      printed, written to a log row, or embedded in any output line.
 //
 // Transport contract:
-//   - Reads a ContextCandidateSet v1 (or {candidate_set, max_tokens, scope_grant_id?})
+//   - Reads `{task, repo, maxTokens?, session?, anchors?, scopeGrantId?}`
 //     from `--input <path>` or stdin (when input is `-`).
 //   - Issues one POST application/json with Authorization: Bearer <token>.
 //   - Parses the {packet, receipts, providerStatus, fallbackMode, degradationReason,
@@ -86,8 +86,6 @@ function readStdinSync() {
 }
 
 function loadInput({ inputArg, maxTokens }) {
-  // Accept either a ContextCandidateSet v1 envelope (--candidate-set shape)
-  // or an MCP-shaped envelope `{candidate_set, max_tokens, scope_grant_id?}`.
   let raw;
   if (inputArg === "-" || inputArg === undefined) {
     raw = readStdinSync();
@@ -98,21 +96,18 @@ function loadInput({ inputArg, maxTokens }) {
     throw new Error(`input exceeds ${MAX_BODY_BYTES} bytes`);
   }
   const parsed = JSON.parse(raw);
-  // Already wrapped? Use as-is.
-  if (parsed && typeof parsed === "object" && parsed.candidate_set) {
-    return {
-      candidate_set: parsed.candidate_set,
-      max_tokens: parsed.max_tokens ?? maxTokens,
-      scope_grant_id: parsed.scope_grant_id,
-      accepted_receipt_versions: parsed.accepted_receipt_versions ?? [2],
-    };
+  if (!parsed || typeof parsed !== "object" || typeof parsed.task !== "string" || !parsed.task.trim() || typeof parsed.repo !== "string" || !parsed.repo.trim()) {
+    throw new Error("federate input requires non-empty task and repo");
   }
-  // ContextCandidateSet v1 envelope — wrap.
   return {
-    candidate_set: parsed,
-    max_tokens: maxTokens,
-    scope_grant_id: undefined,
-    accepted_receipt_versions: [2],
+    task: parsed.task,
+    repo: parsed.repo,
+    maxTokens: parsed.maxTokens ?? maxTokens,
+    maxWaitMs: parsed.maxWaitMs,
+    client: parsed.client ?? "mcp",
+    session: parsed.session,
+    anchors: parsed.anchors ?? "",
+    scopeGrantId: parsed.scopeGrantId,
   };
 }
 
@@ -155,66 +150,6 @@ function postPlanner({ host, port, path, body, token, traceId }) {
     });
     req.on("error", reject);
     // Set Authorization LAST so we never accidentally log the token header.
-    if (token) {
-      req.setHeader("authorization", `Bearer ${token}`);
-    }
-    req.write(json);
-    req.end();
-  });
-}
-
-// POST /scope_grants to mint a short-lived grant before /plan_context.
-// The planner service REQUIRES a valid scope_grant_id for /plan_context —
-// the CLI path bypasses this for pure-admission tests, but the loopback
-// service enforces the G3B ScopeGrant contract end-to-end. The MCP client
-// mints a grant once per call so a transport-only caller never has to
-// know about grants. The grant body uses the trace_id as the session id
-// so receipts and grants can be joined by id without content.
-function mintScopeGrant({ host, port, traceId, token }) {
-  return new Promise((resolve, reject) => {
-    const grantBody = {
-      id: `grant-${traceId}-${Date.now().toString(36)}-${Math.floor(Math.random() * 0xffffff).toString(16)}`,
-      client: "mcp",
-      task_id: traceId,
-      session_id: traceId,
-      nonce: `nonce-${Date.now().toString(36)}-${Math.floor(Math.random() * 0xffffff).toString(16)}`,
-      manifest_digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-      repository_ids: ["transport"],
-      permitted_edge_types: ["read"],
-      ttl_seconds: 600,
-    };
-    const json = Buffer.from(JSON.stringify(grantBody), "utf8");
-    const req = httpRequest(
-      {
-        hostname: host,
-        port,
-        path: "/scope_grants",
-        method: "POST",
-        timeout: REQUEST_TIMEOUT_MS,
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          "content-length": String(json.byteLength),
-          "accept": "application/json",
-          "x-rightcontext-client": "mcp",
-          "x-rightcontext-version": TRANSPORT_VERSION,
-          "x-rightcontext-trace": traceId,
-        },
-      },
-      (res) => {
-        const chunks = [];
-        let received = 0;
-        res.on("data", (chunk) => {
-          received += chunk.length;
-          if (received <= MAX_BODY_BYTES) chunks.push(chunk);
-        });
-        res.on("end", () => {
-          const text = Buffer.concat(chunks).toString("utf8");
-          resolve({ status: res.statusCode || 0, body: text });
-        });
-      }
-    );
-    req.on("timeout", () => req.destroy(new Error("scope_grants timed out")));
-    req.on("error", reject);
     if (token) {
       req.setHeader("authorization", `Bearer ${token}`);
     }
@@ -275,9 +210,9 @@ async function main() {
           "Usage:",
           "  node mcp-client.mjs --input <path|-> [--max-tokens N]",
           "",
-          "Reads a ContextCandidateSet v1 (or {candidate_set,max_tokens,scope_grant_id}",
-          "wrapper) from --input or stdin, POSTs to /plan_context, and prints the",
-          "planner packet + receipts + degradation state to stdout. Falls back to a",
+          "Reads {task,repo,maxTokens?,session?,anchors?,scopeGrantId?} from --input or stdin,",
+          "POSTs to /federate, and prints the federated packet + receipts + degradation state.",
+          "Falls back to a",
           "typed `context_fallback` envelope on transport or planner failure.",
         ].join("\n") + "\n"
       );
@@ -293,61 +228,18 @@ async function main() {
     return 2;
   }
 
-  const traceId =
-    (payload.candidate_set && payload.candidate_set.traceId) || `mcp-${Date.now().toString(16)}`;
+  const traceId = payload.session || `mcp-${Date.now().toString(16)}`;
   const token = readToken();
   const port = readPort();
   const host = "127.0.0.1";
 
   let response;
   try {
-    // Mint a scope grant first — /plan_context requires a valid grant id
-    // (the loopback service enforces the G3B ScopeGrant contract end-to-end;
-    // the CLI path bypasses this for pure admission tests, but the live
-    // HTTP route requires it). The MCP client is a transport adapter and
-    // never inspects the grant body; it only forwards the returned id.
-    let grantId = payload.scope_grant_id;
-    if (!grantId) {
-      const grantResp = await mintScopeGrant({ host, port, traceId, token });
-      if (grantResp.status === 200) {
-        try {
-          const grantPayload = JSON.parse(grantResp.body);
-          grantId = grantPayload.id;
-        } catch (_) {
-          // fall through; the planner call below will return a typed error
-        }
-      }
-      if (!grantId) {
-        emitFallbackEvent({
-          traceId,
-          provider: "rightcontext-planner",
-          reason: "scope_grant_failed",
-          mode: "non_graph_sources_only",
-        });
-        process.stdout.write(
-          JSON.stringify({
-            ok: false,
-            transport: "mcp",
-            version: TRANSPORT_VERSION,
-            traceId,
-            providerStatus: "unavailable",
-            fallbackMode: "non_graph_sources_only",
-            degradationReason: "scope_grant_failed",
-            sourceGeneration: null,
-            packet: null,
-            receipts: [],
-            error: "scope_grant_failed",
-            httpStatus: grantResp.status,
-          }) + "\n"
-        );
-        return 2;
-      }
-    }
     response = await postPlanner({
       host,
       port,
-      path: "/plan_context",
-      body: { ...payload, scope_grant_id: grantId },
+      path: "/federate",
+      body: payload,
       token,
       traceId,
     });

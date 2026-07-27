@@ -106,7 +106,8 @@ impl ResidentGateway {
     }
 
     pub fn is_healthy(&self) -> bool {
-        self.unhealthy_until.is_none_or(|until| Instant::now() >= until)
+        self.unhealthy_until
+            .is_none_or(|until| Instant::now() >= until)
     }
 
     fn note_failure(&mut self) {
@@ -383,14 +384,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let script = echo_fixture(dir.path());
         let mut gateway = ResidentGateway::with_python(script, python());
-        gateway.request("\"warm\"", Duration::from_secs(10)).unwrap();
+        gateway
+            .request("\"warm\"", Duration::from_secs(10))
+            .unwrap();
         let stalled_pid = gateway.child_pid().unwrap();
 
         let result = gateway.request("\"stall\"", Duration::from_millis(300));
 
         assert!(result.is_err(), "stalled request must error");
         // The stalled tree was killed — a fresh request gets a NEW pid.
-        gateway.request("\"again\"", Duration::from_secs(10)).unwrap();
+        gateway
+            .request("\"again\"", Duration::from_secs(10))
+            .unwrap();
         assert_ne!(gateway.child_pid().unwrap(), stalled_pid);
         let alive = Command::new("kill")
             .args(["-0", &stalled_pid.to_string()])
@@ -439,7 +444,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let script = echo_fixture(dir.path());
         let mut gateway = ResidentGateway::with_python(script, python());
-        gateway.request("\"warm\"", Duration::from_secs(10)).unwrap();
+        gateway
+            .request("\"warm\"", Duration::from_secs(10))
+            .unwrap();
         let pid = gateway.child_pid().unwrap();
         drop(gateway);
         let deadline = Instant::now() + Duration::from_secs(3);
@@ -464,9 +471,13 @@ mod tests {
         let mut gateway = ResidentGateway::with_python(script, python());
         let mut recycled = Vec::new();
         for _ in 0..2 {
-            gateway.request("\"warm\"", Duration::from_secs(10)).unwrap();
+            gateway
+                .request("\"warm\"", Duration::from_secs(10))
+                .unwrap();
             recycled.push(gateway.child_pid().unwrap());
-            gateway.request("\"stall\"", Duration::from_millis(200)).ok();
+            gateway
+                .request("\"stall\"", Duration::from_millis(200))
+                .ok();
             gateway.consecutive_failures = 0; // soak isolates leak-checking from the breaker
         }
         for pid in recycled {

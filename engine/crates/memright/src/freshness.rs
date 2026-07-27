@@ -689,7 +689,9 @@ fn open_graph_db_read_only(path: &Path) -> Result<Connection, String> {
         Err(read_only_error) => {
             let uri = format!(
                 "file:{}?immutable=1",
-                path.to_string_lossy().replace('?', "%3f").replace('#', "%23")
+                path.to_string_lossy()
+                    .replace('?', "%3f")
+                    .replace('#', "%23")
             );
             Connection::open_with_flags(
                 uri,

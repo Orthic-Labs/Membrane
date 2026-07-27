@@ -26,6 +26,7 @@ tower = { version = "0.5", features = ["limit", "util"] }
 tower-http = { version = "0.6", features = ["limit", "timeout"] }
 getrandom = "0.2"
 sha2 = "0.10"
+comrak = "0.54"
 tree-sitter = "0.22"
 tree-sitter-rust = "0.21"
 tree-sitter-python = "0.21"
