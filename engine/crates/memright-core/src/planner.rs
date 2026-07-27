@@ -5,7 +5,7 @@
 //!   - Cross-root rejection (trustClass == remote_untrusted)
 //!   - Version-authority filtering (superseded/proposed lose unless protected)
 //!   - Source-class filters (memory relevance threshold; doc over memory)
-//!   - Deduplication by id
+//!   - Deduplication by id, canonical source hash, and normalized content hash
 //!   - Ranking by (providerScore desc, freshness desc, kind priority, id asc)
 //!   - Token-budget admission (sum estimatedTokens <= max_tokens)
 //!   - Bound ContextPacket v1 emission with a Budget + per-layer allocations
@@ -362,6 +362,13 @@ pub struct ContextReceiptV2 {
     pub decision: String,
     pub reason: String,
     pub content_sha256: String,
+    /// IDs absorbed into this winner during planner deduplication. IDs are
+    /// content-free provenance, allowing a consumer to reconcile omission.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deduplicated_from: Vec<String>,
+    /// Winning candidate ID when this candidate lost source/content deduplication.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deduplicated_to: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_commit: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -603,7 +610,9 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
         kept_after_class.push(cand);
     }
 
-    // 4. Deduplicate by id (keep first occurrence).
+    // 4. Deduplicate by id (keep first occurrence), then canonical source hash
+    // and normalized content. Ranking before content/source dedup makes every
+    // winner deterministic rather than dependent on provider return order.
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut deduped: Vec<&CandidateV1> = Vec::new();
     for cand in kept_after_class {
@@ -630,6 +639,47 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
             .then(b.exact.cmp(&a.exact))
             .then(a.id.cmp(&b.id))
     });
+
+    let mut source_winners: BTreeMap<String, String> = BTreeMap::new();
+    let mut content_winners: BTreeMap<String, String> = BTreeMap::new();
+    let mut deduplicated_from: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut deduplicated_to: BTreeMap<String, String> = BTreeMap::new();
+    let mut content_or_source_deduped: Vec<&CandidateV1> = Vec::new();
+    for cand in deduped {
+        let source_key = canonical_source_hash(&cand.source_hash);
+        let content_key = normalized_content_hash(&cand.text);
+        let duplicate = source_key
+            .as_ref()
+            .and_then(|key| {
+                source_winners
+                    .get(key)
+                    .map(|winner| (winner, "duplicate_source_hash"))
+            })
+            .or_else(|| {
+                content_key.as_ref().and_then(|key| {
+                    content_winners
+                        .get(key)
+                        .map(|winner| (winner, "duplicate_normalized_content"))
+                })
+            });
+        if let Some((winner, reason)) = duplicate {
+            decisions.push((cand.clone(), "rejected".into(), reason.into()));
+            deduplicated_from
+                .entry(winner.clone())
+                .or_default()
+                .push(cand.id.clone());
+            deduplicated_to.insert(cand.id.clone(), winner.clone());
+            continue;
+        }
+        if let Some(key) = source_key {
+            source_winners.insert(key, cand.id.clone());
+        }
+        if let Some(key) = content_key {
+            content_winners.insert(key, cand.id.clone());
+        }
+        content_or_source_deduped.push(cand);
+    }
+    let deduped = content_or_source_deduped;
 
     // 6. Token-budget admission — TWO PASSES. Pass 1 admits per-source-class RESERVED LANES
     // (by score within the lane); pass 2 fills the remaining budget in global score order
@@ -825,6 +875,8 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
             decision,
             reason,
             content_sha256: content_sha,
+            deduplicated_from: deduplicated_from.remove(&cand.id).unwrap_or_default(),
+            deduplicated_to: deduplicated_to.remove(&cand.id),
             base_commit: cand.base_commit.clone(),
             overlay_digest: cand.overlay_digest.clone(),
             freshness_class: cand.freshness_class,
@@ -945,9 +997,11 @@ fn kind_priority(cand: &CandidateV1) -> u8 {
     }
 }
 
-/// Allocate each admitted source-kind lane proportionally to non-negative
-/// retrieval score. Largest-remainder rounding is deterministic by id & never
-/// changes a lane's total admitted budget.
+/// Allocate each admitted source-kind lane proportionally to scores normalized
+/// within its provider. This retains each provider's relative ordering while
+/// stopping incompatible provider scales from deciding cross-provider shares.
+/// Largest-remainder rounding is deterministic by id & never changes a lane's
+/// total admitted budget.
 fn score_proportional_allotments(candidates: &[&CandidateV1]) -> BTreeMap<String, usize> {
     let mut by_lane: BTreeMap<&str, Vec<&CandidateV1>> = BTreeMap::new();
     for candidate in candidates {
@@ -963,9 +1017,26 @@ fn score_proportional_allotments(candidates: &[&CandidateV1]) -> BTreeMap<String
             .iter()
             .map(|candidate| candidate.estimated_tokens)
             .sum::<usize>();
+        let mut provider_maxima: BTreeMap<&str, f64> = BTreeMap::new();
+        for candidate in lane.iter() {
+            let provider = candidate.provider.as_deref().unwrap_or("").trim();
+            let score = candidate.provider_score.max(0.0);
+            provider_maxima
+                .entry(provider)
+                .and_modify(|maximum| *maximum = maximum.max(score))
+                .or_insert(score);
+        }
         let weights = lane
             .iter()
-            .map(|candidate| candidate.provider_score.max(0.0))
+            .map(|candidate| {
+                let provider = candidate.provider.as_deref().unwrap_or("").trim();
+                let maximum = provider_maxima[provider];
+                if maximum > 0.0 {
+                    candidate.provider_score.max(0.0) / maximum
+                } else {
+                    0.0
+                }
+            })
             .collect::<Vec<_>>();
         let weight_total = weights.iter().sum::<f64>();
         let denominator = if weight_total > 0.0 {
@@ -1013,6 +1084,29 @@ fn sha256_hex(s: &str) -> String {
     out
 }
 
+fn canonical_source_hash(source_hash: &str) -> Option<String> {
+    let digest = source_hash
+        .trim()
+        .strip_prefix("sha256:")
+        .or_else(|| source_hash.trim().strip_prefix("SHA256:"))?;
+    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(format!("sha256:{}", digest.to_ascii_lowercase()))
+}
+
+fn normalized_content_hash(text: &str) -> Option<String> {
+    let normalized = text
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let normalized = normalized.trim();
+    (!normalized.is_empty()).then(|| sha256_hex(normalized))
+}
+
 fn candidate_provider(candidate: &CandidateV1, fallback: &str) -> String {
     candidate
         .provider
@@ -1051,7 +1145,7 @@ mod tests {
             provider: None,
             source_kind: kind.into(),
             source_ref: format!("path:{}", id),
-            source_hash: "sha256:".to_string() + &"0".repeat(64),
+            source_hash: format!("sha256:{}", sha256_hex(id)),
             trust_class: "workspace_tracked".into(),
             instruction_policy: "data_only".into(),
             provider_score: score,
@@ -1157,6 +1251,88 @@ mod tests {
             output.receipts[1].content_sha256,
             sha256_hex("second admitted content")
         );
+    }
+
+    #[test]
+    fn deduplicates_canonical_source_hash_with_winner_loser_provenance() {
+        let mut winner = candidate("winner", "repo_code", 20, 0.9, false);
+        winner.source_hash = format!("SHA256:{}", "A".repeat(64));
+        winner.text = "authoritative source".into();
+        let mut loser = candidate("loser", "repo_code", 20, 0.4, false);
+        loser.source_hash = format!("sha256:{}", "a".repeat(64));
+        loser.text = "alternate rendering".into();
+
+        let out = plan(&empty_planner_input(vec![loser, winner])).unwrap();
+
+        assert_eq!(out.packet.blocks.len(), 1);
+        assert_eq!(out.packet.blocks[0].id, "winner");
+        let winner_receipt = out
+            .receipts
+            .iter()
+            .find(|receipt| receipt.id == "winner")
+            .unwrap();
+        let loser_receipt = out
+            .receipts
+            .iter()
+            .find(|receipt| receipt.id == "loser")
+            .unwrap();
+        assert_eq!(winner_receipt.deduplicated_from, vec!["loser"]);
+        assert_eq!(loser_receipt.reason, "duplicate_source_hash");
+        assert_eq!(loser_receipt.deduplicated_to.as_deref(), Some("winner"));
+    }
+
+    #[test]
+    fn deduplicates_normalized_content_with_winner_loser_provenance() {
+        let mut winner = candidate("winner", "repo_code", 20, 0.9, false);
+        winner.text = "same content\nwith whitespace\n".into();
+        let mut loser = candidate("loser", "repo_code", 20, 0.4, false);
+        loser.text = "same content\r\nwith whitespace   \r\n\r\n".into();
+
+        let out = plan(&empty_planner_input(vec![loser, winner])).unwrap();
+
+        assert_eq!(out.packet.blocks.len(), 1);
+        assert_eq!(out.packet.blocks[0].id, "winner");
+        let winner_receipt = out
+            .receipts
+            .iter()
+            .find(|receipt| receipt.id == "winner")
+            .unwrap();
+        let loser_receipt = out
+            .receipts
+            .iter()
+            .find(|receipt| receipt.id == "loser")
+            .unwrap();
+        assert_eq!(winner_receipt.deduplicated_from, vec!["loser"]);
+        assert_eq!(loser_receipt.reason, "duplicate_normalized_content");
+        assert_eq!(loser_receipt.deduplicated_to.as_deref(), Some("winner"));
+    }
+
+    #[test]
+    fn allotments_normalize_scores_within_provider_lane_before_comparing_providers() {
+        let mut alpha_high = candidate("alpha-high", "repo_code", 100, 0.9, false);
+        alpha_high.provider = Some("alpha".into());
+        let mut alpha_low = candidate("alpha-low", "repo_code", 100, 0.3, false);
+        alpha_low.provider = Some("alpha".into());
+        let mut beta_high = candidate("beta-high", "repo_code", 100, 90.0, false);
+        beta_high.provider = Some("beta".into());
+        let mut beta_low = candidate("beta-low", "repo_code", 100, 30.0, false);
+        beta_low.provider = Some("beta".into());
+
+        let out = plan(&empty_planner_input(vec![
+            alpha_low, beta_low, alpha_high, beta_high,
+        ]))
+        .unwrap();
+        let allotments: BTreeMap<_, _> = out
+            .packet
+            .blocks
+            .iter()
+            .map(|block| (block.id.as_str(), block.allotted_tokens.unwrap()))
+            .collect();
+
+        assert_eq!(allotments["alpha-high"], allotments["beta-high"]);
+        assert_eq!(allotments["alpha-low"], allotments["beta-low"]);
+        assert_eq!(allotments["alpha-high"], 150);
+        assert_eq!(allotments["alpha-low"], 50);
     }
 
     #[test]

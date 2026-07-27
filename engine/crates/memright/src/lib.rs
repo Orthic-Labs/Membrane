@@ -3,6 +3,7 @@
 //! isolation. CodeRight (the product) and the workspace both CONSUME this crate; neither owns the
 //! engine. Self-contained and publishable (depends only on memright-core primitives).
 
+pub mod admission_policy;
 pub mod catalog;
 pub mod checkpoint;
 pub mod compress;
@@ -36,6 +37,10 @@ pub use memright_format::okf;
 
 pub use checkpoint::{
     CheckpointError, CheckpointSourceRefV1, CheckpointSourceResolutionV1, CheckpointV1,
+};
+pub use admission_policy::{
+    admit, AdmissionDecision, AdmissionError, AdmissionRequest, Authority, InstructionPolicy, Origin,
+    ProtectedSpan, ProtectedSpanKind, QuarantineStatus,
 };
 pub use memdb::MemDb;
 pub use scope::{normalize_scope, path_to_scope, scope_chain};

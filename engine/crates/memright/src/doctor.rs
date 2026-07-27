@@ -24,6 +24,17 @@ pub struct DoctorCheckV0 {
 pub fn run(path: impl AsRef<Path>) -> Result<DoctorReportV0, String> {
     let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|error| error.to_string())?;
+    let embedding_check = if column_exists(&connection, "memories", "embedding_q")? {
+        check_embeddings(&connection)?
+    } else {
+        check(
+            &connection,
+            "MRD-EMBED-SHORT",
+            "critical",
+            "SELECT id FROM memories WHERE embedding IS NULL OR length(embedding) < 8",
+            "reindex affected rows; do not promote with missing embeddings",
+        )?
+    };
     let mut checks = vec![
         check(
             &connection,
@@ -32,13 +43,7 @@ pub fn run(path: impl AsRef<Path>) -> Result<DoctorReportV0, String> {
             "SELECT id FROM memories WHERE embed_model IS NULL OR trim(embed_model) = ''",
             "reindex after selecting the intended embed model",
         )?,
-        check(
-            &connection,
-            "MRD-EMBED-SHORT",
-            "critical",
-            "SELECT id FROM memories WHERE embedding IS NULL OR length(embedding) < 8",
-            "reindex affected rows; do not promote with missing embeddings",
-        )?,
+        embedding_check,
         check(
             &connection,
             "MRD-SCOPE-ANOMALY",
@@ -85,6 +90,55 @@ pub fn run(path: impl AsRef<Path>) -> Result<DoctorReportV0, String> {
         status,
         checks,
     })
+}
+
+fn check_embeddings(connection: &Connection) -> Result<DoctorCheckV0, String> {
+    let mut statement = connection
+        .prepare("SELECT id, embedding, embedding_q FROM memories")
+        .map_err(|error| format!("MRD-EMBED-SHORT: query failed: {error}"))?;
+    let invalid = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<Vec<u8>>>(1)?,
+                row.get::<_, Option<Vec<u8>>>(2)?,
+            ))
+        })
+        .map_err(|error| format!("MRD-EMBED-SHORT: query failed: {error}"))?
+        .filter_map(|row| match row {
+            Ok((id, legacy, quantized)) if !valid_embedding(legacy.as_deref(), quantized.as_deref()) => {
+                Some(Ok(id))
+            }
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("MRD-EMBED-SHORT: row failed: {error}"))?;
+    let mut sample_ids = invalid.clone();
+    sample_ids.sort();
+    sample_ids.truncate(20);
+    Ok(DoctorCheckV0 {
+        code: "MRD-EMBED-SHORT",
+        severity: "critical",
+        count: invalid.len(),
+        sample_ids,
+        repair: "reindex affected rows; do not promote with missing embeddings",
+    })
+}
+
+fn valid_embedding(legacy: Option<&[u8]>, quantized: Option<&[u8]>) -> bool {
+    match quantized {
+        Some(blob) => valid_quantized_embedding(blob),
+        None => legacy.is_some_and(|blob| blob.len() >= 8),
+    }
+}
+
+fn valid_quantized_embedding(blob: &[u8]) -> bool {
+    if blob.len() < 8 {
+        return false;
+    }
+    let scale = f32::from_le_bytes([blob[0], blob[1], blob[2], blob[3]]);
+    scale.is_finite() && scale > 0.0
 }
 
 fn table_exists(connection: &Connection, name: &str) -> Result<bool, String> {
@@ -219,6 +273,34 @@ mod tests {
     }
 
     #[test]
+    fn doctor_uses_nontrivial_quantized_embeddings_when_legacy_blobs_are_null() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = directory.path().join("doctor-quantized-embeddings.db");
+        let connection = Connection::open(&db).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE memories(id TEXT, embed_model TEXT, embedding BLOB, embedding_q BLOB, scope_id TEXT, inject_count INTEGER, access_count INTEGER);
+                 INSERT INTO memories VALUES
+                    ('valid-q', 'model', NULL, X'0000803F01020304', 'global', 0, 0),
+                    ('missing', 'model', NULL, NULL, 'global', 0, 0),
+                    ('short-q', 'model', NULL, X'0000803F', 'global', 0, 0),
+                    ('zero-scale-q', 'model', NULL, X'0000000001020304', 'global', 0, 0),
+                    ('nan-scale-q', 'model', NULL, X'0000C07F01020304', 'global', 0, 0),
+                    ('legacy', 'model', X'0000000000000000', NULL, 'global', 0, 0);",
+            )
+            .unwrap();
+        drop(connection);
+
+        let report = run(&db).unwrap();
+        let check = check_by_code(&report, "MRD-EMBED-SHORT");
+        assert_eq!(check.count, 4);
+        assert_eq!(
+            check.sample_ids,
+            vec!["missing", "nan-scale-q", "short-q", "zero-scale-q"]
+        );
+    }
+
+    #[test]
     fn doctor_stably_suppresses_lifecycle_checks_for_v19_shape() {
         let directory = tempfile::tempdir().unwrap();
         let db = directory.path().join("doctor-v19.db");
@@ -256,6 +338,6 @@ mod tests {
         drop(connection);
 
         let error = run(&db).unwrap_err();
-        assert!(error.contains("MRD-EMBED-MODEL-DRIFT"), "{error}");
+        assert!(error.contains("MRD-EMBED-SHORT"), "{error}");
     }
 }
