@@ -230,6 +230,10 @@ fn plan_context_admits_candidates_and_persists_content_free_receipts() {
     issue_grant(&catalog, "sg-plan");
     let store = new_store();
     let metrics = TestMetrics::new();
+    let mut candidate_b = make_candidate("b", "repo_code", 0.85, 200);
+    candidate_b["sourceHash"] = json!(
+        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    );
     let body = json!({
         "scope_grant_id": "sg-plan",
         "max_tokens": 1_000,
@@ -237,7 +241,7 @@ fn plan_context_admits_candidates_and_persists_content_free_receipts() {
         "packet_char_budget_model": "test-model",
         "candidate_set": candidate_set(vec![
             make_candidate("a", "repo_code", 0.95, 100),
-            make_candidate("b", "repo_code", 0.85, 200),
+            candidate_b,
         ]),
     });
     let (status, payload) = route_with_metrics(
