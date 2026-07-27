@@ -2617,18 +2617,22 @@ fn run_main() -> Result<(), String> {
                 .as_deref()
                 .map(|s| memright::scope_chain(s, &store.scopes()))
                 .unwrap_or_default();
-            let hits = store.recall_scored_at(
-                &query,
-                k,
-                &chain,
-                as_of_ms.unwrap_or_else(|| memright::time::now_millis() as i64),
-                include_expired,
-            );
             let document_hits = memright::doc_spine::recall(
                 &MemDb::open(&db).map_err(|error| error.to_string())?,
                 &query,
                 k,
             )?;
+            let hits = if document_hits.is_empty() {
+                store.recall_scored_at(
+                    &query,
+                    k,
+                    &chain,
+                    as_of_ms.unwrap_or_else(|| memright::time::now_millis() as i64),
+                    include_expired,
+                )
+            } else {
+                Vec::new()
+            };
             if hits.is_empty()
                 && store.last_recall_status().as_deref() == Some("insufficient_confidence")
             {
