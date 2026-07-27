@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -38,9 +38,10 @@ const foreignRoot = join(registryRoot, "foreign");
 const registry = join(registryRoot, "registry.json");
 await mkdir(enrolledRoot);
 await mkdir(foreignRoot);
+const enrolledCanonicalRoot = await realpath(enrolledRoot);
 await writeFile(registry, JSON.stringify({
   schema_version: 1,
-  bindings: { [enrolledRoot]: { repository_id: "repo-a", scope_id: "scope-a", provider_config: {}, grant_policy: { level: "write-proposed" } } },
+  bindings: { [enrolledCanonicalRoot]: { repository_id: "repo-a", scope_id: "scope-a", provider_config: {}, grant_policy: { level: "write-proposed" } } },
 }), "utf8");
 
 const denied = await rpc([{
@@ -58,7 +59,7 @@ assert.match(corruptDenied[0].error.message, /registry unavailable/i);
 
 await writeFile(registry, JSON.stringify({
   schema_version: 1,
-  bindings: { [enrolledRoot]: { repository_id: "repo-a", scope_id: "scope-a", provider_config: {}, grant_policy: { level: "write-proposed" } } },
+  bindings: { [enrolledCanonicalRoot]: { repository_id: "repo-a", scope_id: "scope-a", provider_config: {}, grant_policy: { level: "write-proposed" } } },
 }), "utf8");
 
 const proposal = await rpc([{

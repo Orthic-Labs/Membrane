@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,11 +30,12 @@ await writeFile(registry, "{broken", "utf8");
 await assert.rejects(() => readRegistry(registry), /registry unavailable/);
 
 const lifecycleRoot = await mkdtemp(join(tmpdir(), "membrane-install-"));
+const canonicalLifecycleRoot = await realpath(lifecycleRoot);
 const lifecycleRegistry = join(lifecycleRoot, "registry.json");
 const installEnv = { MEMBRANE_PROJECT_REGISTRY: lifecycleRegistry };
 const dryEnrollment = await invokeInstall(["init", lifecycleRoot, "--repository", "repo-lifecycle", "--scope", "scope-lifecycle", "--dry-run"], installEnv);
 assert.deepEqual(dryEnrollment, {
-  action: "enroll", root: lifecycleRoot, repository_id: "repo-lifecycle", scope_id: "scope-lifecycle", registry: lifecycleRegistry, dry_run: true,
+  action: "enroll", root: canonicalLifecycleRoot, repository_id: "repo-lifecycle", scope_id: "scope-lifecycle", registry: lifecycleRegistry, dry_run: true,
 });
 await assert.rejects(() => bindingFor(lifecycleRoot, lifecycleRegistry), /not enrolled/);
 
@@ -48,7 +49,7 @@ assert.equal(configOnly.installation.selected, "config");
 
 const dryRotation = await invokeInstall(["token", "rotate", lifecycleRoot, "--dry-run"], installEnv);
 assert.deepEqual(dryRotation, {
-  action: "token_rotate", root: lifecycleRoot, repository_id: "repo-lifecycle", registry: lifecycleRegistry,
+  action: "token_rotate", root: canonicalLifecycleRoot, repository_id: "repo-lifecycle", registry: lifecycleRegistry,
   token_generation: 1, revoked_token_generations: [], reason: "rotation", dry_run: true,
 });
 assert.equal((await bindingFor(lifecycleRoot, lifecycleRegistry)).token_grant, undefined);
@@ -70,7 +71,7 @@ assert.equal(Object.prototype.hasOwnProperty.call(recovery, "token"), false);
 assert.equal((await bindingFor(lifecycleRoot, lifecycleRegistry)).token_audit.length, 2);
 const dryUninstall = await invokeInstall(["uninstall", lifecycleRoot, "--dry-run"], installEnv);
 assert.deepEqual(dryUninstall, {
-  action: "uninstall", root: lifecycleRoot, repository_id: "repo-lifecycle", registry: lifecycleRegistry,
+  action: "uninstall", root: canonicalLifecycleRoot, repository_id: "repo-lifecycle", registry: lifecycleRegistry,
   revoked_token_generations: [1, 2], dry_run: true,
 });
 assert.equal((await bindingFor(lifecycleRoot, lifecycleRegistry)).repository_id, "repo-lifecycle");
