@@ -226,7 +226,10 @@ fn credential_shaped_value(name: &str, value: &str) -> bool {
         && !value.starts_with('<')
         && !value.ends_with('>')
         && lowered != name
-        && !matches!(lowered.as_str(), "example" | "placeholder" | "redacted" | "value")
+        && !matches!(
+            lowered.as_str(),
+            "example" | "placeholder" | "redacted" | "value"
+        )
 }
 
 fn protected_spans(content: &str) -> Vec<ProtectedSpan> {
@@ -421,11 +424,7 @@ mod tests {
 
     #[test]
     fn secret_detection_requires_credential_shaped_value_but_covers_fenced_credentials() {
-        for content in [
-            "api_key=<placeholder>",
-            "secret=secret",
-            "token = example",
-        ] {
+        for content in ["api_key=<placeholder>", "secret=secret", "token = example"] {
             assert!(
                 admit(&AdmissionRequest::new(content, Origin::User, Authority::A4)).is_ok(),
                 "placeholder/type marker must not be treated as a credential: {content}"

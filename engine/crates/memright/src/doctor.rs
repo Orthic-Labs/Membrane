@@ -110,7 +110,9 @@ fn check_embeddings(connection: &Connection) -> Result<DoctorCheckV0, String> {
         })
         .map_err(|error| format!("MRD-EMBED-SHORT: query failed: {error}"))?
         .filter_map(|row| match row {
-            Ok((id, legacy, quantized)) if !valid_embedding(legacy.as_deref(), quantized.as_deref()) => {
+            Ok((id, legacy, quantized))
+                if !valid_embedding(legacy.as_deref(), quantized.as_deref()) =>
+            {
                 Some(Ok(id))
             }
             Ok(_) => None,
@@ -147,7 +149,11 @@ fn check_scope_anomalies(connection: &Connection) -> Result<DoctorCheckV0, Strin
         })
         .map_err(|error| format!("MRD-SCOPE-ANOMALY: query failed: {error}"))?
         .filter_map(|row| match row {
-            Ok((_id, Some(scope))) if !scope.trim().is_empty() && crate::scope::normalize_scope(&scope) == scope => None,
+            Ok((_id, Some(scope)))
+                if !scope.trim().is_empty() && crate::scope::normalize_scope(&scope) == scope =>
+            {
+                None
+            }
             Ok((id, _)) => Some(Ok(id)),
             Err(error) => Some(Err(error)),
         })
