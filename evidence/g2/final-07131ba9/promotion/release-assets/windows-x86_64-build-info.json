@@ -1,0 +1,29 @@
+{
+  "candidate_root_branch_head": "07131ba91c45ab4c853a5a8056f67fd1fe168424",
+  "root_source_base": "4244adeb",
+  "memright_source_commit": "ad043e21dbd0bc4853f667d18931af92ede4822d",
+  "source_tree_sha256": "67f45161c15f9506a5e23c3b124bfa3a7a3c90fe77a6d792f67c829c8c8bb4fd",
+  "release_generation": "sha256:67f45161c15f9506a5e23c3b124bfa3a7a3c90fe77a6d792f67c829c8c8bb4fd",
+  "latest_schema_version": 20,
+  "product_version": "0.1.1",
+  "target": "x86_64-pc-windows-msvc",
+  "assets": [
+    {
+      "name": "windows-x86_64-cli-c5c8651a423a9f7dab075bd6717ceec40160b51ebf88d7334d0aa8a399aabdba-memright.exe",
+      "role": "cli",
+      "sha256": "c5c8651a423a9f7dab075bd6717ceec40160b51ebf88d7334d0aa8a399aabdba"
+    },
+    {
+      "name": "windows-x86_64-service-37ac061d16942e7a70e8887738f761145e43378465d66d52662e17534a595687-memright-service.exe",
+      "role": "service",
+      "sha256": "37ac061d16942e7a70e8887738f761145e43378465d66d52662e17534a595687"
+    }
+  ],
+  "provenance": {
+    "route": "a_runtime_build_info",
+    "clean_repro11_cli": "642f21ad810a01eace2003e44f7536c912bcce286f0a827bce1bb08ee8ce1734",
+    "clean_repro12_cli": "b972c8cd0eedf019dd90d964936f92aa5919c7e6d1c346c42dee0dbb518d5c29",
+    "clean_repro11_service": "c01a4161a6a6a2bc586f241f02dfae0018b9819dd78a46571951c786f4478928",
+    "clean_repro12_service": "e0250bdda4eed4017665d1f5eb3809045939ec884df47ac6c3ebf2fa9aee3be4"
+  }
+}
