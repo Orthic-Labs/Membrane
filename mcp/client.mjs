@@ -396,7 +396,7 @@ function isMainModule() {
 
 if (isMainModule()) {
   main().then(
-    (code) => process.exit(code),
+    (code) => { process.exitCode = code; },
     (e) => {
       // Final guardrail: ensure the bearer token can never surface even if
       // an unexpected throw carries it via the error's headers.
@@ -405,7 +405,7 @@ if (isMainModule()) {
       } catch (_) {
         process.stderr.write("mcp-client: unhandled\n");
       }
-      process.exit(2);
+      process.exitCode = 2;
     }
   );
 }
