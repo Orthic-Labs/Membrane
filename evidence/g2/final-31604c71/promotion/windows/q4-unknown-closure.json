@@ -1,18 +1,17 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "qualification": "Q4",
   "host": "windows",
   "status": "pass",
-  "completed_at": "2026-07-28T17:47:15.288Z",
+  "completed_at": "2026-07-28T20:33:07.500Z",
   "source_root_commit": "31604c717a0c7ba1839fe57e1fded8814e68369b",
   "membrane_source_commit": "c1f070d65edc68cec7ac31acfda97b94de4e0c31",
-  "membrane_source_tree": "70e32b581b2f000b7d1ac9a924eeb56d10b6513e",
-  "source": "git-blob-verified exact archive",
+  "membrane_source_tree_sha256": "9e393c86da8a0213c8cdc2d5c6888512adebf97eb4f4edc1535bb9a817459a1b",
   "command": [
     "cargo",
     "test",
     "--manifest-path",
-    "<exact-source>\\engine\\Cargo.toml",
+    "<exact-source>/engine/Cargo.toml",
     "--locked",
     "-p",
     "memright",
@@ -28,49 +27,20 @@
   "failed": 0,
   "ignored": 0,
   "filtered_out": 23,
-  "tests": [
-    {
-      "name": "bounded_unknown_closure_links_each_unresolved_delivery_once",
-      "result": "pass",
-      "assertions": {
-        "first_close_http_200": true,
-        "first_close_count": 1,
-        "candidate_unknown_status": "unknown",
-        "outcome_for_target_is_exact_delivery_event": true,
-        "second_close_http_200": true,
-        "second_close_count": 0,
-        "idempotent": true
-      }
-    },
-    {
-      "name": "unknown_closure_rejects_a_saturated_delivery_cap_without_partial_write",
-      "result": "pass",
-      "assertions": {
-        "http_status": 400,
-        "response_reports_cap": true,
-        "candidate_unknown_rows_after_rejection": 0,
-        "partial_write": false
-      }
-    }
-  ],
-  "logs": {
-    "stdout": {
-      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q4-cargo.stdout.log",
-      "bytes": 269,
-      "sha256": "bca3db561a58c3cbf1d900e89e12182323855a470b3cfc29bbf01763abb11775"
-    },
-    "stderr": {
-      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q4-cargo.stderr.log",
-      "bytes": 401,
-      "sha256": "37b37023175126fd10071bf4cd7c6b0b8024e9f6f2ca50bb94ae0600713c0abc"
-    }
+  "stdout": {
+    "path": "D:/Claude/tools/.cache/memory/qualification/q1-current/31604c71-c1f070d/q4-cargo-canonical.stdout.log",
+    "bytes": 269,
+    "sha256": "bca3db561a58c3cbf1d900e89e12182323855a470b3cfc29bbf01763abb11775"
+  },
+  "stderr": {
+    "path": "D:/Claude/tools/.cache/memory/qualification/q1-current/31604c71-c1f070d/q4-cargo-canonical.stderr.log",
+    "bytes": 251,
+    "sha256": "eaf3864e6f90f5d6e6ea409ec41129ba034512efb3df3fab5ad65b2065c8ccfc"
   },
   "checks": {
     "exact_outcome_for_link": true,
     "idempotent_zero_close_rerun": true,
-    "saturated_cap_fail_closed": true,
     "saturated_cap_zero_partial_write": true,
-    "canonical_db_writes": 0,
     "source_edits": 0,
     "tags_created": 0,
     "p0_started": false,

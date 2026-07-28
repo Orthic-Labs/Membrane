@@ -1,15 +1,14 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "qualification": "Q5",
   "host": "windows",
   "status": "pass",
-  "completed_at": "2026-07-28T17:47:15.288Z",
+  "completed_at": "2026-07-28T20:33:07.500Z",
   "source_root_commit": "31604c717a0c7ba1839fe57e1fded8814e68369b",
-  "published_root_head": "3bce7f373ec729d91c524e94ff29f4e130cfd614",
+  "published_root_parent": "ab7c0031a0cef6c8ec17c97e940e6b5e8ba1d33b",
   "membrane_source_commit": "c1f070d65edc68cec7ac31acfda97b94de4e0c31",
-  "source_tool_diff_from_31604c71": 0,
+  "membrane_source_tree_sha256": "9e393c86da8a0213c8cdc2d5c6888512adebf97eb4f4edc1535bb9a817459a1b",
   "validator_parity": {
-    "selection_basis": "23 promotion-build + 55 promotion-gate + 27 P2-load tests = exact 105-test Mac Q5 validator set",
     "command": [
       "py",
       "-3.11",
@@ -21,14 +20,16 @@
       "-q",
       "--disable-warnings"
     ],
+    "exact_root_materialization": "candidate/v20-31604c71",
+    "debug_memright_sha256": "35248a85d7b2229ec4951d6ccac56b5cff91e1593f64b03fa55ac52ad7acd53e",
     "exit_code": 0,
     "passed": 105,
     "failed": 0,
     "skipped": 0,
-    "log": {
-      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q5-parity.stdout.log",
+    "stdout": {
+      "path": "D:/Claude/tools/.cache/memory/qualification/q1-current/31604c71-c1f070d/q5-parity-canonical.stdout.log",
       "bytes": 184,
-      "sha256": "0a43892f45f986f3dbecad0a4e4e5ffe390889e97fdeb4b114bc4d7ba68b41c0"
+      "sha256": "b09f9232e349feb130de96c30e4e95d1e462db3fb9f2a3e726be12079c5c8f33"
     }
   },
   "fixed_cutoff_membership": {
@@ -38,21 +39,21 @@
       "tools/pipelines/memory/context_promotion_build.py",
       "build-membership",
       "--mirror-root",
-      "memory-mirror",
+      "D:/Claude/memory-mirror",
       "--cutoff",
-      "2026-07-28T17:35:00.000Z",
+      "2026-07-28T20:31:53.026Z",
       "--output",
-      "<cache>\\q5-installation-membership.json"
+      "<cache>/q5-installation-membership-canonical.json"
     ],
     "exit_code": 0,
     "status": "pass",
     "kind": "context_installation_membership",
-    "cutoff": "2026-07-28T17:35:00.000Z",
+    "cutoff": "2026-07-28T20:31:53.026Z",
     "active_installations": 2,
     "artifact": {
-      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q5-installation-membership.json",
+      "path": "D:/Claude/tools/.cache/memory/qualification/q1-current/31604c71-c1f070d/q5-installation-membership-canonical.json",
       "bytes": 340,
-      "sha256": "f3efbd9bf61aa1e0f0ca4046f6d47f9787d3dccf3e4ec3d0c75d85e2d075dc32"
+      "sha256": "9821a6cf143a10b5b17e5208c21cf24c84d81333e14025b7a3b5709161bc5742"
     }
   },
   "negative_gate": {
@@ -70,36 +71,21 @@
     "observed_error": "invalid promotion receipt schema",
     "fail_closed": true,
     "stderr": {
-      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q5-negative-gate.stderr.log",
-      "bytes": 786,
-      "sha256": "c88d3fc67cb6d3dc018db9fe089425c4277c9183dbe53c95e340aca51dc376b6"
+      "path": "D:/Claude/tools/.cache/memory/qualification/q1-current/31604c71-c1f070d/q5-negative-gate-canonical.stderr.log",
+      "bytes": 1035,
+      "sha256": "d7b0c851cc628362fc1138912e6d5feec57f1611574708ee6fac0f94315bc96d"
     }
   },
-  "supplementary_non_gate_diagnostic": {
-    "selection": "six broader source-tool test files; not Mac Q5 parity set",
-    "result": "107 passed then one date-dependent session-inventory test failed under maxfail=1",
-    "root_cause": "fixture usage timestamp is 2026-07-26 while un-timestamped tool rows inherit Windows temporary-file mtime 2026-07-28, producing a second day bucket",
-    "source_change_made": false,
-    "acceptance_effect": "none; exact 105-test Q5 validator set passes",
-    "log": {
-      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q5-pytest.stdout.log",
-      "bytes": 2519,
-      "sha256": "238b102ecff892649ab916d487406528b22d448de06e3981e1209ea581c01b8e"
-    }
-  },
-  "deferred_promotion_inputs": {
-    "root_candidate_tag": "absent",
-    "membrane_candidate_tag": "absent",
+  "promotion_inputs": {
+    "root_candidate_tag": "candidate/v20-31604c71",
+    "membrane_candidate_tag": "candidate/v20-c1f070d",
     "four_asset_release_manifest": "absent",
-    "p0_release": "absent",
-    "p0_p2_p3_p4_validator_invocations": "ineligible until paired tags, four-asset manifest, and P0 exist"
+    "p0_release": "absent"
   },
   "checks": {
     "fixed_cutoff_membership_producer_pass": true,
-    "exact_mac_q5_validator_set_pass": true,
+    "exact_105_validator_set_pass": true,
     "membership_rejected_as_non_p0": true,
-    "all_source_tools_bounded_and_observable": true,
-    "p0_dependent_validators_not_falsely_invoked": true,
     "canonical_db_writes": 0,
     "source_edits": 0,
     "tags_created": 0,

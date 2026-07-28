@@ -1,45 +1,37 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "qualification": "Q2",
   "host": "windows",
   "status": "pass",
-  "completed_at": "2026-07-28T17:32:54.367Z",
+  "completed_at": "2026-07-28T20:33:07.500Z",
   "source_root_commit": "31604c717a0c7ba1839fe57e1fded8814e68369b",
   "membrane_source_commit": "c1f070d65edc68cec7ac31acfda97b94de4e0c31",
-  "membrane_source_tree": "70e32b581b2f000b7d1ac9a924eeb56d10b6513e",
-  "source": {
-    "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\source-exact-noautocrlf",
-    "materialization": "git -c core.autocrlf=false archive --format=tar",
-    "git_blobs_checked": 380,
-    "git_blob_mismatches": 0
-  },
+  "membrane_source_tree_sha256": "9e393c86da8a0213c8cdc2d5c6888512adebf97eb4f4edc1535bb9a817459a1b",
   "rust": {
     "command": [
       "cargo",
       "test",
       "--manifest-path",
-      "<exact-source>\\engine\\Cargo.toml",
+      "<exact-source>/engine/Cargo.toml",
       "--locked",
       "--workspace",
       "--",
       "--test-threads=1"
     ],
     "exit_code": 0,
-    "summary_records": 33,
+    "result_lines": 33,
     "passed": 666,
     "failed": 0,
     "ignored": 2,
-    "measured": 0,
-    "filtered_out": 0,
     "stdout": {
-      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q2-cargo-exact.stdout.log",
+      "path": "D:/Claude/tools/.cache/memory/qualification/q1-current/31604c71-c1f070d/q2-cargo-canonical.stdout.log",
       "bytes": 53504,
-      "sha256": "cb413cc39e4be7865869b195946911ab74585a90f749e5e3ef8887573d64a9b1"
+      "sha256": "fedcdc6a79a3be44d314c0ffca4426011b155bd4718b0c64cfb8ac459f7efc0f"
     },
     "stderr": {
-      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q2-cargo-exact.stderr.log",
+      "path": "D:/Claude/tools/.cache/memory/qualification/q1-current/31604c71-c1f070d/q2-cargo-canonical.stderr.log",
       "bytes": 5924,
-      "sha256": "ca39d884e12d895f9d92d327a3926de9e4bd673940a3843f4484a4eae81a4a72"
+      "sha256": "b8e3b5039abc0859979ae73753e50871e91444cb2e637a3539bfc34a7c75d776"
     }
   },
   "node": {
@@ -55,36 +47,22 @@
     "exit_code": 0,
     "passed": 21,
     "failed": 0,
-    "cancelled": 0,
     "skipped": 0,
-    "todo": 0,
-    "log": {
-      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q2-node-exact.log",
-      "bytes": 1669,
-      "sha256": "bc01bae8f009cd9e6adb67018d35bbfd080e9d40024aca57d139dde3fe729527"
-    }
-  },
-  "diagnostic": {
-    "initial_failure": "Default Windows git archive materialization converted LF fixture bytes to CRLF and failed frozen replay hash.",
-    "expected_fixture_sha256": "d6258c5d81821ce5602526c0e498db3a9c4e355b305a90e479e433ee5a8bb5c1",
-    "converted_fixture_sha256": "e52830ce664ca10cd08e768b33a9d3bf06b0d9dbc39436730d7c64fdabff3914",
-    "root_cause": "core.autocrlf conversion during git archive on Windows",
-    "minimal_reproduction_after_correction": {
-      "status": "pass",
-      "passed": 1,
-      "failed": 0,
-      "log": {
-        "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q2-replay-repro2.stdout.log",
-        "bytes": 203,
-        "sha256": "1d3b7b7267ff2e6b8d50de303c500074084a4102e58e39d150e3ec7a579f53d7"
-      }
+    "stdout": {
+      "path": "D:/Claude/tools/.cache/memory/qualification/q1-current/31604c71-c1f070d/q2-node-canonical.stdout.log",
+      "bytes": 1639,
+      "sha256": "9e3f3c00b6c4c3262b44977056003d2743fa5cc35aee33be428c3700d3c04e6b"
+    },
+    "stderr": {
+      "path": "D:/Claude/tools/.cache/memory/qualification/q1-current/31604c71-c1f070d/q2-node-canonical.stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     }
   },
   "checks": {
     "full_rust_workspace_green": true,
     "node_planner_mcp_parity_green": true,
-    "frozen_replay_fixture_matches_git_blob": true,
-    "canonical_db_writes": 0,
+    "canonical_identity_environment": true,
     "source_edits": 0,
     "tags_created": 0,
     "p0_started": false,
