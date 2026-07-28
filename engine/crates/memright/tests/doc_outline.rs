@@ -1,4 +1,5 @@
 use memright::outline::build_outline;
+use memright::outline::build_outline_page;
 use memright::outline::read_section;
 use memright::outline::read_section_with_cursor;
 use memright::outline::DocReadError;
@@ -51,9 +52,14 @@ fn doc_read_refuses_changed_source_and_returns_neighbors() {
 
 #[test]
 fn outline_uses_implementation_fixed_gfm_parser_projection() {
-    let markdown = "# Visible\n\n<div>\n# Not a heading\n</div>\n\nVisible body.\n\nHeading\n=======\n";
+    let markdown =
+        "# Visible\n\n<div>\n# Not a heading\n</div>\n\nVisible body.\n\nHeading\n=======\n";
 
-    let outline = build_outline("doc://repo/worktree/fixture.md", markdown, "spoofed-parser-0");
+    let outline = build_outline(
+        "doc://repo/worktree/fixture.md",
+        markdown,
+        "spoofed-parser-0",
+    );
 
     assert_eq!(outline.parser.name, "comrak");
     assert_eq!(outline.parser.version, "0.54.0");
@@ -96,7 +102,10 @@ fn doc_read_has_utf8_safe_bounded_hash_bound_continuation() {
     .unwrap();
     assert_eq!(continuation.content, "\né🙂");
     assert!(continuation.truncated);
-    assert_eq!(continuation.neighbor_anchors.next.as_deref(), Some("sec:child:1"));
+    assert_eq!(
+        continuation.neighbor_anchors.next.as_deref(),
+        Some("sec:child:1")
+    );
 }
 
 #[test]
@@ -128,4 +137,68 @@ fn doc_read_exposes_typed_source_outcomes() {
     );
     assert_eq!(DocReadError::SourceMissing.as_str(), "source_missing");
     assert_eq!(DocReadError::Deny.as_str(), "deny");
+}
+
+#[test]
+fn outline_pages_are_bounded_hash_bound_and_resumable() {
+    let markdown = "# One\none\n# Two\ntwo\n# Three\nthree\n";
+    let first = build_outline_page(
+        "doc://repo/worktree/fixture.md",
+        markdown,
+        "ignored",
+        2,
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(first.sections.len(), 2);
+    assert!(first.truncated);
+    let cursor = first
+        .continuation_cursor
+        .as_deref()
+        .expect("truncated outline has cursor");
+
+    let second = build_outline_page(
+        "doc://repo/worktree/fixture.md",
+        markdown,
+        "ignored",
+        2,
+        Some(cursor),
+    )
+    .unwrap();
+    assert_eq!(second.sections.len(), 1);
+    assert_eq!(second.sections[0].anchor_id, "sec:three:1");
+    assert!(!second.truncated);
+    assert!(second.continuation_cursor.is_none());
+    assert_eq!(second.content_hash, first.content_hash);
+    assert_eq!(second.outline_hash, first.outline_hash);
+
+    assert_eq!(
+        build_outline_page(
+            "doc://repo/worktree/fixture.md",
+            "# One\nchanged\n# Two\ntwo\n# Three\nthree\n",
+            "ignored",
+            2,
+            Some(cursor),
+        )
+        .unwrap_err(),
+        DocReadError::SourceChanged
+    );
+}
+
+#[test]
+fn outline_reports_tokenizer_measured_model_estimates() {
+    let markdown = "# Tokens\nhello, tokenizer world\n";
+    let outline = build_outline("doc://repo/worktree/fixture.md", markdown, "ignored");
+    let section = &outline.sections[0];
+    let span = &markdown[section.start_byte..section.end_byte];
+
+    assert_eq!(
+        section.token_estimates.per_model.get("o200k_base"),
+        Some(&memright_core::estimate_tokens(span))
+    );
+    assert!(!section
+        .token_estimates
+        .per_model
+        .contains_key("heuristic-v1"));
 }

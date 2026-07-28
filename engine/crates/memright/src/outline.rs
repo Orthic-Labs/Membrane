@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 
 const PARSER_NAME: &str = "comrak";
 const PARSER_VERSION: &str = "0.54.0";
+const DEFAULT_MAX_OUTLINE_SECTIONS: usize = 256;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -15,6 +16,9 @@ pub struct DocOutlineV1 {
     pub outline_hash: String,
     pub parser: ParserProjectionV1,
     pub sections: Vec<DocSectionV1>,
+    pub truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub continuation_cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -113,14 +117,7 @@ pub fn read_section(
     expected_hash: &str,
     max_bytes: usize,
 ) -> Result<DocReadV1, DocReadError> {
-    read_section_with_cursor(
-        source_ref,
-        markdown,
-        anchor,
-        expected_hash,
-        max_bytes,
-        None,
-    )
+    read_section_with_cursor(source_ref, markdown, anchor, expected_hash, max_bytes, None)
 }
 
 pub fn read_section_with_cursor(
@@ -131,7 +128,8 @@ pub fn read_section_with_cursor(
     max_bytes: usize,
     continuation_cursor: Option<&str>,
 ) -> Result<DocReadV1, DocReadError> {
-    let outline = build_outline(source_ref, markdown, "ignored");
+    let outline = build_outline_page(source_ref, markdown, "ignored", usize::MAX, None)
+        .expect("an unpaged outline has no continuation cursor");
     if outline.content_hash != expected_hash {
         return Err(DocReadError::SourceChanged);
     }
@@ -188,7 +186,25 @@ struct PendingSection {
     start_line: usize,
 }
 
-pub fn build_outline(source_ref: &str, markdown: &str, _parser: &str) -> DocOutlineV1 {
+pub fn build_outline(source_ref: &str, markdown: &str, parser: &str) -> DocOutlineV1 {
+    build_outline_page(
+        source_ref,
+        markdown,
+        parser,
+        DEFAULT_MAX_OUTLINE_SECTIONS,
+        None,
+    )
+    .expect("an initial outline page has no continuation cursor")
+}
+
+pub fn build_outline_page(
+    source_ref: &str,
+    markdown: &str,
+    _parser: &str,
+    max_sections: usize,
+    continuation_cursor: Option<&str>,
+) -> Result<DocOutlineV1, DocReadError> {
+    let content_hash = hash(markdown);
     let line_starts = line_starts(markdown);
     let mut pending = Vec::new();
     let arena = Arena::new();
@@ -254,7 +270,7 @@ pub fn build_outline(source_ref: &str, markdown: &str, _parser: &str) -> DocOutl
     with_pseudo.extend(pending);
     let pending = with_pseudo;
 
-    let sections = pending
+    let all_sections = pending
         .iter()
         .enumerate()
         .map(|(index, section)| {
@@ -280,29 +296,47 @@ pub fn build_outline(source_ref: &str, markdown: &str, _parser: &str) -> DocOutl
                 },
                 token_estimates: TokenEstimatesV1 {
                     per_model: std::collections::BTreeMap::from([(
-                        "heuristic-v1".to_owned(),
-                        estimate_tokens(span),
+                        "o200k_base".to_owned(),
+                        memright_core::estimate_tokens(span),
                     )]),
                 },
                 truncated: false,
                 continuation_cursor: None,
             }
         })
+        .collect::<Vec<_>>();
+
+    let parser = ParserProjectionV1 {
+        name: PARSER_NAME.to_owned(),
+        version: PARSER_VERSION.to_owned(),
+    };
+    let outline_hash = hash(
+        &serde_json::to_string(&(&parser, &all_sections))
+            .expect("DocOutline parser and sections serialize"),
+    );
+    let start = continuation_cursor
+        .map(|cursor| parse_outline_cursor(cursor, &content_hash, all_sections.len()))
+        .transpose()?
+        .unwrap_or(0);
+    let page_size = max_sections.max(1);
+    let end = start.saturating_add(page_size).min(all_sections.len());
+    let truncated = end < all_sections.len();
+    let sections = all_sections
+        .into_iter()
+        .skip(start)
+        .take(page_size)
         .collect();
 
-    DocOutlineV1 {
+    Ok(DocOutlineV1 {
         schema_version: "DocOutlineV1",
         source_ref: source_ref.to_owned(),
-        content_hash: hash(markdown),
-        outline_hash: hash(
-            &serde_json::to_string(&sections).expect("DocOutline sections serialize"),
-        ),
-        parser: ParserProjectionV1 {
-            name: PARSER_NAME.to_owned(),
-            version: PARSER_VERSION.to_owned(),
-        },
+        content_hash: content_hash.clone(),
+        outline_hash,
+        parser,
         sections,
-    }
+        truncated,
+        continuation_cursor: truncated.then(|| format!("outline:{content_hash}:{end}")),
+    })
 }
 
 fn pseudo_sections(
@@ -384,9 +418,6 @@ fn byte_at_line(starts: &[usize], line: usize, fallback: usize) -> usize {
 fn line_for_byte(starts: &[usize], byte: usize) -> usize {
     starts.partition_point(|start| *start <= byte).max(1)
 }
-fn estimate_tokens(text: &str) -> usize {
-    text.split_whitespace().count()
-}
 fn hash(text: &str) -> String {
     format!("{:x}", Sha256::digest(text.as_bytes()))
 }
@@ -412,8 +443,35 @@ fn parse_cursor(cursor: &str, anchor: &str, content: &str) -> Result<usize, DocR
     if cursor_anchor != anchor {
         return Err(DocReadError::Relocated);
     }
-    let offset = offset.parse::<usize>().map_err(|_| DocReadError::Relocated)?;
+    let offset = offset
+        .parse::<usize>()
+        .map_err(|_| DocReadError::Relocated)?;
     if offset > content.len() || !content.is_char_boundary(offset) {
+        return Err(DocReadError::Relocated);
+    }
+    Ok(offset)
+}
+
+fn parse_outline_cursor(
+    cursor: &str,
+    content_hash: &str,
+    section_count: usize,
+) -> Result<usize, DocReadError> {
+    let mut parts = cursor.rsplitn(3, ':');
+    let offset = parts
+        .next()
+        .ok_or(DocReadError::Relocated)?
+        .parse::<usize>()
+        .map_err(|_| DocReadError::Relocated)?;
+    let cursor_hash = parts.next().ok_or(DocReadError::Relocated)?;
+    let kind = parts.next().ok_or(DocReadError::Relocated)?;
+    if kind != "outline" {
+        return Err(DocReadError::Relocated);
+    }
+    if cursor_hash != content_hash {
+        return Err(DocReadError::SourceChanged);
+    }
+    if offset > section_count {
         return Err(DocReadError::Relocated);
     }
     Ok(offset)
