@@ -22,7 +22,7 @@ pub struct DoctorCheckV0 {
 }
 
 pub fn run(path: impl AsRef<Path>) -> Result<DoctorReportV0, String> {
-    run_with_suppressions(path, &[])
+    run_with_policy(path, &[], &[])
 }
 
 /// Runs the fixed v0 checks while omitting only explicitly named, stable finding codes.
@@ -30,6 +30,17 @@ pub fn run(path: impl AsRef<Path>) -> Result<DoctorReportV0, String> {
 pub fn run_with_suppressions(
     path: impl AsRef<Path>,
     suppressed_codes: &[&str],
+) -> Result<DoctorReportV0, String> {
+    run_with_policy(path, suppressed_codes, &[])
+}
+
+/// Runs doctor checks while explicitly allowing known external wikilink targets.
+/// External references are exact slugs supplied by the caller; unresolved targets
+/// remain findings by default.
+pub fn run_with_policy(
+    path: impl AsRef<Path>,
+    suppressed_codes: &[&str],
+    external_refs: &[&str],
 ) -> Result<DoctorReportV0, String> {
     let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|error| error.to_string())?;
@@ -63,9 +74,15 @@ pub fn run_with_suppressions(
         )?,
     ];
     checks.push(if table_exists(&connection, "links")? {
-        check(&connection, "MRD-DANGLING-WIKILINK", "warning", "SELECT dst_slug FROM links l WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = l.dst_slug OR m.id LIKE '%' || '/' || l.dst_slug)", "repair link target or add an external-reference allowlist entry")?
+        check_dangling_wikilinks(&connection, external_refs)?
     } else {
-        DoctorCheckV0 { code: "MRD-DANGLING-WIKILINK", severity: "info", count: 0, sample_ids: Vec::new(), repair: "links table absent in this schema" }
+        DoctorCheckV0 {
+            code: "MRD-DANGLING-WIKILINK",
+            severity: "info",
+            count: 0,
+            sample_ids: Vec::new(),
+            repair: "links table absent in this schema",
+        }
     });
     if column_exists(&connection, "memories", "lifecycle_state")? {
         checks.extend([
@@ -93,6 +110,32 @@ pub fn run_with_suppressions(
         schema_version: "MemRightDoctorV0",
         status,
         checks,
+    })
+}
+
+fn check_dangling_wikilinks(
+    connection: &Connection,
+    external_refs: &[&str],
+) -> Result<DoctorCheckV0, String> {
+    let mut statement = connection
+        .prepare("SELECT dst_slug FROM links l WHERE NOT EXISTS (SELECT 1 FROM memories m WHERE m.id = l.dst_slug OR m.id LIKE '%' || '/' || l.dst_slug) ORDER BY dst_slug")
+        .map_err(|error| format!("MRD-DANGLING-WIKILINK: query failed: {error}"))?;
+    let mut targets = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|error| format!("MRD-DANGLING-WIKILINK: query failed: {error}"))?
+        .filter_map(Result::ok)
+        .filter(|target| !external_refs.contains(&target.as_str()))
+        .collect::<Vec<_>>();
+    let count = targets.len();
+    targets.sort();
+    targets.dedup();
+    targets.truncate(20);
+    Ok(DoctorCheckV0 {
+        code: "MRD-DANGLING-WIKILINK",
+        severity: "warning",
+        count,
+        sample_ids: targets,
+        repair: "repair link target or add an external-reference allowlist entry",
     })
 }
 
@@ -398,5 +441,25 @@ mod tests {
             .iter()
             .all(|check| check.code != "MRD-EMBED-MODEL-DRIFT"));
         assert_eq!(check_by_code(&report, "MRD-SCOPE-ANOMALY").count, 1);
+    }
+
+    #[test]
+    fn doctor_filters_only_exact_external_reference_slugs() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = directory.path().join("doctor-external-refs.db");
+        let connection = Connection::open(&db).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE memories(id TEXT, embed_model TEXT, embedding BLOB, scope_id TEXT, inject_count INTEGER, access_count INTEGER);
+                 CREATE TABLE links(src_id TEXT, dst_slug TEXT);
+                 INSERT INTO links VALUES ('source', 'external-doc'), ('source', 'missing-internal');",
+            )
+            .unwrap();
+        drop(connection);
+
+        let report = run_with_policy(&db, &[], &["external-doc"]).unwrap();
+        let check = check_by_code(&report, "MRD-DANGLING-WIKILINK");
+        assert_eq!(check.count, 1);
+        assert_eq!(check.sample_ids, vec!["missing-internal"]);
     }
 }

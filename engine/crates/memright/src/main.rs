@@ -408,6 +408,12 @@ enum Cmd {
     Doctor {
         #[arg(long)]
         json: bool,
+        /// Suppress only these stable doctor finding codes.
+        #[arg(long = "suppress", value_name = "CODE")]
+        suppressions: Vec<String>,
+        /// Allow an exact wikilink target as an external reference.
+        #[arg(long = "external-ref", value_name = "SLUG")]
+        external_refs: Vec<String>,
     },
     /// Serve /health /recall /use on 127.0.0.1:<port>.
     Serve {
@@ -765,7 +771,8 @@ fn trust_scan_content(content: &str) -> Option<&'static str> {
                 let tail = &line[pos + key.len()..];
                 let tail = tail.trim_start();
                 if tail
-                    .strip_prefix('=').or_else(|| tail.strip_prefix(':'))
+                    .strip_prefix('=')
+                    .or_else(|| tail.strip_prefix(':'))
                     .map(secret_value_looks_credible)
                     .unwrap_or(false)
                 {
@@ -777,7 +784,10 @@ fn trust_scan_content(content: &str) -> Option<&'static str> {
     None
 }
 
-fn resolve_doc_read_path(root: &Path, relative: &str) -> Result<PathBuf, memright::outline::DocReadError> {
+fn resolve_doc_read_path(
+    root: &Path,
+    relative: &str,
+) -> Result<PathBuf, memright::outline::DocReadError> {
     let relative = Path::new(relative);
     if relative
         .components()
@@ -2290,7 +2300,10 @@ fn run_main() -> Result<(), String> {
                 continuation_cursor,
             } => {
                 let Some(relative) = source_ref.strip_prefix("doc://repo/worktree/") else {
-                    println!("{}", serde_json::json!({"error":memright::outline::DocReadError::Deny.as_str()}));
+                    println!(
+                        "{}",
+                        serde_json::json!({"error":memright::outline::DocReadError::Deny.as_str()})
+                    );
                     return Ok(());
                 };
                 let root = std::env::var_os("WORKSPACE_ROOT")
@@ -2307,7 +2320,10 @@ fn run_main() -> Result<(), String> {
                 let markdown = match std::fs::read_to_string(&path) {
                     Ok(markdown) => markdown,
                     Err(_) => {
-                        println!("{}", serde_json::json!({"error":memright::outline::DocReadError::SourceMissing.as_str()}));
+                        println!(
+                            "{}",
+                            serde_json::json!({"error":memright::outline::DocReadError::SourceMissing.as_str()})
+                        );
                         return Ok(());
                     }
                 };
@@ -2497,8 +2513,16 @@ fn run_main() -> Result<(), String> {
                 serde_json::json!({"schema_version": 9, "restored": restored})
             );
         }
-        Cmd::Doctor { json } => {
-            let report = memright::doctor::run(&db)?;
+        Cmd::Doctor {
+            json,
+            suppressions,
+            external_refs,
+        } => {
+            let suppressed_codes = suppressions.iter().map(String::as_str).collect::<Vec<_>>();
+            let allowed_external_refs =
+                external_refs.iter().map(String::as_str).collect::<Vec<_>>();
+            let report =
+                memright::doctor::run_with_policy(&db, &suppressed_codes, &allowed_external_refs)?;
             if json {
                 println!(
                     "{}",
