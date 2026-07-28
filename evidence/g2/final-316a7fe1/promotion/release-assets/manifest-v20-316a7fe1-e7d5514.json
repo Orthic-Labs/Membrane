@@ -1,0 +1,24 @@
+{
+  "product_version": "0.1.1",
+  "memright_source_commit": "e7d551442303a0d5734ff06c34e7047b11683fd1",
+  "candidate_root_commit": "316a7fe180a0589706f7c7a8a89ae87bf25a0cbd",
+  "candidate_root_tag": "candidate/v20-316a7fe1",
+  "candidate_membrane_tag": "candidate/v20-e7d5514",
+  "latest_schema_version": 20,
+  "source_repo": "https://github.com/Orthic-Labs/Membrane.git",
+  "source_tree_path": "engine",
+  "source_tree_sha256": "67f45161c15f9506a5e23c3b124bfa3a7a3c90fe77a6d792f67c829c8c8bb4fd",
+  "release_generation": "sha256:67f45161c15f9506a5e23c3b124bfa3a7a3c90fe77a6d792f67c829c8c8bb4fd",
+  "schema_compat": 20,
+  "model": {
+    "id": "embeddinggemma-300m-q4",
+    "fingerprint": "pf:v1:4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b",
+    "dimension": 768
+  },
+  "assets": [
+    {"os":"macos","arch":"aarch64","name":"memright","role":"cli","sha256":"435c3747c1b22684e467ef08165d3195b359ba014eafbf37c0820e410858bc1a","release_generation":"sha256:67f45161c15f9506a5e23c3b124bfa3a7a3c90fe77a6d792f67c829c8c8bb4fd"},
+    {"os":"macos","arch":"aarch64","name":"memright-service","role":"service","sha256":"ceb9eb7a1a71ff44d6303dc70d0095bea84cb14f1ec5a0ba0fded0b9dd49d1fd","release_generation":"sha256:67f45161c15f9506a5e23c3b124bfa3a7a3c90fe77a6d792f67c829c8c8bb4fd"},
+    {"os":"windows","arch":"x86_64","name":"memright.exe","role":"cli","sha256":"b4af509a9a8e468d10720863b2dba5f09b6497d431ea6976cbb373896a2e1a8c","release_generation":"sha256:67f45161c15f9506a5e23c3b124bfa3a7a3c90fe77a6d792f67c829c8c8bb4fd"},
+    {"os":"windows","arch":"x86_64","name":"memright-service.exe","role":"service","sha256":"78e26de5e32d4a70f369b16e62d106d6fe9d8747a880a9a9d773cb82bacd01e0","release_generation":"sha256:67f45161c15f9506a5e23c3b124bfa3a7a3c90fe77a6d792f67c829c8c8bb4fd"}
+  ]
+}
