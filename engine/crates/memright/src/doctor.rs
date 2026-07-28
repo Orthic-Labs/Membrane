@@ -147,7 +147,7 @@ fn check_scope_anomalies(connection: &Connection) -> Result<DoctorCheckV0, Strin
         })
         .map_err(|error| format!("MRD-SCOPE-ANOMALY: query failed: {error}"))?
         .filter_map(|row| match row {
-            Ok((id, Some(scope))) if !scope.trim().is_empty() && crate::scope::normalize_scope(&scope) == scope => None,
+            Ok((_id, Some(scope))) if !scope.trim().is_empty() && crate::scope::normalize_scope(&scope) == scope => None,
             Ok((id, _)) => Some(Ok(id)),
             Err(error) => Some(Err(error)),
         })
