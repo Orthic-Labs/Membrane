@@ -1,0 +1,87 @@
+{
+  "schema_version": 2,
+  "qualification": "Q3",
+  "host": "macos",
+  "status": "pass",
+  "completed_at": "2026-07-28T21:33:52Z",
+  "source_root_commit": "31604c717a0c7ba1839fe57e1fded8814e68369b",
+  "membrane_source_commit": "c1f070d65edc68cec7ac31acfda97b94de4e0c31",
+  "membrane_source_tree_sha256": "d5b67a0af35dc08b2713f7a1903bd7000867baf695f71893a64933be12021684",
+  "candidate_binary": {
+    "path": "/Volumes/D/claude/.cache/memright-qualification/31604c71-c1f070d/q1-d5-r3/a/release/memright",
+    "sha256": "67a1a0da75bf0f0baa82e6bd33825ae6e498a16aa6cfa70d2836a7160b32322c"
+  },
+  "source_db": {
+    "path": "/Volumes/D/claude/tools/.cache/memory/memright-engine.db",
+    "access": "SQLite online backup to clone; migration and backout only on clone",
+    "before": {
+      "schema": 20,
+      "integrity_check": "ok",
+      "memory_rows": 2362,
+      "quarantine_rows": 0,
+      "logical_common_v19_sha256": "966db791a93d9a9ed127725c2a3599bfa92f2ad1643d170e09f52fd66511c3e9"
+    },
+    "after": {
+      "schema": 20,
+      "integrity_check": "ok",
+      "memory_rows": 2362,
+      "quarantine_rows": 0,
+      "logical_common_v19_sha256": "966db791a93d9a9ed127725c2a3599bfa92f2ad1643d170e09f52fd66511c3e9"
+    }
+  },
+  "clone": {
+    "path": "/Volumes/D/claude/.cache/memright-qualification/31604c71-c1f070d/q3-d5-r3/clone.db",
+    "baseline_v19": {
+      "schema": 19,
+      "integrity_check": "ok",
+      "memory_rows": 2362,
+      "quarantine_rows": 0,
+      "logical_common_v19_sha256": "966db791a93d9a9ed127725c2a3599bfa92f2ad1643d170e09f52fd66511c3e9"
+    },
+    "forward_v20": {
+      "schema": 20,
+      "integrity_check": "ok",
+      "memory_rows": 2362,
+      "quarantine_rows": 0,
+      "migration_command": [
+        "memright",
+        "--db",
+        "<clone>",
+        "docs-sync",
+        "--repo",
+        "<exact-source>"
+      ],
+      "exit_code": 0,
+      "stdout_sha256": "dc4bf9d21485b28295814c11855a0f9a277fa031a45ac1ba34e06d8947f88d41",
+      "doctor_exit_code": 0,
+      "doctor_stdout_sha256": "c2af532adef04defbf4dcc5722e92d3e3e188eee9ba45f48c080cee2f567e8f0"
+    },
+    "backout_v19": {
+      "schema": 19,
+      "integrity_check": "ok",
+      "memory_rows": 2362,
+      "quarantine_rows": 0,
+      "logical_common_v19_sha256": "966db791a93d9a9ed127725c2a3599bfa92f2ad1643d170e09f52fd66511c3e9",
+      "command": [
+        "memright",
+        "backout-schema-v20",
+        "--db",
+        "<clone>"
+      ],
+      "exit_code": 0,
+      "stdout_sha256": "3caab197697d081361e28bef30900d7d985a2386e2d60126cc7ab9a217a4b42b"
+    }
+  },
+  "checks": {
+    "forward_schema_20": true,
+    "backout_schema_19": true,
+    "integrity_ok_all_roundtrip_states": true,
+    "row_counts_preserved": true,
+    "logical_common_v19_hash_preserved": true,
+    "canonical_unchanged": true,
+    "source_edits": 0,
+    "tags_created": 0,
+    "p0_started": false,
+    "main_promotion_started": false
+  }
+}
