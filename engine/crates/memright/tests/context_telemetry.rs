@@ -996,6 +996,7 @@ fn memory_batch_dual_write_preserves_each_items_family_producer_and_session() {
             turn_id: "adapt-turn-7".into(),
             trace_id: "adapt-trace-7".into(),
             source_ids: vec!["source-event-1".into()],
+            lifecycle: memright::store::MemoryLifecycleInputV1::default(),
         }],
     };
     store.try_put_batch(&request).unwrap();
