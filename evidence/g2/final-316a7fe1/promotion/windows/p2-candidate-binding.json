@@ -1,0 +1,37 @@
+{
+  "schema_version": 20,
+  "phase": "P2",
+  "platform": "windows",
+  "status": "pass",
+  "receipt": {
+    "path": "p2-load-windows.json",
+    "kind": "context_simulated_n_load_evidence",
+    "sha256": "80a81ba521e30c975390431d8d5052c89b65f7086590f22f01ecced2e3dc5eea"
+  },
+  "observation_window": {
+    "start_ts": "2026-07-28T07:27:54.0950495Z",
+    "cutoff_ts": "2026-07-28T07:28:03.5757105Z",
+    "samples": 30,
+    "installation_counts": [1, 2, 5, 10],
+    "isolation": "temporary N-installation mirrors, temporary MemRight database, no live memory database, no scheduler"
+  },
+  "candidate": {
+    "root_commit": "316a7fe180a0589706f7c7a8a89ae87bf25a0cbd",
+    "root_tag": "candidate/v20-316a7fe1",
+    "membrane_commit": "e7d551442303a0d5734ff06c34e7047b11683fd1",
+    "membrane_tag": "candidate/v20-e7d5514",
+    "engine_tree_sha256": "67f45161c15f9506a5e23c3b124bfa3a7a3c90fe77a6d792f67c829c8c8bb4fd",
+    "asset_sha256": {
+      "macos_aarch64_cli": "435c3747c1b22684e467ef08165d3195b359ba014eafbf37c0820e410858bc1a",
+      "macos_aarch64_service": "ceb9eb7a1a71ff44d6303dc70d0095bea84cb14f1ec5a0ba0fded0b9dd49d1fd",
+      "windows_x86_64_cli": "b4af509a9a8e468d10720863b2dba5f09b6497d431ea6976cbb373896a2e1a8c",
+      "windows_x86_64_service": "78e26de5e32d4a70f369b16e62d106d6fe9d8747a880a9a9d773cb82bacd01e0"
+    }
+  },
+  "result": {
+    "memory_batch_persisted_count": 33,
+    "memory_batch_failed_count": 0,
+    "rollback_rpo_events": 0,
+    "rollback_rto_ms": 13.7248
+  }
+}
