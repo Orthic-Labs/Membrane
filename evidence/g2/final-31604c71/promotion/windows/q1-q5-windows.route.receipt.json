@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-07-28T16:20:29.287785+00:00",
+  "expected_time_to_verified_b_ms": 1365000,
+  "route_path": "D:\\Claude\\membrane\\evidence\\g2\\final-31604c71\\promotion\\windows\\q1-q5-windows.route.json",
+  "route_revision": 1,
+  "route_sha256": "2881b82690a38f22315f1210345b4e7a5582b374a2415a8963f614624428fc38",
+  "schema": "goal-route.receipt.v2",
+  "selected_route_id": "ARCHIVE_EXACT_SOURCE_SERIAL_Q",
+  "validator_sha256": "f9fe48eeaf52bea870151fef0df812fb21524d123378532eb20c0734ebf0e413",
+  "validator_version": "2.0.0"
+}

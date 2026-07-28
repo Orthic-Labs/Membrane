@@ -1,0 +1,52 @@
+{
+  "schema": "memright-candidate-assets.v1",
+  "host": "windows",
+  "status": "pass",
+  "created_at": "2026-07-28T18:20:45.7860830+00:00",
+  "candidate": {
+    "root_tag": "candidate/v20-31604c71",
+    "root_tag_object": "8851c118b2848fcbab50764b8159ea7d216e25e7",
+    "root_commit": "31604c717a0c7ba1839fe57e1fded8814e68369b",
+    "membrane_tag": "candidate/v20-c1f070d",
+    "membrane_tag_object": "b3fa155dfeb5986918089f86716e2696bf34d2fa",
+    "membrane_commit": "c1f070d65edc68cec7ac31acfda97b94de4e0c31",
+    "membrane_tree": "70e32b581b2f000b7d1ac9a924eeb56d10b6513e",
+    "schema_version": 20,
+    "policy_version": "rightcontext-planner-v2-balanced"
+  },
+  "qualification": {
+    "route": "windows_runtime_identity",
+    "selected_build": "A",
+    "q1_receipt": "evidence/g2/final-31604c71/promotion/windows/q1-release-identity.json",
+    "q1_receipt_sha256": "166e767fffa1e2e85deb39a762e7e337c1e015f8a6bf1a9527fca695888caf3f",
+    "post_tag_build_info_sha256": "7c011c8ba4d7495fc22d8ed5ec758a5602d5447fb3906a9c0c71fd7ee7dfb38e"
+  },
+  "assets": [
+    {
+      "role": "windows-x86_64-cli",
+      "filename": "windows-x86_64-cli-0fbc9a403fd5cbcbef7fd8382b5f196b0c69be69a1ee4964cc4ec5d35d09bae2-memright.exe",
+      "bytes": 25064960,
+      "sha256": "0fbc9a403fd5cbcbef7fd8382b5f196b0c69be69a1ee4964cc4ec5d35d09bae2",
+      "build_info": {
+        "memright_source_commit": "c1f070d65edc68cec7ac31acfda97b94de4e0c31",
+        "product_version": "0.1.1",
+        "release_generation": "sha256:70e32b581b2f000b7d1ac9a924eeb56d10b6513e",
+        "source_tree_sha256": "70e32b581b2f000b7d1ac9a924eeb56d10b6513e",
+        "target": "x86_64-pc-windows-msvc"
+      }
+    },
+    {
+      "role": "windows-x86_64-service",
+      "filename": "windows-x86_64-service-d10b79aac8826d2ae977cb7167ed91c32efc47c6cd404fa98ab6f5cb4bb464df-memright-service.exe",
+      "bytes": 14696448,
+      "sha256": "d10b79aac8826d2ae977cb7167ed91c32efc47c6cd404fa98ab6f5cb4bb464df",
+      "build_info": {
+        "memright_source_commit": "c1f070d65edc68cec7ac31acfda97b94de4e0c31",
+        "product_version": "0.1.1",
+        "release_generation": "sha256:70e32b581b2f000b7d1ac9a924eeb56d10b6513e",
+        "source_tree_sha256": "70e32b581b2f000b7d1ac9a924eeb56d10b6513e",
+        "target": "x86_64-pc-windows-msvc"
+      }
+    }
+  ]
+}

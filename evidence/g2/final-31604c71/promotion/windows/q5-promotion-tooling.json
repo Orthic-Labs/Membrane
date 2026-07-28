@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "qualification": "Q5",
+  "host": "windows",
+  "status": "pass",
+  "completed_at": "2026-07-28T17:47:15.288Z",
+  "source_root_commit": "31604c717a0c7ba1839fe57e1fded8814e68369b",
+  "published_root_head": "3bce7f373ec729d91c524e94ff29f4e130cfd614",
+  "membrane_source_commit": "c1f070d65edc68cec7ac31acfda97b94de4e0c31",
+  "source_tool_diff_from_31604c71": 0,
+  "validator_parity": {
+    "selection_basis": "23 promotion-build + 55 promotion-gate + 27 P2-load tests = exact 105-test Mac Q5 validator set",
+    "command": [
+      "py",
+      "-3.11",
+      "-m",
+      "pytest",
+      "tools/pipelines/memory/test_context_promotion_build.py",
+      "tools/pipelines/memory/test_context_promotion_gate.py",
+      "tools/pipelines/memory/test_context_p2_load.py",
+      "-q",
+      "--disable-warnings"
+    ],
+    "exit_code": 0,
+    "passed": 105,
+    "failed": 0,
+    "skipped": 0,
+    "log": {
+      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q5-parity.stdout.log",
+      "bytes": 184,
+      "sha256": "0a43892f45f986f3dbecad0a4e4e5ffe390889e97fdeb4b114bc4d7ba68b41c0"
+    }
+  },
+  "fixed_cutoff_membership": {
+    "command": [
+      "py",
+      "-3.11",
+      "tools/pipelines/memory/context_promotion_build.py",
+      "build-membership",
+      "--mirror-root",
+      "memory-mirror",
+      "--cutoff",
+      "2026-07-28T17:35:00.000Z",
+      "--output",
+      "<cache>\\q5-installation-membership.json"
+    ],
+    "exit_code": 0,
+    "status": "pass",
+    "kind": "context_installation_membership",
+    "cutoff": "2026-07-28T17:35:00.000Z",
+    "active_installations": 2,
+    "artifact": {
+      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q5-installation-membership.json",
+      "bytes": 340,
+      "sha256": "f3efbd9bf61aa1e0f0ca4046f6d47f9787d3dccf3e4ec3d0c75d85e2d075dc32"
+    }
+  },
+  "negative_gate": {
+    "command": [
+      "py",
+      "-3.11",
+      "tools/pipelines/memory/context_promotion_gate.py",
+      "<membership>",
+      "--policy-version",
+      "rightcontext-planner-v2-balanced"
+    ],
+    "expected_exit_code": 1,
+    "observed_exit_code": 1,
+    "expected_error": "invalid promotion receipt schema",
+    "observed_error": "invalid promotion receipt schema",
+    "fail_closed": true,
+    "stderr": {
+      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q5-negative-gate.stderr.log",
+      "bytes": 786,
+      "sha256": "c88d3fc67cb6d3dc018db9fe089425c4277c9183dbe53c95e340aca51dc376b6"
+    }
+  },
+  "supplementary_non_gate_diagnostic": {
+    "selection": "six broader source-tool test files; not Mac Q5 parity set",
+    "result": "107 passed then one date-dependent session-inventory test failed under maxfail=1",
+    "root_cause": "fixture usage timestamp is 2026-07-26 while un-timestamped tool rows inherit Windows temporary-file mtime 2026-07-28, producing a second day bucket",
+    "source_change_made": false,
+    "acceptance_effect": "none; exact 105-test Q5 validator set passes",
+    "log": {
+      "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q5-pytest.stdout.log",
+      "bytes": 2519,
+      "sha256": "238b102ecff892649ab916d487406528b22d448de06e3981e1209ea581c01b8e"
+    }
+  },
+  "deferred_promotion_inputs": {
+    "root_candidate_tag": "absent",
+    "membrane_candidate_tag": "absent",
+    "four_asset_release_manifest": "absent",
+    "p0_release": "absent",
+    "p0_p2_p3_p4_validator_invocations": "ineligible until paired tags, four-asset manifest, and P0 exist"
+  },
+  "checks": {
+    "fixed_cutoff_membership_producer_pass": true,
+    "exact_mac_q5_validator_set_pass": true,
+    "membership_rejected_as_non_p0": true,
+    "all_source_tools_bounded_and_observable": true,
+    "p0_dependent_validators_not_falsely_invoked": true,
+    "canonical_db_writes": 0,
+    "source_edits": 0,
+    "tags_created": 0,
+    "p0_started": false,
+    "main_promotion_started": false
+  }
+}

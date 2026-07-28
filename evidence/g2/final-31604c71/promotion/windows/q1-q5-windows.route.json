@@ -1,0 +1,251 @@
+{
+  "schema": "goal-route.v2",
+  "route_id": "windows-q1-q5-31604c71-c1f070d-r1",
+  "purpose": "DELIVERY",
+  "routine": false,
+  "comparison_mode": "COMPARE",
+  "state_a": {
+    "description": "Mac Q1-Q4 and source-tool Q5 are published for root source 31604c71 and Membrane c1f070d; matching Windows Q1-Q5, candidate tags, and P0 inputs do not exist.",
+    "evidence": [
+      {
+        "locator": "tether://run/2818ac69-f9b6-4c60-bc44-74db4efe4be7/state#mac-run",
+        "sha256": "c2a90deefecb478cec0b4c183f77abb29a90f456c717e7de87066d04a074b115",
+        "check": "Mac ledger binds Q1-Q5 source-tool evidence to root 31604c71 and Membrane c1f070d."
+      }
+    ]
+  },
+  "state_b": {
+    "description": "Windows Q1-Q5 receipts are published for unchanged root source 31604c71 and Membrane c1f070d, with no tags, P0-P4, or main mutation.",
+    "proof": [
+      {
+        "command": "Validate Q1-Q5 receipt schemas, source identities, hashes, test exits, disposable-clone invariants, Q4 closure assertions, and Q5 bounded source-tool results; verify remote evidence commit and absence of candidate tags/P0.",
+        "expected": "Q1-Q5 all pass or explicitly record pre-tag P0-input ineligibility; every receipt binds exact source pair; remote branch contains evidence-only commit; tags and P0 remain absent.",
+        "evidence_path": "D:\\Claude\\membrane\\evidence\\g2\\final-31604c71\\promotion\\windows"
+      }
+    ]
+  },
+  "constraints": {
+    "authority": {
+      "rule": "User authorizes Windows Q1-Q5 publication only; tags, P0-P4, and main promotion are later sequence.",
+      "evidence_locator": "tether://run/2818ac69-f9b6-4c60-bc44-74db4efe4be7/state"
+    },
+    "safety": {
+      "rule": "Canonical DB remains read-only; builds and migrations use isolated archive/targets/clones; no reset, stash, clean, branch/worktree creation, source edit, or force-push.",
+      "evidence_locator": "D:\\Claude\\AGENTS.md"
+    },
+    "scope": {
+      "rule": "Only qualification cache and final-31604c71 Windows Q1-Q5 evidence may change.",
+      "evidence_locator": "tether://run/2818ac69-f9b6-4c60-bc44-74db4efe4be7/state"
+    },
+    "quality": {
+      "rule": "Q1 runtime identity/reproducibility, Q2 full suite/parity, Q3 clone round-trip, Q4 exact/idempotent/cap closure, and Q5 bounded source-tool validation must all pass.",
+      "evidence_locator": "D:\\Claude\\docs\\plans\\2026-07-27-membrane-absorption-implementation-guide.md"
+    },
+    "cost": {
+      "rule": "Local CPU/disk only; no paid service or GPU spend.",
+      "evidence_locator": "D:\\Claude\\AGENTS.md"
+    }
+  },
+  "candidates": [
+    {
+      "id": "REUSE_HISTORICAL_WINDOWS_RECEIPTS",
+      "constraint_status": "FAIL",
+      "constraint_evidence": "D:\\Claude\\membrane\\evidence\\g2\\final-340d698e\\promotion\\windows",
+      "steps": [
+        {
+          "id": "REUSE_HISTORICAL_WINDOWS_RECEIPTS/RELABEL",
+          "operation": "Relabel older d273a385 receipts as current source evidence.",
+          "depends_on": [],
+          "min_wall_ms": 1000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Produces apparent receipts without current-source proof."
+        }
+      ],
+      "probabilities_bps": {
+        "retry": 0,
+        "terminal_failure": 10000
+      },
+      "retry_cost_ms": 0,
+      "rework_cost_ms": 1200000,
+      "nominal_critical_path_ms": 1000,
+      "expected_time_to_verified_b_ms": 1201000,
+      "cost_units": 0,
+      "risk_units": 10,
+      "rework_units": 10,
+      "status": "REJECTED",
+      "dominance_reason": "Fails exact-source qualification constraint.",
+      "evidence": [
+        "D:\\Claude\\membrane\\evidence\\g2\\final-340d698e\\promotion\\windows\\q1-release-reproducibility.json"
+      ]
+    },
+    {
+      "id": "BUILD_FROM_DIRTY_PRIMARY_TREE",
+      "constraint_status": "FAIL",
+      "constraint_evidence": "D:\\Claude\\membrane",
+      "steps": [
+        {
+          "id": "BUILD_FROM_DIRTY_PRIMARY_TREE/BUILD",
+          "operation": "Build and test current dirty working tree in place.",
+          "depends_on": [],
+          "min_wall_ms": 900000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Produces binaries with ambiguous source provenance."
+        }
+      ],
+      "probabilities_bps": {
+        "retry": 3000,
+        "terminal_failure": 5000
+      },
+      "retry_cost_ms": 600000,
+      "rework_cost_ms": 1200000,
+      "nominal_critical_path_ms": 900000,
+      "expected_time_to_verified_b_ms": 1680000,
+      "cost_units": 0,
+      "risk_units": 9,
+      "rework_units": 9,
+      "status": "REJECTED",
+      "dominance_reason": "Fails provenance and unrelated-dirt constraints.",
+      "evidence": [
+        "D:\\Claude\\membrane"
+      ]
+    },
+    {
+      "id": "ARCHIVE_EXACT_SOURCE_SERIAL_Q",
+      "constraint_status": "PASS",
+      "constraint_evidence": "tether://run/2818ac69-f9b6-4c60-bc44-74db4efe4be7/state",
+      "steps": [
+        {
+          "id": "ARCHIVE_EXACT_SOURCE_SERIAL_Q/PREFLIGHT",
+          "operation": "Verify remote refs, source gitlink, tools, disk, locks, tags/P0 absence, and exact archived source.",
+          "depends_on": [],
+          "min_wall_ms": 60000,
+          "kind": "SAFETY_DEPENDENCY",
+          "b_state_delta": "Qualification inputs become provenance-bound and safe."
+        },
+        {
+          "id": "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q1",
+          "operation": "Run two serialized isolated release builds and capture build-info plus hashes.",
+          "depends_on": [
+            "ARCHIVE_EXACT_SOURCE_SERIAL_Q/PREFLIGHT"
+          ],
+          "min_wall_ms": 600000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Windows Q1 receipt exists."
+        },
+        {
+          "id": "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q2",
+          "operation": "Run serialized full Rust workspace suite and Node parity from exact source.",
+          "depends_on": [
+            "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q1"
+          ],
+          "min_wall_ms": 360000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Windows Q2 receipt exists."
+        },
+        {
+          "id": "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q3_Q5",
+          "operation": "Run disposable clone migration and bounded source-tool validator suite as independent lanes.",
+          "depends_on": [
+            "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q2"
+          ],
+          "min_wall_ms": 180000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Windows Q3 and Q5 receipts exist."
+        },
+        {
+          "id": "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q4",
+          "operation": "Run exact typed closure, idempotence, and saturated-cap refusal tests.",
+          "depends_on": [
+            "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q2"
+          ],
+          "min_wall_ms": 60000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Windows Q4 receipt exists."
+        },
+        {
+          "id": "ARCHIVE_EXACT_SOURCE_SERIAL_Q/PUBLISH",
+          "operation": "Validate and commit only final-31604c71 Windows Q evidence, then push existing Membrane feature branch.",
+          "depends_on": [
+            "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q3_Q5",
+            "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q4"
+          ],
+          "min_wall_ms": 60000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Remote Windows Q1-Q5 evidence is available to next executor."
+        }
+      ],
+      "probabilities_bps": {
+        "retry": 1000,
+        "terminal_failure": 500
+      },
+      "retry_cost_ms": 600000,
+      "rework_cost_ms": 900000,
+      "nominal_critical_path_ms": 1260000,
+      "expected_time_to_verified_b_ms": 1365000,
+      "cost_units": 0,
+      "risk_units": 2,
+      "rework_units": 2,
+      "status": "SELECTED",
+      "dominance_reason": "Only constraint-passing route; isolates exact source, preserves dirty checkout, and overlaps only independent Q3/Q5 work.",
+      "evidence": [
+        "D:\\Claude\\docs\\plans\\2026-07-27-membrane-absorption-implementation-guide.md",
+        "tether://run/2818ac69-f9b6-4c60-bc44-74db4efe4be7/state"
+      ]
+    }
+  ],
+  "selected_route_id": "ARCHIVE_EXACT_SOURCE_SERIAL_Q",
+  "selected_critical_path": [
+    "ARCHIVE_EXACT_SOURCE_SERIAL_Q/PREFLIGHT",
+    "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q1",
+    "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q2",
+    "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q3_Q5",
+    "ARCHIVE_EXACT_SOURCE_SERIAL_Q/PUBLISH"
+  ],
+  "parallel_lanes": [
+    {
+      "id": "POST_Q2_INDEPENDENT",
+      "reason": "Q3 and Q5 clone/tool validation do not depend on Q4 targeted closure tests.",
+      "steps": [
+        "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q3_Q5",
+        "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q4"
+      ]
+    }
+  ],
+  "bottleneck": {
+    "step_id": "ARCHIVE_EXACT_SOURCE_SERIAL_Q/Q1",
+    "bound_ms": 600000,
+    "resource": "serialized Windows Rust release builds"
+  },
+  "deleted_work": [
+    {
+      "item": "Pull dirty root checkout before qualification",
+      "reason": "Remote objects and exact source archives provide required inputs without overwriting unrelated work."
+    },
+    {
+      "item": "Reuse historical Q receipts",
+      "reason": "Source identity mismatch invalidates them."
+    }
+  ],
+  "deferred_work": [
+    {
+      "item": "Candidate tags, P0-P4, both main merges, and final Mac smoke",
+      "until": "Windows Q1-Q5 evidence is published and next executor verifies paired qualification."
+    }
+  ],
+  "single_feasible_evidence": [],
+  "invalidation": {
+    "revision": 1,
+    "semantic_correction": "RECOMPILED_FROM_ROOT",
+    "invalidates": [
+      "membrane-absorption-main-r1 pre-Windows delivery state"
+    ],
+    "source_fingerprint_sha256": "9262906852b5eb90f51a85ad63c9548c1833511d1539d500707e3afafa54359d"
+  },
+  "tether": {
+    "required": true,
+    "run_id": "2818ac69-f9b6-4c60-bc44-74db4efe4be7",
+    "state_ref": "tether://run/2818ac69-f9b6-4c60-bc44-74db4efe4be7/state",
+    "checkpoint": "GOAL_ROUTE_V2",
+    "reason": "Version-sensitive exact-source builds, canonical DB clone safety, evidence publication, and promotion boundary require current tethered route."
+  }
+}

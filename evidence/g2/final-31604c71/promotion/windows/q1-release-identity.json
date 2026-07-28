@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "qualification": "Q1",
+  "host": "windows",
+  "status": "pass",
+  "completed_at": "2026-07-28T17:25:00.000Z",
+  "source_root_commit": "31604c717a0c7ba1839fe57e1fded8814e68369b",
+  "published_root_head": "3bce7f373ec729d91c524e94ff29f4e130cfd614",
+  "membrane_source_commit": "c1f070d65edc68cec7ac31acfda97b94de4e0c31",
+  "membrane_source_tree": "70e32b581b2f000b7d1ac9a924eeb56d10b6513e",
+  "source_materialization": {
+    "method": "git -c core.autocrlf=false archive --format=tar",
+    "archive": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\membrane-c1f070d-noautocrlf.tar",
+    "archive_bytes": 431134720,
+    "archive_sha256": "4596fbc5aa7561f7ff6e16b529a3bac4a57b4508bc0dc4a407eba09621a6122e",
+    "extracted_source": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\source-exact-noautocrlf",
+    "git_blob_validation": {
+      "blobs_checked": 380,
+      "missing": 0,
+      "mismatches": 0
+    },
+    "cargo_lock_sha256": "98f6cdabd165d451d7f6885cc14cc9f4d69e8d8d5ab883bb11f8e780c1867cd8"
+  },
+  "build_command": [
+    "cargo",
+    "build",
+    "--manifest-path",
+    "<archive>\\engine\\Cargo.toml",
+    "--locked",
+    "--release",
+    "-p",
+    "memright",
+    "--features",
+    "fastembed",
+    "--bins"
+  ],
+  "build_environment": {
+    "MEMRIGHT_SOURCE_COMMIT": "c1f070d65edc68cec7ac31acfda97b94de4e0c31",
+    "MEMRIGHT_SOURCE_TREE_SHA256": "70e32b581b2f000b7d1ac9a924eeb56d10b6513e",
+    "CARGO_TARGET_DIR": "independent target-a / target-b",
+    "RUSTFLAGS": "unset",
+    "CARGO_ENCODED_RUSTFLAGS": "unset",
+    "CARGO_BUILD_TARGET": "unset"
+  },
+  "builds": [
+    {
+      "name": "A",
+      "target": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\target-a-exact",
+      "initial_parallel_bins": {
+        "exit_code": 1,
+        "result": "service linked; CLI rustc exited 1 without a diagnostic while both binary linkers overlapped",
+        "stderr_log": {
+          "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q1-build-a-exact.stderr.log",
+          "bytes": 18409,
+          "sha256": "9e4a8c2a71c8382e59a297ca490741589a8eccb786398b42af491fa9b677794f"
+        }
+      },
+      "serial_cli_retry": {
+        "exit_code": 0,
+        "command_suffix": "--bin memright -j 1",
+        "stderr_log": {
+          "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q1-build-a-exact-cli.stderr.log",
+          "bytes": 213,
+          "sha256": "508d1ba3ea68d127e4799e577cde23fdff6ab15c1ff98404e722ed8f1834a149"
+        }
+      },
+      "final_bins_freshness_check": {
+        "exit_code": 0,
+        "finished_seconds": 38.97
+      },
+      "cli": {
+        "bytes": 25064960,
+        "sha256": "0fbc9a403fd5cbcbef7fd8382b5f196b0c69be69a1ee4964cc4ec5d35d09bae2"
+      },
+      "service": {
+        "bytes": 14696448,
+        "sha256": "d10b79aac8826d2ae977cb7167ed91c32efc47c6cd404fa98ab6f5cb4bb464df"
+      }
+    },
+    {
+      "name": "B",
+      "target": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\target-b-exact",
+      "exit_code": 0,
+      "stderr_log": {
+        "path": "D:\\Claude\\tools\\.cache\\memory\\qualification\\q1-current\\31604c71-c1f070d\\q1-build-b-exact.stderr.log",
+        "bytes": 11804,
+        "sha256": "5c2008b7aa7e0dc3de2fd9d92b6a2be39e426a79ba5f1085df20987d393ea166"
+      },
+      "cli": {
+        "bytes": 25064960,
+        "sha256": "b719c617576739afdb3c48b1bfedaea9097e652d7f327ea63311edcd353d319a"
+      },
+      "service": {
+        "bytes": 14696448,
+        "sha256": "f7b8bf3f1df7d830a48ec2ea003a4869ac0129158694549e6be8bd78c15abe45"
+      }
+    }
+  ],
+  "build_info": {
+    "expected_and_observed_for_all_four_binaries": {
+      "memright_source_commit": "c1f070d65edc68cec7ac31acfda97b94de4e0c31",
+      "product_version": "0.1.1",
+      "release_generation": "sha256:70e32b581b2f000b7d1ac9a924eeb56d10b6513e",
+      "source_tree_sha256": "70e32b581b2f000b7d1ac9a924eeb56d10b6513e",
+      "target": "x86_64-pc-windows-msvc"
+    },
+    "cli_command": "memright.exe build-info",
+    "service_command": "memright-service.exe build-info"
+  },
+  "checks": {
+    "all_380_source_blobs_match_git_objects": true,
+    "two_isolated_locked_release_builds_completed": true,
+    "all_four_binaries_identify_exact_source_commit": true,
+    "all_four_binaries_identify_exact_source_tree": true,
+    "all_four_binaries_identify_expected_release_generation": true,
+    "all_four_binaries_identify_windows_msvc_target": true,
+    "binary_sizes_match_between_builds": true,
+    "byte_reproducible": false,
+    "identity_reproducible": true
+  },
+  "acceptance_route": "windows_runtime_identity",
+  "scope": {
+    "canonical_db_writes": 0,
+    "source_edits": 0,
+    "tags_created": 0,
+    "p0_started": false,
+    "main_promotion_started": false
+  }
+}
