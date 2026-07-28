@@ -1,0 +1,78 @@
+{
+  "schema_version": 20,
+  "phase": "P1",
+  "platform": "windows",
+  "receipt_type": "bounded_feedback_recorded_substitution",
+  "status": "pass",
+  "candidate": {
+    "root_commit": "316a7fe180a0589706f7c7a8a89ae87bf25a0cbd",
+    "root_tag": "candidate/v20-316a7fe1",
+    "membrane_commit": "e7d551442303a0d5734ff06c34e7047b11683fd1",
+    "membrane_tag": "candidate/v20-e7d5514",
+    "engine_tree_sha256": "67f45161c15f9506a5e23c3b124bfa3a7a3c90fe77a6d792f67c829c8c8bb4fd",
+    "asset_sha256": {
+      "macos_aarch64_cli": "435c3747c1b22684e467ef08165d3195b359ba014eafbf37c0820e410858bc1a",
+      "macos_aarch64_service": "ceb9eb7a1a71ff44d6303dc70d0095bea84cb14f1ec5a0ba0fded0b9dd49d1fd",
+      "windows_x86_64_cli": "b4af509a9a8e468d10720863b2dba5f09b6497d431ea6976cbb373896a2e1a8c",
+      "windows_x86_64_service": "78e26de5e32d4a70f369b16e62d106d6fe9d8747a880a9a9d773cb82bacd01e0"
+    }
+  },
+  "observation_window": {
+    "installation_id": "975ab6c0-1f50-41fe-888b-a711655d45e7",
+    "service_instance_id": "efeaf972-4f7a-4ca5-97a0-b793aa822399",
+    "start_ts": "2026-07-27T11:59:09Z",
+    "cutoff_ts": "2026-07-28T04:48:13Z",
+    "event_count": 14
+  },
+  "base_reconciliation": {
+    "path": "p1-reconciliation-window.json",
+    "sha256": "cd38044d4d86ec7f88068aa9b0d74344c8f209e80d1551857d3e1bab58851239",
+    "gap_type": "delivery_missing_value_terminal",
+    "gap_count": 3
+  },
+  "acceptance_rule": "For each P1 delivery gap, one feedback.recorded event is accepted only when its feedback_for edge targets that exact delivery, installation_id, trace_id, and artifact_id match, and feedback status is success within this bounded observation window.",
+  "substitution_scope": "Only the three base-reconciliation delivery_missing_value_terminal gaps listed below are substituted. This receipt neither changes frozen source nor event data nor candidate tags.",
+  "links": [
+    {
+      "gap_id": "gap-223e81744821051d36e6ecb09db44ec2",
+      "delivery_event_id": "memory-event.975ab6c0-1f50-41fe-888b-a711655d45e7.13281",
+      "delivery_canonical_sha256": "5a0a6366a70583398fa1ed9e8ea03a582a74af7ad89cb706621446257f973e0c",
+      "feedback_event_id": "feedback.14a65722-53af-4008-b60e-99fb7d97a8fb",
+      "feedback_canonical_sha256": "b5b8d3da01206128da13f17c2f4469a054318db697fc167e7fd04e41a6f1cf5e",
+      "relation": "feedback_for",
+      "artifact_id": "memory.7ba804a9758511f672ff7176413ab693",
+      "artifact_sha256": "a1a9a9b0ee667fd6e9cbfb160e4d8681b9c7929fb584dac48734c4e24d50d276",
+      "trace_id": "trace-7f72e611bd32e3d0ae018933f6a79a97",
+      "feedback_status": "success"
+    },
+    {
+      "gap_id": "gap-7c76b26582c17996d4f9ee48be10dd68",
+      "delivery_event_id": "memory-event.975ab6c0-1f50-41fe-888b-a711655d45e7.13282",
+      "delivery_canonical_sha256": "dfbcd7aad9782d37d12759efd4f008eed319744160f067482e41a351801cbd32",
+      "feedback_event_id": "feedback.0934f015-865c-420b-b8f8-d41467d85e5c",
+      "feedback_canonical_sha256": "3ce66d0c82ce8a503aef827633fa47962a4ce2102df90916536f72d0d4c9b85c",
+      "relation": "feedback_for",
+      "artifact_id": "memory.9a22c5b1d451adafe081df203bd3da12",
+      "artifact_sha256": "73e34ca6c4220830c6d705a1ba2a2dcd8298d18d86335e21b3e083a747ed8433",
+      "trace_id": "trace-7f72e611bd32e3d0ae018933f6a79a97",
+      "feedback_status": "success"
+    },
+    {
+      "gap_id": "gap-3cb78649a3d9f9f7b5ccaf3c1a91039d",
+      "delivery_event_id": "memory-event.975ab6c0-1f50-41fe-888b-a711655d45e7.13283",
+      "delivery_canonical_sha256": "2fdc103f7c692fec03dc434baee82b14ebeafe69a0396e7dec91029b973e4082",
+      "feedback_event_id": "feedback.cbb61c42-3ddf-43ee-9670-7916f01f362b",
+      "feedback_canonical_sha256": "788daf7ff8701925bb2ff168deef34dde739faf1a26d4524a7a101a75800d700",
+      "relation": "feedback_for",
+      "artifact_id": "memory.e42f55184392b2ca828395b8e7aac145",
+      "artifact_sha256": "bb9e4d81679aebc6da019cadc022f8ef54b56a243cea5d9a0d003f968fd9b807",
+      "trace_id": "trace-7f72e611bd32e3d0ae018933f6a79a97",
+      "feedback_status": "success"
+    }
+  ],
+  "result": {
+    "base_gap_count": 3,
+    "substituted_gap_count": 3,
+    "remaining_gap_count": 0
+  }
+}
