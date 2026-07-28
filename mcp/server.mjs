@@ -85,9 +85,9 @@ async function authorize(args, action) {
   return binding;
 }
 
-function run(command, args, input) {
+function run(command, args, input, env = process.env) {
   return new Promise((resolve) => {
-    const child = spawn(command, args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(command, args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env });
     let stdout = "", stderr = "";
     child.stdout.on("data", (chunk) => { stdout += chunk; });
     child.stderr.on("data", (chunk) => { stderr += chunk; });
@@ -101,8 +101,8 @@ function memrightArgs(args) { return ["--db", process.env.MEMRIGHT_DB || "", ...
 async function callTool(name, args) {
   if (name === "membrane_context") {
     const binding = await authorize(args, "context");
-    const request = { task: args.task, repo: binding.repository_id, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor };
-    const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request));
+    const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor };
+    const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...process.env, WORKSPACE_ROOT: binding.root });
     return text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_source_read") {

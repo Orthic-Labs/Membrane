@@ -39,6 +39,7 @@
 import { readFileSync, statSync, existsSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { request as httpRequest } from "node:http";
+import { pathToFileURL } from "node:url";
 
 const DEFAULT_PORT = 47851;
 const REQUEST_TIMEOUT_MS = 1500;
@@ -386,7 +387,7 @@ function isMainModule() {
   try {
     const arg = process.argv[1];
     if (!arg) return false;
-    const argUrl = new URL(`file:///${arg.replace(/\\/g, "/")}`).href;
+    const argUrl = pathToFileURL(arg).href;
     return import.meta.url === argUrl;
   } catch (_) {
     return false;
