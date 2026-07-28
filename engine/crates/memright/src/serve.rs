@@ -3344,6 +3344,30 @@ fn route_with_context_ingest_lease(
             ),
             Err(e) => (400, format!("{{\"error\":{:?}}}", e)),
         }
+    } else if method == "POST" && path == "/context/close-unknown" {
+        let observed_since = v
+            .get("observed_since")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim();
+        let observed_through = v
+            .get("observed_through")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim();
+        let max_deliveries = v
+            .get("max_deliveries")
+            .and_then(|x| x.as_u64())
+            .and_then(|value| usize::try_from(value).ok())
+            .unwrap_or(0);
+        match store.close_unresolved_deliveries(
+            observed_since,
+            observed_through,
+            max_deliveries,
+        ) {
+            Ok(closed) => (200, serde_json::json!({ "ok": true, "closed": closed }).to_string()),
+            Err(error) => (400, serde_json::json!({ "error": error }).to_string()),
+        }
     } else if method == "POST" && path == "/memory-candidates" {
         // Warm federation memory-candidate generation IN-PROCESS (the resident serve's embedder is
         // already loaded). The federation gateway's memory provider POSTs here instead of spawning

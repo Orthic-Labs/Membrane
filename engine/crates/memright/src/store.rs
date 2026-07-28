@@ -2711,6 +2711,155 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// Close a bounded, completed observation window with an explicit provisional value state.
+    ///
+    /// A delivery is never treated as useful merely because it was read. After the caller's
+    /// bounded observation window has elapsed, this emits one `candidate.unknown` only for a
+    /// delivery with no existing `outcome_for` value terminal. The original delivery identity is
+    /// preserved so reconciliation can join the terminal without manual telemetry fabrication.
+    pub fn close_unresolved_deliveries(
+        &self,
+        observed_since: &str,
+        observed_through: &str,
+        max_deliveries: usize,
+    ) -> Result<usize, String> {
+        let valid_cutoff = |value: &str| {
+            value.len() >= 20
+                && value.len() <= 40
+                && value.ends_with('Z')
+                && value.contains('T')
+                && value.bytes().all(|byte| {
+                    byte.is_ascii_digit() || matches!(byte, b'-' | b':' | b'.' | b'T' | b'Z')
+                })
+        };
+        if !valid_cutoff(observed_since) || !valid_cutoff(observed_through) {
+            return Err("closure requires RFC3339 UTC observation bounds".to_string());
+        }
+        if observed_since >= observed_through {
+            return Err("closure observation bounds must be increasing".to_string());
+        }
+        if !(1..=10_000).contains(&max_deliveries) {
+            return Err("closure max_deliveries must be within 1..=10000".to_string());
+        }
+
+        let mut conn = self.db.lock();
+        let tx = conn
+            .transaction()
+            .map_err(|e| self.persist_error(format!("unknown closure transaction failed: {e}")))?;
+        let mut statement = tx
+            .prepare(
+                "SELECT d.event_id,d.installation_id,d.service_instance_id,d.workspace_id,
+                        d.client,d.client_version,d.producer,d.producer_version,d.session_id,
+                        d.turn_id,d.trace_id,d.span_id,d.artifact_family,d.provider,d.provider_version,
+                        d.release_generation,d.scope_id,d.artifact_id,d.artifact_sha256,
+                        d.traffic_class,d.policy_version,d.policy_activation_sha256,d.cohort,d.task_class,
+                        d.source_generation
+                   FROM context_event_log d
+                  WHERE d.phase='block.delivered' AND d.status='success'
+                    AND d.traffic_class='production'
+                    AND d.ts>=?1 AND d.ts<=?2
+                    AND NOT EXISTS (
+                        SELECT 1 FROM context_event_link link
+                         WHERE link.target_event_id=d.event_id
+                           AND link.relation='outcome_for'
+                    )
+                  ORDER BY d.seq ASC LIMIT ?",
+            )
+            .map_err(|e| self.persist_error(format!("unknown closure query prepare failed: {e}")))?;
+        let deliveries = statement
+            .query_map(
+                rusqlite::params![observed_since, observed_through, (max_deliveries + 1) as i64],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, Option<String>>(5)?,
+                        row.get::<_, String>(6)?, row.get::<_, Option<String>>(7)?, row.get::<_, String>(8)?,
+                        row.get::<_, Option<String>>(9)?, row.get::<_, String>(10)?, row.get::<_, String>(11)?,
+                        row.get::<_, String>(12)?, row.get::<_, String>(13)?, row.get::<_, Option<String>>(14)?,
+                        row.get::<_, Option<String>>(15)?, row.get::<_, Option<String>>(16)?, row.get::<_, Option<String>>(17)?,
+                        row.get::<_, Option<String>>(18)?, row.get::<_, String>(19)?, row.get::<_, Option<String>>(20)?,
+                        row.get::<_, Option<String>>(21)?, row.get::<_, Option<String>>(22)?, row.get::<_, Option<String>>(23)?,
+                        row.get::<_, Option<i64>>(24)?,
+                    ))
+                },
+            )
+            .map_err(|e| self.persist_error(format!("unknown closure query failed: {e}")))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| self.persist_error(format!("unknown closure row read failed: {e}")))?;
+        drop(statement);
+        if deliveries.len() > max_deliveries {
+            return Err(format!(
+                "closure delivery cap {max_deliveries} reached; rerun with a larger explicit bound"
+            ));
+        }
+        let mut events = Vec::with_capacity(deliveries.len());
+        for (
+            delivery_id, installation_id, service_instance_id, workspace_id, client, client_version,
+            producer, producer_version, session_id, turn_id, trace_id, delivery_span_id,
+            artifact_family, provider, provider_version, release_generation, scope_id, artifact_id,
+            artifact_sha256, traffic_class, policy_version, policy_activation_sha256, cohort,
+            task_class, source_generation,
+        ) in deliveries {
+            let event_id = format!("value.{}", new_uuid_v4()?);
+            events.push(ContextEvent {
+                schema_version: 1,
+                event_id: event_id.clone(),
+                ts: crate::time::now_iso(),
+                installation_id,
+                service_instance_id,
+                workspace_id,
+                client,
+                client_version,
+                producer,
+                producer_version,
+                session_id,
+                turn_id,
+                trace_id,
+                span_id: opaque_correlation_token(&event_id, "span"),
+                parent_span_id: Some(delivery_span_id),
+                artifact_family,
+                provider,
+                provider_version,
+                release_generation,
+                phase: "candidate.unknown".to_string(),
+                operation: "evaluate".to_string(),
+                status: "unknown".to_string(),
+                reason_code: Some("observation_window_elapsed".to_string()),
+                scope_id,
+                artifact_id,
+                artifact_sha256,
+                traffic_class,
+                policy_version,
+                policy_activation_sha256,
+                cohort,
+                task_class,
+                source_generation,
+                duration_ms: None,
+                quantity: Some(1),
+                token_count: None,
+                char_count: None,
+                meta: None,
+                measurements: Vec::new(),
+                links: vec![ContextEventLink {
+                    relation: "outcome_for".to_string(),
+                    target_event_id: delivery_id,
+                }],
+            });
+        }
+        if events.is_empty() {
+            tx.commit()
+                .map_err(|e| self.persist_error(format!("unknown closure empty commit failed: {e}")))?;
+            self.clear_last_persist_error();
+            return Ok(0);
+        }
+        append_context_events_on(&tx, &ContextEventBatch { events: events.clone() })
+            .map_err(|error| self.persist_error(format!("unknown closure telemetry failed: {error}")))?;
+        tx.commit()
+            .map_err(|e| self.persist_error(format!("unknown closure commit failed: {e}")))?;
+        self.clear_last_persist_error();
+        Ok(events.len())
+    }
+
     /// Map a `(candidate_id, outcome, verified)` DB triple into a gate record. Unverified rows
     /// carry `verified: false`, so the gate skips them from ranking automatically.
     fn feedback_row_to_record(

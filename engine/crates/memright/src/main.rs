@@ -526,6 +526,15 @@ enum Cmd {
         #[arg(long, default_value = "global")]
         scope: String,
     },
+    /// Close unmatched production deliveries as provisional unknown after one bounded observation window.
+    CloseUnknown {
+        #[arg(long)]
+        observed_since: String,
+        #[arg(long)]
+        observed_through: String,
+        #[arg(long)]
+        max_deliveries: usize,
+    },
     /// Ingest git-tracked skill bodies into the engine `skills` table WITHOUT the full re-embed
     /// that `reindex` does. Cheap (no embedding) — run after `git pull` (daily-sync) so the other
     /// machine's engine store stays current with authored skills.
@@ -2987,6 +2996,37 @@ fn run_main() -> Result<(), String> {
             };
             store.record_feedback(&rec)?;
             println!("{{\"ok\":true,\"verified\":{}}}", rec.verified());
+        }
+        Cmd::CloseUnknown {
+            observed_since,
+            observed_through,
+            max_deliveries,
+        } => {
+            let payload = serde_json::json!({
+                "observed_since": observed_since,
+                "observed_through": observed_through,
+                "max_deliveries": max_deliveries,
+            })
+            .to_string();
+            match try_service_post("/context/close-unknown", &payload) {
+                Ok(Some(resp)) => {
+                    println!("{resp}");
+                    return Ok(());
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    return Err(format!(
+                        "resident memright service failed /context/close-unknown: {error}"
+                    ));
+                }
+            }
+            let store = open(&db)?;
+            let closed = store.close_unresolved_deliveries(
+                &observed_since,
+                &observed_through,
+                max_deliveries,
+            )?;
+            println!("{{\"ok\":true,\"closed\":{closed}}}");
         }
         Cmd::SkillRead { .. } => unreachable!("handled before database resolution"),
         Cmd::IngestSkills { root } => {

@@ -117,6 +117,111 @@ fn route_with_startup(
 }
 
 #[test]
+fn bounded_unknown_closure_links_each_unresolved_delivery_once() {
+    let store = MemoryStore::new();
+    let (identity, claim) = startup(1, FIRST_SERVICE_ID);
+    let mut delivery = local_event("unresolved-delivery", FIRST_SERVICE_ID);
+    delivery["ts"] = json!("2026-07-20T08:00:00Z");
+    delivery["producer"] = json!("rightcontext_planner");
+    delivery["phase"] = json!("block.delivered");
+    delivery["operation"] = json!("read");
+    delivery["status"] = json!("success");
+    delivery["links"] = json!([{
+        "relation": "delivered_as",
+        "target_event_id": "evt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }]);
+    let delivery_id = delivery["event_id"].as_str().unwrap().to_string();
+    let body = serde_json::to_string(&json!({"events": [delivery]})).unwrap();
+    assert_eq!(
+        route_with_startup(&store, &identity, &claim, &body).0,
+        201
+    );
+    let request = r#"{"observed_since":"2026-07-20T07:59:00Z","observed_through":"2026-07-20T08:01:00Z","max_deliveries":10}"#;
+    let (code, body) = memright::serve::route_for_tests_with_startup_claim(
+        &store,
+        &identity,
+        &claim,
+        "POST",
+        "/context/close-unknown",
+        request,
+    );
+    assert_eq!(code, 200, "body: {body}");
+    assert!(body.contains("\"closed\":1"), "body: {body}");
+
+    let conn = store.db().lock();
+    let (value_id, status): (String, String) = conn
+        .query_row(
+            "SELECT event_id,status FROM context_event_log WHERE phase='candidate.unknown'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "unknown");
+    let target: String = conn
+        .query_row(
+            "SELECT target_event_id FROM context_event_link WHERE event_id=?1 AND relation='outcome_for'",
+            [&value_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(target, delivery_id);
+    drop(conn);
+
+    let (code, body) = memright::serve::route_for_tests_with_startup_claim(
+        &store,
+        &identity,
+        &claim,
+        "POST",
+        "/context/close-unknown",
+        request,
+    );
+    assert_eq!(code, 200, "body: {body}");
+    assert!(body.contains("\"closed\":0"), "body: {body}");
+}
+
+#[test]
+fn unknown_closure_rejects_a_saturated_delivery_cap_without_partial_write() {
+    let store = MemoryStore::new();
+    let (identity, claim) = startup(1, FIRST_SERVICE_ID);
+    let mut events = Vec::new();
+    for name in ["closure-cap-a", "closure-cap-b"] {
+        let mut delivery = local_event(name, FIRST_SERVICE_ID);
+        delivery["ts"] = json!("2026-07-20T08:00:00Z");
+        delivery["producer"] = json!("rightcontext_planner");
+        delivery["phase"] = json!("block.delivered");
+        delivery["operation"] = json!("read");
+        delivery["status"] = json!("success");
+        delivery["links"] = json!([{
+            "relation": "delivered_as",
+            "target_event_id": "evt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }]);
+        events.push(delivery);
+    }
+    let body = serde_json::to_string(&json!({"events": events})).unwrap();
+    assert_eq!(route_with_startup(&store, &identity, &claim, &body).0, 201);
+
+    let request = r#"{"observed_since":"2026-07-20T07:59:00Z","observed_through":"2026-07-20T08:01:00Z","max_deliveries":1}"#;
+    let (code, body) = memright::serve::route_for_tests_with_startup_claim(
+        &store,
+        &identity,
+        &claim,
+        "POST",
+        "/context/close-unknown",
+        request,
+    );
+    assert_eq!(code, 400, "body: {body}");
+    assert!(body.contains("cap"), "body: {body}");
+    assert_eq!(
+        store.db().lock().query_row(
+            "SELECT COUNT(*) FROM context_event_log WHERE phase='candidate.unknown'",
+            [],
+            |row| row.get::<_, i64>(0),
+        ).unwrap(),
+        0,
+    );
+}
+
+#[test]
 fn shared_fixture_validates_and_matches_language_neutral_canonical_digest() {
     let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../pipelines/memory/fixtures/context-telemetry-events-v1.json");
