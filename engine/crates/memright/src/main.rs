@@ -574,6 +574,22 @@ enum Cmd {
         session: Option<String>,
         #[arg(long)]
         trace: Option<String>,
+        #[arg(long)]
+        effective_from_ms: Option<i64>,
+        #[arg(long)]
+        effective_until_ms: Option<i64>,
+        #[arg(long)]
+        expires_at_ms: Option<i64>,
+        #[arg(long)]
+        review_after_ms: Option<i64>,
+        #[arg(long)]
+        priority_class: Option<String>,
+        #[arg(long)]
+        confidence: Option<f64>,
+        #[arg(long)]
+        confidence_basis: Option<String>,
+        #[arg(long)]
+        supersedes: Option<String>,
     },
     /// Delete a memory by id (row + in-RAM entry).
     Delete { id: String },
@@ -3045,6 +3061,14 @@ fn run_main() -> Result<(), String> {
             record_type,
             session,
             trace,
+            effective_from_ms,
+            effective_until_ms,
+            expires_at_ms,
+            review_after_ms,
+            priority_class,
+            confidence,
+            confidence_basis,
+            supersedes,
         } => {
             let context = put_event_context(session.as_deref(), trace.as_deref());
             let memory_id = format!("{}/{}", memright::scope::normalize_scope(&scope), name);
@@ -3146,6 +3170,14 @@ fn run_main() -> Result<(), String> {
                 "recordType": record_type,
                 "session": session,
                 "trace_id": trace,
+                "effectiveFromMs": effective_from_ms,
+                "effectiveUntilMs": effective_until_ms,
+                "expiresAtMs": expires_at_ms,
+                "reviewAfterMs": review_after_ms,
+                "priorityClass": priority_class,
+                "confidence": confidence,
+                "confidenceBasis": confidence_basis,
+                "supersedes": supersedes,
             })
             .to_string();
             match try_idempotent_put(&db, &payload) {
@@ -3160,7 +3192,17 @@ fn run_main() -> Result<(), String> {
                         _ => memright_core::MemoryTier::Semantic,
                     };
                     let store = open(&db)?;
-                    let id = match store.try_put_attributed_observed(
+                    let lifecycle = memright::store::MemoryLifecycleInputV1 {
+                        effective_from_ms,
+                        effective_until_ms,
+                        expires_at_ms,
+                        review_after_ms,
+                        priority_class,
+                        confidence,
+                        confidence_basis,
+                        supersedes,
+                    };
+                    let id = match store.try_put_attributed_lifecycle_observed(
                         &name,
                         content.trim(),
                         &scope,
@@ -3169,6 +3211,7 @@ fn run_main() -> Result<(), String> {
                         &producer,
                         &record_type,
                         &context,
+                        &lifecycle,
                     ) {
                         Ok(id) => id,
                         Err(error) => {
@@ -3587,6 +3630,22 @@ mod tests {
             "session-opaque",
             "--trace",
             "tool-use-opaque",
+            "--effective-from-ms",
+            "100",
+            "--effective-until-ms",
+            "200",
+            "--expires-at-ms",
+            "300",
+            "--review-after-ms",
+            "150",
+            "--priority-class",
+            "protected",
+            "--confidence",
+            "0.8",
+            "--confidence-basis",
+            "reviewed-evidence",
+            "--supersedes",
+            "scope/old",
         ])
         .unwrap();
         let super::Cmd::Put {
@@ -3595,6 +3654,14 @@ mod tests {
             record_type,
             session,
             trace,
+            effective_from_ms,
+            effective_until_ms,
+            expires_at_ms,
+            review_after_ms,
+            priority_class,
+            confidence,
+            confidence_basis,
+            supersedes,
             ..
         } = parsed.cmd
         else {
@@ -3605,6 +3672,14 @@ mod tests {
         assert_eq!(record_type, "blueprint_concept");
         assert_eq!(session.as_deref(), Some("session-opaque"));
         assert_eq!(trace.as_deref(), Some("tool-use-opaque"));
+        assert_eq!(effective_from_ms, Some(100));
+        assert_eq!(effective_until_ms, Some(200));
+        assert_eq!(expires_at_ms, Some(300));
+        assert_eq!(review_after_ms, Some(150));
+        assert_eq!(priority_class.as_deref(), Some("protected"));
+        assert_eq!(confidence, Some(0.8));
+        assert_eq!(confidence_basis.as_deref(), Some("reviewed-evidence"));
+        assert_eq!(supersedes.as_deref(), Some("scope/old"));
     }
 
     #[test]

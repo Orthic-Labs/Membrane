@@ -2,7 +2,7 @@ import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promis
 import { createHash, randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 export const defaultRegistryPath = () => process.env.MEMBRANE_PROJECT_REGISTRY || join(process.env.APPDATA || process.env.HOME || ".", "MemRight", "project-registry.json");
 export const defaultTokenPath = (root, registry = defaultRegistryPath()) => join(dirname(registry), "tokens", `${createHash("sha256").update(root).digest("hex")}.token`);
 
@@ -30,11 +30,31 @@ function validateTokenAudit(audit) {
   }
 }
 
+export function validateScopeDescriptor(descriptor) {
+  if (!descriptor || typeof descriptor !== "object" || Array.isArray(descriptor)) throw new Error("scope_descriptor must be an object");
+  if (descriptor.kind === "filesystem") {
+    if (typeof descriptor.path !== "string" || !descriptor.path.trim() || Object.keys(descriptor).some((key) => !["kind", "path"].includes(key))) throw new Error("filesystem scope_descriptor is invalid");
+    return;
+  }
+  if (descriptor.kind === "virtual") {
+    if (typeof descriptor.id !== "string" || !descriptor.id.trim() || typeof descriptor.tenant_id !== "string" || !descriptor.tenant_id.trim()) throw new Error("virtual scope_descriptor identity is invalid");
+    if (!Array.isArray(descriptor.parents) || descriptor.parents.length > 7 || descriptor.parents.some((parent) => typeof parent !== "string" || !parent.trim() || parent.startsWith("virtual:")) || new Set(descriptor.parents).size !== descriptor.parents.length) throw new Error("virtual scope_descriptor parents are invalid");
+    if (descriptor.inherit_global !== false || Object.keys(descriptor).some((key) => !["kind", "id", "tenant_id", "parents", "inherit_global"].includes(key))) throw new Error("virtual scope_descriptor global inheritance is invalid");
+    return;
+  }
+  throw new Error("scope_descriptor kind is invalid");
+}
+
+function descriptorFor(binding) {
+  return binding.scope_descriptor || { kind: "filesystem", path: binding.scope_id };
+}
+
 function validateBinding(binding) {
   if (!binding || typeof binding !== "object") throw new Error("binding must be an object");
   for (const key of ["repository_id", "scope_id"]) {
     if (typeof binding[key] !== "string" || !binding[key].trim()) throw new Error(`binding ${key} is required`);
   }
+  validateScopeDescriptor(descriptorFor(binding));
   if (binding.provider_config !== undefined && (typeof binding.provider_config !== "object" || Array.isArray(binding.provider_config))) throw new Error("provider_config must be an object");
   if (binding.grant_policy !== undefined && (typeof binding.grant_policy !== "object" || Array.isArray(binding.grant_policy))) throw new Error("grant_policy must be an object");
   if (binding.token_grant !== undefined) validateTokenGrant(binding.token_grant);
@@ -42,16 +62,24 @@ function validateBinding(binding) {
 }
 
 function validateRegistry(value) {
-  if (!value || value.schema_version !== SCHEMA_VERSION || !value.bindings || typeof value.bindings !== "object" || Array.isArray(value.bindings)) throw new Error("registry is malformed");
+  if (!value || ![1, SCHEMA_VERSION].includes(value.schema_version) || !value.bindings || typeof value.bindings !== "object" || Array.isArray(value.bindings)) throw new Error("registry is malformed");
   for (const [root, binding] of Object.entries(value.bindings)) {
     if (!root || typeof root !== "string") throw new Error("registry root is malformed");
     validateBinding(binding);
+  }
+  if (value.schema_version === 1) {
+    return { schema_version: SCHEMA_VERSION, bindings: Object.fromEntries(Object.entries(value.bindings).map(([root, binding]) => [root, { ...binding, scope_descriptor: descriptorFor(binding) }])) };
   }
   return value;
 }
 
 export async function readRegistry(path = defaultRegistryPath()) {
-  try { return validateRegistry(JSON.parse(await readFile(path, "utf8"))); }
+  try {
+    const raw = JSON.parse(await readFile(path, "utf8"));
+    const registry = validateRegistry(raw);
+    if (raw.schema_version === 1) await writeRegistry(path, registry);
+    return registry;
+  }
   catch (error) { if (error?.code === "ENOENT") return { schema_version: SCHEMA_VERSION, bindings: {} }; throw new Error(`registry unavailable: ${error.message}`); }
 }
 
@@ -70,7 +98,7 @@ export function installationFor(binding) {
 }
 
 function publicBinding(root, binding) {
-  return { root, repository_id: binding.repository_id, scope_id: binding.scope_id, provider_config: binding.provider_config, grant_policy: binding.grant_policy, ...(binding.token_grant ? { token_grant: binding.token_grant } : {}), ...(binding.token_audit ? { token_audit: binding.token_audit } : {}) };
+  return { root, repository_id: binding.repository_id, scope_id: binding.scope_id, scope_descriptor: descriptorFor(binding), provider_config: binding.provider_config, grant_policy: binding.grant_policy, ...(binding.token_grant ? { token_grant: binding.token_grant } : {}), ...(binding.token_audit ? { token_audit: binding.token_audit } : {}) };
 }
 
 export async function enroll(root, binding, path = defaultRegistryPath()) {
@@ -81,6 +109,7 @@ export async function enroll(root, binding, path = defaultRegistryPath()) {
   registry.bindings[canonical] = {
     repository_id: binding.repository_id,
     scope_id: binding.scope_id,
+    scope_descriptor: descriptorFor(binding),
     provider_config: binding.provider_config || {},
     grant_policy: binding.grant_policy || {},
     ...(prior?.token_grant ? { token_grant: prior.token_grant } : {}),

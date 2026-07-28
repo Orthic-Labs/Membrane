@@ -1,4 +1,7 @@
-use memright::{MemDb, MemoryLifecycleEventV1, MemoryPriorityError, MemoryStore};
+use memright::{
+    MemDb, MemoryEventContext, MemoryLifecycleEventV1, MemoryLifecycleInputV1, MemoryPriorityError,
+    MemoryStore,
+};
 use memright_core::MemoryTier;
 
 fn insert_memory(store: &MemoryStore, id: &str, scope: &str) {
@@ -131,7 +134,12 @@ fn supersession_rejects_cycles() {
 fn ordinary_puts_keep_the_schema_default_active_recallable_lifecycle() {
     let store = MemoryStore::open(MemDb::open_in_memory());
     let id = store
-        .try_put("ordinary", "ordinary recall fixture", "scope", MemoryTier::Semantic)
+        .try_put(
+            "ordinary",
+            "ordinary recall fixture",
+            "scope",
+            MemoryTier::Semantic,
+        )
         .unwrap();
 
     let lifecycle: (String, String, Option<i64>, Option<i64>) = store
@@ -257,4 +265,143 @@ fn priority_protection_requires_authority_and_emits_one_audit_event() {
         )
         .unwrap();
     assert_eq!(events, 1);
+}
+
+#[test]
+fn lifecycle_authoring_rejects_invalid_fields_and_protected_rows_stay_gated() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    let context = MemoryEventContext::new("test");
+    let invalid = MemoryLifecycleInputV1 {
+        effective_from_ms: Some(20),
+        effective_until_ms: Some(20),
+        ..Default::default()
+    };
+    assert!(store
+        .try_put_attributed_lifecycle_observed(
+            "invalid",
+            "body",
+            "scope",
+            MemoryTier::Semantic,
+            "memory",
+            "test",
+            "memory",
+            &context,
+            &invalid
+        )
+        .unwrap_err()
+        .contains("precede"));
+
+    let protected_expired = MemoryLifecycleInputV1 {
+        expires_at_ms: Some(0),
+        priority_class: Some("protected".into()),
+        ..Default::default()
+    };
+    let id = store
+        .try_put_attributed_lifecycle_observed(
+            "protected",
+            "expired body",
+            "scope",
+            MemoryTier::Semantic,
+            "memory",
+            "test",
+            "memory",
+            &context,
+            &protected_expired,
+        )
+        .unwrap();
+    assert!(!store.recall_eligible_ids_at(1, false).contains(&id));
+}
+
+#[test]
+fn lifecycle_curation_quarantines_expired_and_excludes_other_gated_states() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    let context = MemoryEventContext::new("test");
+    let expired = store
+        .try_put_attributed_lifecycle_observed(
+            "expired",
+            "expired source",
+            "scope",
+            MemoryTier::Semantic,
+            "memory",
+            "test",
+            "memory",
+            &context,
+            &MemoryLifecycleInputV1 {
+                expires_at_ms: Some(0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    for name in ["future", "superseded", "draft", "retired", "invalidated"] {
+        store
+            .try_put(
+                name,
+                &format!("{name} source"),
+                "scope",
+                MemoryTier::Semantic,
+            )
+            .unwrap();
+    }
+    store.db().lock().execute_batch(
+        "UPDATE memories SET effective_from_ms=9223372036854775807 WHERE id='scope/future';
+         UPDATE memories SET lifecycle_state='superseded', superseded_by='scope/future', effective_until_ms=0 WHERE id='scope/superseded';
+         UPDATE memories SET lifecycle_state='draft' WHERE id='scope/draft';
+         UPDATE memories SET lifecycle_state='retired' WHERE id='scope/retired';
+         UPDATE memories SET lifecycle_state='invalidated' WHERE id='scope/invalidated';",
+    ).unwrap();
+
+    let status = store.dream_now("2026-07-28").unwrap();
+    assert_eq!(status.read_count, 0);
+    assert_eq!(status.quarantined_count, 1);
+    assert_eq!(store.quarantined_ids(), vec![expired]);
+    let remaining: i64 = store
+        .db()
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM memories WHERE id='scope/future'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(remaining, 1);
+}
+
+#[test]
+fn lifecycle_metrics_are_content_free_and_count_gated_rows() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    for (id, state) in [
+        ("active", "active"),
+        ("superseded", "superseded"),
+        ("retired", "retired"),
+        ("invalidated", "invalidated"),
+        ("draft", "draft"),
+    ] {
+        insert_memory(&store, &format!("scope/{id}"), "scope");
+        store
+            .db()
+            .lock()
+            .execute(
+                "UPDATE memories SET lifecycle_state=?1 WHERE id=?2",
+                rusqlite::params![state, format!("scope/{id}")],
+            )
+            .unwrap();
+    }
+    store
+        .db()
+        .lock()
+        .execute(
+            "UPDATE memories SET effective_from_ms=?1 WHERE id='scope/active'",
+            [i64::MAX],
+        )
+        .unwrap();
+    let metrics = store.metrics_json();
+    assert_eq!(metrics["lifecycle"]["total"], 5);
+    assert_eq!(metrics["lifecycle"]["future"], 1);
+    assert_eq!(metrics["lifecycle"]["superseded"], 1);
+    assert_eq!(metrics["lifecycle"]["retired"], 1);
+    assert_eq!(metrics["lifecycle"]["invalidated"], 1);
+    assert_eq!(metrics["lifecycle"]["draft"], 1);
+    assert_eq!(metrics["lifecycle"]["gated_out"], 5);
+    assert!(metrics.to_string().contains("gated_out"));
+    assert!(!metrics.to_string().contains("fixture"));
 }

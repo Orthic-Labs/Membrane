@@ -39,6 +39,8 @@
   #detail h2 { font-family:"JetBrains Mono",monospace; font-size:13px; color:var(--muted);
                word-break:break-all; margin:0 0 10px; }
   #content { width:100%; min-height:52vh; font:13px/1.5 "JetBrains Mono",monospace; resize:vertical; }
+  .lifecycle-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:10px 0; }
+  .lifecycle-grid label { color:var(--muted); display:grid; gap:3px; font-size:12px; }
   #actions { display:flex; gap:8px; margin-top:10px; }
   #status { color:var(--muted); font-size:12px; margin-left:auto; align-self:center; }
   .empty { color:var(--muted); padding:24px; }
@@ -323,6 +325,7 @@ async function chips() {
       `<span class="chip">recalls <b>${m.recalls||0}</b></span>` +
       `<span class="chip">preview-delta tokens <b>${(m.potential_tokens_saved_est||m.tokens_saved_est||0).toLocaleString()}</b> <small>(diagnostic)</small></span>` +
       `<span class="chip">transform chars saved <b>${t.toLocaleString()}</b></span>` +
+      `<span class="chip">lifecycle eligible <b>${m.lifecycle?.eligible||0}</b> / ${m.lifecycle?.total||0}</span>` +
       `<span class="chip" id="pulse">updated ${new Date().toLocaleTimeString()}</span>`;
   } catch {
     $('#chips').innerHTML = '<span class="chip" style="border-color:var(--accent);color:var(--accent)">service unreachable</span>';
@@ -506,16 +509,52 @@ async function search() {
 
 async function show(id) {
   const r = await api('/get', { id });
+  const lifecycle = r.lifecycle || {};
   current = { id, name: id.split('/').pop(), scope: id.split('/').slice(0,-1).join('/') };
   $('#detail').classList.remove('empty');
   $('#detail').innerHTML = `<h2>${id} · used ${r.access_count}×</h2>
     <textarea id="content"></textarea>
+    ${lifecycleControls()}
     <div id="actions">
       <button class="primary" onclick="save()">save</button>
       <button class="danger" onclick="del()">delete</button>
       <span id="status"></span>
     </div>`;
   $('#content').value = r.content || '';
+  fillLifecycle(lifecycle);
+}
+
+function lifecycleControls() {
+  return `<fieldset class="lifecycle-grid"><legend>lifecycle</legend>
+    <label>effective from (ms)<input id="effectiveFromMs" type="number" min="0" step="1"></label>
+    <label>effective until (ms)<input id="effectiveUntilMs" type="number" min="0" step="1"></label>
+    <label>expires at (ms)<input id="expiresAtMs" type="number" min="0" step="1"></label>
+    <label>review after (ms)<input id="reviewAfterMs" type="number" min="0" step="1"></label>
+    <label>priority<select id="priorityClass"><option value="">unchanged</option><option value="normal">normal</option><option value="protected">protected</option></select></label>
+    <label>confidence (0–1)<input id="confidence" type="number" min="0" max="1" step="0.01"></label>
+    <label style="grid-column:1/-1">confidence basis<input id="confidenceBasis" maxlength="1024"></label>
+  </fieldset>`;
+}
+
+function fillLifecycle(lifecycle) {
+  for (const id of ['effectiveFromMs','effectiveUntilMs','expiresAtMs','reviewAfterMs','confidence','confidenceBasis','priorityClass']) {
+    const value = lifecycle[id]; if (value != null) $(`#${id}`).value = value;
+  }
+}
+
+function lifecyclePayload() {
+  const body = {}, integer = id => {
+    const raw = $(`#${id}`).value.trim(); if (!raw) return;
+    if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) throw new Error(`${id} must be a non-negative integer`);
+    body[id] = Number(raw);
+  };
+  for (const id of ['effectiveFromMs','effectiveUntilMs','expiresAtMs','reviewAfterMs']) integer(id);
+  const confidence = $('#confidence').value.trim();
+  if (confidence) { const value = Number(confidence); if (!Number.isFinite(value) || value < 0 || value > 1) throw new Error('confidence must be within 0–1'); body.confidence = value; }
+  const priority = $('#priorityClass').value; if (priority) body.priorityClass = priority;
+  const basis = $('#confidenceBasis').value.trim(); if (basis) body.confidenceBasis = basis;
+  if (body.effectiveFromMs != null && body.effectiveUntilMs != null && body.effectiveFromMs >= body.effectiveUntilMs) throw new Error('effective from must precede effective until');
+  return body;
 }
 
 function newMem() {
@@ -525,6 +564,7 @@ function newMem() {
     <input id="newname" placeholder="kebab-case-name" style="width:60%;margin-bottom:8px">
     <input id="newscope" placeholder="scope (default: global)" style="width:36%;margin-bottom:8px">
     <textarea id="content" placeholder="content…"></textarea>
+    ${lifecycleControls()}
     <div id="actions"><button class="primary" onclick="save()">save</button><span id="status"></span></div>`;
 }
 
@@ -533,7 +573,7 @@ async function save() {
   const scope = current ? current.scope : ($('#newscope').value.trim() || 'global');
   if (!name) return $('#status').textContent = 'name required';
   try {
-    const r = await apiPut({ name, scope, content: $('#content').value });
+    const r = await apiPut({ name, scope, content: $('#content').value, ...lifecyclePayload() });
     $('#status').textContent = r.put ? `saved ${r.put} (re-embedded)` : (r.error || 'error');
     if (!r.pending) { browse(); chips(); loadGraph(); }
   } catch (error) {

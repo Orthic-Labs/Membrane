@@ -76,3 +76,24 @@ const feedbackReceipt = JSON.parse(feedback[0].result.content[0].text);
 assert.equal(feedbackReceipt.status, "accepted");
 assert.equal(feedbackReceipt.receiptId, "receipt-1");
 assert.match(feedbackReceipt.feedbackId, /^[a-z0-9][a-z0-9_-]{7,}$/i);
+
+await writeFile(registry, JSON.stringify({
+  schema_version: 2,
+  bindings: {
+    [enrolledCanonicalRoot]: {
+      repository_id: "repo-a", scope_id: "opaque-thread", provider_config: {}, grant_policy: { level: "write-proposed" },
+      scope_descriptor: { kind: "virtual", id: "thread:abc-123", tenant_id: "tenant-a", parents: [], inherit_global: false },
+    },
+  },
+}), "utf8");
+const virtualCaller = { root: enrolledRoot, repositoryId: "repo-a", scopeId: "opaque-thread", scopeDescriptor: { kind: "virtual", id: "thread:abc-123", tenant_id: "tenant-a", parents: [], inherit_global: false } };
+const virtualFeedback = await rpc([{
+  jsonrpc: "2.0", id: 8, method: "tools/call",
+  params: { name: "membrane_feedback", arguments: { repository: enrolledRoot, caller: virtualCaller, receiptId: "receipt-virtual", outcome: "used" } },
+}], { MEMBRANE_PROJECT_REGISTRY: registry });
+assert.equal(JSON.parse(virtualFeedback[0].result.content[0].text).status, "accepted");
+const crossTenant = await rpc([{
+  jsonrpc: "2.0", id: 9, method: "tools/call",
+  params: { name: "membrane_feedback", arguments: { repository: enrolledRoot, caller: { ...virtualCaller, scopeDescriptor: { ...virtualCaller.scopeDescriptor, tenant_id: "tenant-b" } }, receiptId: "receipt-denied", outcome: "used" } },
+}], { MEMBRANE_PROJECT_REGISTRY: registry });
+assert.match(crossTenant[0].error.message, /caller_scope_binding_denied/);

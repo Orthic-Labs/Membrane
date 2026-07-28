@@ -45,7 +45,7 @@ def _stage_observability(ccs: object) -> dict:
     return {"stageElapsedMs": stages}
 
 
-def _ccs_from_serve(task: str, scope: str, max_candidates: int) -> dict | None:
+def _ccs_from_serve(task: str, scope: str, max_candidates: int, scope_descriptor: dict | None = None) -> dict | None:
     """Ask the WARM resident serve for memory candidates (in-process, no ONNX reload). Returns the
     parsed CCS dict, or None if the serve is unreachable/errors so the caller cold-spawns. This is
     the on-mode latency fix: the cold `memright memory-candidates` CLI reloads fastembed (~3.6s) and
@@ -59,7 +59,10 @@ def _ccs_from_serve(task: str, scope: str, max_candidates: int) -> dict | None:
                 token = handle.read().strip()
     except OSError:
         token = ""
-    body = json.dumps({"task": task, "scope": scope, "max_candidates": max_candidates}).encode("utf-8")
+    payload = {"task": task, "scope": scope, "max_candidates": max_candidates}
+    if scope_descriptor is not None:
+        payload["scopeDescriptor"] = scope_descriptor
+    body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}/memory-candidates",
         data=body,
@@ -91,10 +94,10 @@ def _default_bin() -> str:
 
 
 def produce_with_observability(
-    repo_root: Path, task: str, scope_grant_id: str | None
+    repo_root: Path, task: str, scope_grant_id: str | None, scope_descriptor: dict | None = None
 ) -> tuple[list[dict], str, dict]:
     # Prompt path is resident-only. Cold ONNX startup is diagnostics/setup work, never recall work.
-    ccs = _ccs_from_serve(task, str(repo_root), 64)
+    ccs = _ccs_from_serve(task, str(repo_root), 64, scope_descriptor)
     source = "memright-serve"
     if ccs is None:
         if _replay_no_legacy():
@@ -127,9 +130,9 @@ def produce_with_observability(
     return candidates, source, _stage_observability(ccs)
 
 
-def produce(repo_root: Path, task: str, scope_grant_id: str | None) -> tuple[list[dict], str]:
+def produce(repo_root: Path, task: str, scope_grant_id: str | None, scope_descriptor: dict | None = None) -> tuple[list[dict], str]:
     """Compatibility wrapper for callers using the historical two-tuple contract."""
     candidates, source, _observability = produce_with_observability(
-        repo_root, task, scope_grant_id
+        repo_root, task, scope_grant_id, scope_descriptor
     )
     return candidates, source

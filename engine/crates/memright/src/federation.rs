@@ -307,12 +307,31 @@ pub fn memory_candidates_payload(
     scope_id: &str,
     max_candidates: usize,
 ) -> serde_json::Value {
+    memory_candidates_payload_for_descriptor(
+        store,
+        task,
+        &crate::scope::ScopeDescriptorV1::filesystem(scope_id),
+        max_candidates,
+    )
+    .unwrap_or_else(|error| serde_json::json!({"error": error, "candidates": []}))
+}
+
+/// Descriptor-aware candidate surface. Virtual scope ancestry is exact and opaque; a legacy
+/// string is deliberately represented as a filesystem descriptor by the compatibility wrapper.
+pub fn memory_candidates_payload_for_descriptor(
+    store: &crate::MemoryStore,
+    task: &str,
+    descriptor: &crate::scope::ScopeDescriptorV1,
+    max_candidates: usize,
+) -> Result<serde_json::Value, String> {
     // Canonicalize whatever the caller sent (raw filesystem path, slug, or `global`) into the full
     // visibility chain: self + ancestor scopes that hold rows + global. Before 2026-07-16 this
     // passed the raw string into recall (clients send paths like `D:\Claude`), so project-scoped
     // rows never matched and the rich path recalled from the global corpus only (Sol audit P0).
     let scope_started = Instant::now();
-    let scopes = crate::scope::canonical_scope_chain(scope_id, &store.scopes());
+    let scopes = descriptor
+        .resolve_chain(&store.scopes())
+        .map_err(|error| format!("invalid scope descriptor: {error}"))?;
     let scope_ms = scope_started.elapsed().as_secs_f64() * 1000.0;
     // Shared recall owns one-hop augmentation, its bounded graph lane, and effectiveness vetoes.
     // Keeping those policies here as well would double-expand candidates and split behavior across
@@ -348,7 +367,7 @@ pub fn memory_candidates_payload(
         .collect();
     stage_elapsed.rank_ms += rank_started.elapsed().as_secs_f64() * 1000.0;
 
-    serde_json::json!({
+    Ok(serde_json::json!({
         "schemaVersion": 1,
         "traceId": new_trace_id(),
         "task": task,
@@ -365,7 +384,7 @@ pub fn memory_candidates_payload(
         },
         "candidates": candidates,
         "omissions": [],
-        "scope": scope_id,
+        "scope": scopes.first().cloned().unwrap_or_default(),
         "_rightcontext": {
             "stageElapsedMs": {
                 "embed": stage_elapsed.embed_ms,
@@ -373,7 +392,7 @@ pub fn memory_candidates_payload(
                 "rank": stage_elapsed.rank_ms,
             }
         },
-    })
+    }))
 }
 
 /// Bounded, word-boundary content preview for a memory candidate's delivered text.

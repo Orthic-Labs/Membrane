@@ -7,6 +7,115 @@
 
 use std::path::{Path, PathBuf};
 
+pub const MAX_VIRTUAL_SCOPE_DEPTH: usize = 8;
+
+/// Explicit caller scope. Legacy strings remain filesystem-only; virtual scopes must use this
+/// tagged form so punctuation in an opaque id can never create path-like ancestors.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "kind", deny_unknown_fields)]
+pub enum ScopeDescriptorV1 {
+    #[serde(rename = "filesystem")]
+    Filesystem { path: String },
+    #[serde(rename = "virtual")]
+    Virtual {
+        id: String,
+        #[serde(rename = "tenant_id")]
+        tenant_id: String,
+        #[serde(default)]
+        parents: Vec<String>,
+        #[serde(default, rename = "inherit_global")]
+        inherit_global: bool,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum ScopeDescriptorError {
+    #[error("scope descriptor path is required")]
+    MissingPath,
+    #[error("virtual scope id and tenant_id are required")]
+    MissingVirtualIdentity,
+    #[error("virtual scope parent chain exceeds depth 8")]
+    Depth,
+    #[error("virtual scopes cannot inherit global")]
+    GlobalInheritance,
+    #[error("virtual scope parent is invalid")]
+    InvalidParent,
+    #[error("virtual scope parent chain contains a duplicate or cycle")]
+    Cycle,
+    #[error("virtual scope parent is not registered for this tenant")]
+    UnknownParent,
+}
+
+fn virtual_scope_key(tenant_id: &str, id: &str) -> String {
+    format!("virtual:{tenant_id}:{id}")
+}
+
+impl ScopeDescriptorV1 {
+    pub fn filesystem(path: impl Into<String>) -> Self {
+        Self::Filesystem { path: path.into() }
+    }
+
+    pub fn virtual_scope(
+        id: impl Into<String>,
+        tenant_id: impl Into<String>,
+        parents: Vec<String>,
+        inherit_global: bool,
+    ) -> Self {
+        Self::Virtual {
+            id: id.into(),
+            tenant_id: tenant_id.into(),
+            parents,
+            inherit_global,
+        }
+    }
+
+    /// Resolve a descriptor into exact recall scope ids. Virtual parents are opaque ids in the
+    /// same tenant, ordered nearest-first; they are never slugged, split, or given implicit global.
+    pub fn resolve_chain(&self, existing: &[String]) -> Result<Vec<String>, ScopeDescriptorError> {
+        match self {
+            Self::Filesystem { path } => {
+                if path.trim().is_empty() {
+                    return Err(ScopeDescriptorError::MissingPath);
+                }
+                Ok(canonical_scope_chain(path, existing))
+            }
+            Self::Virtual {
+                id,
+                tenant_id,
+                parents,
+                inherit_global,
+            } => {
+                if id.trim().is_empty() || tenant_id.trim().is_empty() {
+                    return Err(ScopeDescriptorError::MissingVirtualIdentity);
+                }
+                if parents.len() + 1 > MAX_VIRTUAL_SCOPE_DEPTH {
+                    return Err(ScopeDescriptorError::Depth);
+                }
+                if *inherit_global {
+                    return Err(ScopeDescriptorError::GlobalInheritance);
+                }
+                let own = virtual_scope_key(tenant_id, id);
+                let mut seen = std::collections::HashSet::from([own.clone()]);
+                let mut chain = vec![own];
+                for parent in parents {
+                    if parent.trim().is_empty() || parent.starts_with("virtual:") {
+                        return Err(ScopeDescriptorError::InvalidParent);
+                    }
+                    let key = virtual_scope_key(tenant_id, parent);
+                    if !seen.insert(key.clone()) {
+                        return Err(ScopeDescriptorError::Cycle);
+                    }
+                    if !existing.iter().any(|scope| scope == &key) {
+                        return Err(ScopeDescriptorError::UnknownParent);
+                    }
+                    chain.push(key);
+                }
+                Ok(chain)
+            }
+        }
+    }
+}
+
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct RightContextWorkspaceConfig {
@@ -287,5 +396,84 @@ mod tests {
         assert_eq!(chain.first().unwrap(), "D--Claude-newproj");
         assert!(chain.iter().any(|s| s == "D--Claude"));
         assert!(chain.iter().any(|s| s == "global"));
+    }
+
+    #[test]
+    fn virtual_scope_is_opaque_and_uses_only_explicit_same_tenant_parents() {
+        let existing = vec![
+            "virtual:tenant-a:parent-1".to_string(),
+            "virtual:tenant-a:root".to_string(),
+            "virtual:tenant-b:parent-1".to_string(),
+            "global".to_string(),
+        ];
+        let descriptor = ScopeDescriptorV1::virtual_scope(
+            "thread:abc-123",
+            "tenant-a",
+            vec!["parent-1".to_string(), "root".to_string()],
+            false,
+        );
+        assert_eq!(
+            descriptor.resolve_chain(&existing).unwrap(),
+            vec![
+                "virtual:tenant-a:thread:abc-123".to_string(),
+                "virtual:tenant-a:parent-1".to_string(),
+                "virtual:tenant-a:root".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn virtual_scope_rejects_cross_tenant_unknown_duplicate_and_excessive_parents() {
+        let existing = vec!["virtual:tenant-a:parent".to_string(), "global".to_string()];
+        assert_eq!(
+            ScopeDescriptorV1::virtual_scope(
+                "thread",
+                "tenant-a",
+                vec!["virtual:tenant-b:parent".to_string()],
+                false
+            )
+            .resolve_chain(&existing)
+            .unwrap_err(),
+            ScopeDescriptorError::InvalidParent,
+        );
+        assert_eq!(
+            ScopeDescriptorV1::virtual_scope(
+                "thread",
+                "tenant-a",
+                vec!["missing".to_string()],
+                false
+            )
+            .resolve_chain(&existing)
+            .unwrap_err(),
+            ScopeDescriptorError::UnknownParent,
+        );
+        assert_eq!(
+            ScopeDescriptorV1::virtual_scope(
+                "thread",
+                "tenant-a",
+                vec!["parent".to_string(), "parent".to_string()],
+                false
+            )
+            .resolve_chain(&existing)
+            .unwrap_err(),
+            ScopeDescriptorError::Cycle,
+        );
+        assert_eq!(
+            ScopeDescriptorV1::virtual_scope(
+                "thread",
+                "tenant-a",
+                vec!["parent".to_string(); 8],
+                false
+            )
+            .resolve_chain(&existing)
+            .unwrap_err(),
+            ScopeDescriptorError::Depth,
+        );
+        assert_eq!(
+            ScopeDescriptorV1::virtual_scope("thread", "tenant-a", vec![], true)
+                .resolve_chain(&existing)
+                .unwrap_err(),
+            ScopeDescriptorError::GlobalInheritance,
+        );
     }
 }

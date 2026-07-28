@@ -135,6 +135,31 @@ def test_replay_uses_observer_timeout_and_preserves_serve_timing(monkeypatch, tm
     assert seen == [45.0, 0.25]
 
 
+def test_serve_forwards_exact_virtual_scope_descriptor(monkeypatch, tmp_path):
+    mod = _load()
+    seen = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"candidates": []}'
+
+    def fake_urlopen(request, *, timeout):
+        seen["payload"] = json.loads(request.data.decode("utf-8"))
+        seen["timeout"] = timeout
+        return Response()
+
+    monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
+    descriptor = {"kind": "virtual", "id": "thread:abc-123", "tenant_id": "tenant-a", "parents": [], "inherit_global": False}
+    assert mod._ccs_from_serve("typed request", str(tmp_path), 64, descriptor) == {"candidates": []}
+    assert seen["payload"]["scopeDescriptor"] == descriptor
+
+
 def test_replay_no_legacy_rejects_serve_failure_without_cli_fallback(
     monkeypatch, tmp_path
 ):

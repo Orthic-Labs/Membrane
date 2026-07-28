@@ -8,7 +8,104 @@ use crate::{
     MemDb,
 };
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct DocFrontmatterV1 {
+    title: Option<String>,
+    summary: Option<String>,
+    keywords: Vec<String>,
+    status: Option<String>,
+    supersedes: Option<String>,
+}
+
+fn parse_frontmatter(markdown: &str) -> Result<DocFrontmatterV1, String> {
+    if !markdown.starts_with("---\n") && !markdown.starts_with("---\r\n") {
+        return Ok(DocFrontmatterV1::default());
+    }
+    let end = markdown[3..]
+        .find("\n---\n")
+        .or_else(|| markdown[3..].find("\n---\r\n"))
+        .map(|offset| offset + 4)
+        .ok_or_else(|| "unclosed frontmatter".to_owned())?;
+    let block = &markdown[..end + 3];
+    if block.len() > 32 * 1024 {
+        return Err("frontmatter exceeds 32 KiB".to_owned());
+    }
+    let mut values = BTreeMap::new();
+    for raw in block
+        .lines()
+        .skip(1)
+        .take_while(|line| line.trim() != "---")
+    {
+        let (key, value) = raw
+            .split_once(':')
+            .ok_or_else(|| "malformed frontmatter".to_owned())?;
+        let key = key.trim();
+        let value = value.trim();
+        if value.len() > 4 * 1024 || value.chars().any(char::is_control) {
+            return Err("invalid frontmatter value".to_owned());
+        }
+        if matches!(
+            key,
+            "title" | "summary" | "keywords" | "status" | "supersedes"
+        ) && values.insert(key.to_owned(), value.to_owned()).is_some()
+        {
+            return Err(format!("duplicate frontmatter key: {key}"));
+        }
+    }
+    let status = values.remove("status");
+    if let Some(status) = &status {
+        if !matches!(
+            status.as_str(),
+            "active" | "draft" | "retired" | "superseded"
+        ) {
+            return Err("invalid frontmatter status".to_owned());
+        }
+    }
+    let keywords = values
+        .remove("keywords")
+        .map(|value| {
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|word| !word.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(DocFrontmatterV1 {
+        title: values.remove("title"),
+        summary: values.remove("summary"),
+        keywords,
+        status,
+        supersedes: values
+            .remove("supersedes")
+            .filter(|value| !value.is_empty()),
+    })
+}
+
+fn lexical_content(markdown: &str, frontmatter: &DocFrontmatterV1) -> String {
+    if frontmatter == &DocFrontmatterV1::default() {
+        return markdown.to_owned();
+    }
+    let mut content = String::new();
+    if let Some(title) = &frontmatter.title {
+        content.push_str(title);
+        content.push('\n');
+    }
+    if let Some(summary) = &frontmatter.summary {
+        content.push_str(summary);
+        content.push('\n');
+    }
+    if !frontmatter.keywords.is_empty() {
+        content.push_str(&frontmatter.keywords.join(" "));
+        content.push('\n');
+    }
+    content.push_str(markdown);
+    content
+}
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct DocArtifactV1 {
@@ -324,7 +421,9 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
             doc_id TEXT NOT NULL, repository_root TEXT NOT NULL, repository_id TEXT NOT NULL,
             revision TEXT NOT NULL, path TEXT NOT NULL, content_hash TEXT NOT NULL,
             parser_version TEXT NOT NULL, document_class TEXT NOT NULL,
-            lifecycle_state TEXT NOT NULL DEFAULT 'active', trust_label TEXT NOT NULL,
+            lifecycle_state TEXT NOT NULL DEFAULT 'active', title TEXT NOT NULL DEFAULT '',
+            summary TEXT NOT NULL DEFAULT '', keywords_json TEXT NOT NULL DEFAULT '[]',
+            superseded_by TEXT, trust_label TEXT NOT NULL,
             influence_class TEXT NOT NULL, sensitivity TEXT NOT NULL, generated INTEGER NOT NULL DEFAULT 0,
             index_generation INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL,
             UNIQUE(repository_root, path)
@@ -332,11 +431,37 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
         CREATE INDEX IF NOT EXISTS idx_doc_artifacts_root_state
           ON doc_artifacts(repository_root, lifecycle_state, index_generation);"
     ).map_err(|e| e.to_string())?;
+    for column in [
+        "title TEXT NOT NULL DEFAULT ''",
+        "summary TEXT NOT NULL DEFAULT ''",
+        "keywords_json TEXT NOT NULL DEFAULT '[]'",
+        "superseded_by TEXT",
+    ] {
+        let name = column.split_whitespace().next().unwrap();
+        let exists = {
+            let mut statement = conn
+                .prepare("PRAGMA table_info(doc_artifacts)")
+                .map_err(|e| e.to_string())?;
+            let rows = statement
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(|e| e.to_string())?;
+            let found = rows.filter_map(Result::ok).any(|entry| entry == name);
+            found
+        };
+        if !exists {
+            conn.execute(
+                &format!("ALTER TABLE doc_artifacts ADD COLUMN {column}"),
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let generation: i64 = tx.query_row("SELECT COALESCE(MAX(index_generation),0)+1 FROM doc_artifacts WHERE repository_root=?1", [&root_s], |r| r.get(0)).map_err(|e| e.to_string())?;
     let now = crate::time::now_millis() as i64;
     let mut registered = 0;
     let mut projection_inputs = Vec::new();
+    let mut supersessions = Vec::new();
     for file in files {
         let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
         let relative = file
@@ -344,6 +469,8 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");
+        let markdown = String::from_utf8_lossy(&bytes).into_owned();
+        let frontmatter = parse_frontmatter(&markdown)?;
         let (class, influence, sensitivity, generated) = classify(&relative);
         let hash = digest(&bytes);
         let default_id = format!(
@@ -358,10 +485,16 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
                 |row| row.get(0),
             )
             .unwrap_or(default_id);
-        tx.execute("INSERT INTO doc_artifacts (doc_id, repository_root, repository_id, revision, path, content_hash, parser_version, document_class, lifecycle_state, trust_label, influence_class, sensitivity, generated, index_generation, updated_at_ms)
-          VALUES (?1,?2,?2,?3,?4,?5,'comrak-0.54.0',?6,'active','catalogued',?7,?8,?9,?10,?11)
-          ON CONFLICT(repository_root,path) DO UPDATE SET revision=excluded.revision, content_hash=excluded.content_hash, parser_version=excluded.parser_version, document_class=excluded.document_class, lifecycle_state='active', trust_label=excluded.trust_label, influence_class=excluded.influence_class, sensitivity=excluded.sensitivity, generated=excluded.generated, index_generation=excluded.index_generation, updated_at_ms=excluded.updated_at_ms",
-          rusqlite::params![id, root_s, revision, relative, hash, class, influence, sensitivity, generated as i64, generation, now]).map_err(|e| e.to_string())?;
+        let lifecycle = frontmatter.status.as_deref().unwrap_or("active");
+        let keywords_json =
+            serde_json::to_string(&frontmatter.keywords).map_err(|e| e.to_string())?;
+        tx.execute("INSERT INTO doc_artifacts (doc_id, repository_root, repository_id, revision, path, content_hash, parser_version, document_class, lifecycle_state, title, summary, keywords_json, superseded_by, trust_label, influence_class, sensitivity, generated, index_generation, updated_at_ms)
+          VALUES (?1,?2,?2,?3,?4,?5,'comrak-0.54.0',?6,?7,?8,?9,?10,NULL,'catalogued',?11,?12,?13,?14,?15)
+          ON CONFLICT(repository_root,path) DO UPDATE SET revision=excluded.revision, content_hash=excluded.content_hash, parser_version=excluded.parser_version, document_class=excluded.document_class, lifecycle_state=excluded.lifecycle_state, title=excluded.title, summary=excluded.summary, keywords_json=excluded.keywords_json, superseded_by=NULL, trust_label=excluded.trust_label, influence_class=excluded.influence_class, sensitivity=excluded.sensitivity, generated=excluded.generated, index_generation=excluded.index_generation, updated_at_ms=excluded.updated_at_ms",
+          rusqlite::params![id, root_s, revision, relative, hash, class, lifecycle, frontmatter.title.clone().unwrap_or_default(), frontmatter.summary.clone().unwrap_or_default(), keywords_json, influence, sensitivity, generated as i64, generation, now]).map_err(|e| e.to_string())?;
+        if let Some(target) = &frontmatter.supersedes {
+            supersessions.push((id.clone(), relative.clone(), target.clone()));
+        }
         projection_inputs.push(DocumentProjectionStoreInputV1 {
             parent_doc_id: id,
             source_content_hash: hash,
@@ -369,7 +502,7 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
             index_generation: generation,
             projections: vec![DocumentProjectionV1 {
                 kind: ProjectionKind::Lexical,
-                content: String::from_utf8_lossy(&bytes).into_owned(),
+                content: lexical_content(&markdown, &frontmatter),
                 token_count: 0,
                 provenance: ProjectionProvenanceV1 {
                     anchor_id: "document".to_owned(),
@@ -379,7 +512,31 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
         });
         registered += 1;
     }
-    let tombstoned = tx.execute("UPDATE doc_artifacts SET lifecycle_state='tombstoned', index_generation=?2, updated_at_ms=?3 WHERE repository_root=?1 AND lifecycle_state='active' AND index_generation < ?2", rusqlite::params![root_s, generation, now]).map_err(|e| e.to_string())?;
+    let mut edges = BTreeMap::new();
+    for (new_id, new_path, target_path) in &supersessions {
+        if target_path == new_path {
+            return Err("frontmatter supersedes self".to_owned());
+        }
+        let target_id: String = tx.query_row(
+            "SELECT doc_id FROM doc_artifacts WHERE repository_root=?1 AND path=?2 AND lifecycle_state NOT IN ('tombstoned')",
+            rusqlite::params![root_s, target_path], |row| row.get(0),
+        ).map_err(|_| format!("frontmatter supersedes target missing: {target_path}"))?;
+        edges.insert(new_id.clone(), target_id);
+    }
+    for start in edges.keys() {
+        let mut seen = BTreeSet::new();
+        let mut current = start.as_str();
+        while let Some(next) = edges.get(current) {
+            if !seen.insert(current.to_owned()) || next == start {
+                return Err("frontmatter supersedes cycle".to_owned());
+            }
+            current = next;
+        }
+    }
+    for (new_id, _, target_path) in &supersessions {
+        tx.execute("UPDATE doc_artifacts SET lifecycle_state='superseded', superseded_by=?1, updated_at_ms=?2 WHERE repository_root=?3 AND path=?4", rusqlite::params![new_id, now, root_s, target_path]).map_err(|e| e.to_string())?;
+    }
+    let tombstoned = tx.execute("UPDATE doc_artifacts SET lifecycle_state='tombstoned', index_generation=?2, updated_at_ms=?3 WHERE repository_root=?1 AND lifecycle_state IN ('active','draft','retired') AND index_generation < ?2", rusqlite::params![root_s, generation, now]).map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     drop(conn);
     for input in &projection_inputs {

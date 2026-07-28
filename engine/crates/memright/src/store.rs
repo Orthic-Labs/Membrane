@@ -133,6 +133,63 @@ pub struct MemoryEventContext {
     pub trace_id: Option<String>,
 }
 
+/// Optional lifecycle metadata supplied by every public memory authoring surface.
+#[derive(Clone, Debug, Default, serde::Deserialize, serde::Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MemoryLifecycleInputV1 {
+    pub effective_from_ms: Option<i64>,
+    pub effective_until_ms: Option<i64>,
+    pub expires_at_ms: Option<i64>,
+    pub review_after_ms: Option<i64>,
+    pub priority_class: Option<String>,
+    pub confidence: Option<f64>,
+    pub confidence_basis: Option<String>,
+    pub supersedes: Option<String>,
+}
+
+impl MemoryLifecycleInputV1 {
+    pub fn validate(&self) -> Result<(), String> {
+        for value in [
+            self.effective_from_ms,
+            self.effective_until_ms,
+            self.expires_at_ms,
+            self.review_after_ms,
+        ] {
+            if value.is_some_and(|timestamp| timestamp < 0) {
+                return Err("lifecycle timestamps must be non-negative milliseconds".into());
+            }
+        }
+        if self
+            .effective_from_ms
+            .zip(self.effective_until_ms)
+            .is_some_and(|(from, until)| from >= until)
+        {
+            return Err("effective_from_ms must precede effective_until_ms".into());
+        }
+        if self
+            .confidence
+            .is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value))
+        {
+            return Err("confidence must be within 0..=1".into());
+        }
+        if self
+            .priority_class
+            .as_deref()
+            .is_some_and(|value| !matches!(value, "normal" | "protected"))
+        {
+            return Err("priority_class must be normal or protected".into());
+        }
+        if self
+            .confidence_basis
+            .as_ref()
+            .is_some_and(|value| value.trim().is_empty() || value.len() > 1024)
+        {
+            return Err("confidence_basis is invalid".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryBatchRequest {
@@ -158,6 +215,8 @@ pub struct MemoryBatchItem {
     pub trace_id: String,
     #[serde(default)]
     pub source_ids: Vec<String>,
+    #[serde(default, flatten)]
+    pub lifecycle: MemoryLifecycleInputV1,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -1266,7 +1325,10 @@ fn dream_registry_digest(entries: &[MemoryEntry]) -> Result<String, String> {
     Ok(dream_snapshot_digest(rows))
 }
 
-fn dream_database_digest(connection: &rusqlite::Connection) -> Result<String, String> {
+fn dream_database_digest(
+    connection: &rusqlite::Connection,
+    eligible_ids: &HashSet<String>,
+) -> Result<String, String> {
     let mut statement = connection
         .prepare(
             "SELECT id, tier, content, keywords, score, created_at, access_count, scope_id
@@ -1289,7 +1351,46 @@ fn dream_database_digest(connection: &rusqlite::Connection) -> Result<String, St
         })
         .and_then(|mapped| mapped.collect::<rusqlite::Result<Vec<_>>>())
         .map_err(|error| format!("read dream corpus snapshot: {error}"))?;
-    Ok(dream_snapshot_digest(rows))
+    Ok(dream_snapshot_digest(
+        rows.into_iter()
+            .filter(|row| eligible_ids.contains(&row.0))
+            .collect(),
+    ))
+}
+
+fn recall_eligible_ids_on(
+    connection: &rusqlite::Connection,
+    as_of_ms: i64,
+    include_expired: bool,
+) -> rusqlite::Result<HashSet<String>> {
+    let expiry_clause = if include_expired {
+        ""
+    } else {
+        " AND (effective_from_ms IS NULL OR effective_from_ms <= ?1) AND (effective_until_ms IS NULL OR ?1 < effective_until_ms) AND (expires_at_ms IS NULL OR ?1 < expires_at_ms)"
+    };
+    let query = format!(
+        "SELECT id FROM memories WHERE authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
+    );
+    connection
+        .prepare(&query)?
+        .query_map(rusqlite::params![as_of_ms], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<HashSet<_>>>()
+}
+
+fn expired_curation_ids_on(
+    connection: &rusqlite::Connection,
+    as_of_ms: i64,
+) -> rusqlite::Result<HashSet<String>> {
+    connection
+        .prepare(
+            "SELECT id FROM memories
+             WHERE authority IN ('A1','A2','A3','A4','A5')
+               AND lifecycle_state='active' AND superseded_by IS NULL
+               AND ((effective_until_ms IS NOT NULL AND effective_until_ms <= ?1)
+                 OR (expires_at_ms IS NOT NULL AND expires_at_ms <= ?1))",
+        )?
+        .query_map(rusqlite::params![as_of_ms], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<HashSet<_>>>()
 }
 
 fn db_path(db: &MemDb) -> Option<PathBuf> {
@@ -1660,6 +1761,26 @@ impl MemoryStore {
         source_ids: &[String],
         metadata: &MemoryRecordMetadata,
     ) -> Result<(), String> {
+        self.persist_entry_with_record_lifecycle_on(
+            conn,
+            entry,
+            updated_at,
+            source_ids,
+            metadata,
+            &MemoryLifecycleInputV1::default(),
+        )
+    }
+
+    fn persist_entry_with_record_lifecycle_on(
+        &self,
+        conn: &rusqlite::Connection,
+        entry: &MemoryEntry,
+        updated_at: &str,
+        source_ids: &[String],
+        metadata: &MemoryRecordMetadata,
+        lifecycle: &MemoryLifecycleInputV1,
+    ) -> Result<(), String> {
+        lifecycle.validate()?;
         if !self.writes_enabled {
             let err = self.embedder_issue.clone().unwrap_or_else(|| {
                 "memory writes disabled because the configured embedder is unavailable".into()
@@ -1675,15 +1796,22 @@ impl MemoryStore {
         let blob_q = entry.embedding.as_deref().map(embedding_to_quantized_blob);
         conn.execute(
             "INSERT INTO memories
-                 (id, tier, content, keywords, score, created_at, updated_at, access_count, embedding, embedding_q, scope_id, content_hash, embed_model, source_ids, artifact_family, producer, record_type)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                 (id, tier, content, keywords, score, created_at, updated_at, access_count, embedding, embedding_q, scope_id, content_hash, embed_model, source_ids, artifact_family, producer, record_type, effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms, priority_class, confidence, confidence_basis)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, COALESCE(?21, 'normal'), ?22, ?23)
              ON CONFLICT(id) DO UPDATE SET
                  tier=excluded.tier, content=excluded.content, keywords=excluded.keywords,
                  score=excluded.score, updated_at=excluded.updated_at, embedding=NULL,
                  embedding_q=excluded.embedding_q, scope_id=excluded.scope_id,
                  content_hash=excluded.content_hash, embed_model=excluded.embed_model,
                  source_ids=excluded.source_ids, artifact_family=excluded.artifact_family,
-                 producer=excluded.producer, record_type=excluded.record_type",
+                 producer=excluded.producer, record_type=excluded.record_type,
+                 effective_from_ms=COALESCE(excluded.effective_from_ms, memories.effective_from_ms),
+                 effective_until_ms=COALESCE(excluded.effective_until_ms, memories.effective_until_ms),
+                 expires_at_ms=COALESCE(excluded.expires_at_ms, memories.expires_at_ms),
+                 review_after_ms=COALESCE(excluded.review_after_ms, memories.review_after_ms),
+                 priority_class=CASE WHEN ?24 THEN excluded.priority_class ELSE memories.priority_class END,
+                 confidence=COALESCE(excluded.confidence, memories.confidence),
+                 confidence_basis=COALESCE(excluded.confidence_basis, memories.confidence_basis)",
             rusqlite::params![
                 entry.id,
                 tier,
@@ -1701,6 +1829,14 @@ impl MemoryStore {
                 metadata.artifact_family,
                 metadata.producer,
                 metadata.record_type,
+                lifecycle.effective_from_ms,
+                lifecycle.effective_until_ms,
+                lifecycle.expires_at_ms,
+                lifecycle.review_after_ms,
+                lifecycle.priority_class.as_deref(),
+                lifecycle.confidence,
+                lifecycle.confidence_basis.as_deref(),
+                lifecycle.priority_class.is_some(),
             ],
         )
         .map_err(|e| self.persist_error(format!("memory persist failed for {}: {e}", entry.id)))?;
@@ -1935,12 +2071,15 @@ impl MemoryStore {
         context: &MemoryEventContext,
     ) -> Result<DreamStatus, String> {
         let policy = DreamAgentPolicy::restricted();
+        let as_of_ms = crate::time::now_millis() as i64;
+        let eligible_ids = self.recall_eligible_ids_at(as_of_ms, false);
         let entries = self
             .registry
             .read()
             .unwrap()
             .all()
             .into_iter()
+            .filter(|entry| eligible_ids.contains(&entry.id))
             .cloned()
             .collect::<Vec<_>>();
         let expected_corpus = dream_registry_digest(&entries)?;
@@ -1975,14 +2114,26 @@ impl MemoryStore {
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|e| self.persist_error(format!("dream transaction failed: {e}")))?;
-        let current_corpus = dream_database_digest(&tx)?;
+        let current_eligible = recall_eligible_ids_on(&tx, as_of_ms, false).map_err(|error| {
+            self.persist_error(format!("dream eligibility lookup failed: {error}"))
+        })?;
+        let current_corpus = dream_database_digest(&tx, &current_eligible)?;
         if current_corpus != expected_corpus {
             let error = "memory DB changed while dream consolidation was preparing writes";
             self.dream_status.lock().unwrap().status = format!("failed: {error}");
             return Err(error.into());
         }
+        let expired_ids = expired_curation_ids_on(&tx, as_of_ms)
+            .map_err(|error| self.persist_error(format!("dream expired lookup failed: {error}")))?;
+        plan.quarantined_ids.extend(expired_ids.iter().cloned());
+        plan.quarantined_ids.sort();
+        plan.quarantined_ids.dedup();
         let mut never_exposed = Vec::with_capacity(plan.quarantined_ids.len());
         for id in &plan.quarantined_ids {
+            if expired_ids.contains(id) {
+                never_exposed.push(id.clone());
+                continue;
+            }
             let exposure = tx
                 .query_row(
                     "SELECT m.inject_count,
@@ -2711,6 +2862,104 @@ impl MemoryStore {
         Ok(())
     }
 
+    fn apply_lifecycle_input_on(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        replacement: &MemoryEntry,
+        lifecycle: &MemoryLifecycleInputV1,
+        context: &MemoryEventContext,
+    ) -> Result<(), String> {
+        let Some(subject_id) = lifecycle.supersedes.as_deref() else {
+            return Ok(());
+        };
+        if subject_id == replacement.id {
+            return Err("lifecycle supersedes cannot reference self".into());
+        }
+        let subject: Option<(String, String, Option<String>)> = tx
+            .query_row(
+                "SELECT scope_id, lifecycle_state, superseded_by FROM memories WHERE id=?1",
+                rusqlite::params![subject_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?;
+        let Some((scope, state, successor)) = subject else {
+            return Err("lifecycle supersedes target is missing".into());
+        };
+        if scope != replacement.scope_id {
+            return Err("lifecycle supersedes must remain in one scope".into());
+        }
+        let effective_at = lifecycle
+            .effective_from_ms
+            .unwrap_or_else(|| crate::time::now_millis() as i64);
+        let event_id = format!(
+            "lifecycle-put-{}",
+            &content_hash(&format!("{subject_id}:{}:{effective_at}", replacement.id))[..32]
+        );
+        let event = MemoryLifecycleEventV1::superseded(
+            event_id.clone(),
+            subject_id,
+            &replacement.id,
+            &replacement.scope_id,
+            effective_at,
+            &context.surface,
+            "A1",
+            "lifecycle_input",
+            "lifecycle_input",
+        );
+        let meta = serde_json::to_string(&event).map_err(|error| error.to_string())?;
+        if state == "superseded" && successor.as_deref() == Some(replacement.id.as_str()) {
+            let existing: Option<String> = tx
+                .query_row(
+                    "SELECT meta FROM memory_event_log WHERE event_uid=?1",
+                    rusqlite::params![event_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|error| error.to_string())?;
+            return if existing.as_deref() == Some(meta.as_str()) {
+                Ok(())
+            } else {
+                Err("lifecycle supersession conflicts with existing event".into())
+            };
+        }
+        if state != "active" || successor.is_some() {
+            return Err("lifecycle supersedes subject is not active".into());
+        }
+        let mut cursor = replacement.id.clone();
+        let mut seen = HashSet::new();
+        loop {
+            if !seen.insert(cursor.clone()) || cursor == subject_id {
+                return Err("lifecycle supersedes cycle".into());
+            }
+            let next: Option<Option<String>> = tx
+                .query_row(
+                    "SELECT superseded_by FROM memories WHERE id=?1",
+                    rusqlite::params![cursor],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|error| error.to_string())?;
+            match next {
+                Some(Some(next)) => cursor = next,
+                Some(None) => break,
+                None => return Err("lifecycle replacement is missing".into()),
+            }
+        }
+        let updated = tx.execute(
+            "UPDATE memories SET lifecycle_state='superseded', superseded_by=?1, effective_until_ms=?2 WHERE id=?3 AND lifecycle_state='active' AND superseded_by IS NULL",
+            rusqlite::params![replacement.id, effective_at, subject_id],
+        ).map_err(|error| error.to_string())?;
+        if updated != 1 {
+            return Err("lifecycle supersedes subject is not active".into());
+        }
+        tx.execute(
+            "INSERT INTO memory_event_log (ts, event_kind, memory_id, surface, scope_id, quantity, meta, event_uid, installation_id, client, artifact_id, identity_status) VALUES (?1, 'superseded', ?2, ?3, ?4, 1, ?5, ?6, ?7, ?8, ?9, 'observed')",
+            rusqlite::params![crate::time::now_iso(), subject_id, context.surface, replacement.scope_id, meta, event_id, self.operation_attribution.installation_id, context.surface, stable_artifact_id(subject_id)],
+        ).map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
     /// Close a bounded, completed observation window with an explicit provisional value state.
     ///
     /// A delivery is never treated as useful merely because it was read. After the caller's
@@ -2768,17 +3017,37 @@ impl MemoryStore {
             .map_err(|e| self.persist_error(format!("unknown closure query prepare failed: {e}")))?;
         let deliveries = statement
             .query_map(
-                rusqlite::params![observed_since, observed_through, (max_deliveries + 1) as i64],
+                rusqlite::params![
+                    observed_since,
+                    observed_through,
+                    (max_deliveries + 1) as i64
+                ],
                 |row| {
                     Ok((
-                        row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, Option<String>>(5)?,
-                        row.get::<_, String>(6)?, row.get::<_, Option<String>>(7)?, row.get::<_, String>(8)?,
-                        row.get::<_, Option<String>>(9)?, row.get::<_, String>(10)?, row.get::<_, String>(11)?,
-                        row.get::<_, String>(12)?, row.get::<_, String>(13)?, row.get::<_, Option<String>>(14)?,
-                        row.get::<_, Option<String>>(15)?, row.get::<_, Option<String>>(16)?, row.get::<_, Option<String>>(17)?,
-                        row.get::<_, Option<String>>(18)?, row.get::<_, String>(19)?, row.get::<_, Option<String>>(20)?,
-                        row.get::<_, Option<String>>(21)?, row.get::<_, Option<String>>(22)?, row.get::<_, Option<String>>(23)?,
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, Option<String>>(5)?,
+                        row.get::<_, String>(6)?,
+                        row.get::<_, Option<String>>(7)?,
+                        row.get::<_, String>(8)?,
+                        row.get::<_, Option<String>>(9)?,
+                        row.get::<_, String>(10)?,
+                        row.get::<_, String>(11)?,
+                        row.get::<_, String>(12)?,
+                        row.get::<_, String>(13)?,
+                        row.get::<_, Option<String>>(14)?,
+                        row.get::<_, Option<String>>(15)?,
+                        row.get::<_, Option<String>>(16)?,
+                        row.get::<_, Option<String>>(17)?,
+                        row.get::<_, Option<String>>(18)?,
+                        row.get::<_, String>(19)?,
+                        row.get::<_, Option<String>>(20)?,
+                        row.get::<_, Option<String>>(21)?,
+                        row.get::<_, Option<String>>(22)?,
+                        row.get::<_, Option<String>>(23)?,
                         row.get::<_, Option<i64>>(24)?,
                     ))
                 },
@@ -2794,12 +3063,33 @@ impl MemoryStore {
         }
         let mut events = Vec::with_capacity(deliveries.len());
         for (
-            delivery_id, installation_id, service_instance_id, workspace_id, client, client_version,
-            producer, producer_version, session_id, turn_id, trace_id, delivery_span_id,
-            artifact_family, provider, provider_version, release_generation, scope_id, artifact_id,
-            artifact_sha256, traffic_class, policy_version, policy_activation_sha256, cohort,
-            task_class, source_generation,
-        ) in deliveries {
+            delivery_id,
+            installation_id,
+            service_instance_id,
+            workspace_id,
+            client,
+            client_version,
+            producer,
+            producer_version,
+            session_id,
+            turn_id,
+            trace_id,
+            delivery_span_id,
+            artifact_family,
+            provider,
+            provider_version,
+            release_generation,
+            scope_id,
+            artifact_id,
+            artifact_sha256,
+            traffic_class,
+            policy_version,
+            policy_activation_sha256,
+            cohort,
+            task_class,
+            source_generation,
+        ) in deliveries
+        {
             let event_id = format!("value.{}", new_uuid_v4()?);
             events.push(ContextEvent {
                 schema_version: 1,
@@ -2847,13 +3137,21 @@ impl MemoryStore {
             });
         }
         if events.is_empty() {
-            tx.commit()
-                .map_err(|e| self.persist_error(format!("unknown closure empty commit failed: {e}")))?;
+            tx.commit().map_err(|e| {
+                self.persist_error(format!("unknown closure empty commit failed: {e}"))
+            })?;
             self.clear_last_persist_error();
             return Ok(0);
         }
-        append_context_events_on(&tx, &ContextEventBatch { events: events.clone() })
-            .map_err(|error| self.persist_error(format!("unknown closure telemetry failed: {error}")))?;
+        append_context_events_on(
+            &tx,
+            &ContextEventBatch {
+                events: events.clone(),
+            },
+        )
+        .map_err(|error| {
+            self.persist_error(format!("unknown closure telemetry failed: {error}"))
+        })?;
         tx.commit()
             .map_err(|e| self.persist_error(format!("unknown closure commit failed: {e}")))?;
         self.clear_last_persist_error();
@@ -3501,22 +3799,32 @@ impl MemoryStore {
     /// Content-free lifecycle admission set for deterministic replay and audit.
     pub fn recall_eligible_ids_at(&self, as_of_ms: i64, include_expired: bool) -> HashSet<String> {
         let conn = self.db.lock();
-        let expiry_clause = if include_expired {
-            ""
-        } else {
-            " AND (effective_from_ms IS NULL OR effective_from_ms <= ?1) AND (effective_until_ms IS NULL OR ?1 < effective_until_ms) AND (expires_at_ms IS NULL OR ?1 < expires_at_ms)"
-        };
-        let query = format!(
-            "SELECT id FROM memories WHERE authority IN ('A1','A2','A3','A4','A5') AND ((lifecycle_state='active' AND superseded_by IS NULL) OR (lifecycle_state='superseded' AND superseded_by IS NOT NULL AND effective_until_ms IS NOT NULL AND ?1 < effective_until_ms)){expiry_clause}"
-        );
-        let mut statement = match conn.prepare(&query) {
-            Ok(statement) => statement,
-            Err(_) => return HashSet::new(),
-        };
-        statement
-            .query_map(rusqlite::params![as_of_ms], |row| row.get::<_, String>(0))
-            .map(|rows| rows.flatten().collect())
-            .unwrap_or_default()
+        recall_eligible_ids_on(&conn, as_of_ms, include_expired).unwrap_or_default()
+    }
+
+    /// Content-free lifecycle fields for `/get` and dashboard editing.
+    pub fn lifecycle_json_for(&self, id: &str) -> Result<serde_json::Value, String> {
+        let conn = self.db.lock();
+        conn.query_row(
+            "SELECT effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms,
+                    priority_class, confidence, confidence_basis, lifecycle_state, superseded_by
+             FROM memories WHERE id=?1",
+            rusqlite::params![id],
+            |row| {
+                Ok(serde_json::json!({
+                    "effectiveFromMs": row.get::<_, Option<i64>>(0)?,
+                    "effectiveUntilMs": row.get::<_, Option<i64>>(1)?,
+                    "expiresAtMs": row.get::<_, Option<i64>>(2)?,
+                    "reviewAfterMs": row.get::<_, Option<i64>>(3)?,
+                    "priorityClass": row.get::<_, String>(4)?,
+                    "confidence": row.get::<_, Option<f64>>(5)?,
+                    "confidenceBasis": row.get::<_, Option<String>>(6)?,
+                    "state": row.get::<_, String>(7)?,
+                    "supersededBy": row.get::<_, Option<String>>(8)?,
+                }))
+            },
+        )
+        .map_err(|error| format!("lifecycle lookup failed for {id}: {error}"))
     }
 
     /// Scope-aware recall: unscoped calls keep the measured hybrid-candidate + cosine order.
@@ -4616,6 +4924,32 @@ impl MemoryStore {
             } else { 0.0 },
             "note": "rate is a LOWER BOUND (advisory) — pair with the relevance spot-check",
         });
+        {
+            let as_of_ms = crate::time::now_millis() as i64;
+            let conn = self.db.lock();
+            let total: i64 = conn
+                .query_row("SELECT COUNT(*) FROM memories", [], |row| row.get(0))
+                .unwrap_or(0);
+            let state_count = |state: &str| -> i64 {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM memories WHERE lifecycle_state=?1",
+                    rusqlite::params![state],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0)
+            };
+            let future: i64 = conn.query_row("SELECT COUNT(*) FROM memories WHERE effective_from_ms IS NOT NULL AND effective_from_ms > ?1", rusqlite::params![as_of_ms], |row| row.get(0)).unwrap_or(0);
+            let expired: i64 = conn.query_row("SELECT COUNT(*) FROM memories WHERE (effective_until_ms IS NOT NULL AND effective_until_ms <= ?1) OR (expires_at_ms IS NOT NULL AND expires_at_ms <= ?1)", rusqlite::params![as_of_ms], |row| row.get(0)).unwrap_or(0);
+            let eligible = recall_eligible_ids_on(&conn, as_of_ms, false)
+                .map(|rows| rows.len() as i64)
+                .unwrap_or(0);
+            out["lifecycle"] = serde_json::json!({
+                "total": total, "eligible": eligible, "gated_out": total.saturating_sub(eligible),
+                "active": state_count("active"), "future": future, "expired": expired,
+                "superseded": state_count("superseded"), "retired": state_count("retired"),
+                "invalidated": state_count("invalidated"), "draft": state_count("draft"),
+            });
+        }
         // Feedback rail (2026-07-15): per-candidate recall outcomes. `verified_*` counts drive
         // ranking (observed actions / cited verdicts); `advisory_total` is observability only.
         // `active_vetoes` = distinct candidates currently suppressed by a verified contradiction.
@@ -4902,6 +5236,9 @@ impl MemoryStore {
                     "item source_ids are invalid or duplicated".into(),
                 ));
             }
+            item.lifecycle
+                .validate()
+                .map_err(MemoryBatchError::Invalid)?;
         }
         let request_sha256 = memory_batch_request_hash(request)?;
         {
@@ -4980,17 +5317,20 @@ impl MemoryStore {
                 producer: item.producer.clone(),
                 record_type: item.record_type.clone(),
             };
-            self.persist_entry_with_record_on(
+            self.persist_entry_with_record_lifecycle_on(
                 &tx,
                 &entry,
                 &updated_at,
                 &item.source_ids,
                 &metadata,
+                &item.lifecycle,
             )
             .map_err(MemoryBatchError::Persist)?;
             let context = MemoryEventContext::new(&item.client)
                 .with_session(&item.session_id)
                 .with_trace(&item.trace_id);
+            self.apply_lifecycle_input_on(&tx, &entry, &item.lifecycle, &context)
+                .map_err(MemoryBatchError::Persist)?;
             log_memory_event(
                 &self.operation_attribution,
                 &tx,
@@ -5096,6 +5436,32 @@ impl MemoryStore {
         record_type: &str,
         context: &MemoryEventContext,
     ) -> Result<String, String> {
+        self.try_put_attributed_lifecycle_observed(
+            name,
+            content,
+            scope,
+            tier,
+            artifact_family,
+            producer,
+            record_type,
+            context,
+            &MemoryLifecycleInputV1::default(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_put_attributed_lifecycle_observed(
+        &self,
+        name: &str,
+        content: &str,
+        scope: &str,
+        tier: MemoryTier,
+        artifact_family: &str,
+        producer: &str,
+        record_type: &str,
+        context: &MemoryEventContext,
+        lifecycle: &MemoryLifecycleInputV1,
+    ) -> Result<String, String> {
         if !crate::context_telemetry::registered_artifact_family(artifact_family)
             || !valid_registry_token(producer)
             || !valid_registry_token(record_type)
@@ -5115,6 +5481,7 @@ impl MemoryStore {
                 record_type: record_type.into(),
             }),
             context,
+            lifecycle,
         )
     }
 
@@ -5152,7 +5519,15 @@ impl MemoryStore {
         context: &MemoryEventContext,
     ) -> Result<String, String> {
         self.try_put_with_record_metadata_observed(
-            name, content, scope, tier, updated_at, source_ids, None, context,
+            name,
+            content,
+            scope,
+            tier,
+            updated_at,
+            source_ids,
+            None,
+            context,
+            &MemoryLifecycleInputV1::default(),
         )
     }
 
@@ -5167,6 +5542,7 @@ impl MemoryStore {
         source_ids: &[String],
         supplied_metadata: Option<MemoryRecordMetadata>,
         context: &MemoryEventContext,
+        lifecycle: &MemoryLifecycleInputV1,
     ) -> Result<String, String> {
         if updated_at.trim().is_empty() {
             return Err("updated_at is required".into());
@@ -5220,7 +5596,10 @@ impl MemoryStore {
         let tx = conn
             .transaction()
             .map_err(|e| self.persist_error(format!("memory transaction failed: {e}")))?;
-        self.persist_entry_with_record_on(&tx, &entry, updated_at, source_ids, &metadata)?;
+        self.persist_entry_with_record_lifecycle_on(
+            &tx, &entry, updated_at, source_ids, &metadata, lifecycle,
+        )?;
+        self.apply_lifecycle_input_on(&tx, &entry, lifecycle, context)?;
         log_memory_event(
             &self.operation_attribution,
             &tx,
@@ -5731,6 +6110,7 @@ mod tests {
             turn_id: "architect-turn-1".into(),
             trace_id: "architect-trace-1".into(),
             source_ids: vec![],
+            lifecycle: MemoryLifecycleInputV1::default(),
         };
         MemoryBatchRequest {
             batch_id: batch_id.into(),

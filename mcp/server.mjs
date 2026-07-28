@@ -24,6 +24,7 @@ const CALLER_SCHEMA = {
     root: { type: "string", minLength: 1 },
     repositoryId: { type: "string", minLength: 1 },
     scopeId: { type: "string", minLength: 1 },
+    scopeDescriptor: { type: "object" },
   },
   additionalProperties: false,
 };
@@ -48,6 +49,13 @@ function bounded(value, limit, label) {
 }
 function receiptId(prefix, value) { return `${prefix}-${createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 24)}`; }
 function callerLevel(binding) { return binding.grant_policy?.level || "read-only"; }
+function callerDescriptor(caller) { return caller.scopeDescriptor || { kind: "filesystem", path: caller.scopeId }; }
+function stableDescriptor(value) {
+  if (Array.isArray(value)) return value.map(stableDescriptor);
+  if (value && typeof value === "object") return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableDescriptor(value[key])]));
+  return value;
+}
+function sameDescriptor(left, right) { return JSON.stringify(stableDescriptor(left)) === JSON.stringify(stableDescriptor(right)); }
 function permits(binding, action) {
   const level = callerLevel(binding);
   if (["context", "source_read", "checkpoint_load"].includes(action)) return ["read-only", "write-proposed", "write-trusted", "admin"].includes(level);
@@ -71,8 +79,8 @@ async function authorize(args, action) {
   if (!caller || typeof caller !== "object" || Array.isArray(caller)) throw new Error("caller binding is required");
   if (typeof caller.root !== "string" || !caller.root.trim()) throw new Error("caller root is required");
   const callerBinding = await bindingFor(caller.root);
-  if (binding.root !== callerBinding.root || binding.repository_id !== callerBinding.repository_id || binding.scope_id !== callerBinding.scope_id) throw new Error("cross_root_binding_denied");
-  if (caller.repositoryId !== binding.repository_id || caller.scopeId !== binding.scope_id) throw new Error("caller_scope_binding_denied");
+  if (binding.root !== callerBinding.root || binding.repository_id !== callerBinding.repository_id || !sameDescriptor(binding.scope_descriptor, callerBinding.scope_descriptor)) throw new Error("cross_root_binding_denied");
+  if (caller.repositoryId !== binding.repository_id || !sameDescriptor(callerDescriptor(caller), binding.scope_descriptor)) throw new Error("caller_scope_binding_denied");
   if (!permits(binding, action)) throw new Error("caller_not_authorized");
   return binding;
 }
@@ -93,7 +101,7 @@ function memrightArgs(args) { return ["--db", process.env.MEMRIGHT_DB || "", ...
 async function callTool(name, args) {
   if (name === "membrane_context") {
     const binding = await authorize(args, "context");
-    const request = { task: args.task, repo: binding.repository_id, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId };
+    const request = { task: args.task, repo: binding.repository_id, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor };
     const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request));
     return text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
   }

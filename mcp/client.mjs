@@ -108,6 +108,7 @@ function loadInput({ inputArg, maxTokens }) {
     session: parsed.session,
     anchors: parsed.anchors ?? "",
     scopeGrantId: parsed.scopeGrantId,
+    scopeDescriptor: parsed.scopeDescriptor,
   };
 }
 

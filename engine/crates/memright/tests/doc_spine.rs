@@ -32,7 +32,11 @@ fn sync_excludes_health_at_any_depth_regardless_of_casing() {
     std::fs::create_dir_all(temp.path().join("health")).unwrap();
     std::fs::create_dir_all(temp.path().join("docs").join("HEALTH")).unwrap();
     std::fs::write(temp.path().join("health").join("one.md"), "private").unwrap();
-    std::fs::write(temp.path().join("docs").join("HEALTH").join("two.md"), "private").unwrap();
+    std::fs::write(
+        temp.path().join("docs").join("HEALTH").join("two.md"),
+        "private",
+    )
+    .unwrap();
     std::fs::write(temp.path().join("public.md"), "public").unwrap();
 
     let db = MemDb::open_in_memory();
@@ -76,17 +80,25 @@ fn sync_refreshes_hash_and_worktree_revision_after_content_changes() {
     std::fs::write(&path, "first").unwrap();
     let db = MemDb::open_in_memory();
     doc_spine::sync(&db, temp.path()).unwrap();
-    let first: (String, String) = db.lock().query_row(
-        "SELECT content_hash, revision FROM doc_artifacts WHERE path='runbook.md'", [],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    ).unwrap();
+    let first: (String, String) = db
+        .lock()
+        .query_row(
+            "SELECT content_hash, revision FROM doc_artifacts WHERE path='runbook.md'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
 
     std::fs::write(&path, "second").unwrap();
     doc_spine::sync(&db, temp.path()).unwrap();
-    let second: (String, String) = db.lock().query_row(
-        "SELECT content_hash, revision FROM doc_artifacts WHERE path='runbook.md'", [],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    ).unwrap();
+    let second: (String, String) = db
+        .lock()
+        .query_row(
+            "SELECT content_hash, revision FROM doc_artifacts WHERE path='runbook.md'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
 
     assert_ne!(first.0, second.0);
     assert_eq!(second.1, "worktree");
@@ -100,9 +112,14 @@ fn sync_preserves_document_identity_across_rename_and_tombstones_old_path() {
     std::fs::write(&old, "# Decision\nretain identity").unwrap();
     let db = MemDb::open_in_memory();
     doc_spine::sync(&db, temp.path()).unwrap();
-    let first_id: String = db.lock().query_row(
-        "SELECT doc_id FROM doc_artifacts WHERE path='decision-old.md'", [], |r| r.get(0),
-    ).unwrap();
+    let first_id: String = db
+        .lock()
+        .query_row(
+            "SELECT doc_id FROM doc_artifacts WHERE path='decision-old.md'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
 
     std::fs::rename(old, new).unwrap();
     let report = doc_spine::sync(&db, temp.path()).unwrap();
@@ -110,11 +127,19 @@ fn sync_preserves_document_identity_across_rename_and_tombstones_old_path() {
     let active_id: String = db.lock().query_row(
         "SELECT doc_id FROM doc_artifacts WHERE path='decision-new.md' AND lifecycle_state='active'", [], |r| r.get(0),
     ).unwrap();
-    let old_state: String = db.lock().query_row(
-        "SELECT lifecycle_state FROM doc_artifacts WHERE path='decision-old.md'", [], |r| r.get(0),
-    ).unwrap();
+    let old_state: String = db
+        .lock()
+        .query_row(
+            "SELECT lifecycle_state FROM doc_artifacts WHERE path='decision-old.md'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
 
-    assert_eq!(active_id, first_id, "rename must retain a stable document alias");
+    assert_eq!(
+        active_id, first_id,
+        "rename must retain a stable document alias"
+    );
     assert_eq!(old_state, "tombstoned");
 }
 
@@ -126,14 +151,21 @@ fn sync_never_admits_document_content_as_durable_memory() {
 
     doc_spine::sync(&db, temp.path()).unwrap();
 
-    let durable: i64 = db.lock().query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0)).unwrap();
+    let durable: i64 = db
+        .lock()
+        .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(durable, 0);
 }
 
 #[test]
 fn sync_persists_machine_local_lexical_projection_with_current_provenance() {
     let temp = tempfile::tempdir().unwrap();
-    std::fs::write(temp.path().join("runbook.md"), "# Runbook\n\nverify install").unwrap();
+    std::fs::write(
+        temp.path().join("runbook.md"),
+        "# Runbook\n\nverify install",
+    )
+    .unwrap();
     let db = MemDb::open_in_memory();
 
     doc_spine::sync(&db, temp.path()).unwrap();
@@ -147,6 +179,154 @@ fn sync_persists_machine_local_lexical_projection_with_current_provenance() {
     assert!(!row.1.is_empty());
     assert_eq!(row.2, "worktree");
     assert!(row.3 > 0);
+}
+
+#[test]
+fn sync_frontmatter_projects_metadata_and_supersedes_declared_document() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("old.md"), "# Old\n").unwrap();
+    let db = MemDb::open_in_memory();
+    doc_spine::sync(&db, temp.path()).unwrap();
+
+    std::fs::write(
+        temp.path().join("new.md"),
+        "---\ntitle: New Decision\nsummary: Replacement policy\nkeywords: policy, replacement\nstatus: draft\nsupersedes: old.md\n---\n# New\n",
+    )
+    .unwrap();
+    doc_spine::sync(&db, temp.path()).unwrap();
+
+    let row: (String, String, String, String, String) = db.lock().query_row(
+        "SELECT title, summary, keywords_json, lifecycle_state, doc_id FROM doc_artifacts WHERE path='new.md'",
+        [],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+    ).unwrap();
+    assert_eq!(row.0, "New Decision");
+    assert_eq!(row.1, "Replacement policy");
+    assert_eq!(row.2, "[\"policy\",\"replacement\"]");
+    assert_eq!(row.3, "draft");
+    let old: (String, String) = db
+        .lock()
+        .query_row(
+            "SELECT lifecycle_state, superseded_by FROM doc_artifacts WHERE path='old.md'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(old, ("superseded".into(), row.4.clone()));
+    let projection: String = db
+        .lock()
+        .query_row(
+            "SELECT content FROM doc_projections WHERE parent_doc_id=?1 AND kind='lexical'",
+            [&row.4],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(projection.contains("New Decision"));
+    assert!(projection.contains("Replacement policy"));
+    assert_eq!(
+        db.lock()
+            .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
+fn sync_frontmatter_rejects_duplicate_or_dangling_supersession_without_writes() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("invalid.md"),
+        "---\ntitle: One\ntitle: Two\nsupersedes: missing.md\n---\n# Invalid\n",
+    )
+    .unwrap();
+    let db = MemDb::open_in_memory();
+    let err =
+        doc_spine::sync(&db, temp.path()).expect_err("duplicate frontmatter must fail closed");
+    assert!(err.contains("duplicate frontmatter key"));
+    assert_eq!(doc_rows(&db), 0);
+    let projection_rows = db
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='doc_projections'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap();
+    assert!(
+        projection_rows == 0
+            || db
+                .lock()
+                .query_row("SELECT COUNT(*) FROM doc_projections", [], |r| r
+                    .get::<_, i64>(0))
+                .unwrap()
+                == 0
+    );
+}
+
+#[test]
+fn sync_frontmatter_failure_matrix_is_atomic() {
+    let cases: Vec<(&str, Vec<(&str, String)>, &str)> = vec![
+        (
+            "unclosed",
+            vec![("bad.md", "---\ntitle: missing close\n# Body\n".to_owned())],
+            "unclosed frontmatter",
+        ),
+        (
+            "malformed",
+            vec![(
+                "bad.md",
+                "---\ntitle without colon\n---\n# Body\n".to_owned(),
+            )],
+            "malformed frontmatter",
+        ),
+        (
+            "missing",
+            vec![(
+                "bad.md",
+                "---\nsupersedes: absent.md\n---\n# Body\n".to_owned(),
+            )],
+            "target missing",
+        ),
+        (
+            "self",
+            vec![(
+                "bad.md",
+                "---\nsupersedes: bad.md\n---\n# Body\n".to_owned(),
+            )],
+            "supersedes self",
+        ),
+        (
+            "cycle",
+            vec![
+                ("one.md", "---\nsupersedes: two.md\n---\n# One\n".to_owned()),
+                ("two.md", "---\nsupersedes: one.md\n---\n# Two\n".to_owned()),
+            ],
+            "supersedes cycle",
+        ),
+        (
+            "oversized",
+            vec![(
+                "bad.md",
+                format!("---\ntitle: {}\n---\n# Body\n", "x".repeat(4 * 1024 + 1)),
+            )],
+            "invalid frontmatter value",
+        ),
+    ];
+    for (name, files, expected) in cases {
+        let temp = tempfile::tempdir().unwrap();
+        for (path, content) in files {
+            std::fs::write(temp.path().join(path), content).unwrap();
+        }
+        let db = MemDb::open_in_memory();
+        let err = doc_spine::sync(&db, temp.path()).expect_err(name);
+        assert!(err.contains(expected), "{name}: {err}");
+        assert_eq!(doc_rows(&db), 0, "{name} must not write artifacts");
+        let projections: i64 = db
+            .lock()
+            .query_row("SELECT COUNT(*) FROM doc_projections", [], |r| r.get(0))
+            .unwrap_or(0);
+        assert_eq!(projections, 0, "{name} must not write projections");
+    }
 }
 
 #[test]

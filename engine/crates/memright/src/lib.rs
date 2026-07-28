@@ -9,8 +9,8 @@ pub mod catalog;
 pub mod checkpoint;
 pub mod compress;
 pub mod context_telemetry;
-pub mod doc_projection;
 pub mod doc_candidate_provider;
+pub mod doc_projection;
 pub mod doc_shadow;
 pub mod doc_spine;
 pub mod doctor;
@@ -36,16 +36,18 @@ pub mod truncate;
 // Re-export OKF utilities so consumers import from one crate (`memright`) during unification.
 pub use memright_format::okf;
 
+pub use admission_policy::{
+    admit, AdmissionDecision, AdmissionError, AdmissionRequest, Authority, InstructionPolicy,
+    Origin, ProtectedSpan, ProtectedSpanKind, QuarantineStatus,
+};
 pub use checkpoint::{
     CheckpointError, CheckpointSourceRefV1, CheckpointSourceResolutionV1, CheckpointV1,
 };
-pub use admission_policy::{
-    admit, AdmissionDecision, AdmissionError, AdmissionRequest, Authority, InstructionPolicy, Origin,
-    ProtectedSpan, ProtectedSpanKind, QuarantineStatus,
-};
 pub use memdb::MemDb;
-pub use scope::{normalize_scope, path_to_scope, scope_chain};
+pub use scope::{
+    normalize_scope, path_to_scope, scope_chain, ScopeDescriptorError, ScopeDescriptorV1,
+};
 pub use store::{
-    MemoryEventContext, MemoryLifecycleError, MemoryLifecycleEventV1, MemoryLifecycleKind,
-    MemoryPriorityError, MemoryStore,
+    MemoryEventContext, MemoryLifecycleError, MemoryLifecycleEventV1, MemoryLifecycleInputV1,
+    MemoryLifecycleKind, MemoryPriorityError, MemoryStore,
 };

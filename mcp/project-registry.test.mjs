@@ -23,11 +23,43 @@ const registry = join(root, "registry.json");
 const binding = await enroll(root, { repository_id: "repo-a", scope_id: "scope-a", provider_config: { transport: "loopback" }, grant_policy: { level: "read-only" } }, registry);
 assert.equal(binding.repository_id, "repo-a");
 assert.equal((await bindingFor(root, registry)).scope_id, "scope-a");
+assert.deepEqual((await bindingFor(root, registry)).scope_descriptor, { kind: "filesystem", path: "scope-a" });
 await removeBinding(root, registry);
 await assert.rejects(() => bindingFor(root, registry), /not enrolled/);
 await enroll(root, { repository_id: "repo-a", scope_id: "scope-a" }, registry);
 await writeFile(registry, "{broken", "utf8");
 await assert.rejects(() => readRegistry(registry), /registry unavailable/);
+
+const virtualRegistry = join(root, "virtual-registry.json");
+const virtualBinding = await enroll(root, {
+  repository_id: "repo-a", scope_id: "opaque-thread",
+  scope_descriptor: { kind: "virtual", id: "thread:abc-123", tenant_id: "tenant-a", parents: [], inherit_global: false },
+}, virtualRegistry);
+assert.deepEqual(virtualBinding.scope_descriptor, { kind: "virtual", id: "thread:abc-123", tenant_id: "tenant-a", parents: [], inherit_global: false });
+await assert.rejects(
+  () => enroll(root, {
+    repository_id: "repo-a", scope_id: "opaque-thread",
+    scope_descriptor: { kind: "virtual", id: "thread:abc-123", tenant_id: "tenant-a", parents: [], inherit_global: true },
+  }, virtualRegistry),
+  /global inheritance/,
+);
+const legacyRegistry = join(root, "legacy-registry.json");
+await writeFile(legacyRegistry, JSON.stringify({
+  schema_version: 1,
+  bindings: { [await realpath(root)]: { repository_id: "repo-legacy", scope_id: "scope-legacy" } },
+}), "utf8");
+assert.equal((await readRegistry(legacyRegistry)).schema_version, 2);
+assert.equal(JSON.parse(await readFile(legacyRegistry, "utf8")).schema_version, 2);
+
+const virtualInitRoot = await mkdtemp(join(tmpdir(), "membrane-virtual-init-"));
+const virtualInitRegistry = join(virtualInitRoot, "registry.json");
+await invokeInstall([
+  "init", virtualInitRoot, "--repository", "repo-virtual", "--scope", "opaque-thread",
+  "--virtual-id", "thread:abc-123", "--tenant-id", "tenant-a", "--parent", "root",
+], { MEMBRANE_PROJECT_REGISTRY: virtualInitRegistry });
+assert.deepEqual((await bindingFor(virtualInitRoot, virtualInitRegistry)).scope_descriptor, {
+  kind: "virtual", id: "thread:abc-123", tenant_id: "tenant-a", parents: ["root"], inherit_global: false,
+});
 
 const lifecycleRoot = await mkdtemp(join(tmpdir(), "membrane-install-"));
 const canonicalLifecycleRoot = await realpath(lifecycleRoot);

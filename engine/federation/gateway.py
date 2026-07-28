@@ -397,6 +397,7 @@ def _gather_all_parallel(
     max_tokens: int,
     explicit_anchors: list[str],
     scope_grant_id: str | None,
+    scope_descriptor: dict | None = None,
 ) -> tuple[list[tuple[str, list[dict[str, Any]], list[dict[str, Any]]]], dict[str, Any]]:
     """Invoke every provider in PARALLEL; collect candidates + warnings.
 
@@ -563,7 +564,7 @@ def _gather_all_parallel(
         ("audit", lambda: _adapter("audit", audit.produce, repo_root, task)),
         ("architect", lambda: _adapter("architect", architect.produce, repo_root, task)),
         ("memright", lambda: _adapter(
-            "memright", memright.produce_with_observability, repo_root, task, scope_grant_id
+            "memright", memright.produce_with_observability, repo_root, task, scope_grant_id, scope_descriptor
         )),
         ("git", lambda: _adapter("git", git_provider.produce, repo_root)),
         ("rules", lambda: _adapter("rules", rules.produce, repo_root, task)),
@@ -803,6 +804,7 @@ def assemble_candidate_set(
     session: str | None = None,
     anchors: str = "",
     scope_grant_id: str | None = None,
+    scope_descriptor: dict | None = None,
 ) -> tuple[dict, int]:
     """One federation assembly: (envelope, exit_code). Shared by the argv
     one-shot mode and the resident stdio worker; behavior identical."""
@@ -855,6 +857,7 @@ def assemble_candidate_set(
         max_tokens=max_tokens,
         explicit_anchors=explicit_anchors,
         scope_grant_id=scope_grant_id,
+        scope_descriptor=scope_descriptor,
     )
     merge_started = time.monotonic()
     ccs = _merge_candidates(
@@ -910,6 +913,7 @@ def serve_stdio() -> int:
                 session=req.get("session"),
                 anchors=str(req.get("anchors") or ""),
                 scope_grant_id=req.get("scopeGrantId"),
+                scope_descriptor=req.get("scopeDescriptor"),
             )
             payload = json.dumps(envelope, ensure_ascii=False)
         except Exception as exc:  # noqa: BLE001 — a bad request must not kill the worker

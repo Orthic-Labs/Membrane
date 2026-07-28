@@ -248,6 +248,240 @@ fn generic_put_persists_validated_write_attribution_and_rejects_family_typos() {
 }
 
 #[test]
+fn generic_put_round_trips_camel_case_lifecycle_input() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    let body = json!({
+        "name": "http-lifecycle",
+        "content": "HTTP lifecycle metadata.",
+        "scope": "D--Claude",
+        "effectiveFromMs": 100,
+        "effectiveUntilMs": 200,
+        "expiresAtMs": 300,
+        "reviewAfterMs": 150,
+        "priorityClass": "protected",
+        "confidence": 0.75,
+        "confidenceBasis": "reviewed evidence",
+    })
+    .to_string();
+    assert_eq!(
+        memright::serve::route_for_tests(&store, "POST", "/put", &body).0,
+        200
+    );
+    let row: (i64, i64, i64, i64, String, f64, String) = store.db().lock().query_row(
+        "SELECT effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms, priority_class, confidence, confidence_basis FROM memories WHERE id='D--Claude/http-lifecycle'",
+        [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?)),
+    ).unwrap();
+    assert_eq!(
+        row,
+        (
+            100,
+            200,
+            300,
+            150,
+            "protected".into(),
+            0.75,
+            "reviewed evidence".into()
+        )
+    );
+    let get = memright::serve::route_for_tests(
+        &store,
+        "POST",
+        "/get",
+        r#"{"id":"D--Claude/http-lifecycle"}"#,
+    );
+    assert_eq!(get.0, 200);
+    let body: Value = serde_json::from_str(&get.1).unwrap();
+    assert_eq!(body["lifecycle"]["effectiveFromMs"], 100);
+    assert_eq!(body["lifecycle"]["priorityClass"], "protected");
+    assert_eq!(body["lifecycle"]["confidenceBasis"], "reviewed evidence");
+}
+
+#[test]
+fn batch_lifecycle_input_persists_and_omitted_update_preserves_values() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    let mut first = item("lifecycle-1", "lifecycle-rule", "First lifecycle body.");
+    let fields = first.as_object_mut().unwrap();
+    fields.insert("effectiveFromMs".into(), json!(100));
+    fields.insert("effectiveUntilMs".into(), json!(200));
+    fields.insert("priorityClass".into(), json!("protected"));
+    fields.insert("confidence".into(), json!(0.8));
+    fields.insert("confidenceBasis".into(), json!("reviewed evidence"));
+    assert_eq!(
+        memright::serve::route_for_tests(
+            &store,
+            "POST",
+            "/v1/memories:batch",
+            &request("lifecycle-first", vec![first])
+        )
+        .0,
+        201
+    );
+
+    let values: (i64, i64, String, f64, String) = store.db().lock().query_row(
+        "SELECT effective_from_ms, effective_until_ms, priority_class, confidence, confidence_basis FROM memories WHERE id='D--Claude/lifecycle-rule'",
+        [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+    ).unwrap();
+    assert_eq!(
+        values,
+        (
+            100,
+            200,
+            "protected".into(),
+            0.8,
+            "reviewed evidence".into()
+        )
+    );
+
+    assert_eq!(
+        memright::serve::route_for_tests(
+            &store,
+            "POST",
+            "/v1/memories:batch",
+            &request(
+                "lifecycle-update",
+                vec![item(
+                    "lifecycle-2",
+                    "lifecycle-rule",
+                    "Updated lifecycle body."
+                )]
+            )
+        )
+        .0,
+        201
+    );
+    let preserved: (i64, i64, String, f64, String) = store.db().lock().query_row(
+        "SELECT effective_from_ms, effective_until_ms, priority_class, confidence, confidence_basis FROM memories WHERE id='D--Claude/lifecycle-rule'",
+        [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+    ).unwrap();
+    assert_eq!(preserved, values);
+}
+
+#[test]
+fn batch_lifecycle_supersession_transitions_old_row_in_same_transaction() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    assert_eq!(
+        memright::serve::route_for_tests(
+            &store,
+            "POST",
+            "/v1/memories:batch",
+            &request("old-row", vec![item("old", "old-rule", "Old rule.")])
+        )
+        .0,
+        201
+    );
+    let mut replacement = item("replacement", "new-rule", "New rule.");
+    replacement
+        .as_object_mut()
+        .unwrap()
+        .insert("supersedes".into(), json!("D--Claude/old-rule"));
+    replacement
+        .as_object_mut()
+        .unwrap()
+        .insert("effectiveFromMs".into(), json!(123));
+    assert_eq!(
+        memright::serve::route_for_tests(
+            &store,
+            "POST",
+            "/v1/memories:batch",
+            &request("new-row", vec![replacement])
+        )
+        .0,
+        201
+    );
+    let old: (String, String, i64) = store.db().lock().query_row(
+        "SELECT lifecycle_state, superseded_by, effective_until_ms FROM memories WHERE id='D--Claude/old-rule'",
+        [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    ).unwrap();
+    assert_eq!(old, ("superseded".into(), "D--Claude/new-rule".into(), 123));
+    assert_eq!(
+        store
+            .db()
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memory_event_log WHERE event_kind='superseded'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn lifecycle_route_rejects_bad_confidence_and_priority_without_writes() {
+    for body in [
+        r#"{"name":"bad-confidence","content":"body","scope":"D--Claude","confidence":1.1}"#,
+        r#"{"name":"bad-priority","content":"body","scope":"D--Claude","priorityClass":"pinned"}"#,
+    ] {
+        let store = MemoryStore::open(MemDb::open_in_memory());
+        let response = memright::serve::route_for_tests(&store, "POST", "/put", body);
+        assert_eq!(response.0, 400, "{}", response.1);
+        assert_eq!(
+            store
+                .db()
+                .lock()
+                .query_row("SELECT COUNT(*) FROM memories", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+}
+
+#[test]
+fn batch_supersession_log_failure_rolls_back_new_and_old_rows() {
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    assert_eq!(
+        memright::serve::route_for_tests(
+            &store,
+            "POST",
+            "/v1/memories:batch",
+            &request("rollback-old", vec![item("old", "old-rule", "Old rule.")])
+        )
+        .0,
+        201
+    );
+    store.db().lock().execute_batch(
+        "CREATE TRIGGER reject_supersession_event BEFORE INSERT ON memory_event_log
+         WHEN NEW.event_kind='superseded' BEGIN SELECT RAISE(ABORT, 'forced supersession event failure'); END;",
+    ).unwrap();
+    let mut replacement = item("replacement", "new-rule", "New rule.");
+    replacement
+        .as_object_mut()
+        .unwrap()
+        .insert("supersedes".into(), json!("D--Claude/old-rule"));
+    let response = memright::serve::route_for_tests(
+        &store,
+        "POST",
+        "/v1/memories:batch",
+        &request("rollback-new", vec![replacement]),
+    );
+    assert_eq!(response.0, 500, "{}", response.1);
+    let old: (String, Option<String>) = store
+        .db()
+        .lock()
+        .query_row(
+            "SELECT lifecycle_state, superseded_by FROM memories WHERE id='D--Claude/old-rule'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(old, ("active".into(), None));
+    assert_eq!(
+        store
+            .db()
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM memories WHERE id='D--Claude/new-rule'",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+        0
+    );
+}
+
+#[test]
 fn invalid_middle_item_rejects_whole_batch_before_embedding_or_commit() {
     let store = MemoryStore::open(MemDb::open_in_memory());
     let mut invalid = item("concept-2", "plan--two", "Second concept.");

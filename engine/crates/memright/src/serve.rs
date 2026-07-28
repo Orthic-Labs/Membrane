@@ -15,7 +15,8 @@ use crate::catalog::{self, default_catalog_path, ContextCatalog, CATALOG_SCHEMA_
 use crate::memdb::MemDb;
 use crate::scope::{normalize_scope, scope_chain};
 use crate::store::{
-    ExternalLifecycleStage, MemoryBatchError, MemoryBatchRequest, MemoryEventContext, MemoryStore,
+    ExternalLifecycleStage, MemoryBatchError, MemoryBatchRequest, MemoryEventContext,
+    MemoryLifecycleInputV1, MemoryStore,
 };
 use axum::body::Bytes;
 use axum::extract::rejection::BytesRejection;
@@ -1946,6 +1947,31 @@ fn json_body(body: &str) -> Result<serde_json::Value, (u16, String)> {
     serde_json::from_str(body).map_err(|_| (400, "{\"error\":\"malformed json body\"}".to_string()))
 }
 
+fn lifecycle_input_from_json(value: &Value) -> Result<MemoryLifecycleInputV1, String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "request body must be an object".to_string())?;
+    let lifecycle = [
+        "effectiveFromMs",
+        "effectiveUntilMs",
+        "expiresAtMs",
+        "reviewAfterMs",
+        "priorityClass",
+        "confidence",
+        "confidenceBasis",
+        "supersedes",
+    ]
+    .into_iter()
+    .filter_map(|key| {
+        object
+            .get(key)
+            .map(|value| (key.to_string(), value.clone()))
+    })
+    .collect::<serde_json::Map<_, _>>();
+    serde_json::from_value(Value::Object(lifecycle))
+        .map_err(|error| format!("invalid lifecycle input: {error}"))
+}
+
 fn event_context(v: &serde_json::Value, fallback_surface: &str) -> MemoryEventContext {
     let surface = v
         .get("client")
@@ -2534,6 +2560,13 @@ fn route_with_context_ingest_lease(
             }
         };
         let context = event_context(&v, "http");
+        let lifecycle = match lifecycle_input_from_json(&v) {
+            Ok(lifecycle) => lifecycle,
+            Err(error) => return (400, serde_json::json!({"error": error}).to_string()),
+        };
+        if let Err(error) = lifecycle.validate() {
+            return (400, serde_json::json!({"error": error}).to_string());
+        }
         let name = v.get("name").and_then(|x| x.as_str()).unwrap_or("").trim();
         let content = v
             .get("content")
@@ -2598,7 +2631,7 @@ fn route_with_context_ingest_lease(
             .unwrap_or("memory")
             .trim();
         let memory_id = format!("{}/{}", crate::scope::normalize_scope(scope), name);
-        return match store.try_put_attributed_observed(
+        return match store.try_put_attributed_lifecycle_observed(
             name,
             content,
             scope,
@@ -2607,6 +2640,7 @@ fn route_with_context_ingest_lease(
             producer,
             record_type,
             &context,
+            &lifecycle,
         ) {
             Ok(id) => (200, serde_json::json!({ "put": id }).to_string()),
             Err(e) if e.starts_with("memory write attribution") => {
@@ -2870,11 +2904,14 @@ fn route_with_context_ingest_lease(
             return (400, "{\"error\":\"missing id\"}".into());
         }
         return match store.get_full_observed(id, &context) {
-            Ok((content, access_count)) => (
-                200,
-                serde_json::json!({"id": id, "content": content, "access_count": access_count})
-                    .to_string(),
-            ),
+            Ok((content, access_count)) => match store.lifecycle_json_for(id) {
+                Ok(lifecycle) => (
+                    200,
+                    serde_json::json!({"id": id, "content": content, "access_count": access_count, "lifecycle": lifecycle})
+                        .to_string(),
+                ),
+                Err(error) => (500, serde_json::json!({"error": error}).to_string()),
+            },
             Err(e) => {
                 let (http_status, status, reason) = if e.starts_with("no memory with id ") {
                     (404, "empty", "target_not_found")
@@ -3360,12 +3397,11 @@ fn route_with_context_ingest_lease(
             .and_then(|x| x.as_u64())
             .and_then(|value| usize::try_from(value).ok())
             .unwrap_or(0);
-        match store.close_unresolved_deliveries(
-            observed_since,
-            observed_through,
-            max_deliveries,
-        ) {
-            Ok(closed) => (200, serde_json::json!({ "ok": true, "closed": closed }).to_string()),
+        match store.close_unresolved_deliveries(observed_since, observed_through, max_deliveries) {
+            Ok(closed) => (
+                200,
+                serde_json::json!({ "ok": true, "closed": closed }).to_string(),
+            ),
             Err(error) => (400, serde_json::json!({ "error": error }).to_string()),
         }
     } else if method == "POST" && path == "/memory-candidates" {
@@ -3377,16 +3413,37 @@ fn route_with_context_ingest_lease(
         if task.is_empty() {
             return (400, "{\"error\":\"missing task\"}".to_string());
         }
-        let scope = v
-            .get("scope")
-            .and_then(|x| x.as_str())
-            .unwrap_or("D--Claude")
-            .trim();
+        let descriptor = match v.get("scopeDescriptor") {
+            Some(value) => {
+                match serde_json::from_value::<crate::scope::ScopeDescriptorV1>(value.clone()) {
+                    Ok(descriptor) => descriptor,
+                    Err(error) => return (
+                        400,
+                        serde_json::json!({"error": format!("invalid scopeDescriptor: {error}")})
+                            .to_string(),
+                    ),
+                }
+            }
+            None => crate::scope::ScopeDescriptorV1::filesystem(
+                v.get("scope")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("D--Claude")
+                    .trim(),
+            ),
+        };
         let max = v
             .get("max_candidates")
             .and_then(|x| x.as_u64())
             .unwrap_or(64) as usize;
-        let mut payload = crate::federation::memory_candidates_payload(store, task, scope, max);
+        let mut payload = match crate::federation::memory_candidates_payload_for_descriptor(
+            store,
+            task,
+            &descriptor,
+            max,
+        ) {
+            Ok(payload) => payload,
+            Err(error) => return (400, serde_json::json!({"error": error}).to_string()),
+        };
         if let Some(stages) = payload
             .get_mut("_rightcontext")
             .and_then(|value| value.get_mut("stageElapsedMs"))
@@ -5896,6 +5953,33 @@ mod tests {
                 .contains(secret_task),
             "observability must not expose task content"
         );
+    }
+
+    #[test]
+    fn memory_candidates_accepts_typed_virtual_scope_without_global_inheritance() {
+        let store = MemoryStore::new();
+        store
+            .try_put(
+                "thread-memory",
+                "typed virtual scope candidate",
+                "virtual:tenant-a:thread:abc-123",
+                memright_core::MemoryTier::Semantic,
+            )
+            .unwrap();
+        let response = route(
+            &store,
+            "POST",
+            "/memory-candidates",
+            r#"{"task":"typed virtual scope","scopeDescriptor":{"kind":"virtual","id":"thread:abc-123","tenant_id":"tenant-a","parents":[],"inherit_global":false},"max_candidates":3}"#,
+        );
+        assert_eq!(response.0, 200, "{}", response.1);
+        let payload: serde_json::Value = serde_json::from_str(&response.1).unwrap();
+        assert_eq!(payload["scope"], "virtual:tenant-a:thread:abc-123");
+        assert!(payload["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|candidate| candidate["sourceRef"] != "global"));
     }
 
     #[test]
