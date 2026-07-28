@@ -63,6 +63,7 @@ function createHarness({ now = 1_700_000_000_000, shared } = {}) {
       getItem: () => { state.reads += 1; return state.raw; },
       setItem: (_key, value) => { state.writes += 1; state.raw = String(value); },
     },
+    location: { hash: '' },
     navigator: {
       locks: {
         request: (name, options, operation) => {
