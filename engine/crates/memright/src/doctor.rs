@@ -22,6 +22,15 @@ pub struct DoctorCheckV0 {
 }
 
 pub fn run(path: impl AsRef<Path>) -> Result<DoctorReportV0, String> {
+    run_with_suppressions(path, &[])
+}
+
+/// Runs the fixed v0 checks while omitting only explicitly named, stable finding codes.
+/// Suppressions are caller-owned policy; unknown names have no effect.
+pub fn run_with_suppressions(
+    path: impl AsRef<Path>,
+    suppressed_codes: &[&str],
+) -> Result<DoctorReportV0, String> {
     let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|error| error.to_string())?;
     let embedding_check = if column_exists(&connection, "memories", "embedding_q")? {
@@ -44,13 +53,7 @@ pub fn run(path: impl AsRef<Path>) -> Result<DoctorReportV0, String> {
             "reindex after selecting the intended embed model",
         )?,
         embedding_check,
-        check(
-            &connection,
-            "MRD-SCOPE-ANOMALY",
-            "warning",
-            "SELECT id FROM memories WHERE scope_id IS NULL OR trim(scope_id) = ''",
-            "normalize affected scopes with platform-aware scope tooling",
-        )?,
+        check_scope_anomalies(&connection)?,
         check(
             &connection,
             "MRD-EFFECTIVENESS-UNVERIFIED",
@@ -72,6 +75,7 @@ pub fn run(path: impl AsRef<Path>) -> Result<DoctorReportV0, String> {
             check(&connection, "MRD-PROTECTED-EXPIRED", "warning", "SELECT id FROM memories WHERE priority_class='protected' AND ((effective_until_ms IS NOT NULL AND effective_until_ms <= (unixepoch('now') * 1000)) OR (expires_at_ms IS NOT NULL AND expires_at_ms <= (unixepoch('now') * 1000)))", "retain if required, but reverify or retire expired protected row")?,
         ]);
     }
+    checks.retain(|check| !suppressed_codes.contains(&check.code));
     let status = if checks
         .iter()
         .any(|check| check.severity == "critical" && check.count > 0)
@@ -131,6 +135,34 @@ fn valid_embedding(legacy: Option<&[u8]>, quantized: Option<&[u8]>) -> bool {
         Some(blob) => valid_quantized_embedding(blob),
         None => legacy.is_some_and(|blob| blob.len() >= 8),
     }
+}
+
+fn check_scope_anomalies(connection: &Connection) -> Result<DoctorCheckV0, String> {
+    let mut statement = connection
+        .prepare("SELECT id, scope_id FROM memories")
+        .map_err(|error| format!("MRD-SCOPE-ANOMALY: query failed: {error}"))?;
+    let invalid = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+        })
+        .map_err(|error| format!("MRD-SCOPE-ANOMALY: query failed: {error}"))?
+        .filter_map(|row| match row {
+            Ok((id, Some(scope))) if !scope.trim().is_empty() && crate::scope::normalize_scope(&scope) == scope => None,
+            Ok((id, _)) => Some(Ok(id)),
+            Err(error) => Some(Err(error)),
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| format!("MRD-SCOPE-ANOMALY: row failed: {error}"))?;
+    let mut sample_ids = invalid.clone();
+    sample_ids.sort();
+    sample_ids.truncate(20);
+    Ok(DoctorCheckV0 {
+        code: "MRD-SCOPE-ANOMALY",
+        severity: "warning",
+        count: invalid.len(),
+        sample_ids,
+        repair: "normalize affected scopes with platform-aware scope tooling",
+    })
 }
 
 fn valid_quantized_embedding(blob: &[u8]) -> bool {
@@ -339,5 +371,26 @@ mod tests {
 
         let error = run(&db).unwrap_err();
         assert!(error.contains("MRD-EMBED-SHORT"), "{error}");
+    }
+
+    #[test]
+    fn doctor_accepts_only_explicit_suppression_codes() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = directory.path().join("doctor-suppression.db");
+        let connection = Connection::open(&db).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE memories(id TEXT, embed_model TEXT, embedding BLOB, scope_id TEXT, inject_count INTEGER, access_count INTEGER);
+                 INSERT INTO memories VALUES ('x', NULL, X'00000000', 'd--Claude', 0, 0);",
+            )
+            .unwrap();
+        drop(connection);
+
+        let report = run_with_suppressions(&db, &["MRD-EMBED-MODEL-DRIFT"]).unwrap();
+        assert!(report
+            .checks
+            .iter()
+            .all(|check| check.code != "MRD-EMBED-MODEL-DRIFT"));
+        assert_eq!(check_by_code(&report, "MRD-SCOPE-ANOMALY").count, 1);
     }
 }

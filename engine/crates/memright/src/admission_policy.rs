@@ -211,8 +211,22 @@ fn sensitive_assignment(content: &str, name: &str) -> bool {
         let remainder = &content[start + name.len()..];
         let remainder = remainder.trim_start_matches([' ', '\t']);
         matches!(remainder.as_bytes().first(), Some(b'=') | Some(b':'))
-            && !remainder[1..].trim().is_empty()
+            && credential_shaped_value(name, remainder[1..].trim())
     })
+}
+
+fn credential_shaped_value(name: &str, value: &str) -> bool {
+    let value = value
+        .split_whitespace()
+        .next()
+        .unwrap_or_default()
+        .trim_matches(['\'', '"']);
+    let lowered = value.to_ascii_lowercase();
+    !value.is_empty()
+        && !value.starts_with('<')
+        && !value.ends_with('>')
+        && lowered != name
+        && !matches!(lowered.as_str(), "example" | "placeholder" | "redacted" | "value")
 }
 
 fn protected_spans(content: &str) -> Vec<ProtectedSpan> {
@@ -396,6 +410,37 @@ mod tests {
             admit(&unknown_authority),
             Err(AdmissionError::UnknownAuthority)
         );
+
+        let unknown_quarantine = AdmissionRequest::new("safe", Origin::User, Authority::A4)
+            .with_quarantine(QuarantineStatus::Unknown);
+        assert_eq!(
+            admit(&unknown_quarantine),
+            Err(AdmissionError::UnknownQuarantine)
+        );
+    }
+
+    #[test]
+    fn secret_detection_requires_credential_shaped_value_but_covers_fenced_credentials() {
+        for content in [
+            "api_key=<placeholder>",
+            "secret=secret",
+            "token = example",
+        ] {
+            assert!(
+                admit(&AdmissionRequest::new(content, Origin::User, Authority::A4)).is_ok(),
+                "placeholder/type marker must not be treated as a credential: {content}"
+            );
+        }
+        for content in [
+            "api_key=sk-live-secret-value",
+            "```env\naccess_token=ghp_realcredentialvalue\n```",
+        ] {
+            assert_eq!(
+                admit(&AdmissionRequest::new(content, Origin::User, Authority::A4)),
+                Err(AdmissionError::SecretDetected),
+                "credential must fail closed: {content}"
+            );
+        }
     }
 
     #[test]
