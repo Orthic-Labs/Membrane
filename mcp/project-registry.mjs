@@ -76,9 +76,7 @@ function validateRegistry(value) {
 export async function readRegistry(path = defaultRegistryPath()) {
   try {
     const raw = JSON.parse(await readFile(path, "utf8"));
-    const registry = validateRegistry(raw);
-    if (raw.schema_version === 1) await writeRegistry(path, registry);
-    return registry;
+    return validateRegistry(raw);
   }
   catch (error) { if (error?.code === "ENOENT") return { schema_version: SCHEMA_VERSION, bindings: {} }; throw new Error(`registry unavailable: ${error.message}`); }
 }

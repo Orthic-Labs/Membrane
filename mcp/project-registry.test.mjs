@@ -49,6 +49,8 @@ await writeFile(legacyRegistry, JSON.stringify({
   bindings: { [await realpath(root)]: { repository_id: "repo-legacy", scope_id: "scope-legacy" } },
 }), "utf8");
 assert.equal((await readRegistry(legacyRegistry)).schema_version, 2);
+assert.equal(JSON.parse(await readFile(legacyRegistry, "utf8")).schema_version, 1);
+await enroll(root, { repository_id: "repo-legacy", scope_id: "scope-legacy" }, legacyRegistry);
 assert.equal(JSON.parse(await readFile(legacyRegistry, "utf8")).schema_version, 2);
 
 const virtualInitRoot = await mkdtemp(join(tmpdir(), "membrane-virtual-init-"));
