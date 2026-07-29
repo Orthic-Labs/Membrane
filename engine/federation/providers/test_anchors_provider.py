@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from federation.providers import anchors
 
@@ -28,6 +28,34 @@ def test_anchor_provider_reads_absolute_file_within_repo_root(tmp_path: Path):
     assert candidates[0]["id"] == "anchor:file:docs/anchor.md"
     assert candidates[0]["sourceRef"] == "docs/anchor.md"
     assert candidates[0]["text"] == "inside repository\n"
+
+
+def test_anchor_provider_serializes_windows_relative_path_with_forward_slashes(
+    monkeypatch, tmp_path: Path
+):
+    class WindowsRelativeFile:
+        def exists(self):
+            return True
+
+        def is_file(self):
+            return True
+
+        def read_text(self, **_kwargs):
+            return "inside repository\n"
+
+        def relative_to(self, _root):
+            return PureWindowsPath("docs", "anchor.md")
+
+    monkeypatch.setattr(
+        anchors,
+        "_repo_anchor_path",
+        lambda *_args: (tmp_path, WindowsRelativeFile()),
+    )
+
+    candidates = anchors.produce(tmp_path, ["docs/anchor.md"], "test")
+
+    assert candidates[0]["id"] == "anchor:file:docs/anchor.md"
+    assert candidates[0]["sourceRef"] == "docs/anchor.md"
 
 
 def test_anchor_provider_rejects_absolute_path_outside_repo_before_resolution(

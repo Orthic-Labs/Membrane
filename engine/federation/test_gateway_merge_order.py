@@ -88,6 +88,8 @@ def _planner_command(candidate_set: Path) -> list[str]:
         str(ROOT / "membrane" / "engine" / "Cargo.toml"),
         "-p",
         "memright",
+        "--bin",
+        "memright",
         "--",
         "plan-context",
         "--candidate-set",
@@ -103,6 +105,15 @@ def _semantic_candidate_set(ccs: dict) -> dict:
     for field in ("providerElapsedMs", "providerStageElapsedMs", "stageElapsedMs"):
         telemetry.pop(field, None)
     return semantic
+
+
+def test_planner_fallback_selects_memright_cli_binary(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("MEMRIGHT_BIN", raising=False)
+    monkeypatch.setitem(globals(), "ROOT", tmp_path)
+
+    command = _planner_command(tmp_path / "candidate-set.json")
+
+    assert command[command.index("--bin") + 1] == "memright"
 
 
 def test_completion_permutations_keep_precedence_receipts_and_packet_hash_stable(

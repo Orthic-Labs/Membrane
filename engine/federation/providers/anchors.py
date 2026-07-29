@@ -62,7 +62,7 @@ def produce(repo_root: Path, anchors: list[str], task: str) -> list[dict]:
                 text = path.read_text(encoding="utf-8", errors="replace")[:1500]
             except OSError:
                 text = anchor
-            rel = str(path.relative_to(root))
+            rel = path.relative_to(root).as_posix()
             candidates.append({
                 "id": f"anchor:file:{rel}",
                 "layer": 3,

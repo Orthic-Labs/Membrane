@@ -47,7 +47,9 @@ def test_drive_letter_case_never_forks_identity():
 
 def test_posix_workspace_root_matches_stored_record_identity(tmp_path):
     # The live Mac workspace slug is `Volumes-D-claude` (see recall heartbeat rows).
-    expected = str(tmp_path.resolve()).replace("/", "-").strip("-")
+    expected = (
+        str(tmp_path.resolve()).replace("\\", "/").replace("/", "-").strip("-")
+    )
     assert canonical_repository_id(tmp_path) == expected
 
 
