@@ -942,7 +942,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--anchors", default="",
                         help="Comma-separated explicit anchor list")
     parser.add_argument("--scope-grant-id", default=None)
+    parser.add_argument("--scope-descriptor-json", default=None)
     args = parser.parse_args(argv)
+
+    try:
+        scope_descriptor = (
+            json.loads(args.scope_descriptor_json)
+            if args.scope_descriptor_json is not None
+            else None
+        )
+    except json.JSONDecodeError as exc:
+        raise SystemExit("scope descriptor must be JSON") from exc
+    if scope_descriptor is not None and not isinstance(scope_descriptor, dict):
+        raise SystemExit("scope descriptor must be a JSON object")
 
     envelope, code = assemble_candidate_set(
         task=args.task,
@@ -952,6 +964,7 @@ def main(argv: list[str] | None = None) -> int:
         session=args.session,
         anchors=args.anchors,
         scope_grant_id=args.scope_grant_id,
+        scope_descriptor=scope_descriptor,
     )
     # Emit the assembled envelope with the `_rightcontext` federation
     # detail block intact. The planner strict-deserializes the canonical

@@ -74,6 +74,33 @@ fn sync_discovers_tracked_and_nonignored_markdown_but_skips_gitignored_files() {
 }
 
 #[test]
+fn sync_hard_excludes_memory_pointers_exports_and_dependency_trees() {
+    let temp = tempfile::tempdir().unwrap();
+    for path in [
+        "MEMORY.md",
+        "memory-mirror/export.md",
+        "node_modules/package.md",
+        ".cache/generated.md",
+        "target/generated.md",
+        ".venv/generated.md",
+        "vendor/generated.md",
+    ] {
+        let file = temp.path().join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, "excluded").unwrap();
+    }
+    std::fs::write(temp.path().join("public.md"), "included").unwrap();
+
+    let db = MemDb::open_in_memory();
+    let report = doc_spine::sync(&db, temp.path()).unwrap();
+    assert_eq!(report.registered, 1);
+    let path: String = db.lock().query_row(
+        "SELECT path FROM doc_artifacts WHERE lifecycle_state='active'", [], |r| r.get(0),
+    ).unwrap();
+    assert_eq!(path, "public.md");
+}
+
+#[test]
 fn sync_refreshes_hash_and_worktree_revision_after_content_changes() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("runbook.md");

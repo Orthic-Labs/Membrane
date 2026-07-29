@@ -390,6 +390,17 @@ fn has_health_component(path: &Path) -> bool {
     })
 }
 
+fn hard_excluded(path: &Path) -> bool {
+    let components = path
+        .components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .map(|component| component.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    components.iter().any(|component| {
+        matches!(component.as_str(), ".git" | "node_modules" | ".cache" | "target" | ".venv" | "vendor" | "memory-mirror")
+    }) || components.last().is_some_and(|name| name == "memory.md")
+}
+
 fn walk(
     root: &Path,
     output: &mut Vec<PathBuf>,
@@ -414,12 +425,15 @@ fn walk(
                 *excluded_health += 1;
                 continue;
             }
+            if hard_excluded(relative) {
+                continue;
+            }
             if ignored(root, &path, &ignore_rules) {
                 continue;
             }
             if kind.is_dir() {
                 let name = path.file_name().and_then(|v| v.to_str()).unwrap_or("");
-                if matches!(name, ".git" | "node_modules" | "target" | ".cache") {
+                if matches!(name, ".git" | "node_modules" | "target" | ".cache" | ".venv" | "vendor" | "memory-mirror") {
                     continue;
                 }
                 pending.push((path, depth + 1));

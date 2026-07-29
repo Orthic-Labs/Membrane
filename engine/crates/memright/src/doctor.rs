@@ -90,6 +90,9 @@ pub fn run_with_policy(
             check(&connection, "MRD-LIFECYCLE-CYCLE", "critical", "WITH RECURSIVE chain(origin, next, depth) AS (SELECT id, superseded_by, 0 FROM memories WHERE superseded_by IS NOT NULL UNION ALL SELECT chain.origin, memories.superseded_by, chain.depth + 1 FROM chain JOIN memories ON memories.id=chain.next WHERE chain.next IS NOT NULL AND chain.depth < 100) SELECT DISTINCT origin FROM chain WHERE next=origin", "break the cycle with a typed supersession adjudication")?,
             check(&connection, "MRD-LIFECYCLE-WINDOW", "warning", "SELECT id FROM memories WHERE effective_from_ms IS NOT NULL AND effective_until_ms IS NOT NULL AND effective_until_ms <= effective_from_ms", "repair half-open effective interval")?,
             check(&connection, "MRD-PROTECTED-EXPIRED", "warning", "SELECT id FROM memories WHERE priority_class='protected' AND ((effective_until_ms IS NOT NULL AND effective_until_ms <= (unixepoch('now') * 1000)) OR (expires_at_ms IS NOT NULL AND expires_at_ms <= (unixepoch('now') * 1000)))", "retain if required, but reverify or retire expired protected row")?,
+            check(&connection, "MRD-LIFECYCLE-EXPIRED", "warning", "SELECT id FROM memories WHERE lifecycle_state='active' AND record_type!='checkpoint' AND ((effective_until_ms IS NOT NULL AND effective_until_ms <= (unixepoch('now') * 1000)) OR (expires_at_ms IS NOT NULL AND expires_at_ms <= (unixepoch('now') * 1000)))", "retire or reverify the expired active row")?,
+            check(&connection, "MRD-SUPERSEDED-INJECTED", "critical", "SELECT DISTINCT memories.id FROM memories JOIN memory_event_log ON memory_event_log.memory_id=memories.id WHERE memories.lifecycle_state='superseded' AND memories.effective_until_ms IS NOT NULL AND memory_event_log.event_kind='injected' AND (unixepoch(memory_event_log.ts) * 1000) >= memories.effective_until_ms", "repair admission so superseded rows cannot be injected")?,
+            check(&connection, "MRD-CHECKPOINT-EXPIRED", "critical", "SELECT id FROM memories WHERE record_type='checkpoint' AND lifecycle_state='active' AND expires_at_ms IS NOT NULL AND expires_at_ms <= (unixepoch('now') * 1000)", "retire expired checkpoints from active delivery")?,
         ]);
     }
     checks.retain(|check| !suppressed_codes.contains(&check.code));
@@ -461,5 +464,27 @@ mod tests {
         let check = check_by_code(&report, "MRD-DANGLING-WIKILINK");
         assert_eq!(check.count, 1);
         assert_eq!(check.sample_ids, vec!["missing-internal"]);
+    }
+
+    #[test]
+    fn doctor_reports_expired_lifecycle_superseded_injection_and_checkpoint_delivery() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = directory.path().join("doctor-lifecycle-delivery.db");
+        let connection = Connection::open(&db).unwrap();
+        connection.execute_batch(
+            "CREATE TABLE memories(id TEXT, embed_model TEXT, embedding BLOB, scope_id TEXT, inject_count INTEGER, access_count INTEGER, lifecycle_state TEXT, superseded_by TEXT, effective_from_ms INTEGER, effective_until_ms INTEGER, expires_at_ms INTEGER, priority_class TEXT, record_type TEXT);
+             CREATE TABLE memory_event_log(memory_id TEXT, event_kind TEXT, ts TEXT);
+             INSERT INTO memories VALUES
+                ('expired', 'model', X'00000000', 'global', 0, 0, 'active', NULL, NULL, NULL, 1, 'normal', 'memory'),
+                ('superseded', 'model', X'00000000', 'global', 1, 0, 'superseded', 'replacement', NULL, 1, NULL, 'normal', 'memory'),
+                ('checkpoint', 'model', X'00000000', 'global', 0, 0, 'active', NULL, NULL, NULL, 1, 'normal', 'checkpoint');
+             INSERT INTO memory_event_log VALUES ('superseded', 'injected', '1970-01-01T00:00:01Z');",
+        ).unwrap();
+        drop(connection);
+
+        let report = run(&db).unwrap();
+        assert_eq!(check_by_code(&report, "MRD-LIFECYCLE-EXPIRED").sample_ids, vec!["expired"]);
+        assert_eq!(check_by_code(&report, "MRD-SUPERSEDED-INJECTED").sample_ids, vec!["superseded"]);
+        assert_eq!(check_by_code(&report, "MRD-CHECKPOINT-EXPIRED").sample_ids, vec!["checkpoint"]);
     }
 }

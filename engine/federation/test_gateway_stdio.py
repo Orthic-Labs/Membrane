@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 
 GATEWAY = Path(__file__).resolve().parent / "gateway.py"
+sys.path.insert(0, str(GATEWAY.parents[1]))
+from federation import gateway  # noqa: E402
 
 
 def _run_stdio(lines: list[str], timeout: float = 60.0) -> list[dict]:
@@ -68,3 +70,20 @@ def test_argv_one_shot_mode_is_unchanged(tmp_path):
     envelope = json.loads(result.stdout)
     assert envelope["task"] == "one shot"
     assert isinstance(envelope["candidates"], list)
+
+
+def test_argv_forwards_exact_virtual_scope_descriptor_without_mcp(monkeypatch, tmp_path, capsys):
+    seen = {}
+
+    def assemble(**kwargs):
+        seen.update(kwargs)
+        return {"schemaVersion": 1, "task": kwargs["task"], "candidates": [], "_rightcontext": {}}, 0
+
+    monkeypatch.setattr(gateway, "assemble_candidate_set", assemble)
+    descriptor = {"kind": "virtual", "id": "thread:abc-123", "tenant_id": "tenant-a", "parents": [], "inherit_global": False}
+    assert gateway.main([
+        "--task", "direct transport", "--repo", str(tmp_path),
+        "--scope-descriptor-json", json.dumps(descriptor),
+    ]) == 0
+    assert seen["scope_descriptor"] == descriptor
+    assert json.loads(capsys.readouterr().out)["task"] == "direct transport"
