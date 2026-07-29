@@ -4306,6 +4306,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn http_route_registry_matches_every_implemented_public_handler() {
+        let source = include_str!("serve.rs");
+        let dispatch_start = source
+            .find("fn route_with_context_ingest_lease(")
+            .expect("memory dispatcher");
+        let dispatch_end = source
+            .find("\nfn planner_post_scope_grants")
+            .expect("planner dispatcher end");
+        let dispatch = &source[dispatch_start..dispatch_end];
+        let mut implemented = std::collections::HashSet::new();
+        let mut cursor = dispatch;
+        while let Some(method_at) = cursor.find("method == \"") {
+            cursor = &cursor[method_at + "method == \"".len()..];
+            let method_end = cursor.find('"').expect("handler method terminator");
+            let method = &cursor[..method_end];
+            let condition = &cursor[method_end..cursor.len().min(method_end + 160)];
+            let Some(path_at) = condition.find("path == \"") else {
+                continue;
+            };
+            let path = &condition[path_at + "path == \"".len()..];
+            let path_end = path.find('"').expect("handler path terminator");
+            implemented.insert((method, &path[..path_end]));
+        }
+        // Root/index share one condition; livez is a direct Axum route outside dispatch.
+        implemented.insert(("GET", "/index.html"));
+        implemented.insert(("GET", "/livez"));
+
+        let registered: std::collections::HashSet<_> = HTTP_ROUTE_SPECS
+            .iter()
+            .map(|spec| (spec.0, spec.1))
+            .collect();
+        assert_eq!(
+            registered, implemented,
+            "public handler and HTTP route registry diverged"
+        );
+    }
+
     #[tokio::test]
     async fn context_close_unknown_is_registered_at_http_boundary() {
         use axum::body::{to_bytes, Body};
