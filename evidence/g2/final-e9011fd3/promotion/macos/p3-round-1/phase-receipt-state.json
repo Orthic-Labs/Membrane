@@ -1,0 +1,10 @@
+{
+  "host": "macos",
+  "installation_id": "be8b2353-c0f5-4250-867c-22c5629bd4e8",
+  "phase": "P3",
+  "prior_phase": "P2",
+  "prior_phase_receipt_sha256": "ad081e139b1d1949175cfffffd1952e373dc8faaec0472a22ea02771ce9aeeaf",
+  "round": "p3-round-1",
+  "schema_version": 1,
+  "started_at": "2026-07-29T14:29:15.603686Z"
+}

@@ -1,0 +1,33 @@
+{
+ "schema_version": 2,
+ "kind": "context_simulated_n_load_evidence",
+ "phase": "P2",
+ "status": "pass",
+ "policy_version": "rightcontext-planner-v2-balanced",
+ "git_commit": "75b93fb6e6f5e169d21ebc618b1c0e47c317a10b",
+ "release_generation": "sha256:7941d04669a7fdac389951b39dd9a3e403d0d06721ccf929ce510accef919617",
+ "release_manifest_sha256": "4a3e0c4e90ef6bd1ed4fac8a6b18054fc45a6dcd6a0d324a36bc8cdb20b49b11",
+ "release_assets_sha256": "b0d4d945b74636a012760fbbb9714ae3fbb5f2adb100a59f7a98a1accd793dc0",
+ "installation_counts": [
+  1,
+  2,
+  5,
+  10
+ ],
+ "metrics": {
+  "prompt_baseline_p99_ms": 1.30975,
+  "prompt_candidate_p99_ms": 1.841667,
+  "prompt_overhead_p99_ms": 0.867292,
+  "prompt_overhead_method": "bounded_ingress_append_p99_after_recall",
+  "prompt_overhead_ratio": 0.6621813323153273,
+  "max_ledger_bytes_per_turn": 10450,
+  "max_snapshot_bytes": 2841,
+  "max_query_render_ms": 1.497583,
+  "memory_batch_count": 33,
+  "memory_batch_persisted_count": 33,
+  "memory_batch_failed_count": 0,
+  "memory_batch_duration_ms": 15.42475,
+  "rollback_rpo_events": 0,
+  "rollback_rto_ms": 11.577333
+ }
+}

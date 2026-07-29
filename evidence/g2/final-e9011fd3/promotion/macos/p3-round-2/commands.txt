@@ -1,0 +1,12 @@
+memright close-unknown --observed-since <claim> --observed-through <traffic-through> --max-deliveries 1000
+context-promotion-p3-evidence.py prepare --round p3-round-2 --host macos --max-db-pages 500000
+context_session_inventory.py --policy rightcontext-planner-v2-balanced --pretty
+context_value_reconcile.py --max-events 250000 --traffic-class production --fail-on-gap
+mirror_append_only.py --repo . --mirror memory-mirror
+metrics-snapshot.py --print-basename
+context-promotion-p3-evidence.py runtime --minimum-prompt-samples 10 --max-mirror-events 100000 --max-heartbeat-lines 250000 --max-heartbeat-bytes 67108864
+context-promotion-p3-evidence.py binding --host macos --round p3-round-2
+context_conformance.py --pretty
+context-promotion-p3-evidence.py host --host macos
+context-promotion-p3-evidence.py hashes
+context-promotion-p3-evidence.py verify

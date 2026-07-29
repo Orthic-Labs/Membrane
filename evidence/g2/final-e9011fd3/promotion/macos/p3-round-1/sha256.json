@@ -1,0 +1,57 @@
+{
+  "files": [
+    {
+      "path": "append-only-audit.txt",
+      "sha256": "90f6af94facb70e27187d09a2ec3e64ffccf9e0ebffa2e16078d9dedf3a1351c"
+    },
+    {
+      "path": "candidate-binding.json",
+      "sha256": "6af65d19c61bf37765edfb49764a2d3e723773828c7525f6f097bea3c9ec828e"
+    },
+    {
+      "path": "commands.txt",
+      "sha256": "64e0f65f94a4a7fcac13ab5bfa6bbc84340a3e8433cef0d752f5cdf8137f22bb"
+    },
+    {
+      "path": "conformance.json",
+      "sha256": "0fc98b539dfde94de0b3c499fb0055d727515ff1bb2ee82b13b427a215461c05"
+    },
+    {
+      "path": "conformance.md",
+      "sha256": "1d3dc6a5973397dc534e2f70a64d73500aeaf2f3d5a27bcb2906c98c08352cfd"
+    },
+    {
+      "path": "macos-host.json",
+      "sha256": "fe4dc1e9ffa34474b98d02a15c94711d23fcd44a72ade5567a216e090ede3af7"
+    },
+    {
+      "path": "observation-claim.json",
+      "sha256": "ae71fd9b20b906f78e00a91e529445583dfcf6d0f2e8a595fb88513bb36d2d19"
+    },
+    {
+      "path": "phase-receipt-state.json",
+      "sha256": "98a986e3d330d74782f9a8710b90971c175eeafdb5cba1091eb0082a20f6bb58"
+    },
+    {
+      "path": "phase-receipt.json",
+      "sha256": "b6ac7f1fd642c381657a750cb7ec6f84ce475ee43e8a75a6f4d8a6d1faca5bc6"
+    },
+    {
+      "path": "reconciliation.json",
+      "sha256": "ddd42152edc4287ea67c2f637e0ec73309f0f06c41c1c99b3838a47e18b641ac"
+    },
+    {
+      "path": "runtime-evidence.json",
+      "sha256": "320a1419799e2ed3385ede4070c94d851e19870e96c78841e54f3d88a665c295"
+    },
+    {
+      "path": "snapshot-be8b2353-c0f5-4250-867c-22c5629bd4e8.json",
+      "sha256": "4d1faf94c0fd113f6b358d51f079d243fd45001bd343b1556ef95e9593042171"
+    },
+    {
+      "path": "turn-inventory.json",
+      "sha256": "7e0504bd06f750ba0e79df67fae45e89d907372b407a0eedc06efb76bd09985f"
+    }
+  ],
+  "schema_version": 1
+}

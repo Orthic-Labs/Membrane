@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "kind": "PhaseReceiptV1",
+  "phase": "P3",
+  "host": "macos",
+  "installation_id": "be8b2353-c0f5-4250-867c-22c5629bd4e8",
+  "root_commit": "e9011fd31cd8620aac9450741b3bff9e120f7489",
+  "membrane_commit": "75b93fb6e6f5e169d21ebc618b1c0e47c317a10b",
+  "engine_tree": "7941d04669a7fdac389951b39dd9a3e403d0d06721ccf929ce510accef919617",
+  "release_manifest_sha256": "4a3e0c4e90ef6bd1ed4fac8a6b18054fc45a6dcd6a0d324a36bc8cdb20b49b11",
+  "prior_phase_receipt_sha256": "b6ac7f1fd642c381657a750cb7ec6f84ce475ee43e8a75a6f4d8a6d1faca5bc6",
+  "started_at": "2026-07-29T14:33:10.610613Z",
+  "completed_at": "2026-07-29T14:36:27.381160Z",
+  "evidence_sha256": [
+    "22a4f3312ef61cac645efccba0008d32706cf5f4f9acb8cbd6daaf1ae2fbe5cd"
+  ],
+  "status": "pass"
+}

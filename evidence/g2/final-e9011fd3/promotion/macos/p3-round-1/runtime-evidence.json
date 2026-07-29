@@ -1,0 +1,55 @@
+{
+  "append_only": {
+    "audit_sha256": "90f6af94facb70e27187d09a2ec3e64ffccf9e0ebffa2e16078d9dedf3a1351c",
+    "cursor_regression_count": 0,
+    "deletion_count": 0,
+    "mutation_count": 0
+  },
+  "convergence": {
+    "memberships": [
+      {
+        "claimed_at": "2026-07-20T23:34:36Z",
+        "installation_id": "be8b2353-c0f5-4250-867c-22c5629bd4e8",
+        "retired_at": null
+      }
+    ],
+    "peer_winner_maps": [],
+    "winner_map_sha256": "85a4f036182f4a43ba055ac1740e58ce64df7f3148c5b13b660c7b0c8847549b",
+    "workspace_id": "ws.89bc60b4b54358fa6704907077f42670"
+  },
+  "minimum_prompt_samples": 10,
+  "platform": {
+    "arch": "arm64",
+    "os_type": "macos",
+    "os_version": "25.5.0"
+  },
+  "prompt_latency_ms": [
+    293.2,
+    176.9,
+    70.3,
+    72.9,
+    71.6,
+    58.9,
+    82.3,
+    87.5,
+    84.3,
+    71.8,
+    71.4,
+    71.8
+  ],
+  "release": {
+    "engine_sha256": "7941d04669a7fdac389951b39dd9a3e403d0d06721ccf929ce510accef919617",
+    "git_commit": "75b93fb6e6f5e169d21ebc618b1c0e47c317a10b",
+    "ledger_schema_version": 14,
+    "model_sha256": "4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b",
+    "release_assets_sha256": "b0d4d945b74636a012760fbbb9714ae3fbb5f2adb100a59f7a98a1accd793dc0",
+    "release_generation": "sha256:7941d04669a7fdac389951b39dd9a3e403d0d06721ccf929ce510accef919617",
+    "release_manifest_sha256": "4a3e0c4e90ef6bd1ed4fac8a6b18054fc45a6dcd6a0d324a36bc8cdb20b49b11"
+  },
+  "schema_version": 1,
+  "snapshot": {
+    "cutoff": "2026-07-29T14:29:15Z",
+    "manual_unscheduled": true,
+    "source_watermark": 103397
+  }
+}
