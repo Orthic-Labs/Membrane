@@ -1145,6 +1145,7 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ("POST", "/add", HttpWorkClass::General),
     ("POST", "/use", HttpWorkClass::General),
     ("POST", "/feedback", HttpWorkClass::General),
+    ("POST", "/context/close-unknown", HttpWorkClass::General),
     ("POST", "/memory-candidates", HttpWorkClass::Model),
     ("POST", "/federate", HttpWorkClass::General),
     ("POST", "/verify-memory", HttpWorkClass::General),
@@ -4302,6 +4303,43 @@ mod tests {
                 ("POST", "/memory-candidates"),
                 ("POST", "/compress"),
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn context_close_unknown_is_registered_at_http_boundary() {
+        use axum::body::{to_bytes, Body};
+        use axum::http::{header, Request, StatusCode};
+        use tower::ServiceExt;
+
+        let app = router_for_tests_with_policy(
+            MemoryStore::new(),
+            8765,
+            Some(TEST_API_TOKEN.to_string()),
+            Duration::from_secs(1),
+            MAX_CONCURRENT_REQUESTS,
+        );
+        let response = app
+            .oneshot(
+                Request::post("/context/close-unknown")
+                    .header(header::AUTHORIZATION, "Bearer test-api-token")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"observed_since":"2026-07-20T07:59:00Z","observed_through":"2026-07-20T08:01:00Z","max_deliveries":10}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), MAX_BODY_BYTES)
+            .await
+            .unwrap();
+        assert!(
+            String::from_utf8_lossy(&body).contains(r#""closed":0"#),
+            "body: {}",
+            String::from_utf8_lossy(&body)
         );
     }
 
