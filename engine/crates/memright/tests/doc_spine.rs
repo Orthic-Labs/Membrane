@@ -190,7 +190,7 @@ fn sync_frontmatter_projects_metadata_and_supersedes_declared_document() {
 
     std::fs::write(
         temp.path().join("new.md"),
-        "---\ntitle: New Decision\nsummary: Replacement policy\nkeywords: policy, replacement\nstatus: draft\nsupersedes: old.md\n---\n# New\n",
+        "---\nmembrane:\n  title: New Decision\n  summary: Replacement policy\n  keywords: [policy, replacement]\n  status: draft\n  supersedes: old.md\n---\n# New\n",
     )
     .unwrap();
     doc_spine::sync(&db, temp.path()).unwrap();
@@ -232,11 +232,80 @@ fn sync_frontmatter_projects_metadata_and_supersedes_declared_document() {
 }
 
 #[test]
+fn sync_frontmatter_ignores_flat_framework_metadata() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("framework.md"),
+        "---\ntitle: Framework Title\nstatus: draft\n---\n# Body\n",
+    )
+    .unwrap();
+    let db = MemDb::open_in_memory();
+
+    doc_spine::sync(&db, temp.path()).unwrap();
+
+    let row: (String, String) = db
+        .lock()
+        .query_row(
+            "SELECT COALESCE(title, ''), lifecycle_state FROM doc_artifacts WHERE path='framework.md'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(row, ("".into(), "active".into()));
+}
+
+#[test]
+fn sync_frontmatter_uses_only_membrane_namespace() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("namespaced.md"),
+        "---\ntitle: Framework Title\nstatus: active\nmembrane:\n  title: Membrane Title\n  status: draft\n---\n# Body\n",
+    )
+    .unwrap();
+    let db = MemDb::open_in_memory();
+
+    doc_spine::sync(&db, temp.path()).unwrap();
+
+    let row: (String, String) = db
+        .lock()
+        .query_row(
+            "SELECT title, lifecycle_state FROM doc_artifacts WHERE path='namespaced.md'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(row, ("Membrane Title".into(), "draft".into()));
+}
+
+#[test]
+fn sync_frontmatter_parses_membrane_keyword_list() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("keywords.md"),
+        "---\nmembrane:\n  keywords: [policy, replacement]\n---\n# Body\n",
+    )
+    .unwrap();
+    let db = MemDb::open_in_memory();
+
+    doc_spine::sync(&db, temp.path()).unwrap();
+
+    let keywords: String = db
+        .lock()
+        .query_row(
+            "SELECT keywords_json FROM doc_artifacts WHERE path='keywords.md'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(keywords, "[\"policy\",\"replacement\"]");
+}
+
+#[test]
 fn sync_frontmatter_rejects_duplicate_or_dangling_supersession_without_writes() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join("invalid.md"),
-        "---\ntitle: One\ntitle: Two\nsupersedes: missing.md\n---\n# Invalid\n",
+        "---\nmembrane:\n  title: One\n  title: Two\n  supersedes: missing.md\n---\n# Invalid\n",
     )
     .unwrap();
     let db = MemDb::open_in_memory();
@@ -268,22 +337,25 @@ fn sync_frontmatter_failure_matrix_is_atomic() {
     let cases: Vec<(&str, Vec<(&str, String)>, &str)> = vec![
         (
             "unclosed",
-            vec![("bad.md", "---\ntitle: missing close\n# Body\n".to_owned())],
+            vec![(
+                "bad.md",
+                "---\nmembrane:\n  title: missing close\n# Body\n".to_owned(),
+            )],
             "unclosed frontmatter",
         ),
         (
             "malformed",
             vec![(
                 "bad.md",
-                "---\ntitle without colon\n---\n# Body\n".to_owned(),
+                "---\nmembrane:\n  title without colon\n---\n# Body\n".to_owned(),
             )],
-            "malformed frontmatter",
+            "malformed membrane frontmatter",
         ),
         (
             "missing",
             vec![(
                 "bad.md",
-                "---\nsupersedes: absent.md\n---\n# Body\n".to_owned(),
+                "---\nmembrane:\n  supersedes: absent.md\n---\n# Body\n".to_owned(),
             )],
             "target missing",
         ),
@@ -291,15 +363,21 @@ fn sync_frontmatter_failure_matrix_is_atomic() {
             "self",
             vec![(
                 "bad.md",
-                "---\nsupersedes: bad.md\n---\n# Body\n".to_owned(),
+                "---\nmembrane:\n  supersedes: bad.md\n---\n# Body\n".to_owned(),
             )],
             "supersedes self",
         ),
         (
             "cycle",
             vec![
-                ("one.md", "---\nsupersedes: two.md\n---\n# One\n".to_owned()),
-                ("two.md", "---\nsupersedes: one.md\n---\n# Two\n".to_owned()),
+                (
+                    "one.md",
+                    "---\nmembrane:\n  supersedes: two.md\n---\n# One\n".to_owned(),
+                ),
+                (
+                    "two.md",
+                    "---\nmembrane:\n  supersedes: one.md\n---\n# Two\n".to_owned(),
+                ),
             ],
             "supersedes cycle",
         ),
@@ -307,9 +385,20 @@ fn sync_frontmatter_failure_matrix_is_atomic() {
             "oversized",
             vec![(
                 "bad.md",
-                format!("---\ntitle: {}\n---\n# Body\n", "x".repeat(4 * 1024 + 1)),
+                format!(
+                    "---\nmembrane:\n  title: {}\n---\n# Body\n",
+                    "x".repeat(4 * 1024 + 1)
+                ),
             )],
             "invalid frontmatter value",
+        ),
+        (
+            "malformed_keywords",
+            vec![(
+                "bad.md",
+                "---\nmembrane:\n  keywords: [policy\n---\n# Body\n".to_owned(),
+            )],
+            "invalid frontmatter keywords",
         ),
     ];
     for (name, files, expected) in cases {

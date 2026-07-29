@@ -34,14 +34,42 @@ fn parse_frontmatter(markdown: &str) -> Result<DocFrontmatterV1, String> {
         return Err("frontmatter exceeds 32 KiB".to_owned());
     }
     let mut values = BTreeMap::new();
+    let mut namespace_seen = false;
+    let mut in_membrane = false;
     for raw in block
         .lines()
         .skip(1)
         .take_while(|line| line.trim() != "---")
     {
+        if raw.trim().is_empty() || raw.trim_start().starts_with('#') {
+            continue;
+        }
+        let indent = raw.len() - raw.trim_start_matches(' ').len();
+        if indent == 0 {
+            in_membrane = false;
+            let Some((key, value)) = raw.split_once(':') else {
+                continue;
+            };
+            if key.trim() != "membrane" {
+                continue;
+            }
+            if namespace_seen {
+                return Err("duplicate frontmatter namespace: membrane".to_owned());
+            }
+            if !value.trim().is_empty() {
+                return Err("membrane frontmatter namespace must be a mapping".to_owned());
+            }
+            namespace_seen = true;
+            in_membrane = true;
+            continue;
+        }
+        if !in_membrane {
+            continue;
+        }
         let (key, value) = raw
+            .trim_start()
             .split_once(':')
-            .ok_or_else(|| "malformed frontmatter".to_owned())?;
+            .ok_or_else(|| "malformed membrane frontmatter".to_owned())?;
         let key = key.trim();
         let value = value.trim();
         if value.len() > 4 * 1024 || value.chars().any(char::is_control) {
@@ -66,14 +94,21 @@ fn parse_frontmatter(markdown: &str) -> Result<DocFrontmatterV1, String> {
     }
     let keywords = values
         .remove("keywords")
-        .map(|value| {
-            value
+        .map(|value| -> Result<Vec<String>, String> {
+            let value = value.trim();
+            let value = match (value.starts_with('['), value.ends_with(']')) {
+                (true, true) => &value[1..value.len() - 1],
+                (false, false) => value,
+                _ => return Err("invalid frontmatter keywords".to_owned()),
+            };
+            Ok(value
                 .split(',')
-                .map(str::trim)
+                .map(|word| word.trim().trim_matches(['\'', '"']))
                 .filter(|word| !word.is_empty())
                 .map(str::to_owned)
-                .collect()
+                .collect())
         })
+        .transpose()?
         .unwrap_or_default();
     Ok(DocFrontmatterV1 {
         title: values.remove("title"),
