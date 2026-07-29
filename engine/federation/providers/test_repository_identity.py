@@ -27,6 +27,27 @@ windows_only = pytest.mark.skipif(
 )
 
 
+def _expected_repository_id(resolved_path: Path | str) -> str:
+    return (
+        str(resolved_path)
+        .replace("\\", "/")
+        .replace(":", "-")
+        .replace("/", "-")
+        .strip("-")
+    )
+
+
+@pytest.mark.parametrize(
+    ("resolved_path", "expected"),
+    (
+        (r"C:\Users\runner\AppData\Local\Temp\repo", "C--Users-runner-AppData-Local-Temp-repo"),
+        ("/Users/runner/repo", "Users-runner-repo"),
+    ),
+)
+def test_expected_repository_id_is_host_independent(resolved_path, expected):
+    assert _expected_repository_id(resolved_path) == expected
+
+
 @windows_only
 def test_workspace_root_matches_stored_record_identity():
     # .audit/architect/decisions.jsonl rows carry "repositoryId": "D--Claude".
@@ -47,9 +68,7 @@ def test_drive_letter_case_never_forks_identity():
 
 def test_posix_workspace_root_matches_stored_record_identity(tmp_path):
     # The live Mac workspace slug is `Volumes-D-claude` (see recall heartbeat rows).
-    expected = (
-        str(tmp_path.resolve()).replace("\\", "/").replace("/", "-").strip("-")
-    )
+    expected = _expected_repository_id(tmp_path.resolve())
     assert canonical_repository_id(tmp_path) == expected
 
 
