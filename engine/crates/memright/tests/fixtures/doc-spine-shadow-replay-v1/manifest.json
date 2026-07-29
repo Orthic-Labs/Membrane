@@ -8,17 +8,17 @@
     {
       "docId": "deploy-runbook",
       "path": "sources/deploy-runbook.md",
-      "sha256": "e52830ce664ca10cd08e768b33a9d3bf06b0d9dbc39436730d7c64fdabff3914"
+      "sha256": "d6258c5d81821ce5602526c0e498db3a9c4e355b305a90e479e433ee5a8bb5c1"
     },
     {
       "docId": "architecture-decision",
       "path": "sources/architecture-decision.md",
-      "sha256": "8c133bd48c888c11c8c8dd985068de2703af5fccab47f6140f4975cec5838236"
+      "sha256": "ec926ac28ad6023f93b718b80d07ff30acbc267cd3c0ab2630939ecbc11d76b2"
     },
     {
       "docId": "retention-policy",
       "path": "sources/retention-policy.md",
-      "sha256": "337dde18e7a763ae343fd60b451c81c92c2634b22b59d242206f3198d33a0697"
+      "sha256": "5a170b675f1c592a6d6a52cf301aebb988a8c9850fb2d0a6b86f50030d0ac774"
     }
   ],
   "cases": [
