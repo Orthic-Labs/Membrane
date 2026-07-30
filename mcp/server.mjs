@@ -2,10 +2,11 @@
 // Public Membrane MCP adapter. It deliberately exposes no raw memory CRUD surface.
 
 import { spawn } from "node:child_process";
-import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
+import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { bindingFor } from "./project-registry.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -29,19 +30,40 @@ const CALLER_SCHEMA = {
   additionalProperties: false,
 };
 const TOOLS = [
-  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" } } } },
+  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" } } } },
   { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
   { name: "membrane_checkpoint_save", description: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.", inputSchema: { type: "object", required: ["repository", "caller", "checkpoint"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, checkpoint: { type: "object" } } } },
-  { name: "membrane_checkpoint_load", description: "Load an unexpired A0 session checkpoint for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "id"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, id: { type: "string" }, asOfMs: { type: "integer" } } } },
+  { name: "membrane_checkpoint_load", description: "Load an unexpired A0 session checkpoint for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "id"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, id: { type: "string" }, asOfMs: { type: "integer", minimum: 0 } } } },
   { name: "membrane_feedback", description: "Record bounded receipt-bound outcome feedback for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "receiptId", "outcome"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, receiptId: { type: "string" }, outcome: { type: "string", enum: ["used", "ignored", "contradicted"] } } } },
 ];
 
+const TRACE_FIELDS = {
+  traceparent: { type: "string", maxLength: 128 },
+  tracestate: { type: "string", maxLength: 512 },
+  baggage: { type: "string", maxLength: 8192 },
+};
+const TOOL_OUTPUT_SCHEMA = {
+  type: "object",
+  required: ["data", "trace"],
+  properties: {
+    data: {},
+    trace: {
+      type: "object",
+      properties: TRACE_FIELDS,
+      additionalProperties: false,
+    },
+  },
+  additionalProperties: false,
+};
+
 const protocol = `# Membrane MCP v1\n\nmembrane_context routes through the loopback /federate endpoint, never raw recall. Knowledge is proposed, never directly put. Checkpoints are A0 session orientation state. Source reads require a hash-bound DocReadV1 reference.`;
 
-function rpcResult(id, result) { return { jsonrpc: "2.0", id, result }; }
-function rpcError(id, code, message) { return { jsonrpc: "2.0", id, error: { code, message } }; }
-function text(value) { return { content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value) }] }; }
+function text(value) {
+  if (typeof value !== "string") return value;
+  try { return JSON.parse(value); }
+  catch (_) { return value; }
+}
 function byteLength(value) { return Buffer.byteLength(JSON.stringify(value), "utf8"); }
 function bounded(value, limit, label) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
@@ -80,7 +102,7 @@ async function authorize(args, action) {
   if (typeof caller.root !== "string" || !caller.root.trim()) throw new Error("caller root is required");
   const callerBinding = await bindingFor(caller.root);
   if (binding.root !== callerBinding.root || binding.repository_id !== callerBinding.repository_id || !sameDescriptor(binding.scope_descriptor, callerBinding.scope_descriptor)) throw new Error("cross_root_binding_denied");
-  if (caller.repositoryId !== binding.repository_id || !sameDescriptor(callerDescriptor(caller), binding.scope_descriptor)) throw new Error("caller_scope_binding_denied");
+  if (caller.repositoryId !== binding.repository_id || caller.scopeId !== binding.scope_id || !sameDescriptor(callerDescriptor(caller), binding.scope_descriptor)) throw new Error("caller_scope_binding_denied");
   if (!permits(binding, action)) throw new Error("caller_not_authorized");
   return binding;
 }
@@ -98,10 +120,10 @@ function run(command, args, input, env = process.env) {
 }
 
 function memrightArgs(args) { return ["--db", process.env.MEMRIGHT_DB || "", ...args].filter((v, i) => !(i === 1 && !v)); }
-async function callTool(name, args) {
+async function callTool(name, args, trace = {}) {
   if (name === "membrane_context") {
     const binding = await authorize(args, "context");
-    const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor };
+    const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, ...trace };
     const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...process.env, WORKSPACE_ROOT: binding.root });
     return text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
   }
@@ -142,19 +164,91 @@ async function callTool(name, args) {
   throw new Error("unknown tool");
 }
 
-async function handle(message) {
-  const { id, method, params = {} } = message;
-  if (method === "initialize") return rpcResult(id, { protocolVersion: "2025-03-26", capabilities: { tools: {}, resources: {} }, serverInfo: { name: "membrane", version: "1.0.0" }, instructions: "Use membrane_context for federated context through /federate. Never expect raw memory CRUD." });
-  if (method === "tools/list") return rpcResult(id, { tools: TOOLS });
-  if (method === "resources/list") return rpcResult(id, { resources: [{ uri: PROTOCOL_URI, name: "Membrane protocol v1", mimeType: "text/markdown" }] });
-  if (method === "resources/read" && params.uri === PROTOCOL_URI) return rpcResult(id, { contents: [{ uri: PROTOCOL_URI, mimeType: "text/markdown", text: protocol }] });
-  if (method === "tools/call") return rpcResult(id, await callTool(params.name, params.arguments || {}));
-  if (id === undefined) return null;
-  return rpcError(id, -32601, "method not found");
+function validTraceparent(value) {
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 128) return false;
+  const match = /^(?<version>[0-9a-f]{2})-(?<trace>[0-9a-f]{32})-(?<parent>[0-9a-f]{16})-(?<flags>[0-9a-f]{2})(?<extension>(?:-[\x21-\x7E]+)*)$/.exec(value);
+  return Boolean(match && match.groups.version !== "ff" && (match.groups.version !== "00" || !match.groups.extension) && !/^0+$/.test(match.groups.trace) && !/^0+$/.test(match.groups.parent));
+}
+const TRACESTATE_SIMPLE_KEY = /^[a-z][a-z0-9_*/-]{0,255}$/;
+const TRACESTATE_MULTI_KEY = /^[a-z0-9][a-z0-9_*/-]{0,240}@[a-z][a-z0-9_*/-]{0,13}$/;
+const TRACESTATE_VALUE = /^[\x20-\x2B\x2D-\x3C\x3E-\x7E]+$/;
+const BAGGAGE_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const BAGGAGE_VALUE = /^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*$/;
+const trimOws = (value) => value.replace(/^[ \t]+|[ \t]+$/g, "");
+function validTracestateMember(member, keys) {
+  const value = trimOws(member);
+  if (!value) return true;
+  const separator = value.indexOf("=");
+  if (separator <= 0 || value.indexOf("=", separator + 1) !== -1) return false;
+  const stateValue = value.slice(separator + 1).replace(/[ \t]+$/, "");
+  const key = value.slice(0, separator);
+  if (!TRACESTATE_SIMPLE_KEY.test(key) && !TRACESTATE_MULTI_KEY.test(key)) return false;
+  if (stateValue.length > 256 || !TRACESTATE_VALUE.test(stateValue) || stateValue.endsWith(" ") || keys.has(key)) return false;
+  keys.add(key);
+  return true;
+}
+function validTracestate(value) {
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 512) return false;
+  const members = value.split(",");
+  const keys = new Set();
+  return members.length <= 32 && members.every((member) => validTracestateMember(member, keys));
+}
+function validBaggageProperty(value) {
+  const property = trimOws(value);
+  const separator = property.indexOf("=");
+  if (separator === -1) return BAGGAGE_TOKEN.test(property);
+  const key = property.slice(0, separator).replace(/[ \t]+$/, "");
+  const propertyValue = property.slice(separator + 1).replace(/^[ \t]+|[ \t]+$/g, "");
+  return BAGGAGE_TOKEN.test(key) && BAGGAGE_VALUE.test(propertyValue);
+}
+function validBaggageMember(member) {
+  const value = trimOws(member);
+  const separator = value.indexOf("=");
+  if (separator <= 0) return false;
+  const key = value.slice(0, separator).replace(/[ \t]+$/, "");
+  const [baggageValue, ...properties] = value.slice(separator + 1).replace(/^[ \t]+/, "").split(";");
+  return BAGGAGE_TOKEN.test(key) && BAGGAGE_VALUE.test(baggageValue.replace(/[ \t]+$/, "")) && properties.every(validBaggageProperty);
+}
+function validBaggage(value) {
+  if (typeof value !== "string" || !value || Buffer.byteLength(value, "utf8") > 8192) return false;
+  const members = value.split(",");
+  return members.length <= 64 && members.every(validBaggageMember);
+}
+function boundedTrace(args = {}) {
+  const trace = {};
+  const hasTraceparent = validTraceparent(args.traceparent);
+  if (hasTraceparent) trace.traceparent = args.traceparent;
+  if (hasTraceparent && validTracestate(args.tracestate)) trace.tracestate = args.tracestate;
+  if (validBaggage(args.baggage)) trace.baggage = args.baggage;
+  return trace;
+}
+function structuredResult(data, trace = {}) {
+  const structuredContent = { data, trace: boundedTrace(trace) };
+  return {
+    content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data) }],
+    structuredContent,
+    isError: false,
+  };
+}
+export function buildServer() {
+  const server = new McpServer(
+    { name: "membrane", version: "1.0.0" },
+    { instructions: "Use membrane_context for federated context through /federate. Never expect raw memory CRUD." },
+  );
+  for (const tool of TOOLS) {
+    server.registerTool(tool.name, {
+      description: tool.description,
+      inputSchema: fromJsonSchema(tool.inputSchema),
+      outputSchema: fromJsonSchema(TOOL_OUTPUT_SCHEMA),
+    }, async (args, ctx) => {
+      const trace = boundedTrace(ctx.mcpReq._meta);
+      return structuredResult(await callTool(tool.name, args, trace), trace);
+    });
+  }
+  server.registerResource("Membrane protocol v1", PROTOCOL_URI, { mimeType: "text/markdown" }, async (uri) => {
+    return { contents: [{ uri: uri.href, mimeType: "text/markdown", text: protocol }] };
+  });
+  return server;
 }
 
-const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
-for await (const line of lines) {
-  try { const response = await handle(JSON.parse(line)); if (response) process.stdout.write(JSON.stringify(response) + "\n"); }
-  catch (error) { process.stdout.write(JSON.stringify(rpcError(null, -32603, String(error.message || error))) + "\n"); }
-}
+serveStdio(() => buildServer(), { onerror: (error) => process.stderr.write(`membrane-mcp: ${error.message}\n`) });

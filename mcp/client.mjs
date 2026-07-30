@@ -86,6 +86,67 @@ function readStdinSync() {
   return readFileSync(0, "utf8");
 }
 
+function validTraceparent(value) {
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 128) return false;
+  const match = /^(?<version>[0-9a-f]{2})-(?<trace>[0-9a-f]{32})-(?<parent>[0-9a-f]{16})-(?<flags>[0-9a-f]{2})(?<extension>(?:-[\x21-\x7E]+)*)$/.exec(value);
+  return Boolean(match && match.groups.version !== "ff" && (match.groups.version !== "00" || !match.groups.extension) && !/^0+$/.test(match.groups.trace) && !/^0+$/.test(match.groups.parent));
+}
+
+const TRACESTATE_SIMPLE_KEY = /^[a-z][a-z0-9_*/-]{0,255}$/;
+const TRACESTATE_MULTI_KEY = /^[a-z0-9][a-z0-9_*/-]{0,240}@[a-z][a-z0-9_*/-]{0,13}$/;
+const TRACESTATE_VALUE = /^[\x20-\x2B\x2D-\x3C\x3E-\x7E]+$/;
+const BAGGAGE_TOKEN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+const BAGGAGE_VALUE = /^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*$/;
+const trimOws = (value) => value.replace(/^[ \t]+|[ \t]+$/g, "");
+function validTracestateMember(member, keys) {
+  const value = trimOws(member);
+  if (!value) return true;
+  const separator = value.indexOf("=");
+  if (separator <= 0 || value.indexOf("=", separator + 1) !== -1) return false;
+  const stateValue = value.slice(separator + 1).replace(/[ \t]+$/, "");
+  const key = value.slice(0, separator);
+  if (!TRACESTATE_SIMPLE_KEY.test(key) && !TRACESTATE_MULTI_KEY.test(key)) return false;
+  if (stateValue.length > 256 || !TRACESTATE_VALUE.test(stateValue) || stateValue.endsWith(" ") || keys.has(key)) return false;
+  keys.add(key);
+  return true;
+}
+function validTracestate(value) {
+  if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 512) return false;
+  const members = value.split(",");
+  const keys = new Set();
+  return members.length <= 32 && members.every((member) => validTracestateMember(member, keys));
+}
+function validBaggageProperty(value) {
+  const property = trimOws(value);
+  const separator = property.indexOf("=");
+  if (separator === -1) return BAGGAGE_TOKEN.test(property);
+  const key = property.slice(0, separator).replace(/[ \t]+$/, "");
+  const propertyValue = property.slice(separator + 1).replace(/^[ \t]+|[ \t]+$/g, "");
+  return BAGGAGE_TOKEN.test(key) && BAGGAGE_VALUE.test(propertyValue);
+}
+function validBaggageMember(member) {
+  const value = trimOws(member);
+  const separator = value.indexOf("=");
+  if (separator <= 0) return false;
+  const key = value.slice(0, separator).replace(/[ \t]+$/, "");
+  const [baggageValue, ...properties] = value.slice(separator + 1).replace(/^[ \t]+/, "").split(";");
+  return BAGGAGE_TOKEN.test(key) && BAGGAGE_VALUE.test(baggageValue.replace(/[ \t]+$/, "")) && properties.every(validBaggageProperty);
+}
+function validBaggage(value) {
+  if (typeof value !== "string" || !value || Buffer.byteLength(value, "utf8") > 8192) return false;
+  const members = value.split(",");
+  return members.length <= 64 && members.every(validBaggageMember);
+}
+
+function boundedTrace(value) {
+  const trace = {};
+  const hasTraceparent = validTraceparent(value.traceparent);
+  if (hasTraceparent) trace.traceparent = value.traceparent;
+  if (hasTraceparent && validTracestate(value.tracestate)) trace.tracestate = value.tracestate;
+  if (validBaggage(value.baggage)) trace.baggage = value.baggage;
+  return trace;
+}
+
 function loadInput({ inputArg, maxTokens }) {
   let raw;
   if (inputArg === "-" || inputArg === undefined) {
@@ -110,10 +171,12 @@ function loadInput({ inputArg, maxTokens }) {
     anchors: parsed.anchors ?? "",
     scopeGrantId: parsed.scopeGrantId,
     scopeDescriptor: parsed.scopeDescriptor,
+    ...boundedTrace(parsed),
   };
 }
 
 function postPlanner({ host, port, path, body, token, traceId }) {
+  const trace = boundedTrace(body);
   return new Promise((resolve, reject) => {
     const json = Buffer.from(JSON.stringify(body), "utf8");
     const req = httpRequest(
@@ -132,6 +195,9 @@ function postPlanner({ host, port, path, body, token, traceId }) {
           "x-rightcontext-client": "mcp",
           "x-rightcontext-version": TRANSPORT_VERSION,
           "x-rightcontext-trace": traceId,
+          ...(trace.traceparent ? { traceparent: trace.traceparent } : {}),
+          ...(trace.tracestate ? { tracestate: trace.tracestate } : {}),
+          ...(trace.baggage ? { baggage: trace.baggage } : {}),
         },
       },
       (res) => {
@@ -230,7 +296,7 @@ async function main() {
     return 2;
   }
 
-  const traceId = payload.session || `mcp-${Date.now().toString(16)}`;
+  const traceId = payload.traceparent ? payload.traceparent.split("-")[1] : (payload.session || `mcp-${Date.now().toString(16)}`);
   const token = readToken();
   const port = readPort();
   const host = "127.0.0.1";

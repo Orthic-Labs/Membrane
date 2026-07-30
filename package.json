@@ -1,0 +1,14 @@
+{
+  "name": "membrane",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test:mcp": "node mcp/client.test.mjs && node mcp/project-registry.test.mjs && node mcp/install.test.mjs && node mcp/server.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.0.0"
+  }
+}

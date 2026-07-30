@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-07-30 — MCP 2026-07-28 dual-era stdio
+
+- Migrated public MCP stdio to exact `@modelcontextprotocol/server@2.0.0` with one factory serving legacy `2025-03-26` clients & modern `2026-07-28` discovery.
+- Added enforced input/output schemas, structured tool results with text fallback, & retained protocol-resource parity.
+- Added bounded W3C `traceparent`, `tracestate`, & `baggage` propagation through `/federate`, including trace-ID request correlation.
+- Tightened caller authorization to exact repository, root, scope descriptor, & scope ID binding; declared Node.js `>=20`.
+
 ## 2026-07-30 — RMS + Markdown Doc Spine absorption
 
 - Absorbed RMS lifecycle v20, checkpoints, telemetry, migration/backout, doctor, native MCP/federation, installer, & typed virtual scopes into MemRight/Membrane.
