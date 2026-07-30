@@ -1,0 +1,70 @@
+{
+  "catalog": {
+    "activeGrants": 0,
+    "memrightDbUntouched": true,
+    "path": "D:\\Claude\\tools\\.cache/memory\\catalog.db",
+    "receipts": 0,
+    "retrievalEvents": 0,
+    "schemaVersion": 1,
+    "status": "ok"
+  },
+  "dailyAnalysis": {
+    "alert": true,
+    "lastSuccessAgeSeconds": 784870,
+    "reason": "stale_output",
+    "status": "stale"
+  },
+  "database": {
+    "status": "ok"
+  },
+  "embedder_dim": 768,
+  "embedder_fingerprint": "pf:v1:4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b",
+  "embedder_issue": null,
+  "embedder_model": "embeddinggemma-300m-q4",
+  "last_persist_error": null,
+  "ok": true,
+  "planner": {
+    "lastFallback": null,
+    "p50Micros": 0,
+    "p95Micros": 0,
+    "receiptSchemaErrorCount": 0,
+    "samples": 0
+  },
+  "query_embedding_cache": {
+    "capacity": 256,
+    "entries": 0,
+    "hits": 0,
+    "misses": 0
+  },
+  "releaseGeneration": "sha256:ac41729c4f8857756529a0832e0675e39dd52e9c740e28961fdb5ae358631a7f",
+  "serviceGeneration": "sha256:e3ad64d4b58f9e01378b9cb44c5d518a99e6d2c5be96590429aa49ad86603f02",
+  "workers": {
+    "detachedRunning": 0,
+    "diagnostics": {
+      "available": 0,
+      "max": 1
+    },
+    "general": {
+      "available": 32,
+      "max": 32
+    },
+    "ingress": {
+      "available": 32,
+      "max": 32
+    },
+    "model": {
+      "available": 8,
+      "executionAvailable": 1,
+      "executionMax": 1,
+      "max": 8
+    },
+    "overloadRejections": {
+      "diagnostics": 0,
+      "general": 0,
+      "ingress": 0,
+      "model": 0,
+      "total": 0
+    }
+  },
+  "writes_enabled": true
+}

@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+  File "D:\Claude\tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-143610\runtime\tools\pipelines\memory\install-memright.py", line 269, in install_release_pair
+    raise ValueError(f"candidate {role} identity: {'; '.join(errors)}")
+ValueError: candidate cli identity: model identity is missing
+Exception:
+Line |
+  23 | if($LASTEXITCODE){throw "install"}
+     |                   ~~~~~~~~~~~~~~~
+     | install

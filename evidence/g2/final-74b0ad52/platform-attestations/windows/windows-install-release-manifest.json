@@ -1,0 +1,36 @@
+{
+  "assets": [
+    {
+      "arch": "x86_64",
+      "name": "memright.exe",
+      "os": "windows",
+      "release_generation": "sha256:ac41729c4f8857756529a0832e0675e39dd52e9c740e28961fdb5ae358631a7f",
+      "role": "cli",
+      "sha256": "f0b2090681929f5f2b2c316aa14f9a838187b82251990b181bb42a219cda8250"
+    },
+    {
+      "arch": "x86_64",
+      "name": "memright-service.exe",
+      "os": "windows",
+      "release_generation": "sha256:ac41729c4f8857756529a0832e0675e39dd52e9c740e28961fdb5ae358631a7f",
+      "role": "service",
+      "sha256": "232bf95b0c431baa829c872623bd1dfb4114aa1551dfb849354d13bb9055a5de"
+    }
+  ],
+  "candidate_membrane_tag": "candidate/v20-944ea3ad",
+  "candidate_root_commit": "74b0ad525d066a05c9d96ba1ce8d7e1f4ce4a004",
+  "candidate_root_tag": "candidate/v20-74b0ad52",
+  "latest_schema_version": 20,
+  "memright_source_commit": "944ea3adc9c0c01d34c5ffd3f1c61f47f069121e",
+  "model": {
+    "dimension": 768,
+    "fingerprint": "pf:v1:4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b",
+    "id": "embeddinggemma-300m-q4"
+  },
+  "product_version": "0.1.1",
+  "release_generation": "sha256:ac41729c4f8857756529a0832e0675e39dd52e9c740e28961fdb5ae358631a7f",
+  "schema_compat": 20,
+  "source_repo": "https://github.com/Orthic-Labs/Membrane.git",
+  "source_tree_path": "engine",
+  "source_tree_sha256": "ac41729c4f8857756529a0832e0675e39dd52e9c740e28961fdb5ae358631a7f"
+}

@@ -1,0 +1,20 @@
+{
+  "status": "pass",
+  "runtime_root": "74b0ad525d066a05c9d96ba1ce8d7e1f4ce4a004",
+  "runtime_membrane": "944ea3adc9c0c01d34c5ffd3f1c61f47f069121e",
+  "suite_root": "40d80d5852b2bab6c2a679368ba8cf706dbf8a59",
+  "suite_membrane": "de214878104c02792dbac918ed2e407458770f60",
+  "changed_paths": [
+    "engine/federation/test_gateway_freshness.py"
+  ],
+  "preserved": [
+    "Q1",
+    "Q2_RUST",
+    "Q2_NODE"
+  ],
+  "rerun": [
+    "Q2_PYTHON"
+  ],
+  "python_summary": "72 passed in 51.01s",
+  "continue_at": "Q3"
+}

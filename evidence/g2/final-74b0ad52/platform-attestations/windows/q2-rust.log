@@ -1,0 +1,1102 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.46
+   Compiling shlex v2.0.1
+   Compiling find-msvc-tools v0.1.9
+   Compiling windows-link v0.2.1
+   Compiling memchr v2.8.3
+   Compiling serde_core v1.0.228
+   Compiling itoa v1.0.18
+   Compiling cfg-if v1.0.4
+   Compiling serde v1.0.228
+   Compiling regex-syntax v0.8.11
+   Compiling once_cell v1.21.4
+   Compiling fnv v1.0.7
+   Compiling ident_case v1.0.1
+   Compiling pin-project-lite v0.2.17
+   Compiling bytes v1.12.1
+   Compiling pkg-config v0.3.33
+   Compiling zmij v1.0.21
+   Compiling autocfg v1.5.1
+   Compiling windows-sys v0.61.2
+   Compiling version_check v0.9.5
+   Compiling serde_json v1.0.150
+   Compiling futures-core v0.3.32
+   Compiling thiserror v1.0.69
+   Compiling syn v1.0.109
+   Compiling siphasher v1.0.3
+   Compiling strsim v0.11.1
+   Compiling crossbeam-utils v0.8.22
+   Compiling libc v0.2.186
+   Compiling smallvec v1.15.2
+   Compiling typenum v1.20.1
+   Compiling strsim v0.10.0
+   Compiling cc v1.2.66
+   Compiling generic-array v0.14.7
+   Compiling windows_x86_64_msvc v0.52.6
+   Compiling crossbeam-epoch v0.9.20
+   Compiling aho-corasick v1.1.4
+   Compiling http v1.4.2
+   Compiling num-traits v0.2.19
+   Compiling once_cell_polyfill v1.70.2
+   Compiling zerocopy v0.8.54
+   Compiling bit-vec v0.6.3
+   Compiling anyhow v1.0.103
+   Compiling anstyle v1.0.14
+   Compiling crossbeam-deque v0.8.7
+   Compiling bitflags v2.13.0
+   Compiling utf8parse v0.2.2
+   Compiling bit-set v0.5.3
+   Compiling anstyle-parse v1.0.0
+   Compiling syn v2.0.118
+   Compiling phf_shared v0.13.1
+   Compiling either v1.16.0
+   Compiling crc32fast v1.5.0
+   Compiling prettyplease v0.2.37
+   Compiling colorchoice v1.0.5
+   Compiling lazy_static v1.5.0
+   Compiling rayon-core v1.13.0
+   Compiling httparse v1.10.1
+   Compiling socket2 v0.6.4
+   Compiling regex-automata v0.4.15
+   Compiling mio v1.2.1
+   Compiling anstyle-wincon v3.0.11
+   Compiling http-body v1.0.1
+   Compiling block-buffer v0.10.4
+   Compiling crypto-common v0.1.7
+   Compiling anstyle-query v1.1.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling tower-service v0.3.3
+   Compiling fastrand v2.4.1
+   Compiling log v0.4.33
+   Compiling rustversion v1.0.23
+   Compiling anstream v1.0.0
+   Compiling digest v0.10.7
+   Compiling phf_generator v0.13.1
+   Compiling terminal_size v0.4.4
+   Compiling winapi-util v0.1.11
+   Compiling windows-targets v0.52.6
+   Compiling matrixmultiply v0.3.10
+   Compiling tree-sitter v0.22.6
+   Compiling onig_sys v69.9.3
+   Compiling tracing-core v0.1.36
+   Compiling getrandom v0.2.17
+   Compiling tinyvec_macros v0.1.1
+   Compiling simd-adler32 v0.3.9
+   Compiling tree-sitter-language v0.1.7
+   Compiling thiserror v2.0.18
+   Compiling base64 v0.22.1
+   Compiling tower-layer v0.3.3
+   Compiling clap_lex v1.1.0
+   Compiling heck v0.5.0
+   Compiling vcpkg v0.2.15
+   Compiling portable-atomic v1.13.1
+   Compiling adler2 v2.0.1
+   Compiling cpufeatures v0.2.17
+   Compiling paste v1.0.15
+   Compiling rustc-hash v1.1.0
+   Compiling clap_builder v4.6.0
+   Compiling rand_core v0.6.4
+   Compiling sha2 v0.10.9
+   Compiling miniz_oxide v0.8.9
+   Compiling tinyvec v1.12.0
+   Compiling tracing v0.1.44
+   Compiling same-file v1.0.6
+   Compiling windows-sys v0.59.0
+   Compiling darling_core v0.20.11
+   Compiling esaxx-rs v0.1.10
+   Compiling phf_codegen v0.13.1
+   Compiling http-body-util v0.1.3
+   Compiling libsqlite3-sys v0.38.1
+   Compiling regex v1.13.0
+   Compiling darling_core v0.14.4
+   Compiling fancy-regex v0.13.0
+   Compiling bstr v1.12.3
+   Compiling futures-channel v0.3.32
+   Compiling atomic-waker v1.1.2
+   Compiling futures-sink v0.3.32
+   Compiling foldhash v0.2.0
+   Compiling entities v1.0.1
+   Compiling ort-sys v2.0.0-rc.12
+   Compiling httpdate v1.0.3
+   Compiling unicode-width v0.2.2
+   Compiling tiktoken-rs v0.7.0
+   Compiling percent-encoding v2.3.2
+   Compiling encode_unicode v1.0.0
+   Compiling jetscii v0.5.3
+   Compiling futures-task v0.3.32
+   Compiling minimal-lexical v0.2.1
+   Compiling ppv-lite86 v0.2.21
+   Compiling sync_wrapper v1.0.2
+   Compiling slab v0.4.12
+   Compiling rawpointer v0.2.1
+   Compiling console v0.15.11
+   Compiling futures-util v0.3.32
+   Compiling rand_chacha v0.3.1
+   Compiling nom v7.1.3
+   Compiling form_urlencoded v1.2.2
+   Compiling comrak v0.54.0
+   Compiling hashbrown v0.17.1
+   Compiling rayon v1.12.0
+   Compiling phf v0.13.1
+   Compiling flate2 v1.1.9
+   Compiling walkdir v2.5.0
+   Compiling serde_derive v1.0.228
+   Compiling thiserror-impl v1.0.69
+   Compiling tokio-macros v2.7.0
+   Compiling thiserror-impl v2.0.18
+   Compiling clap_derive v4.6.1
+   Compiling monostate-impl v0.1.18
+   Compiling unicode-normalization v0.1.25
+   Compiling num-complex v0.4.6
+   Compiling num-integer v0.1.46
+   Compiling tree-sitter-javascript v0.23.1
+   Compiling darling_macro v0.14.4
+   Compiling tree-sitter-python v0.21.0
+   Compiling tree-sitter-rust v0.21.2
+   Compiling darling_macro v0.20.11
+   Compiling tree-sitter-typescript v0.21.2
+   Compiling itertools v0.11.0
+   Compiling tokio v1.52.3
+   Compiling base64 v0.13.1
+   Compiling unicode-segmentation v1.13.3
+   Compiling mime v0.3.17
+   Compiling macro_rules_attribute-proc_macro v0.2.2
+   Compiling darling v0.14.4
+   Compiling darling v0.20.11
+   Compiling getrandom v0.4.3
+   Compiling number_prefix v0.4.0
+   Compiling derive_builder_core v0.12.0
+   Compiling ryu v1.0.23
+   Compiling axum-core v0.5.6
+   Compiling bon-macros v3.9.3
+   Compiling indicatif v0.17.11
+   Compiling monostate v0.1.18
+   Compiling ndarray v0.17.2
+   Compiling caseless v0.2.2
+   Compiling rayon-cond v0.3.0
+   Compiling hashlink v0.12.1
+   Compiling emojis v0.8.2
+   Compiling derive_builder_macro v0.12.0
+   Compiling rand v0.8.6
+   Compiling macro_rules_attribute v0.2.2
+   Compiling clap v4.6.1
+   Compiling serde_path_to_error v0.1.20
+   Compiling itertools v0.12.1
+   Compiling unicode-normalization-alignments v0.1.12
+   Compiling libloading v0.9.0
+   Compiling finl_unicode v1.4.0
+   Compiling typed-arena v2.0.2
+   Compiling shell-words v1.1.1
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling fallible-iterator v0.3.0
+   Compiling fmt2io v1.0.0
+   Compiling rustc-hash v2.1.3
+   Compiling matchit v0.8.4
+   Compiling unicode_categories v0.1.1
+   Compiling derive_builder v0.12.0
+   Compiling rusqlite v0.40.1
+   Compiling tempfile v3.27.0
+   Compiling bincode v1.3.3
+   Compiling memright-format v0.1.0 (D:\Claude\tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\source\membrane\engine\crates\memright-format)
+   Compiling memright-core v0.1.0 (D:\Claude\tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\source\membrane\engine\crates\memright-core)
+   Compiling spm_precompiled v0.1.4
+   Compiling serde_urlencoded v0.7.1
+   Compiling bon v3.9.3
+   Compiling onig v6.5.3
+   Compiling ort v2.0.0-rc.12
+   Compiling syntect v5.3.0
+   Compiling tokenizers v0.15.2
+   Compiling hyper v1.10.1
+   Compiling tokio-util v0.7.18
+   Compiling tower-http v0.6.11
+   Compiling tower v0.5.3
+   Compiling hyper-util v0.1.20
+   Compiling axum v0.8.9
+   Compiling memright v0.1.1 (D:\Claude\tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\source\membrane\engine\crates\memright)
+warning: method `child_pid` is never used
+   --> crates\memright\src\federation_worker.rs:234:8
+    |
+ 50 | impl ResidentGateway {
+    | -------------------- method in this implementation
+...
+234 |     fn child_pid(&self) -> Option<u32> {
+    |        ^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `memright` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1m 44s
+     Running unittests src\lib.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\memright-32cb117efc4b5081.exe)
+
+running 274 tests
+test admission_policy::tests::data_only_external_content_is_admitted_without_executable_influence ... ok
+test admission_policy::tests::executable_instructions_require_system_or_user_origin_with_high_authority ... ok
+test admission_policy::tests::protected_span_contract_covers_all_required_categories ... ok
+test admission_policy::tests::secret_detection_requires_credential_shaped_value_but_covers_fenced_credentials ... ok
+test admission_policy::tests::secret_quarantine_unknown_origin_and_unknown_authority_fail_closed ... ok
+test catalog::tests::catalog_connections_use_memory_temp_store ... ok
+test catalog::tests::catalog_opens_without_touching_memright_db ... ok
+test catalog::tests::grant_issuance_lookup_expiry_and_revocation ... ok
+test catalog::tests::grant_with_elapsed_ttl_is_observed_as_expired ... ok
+test catalog::tests::health_snapshot_does_not_report_zero_counts_as_healthy_on_query_failure ... ok
+test catalog::tests::health_snapshot_returns_busy_without_waiting_for_catalog_lock ... ok
+test catalog::tests::receipts_are_appended_and_persisted_content_free ... ok
+test compress::tests::budget_compression_keeps_critical_lines_exactly ... ok
+test compress::tests::budget_compression_reports_protected_overflow_without_dropping ... ok
+test compress::tests::compress_matches_python_jaccard ... ok
+test compress::tests::drop_manifest_marks_identifier_and_error_loss_high_risk ... ok
+test compress::tests::missing_model_error_mentions_default_dir_and_readme_pointer ... ok
+test compress::tests::rate_api_remains_independent_from_budget_path ... ok
+test compress::tests::resolve_asset_paths_default_dir_under_manifest ... ok
+test compress::tests::resolve_asset_paths_env_var_overrides_default ... ok
+test compress::tests::resolve_asset_paths_windows_style_env_var_preserved ... ok
+test compress::tests::select_keep_indices_empty_input ... ok
+test compress::tests::select_keep_indices_force_exceeds_budget_shrinks_topk ... ok
+test compress::tests::select_keep_indices_force_overrides_topk ... ok
+test compress::tests::select_keep_indices_rate_zero_keeps_only_force ... ok
+test compress::tests::select_keep_indices_respects_rate ... ok
+test compress::tests::softmax_keep_prob_numerically_stable_for_large_logits ... ok
+test compress::tests::softmax_keep_prob_picks_higher_logit ... ok
+test compress::tests::token_chunks_cover_long_inputs_without_truncation ... ok
+test compress::tests::tokenizer_release_gate_requires_asset_and_measures_real_counts ... ignored, P2 release gate; run explicitly with --ignored after binding tokenizer assets
+test context_telemetry::lifecycle_intent_tests::compact_off_intent_matches_python_canonical_event_ids ... ok
+test context_telemetry::lifecycle_intent_tests::expansion_rejection_records_specific_content_free_reason ... ok
+test context_telemetry::lifecycle_intent_tests::malformed_record_is_hash_accounted_and_does_not_block_valid_tail ... ok
+test context_telemetry::lifecycle_intent_tests::prompt_ingress_is_exact_and_crash_replay_is_idempotent ... ok
+test context_telemetry::lifecycle_intent_tests::queued_prompt_ingress_rejects_a_different_installation ... ok
+test context_telemetry::lifecycle_intent_tests::queued_prompt_ingress_survives_service_restart_on_same_installation ... ok
+test doctor::tests::doctor_accepts_only_explicit_suppression_codes ... ok
+test doctor::tests::doctor_effectiveness_unverified_means_injected_without_verified_access ... ok
+test doctor::tests::doctor_fails_closed_when_a_check_query_cannot_read_ids ... ok
+test doctor::tests::doctor_filters_only_exact_external_reference_slugs ... ok
+test doctor::tests::doctor_is_read_only_and_uses_locked_effectiveness_label ... ok
+test doctor::tests::doctor_reports_expired_lifecycle_superseded_injection_and_checkpoint_delivery ... ok
+test doctor::tests::doctor_reports_real_count_with_sorted_capped_samples ... ok
+test doctor::tests::doctor_stably_suppresses_lifecycle_checks_for_v19_shape ... ok
+test doctor::tests::doctor_uses_nontrivial_quantized_embeddings_when_legacy_blobs_are_null ... ok
+test federation::observability_tests::preserves_content_free_gateway_observability_for_clients ... ok
+test federation::tests::gateway_prefers_membrane_over_the_legacy_layout_when_both_exist ... ok
+test federation::tests::gateway_resolution_is_none_when_no_layout_exists ... ok
+test federation::tests::gateway_resolves_a_standalone_membrane_checkout ... ok
+test federation::tests::gateway_resolves_membrane_layout_by_walking_up_from_a_nested_repo ... ok
+test federation::tests::gateway_still_resolves_a_pre_consolidation_workspace ... ok
+test federation::tests::memory_candidates_rank_topical_and_emit_content_preview ... ok
+test federation::tests::memory_preview_truncates_on_word_boundary ... ok
+test federation::tests::missing_session_uses_canonical_opaque_identity ... ok
+test feedback::tests::advisory_validates_but_never_ranks ... ok
+test feedback::tests::empty_join_key_is_rejected ... ok
+test feedback::tests::observed_action_is_verified_without_a_verdict ... ok
+test feedback::tests::outcome_roundtrip ... ok
+test feedback::tests::ranking_outcome_requires_verified_source ... ok
+test freshness::tests::bounded_child_fixture ... ok
+test freshness::tests::bounded_child_kills_a_process_that_writes_then_hangs ... ok
+test freshness::tests::bounded_child_kills_a_silent_process_at_the_deadline ... ok
+test freshness::tests::bounded_child_returns_normal_output_and_exit_status ... ok
+test freshness::tests::bounded_child_stops_reading_and_kills_on_the_output_cap ... ok
+test freshness::tests::coordinator_returns_immediately_while_repository_refresh_runs_off_path ... ok
+test freshness::tests::copy_status_does_not_rehash_the_unchanged_source_path ... ok
+test freshness::tests::cumulative_overlay_limit_is_detected_from_metadata_before_hashing ... ok
+test freshness::tests::freshness_exposes_distinct_boot_and_release_generations ... ok
+test freshness::tests::parser_excludes_blueprint_outputs_and_names_statuses ... ok
+test freshness::tests::rename_status_hashes_the_new_path_and_marks_the_missing_old_path_deleted ... ok
+test freshness::tests::within_limit_overlay_and_deleted_paths_pass_metadata_preflight ... ok
+test memdb::tests::bundled_sqlite_contains_wal_reset_fix ... ok
+test memdb::tests::client_attribution_columns_present_after_migrate ... ok
+test memdb::tests::client_recall_counts_groups_by_attribution ... ok
+test memdb::tests::dry_run_inspection_of_v10_database_is_byte_for_byte_nonmutating ... ok
+test memdb::tests::health_probe_keeps_poison_when_the_recovered_sentinel_fails ... ok
+test memdb::tests::health_probe_recovers_a_poisoned_connection_after_a_successful_sentinel ... ok
+test memdb::tests::inject_count_migration_applies_to_existing_db ... ok
+test memdb::tests::latest_schema_preserves_v11_physical_smoke_sink_and_ledger ... ok
+test memdb::tests::lifecycle_event_migration_is_content_free_and_indexed ... ok
+test memdb::tests::log_recall_default_attribution_when_caller_omits ... ok
+test memdb::tests::malformed_legacy_schema_fails_migration_without_advancing_version ... ok
+test memdb::tests::memory_connections_use_memory_temp_store ... ok
+test memdb::tests::metrics_exclude_empty_queries_but_report_attribution_quality ... ok
+test memdb::tests::migration_backfills_updated_at_from_created_at ... ok
+test memdb::tests::migrations_record_a_nonzero_schema_version ... ok
+test memdb::tests::production_aggregates_exclude_nonproduction_traffic ... ok
+test memdb::tests::reopen_backfills_content_free_identity_for_legacy_memories ... ok
+test memdb::tests::reopen_backfills_legacy_transform_identity_without_fabricating_installation ... ok
+test memdb::tests::schema_v10_backout_aborts_without_data_loss_on_id_collision ... ok
+test memdb::tests::schema_v10_backout_restores_quarantine_before_resetting_version ... ok
+test memdb::tests::schema_v11_backout_collision_rolls_back_without_losing_either_copy ... ok
+test memdb::tests::schema_v11_backout_restores_migrated_and_prospective_smoke_rows_without_loss ... ok
+test memdb::tests::smoke_isolation_dry_run_is_non_mutating_and_apply_is_exact_and_idempotent ... ok
+test memdb::tests::smoke_isolation_exact_count_and_copy_faults_roll_back_everything ... ok
+test memdb::tests::smoke_sink_logging_never_enters_production_recall_log ... ok
+test memdb::tests::transform_log_records_and_aggregates ... ok
+test memdb::tests::transform_log_records_complete_observed_identity ... ok
+test memdb::tests::transform_opportunity_is_a_denominator_and_links_exact_execution ... ok
+test memdb::tests::v10_upgrade_to_latest_and_backout_preserve_all_recall_payloads ... ok
+test memdb::tests::v20_adds_identical_integer_ms_lifecycle_columns_to_memory_and_quarantine ... ok
+test memdb::tests::v20_backout_restores_v19_shape_transactionally ... ok
+test planner_metrics::tests::empty_window_reports_zero ... ok
+test planner_metrics::tests::last_fallback_round_trip ... ok
+test planner_metrics::tests::percentiles_stable_under_load ... ok
+test prep::tests::large_markdown_routes_to_outline_before_compression ... ok
+test prep::tests::markdown_outline_route_uses_token_threshold_not_byte_count ... ok
+test prep::tests::prep_compress_branch_matches_python_jaccard ... ok
+test prep::tests::prep_preserves_structured_content_by_extension_and_sniffing ... ok
+test prep::tests::prep_routes_and_manifest ... ok
+test release_identity::tests::release_generation_is_derived_from_compile_time_tree_identity ... ok
+test release_identity::tests::service_generation_is_stable_within_one_process_and_not_the_release ... ok
+test release_identity::tests::target_triple_is_a_supported_native_release_target ... ok
+test runc::tests::default_shell_preserves_the_legacy_bash_contract ... ok
+test runc::tests::run_capped_preserves_exit_and_spills ... ok
+test runc::tests::run_capped_spills_full_output_even_when_output_fits ... ok
+test runc::tests::shell_override_program_and_switch_used_verbatim ... ok
+test runc::tests::shell_override_program_only_appends_platform_switch ... ok
+test scope::tests::canonical_chain_passes_through_slugs_and_unix_paths ... ok
+test scope::tests::canonical_chain_resolves_windows_path_to_project_scopes ... ok
+test scope::tests::chain_includes_ancestors_and_global_not_siblings ... ok
+test scope::tests::drive_letter_is_normalized ... ok
+test scope::tests::self_leads_even_when_empty ... ok
+test scope::tests::virtual_scope_is_opaque_and_uses_only_explicit_same_tenant_parents ... ok
+test scope::tests::virtual_scope_rejects_cross_tenant_unknown_duplicate_and_excessive_parents ... ok
+test scope::tests::workspace_root_accepts_arbitrary_explicit_installation ... ok
+test scope::tests::workspace_root_reads_only_strict_v2_config ... ok
+test serve::tests::absent_token_configuration_generates_a_default_token_beside_the_database ... ok
+test serve::tests::add_route_is_disabled_and_prefix_routes_do_not_match ... ok
+test serve::tests::analysis_response_is_explicit_when_report_is_unavailable ... ok
+test serve::tests::analysis_response_rejects_a_stale_report_when_the_scheduler_never_runs ... ok
+test serve::tests::analysis_watchdog_alerts_when_the_daily_job_never_produces_output ... ok
+test serve::tests::analysis_watchdog_reports_content_free_last_success_age ... ok
+test serve::tests::anchor_retrieve_is_authenticated_and_confined_to_workspace_repo ... ok
+test serve::tests::bounded_model_queue_absorbs_a_normal_two_request_burst ... ok
+test serve::tests::context_close_unknown_is_registered_at_http_boundary ... ok
+test serve::tests::context_source_is_fail_closed_when_present_and_unknown ... ok
+test serve::tests::curate_route_updates_the_resident_registry ... ok
+test serve::tests::detailed_health_does_not_share_tokios_blocking_pool ... ok
+test serve::tests::detailed_health_fails_closed_when_memdb_is_busy_now ... ok
+test serve::tests::detailed_health_fails_closed_when_memdb_probe_errors_now ... ok
+test serve::tests::detailed_health_is_unavailable_when_catalog_is_busy ... ok
+test serve::tests::detailed_health_is_unavailable_when_catalog_query_fails ... ok
+test serve::tests::detailed_health_is_unavailable_when_store_is_unhealthy ... ok
+test serve::tests::detailed_health_timeout_is_retryable_and_livez_stays_available ... ok
+test serve::tests::diagnostics_executor_drop_does_not_wait_for_wedged_job ... ok
+test serve::tests::diagnostics_executor_drop_joins_after_normal_worker_exit ... ok
+test serve::tests::evaluation_recall_logs_without_observing_or_incrementing_injections ... ok
+test serve::tests::expand_anchor_recovers_exact_content_and_rejects_missing ... ok
+test serve::tests::explicit_smoke_context_routes_only_to_physical_smoke_sink ... ok
+test serve::tests::feedback_route_persists_verified_and_rejects_bad_outcome ... ok
+test serve::tests::get_returns_full_content_and_records_use ... ok
+test serve::tests::graph_route_exposes_real_local_nodes_and_embedding_edges ... ok
+test serve::tests::health_exposes_boot_and_release_generations ... ok
+test serve::tests::health_exposes_worker_capacity_and_overload_rejections ... ok
+test serve::tests::http_route_contract_exhaustively_classifies_model_work ... ok
+test serve::tests::http_route_registry_matches_every_implemented_public_handler ... ok
+test serve::tests::idempotency_key_reuse_with_different_put_body_conflicts ... ok
+test serve::tests::idempotency_registry_bounds_running_entries_and_scopes_digests ... ok
+test serve::tests::idempotency_registry_retries_the_same_key_after_a_retryable_failure ... ok
+test serve::tests::idempotent_put_replays_a_body_larger_than_sixteen_kib ... ok
+test serve::tests::idempotent_put_retry_after_timeout_has_one_durable_effect ... ok
+test serve::tests::in_flight_idempotent_put_replay_waits_for_exact_result ... ok
+test serve::tests::latest_analysis_json_returns_newest_report ... ok
+test serve::tests::lifecycle_routes_preserve_client_session_and_trace_attribution ... ok
+test serve::tests::livez_bypasses_workload_ingress_while_work_is_active ... ok
+test serve::tests::memory_candidates_accepts_typed_virtual_scope_without_global_inheritance ... ok
+test serve::tests::memory_candidates_exposes_content_free_stage_timing ... ok
+test serve::tests::metrics_label_preview_delta_as_potential_savings ... ok
+test serve::tests::missing_token_file_is_generated_once_without_exposing_weak_material ... ok
+test serve::tests::observe_false_requires_explicit_nonproduction_traffic_class ... ok
+test serve::tests::observed_recall_persists_exact_replay_telemetry ... ok
+test serve::tests::policy_assignment_route_is_stable_and_requires_attribution ... ok
+test serve::tests::preview_skips_frontmatter_comments_and_heading_only_lines ... ok
+test serve::tests::preview_survives_adversarial_shapes ... ok
+test serve::tests::production_timeout_allows_slow_embeddings_and_precedes_cli_deadline ... ok
+test serve::tests::put_and_recall_round_trip ... ok
+test serve::tests::quarantine_routes_list_and_restore_without_restart ... ok
+test serve::tests::recall_and_put_reject_oversized_inputs ... ok
+test serve::tests::recall_honors_global_planner_preview_budget ... ok
+test serve::tests::recall_logs_source_and_query_preview ... ok
+test serve::tests::recall_persists_client_attribution ... ok
+test serve::tests::recall_rejects_blank_query_without_logging ... ok
+test serve::tests::recall_rejects_missing_or_unknown_client_without_logging ... ok
+test serve::tests::recall_rejects_unbounded_planner_preview_budget ... ok
+test serve::tests::recall_route_increments_inject_count ... ok
+test serve::tests::recall_route_returns_typed_abstention_for_a0_candidates ... ok
+test serve::tests::recall_top_hit_gets_extended_preview_when_relevant ... ok
+test serve::tests::resident_freshness_returns_refresh_pending_without_waiting_for_git ... ok
+test serve::tests::router_without_a_token_rejects_private_routes ... ok
+test serve::tests::saturated_expensive_lane_returns_retryable_overload ... ok
+test serve::tests::saturated_workload_ingress_sheds_without_waiting ... ok
+test serve::tests::skills_snapshot_route_returns_the_engine_generation_and_no_bodies ... ok
+test serve::tests::smoke_clients_fail_safe_to_smoke_sink_and_require_nonproduction_nonobserving_requests ... ok
+test serve::tests::smoke_recall_fails_when_the_physical_sink_cannot_persist ... ok
+test serve::tests::stalled_request_times_out_without_consuming_the_service ... ok
+test serve::tests::test_gate_unreleased_enter_exits_without_parking_a_blocking_worker ... ok
+test serve::tests::timed_out_blocking_worker_does_not_take_health_down ... ok
+test serve::tests::transport_enforces_auth_origin_json_and_body_limits ... ok
+test serve::tests::unsupported_mutator_rejects_idempotency_key ... ok
+test skel::tests::budget_skeleton_degrades_to_path_stub ... ok
+test skel::tests::python_empty_input_no_panic ... ok
+test skel::tests::skeletonizes_javascript_function ... ok
+test skel::tests::skeletonizes_python_function_and_class ... ok
+test skel::tests::skeletonizes_typescript_function_and_class ... ok
+test skel::tests::skeletons_rust_fn ... ok
+test skel::tests::unsupported_ext_passthrough ... ok
+test store::tests::anonymous_relationship_graph_contains_no_ids_or_scopes ... ok
+test store::tests::backfill_links_rebuilds_from_content ... ok
+test store::tests::blank_trace_still_links_one_canonical_read_attempt ... ok
+test store::tests::concurrent_registry_readers_do_not_serialize_recall ... ok
+test store::tests::context_for_releases_registry_before_feedback_db_reads ... ok
+test store::tests::context_policy_assignment_is_deterministic_and_persisted ... ok
+test store::tests::delete_and_tombstone_roll_back_together ... ok
+test store::tests::delete_records_tombstone_and_put_clears_it ... ok
+test store::tests::detailed_recall_marks_link_origin_and_metrics_count_it ... ok
+test store::tests::disabled_writes_surface_health_and_do_not_touch_registry ... ok
+test store::tests::dream_aborts_if_the_corpus_changes_while_embeddings_are_prepared ... ok
+test store::tests::dream_consolidation_and_pruning_are_one_transaction ... ok
+test store::tests::dream_consolidation_is_in_place_preserving_id_scope_and_counters ... ok
+test store::tests::dream_does_not_quarantine_an_injected_preview_as_never_used ... ok
+test store::tests::dream_embedding_does_not_hold_the_memdb_lock ... ok
+test store::tests::dream_now_consolidates_duplicates_and_prunes_low_value_entries ... ok
+test store::tests::dream_now_on_empty_store_returns_zero_status ... ok
+test store::tests::dream_now_records_status_for_agent_roster_surface ... ok
+test store::tests::dream_persists_consolidation_source_ids ... ok
+test store::tests::dream_protects_historical_rows_with_unknown_exposure_status ... ok
+test store::tests::dream_quarantines_low_value_entries_and_can_restore_them ... ok
+test store::tests::empty_store_returns_none ... ok
+test store::tests::gate_history_drops_superseded_veto ... ok
+test store::tests::get_returns_full_and_records_use ... ok
+test store::tests::health_exposes_active_embedder_pipeline_fingerprint ... ok
+test store::tests::http_disabled_embedder_records_unavailable_embedding_terminal ... ok
+test store::tests::ingest_markdown_stores_scoped_entry ... ok
+test store::tests::injection_batch_is_atomic_and_reports_errors ... ok
+test store::tests::keywords_filter_short_and_stopwords ... ok
+test store::tests::legacy_f32_embedding_blob_still_reads ... ok
+test store::tests::lifecycle_events_capture_surface_without_memory_content ... ok
+test store::tests::linked_neighbors_surface_from_wikilink_edges ... ok
+test store::tests::memory_batch_rolls_back_rows_events_and_receipt_on_mid_commit_failure ... ok
+test store::tests::memory_batch_uses_one_native_batch_and_replay_uses_none ... ok
+test store::tests::metadata_write_preserves_updated_at_and_provenance ... ok
+test store::tests::metrics_json_excludes_nonproduction_recall_traffic ... ok
+test store::tests::new_rows_store_quantized_embedding_and_reload ... ok
+test store::tests::persists_across_instances ... ok
+test store::tests::protected_expired_and_superseded_rows_never_bypass_lifecycle_admission ... ok
+test store::tests::put_and_tombstone_cleanup_roll_back_together ... ok
+test store::tests::query_embedding_does_not_hold_the_registry_lock ... ok
+test store::tests::recall_abstains_when_all_candidates_are_a0 ... ok
+test store::tests::recall_events_capture_complete_decision_identity ... ok
+test store::tests::recall_increments_inject_count_persisted ... ok
+test store::tests::recall_scored_applies_verified_feedback_veto_until_superseded ... ok
+test store::tests::recall_scored_backfills_unused_graph_lane_with_direct_hits ... ok
+test store::tests::recall_scored_filters_scope_before_candidate_generation ... ok
+test store::tests::recall_scored_prioritizes_self_scope_over_global_chain ... ok
+test store::tests::recall_scored_promotes_one_hop_links_without_exceeding_limit ... ok
+test store::tests::recall_scored_reranks_beyond_the_old_scoped_candidate_floor ... ok
+test store::tests::recall_scored_sorts_by_cosine_over_fused_candidates ... ok
+test store::tests::recall_scored_uses_scope_as_soft_bonus_not_hard_sort ... ok
+test store::tests::record_then_retrieve_relevant ... ok
+test store::tests::registry_load_rejects_malformed_rows ... ok
+test store::tests::reindex_refuses_disabled_writes_and_invalid_embeddings ... ok
+test store::tests::reindex_surfaces_row_decode_errors ... ok
+test store::tests::relationship_graph_uses_embedding_neighbors_not_id_tokens ... ok
+test store::tests::remember_consolidated_is_idempotent_by_stable_id ... ok
+test store::tests::repeated_queries_reuse_a_bounded_model_specific_embedding_cache ... ok
+test store::tests::retrieval_records_effectiveness_for_injected_memories ... ok
+test store::tests::routing_policy_selects_lexical_for_simple_queries ... ok
+test store::tests::search_uses_the_asymmetric_query_embedding_for_ranking ... ok
+test store::tests::second_put_is_recorded_as_update ... ok
+test store::tests::store_is_shareable_across_threads ... ok
+test store::tests::use_persists_across_reopen ... ok
+test time::tests::iso_is_well_formed ... ok
+test truncate::tests::head_tail_caps_and_flags ... ok
+
+test result: ok. 273 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 26.54s
+
+     Running unittests src\main.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\memright-e9c62e40129cceff.exe)
+
+running 45 tests
+test tests::ancient_confirmed_recovery_marker_is_retained_and_blocks_transport ... ok
+test tests::ancient_pending_is_retained_without_ttl_and_future_state_is_rejected ... ok
+test tests::auth_principal_is_private_and_rotation_fails_closed_until_outcome_is_confirmed ... ok
+test tests::build_info_exposes_source_commit_and_tree_identity_fields ... ok
+test tests::build_info_exposes_the_native_release_target_triple ... ok
+test tests::cli_lifecycle_helper_records_typed_empty_and_unavailable_terminals ... ok
+test tests::cli_store_failure_classifier_is_stage_specific ... ok
+test tests::confirmed_cleanup_failure_surfaces_after_pending_removal_and_preserves_marker ... ok
+test tests::confirmed_marker_is_durable_before_pending_cleanup_failure_surfaces ... ok
+test tests::corrupt_persisted_state_never_authorizes_a_fresh_key_and_preserves_bytes ... ok
+test tests::cross_process_filesystem_lock_excludes_a_second_process ... ok
+test tests::cross_process_lock_child_helper ... ignored, spawned explicitly by cross_process_filesystem_lock_excludes_a_second_process
+test tests::deployed_binary_discovers_canonical_workspace_runtime ... ok
+test tests::deployed_runtime_rejects_foreign_or_malformed_service_identity ... ok
+test tests::direct_db_fallback_is_only_for_connection_refused ... ok
+test tests::doc_outline_cli_requires_explicit_json ... ok
+test tests::doc_read_path_resolution_confines_relative_paths ... ok
+test tests::excess_irrelevant_entries_bound_total_traversal_before_transport ... ok
+test tests::excess_state_like_entries_fail_closed_before_transport ... ok
+test tests::exhausted_retry_retains_pending_and_confirmation_failure_surfaces ... ok
+test tests::explicit_db_and_port_overrides_beat_deployed_defaults ... ok
+test tests::http_parser_rejects_oversized_headers_and_bodies ... ok
+test tests::installation_rotate_cli_requires_explicit_clone_reason_and_no_database ... ok
+test tests::isolate_smoke_recalls_cli_is_dry_run_by_default_and_expected_count_is_not_overridable ... ok
+test tests::live_filesystem_lock_is_never_stolen_even_with_an_old_owner_record ... ok
+test tests::metadata_and_federation_commands_do_not_require_a_database ... ok
+test tests::oversized_pending_confirmed_and_lock_files_fail_closed_without_transport ... ok
+test tests::packet_char_budget_cli_accepts_max_safe_integer_for_both_commands ... ok
+test tests::packet_char_budget_cli_rejects_zero_and_unsafe_integer_for_both_commands ... ok
+test tests::pending_capacity_never_evicts_live_records_and_rejects_the_sixty_fifth ... ok
+test tests::pending_put_state_reuses_ambiguity_and_a_b_a_gets_a_fresh_key ... ok
+test tests::put_cli_accepts_write_and_correlation_attribution ... ok
+test tests::put_event_context_applies_available_session_and_trace ... ok
+test tests::put_trust_scan_quarantines_instruction_and_secret_like_text ... ok
+test tests::redirect_response_fails_closed_and_retains_pending_state ... ok
+test tests::replay_queries_rank_real_snapshot_entries_without_logging ... ok
+test tests::resolve_db_errors_without_env_or_flag ... ok
+test tests::retry_policy_retries_transport_ambiguity_and_only_first_not_running_falls_back ... ok
+test tests::retry_policy_reuses_one_key_and_honors_capped_retry_after_without_sleeping ... ok
+test tests::retryable_then_not_running_fails_closed_and_retains_pending_state ... ok
+test tests::stale_orphan_lock_recovers_but_recent_and_future_orphans_fail_closed ... ok
+test tests::tcp_transport_has_deadlines_sends_only_requested_key_and_parses_bounded_eof_body ... ok
+test tests::terminal_response_is_confirmed_and_retired_before_a_new_attempt ... ok
+test tests::thousands_of_unique_lock_requests_use_only_fixed_stripes_and_keep_lock_paths ... ok
+test tests::transform_cli_accepts_token_budgets ... ok
+
+test result: ok. 44 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 11.27s
+
+     Running unittests src\service_main.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\memright_service-ecacf01228ad0609.exe)
+
+running 3 tests
+test tests::build_info_exposes_source_commit_and_tree_identity_fields ... ok
+test tests::deployed_service_resolves_canonical_runtime ... ok
+test tests::resident_startup_advances_identity_and_publishes_claim_before_serve ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests\blueprint_closure.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\blueprint_closure-bd86fa820f49eee5.exe)
+
+running 4 tests
+test applies_node_cap_before_admitting_more_dependencies ... ok
+test closes_all_supported_blueprint_edge_kinds_in_breadth_first_order ... ok
+test stops_expansion_at_depth_limit_without_losing_boundary_nodes ... ok
+test terminates_cycles_without_duplicate_nodes_or_edges ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\catalog_test.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\catalog_test-0fd35291f98a8862.exe)
+
+running 19 tests
+test catalog_opens_at_separate_path_and_does_not_touch_memright_db ... ok
+test default_catalog_path_avoids_memright_db_directory ... ok
+test frozen_fixture_p95_under_50ms_above_direct_admission ... ok
+test health_surfaces_catalog_schema_planner_metrics_without_repo_content ... ok
+test locked_catalog_returns_bounded_error_and_get_put_remain_correct ... ok
+test plan_context_admits_candidates_and_persists_content_free_receipts ... ok
+test plan_context_records_receipt_with_synthesised_bytes_sha ... ok
+test plan_context_rejects_missing_grant_with_bounded_error ... ok
+test plan_context_rejects_present_invalid_packet_char_budget_override ... ok
+test plan_context_rejects_unknown_schema_version ... ok
+test plan_context_rejects_zero_budget ... ok
+test planner_route_contains_panics_and_get_put_remain_correct ... ok
+test planner_timeout_does_not_poison_subsequent_get_put ... ok
+test scope_grant_issuance_and_lookup_round_trip ... ok
+test scope_grant_payload_rejects_missing_required_fields ... ok
+test scope_grant_persists_in_catalog_not_memright_db ... ok
+test scope_grant_revoke_blocks_subsequent_plan_context ... ok
+test scope_grant_with_elapsed_ttl_is_observed_as_expired ... ok
+test unknown_grant_lookup_returns_none ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.25s
+
+     Running tests\checkpoint_cli_lineage.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\checkpoint_cli_lineage-16175c7df115e29f.exe)
+
+running 1 test
+test checkpoint_cli_round_trip_preserves_lineage_resolves_docs_and_stays_session_only ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.52s
+
+     Running tests\checkpoints.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\checkpoints-fff95461cc1f369f.exe)
+
+running 6 tests
+test checkpoint_preserves_installation_lineage_and_optional_goal_task_snapshots ... ok
+test checkpoint_rows_are_a0_session_records_and_never_ordinary_recall_candidates ... ok
+test checkpoint_rows_never_enter_markdown_mirror ... ok
+test checkpoint_source_refs_use_hash_bound_doc_read_statuses ... ok
+test checkpoints_cannot_promote_their_summary_into_durable_memory ... ok
+test closing_checkpoint_removes_resume_door_without_deleting_row ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.58s
+
+     Running tests\context_telemetry.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\context_telemetry-1623d73bd2a838ce.exe)
+
+running 25 tests
+test batch_commit_persists_envelope_measurements_and_links_atomically ... ok
+test bounded_unknown_closure_links_each_unresolved_delivery_once ... ok
+test canonical_telemetry_failure_rolls_back_legacy_event_and_memory_mutation ... ok
+test checked_in_registry_controls_provider_family_and_identity_retirement ... ok
+test checked_in_registry_enforces_phase_byte_and_turn_cardinality_budgets ... ok
+test checked_in_registry_matches_canonical_parent_workspace_registry ... ok
+test feedback_write_emits_content_free_canonical_event ... ok
+test http_batch_endpoint_maps_created_replay_conflict_and_content_rejection ... ok
+test identical_replay_is_noop_and_changed_replay_conflicts_without_partial_commit ... ok
+test invalid_event_rejects_the_whole_batch_before_any_insert ... ok
+test latest_schema_has_content_free_ledger_tables_and_indexes ... ok
+test manual_put_get_delete_dual_write_complete_canonical_attribution ... ok
+test memory_batch_dual_write_preserves_each_items_family_producer_and_session ... ok
+test shared_fixture_validates_and_matches_language_neutral_canonical_digest ... ok
+test telemetry_endpoint_accepts_queued_producer_after_same_installation_restart ... ok
+test telemetry_endpoint_accepts_same_installation_producer_after_restart ... ok
+test telemetry_endpoint_binds_local_identity_and_populates_installation_metadata ... ok
+test telemetry_endpoint_rejects_a_stale_startup_claim ... ok
+test telemetry_endpoint_rejects_foreign_identity_and_mixed_batch_atomically ... ok
+test telemetry_endpoint_requires_an_active_startup_lease ... ok
+test unknown_closure_rejects_a_saturated_delivery_cap_without_partial_write ... ok
+test v11_database_upgrades_in_place_without_changing_legacy_rows ... ok
+test v12_backout_drops_only_ledger_tables_and_preserves_legacy_rows ... ok
+test v13_backout_and_reupgrade_preserve_ledger_rows ... ok
+test validator_rejects_content_free_contract_violations ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.16s
+
+     Running tests\context_tools_telemetry.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\context_tools_telemetry-3acfcd708233f7ba.exe)
+
+running 3 tests
+test failed_skel_invocation_is_persisted_without_content ... ok
+test runc_links_to_the_exact_recommendation_opportunity ... ok
+test runc_uses_workspace_cache_and_prints_a_summary ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+
+     Running tests\db_first.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\db_first-c6b3092ae728ee86.exe)
+
+running 4 tests
+test export_md_writes_canonical_tree ... ok
+test put_persists_and_lists_and_deletes ... ok
+test reindex_memoizes_unchanged_rows ... ok
+test serve_routes_put_get_list_delete_dashboard ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests\doc_candidate_provider.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\doc_candidate_provider-e6814fa2be0c9da9.exe)
+
+running 1 test
+test shadow_doc_provider_observes_two_fresh_runbook_candidates_without_changing_planner_packet ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\doc_outline.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\doc_outline-9dd2cc0262fb7fad.exe)
+
+running 7 tests
+test doc_read_exposes_typed_source_outcomes ... ok
+test doc_read_has_utf8_safe_bounded_hash_bound_continuation ... ok
+test doc_read_refuses_changed_source_and_returns_neighbors ... ok
+test outline_pages_are_bounded_hash_bound_and_resumable ... ok
+test outline_preserves_frontmatter_fenced_headings_and_duplicate_anchors ... ok
+test outline_reports_tokenizer_measured_model_estimates ... ok
+test outline_uses_implementation_fixed_gfm_parser_projection ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.47s
+
+     Running tests\doc_projection.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\doc_projection-fef0fa0c2aca24f3.exe)
+
+running 11 tests
+test h2_replay_gate_defaults_closed ... ok
+test h2_split_is_disabled_without_a_passing_replay_gate ... ok
+test h2_split_records_collapsed_parent_provenance_after_replay_gate_passes ... ok
+test lexical_projection_is_always_emitted ... ok
+test oversized_document_cascades_at_structural_boundaries_without_splitting_fences ... ok
+test oversized_h1_cascades_to_child_heading_then_paragraphs_without_splitting_fences ... ok
+test projection_store_persists_lexical_whole_document_and_provenance ... ok
+test projection_store_preserves_section_parent_provenance ... ok
+test projection_store_replaces_stale_parent_rows_atomically ... ok
+test projection_store_rolls_back_stale_removal_when_replacement_is_invalid ... ok
+test tokenizer_measured_whole_document_fit_is_emitted_before_sections ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+
+     Running tests\doc_shadow.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\doc_shadow-cc711624eaae1597.exe)
+
+running 8 tests
+test conservative_fallback_narrows_once_then_stays_registration_only ... ok
+test detects_superseded_and_duplicate_candidates_as_safety_leakage ... ok
+test frozen_replay_receipt_is_byte_deterministic_for_distinct_cases_with_same_target ... ok
+test frozen_replay_receipt_is_byte_deterministic_when_case_input_order_changes ... ok
+test frozen_replay_receipt_round_trips_cases_and_report ... ok
+test provider_policy_applies_task_class_filters_and_exact_freshness ... ok
+test provider_policy_keeps_fresh_task_aligned_candidates_in_shadow_with_two_doc_cap ... ok
+test reports_baseline_and_doc_candidate_quality_metrics ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\doc_spine.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\doc_spine-283d3929fa381f72.exe)
+
+running 16 tests
+test isolated_doc_recall_returns_a_hash_bound_pointer_to_the_matching_section ... ok
+test shadow_sync_registers_docs_excludes_health_and_tombstones_deletes ... ok
+test sync_discovers_tracked_and_nonignored_markdown_but_skips_gitignored_files ... ok
+test sync_excludes_health_at_any_depth_regardless_of_casing ... ok
+test sync_frontmatter_failure_matrix_is_atomic ... ok
+test sync_frontmatter_ignores_flat_framework_metadata ... ok
+test sync_frontmatter_parses_membrane_keyword_list ... ok
+test sync_frontmatter_projects_metadata_and_supersedes_declared_document ... ok
+test sync_frontmatter_rejects_duplicate_or_dangling_supersession_without_writes ... ok
+test sync_frontmatter_uses_only_membrane_namespace ... ok
+test sync_hard_excludes_memory_pointers_exports_and_dependency_trees ... ok
+test sync_never_admits_document_content_as_durable_memory ... ok
+test sync_persists_machine_local_lexical_projection_with_current_provenance ... ok
+test sync_preserves_document_identity_across_rename_and_tombstones_old_path ... ok
+test sync_refreshes_hash_and_worktree_revision_after_content_changes ... ok
+test sync_rolls_back_projection_when_one_artifact_write_fails ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.85s
+
+     Running tests\doc_spine_shadow_replay_corpus.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\doc_spine_shadow_replay_corpus-54f8d2bea34a83f5.exe)
+
+running 1 test
+test frozen_doc_spine_shadow_replay_corpus_v1_is_deterministic_shadow_only_and_safe ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\embedder_probe.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\embedder_probe-5314e4155013a4ed.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\federate_route.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\federate_route-0546914722558698.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\feedback_test.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\feedback_test-cee68ba29d414652.exe)
+
+running 9 tests
+test cited_verdict_without_ref_is_rejected_and_not_persisted ... ok
+test delete_auto_captures_verified_contradicted ... ok
+test explicit_feedback_links_to_the_canonical_retrieval_trace ... ok
+test feedback_rows_for_is_bounded_to_requested_candidates ... ok
+test get_records_retrieval_but_never_fabricates_verified_use ... ok
+test get_without_trace_records_no_feedback ... ok
+test metrics_expose_feedback_block ... ok
+test upsert_is_idempotent_by_trace_and_candidate ... ok
+test verified_contradicted_persists_and_vetoes_across_restart ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.63s
+
+     Running tests\freshness_test.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\freshness_test-b48e6033a698340b.exe)
+
+running 12 tests
+test canonical_repo_root_rejects_a_sibling_escape ... ok
+test filesystem_probe_binds_blueprint_to_commit_and_reports_verified_dirty_overlay ... ok
+test filesystem_probe_reads_a_checkpointed_wal_graph_db_without_sidecars ... ok
+test filesystem_probe_reads_blueprint_generation_from_graph_db ... ok
+test freshness_route_returns_versioned_content_free_service_metadata ... ok
+test git_status_stage_accumulates_across_freshness_retries ... ok
+test legacy_blueprint_without_base_commit_keeps_head_overlay_available_without_claiming_currency ... ok
+test overlay_digest_covers_entries_beyond_the_return_cap ... ok
+test overlay_limit_failure_is_typed_indeterminate ... ok
+test partial_reindex_degrades_blueprint_without_disabling_stable_overlay_or_skills ... ok
+test shared_fixture_covers_clean_dirty_partial_and_concurrent_epochs ... ok
+test skills_generation_changes_only_when_skill_snapshot_content_changes ... ok
+
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.45s
+
+     Running tests\h2_local_replay_gate.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\h2_local_replay_gate-533113ff46447fc5.exe)
+
+running 1 test
+test h2_local_clone_replay_logs_numeric_loss_and_keeps_h2_disabled ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s
+
+     Running tests\installation_identity.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\installation_identity-306c327dabd9741f.exe)
+
+running 6 tests
+test cloned_identity_is_quarantined_until_explicit_rotation ... ok
+test concurrent_starts_get_unique_monotonic_generations_and_append_only_claims ... ok
+test creates_schema_v2_opaque_identity_and_reuses_it ... ok
+test identity_reader_matches_python_iso_timestamp_validation ... ok
+test rotation_rejects_any_reason_except_exact_clone ... ok
+test shipped_cli_rotates_the_selected_installation_without_a_database ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+
+     Running tests\lifecycle_events.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\lifecycle_events-229a4d708efaeb25.exe)
+
+running 10 tests
+test failed_lifecycle_event_preserves_subject_event_log_and_private_metadata ... ok
+test lifecycle_authoring_rejects_invalid_fields_and_protected_rows_stay_gated ... ok
+test lifecycle_curation_quarantines_expired_and_excludes_other_gated_states ... ok
+test lifecycle_metrics_are_content_free_and_count_gated_rows ... ok
+test ordinary_puts_keep_the_schema_default_active_recallable_lifecycle ... ok
+test priority_protection_requires_authority_and_emits_one_audit_event ... ok
+test supersession_is_transactional_and_idempotently_logged ... ok
+test supersession_rejects_cross_scope_without_mutating_subject ... ok
+test supersession_rejects_cycles ... ok
+test supersession_replay_respects_event_time_for_as_of_recall ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+
+     Running tests\memory_batch.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\memory_batch-f1b3fb925a7d65f7.exe)
+
+running 15 tests
+test batch_lifecycle_input_persists_and_omitted_update_preserves_values ... ok
+test batch_lifecycle_supersession_transitions_old_row_in_same_transaction ... ok
+test batch_supersession_log_failure_rolls_back_new_and_old_rows ... ok
+test generic_put_persists_validated_write_attribution_and_rejects_family_typos ... ok
+test generic_put_round_trips_camel_case_lifecycle_input ... ok
+test http_get_provider_failure_is_not_reported_as_an_empty_result ... ok
+test http_list_provider_failure_is_not_reported_as_an_empty_result ... ok
+test http_put_commit_failure_rolls_back_memory_and_records_failed_terminal ... ok
+test http_put_get_list_delete_emit_complete_linked_lifecycles_with_opaque_identity ... ok
+test http_validation_missing_targets_and_empty_lists_close_with_typed_terminals ... ok
+test identical_retry_is_noop_and_conflicting_batch_id_is_atomic_409 ... ok
+test invalid_middle_item_rejects_whole_batch_before_embedding_or_commit ... ok
+test lifecycle_route_rejects_bad_confidence_and_priority_without_writes ... ok
+test memories_batch_accounts_success_duplicate_conflict_and_invalid_envelope ... ok
+test memories_batch_commits_every_item_and_returns_truthful_receipts ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+
+     Running tests\memory_provider.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\memory_provider-96c4896850971ffa.exe)
+
+running 19 tests
+test candidate_json_preserves_adapt_memory_and_skill_output_dimensions ... ok
+test candidate_provenance_carries_access_count_and_last_seen ... ok
+test candidate_shape_matches_v1_contract ... ok
+test demoted_entries_excluded_and_recorded_as_omissions ... ok
+test does_not_authenticate_to_itself_or_read_a_token ... ok
+test empty_store_yields_empty_candidates_and_no_panic ... ok
+test instruction_policy_is_data_only_and_resolver_is_provider_name ... ok
+test max_candidates_caps_admitted_count_but_preserves_omissions ... ok
+test memory_provider::tests::dedup_key_normalizes_whitespace_and_case ... ok
+test memory_provider::tests::demoted_predicate_matches_dream_prune_rule ... ok
+test memory_provider::tests::estimate_tokens_rounds_up ... ok
+test memory_provider::tests::produce_candidate_set_runs_on_empty_store ... ok
+test memory_provider::tests::trace_id_is_stable_and_does_not_leak_task_text ... ok
+test memory_provider::tests::trimmed_text_caps_long_content ... ok
+test no_cross_root_leaks_via_sibling_scopes ... ok
+test poisoned_memory_body_cannot_escalate_its_influence_class ... ok
+test scope_filter_only_admits_chain_members ... ok
+test supersession_collapses_duplicates_onto_highest_score ... ok
+test trace_id_is_stable_and_omits_task_text ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+
+     Running tests\p2_frozen_corpus.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\p2_frozen_corpus-225f388d2bef95d4.exe)
+
+running 1 test
+test p2_frozen_synthetic_corpus_is_immutable_and_exercises_declared_runtime_guards ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests\planner_conformance_scope_test.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\planner_conformance_scope_test-34bcecdba87e9369.exe)
+
+running 2 tests
+test frozen_scope_isolation_matrix_preserves_visibility_and_order ... ok
+test planner_conformance_scope_forms_share_one_canonical_chain ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests\skill_read_test.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\skill_read_test-70e1b2350e8be09a.exe)
+
+running 4 tests
+test skill_read_does_not_emit_when_stdout_delivery_fails ... ok
+test skill_read_resolves_body_and_guards_traversal ... ok
+test skill_read_serves_from_engine_without_skills_directory ... ok
+test skill_read_succeeds_when_event_sink_is_unwritable ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+     Running unittests src\lib.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\memright_core-9b70cbb96208653c.exe)
+
+running 165 tests
+test calibration::tests::calibrator_boundary_values ... ok
+test calibration::tests::calibrator_brier_score_mixed ... ok
+test calibration::tests::calibrator_brier_score_perfect ... ok
+test calibration::tests::calibrator_brier_score_worst ... ok
+test calibration::tests::calibrator_calibrated_buckets_differently ... ok
+test calibration::tests::calibrator_calibrated_mixed_observations ... ok
+test calibration::tests::calibrator_calibrated_no_data_returns_raw ... ok
+test calibration::tests::calibrator_calibrated_single_correct_observation ... ok
+test calibration::tests::calibrator_clamps_inputs ... ok
+test calibration::tests::calibrator_empty ... ok
+test calibration::tests::calibrator_far_buckets_separate ... ok
+test calibration::tests::calibrator_multiple_observations_per_bucket ... ok
+test calibration::tests::calibrator_observe_records_data ... ok
+test dream::tests::deterministic_dream_policy_does_not_claim_an_llm_model ... ok
+test dream::tests::dream_agent_policy_is_restricted ... ok
+test dream::tests::dream_converts_relative_dates_to_absolute_dates ... ok
+test dream::tests::dream_dedup_never_crosses_scopes ... ok
+test dream::tests::dream_low_value_primary_is_refreshed_not_pruned ... ok
+test dream::tests::dream_merges_duplicate_memories ... ok
+test dream::tests::dream_never_collides_distinct_memories_sharing_a_prefix ... ok
+test dream::tests::dream_quarantines_low_effectiveness_entries ... ok
+test dream::tests::dream_relative_dates_use_each_entry_created_at ... ok
+test effectiveness::tests::default_gate_threshold ... ok
+test effectiveness::tests::effectiveness_all_successes ... ok
+test effectiveness::tests::effectiveness_ignores_non_injected ... ok
+test effectiveness::tests::effectiveness_no_history_is_zero ... ok
+test effectiveness::tests::effectiveness_partial_success ... ok
+test effectiveness::tests::ignored_is_advisory_and_skipped_from_ranking ... ok
+test effectiveness::tests::new_clamps_threshold_to_valid_range ... ok
+test effectiveness::tests::should_inject_allows_effective_entry ... ok
+test effectiveness::tests::should_inject_allows_entry_at_exact_threshold ... ok
+test effectiveness::tests::should_inject_allows_entry_with_only_non_injected_history ... ok
+test effectiveness::tests::should_inject_blocks_ineffective_entry ... ok
+test effectiveness::tests::should_inject_default_allows_new_entry ... ok
+test effectiveness::tests::should_inject_filters_by_entry_id ... ok
+test effectiveness::tests::should_inject_respects_threshold ... ok
+test effectiveness::tests::unverified_contradicted_does_not_veto ... ok
+test effectiveness::tests::verified_contradicted_drives_below_threshold ... ok
+test effectiveness::tests::verified_used_counts_as_success ... ok
+test embed::tests::active_hash_embedder_exposes_its_declared_pipeline_fingerprint ... ok
+test embed::tests::batch_embedding_preserves_order_and_vector_contract ... ok
+test embed::tests::cosine_handles_degenerate_inputs ... ok
+test embed::tests::embeddings_are_normalized_and_fixed_dim ... ok
+test embed::tests::max_sequence_tokens_constant_is_2048 ... ok
+test embed::tests::similar_text_scores_higher_than_unrelated ... ok
+test fingerprint::tests::fingerprint_changes_with_max_length ... ok
+test fingerprint::tests::fingerprint_changes_with_model ... ok
+test fingerprint::tests::fingerprint_changes_with_template ... ok
+test fingerprint::tests::fingerprint_is_deterministic ... ok
+test fingerprint::tests::fingerprint_label_format ... ok
+test fingerprint::tests::hash_embedder_fingerprint_differs_from_gemma ... ok
+test fingerprint::tests::supported_model_ids_resolve_deterministic_pipeline_fingerprints ... ok
+test fingerprint::tests::unsupported_model_id_has_no_declared_pipeline_fingerprint ... ok
+test graph::tests::graph_add_edge ... ok
+test graph::tests::graph_add_node_and_retrieve ... ok
+test graph::tests::graph_hybrid_search_empty ... ok
+test graph::tests::graph_hybrid_search_is_case_insensitive ... ok
+test graph::tests::graph_hybrid_search_keyword_match ... ok
+test graph::tests::graph_hybrid_search_respects_k ... ok
+test graph::tests::graph_hybrid_search_with_neighbor_expansion ... ok
+test graph::tests::graph_hybrid_search_zero_limit_returns_no_results ... ok
+test graph::tests::graph_invalidate_sets_valid_to ... ok
+test graph::tests::graph_neighbors_empty_for_leaf ... ok
+test graph::tests::graph_neighbors_finds_direct_outgoing ... ok
+test graph::tests::graph_neighbors_ignore_dangling_edges ... ok
+test graph::tests::graph_valid_at_after_valid_to ... ok
+test graph::tests::graph_valid_at_before_valid_from ... ok
+test graph::tests::graph_valid_at_indefinite_validity ... ok
+test graph::tests::graph_valid_at_treats_valid_to_as_exclusive_boundary ... ok
+test graph::tests::graph_valid_at_within_window ... ok
+test markdown::tests::defaults_without_frontmatter ... ok
+test markdown::tests::parses_flat_frontmatter_and_links ... ok
+test planner::tests::admits_within_budget ... ok
+test planner::tests::allocations_populated_by_layer ... ok
+test planner::tests::allotments_normalize_scores_within_provider_lane_before_comparing_providers ... ok
+test planner::tests::candidate_provider_is_preserved_with_candidate_set_fallback ... ok
+test planner::tests::caps_packet_blocks_and_rejects_excess_candidates_with_receipts ... ok
+test planner::tests::deduplicates_by_id ... ok
+test planner::tests::deduplicates_canonical_source_hash_with_winner_loser_provenance ... ok
+test planner::tests::deduplicates_normalized_content_with_winner_loser_provenance ... ok
+test planner::tests::dirty_overlay_is_advisory_and_provenance_reaches_blocks_and_receipts ... ok
+test planner::tests::fresh_provider_emits_fresh_provider_status_v2_fields ... ok
+test planner::tests::legacy_packet_deserializes_and_reserializes_without_delivery_extensions ... ok
+test planner::tests::legacy_receipt_deserializes_and_reserializes_without_delivery_extensions ... ok
+test planner::tests::matching_release_generation_preserves_rich_delivery_and_stamps_receipt ... ok
+test planner::tests::packet_budget_override_is_carried_in_the_planned_packet_contract ... ok
+test planner::tests::partial_or_invalid_release_generation_is_unavailable_but_both_absent_is_legacy_compatible ... ok
+test planner::tests::planner_emits_complete_delivery_extensions ... ok
+test planner::tests::planner_records_selected_delivery_without_claiming_rendering ... ok
+test planner::tests::provider_accounting_combines_mixed_outcomes_deterministically ... ok
+test planner::tests::ranking_prefers_higher_provider_score ... ok
+test planner::tests::receipt_content_hash_names_candidate_content_not_source_reference ... ok
+test planner::tests::receipt_status_is_scoped_to_candidate_set_provider ... ok
+test planner::tests::receipts_have_no_text_field ... ok
+test planner::tests::rejected_receipt_is_not_selected_for_delivery ... ok
+test planner::tests::rejects_empty_task ... ok
+test planner::tests::rejects_low_relevance_memory ... ok
+test planner::tests::rejects_receipt_version_1_only ... ok
+test planner::tests::rejects_remote_untrusted_candidate ... ok
+test planner::tests::rejects_superseded_version ... ok
+test planner::tests::rejects_unknown_schema_version ... ok
+test planner::tests::rejects_when_budget_exhausted ... ok
+test planner::tests::rejects_zero_budget ... ok
+test planner::tests::release_generation_mismatch_never_delivers_rich_blocks ... ok
+test planner::tests::reserved_lane_admits_memory_under_overlay_flood ... ok
+test planner::tests::score_proportional_allotments_are_deterministic_and_lane_bounded ... ok
+test planner::tests::shas_are_deterministic ... ok
+test planner::tests::stale_freshness_triggers_portable_text_only_fallback ... ok
+test planner::tests::structured_fallback_event_always_present ... ok
+test planner::tests::unsupported_provider_admits_portable_text_fallback_anchor ... ok
+test planner::tests::unsupported_provider_quarantines_non_anchors ... ok
+test planner::tests::zero_lane_usage_when_no_lane_candidates ... ok
+test quant::tests::cosine_returns_zero_for_dimension_or_query_norm_mismatch ... ok
+test quant::tests::invalid_quantized_binary_is_rejected ... ok
+test quant::tests::quantized_cosine_tracks_full_precision_similarity ... ok
+test quant::tests::quantized_vector_roundtrips_compact_binary ... ok
+test quant::tests::zero_vector_uses_unit_scale_and_zero_values ... ok
+test retriever::tests::hybrid_filters_entries_with_no_lexical_semantic_or_outcome_signal ... ok
+test retriever::tests::hybrid_quantized_falls_back_to_lexical_without_query_embedding ... ok
+test retriever::tests::query_terms_lowercase_and_split_whitespace ... ok
+test retriever::tests::retrieve_keeps_positive_stored_score_without_query_match ... ok
+test retriever::tests::score_entry_counts_keywords_case_insensitively_and_content_hits ... ok
+test routing::tests::features_empty_query_uses_neutral_defaults ... ok
+test routing::tests::features_extract_code_terms ... ok
+test routing::tests::features_extract_word_count ... ok
+test routing::tests::features_match_code_terms_as_whole_words_only ... ok
+test routing::tests::features_short_factual_query ... ok
+test routing::tests::features_specificity_increases_with_unique_words ... ok
+test routing::tests::reward_clamps_costs_after_repeated_expensive_misses ... ok
+test routing::tests::reward_loop_shifts_routing ... ok
+test routing::tests::reward_non_code_query_leaves_code_weight_unchanged ... ok
+test routing::tests::reward_penalizes_expensive_miss ... ok
+test routing::tests::reward_reinforces_effective_tier ... ok
+test routing::tests::route_code_query_goes_at_least_mid ... ok
+test routing::tests::route_long_complex_code_goes_high ... ok
+test routing::tests::route_short_factual_goes_low ... ok
+test routing::tests::weights_stay_in_bounds ... ok
+test tests::accounting_add_and_used ... ok
+test tests::accounting_remaining_saturates ... ok
+test tests::accounting_reset ... ok
+test tests::accounting_would_exceed ... ok
+test tests::estimate_tokens_empty_is_zero ... ok
+test tests::estimate_tokens_monotonic ... ok
+test tests::estimate_tokens_nonempty_is_positive ... ok
+test tests::eval_gate_caps_max_entries ... ok
+test tests::eval_gate_default_config ... ok
+test tests::eval_gate_drops_low_score ... ok
+test tests::eval_gate_drops_short_content ... ok
+test tests::eval_gate_passes_good_entry ... ok
+test tests::hybrid_falls_back_to_lexical_without_embedding ... ok
+test tests::hybrid_finds_semantic_match_without_shared_keywords ... ok
+test tests::hybrid_quantized_preserves_semantic_top_hit ... ok
+test tests::memory_tier_serde_roundtrip ... ok
+test tests::registry_entries_in_tier ... ok
+test tests::registry_insert_and_get ... ok
+test tests::registry_promote_unknown_errors ... ok
+test tests::registry_promote_working_to_episodic ... ok
+test tests::registry_record_access_increments ... ok
+test tests::registry_remove ... ok
+test tests::retriever_content_substring_match ... ok
+test tests::retriever_excludes_zero_match_zero_score ... ok
+test tests::retriever_ranks_keyword_matches_higher ... ok
+test tests::retriever_respects_limit ... ok
+test tests::score_entry_keyword_overlap ... ok
+test tests::score_entry_no_match_is_zeroish ... ok
+
+test result: ok. 165 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+
+     Running unittests src\lib.rs (tools\.cache\memory\qualification\74b0ad52-944ea3ad-windows\20260730-025654\target-b\debug\deps\memright_format-5ff545f5e2b20760.exe)
+
+running 3 tests
+test okf::tests::okf_bundle_round_trips_concepts_index_and_link_graph ... ok
+test okf::tests::okf_compression_preserves_markdown_structure_and_source_spans ... ok
+test okf::tests::okf_parse_requires_type_frontmatter_for_every_markdown_file ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+   Doc-tests memright
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests memright_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests memright_format
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

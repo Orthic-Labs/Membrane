@@ -1,0 +1,43 @@
+{
+  "status": "RECOVERY_EXHAUSTED",
+  "gate": "Q2 Python",
+  "classification": "DETERMINISTIC_COMMAND_FAILURE",
+  "candidate_root_commit": "74b0ad525d066a05c9d96ba1ce8d7e1f4ce4a004",
+  "candidate_membrane_commit": "944ea3adc9c0c01d34c5ffd3f1c61f47f069121e",
+  "engine_tree_sha256": "ac41729c4f8857756529a0832e0675e39dd52e9c740e28961fdb5ae358631a7f",
+  "executor_tether_run_id": "a84d40c2-c0d1-4fd2-8285-ee9c74866624",
+  "exact_command": "py -3.11 -m pytest membrane\\engine\\federation -q -rs --disable-warnings",
+  "first_run": {
+    "exit_code": 1,
+    "result": "1 failed, 71 passed in 25.86s",
+    "oracle": "test_blueprint_generation_change_after_verdict_omits_lane expected blueprint_generation_changed but received provider_timeout",
+    "log": "q2-python.attempt1.log",
+    "log_sha256": "d3c0a634ea1d8718c90bc56697e5b38b72c74e92247f8c7e61d02c1d540bbff3"
+  },
+  "bounded_exact_rerun": {
+    "exit_code": 124,
+    "result": "timeout after 60 seconds with no terminal pipeline output",
+    "source_edits": 0
+  },
+  "minimal_reproduction": {
+    "selector": "membrane\\engine\\federation\\test_gateway_freshness.py::test_blueprint_generation_change_after_verdict_omits_lane",
+    "exit_code": 0,
+    "result": "1 passed in 0.16s",
+    "stdout_log": "q2-python.minimal.stdout.log",
+    "stdout_sha256": "2901e9dfa0b5714aa099acfe610f3c4dbfa0c352070d16e8a4538d7da5df8462",
+    "stderr_log": "q2-python.minimal.stderr.log",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "independent_work": {
+    "status": "INDEPENDENT_WORK_COMPLETE",
+    "q1": "pass",
+    "q2_rust": "pass",
+    "q2_node": "pass",
+    "root_source_edits": 0,
+    "canonical_db_mutations": 0,
+    "p0_p4_actions": 0
+  },
+  "proceed_condition": "Exact Q2 Python selector must exit 0.",
+  "proceed_condition_met": false,
+  "required_external_input": "Corrected Mac-owned candidate whose exact Q2 Python selector passes on Windows."
+}

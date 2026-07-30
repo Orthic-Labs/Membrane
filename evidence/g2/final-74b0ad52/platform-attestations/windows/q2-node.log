@@ -1,0 +1,43 @@
+Γ£ö missing state initializes, while corrupt state fails closed without overwrite or fetch (10.6335ms)
+Γ£ö entries have exactly four privacy-safe fields and auth rotation cannot duplicate an ambiguous body (2.5213ms)
+Γ£ö same principal reuses ancient entries and enforces the five-minute future boundary (1.7203ms)
+Γ£ö capacity counts every unresolved entry and rejects a new body before fetch (2.6072ms)
+Γ£ö missing Web Locks support fails closed before fetch (1.2319ms)
+Γ£ö Web Locks serialize concurrent reservations and stale cleanup preserves B and newer A (2.3861ms)
+Γû╢ 408, 429, every 5xx edge, and network ambiguity retry once with identical key and body
+  Γ£ö 408 default delay (1.8318ms)
+  Γ£ö 429 capped seconds (1.6423ms)
+  Γ£ö 500 date cap (1.4064ms)
+  Γ£ö 599 remains retryable (1.1855ms)
+  Γ£ö network ambiguity (1.2495ms)
+Γ£ö 408, 429, every 5xx edge, and network ambiguity retry once with identical key and body (8.7796ms)
+Γû╢ terminal responses clean matching entries while exhausted ambiguity retains them
+  Γ£ö HTTP 200 is terminal (1.7236ms)
+  Γ£ö HTTP 400 is terminal (1.0905ms)
+  Γ£ö nonretryable non-4xx response remains pending (1.2606ms)
+  Γ£ö 5xx exhaustion remains pending (1.2201ms)
+  Γ£ö network exhaustion remains pending (1.1959ms)
+Γ£ö terminal responses clean matching entries while exhausted ambiguity retains them (7.0625ms)
+Γ£ö membrane\mcp\client.test.mjs (209.3943ms)
+install mocked lifecycle tests passed
+Γ£ö membrane\mcp\install.test.mjs (104.3673ms)
+Γ£ö membrane\mcp\project-registry.test.mjs (848.1098ms)
+Γ£ö membrane\mcp\server.test.mjs (609.9967ms)
+Γ£ö Codex planner conforms to the shared path/slug ├ù graph ├ù outcome matrix (4.2577ms)
+Γ£ö Codex public planner drives the shared matrix (160.5519ms)
+Γ£ö Codex delivery generation gate matches the shared fixture (1.0844ms)
+Γ£ö Codex delivery disposition names generation failure (0.7422ms)
+Γ£ö Codex client release-generation retry: matched first (0.2697ms)
+Γ£ö Codex client release-generation retry: mismatch then matched (0.0956ms)
+Γ£ö Codex client release-generation retry: mismatch then mismatch makes no third attempt (0.1328ms)
+Γ£ö Codex client release-generation retry: mismatch with expired shared deadline (0.0979ms)
+Γ£ö Codex client release-generation retry: unavailable does not retry (0.0968ms)
+Γ£ö Codex client release-generation retry: non-generation degradation does not retry (0.0716ms)
+Γä╣ tests 32
+Γä╣ suites 0
+Γä╣ pass 32
+Γä╣ fail 0
+Γä╣ cancelled 0
+Γä╣ skipped 0
+Γä╣ todo 0
+Γä╣ duration_ms 2353.9518

@@ -1,0 +1,73 @@
+{
+  "attests_to_mac_qualification_sha256": "1017f56f1ecf79dcaefd3b30fcd5d4d31226723870b95cc150a4d26c08e7ddc1",
+  "attests_to_mac_suite_sha256": "cdbac1d017591818344c45b997c879590c0d391a506e7401fcb8501e49e4b630",
+  "completed_at": "2026-07-30T12:05:16.044372Z",
+  "engine_tree_sha256": "ac41729c4f8857756529a0832e0675e39dd52e9c740e28961fdb5ae358631a7f",
+  "executor_tether_run_id": "b54c0fdb-952f-455f-b61f-a5c31e8f2fbe",
+  "files": {
+    "correction-audit.json": "f1887a283f009bc3be83ed11823042de538d0919251d9bd19c8f27cba24c9fcc",
+    "inherited-inventory.json": "6f592c2e7e3a17b2ad06f4e7c8c2bd45aa9f832da3e7592e68b6c72872082dd8",
+    "install-filename-blocker.json": "b10767899216b0f194b4dc029ca4675e1406374d7689f01268e71e171ffbc7c9",
+    "install-filename-blocker.stderr.log": "30950b9b74be7ffe6b81803da9d82f68b830731f5f105540d643bcbc2d1ad3d1",
+    "install-recovery.json": "48c32e174a856fcb1646a6be48a37d8c92bb4a5e0e223982b4a71c2d8ef092f2",
+    "install.attempt1.stderr.log": "ecfdb0dd723315023af02e0010b35d96c4b2931d6be7b2a5a423539e0543ab42",
+    "installed-health.json": "1cc6c891fea37202e7fe1e3e2d373a64b3d823ff98d1181ef8ba5b0074cf6f25",
+    "launch-count.json": "2f88fa8745ec583323fc98f263d3eced5cff9bc7298c6df6832289494d4e159b",
+    "preflight.json": "5515908b240c64e368a50a64278049afabe6d304707125d3edb698b314bceddf",
+    "q2-node.log": "105b150cc90eb0f4e929a21bf07dba00321bc7209147049e2e3420f0d02a7318",
+    "q2-python.attempt1.log": "d3c0a634ea1d8718c90bc56697e5b38b72c74e92247f8c7e61d02c1d540bbff3",
+    "q2-python.corrected.attempt1.log": "0eb12379abfae411b1b91d2005eee676d14a9e20cf04fc6067c6ad686b85a029",
+    "q2-python.corrected.log": "e20a77eb8d0637cc4ebcaa0b4c2d3ec86e289e1388378103b9df8c4ee93cdc3b",
+    "q2-python.log": "d3c0a634ea1d8718c90bc56697e5b38b72c74e92247f8c7e61d02c1d540bbff3",
+    "q2-python.minimal.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "q2-python.minimal.stdout.log": "2901e9dfa0b5714aa099acfe610f3c4dbfa0c352070d16e8a4538d7da5df8462",
+    "q2-recovery.json": "1fefd4357213bed03d1e5dbcaf162ccd72bb120f95d7bc6c83eb41253f903ba9",
+    "q2-rust.log": "6760634929a392579f8777d4338af1bdc2d3a0fa202ca53e00cfd7eca15ebd96",
+    "q2-suite-repair.json": "763bfd2bf7e1b8b5a23149519d7df196e2c5c27e8ef497ab62330712ac998e29",
+    "q3.json": "1e0b9ae166610848fc7638be26848a17b6cf44fe08a7cf68f0b9ea95352a29aa",
+    "q4.json": "0386b0c69a81c1b691d92c05d2cad25115725138fd096da658e3836d20190b1b",
+    "q5.log": "e1cbd0ced57d908d569907e42237e26cf42027911051543b6b2b12aa3b5f08fb",
+    "true-blocker.json": "f48a6fbcd7dde7b050acb82e1201253faa34084c8a0c0ce16eeed614534b3430",
+    "wall-floor.json": "a981b55559ede587082e3e4e7dd5c45a9b1745b265de2cd91250160ad8191b47",
+    "windows-install-release-manifest.json": "5a9e63f490fb5e54a2aed2e5bafd4adaa60dc8baa80adb06e232000cc515a412",
+    "windows-release-manifest.json": "883f3ca8f80144c5158df6d17d95b8113719c20836cf9983bb3820462f91c1bc",
+    "windows-x86_64-cli-f0b2090681929f5f2b2c316aa14f9a838187b82251990b181bb42a219cda8250-memright.exe": "f0b2090681929f5f2b2c316aa14f9a838187b82251990b181bb42a219cda8250",
+    "windows-x86_64-service-232bf95b0c431baa829c872623bd1dfb4114aa1551dfb849354d13bb9055a5de-memright-service.exe": "232bf95b0c431baa829c872623bd1dfb4114aa1551dfb849354d13bb9055a5de"
+  },
+  "installed_hashes": {
+    "cli_sha256": "f0b2090681929f5f2b2c316aa14f9a838187b82251990b181bb42a219cda8250",
+    "service_sha256": "232bf95b0c431baa829c872623bd1dfb4114aa1551dfb849354d13bb9055a5de"
+  },
+  "installed_pair": "verified",
+  "lifecycle": [
+    "authority.expected",
+    "executor.resumed",
+    "q1_q5.preserved",
+    "installed.delivery",
+    "resident_service.healthy",
+    "attestation.value_terminal"
+  ],
+  "membrane_source_commit": "944ea3adc9c0c01d34c5ffd3f1c61f47f069121e",
+  "p0_p4_actions": 0,
+  "preserved_release_hashes": {
+    "cli_sha256": "f0b2090681929f5f2b2c316aa14f9a838187b82251990b181bb42a219cda8250",
+    "service_sha256": "232bf95b0c431baa829c872623bd1dfb4114aa1551dfb849354d13bb9055a5de"
+  },
+  "q1": "pass_preserved",
+  "q2": {
+    "node": "pass_preserved",
+    "python": "pass_corrected",
+    "rust": "pass_preserved"
+  },
+  "q3": "pass",
+  "q4": "pass",
+  "q5": "pass",
+  "qualification_suite_membrane_commit": "de214878104c02792dbac918ed2e407458770f60",
+  "qualification_suite_root_commit": "40d80d5852b2bab6c2a679368ba8cf706dbf8a59",
+  "qualification_suite_tree_sha256": "c97f4c8adaf0b53e0e4d4477ee4c529db8bc4a9e9945edc100959cf8919d0258",
+  "resident_service": "healthy",
+  "root_source_commit": "74b0ad525d066a05c9d96ba1ce8d7e1f4ce4a004",
+  "schema": "windows-absorption-attestation.v2",
+  "source_edits": 0,
+  "status": "pass"
+}

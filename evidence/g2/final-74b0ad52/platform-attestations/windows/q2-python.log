@@ -1,0 +1,35 @@
+.......................................................F................ [100%]
+================================== FAILURES ===================================
+__________ test_blueprint_generation_change_after_verdict_omits_lane __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024D4BB06CD0>
+tmp_path = WindowsPath('C:/Users/adrds/AppData/Local/Temp/pytest-of-adrds/pytest-2547/test_blueprint_generation_chan0')
+
+    def test_blueprint_generation_change_after_verdict_omits_lane(monkeypatch, tmp_path: Path):
+        verdict = _verdict(blueprint_usable=True)
+        monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: verdict, raising=False)
+        _stub_non_blueprint_providers(monkeypatch)
+        monkeypatch.setattr(
+            gateway.blueprint,
+            "produce",
+            lambda *_args: ([{"id": "blueprint:mixed"}], "sha256:" + "0" * 64, []),
+        )
+    
+        providers, freshness = gateway._gather_all_parallel(
+            task="test",
+            repo_root=tmp_path,
+            max_tokens=4096,
+            explicit_anchors=[],
+            scope_grant_id=None,
+        )
+    
+        blueprint_lane = next(item for item in providers if item[0] == "blueprint")
+        assert blueprint_lane[1] == []
+>       assert blueprint_lane[2][0]["kind"] == "blueprint_generation_changed"
+E       AssertionError: assert 'provider_timeout' == 'blueprint_generation_changed'
+E         
+E         - blueprint_generation_changed
+E         + provider_timeout
+
+membrane\engine\federation\test_gateway_freshness.py:261: AssertionError
+1 failed, 71 passed in 25.86s

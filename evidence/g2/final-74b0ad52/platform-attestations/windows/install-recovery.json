@@ -1,0 +1,43 @@
+{
+  "schema": "windows-install-recovery.v1",
+  "status": "blocked",
+  "observed_at": "2026-07-30T09:35:11.2285738Z",
+  "gate": "INSTALL",
+  "classification": "INVALID_INPUT_OR_SCHEMA",
+  "runtime_root_commit": "74b0ad525d066a05c9d96ba1ce8d7e1f4ce4a004",
+  "runtime_membrane_commit": "944ea3adc9c0c01d34c5ffd3f1c61f47f069121e",
+  "runtime_tree_sha256": "ac41729c4f8857756529a0832e0675e39dd52e9c740e28961fdb5ae358631a7f",
+  "packet_sha256": "22f3e43e59d76d874bd761715d734fcf87cea1bc62be2766e800d9635ea3a0d0",
+  "windows_release_manifest_sha256": "883f3ca8f80144c5158df6d17d95b8113719c20836cf9983bb3820462f91c1bc",
+  "error": "candidate cli identity: model identity is missing",
+  "missing_input": "Authority-corrected Windows release manifest containing required top-level model identity, or packet authority explicitly authorizing metadata repair from the immutable release identity.",
+  "known_authority_model": {
+    "id": "embeddinggemma-300m-q4",
+    "fingerprint": "pf:v1:4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b",
+    "dimension": 768
+  },
+  "known_authority_model_sources": [
+    "D:\\Claude\\tools\\lib\\memright-release.json",
+    "D:\\Claude\\tools\\lib\\memright-release-candidate.json",
+    "D:\\Claude\\tasks\\evidence\\absorption-completion\\macos-promotion\\release-manifest.json"
+  ],
+  "source_edits": 0,
+  "binary_swaps": 0,
+  "rerun_required": [],
+  "resume_at": [
+    "install",
+    "attest",
+    "publish"
+  ],
+  "new_candidate_required": false,
+  "passed_gates_preserved": [
+    "Q1",
+    "Q2_RUST",
+    "Q2_NODE",
+    "Q2_PYTHON",
+    "Q3",
+    "Q4",
+    "Q5"
+  ],
+  "raw_error": "install.attempt1.stderr.log"
+}
