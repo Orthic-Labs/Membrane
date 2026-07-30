@@ -1,6 +1,24 @@
 # RightContext — Windows + Mac current state and backlog (source of truth)
 
-**What this is:** the single cross-platform current-state map of RightContext (the umbrella context system) and MemRight (its durable-memory engine) for both Windows and Mac. Design rationale lives in `docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` (2026-07-12, design-era) and `tools/lib/CONTEXT-ENGINEERING.md`; the operational telemetry/identity coverage contract and 2026-07-21 audit are in `docs/RIGHTCONTEXT-TELEMETRY-IDENTITY.md`; per-feature ADRs + measurements live in the `docs/plans/2026-07-*` files linked below. This doc is the index of *what is live now* and *what is next*. Last updated **2026-07-23**.
+**What this is:** the single cross-platform current-state map of RightContext (the umbrella context system) and MemRight (its durable-memory engine) for both Windows and Mac. Design rationale lives in `docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` (2026-07-12, design-era) and `tools/lib/CONTEXT-ENGINEERING.md`; the operational telemetry/identity coverage contract and 2026-07-21 audit are in `docs/RIGHTCONTEXT-TELEMETRY-IDENTITY.md`; per-feature ADRs + measurements live in the `docs/plans/2026-07-*` files linked below. This doc is the index of *what is live now* and *what is next*. Last updated **2026-07-30**.
+
+## RMS + Markdown Doc Spine absorption — COMPLETE 2026-07-30
+
+RMS A1–A5 & Doc Spine D1–D4 are implemented, promoted, installed, & certified on macOS and
+Windows. Final runtime root/Membrane is `74b0ad52` / `944ea3ad`; engine tree is
+`ac41729c4f8857756529a0832e0675e39dd52e9c740e28961fdb5ae358631a7f`.
+
+- macOS: exact final CLI/service pair installed; launchd owns `tools/bin/memright-service`;
+  EmbeddingGemma Q4/768 health, exact fingerprint/release generation, writes, authenticated Q4,
+  Doc Spine CLI, focused Rust, & MCP tests pass.
+- Windows: Q1–Q5 preserved; exact pair installed; resident service healthy; immutable OWN-only
+  evidence commit is `6cd71abb89da454c179e990f6fb429ba21ab32b5`; attestation SHA-256 is
+  `9c4126d6dd5e2963b0846575da1bdd21cfc9788c740a4b95495790ec98e80af1`.
+- Runtime behavior stayed at `944ea3ad`; qualification-only corrections are isolated in
+  `de214878`. Windows made zero source edits & zero P0–P4 actions.
+
+Older candidate, pending, paired-P3/P4, or install checkpoints below are historical evidence, not
+current authority.
 
 ## Resident federation gateway — source-complete 2026-07-26
 
