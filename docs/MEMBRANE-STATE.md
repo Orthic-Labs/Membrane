@@ -16,6 +16,8 @@ Windows. Final runtime root/Membrane is `74b0ad52` / `944ea3ad`; engine tree is
   `9c4126d6dd5e2963b0846575da1bdd21cfc9788c740a4b95495790ec98e80af1`.
 - Runtime behavior stayed at `944ea3ad`; qualification-only corrections are isolated in
   `de214878`. Windows made zero source edits & zero P0–P4 actions.
+- CodeRight consumes exact Membrane revision `944ea3ad` for `memright` & `memright-core`; no
+  duplicate engine source or retired root-repository dependency remains.
 
 Older candidate, pending, paired-P3/P4, or install checkpoints below are historical evidence, not
 current authority.
@@ -1122,11 +1124,11 @@ Re-ordered 2026-07-16 (second pass) after BOTH audits — Fable session + Sol's 
 - Rotating any shared key; anything production-mutating in the release/licensing pipelines.
 
 ## Where the pieces physically live
-- **Rust engine:** `tools/memright/crates/{memright,memright-core}/` — store, planner, federation shell, feedback, memdb.
-- **Federation gateway (Python):** `tools/memright/federation/gateway.py` + `providers/*.py` (9 providers).
+- **Rust engine:** `membrane/engine/crates/{memright,memright-core,memright-format}/` — store, planner, federation shell, feedback, memdb.
+- **Federation gateway (Python):** `membrane/engine/federation/gateway.py` + `providers/*.py` (9 providers).
 - **Delivery hook:** `tools/hooks/recall_planner.py` (Claude) + `tools/codex-brief-plugin/recall_planner.js` (Codex).
 - **Skills catalog:** `tools/skills/skills-catalog/`.
-- **Deployed binary:** `tools/bin/memright.exe` (shim `~/bin/memright`); DB `tools/.cache/memory/memright-engine.db`; serve on `127.0.0.1:47851` (Task Scheduler `memright-serve`).
+- **Deployed binaries:** `tools/bin/memright{,.exe}` + `tools/bin/memright-service{,.exe}`; DB `tools/.cache/memory/memright-engine.db`; serve on `127.0.0.1:47851` (launchd `com.adrian.memright-serve` / Task Scheduler `memright-serve`).
 
 ## RC-MAC-FINAL — Mac half of the frozen `815cd511` pair (2026-07-19)
 
