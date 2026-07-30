@@ -244,8 +244,13 @@ def test_blueprint_generation_change_after_verdict_omits_lane(monkeypatch, tmp_p
     _stub_non_blueprint_providers(monkeypatch)
     monkeypatch.setattr(
         gateway.blueprint,
-        "produce",
-        lambda *_args: ([{"id": "blueprint:mixed"}], "sha256:" + "0" * 64, []),
+        "produce_with_observability",
+        lambda *_args, **_kwargs: (
+            [{"id": "blueprint:mixed"}],
+            "sha256:" + "0" * 64,
+            [],
+            {"stageElapsedMs": {}},
+        ),
     )
 
     providers, freshness = gateway._gather_all_parallel(
