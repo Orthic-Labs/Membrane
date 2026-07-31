@@ -1,5 +1,6 @@
 # Rust build output
 **/target/
+node_modules/
 
 # Local runtime state (never belongs in the repo)
 *.db
