@@ -2,11 +2,14 @@
   "name": "membrane",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@11.18.0",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "test:mcp": "node mcp/client.test.mjs && node mcp/project-registry.test.mjs && node mcp/install.test.mjs && node mcp/server.test.mjs"
+    "test": "node --test mcp/*.test.mjs",
+    "test:mcp": "node mcp/client.test.mjs && node mcp/installation-binding.test.mjs && node mcp/project-registry.test.mjs && node mcp/install.test.mjs && node mcp/server.test.mjs",
+    "test:fable": "node --test mcp/*.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0"

@@ -667,6 +667,42 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
+name = "crypt-core"
+version = "0.1.0"
+dependencies = [
+ "fastembed",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+ "tiktoken-rs",
+]
+
+[[package]]
+name = "crypt-format"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "crypt-store"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.2.17",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "crypto-common"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1869,21 +1905,16 @@ dependencies = [
 ]
 
 [[package]]
-name = "memchr"
-version = "2.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
-
-[[package]]
-name = "memright"
-version = "0.1.1"
+name = "membrane-runtime"
+version = "0.1.0"
 dependencies = [
  "axum",
  "clap",
  "comrak",
+ "crypt-core",
+ "crypt-format",
+ "crypt-store",
  "getrandom 0.2.17",
- "memright-core",
- "memright-format",
  "ort",
  "rusqlite",
  "serde",
@@ -1903,25 +1934,36 @@ dependencies = [
 ]
 
 [[package]]
-name = "memright-core"
-version = "0.1.0"
+name = "memchr"
+version = "2.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
+
+[[package]]
+name = "memright"
+version = "0.1.1"
 dependencies = [
- "fastembed",
+ "membrane-runtime",
+ "memright-core",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",
- "thiserror 1.0.69",
- "tiktoken-rs",
+ "tempfile",
+]
+
+[[package]]
+name = "memright-core"
+version = "0.1.0"
+dependencies = [
+ "crypt-core",
 ]
 
 [[package]]
 name = "memright-format"
 version = "0.1.0"
 dependencies = [
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 1.0.69",
+ "crypt-format",
 ]
 
 [[package]]

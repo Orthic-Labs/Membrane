@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// tools/bin/mcp-client.mjs — RightContext G5 Lane F provider-neutral MCP thin client.
+// membrane/mcp/client.mjs — Membrane G5 Lane F provider-neutral MCP thin client.
 //
 // Thin client: authenticates to the workspace loopback MemRight service at
 // http://127.0.0.1:${MEMRIGHT_PORT}/federate with the workspace bearer
@@ -44,7 +44,12 @@ import { pathToFileURL } from "node:url";
 const DEFAULT_PORT = 47851;
 const REQUEST_TIMEOUT_MS = 1500;
 const MAX_BODY_BYTES = 1 << 20; // 1 MiB — same cap the workspace hook uses
-const TRANSPORT_VERSION = "rightcontext-mcp/1";
+// Public transport id. Legacy `rightcontext-mcp/1` remains accepted by older
+// consumers; this client emits Membrane names as primary and RightContext as alias.
+const TRANSPORT_VERSION = "membrane-mcp/1";
+const TRANSPORT_VERSION_ALIAS = "rightcontext-mcp/1";
+const PLANNER_PROVIDER = "membrane-planner";
+const PLANNER_PROVIDER_ALIAS = "rightcontext-planner";
 const MODE_DEFAULT = "shadow"; // gate state until G5 parity is green
 
 function readToken() {
@@ -191,9 +196,12 @@ function postPlanner({ host, port, path, body, token, traceId }) {
           "content-length": String(json.byteLength),
           "accept": "application/json",
           // Tag the call so /metrics and /health surface the third client.
-          // Never carries the bearer token — it is set from closure below.
+          // Membrane is public; RightContext headers remain as compatibility aliases.
+          "x-membrane-client": "mcp",
+          "x-membrane-version": TRANSPORT_VERSION,
+          "x-membrane-trace": traceId,
           "x-rightcontext-client": "mcp",
-          "x-rightcontext-version": TRANSPORT_VERSION,
+          "x-rightcontext-version": TRANSPORT_VERSION_ALIAS,
           "x-rightcontext-trace": traceId,
           ...(trace.traceparent ? { traceparent: trace.traceparent } : {}),
           ...(trace.tracestate ? { tracestate: trace.tracestate } : {}),
@@ -233,7 +241,7 @@ function emitFallbackEvent({ traceId, provider, reason, mode }) {
     ts: Date.now() / 1000,
     event: "context_fallback",
     traceId,
-    provider: provider || "rightcontext-planner",
+    provider: provider || PLANNER_PROVIDER,
     reason,
     mode,
     source: "mcp-client",
@@ -273,7 +281,8 @@ async function main() {
     else if (a === "--help" || a === "-h") {
       process.stdout.write(
         [
-          "mcp-client.mjs — RightContext MCP thin client (G5 Lane F)",
+          "mcp-client.mjs — Membrane MCP thin client (G5 Lane F)",
+          `Public provider=${PLANNER_PROVIDER}; legacy alias=${PLANNER_PROVIDER_ALIAS}`,
           "",
           "Usage:",
           "  node mcp-client.mjs --input <path|-> [--max-tokens N]",
@@ -314,7 +323,7 @@ async function main() {
   } catch (e) {
     emitFallbackEvent({
       traceId,
-      provider: "rightcontext-planner",
+      provider: PLANNER_PROVIDER,
       reason: "transport_failure",
       mode: "non_graph_sources_only",
     });
@@ -341,7 +350,7 @@ async function main() {
   } catch (_) {
     emitFallbackEvent({
       traceId,
-      provider: "rightcontext-planner",
+      provider: PLANNER_PROVIDER,
       reason: "malformed_response",
       mode: "non_graph_sources_only",
     });
@@ -368,7 +377,7 @@ async function main() {
   if (response.status === 401 || response.status === 403) {
     emitFallbackEvent({
       traceId,
-      provider: "rightcontext-planner",
+      provider: PLANNER_PROVIDER,
       reason: "auth_rejected",
       mode: "non_graph_sources_only",
     });
@@ -397,7 +406,7 @@ async function main() {
   if (response.status >= 400) {
     emitFallbackEvent({
       traceId,
-      provider: "rightcontext-planner",
+      provider: PLANNER_PROVIDER,
       reason: parsed && parsed.kind ? parsed.kind : "planner_error",
       mode: "non_graph_sources_only",
     });

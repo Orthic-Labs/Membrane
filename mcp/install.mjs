@@ -3,12 +3,14 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { bindingFor, canonicalRoot, defaultRegistryPath, enroll, installationFor, removeBinding, rotateToken } from "./project-registry.mjs";
+import { installationBindingFor } from "./installation-binding.mjs";
+import { enrollRepositoryCatalog } from "./repository-catalog.mjs";
 
 const SERVER = fileURLToPath(new URL("./server.mjs", import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
 const SERVER_NAME = "membrane";
 const CLIENTS = new Set(["codex", "claude"]);
-function usage() { return "usage: membrane init <root> --repository <id> --scope <id> [--virtual-id <id> --tenant-id <id> --parent <id>] [--native <name>] [--config <path>] [--dry-run] | membrane install <root> [--client codex|claude] [--claude-scope local|project|user] [--dry-run] | membrane uninstall <root> [--client codex|claude] [--dry-run] | membrane token rotate <root> [--dry-run] | membrane token recover <root> --reason leak [--dry-run]"; }
+function usage() { return "usage: membrane init <root> --repository <id> --scope <id> [--virtual-id <id> --tenant-id <id> --parent <id>] [--native <name>] [--config <path>] [--dry-run] | membrane catalog <root> [--grant <repository-id>] [--registry <path>] [--dry-run] | membrane install <root> [--client codex|claude] [--claude-scope local|project|user] [--dry-run] | membrane uninstall <root> [--client codex|claude] [--dry-run] | membrane token rotate <root> [--dry-run] | membrane token recover <root> --reason leak [--dry-run]"; }
 const [, , command, ...args] = process.argv;
 const value = (items, flag) => { const i = items.indexOf(flag); return i >= 0 ? items[i + 1] : undefined; };
 const values = (items, flag) => items.flatMap((item, index) => item === flag && items[index + 1] ? [items[index + 1]] : []);
@@ -174,7 +176,23 @@ async function init(root, rest) {
   const provider_config = { transport: "loopback", ...(config ? { config: { path: config } } : {}), ...(native ? { native: { name: native } } : {}) };
   const receipt = { action: "enroll", root: canonical, repository_id, scope_id, registry: defaultRegistryPath(), dry_run: dryRunFor(rest) };
   if (config || native) receipt.installation = installationFor({ provider_config });
-  if (!receipt.dry_run) Object.assign(receipt, await enroll(canonical, { repository_id, scope_id, scope_descriptor: descriptorFrom(rest, scope_id), provider_config, grant_policy: { level: "read-only" } }));
+  if (!receipt.dry_run) {
+    const installation = await installationBindingFor({
+      root: canonical,
+      repository_id,
+      scope_id,
+      scope_descriptor: descriptorFrom(rest, scope_id),
+      provider_config,
+    }, { registryPath: defaultRegistryPath() });
+    Object.assign(receipt, await enroll(canonical, {
+      repository_id,
+      scope_id,
+      scope_descriptor: descriptorFrom(rest, scope_id),
+      provider_config: { ...provider_config, installation_binding: installation },
+      grant_policy: { level: "read-only" },
+    }));
+    receipt.installation_binding = installation;
+  }
   return receipt;
 }
 
@@ -186,9 +204,27 @@ async function install(root, rest) {
   const receipt = { action: "install", root: binding.root, repository_id: binding.repository_id, registry: defaultRegistryPath(), ...result };
   if (!receipt.dry_run) {
     const installations = Object.fromEntries(result.clients.map((client) => [client.client, client]));
-    await enroll(binding.root, { repository_id: binding.repository_id, scope_id: binding.scope_id, scope_descriptor: binding.scope_descriptor, provider_config: { ...(binding.provider_config || {}), installations }, grant_policy: binding.grant_policy || { level: "read-only" } });
+    const installation = await installationBindingFor(binding, { registryPath: defaultRegistryPath() });
+    await enroll(binding.root, {
+      repository_id: binding.repository_id,
+      scope_id: binding.scope_id,
+      scope_descriptor: binding.scope_descriptor,
+      provider_config: { ...(binding.provider_config || {}), installations, installation_binding: installation },
+      grant_policy: binding.grant_policy || { level: "read-only" },
+    });
+    receipt.installation_binding = installation;
   }
   return receipt;
+}
+
+async function catalog(root, rest) {
+  if (!root) throw new Error(usage());
+  const registryPath = value(rest, "--registry");
+  return enrollRepositoryCatalog(root, {
+    ...(registryPath ? { registryPath } : {}),
+    childGrants: values(rest, "--grant"),
+    dryRun: dryRunFor(rest),
+  });
 }
 
 async function uninstall(root, rest) {
@@ -209,11 +245,22 @@ async function token(subcommand, root, rest) {
   const reason = subcommand === "recover" ? "leak_recovery" : "rotation";
   if (subcommand === "recover" && value(rest, "--reason") !== "leak") throw new Error("token recovery requires --reason leak");
   if (dryRunFor(rest)) return { action: "token_rotate", root: binding.root, repository_id: binding.repository_id, registry: defaultRegistryPath(), token_generation: (binding.token_grant?.generation || 0) + 1, revoked_token_generations: [...new Set([...(binding.token_grant?.revoked_generations || []), ...(binding.token_grant ? [binding.token_grant.generation] : [])])].sort((a, b) => a - b), reason, dry_run: true };
-  return { action: "token_rotate", registry: defaultRegistryPath(), dry_run: false, ...(await rotateToken(root, { reason })) };
+  const rotated = await rotateToken(root, { reason });
+  const refreshed = await bindingFor(root);
+  const installation = await installationBindingFor(refreshed, { registryPath: defaultRegistryPath() });
+  await enroll(root, {
+    repository_id: refreshed.repository_id,
+    scope_id: refreshed.scope_id,
+    scope_descriptor: refreshed.scope_descriptor,
+    provider_config: { ...(refreshed.provider_config || {}), installation_binding: installation },
+    grant_policy: refreshed.grant_policy || { level: "read-only" },
+  });
+  return { action: "token_rotate", registry: defaultRegistryPath(), dry_run: false, installation_binding: installation, ...rotated };
 }
 
 if (process.argv[1] === SELF) {
   if (command === "init") process.stdout.write(JSON.stringify(await init(args[0], args.slice(1))) + "\n");
+  else if (command === "catalog") process.stdout.write(JSON.stringify(await catalog(args[0], args.slice(1))) + "\n");
   else if (command === "install") process.stdout.write(JSON.stringify(await install(args[0], args.slice(1))) + "\n");
   else if (command === "uninstall") process.stdout.write(JSON.stringify(await uninstall(args[0], args.slice(1))) + "\n");
   else if (command === "token") process.stdout.write(JSON.stringify(await token(args[0], args[1], args.slice(2))) + "\n");

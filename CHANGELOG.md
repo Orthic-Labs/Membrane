@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-02 — Vector dispatch v2 default-on
+
+- Flipped `MEMRIGHT_VECTOR_DISPATCH_V2` to default-on: resident in-process f32 index (`retrieve_hybrid_indexed`) is now the live recall path on both hosts.
+- Retained immediate environment-variable fallback: `MEMRIGHT_VECTOR_DISPATCH_V2=0|false|off|legacy` restores legacy scalar-A `retrieve_hybrid` routing on next store open.
+- Windows host confirmation + flag-on/flag-off acceptance green before flip; A remains fail-closed fallback for mixed dimensions, absent projection, or query mismatch.
+
+## 2026-08-01 — Membrane P1 honesty
+
+- Documented reserved admission lanes as explicit cross-provider score policy (no pretend shared scale).
+- Public surfaces rename to Membrane (headers, telemetry registry provider, state/telemetry titles); RightContext kept as compatibility alias.
+- CLI/serve write paths refuse hand-typed single-token scopes that would fork the corpus.
+- README/STATE declare internal-mirror / workspace-coupled posture (not a standalone public product).
+
 ## 2026-07-30 — MCP 2026-07-28 dual-era stdio
 
 - Migrated public MCP stdio to exact `@modelcontextprotocol/server@2.0.0` with one factory serving legacy `2025-03-26` clients & modern `2026-07-28` discovery.

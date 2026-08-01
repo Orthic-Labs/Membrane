@@ -2,17 +2,12 @@
 name = "memright-core"
 version = "0.1.0"
 edition.workspace = true
-description = "Pure in-memory logic for the MemRight memory tier system."
+description = "MemRight compatibility facade for Crypt core primitives."
 
 [dependencies]
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-sha2 = "0.10"
-fastembed = { version = "5", optional = true }
-tiktoken-rs = { workspace = true }
+crypt-core = { path = "../crypt-core" }
 
 [features]
-fastembed = ["dep:fastembed"]
+fastembed = ["crypt-core/fastembed"]
 
 [dev-dependencies]

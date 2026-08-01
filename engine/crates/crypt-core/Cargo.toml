@@ -1,0 +1,17 @@
+[package]
+name = "crypt-core"
+version = "0.1.0"
+edition.workspace = true
+description = "Crypt durable-memory core primitives."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+sha2 = "0.10"
+fastembed = { version = "5", optional = true }
+tiktoken-rs = { workspace = true }
+rayon = "=1.12.0"
+
+[features]
+fastembed = ["dep:fastembed"]

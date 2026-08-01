@@ -2,7 +2,7 @@
 name = "memright"
 version = "0.1.1"
 edition.workspace = true
-description = "Productizable, OS-independent memory engine (SQLite + vector + graph)."
+description = "MemRight compatibility CLI and service facade for Crypt plus Membrane runtime."
 
 [[bin]]
 name = "memright"
@@ -13,35 +13,17 @@ name = "memright-service"
 path = "src/service_main.rs"
 
 [dependencies]
+membrane-runtime = { path = "../membrane-runtime" }
+
+[features]
+default = ["membrane-runtime/llmlingua-onnx"]
+fastembed = ["membrane-runtime/fastembed"]
+llmlingua-onnx = ["membrane-runtime/llmlingua-onnx"]
+
+[dev-dependencies]
 memright-core = { path = "../memright-core" }
-memright-format = { path = "../memright-format" }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
-clap = { version = "4", features = ["derive"] }
-axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros"] }
-tower = { version = "0.5", features = ["limit", "util"] }
-tower-http = { version = "0.6", features = ["limit", "timeout"] }
-getrandom = "0.2"
 sha2 = "0.10"
-comrak = "0.54"
-tree-sitter = "0.22"
-tree-sitter-rust = "0.21"
-tree-sitter-python = "0.21"
-tree-sitter-javascript = "0.23.1"
-tree-sitter-typescript = "0.21"
-tokenizers = { version = "0.15", optional = true }
-[target."cfg(windows)".dependencies]
-ort = { version = "=2.0.0-rc.12", optional = true, default-features = false, features = ["std", "api-24", "load-dynamic", "directml", "ndarray"] }
-[target."cfg(not(windows))".dependencies]
-ort = { version = "=2.0.0-rc.12", optional = true, default-features = false, features = ["std", "api-24", "load-dynamic", "ndarray"] }
-
-[features]
-default = ["llmlingua-onnx"]
-fastembed = ["memright-core/fastembed", "dep:ort"]
-llmlingua-onnx = ["dep:tokenizers", "dep:ort"]
-
-[dev-dependencies]
 tempfile = "3"

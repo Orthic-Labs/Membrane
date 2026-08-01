@@ -1,8 +1,9 @@
-# RightContext telemetry and identity contract
+# Membrane telemetry and identity contract
 
 **Status:** installed and verified, 2026-07-21. This document owns the operational answer to “what is
 captured, at what granularity, and can it be joined end to end?” Deployment and release truth remain
-in [RIGHTCONTEXT-STATE.md](RIGHTCONTEXT-STATE.md).
+in [MEMBRANE-STATE.md](MEMBRANE-STATE.md). Public provider token is `membrane`; `rightcontext` remains
+a registered compatibility alias.
 
 ## Direct answer
 

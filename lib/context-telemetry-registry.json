@@ -4,7 +4,8 @@
   "tokens": {
     "extension_pattern": "^ext\\.[a-z0-9][a-z0-9_-]{0,31}\\.[a-z0-9][a-z0-9._-]{0,46}$",
     "providers": {
-      "rightcontext": {"default_artifact_family": "context"},
+      "membrane": {"default_artifact_family": "context", "aliases": ["rightcontext"]},
+      "rightcontext": {"default_artifact_family": "context", "note": "legacy alias for membrane; keep for installed event compatibility"},
       "policy": {"default_artifact_family": "context"},
       "legacy": {"default_artifact_family": "memory"},
       "blueprint": {"default_artifact_family": "blueprint"},
