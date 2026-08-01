@@ -1,21 +1,36 @@
 //! Follow-on SIMD/BLAS lane (plan §13.2): same fixtures and measure loop as the
-//! Round 1 control runner, three exact arms.
+//! Round 1 control runner, seven parity-gated arms.
 //!   A  — byte-identical to control arm A (in-process paired reference)
 //!   B2 — Accelerate cblas_sgemv over a contiguous dequantized matrix, bounded top-N
 //!   B3 — quantized-RESIDENT bounded top-N (the arm the spec called "B"; the Round 1
 //!        control runner re-quantized every row per query, which pessimized it)
-//! B2 uses Accelerate on macOS & AVX2/FMA when available on x86_64.
+//! Additional arms measure Rayon parallel scans, exact i8 SIMD, and eligible-row gather.
+//! macOS uses Accelerate for B2; x86 Windows uses runtime-gated explicit AVX2/FMA
+//! intrinsics with a scalar fallback.
 
-use half::f16;
 use memright_core::{cosine, QuantizedVector};
 use rayon::prelude::*;
-use rayon::ThreadPoolBuilder;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::time::Instant;
 use vector_bakeoff_common::{
     eligible, generate_fixture, hex, load_config, measure, parse_runner_args, selected_cell,
     write_bundle_atomic, Candidate, RunBundle, GENERATOR_ID,
+};
+
+#[cfg(target_arch = "x86")]
+use std::arch::x86::{
+    __m256i, _mm256_abs_epi8, _mm256_add_epi32, _mm256_dpbusd_avx_epi32, _mm256_fmadd_ps,
+    _mm256_loadu_ps, _mm256_loadu_si256, _mm256_madd_epi16, _mm256_maddubs_epi16,
+    _mm256_set1_epi16, _mm256_setzero_ps, _mm256_setzero_si256, _mm256_sign_epi8, _mm256_storeu_ps,
+    _mm256_storeu_si256,
+};
+#[cfg(target_arch = "x86_64")]
+use std::arch::x86_64::{
+    __m256i, _mm256_abs_epi8, _mm256_add_epi32, _mm256_dpbusd_avx_epi32, _mm256_fmadd_ps,
+    _mm256_loadu_ps, _mm256_loadu_si256, _mm256_madd_epi16, _mm256_maddubs_epi16,
+    _mm256_set1_epi16, _mm256_setzero_ps, _mm256_setzero_si256, _mm256_sign_epi8, _mm256_storeu_ps,
+    _mm256_storeu_si256,
 };
 
 #[cfg(target_os = "macos")]
@@ -41,161 +56,6 @@ extern "C" {
 const CBLAS_ROW_MAJOR: i32 = 101;
 #[cfg(target_os = "macos")]
 const CBLAS_NO_TRANS: i32 = 111;
-
-#[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx2,fma")]
-unsafe fn dot_avx2_fma(left: &[f32], right: &[f32]) -> f32 {
-    use std::arch::x86_64::*;
-
-    let chunks = left.len() / 8;
-    let mut sum = _mm256_setzero_ps();
-    for index in 0..chunks {
-        let offset = index * 8;
-        sum = _mm256_fmadd_ps(
-            _mm256_loadu_ps(left.as_ptr().add(offset)),
-            _mm256_loadu_ps(right.as_ptr().add(offset)),
-            sum,
-        );
-    }
-    let mut lanes = [0.0_f32; 8];
-    _mm256_storeu_ps(lanes.as_mut_ptr(), sum);
-    lanes.into_iter().sum::<f32>()
-        + left[chunks * 8..]
-            .iter()
-            .zip(&right[chunks * 8..])
-            .map(|(a, b)| a * b)
-            .sum::<f32>()
-}
-
-#[cfg(not(target_os = "macos"))]
-fn full_scores(matrix: &[f32], query: &[f32], scores: &mut [f32]) {
-    for (row, score) in matrix.chunks_exact(query.len()).zip(scores) {
-        #[cfg(target_arch = "x86_64")]
-        let value = if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma")
-        {
-            unsafe { dot_avx2_fma(row, query) }
-        } else {
-            row.iter().zip(query).map(|(a, b)| a * b).sum()
-        };
-        #[cfg(not(target_arch = "x86_64"))]
-        let value = row.iter().zip(query).map(|(a, b)| a * b).sum();
-        *score = value;
-    }
-}
-
-fn score_matrix(matrix: &[f32], query: &[f32], scores: &mut [f32], dimension: usize) {
-    #[cfg(target_os = "macos")]
-    unsafe {
-        cblas_sgemv(
-            CBLAS_ROW_MAJOR,
-            CBLAS_NO_TRANS,
-            i32::try_from(scores.len()).expect("row count exceeds i32"),
-            i32::try_from(dimension).expect("dimension exceeds i32"),
-            1.0,
-            matrix.as_ptr(),
-            i32::try_from(dimension).expect("dimension exceeds i32"),
-            query.as_ptr(),
-            1,
-            0.0,
-            scores.as_mut_ptr(),
-            1,
-        );
-    }
-    #[cfg(not(target_os = "macos"))]
-    full_scores(matrix, query, scores);
-}
-
-fn integer_dot_scalar(left: &[i8], right: &[i8]) -> i32 {
-    left.iter()
-        .zip(right)
-        .map(|(left, right)| *left as i32 * *right as i32)
-        .sum()
-}
-
-#[cfg(target_arch = "aarch64")]
-#[target_feature(enable = "dotprod")]
-unsafe fn integer_dot_neon_sdot(left: &[i8], right: &[i8]) -> i32 {
-    use std::arch::asm;
-
-    let chunks = left.len() / 16;
-    let mut partial = [0_i32; 4];
-    if chunks > 0 {
-        asm!(
-            "movi v0.4s, #0",
-            "2:",
-            "ld1 {{v1.16b}}, [{left}], #16",
-            "ld1 {{v2.16b}}, [{right}], #16",
-            "sdot v0.4s, v1.16b, v2.16b",
-            "subs {remaining}, {remaining}, #1",
-            "b.ne 2b",
-            "st1 {{v0.4s}}, [{output}]",
-            left = inout(reg) left.as_ptr() => _,
-            right = inout(reg) right.as_ptr() => _,
-            remaining = inout(reg) chunks => _,
-            output = in(reg) partial.as_mut_ptr(),
-            out("v0") _,
-            out("v1") _,
-            out("v2") _,
-            options(nostack)
-        );
-    }
-    partial.into_iter().sum::<i32>()
-        + left[chunks * 16..]
-            .iter()
-            .zip(&right[chunks * 16..])
-            .map(|(left, right)| *left as i32 * *right as i32)
-            .sum::<i32>()
-}
-
-fn integer_dot_simd(left: &[i8], right: &[i8]) -> i32 {
-    #[cfg(target_arch = "aarch64")]
-    if std::arch::is_aarch64_feature_detected!("dotprod") {
-        return unsafe { integer_dot_neon_sdot(left, right) };
-    }
-    integer_dot_scalar(left, right)
-}
-
-fn integer_residual_cosine(
-    row: &QuantizedVector,
-    query: &[f32],
-    quantized_query: &QuantizedVector,
-) -> f32 {
-    let integer_dot = integer_dot_simd(row.values(), quantized_query.values());
-    let residual_dot = row
-        .values()
-        .iter()
-        .zip(query)
-        .zip(quantized_query.values())
-        .map(|((row_value, query_value), query_quantized)| {
-            *row_value as f32 * (*query_value - *query_quantized as f32 * quantized_query.scale())
-        })
-        .sum::<f32>();
-    let dot = row.scale() * (integer_dot as f32 * quantized_query.scale() + residual_dot);
-    let mut row_norm = 0.0_f32;
-    let mut query_norm = 0.0_f32;
-    for (row_value, query_value) in row.values().iter().zip(query) {
-        let value = *row_value as f32 * row.scale();
-        row_norm += value * value;
-        query_norm += query_value * query_value;
-    }
-    if row_norm == 0.0 || query_norm == 0.0 {
-        0.0
-    } else {
-        dot / (row_norm.sqrt() * query_norm.sqrt())
-    }
-}
-
-fn b3_simd_kernel_name() -> &'static str {
-    #[cfg(target_arch = "aarch64")]
-    if std::arch::is_aarch64_feature_detected!("dotprod") {
-        return if std::arch::is_aarch64_feature_detected!("i8mm") {
-            "neon-sdot-runtime-i8mm-detected"
-        } else {
-            "neon-sdot-runtime"
-        };
-    }
-    "scalar-i8-dot-fallback"
-}
 
 #[derive(Clone, Copy)]
 struct ScoredId {
@@ -247,6 +107,249 @@ fn inv_norm(vector: &[f32]) -> f32 {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn score_b2(matrix: &[f32], query: &[f32], scores: &mut [f32], dimension: usize) {
+    unsafe {
+        cblas_sgemv(
+            CBLAS_ROW_MAJOR,
+            CBLAS_NO_TRANS,
+            i32::try_from(scores.len()).expect("row count exceeds i32"),
+            i32::try_from(dimension).expect("dimension exceeds i32"),
+            1.0,
+            matrix.as_ptr(),
+            i32::try_from(dimension).expect("dimension exceeds i32"),
+            query.as_ptr(),
+            1,
+            0.0,
+            scores.as_mut_ptr(),
+            1,
+        );
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn score_b2(matrix: &[f32], query: &[f32], scores: &mut [f32], dimension: usize) {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+        unsafe { avx2_fma_scores(matrix, query, scores, dimension) };
+        return;
+    }
+    scalar_scores(matrix, query, scores, dimension);
+}
+
+#[cfg(target_os = "macos")]
+fn b2_kernel_name() -> &'static str {
+    "Accelerate cblas_sgemv"
+}
+
+#[cfg(target_os = "macos")]
+fn b2_backend_name() -> &'static str {
+    "accelerate-sgemv-full-scores-bounded-topn"
+}
+
+#[cfg(not(target_os = "macos"))]
+fn b2_kernel_name() -> &'static str {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma") {
+        return "rust-avx2-fma-intrinsics";
+    }
+    "rust-scalar-fallback"
+}
+
+#[cfg(not(target_os = "macos"))]
+fn b2_backend_name() -> &'static str {
+    "rust-avx2-fma-full-scores-bounded-topn"
+}
+
+#[cfg(any(test, not(target_os = "macos")))]
+fn scalar_scores(matrix: &[f32], query: &[f32], scores: &mut [f32], dimension: usize) {
+    for (row, score) in matrix.chunks_exact(dimension).zip(scores.iter_mut()) {
+        *score = row
+            .iter()
+            .zip(query)
+            .map(|(left, right)| left * right)
+            .sum();
+    }
+}
+
+fn score_b2_parallel(matrix: &[f32], query: &[f32], scores: &mut [f32], dimension: usize) {
+    let threads = rayon::current_num_threads().max(1);
+    let chunk_rows = scores.len().div_ceil(threads * 4).max(1);
+    scores
+        .par_chunks_mut(chunk_rows)
+        .zip(matrix.par_chunks(chunk_rows * dimension))
+        .for_each(|(output, rows)| score_b2(rows, query, output, dimension));
+}
+
+fn score_b2_gather(
+    matrix: &[f32],
+    query: &[f32],
+    row_indices: &[usize],
+    dimension: usize,
+) -> Vec<f32> {
+    row_indices
+        .iter()
+        .map(|index| {
+            let start = index * dimension;
+            let mut score = [0.0_f32];
+            score_b2(
+                &matrix[start..start + dimension],
+                query,
+                &mut score,
+                dimension,
+            );
+            score[0]
+        })
+        .collect()
+}
+
+fn scalar_i8_dot(left: &[i8], right: &[i8]) -> i32 {
+    left.iter()
+        .zip(right)
+        .map(|(a, b)| i32::from(*a) * i32::from(*b))
+        .sum()
+}
+
+fn i8_norm_sq(values: &[i8]) -> i32 {
+    values
+        .iter()
+        .map(|value| i32::from(*value) * i32::from(*value))
+        .sum()
+}
+
+fn quantized_inv_norm(vector: &QuantizedVector) -> f32 {
+    let norm_sq = i8_norm_sq(vector.values());
+    if norm_sq == 0 {
+        0.0
+    } else {
+        1.0 / ((norm_sq as f32).sqrt() * vector.scale())
+    }
+}
+
+fn quantized_cosine_from_dot(
+    row: &QuantizedVector,
+    query: &QuantizedVector,
+    row_inv_norm: f32,
+    query_inv_norm: f32,
+    dot: i32,
+) -> f32 {
+    if row.len() != query.len() || row.is_empty() {
+        return 0.0;
+    }
+    if row_inv_norm == 0.0 || query_inv_norm == 0.0 {
+        return 0.0;
+    }
+    dot as f32 * row.scale() * query.scale() * row_inv_norm * query_inv_norm
+}
+
+fn scalar_b3_score(
+    row: &QuantizedVector,
+    query: &QuantizedVector,
+    row_inv_norm: f32,
+    query_inv_norm: f32,
+) -> f32 {
+    quantized_cosine_from_dot(
+        row,
+        query,
+        row_inv_norm,
+        query_inv_norm,
+        scalar_i8_dot(row.values(), query.values()),
+    )
+}
+
+fn simd_b3_score(
+    row: &QuantizedVector,
+    query: &QuantizedVector,
+    row_inv_norm: f32,
+    query_inv_norm: f32,
+) -> f32 {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    let dot = if std::is_x86_feature_detected!("avxvnni") {
+        unsafe { avxvnni_i8_dot(row.values(), query.values()) }
+    } else if std::is_x86_feature_detected!("avx2") {
+        unsafe { avx2_i8_dot(row.values(), query.values()) }
+    } else {
+        scalar_i8_dot(row.values(), query.values())
+    };
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    let dot = scalar_i8_dot(row.values(), query.values());
+    quantized_cosine_from_dot(row, query, row_inv_norm, query_inv_norm, dot)
+}
+
+fn b3_kernel_name() -> &'static str {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        if std::is_x86_feature_detected!("avxvnni") {
+            return "AVX-VNNI vpdpbusd exact-i8";
+        }
+        if std::is_x86_feature_detected!("avx2") {
+            return "AVX2 vpmaddubsw/vpmaddwd exact-i8";
+        }
+    }
+    "rust-scalar exact-i8"
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx2")]
+unsafe fn avx2_i8_dot(left: &[i8], right: &[i8]) -> i32 {
+    debug_assert_eq!(left.len(), right.len());
+    let mut index = 0;
+    let mut lanes = _mm256_setzero_si256();
+    let ones = _mm256_set1_epi16(1);
+    while index + 32 <= left.len() {
+        let a = _mm256_loadu_si256(left.as_ptr().add(index).cast::<__m256i>());
+        let b = _mm256_loadu_si256(right.as_ptr().add(index).cast::<__m256i>());
+        let magnitudes = _mm256_abs_epi8(a);
+        let signed_b = _mm256_sign_epi8(b, a);
+        let pairs = _mm256_maddubs_epi16(magnitudes, signed_b);
+        lanes = _mm256_add_epi32(lanes, _mm256_madd_epi16(pairs, ones));
+        index += 32;
+    }
+    let mut partial = [0_i32; 8];
+    _mm256_storeu_si256(partial.as_mut_ptr().cast::<__m256i>(), lanes);
+    partial.iter().sum::<i32>() + scalar_i8_dot(&left[index..], &right[index..])
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx2,avxvnni")]
+unsafe fn avxvnni_i8_dot(left: &[i8], right: &[i8]) -> i32 {
+    debug_assert_eq!(left.len(), right.len());
+    let mut index = 0;
+    let mut lanes = _mm256_setzero_si256();
+    while index + 32 <= left.len() {
+        let a = _mm256_loadu_si256(left.as_ptr().add(index).cast::<__m256i>());
+        let b = _mm256_loadu_si256(right.as_ptr().add(index).cast::<__m256i>());
+        lanes = _mm256_dpbusd_avx_epi32(lanes, _mm256_abs_epi8(a), _mm256_sign_epi8(b, a));
+        index += 32;
+    }
+    let mut partial = [0_i32; 8];
+    _mm256_storeu_si256(partial.as_mut_ptr().cast::<__m256i>(), lanes);
+    partial.iter().sum::<i32>() + scalar_i8_dot(&left[index..], &right[index..])
+}
+
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn avx2_fma_scores(matrix: &[f32], query: &[f32], scores: &mut [f32], dimension: usize) {
+    for (row, score) in matrix.chunks_exact(dimension).zip(scores.iter_mut()) {
+        let mut index = 0;
+        let mut lanes = _mm256_setzero_ps();
+        while index + 8 <= dimension {
+            let left = _mm256_loadu_ps(row.as_ptr().add(index));
+            let right = _mm256_loadu_ps(query.as_ptr().add(index));
+            lanes = _mm256_fmadd_ps(left, right, lanes);
+            index += 8;
+        }
+        let mut partial = [0.0_f32; 8];
+        _mm256_storeu_ps(partial.as_mut_ptr(), lanes);
+        *score = partial.iter().sum::<f32>()
+            + row[index..]
+                .iter()
+                .zip(&query[index..])
+                .map(|(left, right)| left * right)
+                .sum::<f32>();
+    }
+}
+
 fn main() -> Result<(), String> {
     let args = parse_runner_args()?;
     let config = load_config(&args.config)?;
@@ -278,19 +381,8 @@ fn main() -> Result<(), String> {
         .iter()
         .map(|row| QuantizedVector::quantize(&row.embedding))
         .collect::<Vec<_>>();
+    let quantized_inv_norms = quantized.iter().map(quantized_inv_norm).collect::<Vec<_>>();
     let build_b3_ns = build_b3_started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
-
-    let build_f16_started = Instant::now();
-    let matrix_f16 = matrix
-        .iter()
-        .copied()
-        .map(f16::from_f32)
-        .collect::<Vec<_>>();
-    let build_f16_ns = build_f16_started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
-    let parallel_pool = ThreadPoolBuilder::new()
-        .num_threads(std::thread::available_parallelism().map_or(1, usize::from))
-        .build()
-        .map_err(|error| format!("create Rayon pool: {error}"))?;
 
     let mut arm_a = measure(&fixture, "A", |query, limit| {
         let mut scoped = hydrated
@@ -312,7 +404,7 @@ fn main() -> Result<(), String> {
 
     let mut scores = vec![0.0_f32; fixture.rows.len()];
     let mut arm_b2 = measure(&fixture, "B2", |query, limit| {
-        score_matrix(&matrix, &query.embedding, &mut scores, dimension);
+        score_b2(&matrix, &query.embedding, &mut scores, dimension);
         let query_inv_norm = inv_norm(&query.embedding);
         let top = bounded_top_n(
             fixture
@@ -334,142 +426,37 @@ fn main() -> Result<(), String> {
             })
             .collect()
     });
-    arm_b2.backend = "accelerate-sgemv-full-scores-bounded-topn".into();
+    arm_b2.backend = b2_backend_name().into();
     arm_b2.build_ns = build_b2_ns;
     arm_b2.config = serde_json::json!({
         "resident":"f32-contiguous-matrix",
         "selection":"bounded-top-n",
-        "kernel": if cfg!(target_os = "macos") { "Accelerate cblas_sgemv" } else { "runtime AVX2/FMA or scalar Rust" },
-        "scoresComputed":"all rows (filter after)"
-    });
-
-    let mut gather_matrix = Vec::<f32>::new();
-    let mut gather_ids = Vec::<usize>::new();
-    let mut gather_inv_norms = Vec::<f32>::new();
-    let mut gather_scores = Vec::<f32>::new();
-    let mut arm_b2_gather = measure(&fixture, "B2-gather", |query, limit| {
-        gather_matrix.clear();
-        gather_ids.clear();
-        gather_inv_norms.clear();
-        for (index, (row, embedding)) in hydrated.iter().enumerate() {
-            if eligible(row, query) {
-                gather_matrix.extend_from_slice(embedding);
-                gather_ids.push(index);
-                gather_inv_norms.push(inv_norms[index]);
-            }
-        }
-        gather_scores.resize(gather_ids.len(), 0.0);
-        score_matrix(
-            &gather_matrix,
-            &query.embedding,
-            &mut gather_scores,
-            dimension,
-        );
-        let query_inv_norm = inv_norm(&query.embedding);
-        let top = bounded_top_n(
-            gather_scores
-                .iter()
-                .zip(&gather_ids)
-                .zip(&gather_inv_norms)
-                .map(|((score, index), row_inv_norm)| ScoredId {
-                    score: *score * *row_inv_norm * query_inv_norm,
-                    id: fixture.rows[*index].id,
-                }),
-            limit,
-        );
-        top.into_iter()
-            .map(|item| Candidate {
-                id: item.id,
-                cosine: item.score,
-                content_hash: hex(&fixture.rows[item.id as usize].content_hash),
-            })
-            .collect()
-    });
-    arm_b2_gather.backend = "accelerate-filter-first-gather-sgemv-bounded-topn".into();
-    arm_b2_gather.build_ns = build_b2_ns;
-    arm_b2_gather.config = serde_json::json!({
-        "resident":"f32-contiguous-matrix",
-        "selection":"filter-first-gather-bounded-top-n",
-        "kernel":"Accelerate cblas_sgemv",
-        "scoresComputed":"eligible rows only"
-    });
-
-    let mut parallel_scores = vec![0.0_f32; fixture.rows.len()];
-    let mut arm_b2_parallel = measure(&fixture, "parallel-B2", |query, limit| {
-        score_matrix(&matrix, &query.embedding, &mut parallel_scores, dimension);
-        let query_inv_norm = inv_norm(&query.embedding);
-        let top = parallel_pool.install(|| {
-            let scored = fixture
-                .rows
-                .par_iter()
-                .enumerate()
-                .filter(|(_, row)| eligible(row, query))
-                .map(|(index, row)| ScoredId {
-                    score: parallel_scores[index] * inv_norms[index] * query_inv_norm,
-                    id: row.id,
-                })
-                .collect::<Vec<_>>();
-            bounded_top_n(scored.into_iter(), limit)
-        });
-        top.into_iter()
-            .map(|item| Candidate {
-                id: item.id,
-                cosine: item.score,
-                content_hash: hex(&fixture.rows[item.id as usize].content_hash),
-            })
-            .collect()
-    });
-    arm_b2_parallel.backend = "accelerate-sgemv-parallel-filter-bounded-topn".into();
-    arm_b2_parallel.build_ns = build_b2_ns;
-    arm_b2_parallel.config = serde_json::json!({
-        "resident":"f32-contiguous-matrix",
-        "selection":"parallel-filter-bounded-top-n",
-        "kernel":"Accelerate cblas_sgemv",
-        "threads":parallel_pool.current_num_threads(),
+        "kernel": b2_kernel_name(),
         "scoresComputed":"all rows (filter after)"
     });
 
     let mut arm_b3 = measure(&fixture, "B3", |query, limit| {
-        let top = bounded_top_n(
-            fixture
-                .rows
-                .iter()
-                .zip(&quantized)
-                .filter(|(row, _)| eligible(row, query))
-                .map(|(row, vector)| ScoredId {
-                    score: vector.cosine_with(&query.embedding),
-                    id: row.id,
-                }),
-            limit,
-        );
-        top.into_iter()
-            .map(|item| Candidate {
-                id: item.id,
-                cosine: item.score,
-                content_hash: hex(&fixture.rows[item.id as usize].content_hash),
-            })
-            .collect()
-    });
-    arm_b3.backend = "optimized-rust-quantized-RESIDENT-bounded-topn".into();
-    arm_b3.build_ns = build_b3_ns;
-    arm_b3.config = serde_json::json!({"resident":"i8-per-vector-scale-prequantized","selection":"bounded-top-n"});
-
-    let mut arm_b3_simd = measure(&fixture, "B3-SIMD", |query, limit| {
         let quantized_query = QuantizedVector::quantize(&query.embedding);
-        let preselection = bounded_top_n(
+        let query_inv_norm = quantized_inv_norm(&quantized_query);
+        let prefilter = bounded_top_n(
             fixture
                 .rows
                 .iter()
-                .zip(&quantized)
-                .filter(|(row, _)| eligible(row, query))
-                .map(|(row, vector)| ScoredId {
-                    score: integer_residual_cosine(vector, &query.embedding, &quantized_query),
+                .enumerate()
+                .filter(|(_, row)| eligible(row, query))
+                .map(|(index, row)| ScoredId {
+                    score: scalar_b3_score(
+                        &quantized[index],
+                        &quantized_query,
+                        quantized_inv_norms[index],
+                        query_inv_norm,
+                    ),
                     id: row.id,
                 }),
-            limit.saturating_add(64),
+            limit.saturating_mul(32),
         );
         let top = bounded_top_n(
-            preselection.into_iter().map(|item| ScoredId {
+            prefilter.into_iter().map(|item| ScoredId {
                 score: quantized[item.id as usize].cosine_with(&query.embedding),
                 id: item.id,
             }),
@@ -483,55 +470,64 @@ fn main() -> Result<(), String> {
             })
             .collect()
     });
-    arm_b3_simd.backend = "quantized-resident-integer-dot-bounded-topn".into();
-    arm_b3_simd.build_ns = build_b3_ns;
-    arm_b3_simd.config = serde_json::json!({
-        "resident":"i8-row-resident-query-i8-plus-f32-residual",
-        "selection":"bounded-top-n",
-        "kernel":b3_simd_kernel_name(),
-        "integerAccumulatorParity":"unit-gated-exact",
-        "exactRefineCandidates":fixture.cell.top_k.saturating_add(64)
-    });
-
-    let mut arm_b3_parallel = measure(&fixture, "parallel-B3", |query, limit| {
-        let top = parallel_pool.install(|| {
-            let scored = fixture
-                .rows
-                .par_iter()
-                .zip(quantized.par_iter())
-                .filter(|(row, _)| eligible(row, query))
-                .map(|(row, vector)| ScoredId {
-                    score: vector.cosine_with(&query.embedding),
-                    id: row.id,
-                })
-                .collect::<Vec<_>>();
-            bounded_top_n(scored.into_iter(), limit)
-        });
-        top.into_iter()
-            .map(|item| Candidate {
-                id: item.id,
-                cosine: item.score,
-                content_hash: hex(&fixture.rows[item.id as usize].content_hash),
-            })
-            .collect()
-    });
-    arm_b3_parallel.backend = "quantized-resident-rayon-bounded-topn".into();
-    arm_b3_parallel.build_ns = build_b3_ns;
-    arm_b3_parallel.config = serde_json::json!({
+    arm_b3.backend = "optimized-rust-quantized-RESIDENT-bounded-topn".into();
+    arm_b3.build_ns = build_b3_ns;
+    arm_b3.config = serde_json::json!({
         "resident":"i8-per-vector-scale-prequantized",
-        "selection":"bounded-top-n",
-        "threads": parallel_pool.current_num_threads()
+        "selection":"integer-prefilter-plus-exact-rerank",
+        "rerankCandidates":fixture.cell.top_k.saturating_mul(32),
+        "kernel":"rust-scalar exact-i8",
+        "norm":"precomputed-scaled-i8-invnorm"
     });
 
-    let is_crossover = args.config.ends_with("crossover-v1.json");
-    let arm_f16 = (!is_crossover).then(|| {
-        let mut arm = measure(&fixture, "B4-f16", |query, limit| {
-        let query_f16 = query
-            .embedding
-            .iter()
-            .copied()
-            .map(f16::from_f32)
+    let mut arm_parallel_b3 = measure(&fixture, "parallel-B3", |query, limit| {
+        let quantized_query = QuantizedVector::quantize(&query.embedding);
+        let query_inv_norm = quantized_inv_norm(&quantized_query);
+        let scored = fixture
+            .rows
+            .par_iter()
+            .enumerate()
+            .filter(|(_, row)| eligible(row, query))
+            .map(|(index, row)| ScoredId {
+                score: scalar_b3_score(
+                    &quantized[index],
+                    &quantized_query,
+                    quantized_inv_norms[index],
+                    query_inv_norm,
+                ),
+                id: row.id,
+            })
             .collect::<Vec<_>>();
+        let prefilter = bounded_top_n(scored.into_iter(), limit.saturating_mul(32));
+        bounded_top_n(
+            prefilter.into_iter().map(|item| ScoredId {
+                score: quantized[item.id as usize].cosine_with(&query.embedding),
+                id: item.id,
+            }),
+            limit,
+        )
+        .into_iter()
+        .map(|item| Candidate {
+            id: item.id,
+            cosine: item.score,
+            content_hash: hex(&fixture.rows[item.id as usize].content_hash),
+        })
+        .collect()
+    });
+    arm_parallel_b3.backend = "rayon-rust-quantized-resident-bounded-topn".into();
+    arm_parallel_b3.build_ns = build_b3_ns;
+    arm_parallel_b3.config = serde_json::json!({
+        "resident":"i8-per-vector-scale-prequantized",
+        "selection":"integer-prefilter-plus-exact-rerank",
+        "rerankCandidates":fixture.cell.top_k.saturating_mul(32),
+        "kernel":"rayon chunks over rust-scalar exact-i8",
+        "norm":"precomputed-scaled-i8-invnorm",
+        "threadCount":rayon::current_num_threads()
+    });
+
+    let mut parallel_scores = vec![0.0_f32; fixture.rows.len()];
+    let mut arm_parallel_b2 = measure(&fixture, "parallel-B2", |query, limit| {
+        score_b2_parallel(&matrix, &query.embedding, &mut parallel_scores, dimension);
         let query_inv_norm = inv_norm(&query.embedding);
         let top = bounded_top_n(
             fixture
@@ -539,17 +535,9 @@ fn main() -> Result<(), String> {
                 .iter()
                 .enumerate()
                 .filter(|(_, row)| eligible(row, query))
-                .map(|(index, row)| {
-                    let offset = index * dimension;
-                    let score = matrix_f16[offset..offset + dimension]
-                        .iter()
-                        .zip(&query_f16)
-                        .map(|(a, b)| a.to_f32() * b.to_f32())
-                        .sum::<f32>();
-                    ScoredId {
-                        score: score * inv_norms[index] * query_inv_norm,
-                        id: row.id,
-                    }
+                .map(|(index, row)| ScoredId {
+                    score: parallel_scores[index] * inv_norms[index] * query_inv_norm,
+                    id: row.id,
                 }),
             limit,
         );
@@ -560,99 +548,173 @@ fn main() -> Result<(), String> {
                 content_hash: hex(&fixture.rows[item.id as usize].content_hash),
             })
             .collect()
-        });
-        arm.backend = "f16-resident-scalar-convert-on-load-bounded-topn".into();
-        arm.build_ns = build_f16_ns;
-        arm.config = serde_json::json!({"resident":"f16-contiguous-matrix","selection":"bounded-top-n","rssBytesDelta":-(matrix.len() as i64 * 2)});
-        arm
+    });
+    arm_parallel_b2.backend = if cfg!(target_os = "macos") {
+        "rayon-accelerate-sgemv-full-scores-bounded-topn"
+    } else {
+        "rayon-avx2-fma-full-scores-bounded-topn"
+    }
+    .into();
+    arm_parallel_b2.build_ns = build_b2_ns;
+    arm_parallel_b2.config = serde_json::json!({
+        "resident":"f32-contiguous-matrix",
+        "selection":"bounded-top-n",
+        "kernel":format!("rayon chunks over {}", b2_kernel_name()),
+        "scoresComputed":"all rows (filter after)",
+        "threadCount":rayon::current_num_threads()
+    });
+
+    let mut arm_b3_simd = measure(&fixture, "B3-SIMD", |query, limit| {
+        let quantized_query = QuantizedVector::quantize(&query.embedding);
+        let query_inv_norm = quantized_inv_norm(&quantized_query);
+        let prefilter = bounded_top_n(
+            fixture
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| eligible(row, query))
+                .map(|(index, row)| ScoredId {
+                    score: simd_b3_score(
+                        &quantized[index],
+                        &quantized_query,
+                        quantized_inv_norms[index],
+                        query_inv_norm,
+                    ),
+                    id: row.id,
+                }),
+            limit.saturating_mul(32),
+        );
+        let top = bounded_top_n(
+            prefilter.into_iter().map(|item| ScoredId {
+                score: quantized[item.id as usize].cosine_with(&query.embedding),
+                id: item.id,
+            }),
+            limit,
+        );
+        top.into_iter()
+            .map(|item| Candidate {
+                id: item.id,
+                cosine: item.score,
+                content_hash: hex(&fixture.rows[item.id as usize].content_hash),
+            })
+            .collect()
+    });
+    arm_b3_simd.backend = "runtime-dispatched-exact-i8-simd-bounded-topn".into();
+    arm_b3_simd.build_ns = build_b3_ns;
+    arm_b3_simd.config = serde_json::json!({
+        "resident":"i8-per-vector-scale-prequantized",
+        "selection":"integer-prefilter-plus-exact-rerank",
+        "rerankCandidates":fixture.cell.top_k.saturating_mul(32),
+        "kernel":b3_kernel_name(),
+        "norm":"precomputed-scaled-i8-invnorm",
+        "integerParity":"exact"
+    });
+
+    let mut arm_b2_gather = measure(&fixture, "B2-gather", |query, limit| {
+        let row_indices = fixture
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| eligible(row, query))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        let gathered = score_b2_gather(&matrix, &query.embedding, &row_indices, dimension);
+        let query_inv_norm = inv_norm(&query.embedding);
+        let top = bounded_top_n(
+            row_indices
+                .iter()
+                .zip(gathered)
+                .map(|(index, score)| ScoredId {
+                    score: score * inv_norms[*index] * query_inv_norm,
+                    id: fixture.rows[*index].id,
+                }),
+            limit,
+        );
+        top.into_iter()
+            .map(|item| Candidate {
+                id: item.id,
+                cosine: item.score,
+                content_hash: hex(&fixture.rows[item.id as usize].content_hash),
+            })
+            .collect()
+    });
+    arm_b2_gather.backend = if cfg!(target_os = "macos") {
+        "eligible-row-gather-accelerate-sgemv-bounded-topn"
+    } else {
+        "eligible-row-gather-avx2-fma-bounded-topn"
+    }
+    .into();
+    arm_b2_gather.build_ns = build_b2_ns;
+    arm_b2_gather.config = serde_json::json!({
+        "resident":"f32-contiguous-matrix",
+        "selection":"bounded-top-n",
+        "kernel":b2_kernel_name(),
+        "scoresComputed":"eligible rows only (gather first)"
     });
 
     // Parity gates. B3 vs A: exact ID equality (same guarantee the control runner
     // enforced). B2 vs A: BLAS reassociates float adds, so near-ties may swap —
     // require target presence plus per-query overlap within one candidate.
     let limit = fixture.cell.top_k;
-    let mut min_overlap = limit;
-    let mut overlap_sum = 0_usize;
-    for (((a, b2), b3), b3_parallel) in arm_a
-        .measurements
-        .iter()
-        .zip(&arm_b2.measurements)
-        .zip(&arm_b3.measurements)
-        .zip(&arm_b3_parallel.measurements)
-    {
+    let mut min_overlaps = [limit; 3];
+    let mut overlap_sums = [0_usize; 3];
+    for index in 0..arm_a.measurements.len() {
+        let a = &arm_a.measurements[index];
+        let b3 = &arm_b3.measurements[index];
         if a.candidate_ids != b3.candidate_ids {
-            return Err(format!("A/B3 parity failure at query {}", a.query_id));
-        }
-        if a.candidate_ids != b3_parallel.candidate_ids {
             return Err(format!(
-                "A/parallel-B3 parity failure at query {}",
+                "A/B3 exact candidate parity failure at query {}",
                 a.query_id
             ));
         }
-        let overlap = b2
-            .candidate_ids
-            .iter()
-            .filter(|id| a.candidate_ids.contains(id))
-            .count();
-        min_overlap = min_overlap.min(overlap);
-        overlap_sum += overlap;
-        if overlap + 1 < a.candidate_ids.len() || !b2.target_present {
-            return Err(format!(
-                "A/B2 parity failure at query {}: overlap {overlap}/{}",
-                a.query_id,
-                a.candidate_ids.len()
-            ));
+        for (name, exact) in [
+            ("parallel-B3", &arm_parallel_b3.measurements[index]),
+            ("B3-SIMD", &arm_b3_simd.measurements[index]),
+        ] {
+            if b3.candidate_ids != exact.candidate_ids {
+                return Err(format!(
+                    "B3/{name} exact parity failure at query {}",
+                    a.query_id
+                ));
+            }
         }
-    }
-    let queries = arm_a.measurements.len().max(1);
-    arm_b2.config["minOverlap"] = serde_json::json!(min_overlap);
-    arm_b2.config["meanOverlap"] = serde_json::json!(overlap_sum as f64 / queries as f64);
-
-    for arm in [&mut arm_b2_gather, &mut arm_b2_parallel] {
-        let mut arm_min_overlap = limit;
-        let mut arm_overlap_sum = 0_usize;
-        for (a, candidate) in arm_a.measurements.iter().zip(&arm.measurements) {
-            let overlap = candidate
+        for (arm_index, (name, approximate)) in [
+            ("B2", &arm_b2.measurements[index]),
+            ("parallel-B2", &arm_parallel_b2.measurements[index]),
+            ("B2-gather", &arm_b2_gather.measurements[index]),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let overlap = approximate
                 .candidate_ids
                 .iter()
                 .filter(|id| a.candidate_ids.contains(id))
                 .count();
-            arm_min_overlap = arm_min_overlap.min(overlap);
-            arm_overlap_sum += overlap;
-            if overlap + 1 < a.candidate_ids.len() || !candidate.target_present {
+            min_overlaps[arm_index] = min_overlaps[arm_index].min(overlap);
+            overlap_sums[arm_index] += overlap;
+            if overlap + 1 < a.candidate_ids.len() || !approximate.target_present {
                 return Err(format!(
-                    "A/{} parity failure at query {}: overlap {overlap}/{}",
-                    arm.arm,
+                    "A/{name} parity failure at query {}: overlap {overlap}/{}",
                     a.query_id,
                     a.candidate_ids.len()
                 ));
             }
         }
-        arm.config["minOverlap"] = serde_json::json!(arm_min_overlap);
-        arm.config["meanOverlap"] = serde_json::json!(arm_overlap_sum as f64 / queries as f64);
     }
+    let queries = arm_a.measurements.len().max(1);
+    for (arm, index) in [
+        (&mut arm_b2, 0_usize),
+        (&mut arm_parallel_b2, 1_usize),
+        (&mut arm_b2_gather, 2_usize),
+    ] {
+        arm.config["minOverlap"] = serde_json::json!(min_overlaps[index]);
+        arm.config["meanOverlap"] = serde_json::json!(overlap_sums[index] as f64 / queries as f64);
+    }
+    arm_b3.config["aParity"] = serde_json::json!("exact-ordered");
+    arm_parallel_b3.config["scalarB3Parity"] = serde_json::json!("exact-ordered");
+    arm_b3_simd.config["scalarB3Parity"] = serde_json::json!("exact-ordered");
 
-    for (b3, b3_simd) in arm_b3.measurements.iter().zip(&arm_b3_simd.measurements) {
-        if b3.candidate_ids != b3_simd.candidate_ids {
-            return Err(format!(
-                "B3/B3-SIMD candidate parity failure at query {}",
-                b3.query_id
-            ));
-        }
-    }
-
-    let mut arms = vec![
-        arm_a,
-        arm_b2,
-        arm_b2_gather,
-        arm_b2_parallel,
-        arm_b3,
-        arm_b3_simd,
-        arm_b3_parallel,
-    ];
-    if let Some(arm) = arm_f16 {
-        arms.push(arm);
-    }
     let bundle = RunBundle {
         schema_version: 1,
         generator_id: GENERATOR_ID.into(),
@@ -663,7 +725,15 @@ fn main() -> Result<(), String> {
         rows: fixture.rows.len(),
         queries: fixture.queries.len(),
         dimension,
-        arms,
+        arms: vec![
+            arm_a,
+            arm_b2,
+            arm_b3,
+            arm_parallel_b3,
+            arm_parallel_b2,
+            arm_b3_simd,
+            arm_b2_gather,
+        ],
     };
     write_bundle_atomic(&args.output, &bundle)?;
     println!(
@@ -677,154 +747,130 @@ fn main() -> Result<(), String> {
 mod tests {
     use super::*;
 
-    fn ids(items: Vec<ScoredId>) -> Vec<u64> {
-        items.into_iter().map(|item| item.id).collect()
+    fn matrix(rows: usize, dimension: usize) -> Vec<f32> {
+        (0..rows * dimension)
+            .map(|index| ((index * 37 % 101) as f32 - 50.0) / 17.0)
+            .collect()
+    }
+
+    fn query(dimension: usize) -> Vec<f32> {
+        (0..dimension)
+            .map(|index| ((index * 19 % 67) as f32 - 33.0) / 13.0)
+            .collect()
     }
 
     #[test]
-    fn bounded_top_n_orders_scores_and_breaks_ties_by_id() {
-        let items = [
-            ScoredId { score: 0.5, id: 4 },
-            ScoredId { score: 0.9, id: 3 },
-            ScoredId { score: 0.9, id: 2 },
-            ScoredId { score: 0.1, id: 1 },
-        ];
-        assert_eq!(ids(bounded_top_n(items.into_iter(), 3)), vec![2, 3, 4]);
+    fn scalar_scores_cover_every_row_and_tail_element() {
+        let dimension = 13;
+        let matrix = matrix(4, dimension);
+        let query = query(dimension);
+        let mut actual = vec![0.0; 4];
+        scalar_scores(&matrix, &query, &mut actual, dimension);
+        for (row, score) in matrix.chunks_exact(dimension).zip(actual) {
+            let expected = row.iter().zip(&query).map(|(a, b)| a * b).sum::<f32>();
+            assert!((score - expected).abs() <= 1.0e-5);
+        }
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn avx2_fma_scores_match_scalar_with_tail() {
+        if !std::is_x86_feature_detected!("avx2") || !std::is_x86_feature_detected!("fma") {
+            return;
+        }
+        for dimension in [8, 13, 32, 37] {
+            let matrix = matrix(5, dimension);
+            let query = query(dimension);
+            let mut scalar = vec![0.0; 5];
+            let mut vectorized = vec![0.0; 5];
+            scalar_scores(&matrix, &query, &mut scalar, dimension);
+            unsafe { avx2_fma_scores(&matrix, &query, &mut vectorized, dimension) };
+            for (expected, actual) in scalar.iter().zip(&vectorized) {
+                let tolerance = 1.0e-4_f32.max(expected.abs() * 1.0e-5);
+                assert!((actual - expected).abs() <= tolerance);
+            }
+        }
     }
 
     #[test]
-    fn neon_integer_dot_matches_scalar_exactly_with_tails() {
-        for dimension in [1, 8, 13, 16, 37, 768] {
+    fn scalar_i8_dot_handles_extremes_and_tail() {
+        let left = [-127_i8, 127, -126, 126, -1, 1, 0, 64, -64, 17, -19, 23, -29];
+        let right = [127_i8, -127, 126, -126, 1, -1, 0, -64, 64, -17, 19, -23, 29];
+        let expected = left
+            .iter()
+            .zip(&right)
+            .map(|(a, b)| i32::from(*a) * i32::from(*b))
+            .sum::<i32>();
+        assert_eq!(scalar_i8_dot(&left, &right), expected);
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn avx2_i8_dot_matches_scalar_exactly() {
+        if !std::is_x86_feature_detected!("avx2") {
+            return;
+        }
+        for dimension in [1, 13, 31, 32, 33, 127, 768, 773] {
             let left = (0..dimension)
-                .map(|index| ((index * 31 + 7) % 255) as i16 - 127)
-                .map(|value| value as i8)
+                .map(|index| ((index * 73 % 255) as i16 - 127) as i8)
                 .collect::<Vec<_>>();
             let right = (0..dimension)
-                .map(|index| ((index * 17 + 3) % 255) as i16 - 127)
-                .map(|value| value as i8)
+                .map(|index| ((index * 131 % 255) as i16 - 127) as i8)
                 .collect::<Vec<_>>();
             assert_eq!(
-                integer_dot_simd(&left, &right),
-                integer_dot_scalar(&left, &right),
-                "dimension {dimension}"
+                unsafe { avx2_i8_dot(&left, &right) },
+                scalar_i8_dot(&left, &right)
+            );
+        }
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[test]
+    fn avxvnni_i8_dot_matches_scalar_exactly() {
+        if !std::is_x86_feature_detected!("avxvnni") {
+            return;
+        }
+        for dimension in [32, 33, 127, 768, 773] {
+            let left = (0..dimension)
+                .map(|index| ((index * 73 % 255) as i16 - 127) as i8)
+                .collect::<Vec<_>>();
+            let right = (0..dimension)
+                .map(|index| ((index * 131 % 255) as i16 - 127) as i8)
+                .collect::<Vec<_>>();
+            assert_eq!(
+                unsafe { avxvnni_i8_dot(&left, &right) },
+                scalar_i8_dot(&left, &right)
             );
         }
     }
 
     #[test]
-    fn parallel_quantized_scan_matches_scalar_exactly() {
-        let query = (0..37)
-            .map(|index| (index as f32 * 0.13).sin())
-            .collect::<Vec<_>>();
-        let vectors = (0..64)
-            .map(|row| {
-                QuantizedVector::quantize(
-                    &(0..37)
-                        .map(|column| ((row * 37 + column) as f32 * 0.07).cos())
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect::<Vec<_>>();
-        let scalar = bounded_top_n(
-            vectors.iter().enumerate().map(|(id, vector)| ScoredId {
-                score: vector.cosine_with(&query),
-                id: id as u64,
-            }),
-            16,
-        );
-        let parallel = bounded_top_n(
-            vectors
-                .par_iter()
-                .enumerate()
-                .map(|(id, vector)| ScoredId {
-                    score: vector.cosine_with(&query),
-                    id: id as u64,
-                })
-                .collect::<Vec<_>>()
-                .into_iter(),
-            16,
-        );
-        assert_eq!(ids(parallel), ids(scalar));
-    }
-
-    #[test]
-    fn f16_top_n_stays_within_one_candidate_of_f32() {
-        let dimension = 37;
-        let query = (0..dimension)
-            .map(|index| (index as f32 * 0.11).sin())
-            .collect::<Vec<_>>();
-        let rows = (0..64)
-            .map(|row| {
-                (0..dimension)
-                    .map(|column| ((row * dimension + column) as f32 * 0.03).cos())
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        let full = bounded_top_n(
-            rows.iter().enumerate().map(|(id, row)| ScoredId {
-                score: cosine(row, &query),
-                id: id as u64,
-            }),
-            16,
-        );
-        let query_f16 = query.iter().copied().map(f16::from_f32).collect::<Vec<_>>();
-        let half = bounded_top_n(
-            rows.iter().enumerate().map(|(id, row)| {
-                let row_f16 = row.iter().copied().map(f16::from_f32).collect::<Vec<_>>();
-                let dot = row_f16
-                    .iter()
-                    .zip(&query_f16)
-                    .map(|(left, right)| left.to_f32() * right.to_f32())
-                    .sum::<f32>();
-                ScoredId {
-                    score: dot * inv_norm(row) * inv_norm(&query),
-                    id: id as u64,
-                }
-            }),
-            16,
-        );
-        let full_ids = ids(full);
-        let overlap = ids(half)
-            .into_iter()
-            .filter(|id| full_ids.contains(id))
-            .count();
-        assert!(overlap >= 15, "f16 overlap {overlap}/16");
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn accelerate_scores_match_scalar_with_tail_dimension() {
+    fn gathered_b2_scores_match_full_scores_for_selected_rows() {
         let dimension = 13;
-        let rows = 3;
-        let matrix = (0..rows * dimension)
-            .map(|index| (index as f32 * 0.17).sin())
-            .collect::<Vec<_>>();
-        let query = (0..dimension)
-            .map(|index| (index as f32 * 0.19).cos())
-            .collect::<Vec<_>>();
-        let expected = matrix
-            .chunks_exact(dimension)
-            .map(|row| row.iter().zip(&query).map(|(a, b)| a * b).sum::<f32>())
-            .collect::<Vec<_>>();
-        let mut actual = vec![0.0_f32; rows];
-        unsafe {
-            cblas_sgemv(
-                CBLAS_ROW_MAJOR,
-                CBLAS_NO_TRANS,
-                rows as i32,
-                dimension as i32,
-                1.0,
-                matrix.as_ptr(),
-                dimension as i32,
-                query.as_ptr(),
-                1,
-                0.0,
-                actual.as_mut_ptr(),
-                1,
-            );
+        let matrix = matrix(8, dimension);
+        let query = query(dimension);
+        let indices = [0_usize, 2, 5, 7];
+        let mut full = vec![0.0; 8];
+        score_b2(&matrix, &query, &mut full, dimension);
+        let gathered = score_b2_gather(&matrix, &query, &indices, dimension);
+        for (index, actual) in indices.into_iter().zip(gathered) {
+            let tolerance = 1.0e-4_f32.max(full[index].abs() * 1.0e-5);
+            assert!((actual - full[index]).abs() <= tolerance);
         }
-        for (actual, expected) in actual.into_iter().zip(expected) {
-            assert!((actual - expected).abs() < 1e-4, "{actual} != {expected}");
+    }
+
+    #[test]
+    fn parallel_scores_match_serial_scores() {
+        let dimension = 37;
+        let matrix = matrix(33, dimension);
+        let query = query(dimension);
+        let mut serial = vec![0.0; 33];
+        let mut parallel = vec![0.0; 33];
+        score_b2(&matrix, &query, &mut serial, dimension);
+        score_b2_parallel(&matrix, &query, &mut parallel, dimension);
+        for (expected, actual) in serial.iter().zip(&parallel) {
+            let tolerance = 1.0e-4_f32.max(expected.abs() * 1.0e-5);
+            assert!((actual - expected).abs() <= tolerance);
         }
     }
 }

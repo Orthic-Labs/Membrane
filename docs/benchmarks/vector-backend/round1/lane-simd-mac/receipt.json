@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-02T02:05:00+05:30",
+  "branch": "bench/vector-backend-bakeoff",
+  "sourceCommit": "f20f5ab",
+  "host": {
+    "cpu": "Apple M1",
+    "cores": 8,
+    "ramBytes": 8589934592,
+    "os": "macOS 26.5.2 (25F84)",
+    "target": "aarch64-apple-darwin"
+  },
+  "sha256": {
+    "round1Config": "ad34773d194597444f07b2a12b0ac40c647476d1483d4122a9f571ad1def6bdf",
+    "crossoverConfig": "0abb7ef1ef52617c9b839a0f49b9a58b0ec74c3ef548d81d21a8e4bb25831205",
+    "timedRunnerSource": "9bc90947aa2562e8f27bef3a94eb601d4d31e19fa4707b10d647e6d6517ae500",
+    "currentRunnerSource": "2a62a87d14e5f4d536c58b438db63f3d073797a655905589fd142ccef36df396",
+    "cargoToml": "2c7d89572c3404e3df7829a61797598d9001a5af6954416435a08c53ed1dbb8a",
+    "cargoLock": "8c29c664caaf4247243b82473a4e29141e2d794c5886dd5b9a7ab36452a51a0f",
+    "harnessTest": "0f7f5f074d0134cc5a676856beb74107252169f6e7e7af3488b342c33bd765fe"
+  },
+  "checks": {
+    "bundleCount": 19,
+    "measurementCount": 12705,
+    "rustTests": "4 passed",
+    "pythonHarnessTests": "7 passed",
+    "clippyWarningsDenied": "passed",
+    "serialExecution": true,
+    "allTargetsPresent": true,
+    "f32MinOverlap": "128/128 every full cell",
+    "b3OrderedParity": "exact every full cell"
+  },
+  "bundleSha256": {
+    "crossover-100k-s1": "374df35d818bcd09e71b02af862ee27ef918b51a8418d369dc484006bf4e3940",
+    "crossover-100k-s10": "f742c294f20450fd51962c8f45aafa8b9867067c7c22be28813c220dd68ad375",
+    "crossover-100k-s100": "731fdbc25e371aed50bae09e21af63d5869254cf2cbec7b08743523fc3054216",
+    "crossover-100k-s25": "ea7d1e70b682c04db644eb673f1e8feef72de2c234c5119f12efac3447525e5c",
+    "crossover-100k-s5": "d21a51792d77af350bb914e508bbae926d35ebc892366b4745692795af91578e",
+    "crossover-100k-s50": "ce6309b40617a369ebf93ea44dd26700a4044f5785da79ab6f463667dfbf4634",
+    "crossover-n12-s1": "ec9542c4b6318f7f92f3f467ebfa06c13829d047557cc2c8020ba68f16602d1d",
+    "crossover-n12-s10": "dcf0688d07a8f33bdf11314e289db4046cd57b5f1f4d31f70b2f7b42dc255ff4",
+    "crossover-n12-s100": "86505432d75b1ae683e1d14285a0750e305cc8093b67e8e4e682b62b0c54ec78",
+    "crossover-n12-s25": "53a077e61ca4a1393c9fb627c104e0a6611e464318d8ef720956bed4c00173e6",
+    "crossover-n12-s5": "ae26754839ca081c7e30e24337275ed1b7a5501295573091c069dd5b1b06e7b2",
+    "crossover-n12-s50": "5a5e1666b47722cd1ffaf28a22634f3133836ad2311736712bce7646dd55cd63",
+    "round1-100k-s10": "d2a403536a160153b8a540d4fdf894efd4fc8117391b6dc03a45470ca63cb0f8",
+    "round1-100k-s100": "fd604d6e51ac5c45a1e2a5668b2a9f407f81db17f9053119aa0028b3119203b3",
+    "round1-n0-s10": "65acc9390cd6ebb86665f7f56dce70896e678d276b556a2ec3496c5b892f4695",
+    "round1-n0-s100": "4224dcd23f6b58fde036df1a4634578e7a350d2cdf654d120ebaa85f70d2908d",
+    "round1-n12-s10": "47d3e2057a855675c76411106403ce7f5801a69fecdd52e37ea3ea743473da24",
+    "round1-n12-s100": "5450c3e5f6fec19986469316a78f9136c5938ce7a8ef7f38a0b22f2b8a6eb21e",
+    "smoke": "f9c5901f31a2a12364a323cb226d6b8f56ad2af2a7428f84e787477df537d014"
+  },
+  "dispatch": {
+    "host": "macos-arm64-m1",
+    "scalarB2BelowRows": 4096,
+    "parallelB2AtOrAboveSelectivityBps": 2500,
+    "b2GatherBelowSelectivityBps": 2500
+  }
+}

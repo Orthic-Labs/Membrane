@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-02T00:35:29.4750900+05:30",
+  "branch": "bench/vector-backend-bakeoff",
+  "baseCommit": "0b81870664563c374a43a7bf2e306b7b9ab505db",
+  "host": {
+    "cpu": "13th Gen Intel(R) Core(TM) i9-13900H",
+    "cores": 14,
+    "logicalProcessors": 20,
+    "rayonThreads": 20,
+    "ramBytes": 68374552576,
+    "os": "Microsoft Windows 11 Pro",
+    "version": "10.0.26200",
+    "build": "26200",
+    "target": "x86_64-pc-windows-msvc"
+  },
+  "toolchain": {
+    "rustc": "1.96.1 (31fca3adb 2026-06-26)",
+    "cargo": "1.96.1 (356927216 2026-06-26)",
+    "llvm": "22.1.2"
+  },
+  "sha256": {
+    "round1Config": "ad34773d194597444f07b2a12b0ac40c647476d1483d4122a9f571ad1def6bdf",
+    "crossoverConfig": "0abb7ef1ef52617c9b839a0f49b9a58b0ec74c3ef548d81d21a8e4bb25831205",
+    "cargoToml": "2c7d89572c3404e3df7829a61797598d9001a5af6954416435a08c53ed1dbb8a",
+    "cargoLock": "8c29c664caaf4247243b82473a4e29141e2d794c5886dd5b9a7ab36452a51a0f",
+    "benchmarkRunnerSource": "dff349aa666d269e486f714f1d21628c0c36e754ffbca6ccf1065bc1dbd1005b",
+    "harnessTest": "c886b229125df3b5a36bc0da836465788eab693427b71f3e2b82371f3c8dd6b0",
+    "benchmarkExecutable": "e46fd6ce8837baa0ccbb18e462ae3c0e166e140c907e7c83d07bdf2753577581",
+    "committedRunnerSource": "9bc90947aa2562e8f27bef3a94eb601d4d31e19fa4707b10d647e6d6517ae500",
+    "postRunRebuildExecutable": "1e3ccadd090cb5a6e6ee9eb55bc814b3438be43997e1cbeb35e33e388bced130"
+  },
+  "checks": {
+    "rustTests": "7 passed",
+    "pythonHarnessTests": "7 passed",
+    "smoke": "passed",
+    "serialExecution": true,
+    "round1FixtureMatchesMac": "6/6",
+    "allTargetsPresent": true,
+    "f32MinOverlap": "128/128 every full cell",
+    "b3OrderedParity": "exact every full cell"
+  },
+  "postRunSourceDelta": "comments only: corrected stale arm count and explicit-intrinsics label",
+  "round1Fixtures": {
+    "round1-n0-s100": "79811403bb008030c9169e242007e1b8e65dbce1746bde5b4a2340edcb8450b6",
+    "round1-n0-s10": "22a9783092a32502a125f47b0946e91f6894a35d4fedb91b7812bf12a197879c",
+    "round1-n12-s100": "26d121c31048447fdf0ff6f44d48bf62336eea052cd626ca7b6a60fb26796461",
+    "round1-n12-s10": "acee80c53d82ad848636f4e966b37a2b2b4465abfe42d55c27d8c0d60fa1d564",
+    "round1-100k-s100": "d99f01830b73b508d406bdb234f4e2da01bd41e42625f7be4ab6872bbd95cf75",
+    "round1-100k-s10": "8eab076f4c41c013ac7dd0b1cd0ae69927d4c3a9c66a2b81d5775940d0b91a0f"
+  },
+  "crossoverFixtures": {
+    "crossover-n12-s100": "14935b5462af5857a2266a3c51c90911dacbd77f4e3e2475cf2017b7d43ab340",
+    "crossover-n12-s50": "617da39500fa151e7f5530125b365d13f198aac978a67933f299a6f4a4d502ea",
+    "crossover-n12-s25": "33de5a74cb028d083c0fcb6811c6832653ba1c76c2c055f138acb8fdb1b8b0c1",
+    "crossover-n12-s10": "7c8b9c914ade03df50832d569a1f4aa8b3567f1223e53734bc71dc108aa343a2",
+    "crossover-n12-s5": "2dd37cee27f4e5c0f8cf5fa2a160c3c393475016031e657790d67e94ca894718",
+    "crossover-n12-s1": "a751a4dfb5dfd00272aed6a31b0589d411958f0ab9a9adeb34ee064594729219",
+    "crossover-100k-s100": "19d9632e5a2e03d358099d064e7c60a11577482b167495cb7be5d7ed83c88732",
+    "crossover-100k-s50": "dc87b005dbb5dbe301a2fa92b2b995a4af048a6cb4be7128970f13b150efc0bc",
+    "crossover-100k-s25": "8870947eedda40a1b7ffa61f08701fc5f4d80c2694f3a13f8652723ba8478364",
+    "crossover-100k-s10": "2cd62726900f092d1a4a8cac94484e80a321a27ead739f9fb46b24f689162a88",
+    "crossover-100k-s5": "bdc790f9065309ad85d8560a789ce6b0d7f8dcd8f070cd551dc972d83bed65d3",
+    "crossover-100k-s1": "23bbe8bf20cfbfe5c5105052743149e4927b72dec4db3102581fa09754b56eb3"
+  },
+  "dispatch": {
+    "host": "windows-x86_64-i9-13900H",
+    "parallelB2AtOrAboveSelectivityBps": 5000,
+    "b2GatherBelowSelectivityBps": 5000
+  }
+}

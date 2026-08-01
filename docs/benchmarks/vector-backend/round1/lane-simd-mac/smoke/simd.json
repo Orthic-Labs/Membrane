@@ -14,11 +14,11 @@
       "backend": "current-rust-dequantized-scope-clone-full-sort",
       "exact": true,
       "researchOnly": false,
-      "buildNs": 6699625,
+      "buildNs": 7123250,
       "measurements": [
         {
           "queryId": 0,
-          "elapsedNs": 16000,
+          "elapsedNs": 15917,
           "candidateIds": [
             167,
             217,
@@ -41,7 +41,7 @@
         },
         {
           "queryId": 1,
-          "elapsedNs": 15708,
+          "elapsedNs": 15750,
           "candidateIds": [
             150,
             129,
@@ -64,7 +64,7 @@
         },
         {
           "queryId": 2,
-          "elapsedNs": 17125,
+          "elapsedNs": 17250,
           "candidateIds": [
             134,
             129,
@@ -110,146 +110,31 @@
         },
         {
           "queryId": 4,
-          "elapsedNs": 15584,
-          "candidateIds": [
-            117,
-            214,
-            135,
-            229,
-            153,
-            2,
-            150,
-            134,
-            44,
-            143,
-            70,
-            59,
-            246,
-            167,
-            129,
-            217
-          ],
-          "targetPresent": true
-        },
-        {
-          "queryId": 0,
-          "elapsedNs": 15666,
-          "candidateIds": [
-            167,
-            217,
-            70,
-            129,
-            153,
-            246,
-            143,
-            134,
-            44,
-            229,
-            2,
-            135,
-            150,
-            59,
-            214,
-            117
-          ],
-          "targetPresent": true
-        },
-        {
-          "queryId": 1,
-          "elapsedNs": 15542,
-          "candidateIds": [
-            150,
-            129,
-            134,
-            246,
-            59,
-            143,
-            117,
-            70,
-            2,
-            135,
-            214,
-            44,
-            229,
-            153,
-            217,
-            167
-          ],
-          "targetPresent": true
-        },
-        {
-          "queryId": 2,
-          "elapsedNs": 15542,
-          "candidateIds": [
-            134,
-            129,
-            150,
-            214,
-            59,
-            44,
-            217,
-            135,
-            70,
-            153,
-            117,
-            2,
-            246,
-            167,
-            229,
-            143
-          ],
-          "targetPresent": true
-        },
-        {
-          "queryId": 3,
-          "elapsedNs": 15666,
-          "candidateIds": [
-            117,
-            214,
-            135,
-            229,
-            153,
-            2,
-            150,
-            134,
-            44,
-            143,
-            70,
-            59,
-            246,
-            167,
-            129,
-            217
-          ],
-          "targetPresent": true
-        },
-        {
-          "queryId": 4,
-          "elapsedNs": 15459,
-          "candidateIds": [
-            117,
-            214,
-            135,
-            229,
-            153,
-            2,
-            150,
-            134,
-            44,
-            143,
-            70,
-            59,
-            246,
-            167,
-            129,
-            217
-          ],
-          "targetPresent": true
-        },
-        {
-          "queryId": 0,
           "elapsedNs": 15583,
           "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 0,
+          "elapsedNs": 15625,
+          "candidateIds": [
             167,
             217,
             70,
@@ -271,7 +156,7 @@
         },
         {
           "queryId": 1,
-          "elapsedNs": 15542,
+          "elapsedNs": 15500,
           "candidateIds": [
             150,
             129,
@@ -294,7 +179,7 @@
         },
         {
           "queryId": 2,
-          "elapsedNs": 15500,
+          "elapsedNs": 15584,
           "candidateIds": [
             134,
             129,
@@ -317,7 +202,122 @@
         },
         {
           "queryId": 3,
+          "elapsedNs": 15458,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 15458,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 0,
           "elapsedNs": 15500,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 15458,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 15417,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 15416,
           "candidateIds": [
             117,
             214,
@@ -372,11 +372,11 @@
       "backend": "accelerate-sgemv-full-scores-bounded-topn",
       "exact": true,
       "researchOnly": false,
-      "buildNs": 297875,
+      "buildNs": 289542,
       "measurements": [
         {
           "queryId": 0,
-          "elapsedNs": 9125,
+          "elapsedNs": 8416,
           "candidateIds": [
             167,
             217,
@@ -399,7 +399,7 @@
         },
         {
           "queryId": 1,
-          "elapsedNs": 8042,
+          "elapsedNs": 8750,
           "candidateIds": [
             150,
             129,
@@ -422,7 +422,7 @@
         },
         {
           "queryId": 2,
-          "elapsedNs": 8250,
+          "elapsedNs": 8750,
           "candidateIds": [
             134,
             129,
@@ -445,7 +445,7 @@
         },
         {
           "queryId": 3,
-          "elapsedNs": 7833,
+          "elapsedNs": 8125,
           "candidateIds": [
             117,
             214,
@@ -468,7 +468,7 @@
         },
         {
           "queryId": 4,
-          "elapsedNs": 8000,
+          "elapsedNs": 8584,
           "candidateIds": [
             117,
             214,
@@ -491,7 +491,7 @@
         },
         {
           "queryId": 0,
-          "elapsedNs": 9000,
+          "elapsedNs": 8708,
           "candidateIds": [
             167,
             217,
@@ -514,7 +514,7 @@
         },
         {
           "queryId": 1,
-          "elapsedNs": 8000,
+          "elapsedNs": 8625,
           "candidateIds": [
             150,
             129,
@@ -537,7 +537,7 @@
         },
         {
           "queryId": 2,
-          "elapsedNs": 8250,
+          "elapsedNs": 8667,
           "candidateIds": [
             134,
             129,
@@ -560,7 +560,7 @@
         },
         {
           "queryId": 3,
-          "elapsedNs": 7792,
+          "elapsedNs": 8125,
           "candidateIds": [
             117,
             214,
@@ -583,7 +583,7 @@
         },
         {
           "queryId": 4,
-          "elapsedNs": 9417,
+          "elapsedNs": 8625,
           "candidateIds": [
             117,
             214,
@@ -606,7 +606,7 @@
         },
         {
           "queryId": 0,
-          "elapsedNs": 8875,
+          "elapsedNs": 8666,
           "candidateIds": [
             167,
             217,
@@ -629,7 +629,7 @@
         },
         {
           "queryId": 1,
-          "elapsedNs": 7959,
+          "elapsedNs": 8625,
           "candidateIds": [
             150,
             129,
@@ -652,7 +652,7 @@
         },
         {
           "queryId": 2,
-          "elapsedNs": 8041,
+          "elapsedNs": 8792,
           "candidateIds": [
             134,
             129,
@@ -675,7 +675,7 @@
         },
         {
           "queryId": 3,
-          "elapsedNs": 7959,
+          "elapsedNs": 8208,
           "candidateIds": [
             117,
             214,
@@ -698,7 +698,7 @@
         },
         {
           "queryId": 4,
-          "elapsedNs": 8000,
+          "elapsedNs": 8625,
           "candidateIds": [
             117,
             214,
@@ -721,7 +721,7 @@
         }
       ],
       "config": {
-        "blas": "Accelerate cblas_sgemv",
+        "kernel": "Accelerate cblas_sgemv",
         "meanOverlap": 16.0,
         "minOverlap": 16,
         "resident": "f32-contiguous-matrix",
@@ -734,11 +734,11 @@
       "backend": "optimized-rust-quantized-RESIDENT-bounded-topn",
       "exact": true,
       "researchOnly": false,
-      "buildNs": 95209,
+      "buildNs": 100208,
       "measurements": [
         {
           "queryId": 0,
-          "elapsedNs": 13667,
+          "elapsedNs": 17583,
           "candidateIds": [
             167,
             217,
@@ -761,7 +761,7 @@
         },
         {
           "queryId": 1,
-          "elapsedNs": 13625,
+          "elapsedNs": 16291,
           "candidateIds": [
             150,
             129,
@@ -784,7 +784,7 @@
         },
         {
           "queryId": 2,
-          "elapsedNs": 13583,
+          "elapsedNs": 16208,
           "candidateIds": [
             134,
             129,
@@ -807,7 +807,7 @@
         },
         {
           "queryId": 3,
-          "elapsedNs": 13416,
+          "elapsedNs": 16000,
           "candidateIds": [
             117,
             214,
@@ -830,7 +830,7 @@
         },
         {
           "queryId": 4,
-          "elapsedNs": 13166,
+          "elapsedNs": 15958,
           "candidateIds": [
             117,
             214,
@@ -853,7 +853,7 @@
         },
         {
           "queryId": 0,
-          "elapsedNs": 13417,
+          "elapsedNs": 16125,
           "candidateIds": [
             167,
             217,
@@ -876,7 +876,7 @@
         },
         {
           "queryId": 1,
-          "elapsedNs": 13500,
+          "elapsedNs": 16125,
           "candidateIds": [
             150,
             129,
@@ -899,7 +899,7 @@
         },
         {
           "queryId": 2,
-          "elapsedNs": 13583,
+          "elapsedNs": 16209,
           "candidateIds": [
             134,
             129,
@@ -922,7 +922,7 @@
         },
         {
           "queryId": 3,
-          "elapsedNs": 13209,
+          "elapsedNs": 15958,
           "candidateIds": [
             117,
             214,
@@ -945,7 +945,7 @@
         },
         {
           "queryId": 4,
-          "elapsedNs": 13042,
+          "elapsedNs": 16000,
           "candidateIds": [
             117,
             214,
@@ -968,7 +968,7 @@
         },
         {
           "queryId": 0,
-          "elapsedNs": 13375,
+          "elapsedNs": 16125,
           "candidateIds": [
             167,
             217,
@@ -991,7 +991,7 @@
         },
         {
           "queryId": 1,
-          "elapsedNs": 13417,
+          "elapsedNs": 16084,
           "candidateIds": [
             150,
             129,
@@ -1014,7 +1014,7 @@
         },
         {
           "queryId": 2,
-          "elapsedNs": 14708,
+          "elapsedNs": 16125,
           "candidateIds": [
             134,
             129,
@@ -1037,7 +1037,7 @@
         },
         {
           "queryId": 3,
-          "elapsedNs": 13125,
+          "elapsedNs": 16000,
           "candidateIds": [
             117,
             214,
@@ -1060,7 +1060,7 @@
         },
         {
           "queryId": 4,
-          "elapsedNs": 13125,
+          "elapsedNs": 16000,
           "candidateIds": [
             117,
             214,
@@ -1083,7 +1083,1462 @@
         }
       ],
       "config": {
+        "aParity": "exact-ordered",
+        "kernel": "rust-scalar exact-i8",
+        "norm": "precomputed-scaled-i8-invnorm",
+        "rerankCandidates": 1024,
         "resident": "i8-per-vector-scale-prequantized",
+        "selection": "integer-prefilter-plus-exact-rerank"
+      }
+    },
+    {
+      "arm": "parallel-B3",
+      "backend": "rayon-rust-quantized-resident-bounded-topn",
+      "exact": true,
+      "researchOnly": false,
+      "buildNs": 100208,
+      "measurements": [
+        {
+          "queryId": 0,
+          "elapsedNs": 33750,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 48833,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 44667,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 56833,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 49917,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 0,
+          "elapsedNs": 52208,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 44125,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 55709,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 61292,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 38500,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 0,
+          "elapsedNs": 50750,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 46042,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 44542,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 51166,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 53291,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        }
+      ],
+      "config": {
+        "kernel": "rayon chunks over rust-scalar exact-i8",
+        "norm": "precomputed-scaled-i8-invnorm",
+        "rerankCandidates": 1024,
+        "resident": "i8-per-vector-scale-prequantized",
+        "scalarB3Parity": "exact-ordered",
+        "selection": "integer-prefilter-plus-exact-rerank",
+        "threadCount": 8
+      }
+    },
+    {
+      "arm": "parallel-B2",
+      "backend": "rayon-avx2-fma-full-scores-bounded-topn",
+      "exact": true,
+      "researchOnly": false,
+      "buildNs": 289542,
+      "measurements": [
+        {
+          "queryId": 0,
+          "elapsedNs": 51708,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 29667,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 38125,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 40667,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 24833,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 0,
+          "elapsedNs": 42750,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 27375,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 27666,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 33792,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 33667,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 0,
+          "elapsedNs": 52750,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 29792,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 38667,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 29041,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 33292,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        }
+      ],
+      "config": {
+        "kernel": "rayon chunks over Accelerate cblas_sgemv",
+        "meanOverlap": 16.0,
+        "minOverlap": 16,
+        "resident": "f32-contiguous-matrix",
+        "scoresComputed": "all rows (filter after)",
+        "selection": "bounded-top-n",
+        "threadCount": 8
+      }
+    },
+    {
+      "arm": "B3-SIMD",
+      "backend": "runtime-dispatched-exact-i8-simd-bounded-topn",
+      "exact": true,
+      "researchOnly": false,
+      "buildNs": 100208,
+      "measurements": [
+        {
+          "queryId": 0,
+          "elapsedNs": 18125,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 17583,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 16208,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 16042,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 15959,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 0,
+          "elapsedNs": 16208,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 16125,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 16125,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 16000,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 16000,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 0,
+          "elapsedNs": 16125,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 16083,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 16125,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 15959,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 15958,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        }
+      ],
+      "config": {
+        "integerParity": "exact",
+        "kernel": "rust-scalar exact-i8",
+        "norm": "precomputed-scaled-i8-invnorm",
+        "rerankCandidates": 1024,
+        "resident": "i8-per-vector-scale-prequantized",
+        "scalarB3Parity": "exact-ordered",
+        "selection": "integer-prefilter-plus-exact-rerank"
+      }
+    },
+    {
+      "arm": "B2-gather",
+      "backend": "eligible-row-gather-avx2-fma-bounded-topn",
+      "exact": true,
+      "researchOnly": false,
+      "buildNs": 289542,
+      "measurements": [
+        {
+          "queryId": 0,
+          "elapsedNs": 12583,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 12584,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 12500,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 12458,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 12375,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 0,
+          "elapsedNs": 12541,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 12500,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 12458,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 12417,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 13875,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 0,
+          "elapsedNs": 12583,
+          "candidateIds": [
+            167,
+            217,
+            70,
+            129,
+            153,
+            246,
+            143,
+            134,
+            44,
+            229,
+            2,
+            135,
+            150,
+            59,
+            214,
+            117
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 1,
+          "elapsedNs": 12542,
+          "candidateIds": [
+            150,
+            129,
+            134,
+            246,
+            59,
+            143,
+            117,
+            70,
+            2,
+            135,
+            214,
+            44,
+            229,
+            153,
+            217,
+            167
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 2,
+          "elapsedNs": 12500,
+          "candidateIds": [
+            134,
+            129,
+            150,
+            214,
+            59,
+            44,
+            217,
+            135,
+            70,
+            153,
+            117,
+            2,
+            246,
+            167,
+            229,
+            143
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 3,
+          "elapsedNs": 12458,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        },
+        {
+          "queryId": 4,
+          "elapsedNs": 12416,
+          "candidateIds": [
+            117,
+            214,
+            135,
+            229,
+            153,
+            2,
+            150,
+            134,
+            44,
+            143,
+            70,
+            59,
+            246,
+            167,
+            129,
+            217
+          ],
+          "targetPresent": true
+        }
+      ],
+      "config": {
+        "kernel": "Accelerate cblas_sgemv",
+        "meanOverlap": 16.0,
+        "minOverlap": 16,
+        "resident": "f32-contiguous-matrix",
+        "scoresComputed": "eligible rows only (gather first)",
         "selection": "bounded-top-n"
       }
     }

@@ -1,163 +1,138 @@
-# Rust vector optimization bakeoff 2 — cross-host decision report
+# Rust vector optimization bakeoff 2 — final cross-host report
 
 **Date:** 2026-08-02
-**Decision:** implement host-specific in-process vector kernels; do not adopt an external vector backend.
-**Mac evidence:** `bench/vector-backend-bakeoff@ca62694`
-**Windows evidence:** local/unpushed `bench/vector-backend-bakeoff@f20f5ab`, based on `0b81870`
+**Decision:** keep vectors in MemRight; implement resident in-process f32 dispatch.
+**Evidence:** Windows `f20f5ab`; Mac unified rerun from same source; 38 bundles,
+25,410 measurements across both hosts.
 
-## Executive finding
+## Answer
 
-Second bakeoff found a material same-store optimization on every N12 + 100K cell on both hosts. Winner differs by host:
+No measured external vector database justifies migration through 100,000 rows.
+Same-store Rust now beats current A in every crossover cell on both hosts while
+preserving retrieval gates. This is evidence through measured scale, not proof
+for every future corpus or workload.
 
-- **Mac:** `parallel-B3` wins 10/12 crossover cells. `B2-gather` wins N12×1%; B2 wins 100K×100%.
-- **Windows:** `parallel-B2` wins all ≥50% cells; `B2-gather` wins all ≤25% cells.
-- Every winning cell beats A. Improvement ranges from 20.2% to 85.0% p95.
-- B3-SIMD is not a production winner on either host. Mac parallel-B2 is also rejected.
+Fable's direction is right, with corrections:
 
-Recommended first implementation ships fewer arms than benchmark maximum:
+- Mac does **not** use parallel quantized scan for all large corpora. Unified
+  exact-rerank results select parallel-B2 at N12 ≥25%, gather below 25%, & B3
+  only at 100K ≥25%.
+- N0 does **not** stay on current A: scalar Accelerate B2 wins both spots.
+- GPU/ANE was deferred & **not measured**, so it was not rejected by measurement.
+- “Vector DBs only won one cell” applies to stable/adoptable backends. Research-only
+  pre-release DiskANN also won Mac N12×100% in Round 1.
+
+## Result
 
 ```mermaid
 flowchart LR
-    Q["Rows + eligible count + host features"] --> H{"Host"}
-    H -->|"Windows AVX2/FMA"| WS{"Rows < 4096 or eligibility < 50%?"}
-    WS -->|"Yes"| WG["B2-gather"]
-    WS -->|"No"| WP["parallel-B2"]
-    H -->|"macOS arm64"| MS{"Rows < 4096?"}
-    MS -->|"No"| MP["parallel-B3"]
-    MS -->|"Yes, eligibility >= 50%"| MB["B2"]
-    MS -->|"Yes, eligibility < 50%"| MQ["scalar B3"]
-    WG --> F["Bounded top-K + existing exact ranking/RRF"]
-    WP --> F
-    MP --> F
-    MB --> F
-    MQ --> F
+    Q["Rows + eligible count"] --> H{"Host"}
+    H -->|"Mac <4,096"| MB["scalar Accelerate B2"]
+    H -->|"Mac ≥4,096"| MS{"eligibility ≥25%"}
+    MS -->|"yes"| MP["parallel Accelerate B2"]
+    MS -->|"no"| MG["Accelerate B2-gather"]
+    H -->|"Windows"| WS{"eligibility ≥50%"}
+    WS -->|"yes"| WP["parallel AVX2/FMA B2"]
+    WS -->|"no"| WG["AVX2/FMA B2-gather"]
+    MB --> R["bounded top-K + existing exact final ranking"]
+    MP --> R
+    MG --> R
+    WP --> R
+    WG --> R
 ```
 
-A remains fallback for unsupported CPU features, index-build failure, dimension mismatch, or kill-switch activation.
+This v1 uses one contiguous f32 projection per registry. It excludes B3's
+second resident i8 projection until production telemetry shows 100K-scale
+corpora where its 1.7–2.7 ms additional gain matters.
 
-## Evidence & comparability
+## Unified crossover winners
 
-Mac ran 13 measurement cells: N0×100% plus selectivity {100, 50, 25, 10, 5, 1}% at N12 + 100K. Windows ran the shared 12-cell N12/100K grid.
+p95 milliseconds; reduction compares winner with same-cell A.
 
-Windows canonical crossover config is `config/crossover-v1.json`, SHA-256 `0abb7ef1…`. Mac config `d234bb6b…` contains the same 12 cells plus smoke + N0. Shared cell definitions are byte-equivalent after removing those two extras. Direct bundle validation confirmed fixture SHA equality 12/12 across hosts.
-
-Directly checked from transferred crossover bundles:
-
-- 12 Windows bundles; seven arms; 8,400 measurements.
-- Every target present.
-- B3, parallel-B3 + B3-SIMD have exact ordered A candidate parity.
-- B2, parallel-B2 + B2-gather have overlap ≥127/128; observed metadata reports 128/128.
-- Mac shared bundles passed the same gates; full Mac lane contains 9,100 measurements across 13 cells.
-
-Windows f20 handoff additionally reports 19/19 bundle assertions, seven Rust tests, seven Python tests + Clippy `-D warnings`. Mounted transfer contains current crossover bundles but six older three-arm Round 1 bundles plus stale NOTES/receipt; f20 Round 1 figures below are therefore handoff-attested, while crossover figures are independently recomputed from current JSON.
-
-## Crossover winner matrix
-
-p95 milliseconds; “vs A” is reduction in same-cell p95.
-
-| Scale | Eligibility | Mac winner | Mac p95 | vs A | Windows winner | Windows p95 | vs A |
+| Scale | Eligible | Mac winner | Mac p95 | Reduction | Windows winner | Windows p95 | Reduction |
 |---|---:|---|---:|---:|---|---:|---:|
-| N12 | 100% | parallel-B3 | 3.965 | 76.3% | parallel-B2 | 3.489 | 71.7% |
-| N12 | 50% | parallel-B3 | 2.521 | 70.2% | parallel-B2 | 2.916 | 69.6% |
-| N12 | 25% | parallel-B3 | 1.205 | 73.4% | B2-gather | 1.413 | 65.1% |
-| N12 | 10% | parallel-B3 | 0.565 | 72.3% | B2-gather | 0.516 | 62.6% |
-| N12 | 5% | parallel-B3 | 0.419 | 60.5% | B2-gather | 0.591 | 46.4% |
-| N12 | 1% | B2-gather | 0.149 | 41.1% | B2-gather | 0.222 | 20.2% |
-| 100K | 100% | B2 | 15.347 | 85.0% | parallel-B2 | 10.532 | 73.9% |
-| 100K | 50% | parallel-B3 | 7.661 | 73.9% | parallel-B2 | 8.942 | 68.4% |
-| 100K | 25% | parallel-B3 | 4.755 | 72.8% | B2-gather | 6.675 | 54.5% |
-| 100K | 10% | parallel-B3 | 2.616 | 55.2% | B2-gather | 2.836 | 49.8% |
-| 100K | 5% | parallel-B3 | 1.231 | 61.8% | B2-gather | 1.433 | 62.2% |
-| 100K | 1% | parallel-B3 | 0.428 | 54.0% | B2-gather | 0.467 | 68.0% |
+| N12 | 100% | parallel-B2 | 3.982 | 74.5% | parallel-B2 | 3.489 | 71.7% |
+| N12 | 50% | parallel-B2 | 3.007 | 62.0% | parallel-B2 | 2.916 | 69.6% |
+| N12 | 25% | parallel-B2 | 2.745 | 32.6% | B2-gather | 1.413 | 65.1% |
+| N12 | 10% | B2-gather | 1.311 | 24.4% | B2-gather | 0.516 | 62.6% |
+| N12 | 5% | B2-gather | 0.648 | 30.2% | B2-gather | 0.591 | 46.4% |
+| N12 | 1% | B2-gather | 0.182 | 32.2% | B2-gather | 0.222 | 20.2% |
+| 100K | 100% | B3 | 9.037 | 82.7% | parallel-B2 | 10.532 | 73.9% |
+| 100K | 50% | parallel-B3 | 7.801 | 70.6% | parallel-B2 | 8.942 | 68.4% |
+| 100K | 25% | parallel-B3 | 5.879 | 56.8% | B2-gather | 6.675 | 54.5% |
+| 100K | 10% | B2-gather | 5.104 | 18.3% | B2-gather | 2.836 | 49.8% |
+| 100K | 5% | B2-gather | 2.942 | 10.6% | B2-gather | 1.433 | 62.2% |
+| 100K | 1% | B2-gather | 0.818 | 29.4% | B2-gather | 0.467 | 68.0% |
 
-Winner identity is stable across both scales on Windows: crossover lies between 25% + 50%, supporting a conservative 50% switch. Mac is dominated by parallel-B3, with two isolated exceptions.
+N0/real corpus (2,361 rows): Mac B2 is 0.157 ms full & 0.071 ms at
+10%, versus A 1.189 & 0.133 ms. Windows B2-gather is 0.210 & 0.032 ms,
+versus A 0.792 & 0.148 ms.
 
-## N0 + Round 1 confirmation
+## Gates
 
-Mac N0×100% spot: A 1.372, B2 0.211, B2-gather 0.504, parallel-B2 0.372, B3 1.113, B3-SIMD 2.268 + parallel-B3 0.471 ms. Pool overhead stayed below 1 ms. Existing Mac N0×10% corrected lane had B3 0.144 vs A 0.210 ms.
+- 19/19 bundles per host; 12,705 measurements per host.
+- Every target present.
+- B3, parallel-B3 & B3-SIMD: exact ordered A candidate parity.
+- B2, parallel-B2 & B2-gather: overlap gate ≥127/128; observed 128/128.
+- Shared fixture hashes match 12/12 crossover & 6/6 Round-1 cells.
+- Current unified runner: fmt, Clippy `-D warnings`, 4 Mac Rust tests & 7
+  Python harness tests passed. Windows handoff: 7 Rust tests, 7 harness tests &
+  Clippy passed.
+- Processes were serialized for timing integrity.
 
-Windows f20 handoff confirms selected-arm gains outside crossover bundles:
+## Why f32 v1
 
-| Cell | A p95 | Winning arm | Winner p95 | Reduction |
-|---|---:|---|---:|---:|
-| N0×100% | 0.79 | B2-gather | 0.21 | 73% |
-| N0×10% | 0.15 | B2-gather | 0.03 | 80% |
-| N12×100% | 17.67 | parallel-B2 | 3.02 | 83% |
-| N12×10% | 1.31 | B2-gather | 1.00 | 24% |
-| 100K×100% | 50.76 | parallel-B2 | 9.50 | 81% |
-| 100K×10% | 5.21 | B2-gather | 2.19 | 58% |
-
-## Arm disposition
-
-| Arm | Mac | Windows | Decision |
-|---|---|---|---|
-| A | fallback | fallback | Keep as reference + kill-switch path. |
-| B2 | best at N0×100% + 100K×100% | improved but superseded by parallel-B2/gather | Ship only for small Mac high-eligibility scans. |
-| parallel-B2 | never wins crossover | wins all ≥50% grid cells | Ship Windows only. |
-| B2-gather | wins only N12×1%; absolute gain over parallel-B3 is 0.097 ms | wins all ≤25% cells + N0 endpoints | Ship Windows; defer Mac. |
-| B3 | useful small-corpus Mac path | not a dispatch winner | Ship scalar Mac small-corpus path + common fallback. |
-| parallel-B3 | wins 10/12 Mac cells | never wins | Ship Mac only. |
-| B3-SIMD | slower than scalar/parallel B3 | never wins despite VNNI/AVX2 parity | Reject from production; retain benchmark/tests. |
-
-Mac’s performance-max policy would add B2 at 100K×~90%+ + B2-gather around N12×1%. Recommended v1 omits both large-corpus exceptions: parallel-B3 is only 2.454 ms slower than B2 at 100K×100%, while avoiding a second large resident matrix; N12×1% exception saves only 0.097 ms.
-
-## Resident-memory consequence
-
-Approximate contiguous scoring-buffer size at 768 dimensions, excluding existing entry/object overhead:
-
-| Rows | f32 matrix | i8 matrix | Both |
+| Rows | resident f32 | optional resident i8 | both |
 |---:|---:|---:|---:|
 | 2,361 | 6.92 MiB | 1.73 MiB | 8.65 MiB |
 | 30,549 | 89.50 MiB | 22.37 MiB | 111.87 MiB |
 | 100,000 | 292.97 MiB | 73.24 MiB | 366.21 MiB |
 
-This is why Mac v1 should keep one large i8 index rather than chase two isolated f32 wins. Windows winners share one f32 layout, so its two-arm dispatch adds no second matrix. Production index ownership should eventually replace per-entry vector duplication rather than permanently add another full copy.
+At forecast N12, f32 paths win every Mac cell & all Windows winners already
+share f32. One projection minimizes implementation risk, lifecycle bugs & memory.
+At 100K, Mac f32 v1 remains materially faster than A at ≥25%; B3 is a later
+measured upgrade rather than v1 requirement.
 
-## Implementation contract
+## Production implementation
 
-Implement after benchmark lineages converge; do not copy benchmark `main.rs` wholesale.
+1. Add resident `VectorIndex` owned by registry: stable row IDs, scope IDs,
+   contiguous f32 values, inverse norms & generation.
+2. Update projection atomically on load/insert/update/delete; never rebuild or
+   quantize all rows per query.
+3. Filter eligibility first. Dispatch by host, row count & eligible ratio using
+   measured 25% Mac / 50% Windows switches.
+4. Use Accelerate on macOS; runtime-gated AVX2/FMA with scalar fallback on
+   Windows; bounded top-K selection on both.
+5. Wire through live `MemoryRetriever::retrieve_hybrid` path. Current
+   `retrieve_hybrid_quantized` is not live production routing.
+6. Remove scoped per-query temporary `MemoryRegistry` copies; pass eligible row
+   masks/IDs into resident index instead.
+7. Place behind `vector_dispatch_v2`; telemetry records backend, rows, eligible
+   count, generation, elapsed time & fallback reason. A remains instant fallback.
 
-1. **Converge evidence source.** Make f20 visible to Mac/Fable through push or Git bundle. Reconcile f20 + ca62694 on current primary branch. Keep `0abb7ef1…` as canonical 12-cell crossover config; keep smoke/N0 in a separate config.
-2. **Unify exact B3 semantics.** Windows evolved B3-family arms to 32× prefilter (`4096` at topK 128) + exact dequantized rerank after direct integer ranking missed 1/128 candidates. Port this common finalizer first, then rerun selected Mac cells because ca62694’s parallel-B3 predates that exact-rerank shape.
-3. **Add a resident index projection.** Create a focused `vector_index` module under post-migration `crypt-core` with stable row IDs, scope IDs, inverse norms, generation/version + either contiguous f32 or resident i8 storage. Quantize/build once on load or mutation, never per query.
-4. **Extract selected kernels only.** Use native Accelerate on Mac B2, scalar/parallel i8 on Mac B3, runtime-gated AVX2/FMA on Windows B2, scalar fallback everywhere. Use a dedicated bounded Rayon pool; default to available host parallelism, expose a diagnostic override, never hardcode Dell’s 20 threads.
-5. **Dispatch from measured inputs.** Compute `eligible_count` before scoring. Windows: gather when rows <4096; otherwise parallel-B2 at eligibility ≥50% + gather below. Mac: below 4096 rows use B2 at ≥50% + scalar B3 below; at/above 4096 use parallel-B3.
-6. **Integrate behind current retrieval API.** Replace per-query `QuantizedVector::quantize(emb)` inside `MemoryRetriever::retrieve_hybrid_quantized`; preserve lexical ranking, RRF constant, stored-score nudge, stable tie break + returned entry semantics.
-7. **Feature flag + telemetry.** Add `vector_dispatch_v2` with backend, rows, eligible count, build generation, candidate count, kernel + elapsed time. Keep A selectable instantly. Shadow-sample A parity before default-on.
+## Acceptance before default-on
 
-## Required tests + acceptance gates
+- Lifecycle tests: load/insert/update/delete/reload preserve row mapping & generation.
+- Kernel parity: dimensions 1, 8, 13, 16, 37 & 768, including scalar tails.
+- Dispatch boundaries: rows 4095/4096, Mac 24/25%, Windows 49/50%.
+- B2 target present & overlap ≥127/128; observed target is 128/128.
+- Full 12-cell matrix on both hosts from one source/config.
+- Concurrent-query test prevents Rayon oversubscription.
+- No per-query allocation proportional to all rows.
+- Shadow sample A before default-on; zero target/parity failures.
 
-- Unit parity for scalar tails + dimensions 1, 8, 13, 16, 37 + 768.
-- Registry insert/update/delete/reload tests proving resident-index generation + row mapping.
-- Dispatch boundary tests at rows 4095/4096 + eligibility 49%/50%.
-- B3-family exact ordered A parity after common 32× rerank.
-- B2-family target present + overlap ≥127/128; expected observed result remains 128/128.
-- Full 12-cell run on both hosts from one merged source/config; fixture SHA parity 12/12.
-- N0 spot + concurrent-query test to expose Rayon oversubscription.
-- Material gate: ≥25% p95 reduction against A at N12 for selected production cells, no >10% p95 regression in any dispatch cell, 100% target presence.
-- Memory gate: measured resident bytes within table-derived budget; no per-query matrix/quantization allocation proportional to all rows.
+## Rejected & deferred
 
-## Rollout order
+- External vector backend/ANN migration: no measured value through 100K after same-store optimization.
+- B3-SIMD/VNNI/NEON: parity passed; no production win.
+- B3 resident index: defer until observed 100K corpus; retain benchmark implementation.
+- sgemm batching: not measured; changes single-query latency semantics.
+- GPU/ANE: not measured; separate hardware/transfer lane.
+- i8-GEMM dependency: not measured; dependency/layout cost not justified.
 
-1. Merge benchmark lineages + run four-cell Mac confirmation: N12×{100,10,1}% + 100K×100% with unified exact rerank.
-2. Implement resident index + scalar reference finalizer; verify lifecycle tests.
-3. Land Windows parallel-B2/gather dispatch; run full Windows matrix.
-4. Land Mac B2/B3/parallel-B3 dispatch; run full Mac matrix.
-5. Enable shadow parity at 1% of local queries, then default-on after zero parity/target failures.
-6. Retain A kill switch; remove rejected production rungs, not benchmark evidence.
+## Durable evidence
 
-## Deferred
-
-- GPU/ANE, sgemm batching + i8-GEMM dependency: workload semantics or dependency cost changed; no winning evidence.
-- B3-SIMD/VNNI/NEON production path: parity passed, performance did not.
-- External vector DB/ANN migration: same-store kernels now clear material gate without storage/ranking migration.
-- Threshold auto-tuning: two stable host rules are sufficient; revisit only after real-corpus telemetry contradicts them.
-
-## Decision requested from Fable
-
-Approve minimal production set + sequence:
-
-- Windows: B2-gather + parallel-B2 at 50% switch.
-- Mac: B2/B3 below 4,096 rows; parallel-B3 above.
-- Common 32× exact-rerank finalizer before production integration.
-- One merged-source cross-host rerun as implementation gate, followed by feature-flagged rollout.
+- Mac: `docs/benchmarks/vector-backend/round1/lane-simd-mac/`.
+- Windows: `engine/vector-bakeoff/lane-simd-windows/` from pushed `f20f5ab`.
+- Canonical config: `engine/vector-bakeoff/config/crossover-v1.json`, SHA-256
+  `0abb7ef1ef52617c9b839a0f49b9a58b0ec74c3ef548d81d21a8e4bb25831205`.

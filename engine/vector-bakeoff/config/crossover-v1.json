@@ -13,8 +13,6 @@
     "formula": "n(months) = n0 + months * julyRowsPerMonth"
   },
   "cells": [
-    {"id":"smoke","rows":256,"queries":5,"warmups":2,"iterations":3,"scopeCount":10,"selectivityBps":1000,"topK":32},
-    {"id":"crossover-n0-s100","rows":2361,"queries":100,"warmups":20,"iterations":1,"scopeCount":37,"selectivityBps":10000,"topK":128},
     {"id":"crossover-n12-s100","rows":30549,"queries":100,"warmups":20,"iterations":1,"scopeCount":128,"selectivityBps":10000,"topK":128},
     {"id":"crossover-n12-s50","rows":30549,"queries":100,"warmups":20,"iterations":1,"scopeCount":128,"selectivityBps":5000,"topK":128},
     {"id":"crossover-n12-s25","rows":30549,"queries":100,"warmups":20,"iterations":1,"scopeCount":128,"selectivityBps":2500,"topK":128},
