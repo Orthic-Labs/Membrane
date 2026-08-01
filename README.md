@@ -1,11 +1,32 @@
-# Adapt
+<img src=".github/banner.svg" alt="Morph — Corrections that stick across sessions." width="100%">
 
-> **TL;DR:** Adapt makes valid corrections stick across Codex/Claude sessions: it promotes only safe, scoped, evidence-linked guidance into reversible MemRight rules instead of treating every transcript line as policy.
+<sub>Package and CLI ids remain <code>adapt</code> — not re-keyed.</sub>
 
-AI assistants often repeat same mistakes because useful corrections disappear with session. Adapt
-converts repeated, durable user guidance into a small preference layer future agents can recall.
+**Morph turns durable corrections into portable agent behavior: it promotes only safe, scoped, evidence-linked guidance into reversible MemRight rules instead of treating every transcript line as policy.**
 
-It does **not** retrain model & does not save private chain-of-thought.
+[![License](https://img.shields.io/badge/license-source--available-df6428?style=flat-square&labelColor=111318)](LICENSE)
+
+## What it is
+
+AI assistants repeat the same mistakes because useful corrections disappear when a session ends.
+Morph mines local Codex and Claude session transcripts for repeated, durable user guidance and
+converts it into a small preference layer that future agents can recall. It does not retrain the
+model and does not save private chain-of-thought.
+
+| Surface | Role | Status |
+|---|---|---|
+| **Taste** | durable preferences → MemRight | ships (kernel fixes on P0/P1) |
+| **Doctor** | `morph doctor` / `adapt doctor` → multiwriter conformance | ships; Blueprint/Beacon checks are **not-yet** |
+| **Insights** | failure/waste mining | deferred — not a product yet |
+
+Morph learns rules such as:
+
+- "Always run focused tests before reporting a broad build complete."
+- "This repository uses one shared updater trust root across every app."
+- "Use this operational sequence only inside project X."
+
+It rejects transient facts ("service is down today"), unsafe permission expansion, insecure coding
+taste, obsolete workflows, and instructions copied from repository, tool, or assistant text.
 
 ## How it works
 
@@ -28,18 +49,7 @@ local Codex + Claude transcripts
  scoped recall in future sessions
 ```
 
-Adapt learns rules such as:
-
-- “Run focused tests before broad build.”
-- “This repository uses one updater trust root.”
-- “Use this operational sequence only inside project X.”
-
-It rejects transient facts such as “service is down today,” unsafe permission expansion, insecure
-coding taste, obsolete workflows & instructions copied from repository/tool/assistant text.
-
-## Rule types
-
-Rules are typed so recall does not turn every lesson into global command:
+Rules are typed so recall does not turn every lesson into a global command:
 
 | Type | Meaning |
 |---|---|
@@ -51,130 +61,9 @@ Rules are typed so recall does not turn every lesson into global command:
 
 Default manual rule type is `operational_playbook`, not global preference.
 
-## Preference record
+## Quick start
 
-Canonical record carries:
-
-- stable content-derived ID & schema version;
-- rule, controlled category & scope;
-- structured scope dimensions such as path/platform/tool;
-- record type & authority effect;
-- confidence, evidence count & review flag;
-- source session IDs & retrieval aliases;
-- accepted/lifecycle state;
-- creation/update/reverification timestamps;
-- machine attribution plus optional machine-only narrowing.
-
-Rules can be active, retired, deprecated or superseded. Reverification is explicit presence/count,
-not arbitrary age-decay score—stable preference does not become false merely because it is old.
-
-## Authority boundary
-
-Only authenticated user-origin evidence can create durable preference authority.
-
-Adapt deterministically quarantines:
-
-- assistant-authored narration;
-- tool output or repository text echoed into transcript;
-- permission/approval expansion;
-- security weakening;
-- conflicts with current `AGENTS.md`, `CLAUDE.md` or workspace rules;
-- contradictions with active stored rule;
-- forbidden or mismatched scope;
-- unknown categories, duplicate IDs, empty/short rules & transient environment claims.
-
-Origin tags are checked first. Lexical fallback still scans evidence for prompt-injection-shaped
-content if origin is missing or mislabeled.
-
-This prevents a malicious repository file from teaching agent a permanent instruction merely
-because file appeared in session transcript.
-
-## Review manifests
-
-Mining does not write candidates directly on current multiwriter installations.
-
-Adapt emits JSON manifest containing:
-
-- exact source session identities;
-- transcript/source hashes;
-- candidate payload SHA-256;
-- rule type, scope, authority effect & evidence links;
-- explicit `accepted`, `rejected` or `pending` decision.
-
-Apply refuses:
-
-- pending records;
-- edited payload whose hash no longer matches;
-- changed canonical rule pool;
-- source sessions from another installation;
-- duplicated/out-of-manifest evidence;
-- authority-quarantined candidates.
-
-This makes review artifact immutable between “what was approved” & “what was written.”
-
-## Multi-machine safety
-
-Each installation has opaque identity. Session IDs become installation-qualified, so identical
-local session names on two machines cannot collide.
-
-Before apply, Adapt binds manifest to:
-
-- installation ID;
-- exact canonical MemRight rule-pool hash;
-- exact source-session namespace;
-- conformance receipt;
-- current session inventory.
-
-Incremental multiwriter runner creates isolated work directory, mines pending manifest, adjudicates,
-revalidates conformance, applies through one manifest-only path & writes content-hashed phase
-receipts/summary. If input drifts, it fails closed & does not advance session state.
-
-## Transaction, resume & rollback
-
-- run journal checkpoints discovery, extraction & synthesis;
-- safe resume reuses cached stages only when session identity still matches;
-- interrupted/stale run never silently marks sessions learned;
-- multiwriter persistence is all-or-nothing through resident service;
-- legacy apply captures SQLite-safe backup plus state/rules/core snapshots first;
-- rollback deletes only recorded IDs, restores snapshots & runs `PRAGMA integrity_check`;
-- no force flag bypasses failed integrity proof.
-
-## Delivery through MemRight
-
-Accepted records are stored in MemRight’s local SQLite database. Future prompt-time recall matches:
-
-- repository/workspace scope;
-- structured dimensions;
-- rule text;
-- safe retrieval aliases;
-- semantic/keyword relevance;
-- lifecycle & authority type.
-
-Only small set of root-scoped standing preferences can be compiled into bounded always-on core.
-Project/tool/playbook knowledge remains recall-gated, preventing preference layer from becoming
-another giant prompt.
-
-## What makes it different
-
-Adapt is not transcript summarization. Its concrete advantage is promotion pipeline:
-
-- **Corrections become data:** durable guidance is typed, scoped & source-linked.
-- **User-origin authority:** repository/model/tool content cannot self-promote into rules.
-- **Manifest immutability:** reviewed bytes are exact bytes applied.
-- **Cross-machine binding:** installation/session/pool identity blocks wrong-writer merges.
-- **Rule lifecycle:** decisions can be reverified, narrowed, retired, superseded or rolled back.
-- **Recall aliases without authority expansion:** vocabulary aids retrieval but never changes rule.
-- **Bounded always-on core:** only broad standing preferences load globally; rest stays on demand.
-- **Dry-run first:** smoke, manifest & default CLI paths preview before live write.
-- **Outcome accounting:** discovery, accepted/rejected/persisted/failure counts remain separated by
-  client instead of calling every mined candidate “learning.”
-
-The moat is safe conversion from messy human corrections into portable agent behavior without
-letting transcript content become policy by accident.
-
-## Main commands
-
-Adapt currently runs as workspace-integrated Python tooling:
+Morph runs as workspace-integrated Python tooling (CLI ids stay `adapt`/`morph`):
 
 ```sh
 python3 adapt.py --smoke
@@ -183,40 +72,90 @@ python3 adapt.py --apply-from-manifest resolved.json
 python3 adapt.py --compile-core path/to/core.json
 
 python3 adapt.py \
-  --add-rule "Always run focused tests before broad builds." \
+  --add-rule "Always run focused tests before reporting a broad build complete." \
   --category verification
+
+# Doctor — multiwriter conformance only (Blueprint/Beacon = not-yet)
+python3 morph.py doctor --scope
+python3 morph.py doctor issue --out receipt.json
+python3 adapt.py doctor validate --receipt receipt.json
 ```
 
-Writes are opt-in with `--apply`; smoke & manifest generation remain dry-run. External model lanes
-require explicit `--allow-external-lane`, & transcript text is redacted/scanned before leaving local
-lane.
+Writes are opt-in with `--apply`; smoke and manifest generation stay dry-run. External model lanes
+need explicit `--allow-external-lane`, and transcript text is redacted and scanned before leaving
+the local lane.
 
-Workspace installations use `run_incremental_multiwriter.py` for receipt-gated incremental mining.
+Parent-workspace dependencies (MemRight port, session inventory, mirror) go through
+`workspace_runtime.py` — see [docs/workspace-interface.md](docs/workspace-interface.md). Workspace
+installations use `run_incremental_multiwriter.py` for receipt-gated incremental mining.
 
-## Privacy & trust
+Install pinned test dependencies before running the full suite:
 
-- local transcripts are source; secret scanner drops unsafe content;
-- only redacted batches may enter allowed external lane;
-- no private chain-of-thought is retained;
-- provenance uses hashes & qualified source IDs;
-- MemRight remains local source of truth;
-- audit/receipt artifacts avoid raw transcript content where possible;
-- authority files remain source of truth & are never rewritten by mined preference.
+```sh
+python3 -m pip install -r requirements-test.txt
+python3 -m pytest -q
+```
 
-## Current scope
+## Safety model
 
-Adapt ships transcript parsing, extraction/synthesis lanes, controlled taxonomy, origin/authority
-quarantine, contradiction checks, typed records, immutable manifests, multiwriter conformance,
-journaling, rollback, core compilation & MemRight persistence.
+Only authenticated user-origin evidence can create durable preference authority. Morph
+deterministically quarantines assistant-authored narration, echoed tool/repository output,
+permission or approval expansion, security weakening, conflicts with the active `AGENTS.md`,
+`CLAUDE.md`, or workspace rules, contradictions with an active stored rule, forbidden or mismatched
+scope, and unknown categories, duplicate IDs, empty/short rules, or transient environment claims.
+Origin tags are checked first; a lexical fallback still scans evidence for prompt-injection-shaped
+content when origin is missing or mislabeled. This stops a malicious repository file from teaching
+an agent a permanent instruction merely because it appeared in a transcript.
+
+Mining never writes candidates directly. Morph emits a JSON review manifest with exact source
+session identities, transcript/source hashes, candidate payload SHA-256, rule type, scope, authority
+effect, evidence links, and an explicit `accepted`/`rejected`/`pending` decision. Apply refuses
+pending records, an edited payload whose hash no longer matches, a changed canonical rule pool,
+source sessions from another installation, out-of-manifest evidence, and authority-quarantined
+candidates — so the reviewed artifact is exactly what gets written.
+
+Each installation has an opaque identity; session IDs are installation-qualified so identical local
+session names on two machines cannot collide. Before apply, Morph binds the manifest to the
+installation ID, the exact canonical MemRight rule-pool hash, the source-session namespace, a
+conformance receipt, and the current session inventory.
+
+A run journal checkpoints discovery, extraction, and synthesis; safe resume reuses cached stages
+only when session identity still matches, and an interrupted or stale run never silently marks
+sessions learned. Multiwriter persistence is all-or-nothing through the resident service; legacy
+apply captures a SQLite-safe backup plus state/rules/core snapshots first. Rollback deletes only
+recorded IDs, restores snapshots, and runs `PRAGMA integrity_check` — no force flag bypasses a
+failed integrity proof.
+
+## Recall
+
+Accepted records live in MemRight's local SQLite database. Prompt-time recall matches
+repository/workspace scope, structured dimensions, rule text, safe retrieval aliases,
+semantic/keyword relevance, and lifecycle/authority type. Only a small set of root-scoped standing
+preferences compiles into the bounded always-on core; project/tool/playbook knowledge stays
+recall-gated, so the preference layer never grows into another giant prompt.
+
+## Status
+
+Morph ships Taste transcript parsing, extraction/synthesis lanes, a controlled taxonomy,
+origin/authority quarantine, contradiction checks, typed records, immutable manifests, multiwriter
+conformance Doctor, journaling, rollback, core compilation, and MemRight persistence.
+
+Implementation layout (P1 split): `taste.py` / `taste_apply.py` / `taste_mine.py` / `cli.py`, with
+`adapt.py` as the compatible facade and `morph.py` as the display-name entry.
 
 Current limits:
 
-- standalone checkout depends on parent workspace memory/session modules & installed MemRight;
-- model-assisted extraction still requires available configured lane;
+- a standalone checkout depends on parent-workspace memory/session modules and an installed
+  MemRight (contract + stubs: `workspace_runtime.py`);
+- model-assisted extraction still requires an available configured lane;
 - lexical contradiction detection catches direct polarity conflicts, not every semantic conflict;
-- final quality depends on review/adjudication policy & source transcript quality;
-- only standing preferences qualify for always-on core; other records require relevant recall.
+- final quality depends on review/adjudication policy and source transcript quality;
+- only standing preferences qualify for the always-on core; other records need relevant recall;
+- Doctor does not yet cover Blueprint or Beacon.
 
-## License
+Source-available under the Orthic Labs Source Use License — see [LICENSE](LICENSE).
 
-Source-available proprietary software for internal use & evaluation; redistribution, repackaging & competing use are prohibited. See [LICENSE](LICENSE).
+---
+
+<sub><b><a href="https://orthic-labs.github.io">Orthic Labs</a></b> — local-first infrastructure for AI-assisted development.<br>
+<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Cortex">Cortex</a> · <a href="https://github.com/Orthic-Labs/Sentinel">Sentinel</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/Morph">Morph</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
