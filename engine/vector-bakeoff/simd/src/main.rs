@@ -1,0 +1,269 @@
+//! Follow-on SIMD/BLAS lane (plan §13.2): same fixtures and measure loop as the
+//! Round 1 control runner, three exact arms.
+//!   A  — byte-identical to control arm A (in-process paired reference)
+//!   B2 — Accelerate cblas_sgemv over a contiguous dequantized matrix, bounded top-N
+//!   B3 — quantized-RESIDENT bounded top-N (the arm the spec called "B"; the Round 1
+//!        control runner re-quantized every row per query, which pessimized it)
+//! macOS-only: B2 links the Accelerate framework.
+
+use memright_core::{cosine, QuantizedVector};
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
+use std::time::Instant;
+use vector_bakeoff_common::{
+    eligible, generate_fixture, hex, load_config, measure, parse_runner_args, selected_cell,
+    write_bundle_atomic, Candidate, RunBundle, GENERATOR_ID,
+};
+
+#[cfg(target_os = "macos")]
+#[link(name = "Accelerate", kind = "framework")]
+extern "C" {
+    fn cblas_sgemv(
+        order: i32,
+        trans: i32,
+        m: i32,
+        n: i32,
+        alpha: f32,
+        a: *const f32,
+        lda: i32,
+        x: *const f32,
+        incx: i32,
+        beta: f32,
+        y: *mut f32,
+        incy: i32,
+    );
+}
+
+#[cfg(not(target_os = "macos"))]
+compile_error!("the SIMD lane's B2 arm links Accelerate; build on macOS only");
+
+const CBLAS_ROW_MAJOR: i32 = 101;
+const CBLAS_NO_TRANS: i32 = 111;
+
+#[derive(Clone, Copy)]
+struct ScoredId {
+    score: f32,
+    id: u64,
+}
+
+impl PartialEq for ScoredId {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.score.to_bits() == other.score.to_bits()
+    }
+}
+impl Eq for ScoredId {}
+impl PartialOrd for ScoredId {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for ScoredId {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.score
+            .total_cmp(&other.score)
+            .then_with(|| other.id.cmp(&self.id))
+    }
+}
+
+fn bounded_top_n(scored: impl Iterator<Item = ScoredId>, limit: usize) -> Vec<ScoredId> {
+    let mut heap = BinaryHeap::with_capacity(limit.saturating_add(1));
+    for item in scored {
+        heap.push(Reverse(item));
+        if heap.len() > limit {
+            heap.pop();
+        }
+    }
+    let mut items = heap.into_iter().map(|Reverse(item)| item).collect::<Vec<_>>();
+    items.sort_by(|a, b| b.score.total_cmp(&a.score).then_with(|| a.id.cmp(&b.id)));
+    items
+}
+
+fn inv_norm(vector: &[f32]) -> f32 {
+    let norm = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        1.0 / norm
+    } else {
+        0.0
+    }
+}
+
+fn main() -> Result<(), String> {
+    let args = parse_runner_args()?;
+    let config = load_config(&args.config)?;
+    let cell = selected_cell(&config, &args.cell)?;
+    let dimension = config.dimension;
+
+    // Build phase, timed per arm's residency shape.
+    let build_a_started = Instant::now();
+    let fixture = generate_fixture(&config, cell)?;
+    let hydrated = fixture
+        .rows
+        .iter()
+        .map(|row| (row, QuantizedVector::quantize(&row.embedding).dequantize()))
+        .collect::<Vec<_>>();
+    let build_a_ns = build_a_started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+
+    let build_b2_started = Instant::now();
+    let mut matrix = Vec::with_capacity(fixture.rows.len() * dimension);
+    let mut inv_norms = Vec::with_capacity(fixture.rows.len());
+    for (_, embedding) in &hydrated {
+        matrix.extend_from_slice(embedding);
+        inv_norms.push(inv_norm(embedding));
+    }
+    let build_b2_ns = build_b2_started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+
+    let build_b3_started = Instant::now();
+    let quantized = fixture
+        .rows
+        .iter()
+        .map(|row| QuantizedVector::quantize(&row.embedding))
+        .collect::<Vec<_>>();
+    let build_b3_ns = build_b3_started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+
+    let mut arm_a = measure(&fixture, "A", |query, limit| {
+        let mut scoped = hydrated
+            .iter()
+            .filter(|(row, _)| eligible(row, query))
+            .map(|(row, embedding)| Candidate {
+                id: row.id,
+                cosine: cosine(embedding, &query.embedding),
+                content_hash: hex(&row.content_hash),
+            })
+            .collect::<Vec<_>>();
+        scoped.sort_by(|a, b| b.cosine.total_cmp(&a.cosine).then_with(|| a.id.cmp(&b.id)));
+        scoped.truncate(limit);
+        scoped
+    });
+    arm_a.backend = "current-rust-dequantized-scope-clone-full-sort".into();
+    arm_a.build_ns = build_a_ns;
+    arm_a.config = serde_json::json!({"resident":"f32","selection":"full-sort"});
+
+    let rows_i32 = i32::try_from(fixture.rows.len()).map_err(|_| "row count exceeds i32")?;
+    let dim_i32 = i32::try_from(dimension).map_err(|_| "dimension exceeds i32")?;
+    let mut scores = vec![0.0_f32; fixture.rows.len()];
+    let mut arm_b2 = measure(&fixture, "B2", |query, limit| {
+        unsafe {
+            cblas_sgemv(
+                CBLAS_ROW_MAJOR,
+                CBLAS_NO_TRANS,
+                rows_i32,
+                dim_i32,
+                1.0,
+                matrix.as_ptr(),
+                dim_i32,
+                query.embedding.as_ptr(),
+                1,
+                0.0,
+                scores.as_mut_ptr(),
+                1,
+            );
+        }
+        let query_inv_norm = inv_norm(&query.embedding);
+        let top = bounded_top_n(
+            fixture
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| eligible(row, query))
+                .map(|(index, row)| ScoredId {
+                    score: scores[index] * inv_norms[index] * query_inv_norm,
+                    id: row.id,
+                }),
+            limit,
+        );
+        top.into_iter()
+            .map(|item| Candidate {
+                id: item.id,
+                cosine: item.score,
+                content_hash: hex(&fixture.rows[item.id as usize].content_hash),
+            })
+            .collect()
+    });
+    arm_b2.backend = "accelerate-sgemv-full-scores-bounded-topn".into();
+    arm_b2.build_ns = build_b2_ns;
+    arm_b2.config = serde_json::json!({
+        "resident":"f32-contiguous-matrix",
+        "selection":"bounded-top-n",
+        "blas":"Accelerate cblas_sgemv",
+        "scoresComputed":"all rows (filter after)"
+    });
+
+    let mut arm_b3 = measure(&fixture, "B3", |query, limit| {
+        let top = bounded_top_n(
+            fixture
+                .rows
+                .iter()
+                .zip(&quantized)
+                .filter(|(row, _)| eligible(row, query))
+                .map(|(row, vector)| ScoredId {
+                    score: vector.cosine_with(&query.embedding),
+                    id: row.id,
+                }),
+            limit,
+        );
+        top.into_iter()
+            .map(|item| Candidate {
+                id: item.id,
+                cosine: item.score,
+                content_hash: hex(&fixture.rows[item.id as usize].content_hash),
+            })
+            .collect()
+    });
+    arm_b3.backend = "optimized-rust-quantized-RESIDENT-bounded-topn".into();
+    arm_b3.build_ns = build_b3_ns;
+    arm_b3.config =
+        serde_json::json!({"resident":"i8-per-vector-scale-prequantized","selection":"bounded-top-n"});
+
+    // Parity gates. B3 vs A: exact ID equality (same guarantee the control runner
+    // enforced). B2 vs A: BLAS reassociates float adds, so near-ties may swap —
+    // require target presence plus per-query overlap within one candidate.
+    let limit = fixture.cell.top_k;
+    let mut min_overlap = limit;
+    let mut overlap_sum = 0_usize;
+    for ((a, b2), b3) in arm_a
+        .measurements
+        .iter()
+        .zip(&arm_b2.measurements)
+        .zip(&arm_b3.measurements)
+    {
+        if a.candidate_ids != b3.candidate_ids {
+            return Err(format!("A/B3 parity failure at query {}", a.query_id));
+        }
+        let overlap = b2
+            .candidate_ids
+            .iter()
+            .filter(|id| a.candidate_ids.contains(id))
+            .count();
+        min_overlap = min_overlap.min(overlap);
+        overlap_sum += overlap;
+        if overlap + 1 < a.candidate_ids.len() || !b2.target_present {
+            return Err(format!(
+                "A/B2 parity failure at query {}: overlap {overlap}/{}",
+                a.query_id,
+                a.candidate_ids.len()
+            ));
+        }
+    }
+    let queries = arm_a.measurements.len().max(1);
+    arm_b2.config["minOverlap"] = serde_json::json!(min_overlap);
+    arm_b2.config["meanOverlap"] = serde_json::json!(overlap_sum as f64 / queries as f64);
+
+    let bundle = RunBundle {
+        schema_version: 1,
+        generator_id: GENERATOR_ID.into(),
+        runner: "simd".into(),
+        runner_version: env!("CARGO_PKG_VERSION").into(),
+        cell_id: cell.id.clone(),
+        fixture_sha256: fixture.sha256,
+        rows: fixture.rows.len(),
+        queries: fixture.queries.len(),
+        dimension,
+        arms: vec![arm_a, arm_b2, arm_b3],
+    };
+    write_bundle_atomic(&args.output, &bundle)?;
+    println!(
+        "PASS runner=simd cell={} fixture={}",
+        cell.id, bundle.fixture_sha256
+    );
+    Ok(())
+}
