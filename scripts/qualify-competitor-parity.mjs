@@ -141,8 +141,27 @@ if (phase === "baseline") {
     finding_results: selected.map((id) => ({ id, status: failed.length ? "open" : "source_passed", checks: checks.map((check) => check.key) })),
     open: failed.length ? selected : [],
   };
-} else if (phase === "mac" || phase === "windows") {
-  result = { ...base, status: "blocked_missing_installed_receipt", platform: phase, finding_results: selected.map((id) => ({ id, status: "open", reason: `no installed ${phase} receipt` })), open: selected };
+} else if (phase === "mac") {
+  const source = currentEvidence().source;
+  const installed = runCommand(join(workspaceRoot, "tools", "bin", "memright"), ["build-info"], workspaceRoot, 10_000);
+  const health = runCommand("curl", ["--fail", "--silent", "--show-error", "--max-time", "5", "http://127.0.0.1:47851/health"], workspaceRoot, 10_000);
+  const service = runCommand("launchctl", ["print", `gui/${process.getuid()}/com.adrian.memright-serve`], workspaceRoot, 10_000);
+  let identity = null;
+  let healthJson = null;
+  try { identity = JSON.parse(installed.output_tail); healthJson = JSON.parse(health.output_tail); } catch { /* receipt remains open */ }
+  const expectedCommit = git(membraneRoot, ["rev-parse", "HEAD"]);
+  const identityMatch = source?.status === "source_passed"
+    && identity?.memright_source_commit === expectedCommit
+    && healthJson?.releaseGeneration === identity?.release_generation
+    && /state = running/.test(service.output_tail);
+  result = {
+    ...base, platform: "mac", checks: [installed, health, service], identity,
+    status: identityMatch ? "mac_identity_passed_whole_path_open" : "mac_identity_failed",
+    finding_results: selected.map((id) => ({ id, status: "open", reason: identityMatch ? "whole-path host/scenario receipt absent" : "installed identity or service receipt mismatch" })),
+    open: selected,
+  };
+} else if (phase === "windows") {
+  result = { ...base, status: "blocked_missing_installed_receipt", platform: phase, finding_results: selected.map((id) => ({ id, status: "open", reason: "no installed windows receipt" })), open: selected };
 } else {
   const evidence = currentEvidence();
   const platformOpen = ["source", "mac", "windows"].filter((name) => !evidence[name]);
