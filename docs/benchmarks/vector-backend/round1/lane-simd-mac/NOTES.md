@@ -55,8 +55,8 @@ still reduces A by 36.8–79.3% for ≥25% cells while avoiding a second 73 MiB 
 projection. Add B3 resident indexing only after production telemetry shows
 100K-scale corpora where its extra 1.7–2.7 ms improvement matters.
 
-Windows remains: parallel-B2 at ≥50% estimated eligibility, B2-gather below
-50%. Both share one f32 projection.
+Windows remains: B2-gather below 4,096 rows; at larger scales use parallel-B2
+at ≥50% estimated eligibility & B2-gather below 50%. Both share one f32 projection.
 
 ## Validation & provenance
 

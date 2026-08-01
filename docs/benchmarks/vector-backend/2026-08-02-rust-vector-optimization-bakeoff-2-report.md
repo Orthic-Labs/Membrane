@@ -31,9 +31,10 @@ flowchart LR
     H -->|"Mac ≥4,096"| MS{"eligibility ≥25%"}
     MS -->|"yes"| MP["parallel Accelerate B2"]
     MS -->|"no"| MG["Accelerate B2-gather"]
-    H -->|"Windows"| WS{"eligibility ≥50%"}
+    H -->|"Windows <4,096"| WG["AVX2/FMA B2-gather"]
+    H -->|"Windows ≥4,096"| WS{"eligibility ≥50%"}
     WS -->|"yes"| WP["parallel AVX2/FMA B2"]
-    WS -->|"no"| WG["AVX2/FMA B2-gather"]
+    WS -->|"no"| WG
     MB --> R["bounded top-K + existing exact final ranking"]
     MP --> R
     MG --> R
@@ -100,7 +101,7 @@ measured upgrade rather than v1 requirement.
 2. Update projection atomically on load/insert/update/delete; never rebuild or
    quantize all rows per query.
 3. Filter eligibility first. Dispatch by host, row count & eligible ratio using
-   measured 25% Mac / 50% Windows switches.
+   measured 25% Mac / 50% Windows switches, with Windows gather below 4,096.
 4. Use Accelerate on macOS; runtime-gated AVX2/FMA with scalar fallback on
    Windows; bounded top-K selection on both.
 5. Wire through live `MemoryRetriever::retrieve_hybrid` path. Current
@@ -110,6 +111,17 @@ measured upgrade rather than v1 requirement.
 7. Place behind `vector_dispatch_v2`; telemetry records backend, rows, eligible
    count, generation, elapsed time & fallback reason. A remains instant fallback.
 
+### Build status
+
+Core dispatcher & live recall wiring are implemented under
+`MEMRIGHT_VECTOR_DISPATCH_V2` (off by default). Enabling before store startup
+builds resident projection; disabling immediately restores A query routing.
+Mixed dimensions, absent projection or query mismatch fail closed to scalar A.
+
+Mac validation: 175 `crypt-core` tests, 269 `membrane-runtime` tests, core
+Clippy `-D warnings`, plus flag-on scoped & unscoped acceptance passed. Production
+commit follows crate-migration commit because both currently share staged paths.
+
 ## Acceptance before default-on
 
 - Lifecycle tests: load/insert/update/delete/reload preserve row mapping & generation.
@@ -118,7 +130,7 @@ measured upgrade rather than v1 requirement.
 - B2 target present & overlap ≥127/128; observed target is 128/128.
 - Full 12-cell matrix on both hosts from one source/config.
 - Concurrent-query test prevents Rayon oversubscription.
-- No per-query allocation proportional to all rows.
+- No per-query matrix rebuild or quantization; only score/candidate buffers are query-local.
 - Shadow sample A before default-on; zero target/parity failures.
 
 ## Rejected & deferred

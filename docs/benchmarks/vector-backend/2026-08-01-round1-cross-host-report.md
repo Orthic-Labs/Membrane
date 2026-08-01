@@ -129,8 +129,8 @@ tests, 7 Python tests & Clippy. Current unified Mac source passed 4 Rust tests,
 7 Python tests & Clippy. Fixture hashes match 12/12 crossover & 6/6 Round-1.
 
 Recommended v1 uses one resident f32 projection: Mac scalar B2 below 4,096,
-parallel-B2 at ≥25% eligibility & B2-gather below; Windows parallel-B2 at
-≥50% & B2-gather below. Mac B3 paths remain measured 100K upgrades, deferred
+parallel-B2 at ≥25% eligibility & B2-gather below; Windows uses B2-gather below
+4,096, then parallel-B2 at ≥50% & B2-gather below. Mac B3 paths remain measured 100K upgrades, deferred
 until production corpus scale justifies a second resident i8 projection.
 
 ## Reading (our constraints; measurements above stand on their own)
