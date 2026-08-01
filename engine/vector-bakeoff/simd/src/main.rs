@@ -7,6 +7,9 @@
 //! B2 uses Accelerate on macOS & AVX2/FMA when available on x86_64.
 
 use crypt_core::{cosine, QuantizedVector};
+use half::f16;
+use rayon::prelude::*;
+use rayon::ThreadPoolBuilder;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::time::Instant;
@@ -163,6 +166,18 @@ fn main() -> Result<(), String> {
         .collect::<Vec<_>>();
     let build_b3_ns = build_b3_started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
 
+    let build_f16_started = Instant::now();
+    let matrix_f16 = matrix
+        .iter()
+        .copied()
+        .map(f16::from_f32)
+        .collect::<Vec<_>>();
+    let build_f16_ns = build_f16_started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
+    let parallel_pool = ThreadPoolBuilder::new()
+        .num_threads(std::thread::available_parallelism().map_or(1, usize::from))
+        .build()
+        .map_err(|error| format!("create Rayon pool: {error}"))?;
+
     let mut arm_a = measure(&fixture, "A", |query, limit| {
         let mut scoped = hydrated
             .iter()
@@ -261,20 +276,97 @@ fn main() -> Result<(), String> {
     arm_b3.build_ns = build_b3_ns;
     arm_b3.config = serde_json::json!({"resident":"i8-per-vector-scale-prequantized","selection":"bounded-top-n"});
 
+    let mut arm_b3_parallel = measure(&fixture, "B3-parallel", |query, limit| {
+        let top = parallel_pool.install(|| {
+            let scored = fixture
+                .rows
+                .par_iter()
+                .zip(quantized.par_iter())
+                .filter(|(row, _)| eligible(row, query))
+                .map(|(row, vector)| ScoredId {
+                    score: vector.cosine_with(&query.embedding),
+                    id: row.id,
+                })
+                .collect::<Vec<_>>();
+            bounded_top_n(scored.into_iter(), limit)
+        });
+        top.into_iter()
+            .map(|item| Candidate {
+                id: item.id,
+                cosine: item.score,
+                content_hash: hex(&fixture.rows[item.id as usize].content_hash),
+            })
+            .collect()
+    });
+    arm_b3_parallel.backend = "quantized-resident-rayon-bounded-topn".into();
+    arm_b3_parallel.build_ns = build_b3_ns;
+    arm_b3_parallel.config = serde_json::json!({
+        "resident":"i8-per-vector-scale-prequantized",
+        "selection":"bounded-top-n",
+        "threads": parallel_pool.current_num_threads()
+    });
+
+    let mut arm_f16 = measure(&fixture, "B4-f16", |query, limit| {
+        let query_f16 = query
+            .embedding
+            .iter()
+            .copied()
+            .map(f16::from_f32)
+            .collect::<Vec<_>>();
+        let query_inv_norm = inv_norm(&query.embedding);
+        let top = bounded_top_n(
+            fixture
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| eligible(row, query))
+                .map(|(index, row)| {
+                    let offset = index * dimension;
+                    let score = matrix_f16[offset..offset + dimension]
+                        .iter()
+                        .zip(&query_f16)
+                        .map(|(a, b)| a.to_f32() * b.to_f32())
+                        .sum::<f32>();
+                    ScoredId {
+                        score: score * inv_norms[index] * query_inv_norm,
+                        id: row.id,
+                    }
+                }),
+            limit,
+        );
+        top.into_iter()
+            .map(|item| Candidate {
+                id: item.id,
+                cosine: item.score,
+                content_hash: hex(&fixture.rows[item.id as usize].content_hash),
+            })
+            .collect()
+    });
+    arm_f16.backend = "f16-resident-scalar-convert-on-load-bounded-topn".into();
+    arm_f16.build_ns = build_f16_ns;
+    arm_f16.config = serde_json::json!({"resident":"f16-contiguous-matrix","selection":"bounded-top-n","rssBytesDelta":-(matrix.len() as i64 * 2)});
+
     // Parity gates. B3 vs A: exact ID equality (same guarantee the control runner
     // enforced). B2 vs A: BLAS reassociates float adds, so near-ties may swap —
     // require target presence plus per-query overlap within one candidate.
     let limit = fixture.cell.top_k;
     let mut min_overlap = limit;
     let mut overlap_sum = 0_usize;
-    for ((a, b2), b3) in arm_a
+    for (((a, b2), b3), b3_parallel) in arm_a
         .measurements
         .iter()
         .zip(&arm_b2.measurements)
         .zip(&arm_b3.measurements)
+        .zip(&arm_b3_parallel.measurements)
     {
         if a.candidate_ids != b3.candidate_ids {
             return Err(format!("A/B3 parity failure at query {}", a.query_id));
+        }
+        if a.candidate_ids != b3_parallel.candidate_ids {
+            return Err(format!(
+                "A/B3-parallel parity failure at query {}",
+                a.query_id
+            ));
         }
         let overlap = b2
             .candidate_ids
@@ -305,7 +397,7 @@ fn main() -> Result<(), String> {
         rows: fixture.rows.len(),
         queries: fixture.queries.len(),
         dimension,
-        arms: vec![arm_a, arm_b2, arm_b3],
+        arms: vec![arm_a, arm_b2, arm_b3, arm_b3_parallel, arm_f16],
     };
     write_bundle_atomic(&args.output, &bundle)?;
     println!(
