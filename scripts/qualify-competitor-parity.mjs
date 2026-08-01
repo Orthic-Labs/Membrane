@@ -101,7 +101,7 @@ function sourceSuites(ids) {
   if (ids.some((id) => /^F1[5-8]$/.test(id))) add("sentinel", "pnpm", ["--dir", join(root, "tether"), "test"], root);
   if (ids.some((id) => ["F07", "F08", "F09", "F10", "F11", "F18", "F19", "F20", "C01", "C04", "C05", "C06", "C07", "C16"].includes(id))) add("engine", "cargo", ["check", "--manifest-path", join(membraneRoot, "engine", "Cargo.toml"), "--workspace", "--all-targets"], root);
   if (ids.some((id) => ["F03", "F04", "F11", "C02", "C04", "C05", "C06", "C07"].includes(id))) add("cortex", "pnpm", ["--dir", join(root, "cortex"), "test:all"], root);
-  if (ids.some((id) => ["F05", "F12", "C08", "C12", "C14"].includes(id))) add("adapt", "python3", ["-m", "pytest", join(root, "adapt", "tests")], root);
+  if (ids.some((id) => ["F05", "F12", "C08", "C12", "C14"].includes(id))) add("adapt", join(root, ".venv-tools", "bin", "python"), ["-m", "pytest", join(root, "adapt")], root);
   return suites;
 }
 
