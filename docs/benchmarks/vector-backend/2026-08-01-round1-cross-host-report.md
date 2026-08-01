@@ -85,29 +85,55 @@ Arm G's build is a DiskANN graph construction on a pre-release build (Mac 100K: 
 
 ## Corrections — arm B as-run is not the specified arm B
 
-The Round 1 arm B implementation re-quantizes every row on every query (`engine/vector-bakeoff/common/src/lib.rs`, `quantized_candidates`) instead of holding quantized vectors resident as specified. Its numbers above therefore measure a pessimized arm and must not be read as "optimized Rust" (Windows 100K×100%: 1,147 ms p95 is this defect, not quantization cost). Round 1 result bytes are frozen; the corrected arms ran as a follow-on lane on identical fixtures (macOS, `lane-simd-mac/`):
+The Round 1 arm B implementation re-quantizes every row on every query (`engine/vector-bakeoff/common/src/lib.rs`, `quantized_candidates`) instead of holding quantized vectors resident as specified. Its numbers above therefore measure a pessimized arm and must not be read as "optimized Rust" (Windows 100K×100%: 1,147 ms p95 is this defect, not quantization cost). Round 1 result bytes remain frozen. Corrected follow-on lanes have now run on both hosts with parity gates.
 
-- **B2** — Accelerate `cblas_sgemv` over a contiguous dequantized f32 matrix, bounded top-N. Candidate parity with arm A: 128/128 identical on every query in every cell.
-- **B3** — quantized-resident (pre-quantized once) filtered scan, bounded top-N. Exact candidate-ID equality with arm A, gate-enforced.
+- **B2:** full-matrix scores + bounded top-N; Mac uses Accelerate `cblas_sgemv`, Windows uses runtime-gated AVX2/FMA intrinsics.
+- **B2-gather:** Mac filter-first gather + subset `cblas_sgemv`.
+- **parallel-B2 / parallel-B3:** Mac Rayon selection/scan rungs.
+- **B3:** resident per-vector i8 quantization; exact candidate IDs versus A.
+- **B3-SIMD:** runtime-detected AArch64 NEON `sdot` + bounded exact refinement; exact candidate IDs versus B3.
 
-| Cell | A p95 | B2 sgemv p95 | B3 resident-quant p95 |
-|---|---|---|---|
-| N0 (2,361) × 100% | 3.28 | 1.24 | 2.07 |
-| N0 (2,361) × 10% | 0.21 | 0.21 | 0.14 |
-| N12 (30,549) × 100% | 18.04 | 4.49 | 14.64 |
-| N12 (30,549) × 10% | 2.63 | 3.42 | 1.86 |
-| 100K × 100% | 58.92 | 45.43 | 50.97 |
-| 100K × 10% | 6.87 | 11.77 | 6.97 |
+### Windows corrected lane — p95 ms
 
-B2 scores all rows then filters, so it wins at high selectivity (−75% p95 vs A at N12×100%) and loses at 10% selectivity, where B3 wins. A Windows equivalent lane (no Accelerate; BLAS/SIMD alternative) has not run yet and is required before cross-host claims about the corrected arms.
+| Cell | A | B2 AVX2/FMA | B3 resident |
+|---|---:|---:|---:|
+| N0 × 100% | 0.91 | **0.58** | 1.17 |
+| N0 × 10% | **0.11** | 0.43 | 0.28 |
+| N12 × 100% | 13.09 | **6.08** | 12.68 |
+| N12 × 10% | 1.47 | 6.41 | **1.39** |
+| 100K × 100% | 48.26 | **25.73** | 47.67 |
+| 100K × 10% | 7.13 | 26.85 | **5.46** |
+
+Windows receipt status is complete: seven published bundles, 7/7 Python harness tests, 2/2 Rust tests, 100% target recall, B2 minimum/mean overlap 128/128, B3 exact candidate IDs. Every B2 bundle reports `rust-avx2-fma-full-scores-bounded-topn` / `rust-avx2-fma-intrinsics`.
+
+### Mac crossover lane — p95 ms
+
+| Rows | Sel. | A | B2 | B2-gather | parallel-B2 | B3 | B3-SIMD | parallel-B3 |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| N12 | 100% | 16.726 | 4.770 | 7.339 | 5.480 | 13.291 | 25.847 | **3.965** |
+| N12 | 50% | 8.473 | 4.128 | 5.517 | 4.222 | 7.092 | 13.227 | **2.521** |
+| N12 | 25% | 4.531 | 3.803 | 2.770 | 4.186 | 3.825 | 7.450 | **1.205** |
+| N12 | 10% | 2.035 | 3.652 | 0.984 | 3.781 | 1.626 | 3.149 | **0.565** |
+| N12 | 5% | 1.061 | 3.954 | 0.526 | 3.793 | 0.993 | 1.778 | **0.419** |
+| N12 | 1% | 0.253 | 3.682 | **0.149** | 3.915 | 0.263 | 0.629 | 0.246 |
+| 100K | 100% | 102.605 | **15.347** | 23.693 | 25.219 | 44.555 | 84.744 | 17.801 |
+| 100K | 50% | 29.324 | 15.103 | 15.071 | 14.854 | 31.436 | 50.520 | **7.661** |
+| 100K | 25% | 17.469 | 10.846 | 7.943 | 11.845 | 16.768 | 29.194 | **4.755** |
+| 100K | 10% | 5.840 | 16.911 | 4.981 | 11.981 | 5.970 | 10.582 | **2.616** |
+| 100K | 5% | 3.222 | 10.498 | 2.479 | 14.604 | 4.196 | 10.683 | **1.231** |
+| 100K | 1% | 0.931 | 13.139 | 0.748 | 14.146 | 0.618 | 1.367 | **0.428** |
+
+Mac lane status: 13/13 bundles passed, 5/5 Rust tests, 7/7 Python tests, 100% target recall, exact B3-family candidate IDs, B2-family minimum/mean overlap 128/128. N0/full-selectivity pool spot: B2 0.211, parallel-B2 0.372, B3 1.113, parallel-B3 0.471 ms p95; no >1 ms pool regression.
+
+Dispatch recommendation: Mac uses parallel-B3 by default, B2 at 100K around ≥90% selectivity, B2-gather only at the measured N12/1% corner, and B2 for N0/full-selectivity. Windows uses B2 at ≥55% estimated selectivity and B3 below 55% for N12/100K; use A for low-selectivity N0. Windows threshold is endpoint-interpolated; Mac threshold is bounded by the six-point sweep.
 
 ## Reading (our constraints; measurements above stand on their own)
 
-1. At production (N0) and 12-month-forecast (N12) scale, the in-process exact scan (arm A) had the lowest p95 of any adoptable arm on both hosts. No adoptable arm met the pre-registered material-value gate (≥25% p95 improvement at N12); the corrected same-architecture arm B2 did (−75% at N12×100%, macOS).
-2. A crossover exists on Windows at 100K×100%: G (26.5 ms), F (48.1 ms) and E (72.4 ms) beat A (77.0 ms). On macOS at the same cell, A still led every adoptable arm. 100K is ~1.7× the 24-month forecast (N24 ≈ 58,700).
-3. Anomalies for Round 2: the Windows arm-E recall miss above; arm F's cross-host inversion at 100K×100% (Windows 48 ms vs macOS 491 ms p95, same config).
+1. Round 1 external/database arms did not clear the pre-registered ≥25% N12 material-value gate. Corrected same-store arms now clear it on both hosts: Mac parallel-B3 is 76% faster than A at N12×100%; Windows B2 is 54% faster.
+2. Mac dispatch is row-count + selectivity sensitive: parallel-B3 wins 10/12 grid cells, B2 wins 100K×100%, and B2-gather wins N12×1%. Windows B2/B3 endpoints put the forecast/stress crossover near 50–55% selectivity.
+3. External-backend anomalies remain Round 2 work: Windows arm-E's recall miss and arm F's 100K×100% cross-host inversion (48 ms Windows vs 491 ms Mac).
 
-**Disposition (ours):** `KEEP CURRENT` at present scale, with the optimized same-store arms (B2/B3 hybrid) as the adoption path if forecast-scale p95 needs cutting; `DEFER WITH MEASURED TRIGGER` for external vector backends — trigger = corpus approaching 100K rows at high selectivity on x86-class memory bandwidth, or vector-stage p95 exceeding the prompt-path budget. Readers with different constraints can reach different conclusions from the same data.
+**Disposition (ours):** adopt the measured host-specific same-store dispatch recommendation; retain current storage/ranking authority. `DEFER WITH MEASURED TRIGGER` remains the external-vector-backend disposition — trigger = corpus approaching 100K rows with vector-stage p95 outside budget after same-store dispatch.
 
 ## Limitations
 

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "seed": 20260801,
+  "dimension": 768,
+  "model": "EmbeddingGemma-300M-Q4/768-fixture-shape",
+  "forecast": {
+    "observedAt": "2026-08-01T13:41:00+05:30",
+    "n0": 2361,
+    "julyRowsPerMonth": 2349,
+    "n6": 16455,
+    "n12": 30549,
+    "n24": 58737,
+    "formula": "n(months) = n0 + months * julyRowsPerMonth"
+  },
+  "cells": [
+    {"id":"smoke","rows":256,"queries":5,"warmups":2,"iterations":3,"scopeCount":10,"selectivityBps":1000,"topK":32},
+    {"id":"crossover-n0-s100","rows":2361,"queries":100,"warmups":20,"iterations":1,"scopeCount":37,"selectivityBps":10000,"topK":128},
+    {"id":"crossover-n12-s100","rows":30549,"queries":100,"warmups":20,"iterations":1,"scopeCount":128,"selectivityBps":10000,"topK":128},
+    {"id":"crossover-n12-s50","rows":30549,"queries":100,"warmups":20,"iterations":1,"scopeCount":128,"selectivityBps":5000,"topK":128},
+    {"id":"crossover-n12-s25","rows":30549,"queries":100,"warmups":20,"iterations":1,"scopeCount":128,"selectivityBps":2500,"topK":128},
+    {"id":"crossover-n12-s10","rows":30549,"queries":100,"warmups":20,"iterations":1,"scopeCount":128,"selectivityBps":1000,"topK":128},
+    {"id":"crossover-n12-s5","rows":30549,"queries":100,"warmups":20,"iterations":1,"scopeCount":128,"selectivityBps":500,"topK":128},
+    {"id":"crossover-n12-s1","rows":30549,"queries":100,"warmups":20,"iterations":1,"scopeCount":128,"selectivityBps":100,"topK":128},
+    {"id":"crossover-100k-s100","rows":100000,"queries":100,"warmups":20,"iterations":1,"scopeCount":256,"selectivityBps":10000,"topK":128},
+    {"id":"crossover-100k-s50","rows":100000,"queries":100,"warmups":20,"iterations":1,"scopeCount":256,"selectivityBps":5000,"topK":128},
+    {"id":"crossover-100k-s25","rows":100000,"queries":100,"warmups":20,"iterations":1,"scopeCount":256,"selectivityBps":2500,"topK":128},
+    {"id":"crossover-100k-s10","rows":100000,"queries":100,"warmups":20,"iterations":1,"scopeCount":256,"selectivityBps":1000,"topK":128},
+    {"id":"crossover-100k-s5","rows":100000,"queries":100,"warmups":20,"iterations":1,"scopeCount":256,"selectivityBps":500,"topK":128},
+    {"id":"crossover-100k-s1","rows":100000,"queries":100,"warmups":20,"iterations":1,"scopeCount":256,"selectivityBps":100,"topK":128}
+  ],
+  "dependencies": {
+    "sqliteVecStable": "0.1.9",
+    "sqliteVecAlpha": "0.1.10-alpha.4",
+    "lancedb": "0.33.0",
+    "rustMinimum": "1.91.0"
+  }
+}

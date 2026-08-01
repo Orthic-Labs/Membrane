@@ -105,7 +105,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
-name = "crypt-core"
+name = "memright-core"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -397,7 +397,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 name = "vector-bakeoff-common"
 version = "0.1.0"
 dependencies = [
- "crypt-core",
+ "memright-core",
  "serde",
  "serde_json",
  "sha2",
@@ -407,7 +407,7 @@ dependencies = [
 name = "vector-bakeoff-simd"
 version = "0.1.0"
 dependencies = [
- "crypt-core",
+ "memright-core",
  "half",
  "rayon",
  "serde_json",

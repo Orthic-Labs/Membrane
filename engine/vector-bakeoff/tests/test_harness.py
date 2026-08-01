@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -113,6 +114,72 @@ class HarnessTests(unittest.TestCase):
             report = harness.compare_receipts(*receipts)
             self.assertEqual(report["status"], "pass")
             self.assertEqual(report["exactArmChecks"], 1)
+
+    def test_simd_release_smoke_enforces_mac_parity_contracts(self):
+        if sys.platform != "darwin":
+            self.skipTest("macOS Accelerate contract")
+        root = HARNESS_PATH.parent
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "simd.json"
+            subprocess.run(
+                [
+                    "cargo",
+                    "run",
+                    "--manifest-path",
+                    str(root / "simd" / "Cargo.toml"),
+                    "--locked",
+                    "--release",
+                    "--",
+                    "--config",
+                    str(root / "config" / "round1-v1.json"),
+                    "--cell",
+                    "smoke",
+                    "--output",
+                    str(output),
+                ],
+                check=True,
+                cwd=root,
+                capture_output=True,
+                text=True,
+            )
+            result = json.loads(output.read_text(encoding="utf-8"))
+            arms = {arm["arm"]: arm for arm in result["arms"]}
+            self.assertEqual(
+                set(arms),
+                {
+                    "A",
+                    "B2",
+                    "B2-gather",
+                    "parallel-B2",
+                    "B3",
+                    "B3-SIMD",
+                    "parallel-B3",
+                    "B4-f16",
+                },
+            )
+            self.assertEqual(arms["B2"]["config"]["kernel"], "Accelerate cblas_sgemv")
+            self.assertIn("neon-sdot", arms["B3-SIMD"]["config"]["kernel"])
+            for control, b2, gather, parallel_b2, b3, simd, parallel_b3, f16 in zip(
+                arms["A"]["measurements"],
+                arms["B2"]["measurements"],
+                arms["B2-gather"]["measurements"],
+                arms["parallel-B2"]["measurements"],
+                arms["B3"]["measurements"],
+                arms["B3-SIMD"]["measurements"],
+                arms["parallel-B3"]["measurements"],
+                arms["B4-f16"]["measurements"],
+            ):
+                self.assertEqual(control["candidateIds"], b3["candidateIds"])
+                self.assertEqual(control["candidateIds"], simd["candidateIds"])
+                self.assertEqual(control["candidateIds"], parallel_b3["candidateIds"])
+                self.assertTrue(b2["targetPresent"])
+                self.assertTrue(gather["targetPresent"])
+                self.assertTrue(parallel_b2["targetPresent"])
+                self.assertTrue(f16["targetPresent"])
+                self.assertGreaterEqual(
+                    len(set(control["candidateIds"]) & set(f16["candidateIds"])),
+                    len(control["candidateIds"]) - 1,
+                )
 
 
 if __name__ == "__main__":
