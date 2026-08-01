@@ -113,10 +113,11 @@ measured upgrade rather than v1 requirement.
 
 ### Build status
 
-Core dispatcher & live recall wiring are implemented under
-`MEMRIGHT_VECTOR_DISPATCH_V2` (off by default). Enabling before store startup
-builds resident projection; disabling immediately restores A query routing.
-Mixed dimensions, absent projection or query mismatch fail closed to scalar A.
+Core dispatcher & live recall wiring are default-on. `MEMRIGHT_VECTOR_DISPATCH_V2`
+set to `0`/`false`/`off`/`legacy` is an immediate fallback that restores scalar-A
+`retrieve_hybrid` routing on next store open; unset or any other value keeps v2
+active and builds the resident projection at store startup. Mixed dimensions,
+absent projection or query mismatch fail closed to scalar A.
 
 Mac validation: 175 `crypt-core` tests, 269 `membrane-runtime` tests, core
 Clippy `-D warnings`, plus flag-on scoped & unscoped acceptance passed. Production

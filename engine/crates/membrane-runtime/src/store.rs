@@ -66,13 +66,17 @@ fn protected_priority_bonus_enabled() -> bool {
     )
 }
 
+/// Vector dispatch v2 (resident in-process f32 index) is default-on. Set
+/// `MEMRIGHT_VECTOR_DISPATCH_V2` to `0`/`false`/`off`/`legacy` for an immediate
+/// fallback to the legacy scalar-A `retrieve_hybrid` routing (restored on next
+/// store open). Any other value, or unset, keeps v2 active.
 fn vector_dispatch_v2_enabled() -> bool {
-    matches!(
+    !matches!(
         std::env::var("MEMRIGHT_VECTOR_DISPATCH_V2")
             .ok()
             .as_deref()
             .map(str::trim),
-        Some("1") | Some("true") | Some("on")
+        Some("0") | Some("false") | Some("off") | Some("legacy")
     )
 }
 
