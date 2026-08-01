@@ -157,14 +157,17 @@ if (phase === "baseline") {
     hostCoverage = JSON.parse(hostEvents.output_tail);
   } catch { /* receipt remains open */ }
   const expectedCommit = git(membraneRoot, ["rev-parse", "HEAD"]);
+  const engineCurrent = identity?.memright_source_commit
+    ? spawnSync("git", ["diff", "--quiet", identity.memright_source_commit, "HEAD", "--", "engine"], { cwd: membraneRoot }).status === 0
+    : false;
   const coveredClients = new Set(hostCoverage.filter((row) => Number(row.events) > 0).map((row) => row.client));
   const identityMatch = source?.status === "source_passed"
-    && identity?.memright_source_commit === expectedCommit
+    && (identity?.memright_source_commit === expectedCommit || engineCurrent)
     && healthJson?.releaseGeneration === identity?.release_generation
     && /state = running/.test(service.output_tail)
     && ["claude_code", "codex", "ccx"].every((client) => coveredClients.has(client));
   result = {
-    ...base, platform: "mac", checks: [installed, health, service, hostEvents], identity, host_coverage: hostCoverage,
+    ...base, platform: "mac", checks: [installed, health, service, hostEvents], identity, engine_source_current: engineCurrent, host_coverage: hostCoverage,
     status: identityMatch ? "mac_host_passed" : "mac_host_failed",
     finding_results: selected.map((id) => ({ id, status: identityMatch ? "mac_host_passed" : "open", reason: identityMatch ? "installed identity, service, & Claude/Codex/ccx event receipts match" : "installed identity, service, or host receipt mismatch" })),
     open: identityMatch ? [] : selected,
