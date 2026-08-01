@@ -4,9 +4,9 @@
 //!   B2 — Accelerate cblas_sgemv over a contiguous dequantized matrix, bounded top-N
 //!   B3 — quantized-RESIDENT bounded top-N (the arm the spec called "B"; the Round 1
 //!        control runner re-quantized every row per query, which pessimized it)
-//! macOS-only: B2 links the Accelerate framework.
+//! B2 uses Accelerate on macOS & AVX2/FMA when available on x86_64.
 
-use memright_core::{cosine, QuantizedVector};
+use crypt_core::{cosine, QuantizedVector};
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::time::Instant;
@@ -34,11 +34,51 @@ extern "C" {
     );
 }
 
-#[cfg(not(target_os = "macos"))]
-compile_error!("the SIMD lane's B2 arm links Accelerate; build on macOS only");
-
+#[cfg(target_os = "macos")]
 const CBLAS_ROW_MAJOR: i32 = 101;
+#[cfg(target_os = "macos")]
 const CBLAS_NO_TRANS: i32 = 111;
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn dot_avx2_fma(left: &[f32], right: &[f32]) -> f32 {
+    use std::arch::x86_64::*;
+
+    let chunks = left.len() / 8;
+    let mut sum = _mm256_setzero_ps();
+    for index in 0..chunks {
+        let offset = index * 8;
+        sum = _mm256_fmadd_ps(
+            _mm256_loadu_ps(left.as_ptr().add(offset)),
+            _mm256_loadu_ps(right.as_ptr().add(offset)),
+            sum,
+        );
+    }
+    let mut lanes = [0.0_f32; 8];
+    _mm256_storeu_ps(lanes.as_mut_ptr(), sum);
+    lanes.into_iter().sum::<f32>()
+        + left[chunks * 8..]
+            .iter()
+            .zip(&right[chunks * 8..])
+            .map(|(a, b)| a * b)
+            .sum::<f32>()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn full_scores(matrix: &[f32], query: &[f32], scores: &mut [f32]) {
+    for (row, score) in matrix.chunks_exact(query.len()).zip(scores) {
+        #[cfg(target_arch = "x86_64")]
+        let value = if std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma")
+        {
+            unsafe { dot_avx2_fma(row, query) }
+        } else {
+            row.iter().zip(query).map(|(a, b)| a * b).sum()
+        };
+        #[cfg(not(target_arch = "x86_64"))]
+        let value = row.iter().zip(query).map(|(a, b)| a * b).sum();
+        *score = value;
+    }
+}
 
 #[derive(Clone, Copy)]
 struct ScoredId {
@@ -73,7 +113,10 @@ fn bounded_top_n(scored: impl Iterator<Item = ScoredId>, limit: usize) -> Vec<Sc
             heap.pop();
         }
     }
-    let mut items = heap.into_iter().map(|Reverse(item)| item).collect::<Vec<_>>();
+    let mut items = heap
+        .into_iter()
+        .map(|Reverse(item)| item)
+        .collect::<Vec<_>>();
     items.sort_by(|a, b| b.score.total_cmp(&a.score).then_with(|| a.id.cmp(&b.id)));
     items
 }
@@ -138,10 +181,13 @@ fn main() -> Result<(), String> {
     arm_a.build_ns = build_a_ns;
     arm_a.config = serde_json::json!({"resident":"f32","selection":"full-sort"});
 
+    #[cfg(target_os = "macos")]
     let rows_i32 = i32::try_from(fixture.rows.len()).map_err(|_| "row count exceeds i32")?;
+    #[cfg(target_os = "macos")]
     let dim_i32 = i32::try_from(dimension).map_err(|_| "dimension exceeds i32")?;
     let mut scores = vec![0.0_f32; fixture.rows.len()];
     let mut arm_b2 = measure(&fixture, "B2", |query, limit| {
+        #[cfg(target_os = "macos")]
         unsafe {
             cblas_sgemv(
                 CBLAS_ROW_MAJOR,
@@ -158,6 +204,8 @@ fn main() -> Result<(), String> {
                 1,
             );
         }
+        #[cfg(not(target_os = "macos"))]
+        full_scores(&matrix, &query.embedding, &mut scores);
         let query_inv_norm = inv_norm(&query.embedding);
         let top = bounded_top_n(
             fixture
@@ -184,7 +232,7 @@ fn main() -> Result<(), String> {
     arm_b2.config = serde_json::json!({
         "resident":"f32-contiguous-matrix",
         "selection":"bounded-top-n",
-        "blas":"Accelerate cblas_sgemv",
+        "kernel": if cfg!(target_os = "macos") { "Accelerate cblas_sgemv" } else { "runtime AVX2/FMA or scalar Rust" },
         "scoresComputed":"all rows (filter after)"
     });
 
@@ -211,8 +259,7 @@ fn main() -> Result<(), String> {
     });
     arm_b3.backend = "optimized-rust-quantized-RESIDENT-bounded-topn".into();
     arm_b3.build_ns = build_b3_ns;
-    arm_b3.config =
-        serde_json::json!({"resident":"i8-per-vector-scale-prequantized","selection":"bounded-top-n"});
+    arm_b3.config = serde_json::json!({"resident":"i8-per-vector-scale-prequantized","selection":"bounded-top-n"});
 
     // Parity gates. B3 vs A: exact ID equality (same guarantee the control runner
     // enforced). B2 vs A: BLAS reassociates float adds, so near-ties may swap —

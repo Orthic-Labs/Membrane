@@ -1,4 +1,4 @@
-use memright_core::{cosine, QuantizedVector};
+use crypt_core::{cosine, QuantizedVector};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
