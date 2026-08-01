@@ -1,178 +1,84 @@
 <img src=".github/banner.svg" alt="Membrane — The smallest useful context, with a receipt." width="100%">
 
-**Membrane gives an AI agent the smallest useful set of current code, rules, decisions, and memory for each task — plus a receipt showing what entered context, what didn't, and why.**
+**Give an agent the whole repository, a stale plan, and every old lesson, and its attention fills before useful evidence arrives. Membrane sits between the agent and its sources, and returns the smallest useful set of current code, rules, decisions, and memory for each task — plus a receipt showing what entered context, what didn't, and why.**
 
 ![license](https://img.shields.io/badge/license-source--available-df6428?style=flat-square&labelColor=111318)
-![local-first](https://img.shields.io/badge/local--first-df6428?style=flat-square&labelColor=111318)
-![MCP](https://img.shields.io/badge/MCP-df6428?style=flat-square&labelColor=111318)
+![local-first](https://img.shields.io/badge/data%20plane-local--first-df6428?style=flat-square&labelColor=111318)
+![MCP](https://img.shields.io/badge/surface-MCP%20·%20hooks%20·%20CLI-df6428?style=flat-square&labelColor=111318)
 
-## What it is
+## Three motions
 
-When an agent gets a whole repository, a stale plan, and every old lesson, attention fills before
-useful evidence arrives. Membrane sits between an agent and the sources it might need: code, rules,
-decisions, and durable memory. It gathers evidence, checks scope and freshness, ranks candidates
-against one token budget, and returns a bounded context packet you can inspect.
-
-Membrane is the umbrella system. **Crypt** is its local durable-memory engine; `memright*` remains a
-literal compatibility binary family. Membrane is the public name — RightContext remains an
-internal/legacy alias on headers and telemetry tokens.
-
-## How it works
-
-Membrane handles three motions:
-
-- **Push** — shrink information already flowing through the agent workflow.
-- **Pull** — retrieve only what's relevant to the current task.
-- **Persist** — keep durable decisions, preferences, and lessons useful across sessions.
-
-A cross-cutting assembly plane decides what actually enters the prompt:
-
-```text
-task + allowed repository
-          │
-          ▼
- rules · live files · Git · Cortex · Audit · Architect · skills · Crypt
-          │
-          ▼
-   scope + freshness + authority + ranking + one token budget
-          │
-          ├── ContextPacket: evidence the agent receives
-          └── ContextReceipt: admitted, omitted, stale, timed out or denied
-```
-
-Prompt time runs six steps: scope the request to a repository and a `ScopeGrant`; federate
-independent providers (user/task anchors, live files, Git, rules, Cortex, Audit, Architect, skills,
-Crypt) in parallel, each returning the same typed `ContextCandidateSet`; establish freshness and
-authority — fresh executable proof and current source outrank graph snapshots, docs, memory, and
-history, and dirty files invalidate affected clean-snapshot evidence; admit under one token budget
-by deduplicating, resolving conflicts, ranking, and allocating, since providers never fill the
-prompt independently; return a `ContextPacket` plus a `ContextReceipt` that explains every
-selection, omission, conflict, timeout, and budget drop; and persist only qualified knowledge as a
-`KnowledgeEmission` — raw graphs, unresolved contradictions, secrets, and private chain-of-thought
-never become durable memory.
-
-## Eight shipped context layers
-
-| Layer | Flow | Mechanism |
-|---:|---|---|
-| 1 | agent reply → user | concise response policy |
-| 2 | command output → agent | `runc` keeps the useful head/tail, spills full output to cache |
-| 3 | file → agent | `prep` routes code to `skel`, prose to compression, tiny files unchanged |
-| 4 | orchestrator → agent | machine-minimal, structured agent directives |
-| 5 | agent artifact → future agents | structure-safe compression plus linked OKF bundles |
-| 6 | long session → usable session | harness compaction and context-pressure telemetry |
-| 7 | durable store → prompt | scoped hybrid recall from Crypt |
-| 8 | durable-store lifecycle | dedupe, normalization, pruning, curation |
-
-## Crypt: local memory engine
-
-Crypt is a Rust CLI and loopback service backed by SQLite. It stores durable knowledge locally and
-supports scoped hybrid retrieval: exact/scoped filtering, keyword signals, vector similarity with
-local embeddings, link/graph relationships between entries, freshness/provenance/feedback signals,
-and explicit token/result bounds.
-
-SQLite is the source of truth. Multi-machine sync uses immutable events through Git; each
-installation rebuilds or imports its own database. Context telemetry carries installation, client,
-session, turn, and trace identity, never prompt content.
-
-## Typed contracts
-
-| Contract | Purpose |
+| Motion | What it does |
 |---|---|
-| `ScopeGrant` | exact repository/scope a client may access |
-| `ContextCandidateSet` | provider-neutral batch of candidate evidence |
-| `ContextPacket` | bounded context admitted for the current task |
-| `ContextReceipt` | why each source/item was selected, omitted, or rejected |
-| `KnowledgeEmission` | verified output eligible for durable storage |
+| **Push** | Shrinks information already flowing through the agent workflow — command output, file reads, prose |
+| **Pull** | Retrieves only what is relevant to the current task, from every source that might hold it |
+| **Persist** | Keeps durable decisions, preferences, and lessons useful across sessions and machines |
 
-Provider database formats, parser details, and local absolute paths never leak into client
-adapters, so Claude, Codex, and other clients share one policy while providers evolve independently.
+All three share one context economy: compression, retrieval, curation, and assembly draw on the same budgets and the same telemetry, instead of each being a separate bolt-on.
 
-## Interfaces
+## How a packet is assembled
 
-Crypt exposes local CLI and loopback HTTP surfaces for memory CRUD/recall, federation, freshness,
-context planning, feedback, telemetry, and curation. Workspace shims:
-
-```sh
-memright recall ...
-memright federate ...
-memright plan-context ...
-memright curate ...
-
-runc ...
-skel ...
-compress ...
+```mermaid
+flowchart LR
+    T[task + repository] --> SG[ScopeGrant]
+    SG --> F[federation fan-out<br/>9 parallel providers:<br/>Cortex · rules · live files · Git<br/>audit · architect · skills · memory · anchors]
+    F --> FA[freshness / authority<br/>fresh proof outranks snapshots,<br/>docs, memory, history]
+    FA --> AP[admission planner<br/>reserved lanes, then global fill<br/>under one token budget]
+    AP --> CP[ContextPacket<br/>what the agent gets]
+    AP --> CR[ContextReceipt<br/>what it didn't get, and why]
+    CP --> KE[KnowledgeEmission<br/>qualified output persisted<br/>as durable memory]
 ```
 
-Prompt hooks connect supported agent clients. Engine state, memory mirror, receipts, and telemetry
-stay local or repository-controlled.
+Every source keeps its own type, authority, and freshness — the code graph is not flattened into the same blob as a six-week-old decision note. Conflicts are resolved by rank, not by whichever chunk embedded closest.
 
 ## What makes it different
 
-- **One context economy** — compression, retrieval, curation, and assembly share budgets/telemetry.
-- **Federation without flattening** — code graph, rules, live files, findings, decisions, and
-  memories keep their own type, authority, and freshness.
-- **Receipts for absence** — the system records what it skipped, timed out on, couldn't access, or
-  dropped.
-- **Freshness over similarity** — stale but semantically similar context can't silently beat current
-  code.
-- **Root confinement** — access stays repository-bound even when the service can see a wider
-  workspace.
-- **Local-first data plane** — SQLite stores, local embeddings, a local loopback service, and Git
-  event sync keep provider credentials and content outside a hosted context vendor.
-- **Replaceable producers** — Cortex, memory, rules, or future providers can change without changing
-  the client packet contract.
+- **Receipts for absence.** The receipt records what was skipped, timed out, inaccessible, or dropped for budget — not just what was returned. "Why didn't the agent know X" becomes a lookup instead of an argument.
+- **Freshness beats similarity.** A stale but semantically-similar candidate cannot silently outrank current code.
+- **Root confinement.** Access stays repository-bound even though the service can see a wider workspace.
+- **Local-first data plane.** SQLite stores, local embeddings, a loopback service, Git-based event sync. No hosted context vendor sees credentials or content.
+- **Replaceable producers.** Cortex, memory, rules, or a future provider can change without changing the client packet contract.
 
-## Trust, privacy and failure model
+The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `ContextPacket`, `ContextReceipt`, `KnowledgeEmission` — so provider database formats, parsers, and local paths never leak into client adapters. Claude, Codex, and any MCP client share one policy.
 
-- Repository text, retrieved docs, and memories are data, never instructions.
-- Secret scanning and redaction run before any eligible durable output.
-- Telemetry is content-free: hashes, sizes, timings, outcomes, and identities, not prompts or
-  compacted summaries.
-- Provider failure is lane-local where safe; stale, corrupt, scope-invalid, or generation-mismatched
-  evidence fails closed.
-- Current source wins over conflicting memory; conflicts queue for curation.
-- Full files remain required for verify/edit work — lossy skeletons or compression are orientation
-  tools, not edit evidence.
+## Measured, not vibes
 
-## Current scope
+| Figure | Value |
+|---|---|
+| Warm `/federate` latency (resident gateway, 20 runs) | **p50 81.8 ms · p95 108.8 ms** (was 434–506 ms + ~150 ms spawn per request) |
+| Admission budget | 4,096 tokens, with reserved lanes: memory 800 · skills 300, then global fill |
+| Packet size cap | 30,000 code points, independent 10,000-char rendered-door cap |
+| Federation deadlines | Claude 7 s · Codex 6.25 s inside a 9 s internal deadline |
 
-Live: Rust Crypt, SQLite memory, scoped hybrid recall, cross-machine event replication, compaction
-tools, resident provider federation, privacy/scope enforcement, freshness, typed
-candidates/packets/receipts, telemetry.
+## Inside
 
-Not yet shipped:
+- **Crypt** — the durable-memory engine: a Rust CLI plus loopback HTTP service over SQLite, with a quantized vector store and hybrid retriever. Its legacy name is **MemRight**, and the installed `memright*` binaries remain the compatibility facade.
+- **MCP server** — six tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_feedback`), serving both the 2025-03-26 and 2026-07-28 MCP discovery eras.
+- **Federation gateway** — a supervised resident worker behind `POST /federate` that fans out to the providers in parallel; HTTP-first with automatic CLI fallback.
+- **Prompt hooks** — per-host recall planners (Claude and Codex) that route candidates through admission on every prompt.
 
-- provider coverage varies by repository and installed tools;
-- model-provider conversation history is still compacted by each host, not Membrane;
-- raw provider scores are lane-local — reserved memory/skill lanes are the cross-provider policy;
-- some unified-planner wiring remains host-specific;
-- interactive repository visualization belongs to Cortex, not Membrane;
-- structured cognition/reasoning layers are design targets, not shipped context layers.
+## Running it
 
-## Read next
+```sh
+pnpm install        # Node >= 20, pnpm 11
+pnpm test           # MCP server + client + install-binding suites
 
-- [`docs/MEMBRANE-STATE.md`](docs/MEMBRANE-STATE.md) — current live state and backlog
-- [`docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md`](docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md) — boundaries and contracts
-- [`engine/README.md`](engine/README.md) — Crypt engine (`memright*` compatibility crates/binaries)
+cargo build --workspace                          # Crypt engine
+cargo test --workspace --features fastembed      # with real ONNX embeddings
+```
 
-<!-- blueprint:docs:start -->
-## Repository truth docs
-- [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
-- [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
-<!-- blueprint:docs:end -->
+Day-to-day surfaces are the installed shims: `memright recall`, `memright federate`, `memright plan-context`, `memright curate`, plus the compression trio `runc` (command output), `skel` (file skeletonization), and `compress` (prose).
+
+## Recent
+
+- **Vector backend bake-off (2026-08)** — reproducible Rust benchmark across Mac/Windows SIMD lanes; decision: keep vectors in MemRight, move to resident in-process f32 dispatch.
+- **Resident federation gateway (2026-07)** — per-request spawns replaced by a supervised resident worker; warm-path latency dropped ~5×.
+- **MCP dual-era stdio (2026-07)** — exact `@modelcontextprotocol/server@2.0.0`, enforced I/O schemas, structured tool results, W3C trace propagation through `/federate`, caller authorization bound to exact repo/root/scope.
+- **Honesty pass (2026-08)** — reserved lanes documented as the explicit cross-provider score policy; write paths now refuse hand-typed scopes that would fork the corpus.
 
 ## Repository posture
 
-This checkout is an internal mirror / workspace-coupled control plane for Adrian's studio
-machines, not a standalone public product. Runtime wiring (hooks, Crypt loopback, federation
-providers, install binding) depends on the parent workspace. Membrane is the public name;
-RightContext remains an internal/legacy alias on headers and telemetry tokens.
-
-## License
-
-Source-available proprietary software for internal use and evaluation; redistribution,
-repackaging, and competing use are prohibited. See [LICENSE](LICENSE).
+This checkout is an internal mirror of a workspace-coupled control plane for the author's studio machines — not a standalone public product. Runtime wiring (hooks, Crypt loopback, federation providers, install binding) depends on the parent workspace. Naming: **Membrane** is the public name; RightContext survives as an internal alias in headers and telemetry tokens. Conversation-history compaction still belongs to each host, and the structured cognition layers (`plan` / `think` / `verify`) are design targets, not shipped code.
 
 ---
 
