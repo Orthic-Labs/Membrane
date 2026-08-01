@@ -3,7 +3,7 @@
 **Date:** 2026-08-01 · **Status:** Round 1 complete on both hosts; Round 2 (tuned shortlist) pending.
 **Benchmark commit:** `2f7e4c4f70d31462815155c3cd84717809db1e8a` · input digest `574943145f3502ca…` · config SHA `ad34773d19459744…` (identical on both hosts; per-(cell,runner) fixture SHA-256 verified equal across hosts, 24/24).
 **Hosts:** macOS arm64 (Apple Silicon, Darwin 25.5.0, rustc 1.96.0) · Windows amd64 (Bogus-Dell, Windows 10, rustc 1.96.1).
-**Raw data:** `round1/mac/`, `round1/windows/`, `round1/lane-simd-mac/` beside this file (per-query timings + candidate IDs + receipts). Harness: `engine/vector-bakeoff/` at the commit above.
+**Raw data:** `round1/mac/`, `round1/windows/`, `round1/lane-simd-mac/`, plus `engine/vector-bakeoff/lane-simd-windows/` (per-query timings + candidate IDs + receipts). Harness: `engine/vector-bakeoff/` at the commit above.
 
 ## What was measured
 
@@ -99,7 +99,28 @@ The Round 1 arm B implementation re-quantizes every row on every query (`engine/
 | 100K × 100% | 58.92 | 45.43 | 50.97 |
 | 100K × 10% | 6.87 | 11.77 | 6.97 |
 
-B2 scores all rows then filters, so it wins at high selectivity (−75% p95 vs A at N12×100%) and loses at 10% selectivity, where B3 wins. A Windows equivalent lane (no Accelerate; BLAS/SIMD alternative) has not run yet and is required before cross-host claims about the corrected arms.
+B2 scores all rows then filters, so it wins at high selectivity (−75% p95 vs A at N12×100%) and loses at 10% selectivity, where B3 wins.
+
+### Windows x86-64 corrected + optimization lane
+
+Windows ran runtime-gated AVX2/FMA, Rayon, eligible-row gather, AVX2 exact-i8,
+and AVX-VNNI exact-i8 variants under `lane-simd-windows/`. All six Round 1 fixture
+SHA-256 values match Mac. Every target was present; f32 variants had 128/128 overlap;
+B3 variants had exact ordered IDs after shared exact reranking.
+
+| Cell | A p95 | B2 AVX2 | B3 scalar-i8 | parallel-B3 | parallel-B2 | B3-SIMD | B2-gather |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| N0 × 100% | 0.79 | 0.34 | 1.28 | 1.19 | 0.24 | 1.24 | **0.21** |
+| N0 × 10% | 0.15 | 0.30 | 0.17 | 0.36 | 0.19 | 0.12 | **0.03** |
+| N12 × 100% | 17.67 | 8.68 | 8.41 | 6.85 | **3.02** | 7.14 | 4.65 |
+| N12 × 10% | 1.31 | 9.35 | 1.70 | 2.42 | 2.33 | 2.17 | **1.00** |
+| 100K × 100% | 50.76 | 23.54 | 19.59 | 12.93 | **9.50** | 13.26 | 18.47 |
+| 100K × 10% | 5.21 | 16.61 | 6.88 | 4.57 | 6.66 | 5.23 | **2.19** |
+
+Windows crossover switches between measured 25% & 50% selectivity cells at both N12
+and 100K. Recommended host dispatch: `parallel-B2` at >=50%; `B2-gather` below 50%.
+At N12×100%, parallel-B2 improves p95 82.9% vs A; selected dispatch has no N0
+regression. Full 12-cell crossover table & raw per-query timings are in Windows NOTES/bundles.
 
 ## Reading (our constraints; measurements above stand on their own)
 

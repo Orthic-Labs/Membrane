@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -38,6 +39,49 @@ def bundle(runner="control", cell="smoke", fixture="f" * 64):
 
 
 class HarnessTests(unittest.TestCase):
+    def test_simd_runner_smoke_emits_full_parity_checked_matrix(self):
+        runner = HARNESS_PATH.parent / "simd" / "Cargo.toml"
+        config = HARNESS_PATH.parent / "config" / "round1-v1.json"
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "simd.json"
+            completed = subprocess.run(
+                [
+                    "cargo",
+                    "run",
+                    "--manifest-path",
+                    str(runner),
+                    "--locked",
+                    "--release",
+                    "--",
+                    "--config",
+                    str(config),
+                    "--cell",
+                    "smoke",
+                    "--output",
+                    str(output),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            bundle = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(
+                [arm["arm"] for arm in bundle["arms"]],
+                ["A", "B2", "B3", "parallel-B3", "parallel-B2", "B3-SIMD", "B2-gather"],
+            )
+            for arm in bundle["arms"]:
+                self.assertTrue(arm["exact"])
+            if sys.platform == "win32":
+                self.assertEqual(
+                    bundle["arms"][1]["config"]["kernel"],
+                    "rust-avx2-fma-intrinsics",
+                )
+                self.assertEqual(
+                    bundle["arms"][1]["backend"],
+                    "rust-avx2-fma-full-scores-bounded-topn",
+                )
+
     def test_input_digest_detects_byte_drift(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
