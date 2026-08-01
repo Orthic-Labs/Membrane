@@ -56,6 +56,7 @@ await writeFile(registry, JSON.stringify({
   schema_version: 1,
   bindings: { [enrolledCanonicalRoot]: { repository_id: "repo-a", scope_id: "scope-a", provider_config: {}, grant_policy: { level: "write-proposed" } } },
 }), "utf8");
+const advisoryEnv = { MEMBRANE_PROJECT_REGISTRY: registry, MEMBRANE_DURABILITY_MODE: "advisory" };
 
 const legacySession = await rpc([
   { jsonrpc: "2.0", id: 30, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "legacy-session-test", version: "1.0.0" } } },
@@ -65,9 +66,8 @@ const legacySession = await rpc([
   },
 ], { MEMBRANE_PROJECT_REGISTRY: registry });
 assert.match(legacySession[0].result.instructions, /federated context/i);
-assert.equal(legacySession[1].result.isError, false);
-assert.ok(legacySession[1].result.structuredContent, "initialized legacy call includes structuredContent");
-assert.equal(typeof legacySession[1].result.content?.[0]?.text, "string", "initialized legacy call retains text fallback");
+assert.equal(legacySession[1].result.isError, true);
+assert.match(toolError(legacySession[1]), /durable feedback write failed/i);
 
 const retiredAlias = await rpc([{
   jsonrpc: "2.0", id: 32, method: "tools/call",
@@ -107,7 +107,7 @@ assert.match(toolError(proposal[0]), /(?:bounded|too large|limit)/i);
 const feedback = await rpc([{
   jsonrpc: "2.0", id: 7, method: "tools/call",
   params: { name: "membrane_feedback", arguments: { repository: enrolledRoot, caller: { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" }, receiptId: "receipt-1", outcome: "used" } },
-}], { MEMBRANE_PROJECT_REGISTRY: registry });
+}], advisoryEnv);
 const feedbackReceipt = JSON.parse(feedback[0].result.content[0].text);
 assert.equal(feedbackReceipt.status, "accepted_advisory");
 assert.equal(feedbackReceipt.durable, false);
@@ -130,7 +130,7 @@ const virtualCaller = { root: enrolledRoot, repositoryId: "repo-a", scopeId: "op
 const virtualFeedback = await rpc([{
   jsonrpc: "2.0", id: 8, method: "tools/call",
   params: { name: "membrane_feedback", arguments: { repository: enrolledRoot, caller: virtualCaller, receiptId: "receipt-virtual", outcome: "used" } },
-}], { MEMBRANE_PROJECT_REGISTRY: registry });
+}], advisoryEnv);
 assert.equal(JSON.parse(virtualFeedback[0].result.content[0].text).status, "accepted_advisory");
 const crossTenant = await rpc([{
   jsonrpc: "2.0", id: 9, method: "tools/call",
@@ -197,7 +197,7 @@ const modern = await rpc([
     jsonrpc: "2.0", id: 29, method: "tools/call",
     params: { name: "membrane_feedback", arguments: { repository: enrolledRoot, caller: virtualCaller, receiptId: "receipt-value-257", outcome: "used" }, _meta: { ...modernMeta, traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01", tracestate: `vendor=${"x".repeat(257)}`, baggage: "tenant=foo=bar" } },
   },
-], { MEMBRANE_PROJECT_REGISTRY: registry });
+], advisoryEnv);
 const modernById = new Map(modern.map((row) => [row.id, row]));
 assert.deepEqual(modernById.get(10).result.supportedVersions, ["2026-07-28"]);
 for (const tool of modernById.get(11).result.tools) {

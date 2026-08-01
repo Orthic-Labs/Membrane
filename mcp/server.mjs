@@ -2,6 +2,7 @@
 // Public Membrane MCP adapter. It deliberately exposes no raw memory CRUD surface.
 
 import { spawn } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
@@ -60,7 +61,7 @@ const TOOL_OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-const protocol = `# Membrane MCP v1\n\nmembrane_context routes through the loopback /federate endpoint, never raw recall. Knowledge and feedback use the durable MemRight path with LifecycleReceiptV1 readback when the engine is available; engine-unavailable paths return explicit quarantined_ephemeral or accepted_advisory status and durable:false. Checkpoints are A0 session orientation state. Source reads require a hash-bound DocReadV1 reference.`;
+const protocol = `# Membrane MCP v1\n\nmembrane_context routes through the loopback /federate endpoint, never raw recall. Knowledge and feedback require durable MemRight persistence with LifecycleReceiptV1 readback; unavailable persistence is a tool error unless explicit advisory policy is selected. Checkpoints are A0 session orientation state. Source reads require a hash-bound DocReadV1 reference.`;
 
 function text(value) {
   if (typeof value !== "string") return value;
@@ -85,7 +86,22 @@ function lifecycleReceipt(operation, status, durableId, eventId, readback) {
     recorded_at: new Date().toISOString(),
   };
 }
+function feedbackReadback(dbPath, eventId, candidateId, outcome) {
+  const db = new DatabaseSync(dbPath, { readOnly: true });
+  try {
+    const canonicalTrace = `trace-${createHash("sha256").update(eventId).digest("hex").slice(0, 32)}`;
+    const row = db.prepare("SELECT trace_id, candidate_id, content_sha256, outcome, verified FROM context_feedback WHERE trace_id = ? AND candidate_id = ?").get(canonicalTrace, candidateId);
+    const expectedDigest = digest(candidateId).slice("sha256:".length);
+    if (!row || row.trace_id !== canonicalTrace || row.candidate_id !== candidateId || row.content_sha256 !== expectedDigest || row.outcome !== outcome || row.verified !== 1) {
+      throw new Error(`durable feedback independent readback mismatch: ${JSON.stringify({ dbPath, row, eventId, canonicalTrace, candidateId, expectedDigest, outcome })}`);
+    }
+    return row;
+  } finally {
+    db.close();
+  }
+}
 function callerLevel(binding) { return binding.grant_policy?.level || "read-only"; }
+function advisoryPolicy() { return process.env.MEMBRANE_DURABILITY_MODE === "advisory"; }
 function callerDescriptor(caller) { return caller.scopeDescriptor || { kind: "filesystem", path: caller.scopeId }; }
 function stableDescriptor(value) {
   if (Array.isArray(value)) return value.map(stableDescriptor);
@@ -150,18 +166,18 @@ async function durableProposal(binding, emission) {
   const scope = String(emission.scope ?? "proposed").trim() || "proposed";
   const env = await bindingEnv(binding);
   const binary = process.env.MEMRIGHT_BIN || "memright";
-  const out = await run(binary, [
-    "put", name, "--scope", scope, "--tier", "Working", "--artifact-family", "knowledge",
+  const out = await run(binary, memrightArgs([
+    "put", name, "--scope", scope, "--tier", "Working", "--artifact-family", "memory",
     "--producer", "membrane", "--record-type", "knowledge_emission", "--authority", "A0",
     "--influence-class", "data_only", "--session", binding.scope_id,
-  ], `${content}\n`, env);
-  if (out.code !== 0) return null;
+  ], await installationBindingFor(binding)), `${content}\n`, env);
+  if (out.code !== 0) throw new Error(`durable proposal put failed: ${out.stderr.trim() || out.stdout.trim()}`);
   let put;
-  try { put = JSON.parse(out.stdout.trim()); } catch { return null; }
+  try { put = JSON.parse(out.stdout.trim()); } catch { throw new Error("durable proposal put returned invalid JSON"); }
   const durableId = String(put.put ?? put.id ?? "").trim();
-  if (!durableId) return null;
-  const readback = await run(binary, ["get", durableId], "", env);
-  if (readback.code !== 0 || readback.stdout.trim() !== content) return null;
+  if (!durableId) throw new Error("durable proposal put returned no id");
+  const readback = await run(binary, memrightArgs(["get", durableId], await installationBindingFor(binding)), "", env);
+  if (readback.code !== 0 || readback.stdout.trim() !== content) throw new Error(`durable proposal readback mismatch: ${readback.stderr.trim() || readback.stdout.trim()}`);
   const eventId = receiptId("event", { operation: "knowledge_propose", durableId });
   return {
     status: "persisted",
@@ -177,22 +193,24 @@ async function durableFeedback(binding, args) {
   const eventId = receiptId("event", { operation: "feedback", feedbackId });
   const env = await bindingEnv(binding);
   const binary = process.env.MEMRIGHT_BIN || "memright";
-  const out = await run(binary, [
+  const out = await run(binary, memrightArgs([
     "feedback", "--trace", eventId, "--candidate", args.receiptId,
     "--sha", digest(args.receiptId).slice("sha256:".length), "--outcome", args.outcome,
-    "--source", "advisory", "--scope", binding.scope_id,
-  ], "", env);
-  if (out.code !== 0) return null;
+    "--source", "observed_action", "--scope", binding.scope_id,
+  ], await installationBindingFor(binding)), "", env);
+  if (out.code !== 0) throw new Error(`durable feedback write failed: ${out.stderr.trim() || out.stdout.trim()}`);
   let response;
-  try { response = JSON.parse(out.stdout.trim()); } catch { return null; }
-  if (response.ok !== true || response.verified !== true) return null;
+  try { response = JSON.parse(out.stdout.trim()); } catch { throw new Error("durable feedback returned invalid JSON"); }
+  if (response.ok !== true || response.verified !== true) throw new Error("durable feedback was not independently verified");
+  const installation = await installationBindingFor(binding);
+  const readback = feedbackReadback(installation.db, eventId, args.receiptId, args.outcome);
   return {
     status: "persisted",
     durable: true,
     feedbackId,
     receiptId: args.receiptId,
     outcome: args.outcome,
-    lifecycleReceipt: lifecycleReceipt("feedback", "persisted", feedbackId, eventId, response),
+    lifecycleReceipt: lifecycleReceipt("feedback", "persisted", feedbackId, eventId, readback),
     provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
     feedbackEvent: feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome }),
     feedbackPolicy: feedbackPolicy(feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome })),
@@ -232,36 +250,24 @@ async function callTool(name, args, trace = {}) {
     const binding = await authorize(args, "proposal");
     bounded(args.emission, MAX_PROPOSAL_BYTES, "emission");
     takeRate(binding, "proposal");
-    const proposalId = receiptId("proposal", { scope: binding.scope_id, emission: args.emission });
-    const durable = await durableProposal(binding, args.emission).catch(() => null);
-    if (durable) return durable;
-    return text({
-      status: "quarantined_ephemeral",
-      durable: false,
-      proposalId,
-      lifecycleReceipt: lifecycleReceipt("knowledge_propose", "quarantined_ephemeral", proposalId, receiptId("event", { operation: "knowledge_propose", proposalId }), args.emission),
-      provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
-    });
+    try { return await durableProposal(binding, args.emission); }
+    catch (error) {
+      if (!advisoryPolicy()) throw error;
+      const proposalId = receiptId("proposal", { scope: binding.scope_id, emission: args.emission });
+      return text({ status: "quarantined_ephemeral", durable: false, proposalId, lifecycleReceipt: lifecycleReceipt("knowledge_propose", "quarantined_ephemeral", proposalId, receiptId("event", { operation: "knowledge_propose", proposalId }), args.emission), provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) } });
+    }
   }
   if (name === "membrane_feedback") {
     const binding = await authorize(args, "feedback");
     if (typeof args.receiptId !== "string" || !args.receiptId.trim() || !["used", "ignored", "contradicted"].includes(args.outcome)) throw new Error("invalid_feedback");
     if (byteLength({ receiptId: args.receiptId, outcome: args.outcome }) > MAX_FEEDBACK_BYTES) throw new Error("feedback exceeds 2048 bytes");
     takeRate(binding, "feedback");
-    const feedbackId = receiptId("feedback", { scope: binding.scope_id, receiptId: args.receiptId, outcome: args.outcome });
-    const durable = await durableFeedback(binding, args).catch(() => null);
-    if (durable) return durable;
-    return text({
-      status: "accepted_advisory",
-      durable: false,
-      feedbackId,
-      receiptId: args.receiptId,
-      outcome: args.outcome,
-      lifecycleReceipt: lifecycleReceipt("feedback", "accepted_advisory", feedbackId, receiptId("event", { operation: "feedback", feedbackId }), { receiptId: args.receiptId, outcome: args.outcome }),
-      feedbackEvent: feedbackEvent({ eventId: receiptId("event", { operation: "feedback", feedbackId }), receiptId: args.receiptId, outcome: args.outcome }),
-      feedbackPolicy: feedbackPolicy(feedbackEvent({ eventId: receiptId("event", { operation: "feedback", feedbackId }), receiptId: args.receiptId, outcome: args.outcome })),
-      provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
-    });
+    try { return await durableFeedback(binding, args); }
+    catch (error) {
+      if (!advisoryPolicy()) throw error;
+      const feedbackId = receiptId("feedback", { scope: binding.scope_id, receiptId: args.receiptId, outcome: args.outcome });
+      return text({ status: "accepted_advisory", durable: false, feedbackId, receiptId: args.receiptId, outcome: args.outcome, lifecycleReceipt: lifecycleReceipt("feedback", "accepted_advisory", feedbackId, receiptId("event", { operation: "feedback", feedbackId }), { receiptId: args.receiptId, outcome: args.outcome }), feedbackEvent: feedbackEvent({ eventId: receiptId("event", { operation: "feedback", feedbackId }), receiptId: args.receiptId, outcome: args.outcome }), feedbackPolicy: feedbackPolicy(feedbackEvent({ eventId: receiptId("event", { operation: "feedback", feedbackId }), receiptId: args.receiptId, outcome: args.outcome })), provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) } });
+    }
   }
   throw new Error("unknown tool");
 }
