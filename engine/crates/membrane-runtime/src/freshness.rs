@@ -151,6 +151,69 @@ pub struct FreshnessVerdict {
     pub reasons: Vec<String>,
 }
 
+/// Hash-bound barrier proof consumed by Membrane adapters. The working-tree
+/// graph remains session-neutral; overlay identity is carried only here.
+pub fn source_barrier_receipt(
+    verdict: &FreshnessVerdict,
+    repository_id: &str,
+    session_id: &str,
+    worktree_path: &str,
+) -> serde_json::Value {
+    let generation_id = contract_digest(
+        verdict
+        .blueprint_generation
+        .clone()
+        .unwrap_or_else(|| digest_bytes(verdict.snapshot_id.as_bytes())),
+    );
+    let manifest_digest = contract_digest(
+        verdict
+        .manifest_digest
+        .clone()
+        .unwrap_or_else(|| digest_bytes(verdict.snapshot_id.as_bytes())),
+    );
+    let source_observation_digest = digest_bytes(
+        serde_json::json!({
+            "head": verdict.head_commit,
+            "base": verdict.base_commit,
+            "blueprint_base": verdict.blueprint_base_commit,
+            "generation": generation_id,
+        })
+        .to_string()
+        .as_bytes(),
+    );
+    let status = match verdict.graph_state {
+        GraphState::Clean | GraphState::DirtyOverlay => "current",
+        GraphState::StaleSnapshot => "stale",
+        GraphState::ConcurrentUpdate => "drifted",
+        GraphState::PartialReindex => "degraded",
+        GraphState::MissingSnapshot | GraphState::Indeterminate => "blocked",
+    };
+    serde_json::json!({
+        "schema": "orthic.source-barrier-receipt.v1",
+        "repository_id": repository_id,
+        "barrier_clock": 0,
+        "applied_graph_clock": 0,
+        "event_gap": verdict.reasons.iter().any(|reason| reason == "event_gap"),
+        "generation_id": generation_id,
+        "manifest_digest": manifest_digest,
+        "source_observation_digest": source_observation_digest,
+        "dirty_overlay_digest": contract_digest(verdict.overlay_digest.clone()),
+        "overlay_identity": { "session_id": session_id, "worktree_path": worktree_path },
+        "status": status,
+    })
+}
+
+fn contract_digest(value: String) -> String {
+    if value.len() == 71
+        && value.starts_with("sha256:")
+        && value[7..].bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
+        value
+    } else {
+        digest_bytes(value.as_bytes())
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct FreshnessCoordinator {
     state: Arc<Mutex<HashMap<PathBuf, FreshnessCacheEntry>>>,
@@ -1447,5 +1510,19 @@ mod tests {
         ];
 
         assert!(overlay_within_byte_limit(directory.path(), &paths).unwrap());
+    }
+
+    #[test]
+    fn source_barrier_receipt_normalizes_provider_generation_digest() {
+        let mut verdict = refresh_pending_verdict();
+        verdict.graph_state = GraphState::Clean;
+        verdict.blueprint_generation = Some("xxh128:provider-generation".to_string());
+        verdict.manifest_digest = Some("manifest-generation".to_string());
+        let receipt = source_barrier_receipt(&verdict, "repo-a", "session-a", "/workspace");
+        for field in ["generation_id", "manifest_digest", "source_observation_digest", "dirty_overlay_digest"] {
+            assert!(receipt[field].as_str().is_some_and(|value| value.starts_with("sha256:") && value.len() == 71));
+        }
+        assert_eq!(receipt["overlay_identity"]["session_id"], "session-a");
+        assert_eq!(receipt["overlay_identity"]["worktree_path"], "/workspace");
     }
 }

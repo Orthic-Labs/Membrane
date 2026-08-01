@@ -1730,14 +1730,14 @@ pub fn backout_v14_to_v13<P: AsRef<Path>>(path: P) -> rusqlite::Result<usize> {
 
 /// A cloneable handle to the memory database; clones share one connection via the inner mutex.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum MemDbProbe {
+pub enum MemDbProbe {
     Ok,
     Busy,
     Error,
 }
 
 impl MemDbProbe {
-    pub(crate) fn status(self) -> &'static str {
+    pub fn status(self) -> &'static str {
         match self {
             Self::Ok => "ok",
             Self::Busy => "busy",
@@ -1792,7 +1792,7 @@ impl MemDb {
 
     /// Probe the live SQLite connection without waiting behind another request. The sentinel query
     /// verifies both connection execution and the required primary table; an empty table is healthy.
-    pub(crate) fn health_probe(&self) -> MemDbProbe {
+    pub fn health_probe(&self) -> MemDbProbe {
         let (conn, recovered_poison) = match self.conn.try_lock() {
             Ok(conn) => (conn, false),
             Err(std::sync::TryLockError::WouldBlock) => return MemDbProbe::Busy,
@@ -1953,7 +1953,7 @@ impl MemDb {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn log_recall_with_replay_to_identity(
+    pub fn log_recall_with_replay_to_identity(
         &self,
         sink: RecallLogSink,
         ts: &str,

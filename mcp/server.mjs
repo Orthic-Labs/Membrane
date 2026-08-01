@@ -8,6 +8,8 @@ import { createHash } from "node:crypto";
 import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { bindingFor } from "./project-registry.mjs";
+import { installationBindingFor, installationEnv } from "./installation-binding.mjs";
+import { feedbackEvent, feedbackPolicy } from "./feedback-loop.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -29,7 +31,7 @@ const CALLER_SCHEMA = {
   },
   additionalProperties: false,
 };
-const TOOLS = [
+const TOOL_DEFINITIONS = [
   { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" } } } },
   { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
@@ -37,6 +39,7 @@ const TOOLS = [
   { name: "membrane_checkpoint_load", description: "Load an unexpired A0 session checkpoint for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "id"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, id: { type: "string" }, asOfMs: { type: "integer", minimum: 0 } } } },
   { name: "membrane_feedback", description: "Record bounded receipt-bound outcome feedback for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "receiptId", "outcome"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, receiptId: { type: "string" }, outcome: { type: "string", enum: ["used", "ignored", "contradicted"] } } } },
 ];
+const TOOLS = TOOL_DEFINITIONS;
 
 const TRACE_FIELDS = {
   traceparent: { type: "string", maxLength: 128 },
@@ -57,7 +60,7 @@ const TOOL_OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-const protocol = `# Membrane MCP v1\n\nmembrane_context routes through the loopback /federate endpoint, never raw recall. Knowledge is proposed, never directly put. Checkpoints are A0 session orientation state. Source reads require a hash-bound DocReadV1 reference.`;
+const protocol = `# Membrane MCP v1\n\nmembrane_context routes through the loopback /federate endpoint, never raw recall. Knowledge and feedback use the durable MemRight path with LifecycleReceiptV1 readback when the engine is available; engine-unavailable paths return explicit quarantined_ephemeral or accepted_advisory status and durable:false. Checkpoints are A0 session orientation state. Source reads require a hash-bound DocReadV1 reference.`;
 
 function text(value) {
   if (typeof value !== "string") return value;
@@ -70,6 +73,18 @@ function bounded(value, limit, label) {
   if (byteLength(value) > limit) throw new Error(`${label} exceeds ${limit} bytes`);
 }
 function receiptId(prefix, value) { return `${prefix}-${createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 24)}`; }
+function digest(value) { return `sha256:${createHash("sha256").update(typeof value === "string" ? value : JSON.stringify(value)).digest("hex")}`; }
+function lifecycleReceipt(operation, status, durableId, eventId, readback) {
+  return {
+    schema: "orthic.lifecycle-receipt.v1",
+    operation,
+    status,
+    durable_id: durableId,
+    event_id: eventId,
+    readback_digest: digest(readback),
+    recorded_at: new Date().toISOString(),
+  };
+}
 function callerLevel(binding) { return binding.grant_policy?.level || "read-only"; }
 function callerDescriptor(caller) { return caller.scopeDescriptor || { kind: "filesystem", path: caller.scopeId }; }
 function stableDescriptor(value) {
@@ -119,31 +134,98 @@ function run(command, args, input, env = process.env) {
   });
 }
 
-function memrightArgs(args) { return ["--db", process.env.MEMRIGHT_DB || "", ...args].filter((v, i) => !(i === 1 && !v)); }
+function memrightArgs(args, bindingRecord) {
+  const db = bindingRecord?.db || process.env.MEMRIGHT_DB || "";
+  return ["--db", db, ...args].filter((v, i) => !(i === 1 && !v));
+}
+async function bindingEnv(binding) {
+  const installation = await installationBindingFor(binding);
+  return { ...process.env, ...installationEnv(installation) };
+}
+async function durableProposal(binding, emission) {
+  const content = String(emission.text ?? emission.content ?? "").trim();
+  if (!content) throw new Error("emission text is required");
+  const proposalId = receiptId("proposal", { scope: binding.scope_id, emission });
+  const name = `membrane-${proposalId}`;
+  const scope = String(emission.scope ?? "proposed").trim() || "proposed";
+  const env = await bindingEnv(binding);
+  const binary = process.env.MEMRIGHT_BIN || "memright";
+  const out = await run(binary, [
+    "put", name, "--scope", scope, "--tier", "Working", "--artifact-family", "knowledge",
+    "--producer", "membrane", "--record-type", "knowledge_emission", "--authority", "A0",
+    "--influence-class", "data_only", "--session", binding.scope_id,
+  ], `${content}\n`, env);
+  if (out.code !== 0) return null;
+  let put;
+  try { put = JSON.parse(out.stdout.trim()); } catch { return null; }
+  const durableId = String(put.put ?? put.id ?? "").trim();
+  if (!durableId) return null;
+  const readback = await run(binary, ["get", durableId], "", env);
+  if (readback.code !== 0 || readback.stdout.trim() !== content) return null;
+  const eventId = receiptId("event", { operation: "knowledge_propose", durableId });
+  return {
+    status: "persisted",
+    durable: true,
+    proposalId,
+    durableId,
+    lifecycleReceipt: lifecycleReceipt("knowledge_propose", "persisted", durableId, eventId, readback.stdout.trim()),
+    provenance: { repositoryId: binding.repository_id, scopeId: scope, callerLevel: callerLevel(binding) },
+  };
+}
+async function durableFeedback(binding, args) {
+  const feedbackId = receiptId("feedback", { scope: binding.scope_id, receiptId: args.receiptId, outcome: args.outcome });
+  const eventId = receiptId("event", { operation: "feedback", feedbackId });
+  const env = await bindingEnv(binding);
+  const binary = process.env.MEMRIGHT_BIN || "memright";
+  const out = await run(binary, [
+    "feedback", "--trace", eventId, "--candidate", args.receiptId,
+    "--sha", digest(args.receiptId).slice("sha256:".length), "--outcome", args.outcome,
+    "--source", "advisory", "--scope", binding.scope_id,
+  ], "", env);
+  if (out.code !== 0) return null;
+  let response;
+  try { response = JSON.parse(out.stdout.trim()); } catch { return null; }
+  if (response.ok !== true || response.verified !== true) return null;
+  return {
+    status: "persisted",
+    durable: true,
+    feedbackId,
+    receiptId: args.receiptId,
+    outcome: args.outcome,
+    lifecycleReceipt: lifecycleReceipt("feedback", "persisted", feedbackId, eventId, response),
+    provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
+    feedbackEvent: feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome }),
+    feedbackPolicy: feedbackPolicy(feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome })),
+  };
+}
 async function callTool(name, args, trace = {}) {
   if (name === "membrane_context") {
     const binding = await authorize(args, "context");
+    const install = await installationBindingFor(binding);
     const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, ...trace };
-    const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...process.env, WORKSPACE_ROOT: binding.root });
+    const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: binding.root });
     return text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_source_read") {
-    await authorize(args, "source_read");
-    const out = await run(process.env.MEMRIGHT_BIN || "memright", memrightArgs(["doc", "read", "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash]), "");
+    const binding = await authorize(args, "source_read");
+    const install = await installationBindingFor(binding);
+    const out = await run(process.env.MEMRIGHT_BIN || "memright", memrightArgs(["doc", "read", "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash], install), "", await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "source_read_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_checkpoint_save") {
     const binding = await authorize(args, "checkpoint");
+    const install = await installationBindingFor(binding);
     bounded(args.checkpoint, MAX_PROPOSAL_BYTES, "checkpoint");
     takeRate(binding, "checkpoint");
-    const out = await run(process.env.MEMRIGHT_BIN || "memright", memrightArgs(["checkpoint", "save"]), JSON.stringify(args.checkpoint));
+    const out = await run(process.env.MEMRIGHT_BIN || "memright", memrightArgs(["checkpoint", "save"], install), JSON.stringify(args.checkpoint), await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "checkpoint_save_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_checkpoint_load") {
-    await authorize(args, "checkpoint_load");
+    const binding = await authorize(args, "checkpoint_load");
+    const install = await installationBindingFor(binding);
     const params = ["checkpoint", "load", args.id];
     if (Number.isInteger(args.asOfMs)) params.push("--as-of-ms", String(args.asOfMs));
-    const out = await run(process.env.MEMRIGHT_BIN || "memright", memrightArgs(params), "");
+    const out = await run(process.env.MEMRIGHT_BIN || "memright", memrightArgs(params, install), "", await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "checkpoint_load_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_knowledge_propose") {
@@ -151,7 +233,15 @@ async function callTool(name, args, trace = {}) {
     bounded(args.emission, MAX_PROPOSAL_BYTES, "emission");
     takeRate(binding, "proposal");
     const proposalId = receiptId("proposal", { scope: binding.scope_id, emission: args.emission });
-    return text({ status: "quarantined", proposalId, provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) } });
+    const durable = await durableProposal(binding, args.emission).catch(() => null);
+    if (durable) return durable;
+    return text({
+      status: "quarantined_ephemeral",
+      durable: false,
+      proposalId,
+      lifecycleReceipt: lifecycleReceipt("knowledge_propose", "quarantined_ephemeral", proposalId, receiptId("event", { operation: "knowledge_propose", proposalId }), args.emission),
+      provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
+    });
   }
   if (name === "membrane_feedback") {
     const binding = await authorize(args, "feedback");
@@ -159,7 +249,19 @@ async function callTool(name, args, trace = {}) {
     if (byteLength({ receiptId: args.receiptId, outcome: args.outcome }) > MAX_FEEDBACK_BYTES) throw new Error("feedback exceeds 2048 bytes");
     takeRate(binding, "feedback");
     const feedbackId = receiptId("feedback", { scope: binding.scope_id, receiptId: args.receiptId, outcome: args.outcome });
-    return text({ status: "accepted", feedbackId, receiptId: args.receiptId, outcome: args.outcome, provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) } });
+    const durable = await durableFeedback(binding, args).catch(() => null);
+    if (durable) return durable;
+    return text({
+      status: "accepted_advisory",
+      durable: false,
+      feedbackId,
+      receiptId: args.receiptId,
+      outcome: args.outcome,
+      lifecycleReceipt: lifecycleReceipt("feedback", "accepted_advisory", feedbackId, receiptId("event", { operation: "feedback", feedbackId }), { receiptId: args.receiptId, outcome: args.outcome }),
+      feedbackEvent: feedbackEvent({ eventId: receiptId("event", { operation: "feedback", feedbackId }), receiptId: args.receiptId, outcome: args.outcome }),
+      feedbackPolicy: feedbackPolicy(feedbackEvent({ eventId: receiptId("event", { operation: "feedback", feedbackId }), receiptId: args.receiptId, outcome: args.outcome })),
+      provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
+    });
   }
   throw new Error("unknown tool");
 }
@@ -251,4 +353,8 @@ export function buildServer() {
   return server;
 }
 
-serveStdio(() => buildServer(), { onerror: (error) => process.stderr.write(`membrane-mcp: ${error.message}\n`) });
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  serveStdio(() => buildServer(), { onerror: (error) => process.stderr.write(`membrane-mcp: ${error.message}\n`) });
+}
+
+export { TOOLS, TOOL_OUTPUT_SCHEMA };

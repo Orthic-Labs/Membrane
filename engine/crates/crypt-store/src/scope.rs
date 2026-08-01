@@ -149,7 +149,7 @@ pub(crate) fn workspace_root_from(
     validated_workspace_root(config.workspace_root.to_str()?)
 }
 
-pub(crate) fn workspace_root() -> Option<PathBuf> {
+pub fn workspace_root() -> Option<PathBuf> {
     let explicit = std::env::var("WORKSPACE_ROOT").ok();
     let configured = std::env::var("RIGHTCONTEXT_WORKSPACE_CONFIG")
         .ok()
@@ -242,6 +242,62 @@ pub fn canonical_scope_chain(raw: &str, existing: &[String]) -> Vec<String> {
         normalize_scope(raw)
     };
     scope_chain(&slug, existing)
+}
+
+/// Windows drive cwd slug: `D--Claude` / `D--Claude-heardright` (drive letter + `--` + rest).
+fn is_windows_drive_slug(scope: &str) -> bool {
+    let b = scope.as_bytes();
+    b.len() >= 4
+        && b[0].is_ascii_alphabetic()
+        && b[1] == b'-'
+        && b[2] == b'-'
+        && b[3].is_ascii_alphanumeric()
+}
+
+/// Unix-style cwd slug from path_to_scope: `Users-adrdsouza-claude`, `Volumes-D-claude`.
+/// Requires a known absolute-root first segment, or ≥3 non-empty hyphen segments.
+fn is_unix_path_slug(scope: &str) -> bool {
+    let segments: Vec<&str> = scope.split('-').filter(|s| !s.is_empty()).collect();
+    if segments.len() < 2 {
+        return false;
+    }
+    let first = segments[0];
+    let known_root = matches!(
+        first,
+        "Users" | "home" | "Volumes" | "private" | "var" | "tmp" | "opt" | "root"
+    );
+    known_root || segments.len() >= 3
+}
+
+/// Write-path scope gate (P1 scope-typo hardening).
+///
+/// Allows `proposed` / `global` / `workspace`, filesystem paths, Windows drive slugs
+/// (`D--Claude-…`), Unix cwd slugs (`Users-…` / multi-segment path slugs), and typed
+/// `virtual:…` ids. Refuses single-token hand-typed names like `heardright` that silently
+/// fork the corpus (2026-07-05 mirror incident).
+pub fn validate_write_scope(raw: &str) -> Result<(), String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err("scope must be non-empty".into());
+    }
+    if matches!(raw, "proposed" | "global" | "workspace") {
+        return Ok(());
+    }
+    if raw.starts_with("virtual:") {
+        return Ok(());
+    }
+    // Paths always OK — callers normalize via path_to_scope / normalize_scope.
+    if raw.contains('/') || raw.contains('\\') || raw.contains(':') {
+        return Ok(());
+    }
+    let normalized = normalize_scope(raw);
+    if is_windows_drive_slug(&normalized) || is_unix_path_slug(&normalized) {
+        return Ok(());
+    }
+    Err(format!(
+        "refusing hand-typed scope {raw:?}: use proposed, global, a cwd path, or a cwd slug \
+         (e.g. D--Claude-heardright / Users-adrdsouza-claude); a novel single-token scope forks the corpus"
+    ))
 }
 
 #[cfg(test)]
@@ -373,6 +429,30 @@ mod tests {
         );
         assert_eq!(normalize_scope("workspace"), "workspace");
         assert_eq!(normalize_scope("global"), "global");
+    }
+
+    #[test]
+    fn write_scope_allows_reserved_paths_and_cwd_slugs() {
+        assert!(validate_write_scope("proposed").is_ok());
+        assert!(validate_write_scope("global").is_ok());
+        assert!(validate_write_scope("workspace").is_ok());
+        assert!(validate_write_scope("D--Claude-heardright").is_ok());
+        assert!(validate_write_scope("d--Claude").is_ok());
+        assert!(validate_write_scope("Users-adrdsouza-claude").is_ok());
+        assert!(validate_write_scope("Volumes-D-claude").is_ok());
+        assert!(validate_write_scope(r"D:\Claude\heardright").is_ok());
+        assert!(validate_write_scope("/Users/x/claude").is_ok());
+        assert!(validate_write_scope("virtual:tenant-a:thread:abc").is_ok());
+    }
+
+    #[test]
+    fn write_scope_refuses_hand_typed_single_tokens() {
+        let err = validate_write_scope("heardright").unwrap_err();
+        assert!(err.contains("refusing hand-typed scope"), "{err}");
+        assert!(validate_write_scope("mailright").is_err());
+        assert!(validate_write_scope("foo").is_err());
+        assert!(validate_write_scope("my-project").is_err());
+        assert!(validate_write_scope("").is_err());
     }
 
     #[test]

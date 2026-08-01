@@ -1,53 +1,6 @@
-//! MemRight — the productizable memory engine: SQLite + quantized vectors + cognitive tiers +
-//! hybrid retriever + effectiveness gate + dream consolidation, with multi-project `scope_id`
-//! isolation. CodeRight (the product) and the workspace both CONSUME this crate; neither owns the
-//! engine. Self-contained and publishable (depends only on memright-core primitives).
+//! MemRight compatibility facade.
+//!
+//! Durable primitives live in Crypt crates; federation, freshness, and planning live in
+//! `membrane-runtime`. Existing consumers retain the `memright` crate path during migration.
 
-pub mod admission_policy;
-pub mod blueprint_closure;
-pub mod catalog;
-pub mod checkpoint;
-pub mod compress;
-pub mod context_telemetry;
-pub mod doc_candidate_provider;
-pub mod doc_projection;
-pub mod doc_shadow;
-pub mod doc_spine;
-pub mod doctor;
-pub mod federation;
-pub mod federation_worker;
-pub mod feedback;
-pub mod freshness;
-pub mod installation_identity;
-pub mod memdb;
-pub mod outline;
-pub mod plan_context;
-pub mod planner_metrics;
-pub mod prep;
-pub mod release_identity;
-pub mod runc;
-pub mod scope;
-pub mod serve;
-pub mod skel;
-pub mod store;
-pub mod time;
-pub mod truncate;
-
-// Re-export OKF utilities so consumers import from one crate (`memright`) during unification.
-pub use memright_format::okf;
-
-pub use admission_policy::{
-    admit, AdmissionDecision, AdmissionError, AdmissionRequest, Authority, InstructionPolicy,
-    Origin, ProtectedSpan, ProtectedSpanKind, QuarantineStatus,
-};
-pub use checkpoint::{
-    CheckpointError, CheckpointSourceRefV1, CheckpointSourceResolutionV1, CheckpointV1,
-};
-pub use memdb::MemDb;
-pub use scope::{
-    normalize_scope, path_to_scope, scope_chain, ScopeDescriptorError, ScopeDescriptorV1,
-};
-pub use store::{
-    MemoryEventContext, MemoryLifecycleError, MemoryLifecycleEventV1, MemoryLifecycleInputV1,
-    MemoryLifecycleKind, MemoryPriorityError, MemoryStore,
-};
+pub use membrane_runtime::*;

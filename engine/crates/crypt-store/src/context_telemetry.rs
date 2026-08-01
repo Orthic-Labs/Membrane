@@ -197,7 +197,7 @@ fn context_registry() -> &'static ContextRegistry {
     })
 }
 
-pub(crate) fn registered_artifact_family(value: &str) -> bool {
+pub fn registered_artifact_family(value: &str) -> bool {
     context_registry().artifact_families.contains(value) || valid_namespaced_extension(value)
 }
 const OPERATIONS: &[&str] = &[
@@ -257,6 +257,69 @@ const MEASUREMENT_UNITS: &[&str] = &[
 #[serde(deny_unknown_fields)]
 pub struct ContextEventBatch {
     pub events: Vec<ContextEvent>,
+}
+
+/// Language-neutral host lifecycle event owned by Membrane's SQLite event ledger. The richer
+/// ContextEvent remains the internal accounting form; this envelope is the frozen cross-host
+/// contract and carries only opaque refs/digests.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservableEventV1 {
+    pub schema: String,
+    pub installation_id: String,
+    pub client_id: String,
+    pub session_id: String,
+    pub task_id: String,
+    pub turn_id: String,
+    pub trace_id: String,
+    pub event_id: String,
+    pub event_type: String,
+    pub origin: String,
+    pub content_ref_or_digest: String,
+    pub timestamp: String,
+    pub completeness: BTreeMap<String, bool>,
+    pub policy_snapshot_digest: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ObservableEventBatchV1 {
+    pub events: Vec<ObservableEventV1>,
+}
+
+impl ObservableEventV1 {
+    pub fn validate(&self) -> Result<(), ContextTelemetryError> {
+        if self.schema != "orthic.observable-event.v1" {
+            return Err(invalid("schema", "must be orthic.observable-event.v1"));
+        }
+        for (field, value) in [
+            ("installation_id", &self.installation_id),
+            ("client_id", &self.client_id),
+            ("session_id", &self.session_id),
+            ("task_id", &self.task_id),
+            ("turn_id", &self.turn_id),
+            ("trace_id", &self.trace_id),
+            ("event_id", &self.event_id),
+            ("event_type", &self.event_type),
+            ("content_ref_or_digest", &self.content_ref_or_digest),
+        ] {
+            if value.trim().is_empty() {
+                return Err(invalid(field, "must be non-empty"));
+            }
+        }
+        if !matches!(self.origin.as_str(), "host" | "user" | "assistant" | "tool" | "repository" | "service") {
+            return Err(invalid("origin", "must be a frozen origin value"));
+        }
+        let policy_digest = self
+            .policy_snapshot_digest
+            .strip_prefix("sha256:")
+            .ok_or_else(|| invalid("policy_snapshot_digest", "must use sha256: prefix"))?;
+        validate_sha256(policy_digest, "policy_snapshot_digest")?;
+        if !valid_utc_timestamp(&self.timestamp) {
+            return Err(invalid("timestamp", "must be RFC3339"));
+        }
+        Ok(())
+    }
 }
 
 /// Immutable installation/process/workspace attribution attached to events emitted by the
@@ -1761,7 +1824,7 @@ fn prepare_batch(
 /// use this primitive so their durable state, legacy lifecycle row, and canonical lifecycle row
 /// have one commit boundary. The public batch API below wraps the same primitive in its own
 /// transaction.
-pub(crate) fn append_context_events_on(
+pub fn append_context_events_on(
     conn: &rusqlite::Connection,
     batch: &ContextEventBatch,
 ) -> Result<ContextEventBatchReceipt, ContextTelemetryError> {
@@ -1990,7 +2053,12 @@ fn lifecycle_expansion_rejection_reason(error: &ContextTelemetryError) -> &'stat
     }
 }
 
-fn decode_prompt_ingress_record(record: &[u8]) -> Result<ContextEventBatch, &'static str> {
+enum PromptIngressBatch {
+    Context(ContextEventBatch),
+    Observable(ObservableEventBatchV1),
+}
+
+fn decode_prompt_ingress_record(record: &[u8]) -> Result<PromptIngressBatch, &'static str> {
     let value: Value = serde_json::from_slice(record).map_err(|_| "record.invalid_json")?;
     let object = value.as_object().ok_or("record.invalid_wrapper")?;
     if object.len() != 1 {
@@ -2000,12 +2068,21 @@ fn decode_prompt_ingress_record(record: &[u8]) -> Result<ContextEventBatch, &'st
         return serde_json::from_value::<ContextEventBatch>(
             serde_json::json!({ "events": events }),
         )
+        .map(PromptIngressBatch::Context)
         .map_err(|_| "record.invalid_batch");
+    }
+    if let Some(events) = object.get("observable_events") {
+        return serde_json::from_value::<ObservableEventBatchV1>(
+            serde_json::json!({ "events": events }),
+        )
+        .map(PromptIngressBatch::Observable)
+        .map_err(|_| "record.invalid_observable_batch");
     }
     if let Some(intent) = object.get("lifecycle_intent") {
         let intent = serde_json::from_value::<ContextLifecycleIntent>(intent.clone())
             .map_err(|_| "intent.invalid_schema")?;
         return expand_context_lifecycle_intent(&intent)
+            .map(PromptIngressBatch::Context)
             .map_err(|error| lifecycle_expansion_rejection_reason(&error));
     }
     Err("record.invalid_wrapper")
@@ -2056,6 +2133,12 @@ pub fn drain_prompt_telemetry_ingress_once(
                     .map(Vec::len)
                     .or_else(|| {
                         value
+                            .get("observable_events")
+                            .and_then(Value::as_array)
+                            .map(Vec::len)
+                    })
+                    .or_else(|| {
+                        value
                             .get("lifecycle_intent")
                             .and_then(|intent| intent.get("expected_event_count"))
                             .and_then(Value::as_u64)
@@ -2069,7 +2152,18 @@ pub fn drain_prompt_telemetry_ingress_once(
             decode_prompt_ingress_record(&record)
         };
         match decoded {
-            Ok(batch) => match db.ingest_local_context_events(&batch, lease) {
+            Ok(batch) => {
+                let (batch_len, ingested) = match batch {
+                    PromptIngressBatch::Context(batch) => {
+                        let length = batch.events.len();
+                        (length, db.ingest_local_context_events(&batch, lease))
+                    }
+                    PromptIngressBatch::Observable(batch) => {
+                        let length = batch.events.len();
+                        (length, db.ingest_observable_events(&batch, lease))
+                    }
+                };
+                match ingested {
                 Ok(receipt) => {
                     result.inserted += receipt.inserted;
                     result.duplicates += receipt.duplicates;
@@ -2083,7 +2177,7 @@ pub fn drain_prompt_telemetry_ingress_once(
                         offset,
                         &record,
                         "batch.invalid",
-                        batch.events.len(),
+                        batch_len,
                     )?;
                     result.rejected += 1;
                 }
@@ -2093,7 +2187,7 @@ pub fn drain_prompt_telemetry_ingress_once(
                         offset,
                         &record,
                         "batch.event_conflict",
-                        batch.events.len(),
+                        batch_len,
                     )?;
                     result.rejected += 1;
                 }
@@ -2103,11 +2197,12 @@ pub fn drain_prompt_telemetry_ingress_once(
                         offset,
                         &record,
                         "batch.attribution_mismatch",
-                        batch.events.len(),
+                        batch_len,
                     )?;
                     result.rejected += 1;
                 }
-            },
+                }
+            }
             Err(reason_code) => {
                 persist_ingress_rejection(
                     &rejection_path,
@@ -2252,6 +2347,69 @@ pub fn drain_prompt_telemetry_ingress(
 }
 
 impl MemDb {
+    /// Convert the frozen host envelope into the canonical Membrane event ledger form.
+    pub fn ingest_observable_events(
+        &self,
+        batch: &ObservableEventBatchV1,
+        lease: &ContextIngestLease,
+    ) -> Result<ContextEventBatchReceipt, ContextTelemetryError> {
+        if batch.events.is_empty() || batch.events.len() > MAX_BATCH_EVENTS {
+            return Err(invalid("events", "must contain between 1 and 256 items"));
+        }
+        for event in &batch.events {
+            event.validate()?;
+        }
+        let events = batch
+            .events
+            .iter()
+            .map(|event| ContextEvent {
+                schema_version: EVENT_SCHEMA_VERSION,
+                event_id: format!("event-{}", sha256_text(&event.event_id)),
+                ts: event.timestamp.clone(),
+                installation_id: lease.installation_id.clone(),
+                service_instance_id: lease.service_instance_id.clone(),
+                workspace_id: lifecycle_workspace_id(&lease.service_instance_id),
+                client: event.client_id.clone(),
+                client_version: None,
+                producer: "host-adapter".to_string(),
+                producer_version: None,
+                session_id: lifecycle_bounded_id(&event.session_id, "session"),
+                turn_id: Some(lifecycle_bounded_id(&event.turn_id, "turn")),
+                parent_span_id: None,
+                trace_id: lifecycle_bounded_id(&event.trace_id, "trace"),
+                span_id: lifecycle_bounded_id(&event.event_id, "span"),
+                artifact_family: "context".to_string(),
+                provider: "membrane".to_string(),
+                provider_version: None,
+                release_generation: None,
+                phase: "turn.observed".to_string(),
+                operation: "evaluate".to_string(),
+                status: "success".to_string(),
+                reason_code: Some(event.origin.clone()),
+                scope_id: None,
+                artifact_id: Some(lifecycle_artifact_id(&event.task_id, "task")),
+                artifact_sha256: event.content_ref_or_digest.strip_prefix("sha256:").map(str::to_string),
+                traffic_class: "production".to_string(),
+                policy_version: None,
+                policy_activation_sha256: Some(event.policy_snapshot_digest.strip_prefix("sha256:").unwrap_or(&event.policy_snapshot_digest).to_string()),
+                cohort: None,
+                task_class: Some("observable".to_string()),
+                source_generation: None,
+                duration_ms: None,
+                quantity: None,
+                token_count: None,
+                char_count: None,
+                meta: Some(BTreeMap::from([(
+                    "complete".to_string(),
+                    Value::Bool(event.completeness.values().all(|value| *value)),
+                )])),
+                measurements: Vec::new(),
+                links: Vec::new(),
+            })
+            .collect();
+        self.ingest_local_context_events(&ContextEventBatch { events }, lease)
+    }
+
     /// Validate and append a bounded event batch in one SQLite transaction.
     pub fn ingest_context_events(
         &self,
@@ -2568,5 +2726,62 @@ mod lifecycle_intent_tests {
             std::fs::read_to_string(ingress_sidecar(&ingress, "rejected.jsonl")).unwrap();
         assert!(rejection.contains("intent.event_count_mismatch"));
         assert!(!rejection.contains("intent.expansion_rejected"));
+    }
+
+    #[test]
+    fn observable_event_v1_validates_frozen_shape() {
+        let event = ObservableEventV1 {
+            schema: "orthic.observable-event.v1".to_string(),
+            installation_id: "installation-a".to_string(),
+            client_id: "claude_code".to_string(),
+            session_id: "session-a".to_string(),
+            task_id: "task-a".to_string(),
+            turn_id: "turn-a".to_string(),
+            trace_id: "trace-a".to_string(),
+            event_id: "event-a".to_string(),
+            event_type: "packet_delivered".to_string(),
+            origin: "host".to_string(),
+            content_ref_or_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            timestamp: "2026-08-01T00:00:00Z".to_string(),
+            completeness: BTreeMap::from([(String::from("packet"), true)]),
+            policy_snapshot_digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+        };
+        event.validate().unwrap();
+        let mut invalid = event.clone();
+        invalid.origin = "model".to_string();
+        assert!(invalid.validate().is_err());
+        invalid = event;
+        invalid.policy_snapshot_digest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn observable_ingress_converts_and_persists_in_membrane_ledger() {
+        let temporary = tempfile::tempdir().unwrap();
+        let ingress = temporary.path().join("observable.jsonl");
+        let event = serde_json::json!({
+            "schema": "orthic.observable-event.v1",
+            "installation_id": "installation-a",
+            "client_id": "claude_code",
+            "session_id": "session-a",
+            "task_id": "task-a",
+            "turn_id": "turn-a",
+            "trace_id": "trace-a",
+            "event_id": "event-a",
+            "event_type": "tool_receipt",
+            "origin": "tool",
+            "content_ref_or_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "timestamp": "2026-08-01T00:00:00Z",
+            "completeness": {"receipt": true},
+            "policy_snapshot_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        });
+        std::fs::write(
+            &ingress,
+            serde_json::to_vec(&serde_json::json!({ "observable_events": [event] })).unwrap(),
+        )
+        .unwrap();
+        std::fs::OpenOptions::new().append(true).open(&ingress).unwrap().write_all(b"\n").unwrap();
+        let result = drain_prompt_telemetry_ingress_once(&MemDb::open_in_memory(), &lease(), &ingress).unwrap();
+        assert_eq!((result.records, result.inserted, result.rejected), (1, 1, 0));
     }
 }

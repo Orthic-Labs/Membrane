@@ -1,4 +1,4 @@
-# MemRight
+# Crypt (legacy engine name: MemRight)
 
 Productizable, OS-independent memory engine (SQLite + vector + graph).
 
@@ -7,6 +7,7 @@ Productizable, OS-independent memory engine (SQLite + vector + graph).
 - **memright** — Binary/daemon: HTTP server, CLI, SQLite persistence, quantized vector store, hybrid retriever.
 - **memright-core** — Pure in-memory logic: memory tiers, retrieval ranking, embeddings, graph, eval gate, dream consolidation.
 - **memright-format** — Open Knowledge Format (OKF) bundle support and deterministic prose compression.
+- **crypt-core**, **crypt-format**, **crypt-store** — staged Crypt namespace facades. They preserve existing MemRight IDs, SQLite schema, and replication history while imports migrate; `memright*` remains the installed compatibility facade.
 
 ## Build
 

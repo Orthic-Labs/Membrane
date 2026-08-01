@@ -66,6 +66,16 @@ fn protected_priority_bonus_enabled() -> bool {
     )
 }
 
+fn vector_dispatch_v2_enabled() -> bool {
+    matches!(
+        std::env::var("MEMRIGHT_VECTOR_DISPATCH_V2")
+            .ok()
+            .as_deref()
+            .map(str::trim),
+        Some("1") | Some("true") | Some("on")
+    )
+}
+
 fn utility_recall_score(entry: &MemoryEntry, semantic_score: f32) -> f32 {
     let utility = entry.score.clamp(0.0, 1.0) as f32;
     let frequency = ((entry.access_count as f32 + 1.0_f32).ln() * 0.01_f32).min(0.04_f32);
@@ -145,6 +155,8 @@ pub struct MemoryLifecycleInputV1 {
     pub confidence: Option<f64>,
     pub confidence_basis: Option<String>,
     pub supersedes: Option<String>,
+    pub authority: Option<String>,
+    pub influence_class: Option<String>,
 }
 
 impl MemoryLifecycleInputV1 {
@@ -185,6 +197,18 @@ impl MemoryLifecycleInputV1 {
             .is_some_and(|value| value.trim().is_empty() || value.len() > 1024)
         {
             return Err("confidence_basis is invalid".into());
+        }
+        if let Some(authority) = self.authority.as_deref() {
+            if !matches!(authority, "A0" | "A1" | "A2" | "A3" | "A4" | "A5") {
+                return Err("authority must be A0..=A5".into());
+            }
+        }
+        if self
+            .influence_class
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err("influence_class must be non-empty when provided".into());
         }
         Ok(())
     }
@@ -1558,7 +1582,11 @@ impl MemoryStore {
         db: MemDb,
         attribution: OperationAttribution,
     ) -> Result<Self, String> {
-        let mut registry = MemoryRegistry::new();
+        let mut registry = if vector_dispatch_v2_enabled() {
+            MemoryRegistry::new_indexed()
+        } else {
+            MemoryRegistry::new()
+        };
         let db_path = db_path(&db);
         let (embedder, embedder_issue, writes_enabled) = default_embedder();
         {
@@ -1781,6 +1809,8 @@ impl MemoryStore {
         lifecycle: &MemoryLifecycleInputV1,
     ) -> Result<(), String> {
         lifecycle.validate()?;
+        let authority = lifecycle.authority.as_deref().unwrap_or("A2");
+        let influence_class = lifecycle.influence_class.as_deref().unwrap_or("reference");
         if !self.writes_enabled {
             let err = self.embedder_issue.clone().unwrap_or_else(|| {
                 "memory writes disabled because the configured embedder is unavailable".into()
@@ -1796,8 +1826,8 @@ impl MemoryStore {
         let blob_q = entry.embedding.as_deref().map(embedding_to_quantized_blob);
         conn.execute(
             "INSERT INTO memories
-                 (id, tier, content, keywords, score, created_at, updated_at, access_count, embedding, embedding_q, scope_id, content_hash, embed_model, source_ids, artifact_family, producer, record_type, effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms, priority_class, confidence, confidence_basis)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, COALESCE(?21, 'normal'), ?22, ?23)
+                 (id, tier, content, keywords, score, created_at, updated_at, access_count, embedding, embedding_q, scope_id, content_hash, embed_model, source_ids, artifact_family, producer, record_type, authority, influence_class, effective_from_ms, effective_until_ms, expires_at_ms, review_after_ms, priority_class, confidence, confidence_basis)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, COALESCE(?23, 'normal'), ?24, ?25)
              ON CONFLICT(id) DO UPDATE SET
                  tier=excluded.tier, content=excluded.content, keywords=excluded.keywords,
                  score=excluded.score, updated_at=excluded.updated_at, embedding=NULL,
@@ -1805,11 +1835,12 @@ impl MemoryStore {
                  content_hash=excluded.content_hash, embed_model=excluded.embed_model,
                  source_ids=excluded.source_ids, artifact_family=excluded.artifact_family,
                  producer=excluded.producer, record_type=excluded.record_type,
+                 authority=excluded.authority, influence_class=excluded.influence_class,
                  effective_from_ms=COALESCE(excluded.effective_from_ms, memories.effective_from_ms),
                  effective_until_ms=COALESCE(excluded.effective_until_ms, memories.effective_until_ms),
                  expires_at_ms=COALESCE(excluded.expires_at_ms, memories.expires_at_ms),
                  review_after_ms=COALESCE(excluded.review_after_ms, memories.review_after_ms),
-                 priority_class=CASE WHEN ?24 THEN excluded.priority_class ELSE memories.priority_class END,
+                 priority_class=CASE WHEN ?26 THEN excluded.priority_class ELSE memories.priority_class END,
                  confidence=COALESCE(excluded.confidence, memories.confidence),
                  confidence_basis=COALESCE(excluded.confidence_basis, memories.confidence_basis)",
             rusqlite::params![
@@ -1829,6 +1860,8 @@ impl MemoryStore {
                 metadata.artifact_family,
                 metadata.producer,
                 metadata.record_type,
+                authority,
+                influence_class,
                 lifecycle.effective_from_ms,
                 lifecycle.effective_until_ms,
                 lifecycle.expires_at_ms,
@@ -3959,8 +3992,20 @@ impl MemoryStore {
         let registry = self.registry.read().unwrap_or_else(|e| e.into_inner());
         let lock_ms = lock_started.elapsed().as_secs_f64() * 1000.0;
         let recall_started = Instant::now();
+        let vector_dispatch_v2 = vector_dispatch_v2_enabled();
         let mut direct_candidates: Vec<(MemoryEntry, f32)> = if scopes.is_empty() {
-            MemoryRetriever::retrieve_hybrid(&registry, query, Some(&qvec), candidate_limit)
+            let retrieved = if vector_dispatch_v2 {
+                MemoryRetriever::retrieve_hybrid_indexed(
+                    &registry,
+                    query,
+                    Some(&qvec),
+                    candidate_limit,
+                    None,
+                )
+            } else {
+                MemoryRetriever::retrieve_hybrid(&registry, query, Some(&qvec), candidate_limit)
+            };
+            retrieved
                 .into_iter()
                 .map(|e| {
                     let cos = e
@@ -3976,16 +4021,32 @@ impl MemoryStore {
             let mut seen = std::collections::HashSet::<String>::new();
             let per_scope_limit = candidate_limit.max(SCOPED_CANDIDATE_FLOOR);
             for (scope_rank, scope) in scopes.iter().enumerate() {
-                let mut scoped_registry = MemoryRegistry::new();
-                for entry in registry.all().into_iter().filter(|e| scope == &e.scope_id) {
-                    scoped_registry.insert(entry.clone());
-                }
-                for e in MemoryRetriever::retrieve_hybrid(
-                    &scoped_registry,
-                    query,
-                    Some(&qvec),
-                    per_scope_limit,
-                ) {
+                let scope_filter = [scope.as_str()];
+                let retrieved = if vector_dispatch_v2 {
+                    MemoryRetriever::retrieve_hybrid_indexed(
+                        &registry,
+                        query,
+                        Some(&qvec),
+                        per_scope_limit,
+                        Some(&scope_filter),
+                    )
+                } else {
+                    let mut scoped_registry = MemoryRegistry::new();
+                    for entry in registry.all().into_iter().filter(|e| scope == &e.scope_id) {
+                        scoped_registry.insert(entry.clone());
+                    }
+                    let ids = MemoryRetriever::retrieve_hybrid(
+                        &scoped_registry,
+                        query,
+                        Some(&qvec),
+                        per_scope_limit,
+                    )
+                    .into_iter()
+                    .map(|entry| entry.id.clone())
+                    .collect::<Vec<_>>();
+                    ids.into_iter().filter_map(|id| registry.get(&id)).collect()
+                };
+                for e in retrieved {
                     if !seen.insert(e.id.clone()) {
                         continue;
                     }
@@ -5207,6 +5268,7 @@ impl MemoryStore {
                 ));
             }
             let scope = crate::scope::normalize_scope(&item.scope);
+            crate::scope::validate_write_scope(&item.scope).map_err(MemoryBatchError::Invalid)?;
             if !valid_opaque_id(&scope, 160) || !memory_ids.insert(format!("{scope}/{}", item.name))
             {
                 return Err(MemoryBatchError::Invalid(

@@ -1,20 +1,14 @@
 //! G5 Lane B — MemRight durable-memory provider contract tests.
 //!
 //! These tests exercise the public API the planner will consume. The new
-//! `memory_provider` module lives under `src/`; the lane did not edit
-//! `lib.rs` (a forbidden hot file), so the tests re-include the module
-//! directly via `#[path]`. Once the integration owner wires
-//! `pub mod memory_provider;` into `lib.rs`, this `#[path]` is no longer
-//! required — the module will be reachable as `memright::memory_provider`.
+//! `memory_provider` is owned by Membrane runtime & re-exported through
+//! MemRight compatibility API as `memright::memory_provider`.
 
-#[path = "../src/memory_provider.rs"]
-mod memory_provider;
-
-use memory_provider::{
+use memright::memdb::MemDb;
+use memright::memory_provider::{
     produce_candidate_set, ContextCandidateSet, INSTRUCTION_POLICY, LAYER, PROVIDER_NAME,
     SOURCE_KIND, TRUST_CLASS,
 };
-use memright::memdb::MemDb;
 use memright::store::MemoryStore;
 
 fn store() -> MemoryStore {

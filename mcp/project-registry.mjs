@@ -57,6 +57,7 @@ function validateBinding(binding) {
   validateScopeDescriptor(descriptorFor(binding));
   if (binding.provider_config !== undefined && (typeof binding.provider_config !== "object" || Array.isArray(binding.provider_config))) throw new Error("provider_config must be an object");
   if (binding.grant_policy !== undefined && (typeof binding.grant_policy !== "object" || Array.isArray(binding.grant_policy))) throw new Error("grant_policy must be an object");
+  if (binding.repository_catalog_digest !== undefined && (typeof binding.repository_catalog_digest !== "string" || !/^sha256:[a-f0-9]{64}$/.test(binding.repository_catalog_digest))) throw new Error("repository_catalog_digest is invalid");
   if (binding.token_grant !== undefined) validateTokenGrant(binding.token_grant);
   if (binding.token_audit !== undefined) validateTokenAudit(binding.token_audit);
 }
@@ -96,7 +97,7 @@ export function installationFor(binding) {
 }
 
 function publicBinding(root, binding) {
-  return { root, repository_id: binding.repository_id, scope_id: binding.scope_id, scope_descriptor: descriptorFor(binding), provider_config: binding.provider_config, grant_policy: binding.grant_policy, ...(binding.token_grant ? { token_grant: binding.token_grant } : {}), ...(binding.token_audit ? { token_audit: binding.token_audit } : {}) };
+  return { root, repository_id: binding.repository_id, scope_id: binding.scope_id, scope_descriptor: descriptorFor(binding), provider_config: binding.provider_config, grant_policy: binding.grant_policy, ...(binding.repository_catalog_digest ? { repository_catalog_digest: binding.repository_catalog_digest } : {}), ...(binding.token_grant ? { token_grant: binding.token_grant } : {}), ...(binding.token_audit ? { token_audit: binding.token_audit } : {}) };
 }
 
 export async function enroll(root, binding, path = defaultRegistryPath()) {
@@ -110,6 +111,7 @@ export async function enroll(root, binding, path = defaultRegistryPath()) {
     scope_descriptor: descriptorFor(binding),
     provider_config: binding.provider_config || {},
     grant_policy: binding.grant_policy || {},
+    ...(binding.repository_catalog_digest ? { repository_catalog_digest: binding.repository_catalog_digest } : {}),
     ...(prior?.token_grant ? { token_grant: prior.token_grant } : {}),
     ...(prior?.token_audit ? { token_audit: prior.token_audit } : {}),
   };

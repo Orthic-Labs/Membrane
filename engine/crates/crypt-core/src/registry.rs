@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use crate::types::{MemoryEntry, MemoryTier};
+use crate::VectorIndex;
 
 /// Errors that can occur when operating on the registry.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -15,17 +16,30 @@ pub enum RegistryError {
 #[derive(Debug, Default)]
 pub struct MemoryRegistry {
     entries: HashMap<String, MemoryEntry>,
+    vector_index: Option<VectorIndex>,
 }
 
 impl MemoryRegistry {
     pub fn new() -> Self {
         Self {
             entries: HashMap::new(),
+            vector_index: None,
+        }
+    }
+
+    /// Create a registry that maintains a resident vector projection.
+    pub fn new_indexed() -> Self {
+        Self {
+            entries: HashMap::new(),
+            vector_index: Some(VectorIndex::new()),
         }
     }
 
     /// Insert (or replace) an entry.
     pub fn insert(&mut self, entry: MemoryEntry) {
+        if let Some(index) = &mut self.vector_index {
+            index.upsert(&entry);
+        }
         self.entries.insert(entry.id.clone(), entry);
     }
 
@@ -34,7 +48,13 @@ impl MemoryRegistry {
     }
 
     pub fn remove(&mut self, id: &str) -> Option<MemoryEntry> {
-        self.entries.remove(id)
+        let removed = self.entries.remove(id);
+        if removed.is_some() {
+            if let Some(index) = &mut self.vector_index {
+                index.remove(id);
+            }
+        }
+        removed
     }
 
     pub fn len(&self) -> usize {
@@ -53,6 +73,11 @@ impl MemoryRegistry {
     /// All entries.
     pub fn all(&self) -> Vec<&MemoryEntry> {
         self.entries.values().collect()
+    }
+
+    /// Resident contiguous vector projection used by indexed retrieval.
+    pub fn vector_index(&self) -> Option<&VectorIndex> {
+        self.vector_index.as_ref()
     }
 
     /// Promote an entry to a higher tier. Returns an error if the entry is unknown.

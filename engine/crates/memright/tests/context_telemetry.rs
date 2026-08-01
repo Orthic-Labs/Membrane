@@ -132,10 +132,7 @@ fn bounded_unknown_closure_links_each_unresolved_delivery_once() {
     }]);
     let delivery_id = delivery["event_id"].as_str().unwrap().to_string();
     let body = serde_json::to_string(&json!({"events": [delivery]})).unwrap();
-    assert_eq!(
-        route_with_startup(&store, &identity, &claim, &body).0,
-        201
-    );
+    assert_eq!(route_with_startup(&store, &identity, &claim, &body).0, 201);
     let request = r#"{"observed_since":"2026-07-20T07:59:00Z","observed_through":"2026-07-20T08:01:00Z","max_deliveries":10}"#;
     let (code, body) = memright::serve::route_for_tests_with_startup_claim(
         &store,
@@ -212,11 +209,15 @@ fn unknown_closure_rejects_a_saturated_delivery_cap_without_partial_write() {
     assert_eq!(code, 400, "body: {body}");
     assert!(body.contains("cap"), "body: {body}");
     assert_eq!(
-        store.db().lock().query_row(
-            "SELECT COUNT(*) FROM context_event_log WHERE phase='candidate.unknown'",
-            [],
-            |row| row.get::<_, i64>(0),
-        ).unwrap(),
+        store
+            .db()
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM context_event_log WHERE phase='candidate.unknown'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
         0,
     );
 }
@@ -256,7 +257,7 @@ fn checked_in_registry_matches_canonical_parent_workspace_registry() {
     let local_sha = format!("{:x}", sha2::Sha256::digest(&local_normalized));
     assert_eq!(
         local_sha,
-        "9e56363c7a5c328f95b1bfaac2606278fa9f3641a75a5a632e1b75f71b028dc0"
+        "a91e695385bafcf034248beddc911cb85e34a7042a45bbcdf23691aaafa82a31"
     );
 
     let parent_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

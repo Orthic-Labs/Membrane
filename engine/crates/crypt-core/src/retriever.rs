@@ -1,5 +1,7 @@
 //! Ranks memory entries against a query.
 
+use std::collections::HashMap;
+
 use crate::embed::cosine;
 use crate::quant::QuantizedVector;
 use crate::registry::MemoryRegistry;
@@ -140,6 +142,184 @@ impl MemoryRetriever {
             .into_iter()
             .take(limit)
             .map(|(i, _)| entries[i])
+            .collect()
+    }
+
+    /// Hybrid retrieval using the registry's resident contiguous vector index.
+    /// Scope filtering is applied as an eligibility mask without cloning entries
+    /// into temporary registries. Any index/query mismatch fails closed to the
+    /// scalar reference path.
+    pub fn retrieve_hybrid_indexed<'a>(
+        registry: &'a MemoryRegistry,
+        query: &str,
+        query_embedding: Option<&[f32]>,
+        limit: usize,
+        eligible_scopes: Option<&[&str]>,
+    ) -> Vec<&'a MemoryEntry> {
+        let Some(qvec) = query_embedding else {
+            return Self::retrieve_filtered(registry, query, limit, eligible_scopes);
+        };
+        let scope_matches = |entry: &&MemoryEntry| {
+            eligible_scopes.is_none_or(|scopes| scopes.contains(&entry.scope_id.as_str()))
+        };
+        let entries = registry
+            .all()
+            .into_iter()
+            .filter(scope_matches)
+            .collect::<Vec<_>>();
+        if entries.is_empty() || limit == 0 {
+            return Vec::new();
+        }
+
+        let terms = Self::query_terms(query);
+        let mut lexical = entries
+            .iter()
+            .map(|entry| (entry.id.as_str(), Self::score_entry(entry, &terms)))
+            .collect::<Vec<_>>();
+        lexical.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+        let lexical_rank = lexical
+            .iter()
+            .enumerate()
+            .map(|(rank, (id, score))| (*id, (rank, *score)))
+            .collect::<HashMap<_, _>>();
+
+        let semantic_limit = limit.saturating_mul(32).max(128).min(entries.len());
+        let Some(index) = registry.vector_index() else {
+            return Self::retrieve_hybrid_filtered_scalar(
+                registry,
+                query,
+                qvec,
+                limit,
+                eligible_scopes,
+            );
+        };
+        let semantic = match index.top_k(qvec, eligible_scopes, semantic_limit) {
+            Ok(candidates) => candidates,
+            Err(_) => {
+                return Self::retrieve_hybrid_filtered_scalar(
+                    registry,
+                    query,
+                    qvec,
+                    limit,
+                    eligible_scopes,
+                )
+            }
+        };
+        let semantic_rank = semantic
+            .iter()
+            .enumerate()
+            .map(|(rank, candidate)| (candidate.id.as_str(), (rank, candidate.score)))
+            .collect::<HashMap<_, _>>();
+
+        let mut fused = entries
+            .into_iter()
+            .filter_map(|entry| {
+                let mut score = 0.05 * entry.score.clamp(0.0, 1.0);
+                if let Some((rank, lexical_score)) = lexical_rank.get(entry.id.as_str()) {
+                    if *lexical_score > 0.0 {
+                        score += 1.0 / (RRF_K + *rank as f64);
+                    }
+                }
+                if let Some((rank, semantic_score)) = semantic_rank.get(entry.id.as_str()) {
+                    if *semantic_score > 0.0 {
+                        score += 1.0 / (RRF_K + *rank as f64);
+                    }
+                }
+                (score > 0.0).then_some((entry, score))
+            })
+            .collect::<Vec<_>>();
+        fused.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.id.cmp(&b.0.id)));
+        fused
+            .into_iter()
+            .take(limit)
+            .map(|(entry, _)| entry)
+            .collect()
+    }
+
+    fn retrieve_filtered<'a>(
+        registry: &'a MemoryRegistry,
+        query: &str,
+        limit: usize,
+        eligible_scopes: Option<&[&str]>,
+    ) -> Vec<&'a MemoryEntry> {
+        let terms = Self::query_terms(query);
+        let mut scored = registry
+            .all()
+            .into_iter()
+            .filter(|entry| {
+                eligible_scopes.is_none_or(|scopes| scopes.contains(&entry.scope_id.as_str()))
+            })
+            .filter_map(|entry| {
+                let score = Self::score_entry(entry, &terms);
+                (score > 0.0).then_some((entry, score))
+            })
+            .collect::<Vec<_>>();
+        scored.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.id.cmp(&b.0.id)));
+        scored
+            .into_iter()
+            .take(limit)
+            .map(|(entry, _)| entry)
+            .collect()
+    }
+
+    fn retrieve_hybrid_filtered_scalar<'a>(
+        registry: &'a MemoryRegistry,
+        query: &str,
+        query_embedding: &[f32],
+        limit: usize,
+        eligible_scopes: Option<&[&str]>,
+    ) -> Vec<&'a MemoryEntry> {
+        let terms = Self::query_terms(query);
+        let entries = registry
+            .all()
+            .into_iter()
+            .filter(|entry| {
+                eligible_scopes.is_none_or(|scopes| scopes.contains(&entry.scope_id.as_str()))
+            })
+            .collect::<Vec<_>>();
+        let mut lexical = entries
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| (index, Self::score_entry(entry, &terms)))
+            .collect::<Vec<_>>();
+        lexical.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let mut semantic = entries
+            .iter()
+            .enumerate()
+            .map(|(index, entry)| {
+                let score = entry
+                    .embedding
+                    .as_deref()
+                    .map(|embedding| cosine(embedding, query_embedding) as f64)
+                    .unwrap_or(0.0);
+                (index, score)
+            })
+            .collect::<Vec<_>>();
+        semantic.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let mut fused = vec![0.0_f64; entries.len()];
+        for (rank, (index, score)) in lexical.into_iter().enumerate() {
+            if score > 0.0 {
+                fused[index] += 1.0 / (RRF_K + rank as f64);
+            }
+        }
+        for (rank, (index, score)) in semantic.into_iter().enumerate() {
+            if score > 0.0 {
+                fused[index] += 1.0 / (RRF_K + rank as f64);
+            }
+        }
+        let mut ranked = entries
+            .into_iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                let score = fused[index] + 0.05 * entry.score.clamp(0.0, 1.0);
+                (score > 0.0).then_some((entry, score))
+            })
+            .collect::<Vec<_>>();
+        ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.id.cmp(&b.0.id)));
+        ranked
+            .into_iter()
+            .take(limit)
+            .map(|(entry, _)| entry)
             .collect()
     }
 
@@ -290,5 +470,61 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].id, "kw");
+    }
+
+    #[test]
+    fn indexed_hybrid_preserves_reference_top_hit() {
+        let mut registry = MemoryRegistry::new_indexed();
+        registry.insert(entry(
+            "semantic",
+            "deployment notes",
+            &[],
+            0.0,
+            Some(vec![1.0, 0.0, 0.0]),
+        ));
+        registry.insert(entry(
+            "other",
+            "unrelated",
+            &[],
+            0.0,
+            Some(vec![0.0, 1.0, 0.0]),
+        ));
+        let query = [1.0, 0.0, 0.0];
+
+        let reference =
+            MemoryRetriever::retrieve_hybrid(&registry, "nothing lexical", Some(&query), 2);
+        let indexed = MemoryRetriever::retrieve_hybrid_indexed(
+            &registry,
+            "nothing lexical",
+            Some(&query),
+            2,
+            None,
+        );
+
+        assert_eq!(indexed[0].id, reference[0].id);
+        assert_eq!(indexed[0].id, "semantic");
+    }
+
+    #[test]
+    fn indexed_hybrid_applies_scope_without_temporary_registry() {
+        let mut registry = MemoryRegistry::new_indexed();
+        let mut excluded = entry("excluded", "rust", &["rust"], 1.0, Some(vec![1.0, 0.0]));
+        excluded.scope_id = "other".into();
+        registry.insert(excluded);
+        let mut included = entry("included", "rust", &["rust"], 0.0, Some(vec![0.8, 0.2]));
+        included.scope_id = "wanted".into();
+        registry.insert(included);
+        let query = [1.0, 0.0];
+
+        let hits = MemoryRetriever::retrieve_hybrid_indexed(
+            &registry,
+            "rust",
+            Some(&query),
+            10,
+            Some(&["wanted"]),
+        );
+
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id, "included");
     }
 }

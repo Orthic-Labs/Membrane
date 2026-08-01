@@ -44,6 +44,8 @@ Build one logical context system with typed subsystems, not one undifferentiated
 - **Audit** owns evidence-backed diagnosis of the mapped repository's health.
 - **Architect** owns researched future-state design and implementation planning.
 - **MemRight** owns durable cross-session memory and learned knowledge.
+- **Membrane** owns the single append-only SQLite `ObservableEventV1` ledger; host adapters produce
+  content-free events and Morph consumes them for Insights/Taste review.
 - **The Context Planner** federates every source, enforces freshness and scope, and admits a bounded
   packet into the model.
 - **Client adapters** expose the same planner to Claude, Codex, Cline/Kilo-like clients, Kimi, GLM,

@@ -4,6 +4,10 @@ members = [
     "crates/memright-core",
     "crates/memright-format",
     "crates/memright",
+    "crates/crypt-core",
+    "crates/crypt-format",
+    "crates/crypt-store",
+    "crates/membrane-runtime",
 ]
 
 [workspace.package]

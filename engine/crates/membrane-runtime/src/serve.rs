@@ -1132,6 +1132,11 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ("POST", "/expand", HttpWorkClass::General),
     ("POST", "/skills-snapshot", HttpWorkClass::General),
     ("POST", "/v1/telemetry/events:batch", HttpWorkClass::General),
+    (
+        "POST",
+        "/v1/telemetry/observable-events:batch",
+        HttpWorkClass::General,
+    ),
     ("POST", "/v1/memories:batch", HttpWorkClass::Model),
     ("POST", "/put", HttpWorkClass::Model),
     ("POST", "/delete", HttpWorkClass::General),
@@ -1377,7 +1382,34 @@ async fn dispatch(
         let verdict = state
             .freshness
             .latest_or_schedule(state.store.as_ref().clone(), repo_root);
-        return match serde_json::to_string(&verdict) {
+        let repository_id = value
+            .get("repositoryId")
+            .and_then(Value::as_str)
+            .unwrap_or("workspace-root");
+        let session_id = value
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .unwrap_or("freshness-http");
+        let worktree_path = value
+            .get("worktreePath")
+            .and_then(Value::as_str)
+            .unwrap_or(requested);
+        let mut payload_value = match serde_json::to_value(&verdict) {
+            Ok(value) => value,
+            Err(_) => {
+                return reject(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "freshness serialization failed",
+                )
+            }
+        };
+        payload_value["sourceBarrierReceipt"] = crate::freshness::source_barrier_receipt(
+            &verdict,
+            repository_id,
+            session_id,
+            worktree_path,
+        );
+        return match serde_json::to_string(&payload_value) {
             Ok(payload) => json_response(StatusCode::OK, payload),
             Err(_) => reject(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -1961,6 +1993,8 @@ fn lifecycle_input_from_json(value: &Value) -> Result<MemoryLifecycleInputV1, St
         "confidence",
         "confidenceBasis",
         "supersedes",
+        "authority",
+        "influenceClass",
     ]
     .into_iter()
     .filter_map(|key| {
@@ -1971,6 +2005,15 @@ fn lifecycle_input_from_json(value: &Value) -> Result<MemoryLifecycleInputV1, St
     .collect::<serde_json::Map<_, _>>();
     serde_json::from_value(Value::Object(lifecycle))
         .map_err(|error| format!("invalid lifecycle input: {error}"))
+}
+
+fn public_write_guard_defaults(lifecycle: &mut MemoryLifecycleInputV1) {
+    if lifecycle.authority.is_none() {
+        lifecycle.authority = Some("A0".into());
+    }
+    if lifecycle.influence_class.is_none() {
+        lifecycle.influence_class = Some("data_only".into());
+    }
 }
 
 fn event_context(v: &serde_json::Value, fallback_surface: &str) -> MemoryEventContext {
@@ -2321,7 +2364,34 @@ fn route_with_context_ingest_lease(
             Err(error) => return (400, serde_json::json!({ "error": error }).to_string()),
         };
         let verdict = crate::freshness::evaluate_repository_freshness(store, repo_root);
-        return match serde_json::to_string(&verdict) {
+        let repository_id = v
+            .get("repositoryId")
+            .and_then(|value| value.as_str())
+            .unwrap_or("workspace-root");
+        let session_id = v
+            .get("sessionId")
+            .and_then(|value| value.as_str())
+            .unwrap_or("freshness-http");
+        let worktree_path = v
+            .get("worktreePath")
+            .and_then(|value| value.as_str())
+            .unwrap_or(requested);
+        let mut payload_value = match serde_json::to_value(&verdict) {
+            Ok(value) => value,
+            Err(_) => {
+                return (
+                    500,
+                    serde_json::json!({ "error": "freshness serialization failed" }).to_string(),
+                )
+            }
+        };
+        payload_value["sourceBarrierReceipt"] = crate::freshness::source_barrier_receipt(
+            &verdict,
+            repository_id,
+            session_id,
+            worktree_path,
+        );
+        return match serde_json::to_string(&payload_value) {
             Ok(payload) => (200, payload),
             Err(_) => (
                 500,
@@ -2398,6 +2468,63 @@ fn route_with_context_ingest_lease(
             Err(crate::context_telemetry::ContextTelemetryError::Database(_)) => (
                 500,
                 serde_json::json!({ "error": "context telemetry storage unavailable" }).to_string(),
+            ),
+        };
+    }
+    if method == "POST" && path == "/v1/telemetry/observable-events:batch" {
+        let Some(context_ingest_lease) = context_ingest_lease else {
+            return (
+                503,
+                serde_json::json!({ "error": "active telemetry lease unavailable" }).to_string(),
+            );
+        };
+        let batch =
+            match serde_json::from_str::<crate::context_telemetry::ObservableEventBatchV1>(body) {
+                Ok(batch) => batch,
+                Err(_) => {
+                    return (
+                        400,
+                        serde_json::json!({ "error": "invalid observable event batch" })
+                            .to_string(),
+                    )
+                }
+            };
+        return match store
+            .db()
+            .ingest_observable_events(&batch, context_ingest_lease)
+        {
+            Ok(receipt) => {
+                let status = if receipt.inserted == 0 { 200 } else { 201 };
+                match serde_json::to_string(&receipt) {
+                    Ok(payload) => (status, payload),
+                    Err(_) => (
+                        500,
+                        serde_json::json!({ "error": "observable receipt serialization failed" })
+                            .to_string(),
+                    ),
+                }
+            }
+            Err(crate::context_telemetry::ContextTelemetryError::Invalid(error)) => {
+                (400, serde_json::json!({ "error": error }).to_string())
+            }
+            Err(crate::context_telemetry::ContextTelemetryError::Conflict { event_id }) => (
+                409,
+                serde_json::json!({
+                    "error": "event_id conflicts with an existing canonical event",
+                    "event_id": event_id,
+                })
+                .to_string(),
+            ),
+            Err(crate::context_telemetry::ContextTelemetryError::AttributionMismatch) => (
+                403,
+                serde_json::json!({
+                    "error": "observable event attribution does not match active installation"
+                })
+                .to_string(),
+            ),
+            Err(crate::context_telemetry::ContextTelemetryError::Database(_)) => (
+                500,
+                serde_json::json!({ "error": "observable event storage unavailable" }).to_string(),
             ),
         };
     }
@@ -2562,7 +2689,10 @@ fn route_with_context_ingest_lease(
         };
         let context = event_context(&v, "http");
         let lifecycle = match lifecycle_input_from_json(&v) {
-            Ok(lifecycle) => lifecycle,
+            Ok(mut lifecycle) => {
+                public_write_guard_defaults(&mut lifecycle);
+                lifecycle
+            }
             Err(error) => return (400, serde_json::json!({"error": error}).to_string()),
         };
         if let Err(error) = lifecycle.validate() {
@@ -2610,8 +2740,29 @@ fn route_with_context_ingest_lease(
             }
             return (413, "{\"error\":\"content too large\"}".into());
         }
-        let scope = v.get("scope").and_then(|x| x.as_str()).unwrap_or("global");
-        let tier = match v.get("tier").and_then(|x| x.as_str()).unwrap_or("Semantic") {
+        let scope = v
+            .get("scope")
+            .and_then(|x| x.as_str())
+            .unwrap_or("proposed");
+        if let Err(message) = crate::scope::validate_write_scope(scope) {
+            if let Some(response) = record_external_or_500(
+                store,
+                &context,
+                "write",
+                ExternalLifecycleStage::Validation,
+                "failed",
+                "invalid_scope",
+                None,
+                Some(scope),
+                "memory",
+                "http",
+                1,
+            ) {
+                return response;
+            }
+            return (400, serde_json::json!({ "error": message }).to_string());
+        }
+        let tier = match v.get("tier").and_then(|x| x.as_str()).unwrap_or("Working") {
             t if t.eq_ignore_ascii_case("working") => memright_core::MemoryTier::Working,
             t if t.eq_ignore_ascii_case("episodic") => memright_core::MemoryTier::Episodic,
             _ => memright_core::MemoryTier::Semantic,
@@ -5105,16 +5256,9 @@ mod tests {
 
         control.workload.release(1);
         control.workload.wait_finished(1).await;
-        let recovered = app
-            .oneshot(Request::get("/livez").body(Body::empty()).unwrap())
-            .await
-            .unwrap();
-        let recovered_payload: Value = serde_json::from_slice(
-            &to_bytes(recovered.into_body(), MAX_BODY_BYTES)
-                .await
-                .unwrap(),
-        )
-        .unwrap();
+        let recovered_payload =
+            wait_for_worker_snapshot(&app, |payload| payload["workers"]["detachedRunning"] == 0)
+                .await;
         assert_eq!(recovered_payload["workers"]["detachedRunning"], 0);
     }
 
@@ -5695,13 +5839,34 @@ mod tests {
     }
 
     #[test]
+    fn put_refuses_hand_typed_scope() {
+        let store = MemoryStore::new();
+        let put = route(
+            &store,
+            "POST",
+            "/put",
+            r#"{"name":"fork","content":"should not land","scope":"heardright","authority":"A0"}"#,
+        );
+        assert_eq!(put.0, 400);
+        assert!(
+            put.1.contains("refusing hand-typed scope"),
+            "unexpected body: {}",
+            put.1
+        );
+        let listed = route(&store, "POST", "/list", r#"{"scope":"heardright"}"#);
+        assert_eq!(listed.0, 200);
+        let payload: Value = serde_json::from_str(&listed.1).unwrap();
+        assert_eq!(payload.as_array().map(|a| a.len()).unwrap_or(1), 0);
+    }
+
+    #[test]
     fn put_and_recall_round_trip() {
         let store = MemoryStore::new();
         let put = route(
             &store,
             "POST",
             "/put",
-            r#"{"name":"note","content":"Deploy the worker.","scope":"D--Claude-coderight"}"#,
+            r#"{"name":"note","content":"Deploy the worker.","scope":"D--Claude-coderight","authority":"A2"}"#,
         );
         assert_eq!(put.0, 200);
         let rec = route(

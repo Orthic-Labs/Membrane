@@ -7,6 +7,7 @@ use std::path::Path;
 #[serde(rename_all = "camelCase")]
 pub struct DoctorReportV0 {
     pub schema_version: &'static str,
+    pub system: &'static str,
     pub status: &'static str,
     pub checks: Vec<DoctorCheckV0>,
 }
@@ -111,6 +112,7 @@ pub fn run_with_policy(
     };
     Ok(DoctorReportV0 {
         schema_version: "MemRightDoctorV0",
+        system: "Membrane",
         status,
         checks,
     })

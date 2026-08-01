@@ -1,4 +1,4 @@
-//! RightContext planner: deterministic, pure, provider-neutral admission.
+//! Membrane planner: deterministic, pure, provider-neutral admission.
 //!
 //! Per dispatch G3A, this module owns:
 //!   - ContextCandidateSet v1 shape parsing and normalization
@@ -16,6 +16,16 @@
 //!     cross_root, superseded_version, memory_low_relevance,
 //!     provider_capability_missing, fallback_quarantine, duplicate_id,
 //!     within_global_budget, freshness_authority_outranked)
+//!
+//! # Cross-provider score policy (P1 — lanes, not recalibration)
+//!
+//! Raw `provider_score` values are **lane-local signals**, not a shared relevance
+//! probability. Providers emit incompatible scales (e.g. overlay flat recency
+//! priors ~0.6 vs memory cosine ~0.3–0.5). Admission therefore does **not** treat
+//! a global sort of raw scores as cross-provider truth: reserved source-kind
+//! lanes (`RESERVED_LANES`) admit within-lane by score first; only the residual
+//! budget competes in global score order. Recalibrating every provider onto one
+//! scale is explicitly deferred — lanes are the standing policy.
 //!
 //! The planner performs no I/O: no filesystem reads, no Blueprint queries, no
 //! Git access, no MemRight DB queries. Producers feed it via JSON; consumers
@@ -681,14 +691,13 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
     }
     let deduped = content_or_source_deduped;
 
-    // 6. Token-budget admission — TWO PASSES. Pass 1 admits per-source-class RESERVED LANES
-    // (by score within the lane); pass 2 fills the remaining budget in global score order
-    // (the previous single-pass behavior). Rationale: providers score on incompatible scales —
-    // the git overlay carries a flat recency prior (0.6) that structurally outranks memory's
-    // real relevance cosine (~0.3-0.5), so on a dirty tree the overlay floods the whole budget
-    // and durable memory + skills never admit. Lanes stop the scales competing head-to-head;
-    // no score is changed, and lane sizes of 0 restore the exact previous behavior. An unused
-    // reservation is simply left for pass 2 (nothing is withheld).
+    // 6. Token-budget admission — TWO PASSES (explicit policy, not a temporary workaround).
+    // Pass 1 admits per-source-class RESERVED LANES by score *within* the lane; pass 2 fills
+    // the remaining budget in global score order. POLICY: raw provider_score is never treated
+    // as cross-provider-comparable. Overlay's flat recency prior (~0.6) and memory's cosine
+    // (~0.3–0.5) live on different scales; lanes keep them from competing for the whole budget.
+    // Full recalibration is out of scope — these constants *are* the calibration substitute.
+    // Lane size 0 restores single-pass behavior; unused reservation returns to pass 2.
     const RESERVED_LANES: &[(&str, usize)] = &[("memory", 800), ("skill", 300)];
     const MAX_PACKET_BLOCKS: usize = 32;
     let mut admitted_tokens = 0usize;

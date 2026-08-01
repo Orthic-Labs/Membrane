@@ -69,6 +69,13 @@ assert.equal(legacySession[1].result.isError, false);
 assert.ok(legacySession[1].result.structuredContent, "initialized legacy call includes structuredContent");
 assert.equal(typeof legacySession[1].result.content?.[0]?.text, "string", "initialized legacy call retains text fallback");
 
+const retiredAlias = await rpc([{
+  jsonrpc: "2.0", id: 32, method: "tools/call",
+  params: { name: "rightcontext_feedback", arguments: { repository: enrolledRoot, caller: { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" }, receiptId: "retired-alias", outcome: "used" } },
+}], { MEMBRANE_PROJECT_REGISTRY: registry });
+assert.equal(retiredAlias[0].error.code, -32602);
+assert.match(retiredAlias[0].error.message, /rightcontext_feedback not found/i);
+
 const denied = await rpc([{
   jsonrpc: "2.0", id: 4, method: "tools/call",
   params: { name: "membrane_context", arguments: { task: "inspect", repository: foreignRoot, caller: { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" } } },
@@ -102,7 +109,8 @@ const feedback = await rpc([{
   params: { name: "membrane_feedback", arguments: { repository: enrolledRoot, caller: { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" }, receiptId: "receipt-1", outcome: "used" } },
 }], { MEMBRANE_PROJECT_REGISTRY: registry });
 const feedbackReceipt = JSON.parse(feedback[0].result.content[0].text);
-assert.equal(feedbackReceipt.status, "accepted");
+assert.equal(feedbackReceipt.status, "accepted_advisory");
+assert.equal(feedbackReceipt.durable, false);
 assert.equal(feedbackReceipt.receiptId, "receipt-1");
 assert.match(feedbackReceipt.feedbackId, /^[a-z0-9][a-z0-9_-]{7,}$/i);
 assert.equal(feedback[0].result.isError, false);
@@ -123,7 +131,7 @@ const virtualFeedback = await rpc([{
   jsonrpc: "2.0", id: 8, method: "tools/call",
   params: { name: "membrane_feedback", arguments: { repository: enrolledRoot, caller: virtualCaller, receiptId: "receipt-virtual", outcome: "used" } },
 }], { MEMBRANE_PROJECT_REGISTRY: registry });
-assert.equal(JSON.parse(virtualFeedback[0].result.content[0].text).status, "accepted");
+assert.equal(JSON.parse(virtualFeedback[0].result.content[0].text).status, "accepted_advisory");
 const crossTenant = await rpc([{
   jsonrpc: "2.0", id: 9, method: "tools/call",
   params: { name: "membrane_feedback", arguments: { repository: enrolledRoot, caller: { ...virtualCaller, scopeDescriptor: { ...virtualCaller.scopeDescriptor, tenant_id: "tenant-b" } }, receiptId: "receipt-denied", outcome: "used" } },
@@ -278,7 +286,10 @@ try {
   assert.equal(federateHeaders.traceparent, "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future");
   assert.equal(federateHeaders.tracestate, "membrane=server");
   assert.equal(federateHeaders.baggage, "tenant=repo-a");
+  assert.equal(federateHeaders["x-membrane-trace"], "4bf92f3577b34da6a3ce929d0e0e4736");
   assert.equal(federateHeaders["x-rightcontext-trace"], "4bf92f3577b34da6a3ce929d0e0e4736");
+  assert.equal(federateHeaders["x-membrane-version"], "membrane-mcp/1");
+  assert.equal(federateHeaders["x-rightcontext-version"], "rightcontext-mcp/1");
   assert.equal(federateHits, 1, "only valid context calls invoke the planner sentinel");
 } finally {
   await new Promise((resolve) => federate.close(resolve));
