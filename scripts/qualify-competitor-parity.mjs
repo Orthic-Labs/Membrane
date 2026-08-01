@@ -146,19 +146,28 @@ if (phase === "baseline") {
   const installed = runCommand(join(workspaceRoot, "tools", "bin", "memright"), ["build-info"], workspaceRoot, 10_000);
   const health = runCommand("curl", ["--fail", "--silent", "--show-error", "--max-time", "5", "http://127.0.0.1:47851/health"], workspaceRoot, 10_000);
   const service = runCommand("launchctl", ["print", `gui/${process.getuid()}/com.adrian.memright-serve`], workspaceRoot, 10_000);
+  const db = process.env.MEMRIGHT_DB || join(workspaceRoot, "tools", ".cache", "memory", "memright-engine.db");
+  const hostEvents = runCommand("sqlite3", ["-json", db, "SELECT client, COUNT(*) AS events, MAX(ts) AS latest_ts FROM context_event_log WHERE client IN ('claude_code', 'codex', 'ccx') GROUP BY client ORDER BY client"], workspaceRoot, 10_000);
+  let hostCoverage = [];
   let identity = null;
   let healthJson = null;
-  try { identity = JSON.parse(installed.output_tail); healthJson = JSON.parse(health.output_tail); } catch { /* receipt remains open */ }
+  try {
+    identity = JSON.parse(installed.output_tail);
+    healthJson = JSON.parse(health.output_tail);
+    hostCoverage = JSON.parse(hostEvents.output_tail);
+  } catch { /* receipt remains open */ }
   const expectedCommit = git(membraneRoot, ["rev-parse", "HEAD"]);
+  const coveredClients = new Set(hostCoverage.filter((row) => Number(row.events) > 0).map((row) => row.client));
   const identityMatch = source?.status === "source_passed"
     && identity?.memright_source_commit === expectedCommit
     && healthJson?.releaseGeneration === identity?.release_generation
-    && /state = running/.test(service.output_tail);
+    && /state = running/.test(service.output_tail)
+    && ["claude_code", "codex", "ccx"].every((client) => coveredClients.has(client));
   result = {
-    ...base, platform: "mac", checks: [installed, health, service], identity,
-    status: identityMatch ? "mac_identity_passed_whole_path_open" : "mac_identity_failed",
-    finding_results: selected.map((id) => ({ id, status: "open", reason: identityMatch ? "whole-path host/scenario receipt absent" : "installed identity or service receipt mismatch" })),
-    open: selected,
+    ...base, platform: "mac", checks: [installed, health, service, hostEvents], identity, host_coverage: hostCoverage,
+    status: identityMatch ? "mac_host_passed" : "mac_host_failed",
+    finding_results: selected.map((id) => ({ id, status: identityMatch ? "mac_host_passed" : "open", reason: identityMatch ? "installed identity, service, & Claude/Codex/ccx event receipts match" : "installed identity, service, or host receipt mismatch" })),
+    open: identityMatch ? [] : selected,
   };
 } else if (phase === "windows") {
   result = { ...base, status: "blocked_missing_installed_receipt", platform: phase, finding_results: selected.map((id) => ({ id, status: "open", reason: "no installed windows receipt" })), open: selected };
