@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" role="img" aria-label="Membrane — The smallest useful context, with a receipt.">
+  <rect width="1200" height="300" fill="#111318"/>
+  <rect width="1200" height="6" fill="#df6428"/>
+  <text x="64" y="112" font-family="Inter,-apple-system,'Segoe UI',sans-serif" font-size="15" font-weight="800" letter-spacing="4" fill="#df6428">ORTHIC LABS</text>
+  <text x="60" y="188" font-family="Inter,-apple-system,'Segoe UI',sans-serif" font-size="76" font-weight="800" letter-spacing="-2.5" fill="#f7f7f4">Membrane</text>
+  <text x="64" y="238" font-family="Inter,-apple-system,'Segoe UI',sans-serif" font-size="24" font-weight="400" fill="#9aa3af">The smallest useful context, with a receipt.</text>
+</svg>
