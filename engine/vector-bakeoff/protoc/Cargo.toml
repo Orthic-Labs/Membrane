@@ -1,0 +1,10 @@
+[package]
+name = "vector-bakeoff-protoc"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+protoc-bin-vendored = "=3.2.0"

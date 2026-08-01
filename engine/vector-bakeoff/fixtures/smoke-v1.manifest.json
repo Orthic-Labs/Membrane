@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "generatorId": "memright-vector-fixture-v1",
+  "config": "../config/round1-v1.json",
+  "cellId": "smoke",
+  "rows": 256,
+  "queries": 5,
+  "dimension": 768,
+  "fixtureSha256": "3989d9923e92c0ee45d42c98a691674cf0dc4b9464543f5fd76038b938de4869",
+  "synthetic": true,
+  "privateContent": false,
+  "immutable": true
+}

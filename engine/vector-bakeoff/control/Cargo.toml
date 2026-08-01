@@ -1,0 +1,12 @@
+[package]
+name = "vector-bakeoff-control"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+memright-core = { path = "../../crates/memright-core" }
+serde_json = "1.0.145"
+vector-bakeoff-common = { path = "../common" }
