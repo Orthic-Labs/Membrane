@@ -465,11 +465,16 @@ fn build_candidates(
 /// - `max_candidates` — hard cap on admitted candidates. `0` is allowed
 ///   and yields an empty `candidates` array plus a populated
 ///   `omissions` array.
+/// - `repo_root` — real signal for `freshness.stale`, reusing the same verdict machinery the
+///   `/freshness` route exposes (`crate::freshness`) rather than a second staleness concept. When
+///   the caller has no repo root to offer, that is itself an unverifiable condition — `stale`
+///   honestly reports `true` rather than falling back to `false` (F11).
 pub fn produce_candidate_set(
     store: &::crypt::MemoryStore,
     task: &str,
     scope: &str,
     max_candidates: usize,
+    repo_root: Option<&std::path::Path>,
 ) -> ContextCandidateSet {
     let trace_id = trace_id_for(task, scope);
     let chain = scope_chain_for(store, scope);
@@ -517,6 +522,10 @@ pub fn produce_candidate_set(
         .map(|c| c.estimatedTokens)
         .fold(0u64, |acc, t| acc.saturating_add(t));
 
+    let stale = repo_root.is_none_or(|root| {
+        !crate::freshness::evaluate_repository_freshness(store, root.to_path_buf()).stable
+    });
+
     ContextCandidateSet {
         schemaVersion: 1,
         traceId: trace_id,
@@ -526,7 +535,7 @@ pub fn produce_candidate_set(
         freshness: Freshness {
             revision: "memory-v1".into(),
             indexedAt: String::new(),
-            stale: false,
+            stale,
         },
         providerCeiling: ProviderCeiling {
             maxCandidates: max_candidates as u32,
@@ -624,9 +633,19 @@ mod tests {
     #[test]
     fn produce_candidate_set_runs_on_empty_store() {
         let s = store();
-        let set = produce_candidate_set(&s, "anything", "global", 5);
+        let set = produce_candidate_set(&s, "anything", "global", 5, None);
         assert_eq!(set.schemaVersion, 1);
         assert_eq!(set.candidates.len(), 0);
         assert_eq!(set.omissions.len(), 0);
+    }
+
+    /// F11 — `stale` must derive from a real freshness signal. With no repo root offered
+    /// (genuinely unavailable at this call site), that is honestly reported as `stale: true` —
+    /// never the old hardcoded `false`.
+    #[test]
+    fn stale_is_true_when_no_repo_root_is_available() {
+        let s = store();
+        let set = produce_candidate_set(&s, "anything", "global", 5, None);
+        assert!(set.freshness.stale);
     }
 }

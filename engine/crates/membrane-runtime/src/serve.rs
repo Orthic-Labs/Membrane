@@ -1072,6 +1072,63 @@ fn reject(status: StatusCode, message: &str) -> Response {
     json_response(status, serde_json::json!({ "error": message }).to_string())
 }
 
+/// Shared `/freshness` response assembly for both the async axum dispatcher and the sync
+/// test-routed dispatcher below. F19 fix: `sessionId` and `worktreePath` are the caller's
+/// declared identity on the source-barrier receipt. Silently defaulting either one
+/// (`"freshness-http"` / the raw `repoRoot`) let every caller that omitted its identity collapse
+/// onto the same receipt identity, which defeats the receipt's purpose — both are now required,
+/// with no fallback value invented on the caller's behalf.
+fn freshness_response_body(v: &Value, verdict: &crate::freshness::FreshnessVerdict) -> (u16, String) {
+    let Some(session_id) = v
+        .get("sessionId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return (
+            400,
+            serde_json::json!({ "error": "sessionId required" }).to_string(),
+        );
+    };
+    let Some(worktree_path) = v
+        .get("worktreePath")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return (
+            400,
+            serde_json::json!({ "error": "worktreePath required" }).to_string(),
+        );
+    };
+    let repository_id = v
+        .get("repositoryId")
+        .and_then(Value::as_str)
+        .unwrap_or("workspace-root");
+    let mut payload_value = match serde_json::to_value(verdict) {
+        Ok(value) => value,
+        Err(_) => {
+            return (
+                500,
+                serde_json::json!({ "error": "freshness serialization failed" }).to_string(),
+            )
+        }
+    };
+    payload_value["sourceBarrierReceipt"] = crate::freshness::source_barrier_receipt(
+        verdict,
+        repository_id,
+        session_id,
+        worktree_path,
+    );
+    match serde_json::to_string(&payload_value) {
+        Ok(payload) => (200, payload),
+        Err(_) => (
+            500,
+            serde_json::json!({ "error": "freshness serialization failed" }).to_string(),
+        ),
+    }
+}
+
 fn origin_allowed(headers: &HeaderMap, allowed_origins: &[String]) -> bool {
     let Some(origin) = headers.get(header::ORIGIN) else {
         return true;
@@ -1382,40 +1439,11 @@ async fn dispatch(
         let verdict = state
             .freshness
             .latest_or_schedule(state.store.as_ref().clone(), repo_root);
-        let repository_id = value
-            .get("repositoryId")
-            .and_then(Value::as_str)
-            .unwrap_or("workspace-root");
-        let session_id = value
-            .get("sessionId")
-            .and_then(Value::as_str)
-            .unwrap_or("freshness-http");
-        let worktree_path = value
-            .get("worktreePath")
-            .and_then(Value::as_str)
-            .unwrap_or(requested);
-        let mut payload_value = match serde_json::to_value(&verdict) {
-            Ok(value) => value,
-            Err(_) => {
-                return reject(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "freshness serialization failed",
-                )
-            }
-        };
-        payload_value["sourceBarrierReceipt"] = crate::freshness::source_barrier_receipt(
-            &verdict,
-            repository_id,
-            session_id,
-            worktree_path,
+        let (status, payload) = freshness_response_body(&value, &verdict);
+        return json_response(
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            payload,
         );
-        return match serde_json::to_string(&payload_value) {
-            Ok(payload) => json_response(StatusCode::OK, payload),
-            Err(_) => reject(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "freshness serialization failed",
-            ),
-        };
     }
     let mut idempotency_lease = None;
     if let Some(raw_key) = headers.get(IDEMPOTENCY_KEY_HEADER) {
@@ -2364,40 +2392,7 @@ fn route_with_context_ingest_lease(
             Err(error) => return (400, serde_json::json!({ "error": error }).to_string()),
         };
         let verdict = crate::freshness::evaluate_repository_freshness(store, repo_root);
-        let repository_id = v
-            .get("repositoryId")
-            .and_then(|value| value.as_str())
-            .unwrap_or("workspace-root");
-        let session_id = v
-            .get("sessionId")
-            .and_then(|value| value.as_str())
-            .unwrap_or("freshness-http");
-        let worktree_path = v
-            .get("worktreePath")
-            .and_then(|value| value.as_str())
-            .unwrap_or(requested);
-        let mut payload_value = match serde_json::to_value(&verdict) {
-            Ok(value) => value,
-            Err(_) => {
-                return (
-                    500,
-                    serde_json::json!({ "error": "freshness serialization failed" }).to_string(),
-                )
-            }
-        };
-        payload_value["sourceBarrierReceipt"] = crate::freshness::source_barrier_receipt(
-            &verdict,
-            repository_id,
-            session_id,
-            worktree_path,
-        );
-        return match serde_json::to_string(&payload_value) {
-            Ok(payload) => (200, payload),
-            Err(_) => (
-                500,
-                serde_json::json!({ "error": "freshness serialization failed" }).to_string(),
-            ),
-        };
+        return freshness_response_body(&v, &verdict);
     }
     if method == "POST" && path == "/skills-snapshot" {
         return match store.skills_snapshot() {
@@ -3587,11 +3582,19 @@ fn route_with_context_ingest_lease(
             .get("max_candidates")
             .and_then(|x| x.as_u64())
             .unwrap_or(64) as usize;
+        // F11: no `repoRoot` travels on this hot path (the federation gateway's `crypt.py`
+        // provider never sends one — verified against `providers/crypt.py`), and this route's
+        // whole reason to exist is the sub-350ms warm-serve budget the cold CLI blew (see the
+        // comment above) — spending a real `git status` + graph-db read on every call to compute
+        // a genuine freshness verdict would reintroduce that latency. Passing `None` here is the
+        // honest choice per F11's contract: the candidate set's own freshness is unverifiable at
+        // this call site, so `stale` reports that honestly instead of the old hardcoded `false`.
         let mut payload = match crate::federation::memory_candidates_payload_for_descriptor(
             store,
             task,
             &descriptor,
             max,
+            None,
         ) {
             Ok(payload) => payload,
             Err(error) => return (400, serde_json::json!({"error": error}).to_string()),
@@ -4915,8 +4918,12 @@ mod tests {
             std::time::Duration::from_secs(2),
             MAX_CONCURRENT_REQUESTS,
         );
-        let body =
-            serde_json::json!({ "repoRoot": repo.path().canonicalize().unwrap() }).to_string();
+        let body = serde_json::json!({
+            "repoRoot": repo.path().canonicalize().unwrap(),
+            "sessionId": "resident-freshness-off-path-session",
+            "worktreePath": repo.path().canonicalize().unwrap().to_string_lossy(),
+        })
+        .to_string();
         let started = Instant::now();
         let response = app
             .oneshot(
@@ -4940,6 +4947,60 @@ mod tests {
         assert!(value["reasons"]
             .as_array()
             .is_some_and(|reasons| reasons.iter().any(|reason| reason == "refresh_pending")));
+    }
+
+    /// F19 — a missing `sessionId` must reject the request, never silently fall back to a
+    /// shared `"freshness-http"` identity on the source-barrier receipt.
+    #[test]
+    fn freshness_rejects_a_request_missing_session_id() {
+        let store = MemoryStore::new();
+        let workspace = configured_workspace_root();
+        let repo = tempfile::Builder::new()
+            .prefix("freshness-missing-session-")
+            .tempdir_in(&workspace)
+            .unwrap();
+        let response = route(
+            &store,
+            "POST",
+            "/freshness",
+            &serde_json::json!({
+                "repoRoot": repo.path().canonicalize().unwrap(),
+                "worktreePath": "some/worktree",
+            })
+            .to_string(),
+        );
+        assert_eq!(response.0, 400, "{}", response.1);
+        let payload: Value = serde_json::from_str(&response.1).unwrap();
+        assert!(payload["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("sessionId")));
+    }
+
+    /// F19 — a missing `worktreePath` must reject the request, never silently fall back to the
+    /// raw `repoRoot` string as the overlay identity.
+    #[test]
+    fn freshness_rejects_a_request_missing_worktree_path() {
+        let store = MemoryStore::new();
+        let workspace = configured_workspace_root();
+        let repo = tempfile::Builder::new()
+            .prefix("freshness-missing-worktree-")
+            .tempdir_in(&workspace)
+            .unwrap();
+        let response = route(
+            &store,
+            "POST",
+            "/freshness",
+            &serde_json::json!({
+                "repoRoot": repo.path().canonicalize().unwrap(),
+                "sessionId": "session-under-test",
+            })
+            .to_string(),
+        );
+        assert_eq!(response.0, 400, "{}", response.1);
+        let payload: Value = serde_json::from_str(&response.1).unwrap();
+        assert!(payload["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("worktreePath")));
     }
 
     #[test]

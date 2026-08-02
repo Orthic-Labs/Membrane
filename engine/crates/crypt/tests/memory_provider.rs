@@ -56,7 +56,7 @@ fn seed_store(rows: &[(&str, &str, &str, f64, u32)]) -> MemoryStore {
 fn candidate_shape_matches_v1_contract() {
     let s = store();
     put(&s, "alpha", "alpha body", "global", 0.9);
-    let set: ContextCandidateSet = produce_candidate_set(&s, "plan alpha", "global", 10);
+    let set: ContextCandidateSet = produce_candidate_set(&s, "plan alpha", "global", 10, None);
     assert_eq!(set.schemaVersion, 1);
     assert_eq!(set.provider, PROVIDER_NAME);
     assert_eq!(set.candidates.len(), 1);
@@ -105,7 +105,7 @@ fn candidate_json_preserves_morph_memory_and_skill_output_dimensions() {
         }
     }
     let store = MemoryStore::open(db);
-    let set = produce_candidate_set(&store, "show all dimensions", "global", 10);
+    let set = produce_candidate_set(&store, "show all dimensions", "global", 10, None);
     let dimensions: std::collections::BTreeSet<_> = set
         .candidates
         .iter()
@@ -149,7 +149,7 @@ fn scope_filter_only_admits_chain_members() {
         0.95,
     );
 
-    let set = produce_candidate_set(&s, "plan self", "D--Claude-mailright", 50);
+    let set = produce_candidate_set(&s, "plan self", "D--Claude-mailright", 50, None);
     let admitted_ids: Vec<&str> = set
         .candidates
         .iter()
@@ -198,7 +198,7 @@ fn supersession_collapses_duplicates_onto_highest_score() {
         ),
     ]);
 
-    let set = produce_candidate_set(&s, "design feedback", "global", 50);
+    let set = produce_candidate_set(&s, "design feedback", "global", 50, None);
     assert_eq!(set.candidates.len(), 1, "dedup must collapse all three");
     let survivor = &set.candidates[0];
     assert_eq!(survivor.provenance.memory_id, "global/feedback-rule-v2");
@@ -232,7 +232,7 @@ fn no_cross_root_leaks_via_sibling_scopes() {
     put(&s, "p2", "project two body", "D--Claude-coderight", 0.9);
     put(&s, "p3", "project three body", "D--Claude-heardright", 0.9);
 
-    let set = produce_candidate_set(&s, "plan", "D--Claude-mailright", 50);
+    let set = produce_candidate_set(&s, "plan", "D--Claude-mailright", 50, None);
     let admitted: Vec<&str> = set
         .candidates
         .iter()
@@ -260,7 +260,7 @@ fn demoted_entries_excluded_and_recorded_as_omissions() {
         ("used-but-low", "used but low body", "global", 0.1, 1),
     ]);
 
-    let set = produce_candidate_set(&s, "plan", "global", 50);
+    let set = produce_candidate_set(&s, "plan", "global", 50, None);
     let admitted: Vec<&str> = set
         .candidates
         .iter()
@@ -277,7 +277,7 @@ fn demoted_entries_excluded_and_recorded_as_omissions() {
 #[test]
 fn empty_store_yields_empty_candidates_and_no_panic() {
     let s = store();
-    let set = produce_candidate_set(&s, "nothing", "D--Claude-mailright", 5);
+    let set = produce_candidate_set(&s, "nothing", "D--Claude-mailright", 5, None);
     assert_eq!(set.candidates.len(), 0);
     assert_eq!(set.omissions.len(), 0);
     assert_eq!(set.schemaVersion, 1);
@@ -297,7 +297,7 @@ fn max_candidates_caps_admitted_count_but_preserves_omissions() {
         })
         .collect();
     let s = seed_store(&rows);
-    let set = produce_candidate_set(&s, "cap me", "global", 3);
+    let set = produce_candidate_set(&s, "cap me", "global", 3, None);
     assert_eq!(set.candidates.len(), 3);
     // The provider ranked score-desc; first three are the highest.
     assert_eq!(set.candidates[0].provenance.memory_id, "global/note-0");
@@ -310,7 +310,7 @@ fn max_candidates_caps_admitted_count_but_preserves_omissions() {
 fn candidate_provenance_carries_access_count_and_last_seen() {
     let s = seed_store(&[("tracked", "tracked body", "global", 0.7, 2)]);
     let id = "global/tracked";
-    let set = produce_candidate_set(&s, "track", "global", 5);
+    let set = produce_candidate_set(&s, "track", "global", 5, None);
     let c = set
         .candidates
         .iter()
@@ -326,7 +326,7 @@ fn candidate_provenance_carries_access_count_and_last_seen() {
 fn instruction_policy_is_data_only_and_resolver_is_provider_name() {
     let s = store();
     put(&s, "x", "y", "global", 0.7);
-    let set = produce_candidate_set(&s, "any", "global", 5);
+    let set = produce_candidate_set(&s, "any", "global", 5, None);
     for c in &set.candidates {
         assert_eq!(c.instructionPolicy, "data_only");
         assert_eq!(c.resolver, PROVIDER_NAME);
@@ -362,7 +362,7 @@ fn poisoned_memory_body_cannot_escalate_its_influence_class() {
             0.9,
         );
     }
-    let set = produce_candidate_set(&s, "deploy", "D--Claude-mailright", 10);
+    let set = produce_candidate_set(&s, "deploy", "D--Claude-mailright", 10, None);
     assert_eq!(
         set.candidates.len(),
         payloads.len(),
@@ -381,7 +381,7 @@ fn poisoned_memory_body_cannot_escalate_its_influence_class() {
     }
     // The scope gate is likewise content-blind: a body that asks to be shared
     // still cannot reach a sibling scope.
-    let sibling = produce_candidate_set(&s, "deploy", "D--Claude-coderight", 10);
+    let sibling = produce_candidate_set(&s, "deploy", "D--Claude-coderight", 10, None);
     assert!(
         sibling.candidates.is_empty(),
         "poisoned rows must not cross into a sibling scope"
@@ -391,8 +391,8 @@ fn poisoned_memory_body_cannot_escalate_its_influence_class() {
 #[test]
 fn trace_id_is_stable_and_omits_task_text() {
     let s = store();
-    let a = produce_candidate_set(&s, "super-secret-task-text", "global", 5);
-    let b = produce_candidate_set(&s, "super-secret-task-text", "global", 5);
+    let a = produce_candidate_set(&s, "super-secret-task-text", "global", 5, None);
+    let b = produce_candidate_set(&s, "super-secret-task-text", "global", 5, None);
     assert_eq!(a.traceId, b.traceId);
     assert_eq!(a.traceId.len(), 64);
     // traceId is hex, never contains the raw task text.
@@ -403,19 +403,21 @@ fn trace_id_is_stable_and_omits_task_text() {
 #[test]
 fn does_not_authenticate_to_itself_or_read_a_token() {
     // The provider's only public function takes `(store, task, scope,
-    // max_candidates)`. It reads only through MemoryStore. There is no
-    // `authenticate` / `token` / `bearer` parameter. This is a structural
-    // assertion that pins the no-self-auth contract: if anyone ever adds
-    // such a parameter, the test file changes visibly.
+    // max_candidates, repo_root)`. It reads only through MemoryStore (and, via
+    // `repo_root`, the shared `freshness` verdict machinery for the `stale` signal — F11). There
+    // is no `authenticate` / `token` / `bearer` parameter. This is a structural assertion that
+    // pins the no-self-auth contract: if anyone ever adds such a parameter, the test file changes
+    // visibly.
     fn _assert_no_auth_surface(
         store: &MemoryStore,
         task: &str,
         scope: &str,
         max_candidates: usize,
+        repo_root: Option<&std::path::Path>,
     ) -> ContextCandidateSet {
-        produce_candidate_set(store, task, scope, max_candidates)
+        produce_candidate_set(store, task, scope, max_candidates, repo_root)
     }
     // Smoke-call to ensure the signature compiles unchanged.
     let s = store();
-    let _ = _assert_no_auth_surface(&s, "task", "global", 1);
+    let _ = _assert_no_auth_surface(&s, "task", "global", 1, None);
 }

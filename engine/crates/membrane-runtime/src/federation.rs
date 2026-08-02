@@ -274,9 +274,10 @@ pub fn run_memory_candidates(
     max_candidates: usize,
     _scope_grant_id: Option<String>,
 ) -> Result<(), String> {
-    let workspace = repo
+    let canonical_repo = repo
         .canonicalize()
-        .map_err(|e| format!("resolve repo: {e}"))?
+        .map_err(|e| format!("resolve repo: {e}"))?;
+    let workspace = canonical_repo
         .parent()
         .ok_or_else(|| "repo has no parent".to_string())?
         .to_path_buf();
@@ -286,7 +287,17 @@ pub fn run_memory_candidates(
     let store = crate::MemoryStore::try_open(db).map_err(|e| format!("open MemoryStore: {e}"))?;
 
     let scope_id = scope.clone().unwrap_or_else(|| "D--Claude".to_string());
-    let payload = memory_candidates_payload(&store, &task, &scope_id, max_candidates);
+    // The CLI always has a real, already-canonicalized repo root in hand (canonicalize()
+    // above already succeeded or this function would have returned), so this call site
+    // always has a genuine freshness signal available — unlike the resident-serve HTTP
+    // route, which does not (see the /memory-candidates handler in serve.rs).
+    let payload = memory_candidates_payload(
+        &store,
+        &task,
+        &scope_id,
+        max_candidates,
+        Some(&canonical_repo),
+    );
     println!(
         "{}",
         serde_json::to_string_pretty(&payload).map_err(|e| format!("serialize: {e}"))?
@@ -306,15 +317,23 @@ pub fn memory_candidates_payload(
     task: &str,
     scope_id: &str,
     max_candidates: usize,
+    repo_root: Option<&Path>,
 ) -> serde_json::Value {
     memory_candidates_payload_for_descriptor(
         store,
         task,
         &crate::scope::ScopeDescriptorV1::filesystem(scope_id),
         max_candidates,
+        repo_root,
     )
     .unwrap_or_else(|error| serde_json::json!({"error": error, "candidates": []}))
 }
+
+/// Reason code for a memory candidate that scored well enough to be considered but was cut by
+/// the caller's `max_candidates` ceiling. Mirrors the `Omission.reason` convention in
+/// `memory_provider.rs::reasons`, scoped locally since this function's admission model (a single
+/// recall pass, not `consider_entries`/`partition`) has no other omission source to report.
+const OMISSION_REASON_CEILING_TRUNCATED: &str = "ceiling_truncated";
 
 /// Descriptor-aware candidate surface. Virtual scope ancestry is exact and opaque; a legacy
 /// string is deliberately represented as a filesystem descriptor by the compatibility wrapper.
@@ -323,6 +342,7 @@ pub fn memory_candidates_payload_for_descriptor(
     task: &str,
     descriptor: &crate::scope::ScopeDescriptorV1,
     max_candidates: usize,
+    repo_root: Option<&Path>,
 ) -> Result<serde_json::Value, String> {
     // Canonicalize whatever the caller sent (raw filesystem path, slug, or `global`) into the full
     // visibility chain: self + ancestor scopes that hold rows + global. Before 2026-07-16 this
@@ -336,8 +356,19 @@ pub fn memory_candidates_payload_for_descriptor(
     // Shared recall owns one-hop augmentation, its bounded graph lane, and effectiveness vetoes.
     // Keeping those policies here as well would double-expand candidates and split behavior across
     // live recall, replay, and federation.
-    let (hits, mut stage_elapsed) = store.recall_scored_timed(task, max_candidates, &scopes);
+    //
+    // F11: request one MORE than the ceiling so a real ceiling-truncation can be told apart from
+    // "nothing else scored" without changing what gets served — the first `max_candidates` hits of
+    // an N+1 request are the same top-N a request for exactly N would have returned (ranking is
+    // deterministic; see `recall_scored`'s doc comment), so this changes zero user-visible output.
+    let probe_limit = max_candidates.saturating_add(1);
+    let (mut hits, mut stage_elapsed) = store.recall_scored_timed(task, probe_limit, &scopes);
     stage_elapsed.recall_ms += scope_ms;
+    let dropped_by_ceiling = if hits.len() > max_candidates {
+        hits.split_off(max_candidates)
+    } else {
+        Vec::new()
+    };
     let rank_started = Instant::now();
     let candidates: Vec<serde_json::Value> = hits
         .iter()
@@ -365,7 +396,26 @@ pub fn memory_candidates_payload_for_descriptor(
             })
         })
         .collect();
+    let omissions: Vec<serde_json::Value> = dropped_by_ceiling
+        .iter()
+        .map(|(e, _score)| {
+            serde_json::json!({
+                "id": format!("memory:role:{}", e.id),
+                "layer": 7,
+                "reason": OMISSION_REASON_CEILING_TRUNCATED,
+            })
+        })
+        .collect();
     stage_elapsed.rank_ms += rank_started.elapsed().as_secs_f64() * 1000.0;
+
+    // F11: reuse the freshness verdict machinery `/freshness` already exposes rather than
+    // inventing a second staleness concept. `stable` is the verdict's own truth-in-observation
+    // signal (the epoch sandwich did or did not hold across the read); its negation is `stale`.
+    // When no repo root is available at this call site at all, that is itself an unverifiable
+    // condition — express it honestly as `stale: true`, never fall back to `false`.
+    let stale = repo_root.is_none_or(|root| {
+        !crate::freshness::evaluate_repository_freshness(store, root.to_path_buf()).stable
+    });
 
     Ok(serde_json::json!({
         "schemaVersion": 1,
@@ -376,14 +426,14 @@ pub fn memory_candidates_payload_for_descriptor(
         "freshness": {
             "revision": crypt_revision(),
             "indexedAt": iso_now(),
-            "stale": false,
+            "stale": stale,
         },
         "providerCeiling": {
             "maxCandidates": max_candidates,
             "maxEstimatedTokens": 4096,
         },
         "candidates": candidates,
-        "omissions": [],
+        "omissions": omissions,
         "scope": scopes.first().cloned().unwrap_or_default(),
         "_rightcontext": {
             "stageElapsedMs": {
@@ -654,7 +704,7 @@ mod tests {
             vec![],
         );
         let payload =
-            memory_candidates_payload(&store, "answer briefly and tersely please", "global", 5);
+            memory_candidates_payload(&store, "answer briefly and tersely please", "global", 5, None);
         let cands = payload["candidates"].as_array().expect("candidates array");
         assert!(!cands.is_empty(), "expected memory candidates");
         let top = &cands[0];
@@ -732,5 +782,101 @@ mod tests {
             !p.contains("wor…"),
             "must cut on a word boundary, not mid-word"
         );
+    }
+
+    /// Minimal, hermetic git repo fixture for the F11 freshness tests below — explicit identity
+    /// flags so this works in any sandbox regardless of global git config.
+    fn init_git_repo(dir: &Path) {
+        let run = |args: &[&str]| {
+            let status = Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(args)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .expect("git must be available to run this test");
+            assert!(status.success(), "git {args:?} failed in {}", dir.display());
+        };
+        run(&["init", "--quiet"]);
+        run(&[
+            "-c",
+            "user.email=federation-test@example.com",
+            "-c",
+            "user.name=federation-test",
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "init",
+        ]);
+    }
+
+    /// F11 — `stale` must reflect a real freshness verdict, not a hardcoded literal. A real,
+    /// coherent git repository (even with no Blueprint/graph snapshot yet — `MissingSnapshot` is
+    /// still a stable observation per `freshness::classify`) must report `stale: false`.
+    #[test]
+    fn stale_is_false_for_a_real_coherent_repository() {
+        let repo = tempfile::tempdir().unwrap();
+        init_git_repo(repo.path());
+        let store = crate::MemoryStore::new();
+        let payload = memory_candidates_payload(&store, "any task", "global", 5, Some(repo.path()));
+        assert_eq!(
+            payload["freshness"]["stale"], false,
+            "a real, coherent repository must report stale=false, payload={payload}"
+        );
+    }
+
+    /// F11 — the inverse: a directory that is not a git repository at all makes the freshness
+    /// epoch unreadable (Indeterminate/unstable), and having no repo root at all is itself an
+    /// unverifiable condition. Both must honestly report `stale: true` — never fall back to the
+    /// old hardcoded `false`.
+    #[test]
+    fn stale_is_true_when_the_freshness_signal_cannot_be_verified() {
+        let store = crate::MemoryStore::new();
+
+        let non_repo = tempfile::tempdir().unwrap();
+        let broken =
+            memory_candidates_payload(&store, "any task", "global", 5, Some(non_repo.path()));
+        assert_eq!(broken["freshness"]["stale"], true);
+
+        let unknown = memory_candidates_payload(&store, "any task", "global", 5, None);
+        assert_eq!(unknown["freshness"]["stale"], true);
+    }
+
+    /// F11 — candidates pushed past the caller's `max_candidates` ceiling must be recorded as
+    /// omissions, not silently dropped, while the served candidate list is still capped exactly
+    /// as before.
+    #[test]
+    fn omissions_reports_candidates_dropped_by_the_ceiling_truncation() {
+        let store = crate::MemoryStore::new();
+        for n in 0..5 {
+            let _ = store.remember(
+                &format!("ceiling truncation fixture memory entry number {n}"),
+                vec![],
+            );
+        }
+        let payload = memory_candidates_payload(
+            &store,
+            "ceiling truncation fixture memory entry",
+            "global",
+            2,
+            None,
+        );
+        let candidates = payload["candidates"].as_array().expect("candidates array");
+        assert_eq!(
+            candidates.len(),
+            2,
+            "the ceiling must still cap what is served, payload={payload}"
+        );
+        let omissions = payload["omissions"].as_array().expect("omissions array");
+        assert!(
+            !omissions.is_empty(),
+            "entries pushed past the ceiling must be recorded as omissions, not silently \
+             dropped: {payload}"
+        );
+        assert!(omissions
+            .iter()
+            .all(|omission| omission["reason"] == "ceiling_truncated"));
     }
 }

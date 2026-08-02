@@ -281,7 +281,12 @@ fn freshness_route_returns_versioned_content_free_service_metadata() {
     git(repo.path(), &["add", "fixture.txt"]);
     git(repo.path(), &["commit", "--quiet", "-m", "fixture"]);
     let repo_root = repo.path().canonicalize().unwrap();
-    let body = serde_json::json!({ "repoRoot": repo_root }).to_string();
+    let body = serde_json::json!({
+        "repoRoot": repo_root,
+        "sessionId": "freshness-route-test-session",
+        "worktreePath": repo_root.to_string_lossy(),
+    })
+    .to_string();
     let (status, payload) = crypt::serve::route_for_tests(&store, "POST", "/freshness", &body);
     assert_eq!(status, 200, "{payload}");
     let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
