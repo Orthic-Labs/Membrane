@@ -26,7 +26,7 @@ use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{any, get};
 use axum::Router;
-use memright_core::planner::{
+use crypt_core::planner::{
     plan as plan_context, ContextCandidateSetV1, PlannerError, PlannerInput,
 };
 use serde_json::{json, Value};
@@ -192,7 +192,7 @@ fn analysis_response(directory: &std::path::Path) -> (u16, String) {
 }
 
 fn configured_analysis_directory() -> std::path::PathBuf {
-    std::env::var_os("MEMRIGHT_DAILY_ANALYSIS_DIR")
+    std::env::var_os("CRYPT_DAILY_ANALYSIS_DIR")
         .map(std::path::PathBuf::from)
         .or_else(|| {
             std::env::var_os("WORKSPACE_ROOT")
@@ -212,7 +212,7 @@ fn configured_workspace_root() -> std::path::PathBuf {
 }
 
 fn configured_anchor_directory() -> std::path::PathBuf {
-    std::env::var_os("MEMRIGHT_ANCHOR_DIR")
+    std::env::var_os("CRYPT_ANCHOR_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| configured_workspace_root().join("tools/.cache/runc"))
 }
@@ -537,7 +537,7 @@ impl DiagnosticsExecutor {
         let (sender, receiver) = std::sync::mpsc::sync_channel::<DiagnosticsJob>(1);
         let (worker_exit_sender, worker_exit) = std::sync::mpsc::sync_channel(1);
         match std::thread::Builder::new()
-            .name("memright-diagnostics".to_string())
+            .name("crypt-diagnostics".to_string())
             .spawn(move || {
                 while let Ok(job) = receiver.recv() {
                     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
@@ -904,8 +904,8 @@ fn configured_api_token(db_path: &std::path::Path) -> Result<String, String> {
         .unwrap_or_else(|| std::path::Path::new("."))
         .join("api-token");
     configured_api_token_from_sources(
-        std::env::var_os("MEMRIGHT_API_TOKEN"),
-        std::env::var_os("MEMRIGHT_API_TOKEN_FILE").map(std::path::PathBuf::from),
+        std::env::var_os("CRYPT_API_TOKEN"),
+        std::env::var_os("CRYPT_API_TOKEN_FILE").map(std::path::PathBuf::from),
         &fallback,
     )
 }
@@ -918,7 +918,7 @@ fn configured_api_token_from_sources(
     if let Some(raw) = raw {
         let token = raw.to_string_lossy().trim().to_string();
         if token.is_empty() {
-            return Err("MEMRIGHT_API_TOKEN is set but empty".to_string());
+            return Err("CRYPT_API_TOKEN is set but empty".to_string());
         }
         validate_api_token(&token)?;
         return Ok(token);
@@ -932,7 +932,7 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
         Ok(token) => return Ok(token),
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
             return Err(format!(
-                "read MEMRIGHT_API_TOKEN_FILE {}: {error}",
+                "read CRYPT_API_TOKEN_FILE {}: {error}",
                 path.display()
             ));
         }
@@ -945,7 +945,7 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
     if let Some(parent) = parent {
         std::fs::create_dir_all(parent).map_err(|error| {
             format!(
-                "create MEMRIGHT_API_TOKEN_FILE directory {}: {error}",
+                "create CRYPT_API_TOKEN_FILE directory {}: {error}",
                 parent.display()
             )
         })?;
@@ -953,12 +953,12 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
 
     let mut random = [0u8; 32];
     getrandom::getrandom(&mut random)
-        .map_err(|error| format!("generate MemRight API token: {error}"))?;
+        .map_err(|error| format!("generate Crypt API token: {error}"))?;
     let token = hex(&random);
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("memright-token");
+        .unwrap_or("crypt-token");
     let temp_path = path.with_file_name(format!(
         ".{file_name}.{}.{}.tmp",
         std::process::id(),
@@ -974,7 +974,7 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
     }
     let mut file = options.open(&temp_path).map_err(|error| {
         format!(
-            "create temporary MemRight API token {}: {error}",
+            "create temporary Crypt API token {}: {error}",
             temp_path.display()
         )
     })?;
@@ -983,7 +983,7 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
         file.write_all(token.as_bytes())
             .and_then(|_| file.write_all(b"\n"))
             .and_then(|_| file.sync_all())
-            .map_err(|error| format!("write MemRight API token: {error}"))?;
+            .map_err(|error| format!("write Crypt API token: {error}"))?;
         std::fs::hard_link(&temp_path, path).map_err(|error| error.to_string())?;
         Ok(())
     })();
@@ -994,12 +994,12 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
         Ok(()) => Ok(token),
         Err(_) if path.exists() => read_token_file(path).map_err(|error| {
             format!(
-                "read concurrently-created MEMRIGHT_API_TOKEN_FILE {}: {error}",
+                "read concurrently-created CRYPT_API_TOKEN_FILE {}: {error}",
                 path.display()
             )
         }),
         Err(error) => Err(format!(
-            "atomically publish MEMRIGHT_API_TOKEN_FILE {}: {error}",
+            "atomically publish CRYPT_API_TOKEN_FILE {}: {error}",
             path.display()
         )),
     }
@@ -1044,7 +1044,7 @@ fn hex(bytes: &[u8]) -> String {
 
 fn validate_api_token(token: &str) -> Result<(), String> {
     if token.contains(['\r', '\n']) {
-        return Err("MemRight API token contains a newline".to_string());
+        return Err("Crypt API token contains a newline".to_string());
     }
     Ok(())
 }
@@ -1184,7 +1184,7 @@ fn digest_framed(hasher: &mut Sha256, value: &[u8]) {
 
 fn idempotency_key_digest(key: &str, api_token: Option<&str>) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hasher.update(b"memright-idempotency-key-v1");
+    hasher.update(b"crypt-idempotency-key-v1");
     digest_framed(
         &mut hasher,
         api_token.unwrap_or("loopback-without-api-token").as_bytes(),
@@ -1195,7 +1195,7 @@ fn idempotency_key_digest(key: &str, api_token: Option<&str>) -> [u8; 32] {
 
 fn idempotency_request_digest(method: &Method, path_and_query: &str, body: &str) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hasher.update(b"memright-idempotency-request-v1");
+    hasher.update(b"crypt-idempotency-request-v1");
     digest_framed(&mut hasher, method.as_str().as_bytes());
     digest_framed(&mut hasher, path_and_query.as_bytes());
     digest_framed(&mut hasher, body.as_bytes());
@@ -1281,7 +1281,7 @@ async fn dispatch(
         );
     }
     if method == Method::GET && matches!(path, "/" | "/index.html") {
-        let html = DASHBOARD_HTML.replace("__MEMRIGHT_API_TOKEN_JSON__", "null");
+        let html = DASHBOARD_HTML.replace("__CRYPT_API_TOKEN_JSON__", "null");
         return (
             [
                 (header::CONTENT_TYPE, "text/html; charset=utf-8"),
@@ -2168,7 +2168,7 @@ const FEDERATE_MAX_WAIT_MS: u64 = 2_000;
 const FEDERATE_MIN_WAIT_MS: u64 = 100;
 
 fn resolve_federation_script() -> Option<std::path::PathBuf> {
-    let configured = std::env::var("MEMRIGHT_FEDERATION_SCRIPT").unwrap_or_default();
+    let configured = std::env::var("CRYPT_FEDERATION_SCRIPT").unwrap_or_default();
     if !configured.trim().is_empty() {
         let path = std::path::PathBuf::from(configured.trim());
         return path.is_file().then_some(path);
@@ -2763,9 +2763,9 @@ fn route_with_context_ingest_lease(
             return (400, serde_json::json!({ "error": message }).to_string());
         }
         let tier = match v.get("tier").and_then(|x| x.as_str()).unwrap_or("Working") {
-            t if t.eq_ignore_ascii_case("working") => memright_core::MemoryTier::Working,
-            t if t.eq_ignore_ascii_case("episodic") => memright_core::MemoryTier::Episodic,
-            _ => memright_core::MemoryTier::Semantic,
+            t if t.eq_ignore_ascii_case("working") => crypt_core::MemoryTier::Working,
+            t if t.eq_ignore_ascii_case("episodic") => crypt_core::MemoryTier::Episodic,
+            _ => crypt_core::MemoryTier::Semantic,
         };
         let artifact_family = v
             .get("artifactFamily")
@@ -3442,7 +3442,7 @@ fn route_with_context_ingest_lease(
     } else if method == "POST" && path == "/add" {
         (
             410,
-            "{\"error\":\"/add disabled; use the memright CLI for file ingestion\"}".to_string(),
+            "{\"error\":\"/add disabled; use the crypt CLI for file ingestion\"}".to_string(),
         )
     } else if method == "POST" && path == "/use" {
         let id = match v.get("id").and_then(|x| x.as_str()) {
@@ -3559,7 +3559,7 @@ fn route_with_context_ingest_lease(
     } else if method == "POST" && path == "/memory-candidates" {
         // Warm federation memory-candidate generation IN-PROCESS (the resident serve's embedder is
         // already loaded). The federation gateway's memory provider POSTs here instead of spawning
-        // a cold `memright memory-candidates` CLI, which reloads ONNX/fastembed (~3.6s) on every
+        // a cold `crypt memory-candidates` CLI, which reloads ONNX/fastembed (~3.6s) on every
         // prompt and blew the on-mode hook timeout. Same payload as the CLI verb.
         let task = v.get("task").and_then(|x| x.as_str()).unwrap_or("").trim();
         if task.is_empty() {
@@ -4192,7 +4192,7 @@ fn sha256_hex(s: &str) -> String {
 /// Open the DB and serve the contract forever on IPv4 loopback only.
 ///
 /// Opens a separate catalog SQLite at `<context-home>/catalog.db` for G3B
-/// planner routes. The catalog lives on its own connection — the MemRight DB
+/// planner routes. The catalog lives on its own connection — the Crypt DB
 /// is untouched. `CONTEXT_HOME` overrides the catalog parent directory.
 pub fn run(
     db_path: &str,
@@ -4217,7 +4217,7 @@ pub fn run(
     let prompt_telemetry_ingress =
         crate::context_telemetry::default_prompt_telemetry_ingress(std::path::Path::new(db_path));
     std::thread::Builder::new()
-        .name("memright-prompt-telemetry".to_string())
+        .name("crypt-prompt-telemetry".to_string())
         .spawn(move || {
             let mut failed = false;
             loop {
@@ -4228,13 +4228,13 @@ pub fn run(
                 ) {
                     Ok(_) => {
                         if failed {
-                            eprintln!("memright prompt telemetry drain recovered");
+                            eprintln!("crypt prompt telemetry drain recovered");
                         }
                         failed = false;
                     }
                     Err(_) => {
                         if !failed {
-                            eprintln!("memright prompt telemetry drain unavailable");
+                            eprintln!("crypt prompt telemetry drain unavailable");
                         }
                         failed = true;
                     }
@@ -4247,7 +4247,7 @@ pub fn run(
     let catalog = ContextCatalog::open(&catalog_path)
         .map_err(|e| format!("open catalog {}: {e}", catalog_path.display()))?;
     eprintln!(
-        "memright serve on 127.0.0.1:{port} db={db_path} catalog={}",
+        "crypt serve on 127.0.0.1:{port} db={db_path} catalog={}",
         catalog_path.display()
     );
     let api_token = Some(configured_api_token(std::path::Path::new(db_path))?);
@@ -4589,7 +4589,7 @@ mod tests {
             payload["releaseGeneration"],
             format!(
                 "sha256:{}",
-                option_env!("MEMRIGHT_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown")
             )
         );
         assert_ne!(payload["serviceGeneration"], payload["releaseGeneration"]);
@@ -4639,7 +4639,7 @@ mod tests {
             2,
             "verified + advisory rows persisted; malformed dropped"
         );
-        let gate = memright_core::EffectivenessGate::default();
+        let gate = crypt_core::EffectivenessGate::default();
         assert!(
             !gate.should_inject(&rows, "mem-1"),
             "verified contradicted vetoes"
@@ -4883,8 +4883,8 @@ mod tests {
             .unwrap();
         let html = String::from_utf8(html.to_vec()).unwrap();
         assert!(!html.contains("top-secret"));
-        assert!(html.contains("let MEMRIGHT_API_TOKEN = dashboardToken();"));
-        assert!(!html.contains("__MEMRIGHT_API_TOKEN_JSON__"));
+        assert!(html.contains("let CRYPT_API_TOKEN = dashboardToken();"));
+        assert!(!html.contains("__CRYPT_API_TOKEN_JSON__"));
         assert!(html.contains("new URLSearchParams(location.hash.slice(1))"));
         assert!(html
             .contains("history.replaceState(null, '', `${location.pathname}${location.search}`)"));
@@ -4945,7 +4945,7 @@ mod tests {
     #[test]
     fn missing_token_file_is_generated_once_without_exposing_weak_material() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("auth").join("memright.token");
+        let path = dir.path().join("auth").join("crypt.token");
         let first = token_from_file_or_create(&path).unwrap();
         let second = token_from_file_or_create(&path).unwrap();
         assert_eq!(first, second);
@@ -5117,7 +5117,7 @@ mod tests {
         use tower::ServiceExt;
 
         let dir = tempfile::tempdir().unwrap();
-        let database = dir.path().join("memright.db");
+        let database = dir.path().join("crypt.db");
         let fallback = database.parent().unwrap().join("api-token");
 
         let token = configured_api_token_from_sources(None, None, &fallback).unwrap();
@@ -5341,7 +5341,7 @@ mod tests {
                 "health-test",
                 "force a persistence failure",
                 "global",
-                memright_core::MemoryTier::Semantic,
+                crypt_core::MemoryTier::Semantic,
             )
             .is_err());
 
@@ -5899,7 +5899,7 @@ mod tests {
             "untrusted",
             "unique route authority marker",
             "global",
-            memright_core::MemoryTier::Semantic,
+            crypt_core::MemoryTier::Semantic,
         );
         db.lock()
             .execute(
@@ -5951,13 +5951,13 @@ mod tests {
             "first",
             "deploy cloudflare worker",
             "global",
-            memright_core::MemoryTier::Semantic,
+            crypt_core::MemoryTier::Semantic,
         );
         store.put(
             "second",
             "deploy cloudflare worker",
             "global",
-            memright_core::MemoryTier::Semantic,
+            crypt_core::MemoryTier::Semantic,
         );
         let response = route(&store, "GET", "/graph", "");
         assert_eq!(response.0, 200);
@@ -6028,7 +6028,7 @@ mod tests {
     #[test]
     fn policy_assignment_route_is_stable_and_requires_attribution() {
         let store = MemoryStore::new();
-        let body = r#"{"session":"s-42","client":"codex","policy_version":"memright-v1","control_pct":10,"task_class":"code"}"#;
+        let body = r#"{"session":"s-42","client":"codex","policy_version":"crypt-v1","control_pct":10,"task_class":"code"}"#;
         let first = route(&store, "POST", "/policy/assign", body);
         let second = route(&store, "POST", "/policy/assign", body);
         assert_eq!(first.0, 200);
@@ -6040,7 +6040,7 @@ mod tests {
                 &store,
                 "POST",
                 "/policy/assign",
-                r#"{"client":"codex","policy_version":"memright-v1"}"#,
+                r#"{"client":"codex","policy_version":"crypt-v1"}"#,
             )
             .0,
             400
@@ -6050,7 +6050,7 @@ mod tests {
     #[test]
     fn add_route_is_disabled_and_prefix_routes_do_not_match() {
         let dir =
-            std::env::temp_dir().join(format!("memright-serve-add-off-{}", std::process::id()));
+            std::env::temp_dir().join(format!("crypt-serve-add-off-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let md = dir.join("secret.md");
         std::fs::write(&md, "PRIVATE SECRET SHOULD NOT INGEST").unwrap();
@@ -6212,7 +6212,7 @@ mod tests {
                 "thread-memory",
                 "typed virtual scope candidate",
                 "virtual:tenant-a:thread:abc-123",
-                memright_core::MemoryTier::Semantic,
+                crypt_core::MemoryTier::Semantic,
             )
             .unwrap();
         let response = route(
@@ -6628,7 +6628,7 @@ mod tests {
                 "curate-a",
                 "Duplicate resident curate memory.",
                 "global",
-                memright_core::MemoryTier::Episodic,
+                crypt_core::MemoryTier::Episodic,
             )
             .unwrap();
         store
@@ -6636,7 +6636,7 @@ mod tests {
                 "curate-b",
                 "Duplicate resident curate memory!",
                 "global",
-                memright_core::MemoryTier::Episodic,
+                crypt_core::MemoryTier::Episodic,
             )
             .unwrap();
 

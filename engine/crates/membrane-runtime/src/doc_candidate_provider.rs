@@ -3,7 +3,7 @@
 //! This module deliberately runs beside, never inside, planner admission. Document candidates
 //! stay shadow-only until replay evidence authorizes a separate live-admission change.
 
-use memright_core::planner::{plan, PlannerError, PlannerInput, PlannerOutput};
+use crypt_core::planner::{plan, PlannerError, PlannerInput, PlannerOutput};
 use serde::{Deserialize, Serialize};
 
 use crate::doc_shadow::{

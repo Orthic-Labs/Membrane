@@ -11,7 +11,7 @@
       "blueprint": {"default_artifact_family": "blueprint"},
       "audit": {"default_artifact_family": "skill_output"},
       "architect": {"default_artifact_family": "skill_output"},
-      "memright": {"default_artifact_family": "memory"},
+      "crypt": {"default_artifact_family": "memory"},
       "git": {"default_artifact_family": "context"},
       "live": {"default_artifact_family": "context"},
       "rules": {"default_artifact_family": "rule"},
@@ -20,7 +20,7 @@
     },
     "artifact_families": [
       "memory",
-      "adapt",
+      "morph",
       "blueprint",
       "skill_output",
       "rule",

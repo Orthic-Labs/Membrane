@@ -45,7 +45,7 @@ flowchart LR
 
 | Identifier | Scope | Rule |
 |---|---|---|
-| `installation_id` | Installed MemRight origin | Stable UUID; never inferred from OS or hostname |
+| `installation_id` | Installed Crypt origin | Stable UUID; never inferred from OS or hostname |
 | `service_instance_id` | One resident process generation | Changes on restart; queued events from the same installation remain admissible |
 | `client` | Claude, ClaudeMM, Codex, Command Code, Cline, Grok Build, Gemini, CLI, or extension token | Required normalized token; never assume transcript session IDs are globally unique |
 | `session_id` | One client conversation | Opaque; joins are qualified by client and installation |
@@ -81,7 +81,7 @@ promoted; installed evidence is kept separate from source-only claims for later 
 | Context budget | JSONL metrics existed | Accounted, but joins are only as strong as the emitting lifecycle trace; canonical ledger is the target authority |
 | Pre/post compaction | Pre/post rows existed; malformed rows were possible | Content-free phase accounting remains; malformed rows are reported, not erased |
 | Feedback/value/outcome | Context feedback table existed but was empty in the audit | Schema is present; zero feedback is reported as zero observed feedback, not proof of value |
-| Adapt transcript mining | Per-client discovery/parse/skip census and accepted/rejected rules | Transcript identity is client-qualified; Mac handback completed separately through origin sequence 1760 |
+| Morph transcript mining | Per-client discovery/parse/skip census and accepted/rejected rules | Transcript identity is client-qualified; Mac handback completed separately through origin sequence 1760 |
 | Daily reconciliation | Aggregates only; missing sources could appear as zero-success | Persists exact client, `client:session`, and decision maps; raw-log verifier recomputes all three; missing or synthetic-only sources are `unavailable` and non-reconciling |
 | Release/installed-state proof | Source, candidate, and resident state could be conflated | Installed truth and guard-install evidence live in `RIGHTCONTEXT-STATE.md` and the dc7780f2 release evidence tree |
 | PATH shims/setup | Live `runc` shim could drift from canonical setup | Canonical setup passes flags correctly, has a regression test, and the resident shims were refreshed through guarded promotion/setup |
@@ -118,7 +118,7 @@ The producer records canonical persistence outcome in both Rust and Python audit
 v14 `transform-opportunity` call is explicit (`canonical_write_succeeded=false`) and the complete
 content-free opportunity remains in the separate brief-read or brief-bash JSONL. The importer at
 `tools/pipelines/memory/transform_opportunity_backfill.py` deduplicates by `opportunity_uid`, checks
-the canonical table read-only, and replays only through the MemRight CLI. It replayed all six
+the canonical table read-only, and replays only through the Crypt CLI. It replayed all six
 eligible retained rows through the promoted CLI; a second run found all six already present.
 
 Lifecycle telemetry uses a separate bounded recovery lane:

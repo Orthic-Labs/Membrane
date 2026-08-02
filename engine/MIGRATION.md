@@ -1,4 +1,7 @@
-# MemRight Workspace Migration (R0.2)
+# Historical MemRight Workspace Migration (R0.2, 2026-07-26)
+
+> Historical migration record retained for lineage only. It documents retired
+> MemRight paths & is not an active API, runtime, or configuration contract.
 
 ## Source
 

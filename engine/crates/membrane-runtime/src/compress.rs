@@ -10,12 +10,12 @@
 //!    Parity with the reference Python llmlingua ≥ 0.90 word-Jaccard at the
 //!    default rate (0.5). See `spike/SPIKE-RESULT.md` for the full gate evidence.
 //!
-//! 2. **Deterministic heuristic** (always available) — `memright_format::compress_prose`,
+//! 2. **Deterministic heuristic** (always available) — `crypt_format::compress_prose`,
 //!    a quality-degraded fallback. Selected when `--no-onnx` is set, when the
 //!    `llmlingua-onnx` feature isn't built, or when the ONNX assets are missing.
 //!
-//! Asset resolution: `$MEMRIGHT_LLMLINGUA_MODEL` and `$MEMRIGHT_LLMLINGUA_TOKENIZER`
-//! override the defaults (`crates/memright/assets/llmlingua/`). The DLL is
+//! Asset resolution: `$CRYPT_LLMLINGUA_MODEL` and `$CRYPT_LLMLINGUA_TOKENIZER`
+//! override the defaults (`crates/crypt/assets/llmlingua/`). The DLL is
 //! loaded from `$ORT_DYLIB_PATH` (same pattern as the BGE/fastembed path).
 //!
 //! The core algorithm pieces — softmax-keep-prob, top-K + force-token selection,
@@ -333,7 +333,7 @@ pub fn compress_with_options(text: &str, rate: f32, no_onnx: bool) -> String {
                 Ok(out) => return out,
                 Err(err) => {
                     eprintln!(
-                        "[memright] llmlingua-onnx unavailable ({err}); falling back to heuristic"
+                        "[crypt] llmlingua-onnx unavailable ({err}); falling back to heuristic"
                     );
                 }
             }
@@ -341,7 +341,7 @@ pub fn compress_with_options(text: &str, rate: f32, no_onnx: bool) -> String {
     }
 
     // Deterministic heuristic fallback (always available).
-    memright_format::compress_prose(text, rate)
+    crypt_format::compress_prose(text, rate)
 }
 
 // ============================================================================
@@ -510,8 +510,8 @@ fn select_keep_indices(
 
 /// Pure asset-path resolver. Returns `(model_path, tokenizer_path, default_dir)`.
 ///
-/// `model_env` / `tokenizer_env` are the values of `$MEMRIGHT_LLMLINGUA_MODEL`
-/// / `$MEMRIGHT_LLMLINGUA_TOKENIZER`, or `None` if unset. Pulled out of
+/// `model_env` / `tokenizer_env` are the values of `$CRYPT_LLMLINGUA_MODEL`
+/// / `$CRYPT_LLMLINGUA_TOKENIZER`, or `None` if unset. Pulled out of
 /// `llmlingua_asset_paths` for testability (no env mutation in tests).
 ///
 /// `manifest_dir` is the crate root at build time (use `env!("CARGO_MANIFEST_DIR")`).
@@ -559,7 +559,7 @@ pub fn tokenizer_token_count(text: &str) -> Result<usize, String> {
 #[cfg(feature = "llmlingua-onnx")]
 fn llmlingua_tokenizer_path() -> Result<std::path::PathBuf, String> {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let tokenizer_env = std::env::var("MEMRIGHT_LLMLINGUA_TOKENIZER").ok();
+    let tokenizer_env = std::env::var("CRYPT_LLMLINGUA_TOKENIZER").ok();
     let (_, tokenizer, _) = resolve_asset_paths(&manifest, None, tokenizer_env.as_deref());
     if !tokenizer.is_file() {
         return Err(format!("tokenizer not found at {}", tokenizer.display()));
@@ -570,14 +570,14 @@ fn llmlingua_tokenizer_path() -> Result<std::path::PathBuf, String> {
 #[cfg(feature = "llmlingua-onnx")]
 fn llmlingua_asset_paths() -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let model_env = std::env::var("MEMRIGHT_LLMLINGUA_MODEL").ok();
-    let tok_env = std::env::var("MEMRIGHT_LLMLINGUA_TOKENIZER").ok();
+    let model_env = std::env::var("CRYPT_LLMLINGUA_MODEL").ok();
+    let tok_env = std::env::var("CRYPT_LLMLINGUA_TOKENIZER").ok();
     let (model, _tokenizer, default_dir) =
         resolve_asset_paths(&manifest, model_env.as_deref(), tok_env.as_deref());
 
     if !model.is_file() {
         return Err(format!(
-            "model not found at {} (set $MEMRIGHT_LLMLINGUA_MODEL, or populate {} from the spike export per crates/memright/assets/llmlingua/README.md)",
+            "model not found at {} (set $CRYPT_LLMLINGUA_MODEL, or populate {} from the spike export per crates/crypt/assets/llmlingua/README.md)",
             model.display(),
             default_dir.display()
         ));
@@ -837,19 +837,19 @@ mod tests {
         // dir is populated. (Env mutation in parallel tests is racy; use a
         // marker that no other test uses.)
         let bogus = std::env::temp_dir()
-            .join("memright-asset-test-DO-NOT-EXIST")
+            .join("crypt-asset-test-DO-NOT-EXIST")
             .join("model.onnx");
-        // SAFETY: this test is the only writer of `MEMRIGHT_LLMLINGUA_MODEL`
+        // SAFETY: this test is the only writer of `CRYPT_LLMLINGUA_MODEL`
         // and it sets/restores it within the test body. cargo's default test
         // runner runs tests on multiple threads but writes to env vars here
         // are best-effort — other tests in this module don't read this var.
         // If running with `--test-threads=1` (CI), it's deterministic.
         unsafe {
-            std::env::set_var("MEMRIGHT_LLMLINGUA_MODEL", &bogus);
+            std::env::set_var("CRYPT_LLMLINGUA_MODEL", &bogus);
         }
         let result = llmlingua_asset_paths();
         unsafe {
-            std::env::remove_var("MEMRIGHT_LLMLINGUA_MODEL");
+            std::env::remove_var("CRYPT_LLMLINGUA_MODEL");
         }
         match result {
             Err(msg) => {

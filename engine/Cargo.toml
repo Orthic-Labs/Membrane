@@ -1,18 +1,16 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/memright-core",
-    "crates/memright-format",
-    "crates/memright",
     "crates/crypt-core",
     "crates/crypt-format",
+    "crates/crypt",
     "crates/crypt-store",
     "crates/membrane-runtime",
 ]
 
 [workspace.package]
 edition = "2021"
-authors = ["MemRight"]
+authors = ["Crypt"]
 license = "UNLICENSED"
 
 [workspace.dependencies]

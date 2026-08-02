@@ -14,7 +14,7 @@ const sourceSync = join(root, "claudecodeX", "mac", "sync-claude-profile.py");
 const installedSync = join(homedir(), ".local", "share", "claudecodex", "mac", "sync-claude-profile.py");
 const sourceLauncher = join(root, "claudecodeX", "bin", "ccx");
 const installedLauncher = join(homedir(), "bin", "ccx");
-const contextHook = join(root, "tether", "hooks", "claude-code", "context.js");
+const contextHook = join(root, "sentinel", "hooks", "claude-code", "context.js");
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const fileHash = (path) => sha256(readFileSync(path));
 const parseLines = (text) => text.split(/\r?\n/).filter(Boolean).flatMap((line) => {
@@ -74,7 +74,7 @@ const degraded = spawnSync(process.execPath, [contextHook], {
     ...process.env,
     ANTHROPIC_BASE_URL: "http://127.0.0.1:8801",
     MEMBRANE_CONTEXT_CLIENT: join(degradedDir, "missing-client.mjs"),
-    MEMRIGHT_TELEMETRY_INGRESS: degradedIngress,
+    CRYPT_TELEMETRY_INGRESS: degradedIngress,
   },
 });
 const degradedOutput = parseLines(degraded.stdout || "")[0]?.hookSpecificOutput?.additionalContext || "";

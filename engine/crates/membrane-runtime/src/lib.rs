@@ -1,9 +1,9 @@
-//! MemRight — the productizable memory engine: SQLite + quantized vectors + cognitive tiers +
+//! Crypt — the productizable memory engine: SQLite + quantized vectors + cognitive tiers +
 //! hybrid retriever + effectiveness gate + dream consolidation, with multi-project `scope_id`
 //! isolation. CodeRight (the product) and the workspace both CONSUME this crate; neither owns the
-//! engine. Self-contained and publishable (depends only on memright-core primitives).
+//! engine. Self-contained and publishable (depends only on crypt-core primitives).
 
-extern crate self as memright;
+extern crate self as crypt;
 
 pub mod admission_policy;
 pub mod blueprint_closure;
@@ -34,8 +34,8 @@ pub mod store;
 pub use crypt_store::{context_telemetry, installation_identity, memdb, scope, time};
 pub mod truncate;
 
-// Re-export OKF utilities so consumers import from one crate (`memright`) during unification.
-pub use memright_format::okf;
+// Re-export OKF utilities so consumers import from one crate (`crypt`) during unification.
+pub use crypt_format::okf;
 
 pub use admission_policy::{
     admit, AdmissionDecision, AdmissionError, AdmissionRequest, Authority, InstructionPolicy,

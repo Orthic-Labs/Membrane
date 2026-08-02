@@ -26,10 +26,10 @@ struct Runtime {
 fn build_info() -> serde_json::Value {
     serde_json::json!({
         "product_version": env!("CARGO_PKG_VERSION"),
-        "memright_source_commit": option_env!("MEMRIGHT_SOURCE_COMMIT").unwrap_or("unknown"),
-        "source_tree_sha256": option_env!("MEMRIGHT_SOURCE_TREE_SHA256").unwrap_or("unknown"),
-        "release_generation": memright::release_identity::release_generation(),
-        "target": memright::release_identity::target_triple(),
+        "crypt_source_commit": option_env!("CRYPT_SOURCE_COMMIT").unwrap_or("unknown"),
+        "source_tree_sha256": option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown"),
+        "release_generation": crypt::release_identity::release_generation(),
+        "target": crypt::release_identity::target_triple(),
     })
 }
 
@@ -37,8 +37,8 @@ fn prepare_runtime_identity(
     runtime: &Runtime,
 ) -> Result<
     (
-        memright::installation_identity::InstallationIdentity,
-        memright::installation_identity::StartupClaim,
+        crypt::installation_identity::InstallationIdentity,
+        crypt::installation_identity::StartupClaim,
     ),
     String,
 > {
@@ -47,7 +47,7 @@ fn prepare_runtime_identity(
         .ancestors()
         .nth(4)
         .ok_or_else(|| "resolve workspace root from database path".to_string())?;
-    memright::installation_identity::prepare_service_start(workspace_root)
+    crypt::installation_identity::prepare_service_start(workspace_root)
         .map_err(|error| format!("prepare installation identity: {error}"))
 }
 
@@ -69,9 +69,9 @@ fn runtime_from_exe_at_workspace(
         }
         let bin = root.join("tools/bin");
         let service_names = if cfg!(windows) {
-            ["crypt-service.exe", "memright-service.exe"]
+            ["crypt-service.exe", "crypt-service.exe"]
         } else {
-            ["crypt-service", "memright-service"]
+            ["crypt-service", "crypt-service"]
         };
         let actual = std::fs::canonicalize(exe).ok()?;
         service_names.iter().find_map(|name| {
@@ -102,7 +102,7 @@ fn runtime_from_exe_at_workspace(
     )
     .map_err(|error| format!("parse {}: {error}", config_path.display()))?;
     if config.schema_version != 1
-        || config.service_id != "memright-local-v1"
+        || config.service_id != "crypt-local-v1"
         || config.host != "127.0.0.1"
         || config.port < 1024
     {
@@ -119,7 +119,7 @@ fn runtime_from_exe_at_workspace(
         "libonnxruntime.so"
     };
     Ok(Runtime {
-        db: tools.join(".cache/memory/memright-engine.db"),
+        db: tools.join(".cache/memory/crypt-engine.db"),
         token: tools.join(".cache/memory/api-token"),
         ort: bin.join(ort_name),
         hf_home: tools.join(".cache/fastembed"),
@@ -140,9 +140,9 @@ pub fn run_service() -> Result<(), String> {
     let runtime = runtime_from_exe(
         &std::env::current_exe().map_err(|error| format!("resolve service binary: {error}"))?,
     )?;
-    std::env::set_var("MEMRIGHT_DB", &runtime.db);
-    std::env::set_var("MEMRIGHT_PORT", runtime.port.to_string());
-    std::env::set_var("MEMRIGHT_API_TOKEN_FILE", &runtime.token);
+    std::env::set_var("CRYPT_DB", &runtime.db);
+    std::env::set_var("CRYPT_PORT", runtime.port.to_string());
+    std::env::set_var("CRYPT_API_TOKEN_FILE", &runtime.token);
     std::env::set_var("ORT_DYLIB_PATH", &runtime.ort);
     std::env::set_var("HF_HOME", &runtime.hf_home);
     std::env::set_var("HF_HUB_OFFLINE", "1");
@@ -155,9 +155,9 @@ pub fn run_service() -> Result<(), String> {
             .ok_or_else(|| "resolve workspace root from database path".to_string())?,
     );
     let (identity, claim) = prepare_runtime_identity(&runtime)?;
-    std::env::set_var("MEMRIGHT_INSTALLATION_ID", &identity.installation_id);
-    std::env::set_var("MEMRIGHT_SERVICE_INSTANCE_ID", &claim.service_instance_id);
-    memright::serve::run(
+    std::env::set_var("CRYPT_INSTALLATION_ID", &identity.installation_id);
+    std::env::set_var("CRYPT_SERVICE_INSTANCE_ID", &claim.service_instance_id);
+    crypt::serve::run(
         runtime
             .db
             .to_str()
@@ -176,7 +176,7 @@ mod tests {
     fn build_info_exposes_source_commit_and_tree_identity_fields() {
         let info = build_info();
         assert_eq!(info["product_version"], env!("CARGO_PKG_VERSION"));
-        assert!(info.get("memright_source_commit").is_some());
+        assert!(info.get("crypt_source_commit").is_some());
         assert!(info.get("source_tree_sha256").is_some());
         assert!(info.get("release_generation").is_some());
         assert!(info.get("target").is_some());
@@ -191,14 +191,14 @@ mod tests {
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(
             config_dir.join("runtime.json"),
-            r#"{"schemaVersion":1,"serviceId":"memright-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"crypt-local-v1","host":"127.0.0.1","port":47851}"#,
         )
         .unwrap();
-        let runtime = runtime_from_exe(&bin.join("memright-service.exe")).unwrap();
+        let runtime = runtime_from_exe(&bin.join("crypt-service.exe")).unwrap();
         assert_eq!(runtime.port, 47851);
         assert_eq!(
             runtime.db,
-            temp.path().join("tools/.cache/memory/memright-engine.db")
+            temp.path().join("tools/.cache/memory/crypt-engine.db")
         );
         assert_eq!(
             runtime.token,
@@ -222,7 +222,7 @@ mod tests {
         std::fs::write(&relocated, b"fixture").unwrap();
         std::fs::write(
             config_dir.join("runtime.json"),
-            r#"{"schemaVersion":1,"serviceId":"memright-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"crypt-local-v1","host":"127.0.0.1","port":47851}"#,
         )
         .unwrap();
         symlink(&relocated, bin.join("crypt-service")).unwrap();
@@ -240,7 +240,7 @@ mod tests {
     fn resident_startup_advances_identity_and_publishes_claim_before_serve() {
         let temp = tempfile::tempdir().unwrap();
         let runtime = Runtime {
-            db: temp.path().join("tools/.cache/memory/memright-engine.db"),
+            db: temp.path().join("tools/.cache/memory/crypt-engine.db"),
             token: temp.path().join("tools/.cache/memory/api-token"),
             ort: temp.path().join("tools/bin/onnxruntime.dll"),
             hf_home: temp.path().join("tools/.cache/fastembed"),

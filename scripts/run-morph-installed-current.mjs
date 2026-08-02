@@ -9,29 +9,29 @@ const membraneRoot = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const root = resolve(membraneRoot, "..");
 const python = join(root, ".venv-tools", "bin", "python");
 const candidates = [
-  join(membraneRoot, "engine", "target", "debug", "memright"),
-  join(root, "tools", "bin", process.platform === "win32" ? "memright.exe" : "memright"),
+  join(membraneRoot, "engine", "target", "debug", "crypt"),
+  join(root, "tools", "bin", process.platform === "win32" ? "crypt.exe" : "crypt"),
 ];
-const memright = candidates.find(existsSync);
-const sourceRunner = join(root, "adapt", "run_incremental_multiwriter.py");
-const staleRunner = join(root, "tools", "pipelines", "memory", "adapt", "run_incremental_multiwriter.py");
+const crypt = candidates.find(existsSync);
+const sourceRunner = join(root, "morph", "run_incremental_multiwriter.py");
+const staleRunner = join(root, "tools", "pipelines", "memory", "morph", "run_incremental_multiwriter.py");
 const dailySync = join(root, "tools", "pipelines", "memory", "daily-sync.sh");
 const installedShim = join(homedir(), "bin", process.platform === "win32" ? "morph.cmd" : "morph");
-const sourceCli = join(root, "adapt", "cli.py");
+const sourceCli = join(root, "morph", "cli.py");
 const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-if (!memright) throw new Error("current MemRight binary is unavailable");
+if (!crypt) throw new Error("current Crypt binary is unavailable");
 for (const path of [python, sourceRunner, dailySync, installedShim, sourceCli]) {
   if (!existsSync(path)) throw new Error(`required Morph authority path missing: ${path}`);
 }
 const scheduleText = readFileSync(dailySync, "utf8");
 const shimText = readFileSync(installedShim, "utf8");
-const schedulerCurrent = scheduleText.includes('adapt_runner="$SOURCE_WS/adapt/run_incremental_multiwriter.py"')
-  && !scheduleText.includes('adapt_runner="$SOURCE_WS/tools/pipelines/memory/adapt/run_incremental_multiwriter.py"');
+const schedulerCurrent = scheduleText.includes('morph_runner="$SOURCE_WS/morph/run_incremental_multiwriter.py"')
+  && !scheduleText.includes('morph_runner="$SOURCE_WS/tools/pipelines/memory/morph/run_incremental_multiwriter.py"');
 const shimCurrent = shimText.includes(sourceCli);
 const execution = spawnSync(
   python,
-  ["-m", "pytest", join(root, "adapt", "test_morph_event_learning.py"), "-q"],
+  ["-m", "pytest", join(root, "morph", "test_morph_event_learning.py"), "-q"],
   {
     cwd: root,
     encoding: "utf8",
@@ -39,8 +39,8 @@ const execution = spawnSync(
     env: {
       ...process.env,
       MORPH_E2E: "1",
-      MEMRIGHT_BIN: memright,
-      MEMRIGHT_LIVE_DB: process.env.MEMRIGHT_DB || join(root, "tools", ".cache", "memory", "memright-engine.db"),
+      CRYPT_BIN: crypt,
+      CRYPT_LIVE_DB: process.env.CRYPT_DB || join(root, "tools", ".cache", "memory", "crypt-engine.db"),
     },
   },
 );

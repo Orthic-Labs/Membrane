@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Instant, SystemTime};
 
-use memright_core::{
+use crypt_core::{
     consolidate_dream_memories, cosine, ContextTokenAccounting, DreamAgentPolicy, DreamStatus,
     EffectivenessGate, Embedder, HashEmbedder, MemoryEntry, MemoryRegistry,
     MemoryRetrievalEvalGate, MemoryRetriever, MemoryTier, MemoryUsageRecord, Outcome,
@@ -58,7 +58,7 @@ const PROTECTED_PRIORITY_BONUS: f32 = 0.04;
 
 fn protected_priority_bonus_enabled() -> bool {
     matches!(
-        std::env::var("MEMRIGHT_PROTECTED_PRIORITY_BONUS")
+        std::env::var("CRYPT_PROTECTED_PRIORITY_BONUS")
             .ok()
             .as_deref()
             .map(str::trim),
@@ -67,12 +67,12 @@ fn protected_priority_bonus_enabled() -> bool {
 }
 
 /// Vector dispatch v2 (resident in-process f32 index) is default-on. Set
-/// `MEMRIGHT_VECTOR_DISPATCH_V2` to `0`/`false`/`off`/`legacy` for an immediate
+/// `CRYPT_VECTOR_DISPATCH_V2` to `0`/`false`/`off`/`legacy` for an immediate
 /// fallback to the legacy scalar-A `retrieve_hybrid` routing (restored on next
 /// store open). Any other value, or unset, keeps v2 active.
 fn vector_dispatch_v2_enabled() -> bool {
     !matches!(
-        std::env::var("MEMRIGHT_VECTOR_DISPATCH_V2")
+        std::env::var("CRYPT_VECTOR_DISPATCH_V2")
             .ok()
             .as_deref()
             .map(str::trim),
@@ -463,16 +463,16 @@ impl MemoryEventContext {
     }
 
     /// Resolve a content-free decision identity from the process environment. Codex exposes its
-    /// provider thread as `CODEX_THREAD_ID`; other clients can provide the portable MEMRIGHT_*
+    /// provider thread as `CODEX_THREAD_ID`; other clients can provide the portable CRYPT_*
     /// variables. Missing values receive unique opaque fallbacks rather than collapsing unrelated
     /// invocations into one synthetic session.
     pub fn from_environment(fallback_surface: &str) -> Self {
-        let surface = std::env::var("MEMRIGHT_CLIENT")
+        let surface = std::env::var("CRYPT_CLIENT")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| fallback_surface.to_string());
         let mut context = Self::new(&surface);
-        let session = std::env::var("MEMRIGHT_SESSION_ID")
+        let session = std::env::var("CRYPT_SESSION_ID")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .or_else(|| {
@@ -484,7 +484,7 @@ impl MemoryEventContext {
         if let Some(session) = session.as_deref() {
             context = context.with_session(session);
         }
-        let trace = std::env::var("MEMRIGHT_TRACE_ID")
+        let trace = std::env::var("CRYPT_TRACE_ID")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .or_else(|| new_uuid_v4().ok())
@@ -492,7 +492,7 @@ impl MemoryEventContext {
         if let Some(trace) = trace.as_deref() {
             context = context.with_trace(trace);
         }
-        let turn = std::env::var("MEMRIGHT_TURN_ID")
+        let turn = std::env::var("CRYPT_TURN_ID")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .or_else(|| trace.clone());
@@ -664,7 +664,7 @@ fn lifecycle_event(
         span_id: opaque_correlation_token(&event_id, "span"),
         parent_span_id: None,
         artifact_family: registry_token(&metadata.artifact_family, "memory"),
-        provider: "memright".to_string(),
+        provider: "crypt".to_string(),
         provider_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         release_generation: Some(crate::release_identity::release_generation()),
         phase: phase.to_string(),
@@ -1070,7 +1070,7 @@ fn log_memory_event(
 /// embeddings; otherwise the dependency-free hash embedder.
 ///
 /// FAIL-LOUD: when the binary was built WITH fastembed, a failed init ABORTS unless
-/// `MEMRIGHT_ALLOW_HASH=1` explicitly opts into the degraded hash embedder. The old
+/// `CRYPT_ALLOW_HASH=1` explicitly opts into the degraded hash embedder. The old
 /// silent eprintln-and-continue fallback quietly filled the workspace DB with 256-dim
 /// hash vectors (467 of 512 rows by 2026-07-02) while recall looked healthy on the
 /// lexical channel — a corpus-corrupting failure mode, not a graceful degradation.
@@ -1104,16 +1104,16 @@ pub struct SkillsSnapshot {
 fn default_embedder() -> (Arc<dyn Embedder>, Option<String>, bool) {
     #[cfg(feature = "fastembed")]
     {
-        if std::env::var("MEMRIGHT_ALLOW_HASH").as_deref() == Ok("1") {
-            let issue = "MEMRIGHT_ALLOW_HASH=1 enabled hash embedder".to_string();
+        if std::env::var("CRYPT_ALLOW_HASH").as_deref() == Ok("1") {
+            let issue = "CRYPT_ALLOW_HASH=1 enabled hash embedder".to_string();
             eprintln!("[memory] {issue}");
             return (Arc::new(HashEmbedder::new()), Some(issue), true);
         }
-        match memright_core::FastEmbedder::new() {
+        match crypt_core::FastEmbedder::new() {
             Ok(f) => (Arc::new(f), None, true),
             Err(e) => {
                 let issue = format!(
-                    "fastembed init failed ({e}); memory writes disabled to avoid hash-vector corruption. Fix ORT_DYLIB_PATH/model cache, or set MEMRIGHT_ALLOW_HASH=1 to accept degraded embeddings."
+                    "fastembed init failed ({e}); memory writes disabled to avoid hash-vector corruption. Fix ORT_DYLIB_PATH/model cache, or set CRYPT_ALLOW_HASH=1 to accept degraded embeddings."
                 );
                 eprintln!("[memory] {issue}");
                 (Arc::new(HashEmbedder::new()), Some(issue), false)
@@ -1135,13 +1135,13 @@ fn blob_to_embedding(b: &[u8]) -> Vec<f32> {
 /// Encode an embedding as a quantized (i8 TurboQuant) blob — ~4× smaller than
 /// the f32 representation, near-lossless at 8-bit.
 fn embedding_to_quantized_blob(v: &[f32]) -> Vec<u8> {
-    memright_core::QuantizedVector::quantize(v).to_bytes()
+    crypt_core::QuantizedVector::quantize(v).to_bytes()
 }
 
 /// Decode a quantized embedding blob back to f32, or `None` if it isn't a valid
 /// quantized blob (lets the caller fall back to the legacy f32 column).
 fn quantized_blob_to_embedding(b: &[u8]) -> Option<Vec<f32>> {
-    memright_core::QuantizedVector::from_bytes(b).map(|q| q.dequantize())
+    crypt_core::QuantizedVector::from_bytes(b).map(|q| q.dequantize())
 }
 
 fn validate_embedding(vector: Vec<f32>, expected_dim: usize) -> Result<Vec<f32>, String> {
@@ -1485,11 +1485,11 @@ pub fn operation_attribution_for_store(
     let paths = crate::installation_identity::InstallationPaths::for_workspace(&workspace_root);
     let identity = crate::installation_identity::load_or_create_installation(&paths.identity, &[])
         .map_err(|error| format!("load operation installation identity: {error}"))?;
-    let service_instance_id = std::env::var("MEMRIGHT_SERVICE_INSTANCE_ID")
+    let service_instance_id = std::env::var("CRYPT_SERVICE_INSTANCE_ID")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .map_or_else(new_uuid_v4, Ok)?;
-    let workspace_seed = std::env::var("MEMRIGHT_WORKSPACE_ID")
+    let workspace_seed = std::env::var("CRYPT_WORKSPACE_ID")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| {
@@ -1550,7 +1550,7 @@ pub struct MemoryStore {
     effectiveness_history: Arc<Mutex<Vec<MemoryUsageRecord>>>,
     pending_injections: Arc<Mutex<Vec<String>>>,
     last_recall_status: Arc<Mutex<Option<String>>>,
-    last_route: Arc<Mutex<Option<(memright_core::QueryFeatures, RetrievalTier)>>>,
+    last_route: Arc<Mutex<Option<(crypt_core::QueryFeatures, RetrievalTier)>>>,
     dream_status: Arc<Mutex<DreamStatus>>,
     embedder_issue: Option<String>,
     writes_enabled: bool,
@@ -1901,7 +1901,7 @@ impl MemoryStore {
             rusqlite::params![entry.id],
         )
         .map_err(|e| self.persist_error(format!("link cleanup failed for {}: {e}", entry.id)))?;
-        for dst in memright_core::wikilinks(&entry.content) {
+        for dst in crypt_core::wikilinks(&entry.content) {
             conn.execute(
                 "INSERT INTO links (src_id, dst_slug) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
                 rusqlite::params![entry.id, dst],
@@ -1929,7 +1929,7 @@ impl MemoryStore {
         };
         let mut edges = 0usize;
         for (id, content) in &rows {
-            for dst in memright_core::wikilinks(content) {
+            for dst in crypt_core::wikilinks(content) {
                 if conn
                     .execute(
                         "INSERT INTO links (src_id, dst_slug) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
@@ -2637,7 +2637,7 @@ impl MemoryStore {
             created_at: crate::time::now_iso(),
             access_count: 0,
             // P2 will thread the active project; default 'global' until then.
-            scope_id: memright_core::default_scope(),
+            scope_id: crypt_core::default_scope(),
         };
         if self.persist_entry(&entry).is_ok() {
             self.registry
@@ -2726,23 +2726,43 @@ impl MemoryStore {
     ) -> Result<(), String> {
         rec.validate()?;
         let canonical_trace = opaque_correlation_token(&rec.trace_id, "trace");
-        let artifact_id = stable_artifact_id(&rec.candidate_id);
+        let legacy_artifact_id = stable_artifact_id(&rec.candidate_id);
+        let full_digest = content_hash(&rec.candidate_id);
+        let memory_artifact_id = format!("memory.{full_digest}");
+        let provider_artifact_id = format!("artifact.{full_digest}");
         let feedback_target = self
             .db
             .lock_events()
             .query_row(
-                "SELECT event_id FROM context_event_log
-                  WHERE trace_id=?1 AND artifact_id=?2
+                "SELECT event_id, artifact_id, artifact_family, producer
+                   FROM context_event_log
+                  WHERE trace_id=?1 AND artifact_id IN (?2, ?3, ?4)
                     AND phase IN ('block.delivered','candidate.admitted','candidate.retrieved')
                   ORDER BY CASE phase
                     WHEN 'block.delivered' THEN 0
                     WHEN 'candidate.admitted' THEN 1
                     ELSE 2 END, seq DESC LIMIT 1",
-                rusqlite::params![canonical_trace, artifact_id],
-                |row| row.get::<_, String>(0),
+                rusqlite::params![
+                    canonical_trace,
+                    legacy_artifact_id,
+                    memory_artifact_id,
+                    provider_artifact_id
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
             )
             .optional()
             .map_err(|error| self.persist_error(format!("feedback link lookup failed: {error}")))?;
+        let artifact_id = feedback_target
+            .as_ref()
+            .map(|target| target.1.clone())
+            .unwrap_or(legacy_artifact_id);
         let mut conn = self.db.lock();
         let tx = conn
             .transaction()
@@ -2782,9 +2802,17 @@ impl MemoryStore {
             )
             .map_err(|e| self.persist_error(format!("feedback score update failed: {e}")))?;
         }
-        let metadata = metadata_for_on(&tx, &rec.candidate_id).map_err(|error| {
-            self.persist_error(format!("feedback metadata load failed: {error}"))
-        })?;
+        let metadata = if let Some(target) = feedback_target.as_ref() {
+            MemoryRecordMetadata {
+                artifact_family: target.2.clone(),
+                producer: target.3.clone(),
+                record_type: "memory".to_string(),
+            }
+        } else {
+            metadata_for_on(&tx, &rec.candidate_id).map_err(|error| {
+                self.persist_error(format!("feedback metadata load failed: {error}"))
+            })?
+        };
         let event_id = format!("feedback.{}", new_uuid_v4()?);
         let event = ContextEvent {
             schema_version: 1,
@@ -2803,7 +2831,7 @@ impl MemoryStore {
             span_id: opaque_correlation_token(&event_id, "span"),
             parent_span_id: None,
             artifact_family: registry_token(&metadata.artifact_family, "memory"),
-            provider: "memright".to_string(),
+            provider: "crypt".to_string(),
             provider_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             release_generation: Some(crate::release_identity::release_generation()),
             phase: "feedback.recorded".to_string(),
@@ -2811,7 +2839,7 @@ impl MemoryStore {
             status: "success".to_string(),
             reason_code: Some(outcome_str(rec.outcome).to_string()),
             scope_id: Some(opaque_token(&rec.scope_id, "scope")),
-            artifact_id: Some(artifact_id),
+            artifact_id: Some(artifact_id.clone()),
             artifact_sha256: (rec.content_sha256.len() == 64
                 && rec
                     .content_sha256
@@ -2835,10 +2863,10 @@ impl MemoryStore {
                 unit: "boolean".to_string(),
             }],
             links: feedback_target
-                .clone()
-                .map(|target_event_id| ContextEventLink {
+                .as_ref()
+                .map(|target| ContextEventLink {
                     relation: "feedback_for".to_string(),
-                    target_event_id,
+                    target_event_id: target.0.clone(),
                 })
                 .into_iter()
                 .collect(),
@@ -2872,7 +2900,7 @@ impl MemoryStore {
                 span_id: opaque_correlation_token(&value_event_id, "span"),
                 parent_span_id: Some(opaque_correlation_token(&event_id, "span")),
                 artifact_family: registry_token(&metadata.artifact_family, "memory"),
-                provider: "memright".to_string(),
+                provider: "crypt".to_string(),
                 provider_version: Some(env!("CARGO_PKG_VERSION").to_string()),
                 release_generation: Some(crate::release_identity::release_generation()),
                 phase: phase.to_string(),
@@ -2880,7 +2908,7 @@ impl MemoryStore {
                 status: status.to_string(),
                 reason_code,
                 scope_id: Some(opaque_token(&rec.scope_id, "scope")),
-                artifact_id: Some(stable_artifact_id(&rec.candidate_id)),
+                artifact_id: Some(artifact_id.clone()),
                 artifact_sha256: (rec.content_sha256.len() == 64
                     && rec
                         .content_sha256
@@ -2900,9 +2928,10 @@ impl MemoryStore {
                 meta: None,
                 measurements: Vec::new(),
                 links: feedback_target
-                    .map(|target_event_id| ContextEventLink {
+                    .as_ref()
+                    .map(|target| ContextEventLink {
                         relation: "outcome_for".to_string(),
-                        target_event_id,
+                        target_event_id: target.0.clone(),
                     })
                     .into_iter()
                     .collect(),
@@ -3535,7 +3564,7 @@ impl MemoryStore {
             created_at: crate::time::now_iso(),
             access_count: 0,
             // P2 will thread the active project; default 'global' until then.
-            scope_id: memright_core::default_scope(),
+            scope_id: crypt_core::default_scope(),
         };
         if self.persist_entry(&entry).is_ok() {
             self.registry
@@ -3547,12 +3576,12 @@ impl MemoryStore {
     }
 
     /// Ingest a markdown memory file under `scope` (the workspace's durable `.md` corpus → CR's
-    /// engine). Parses frontmatter + `[[wikilinks]]` with the shared `memright_core` parser, embeds
+    /// engine). Parses frontmatter + `[[wikilinks]]` with the shared `crypt_core` parser, embeds
     /// `"{name} {description} {body}"`, and stores a scope-qualified Semantic entry. Returns its id.
     pub fn ingest_markdown(&self, path: &std::path::Path, scope: &str) -> Option<String> {
         let raw = std::fs::read_to_string(path).ok()?;
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("x");
-        let doc = memright_core::parse_markdown(stem, &raw);
+        let doc = crypt_core::parse_markdown(stem, &raw);
         let embed_text = format!("{} {} {}", doc.name, doc.description, doc.body);
         let id = format!("{scope}/{}", doc.id);
         let mut keywords = vec![doc.type_.clone()];
@@ -3613,7 +3642,7 @@ impl MemoryStore {
             created_at: crate::time::now_iso(),
             access_count: 0,
             // P2 will thread the active project; default 'global' until then.
-            scope_id: memright_core::default_scope(),
+            scope_id: crypt_core::default_scope(),
         };
         if self.persist_entry(&entry).is_err() {
             return None;
@@ -4230,7 +4259,7 @@ impl MemoryStore {
         s
     }
 
-    fn retrieval_tier_for(&self, goal: &str) -> (memright_core::QueryFeatures, RetrievalTier) {
+    fn retrieval_tier_for(&self, goal: &str) -> (crypt_core::QueryFeatures, RetrievalTier) {
         let features = RoutingPolicy::features(goal);
         let tier = self.routing_policy.lock().unwrap().route(&features);
         (features, tier)
@@ -4359,7 +4388,7 @@ impl MemoryStore {
     }
 
     /// Record one recall's full-corpus-vs-injected-skeleton size for the savings report
-    /// (`memright metrics`). Best-effort: never fails the recall it's measuring.
+    /// (`crypt metrics`). Best-effort: never fails the recall it's measuring.
     ///
     /// 2026-07-09 (add-now plan, Phase 1): `client`/`session_id`/`cwd_scope`/`hook_event`/
     /// `trace_id`/`client_visibility` are optional attribution fields — when None the DB
@@ -4587,7 +4616,7 @@ impl MemoryStore {
         Ok(persisted)
     }
 
-    /// Token-savings report for `memright metrics`. `None` if nothing has been recalled yet.
+    /// Token-savings report for `crypt metrics`. `None` if nothing has been recalled yet.
     pub fn recall_metrics(&self) -> Option<crate::memdb::RecallMetrics> {
         self.db.recall_metrics()
     }
@@ -4854,7 +4883,7 @@ impl MemoryStore {
         }
         let authorized = actor == "human"
             || actor == "admin"
-            || (actor == "adapt_manifest" && matches!(authority, "A1" | "A2"));
+            || (actor == "morph_manifest" && matches!(authority, "A1" | "A2"));
         if !authorized {
             return Err(MemoryPriorityError::Unauthorized(
                 actor.into(),
@@ -4970,7 +4999,7 @@ impl MemoryStore {
     }
 
     /// The metrics report (recall savings + per-verb transforms + curate counts) as JSON —
-    /// shared by `memright metrics` and the serve `GET /metrics` route / dashboard.
+    /// shared by `crypt metrics` and the serve `GET /metrics` route / dashboard.
     pub fn metrics_json(&self) -> serde_json::Value {
         let mut out = match self.recall_metrics() {
             None => serde_json::json!({"recalls": 0, "note": "no recalls logged yet"}),
@@ -5986,7 +6015,7 @@ impl MemoryStore {
             };
             let text = |value: Option<String>| value.unwrap_or_else(|| "null".to_string());
             let body = format!(
-                "---\nid: {id}\nscope: {scope}\nscore: {score}\ncreated_at: {created_at}\nlifecycle_state: {lifecycle_state}\neffective_from_ms: {}\neffective_until_ms: {}\nexpires_at_ms: {}\nreview_after_ms: {}\nsuperseded_by: {}\npriority_class: {priority_class}\nconfidence: {}\nconfidence_basis: {}\nexported_by: memright export-md\n---\n\n{content}\n",
+                "---\nid: {id}\nscope: {scope}\nscore: {score}\ncreated_at: {created_at}\nlifecycle_state: {lifecycle_state}\neffective_from_ms: {}\neffective_until_ms: {}\nexpires_at_ms: {}\nreview_after_ms: {}\nsuperseded_by: {}\npriority_class: {priority_class}\nconfidence: {}\nconfidence_basis: {}\nexported_by: crypt export-md\n---\n\n{content}\n",
                 integer(effective_from_ms), integer(effective_until_ms), integer(expires_at_ms),
                 integer(review_after_ms), text(superseded_by), decimal(confidence), text(confidence_basis),
             );
@@ -6095,7 +6124,7 @@ impl MemoryStore {
         Ok((content, access_count))
     }
 
-    /// Record one transform's before/after size (per-layer savings, `memright metrics`). Best-effort.
+    /// Record one transform's before/after size (per-layer savings, `crypt metrics`). Best-effort.
     pub fn log_transform(
         &self,
         ts: &str,
@@ -6125,7 +6154,7 @@ impl MemoryStore {
         );
     }
 
-    /// Per-verb transform savings for `memright metrics`.
+    /// Per-verb transform savings for `crypt metrics`.
     pub fn transform_metrics(&self) -> Vec<crate::memdb::TransformVerbMetrics> {
         self.db.transform_metrics()
     }
@@ -6669,8 +6698,8 @@ mod tests {
                 "counting-cache-test"
             }
 
-            fn pipeline_fingerprint(&self) -> memright_core::PipelineFingerprint {
-                memright_core::PipelineFingerprint::compute(
+            fn pipeline_fingerprint(&self) -> crypt_core::PipelineFingerprint {
+                crypt_core::PipelineFingerprint::compute(
                     2,
                     "document",
                     "query",
@@ -6897,7 +6926,7 @@ mod tests {
     #[test]
     fn recall_scored_filters_scope_before_candidate_generation() {
         let store = MemoryStore::new();
-        let query = "alpha zebra installed memright exact marker";
+        let query = "alpha zebra installed crypt exact marker";
         for index in 0..32 {
             let content = format!("{query} global distractor {index}");
             store
@@ -7014,7 +7043,7 @@ mod tests {
         store.embedder = Arc::new(ControlledEmbedder);
         let target_id = store
             .try_put(
-                "adapt-target",
+                "morph-target",
                 "retain one package artifact per platform",
                 "qa-scope",
                 MemoryTier::Semantic,
@@ -7072,7 +7101,7 @@ mod tests {
     #[test]
     fn recall_scored_prioritizes_self_scope_over_global_chain() {
         let store = MemoryStore::new();
-        let query = "alpha zebra installed memright exact marker";
+        let query = "alpha zebra installed crypt exact marker";
         for index in 0..32 {
             let content = format!("{query} global distractor {index}");
             store
@@ -7098,11 +7127,11 @@ mod tests {
     #[test]
     fn recall_scored_uses_scope_as_soft_bonus_not_hard_sort() {
         let store = MemoryStore::new();
-        let query = "memright codex hook hybrid retrieval observability logs";
+        let query = "crypt codex hook hybrid retrieval observability logs";
         store
             .try_put(
                 "weak-local",
-                "memright codex hook hybrid retrieval logs local note about old status naming",
+                "crypt codex hook hybrid retrieval logs local note about old status naming",
                 "qa-scope",
                 MemoryTier::Semantic,
             )
@@ -7963,10 +7992,10 @@ mod tests {
     fn context_policy_assignment_is_deterministic_and_persisted() {
         let m = MemoryStore::new();
         let first = m
-            .assign_context_policy("session-42", "codex", "memright-v1", 10, "code")
+            .assign_context_policy("session-42", "codex", "crypt-v1", 10, "code")
             .unwrap();
         let second = m
-            .assign_context_policy("session-42", "codex", "memright-v1", 10, "code")
+            .assign_context_policy("session-42", "codex", "crypt-v1", 10, "code")
             .unwrap();
         assert_eq!(first, second);
         assert!(matches!(first.as_str(), "control" | "candidate"));
@@ -7975,7 +8004,7 @@ mod tests {
                 .query_row(
                     "SELECT COUNT(*) FROM context_policy_assignment
                  WHERE session_id='session-42' AND surface='codex'
-                   AND policy_version='memright-v1'",
+                   AND policy_version='crypt-v1'",
                     [],
                     |row| row.get(0),
                 )
@@ -7986,17 +8015,17 @@ mod tests {
                 .query_row(
                     "SELECT task_class FROM context_policy_assignment
                  WHERE session_id='session-42' AND surface='codex'
-                   AND policy_version='memright-v1'",
+                   AND policy_version='crypt-v1'",
                     [],
                     |row| row.get(0),
                 )
                 .unwrap();
         assert_eq!(task_class, "code");
         assert!(m
-            .assign_context_policy("", "codex", "memright-v1", 10, "code")
+            .assign_context_policy("", "codex", "crypt-v1", 10, "code")
             .is_err());
         assert!(m
-            .assign_context_policy("s", "codex", "memright-v1", 101, "code")
+            .assign_context_policy("s", "codex", "crypt-v1", 101, "code")
             .is_err());
     }
 
@@ -8544,7 +8573,7 @@ mod tests {
 
     /// L8 dream_now on an empty store should still return a well-formed
     /// status — no panic, no missing fields, zero counts. This is the entry
-    /// point for the `memright curate` CLI verb (L8 in the plan); without
+    /// point for the `crypt curate` CLI verb (L8 in the plan); without
     /// this test, regressions in the no-op path would only surface when a
     /// user actually runs the CLI on a fresh DB.
     #[test]

@@ -311,7 +311,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let root = std::env::temp_dir().join(format!(
-            "memright-workspace-root-{}-{unique}",
+            "crypt-workspace-root-{}-{unique}",
             std::process::id()
         ));
         std::fs::create_dir_all(&root).unwrap();

@@ -28,7 +28,7 @@
 //! scale is explicitly deferred — lanes are the standing policy.
 //!
 //! The planner performs no I/O: no filesystem reads, no Blueprint queries, no
-//! Git access, no MemRight DB queries. Producers feed it via JSON; consumers
+//! Git access, no Crypt DB queries. Producers feed it via JSON; consumers
 //! receive the packet and the receipts back.
 
 use serde::{Deserialize, Serialize};
@@ -1816,7 +1816,7 @@ mod tests {
         input_value["candidate_set"]["candidates"][0]["provider"] =
             serde_json::Value::String("blueprint".into());
         input_value["candidate_set"]["candidates"][1]["provider"] =
-            serde_json::Value::String("memright".into());
+            serde_json::Value::String("crypt".into());
         let input: PlannerInput = serde_json::from_value(input_value).unwrap();
 
         let out = plan(&input).unwrap();
@@ -1827,7 +1827,7 @@ mod tests {
             .map(|block| (block.id.as_str(), block.provider.as_str()))
             .collect();
         assert_eq!(block_providers["a"], "blueprint");
-        assert_eq!(block_providers["b"], "memright");
+        assert_eq!(block_providers["b"], "crypt");
         assert_eq!(block_providers["legacy"], "blueprint");
         let receipt_providers: BTreeMap<_, _> = out
             .receipts
@@ -1847,7 +1847,7 @@ mod tests {
         input_value["candidate_set"]["candidates"][0]["provider"] =
             serde_json::Value::String("blueprint".into());
         input_value["candidate_set"]["candidates"][1]["provider"] =
-            serde_json::Value::String("memright".into());
+            serde_json::Value::String("crypt".into());
         let input: PlannerInput = serde_json::from_value(input_value).unwrap();
 
         let out = plan(&input).unwrap();
@@ -1887,19 +1887,19 @@ mod tests {
             100
         );
         assert_eq!(
-            packet["providerAccounting"]["memright"]["selectedTokens"],
+            packet["providerAccounting"]["crypt"]["selectedTokens"],
             40
         );
         assert_eq!(
-            packet["providerAccounting"]["memright"]["renderedTokens"],
+            packet["providerAccounting"]["crypt"]["renderedTokens"],
             0
         );
         assert_eq!(
-            packet["providerAccounting"]["memright"]["deliveredChars"],
+            packet["providerAccounting"]["crypt"]["deliveredChars"],
             0
         );
         assert_eq!(
-            packet["providerAccounting"]["memright"]["dropReason"],
+            packet["providerAccounting"]["crypt"]["dropReason"],
             "missing_resolver"
         );
     }
@@ -1939,12 +1939,12 @@ mod tests {
         )]))
         .unwrap();
         input_value["candidate_set"]["candidates"][0]["provider"] =
-            serde_json::Value::String("memright".into());
+            serde_json::Value::String("crypt".into());
         let input: PlannerInput = serde_json::from_value(input_value).unwrap();
         let out = plan(&input).unwrap();
         let receipt = serde_json::to_value(&out.receipts[0]).unwrap();
 
-        assert_eq!(receipt["provider"], "memright");
+        assert_eq!(receipt["provider"], "crypt");
         assert_eq!(receipt["statusScope"], "candidate_set");
         assert_eq!(receipt["statusProvider"], "blueprint");
     }

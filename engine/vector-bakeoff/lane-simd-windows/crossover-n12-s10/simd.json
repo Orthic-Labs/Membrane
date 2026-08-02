@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatorId": "memright-vector-fixture-v1",
+  "generatorId": "crypt-vector-fixture-v1",
   "runner": "simd",
   "runnerVersion": "0.1.0",
   "cellId": "crossover-n12-s10",

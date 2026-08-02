@@ -1,6 +1,6 @@
 //! MemDb — the memory engine's own SQLite store (the `memories` table). A cloneable
 //! `Arc<Mutex<Connection>>` handle, WAL, mirroring the interface `MemoryStore` needs. Self-contained
-//! so MemRight is publishable without dragging in CodeRight's governance DB.
+//! so Crypt is publishable without dragging in CodeRight's governance DB.
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
@@ -240,7 +240,7 @@ CREATE TABLE IF NOT EXISTS memory_quarantine (
 );
 ";
 
-/// Current durable MemRight schema contract. External migration tests must not
+/// Current durable Crypt schema contract. External migration tests must not
 /// duplicate this value, because a promoted schema version changes atomically.
 pub const LATEST_SCHEMA_VERSION: i64 = 21;
 const SMOKE_ISOLATION_MIGRATION_ID: &str = "rc-2.3-smoke-spotcheck-production-v1";
@@ -2850,7 +2850,7 @@ impl RecallMetrics {
     }
 }
 
-/// One verb's aggregated transform savings (`memright metrics` transforms block).
+/// One verb's aggregated transform savings (`crypt metrics` transforms block).
 pub struct TransformVerbMetrics {
     pub verb: String,
     pub runs: u64,
@@ -3767,7 +3767,7 @@ mod tests {
     #[test]
     fn reopen_backfills_content_free_identity_for_legacy_memories() {
         let path = std::env::temp_dir().join(format!(
-            "memright-legacy-identity-{}-{}.db",
+            "crypt-legacy-identity-{}-{}.db",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -3828,7 +3828,7 @@ mod tests {
     #[test]
     fn malformed_legacy_schema_fails_migration_without_advancing_version() {
         let path = std::env::temp_dir().join(format!(
-            "memright-bad-migration-{}-{}.db",
+            "crypt-bad-migration-{}-{}.db",
             std::process::id(),
             crate::time::now_iso().replace([':', '.'], "-")
         ));
@@ -3981,7 +3981,7 @@ mod tests {
     #[test]
     fn migration_backfills_updated_at_from_created_at() {
         let path = std::env::temp_dir().join(format!(
-            "memright-updated-at-{}-{}.db",
+            "crypt-updated-at-{}-{}.db",
             std::process::id(),
             crate::time::now_millis()
         ));

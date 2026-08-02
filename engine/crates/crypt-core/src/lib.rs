@@ -1,4 +1,4 @@
-//! memright-core — pure in-memory logic for the MemRight memory tier system.
+//! crypt-core — pure in-memory logic for the Crypt memory tier system.
 //!
 //! Models memory tiers, retrieval ranking, a quality eval gate, and rough token
 //! accounting. Persistence lives in a separate storage crate; this crate has no I/O.

@@ -1,10 +1,10 @@
-# LLMLingua-2 ONNX Spike — `D:\Claude\cr-memright-wip`
+# LLMLingua-2 ONNX Spike — `D:\Claude\cr-crypt-wip`
 
-> Migration note: this evidence was produced in CodeRight before MemRight became
+> Migration note: this evidence was produced in CodeRight before Crypt became
 > the canonical owner. Paths below are historical; the corresponding source now
-> lives under `tools/memright` in the Claude repository.
+> lives under `tools/crypt` in the Claude repository.
 
-**Branch:** `wip/memright-context-engine`
+**Branch:** `wip/crypt-context-engine`
 **Plan:** `docs/plans/2026-07-01-context-engine-unification.md` task 3
 **Verdict:** **PASS at the plan's default rate (0.5)**. Spike validates the assumption.
 Implement the full Rust ONNX path behind `--features llmlingua-onnx`.
@@ -117,7 +117,7 @@ nobody takes it at face value.
 ## Asset placement
 
 `model.onnx` and `tokenizer.json` copied to
-`engine/crates/memright/assets/llmlingua/` (677 MB + 2.8 MB). These are what the Rust
+`engine/crates/crypt/assets/llmlingua/` (677 MB + 2.8 MB). These are what the Rust
 implementation loads at test time. `.gitignore`-d — the rebuild is reproducible from
 `spike/parity.py`'s dependencies.
 
@@ -142,7 +142,7 @@ Per the plan's exit condition:
 
 The spike passes that gate. The Rust implementation needs:
 
-1. Replace the `compress_llmlingua_onnx` stub in `engine/crates/memright/src/compress.rs`
+1. Replace the `compress_llmlingua_onnx` stub in `engine/crates/crypt/src/compress.rs`
    with the real implementation:
    - `ort::Session::builder()?.commit_from_file(model_path)?` (load-dynamic — DLL
      comes from `$ORT_DYLIB_PATH`, same pattern the BGE/fastembed path uses)
@@ -160,7 +160,7 @@ The spike passes that gate. The Rust implementation needs:
    - The test is gated on `--features llmlingua-onnx` (matches the plan's note:
      "compress ONNX-parity needs `--features llmlingua-onnx`").
 
-3. Asset resolution: `MEMRIGHT_LLMLINGUA_MODEL` / `MEMRIGHT_LLMLINGUA_TOKENIZER`
+3. Asset resolution: `CRYPT_LLMLINGUA_MODEL` / `CRYPT_LLMLINGUA_TOKENIZER`
    env vars, default to the `assets/llmlingua/` path. Document in `CLAUDE.md` /
    `compress.rs` so first-time setup is reproducible.
 
@@ -188,21 +188,21 @@ path.
 ## Rust implementation — second parity check (2026-07-01, after `ship-it` decision)
 
 After the user picked **ship-it**, the Rust ONNX path was implemented in
-`engine/crates/memright/src/compress.rs`. Same model + tokenizer, same top-K-by-
+`engine/crates/crypt/src/compress.rs`. Same model + tokenizer, same top-K-by-
 keep-probability + force-token algorithm as the Python harness, but in Rust via
 the `ort 2.0.0-rc.9` + `tokenizers 0.15` + `ndarray 0.16` stack already wired
 for the BGE/fastembed path.
 
 Test: `compress_matches_python_jaccard` (inline `#[cfg(test)]` at the bottom of
 `compress.rs`, gated on `--features llmlingua-onnx`). Loads the same 5 fixtures
-embedded as `include_str!`, runs `memright::compress::compress(text, 0.5)`,
-compares the output's word set to the golden `engine/crates/memright/tests/llmlingua_golden.json`
+embedded as `include_str!`, runs `crypt::compress::compress(text, 0.5)`,
+compares the output's word set to the golden `engine/crates/crypt/tests/llmlingua_golden.json`
 (pre-recorded Python llmlingua at rate=0.5). Threshold: 0.90 (the plan's gate).
 
 Run command:
 ```bash
 $env:ORT_DYLIB_PATH = "...onnxruntime.dll"
-cargo test -p memright --features llmlingua-onnx compress::tests::compress_matches_python_jaccard
+cargo test -p crypt --features llmlingua-onnx compress::tests::compress_matches_python_jaccard
 ```
 
 Result (single run, no flakiness observed):
@@ -222,15 +222,15 @@ tiebreaker + softmax precision. Both implementations clear the gate cleanly.
 The Rust port is the production path.
 
 Asset resolution at runtime (documented in `compress.rs` and
-`engine/crates/memright/assets/llmlingua/README.md`):
+`engine/crates/crypt/assets/llmlingua/README.md`):
 
-1. `$MEMRIGHT_LLMLINGUA_MODEL` / `$MEMRIGHT_LLMLINGUA_TOKENIZER` (explicit override)
-2. `engine/crates/memright/assets/llmlingua/{model.onnx,tokenizer.json}` (default)
+1. `$CRYPT_LLMLINGUA_MODEL` / `$CRYPT_LLMLINGUA_TOKENIZER` (explicit override)
+2. `engine/crates/crypt/assets/llmlingua/{model.onnx,tokenizer.json}` (default)
 3. Clear error pointing at the README + the missing path
 
 The assets dir is `.gitignore`d (the 677 MB blob would explode the repo
 otherwise). The first-time-fetch procedure is documented in
-`engine/crates/memright/assets/llmlingua/README.md`.
+`engine/crates/crypt/assets/llmlingua/README.md`.
 
 ---
 
@@ -273,7 +273,7 @@ Four checks the user requested before merge:
    all 27 workspace members pass with 0 failures. The ndarray addition
    (direct dep + ort's ndarray feature) doesn't break any sibling crate.
    Notable counts: 733 / 293 / 234 / 231 / 144 / 105 / 91 / 77 / 75 / 59 / 55
-   / 49 / 47 / 46 / 34 / **27 (memright baseline)** / ... — all green.
+   / 49 / 47 / 46 / 34 / **27 (crypt baseline)** / ... — all green.
 
 4. **Cross-OS path verified.** The `resolve_asset_paths` helper uses
    `PathBuf::join` (no hardcoded separators) + `env!("CARGO_MANIFEST_DIR")`
@@ -307,21 +307,21 @@ below.
 - **compress.rs** (+13 tests): 10 always-on + 1 tokenizer-load conditional + 1 env-mutation + 1 parity gate — see the pre-merge validation section above.
 - **prep.rs** (+1 test, task 4b): `prep_compress_branch_matches_python_jaccard` — runs the full prep pipeline on the 5 fixtures, asserts the `compress` branch's `.min.md` file content matches Python llmlingua's golden at ≥0.90 word-Jaccard (gated on `--features llmlingua-onnx`, skips cleanly when assets absent).
 - **skel.rs** (+4 tests, task 2 fixture parity): `skeletonizes_python_function_and_class`, `skeletonizes_typescript_function_and_class`, `skeletonizes_javascript_function`, `python_empty_input_no_panic`. These cover the `.ts` and `.py` fixture cases the plan called out for the workspace `skel.py` diff.
-- **runc.rs** (+3 tests): `shell_override_program_only_appends_platform_switch`, `shell_override_program_and_switch_used_verbatim`, `run_capped_no_spill_when_output_fits`. The first two close the loop on the `MEMRIGHT_RUNC_SHELL` env-var path that the resolver advertises; the third is the negative case (no spill file when output fits).
+- **runc.rs** (+3 tests): `shell_override_program_only_appends_platform_switch`, `shell_override_program_and_switch_used_verbatim`, `run_capped_no_spill_when_output_fits`. The first two close the loop on the `CRYPT_RUNC_SHELL` env-var path that the resolver advertises; the third is the negative case (no spill file when output fits).
 - **compact.rs** (+4 tests): `assemble_handles_empty_transcript`, `assemble_handles_zero_budget`, `assemble_handles_tiny_budget`, `assemble_keeps_complete_lines_no_mid_word_split`. Edge cases the existing single happy-path test didn't cover.
-- **store.rs** (+1 test, task 6 L8): `dream_now_on_empty_store_returns_zero_status` — covers the entry point the `memright curate` CLI verb uses, ensuring it doesn't panic on a fresh DB.
+- **store.rs** (+1 test, task 6 L8): `dream_now_on_empty_store_returns_zero_status` — covers the entry point the `crypt curate` CLI verb uses, ensuring it doesn't panic on a fresh DB.
 
 ### Final test counts
 | Suite | Count | Δ from baseline |
 |---|---|---|
-| `cargo test -p memright` (default features) | **39 passed** | +12 |
-| `cargo test -p memright --features llmlingua-onnx` | **53 passed** | +13 |
+| `cargo test -p crypt` (default features) | **39 passed** | +12 |
+| `cargo test -p crypt --features llmlingua-onnx` | **53 passed** | +13 |
 | `cargo test --workspace` | all green | unchanged from baseline |
 
 ### Notes on what was NOT touched
 - Task 7 (workspace cutover in `D:\Claude`) — explicitly out of scope; that's the user's other repo and they own the merge.
 - Lane 8 / ws7-media — not in this plan; user noted it's a separate work item.
-- Pre-existing scaffold fmt diffs in `prep.rs`/`skel.rs`/`serve.rs`/`compact.rs`/`runc.rs`/`lib.rs` and the pre-existing clippy warnings in `coderight-config` and various memright modules — not my code; not silently reformatted.
+- Pre-existing scaffold fmt diffs in `prep.rs`/`skel.rs`/`serve.rs`/`compact.rs`/`runc.rs`/`lib.rs` and the pre-existing clippy warnings in `coderight-config` and various crypt modules — not my code; not silently reformatted.
 - The `model.onnx` (677 MB) — gitignored, not committed, never appeared in `git status` as an untracked file.
 
 ### One thing to flag before merge

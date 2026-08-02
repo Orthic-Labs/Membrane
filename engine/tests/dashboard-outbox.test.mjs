@@ -8,7 +8,7 @@ import vm from 'node:vm';
 
 const DASHBOARD_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  '../crates/memright/src/dashboard.html',
+  '../crates/crypt/src/dashboard.html',
 );
 
 function dashboardOutboxSource() {
@@ -16,7 +16,7 @@ function dashboardOutboxSource() {
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script, 'dashboard must contain a script block');
   const outbox = script
-    .replace('__MEMRIGHT_API_TOKEN_JSON__', 'null')
+    .replace('__CRYPT_API_TOKEN_JSON__', 'null')
     .split('let current = null;')[0];
   assert.ok(outbox.includes('async function apiPut'), 'dashboard outbox source must be extractable');
   return `${outbox}\n;globalThis.__outbox = {
@@ -67,7 +67,7 @@ function createHarness({ now = 1_700_000_000_000, shared } = {}) {
     navigator: {
       locks: {
         request: (name, options, operation) => {
-          assert.equal(name, 'memright.pendingPuts.v1.lock');
+          assert.equal(name, 'crypt.pendingPuts.v1.lock');
           assert.equal(options?.mode, 'exclusive');
           assert.deepEqual(Object.keys(options), ['mode']);
           const result = sharedState.lockTail.then(operation);

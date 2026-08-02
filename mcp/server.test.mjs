@@ -258,7 +258,7 @@ try {
     { jsonrpc: "2.0", id: 26, method: "tools/call", params: { name: "membrane_context", arguments: { task: "negative budget", repository: enrolledRoot, caller: virtualCaller, budget: -1 }, _meta: modernMeta } },
     { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "membrane_checkpoint_load", arguments: { repository: enrolledRoot, caller: virtualCaller, id: "checkpoint-1", asOfMs: -1 }, _meta: modernMeta } },
     { jsonrpc: "2.0", id: 28, method: "tools/call", params: { name: "membrane_checkpoint_load", arguments: { repository: enrolledRoot, caller: virtualCaller, id: "checkpoint-1", asOfMs: "yesterday" }, _meta: modernMeta } },
-  ], { MEMBRANE_PROJECT_REGISTRY: registry, MEMRIGHT_PORT: String(port), MEMRIGHT_API_TOKEN: "test-token" });
+  ], { MEMBRANE_PROJECT_REGISTRY: registry, CRYPT_PORT: String(port), CRYPT_API_TOKEN: "test-token" });
   const invalidById = new Map(invalidCalls.map((row) => [row.id, row]));
   for (const id of [23, 24, 25, 26, 27, 28]) {
     assert.equal(invalidById.get(id).result.isError, true, `invalid request ${id} returns an invalid-params tool result`);
@@ -275,7 +275,7 @@ try {
         _meta: { ...modernMeta, traceparent: "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future", tracestate: "membrane=server", baggage: "tenant=repo-a" },
       },
     },
-  ], { MEMBRANE_PROJECT_REGISTRY: registry, MEMRIGHT_PORT: String(port), MEMRIGHT_API_TOKEN: "test-token" });
+  ], { MEMBRANE_PROJECT_REGISTRY: registry, CRYPT_PORT: String(port), CRYPT_API_TOKEN: "test-token" });
   const tracedById = new Map(tracedContext.map((row) => [row.id, row]));
   assert.deepEqual(tracedById.get(21).result.structuredContent.trace, {
     traceparent: "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future", tracestate: "membrane=server", baggage: "tenant=repo-a",

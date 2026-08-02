@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // membrane/mcp/client.mjs — Membrane G5 Lane F provider-neutral MCP thin client.
 //
-// Thin client: authenticates to the workspace loopback MemRight service at
-// http://127.0.0.1:${MEMRIGHT_PORT}/federate with the workspace bearer
+// Thin client: authenticates to the workspace loopback Crypt service at
+// http://127.0.0.1:${CRYPT_PORT}/federate with the workspace bearer
 // token, POSTs a task/repository federation request, surfaces receipt
 // IDs + degradation state to the caller, and emits a typed fallback event
 // when the planner is unavailable or any provider has gone away.
@@ -13,9 +13,9 @@
 // translates transport shape only — JSON envelope in, packet + receipts
 // out — exactly as dispatch G5 Lane F requires.
 //
-// Authentication contract (mirrors tools/codex-brief-plugin/.../memright-start.cjs):
-//   1. $MEMRIGHT_PORT env var if set, else 47851.
-//   2. $MEMRIGHT_API_TOKEN env var if set, else $MEMRIGHT_API_TOKEN_FILE
+// Authentication contract (mirrors tools/codex-brief-plugin/.../crypt-start.cjs):
+//   1. $CRYPT_PORT env var if set, else 47851.
+//   2. $CRYPT_API_TOKEN env var if set, else $CRYPT_API_TOKEN_FILE
 //      (default tools/.cache/memory/api-token) — same path the workspace
 //      hooks use. The token is read once per process; it is NEVER echoed,
 //      printed, written to a log row, or embedded in any output line.
@@ -54,12 +54,12 @@ const MODE_DEFAULT = "shadow"; // gate state until G5 parity is green
 
 function readToken() {
   // Resolution order matches the workspace hook recipe:
-  //   1. MEMRIGHT_API_TOKEN env var (raw, used directly; never logged).
-  //   2. MEMRIGHT_API_TOKEN_FILE env var or default tools/.cache/memory/api-token.
+  //   1. CRYPT_API_TOKEN env var (raw, used directly; never logged).
+  //   2. CRYPT_API_TOKEN_FILE env var or default tools/.cache/memory/api-token.
   // The token is held in closure; it never enters any log or output row.
-  const envTok = process.env.MEMRIGHT_API_TOKEN;
+  const envTok = process.env.CRYPT_API_TOKEN;
   if (envTok && envTok.trim().length > 0) return envTok.trim();
-  const fileEnv = process.env.MEMRIGHT_API_TOKEN_FILE;
+  const fileEnv = process.env.CRYPT_API_TOKEN_FILE;
   const candidates = [];
   if (fileEnv && fileEnv.trim().length > 0) candidates.push(fileEnv.trim());
   const ws = process.env.WORKSPACE_ROOT || (process.platform === "win32" ? "D:/Claude" : `${process.env.HOME}/claude`);
@@ -79,7 +79,7 @@ function readToken() {
 }
 
 function readPort() {
-  const raw = process.env.MEMRIGHT_PORT;
+  const raw = process.env.CRYPT_PORT;
   if (raw && raw.trim().length > 0) {
     const n = Number(raw.trim());
     if (Number.isInteger(n) && n >= 1024 && n <= 65535) return n;

@@ -2006,7 +2006,7 @@ fn ingress_sidecar(path: &Path, suffix: &str) -> PathBuf {
 }
 
 pub fn default_prompt_telemetry_ingress(db_path: &Path) -> PathBuf {
-    std::env::var_os("MEMRIGHT_TELEMETRY_INGRESS")
+    std::env::var_os("CRYPT_TELEMETRY_INGRESS")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| {

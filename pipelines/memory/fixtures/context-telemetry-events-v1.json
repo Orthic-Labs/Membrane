@@ -18,7 +18,7 @@
       "span_id": "span-7f8f4d9b5e4d5ef1a6c5b1c51bcf3d5a",
       "parent_span_id": "span-7f8f4d9b5e4d5ef1a6c5b1c51bcf3d5a",
       "artifact_family": "memory",
-      "provider": "memright",
+      "provider": "crypt",
       "provider_version": "0.1.1",
       "release_generation": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
       "phase": "provider.started",

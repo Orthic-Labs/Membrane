@@ -27,7 +27,7 @@ The installed-runtime RC-2.5 repeat passes independently. Installed client recov
 disabled-scheduler watchdog propagation, and Gate-1 cap/budget smokes now pass in strict
 `installed-gates-v1.json`. Candidate policy/cohorts are active. Three fresh replay attempts froze
 failed/non-resumable. The genuine 5ea repair pair and comparison now pass, but later compiled
-MemRight hardening at `d891b274` supersedes that pair as an installable boundary. Clean d891 Windows
+Crypt hardening at `d891b274` supersedes that pair as an installable boundary. Clean d891 Windows
 runtime/ranking evidence validates and CodeRight pins d891; genuine d891 Mac evidence remains before
 paired install and a wholly new run. The three production dates remain open.
 The binding RC-2.5 acceptance row is in the gates plan; the state ledger owns exact failed-run history
@@ -37,7 +37,7 @@ and successful artifacts.
 
 ## 1. The situation — frozen audit snapshot
 
-**MemRight works.** This is the part that got lost in 200KB of review prose.
+**Crypt works.** This is the part that got lost in 200KB of review prose.
 
 | Surface | State (verified 2026-07-17) |
 |---|---|
@@ -113,9 +113,9 @@ This normalizes two provider read paths only. IR-41 remains open for canonical i
 
 This stops one source of new plan shards. It does not implement IR-20's typed authority, provenance, lifecycle, TTL/quarantine, migration, or existing-row treatment.
 
-*Correction to the original N5 entry:* it said "reuse Adapt's existing `admission.py` gate". **That was wrong** — `admission.py` admits *mined preference rules* against a taxonomy (workflow, safety, tooling…); it has no bearing on document ingestion. The suggestion came from repeating a reviewer's permutation without checking its premise.
+*Correction to the original N5 entry:* it said "reuse Morph's existing `admission.py` gate". **That was wrong** — `admission.py` admits *mined preference rules* against a taxonomy (workflow, safety, tooling…); it has no bearing on document ingestion. The suggestion came from repeating a reviewer's permutation without checking its premise.
 
-*Rationale for opt-in:* `docs/plans/` is where thinking happens — drafts, reviews, status, superseded plans. Durability is a property of a document, not of its folder, and only the author knows it. §10 applies: the mechanism was producing 1,033 rows at 98% zero-access, so the smaller mechanism wins. A genuinely durable ADR adds one frontmatter line; anything else can still be filed deliberately with `memright put`.
+*Rationale for opt-in:* `docs/plans/` is where thinking happens — drafts, reviews, status, superseded plans. Durability is a property of a document, not of its folder, and only the author knows it. §10 applies: the mechanism was producing 1,033 rows at 98% zero-access, so the smaller mechanism wins. A genuinely durable ADR adds one frontmatter line; anything else can still be filed deliberately with `crypt put`.
 
 ### N4 / IR-40 — accepted semantic repair
 The failed 45-cell replay was frozen before this repair. Source now records content-free evaluation recall with `observe=false`, leaves injection/access mutation disabled, and excludes nonproduction traffic from production aggregates. This closes the source defect only; successor installed behavior and a fresh 60-cell replay remain mandatory.
@@ -192,7 +192,7 @@ Each was proposed by at least one review and each is false. Kept only so they do
 | `~/.claude/skills` is a plain directory of synced copies | It is a junction → `D:\Claude\tools\skills` (`os.path.islink` returns False for Windows junctions — that's the trap). `~/.codex/skills` too. |
 | Live `/recall` bypasses the feedback veto | `serve.rs:807` calls `recall_scored_detailed`. **The state doc is what's wrong** — see N1. |
 | Availability is 13.5% / 21.9% | Both divide by unfiltered denominators including shadow/off rows. On-mode + real = 36.6%. |
-| The skills catalog has 29 rows with a duplicate `adapt` | 28, no duplicates. |
+| The skills catalog has 29 rows with a duplicate `morph` | 28, no duplicates. |
 | `blueprint` hardcodes model tiers | It is the **compliant exemplar** — `blueprint/SKILL.md:192`: *"Never put client-specific model names into a tool call on a client that does not support them."* |
 | Count a rendered preview as `Used` | Rendering is exposure. Labelling it use manufactures positive labels for ignored context and corrupts evaluation. |
 | Mine transcripts to auto-generate `Used` labels | Same defect: presence proves exposure, not usefulness. |

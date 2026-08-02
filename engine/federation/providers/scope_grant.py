@@ -1,7 +1,7 @@
 """ScopeGrant lookup — reads from the central context catalog.
 
 The catalog is a separate SQLite file at `<context-home>/catalog.db`. The
-Rust `memright` service owns the authoritative grant store; this module
+Rust `crypt` service owns the authoritative grant store; this module
 reads from the same store via a small SQL helper.
 
 The gateway treats cross-root evidence as conditional on an active grant;

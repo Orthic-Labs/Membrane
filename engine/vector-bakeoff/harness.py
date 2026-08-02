@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform orchestration for MemRight vector backend bake-off."""
+"""Cross-platform orchestration for Crypt vector backend bake-off."""
 
 from __future__ import annotations
 
@@ -197,7 +197,7 @@ def validate_bundle(
     }
     if not required.issubset(bundle):
         raise HarnessError(f"{runner}/{cell} result schema incomplete")
-    if bundle["schemaVersion"] != 1 or bundle["generatorId"] != "memright-vector-fixture-v1":
+    if bundle["schemaVersion"] != 1 or bundle["generatorId"] != "crypt-vector-fixture-v1":
         raise HarnessError(f"{runner}/{cell} result schema drift")
     if bundle["runner"] != runner or bundle["cellId"] != cell:
         raise HarnessError(f"{runner}/{cell} result identity mismatch")

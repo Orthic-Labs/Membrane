@@ -1,6 +1,6 @@
 //! Bounded, deterministic dependency closure over Blueprint graph edges.
 //!
-//! This module is deliberately graph-store agnostic: Blueprint providers adapt their raw graph
+//! This module is deliberately graph-store agnostic: Blueprint providers morph their raw graph
 //! rows into these typed edges before planner allocation owns final token admission.
 
 use std::collections::{BTreeSet, HashMap, VecDeque};

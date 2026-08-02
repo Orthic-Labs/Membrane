@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import { defaultTokenPath } from "./project-registry.mjs";
 
 const RUNTIME_FILE = join("tools", "lib", "memory", "runtime.json");
-const DEFAULT_DB = join("tools", ".cache", "memory", "memright-engine.db");
+const DEFAULT_DB = join("tools", ".cache", "memory", "crypt-engine.db");
 const DEFAULT_TOKEN = join("tools", ".cache", "memory", "api-token");
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 47851;
@@ -34,7 +34,7 @@ async function readRuntime(path) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) {
     throw new Error("installation binding unavailable: runtime port is invalid");
   }
-  if (raw.serviceId && raw.serviceId !== "memright-local-v1") {
+  if (raw.serviceId && raw.serviceId !== "crypt-local-v1") {
     throw new Error("installation binding unavailable: runtime serviceId mismatch");
   }
   if (raw.host && raw.host !== DEFAULT_HOST) {
@@ -44,19 +44,19 @@ async function readRuntime(path) {
 }
 
 function envPort() {
-  const raw = process.env.MEMRIGHT_PORT?.trim();
+  const raw = process.env.CRYPT_PORT?.trim();
   if (!raw) return undefined;
   const port = Number(raw);
   return Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : undefined;
 }
 
 function envDb(workspaceRoot) {
-  const raw = process.env.MEMRIGHT_DB?.trim();
+  const raw = process.env.CRYPT_DB?.trim();
   return raw || join(workspaceRoot, DEFAULT_DB);
 }
 
 function tokenPathFor(binding, workspaceRoot, registryPath) {
-  const envFile = process.env.MEMRIGHT_API_TOKEN_FILE?.trim();
+  const envFile = process.env.CRYPT_API_TOKEN_FILE?.trim();
   if (envFile) return envFile;
   if (binding.token_grant?.path) return binding.token_grant.path;
   return defaultTokenPath(binding.root, registryPath) || join(workspaceRoot, DEFAULT_TOKEN);
@@ -91,9 +91,9 @@ export async function installationBindingFor(binding, { registryPath } = {}) {
 export function installationEnv(bindingRecord) {
   return {
     WORKSPACE_ROOT: bindingRecord.workspaceRoot,
-    MEMRIGHT_PORT: String(bindingRecord.port),
-    MEMRIGHT_DB: bindingRecord.db,
-    MEMRIGHT_API_TOKEN_FILE: bindingRecord.tokenPath,
+    CRYPT_PORT: String(bindingRecord.port),
+    CRYPT_DB: bindingRecord.db,
+    CRYPT_API_TOKEN_FILE: bindingRecord.tokenPath,
     MEMBRANE_REPOSITORY_CATALOG_DIGEST: bindingRecord.repositoryCatalogDigest || "",
   };
 }

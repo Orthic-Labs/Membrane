@@ -1,9 +1,9 @@
-//! MemRight CLI — serve the memory contract, or migrate a markdown corpus into the engine.
+//! Crypt CLI — serve the memory contract, or migrate a markdown corpus into the engine.
 //! Real BGE embeddings need `--features fastembed` + `$ORT_DYLIB_PATH`.
 
 use clap::{Parser, Subcommand};
-use memright::scope::{normalize_scope, path_to_scope};
-use memright::{CheckpointV1, MemDb, MemoryStore};
+use crypt::scope::{normalize_scope, path_to_scope};
+use crypt::{CheckpointV1, MemDb, MemoryStore};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -53,7 +53,7 @@ fn home() -> PathBuf {
 
 /// Resolve the WORKSPACE root (where `tools/skills` lives) for `skill-read`, independent of the
 /// current repo: explicit `--root`, else `$WORKSPACE_ROOT`, else derived from the deployed binary
-/// location `<workspace>/tools/bin/memright.exe`. Falls back to cwd.
+/// location `<workspace>/tools/bin/crypt.exe`. Falls back to cwd.
 fn skill_workspace_root(root: Option<String>) -> PathBuf {
     if let Some(r) = root.filter(|r| !r.trim().is_empty()) {
         return PathBuf::from(r);
@@ -62,7 +62,7 @@ fn skill_workspace_root(root: Option<String>) -> PathBuf {
         return PathBuf::from(r);
     }
     if let Ok(exe) = std::env::current_exe() {
-        // <workspace>/tools/bin/memright.exe -> up 3 = <workspace>
+        // <workspace>/tools/bin/crypt.exe -> up 3 = <workspace>
         if let Some(ws) = exe
             .parent()
             .and_then(|p| p.parent())
@@ -77,7 +77,7 @@ fn skill_workspace_root(root: Option<String>) -> PathBuf {
 }
 
 fn skill_event_client() -> &'static str {
-    match std::env::var("MEMRIGHT_CLIENT")
+    match std::env::var("CRYPT_CLIENT")
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase()
@@ -101,7 +101,7 @@ fn emit_skill_resolved(ws: &Path, name: &str, body_hash: &str, source: &str, byt
         .unwrap_or_else(|| ws.join("tools/.cache/metrics/rightcontext-skill-events.jsonl"));
     let row = serde_json::json!({
         "schema_version": 1,
-        "ts": memright::time::now_iso(),
+        "ts": crypt::time::now_iso(),
         "event": "skill_resolved",
         "skill_id": format!("skills:{name}"),
         "resource_class": "skill_md",
@@ -160,7 +160,7 @@ fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
     // machine that has it). The engine `skills` table is the PORTABILITY store — it travels with
     // the DB, so a session/machine WITHOUT the skills directory (no checkout, no symlink) still
     // loads skills. This ordering has no staleness window: authoring edits are picked up
-    // immediately where the files exist; the engine row (refreshed by `memright reindex`) serves
+    // immediately where the files exist; the engine row (refreshed by `crypt reindex`) serves
     // everywhere else.
     let ws = skill_workspace_root(root);
     let skills_dir = ws.join("tools/skills");
@@ -184,7 +184,7 @@ fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
         return Ok(());
     }
     // No disk copy — serve from the engine store.
-    if let Ok(db) = resolve_db(None, std::env::var("MEMRIGHT_DB").ok(), None) {
+    if let Ok(db) = resolve_db(None, std::env::var("CRYPT_DB").ok(), None) {
         if let Ok(memdb) = crate::MemDb::open(&db) {
             if let Ok(store) = MemoryStore::try_open(memdb) {
                 if let Some((body, _stored_sha)) = store.skill_from_db(&name) {
@@ -202,12 +202,12 @@ fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
     }
     Err(format!(
         "skill-read {name}: not on disk under {skills_dir:?} and not in the engine store \
-         (run `memright reindex` on the authoring machine to ingest skills)"
+         (run `crypt reindex` on the authoring machine to ingest skills)"
     ))
 }
 
-/// FAIL-LOUD DB resolution (2026-07-05): `--db` flag, else `MEMRIGHT_DB`, else an error with the
-/// exact fix. The old implicit `~/.memright/memory.db` fallback silently forked the corpus — a
+/// FAIL-LOUD DB resolution (2026-07-05): `--db` flag, else `CRYPT_DB`, else an error with the
+/// exact fix. The old implicit `~/.crypt/memory.db` fallback silently forked the corpus — a
 /// bare CLI call talked to a stale ghost DB while serve wrote the canonical one (`metrics`
 /// reported 0 recalls against 774 real). Same treatment as the embedder's fail-loud precedent.
 fn resolve_db(
@@ -218,9 +218,9 @@ fn resolve_db(
     flag.or(env)
         .or_else(|| deployed.map(|path| path.to_string_lossy().into_owned()))
         .ok_or_else(|| {
-            "no database specified: set MEMRIGHT_DB or pass --db. \
-         (workspace canonical: <WORKSPACE_ROOT>/tools/.cache/memory/memright-engine.db; \
-         the implicit ~/.memright/memory.db fallback was removed 2026-07-05 — it silently \
+            "no database specified: set CRYPT_DB or pass --db. \
+         (workspace canonical: <WORKSPACE_ROOT>/tools/.cache/memory/crypt-engine.db; \
+         the implicit ~/.crypt/memory.db fallback was removed 2026-07-05 — it silently \
          forked the corpus)"
                 .to_string()
         })
@@ -256,7 +256,7 @@ fn deployed_runtime_from_exe(exe: &Path) -> Option<DeployedRuntime> {
     let config: RuntimeConfig =
         serde_json::from_slice(&std::fs::read(tools.join("lib/memory/runtime.json")).ok()?).ok()?;
     if config.schema_version != 1
-        || config.service_id != "memright-local-v1"
+        || config.service_id != "crypt-local-v1"
         || config.host != "127.0.0.1"
         || config.port < 1024
     {
@@ -271,7 +271,7 @@ fn deployed_runtime_from_exe(exe: &Path) -> Option<DeployedRuntime> {
     };
     Some(DeployedRuntime {
         port: config.port,
-        db: tools.join(".cache/memory/memright-engine.db"),
+        db: tools.join(".cache/memory/crypt-engine.db"),
         token_file: tools.join(".cache/memory/api-token"),
         ort: bin.join(ort_name),
         hf_home: tools.join(".cache/fastembed"),
@@ -306,7 +306,7 @@ fn resolve_service_port(
 
 #[derive(Parser)]
 #[command(
-    name = "memright",
+    name = "crypt",
     version,
     about = "Productizable memory engine (SQLite + quantized vectors + tiers)"
 )]
@@ -523,7 +523,7 @@ enum Cmd {
         apply: bool,
     },
     /// Fetch a memory's FULL content by id and record the fetch as a use — the effectiveness
-    /// signal behind the injected previews (`full: memright get <id>`).
+    /// signal behind the injected previews (`full: crypt get <id>`).
     Get { id: String },
     /// Record per-candidate recall feedback (the feedback rail). `--outcome`
     /// used|ignored|contradicted; `--source` observed_action|cited_verdict|advisory (default
@@ -634,14 +634,14 @@ enum Cmd {
     /// Export the whole store as a canonical-scoped markdown tree (audit + sync medium).
     /// The DB stays authoritative; these files are generated FROM it.
     ExportMd { dir: String },
-    /// Export the whole store to `memright-export/` unless another directory is supplied.
+    /// Export the whole store to `crypt-export/` unless another directory is supplied.
     Export {
-        #[arg(default_value = "memright-export")]
+        #[arg(default_value = "crypt-export")]
         dir: PathBuf,
     },
-    /// Import a canonical MemRight Markdown export from `memright-export/` by default.
+    /// Import a canonical Crypt Markdown export from `crypt-export/` by default.
     Import {
-        #[arg(default_value = "memright-export")]
+        #[arg(default_value = "crypt-export")]
         dir: PathBuf,
     },
     /// Report token savings: recall (full-corpus vs injected chars) + per-verb transform savings
@@ -668,7 +668,7 @@ enum Cmd {
     },
     /// Execute a command via a platform shell, print head/tail-capped output, and preserve exit code.
     ///
-    /// Usage: `memright runc --head 20 --tail 20 -- <cmd...>`
+    /// Usage: `crypt runc --head 20 --tail 20 -- <cmd...>`
     Runc {
         #[arg(long, default_value_t = 20)]
         head: usize,
@@ -695,7 +695,7 @@ enum Cmd {
     /// pure-in-process admission, emits a bounded ContextPacket v1 plus a
     /// content-free ContextReceipt v2 per candidate. No DB or repo access.
     ///
-    /// Usage: `memright plan-context --candidate-set <path> --max-tokens <n>`
+    /// Usage: `crypt plan-context --candidate-set <path> --max-tokens <n>`
     PlanContext {
         #[arg(long)]
         candidate_set: PathBuf,
@@ -714,7 +714,7 @@ enum Cmd {
     /// RightContext federation gateway entry. The SOLE owner of provider
     /// fan-out + admission. Reads task, repository root, client/session
     /// identity, token budget, explicit anchors, and an optional ScopeGrant
-    /// reference; runs all providers (Blueprint, Audit, Architect, MemRight,
+    /// reference; runs all providers (Blueprint, Audit, Architect, Crypt,
     /// Git, live files, rules, anchors) in parallel; emits a content-free
     /// ContextPacket v1 plus per-candidate ContextReceipt v2 envelopes.
     ///
@@ -726,7 +726,7 @@ enum Cmd {
     /// in-process admission on the assembled CCS, and prints the final
     /// envelope to stdout.
     ///
-    /// Usage: `memright federate --task T --repo R --max-tokens N --client C
+    /// Usage: `crypt federate --task T --repo R --max-tokens N --client C
     ///                   --session S [--anchors a,b] [--scope-grant-id G]
     ///                   [--federation-script <path>]`
     Federate {
@@ -758,13 +758,13 @@ enum Cmd {
         #[arg(long, value_delimiter = ',')]
         accepted_receipt_versions: Vec<u32>,
     },
-    /// RightContext MemRight durable-memory candidate provider. Pure in-process
+    /// RightContext Crypt durable-memory candidate provider. Pure in-process
     /// read of eligible MemoryEntry rows normalised into ContextCandidateSet
     /// v1 records (Layer 7, sourceKind "memory", trustClass "agent_verified").
     /// The federation gateway calls this as a subprocess; clients never call
-    /// it directly. Use `memright federate` for the public path.
+    /// it directly. Use `crypt federate` for the public path.
     ///
-    /// Usage: `memright memory-candidates --task T --repo R --scope <root>
+    /// Usage: `crypt memory-candidates --task T --repo R --scope <root>
     ///                  [--max-candidates N] [--scope-grant-id G]`
     MemoryCandidates {
         #[arg(long)]
@@ -990,20 +990,20 @@ fn import_markdown_tree(store: &MemoryStore, dir: &Path) -> Result<usize, String
             .rsplit('/')
             .next()
             .ok_or_else(|| "import id invalid".to_string())?;
-        store.try_put(name, &content, &scope, memright_core::MemoryTier::Semantic)?;
+        store.try_put(name, &content, &scope, crypt_core::MemoryTier::Semantic)?;
         imported += 1;
     }
     Ok(imported)
 }
 
-fn cli_event_context() -> memright::store::MemoryEventContext {
-    memright::store::MemoryEventContext::from_environment("cli")
+fn cli_event_context() -> crypt::store::MemoryEventContext {
+    crypt::store::MemoryEventContext::from_environment("cli")
 }
 
 fn put_event_context(
     session: Option<&str>,
     trace: Option<&str>,
-) -> memright::store::MemoryEventContext {
+) -> crypt::store::MemoryEventContext {
     let mut context = cli_event_context();
     if let Some(session) = session {
         context = context.with_session(session);
@@ -1056,23 +1056,23 @@ fn trust_scan_content(content: &str) -> Option<&'static str> {
 fn resolve_doc_read_path(
     root: &Path,
     relative: &str,
-) -> Result<PathBuf, memright::outline::DocReadError> {
+) -> Result<PathBuf, crypt::outline::DocReadError> {
     let relative = Path::new(relative);
     if relative
         .components()
         .any(|component| !matches!(component, std::path::Component::Normal(_)))
     {
-        return Err(memright::outline::DocReadError::Deny);
+        return Err(crypt::outline::DocReadError::Deny);
     }
     let root = root
         .canonicalize()
-        .map_err(|_| memright::outline::DocReadError::Deny)?;
+        .map_err(|_| crypt::outline::DocReadError::Deny)?;
     let path = root.join(relative);
     let path = path
         .canonicalize()
-        .map_err(|_| memright::outline::DocReadError::SourceMissing)?;
+        .map_err(|_| crypt::outline::DocReadError::SourceMissing)?;
     if !path.starts_with(&root) {
-        return Err(memright::outline::DocReadError::Deny);
+        return Err(crypt::outline::DocReadError::Deny);
     }
     Ok(path)
 }
@@ -1101,9 +1101,9 @@ fn quarantine_untrusted_put(db: &str, memory_id: &str, scope: &str, content: &st
 #[allow(clippy::too_many_arguments)]
 fn record_cli_external(
     store: &MemoryStore,
-    context: &memright::store::MemoryEventContext,
+    context: &crypt::store::MemoryEventContext,
     operation: &str,
-    stage: memright::store::ExternalLifecycleStage,
+    stage: crypt::store::ExternalLifecycleStage,
     status: &str,
     reason_code: &str,
     memory_id: Option<&str>,
@@ -1129,25 +1129,25 @@ fn record_cli_external(
 fn store_failure_stage(
     error: &str,
 ) -> (
-    memright::store::ExternalLifecycleStage,
+    crypt::store::ExternalLifecycleStage,
     &'static str,
     &'static str,
 ) {
     if error.contains("attribution") {
         (
-            memright::store::ExternalLifecycleStage::Validation,
+            crypt::store::ExternalLifecycleStage::Validation,
             "failed",
             "invalid_attribution",
         )
     } else if error.contains("embed") || error.contains("writes disabled") {
         (
-            memright::store::ExternalLifecycleStage::Embedding,
+            crypt::store::ExternalLifecycleStage::Embedding,
             "unavailable",
             "embedding_unavailable",
         )
     } else {
         (
-            memright::store::ExternalLifecycleStage::Commit,
+            crypt::store::ExternalLifecycleStage::Commit,
             "failed",
             "commit_failed",
         )
@@ -1163,33 +1163,33 @@ fn get_failure_shape(error: &str) -> (&'static str, &'static str, usize) {
 }
 
 fn service_api_token() -> Result<Option<String>, String> {
-    if let Some(raw) = std::env::var_os("MEMRIGHT_API_TOKEN") {
+    if let Some(raw) = std::env::var_os("CRYPT_API_TOKEN") {
         let token = raw.to_string_lossy().trim().to_string();
         if token.is_empty() {
-            return Err("MEMRIGHT_API_TOKEN is set but empty".to_string());
+            return Err("CRYPT_API_TOKEN is set but empty".to_string());
         }
         if token.contains(['\r', '\n']) {
-            return Err("MEMRIGHT_API_TOKEN contains a newline".to_string());
+            return Err("CRYPT_API_TOKEN contains a newline".to_string());
         }
         return Ok(Some(token));
     }
     let deployed = current_deployed_runtime();
-    if let Some(path) = std::env::var_os("MEMRIGHT_API_TOKEN_FILE")
+    if let Some(path) = std::env::var_os("CRYPT_API_TOKEN_FILE")
         .map(PathBuf::from)
         .or_else(|| deployed.map(|runtime| runtime.token_file))
     {
         let token = std::fs::read_to_string(&path)
-            .map_err(|error| format!("read MEMRIGHT_API_TOKEN_FILE {}: {error}", path.display()))?
+            .map_err(|error| format!("read CRYPT_API_TOKEN_FILE {}: {error}", path.display()))?
             .trim()
             .to_string();
         if token.is_empty() {
             return Err(format!(
-                "MEMRIGHT_API_TOKEN_FILE {} is empty",
+                "CRYPT_API_TOKEN_FILE {} is empty",
                 path.display()
             ));
         }
         if token.contains(['\r', '\n']) {
-            return Err("MEMRIGHT_API_TOKEN_FILE contains a newline".to_string());
+            return Err("CRYPT_API_TOKEN_FILE contains a newline".to_string());
         }
         return Ok(Some(token));
     }
@@ -1265,7 +1265,7 @@ fn pending_put_directory(db: &str) -> PathBuf {
     Path::new(db)
         .parent()
         .unwrap_or_else(|| Path::new("."))
-        .join(".memright-pending-put")
+        .join(".crypt-pending-put")
 }
 
 fn pending_put_path(db: &str, digest: &str) -> PathBuf {
@@ -1302,7 +1302,7 @@ fn auth_principal_digest(api_token: Option<&str>) -> String {
 
     let principal = api_token.unwrap_or("loopback-without-api-token").as_bytes();
     let mut hasher = Sha256::new();
-    hasher.update(b"memright-cli-auth-principal-v1");
+    hasher.update(b"crypt-cli-auth-principal-v1");
     hasher.update((principal.len() as u64).to_be_bytes());
     hasher.update(principal);
     format!("{:x}", hasher.finalize())
@@ -2106,7 +2106,7 @@ fn try_service_post_with_idempotency_key(
 }
 
 fn current_service_port() -> u16 {
-    let canonical_port = std::env::var("MEMRIGHT_PORT").ok();
+    let canonical_port = std::env::var("CRYPT_PORT").ok();
     let compatibility_port = std::env::var("WORKSPACE_MEMORY_PORT").ok();
     let deployed = current_deployed_runtime();
     resolve_service_port(
@@ -2289,7 +2289,7 @@ fn log_transform_best_effort(
             .ok()
             .map(|p| path_to_scope(&p.to_string_lossy()));
         let context = cli_event_context();
-        let attribution = memright::store::operation_attribution_for_store(Some(Path::new(db)));
+        let attribution = crypt::store::operation_attribution_for_store(Some(Path::new(db)));
         if let (Ok(attribution), Some(session_id), Some(turn_id), Some(trace_id)) = (
             attribution,
             context.session_id.as_deref(),
@@ -2299,7 +2299,7 @@ fn log_transform_best_effort(
             if let Some(opportunity_uid) = opportunity {
                 if mem
                     .log_transform_for_opportunity(
-                        &memright::time::now_iso(),
+                        &crypt::time::now_iso(),
                         verb,
                         scope.as_deref(),
                         before,
@@ -2313,7 +2313,7 @@ fn log_transform_best_effort(
                 }
             }
             mem.log_transform_with_identity(
-                &memright::time::now_iso(),
+                &crypt::time::now_iso(),
                 verb,
                 scope.as_deref(),
                 before,
@@ -2367,9 +2367,9 @@ fn record_transform_opportunity(
         }
     }
     let mem = MemDb::open(db).map_err(|error| error.to_string())?;
-    let attribution = memright::store::operation_attribution_for_store(Some(Path::new(db)))?;
+    let attribution = crypt::store::operation_attribution_for_store(Some(Path::new(db)))?;
     mem.log_transform_opportunity(
-        &memright::time::now_iso(),
+        &crypt::time::now_iso(),
         opportunity_uid,
         verb,
         source,
@@ -2419,10 +2419,10 @@ fn collect_md(dir: &Path, out: &mut Vec<PathBuf>) {
 fn build_info() -> serde_json::Value {
     serde_json::json!({
         "product_version": env!("CARGO_PKG_VERSION"),
-        "memright_source_commit": option_env!("MEMRIGHT_SOURCE_COMMIT").unwrap_or("unknown"),
-        "source_tree_sha256": option_env!("MEMRIGHT_SOURCE_TREE_SHA256").unwrap_or("unknown"),
-        "release_generation": memright::release_identity::release_generation(),
-        "target": memright::release_identity::target_triple(),
+        "crypt_source_commit": option_env!("CRYPT_SOURCE_COMMIT").unwrap_or("unknown"),
+        "source_tree_sha256": option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown"),
+        "release_generation": crypt::release_identity::release_generation(),
+        "target": crypt::release_identity::target_triple(),
     })
 }
 
@@ -2439,11 +2439,11 @@ fn command_requires_db(command: &Cmd) -> bool {
 
 fn run_installation(command: &InstallationCmd) -> Result<(), String> {
     let workspace_root = skill_workspace_root(None);
-    let paths = memright::installation_identity::InstallationPaths::for_workspace(&workspace_root);
+    let paths = crypt::installation_identity::InstallationPaths::for_workspace(&workspace_root);
     match command {
         InstallationCmd::Rotate { reason } => {
             let identity =
-                memright::installation_identity::rotate_installation(&paths.identity, reason)
+                crypt::installation_identity::rotate_installation(&paths.identity, reason)
                     .map_err(|error| error.to_string())?;
             println!(
                 "{}",
@@ -2513,7 +2513,7 @@ fn replay_queries<R: Read>(
                 return Err(format!("replay line {} has empty row_id/query", index + 1));
             }
             let scope = normalize_scope(&row.scope);
-            let chain = memright::scope_chain(&scope, &scopes);
+            let chain = crypt::scope_chain(&scope, &scopes);
             let ranked_ids = store
                 .recall_scored(&row.query, k, &chain)
                 .into_iter()
@@ -2552,7 +2552,7 @@ fn run_main() -> Result<(), String> {
                 let source_ref =
                     format!("doc://repo/worktree/{}", relative.trim_start_matches('/'));
                 let outline =
-                    memright::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
+                    crypt::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
                 if !json {
                     return Err("doc outline requires --json".to_owned());
                 }
@@ -2571,7 +2571,7 @@ fn run_main() -> Result<(), String> {
                 let Some(relative) = source_ref.strip_prefix("doc://repo/worktree/") else {
                     println!(
                         "{}",
-                        serde_json::json!({"error":memright::outline::DocReadError::Deny.as_str()})
+                        serde_json::json!({"error":crypt::outline::DocReadError::Deny.as_str()})
                     );
                     return Ok(());
                 };
@@ -2591,12 +2591,12 @@ fn run_main() -> Result<(), String> {
                     Err(_) => {
                         println!(
                             "{}",
-                            serde_json::json!({"error":memright::outline::DocReadError::SourceMissing.as_str()})
+                            serde_json::json!({"error":crypt::outline::DocReadError::SourceMissing.as_str()})
                         );
                         return Ok(());
                     }
                 };
-                match memright::outline::read_section_with_cursor(
+                match crypt::outline::read_section_with_cursor(
                     source_ref,
                     &markdown,
                     anchor,
@@ -2625,7 +2625,7 @@ fn run_main() -> Result<(), String> {
                 packet_char_budget,
                 packet_char_budget_model,
                 accepted_receipt_versions,
-            } => memright::plan_context::run(
+            } => crypt::plan_context::run(
                 candidate_set,
                 max_tokens,
                 packet_char_budget,
@@ -2645,7 +2645,7 @@ fn run_main() -> Result<(), String> {
                 scope_grant_id,
                 federation_script,
                 accepted_receipt_versions,
-            } => memright::federation::run_federate(
+            } => crypt::federation::run_federate(
                 task,
                 repo,
                 max_tokens,
@@ -2665,7 +2665,7 @@ fn run_main() -> Result<(), String> {
                 scope,
                 max_candidates,
                 scope_grant_id,
-            } => memright::federation::run_memory_candidates(
+            } => crypt::federation::run_memory_candidates(
                 task,
                 repo,
                 scope,
@@ -2682,7 +2682,7 @@ fn run_main() -> Result<(), String> {
     }
     let db = resolve_db(
         cli.db,
-        std::env::var("MEMRIGHT_DB").ok(),
+        std::env::var("CRYPT_DB").ok(),
         deployed.as_ref().map(|runtime| runtime.db.as_path()),
     )?;
     match cli.cmd {
@@ -2691,7 +2691,7 @@ fn run_main() -> Result<(), String> {
         }
         Cmd::Checkpoint { command } => {
             let store = MemoryStore::open(MemDb::open(&db).map_err(|error| error.to_string())?);
-            let now_ms = || memright::time::now_millis() as i64;
+            let now_ms = || crypt::time::now_millis() as i64;
             match command {
                 CheckpointCmd::Save { input } => {
                     let body = match input {
@@ -2728,7 +2728,7 @@ fn run_main() -> Result<(), String> {
                         "{}",
                         serde_json::json!({
                             "checkpoint": checkpoint,
-                            "source_resolutions": memright::checkpoint::resolve_source_refs(&checkpoint, &root),
+                            "source_resolutions": crypt::checkpoint::resolve_source_refs(&checkpoint, &root),
                         })
                     );
                 }
@@ -2766,7 +2766,7 @@ fn run_main() -> Result<(), String> {
             }
         }
         Cmd::DocsSync { repo } => {
-            let report = memright::doc_spine::sync(
+            let report = crypt::doc_spine::sync(
                 &MemDb::open(&db).map_err(|error| error.to_string())?,
                 &repo,
             )?;
@@ -2776,7 +2776,7 @@ fn run_main() -> Result<(), String> {
             );
         }
         Cmd::BackoutSchemaV10 => {
-            let restored = memright::memdb::backout_v10_to_v9(&db).map_err(|e| e.to_string())?;
+            let restored = crypt::memdb::backout_v10_to_v9(&db).map_err(|e| e.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version": 9, "restored": restored})
@@ -2791,7 +2791,7 @@ fn run_main() -> Result<(), String> {
             let allowed_external_refs =
                 external_refs.iter().map(String::as_str).collect::<Vec<_>>();
             let report =
-                memright::doctor::run_with_policy(&db, &suppressed_codes, &allowed_external_refs)?;
+                crypt::doctor::run_with_policy(&db, &suppressed_codes, &allowed_external_refs)?;
             if json {
                 println!(
                     "{}",
@@ -2840,14 +2840,14 @@ fn run_main() -> Result<(), String> {
         }
         Cmd::Explain { id } => println!("{}", explain_memory(&db, &id)?),
         Cmd::BackoutSchemaV11 => {
-            let restored = memright::memdb::backout_v11_to_v10(&db).map_err(|e| e.to_string())?;
+            let restored = crypt::memdb::backout_v11_to_v10(&db).map_err(|e| e.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version": 10, "restored": restored})
             );
         }
         Cmd::BackoutSchemaV20 => {
-            memright::memdb::backout_v20_to_v19(&db).map_err(|error| error.to_string())?;
+            crypt::memdb::backout_v20_to_v19(&db).map_err(|error| error.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version": 19, "backed_out": true})
@@ -2859,7 +2859,7 @@ fn run_main() -> Result<(), String> {
                     .map_err(|error| error.to_string())?
                     .isolate_smoke_recalls(SMOKE_ISOLATION_EXPECTED, true)?
             } else {
-                memright::memdb::inspect_smoke_recalls(&db, SMOKE_ISOLATION_EXPECTED)?
+                crypt::memdb::inspect_smoke_recalls(&db, SMOKE_ISOLATION_EXPECTED)?
             };
             println!(
                 "{}",
@@ -2867,7 +2867,7 @@ fn run_main() -> Result<(), String> {
             );
         }
         Cmd::Serve { port } => {
-            let canonical_port = std::env::var("MEMRIGHT_PORT").ok();
+            let canonical_port = std::env::var("CRYPT_PORT").ok();
             let compatibility_port = std::env::var("WORKSPACE_MEMORY_PORT").ok();
             let port = resolve_service_port(
                 port,
@@ -2877,11 +2877,11 @@ fn run_main() -> Result<(), String> {
             );
             let workspace_root = service_workspace_root(Path::new(&db));
             let (identity, claim) =
-                memright::installation_identity::prepare_service_start(&workspace_root)
+                crypt::installation_identity::prepare_service_start(&workspace_root)
                     .map_err(|error| format!("prepare installation identity: {error}"))?;
-            std::env::set_var("MEMRIGHT_INSTALLATION_ID", &identity.installation_id);
-            std::env::set_var("MEMRIGHT_SERVICE_INSTANCE_ID", &claim.service_instance_id);
-            memright::serve::run(&db, port, &identity, &claim)?;
+            std::env::set_var("CRYPT_INSTALLATION_ID", &identity.installation_id);
+            std::env::set_var("CRYPT_SERVICE_INSTANCE_ID", &claim.service_instance_id);
+            crypt::serve::run(&db, port, &identity, &claim)?;
         }
         Cmd::Migrate => {
             let store = open(&db)?;
@@ -2937,7 +2937,7 @@ fn run_main() -> Result<(), String> {
             as_of_ms,
             include_expired,
         } => {
-            let document_hits = memright::doc_spine::recall(
+            let document_hits = crypt::doc_spine::recall(
                 &MemDb::open(&db).map_err(|error| error.to_string())?,
                 &query,
                 k,
@@ -2957,13 +2957,13 @@ fn run_main() -> Result<(), String> {
             let norm = scope.as_deref().map(normalize_scope);
             let chain = norm
                 .as_deref()
-                .map(|s| memright::scope_chain(s, &store.scopes()))
+                .map(|s| crypt::scope_chain(s, &store.scopes()))
                 .unwrap_or_default();
             let hits = store.recall_scored_at(
                 &query,
                 k,
                 &chain,
-                as_of_ms.unwrap_or_else(|| memright::time::now_millis() as i64),
+                as_of_ms.unwrap_or_else(|| crypt::time::now_millis() as i64),
                 include_expired,
             );
             if hits.is_empty()
@@ -2993,7 +2993,7 @@ fn run_main() -> Result<(), String> {
             // source='cli' keeps human debugging out of the agent-effectiveness numbers.
             // NO record_injections: inject_count means "shown to an agent session".
             store.log_recall(
-                &memright::time::now_iso(),
+                &crypt::time::now_iso(),
                 norm.as_deref(),
                 query.chars().count(),
                 hits.len(),
@@ -3046,7 +3046,7 @@ fn run_main() -> Result<(), String> {
                 }
             };
             let (out, meta) = if let Some(budget) = budget {
-                let result = memright::skel::skeletonize_to_budget(&file, &src, budget);
+                let result = crypt::skel::skeletonize_to_budget(&file, &src, budget);
                 let meta = format!(
                     "status=ok;budget_tok={budget};output_tok={};budget_met={};level={}",
                     result.output_tokens, result.budget_met, result.level
@@ -3054,12 +3054,12 @@ fn run_main() -> Result<(), String> {
                 (result.text, meta)
             } else {
                 (
-                    memright::skel::skeletonize(&file, &src),
+                    crypt::skel::skeletonize(&file, &src),
                     "status=ok".to_string(),
                 )
             };
-            let drop_meta = memright::compress::drop_manifest_meta(
-                &memright::compress::drop_manifest(&src, &out),
+            let drop_meta = crypt::compress::drop_manifest_meta(
+                &crypt::compress::drop_manifest(&src, &out),
             );
             let meta = format!("{meta};{drop_meta}");
             log_transform_best_effort(
@@ -3103,7 +3103,7 @@ fn run_main() -> Result<(), String> {
             }
             let (out, meta) = if let Some(budget) = budget {
                 let result =
-                    memright::compress::compress_to_budget_with_options(&input, budget, no_onnx);
+                    crypt::compress::compress_to_budget_with_options(&input, budget, no_onnx);
                 let meta = format!(
                     "status=ok;budget_tok={budget};output_tok={};protected_tok={};budget_met={}",
                     result.output_tokens, result.protected_tokens, result.budget_met
@@ -3111,12 +3111,12 @@ fn run_main() -> Result<(), String> {
                 (result.text, meta)
             } else {
                 (
-                    memright::compress::compress_with_options(&input, rate, no_onnx),
+                    crypt::compress::compress_with_options(&input, rate, no_onnx),
                     "status=ok".to_string(),
                 )
             };
-            let drop_meta = memright::compress::drop_manifest_meta(
-                &memright::compress::drop_manifest(&input, &out),
+            let drop_meta = crypt::compress::drop_manifest_meta(
+                &crypt::compress::drop_manifest(&input, &out),
             );
             let meta = format!("{meta};{drop_meta}");
             log_transform_best_effort(
@@ -3137,8 +3137,8 @@ fn run_main() -> Result<(), String> {
             min_bytes,
         } => {
             let manifest =
-                memright::prep::prep_files_with_budget(&out_dir, &files, rate, min_bytes, budget);
-            for (verb, before, after, meta) in memright::prep::transform_rows(&manifest) {
+                crypt::prep::prep_files_with_budget(&out_dir, &files, rate, min_bytes, budget);
+            for (verb, before, after, meta) in crypt::prep::transform_rows(&manifest) {
                 log_transform_best_effort(&db, &verb, before, after, meta, None);
             }
             println!(
@@ -3148,7 +3148,7 @@ fn run_main() -> Result<(), String> {
         }
         Cmd::Curate { today } => {
             let today =
-                today.unwrap_or_else(|| memright::time::now_iso().chars().take(10).collect());
+                today.unwrap_or_else(|| crypt::time::now_iso().chars().take(10).collect());
             let payload = serde_json::json!({ "today": today }).to_string();
             match try_service_post("/curate", &payload) {
                 Ok(Some(resp)) => {
@@ -3158,7 +3158,7 @@ fn run_main() -> Result<(), String> {
                 Ok(None) => {}
                 Err(e) => {
                     return Err(format!(
-                        "resident memright service failed /curate; refusing direct DB fallback: {e}"
+                        "resident crypt service failed /curate; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -3166,7 +3166,7 @@ fn run_main() -> Result<(), String> {
             let status = store.dream_now(&today)?;
             // curate rows repurpose before/after as consolidated/pruned counts (memdb schema note)
             store.log_transform(
-                &memright::time::now_iso(),
+                &crypt::time::now_iso(),
                 "curate",
                 Some(
                     &serde_json::json!({
@@ -3201,7 +3201,7 @@ fn run_main() -> Result<(), String> {
                 Ok(None) => {}
                 Err(e) => {
                     return Err(format!(
-                        "resident memright service failed /quarantine/list; refusing direct DB fallback: {e}"
+                        "resident crypt service failed /quarantine/list; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -3218,7 +3218,7 @@ fn run_main() -> Result<(), String> {
                 Ok(None) => {}
                 Err(e) => {
                     return Err(format!(
-                        "resident memright service failed /quarantine/restore; refusing direct DB fallback: {e}"
+                        "resident crypt service failed /quarantine/restore; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -3232,12 +3232,12 @@ fn run_main() -> Result<(), String> {
                 Ok(Some(response)) => {
                     let value: serde_json::Value =
                         serde_json::from_str(&response).map_err(|error| {
-                            format!("resident memright /get returned invalid JSON: {error}")
+                            format!("resident crypt /get returned invalid JSON: {error}")
                         })?;
                     let content = value
                         .get("content")
                         .and_then(|item| item.as_str())
-                        .ok_or_else(|| "resident memright /get returned no content".to_string())?;
+                        .ok_or_else(|| "resident crypt /get returned no content".to_string())?;
                     if let Some(access_count) =
                         value.get("access_count").and_then(|item| item.as_u64())
                     {
@@ -3249,7 +3249,7 @@ fn run_main() -> Result<(), String> {
                 Ok(None) => {}
                 Err(error) => {
                     return Err(format!(
-                        "resident memright service failed /get; refusing direct DB fallback: {error}"
+                        "resident crypt service failed /get; refusing direct DB fallback: {error}"
                     ));
                 }
             }
@@ -3266,7 +3266,7 @@ fn run_main() -> Result<(), String> {
                         &store,
                         &context,
                         "read",
-                        memright::store::ExternalLifecycleStage::Provider,
+                        crypt::store::ExternalLifecycleStage::Provider,
                         status,
                         reason,
                         Some(&id),
@@ -3302,16 +3302,16 @@ fn run_main() -> Result<(), String> {
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    return Err(format!("resident memright service failed /feedback: {e}"));
+                    return Err(format!("resident crypt service failed /feedback: {e}"));
                 }
             }
             let store = open(&db)?;
-            let rec = memright::feedback::FeedbackRecord {
+            let rec = crypt::feedback::FeedbackRecord {
                 trace_id: trace,
                 candidate_id: candidate,
                 content_sha256: sha,
-                outcome: memright::feedback::parse_outcome(&outcome)?,
-                source: memright::feedback::parse_source(&source),
+                outcome: crypt::feedback::parse_outcome(&outcome)?,
+                source: crypt::feedback::parse_source(&source),
                 verdict_ref,
                 scope_id: scope,
             };
@@ -3337,7 +3337,7 @@ fn run_main() -> Result<(), String> {
                 Ok(None) => {}
                 Err(error) => {
                     return Err(format!(
-                        "resident memright service failed /context/close-unknown: {error}"
+                        "resident crypt service failed /context/close-unknown: {error}"
                     ));
                 }
             }
@@ -3378,7 +3378,7 @@ fn run_main() -> Result<(), String> {
             supersedes,
         } => {
             let context = put_event_context(session.as_deref(), trace.as_deref());
-            let memory_id = format!("{}/{}", memright::scope::normalize_scope(&scope), name);
+            let memory_id = format!("{}/{}", crypt::scope::normalize_scope(&scope), name);
             let content = match file {
                 Some(p) => match std::fs::read_to_string(&p) {
                     Ok(content) => content,
@@ -3388,7 +3388,7 @@ fn run_main() -> Result<(), String> {
                             &store,
                             &context,
                             "write",
-                            memright::store::ExternalLifecycleStage::Validation,
+                            crypt::store::ExternalLifecycleStage::Validation,
                             "unavailable",
                             "input_unavailable",
                             Some(&memory_id),
@@ -3409,7 +3409,7 @@ fn run_main() -> Result<(), String> {
                             &store,
                             &context,
                             "write",
-                            memright::store::ExternalLifecycleStage::Validation,
+                            crypt::store::ExternalLifecycleStage::Validation,
                             "unavailable",
                             "input_unavailable",
                             Some(&memory_id),
@@ -3429,7 +3429,7 @@ fn run_main() -> Result<(), String> {
                     &store,
                     &context,
                     "write",
-                    memright::store::ExternalLifecycleStage::Validation,
+                    crypt::store::ExternalLifecycleStage::Validation,
                     "failed",
                     "empty_content",
                     Some(&memory_id),
@@ -3447,7 +3447,7 @@ fn run_main() -> Result<(), String> {
                     &store,
                     &context,
                     "write",
-                    memright::store::ExternalLifecycleStage::Validation,
+                    crypt::store::ExternalLifecycleStage::Validation,
                     "quarantined",
                     influence_class,
                     Some(&memory_id),
@@ -3460,7 +3460,7 @@ fn run_main() -> Result<(), String> {
             }
             // Hand-typed scopes fork the corpus (the 2026-07-05 'heardright' mirror fork).
             // Refuse clearly invalid single-token scopes; allow proposed/global/cwd-slug/path.
-            if let Err(message) = memright::scope::validate_write_scope(&scope) {
+            if let Err(message) = crypt::scope::validate_write_scope(&scope) {
                 return Err(message);
             }
             if !matches!(authority.as_str(), "A0" | "A1" | "A2" | "A3" | "A4" | "A5") {
@@ -3473,7 +3473,7 @@ fn run_main() -> Result<(), String> {
             // DB write would be invisible to recall until restart. Route through it when up.
             let payload = serde_json::json!({
                 "name": name, "content": content.trim(), "scope": scope, "tier": tier,
-                "client": std::env::var("MEMRIGHT_CLIENT").unwrap_or_else(|_| "cli".into()),
+                "client": std::env::var("CRYPT_CLIENT").unwrap_or_else(|_| "cli".into()),
                 "artifactFamily": artifact_family,
                 "producer": producer,
                 "recordType": record_type,
@@ -3498,12 +3498,12 @@ fn run_main() -> Result<(), String> {
                 }
                 Ok(IdempotentPutOutcome::DirectFallback(handle)) => {
                     let tier = match tier.as_str() {
-                        "working" => memright_core::MemoryTier::Working,
-                        "episodic" => memright_core::MemoryTier::Episodic,
-                        _ => memright_core::MemoryTier::Semantic,
+                        "working" => crypt_core::MemoryTier::Working,
+                        "episodic" => crypt_core::MemoryTier::Episodic,
+                        _ => crypt_core::MemoryTier::Semantic,
                     };
                     let store = open(&db)?;
-                    let lifecycle = memright::store::MemoryLifecycleInputV1 {
+                    let lifecycle = crypt::store::MemoryLifecycleInputV1 {
                         effective_from_ms,
                         effective_until_ms,
                         expires_at_ms,
@@ -3572,7 +3572,7 @@ fn run_main() -> Result<(), String> {
                             &store,
                             &context,
                             "write",
-                            memright::store::ExternalLifecycleStage::Embedding,
+                            crypt::store::ExternalLifecycleStage::Embedding,
                             status,
                             "resident_service_unavailable",
                             Some(&memory_id),
@@ -3583,7 +3583,7 @@ fn run_main() -> Result<(), String> {
                         )?;
                     }
                     return Err(format!(
-                        "resident memright service failed /put; refusing direct DB fallback: {e}"
+                        "resident crypt service failed /put; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -3592,7 +3592,7 @@ fn run_main() -> Result<(), String> {
             let context = cli_event_context();
             let payload = serde_json::json!({
                 "id": id,
-                "client": std::env::var("MEMRIGHT_CLIENT").unwrap_or_else(|_| "cli".into()),
+                "client": std::env::var("CRYPT_CLIENT").unwrap_or_else(|_| "cli".into()),
             })
             .to_string();
             match try_service_post("/delete", &payload) {
@@ -3608,7 +3608,7 @@ fn run_main() -> Result<(), String> {
                             &store,
                             &context,
                             "delete",
-                            memright::store::ExternalLifecycleStage::Commit,
+                            crypt::store::ExternalLifecycleStage::Commit,
                             if e.contains("timeout") {
                                 "timeout"
                             } else {
@@ -3623,7 +3623,7 @@ fn run_main() -> Result<(), String> {
                         )?;
                     }
                     return Err(format!(
-                        "resident memright service failed /delete; refusing direct DB fallback: {e}"
+                        "resident crypt service failed /delete; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -3635,7 +3635,7 @@ fn run_main() -> Result<(), String> {
                         &store,
                         &context,
                         "delete",
-                        memright::store::ExternalLifecycleStage::Commit,
+                        crypt::store::ExternalLifecycleStage::Commit,
                         "empty",
                         "target_not_found",
                         Some(&id),
@@ -3651,7 +3651,7 @@ fn run_main() -> Result<(), String> {
                         &store,
                         &context,
                         "delete",
-                        memright::store::ExternalLifecycleStage::Commit,
+                        crypt::store::ExternalLifecycleStage::Commit,
                         "failed",
                         "commit_failed",
                         Some(&id),
@@ -3675,7 +3675,7 @@ fn run_main() -> Result<(), String> {
                         &store,
                         &context,
                         "read",
-                        memright::store::ExternalLifecycleStage::Provider,
+                        crypt::store::ExternalLifecycleStage::Provider,
                         "failed",
                         "provider_failed",
                         None,
@@ -3691,7 +3691,7 @@ fn run_main() -> Result<(), String> {
                 &store,
                 &context,
                 "read",
-                memright::store::ExternalLifecycleStage::Provider,
+                crypt::store::ExternalLifecycleStage::Provider,
                 if rows.is_empty() { "empty" } else { "success" },
                 if rows.is_empty() {
                     "no_results"
@@ -3787,7 +3787,7 @@ fn run_main() -> Result<(), String> {
                     .join("runc")
             });
             let cmd_str = cmd.join(" ");
-            let res = match memright::runc::run_capped(&cmd_str, head, tail, &dir) {
+            let res = match crypt::runc::run_capped(&cmd_str, head, tail, &dir) {
                 Ok(result) => result,
                 Err(error) => {
                     log_transform_best_effort(
@@ -3877,7 +3877,7 @@ mod tests {
 
     fn plan_context_cli_with_budget(value: &str) -> Result<super::Cli, clap::Error> {
         super::Cli::try_parse_from([
-            "memright",
+            "crypt",
             "plan-context",
             "--candidate-set",
             "fixture.json",
@@ -3889,7 +3889,7 @@ mod tests {
     #[test]
     fn doc_outline_cli_requires_explicit_json() {
         let parsed = super::Cli::try_parse_from([
-            "memright", "doc", "outline", "--repo", "C:/repo", "--path", "guide.md", "--json",
+            "crypt", "doc", "outline", "--repo", "C:/repo", "--path", "guide.md", "--json",
         ])
         .expect("doc outline arguments parse");
         assert!(matches!(
@@ -3903,7 +3903,7 @@ mod tests {
     #[test]
     fn transform_cli_accepts_token_budgets() {
         let compress =
-            super::Cli::try_parse_from(["memright", "compress", "--budget", "128", "--no-onnx"])
+            super::Cli::try_parse_from(["crypt", "compress", "--budget", "128", "--no-onnx"])
                 .unwrap();
         assert!(matches!(
             compress.cmd,
@@ -3913,7 +3913,7 @@ mod tests {
                 ..
             }
         ));
-        let skel = super::Cli::try_parse_from(["memright", "skel", "--budget", "64", "src/lib.rs"])
+        let skel = super::Cli::try_parse_from(["crypt", "skel", "--budget", "64", "src/lib.rs"])
             .unwrap();
         assert!(matches!(
             skel.cmd,
@@ -3926,7 +3926,7 @@ mod tests {
 
     #[test]
     fn hygiene_clean_is_explicitly_plan_only() {
-        let parsed = super::Cli::try_parse_from(["memright", "hygiene", "clean", "--plan"])
+        let parsed = super::Cli::try_parse_from(["crypt", "hygiene", "clean", "--plan"])
             .expect("hygiene clean plan parses");
         assert!(matches!(
             parsed.cmd,
@@ -3934,7 +3934,7 @@ mod tests {
                 command: super::HygieneCmd::Clean { plan: true }
             }
         ));
-        let parsed = super::Cli::try_parse_from(["memright", "hygiene", "clean"])
+        let parsed = super::Cli::try_parse_from(["crypt", "hygiene", "clean"])
             .expect("handler rejects mutation without plan");
         assert!(matches!(
             parsed.cmd,
@@ -3948,7 +3948,7 @@ mod tests {
     fn hygiene_audit_and_explain_are_content_free_and_not_age_based() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("hygiene.db");
-        let db = memright::MemDb::open(&path).unwrap();
+        let db = crypt::MemDb::open(&path).unwrap();
         {
             let conn = db.lock();
             for id in ["global/old-preference", "global/duplicate"] {
@@ -3997,33 +3997,33 @@ mod tests {
 
     #[test]
     fn export_import_defaults_and_round_trip_content_scope() {
-        let export = super::Cli::try_parse_from(["memright", "export"]).unwrap();
+        let export = super::Cli::try_parse_from(["crypt", "export"]).unwrap();
         assert!(matches!(
             export.cmd,
-            super::Cmd::Export { ref dir } if dir == std::path::Path::new("memright-export")
+            super::Cmd::Export { ref dir } if dir == std::path::Path::new("crypt-export")
         ));
-        let import = super::Cli::try_parse_from(["memright", "import"]).unwrap();
+        let import = super::Cli::try_parse_from(["crypt", "import"]).unwrap();
         assert!(matches!(
             import.cmd,
-            super::Cmd::Import { ref dir } if dir == std::path::Path::new("memright-export")
+            super::Cmd::Import { ref dir } if dir == std::path::Path::new("crypt-export")
         ));
 
         let temp = tempfile::tempdir().unwrap();
-        let source = memright::MemoryStore::open(
-            memright::MemDb::open(temp.path().join("source.db")).unwrap(),
+        let source = crypt::MemoryStore::open(
+            crypt::MemDb::open(temp.path().join("source.db")).unwrap(),
         );
         source
             .try_put(
                 "preference",
                 "keep exact content",
                 "scope-a",
-                memright_core::MemoryTier::Semantic,
+                crypt_core::MemoryTier::Semantic,
             )
             .unwrap();
         let tree = temp.path().join("export");
         assert_eq!(source.export_md(&tree), 1);
-        let target = memright::MemoryStore::open(
-            memright::MemDb::open(temp.path().join("target.db")).unwrap(),
+        let target = crypt::MemoryStore::open(
+            crypt::MemDb::open(temp.path().join("target.db")).unwrap(),
         );
         assert_eq!(super::import_markdown_tree(&target, &tree).unwrap(), 1);
         assert_eq!(
@@ -4034,7 +4034,7 @@ mod tests {
 
     fn federate_cli_with_budget(value: &str) -> Result<super::Cli, clap::Error> {
         super::Cli::try_parse_from([
-            "memright",
+            "crypt",
             "federate",
             "--task",
             "test",
@@ -4048,7 +4048,7 @@ mod tests {
     #[test]
     fn put_cli_accepts_write_and_correlation_attribution() {
         let parsed = super::Cli::try_parse_from([
-            "memright",
+            "crypt",
             "put",
             "fixture",
             "--artifact-family",
@@ -4116,7 +4116,7 @@ mod tests {
     #[test]
     fn put_event_context_applies_available_session_and_trace() {
         let actual = super::put_event_context(Some("session-opaque"), Some("tool-use-opaque"));
-        let expected = memright::store::MemoryEventContext::new("cli")
+        let expected = crypt::store::MemoryEventContext::new("cli")
             .with_session("session-opaque")
             .with_trace("tool-use-opaque")
             .with_turn("tool-use-opaque");
@@ -4160,21 +4160,21 @@ mod tests {
 
     #[test]
     fn isolate_smoke_recalls_cli_is_dry_run_by_default_and_expected_count_is_not_overridable() {
-        let parsed = super::Cli::try_parse_from(["memright", "isolate-smoke-recalls"]).unwrap();
+        let parsed = super::Cli::try_parse_from(["crypt", "isolate-smoke-recalls"]).unwrap();
         let super::Cmd::IsolateSmokeRecalls { apply } = parsed.cmd else {
             panic!("expected isolate-smoke-recalls command");
         };
         assert!(!apply);
 
         assert!(super::Cli::try_parse_from([
-            "memright",
+            "crypt",
             "isolate-smoke-recalls",
             "--expected",
             "2"
         ])
         .is_err());
         let parsed =
-            super::Cli::try_parse_from(["memright", "isolate-smoke-recalls", "--apply"]).unwrap();
+            super::Cli::try_parse_from(["crypt", "isolate-smoke-recalls", "--apply"]).unwrap();
         let super::Cmd::IsolateSmokeRecalls { apply } = parsed.cmd else {
             panic!("expected isolate-smoke-recalls command");
         };
@@ -4184,7 +4184,7 @@ mod tests {
     #[test]
     fn installation_rotate_cli_requires_explicit_clone_reason_and_no_database() {
         let parsed =
-            super::Cli::try_parse_from(["memright", "installation", "rotate", "--reason", "clone"])
+            super::Cli::try_parse_from(["crypt", "installation", "rotate", "--reason", "clone"])
                 .unwrap();
         assert!(!super::command_requires_db(&parsed.cmd));
         let super::Cmd::Installation {
@@ -4194,7 +4194,7 @@ mod tests {
             panic!("expected installation rotate command");
         };
         assert_eq!(reason, "clone");
-        assert!(super::Cli::try_parse_from(["memright", "installation", "rotate"]).is_err());
+        assert!(super::Cli::try_parse_from(["crypt", "installation", "rotate"]).is_err());
     }
 
     #[test]
@@ -4225,15 +4225,15 @@ mod tests {
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(
             config_dir.join("runtime.json"),
-            r#"{"schemaVersion":1,"serviceId":"memright-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"crypt-local-v1","host":"127.0.0.1","port":47851}"#,
         )
         .unwrap();
 
-        let runtime = super::deployed_runtime_from_exe(&bin.join("memright.exe")).unwrap();
+        let runtime = super::deployed_runtime_from_exe(&bin.join("crypt.exe")).unwrap();
         assert_eq!(runtime.port, 47851);
         assert_eq!(
             runtime.db,
-            root.join("tools/.cache/memory/memright-engine.db")
+            root.join("tools/.cache/memory/crypt-engine.db")
         );
         assert_eq!(
             runtime.token_file,
@@ -4252,12 +4252,12 @@ mod tests {
 
         for body in [
             r#"{"schemaVersion":1,"serviceId":"other-service","host":"127.0.0.1","port":47851}"#,
-            r#"{"schemaVersion":1,"serviceId":"memright-local-v1","host":"0.0.0.0","port":47851}"#,
-            r#"{"schemaVersion":2,"serviceId":"memright-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"crypt-local-v1","host":"0.0.0.0","port":47851}"#,
+            r#"{"schemaVersion":2,"serviceId":"crypt-local-v1","host":"127.0.0.1","port":47851}"#,
             "not-json",
         ] {
             std::fs::write(config_dir.join("runtime.json"), body).unwrap();
-            assert!(super::deployed_runtime_from_exe(&bin.join("memright.exe")).is_none());
+            assert!(super::deployed_runtime_from_exe(&bin.join("crypt.exe")).is_none());
         }
     }
 
@@ -4292,18 +4292,18 @@ mod tests {
 
     #[test]
     fn replay_queries_rank_real_snapshot_entries_without_logging() {
-        let store = memright::MemoryStore::open(memright::MemDb::open_in_memory());
+        let store = crypt::MemoryStore::open(crypt::MemDb::open_in_memory());
         store.put(
             "worker-deploy",
             "deploy the cloudflare worker safely",
             "D--Claude",
-            memright_core::MemoryTier::Semantic,
+            crypt_core::MemoryTier::Semantic,
         );
         store.put(
             "unrelated",
             "write product copy for a knife",
             "D--Claude",
-            memright_core::MemoryTier::Semantic,
+            crypt_core::MemoryTier::Semantic,
         );
         let input =
             r#"{"row_id":"review-001","query":"cloudflare worker deployment","scope":"D--Claude"}"#;
@@ -4317,13 +4317,13 @@ mod tests {
     fn build_info_exposes_source_commit_and_tree_identity_fields() {
         let info = super::build_info();
         assert_eq!(info["product_version"], env!("CARGO_PKG_VERSION"));
-        assert!(info.get("memright_source_commit").is_some());
+        assert!(info.get("crypt_source_commit").is_some());
         assert!(info.get("source_tree_sha256").is_some());
         assert_eq!(
             info["release_generation"],
             format!(
                 "sha256:{}",
-                option_env!("MEMRIGHT_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown")
             )
         );
     }
@@ -4332,7 +4332,7 @@ mod tests {
     fn build_info_exposes_the_native_release_target_triple() {
         let info = super::build_info();
 
-        assert_eq!(info["target"], memright::release_identity::target_triple());
+        assert_eq!(info["target"], crypt::release_identity::target_triple());
         assert_ne!(info["target"], "unknown");
     }
 
@@ -4356,15 +4356,15 @@ mod tests {
 
     #[test]
     fn cli_lifecycle_helper_records_typed_empty_and_unavailable_terminals() {
-        let store = memright::MemoryStore::open(memright::MemDb::open_in_memory());
-        let context = memright::store::MemoryEventContext::new("cli")
+        let store = crypt::MemoryStore::open(crypt::MemDb::open_in_memory());
+        let context = crypt::store::MemoryEventContext::new("cli")
             .with_session("background")
             .with_trace("unknown");
         super::record_cli_external(
             &store,
             &context,
             "read",
-            memright::store::ExternalLifecycleStage::Provider,
+            crypt::store::ExternalLifecycleStage::Provider,
             "empty",
             "no_results",
             None,
@@ -4378,7 +4378,7 @@ mod tests {
             &store,
             &context,
             "write",
-            memright::store::ExternalLifecycleStage::Embedding,
+            crypt::store::ExternalLifecycleStage::Embedding,
             "unavailable",
             "resident_service_unavailable",
             Some("global/item"),
@@ -4422,7 +4422,7 @@ mod tests {
         assert_eq!(
             super::store_failure_stage("memory write attribution is invalid"),
             (
-                memright::store::ExternalLifecycleStage::Validation,
+                crypt::store::ExternalLifecycleStage::Validation,
                 "failed",
                 "invalid_attribution",
             )
@@ -4430,7 +4430,7 @@ mod tests {
         assert_eq!(
             super::store_failure_stage("configured embedder unavailable"),
             (
-                memright::store::ExternalLifecycleStage::Embedding,
+                crypt::store::ExternalLifecycleStage::Embedding,
                 "unavailable",
                 "embedding_unavailable",
             )
@@ -4438,7 +4438,7 @@ mod tests {
         assert_eq!(
             super::store_failure_stage("memory commit failed"),
             (
-                memright::store::ExternalLifecycleStage::Commit,
+                crypt::store::ExternalLifecycleStage::Commit,
                 "failed",
                 "commit_failed",
             )
@@ -4990,14 +4990,14 @@ mod tests {
     fn cross_process_lock_child_helper() {
         use std::io::{Read as _, Write as _};
 
-        let Some(directory) = std::env::var_os("MEMRIGHT_TEST_LOCK_HELPER_DIR") else {
+        let Some(directory) = std::env::var_os("CRYPT_TEST_LOCK_HELPER_DIR") else {
             return;
         };
         let _lock =
             super::acquire_pending_lock(&std::path::PathBuf::from(directory), "cross-process")
                 .unwrap();
         let mut stdout = std::io::stdout().lock();
-        writeln!(stdout, "MEMRIGHT_LOCK_READY").unwrap();
+        writeln!(stdout, "CRYPT_LOCK_READY").unwrap();
         stdout.flush().unwrap();
         drop(stdout);
         let mut release = [0_u8; 1];
@@ -5017,7 +5017,7 @@ mod tests {
             .arg("--ignored")
             .arg("--nocapture")
             .arg("--test-threads=1")
-            .env("MEMRIGHT_TEST_LOCK_HELPER_DIR", directory.path())
+            .env("CRYPT_TEST_LOCK_HELPER_DIR", directory.path())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -5055,7 +5055,7 @@ mod tests {
             let line = line_receiver
                 .recv_timeout(remaining)
                 .expect("child exited before reporting lock readiness");
-            if line.contains("MEMRIGHT_LOCK_READY") {
+            if line.contains("CRYPT_LOCK_READY") {
                 break;
             }
         }
@@ -5465,25 +5465,25 @@ mod tests {
         );
         assert_eq!(
             super::resolve_doc_read_path(root.path(), "../guide.md").unwrap_err(),
-            memright::outline::DocReadError::Deny
+            crypt::outline::DocReadError::Deny
         );
         assert_eq!(
             super::resolve_doc_read_path(root.path(), "docs/missing.md").unwrap_err(),
-            memright::outline::DocReadError::SourceMissing
+            crypt::outline::DocReadError::SourceMissing
         );
     }
 }
 
 pub fn run_cli() {
     let result = std::thread::Builder::new()
-        .name("memright-cli".into())
+        .name("crypt-cli".into())
         .stack_size(16 * 1024 * 1024)
         .spawn(run_main)
-        .map_err(|error| format!("start memright CLI: {error}"))
+        .map_err(|error| format!("start crypt CLI: {error}"))
         .and_then(|thread| {
             thread
                 .join()
-                .map_err(|_| "memright CLI panicked".to_string())
+                .map_err(|_| "crypt CLI panicked".to_string())
         })
         .and_then(|result| result);
     if let Err(error) = result {

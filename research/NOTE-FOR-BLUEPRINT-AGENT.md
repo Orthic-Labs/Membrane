@@ -6,7 +6,7 @@
 
 ## What happened
 
-Blueprint migrated to a single SQLite store `graph/graph.db` (nodes, edges, docTruth, and the manifest envelope) and removed `graph.json` with no fallback (`tools/skills/blueprint/SKILL.md:103`). Membrane's federation lane still reads the retired file contract in two places — `engine/federation/providers/blueprint.py:86-87` (`.agent/graph/manifest.json` / `.blueprint/manifest.json` → `generationId`) and `engine/crates/memright/src/freshness.rs:538` (`.agent/graph/graph.json` → `graph_body_generation`). On new-Blueprint repos, membrane's central freshness verdict can't seal a Blueprint generation and the blueprint provider lane degrades on every prompt. Membrane owns that repair (task filed: both readers learn the SQLite store, legacy paths as fallback).
+Blueprint migrated to a single SQLite store `graph/graph.db` (nodes, edges, docTruth, and the manifest envelope) and removed `graph.json` with no fallback (`tools/skills/blueprint/SKILL.md:103`). Membrane's federation lane still reads the retired file contract in two places — `engine/federation/providers/blueprint.py:86-87` (`.agent/graph/manifest.json` / `.blueprint/manifest.json` → `generationId`) and `engine/crates/crypt/src/freshness.rs:538` (`.agent/graph/graph.json` → `graph_body_generation`). On new-Blueprint repos, membrane's central freshness verdict can't seal a Blueprint generation and the blueprint provider lane degrades on every prompt. Membrane owns that repair (task filed: both readers learn the SQLite store, legacy paths as fallback).
 
 ## What membrane needs from Blueprint going forward
 

@@ -172,7 +172,7 @@ mod fast {
         /// Model from `WORKSPACE_EMBED_MODEL`. Default: EmbeddingGemma-300M Q4
         /// (768-dim, 2K context, multilingual, <200MB resident — upgraded from
         /// BGE-small 2026-07-02). `bge-small-en-v1.5` stays selectable for DBs
-        /// embedded pre-upgrade; a dim change requires `memright reindex`.
+        /// embedded pre-upgrade; a dim change requires `crypt reindex`.
         pub fn new() -> Result<Self, String> {
             use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
             let want = std::env::var("WORKSPACE_EMBED_MODEL").unwrap_or_default();

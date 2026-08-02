@@ -1,4 +1,4 @@
-//! Minimal timestamp helpers (no chrono) so MemRight stays self-contained. ISO-8601 UTC seconds.
+//! Minimal timestamp helpers (no chrono) so Crypt stays self-contained. ISO-8601 UTC seconds.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 

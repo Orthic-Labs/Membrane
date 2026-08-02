@@ -6,8 +6,8 @@ description = "Membrane federation, freshness, planning, and service runtime."
 
 [dependencies]
 crypt-store = { path = "../crypt-store" }
-memright-core = { package = "crypt-core", path = "../crypt-core" }
-memright-format = { package = "crypt-format", path = "../crypt-format" }
+crypt-core = { package = "crypt-core", path = "../crypt-core" }
+crypt-format = { package = "crypt-format", path = "../crypt-format" }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -33,7 +33,7 @@ ort = { version = "=2.0.0-rc.12", optional = true, default-features = false, fea
 
 [features]
 default = ["llmlingua-onnx"]
-fastembed = ["memright-core/fastembed", "dep:ort"]
+fastembed = ["crypt-core/fastembed", "dep:ort"]
 llmlingua-onnx = ["dep:tokenizers", "dep:ort"]
 
 [dev-dependencies]

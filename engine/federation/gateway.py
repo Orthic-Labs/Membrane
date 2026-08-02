@@ -6,7 +6,7 @@ Subcommand: `py -3.11 membrane/engine/federation/gateway.py --task T --repo R
                     [--anchors a,b,c] [--scope-grant-id G]`
 
 Writes a fully-assembled ContextCandidateSet v1 to stdout. The Rust
-dispatcher (`memright federate`) parses this, runs the deterministic
+dispatcher (`crypt federate`) parses this, runs the deterministic
 in-process admission, and emits the final envelope.
 
 Hard rules (per dispatch):
@@ -36,7 +36,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-# The Rust dispatcher (`memright federate`) launches this script with cwd =
+# The Rust dispatcher (`crypt federate`) launches this script with cwd =
 # the user's repo root, not the workspace. Make sure `federation.providers.*`
 # is importable regardless of cwd by adding the script's PARENT (the workspace
 # dir that contains the `federation` package) to sys.path.
@@ -46,8 +46,8 @@ if str(_PARENT) not in sys.path:
     sys.path.insert(0, str(_PARENT))
 
 # Local providers — all in-process or short subprocess. None of them touch
-# the MemRight DB schema, all read-only or pure.
-from federation.providers import blueprint, audit, architect, memright, git_provider  # noqa: E402
+# the Crypt DB schema, all read-only or pure.
+from federation.providers import blueprint, audit, architect, crypt, git_provider  # noqa: E402
 from federation.providers import live, rules, anchors, scope_grant  # noqa: E402
 from federation.providers import skills  # noqa: E402
 
@@ -60,23 +60,23 @@ _LANE_FAILURE_KINDS = frozenset({
     "stale_snapshot", "generation_mismatch", "cancellation_budget_drop", "circuit_open",
 })
 def _resolve_release_manifest() -> Path:
-    """Locate tools/lib/memright-release.json across both repo layouts.
+    """Locate tools/lib/crypt-release.json across both repo layouts.
 
     Before the membrane consolidation this script lived at
-    `tools/memright/federation/`, so `parents[1]/lib` WAS `tools/lib`. It now
+    `tools/crypt/federation/`, so `parents[1]/lib` WAS `tools/lib`. It now
     lives at `membrane/engine/federation/`, where that same expression points
     at a `membrane/lib` that holds no release manifest — which silently
     degraded every packet to `release_generation_unavailable`. Probe the real
     layouts instead of assuming a fixed depth; first hit wins.
     """
-    override = os.environ.get("MEMRIGHT_RELEASE_MANIFEST", "").strip()
+    override = os.environ.get("CRYPT_RELEASE_MANIFEST", "").strip()
     if override:
         return Path(override)
     candidates = (
         # membrane nested inside the parent workspace
-        _THIS_DIR.parents[2] / "tools" / "lib" / "memright-release.json",
-        # pre-consolidation tools/memright layout
-        _THIS_DIR.parents[1] / "lib" / "memright-release.json",
+        _THIS_DIR.parents[2] / "tools" / "lib" / "crypt-release.json",
+        # pre-consolidation tools/crypt layout
+        _THIS_DIR.parents[1] / "lib" / "crypt-release.json",
     )
     for candidate in candidates:
         if candidate.is_file():
@@ -132,21 +132,37 @@ def _trace_id() -> str:
     return f"rc-fed-{int(time.time() * 1000):x}-{uuid.uuid4().hex[:8]}"
 
 
+def _freshness_token(repo_root: Path) -> str:
+    raw = os.environ.get("CRYPT_API_TOKEN", "").strip()
+    if raw:
+        return raw
+    override = os.environ.get("CRYPT_API_TOKEN_FILE", "").strip()
+    candidates = [Path(override)] if override else []
+    workspace = os.environ.get("WORKSPACE_ROOT", "").strip()
+    if workspace:
+        candidates.append(Path(workspace) / "tools" / ".cache" / "memory" / "api-token")
+    candidates.extend(
+        parent / "tools" / ".cache" / "memory" / "api-token"
+        for parent in (repo_root, *repo_root.parents)
+    )
+    for candidate in candidates:
+        try:
+            token = candidate.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if token:
+            return token
+    return ""
+
+
 def _fetch_freshness_verdict(repo_root: Path) -> dict[str, Any] | None:
     """Fetch the sole freshness verdict from the resident service.
 
     The gateway deliberately has no Git/manifest fallback implementation. If the service cannot
     produce a typed verdict, the existing terminal legacy path remains the safe fallback.
     """
-    port = os.environ.get("MEMRIGHT_PORT") or os.environ.get("WORKSPACE_MEMORY_PORT") or "47851"
-    token = ""
-    token_file = os.environ.get("MEMRIGHT_API_TOKEN_FILE", "")
-    try:
-        if token_file and os.path.exists(token_file):
-            with open(token_file, "r", encoding="utf-8") as handle:
-                token = handle.read().strip()
-    except OSError:
-        return None
+    port = os.environ.get("CRYPT_PORT") or os.environ.get("WORKSPACE_MEMORY_PORT") or "47851"
+    token = _freshness_token(repo_root)
     body = json.dumps({"repoRoot": str(repo_root)}).encode("utf-8")
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}/freshness",
@@ -563,8 +579,8 @@ def _gather_all_parallel(
     tasks = [
         ("audit", lambda: _adapter("audit", audit.produce, repo_root, task)),
         ("architect", lambda: _adapter("architect", architect.produce, repo_root, task)),
-        ("memright", lambda: _adapter(
-            "memright", memright.produce_with_observability, repo_root, task, scope_grant_id, scope_descriptor
+        ("crypt", lambda: _adapter(
+            "crypt", crypt.produce_with_observability, repo_root, task, scope_grant_id, scope_descriptor
         )),
         ("git", lambda: _adapter("git", git_provider.produce, repo_root)),
         ("rules", lambda: _adapter("rules", rules.produce, repo_root, task)),
@@ -600,7 +616,7 @@ def _gather_all_parallel(
             )
         )
     if bool(skills_state.get("usable")):
-        # Ninth producer: engine-owned skill snapshot (index only; bodies resolve via `memright
+        # Ninth producer: engine-owned skill snapshot (index only; bodies resolve via `crypt
         # skill-read`). The adapter checks the exact returned generation against `/freshness`.
         tasks.append(
             ("skills", lambda: _adapter("skills", skills.produce, repo_root, task, scope_grant_id))
@@ -650,7 +666,7 @@ def _gather_all_parallel(
     }
 
     order = {name: index for index, name in enumerate(
-        ("blueprint", "audit", "architect", "memright", "git", "live", "rules", "anchors", "skills")
+        ("blueprint", "audit", "architect", "crypt", "git", "live", "rules", "anchors", "skills")
     )}
     out.sort(key=lambda item: order.get(item[0], len(order)))
     freshness["_providerElapsedMs"] = {

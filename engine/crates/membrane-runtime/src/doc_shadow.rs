@@ -83,7 +83,7 @@ pub fn evaluate_frozen_shadow_replay(
     });
     let report = evaluate_shadow_replay(&cases);
     FrozenShadowReplayReceiptV1 {
-        schema_version: "memright.doc_shadow_receipt.v1".into(),
+        schema_version: "crypt.doc_shadow_receipt.v1".into(),
         cases,
         report,
     }

@@ -11,7 +11,7 @@
   },
   "truthBoundary": {
     "installed_live": [
-      "docs/MEMBRANE-STATE.md installed-runtime checkpoints and disabled memright-daily state"
+      "docs/MEMBRANE-STATE.md installed-runtime checkpoints and disabled crypt-daily state"
     ],
     "source_only": [
       "engine/ source and tests in this checkout"
@@ -34,7 +34,7 @@
   "telemetry": {
     "contentFree": true,
     "registry": "lib/context-telemetry-registry.json",
-    "canonicalLedger": "engine/crates/memright/src/context_telemetry.rs",
+    "canonicalLedger": "engine/crates/crypt/src/context_telemetry.rs",
     "unknownSourcesRemainUnavailable": true
   },
   "implementationStatus": {

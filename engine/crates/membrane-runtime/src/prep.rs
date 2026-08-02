@@ -111,13 +111,13 @@ fn base_name(path: &Path) -> String {
 }
 
 fn estimate_tokens(text: &str) -> u64 {
-    memright_core::estimate_tokens(text) as u64
+    crypt_core::estimate_tokens(text) as u64
 }
 
 fn outline_token_threshold() -> usize {
     // Leave room in EmbeddingGemma's active 2,048-token profile for document
     // title, ancestry, embed prefix, and a safety margin.
-    memright_core::EMBEDDING_MAX_SEQUENCE_TOKENS.saturating_sub(448)
+    crypt_core::EMBEDDING_MAX_SEQUENCE_TOKENS.saturating_sub(448)
 }
 
 /// `(verb, before, after, meta)` transform_log rows for a manifest — shared by the CLI and serve

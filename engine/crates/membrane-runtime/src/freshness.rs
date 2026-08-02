@@ -1278,13 +1278,13 @@ mod tests {
                 "freshness::tests::bounded_child_fixture",
                 "--nocapture",
             ])
-            .env("MEMRIGHT_FRESHNESS_CHILD_FIXTURE", mode);
+            .env("CRYPT_FRESHNESS_CHILD_FIXTURE", mode);
         command
     }
 
     #[test]
     fn bounded_child_fixture() {
-        let Ok(mode) = std::env::var("MEMRIGHT_FRESHNESS_CHILD_FIXTURE") else {
+        let Ok(mode) = std::env::var("CRYPT_FRESHNESS_CHILD_FIXTURE") else {
             return;
         };
         match mode.as_str() {
@@ -1389,7 +1389,7 @@ mod tests {
             verdict.release_generation,
             format!(
                 "sha256:{}",
-                option_env!("MEMRIGHT_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown")
             )
         );
         assert_ne!(verdict.service_generation, verdict.release_generation);

@@ -52,7 +52,7 @@ The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `Cont
 
 ## Inside
 
-- **Crypt** — the durable-memory engine: a Rust CLI plus loopback HTTP service over SQLite, with a quantized vector store and hybrid retriever. Its legacy name is **MemRight**, and the installed `memright*` binaries remain the compatibility facade.
+- **Crypt** — the durable-memory engine: a Rust CLI plus loopback HTTP service over SQLite, with a quantized vector store and hybrid retriever. Its legacy name is **Crypt**, and the installed `crypt*` binaries remain the compatibility facade.
 - **MCP server** — six tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_feedback`), serving both the 2025-03-26 and 2026-07-28 MCP discovery eras.
 - **Federation gateway** — a supervised resident worker behind `POST /federate` that fans out to the providers in parallel; HTTP-first with automatic CLI fallback.
 - **Prompt hooks** — per-host recall planners (Claude and Codex) that route candidates through admission on every prompt.
@@ -67,11 +67,11 @@ cargo build --workspace                          # Crypt engine
 cargo test --workspace --features fastembed      # with real ONNX embeddings
 ```
 
-Day-to-day surfaces are the installed shims: `memright recall`, `memright federate`, `memright plan-context`, `memright curate`, plus the compression trio `runc` (command output), `skel` (file skeletonization), and `compress` (prose).
+Day-to-day surfaces are the installed shims: `crypt recall`, `crypt federate`, `crypt plan-context`, `crypt curate`, plus the compression trio `runc` (command output), `skel` (file skeletonization), and `compress` (prose).
 
 ## Recent
 
-- **Vector backend bake-off (2026-08)** — reproducible Rust benchmark across Mac/Windows SIMD lanes; decision: keep vectors in MemRight, move to resident in-process f32 dispatch.
+- **Vector backend bake-off (2026-08)** — reproducible Rust benchmark across Mac/Windows SIMD lanes; decision: keep vectors in Crypt, move to resident in-process f32 dispatch.
 - **Resident federation gateway (2026-07)** — per-request spawns replaced by a supervised resident worker; warm-path latency dropped ~5×.
 - **MCP dual-era stdio (2026-07)** — exact `@modelcontextprotocol/server@2.0.0`, enforced I/O schemas, structured tool results, W3C trace propagation through `/federate`, caller authorization bound to exact repo/root/scope.
 - **Honesty pass (2026-08)** — reserved lanes documented as the explicit cross-provider score policy; write paths now refuse hand-typed scopes that would fork the corpus.
@@ -84,3 +84,9 @@ This checkout is an internal mirror of a workspace-coupled control plane for the
 
 <sub><b><a href="https://orthic-labs.github.io">Orthic Labs</a></b> — local-first infrastructure for AI-assisted development.<br>
 <a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Cortex">Cortex</a> · <a href="https://github.com/Orthic-Labs/Sentinel">Sentinel</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/Morph">Morph</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
+
+<!-- blueprint:docs:start -->
+## Repository truth docs
+- [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
+- [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
+<!-- blueprint:docs:end -->

@@ -26,13 +26,13 @@ These have not changed since the design was named (CONTEXT-ENGINEERING.md, renam
 | # | Family | What flows | Tool (today) |
 |--:|---|---|---|
 | 1 | compaction | my reply → Adrian | `brief` (always-on policy) |
-| 2 | compaction | command output → context | `memright runc` (head+tail cap + cached pointer) |
-| 3 | compaction | file → agent context (INPUT) | `memright prep` + `skel` (code→AST skeleton, prose→compress) |
+| 2 | compaction | command output → context | `crypt runc` (head+tail cap + cached pointer) |
+| 3 | compaction | file → agent context (INPUT) | `crypt prep` + `skel` (code→AST skeleton, prose→compress) |
 | 4 | compaction | orchestrator → agent (A2A) | machine-minimal directive (auto-prepended by hook) |
-| 5 | compaction | agent doc output → future agent input | `memright compress` + OKF emit (link-graph bundles) |
+| 5 | compaction | agent doc output → future agent input | `crypt compress` + OKF emit (link-graph bundles) |
 | 6 | compaction | my running context | harness `/compact` + context-budget planner |
-| 7 | **retrieval** | durable store → context (RECALL) | `memright recall` (EmbeddingGemma-300M-Q4, scope-chain + hybrid ranking) |
-| 8 | **curation** | durable store lifecycle | `memright curate` (dream: dedupe/normalize/prune, scheduled daily) |
+| 7 | **retrieval** | durable store → context (RECALL) | `crypt recall` (EmbeddingGemma-300M-Q4, scope-chain + hybrid ranking) |
+| 8 | **curation** | durable store lifecycle | `crypt curate` (dream: dedupe/normalize/prune, scheduled daily) |
 
 Shared primitives across all three families: `skel` (code AST), `compress`/OKF (prose + link graph), `embed`/vector (recall). The entry shape evolved as:
 
@@ -74,7 +74,7 @@ Weaknesses that drove v2: markdown as source of truth (no counters, no effective
 
 ## 3. v2 — the engine era (2026-06-30 → 2026-07-11), in two steps
 
-**Step 1 — engine built, markdown still source of truth (2026-06-30).** Both landed the same day: a Python SQL+vector engine with usage/benefit instrumentation (`9656fe00`), immediately replaced by the **Rust MemRight engine** retiring `mem.py` (`1394355c`). Markdown remained the store of record; the engine indexed it.
+**Step 1 — engine built, markdown still source of truth (2026-06-30).** Both landed the same day: a Python SQL+vector engine with usage/benefit instrumentation (`9656fe00`), immediately replaced by the **Rust Crypt engine** retiring `mem.py` (`1394355c`). Markdown remained the store of record; the engine indexed it.
 
 **Step 2 — DB-first cutover (2026-07-02, `9b4a8425`).** The SQLite DB became the source of truth, EmbeddingGemma-300M-Q4 (fastembed/onnxruntime, offline) became the embedder, sync v2 landed, and markdown was demoted to an engine-generated export. Per-prompt semantic recall runs through a resident service (`serve` on `127.0.0.1:47851`, bearer-token auth). The transform layers (2/3/5) merged into the same crate — `runc`/`prep`/`skel`/`compress` became engine verbs behind compatibility shims.
 
@@ -84,7 +84,7 @@ Curation became a scheduled engine verb (`curate` → `dream_now`, daily-sync, 2
 flowchart LR
   subgraph v2["v2 read path — resident memory engine"]
     P[Prompt door] --> A[Engine selector]
-    S[(MemRight SQLite)] --> A
+    S[(Crypt SQLite)] --> A
     A --> B[Selected previews]
     B --> C[Model context]
   end
@@ -101,12 +101,12 @@ What got folded in, in order:
 | Date | Fold | Logical prerequisite | What it added |
 |---|---|---|---|
 | 2026-07-12 | **Blueprint in** (successor to maprepo/graphify) | Repository source + portable generation contract | deterministic repo map + code graph + verified claims; `.blueprint/` portable contract; graph freshness gating; `blueprint brief/graph` consumption surfaces |
-| 2026-07-12 | Typed stores + packet contract | Blueprint and MemRight remain distinct authorities | Audit findings store (G4), Architect decisions store (G5, lifecycle `proposed→accepted→implemented→superseded`), `ContextPacket`/`ContextReceipt` v2, ScopeGrant, federation gateway (Rust shell → Python gateway, 9 providers) |
+| 2026-07-12 | Typed stores + packet contract | Blueprint and Crypt remain distinct authorities | Audit findings store (G4), Architect decisions store (G5, lifecycle `proposed→accepted→implemented→superseded`), `ContextPacket`/`ContextReceipt` v2, ScopeGrant, federation gateway (Rust shell → Python gateway, 9 providers) |
 | 2026-07-15 | Feedback rail | Stable candidate identity + packet/receipt contract | per-candidate self-learning: `get`→used, delete/supersede→contradicted, verified-contradicted = sha-aware veto |
-| 2026-07-15 | **Skills in** (9th provider) | Provider contract + skill authoring catalog + engine serving | workspace skill catalog served cross-repo; INDEX previews in the packet + `memright skill-read` pull; provenance-sealed (bodyHash + Git) |
+| 2026-07-15 | **Skills in** (9th provider) | Provider contract + skill authoring catalog + engine serving | workspace skill catalog served cross-repo; INDEX previews in the packet + `crypt skill-read` pull; provenance-sealed (bodyHash + Git) |
 | 2026-07-15 | Memory-content delivery + admission lanes | Packet contract + memory/skill candidate schemas | real content previews (not stubs); two-pass admission (reserved lanes: memory 800 / skill 300 tokens, then global fill); DB-provenance seal |
-| 2026-07-15 | Link-graph recall | MemRight schema + candidate provenance | `[[wikilink]]` edges (schema v8), bounded one-hop at a discounted tier |
-| 2026-07-12 | Node MCP adapter (G5 Lane F) | Versioned packet contract | `tools/mcp/membrane_server.mjs` + client — stdio JSON-RPC cross-client door, 9 parity tests; the v4 Rust `memright mcp` verb is chartered to replace it |
+| 2026-07-15 | Link-graph recall | Crypt schema + candidate provenance | `[[wikilink]]` edges (schema v8), bounded one-hop at a discounted tier |
+| 2026-07-12 | Node MCP adapter (G5 Lane F) | Versioned packet contract | `tools/mcp/membrane_server.mjs` + client — stdio JSON-RPC cross-client door, 9 parity tests; the v4 Rust `crypt mcp` verb is chartered to replace it |
 | 2026-07-16 | Governance + cutover | All provider, packet, admission, seal, and fallback contracts above | reversible quarantine (schema v10); engine-served skills (schema v9, disk-first/engine-fallback); Codex parity (plugin 1.0.4); scheduler-owned hidden service binary; **`RIGHTCONTEXT_MODE=on` flipped** |
 | 2026-07-16 | **Cutover incidents + corrections** (the lessons row) | Installed cutover path | the first `on` flip was **inert** — installed hooks still invoked legacy `recall_memory.py`; the real Claude cutover landed in `1e77ae8a`. Sol's same-day audit then caught **two shipped bugs** (`e1d0817f`): consumed stdin made every fallback emit 0 bytes instead of legacy's ~2.6 KB, and Windows timeouts killed only the direct child, orphaning the gateway process tree (30 s wedges). Later Rust hardening (`8e36cea1` — worker-permit lifetime, collision-safe schema-v10 backout) was source-only until the two-binary redeploy completed 2026-07-16 evening |
 
@@ -150,7 +150,7 @@ The read diagrams use one level throughout: **door + authoritative sources → s
 ```mermaid
 flowchart LR
   subgraph live["[Live] v3 writes and derived views"]
-    W["Writes<br/>memright put · skill_emit · typed records · Git/file edits"] --> A["Canonical authorities<br/>SQLite · Git-authored files · typed stores"]
+    W["Writes<br/>crypt put · skill_emit · typed records · Git/file edits"] --> A["Canonical authorities<br/>SQLite · Git-authored files · typed stores"]
     A --> M["Maintenance<br/>ingest/reindex · curate · Blueprint refresh"]
     M --> V[Provider views]
     V --> P[Gateway + planner]
@@ -162,7 +162,7 @@ flowchart LR
   end
 ```
 
-`reindex` and `curate` apply to the MemRight authority; Blueprint refresh applies to repository structure; skill ingest and typed-record updates retain their own provenance. A write invalidates or regenerates only the affected provider view. Transport (HTTP, MCP, command, or hook) is orthogonal to this flow and does **not** add a ninth layer: Layer 4 remains compaction of orchestrator→agent directives.
+`reindex` and `curate` apply to the Crypt authority; Blueprint refresh applies to repository structure; skill ingest and typed-record updates retain their own provenance. A write invalidates or regenerates only the affected provider view. Transport (HTTP, MCP, command, or hook) is orthogonal to this flow and does **not** add a ninth layer: Layer 4 remains compaction of orchestrator→agent directives.
 
 ### Provider heterogeneity and ownership
 
@@ -176,7 +176,7 @@ flowchart LR
 | architect | Typed decisions | Decision provenance + lifecycle | Accepted intent and constraints | Cheap record lookup; research is offline |
 | rules | Git-authored workspace/repository rules | Path/content/Git provenance | Mandatory operating constraints | Cheap file lookup |
 | skills | Git-authored catalog served by the engine | Catalog generation + body hash + Git provenance | Applicable procedure index, body pulled on demand | Cheap index; resolver-backed body |
-| memright | Engine SQLite rows | Scope, row/content provenance, contradiction state | Durable facts, preferences, lessons, outcomes | Task-dependent semantic retrieval |
+| crypt | Engine SQLite rows | Scope, row/content provenance, contradiction state | Durable facts, preferences, lessons, outcomes | Task-dependent semantic retrieval |
 
 Assembly precedence is authority-first, not completion-time-first: explicit anchors and active files/changes precede structural evidence, documents, typed findings/decisions, semantic matches, durable memory, then broad orientation. The gateway declares a stable v3 provider merge order; IR-31 remains the evidence gate proving completion permutations cannot change packet or receipt output. Receipts must also prove omissions, degradation, and delivered form.
 
@@ -186,8 +186,8 @@ Assembly precedence is authority-first, not completion-time-first: explicit anch
 | Hook / client adapter | Normalize surface-specific input/output and enforce the final delivery contract | Ranking policy or provider freshness rules |
 | Gateway + planner | Fan-out, declared merge precedence, dedupe, budget/admission, receipts | Provider-specific canonical data |
 | Provider adapter | Candidate generation, provenance, validity/degradation signal | Global token budget or cross-provider authority |
-| MemRight engine | Durable memory/skill serving, embedding, recall, curation, lifecycle | Repository graph or typed Audit/Architect truth |
-| SQLite DB / canonical stores | MemRight row source of truth, Git-authored sources, typed records and manifests | Prompt assembly or transport policy |
+| Crypt engine | Durable memory/skill serving, embedding, recall, curation, lifecycle | Repository graph or typed Audit/Architect truth |
+| SQLite DB / canonical stores | Crypt row source of truth, Git-authored sources, typed records and manifests | Prompt assembly or transport policy |
 
 ## 5. v4 — proposed: measured assembly, thin doors (ADR 2026-07-16, 7 review rounds)
 
@@ -209,7 +209,7 @@ flowchart LR
   end
 ```
 
-Explicitly deferred to a follow-up ADR (named, gated): retrieval-necessity gating, session working-set/packet-diff caches, SessionStart stable-lane delivery + prompt-cache economics, async-hook speculative prefetch, `memright think` traces, memory-tool door.
+Explicitly deferred to a follow-up ADR (named, gated): retrieval-necessity gating, session working-set/packet-diff caches, SessionStart stable-lane delivery + prompt-cache economics, async-hook speculative prefetch, `crypt think` traces, memory-tool door.
 
 ---
 
@@ -226,9 +226,9 @@ as layers 9–11, all `[Target]` — named, **not built**:
 
 | # | Flows | Tool `[Target]` | Status vs today |
 |--:|---|---|---|
-| 9 | goal → structured plan (sub-goals, unknowns, success criteria) | `memright plan` | gives CLAUDE.md §4 a mechanism instead of a prompt instruction; distinct from the planner's *context-budget* allocation |
-| 10 | thought → thought **graph** (branch, revise, dead-end, assumptions) | `memright think` | **the actual gap** — a persisted, branching replacement for stateless sequential-thinking |
-| 11 | claim → evidence, contradictions stored not overwritten | `memright verify` | generalizes the feedback rail's `contradicted` veto + typed decision supersession to reasoning-time claims; mechanizes the verify-before-propagate rule |
+| 9 | goal → structured plan (sub-goals, unknowns, success criteria) | `crypt plan` | gives CLAUDE.md §4 a mechanism instead of a prompt instruction; distinct from the planner's *context-budget* allocation |
+| 10 | thought → thought **graph** (branch, revise, dead-end, assumptions) | `crypt think` | **the actual gap** — a persisted, branching replacement for stateless sequential-thinking |
+| 11 | claim → evidence, contradictions stored not overwritten | `crypt verify` | generalizes the feedback rail's `contradicted` veto + typed decision supersession to reasoning-time claims; mechanizes the verify-before-propagate rule |
 
 ```mermaid
 flowchart LR
@@ -264,17 +264,17 @@ nobody recalls is Graphify with extra steps.
 |---|---|---|---|---|---|---|
 | v1 | ≤2026-06-29 | markdown files | graphify (dead) → none | disk only | python hook reads files | retired |
 | v2a | 2026-06-30 | markdown (engine indexes it) | — | disk only | hook reads files; Rust engine behind CLI | superseded 07-02 |
-| v2b | 2026-07-02 | **memright SQLite** | — | disk only | hook → HTTP → warm engine | superseded as the *primary* path; survives as legacy fallback |
-| v3 | 2026-07-12→16 | memright SQLite | **Blueprint + typed stores** | **9th provider, engine-served** | hook → federate → python gateway → 9 providers | initial federation cutover |
+| v2b | 2026-07-02 | **crypt SQLite** | — | disk only | hook → HTTP → warm engine | superseded as the *primary* path; survives as legacy fallback |
+| v3 | 2026-07-12→16 | crypt SQLite | **Blueprint + typed stores** | **9th provider, engine-served** | hook → federate → python gateway → 9 providers | initial federation cutover |
 | v3 hardening | 2026-07-17 | unchanged | bounded dirty overlay + centralized freshness | unchanged | same path with explicit delivery classes and lane-local degradation | Windows Gates 1–2 closed; Gate 3 active; Mac/cohort/calendar evidence open |
-| v4 | proposed | memright SQLite | Blueprint via materialized snapshots when selected | unchanged (sealed, INDEX+pull) | branch-dependent thin door → service/snapshot selector | ADR **`proposed`**, revised through 7 review rounds; phase 0 + transport spike conditionally approved |
+| v4 | proposed | crypt SQLite | Blueprint via materialized snapshots when selected | unchanged (sealed, INDEX+pull) | branch-dependent thin door → service/snapshot selector | ADR **`proposed`**, revised through 7 review rounds; phase 0 + transport spike conditionally approved |
 
 ## 7. Where everything lives
 
-- Engine: `tools/memright/crates/{memright,memright-core}/` · deployed `tools/bin/memright.exe` + `memright-service.exe` · DB `tools/.cache/memory/memright-engine.db` · service `127.0.0.1:47851`
-- Federation gateway (v3, retires in v4 phase 6): `tools/memright/federation/gateway.py` + `providers/*.py`
+- Engine: `tools/crypt/crates/{crypt,crypt-core}/` · deployed `tools/bin/crypt.exe` + `crypt-service.exe` · DB `tools/.cache/memory/crypt-engine.db` · service `127.0.0.1:47851`
+- Federation gateway (v3, retires in v4 phase 6): `tools/crypt/federation/gateway.py` + `providers/*.py`
 - Hooks: `tools/hooks/recall_planner.py` (Claude) · `tools/codex-brief-plugin/recall_planner.js` (Codex)
 - Blueprint: `.blueprint/` (portable) + `.agent/` (machine-local) per repo; typed stores `.audit/architect/decisions.jsonl`, audit findings store
-- Skills catalog: `tools/skills/` (authoring) + engine `skills` table (serving) · `memright skill-read`
+- Skills catalog: `tools/skills/` (authoring) + engine `skills` table (serving) · `crypt skill-read`
 - Telemetry: `tools/.cache/metrics/rightcontext-*.jsonl` · dashboard `spoares.com/memory`
 - Sync: `daily-sync.sh` on both machines (pull → sync → mirror push → analysis/dashboard); current scheduler state belongs to `RIGHTCONTEXT-STATE.md`.

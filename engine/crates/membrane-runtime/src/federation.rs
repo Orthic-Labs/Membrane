@@ -14,11 +14,11 @@
 //! planner, and prints the final planner envelope to stdout.
 //!
 //! Provider payload formats and SQLite details never enter client
-//! adapters. MemRight durable storage is never modified. Bearer tokens
-//! are passed via the standard `MEMRIGHT_API_TOKEN_FILE` env, never in
+//! adapters. Crypt durable storage is never modified. Bearer tokens
+//! are passed via the standard `CRYPT_API_TOKEN_FILE` env, never in
 //! argv or stdout. ScopeGrant enforcement happens in the Python script.
 
-use memright_core::planner::{plan, ContextCandidateSetV1, PlannerInput};
+use crypt_core::planner::{plan, ContextCandidateSetV1, PlannerInput};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -31,7 +31,7 @@ fn federation_session_id(session: Option<String>) -> String {
 
 /// Known gateway layouts relative to a candidate ancestor directory,
 /// preferred first. The membrane consolidation moved the gateway out of
-/// `tools/memright/`; the legacy layout stays last so older checkouts and
+/// `tools/crypt/`; the legacy layout stays last so older checkouts and
 /// frozen evidence hosts keep resolving.
 const GATEWAY_LAYOUTS: [&[&str]; 3] = [
     // Parent workspace holding membrane as a nested checkout.
@@ -39,7 +39,7 @@ const GATEWAY_LAYOUTS: [&[&str]; 3] = [
     // Standalone membrane checkout.
     &["engine", "federation", "gateway.py"],
     // Pre-consolidation workspace layout.
-    &["tools", "memright", "federation", "gateway.py"],
+    &["tools", "crypt", "federation", "gateway.py"],
 ];
 
 fn gateway_layout_path(dir: &Path, layout: &[&str]) -> PathBuf {
@@ -263,7 +263,7 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
     Ok(payload)
 }
 
-/// RightContext MemRight durable-memory candidate provider. Pure in-process
+/// RightContext Crypt durable-memory candidate provider. Pure in-process
 /// read of eligible MemoryEntry rows normalised into ContextCandidateSet v1
 /// records (Layer 7, sourceKind "memory", trustClass "agent_verified").
 #[allow(clippy::too_many_arguments)]
@@ -282,7 +282,7 @@ pub fn run_memory_candidates(
         .to_path_buf();
     let db_path = db_path_for(&workspace);
     let db = crate::MemDb::open(&db_path)
-        .map_err(|e| format!("open memright db at {}: {e}", db_path.display()))?;
+        .map_err(|e| format!("open crypt db at {}: {e}", db_path.display()))?;
     let store = crate::MemoryStore::try_open(db).map_err(|e| format!("open MemoryStore: {e}"))?;
 
     let scope_id = scope.clone().unwrap_or_else(|| "D--Claude".to_string());
@@ -294,7 +294,7 @@ pub fn run_memory_candidates(
     Ok(())
 }
 
-/// Testable core: build the MemRight ContextCandidateSet from REAL relevance-ranked memories.
+/// Testable core: build the Crypt ContextCandidateSet from REAL relevance-ranked memories.
 ///
 /// Uses `recall_scored` (the same full-corpus hybrid retriever that backs live `context_for`),
 /// not an arbitrary `entries(max)` slice — so results are relevant. Emits `text` = a bounded
@@ -360,7 +360,7 @@ pub fn memory_candidates_payload_for_descriptor(
                 "protected": false,
                 "exact": false,
                 "recoverable": true,
-                "resolver": format!("memright get {}", e.id),
+                "resolver": format!("crypt get {}", e.id),
                 "text": preview,
             })
         })
@@ -372,9 +372,9 @@ pub fn memory_candidates_payload_for_descriptor(
         "traceId": new_trace_id(),
         "task": task,
         "mode": "verify",
-        "provider": "memright",
+        "provider": "crypt",
         "freshness": {
-            "revision": memright_revision(),
+            "revision": crypt_revision(),
             "indexedAt": iso_now(),
             "stale": false,
         },
@@ -413,7 +413,7 @@ fn sha256_hex(s: &str) -> String {
 }
 
 fn db_path_for(workspace: &Path) -> PathBuf {
-    std::env::var("MEMRIGHT_DB")
+    std::env::var("CRYPT_DB")
         .ok()
         .map(PathBuf::from)
         .or_else(|| {
@@ -422,14 +422,14 @@ fn db_path_for(workspace: &Path) -> PathBuf {
             } else {
                 std::env::var_os("HOME").map(PathBuf::from)
             };
-            home.map(|p| p.join(".claude").join("memright").join("memright.db"))
+            home.map(|p| p.join(".claude").join("crypt").join("crypt.db"))
         })
         .unwrap_or_else(|| {
             workspace
                 .join("tools")
                 .join(".cache")
-                .join("memright")
-                .join("memright.db")
+                .join("crypt")
+                .join("crypt.db")
         })
 }
 
@@ -458,8 +458,8 @@ fn iso_now() -> String {
     format!("1970-01-01T00:00:00Z+{days}T{h:02}:{m:02}:{s:02}Z")
 }
 
-fn memright_revision() -> String {
-    std::env::var("MEMRIGHT_REVISION").unwrap_or_else(|_| "memright-0.1.1-federation".to_string())
+fn crypt_revision() -> String {
+    std::env::var("CRYPT_REVISION").unwrap_or_else(|_| "crypt-0.1.1-federation".to_string())
 }
 
 fn gateway_observability(raw: &Value) -> Value {
@@ -501,7 +501,7 @@ mod observability_tests {
                 "providerCounts": {"git": 2},
                 "providerWarnings": [],
                 "providerElapsedMs": {"git": 1.25},
-                "providerStageElapsedMs": {"memright": {"embed": 2.5, "recall": 3.5}},
+                "providerStageElapsedMs": {"crypt": {"embed": 2.5, "recall": 3.5}},
                 "stageElapsedMs": {"freshness": 2.0, "provider_fanout": 3.0},
                 "idleGapMs": 300001,
                 "serviceGeneration": "svc-test",
@@ -515,7 +515,7 @@ mod observability_tests {
                 "providerCounts": {"git": 2},
                 "providerWarnings": [],
                 "providerElapsedMs": {"git": 1.25},
-                "providerStageElapsedMs": {"memright": {"embed": 2.5, "recall": 3.5}},
+                "providerStageElapsedMs": {"crypt": {"embed": 2.5, "recall": 3.5}},
                 "stageElapsedMs": {"freshness": 2.0, "provider_fanout": 3.0},
                 "idleGapMs": 300001,
                 "graphState": "dirty_overlay",
@@ -669,7 +669,7 @@ mod tests {
         assert!(top["resolver"]
             .as_str()
             .unwrap()
-            .starts_with("memright get "));
+            .starts_with("crypt get "));
     }
 
     fn touch_gateway(root: &Path, layout: &[&str]) -> PathBuf {

@@ -36,7 +36,7 @@ fn default_shell_argv() -> Vec<String> {
 }
 
 fn anchor_ttl_millis() -> u128 {
-    std::env::var("MEMRIGHT_ANCHOR_TTL_MS")
+    std::env::var("CRYPT_ANCHOR_TTL_MS")
         .ok()
         .and_then(|value| value.parse::<u128>().ok())
         .filter(|value| *value > 0)
@@ -46,11 +46,11 @@ fn anchor_ttl_millis() -> u128 {
 /// Resolve the shell argv prefix used to execute `cmd`.
 ///
 /// Order:
-/// 1. `MEMRIGHT_RUNC_SHELL` if set (split by whitespace into argv). If the value
+/// 1. `CRYPT_RUNC_SHELL` if set (split by whitespace into argv). If the value
 ///    has no explicit `-c`/`/C`, we append the platform default switch.
 /// 2. Platform default: POSIX `sh -c`, Windows Git Bash `bash -c`.
 pub fn resolve_shell_argv() -> Vec<String> {
-    if let Ok(raw) = std::env::var("MEMRIGHT_RUNC_SHELL") {
+    if let Ok(raw) = std::env::var("CRYPT_RUNC_SHELL") {
         let mut argv = parse_shell_override(&raw);
         if argv.is_empty() {
             return default_shell_argv();
@@ -146,7 +146,7 @@ mod tests {
     use std::sync::{Mutex, MutexGuard};
 
     /// Every test in this module reads or writes the process-global
-    /// `MEMRIGHT_RUNC_SHELL` env var. Rust runs tests concurrently within one
+    /// `CRYPT_RUNC_SHELL` env var. Rust runs tests concurrently within one
     /// binary, and `std::env::set_var` mutates the whole process, so without a
     /// shared lock the `shell_override_*` tests race the `run_capped_*` tests —
     /// the latter would read a `bash`-polluted value and run under the wrong
@@ -162,9 +162,9 @@ mod tests {
     #[test]
     fn default_shell_preserves_the_legacy_bash_contract() {
         let _guard = lock_env();
-        let prior = std::env::var_os("MEMRIGHT_RUNC_SHELL");
+        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
         unsafe {
-            std::env::remove_var("MEMRIGHT_RUNC_SHELL");
+            std::env::remove_var("CRYPT_RUNC_SHELL");
         }
         let argv = resolve_shell_argv();
         assert_eq!(argv.last().map(String::as_str), Some("-c"));
@@ -177,22 +177,22 @@ mod tests {
         );
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("MEMRIGHT_RUNC_SHELL", v),
-                None => std::env::remove_var("MEMRIGHT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
+                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
             }
         }
     }
 
-    /// `MEMRIGHT_RUNC_SHELL` with just a program (no switch) — the resolver
+    /// `CRYPT_RUNC_SHELL` with just a program (no switch) — the resolver
     /// should append the platform-correct switch automatically.
     #[test]
     fn shell_override_program_only_appends_platform_switch() {
         let _guard = lock_env();
-        let prior = std::env::var_os("MEMRIGHT_RUNC_SHELL");
+        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
         // SAFETY: `_guard` serializes all env-touching tests in this module, so
-        // this test owns `MEMRIGHT_RUNC_SHELL` for its duration.
+        // this test owns `CRYPT_RUNC_SHELL` for its duration.
         unsafe {
-            std::env::set_var("MEMRIGHT_RUNC_SHELL", "bash");
+            std::env::set_var("CRYPT_RUNC_SHELL", "bash");
         }
         let argv = resolve_shell_argv();
         if cfg!(windows) {
@@ -206,26 +206,26 @@ mod tests {
         }
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("MEMRIGHT_RUNC_SHELL", v),
-                None => std::env::remove_var("MEMRIGHT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
+                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
             }
         }
     }
 
-    /// `MEMRIGHT_RUNC_SHELL` with both program and switch — use as-is.
+    /// `CRYPT_RUNC_SHELL` with both program and switch — use as-is.
     #[test]
     fn shell_override_program_and_switch_used_verbatim() {
         let _guard = lock_env();
-        let prior = std::env::var_os("MEMRIGHT_RUNC_SHELL");
+        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
         unsafe {
-            std::env::set_var("MEMRIGHT_RUNC_SHELL", "bash -c");
+            std::env::set_var("CRYPT_RUNC_SHELL", "bash -c");
         }
         let argv = resolve_shell_argv();
         assert_eq!(argv, vec!["bash".to_string(), "-c".to_string()]);
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("MEMRIGHT_RUNC_SHELL", v),
-                None => std::env::remove_var("MEMRIGHT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
+                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
             }
         }
     }
@@ -235,9 +235,9 @@ mod tests {
         let _guard = lock_env();
         // Pin the shell to the platform default so a leaked override from another
         // process can't change what runs here.
-        let prior = std::env::var_os("MEMRIGHT_RUNC_SHELL");
+        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
         unsafe {
-            std::env::remove_var("MEMRIGHT_RUNC_SHELL");
+            std::env::remove_var("CRYPT_RUNC_SHELL");
         }
         let dir = tempfile::tempdir().unwrap();
 
@@ -274,8 +274,8 @@ mod tests {
 
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("MEMRIGHT_RUNC_SHELL", v),
-                None => std::env::remove_var("MEMRIGHT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
+                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
             }
         }
     }
@@ -284,9 +284,9 @@ mod tests {
     #[test]
     fn run_capped_spills_full_output_even_when_output_fits() {
         let _guard = lock_env();
-        let prior = std::env::var_os("MEMRIGHT_RUNC_SHELL");
+        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
         unsafe {
-            std::env::remove_var("MEMRIGHT_RUNC_SHELL");
+            std::env::remove_var("CRYPT_RUNC_SHELL");
         }
         let dir = tempfile::tempdir().unwrap();
         let r = run_capped("echo hi", 100, 100, dir.path()).expect("run_capped ok");
@@ -302,8 +302,8 @@ mod tests {
 
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("MEMRIGHT_RUNC_SHELL", v),
-                None => std::env::remove_var("MEMRIGHT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
+                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
             }
         }
     }

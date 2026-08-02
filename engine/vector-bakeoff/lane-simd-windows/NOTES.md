@@ -1,6 +1,6 @@
 # Rust vector optimization lane — Windows x86-64, 2026-08-02
 
-Plan: `plans/sol/2026-08-01-rust-vector-optimization-lane.md`.
+Plan: `docs/plans/sol/2026-08-01-rust-vector-optimization-lane.md`.
 Runner: `engine/vector-bakeoff/simd/`, Rust 1.96.1, release build.
 Host: Intel Core i9-13900H, 14 cores/20 logical processors, 64 GiB RAM,
 Windows 11 Pro build 26200. Rayon used 20 threads. Runtime kernels were AVX2/FMA

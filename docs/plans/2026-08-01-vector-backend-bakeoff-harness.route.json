@@ -7,7 +7,7 @@
   "state_a": {
     "description": "The approved public benchmark specification has no executable harness, sealed fixture generator, backend packages, committed dependency locks, or cross-host receipts.",
     "evidence": [
-      {"locator":"/Volumes/D/claude/plans/sol/2026-07-27-vector-backend-bakeoff.md","sha256":"ad590ada477de0cbbab198f7ebb8f5bd5ccff21851809912df291067bea173b6","check":"Read approved arms, invariants, fixtures, protocol, and publication requirements."},
+      {"locator":"/Volumes/D/claude/docs/plans/sol/2026-07-27-vector-backend-bakeoff.md","sha256":"ad590ada477de0cbbab198f7ebb8f5bd5ccff21851809912df291067bea173b6","check":"Read approved arms, invariants, fixtures, protocol, and publication requirements."},
       {"locator":"engine/Cargo.toml","sha256":"2c7861882fe6ec9fc641937a6dd85ff0060a83703465a05225d440894358bfdf","check":"Workspace contains only production MemRight crates and no benchmark package."}
     ]
   },

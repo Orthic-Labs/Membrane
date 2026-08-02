@@ -67,7 +67,7 @@ const TOOL_OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-const protocol = `# Membrane MCP v1\n\nmembrane_context routes through the loopback /federate endpoint, never raw recall, and injects exact session/task working context when supplied. Knowledge and feedback require durable MemRight persistence with LifecycleReceiptV1 readback; unavailable persistence is a tool error unless explicit advisory policy is selected. Working context is durable only when explicitly configured. Scratchpads are ephemeral, non-searchable, non-authoritative, and never consolidated. Temporal supersession requires an explicit single-valued predicate policy. Checkpoints are A0 session orientation state. Source reads require a hash-bound DocReadV1 reference.`;
+const protocol = `# Membrane MCP v1\n\nmembrane_context routes through the loopback /federate endpoint, never raw recall, and injects exact session/task working context when supplied. Knowledge and feedback require durable Crypt persistence with LifecycleReceiptV1 readback; unavailable persistence is a tool error unless explicit advisory policy is selected. Working context is durable only when explicitly configured. Scratchpads are ephemeral, non-searchable, non-authoritative, and never consolidated. Temporal supersession requires an explicit single-valued predicate policy. Checkpoints are A0 session orientation state. Source reads require a hash-bound DocReadV1 reference.`;
 
 function text(value) {
   if (typeof value !== "string") return value;
@@ -156,8 +156,8 @@ function run(command, args, input, env = process.env) {
   });
 }
 
-function memrightArgs(args, bindingRecord) {
-  const db = bindingRecord?.db || process.env.MEMRIGHT_DB || "";
+function cryptArgs(args, bindingRecord) {
+  const db = bindingRecord?.db || process.env.CRYPT_DB || "";
   return ["--db", db, ...args].filter((v, i) => !(i === 1 && !v));
 }
 async function bindingEnv(binding) {
@@ -185,32 +185,36 @@ async function durableProposal(binding, emission) {
   };
 }
 async function durableFeedback(binding, args) {
-  const feedbackId = receiptId("feedback", { scope: binding.scope_id, receiptId: args.receiptId, outcome: args.outcome });
-  const eventId = receiptId("event", { operation: "feedback", feedbackId });
-  const env = await bindingEnv(binding);
-  const binary = process.env.MEMRIGHT_BIN || "memright";
-  const out = await run(binary, memrightArgs([
-    "feedback", "--trace", eventId, "--candidate", args.receiptId,
-    "--sha", digest(args.receiptId).slice("sha256:".length), "--outcome", args.outcome,
-    "--source", "observed_action", "--scope", binding.scope_id,
-  ], await installationBindingFor(binding)), "", env);
-  if (out.code !== 0) throw new Error(`durable feedback write failed: ${out.stderr.trim() || out.stdout.trim()}`);
-  let response;
-  try { response = JSON.parse(out.stdout.trim()); } catch { throw new Error("durable feedback returned invalid JSON"); }
-  if (response.ok !== true || response.verified !== true) throw new Error("durable feedback was not independently verified");
-  const installation = await installationBindingFor(binding);
-  const readback = feedbackReadback(installation.db, eventId, args.receiptId, args.outcome);
-  return {
-    status: "persisted",
-    durable: true,
-    feedbackId,
-    receiptId: args.receiptId,
-    outcome: args.outcome,
-    lifecycleReceipt: lifecycleReceipt("feedback", "persisted", feedbackId, eventId, readback),
-    provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
-    feedbackEvent: feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome }),
-    feedbackPolicy: feedbackPolicy(feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome })),
-  };
+  try {
+    const feedbackId = receiptId("feedback", { scope: binding.scope_id, receiptId: args.receiptId, outcome: args.outcome });
+    const eventId = receiptId("event", { operation: "feedback", feedbackId });
+    const env = await bindingEnv(binding);
+    const binary = process.env.CRYPT_BIN || "crypt";
+    const out = await run(binary, cryptArgs([
+      "feedback", "--trace", eventId, "--candidate", args.receiptId,
+      "--sha", digest(args.receiptId).slice("sha256:".length), "--outcome", args.outcome,
+      "--source", "observed_action", "--scope", binding.scope_id,
+    ], await installationBindingFor(binding)), "", env);
+    if (out.code !== 0) throw new Error(out.stderr.trim() || out.stdout.trim());
+    let response;
+    try { response = JSON.parse(out.stdout.trim()); } catch { throw new Error("returned invalid JSON"); }
+    if (response.ok !== true || response.verified !== true) throw new Error("was not independently verified");
+    const installation = await installationBindingFor(binding);
+    const readback = feedbackReadback(installation.db, eventId, args.receiptId, args.outcome);
+    return {
+      status: "persisted",
+      durable: true,
+      feedbackId,
+      receiptId: args.receiptId,
+      outcome: args.outcome,
+      lifecycleReceipt: lifecycleReceipt("feedback", "persisted", feedbackId, eventId, readback),
+      provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
+      feedbackEvent: feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome }),
+      feedbackPolicy: feedbackPolicy(feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome })),
+    };
+  } catch (error) {
+    throw new Error(`durable feedback write failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 async function callTool(name, args, trace = {}) {
   if (name === "membrane_context") {
@@ -237,7 +241,7 @@ async function callTool(name, args, trace = {}) {
   if (name === "membrane_source_read") {
     const binding = await authorize(args, "source_read");
     const install = await installationBindingFor(binding);
-    const out = await run(process.env.MEMRIGHT_BIN || "memright", memrightArgs(["doc", "read", "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash], install), "", await bindingEnv(binding));
+    const out = await run(process.env.CRYPT_BIN || "crypt", cryptArgs(["doc", "read", "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash], install), "", await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "source_read_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_checkpoint_save") {
@@ -245,7 +249,7 @@ async function callTool(name, args, trace = {}) {
     const install = await installationBindingFor(binding);
     bounded(args.checkpoint, MAX_PROPOSAL_BYTES, "checkpoint");
     takeRate(binding, "checkpoint");
-    const out = await run(process.env.MEMRIGHT_BIN || "memright", memrightArgs(["checkpoint", "save"], install), JSON.stringify(args.checkpoint), await bindingEnv(binding));
+    const out = await run(process.env.CRYPT_BIN || "crypt", cryptArgs(["checkpoint", "save"], install), JSON.stringify(args.checkpoint), await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "checkpoint_save_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_checkpoint_load") {
@@ -253,7 +257,7 @@ async function callTool(name, args, trace = {}) {
     const install = await installationBindingFor(binding);
     const params = ["checkpoint", "load", args.id];
     if (Number.isInteger(args.asOfMs)) params.push("--as-of-ms", String(args.asOfMs));
-    const out = await run(process.env.MEMRIGHT_BIN || "memright", memrightArgs(params, install), "", await bindingEnv(binding));
+    const out = await run(process.env.CRYPT_BIN || "crypt", cryptArgs(params, install), "", await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "checkpoint_load_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_working_context") {

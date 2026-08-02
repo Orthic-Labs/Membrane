@@ -16,7 +16,7 @@ UUIDs in its evidence. Windows and macOS are platform fixtures, not special iden
 - zero fresh canonical lifecycle reconciliation gaps;
 - complete privacy-sentinel rejection with zero leaks;
 - prompt p99 computed from the supplied samples and strictly below 1,000 ms;
-- `memright-daily` absent, disabled, or unloaded; and
+- `crypt-daily` absent, disabled, or unloaded; and
 - an ad-hoc snapshot declared `manual_unscheduled`.
 
 The JSON and Markdown reports contain opaque installation IDs, hashes, counts, bounded platform and
@@ -45,7 +45,7 @@ the replacement candidate's causal-closure proof.
 
 The reconciliation input is the content-free report emitted by
 `tools/pipelines/memory/context_value_reconcile.py`. The mirror and identity inputs are read directly;
-the command never writes the DB or mirror, installs or restarts MemRight, starts a replay, or changes
+the command never writes the DB or mirror, installs or restarts Crypt, starts a replay, or changes
 a scheduler.
 
 ## Run
@@ -78,7 +78,7 @@ python3 tools/pipelines/memory/context_conformance.py \
 
 Exit `0` means every invariant passed, `1` means a typed conformance failure was reported, and `2`
 means the evidence or command input was invalid. The command probes scheduler state but never enables,
-disables, loads, unloads, registers, or triggers `memright-daily`.
+disables, loads, unloads, registers, or triggers `crypt-daily`.
 
 P3 is a fresh installed-host proof: each active installation must independently emit a green
 conformance report from the same candidate commit. P4 is a separate aggregate proof that consumes
@@ -106,7 +106,7 @@ partial manifest instead:
 
 ```powershell
 py -3.11 tools/pipelines/memory/context_telemetry_backfill.py `
-  --db tools/.cache/memory/memright-engine.db `
+  --db tools/.cache/memory/crypt-engine.db `
   --rightcontext-jsonl tools/.cache/metrics/rightcontext-heartbeat.jsonl `
   --output <historical-partial.json> `
   --pretty

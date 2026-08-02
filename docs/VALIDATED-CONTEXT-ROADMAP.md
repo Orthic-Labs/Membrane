@@ -203,11 +203,11 @@ rollback restores raw delivery without data loss.
 
 | Source | Decision |
 |---|---|
-| Headroom | Adapt typed routing, deterministic structural reducers, fail-open/non-growth guards, cache-stable delta mode, and local reversible handles. Reject wholesale proxy/memory/telemetry stack. |
-| SuperCompress | Adapt segment → score → dependency closure → verifier shape only. Reject hosted API/CCR and code copying while license and tenant-isolation issues remain. |
+| Headroom | Morph typed routing, deterministic structural reducers, fail-open/non-growth guards, cache-stable delta mode, and local reversible handles. Reject wholesale proxy/memory/telemetry stack. |
+| SuperCompress | Morph segment → score → dependency closure → verifier shape only. Reject hosted API/CCR and code copying while license and tenant-isolation issues remain. |
 | LongCodeZip | Defer optional AMI reranking behind code-context evals. Reject runtime package, regex splitting, fine pruning, and hot-path GPU dependency. |
 | AgentDiet | Adopt trajectory waste classes—useless, redundant, expired—as hot-path pruning taxonomy. |
-| LCM/Volt | Adapt immutable originals, summary DAG, deterministic thresholds, atomic compaction, and bounded expansion after P9 is proven. |
+| LCM/Volt | Morph immutable originals, summary DAG, deterministic thresholds, atomic compaction, and bounded expansion after P9 is proven. |
 
 ## Verified checks
 
@@ -218,16 +218,16 @@ rollback restores raw delivery without data loss.
   Focused Python suite: 17 passed.
 - **P3 budget APIs:** `compress --budget`, `skel --budget`, and `prep --budget`
   are implemented. Protected-span overflow returns source with `budget_met=false`
-  rather than dropping critical data. MemRight library: 254 passed; CLI: 42 passed.
+  rather than dropping critical data. Crypt library: 254 passed; CLI: 42 passed.
 - **P5 receipts:** deterministic, content-free drop manifests now record dropped
   identifier/error/numeric counts, kept-identifier ratio, and risk in direct
   transform telemetry and prep manifests.
 - **P4 allocation interface:** planner blocks and receipts now carry deterministic
   score-proportional `allottedTokens`, preserving each admitted source-kind
-  lane total. MemRight core: 162 passed.
+  lane total. Crypt core: 162 passed.
 - **P6 anchor handle:** `runc` spills are now atomically published under a
   content SHA-256 filename and emit `mr://anchor/<sha256>` beside the raw path;
-  `memright expand <anchor> --spill-dir <dir>` and authenticated `POST /expand`
+  `crypt expand <anchor> --spill-dir <dir>` and authenticated `POST /expand`
   recover exact bytes.
 - **P9 source hook:** cohort-approved PostToolUse now emits shape-preserving
   `updatedToolOutput`, never append-only `additionalContext`; prose engine calls
@@ -243,7 +243,7 @@ rollback restores raw delivery without data loss.
 - **P6 lifecycle:** every runc anchor now has atomically published JSON metadata
   with schema version, handle, digest, creation time, and size.
 - **P6 expiry:** `POST /expand` returns typed 410 for expired anchor metadata.
-- **Regression gate:** MemRight library 256, core 162, and cross-component
+- **Regression gate:** Crypt library 256, core 162, and cross-component
   Python contract suites 26 tests pass.
 
 - Blueprint graph: fresh `blueprint-treesitter` generation; live candidate set
@@ -256,9 +256,9 @@ rollback restores raw delivery without data loss.
 
 ### Critical Files for Implementation
 
-- `engine/crates/memright/src/compress.rs`
-- `engine/crates/memright-core/src/planner.rs`
-- `engine/crates/memright/src/serve.rs`
+- `engine/crates/crypt/src/compress.rs`
+- `engine/crates/crypt-core/src/planner.rs`
+- `engine/crates/crypt/src/serve.rs`
 - `/Volumes/D/claude/tools/hooks/post_tool_push.py`
 - `/Volumes/D/claude/tools/pipelines/memory/context_session_inventory.py`
 
@@ -272,7 +272,7 @@ rollback restores raw delivery without data loss.
   hit, top session $290. Now emitted daily by the existing read-only Observatory lane — no new
   scheduled agent was needed.
 - **PUSH lane activated** behind the cohort gate, with session-stable 50/50 assignment.
-- **ASI06 memory-poisoning smoke test** (`engine/crates/memright/tests/memory_provider.rs`).
+- **ASI06 memory-poisoning smoke test** (`engine/crates/crypt/tests/memory_provider.rs`).
 - **Blueprint freshness** rebound to HEAD with a repo-revision rebuild trigger
   (`tools/blueprint-refresh.sh`, installed as post-commit/post-merge/post-checkout).
 

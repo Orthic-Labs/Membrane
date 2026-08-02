@@ -14,9 +14,9 @@ from pathlib import Path
 __all__ = ["canonical_repository_id", "workspace_tools_path"]
 
 # `providers/` sits at <workspace>/membrane/engine/federation/providers.
-# parents[3] used to be the `tools` directory (old tools/memright/federation
+# parents[3] used to be the `tools` directory (old tools/crypt/federation
 # layout) and is now `membrane`; parents[4] is the workspace root under BOTH
-# layouts, which is why skills.py/memright.py survived the move untouched.
+# layouts, which is why skills.py/crypt.py survived the move untouched.
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 _LEGACY_TOOLS_ROOT = Path(__file__).resolve().parents[3]
 
@@ -24,7 +24,7 @@ _LEGACY_TOOLS_ROOT = Path(__file__).resolve().parents[3]
 def workspace_tools_path(*parts: str) -> Path:
     """Resolve a path under the workspace `tools/` tree across both layouts.
 
-    The membrane consolidation moved this package from `tools/memright/` to
+    The membrane consolidation moved this package from `tools/crypt/` to
     `membrane/engine/`, which silently repointed every `parents[3] / "skills"`
     expression at a non-existent `membrane/skills/...`. The blueprint, audit,
     architect, and anchors lanes then failed instantly with `unavailable` on
@@ -51,7 +51,7 @@ def canonical_repository_id(repo_root: Path | str) -> str:
     `D:\\Claude` -> `D--Claude`; `D:\\Claude\\heardright` -> `D--Claude-heardright`.
 
     This is the one identity space the whole system already shares: the engine's
-    `memories.scope_id`, `memright/src/scope.rs::canonical_scope_chain`, and
+    `memories.scope_id`, `crypt/src/scope.rs::canonical_scope_chain`, and
     `tools/hooks/ingest_memory.py::_scope_for_path` all use this slug. The typed
     stores derive record IDs from it (`audit_store.derive_finding_id` hashes it
     into every finding ID), so it must stay stable across runs and machines —

@@ -51,10 +51,10 @@ impl InstallationPaths {
     pub fn for_workspace(workspace_root: &Path) -> Self {
         let defaults = Self::defaults_for_workspace(workspace_root);
         Self {
-            identity: std::env::var_os("MEMRIGHT_INSTALLATION_FILE")
+            identity: std::env::var_os("CRYPT_INSTALLATION_FILE")
                 .map(PathBuf::from)
                 .unwrap_or(defaults.identity),
-            mirror: std::env::var_os("MEMRIGHT_MIRROR")
+            mirror: std::env::var_os("CRYPT_MIRROR")
                 .map(PathBuf::from)
                 .unwrap_or(defaults.mirror),
         }
@@ -739,7 +739,7 @@ pub fn prepare_service_start(
     workspace_root: &Path,
 ) -> Result<(InstallationIdentity, StartupClaim), InstallationIdentityError> {
     let paths = InstallationPaths::for_workspace(workspace_root);
-    let legacy_labels = std::env::var("MEMRIGHT_LEGACY_MACHINE_LABEL")
+    let legacy_labels = std::env::var("CRYPT_LEGACY_MACHINE_LABEL")
         .ok()
         .into_iter()
         .collect::<Vec<_>>();

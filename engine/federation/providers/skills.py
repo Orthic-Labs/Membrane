@@ -2,7 +2,7 @@
 
 Emits the engine-owned skill catalog (index only) as bounded, delivery-ready candidates, so a
 session in any repo discovers the same portable snapshot as memories without filesystem context
-bleed. Bodies are NOT emitted here; they resolve on selection via `memright skill-read <name>`
+bleed. Bodies are NOT emitted here; they resolve on selection via `crypt skill-read <name>`
 (progressive disclosure). Each candidate carries the engine snapshot's audited `bodyHash`.
 
 Git remains the authoring source, while prompt-time ranking consumes one DB snapshot and returns
@@ -44,9 +44,9 @@ def _load(mod_name: str):
 
 
 def _snapshot_from_serve() -> dict[str, Any]:
-    port = os.environ.get("MEMRIGHT_PORT") or os.environ.get("WORKSPACE_MEMORY_PORT") or "47851"
+    port = os.environ.get("CRYPT_PORT") or os.environ.get("WORKSPACE_MEMORY_PORT") or "47851"
     token = ""
-    token_file = os.environ.get("MEMRIGHT_API_TOKEN_FILE", "")
+    token_file = os.environ.get("CRYPT_API_TOKEN_FILE", "")
     try:
         if token_file and os.path.exists(token_file):
             with open(token_file, "r", encoding="utf-8") as handle:
@@ -138,7 +138,7 @@ def produce(
             "protected": False,
             "exact": False,
             "recoverable": True,
-            "resolver": c["resolver"],  # "memright skill-read <name>"
+            "resolver": c["resolver"],  # "crypt skill-read <name>"
             "text": desc,
             # Carve-out fields (recall_planner._format_packet_block): a skill block is delivered into
             # model-visible context ONLY when verify_skill(name, text, bodyHash) matches the audited skill.

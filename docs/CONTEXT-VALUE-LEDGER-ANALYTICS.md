@@ -96,7 +96,7 @@ number of files dynamically, rejects legacy label-named snapshots, and selects o
 valid snapshot per installation. Every projected report table preserves the exact
 `policy_activation_sha256` dimension; filters use full-digest equality, and malformed digests fail
 closed. Missing or partial measures remain null/red rather than zero.
-While `memright-daily` is disabled, snapshots must declare `manual_unscheduled`; no dashboard may
+While `crypt-daily` is disabled, snapshots must declare `manual_unscheduled`; no dashboard may
 turn an ad-hoc cutoff into a continuous-freshness claim.
 
 The snapshot retains opaque per-session operation/phase/status aggregates and an observer × origin
@@ -113,7 +113,7 @@ Windows daily/on-demand production snapshot:
 
 ```powershell
 py -3.11 tools/pipelines/memory/context-value-daily.py `
-  --db tools/.cache/memory/memright-engine.db `
+  --db tools/.cache/memory/crypt-engine.db `
   --output tools/.cache/metrics/context-value-daily.json `
   --pretty --fail-on-gap
 ```
@@ -122,7 +122,7 @@ macOS/Linux uses the identical implementation:
 
 ```bash
 python3 tools/pipelines/memory/context-value-daily.py \
-  --db tools/.cache/memory/memright-engine.db \
+  --db tools/.cache/memory/crypt-engine.db \
   --output tools/.cache/metrics/context-value-daily.json \
   --pretty --fail-on-gap
 ```
@@ -140,4 +140,4 @@ py -3.11 tools/pipelines/memory/context-reconcile.py `
 `--fail-on-gap` writes the complete report and exits 1 when reconciliation gaps exist. Invalid or
 content-bearing input exits 2. File output is flushed to a temporary file and atomically replaced,
 so interruption cannot publish a partial report. The command is read-only and does not enable or
-invoke `memright-daily`.
+invoke `crypt-daily`.

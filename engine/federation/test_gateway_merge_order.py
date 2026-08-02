@@ -70,12 +70,12 @@ class _ImmediateExecutor:
 
 
 def _planner_command(candidate_set: Path) -> list[str]:
-    override = os.environ.get("MEMRIGHT_BIN", "").strip()
+    override = os.environ.get("CRYPT_BIN", "").strip()
     if override:
         return [override, "plan-context", "--candidate-set", str(candidate_set), "--max-tokens", "4096"]
 
     binary = ROOT / "membrane" / "engine" / "target" / "debug" / (
-        "memright.exe" if os.name == "nt" else "memright"
+        "crypt.exe" if os.name == "nt" else "crypt"
     )
     if binary.is_file():
         return [str(binary), "plan-context", "--candidate-set", str(candidate_set), "--max-tokens", "4096"]
@@ -87,9 +87,9 @@ def _planner_command(candidate_set: Path) -> list[str]:
         "--manifest-path",
         str(ROOT / "membrane" / "engine" / "Cargo.toml"),
         "-p",
-        "memright",
+        "crypt",
         "--bin",
-        "memright",
+        "crypt",
         "--",
         "plan-context",
         "--candidate-set",
@@ -107,13 +107,13 @@ def _semantic_candidate_set(ccs: dict) -> dict:
     return semantic
 
 
-def test_planner_fallback_selects_memright_cli_binary(monkeypatch, tmp_path: Path):
-    monkeypatch.delenv("MEMRIGHT_BIN", raising=False)
+def test_planner_fallback_selects_crypt_cli_binary(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("CRYPT_BIN", raising=False)
     monkeypatch.setitem(globals(), "ROOT", tmp_path)
 
     command = _planner_command(tmp_path / "candidate-set.json")
 
-    assert command[command.index("--bin") + 1] == "memright"
+    assert command[command.index("--bin") + 1] == "crypt"
 
 
 def test_completion_permutations_keep_precedence_receipts_and_packet_hash_stable(
@@ -150,9 +150,9 @@ def test_completion_permutations_keep_precedence_receipts_and_packet_hash_stable
     )
     monkeypatch.setattr(gateway.architect, "produce", lambda *_args: [candidates["architect"]])
     monkeypatch.setattr(
-        gateway.memright,
+        gateway.crypt,
         "produce_with_observability",
-        lambda *_args: ([candidates["memright"]], "fixture", {"stageElapsedMs": {}}),
+        lambda *_args: ([candidates["crypt"]], "fixture", {"stageElapsedMs": {}}),
     )
     monkeypatch.setattr(gateway.git_provider, "produce", lambda *_args: [candidates["git"]])
     monkeypatch.setattr(gateway.live, "produce", lambda *_args, **_kwargs: [candidates["live"]])

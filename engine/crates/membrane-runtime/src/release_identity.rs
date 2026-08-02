@@ -3,11 +3,11 @@
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 
-/// Stable across every process built from the same verified MemRight source tree.
+/// Stable across every process built from the same verified Crypt source tree.
 pub fn release_generation() -> String {
     format!(
         "sha256:{}",
-        option_env!("MEMRIGHT_SOURCE_TREE_SHA256").unwrap_or("unknown")
+        option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown")
     )
 }
 
@@ -64,7 +64,7 @@ mod tests {
             release_generation(),
             format!(
                 "sha256:{}",
-                option_env!("MEMRIGHT_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown")
             )
         );
     }

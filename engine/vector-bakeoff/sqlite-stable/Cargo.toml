@@ -7,7 +7,7 @@ publish = false
 [workspace]
 
 [dependencies]
-memright-core = { path = "../../crates/memright-core" }
+crypt-core = { path = "../../crates/crypt-core" }
 rusqlite = { version = "=0.40.1", features = ["bundled"] }
 serde_json = "1.0.145"
 sqlite-vec-stable = { package = "sqlite-vec", version = "=0.1.9" }

@@ -3,13 +3,13 @@
 //! Strict storage boundary (locked 2026-07-12, dispatch §G3B):
 //!
 //! ```text
-//! MemRight DB               durable memories only
+//! Crypt DB               durable memories only
 //! <context-home>/catalog.db identities, handles, generations, scope grants,
 //!                           retrieval events, capabilities, receipts
 //! <context-home>/repos/...  separately attachable graph generations
 //! ```
 //!
-//! The catalog NEVER reuses or migrates the MemRight durable-memory DB. It owns a
+//! The catalog NEVER reuses or migrates the Crypt durable-memory DB. It owns a
 //! separate SQLite file, lives in a dedicated directory, runs its own
 //! additive migrations via `PRAGMA user_version`, and exposes a small,
 //! planner-specific surface (issuance / lookup / revoke for scope grants, plus
@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Schema-version of the catalog. Migrations are additive (`ALTER TABLE ADD` /
-/// `CREATE INDEX`) — never re-shape the MemRight DB, never delete a previously
+/// `CREATE INDEX`) — never re-shape the Crypt DB, never delete a previously
 /// persisted column.
 pub const CATALOG_SCHEMA_VERSION: i64 = 1;
 
@@ -40,7 +40,7 @@ pub fn default_catalog_path() -> PathBuf {
         let root = PathBuf::from(root);
         return root.join("catalog.db");
     }
-    let base = std::env::var_os("MEMRIGHT_DB")
+    let base = std::env::var_os("CRYPT_DB")
         .map(PathBuf::from)
         .or_else(|| {
             std::env::var_os("USERPROFILE")
@@ -64,7 +64,7 @@ pub struct ContextCatalog {
 impl ContextCatalog {
     /// Open (or create) the catalog at `path`, WAL + busy timeout, run
     /// migrations. The path is recorded so health/output can echo it; the
-    /// MemRight DB is never touched.
+    /// Crypt DB is never touched.
     pub fn open<P: AsRef<Path>>(path: P) -> rusqlite::Result<Self> {
         let path = path.as_ref().to_path_buf();
         if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -89,7 +89,7 @@ impl ContextCatalog {
 
     /// In-memory ephemeral catalog for tests. Mirrors MemDb::open_in_memory but
     /// lives in a separate connection so it can never accidentally write to
-    /// the MemRight DB.
+    /// the Crypt DB.
     pub fn open_in_memory() -> Self {
         let mut conn = Connection::open_in_memory().expect("open in-memory catalog");
         conn.execute_batch("PRAGMA busy_timeout=5000; PRAGMA temp_store=MEMORY;")
@@ -125,7 +125,7 @@ impl ContextCatalog {
 // ---- Migrations ----------------------------------------------------------
 //
 // Catalogs are append-only additive. The dispatcher commits to "additive only,
-// never rewrite the MemRight DB". Each migration step opens a transaction,
+// never rewrite the Crypt DB". Each migration step opens a transaction,
 // applies its change, then bumps `PRAGMA user_version`. Migrations must remain
 // idempotent so a partial application re-running the helper upgrades in place.
 
@@ -552,7 +552,7 @@ pub fn health_snapshot(catalog: &ContextCatalog) -> serde_json::Value {
                 "receipts": serde_json::Value::Null,
                 "retrievalEvents": serde_json::Value::Null,
                 "activeGrants": serde_json::Value::Null,
-                "memrightDbUntouched": true,
+                "cryptDbUntouched": true,
             });
         }
     };
@@ -578,7 +578,7 @@ pub fn health_snapshot(catalog: &ContextCatalog) -> serde_json::Value {
             "receipts": receipts,
             "retrievalEvents": events,
             "activeGrants": active_grants,
-            "memrightDbUntouched": true,
+            "cryptDbUntouched": true,
         }),
         Err(_) => serde_json::json!({
             "schemaVersion": CATALOG_SCHEMA_VERSION,
@@ -587,7 +587,7 @@ pub fn health_snapshot(catalog: &ContextCatalog) -> serde_json::Value {
             "receipts": serde_json::Value::Null,
             "retrievalEvents": serde_json::Value::Null,
             "activeGrants": serde_json::Value::Null,
-            "memrightDbUntouched": true,
+            "cryptDbUntouched": true,
         }),
     }
 }
@@ -638,7 +638,7 @@ mod tests {
         assert_eq!(snapshot["receipts"], serde_json::Value::Null);
         assert_eq!(snapshot["retrievalEvents"], serde_json::Value::Null);
         assert_eq!(snapshot["activeGrants"], serde_json::Value::Null);
-        assert_eq!(snapshot["memrightDbUntouched"], true);
+        assert_eq!(snapshot["cryptDbUntouched"], true);
     }
 
     #[test]
@@ -655,22 +655,22 @@ mod tests {
     }
 
     #[test]
-    fn catalog_opens_without_touching_memright_db() {
+    fn catalog_opens_without_touching_crypt_db() {
         // Distinct file paths. If the catalog implementation ever tried to open
-        // the MemRight DB, one of these paths would receive writes or schema
+        // the Crypt DB, one of these paths would receive writes or schema
         // changes — both detectable here.
         let dir = tempfile::tempdir().unwrap();
-        let memright_path = dir.path().join("memright-engine.db");
+        let crypt_path = dir.path().join("crypt-engine.db");
         let catalog_path = dir.path().join("catalog.db");
-        std::fs::write(&memright_path, b"MEMRIGHT_DB_SENTINEL").unwrap();
+        std::fs::write(&crypt_path, b"CRYPT_DB_SENTINEL").unwrap();
 
         let catalog = ContextCatalog::open(&catalog_path).unwrap();
         let _ = catalog; // touch handle
 
-        // MemRight DB must be byte-identical — the catalog never opened it.
+        // Crypt DB must be byte-identical — the catalog never opened it.
         assert_eq!(
-            std::fs::read(&memright_path).unwrap(),
-            b"MEMRIGHT_DB_SENTINEL"
+            std::fs::read(&crypt_path).unwrap(),
+            b"CRYPT_DB_SENTINEL"
         );
         // Catalog DB exists and has the v1 schema stamp.
         assert!(catalog_path.exists());

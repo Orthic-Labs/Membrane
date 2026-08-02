@@ -39,7 +39,7 @@
     "blocks": [
       {
         "id": "memory:role:canonical-memory",
-        "provider": "memright",
+        "provider": "crypt",
         "sourceKind": "memory",
         "sourceRef": "D--Claude",
         "sourceHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -52,7 +52,7 @@
         "renderedTokens": 0,
         "deliveredChars": 0,
         "dropReason": "none",
-        "resolver": "memright get canonical-memory",
+        "resolver": "crypt get canonical-memory",
         "text": "durable memory preview"
       },
       {
@@ -70,7 +70,7 @@
         "renderedTokens": 0,
         "deliveredChars": 0,
         "dropReason": "none",
-        "resolver": "memright skill-read fixture-token",
+        "resolver": "crypt skill-read fixture-token",
         "text": "audited skill description"
       },
       {
@@ -133,7 +133,7 @@
       "freshnessClass": "dirty_overlay"
     },
     "providerAccounting": {
-      "memright": {"selected_tokens": 8, "planner_selected_tokens": 8},
+      "crypt": {"selected_tokens": 8, "planner_selected_tokens": 8},
       "skills": {"selected_tokens": 12, "planner_selected_tokens": 12},
       "blueprint": {"selected_tokens": 0, "planner_selected_tokens": 16},
       "git": {"selected_tokens": 0, "planner_selected_tokens": 4}

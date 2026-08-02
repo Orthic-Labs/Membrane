@@ -1,4 +1,4 @@
-//! memright-format — Open Knowledge Format (OKF) bundle support and deterministic prose compression.
+//! crypt-format — Open Knowledge Format (OKF) bundle support and deterministic prose compression.
 //!
 //! Extracted from the config crate during the R0.2 workspace migration.
 //! The `InstructionLoader::load_okf_bundle` method and policy-dependent

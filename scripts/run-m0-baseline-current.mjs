@@ -69,8 +69,8 @@ const suites = {
   "membrane-host": [process.execPath, ["--test", join(membraneRoot, "mcp/client.test.mjs"), join(membraneRoot, "mcp/adapters.test.mjs")], workspaceRoot],
   membrane: [process.execPath, ["--test", join(membraneRoot, "mcp/project-registry.test.mjs")], workspaceRoot],
   cortex: ["pnpm", ["--dir", join(workspaceRoot, "cortex"), "test:all"], workspaceRoot],
-  sentinel: ["pnpm", ["--dir", join(workspaceRoot, "tether"), "test"], workspaceRoot],
-  morph: [join(workspaceRoot, ".venv-tools/bin/python"), ["-m", "pytest", join(workspaceRoot, "adapt/tests")], workspaceRoot],
+  sentinel: ["pnpm", ["--dir", join(workspaceRoot, "sentinel"), "test"], workspaceRoot],
+  morph: [join(workspaceRoot, ".venv-tools/bin/python"), ["-m", "pytest", join(workspaceRoot, "morph/tests")], workspaceRoot],
 };
 
 function runSuite(owner) {
@@ -83,7 +83,7 @@ function runSuite(owner) {
     env: {
       ...process.env,
       CI: "1",
-      MEMRIGHT_TEST_BIN: process.env.MEMRIGHT_TEST_BIN || join(membraneRoot, "engine/target/debug", process.platform === "win32" ? "memright.exe" : "memright"),
+      CRYPT_TEST_BIN: process.env.CRYPT_TEST_BIN || join(membraneRoot, "engine/target/debug", process.platform === "win32" ? "crypt.exe" : "crypt"),
     },
   });
   const output = `${result.stdout || ""}${result.stderr || ""}`;

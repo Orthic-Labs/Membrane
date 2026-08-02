@@ -1,14 +1,14 @@
 # Membrane — Windows + Mac current state and backlog (source of truth)
 
-**What this is:** the single cross-platform current-state map of Membrane (the umbrella context system; historically called RightContext in older docs and internal aliases) and Crypt (its durable-memory engine; literal `memright*` identifiers remain compatibility surfaces) for both Windows and Mac. Design rationale lives in `docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` (2026-07-12, design-era) and `tools/lib/CONTEXT-ENGINEERING.md`; the operational telemetry/identity coverage contract and 2026-07-21 audit are in `docs/MEMBRANE-TELEMETRY-IDENTITY.md`; per-feature ADRs + measurements live in the `docs/plans/2026-07-*` files linked below. This doc is the index of *what is live now* and *what is next*. Last updated **2026-08-01**.
+**What this is:** the single cross-platform current-state map of Membrane (the umbrella context system; historically called RightContext in older docs and internal aliases) and Crypt (its durable-memory engine; literal `crypt*` identifiers remain compatibility surfaces) for both Windows and Mac. Design rationale lives in `docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` (2026-07-12, design-era) and `tools/lib/CONTEXT-ENGINEERING.md`; the operational telemetry/identity coverage contract and 2026-07-21 audit are in `docs/MEMBRANE-TELEMETRY-IDENTITY.md`; per-feature ADRs + measurements live in the `docs/plans/2026-07-*` files linked below. This doc is the index of *what is live now* and *what is next*. Last updated **2026-08-01**.
 
 ## Repository posture (honest)
 
-This tree is an **internal mirror / workspace-coupled checkout**, not a self-contained public product. Live planner hooks, Crypt DB paths, federation providers, and install binding assume the Damned Designs studio workspace (`tools/`, shared hooks, launchd/Task Scheduler wiring). Public MCP surface names use Membrane; RightContext remains a compatibility alias in headers, telemetry tokens, and historical evidence. Capability truth is generated from `mcp/server.mjs`, `tether/hooks/membrane-capability-matrix.json`, and `docs/rightcontext/federation-freeze-v1.json` by `mcp/capability-inventory.mjs`; exercised path: `mcp/capability-inventory.test.mjs`.
+This tree is an **internal mirror / workspace-coupled checkout**, not a self-contained public product. Live planner hooks, Crypt DB paths, federation providers, and install binding assume the Damned Designs studio workspace (`tools/`, shared hooks, launchd/Task Scheduler wiring). Public MCP surface names use Membrane; RightContext remains a compatibility alias in headers, telemetry tokens, and historical evidence. Capability truth is generated from `mcp/server.mjs`, `sentinel/hooks/membrane-capability-matrix.json`, and `docs/rightcontext/federation-freeze-v1.json` by `mcp/capability-inventory.mjs`; exercised path: `mcp/capability-inventory.test.mjs`.
 
 ## Cross-provider scores — lane policy (P1)
 
-Raw `provider_score` values are **not** cross-provider-comparable. Admission uses reserved source-kind lanes (memory 800 / skill 300 tokens of the default 4096 budget) so incompatible scales (overlay recency prior vs memory cosine) do not starve each other. Full recalibration is deferred; lanes are the standing policy (see `memright-core/planner.rs`).
+Raw `provider_score` values are **not** cross-provider-comparable. Admission uses reserved source-kind lanes (memory 800 / skill 300 tokens of the default 4096 budget) so incompatible scales (overlay recency prior vs memory cosine) do not starve each other. Full recalibration is deferred; lanes are the standing policy (see `crypt-core/planner.rs`).
 
 ## RMS + Markdown Doc Spine absorption — COMPLETE 2026-07-30
 
@@ -16,7 +16,7 @@ RMS A1–A5 & Doc Spine D1–D4 are implemented, promoted, installed, & certifie
 Windows. Final runtime root/Membrane is `74b0ad52` / `944ea3ad`; engine tree is
 `ac41729c4f8857756529a0832e0675e39dd52e9c740e28961fdb5ae358631a7f`.
 
-- macOS: exact final CLI/service pair installed; launchd owns `tools/bin/memright-service`;
+- macOS: exact final CLI/service pair installed; launchd owns `tools/bin/crypt-service`;
   EmbeddingGemma Q4/768 health, exact fingerprint/release generation, writes, authenticated Q4,
   Doc Spine CLI, focused Rust, & MCP tests pass.
 - Windows: Q1–Q5 preserved; exact pair installed; resident service healthy; immutable OWN-only
@@ -24,7 +24,7 @@ Windows. Final runtime root/Membrane is `74b0ad52` / `944ea3ad`; engine tree is
   `9c4126d6dd5e2963b0846575da1bdd21cfc9788c740a4b95495790ec98e80af1`.
 - Runtime behavior stayed at `944ea3ad`; qualification-only corrections are isolated in
   `de214878`. Windows made zero source edits & zero P0–P4 actions.
-- CodeRight consumes exact Membrane revision `944ea3ad` for `memright` & `memright-core`; no
+- CodeRight consumes exact Membrane revision `944ea3ad` for `crypt` & `crypt-core`; no
   duplicate engine source or retired root-repository dependency remains.
 
 Older candidate, pending, paired-P3/P4, or install checkpoints below are historical evidence, not
@@ -85,7 +85,7 @@ successful linked use, six unresolved recommendations, and zero errors.
 
 Canonical proof is frozen in
 `rightcontext-evidence/g2/final-dc7780f2/windows/installed-telemetry-repair.json`; paired assets,
-manifest, P0, and P2 live beside it. `memright-daily` remains intentionally disabled.
+manifest, P0, and P2 live beside it. `crypt-daily` remains intentionally disabled.
 
 **Mac P2 and installation are complete (2026-07-22).** The earlier `p2-load-macos.json`,
 `p2-load-macos-v2.json`, and `p2-load-macos-v3.json` receipts remain rejected historical evidence.
@@ -95,7 +95,7 @@ The immutable schema-2 `p2-load-macos-v4.json` receipt passed with a 1.416709 ms
 diagnostic. The manifest-bound guarded installer then installed the exact `dc7780f2` Mac CLI/service
 pair. Installer verification passes; `/health` reports writes enabled and release generation
 `ccb9c362…c3489`; the resident DB is schema v18 with clean integrity and foreign-key checks; live
-recall succeeds; and `com.adrian.memright-daily` remains disabled.
+recall succeeds; and `com.adrian.crypt-daily` remains disabled.
 
 **Bidirectional convergence, paired P3, and fleet P4 are complete (2026-07-22).** Mac published its first
 handback at `f72e1bad`; Windows consumed it and published the resident-service-backed return at
@@ -130,13 +130,13 @@ Windows is activated through the sole guarded setup door. Its machine-local cand
 `on`, cohorts are enabled at 50% control, promotion receipt binding is `0da160c2…6b75`, cohort
 preregistration binding is `72e18326…f89a`, and active-policy SHA-256 is `b44e73d0…f182`.
 The resident CLI/service hashes still match the manifest, the live DB remains schema v18, service
-health is green with zero capacity rejections, and `memright-daily` remains disabled. Mac has now
+health is green with zero capacity rejections, and `crypt-daily` remains disabled. Mac has now
 passed the same P4 receipt gate from `/Volumes/D/claude`; its candidate policy is active at 50%,
-receipt SHA-256 is `0da160c2…6b75`, MemRight health is green, and
-`com.adrian.memright-daily` remains unloaded.
+receipt SHA-256 is `0da160c2…6b75`, Crypt health is green, and
+`com.adrian.crypt-daily` remains unloaded.
 
 The first post-fleet-activation replay successor was frozen after 5/60 cells when the resident
-provider returned typed `memright_embed_missing`; it is non-resumable and ineligible for
+provider returned typed `crypt_embed_missing`; it is non-resumable and ineligible for
 acceptance. A separate five-row diagnostic and the replacement run's exact five-row smoke passed
 against unchanged service generation `ab96ce51…ede03`. Replacement
 `gate3-fresh-20260723-a` is running the immutable serial 20 × {30s, 5m, 30m} protocol in a new
@@ -156,12 +156,12 @@ fail-closed/recovery smoke, and authenticated dirty-workspace freshness call all
 integration evidence is frozen at
 `rightcontext-evidence/g2/final-d891b274/windows/installed-integration-v1.json`. The earlier
 `815cd511` installed Gate-1/2 artifact remains the strict cap/budget, watchdog, isolation, and
-RC-2.5 acceptance record; d891 changes only the compiled MemRight boundary it supersedes. Gate 2
+RC-2.5 acceptance record; d891 changes only the compiled Crypt boundary it supersedes. Gate 2
 retains only its calendar-bound three-production-date floor.
 
 The machine-local `candidate` policy is active with mode `on`, cohorts enabled, 50% control, and
 policy `rightcontext-planner-v2-balanced` (policy SHA-256 `5594fa09…bb712`).
-`memright-daily` stayed disabled before activation, throughout the prior failed runs, through the
+`crypt-daily` stayed disabled before activation, throughout the prior failed runs, through the
 d891 installation and runtime smokes, and at this update. Three `815cd511` replay runs remain frozen
 failed/non-resumable after 7/60, 3/60, and 33/60 cells; their freshness defect was repaired at 5ea
 and superseded by the compiled d891 boundary. The d891 four-asset installation and freshness proof
@@ -178,7 +178,7 @@ bounds every background Git child to two seconds with kill-and-reap, enforces a 
 hook ceiling, prevents candidate failure from starting sequential legacy recall, and adds the
 content-free N-installation Context Value Ledger. That historical candidate was not yet installed at
 this checkpoint. Its successor installation and P3/P4 state are recorded above. Gate 3 remains open,
-and `memright-daily` remains disabled.
+and `crypt-daily` remains disabled.
 
 **Current paired-release checkpoint — 2026-07-21:** Windows froze the release-owned source at
 `5f83bb7558d0691876c80e61cf62af6440d3ed6f`, tree/release generation
@@ -236,23 +236,23 @@ clock. Timestamp-only legacy events/cursors remain readable. Active workspace cl
 intervals, not a permanent machine list, determine which installations owe peer-apply evidence.
 
 Replication is logically separate from daily maintenance. The lightweight plane only pulls,
-validates, applies/re-embeds, exports local mutations/cursors, and pushes; Adapt mining, curation,
+validates, applies/re-embeds, exports local mutations/cursors, and pushes; Morph mining, curation,
 derived exports, and hosted-metrics refresh belong to the maintenance plane. They are still bundled
 by the legacy `daily-sync.sh` wrapper; the proposed generic `daily_sync.py` runner is not implemented
 and is explicitly deferred until after paired P3/P4 acceptance. Recurring convergence therefore
 remains intentionally off for this gate run.
 After paired P3/P4 acceptance, a separately named, configurable replication schedule is the correct
-freshness improvement; enabling it must not enable `memright-daily` or hardcode any installation.
+freshness improvement; enabling it must not enable `crypt-daily` or hardcode any installation.
 
 The Context Value Ledger records expected, started, terminal, admitted, delivered, and downstream
-used/ignored/contradicted/unknown states for memory, Adapt, Blueprint, skill output, rules,
+used/ignored/contradicted/unknown states for memory, Morph, Blueprint, skill output, rules,
 transforms, replication, and namespaced future families. Reconciliation reports every missing hook,
 missing terminal, failed read/write/sync, should-have-used-but-did-not opportunity, and value join by
 installation, service instance, OS/arch metadata, client (Claude/Codex/other), provider, session,
 turn, policy, and cohort. Production cubes exclude smoke/eval by default.
 
 Prompt hooks do not open or migrate SQLite. Python and Node each append one bounded, content-free
-lifecycle intent; the resident MemRight service expands the canonical events, validates exact
+lifecycle intent; the resident Crypt service expands the canonical events, validates exact
 expected counts and activation attribution, and commits them transactionally under its startup
 identity lease. Cursor-after-commit replay is idempotent, malformed records are represented by
 bounded hashes without blocking a valid tail, and consumed journals rotate through a sealed quiet
@@ -290,10 +290,10 @@ both installation reports; P4 separately validates the combined fleet evidence a
 preconditions. No host's proof substitutes for another's, and P3 never implies P4.
 
 The only valid remaining order is: push source → Mac `git pull --ff-only` to that exact commit →
-ordinary setup with the daily job disabled → explicit Mac Adapt one-shot batches until
+ordinary setup with the daily job disabled → explicit Mac Morph one-shot batches until
 `no_new_sessions` → guarded same-commit install on Mac and Windows → bidirectional sync/convergence
 → per-installation census/reconciliation/snapshots → P3 on both + aggregate P4 → explicit
-policy/cohort activation → wholly fresh replay. `memright-daily` stays disabled at every boundary.
+policy/cohort activation → wholly fresh replay. `crypt-daily` stays disabled at every boundary.
 
 ## 2026-07-18 gate-contract status (stable RC IDs)
 
@@ -337,11 +337,11 @@ policy/cohort activation → wholly fresh replay. `memright-daily` stays disable
   ambiguous timed-out mutations lacked server-enforced replay idempotency, diagnostics shared
   Tokio's global blocking pool, and saturation tests depended on scheduler sleeps. It was never
   installed (`installAllowed=false`). The reviewed successor repair
-  is frozen and pushed at `815cd5112f822d306db69c8b4eafcbf54585036e` with MemRight tree SHA-256
+  is frozen and pushed at `815cd5112f822d306db69c8b4eafcbf54585036e` with Crypt tree SHA-256
   `a2a81039c606e1dbe5266d4698a79daddbcbc4dd13caf587a7c1a121402312c2`. It isolates liveness and
   dependency diagnostics from bounded workload/model admission, adds server replay idempotency,
   and gives CLI/dashboard writes privacy-safe durable retry keys that fail closed on ambiguity.
-  Independent spec and quality reviews pass. Verification is green: `cargo test -p memright`
+  Independent spec and quality reviews pass. Verification is green: `cargo test -p crypt`
   (188 library, 35 CLI plus one intentionally ignored helper explicitly exercised by its parent,
   and every integration/doc suite), strict all-target Clippy, Rustfmt, scoped diff/secret checks,
   and 18 Node dashboard-outbox tests. This is source proof, not deployment/capacity proof. Limits
@@ -359,7 +359,7 @@ policy/cohort activation → wholly fresh replay. `memright-daily` stays disable
   its runtime-assets-v2 and vector-ranking-v2 artifacts validate under the same source, tree,
   generation, probe, model, dimension, and fingerprint. The final comparison artifact
   `rightcontext-evidence/g2/final-815cd511/paired-comparison-v2.json` passes and the four-asset
-  `tools/lib/memright-release.json` binding is complete. Windows installation is complete.
+  `tools/lib/crypt-release.json` binding is complete. Windows installation is complete.
   The disposable service-resilience capture harness is **INSTALLED EVIDENCE COMPLETE** at
   `tools/pipelines/memory/membrane-service-resilience.py` with focused tests at
   `tools/pipelines/memory/test_membrane_service_resilience.py`. The original harness landed at
@@ -430,7 +430,7 @@ policy/cohort activation → wholly fresh replay. `memright-daily` stays disable
   typed dependency failure; final candidate port refusal; and stable healthy predecessor identity
   with zero run-tag rows/events before and after. Independent artifact review passed, both candidate
   PIDs are absent, candidate port `61962` is refused, production PID `49300` remains the exact
-  manifest-bound predecessor, and `memright-daily` remains disabled. No production database,
+  manifest-bound predecessor, and `crypt-daily` remains disabled. No production database,
   release manifest, cohort, or replay state changed during that pre-install capture. The exact
   same-source Mac handback, paired comparison, and four-asset manifest passed before installation.
   Failed-run directories are never resumed, appended, or spliced.
@@ -465,7 +465,7 @@ policy/cohort activation → wholly fresh replay. `memright-daily` stays disable
   runs are frozen failed/non-resumable at 7/60, 3/60, and 33/60 cells; the exact content-free
   bindings live in `rightcontext-evidence/g3/activation-815cd511/windows/activation-replay-v1.json`.
   The 85,031 ms freshness terminal is repaired in source at `5ea40c08`; its genuine same-source Mac
-  pair and final comparison pass. Later compiled MemRight hardening at `d891b274` supersedes 5ea as
+  pair and final comparison pass. Later compiled Crypt hardening at `d891b274` supersedes 5ea as
   the installable release boundary. The genuine d891 pair, comparison, manifest, coordinated
   installation, and installed freshness proof are complete; a wholly fresh replay is running.
 - **RC-MAC-BLOCK — COMPLETE FOR CURRENT `d891b274`:** commit `05c4057f` supplied the genuine
@@ -473,21 +473,21 @@ policy/cohort activation → wholly fresh replay. `memright-daily` stays disable
   hashes, and scoped state note for final successor `815cd5112f822d306db69c8b4eafcbf54585036e`.
   Independent Windows validation found exactly the three authorized paths, valid direct-snapshot
   runtime binding, no Windows cross-labels, and a valid three-repeat v2 capture. The final paired
-  comparison passes and `tools/lib/memright-release.json` binds the four assets. Windows install and
+  comparison passes and `tools/lib/crypt-release.json` binds the four assets. Windows install and
   guarded telemetry migration remain complete for installed `815cd511`. Rust freshness changed at
   `5ea40c08`, so that earlier pair cannot authorize the repair install. Windows source/tree,
   build-info, runtime-assets-v2, and three-repeat vector-ranking-v2 evidence validate. The matching
   genuine Mac artifacts validate under the same source/tree/generation/probe/model/fingerprint, and
   the 5ea comparison passes. The source-owner gate correctly refuses its installation because
-  `d891b274` later changed compiled MemRight source. Windows d891 build/runtime/ranking evidence is
+  `d891b274` later changed compiled Crypt source. Windows d891 build/runtime/ranking evidence is
   valid and CodeRight pins d891. Same-source d891 Mac evidence, comparison, manifest, coordinated
   installation, and focused installed checks now pass; the new replay is in progress.
 - **RC-IDS — DONE (documentation/orchestration only):** backlog rows, commit subjects, and future
   state transitions use stable RC IDs. This naming change closes no correctness, availability,
   measurement, quality, or performance acceptance criterion.
 
-**Cognition Layers 9–11 remain `[Target]`:** `memright plan`, `memright think`, and
-`memright verify` are not executable before genuine Gates 1–3 acceptance. Naming the family does
+**Cognition Layers 9–11 remain `[Target]`:** `crypt plan`, `crypt think`, and
+`crypt verify` are not executable before genuine Gates 1–3 acceptance. Naming the family does
 not authorize implementation, a second store/embedder/sync path, or a model-optional primary door.
 
 **RC-T.1-CAPABILITY-PROBE remains `[Target]` / non-gating:** after genuine Gates 1–3 acceptance,
@@ -503,8 +503,8 @@ flowchart TB
     MODE -->|off| LEG[legacy recall]
     MODE -->|shadow| LEG2[legacy recall<br/>+ federation telemetry]
     MODE -->|on candidate<br/>50/50 policy active| FED
-    FED[memright federate<br/>Rust shell] -->|spawns| GW[gateway.py<br/>9 providers in parallel]
-    GW --> A1[blueprint] & A2[audit] & A3[architect] & A4[memright<br/>shared recall] & A5[git] & A6[live] & A7[rules] & A8[anchors] & A9[skills]
+    FED[crypt federate<br/>Rust shell] -->|spawns| GW[gateway.py<br/>9 providers in parallel]
+    GW --> A1[blueprint] & A2[audit] & A3[architect] & A4[crypt<br/>shared recall] & A5[git] & A6[live] & A7[rules] & A8[anchors] & A9[skills]
     A4 --> SR[recall_scored<br/>veto + bounded one-hop]
     GW --> ADM[planner admission<br/>reserved lanes: memory 800 / skill 300<br/>then global fill]
     ADM -->|no safe delivery / unavailable| LEG3[fall back to legacy<br/>flip-safety gate]
@@ -522,14 +522,14 @@ flowchart TB
 
 | # | Feature | State | Key files | ADR + measurements |
 |---|---|---|---|---|
-| 1 | **Feedback rail** — per-candidate recall self-learning; `get`→used, delete/supersede→contradicted; verified `contradicted` = veto-until-superseded (sha-aware); shared `recall_scored` and live `/recall` both apply it; persisted `context_feedback` (schema v7); `metrics.feedback`. MCP `membrane_feedback` now persists through the engine/CLI feedback path with `LifecycleReceiptV1` readback; unavailable-engine paths remain explicit `accepted_advisory` + `durable:false`. | LIVE (engine + receipt-bound MCP path); fallback explicit | `memright-core/effectiveness.rs`, `memright/feedback.rs`, `store.rs`, `serve.rs` (`/feedback`), `main.rs` (`feedback` verb), `mcp/server.mjs` (`membrane_feedback`) | [plan](plans/2026-07-15-rightcontext-feedback-rail.md) |
-| 2 | **Skills = 9th provider** — workspace skill catalog served cross-repo; discover from any repo; `memright skill-read <name>` loads bodies; provenance-sealed delivery (bodyHash + Git) | LIVE | `federation/providers/skills.py`, `skills-catalog/{ingest,provider}.py`, `main.rs` (`skill-read`), `recall_planner.py` carve-out, `lib/skill_frontmatter.py` | [plan](plans/2026-07-15-skills-as-rightcontext-provider.md) |
-| 3 | **Memory-content delivery** — federation memory provider fixed from stub → real `recall_scored` + content previews; UTF-8 subprocess; planner `structural` key | LIVE | `federation.rs` (`memory_candidates_payload`), `federation/providers/memright.py`, `recall_planner.py` memory carve-out | [plan](plans/2026-07-15-rightcontext-memory-delivery.md) |
-| 4 | **Admission reserved lanes + memory DB-provenance seal** — two-pass admission (memory 800 / skill 300 tok lanes, then global fill) fixes overlay-flood starvation; memory delivery verified against a real DB row (read-only, fail-closed) | LIVE | `memright-core/planner.rs`, `recall_planner.py` (`_verify_memory_row`) | [plan](plans/2026-07-15-rightcontext-admission-lanes-memory-seal.md) |
+| 1 | **Feedback rail** — per-candidate recall self-learning; `get`→used, delete/supersede→contradicted; verified `contradicted` = veto-until-superseded (sha-aware); shared `recall_scored` and live `/recall` both apply it; persisted `context_feedback` (schema v7); `metrics.feedback`. MCP `membrane_feedback` now persists through the engine/CLI feedback path with `LifecycleReceiptV1` readback; unavailable-engine paths remain explicit `accepted_advisory` + `durable:false`. | LIVE (engine + receipt-bound MCP path); fallback explicit | `crypt-core/effectiveness.rs`, `crypt/feedback.rs`, `store.rs`, `serve.rs` (`/feedback`), `main.rs` (`feedback` verb), `mcp/server.mjs` (`membrane_feedback`) | [plan](plans/2026-07-15-rightcontext-feedback-rail.md) |
+| 2 | **Skills = 9th provider** — workspace skill catalog served cross-repo; discover from any repo; `crypt skill-read <name>` loads bodies; provenance-sealed delivery (bodyHash + Git) | LIVE | `federation/providers/skills.py`, `skills-catalog/{ingest,provider}.py`, `main.rs` (`skill-read`), `recall_planner.py` carve-out, `lib/skill_frontmatter.py` | [plan](plans/2026-07-15-skills-as-rightcontext-provider.md) |
+| 3 | **Memory-content delivery** — federation memory provider fixed from stub → real `recall_scored` + content previews; UTF-8 subprocess; planner `structural` key | LIVE | `federation.rs` (`memory_candidates_payload`), `federation/providers/crypt.py`, `recall_planner.py` memory carve-out | [plan](plans/2026-07-15-rightcontext-memory-delivery.md) |
+| 4 | **Admission reserved lanes + memory DB-provenance seal** — two-pass admission (memory 800 / skill 300 tok lanes, then global fill) fixes overlay-flood starvation; memory delivery verified against a real DB row (read-only, fail-closed) | LIVE | `crypt-core/planner.rs`, `recall_planner.py` (`_verify_memory_row`) | [plan](plans/2026-07-15-rightcontext-admission-lanes-memory-seal.md) |
 | 5 | **Link-graph recall** — `links(src,dst)` table (schema v8) from `[[wikilinks]]`; extract-on-write + backfill; shared one-hop recall at a discounted tier, depth 1, at most 20%/8 hits. The old federation merge is removed. | LIVE (333 edges at validation) | `memdb.rs` (links table), `store.rs` (`linked_neighbors`, `backfill_links`, `recall_scored_detailed`) | [plan](plans/2026-07-15-rightcontext-link-graph-recall.md) |
 | 6 | **Reversible governance** — low-effectiveness never-used rows move to schema-v10 quarantine with complete row preservation; transactional list/restore CLI and API; duplicate pruning remains permanent | LIVE | `memdb.rs`, `dream.rs`, `serve.rs`, `main.rs` | completion record in the cold-chat handoff |
 | 7 | **Codex hook parity** — `brief@local-brief` 1.0.4, one prompt hook, active-repo resolution, sealed memory/skill delivery, fail-open legacy path, no duplicate brief-policy injection | LIVE | `tools/codex-brief-plugin/recall_planner.js`, source plugin `hooks.json` | completion record in the cold-chat handoff |
-| 8 | **Membrane-owned observable event ledger** — frozen `ObservableEventV1` ingress, content-free host/tool receipts, append-only SQLite persistence, explicit ingress-unavailable status | PARTIAL / active source path; installed service readback pending | `engine/crates/memright/src/context_telemetry.rs`, `mcp/server.mjs`, `tether/hooks/observable-ingress.js`, `tether/hooks/claude-code/tool-receipt.js` | Fable H2/L1 implementation |
+| 8 | **Membrane-owned observable event ledger** — frozen `ObservableEventV1` ingress, content-free host/tool receipts, append-only SQLite persistence, explicit ingress-unavailable status | PARTIAL / active source path; installed service readback pending | `engine/crates/crypt/src/context_telemetry.rs`, `mcp/server.mjs`, `sentinel/hooks/observable-ingress.js`, `sentinel/hooks/claude-code/tool-receipt.js` | Fable H2/L1 implementation |
 | — | **`RIGHTCONTEXT_MODE=on` flip** + flip-safety gate (degraded packet → legacy fallback) | **HISTORICAL 2026-07-16 FLIP, SUPERSEDED** — current machine uses the atomically activated candidate/on/50% policy; fail-safe loading and candidate fallback remain intact | `recall_planner.py` | memory `rightcontext-mode-on-flipped-2026-07-16` |
 
 **Operational note (P0 fix 2026-07-16, Sol audit):** between cutover and 2026-07-16 evening, the federation memory lane recalled from the **global corpus only** — clients send raw filesystem paths as scope and `/memory-candidates` did not normalize them, so project-scoped rows never matched (verified by live probe). Fixed via `canonical_scope_chain` (scope.rs) applied inside `memory_candidates_payload`; regression tests + redeploy same day. On-mode memory deliveries before the fix under-represented project memories.
@@ -550,8 +550,8 @@ Only the absence of safe deliverable context or provider unavailability invokes 
 
 ### External audit validation — Kimi K3 full-flow audit, disposed 2026-07-18
 
-A third-party Kimi K3 audit of RightContext/MemRight was independently validated in-session
-against live `memright metrics`, service `/health` (port 47851), the delivery/heartbeat logs, and
+A third-party Kimi K3 audit of RightContext/Crypt was independently validated in-session
+against live `crypt metrics`, service `/health` (port 47851), the delivery/heartbeat logs, and
 source. Disposition (full table:
 [`2026-07-18-kimi-audit-validation.md`](plans/2026-07-18-kimi-audit-validation.md)):
 
@@ -587,13 +587,13 @@ source. Disposition (full table:
   live `quarantined: 0`); binding code-linked memories to Blueprint generations for automatic
   staleness demotion; Ed25519 signing of mirror events; a dead-man's switch on the daily lane
   (aligned with the pending fail-loud release above); a state-doc lint recomputing this ledger's
-  live values. Packet ordering policy, an Adapt surprisingness gate, per-client cohort
+  live values. Packet ordering policy, an Morph surprisingness gate, per-client cohort
   stratification, and promoting `prep:missing` into a staleness counter are additionally parked,
   receipt-gated, and not admitted.
 
 ## Historical production cutover closure — Claude + Codex (validated 2026-07-16)
 
-The scheduler now owns `tools/bin/memright-service.exe` directly (no console-hosted wrapper), with
+The scheduler now owns `tools/bin/crypt-service.exe` directly (no console-hosted wrapper), with
 working directory `D:\Claude`. The live service reports the 768-dimensional
 `embeddinggemma-300m-q4` embedder and writes enabled. Final release hashes and the complete backlog
 disposition are recorded in `docs/2026-07-16-rightcontext-cold-chat-handoff.md`.
@@ -607,20 +607,20 @@ historical cutover evidence and is superseded.
 
 **Source/runtime boundary — CLOSED 2026-07-16 (evening):** both binaries were rebuilt from source
 including the `8e36cea1` hardening (worker-permit lifetime, collision-safe schema-v10 backout,
-bounded graph metrics) and replaced through the documented redeploy lane (stop `memright-serve` →
-backup → swap `memright.exe` + `memright-service.exe` → restart → `/health` verified, 768-dim
+bounded graph metrics) and replaced through the documented redeploy lane (stop `crypt-serve` →
+backup → swap `crypt.exe` + `crypt-service.exe` → restart → `/health` verified, 768-dim
 embedder, writes enabled; new sha256 prefixes `2adbcca04d61295f` / `3bd6d66372de89a6`, prior
 binaries retained as `.bak-20260716`). The shared `/recall` feedback veto and the schema-v10
 backout guard are now live in the deployed runtime. The Codex planner is JavaScript invoked
-directly from this checkout, so it needed no redeploy. Same day: the Windows `memright-daily`
+directly from this checkout, so it needed no redeploy. Same day: the Windows `crypt-daily`
 task was found `Enabled=false` (07-16 10:00 run missed) — re-enabled, missed run executed.
 
 **Historical predecessor source/runtime boundary — CLOSED 2026-07-17, superseded 2026-07-19:** source commit
-`148b41b2635fab1673494e5525a39005f32bc363` is pushed. Its `tools/memright` tree digest is
+`148b41b2635fab1673494e5525a39005f32bc363` is pushed. Its `tools/crypt` tree digest is
 `8364556848b068306daf121ac10eafe551a4fa2bffc48d04cd86ae2c29d36f6c`. The installed CLI hash is
 `bc16128d8705a741e54946b0d3d5c749b969d9f27e517d119cb599bef4070ce3`; the console-free service
 hash is `aa799c13d236de02378eeb6969ae6e63f7df279ac12a3dbdab3b9d12c89c6938`.
-Task Scheduler owns the service directly at `D:\Claude\tools\bin\memright-service.exe`; it is
+Task Scheduler owns the service directly at `D:\Claude\tools\bin\crypt-service.exe`; it is
 healthy on canonical port 47851. Authenticated `POST /freshness` returns schema v1 and the
 installed federation path delivers a stable dirty overlay with `fallbackMode=none`.
 
@@ -767,12 +767,12 @@ threshold, completing item 2.4. Its downstream analysis exposed a stale measurem
 door then activated profile `candidate`, mode `on`, cohorts enabled, 50% control, and
 `rightcontext-planner-v2-balanced`; the active policy SHA-256 is
 `5594fa092a930e10a186f9f6b2ca89f324b7e2d908de5d0521f3d19459fbb712`.
-`memright-daily` remained disabled. The exact frozen 20-prompt manifest
+`crypt-daily` remained disabled. The exact frozen 20-prompt manifest
 `fa0d2c13…34320` and 20 × {30s, 5m, 30m} serial actual-wait protocol then produced three fresh,
 immutable failures:
 
 - `gate3-successor-815cd511-fresh-20260719T065036Z`: 7/60 complete; frozen marker
-  `e081d2de…5a21`; terminal `g30:p7` spent 2,203 ms in freshness and 12,016 ms in MemRight.
+  `e081d2de…5a21`; terminal `g30:p7` spent 2,203 ms in freshness and 12,016 ms in Crypt.
 - `gate3-successor-815cd511-providerbound-20260719T070737Z`: 3/60 complete; frozen marker
   `f5d122b6…34c9`; terminal `g30:p3` spent 45,015 ms in freshness before provider fan-out.
 - `gate3-successor-815cd511-serverbound-20260719T071957Z`: 33/60 complete; frozen marker
@@ -791,7 +791,7 @@ Mac candidates validate. `rightcontext-evidence/g2/final-5ea40c08/paired-compari
 (SHA-256 `6c19aff8212b5fe1cbeb15add65965dccba70880edecb88a88c71ac47394fa90`) passes with zero jitter,
 held-out drift `0.007472604513168335`, and frozen limit `0.008402415619922637`.
 
-Compiled MemRight source later changed at `d891b27490beff78cc35f1ac55c2697736056d04` to apply the
+Compiled Crypt source later changed at `d891b27490beff78cc35f1ac55c2697736056d04` to apply the
 accepted SQLite `temp_store=MEMORY` hardening. Current canonical tree/release generation is
 `a551336c2f413d9815cd6c217595665a99d27b248b512eab0c7ff79acd9f2a42`. The genuine d891 Windows
 and Mac runtime/ranking captures validate, and
@@ -814,7 +814,7 @@ state SHA-256 `071061f2ef8903e4e4684906f51b149f091242bc4bec26215468eeb16bfcc0a9`
 change invalidated its binding. It is now verified frozen-failed with
 `reason=hook_binding_changed`, results SHA-256
 `137db22e00b9293596e570dc7f744cb9c1ecf322ad521678f30582243bf05507`, and no resume/acceptance
-permission. CodeRight commit `dba695c4` pins all canonical MemRight dependencies to d891.
+permission. CodeRight commit `dba695c4` pins all canonical Crypt dependencies to d891.
 
 The replacement source candidate keeps authenticated resident freshness off the prompt critical
 path, carries `cacheAgeMs` and `refreshInFlight`, gives every Git child a two-second bounded
@@ -836,7 +836,7 @@ that receipt and the replacement replay is in progress.
 
 **Historical successor sequence below; none supersedes the current d891 installed integration.** CodeRight
 commit `9b0f57db` removes its two duplicate local memory crates and pins all three
-canonical MemRight dependencies to full successor revision `32b056553781c6ec763f527d347a6e2f93aef248`;
+canonical Crypt dependencies to full successor revision `32b056553781c6ec763f527d347a6e2f93aef248`;
 ownership and focused memory tests are green. A genuine, uninstalled Windows candidate pair was
 built from the clean successor tree: release generation
 `sha256:a589851134adff1bd978ed69d0fbd567ea38e60bab278c1a4bf695f6da5de470`, CLI SHA-256
@@ -882,7 +882,7 @@ is built and recaptured only after the remaining Gate-1/2 source repairs land.
 
 **Superseded pre-RC-2.5 final-pair Windows candidate — VALID / UNINSTALLED 2026-07-18:** the then-accepted Gate-1/2/3 source
 repairs are frozen at commit `2319d9428f2b9c8a9fe903e858a0ad49f31a527d`, canonical
-`tools/memright` tree SHA-256
+`tools/crypt` tree SHA-256
 `a721f680df27682b42d235ef730c266e33913fc0e6181513f40813bd1aacadce`, and release generation
 `sha256:a721f680df27682b42d235ef730c266e33913fc0e6181513f40813bd1aacadce`.
 A clean `git archive` build in the generation-bound isolated cache produced Windows CLI SHA-256
@@ -893,7 +893,7 @@ artifact `rightcontext-evidence/g2/final-2319d942/windows/vector-ranking-v2.json
 probe-set SHA-256 `fa7371777c783b6c6176f916e1400f2210cbf42ebb861b54c292ad3559ee3988`.
 Its runtime evidence binds the same six model hashes and ORT SHA-256
 `bcce7ce85b962c5a1e354cd85165a6396ce7b2daedf15d272acc0de0963f1c9b`.
-Nothing was installed or activated at that historical boundary; `tools/lib/memright-release.json` remained on `148b41b2`.
+Nothing was installed or activated at that historical boundary; `tools/lib/crypt-release.json` remained on `148b41b2`.
 The matching `2319d942` Mac build/capture and comparison were still absent. That candidate was
 subsequently superseded by `815cd511`; it cannot authorize a manifest or install.
 
@@ -981,7 +981,7 @@ daily-analysis and doctor suites are green. The successor-bound disabled-schedul
 proves stale/fresh success propagation and fail-loud behavior while the recurring task stays
 disabled; its content-free result is bound in `installed-gates-v1.json`.
 
-The deployed 2026-07-17 10:00 `memright-daily` task returned scheduler result `0`, but the local
+The deployed 2026-07-17 10:00 `crypt-daily` task returned scheduler result `0`, but the local
 daily-analysis directory still has no `2026-07-17.json`; that artifact is permanently absent.
 Update 2026-07-18: the 2026-07-18 10:00 run produced `2026-07-18.json` (generated
 2026-07-18T04:30:59Z) with the eligibility, terminal-outcome, SLO, and source-binding sections
@@ -1004,7 +1004,7 @@ retained but will not be spliced. A replacement exact two-row smoke passed on a
 dedicated hidden replay service with generation
 `sha256:68f403c9dfa7c43d2da927e6e9c9abe79e4bdacaa99513d8ae1f2eae4a8de048`, and the replacement
 generation was deliberately frozen after 45/60 cells (20 × 30s, 20 × 5m, 5 × 30m) as failed,
-non-resumable, non-acceptance evidence with `reason=memright_embed_missing`.
+non-resumable, non-acceptance evidence with `reason=crypt_embed_missing`.
 `frozen-failure.json` remains verified and binds state
 `3c147d58a4a92c4bcf5b35dc0b40708756aa68aca9a37e5ffbcea666d3f941ba`, results
 `e15c95fedb603d90d1f632af5854f7945fd9409e80f6c5906faadff5f1c0a4d8`, marker
@@ -1015,7 +1015,7 @@ repaired, a fresh successor grid freezes, the ≥50-current-real-prompt analyzer
 coverage, cohort reduction/quality gates resolve, and exactly one decision branch is selected.
 
 A read-only pre-finalization audit found that seven immutable completed cells lack the required
-MemRight `embed` child timing: one 30-second cell and six 5-minute cells. Each resident request hit
+Crypt `embed` child timing: one 30-second cell and six 5-minute cells. Each resident request hit
 the provider's hard five-second HTTP deadline, silently entered the CLI fallback, and still produced
 a delivered gateway row with no nested stage envelope; the replay runner did not reject it before
 persistence. The current combined real-prompt inputs contain 233 eligible / 172 measured prompts,
@@ -1082,10 +1082,10 @@ Zero federation packets have ever been delivered in production. Root causes, out
 ## ✅ Engine-served skills — the ORIGINAL divergent ask, restored (2026-07-16)
 
 Adrian's original intent was skills that **travel as content, not a directory** — engine-served like memories, no disk/symlink dependence. The build diverged when a reviewer's "memories table is text-only" finding was accepted as blocking engine storage (it never did: SKILL.md bodies ARE text; only binary *resources* need files) and Task 7 was parked. Fixed:
-- **`skills` table (schema v9)** in the engine DB: name, description, body, body_sha256, resource manifest. Git remains the AUTHORING source — `memright reindex` ingests every git-tracked `tools/skills/*/SKILL.md` (tracked-only, frontmatter parsed with a Rust port of the shared YAML-free parser).
+- **`skills` table (schema v9)** in the engine DB: name, description, body, body_sha256, resource manifest. Git remains the AUTHORING source — `crypt reindex` ingests every git-tracked `tools/skills/*/SKILL.md` (tracked-only, frontmatter parsed with a Rust port of the shared YAML-free parser).
 - **`skill-read` = disk-first, engine-fallback:** disk (always-current authoring source) where the checkout exists; the engine row everywhere else — a session/machine with ONLY the synced engine DB loads skills. Proven by `skill_read_serves_from_engine_without_skills_directory` (empty workspace root → body served `source=engine`).
 - **Delivery seal portability:** `SkillResolver._audited` falls back to the engine row when no disk copy exists, so provenance-gated delivery works on DB-only machines.
-- **Cross-machine sync: CLOSED** — `memright ingest-skills` (cheap, no re-embed) runs in `daily-sync.sh` after pull on both machines: author → commit → pull → ingest → engine-served anywhere. No extra mirror mechanism needed (git carries authoring; the DB carries serving).
+- **Cross-machine sync: CLOSED** — `crypt ingest-skills` (cheap, no re-embed) runs in `daily-sync.sh` after pull on both machines: author → commit → pull → ingest → engine-served anywhere. No extra mirror mechanism needed (git carries authoring; the DB carries serving).
 - **Resource materialization: OUT OF SCOPE BY DESIGN** — skill *scripts* reference workspace paths, node_modules, and repo context; materializing a lone script file onto a checkout-less machine would not make it runnable. Instruction portability (the skill's brain) is complete; script *execution* requires the repo by definition, not by this design's limitation.
 - **Task 7 (retire the `~/.claude/skills` symlink): BLOCKED, external** — the harness's native `/slash` Skill loader reads disk; removing the symlink today breaks slash invocation. Unblocks when the harness gains non-disk skill loading OR skills are invoked purely via RC delivery. Adrian's call whether to accept the trade earlier.
 
@@ -1116,7 +1116,7 @@ Re-ordered 2026-07-16 (second pass) after BOTH audits — Fable session + Sol's 
 1. **Legacy-vs-on canary with paired non-inferiority evidence.** Claude + Codex, both budgets, clean + dirty graphs; measure hook invocation, delivered sources, fallback rate, lane occupancy, latency, context precision, task success. "Never worse than legacy" is currently an emergency fallback, not evidence.
 2. **Historical backlog item — complete: put the feedback veto into the shared recall path.** The former bypass claim is superseded by the completed cutover disposition above; restart/get/delete/supersede coverage now governs.
 3. **Freeze the memory-recall eval, then evaluate one-hop BEFORE promoting.** Extend the locked holdout with useful links, dangling links, hubs, stale/conflicting memories, irrelevant neighbours; MRR/nDCG or Recall@k + task outcome + budget displacement. When promoting the merge into `recall_scored`, REMOVE the federation merge (avoid double augmentation).
-4. **Governance now (raised above multi-hop).** Write-provenance/poisoning regression tests for `memright put`/adapt intake; temporal update/abstention cases; **quarantine/restore phase before destructive curation** — `dream.rs` permanently prunes `score<0.2 && access_count==0`, which conflicts with fetch-after-inject being a confounded lower bound. ([GhostWriter](https://arxiv.org/abs/2607.06595), [Sleeper Memory Poisoning](https://arxiv.org/abs/2605.15338) — preprints, figures cautious, risk credible.)
+4. **Governance now (raised above multi-hop).** Write-provenance/poisoning regression tests for `crypt put`/morph intake; temporal update/abstention cases; **quarantine/restore phase before destructive curation** — `dream.rs` permanently prunes `score<0.2 && access_count==0`, which conflicts with fetch-after-inject being a confounded lower bound. ([GhostWriter](https://arxiv.org/abs/2607.06595), [Sleeper Memory Poisoning](https://arxiv.org/abs/2605.15338) — preprints, figures cautious, risk credible.)
 5. **Contextual enrichment at write time** — 1–2 sentence "what/when" header before embedding (Anthropic contextual retrieval); eval-gated on #3's frozen set.
 6. **SPEC-vs-code scoring drift — decide deliberately** — SPEC claims `cos + 0.06·decay + 0.06·eff + 0.04·pin` DONE; no `decay` in the crates. Fix the SPEC row or deliberately add recency-decay (temporal blindness is a documented failure mode; staleness is the workspace's most-burned lesson). Eval-gated. Note [calibrated-similarity](https://arxiv.org/abs/2601.16907): raw cosine is a ranking signal, not a cross-provider relevance probability.
 7. **Feedback-rail polish** — dashboard; **bandit caution:** get-based `used` is conservative for the veto, biased as bandit reward (preview-sufficient reads as noise) — needs correction before wiring.
@@ -1133,17 +1133,17 @@ Re-ordered 2026-07-16 (second pass) after BOTH audits — Fable session + Sol's 
 - Rotating any shared key; anything production-mutating in the release/licensing pipelines.
 
 ## Where the pieces physically live
-- **Rust engine:** `membrane/engine/crates/{memright,memright-core,memright-format}/` — store, planner, federation shell, feedback, memdb.
+- **Rust engine:** `membrane/engine/crates/{crypt,crypt-core,crypt-format}/` — store, planner, federation shell, feedback, memdb.
 - **Federation gateway (Python):** `membrane/engine/federation/gateway.py` + `providers/*.py` (9 providers).
 - **Delivery hook:** `tools/hooks/recall_planner.py` (Claude) + `tools/codex-brief-plugin/recall_planner.js` (Codex).
 - **Skills catalog:** `tools/skills/skills-catalog/`.
-- **Deployed binaries:** `tools/bin/memright{,.exe}` + `tools/bin/memright-service{,.exe}`; DB `tools/.cache/memory/memright-engine.db`; serve on `127.0.0.1:47851` (launchd `com.adrian.memright-serve` / Task Scheduler `memright-serve`).
+- **Deployed binaries:** `tools/bin/crypt{,.exe}` + `tools/bin/crypt-service{,.exe}`; DB `tools/.cache/memory/crypt-engine.db`; serve on `127.0.0.1:47851` (launchd `com.adrian.crypt-serve` / Task Scheduler `crypt-serve`).
 
 ## RC-MAC-FINAL — Mac half of the frozen `815cd511` pair (2026-07-19)
 
 - **MAC EVIDENCE COMPLETE / UNINSTALLED.** The genuine macOS half of the frozen successor pair was
   built on this Mac from a clean `git archive` of `815cd5112f822d306db69c8b4eafcbf54585036e` into an
-  isolated cache target, never installed and never activated. The extracted `tools/memright` tree
+  isolated cache target, never installed and never activated. The extracted `tools/crypt` tree
   digest recomputed to `a2a81039c606e1dbe5266d4698a79daddbcbc4dd13caf587a7c1a121402312c2`, matching
   the frozen binding, and `build-info` reported product version `0.1.1`, the exact source commit and
   tree, release generation
@@ -1166,7 +1166,7 @@ Re-ordered 2026-07-16 (second pass) after BOTH audits — Fable session + Sol's 
   `machineOs: macos`, `aarch64-apple-darwin`, protocol version 2, three repeats, the exact frozen
   source/tree/generation, model `embeddinggemma-300m-q4`, dimension 768, and fingerprint
   `pf:v1:4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b`.
-- **Scope held.** Neither binary was installed. `tools/lib/memright-release.json`, cohorts, replay
+- **Scope held.** Neither binary was installed. `tools/lib/crypt-release.json`, cohorts, replay
   state, telemetry, and launchd were untouched, and the Windows evidence — including
   `rightcontext-evidence/g2/final-815cd511/windows/service-resilience-v1.json` — is unmodified.
   Windows still owns the paired comparison, four-asset manifest verification, coordinated
@@ -1175,7 +1175,7 @@ Re-ordered 2026-07-16 (second pass) after BOTH audits — Fable session + Sol's 
 ## RC-MAC-BLOCK — exact `5ea40c08` freshness-repair handoff (historical; superseded by d891)
 
 At that handoff, Windows had completed only its genuine half. The clean archive binds source
-`5ea40c08119f573696bc96e3e8ccad1da608dc0e`, canonical `tools/memright` tree SHA-256
+`5ea40c08119f573696bc96e3e8ccad1da608dc0e`, canonical `tools/crypt` tree SHA-256
 `9e652c82d738c32cdb9eae8e4793180edd708d71774c2d4babeb8d2913526be4`, and release generation
 `sha256:9e652c82d738c32cdb9eae8e4793180edd708d71774c2d4babeb8d2913526be4`. Windows CLI SHA-256 is
 `2333f2c61981943a470abc92d8e74283e0a8835b2d7e7fbb33b6c03f15665911`; service SHA-256 is
@@ -1201,7 +1201,7 @@ repeats against probe SHA-256
   `embeddinggemma-300m-q4`, dimension 768, and fingerprint
   `pf:v1:4b7523b3a6cad77840ea45bdb03f190e9575e80a638425cd9425597055f6740b`.
 - Scope held: the candidate stayed uninstalled, no candidate process remains, the policy/cohorts,
-  release manifest, replay state, and production DB were not changed, and `memright-daily` stayed
+  release manifest, replay state, and production DB were not changed, and `crypt-daily` stayed
   unloaded. Windows now owns the paired comparison, four-asset manifest advance, coordinated
   install, installed freshness smoke, and wholly fresh replay.
 
@@ -1217,9 +1217,9 @@ rc_generation=sha256:$rc_tree
 
 test "$(git -C "$rc_repo" branch --show-current)" = main
 git -C "$rc_repo" pull --ff-only origin main
-python3 "$rc_repo/tools/setup-workspace.py" --keep-memright-daily-disabled
-if launchctl print "gui/$(id -u)/com.adrian.memright-daily" >/dev/null 2>&1; then
-  echo "memright-daily unexpectedly loaded" >&2
+python3 "$rc_repo/tools/setup-workspace.py" --keep-crypt-daily-disabled
+if launchctl print "gui/$(id -u)/com.adrian.crypt-daily" >/dev/null 2>&1; then
+  echo "crypt-daily unexpectedly loaded" >&2
   exit 1
 fi
 test "$(git -C "$rc_repo" rev-parse "$rc_commit^{commit}")" = "$rc_commit"
@@ -1230,13 +1230,13 @@ rc_target="$rc_candidate/target"
 test ! -e "$rc_candidate"
 mkdir -p "$rc_source" "$rc_target"
 printf '%s %s\n' "$rc_commit" "$rc_tree" > "$rc_candidate/binding.txt"
-git -C "$rc_repo" archive "$rc_commit" tools/memright | tar -x -C "$rc_source"
+git -C "$rc_repo" archive "$rc_commit" tools/crypt | tar -x -C "$rc_source"
 
 python3 - "$rc_repo" "$rc_commit" "$rc_tree" <<'PY'
 import hashlib, subprocess, sys
 repo, commit, expected = sys.argv[1:]
 result = subprocess.run(
-    ["git", "-C", repo, "ls-tree", "-r", commit, "--", "tools/memright"],
+    ["git", "-C", repo, "ls-tree", "-r", commit, "--", "tools/crypt"],
     check=True,
     capture_output=True,
     text=True,
@@ -1254,22 +1254,22 @@ if actual != expected:
     raise SystemExit(f"tree digest mismatch: {actual} != {expected}")
 PY
 
-export MEMRIGHT_SOURCE_COMMIT="$rc_commit"
-export MEMRIGHT_SOURCE_TREE_SHA256="$rc_tree"
+export CRYPT_SOURCE_COMMIT="$rc_commit"
+export CRYPT_SOURCE_TREE_SHA256="$rc_tree"
 export CARGO_TARGET_DIR="$rc_target"
 unset RUSTFLAGS CARGO_ENCODED_RUSTFLAGS CARGO_BUILD_TARGET
-cargo build --manifest-path "$rc_source/tools/memright/Cargo.toml" \
-  --locked --release -p memright --features fastembed --bins
+cargo build --manifest-path "$rc_source/tools/crypt/Cargo.toml" \
+  --locked --release -p crypt --features fastembed --bins
 
-rc_cli="$rc_target/release/memright"
-rc_service="$rc_target/release/memright-service"
+rc_cli="$rc_target/release/crypt"
+rc_service="$rc_target/release/crypt-service"
 test -x "$rc_cli" && test -x "$rc_service"
 rc_info="$($rc_cli build-info)"
 python3 - "$rc_info" "$rc_commit" "$rc_tree" <<'PY'
 import json, sys
 info, commit, tree = json.loads(sys.argv[1]), sys.argv[2], sys.argv[3]
 assert info["product_version"] == "0.1.1"
-assert info["memright_source_commit"] == commit
+assert info["crypt_source_commit"] == commit
 assert info["source_tree_sha256"] == tree
 assert info["release_generation"] == f"sha256:{tree}"
 assert info["target"] == "aarch64-apple-darwin"
@@ -1312,7 +1312,7 @@ doc["purpose"] = (
     "RightContext freshness-repair candidate; uninstalled."
 )
 doc["release"].update({
-    "memrightSourceCommit": commit,
+    "cryptSourceCommit": commit,
     "sourceTreeSha256": tree,
     "releaseGeneration": f"sha256:{tree}",
 })
@@ -1337,22 +1337,22 @@ python3 "$rc_repo/tools/pipelines/memory/membrane-parity.py" capture-v2 \
   --model-snapshot "$rc_snapshot" --ort-library "$rc_ort" --out "$rc_parity"
 python3 "$rc_repo/tools/pipelines/memory/membrane-parity.py" validate-v2 \
   --artifact "$rc_parity" --probe-set "$rc_probe"
-if launchctl print "gui/$(id -u)/com.adrian.memright-daily" >/dev/null 2>&1; then
-  echo "memright-daily unexpectedly loaded" >&2
+if launchctl print "gui/$(id -u)/com.adrian.crypt-daily" >/dev/null 2>&1; then
+  echo "crypt-daily unexpectedly loaded" >&2
   exit 1
 fi
 ```
 
 The historical Mac handback was limited to the two `final-5ea40c08/macos` evidence files and one
 conflict-safe state note with the genuine hashes/result. It did not edit
-`tools/lib/memright-release.json`, install either binary, alter policy/cohorts, or start/resume
+`tools/lib/crypt-release.json`, install either binary, alter policy/cohorts, or start/resume
 replay; Windows then owned the remaining integration. d891 superseded that install path.
 
 ## RC-MAC-BLOCK — exact `d891b274` successor integrated (Mac and Windows complete)
 
 The passing 5ea comparison is preserved, but it cannot authorize installation after compiled
-MemRight source changed at `d891b27490beff78cc35f1ac55c2697736056d04`. The current clean Windows
-candidate binds canonical `tools/memright` tree SHA-256
+Crypt source changed at `d891b27490beff78cc35f1ac55c2697736056d04`. The current clean Windows
+candidate binds canonical `tools/crypt` tree SHA-256
 `a551336c2f413d9815cd6c217595665a99d27b248b512eab0c7ff79acd9f2a42` and has CLI SHA-256
 `dfdab7b0da4f91ebcd6ea598b94f5d93eeffaae694cd856233e44553c446911d` plus service SHA-256
 `22d03bd383fb883c2ec2fe76b84fe769b66b5dd2bba2d128c0ae6ec7eb724224`. Its runtime and v2
@@ -1376,10 +1376,10 @@ artifacts validate under `rightcontext-evidence/g2/final-d891b274/windows/`.
   `098b51307a44d05096889a92a5273be221d6c50d875e84e50d9d324a524a40be`, and release generation
   `sha256:a551336c2f413d9815cd6c217595665a99d27b248b512eab0c7ff79acd9f2a42`.
 - Mac scope held: the candidate stayed uninstalled on Mac, no candidate process remained, and
-  `memright-daily` stayed unloaded. Windows subsequently validated the Mac artifacts, passed the
+  `crypt-daily` stayed unloaded. Windows subsequently validated the Mac artifacts, passed the
   paired comparison, advanced the four-asset manifest, installed the exact d891 pair, passed source
   ownership plus installed recovery/freshness checks, and started the wholly fresh replay while
-  keeping the Windows `memright-daily` task Disabled.
+  keeping the Windows `crypt-daily` task Disabled.
 
 The exact executed build-and-capture-only lane is retained below for audit. Do not rerun it into the
 existing candidate/evidence paths:
@@ -1391,9 +1391,9 @@ rc_commit=d891b27490beff78cc35f1ac55c2697736056d04
 rc_tree=a551336c2f413d9815cd6c217595665a99d27b248b512eab0c7ff79acd9f2a42
 test "$(git -C "$rc_repo" branch --show-current)" = main
 git -C "$rc_repo" pull --ff-only origin main
-python3 "$rc_repo/tools/setup-workspace.py" --keep-memright-daily-disabled
-if launchctl print "gui/$(id -u)/com.adrian.memright-daily" >/dev/null 2>&1; then
-  echo "memright-daily unexpectedly loaded" >&2; exit 1
+python3 "$rc_repo/tools/setup-workspace.py" --keep-crypt-daily-disabled
+if launchctl print "gui/$(id -u)/com.adrian.crypt-daily" >/dev/null 2>&1; then
+  echo "crypt-daily unexpectedly loaded" >&2; exit 1
 fi
 test "$(git -C "$rc_repo" rev-parse "$rc_commit^{commit}")" = "$rc_commit"
 
@@ -1403,12 +1403,12 @@ rc_target="$rc_candidate/target"
 test ! -e "$rc_candidate"
 mkdir -p "$rc_source" "$rc_target"
 printf '%s %s\n' "$rc_commit" "$rc_tree" > "$rc_candidate/binding.txt"
-git -C "$rc_repo" archive "$rc_commit" tools/memright | tar -x -C "$rc_source"
+git -C "$rc_repo" archive "$rc_commit" tools/crypt | tar -x -C "$rc_source"
 python3 - "$rc_repo" "$rc_commit" "$rc_tree" <<'PY'
 import hashlib, subprocess, sys
 repo, commit, expected = sys.argv[1:]
 result = subprocess.run(
-    ["git", "-C", repo, "ls-tree", "-r", commit, "--", "tools/memright"],
+    ["git", "-C", repo, "ls-tree", "-r", commit, "--", "tools/crypt"],
     check=True, capture_output=True, text=True,
 )
 rows = []
@@ -1424,14 +1424,14 @@ if actual != expected:
     raise SystemExit(f"tree digest mismatch: {actual} != {expected}")
 PY
 
-export MEMRIGHT_SOURCE_COMMIT="$rc_commit"
-export MEMRIGHT_SOURCE_TREE_SHA256="$rc_tree"
+export CRYPT_SOURCE_COMMIT="$rc_commit"
+export CRYPT_SOURCE_TREE_SHA256="$rc_tree"
 export CARGO_TARGET_DIR="$rc_target"
 unset RUSTFLAGS CARGO_ENCODED_RUSTFLAGS CARGO_BUILD_TARGET
-cargo build --manifest-path "$rc_source/tools/memright/Cargo.toml" \
-  --locked --release -p memright --features fastembed --bins
-rc_cli="$rc_target/release/memright"
-rc_service="$rc_target/release/memright-service"
+cargo build --manifest-path "$rc_source/tools/crypt/Cargo.toml" \
+  --locked --release -p crypt --features fastembed --bins
+rc_cli="$rc_target/release/crypt"
+rc_service="$rc_target/release/crypt-service"
 test -x "$rc_cli" && test -x "$rc_service"
 rc_info="$($rc_cli build-info)"
 python3 - "$rc_info" "$rc_commit" "$rc_tree" <<'PY'
@@ -1439,7 +1439,7 @@ import json, sys
 doc = json.loads(sys.argv[1])
 commit, tree = sys.argv[2:]
 assert doc["product_version"] == "0.1.1"
-assert doc["memright_source_commit"] == commit
+assert doc["crypt_source_commit"] == commit
 assert doc["source_tree_sha256"] == tree
 assert doc["release_generation"] == f"sha256:{tree}"
 assert doc["target"] == "aarch64-apple-darwin"
@@ -1469,7 +1469,7 @@ assert resolution["preReadSha256"] == resolution["postReadSha256"]
 doc["capturedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 doc["purpose"] = "Content-free genuine macOS runtime binding for the d891b274 hardened freshness-repair candidate; uninstalled."
 doc["release"].update({
-    "memrightSourceCommit": commit,
+    "cryptSourceCommit": commit,
     "sourceTreeSha256": tree,
     "releaseGeneration": f"sha256:{tree}",
 })
@@ -1500,13 +1500,13 @@ python3 "$rc_repo/tools/pipelines/memory/membrane-parity.py" capture-v2 \
   --model-snapshot "$rc_snapshot" --ort-library "$rc_ort" --out "$rc_parity"
 python3 "$rc_repo/tools/pipelines/memory/membrane-parity.py" validate-v2 \
   --artifact "$rc_parity" --probe-set "$rc_probe"
-if launchctl print "gui/$(id -u)/com.adrian.memright-daily" >/dev/null 2>&1; then
-  echo "memright-daily unexpectedly loaded" >&2; exit 1
+if launchctl print "gui/$(id -u)/com.adrian.crypt-daily" >/dev/null 2>&1; then
+  echo "crypt-daily unexpectedly loaded" >&2; exit 1
 fi
 ```
 
 The d891 Mac handback was limited to the two `final-d891b274/macos` evidence files plus one
 conflict-safe state note with the genuine hashes and validation result. It did not edit
-`tools/lib/memright-release.json`, install either binary, alter policy/cohorts, or start/resume
+`tools/lib/crypt-release.json`, install either binary, alter policy/cohorts, or start/resume
 replay. Windows subsequently completed the paired comparison, four-asset manifest, coordinated
 install, installed freshness smoke, and fresh replay start recorded above.

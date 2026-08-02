@@ -1,3 +1,5 @@
+import json
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -6,6 +8,31 @@ from federation import gateway
 
 
 RELEASE_GENERATION = "sha256:" + "7" * 64
+
+
+def test_freshness_uses_workspace_default_token_file(monkeypatch, tmp_path: Path):
+    workspace = tmp_path / "workspace"
+    token_file = workspace / "tools" / ".cache" / "memory" / "api-token"
+    token_file.parent.mkdir(parents=True)
+    token_file.write_text("default-token\n", encoding="utf-8")
+    monkeypatch.delenv("CRYPT_API_TOKEN_FILE", raising=False)
+    monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
+
+    class Response:
+        def read(self):
+            return json.dumps({"schemaVersion": 1, "graphState": "fresh"}).encode()
+
+    @contextmanager
+    def urlopen(request, timeout):
+        assert request.headers["Authorization"] == "Bearer default-token"
+        assert timeout == 2.0
+        yield Response()
+
+    monkeypatch.setattr(gateway.urllib.request, "urlopen", urlopen)
+    assert gateway._fetch_freshness_verdict(workspace) == {
+        "schemaVersion": 1,
+        "graphState": "fresh",
+    }
 
 
 @pytest.fixture(autouse=True)
@@ -53,9 +80,9 @@ def _verdict(graph_state: str = "dirty_overlay", *, blueprint_usable: bool = Fal
 def _stub_non_blueprint_providers(monkeypatch) -> None:
     monkeypatch.setattr(gateway.audit, "produce", lambda *_args: [])
     monkeypatch.setattr(gateway.architect, "produce", lambda *_args: [])
-    monkeypatch.setattr(gateway.memright, "produce", lambda *_args: ([{"id": "memory:one"}], "g"))
+    monkeypatch.setattr(gateway.crypt, "produce", lambda *_args: ([{"id": "memory:one"}], "g"))
     monkeypatch.setattr(
-        gateway.memright,
+        gateway.crypt,
         "produce_with_observability",
         lambda *_args: ([{"id": "memory:one"}], "g", {"stageElapsedMs": {}}),
     )
@@ -83,7 +110,7 @@ def test_stale_blueprint_is_lane_local_and_other_providers_fan_out(monkeypatch, 
         scope_grant_id=None,
     )
 
-    assert any(name == "memright" for name, _candidates, _warnings in providers)
+    assert any(name == "crypt" for name, _candidates, _warnings in providers)
     blueprint_lane = next(item for item in providers if item[0] == "blueprint")
     assert blueprint_lane[1] == []
     assert blueprint_lane[2][0]["kind"] == "blueprint_lane_degraded"
@@ -101,7 +128,7 @@ def test_stale_blueprint_is_lane_local_and_other_providers_fan_out(monkeypatch, 
     assert freshness["_stageElapsedMs"]["git_status"] == 4.0
     assert all(value >= 0 for value in freshness["_stageElapsedMs"].values())
     assert set(freshness["_providerElapsedMs"]) == {
-        "blueprint", "audit", "architect", "memright", "git", "live", "rules", "anchors", "skills"
+        "blueprint", "audit", "architect", "crypt", "git", "live", "rules", "anchors", "skills"
     }
     assert all(value >= 0 for value in freshness["_providerElapsedMs"].values())
 
@@ -131,7 +158,7 @@ def test_dirty_worktree_delivers_overlay_and_non_blueprint_lanes(monkeypatch, tm
     )
 
     assert any(name == "live" and candidates for name, candidates, _warnings in providers)
-    assert any(name == "memright" and candidates for name, candidates, _warnings in providers)
+    assert any(name == "crypt" and candidates for name, candidates, _warnings in providers)
     assert freshness["stale"] is False
     assert live_calls == [{
         "base_commit": verdict["baseCommit"],
@@ -144,7 +171,7 @@ def test_dirty_worktree_delivers_overlay_and_non_blueprint_lanes(monkeypatch, tm
 def test_unavailable_freshness_service_degrades_before_fanout(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: None, raising=False)
     monkeypatch.setattr(
-        gateway.memright,
+        gateway.crypt,
         "produce",
         lambda *_args: (_ for _ in ()).throw(AssertionError("provider must not run")),
     )
@@ -169,7 +196,7 @@ def test_release_generation_mismatch_degrades_before_fanout(monkeypatch, tmp_pat
     verdict["releaseGeneration"] = "sha256:" + "8" * 64
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: verdict, raising=False)
     monkeypatch.setattr(
-        gateway.memright,
+        gateway.crypt,
         "produce_with_observability",
         lambda *_args: (_ for _ in ()).throw(AssertionError("provider must not run")),
     )
@@ -195,7 +222,7 @@ def test_invalid_release_manifest_degrades_before_fanout(monkeypatch, tmp_path: 
         gateway, "_fetch_freshness_verdict", lambda _repo: _verdict(), raising=False
     )
     monkeypatch.setattr(
-        gateway.memright,
+        gateway.crypt,
         "produce_with_observability",
         lambda *_args: (_ for _ in ()).throw(AssertionError("provider must not run")),
     )
@@ -234,7 +261,7 @@ def test_unusable_skills_lane_is_skipped_without_disabling_other_providers(monke
     skills_lane = next(item for item in providers if item[0] == "skills")
     assert skills_lane[1] == []
     assert skills_lane[2][0]["kind"] == "skills_lane_degraded"
-    assert any(name == "memright" for name, _candidates, _warnings in providers)
+    assert any(name == "crypt" for name, _candidates, _warnings in providers)
     assert freshness["stale"] is False
 
 
@@ -264,7 +291,7 @@ def test_blueprint_generation_change_after_verdict_omits_lane(monkeypatch, tmp_p
     blueprint_lane = next(item for item in providers if item[0] == "blueprint")
     assert blueprint_lane[1] == []
     assert blueprint_lane[2][0]["kind"] == "blueprint_generation_changed"
-    assert any(name == "memright" for name, _candidates, _warnings in providers)
+    assert any(name == "crypt" for name, _candidates, _warnings in providers)
     assert freshness["stale"] is False
 
 
@@ -312,17 +339,17 @@ def test_filesystem_skills_generation_cannot_pass_unchanged_db_verdict(monkeypat
     skills_lane = next(item for item in providers if item[0] == "skills")
     assert skills_lane[1] == []
     assert skills_lane[2][0]["kind"] == "skills_generation_changed"
-    assert any(name == "memright" for name, _candidates, _warnings in providers)
+    assert any(name == "crypt" for name, _candidates, _warnings in providers)
     assert freshness["stale"] is False
 
 
 def test_merge_candidates_stamps_provider_and_freshness_provenance(tmp_path: Path):
     blueprint_candidate = {"id": "a", "sourceKind": "repo_code"}
-    memright_candidate = {"id": "b", "sourceKind": "repo_code", "provider": "blueprint"}
+    crypt_candidate = {"id": "b", "sourceKind": "repo_code", "provider": "blueprint"}
     merged = gateway._merge_candidates(
         [
             ("blueprint", [blueprint_candidate], []),
-            ("memright", [memright_candidate], []),
+            ("crypt", [crypt_candidate], []),
         ],
         {
             "indexedAt": "2026-07-16T00:00:00Z",
@@ -345,7 +372,7 @@ def test_merge_candidates_stamps_provider_and_freshness_provenance(tmp_path: Pat
 
     assert [(c["id"], c["provider"]) for c in merged["candidates"]] == [
         ("a", "blueprint"),
-        ("b", "memright"),
+        ("b", "crypt"),
     ]
     assert merged["candidates"][0]["freshnessClass"] == "stale_snapshot"
     assert merged["candidates"][1]["freshnessClass"] == "current"
@@ -362,23 +389,23 @@ def test_merge_candidates_stamps_provider_and_freshness_provenance(tmp_path: Pat
     assert merged["_rightcontext"]["refreshInFlight"] is True
     assert merged["_rightcontext"]["stageElapsedMs"] == {}
     assert blueprint_candidate == {"id": "a", "sourceKind": "repo_code"}
-    assert memright_candidate == {
+    assert crypt_candidate == {
         "id": "b",
         "sourceKind": "repo_code",
         "provider": "blueprint",
     }
 
 
-def test_memright_stage_timing_is_nested_and_content_free(monkeypatch, tmp_path: Path):
+def test_crypt_stage_timing_is_nested_and_content_free(monkeypatch, tmp_path: Path):
     verdict = _verdict()
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: verdict, raising=False)
     _stub_non_blueprint_providers(monkeypatch)
     monkeypatch.setattr(
-        gateway.memright,
+        gateway.crypt,
         "produce_with_observability",
         lambda *_args: (
             [{"id": "memory:one"}],
-            "memright-serve",
+            "crypt-serve",
             {
                 "stageElapsedMs": {
                     "request_parse": 1.0,
@@ -404,7 +431,7 @@ def test_memright_stage_timing_is_nested_and_content_free(monkeypatch, tmp_path:
     )
 
     assert merged["_rightcontext"]["providerStageElapsedMs"] == {
-        "memright": {
+        "crypt": {
             "request_parse": 1.0,
             "embed": 2.0,
             "recall": 3.0,

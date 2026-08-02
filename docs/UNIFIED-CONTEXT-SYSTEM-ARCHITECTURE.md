@@ -6,10 +6,10 @@
 **Last architectural review:** 2026-07-12; validated synthesis of MiniMax, DeepSeek, Kimi, GLM, and GPT reviews
 **Working label:** Unified Context Engine; product name deliberately unresolved
 **Scope:** Workspace-wide context orchestration plus portable, repository-local intelligence
-**Primary systems:** Blueprint, Audit, Architect, MemRight, context planner, client adapters
+**Primary systems:** Blueprint, Audit, Architect, Crypt, context planner, client adapters
 
 `tools/lib/CONTEXT-ENGINEERING.md` remains the source of truth for the three families, eight layers,
-routing policy, and MemRight engine behavior. `RIGHTCONTEXT-STATE.md` owns deployed operational state
+routing policy, and Crypt engine behavior. `RIGHTCONTEXT-STATE.md` owns deployed operational state
 and evidence. This document owns the product boundary and design-era rationale that implementation
 plans must satisfy.
 
@@ -43,7 +43,7 @@ Build one logical context system with typed subsystems, not one undifferentiated
 - **Blueprint** owns current repository comprehension and its portable graph.
 - **Audit** owns evidence-backed diagnosis of the mapped repository's health.
 - **Architect** owns researched future-state design and implementation planning.
-- **MemRight** owns durable cross-session memory and learned knowledge.
+- **Crypt** owns durable cross-session memory and learned knowledge.
 - **Membrane** owns the single append-only SQLite `ObservableEventV1` ledger; host adapters produce
   content-free events and Morph consumes them for Insights/Taste review.
 - **The Context Planner** federates every source, enforces freshness and scope, and admits a bounded
@@ -51,7 +51,7 @@ Build one logical context system with typed subsystems, not one undifferentiated
 - **Client adapters** expose the same planner to Claude, Codex, Cline/Kilo-like clients, Kimi, GLM,
   and other MCP- or CLI-capable agents.
 
-The umbrella system is agent-facing. Blueprint, Audit, Architect, and MemRight are not competing
+The umbrella system is agent-facing. Blueprint, Audit, Architect, and Crypt are not competing
 products or disconnected pipelines; they are typed capabilities behind one interface.
 
 The stable public contracts are typed manifests, candidates, packets, receipts, findings, and
@@ -69,7 +69,7 @@ flowchart TD
     Blueprint["Blueprint<br/>understand current repository"]
     Audit["Audit<br/>diagnose current health"]
     Architect["Architect<br/>design future state"]
-    Memory["MemRight<br/>durable memory and learning"]
+    Memory["Crypt<br/>durable memory and learning"]
     Live["Live task context<br/>prompt · Git diff · session · explicit files"]
     Rules["Rules and skills<br/>constraints · platform contracts"]
 
@@ -149,7 +149,7 @@ Architect plan only when verifying whether intended work was implemented.
 
 Audit findings are typed repository context, not ordinary memories. They remain attached to the
 repository and graph generation that was audited. A generalized lesson or stable accepted risk may
-also be promoted into MemRight, but the original report remains the evidence source.
+also be promoted into Crypt, but the original report remains the evidence source.
 
 `audit-fix` may change code under its functionality-preservation contract. Read-only `audit` may not.
 
@@ -172,9 +172,9 @@ Architect produces:
 Architect does not remap the repository or declare it healthy. Blueprint answers “what exists?”;
 Audit answers “what is wrong or unproven?”; Architect answers “what should we build or change?”
 
-### 4.4 MemRight: preserve durable knowledge
+### 4.4 Crypt: preserve durable knowledge
 
-MemRight is the durable-memory subsystem, not the umbrella context product.
+Crypt is the durable-memory subsystem, not the umbrella context product.
 
 It stores and retrieves:
 
@@ -184,7 +184,7 @@ It stores and retrieves:
 - verified lessons and successful/failed approaches;
 - cross-session outcomes and curated knowledge.
 
-MemRight retains its temporal, vector, effectiveness, curation, and cross-machine memory behavior.
+Crypt retains its temporal, vector, effectiveness, curation, and cross-machine memory behavior.
 It does not become the canonical store for every raw code symbol, graph edge, scanner log, Git diff,
 or session event.
 
@@ -196,7 +196,7 @@ The planner is the core product behavior. For each task it:
 2. validates the active Blueprint generation against the current Git state;
 3. preserves explicit user files, symbols, and constraints;
 4. classifies the task and chooses applicable retrieval layers;
-5. queries exact live files, Blueprint, Audit, Architect, and MemRight concurrently within a measured
+5. queries exact live files, Blueprint, Audit, Architect, and Crypt concurrently within a measured
    deadline rather than serially blocking on every subsystem;
 6. adds current Git diff, working-tree overlay, session state, rules, and skills;
 7. normalizes every source into a `ContextCandidateSet`;
@@ -494,7 +494,7 @@ A client opened directly in `D:\Claude\heardright` should receive HeardRight con
 able or required to enumerate `D:\Claude` or sibling repositories.
 
 This section is a target client contract, not current behavior. Until the bootstrap, planner, and
-Blueprint retrieval surfaces pass §16, current hooks provide MemRight recall only as stated in §15.
+Blueprint retrieval surfaces pass §16, current hooks provide Crypt recall only as stated in §15.
 
 The repository carries a small client bootstrap that can start or connect to one loopback MCP
 service. The service self-registers the repository solely from its root and tracked manifest. A CLI
@@ -534,7 +534,7 @@ basic repository orientation never depends on the parent workspace.
 | Human/agent orientation | Yes | Yes | Yes | Yes |
 | Exact textual lookup | Limited | Yes | Yes | Yes |
 | Structural graph traversal | No | Limited | Yes | Yes |
-| MemRight, Audit, and Architect federation | No | No | No | Yes |
+| Crypt, Audit, and Architect federation | No | No | No | Yes |
 | Cross-repository authorized retrieval | No | No | No | Yes |
 | Unified ranking, budgeting, and receipts | No | No | No | Yes |
 
@@ -559,7 +559,7 @@ Ranking order:
 4. relevant product/architecture documents and verified claims;
 5. applicable open Audit findings and active Architect decisions;
 6. semantic matches for vocabulary mismatch;
-7. durable MemRight memories and learned lessons;
+7. durable Crypt memories and learned lessons;
 8. broader orientation material when budget remains.
 
 Every omitted candidate is represented in the context receipt with an omission reason. A conflict
@@ -599,7 +599,7 @@ fresh executable proof for the active state
 Different context types use different synchronization units:
 
 - Blueprint graph and repository documents: the individual repository's Git history.
-- Durable MemRight knowledge: the existing event-based memory mirror and per-machine database import.
+- Durable Crypt knowledge: the existing event-based memory mirror and per-machine database import.
 - Central catalog and expanded graph indexes: machine-local, rebuilt/imported from canonical artifacts.
 - Audit evidence: normally repository-local ignored run artifacts; selected reports/findings may be
   committed when they are intended project records.
@@ -653,7 +653,7 @@ may use a standalone name when that produces a clearer, easier word.
 | **FrameRight** | Right suffix | frames each task correctly | good metaphor | active [software/AI name collisions](https://frameright.io/) | Reject |
 | **DataRight** | Right suffix | makes repository and context data useful | simple and broad | active [AI data-quality platform](https://dataright.ai/), existing DataRight products, and implies data governance rather than agent context | Reject |
 | **RightData** | Right prefix | the Right Suite's unified data system | natural construction | established [enterprise data-intelligence platform](https://www.getrightdata.com/) and narrows the product to data management | Reject |
-| **MemRight** | Right suffix | memory done correctly | established subsystem name | repeatedly collapses the whole system into memory | Keep only for memory |
+| **Crypt** | Right suffix | memory done correctly | established subsystem name | repeatedly collapses the whole system into memory | Keep only for memory |
 
 Recommended product phrasing:
 
@@ -669,7 +669,7 @@ locked. The search above is a collision screen, not trademark or domain clearanc
 
 The target architecture is not live yet.
 
-- The deployed MemRight service persists durable memory and runs the current context-economy hooks,
+- The deployed Crypt service persists durable memory and runs the current context-economy hooks,
   but the unified multi-source admission planner is not live.
 - Its existing `MemoryGraph` models relationships between memory entries, not a repository graph.
 - Current Blueprint Phase 1 maps documents, claims, code-path references, and the first
@@ -682,7 +682,7 @@ The target architecture is not live yet.
   durable output path currently enters the memory engine rather than a dedicated audit-context store.
 - Current hooks perform memory recall; they do not automatically run the unified context planner or
   Blueprint retrieval for every repository task.
-- Gate 0 contract prerequisites are now live in tracked source: deployed-v6/tracked-main MemRight
+- Gate 0 contract prerequisites are now live in tracked source: deployed-v6/tracked-main Crypt
   lineage is proven, `tools/lib/context-contracts.schema.json` defines the v1 typed envelopes, and
   `tools/lib/skill_emit.py` accepts both Blueprint dimension shapes with typed failure codes.
 - B0 selected the in-repo deterministic `blueprint-static` provider after Codebase Memory 0.9.0
@@ -715,7 +715,7 @@ The architecture is implemented only when all of the following are demonstrated:
   leak sibling context into a root-confined task.
 - The same task can be prepared through Claude, Codex, and one additional MCP/CLI client with equivalent
   repository candidates and receipts.
-- Blueprint candidates, Audit findings, Architect decisions, MemRight knowledge, rules, Git state, and
+- Blueprint candidates, Audit findings, Architect decisions, Crypt knowledge, rules, Git state, and
   explicit user anchors are admitted through one bounded planner.
 - Stale graph generations, audit reports, plans, and memories are detected and never silently presented
   as current truth.
@@ -724,7 +724,7 @@ The architecture is implemented only when all of the following are demonstrated:
 - Portable/operational disagreement tests prove generation selection follows integrity, active-state
   relevance, and ancestry; unprovable divergence is quarantined rather than resolved by location or time.
 - A frozen, versioned task suite compares the planner path with a fixed control condition representing
-  current live behavior: MemRight-only recall plus ordinary agent-directed file/tool exploration
+  current live behavior: Crypt-only recall plus ordinary agent-directed file/tool exploration
   without Blueprint or the unified planner. Both paths use the same repository commits, prompts,
   model/client configuration, token ceilings, and success rubric. Report correctness, blind file
   reads, total tool calls, input tokens, planner overhead, wall-clock/time-to-correct-answer, and
@@ -767,7 +767,7 @@ umbrella system grows:
 5. **Audit context gate:** implement the dedicated typed Audit finding/evidence store, generation
    linkage, status lifecycle, planner candidate adapter, and receipt-based context-system audit. Prove
    Audit findings do not flatten into ordinary memories and ordinary Audit does not require Architect.
-6. **Federation gate:** add typed MemRight, Architect, rules, and multi-client adapters one layer at a
+6. **Federation gate:** add typed Crypt, Architect, rules, and multi-client adapters one layer at a
    time with independent parity, omission, timeout, and failure tests for each layer.
 7. **Scale gate:** test large repositories, branches, dirty overlays, provider switching, and artifact
    transport policy.
@@ -807,7 +807,7 @@ These sources overlap only enough to orient a reader. Each claim has one governi
 
 | Document | Unique governed claims | Allowed overlap / redirect | Precedence when claims overlap |
 |---|---|---|---|
-| `tools/lib/CONTEXT-ENGINEERING.md` | Three families, eight layers, routing, MemRight schema/scoring, lifecycle, sync, and measurement guard | Other docs may summarize the frame and link here | Governs invariant context-economy and engine policy |
+| `tools/lib/CONTEXT-ENGINEERING.md` | Three families, eight layers, routing, Crypt schema/scoring, lifecycle, sync, and measurement guard | Other docs may summarize the frame and link here | Governs invariant context-economy and engine policy |
 | `docs/RIGHTCONTEXT-STATE.md` | Installed/deployed state, current evidence, volatile measurements, open operational backlog | Architecture/evolution docs may state a non-quantified status and redirect here | Governs what is live now |
 | `docs/CONTEXT-ENGINEERING-EVOLUTION.md` | Frozen chronology, era exits, entry-shape evolution, and fold dependencies | May summarize architecture without redefining it | Governs historical sequence only |
 | This document | Product boundary, subsystem responsibilities, provider-neutral contracts, repository portability, root confinement, authority/failure policy, and non-goals | State and evolution docs may link to these boundaries | Governs durable RightContext design rationale |

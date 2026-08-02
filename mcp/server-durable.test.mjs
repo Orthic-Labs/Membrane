@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -10,6 +10,23 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const server = fileURLToPath(new URL("./server.mjs", import.meta.url));
+const membraneRoot = fileURLToPath(new URL("../", import.meta.url));
+const engineRoot = fileURLToPath(new URL("../engine/", import.meta.url));
+const sourceCrypt = join(engineRoot, "target", "debug", process.platform === "win32" ? "crypt.exe" : "crypt");
+
+async function currentCrypt() {
+  if (process.env.CRYPT_TEST_BIN) return process.env.CRYPT_TEST_BIN;
+  const cargo = spawn("cargo", ["build", "--manifest-path", join(engineRoot, "Cargo.toml"), "--bin", "crypt"], {
+    cwd: membraneRoot,
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true,
+  });
+  let stderr = "";
+  cargo.stderr.on("data", (chunk) => { stderr += chunk; });
+  const [code] = await once(cargo, "close");
+  if (code !== 0 || !existsSync(sourceCrypt)) throw new Error(`current Crypt build failed: ${stderr}`);
+  return sourceCrypt;
+}
 
 async function rpc(messages, env) {
   const child = spawn(process.execPath, [server], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: { ...process.env, ...env } });
@@ -52,11 +69,11 @@ async function freePort() {
   });
 }
 
-async function startMemright(binary, db, port, env) {
+async function startCrypt(binary, db, port, env) {
   const child = spawn(binary, ["--db", db, "serve", "--port", String(port)], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true, env });
   let stderr = "";
   child.stderr.on("data", (chunk) => { stderr += chunk; });
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/health`);
       if (response.ok) return child;
@@ -64,10 +81,10 @@ async function startMemright(binary, db, port, env) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   child.kill();
-  throw new Error(`isolated memright service did not start: ${stderr}`);
+  throw new Error(`isolated crypt service did not start: ${stderr}`);
 }
 
-async function stopMemright(child) {
+async function stopCrypt(child) {
   if (child.exitCode !== null || child.killed) return;
   child.kill();
   await Promise.race([once(child, "exit"), new Promise((resolve) => setTimeout(resolve, 1_000))]);
@@ -79,21 +96,22 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
   await mkdir(enrolled);
   const canonical = await realpath(enrolled);
   const registry = join(root, "registry.json");
-  const store = join(root, "memright-engine.db");
+  const store = join(root, "crypt-engine.db");
   const token = join(root, "api-token");
   await writeFile(registry, JSON.stringify({ schema_version: 1, bindings: { [canonical]: { repository_id: "repo-a", scope_id: "scope-a", provider_config: {}, grant_policy: { level: "write-proposed" } } } }));
   await writeFile(token, "test-token\n", { mode: 0o600 });
   const env = {
+    ...process.env,
     MEMBRANE_PROJECT_REGISTRY: registry,
-    MEMRIGHT_BIN: process.env.MEMRIGHT_TEST_BIN || fileURLToPath(new URL("../../tools/bin/memright", import.meta.url)),
-    MEMRIGHT_DB: store,
-    MEMRIGHT_API_TOKEN_FILE: token,
-    MEMRIGHT_ALLOW_HASH: "1",
+    CRYPT_DB: store,
+    CRYPT_API_TOKEN_FILE: token,
+    CRYPT_ALLOW_HASH: "1",
     WORKSPACE_ROOT: root,
   };
+  env.CRYPT_BIN = await currentCrypt();
   const port = await freePort();
-  env.MEMRIGHT_PORT = String(port);
-  const resident = await startMemright(env.MEMRIGHT_BIN, store, port, env);
+  env.CRYPT_PORT = String(port);
+  const resident = await startCrypt(env.CRYPT_BIN, store, port, env);
   let active = resident;
   const request = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
   const common = { repository: enrolled, caller: { root: enrolled, repositoryId: "repo-a", scopeId: "scope-a" } };
@@ -115,8 +133,8 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
     assert.equal(JSON.parse(lifecycleById[2].result.content[0].text).context.durable, true);
     assert.equal(JSON.parse(lifecycleById[3].result.content[0].text).fact.fact_id, "fact-a");
     assert.equal(JSON.parse(lifecycleById[4].result.content[0].text).scratchpad.items[0].note, "ephemeral");
-    await stopMemright(resident);
-    const restarted = await startMemright(env.MEMRIGHT_BIN, store, port, env);
+    await stopCrypt(resident);
+    const restarted = await startCrypt(env.CRYPT_BIN, store, port, env);
     active = restarted;
     const second = await rpc([
       request(6, "membrane_working_context", { ...common, operation: "load", sessionId: "session-a", taskId: "task-a", asOf: "2026-08-02T12:00:00Z" }),
@@ -134,7 +152,7 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
     assert.equal(feedback.lifecycleReceipt.status, "persisted");
     assert.ok(readFileSync(store).byteLength > 0);
   } finally {
-    await stopMemright(active);
+    await stopCrypt(active);
     await rm(root, { recursive: true, force: true });
   }
 });

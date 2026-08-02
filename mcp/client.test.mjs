@@ -42,8 +42,8 @@ try {
       windowsHide: true,
       env: {
         ...process.env,
-        MEMRIGHT_PORT: String(port),
-        MEMRIGHT_API_TOKEN: "test-token",
+        CRYPT_PORT: String(port),
+        CRYPT_API_TOKEN: "test-token",
         WORKSPACE_ROOT: process.cwd(),
       },
     });

@@ -70,7 +70,7 @@
     "parallel arms on one host"
   ],
   "source_refs": [
-    "/Volumes/D/claude/plans/sol/2026-07-27-vector-backend-bakeoff.md",
+    "/Volumes/D/claude/docs/plans/sol/2026-07-27-vector-backend-bakeoff.md",
     "https://github.com/asg017/sqlite-vec/releases",
     "https://github.com/lancedb/lancedb"
   ],

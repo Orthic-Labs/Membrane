@@ -1,4 +1,4 @@
-use memright_core::{cosine, QuantizedVector};
+use crypt_core::{cosine, QuantizedVector};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::cmp::Ordering;
@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-pub const GENERATOR_ID: &str = "memright-vector-fixture-v1";
+pub const GENERATOR_ID: &str = "crypt-vector-fixture-v1";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

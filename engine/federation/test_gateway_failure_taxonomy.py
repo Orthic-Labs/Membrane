@@ -62,10 +62,10 @@ def test_gateway_types_every_provider_warning_as_lane_local(
 
 
 def test_gateway_exception_warning_is_typed_and_content_free():
-    warning = gateway._safe_emit_warning("memright", TimeoutError("SECRET bearer detail"))
+    warning = gateway._safe_emit_warning("crypt", TimeoutError("SECRET bearer detail"))
 
     assert warning == {
-        "provider": "memright",
+        "provider": "crypt",
         "kind": "provider_failure",
         "severity": "warning",
         "failureKind": "timeout",
