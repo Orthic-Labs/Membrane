@@ -62,17 +62,7 @@ function tokenPathFor(binding, workspaceRoot, registryPath) {
   return defaultTokenPath(binding.root, registryPath) || join(workspaceRoot, DEFAULT_TOKEN);
 }
 
-/** One resolved installation binding: token + loopback endpoint + canonical DB. */
-export async function installationBindingFor(binding, { registryPath } = {}) {
-  let workspaceRoot = binding.root;
-  let runtime = { host: DEFAULT_HOST, port: DEFAULT_PORT };
-  try {
-    workspaceRoot = await workspaceRootFrom(binding.root);
-    runtime = await readRuntime(join(workspaceRoot, RUNTIME_FILE));
-  } catch {
-    // Fall back to env overrides and canonical relative paths when the workspace
-    // runtime manifest is not yet installed (tests, dry-run enrollments).
-  }
+function finishBinding(binding, workspaceRoot, runtime, registryPath) {
   const port = envPort() ?? runtime.port;
   const db = envDb(workspaceRoot);
   const tokenPath = tokenPathFor(binding, workspaceRoot, registryPath);
@@ -86,6 +76,26 @@ export async function installationBindingFor(binding, { registryPath } = {}) {
     tokenGeneration: binding.token_grant?.generation ?? null,
     repositoryCatalogDigest: binding.repository_catalog_digest ?? null,
   };
+}
+
+/** One resolved installation binding: token + loopback endpoint + canonical DB. */
+export async function installationBindingFor(binding, { registryPath } = {}) {
+  let workspaceRoot;
+  try {
+    workspaceRoot = await workspaceRootFrom(binding.root);
+  } catch {
+    // tools/lib/memory/runtime.json was not found anywhere above binding.root: the workspace
+    // runtime manifest is not installed yet (tests, dry-run enrollments). This is the ONLY
+    // legitimate silent-fallback case -- fall back to env overrides and canonical relative
+    // paths under the caller-supplied root.
+    return finishBinding(binding, binding.root, { host: DEFAULT_HOST, port: DEFAULT_PORT }, registryPath);
+  }
+  // workspaceRootFrom only ever returns a root where RUNTIME_FILE is confirmed present, so a
+  // failure here means the manifest exists but failed validation (invalid port, serviceId
+  // mismatch, non-loopback host) -- a real stale/corrupt binding. Let it throw loudly instead
+  // of silently masking it behind the default endpoint.
+  const runtime = await readRuntime(join(workspaceRoot, RUNTIME_FILE));
+  return finishBinding(binding, workspaceRoot, runtime, registryPath);
 }
 
 export function installationEnv(bindingRecord) {

@@ -11,6 +11,7 @@ import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { bindingFor } from "./project-registry.mjs";
 import { installationBindingFor, installationEnv } from "./installation-binding.mjs";
+import { buildRepositoryCatalog, hasExplicitChildGrant } from "./repository-catalog.mjs";
 import { feedbackEvent, feedbackPolicy } from "./feedback-loop.mjs";
 import { eventDbFor, ProposalStore } from "./proposal-store.mjs";
 import { ScratchpadStore, WorkingContextStore } from "./working-context.mjs";
@@ -47,7 +48,7 @@ const TOOL_DEFINITIONS = [
   { name: "membrane_working_context", description: "Save, load, or close bounded session/task working context; durability must be explicit.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["save", "load", "close"] }, context: { type: "object" }, sessionId: { type: "string" }, taskId: { type: "string" }, contextId: { type: "string" }, asOf: { type: "string" } } } },
   { name: "membrane_temporal_fact", description: "Record or query provenance-bound temporal facts with explicit single-valued predicate policy.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["record", "query"] }, fact: { type: "object" }, singleValuedPredicates: { type: "array", items: { type: "string" } }, scopeId: { type: "string" }, subject: { type: "string" }, predicate: { type: "string" }, asOf: { type: "string" } } } },
   { name: "membrane_scratchpad", description: "Save, load, or clear ephemeral non-searchable session/task scratchpad state.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["save", "load", "clear"] }, scratchpad: { type: "object" }, sessionId: { type: "string" }, taskId: { type: "string" }, asOf: { type: "string" } } } },
-  { name: "membrane_feedback", description: "Record bounded receipt-bound outcome feedback for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "receiptId", "outcome"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, receiptId: { type: "string" }, outcome: { type: "string", enum: ["used", "ignored", "contradicted"] } } } },
+  { name: "membrane_feedback", description: "Record bounded receipt-bound outcome feedback for quarantine review. Self-reported outcomes are advisory (non-ranking) unless verdictRef names a resolvable cited verdict.", inputSchema: { type: "object", required: ["repository", "caller", "receiptId", "outcome"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, receiptId: { type: "string" }, outcome: { type: "string", enum: ["used", "ignored", "contradicted"] }, verdictRef: { type: "string", minLength: 1 } } } },
 ];
 const TOOLS = TOOL_DEFINITIONS;
 
@@ -95,14 +96,25 @@ function lifecycleReceipt(operation, status, durableId, eventId, readback) {
     recorded_at: new Date().toISOString(),
   };
 }
-function feedbackReadback(dbPath, eventId, candidateId, outcome) {
+function feedbackReadback(dbPath, eventId, candidateId, outcome, { source, verdictRef } = {}) {
   const db = new DatabaseSync(dbPath, { readOnly: true });
   try {
     const canonicalTrace = `trace-${createHash("sha256").update(eventId).digest("hex").slice(0, 32)}`;
-    const row = db.prepare("SELECT trace_id, candidate_id, content_sha256, outcome, verified FROM context_feedback WHERE trace_id = ? AND candidate_id = ?").get(canonicalTrace, candidateId);
+    const row = db.prepare("SELECT trace_id, candidate_id, content_sha256, outcome, verified, verdict_ref FROM context_feedback WHERE trace_id = ? AND candidate_id = ?").get(canonicalTrace, candidateId);
     const expectedDigest = digest(candidateId).slice("sha256:".length);
-    if (!row || row.trace_id !== canonicalTrace || row.candidate_id !== candidateId || row.content_sha256 !== expectedDigest || row.outcome !== outcome || row.verified !== 1) {
-      throw new Error(`durable feedback independent readback mismatch: ${JSON.stringify({ dbPath, row, eventId, canonicalTrace, candidateId, expectedDigest, outcome })}`);
+    // Verification basis, not just trace/candidate/sha/outcome equality: an advisory (agent
+    // self-report) row must persist verified=0, and a cited_verdict row must persist verified=1
+    // with the exact verdict_ref it was submitted with -- so a false self-claim of verification
+    // can never slip past the readback.
+    const expectedVerified = source === undefined ? undefined : (source === "advisory" ? 0 : 1);
+    const expectedVerdictRef = source === "cited_verdict" ? verdictRef : null;
+    if (
+      !row || row.trace_id !== canonicalTrace || row.candidate_id !== candidateId ||
+      row.content_sha256 !== expectedDigest || row.outcome !== outcome ||
+      (expectedVerified !== undefined && row.verified !== expectedVerified) ||
+      (source !== undefined && (row.verdict_ref ?? null) !== expectedVerdictRef)
+    ) {
+      throw new Error(`durable feedback independent readback mismatch: ${JSON.stringify({ dbPath, row, eventId, canonicalTrace, candidateId, expectedDigest, outcome, source, expectedVerified, expectedVerdictRef })}`);
     }
     return row;
   } finally {
@@ -110,7 +122,28 @@ function feedbackReadback(dbPath, eventId, candidateId, outcome) {
   }
 }
 function callerLevel(binding) { return binding.grant_policy?.level || "read-only"; }
-function advisoryPolicy() { return process.env.MEMBRANE_DURABILITY_MODE === "advisory"; }
+/** Advisory durability is a per-binding decision (grant_policy.durability) so it can never mask
+ * a production binding's failure suite-wide. MEMBRANE_DURABILITY_MODE remains a process-wide
+ * fallback ONLY for bindings that declare no explicit durability policy (tests, dry runs) --
+ * it never overrides an explicit "durable" binding, and BindingResolutionError bypasses this
+ * check entirely (see resolveInstallation). */
+function advisoryPolicy(binding) {
+  const durability = binding?.grant_policy?.durability;
+  if (durability === "advisory") return true;
+  if (durability === "durable") return false;
+  return process.env.MEMBRANE_DURABILITY_MODE === "advisory";
+}
+/** A binding that cannot be resolved to a real installation (corrupt/stale runtime.json) is a
+ * distinct hard failure from "durable store reachable but the write failed" -- only the latter
+ * is eligible for advisory downgrade. */
+class BindingResolutionError extends Error {}
+async function resolveInstallation(binding) {
+  try {
+    return await installationBindingFor(binding);
+  } catch (error) {
+    throw new BindingResolutionError(`binding could not be resolved to a real installation: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 function callerDescriptor(caller) { return caller.scopeDescriptor || { kind: "filesystem", path: caller.scopeId }; }
 function stableDescriptor(value) {
   if (Array.isArray(value)) return value.map(stableDescriptor);
@@ -133,6 +166,18 @@ function takeRate(binding, action) {
   hits.push(now);
   rateWindows.set(key, hits);
 }
+// Live filesystem re-derivation, not a trusted stored digest: the catalog is rebuilt from the
+// caller's OWN root on every check, so repository_id/role come from what actually exists on
+// disk right now. Fails closed (returns false) whenever the caller carries no explicit
+// child_repository_ids grant, or the catalog cannot be rebuilt at all.
+async function hasCatalogChildGrant(callerBinding, targetBinding) {
+  const grants = callerBinding.grant_policy?.child_repository_ids;
+  if (!Array.isArray(grants) || grants.length === 0 || !grants.includes(targetBinding.repository_id)) return false;
+  let catalog;
+  try { catalog = await buildRepositoryCatalog(callerBinding.root); }
+  catch { return false; }
+  return hasExplicitChildGrant(catalog, callerBinding.repository_id, targetBinding.repository_id, grants);
+}
 async function authorize(args, action) {
   if (!args || typeof args !== "object" || byteLength(args) > MAX_REQUEST_BYTES) throw new Error("request exceeds bounded 32768-byte limit");
   if (typeof args.repository !== "string" || !args.repository.trim()) throw new Error("repository is required");
@@ -141,8 +186,16 @@ async function authorize(args, action) {
   if (!caller || typeof caller !== "object" || Array.isArray(caller)) throw new Error("caller binding is required");
   if (typeof caller.root !== "string" || !caller.root.trim()) throw new Error("caller root is required");
   const callerBinding = await bindingFor(caller.root);
-  if (binding.root !== callerBinding.root || binding.repository_id !== callerBinding.repository_id || !sameDescriptor(binding.scope_descriptor, callerBinding.scope_descriptor)) throw new Error("cross_root_binding_denied");
-  if (caller.repositoryId !== binding.repository_id || caller.scopeId !== binding.scope_id || !sameDescriptor(callerDescriptor(caller), binding.scope_descriptor)) throw new Error("caller_scope_binding_denied");
+  const sameRootBinding = binding.root === callerBinding.root && binding.repository_id === callerBinding.repository_id && sameDescriptor(binding.scope_descriptor, callerBinding.scope_descriptor);
+  // A workspace-root-bound caller may reach a distinct child repository ONLY when the
+  // registry's persisted grant_policy.child_repository_ids explicitly names it AND the live
+  // repository catalog agrees that target is actually a child of that same workspace. Every
+  // other cross-root call keeps failing exactly as before.
+  if (!sameRootBinding && !(await hasCatalogChildGrant(callerBinding, binding))) throw new Error("cross_root_binding_denied");
+  // The caller must accurately self-report ITS OWN identity -- checked against callerBinding
+  // (the caller's persisted registry entry), not the target's, since a granted cross-repository
+  // call intentionally has binding !== callerBinding.
+  if (caller.repositoryId !== callerBinding.repository_id || caller.scopeId !== callerBinding.scope_id || !sameDescriptor(callerDescriptor(caller), callerBinding.scope_descriptor)) throw new Error("caller_scope_binding_denied");
   if (!permits(binding, action)) throw new Error("caller_not_authorized");
   return binding;
 }
@@ -197,7 +250,7 @@ async function durableProposal(binding, emission) {
   const content = String(emission.text ?? emission.content ?? "").trim();
   if (!content) throw new Error("emission text is required");
   const proposalId = receiptId("proposal", { scope: binding.scope_id, emission });
-  const installation = await installationBindingFor(binding);
+  const installation = await resolveInstallation(binding);
   const store = new ProposalStore(eventDbFor(installation.db));
   let readback;
   try { readback = store.create({ proposalId, repositoryId: binding.repository_id, scopeId: binding.scope_id, emission: { ...emission, text: content } }); }
@@ -213,35 +266,49 @@ async function durableProposal(binding, emission) {
     provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
   };
 }
+// membrane_feedback outcomes are entirely model/agent self-reported: this tool never observed
+// the downstream action itself, so it must never emit "observed_action" (that source is
+// reserved for Membrane's own store-internal observations). A caller-supplied verdictRef names
+// a resolvable cited verdict; absent that, the report is advisory -- persisted for
+// observability but never eligible to affect ranking (matches the store's fail-safe default).
+function feedbackSourceFor(args) { return args.verdictRef ? "cited_verdict" : "advisory"; }
 async function durableFeedback(binding, args) {
+  const source = feedbackSourceFor(args);
   try {
     const feedbackId = receiptId("feedback", { scope: binding.scope_id, receiptId: args.receiptId, outcome: args.outcome });
     const eventId = receiptId("event", { operation: "feedback", feedbackId });
-    const env = await bindingEnv(binding);
+    const installation = await resolveInstallation(binding);
+    const env = { ...process.env, ...installationEnv(installation) };
     const binary = process.env.CRYPT_BIN || "crypt";
     const out = await run(binary, cryptArgs([
       "feedback", "--trace", eventId, "--candidate", args.receiptId,
       "--sha", digest(args.receiptId).slice("sha256:".length), "--outcome", args.outcome,
-      "--source", "observed_action", "--scope", binding.scope_id,
-    ], await installationBindingFor(binding)), "", env);
+      "--source", source, "--scope", binding.scope_id,
+      ...(source === "cited_verdict" ? ["--verdict-ref", args.verdictRef] : []),
+    ], installation), "", env);
     if (out.code !== 0) throw new Error(out.stderr.trim() || out.stdout.trim());
     let response;
     try { response = JSON.parse(out.stdout.trim()); } catch { throw new Error("returned invalid JSON"); }
-    if (response.ok !== true || response.verified !== true) throw new Error("was not independently verified");
-    const installation = await installationBindingFor(binding);
-    const readback = feedbackReadback(installation.db, eventId, args.receiptId, args.outcome);
+    const expectedVerified = source !== "advisory";
+    if (response.ok !== true || Boolean(response.verified) !== expectedVerified) {
+      throw new Error(source === "advisory" ? "advisory self-report must not be persisted as verified" : "was not independently verified");
+    }
+    const readback = feedbackReadback(installation.db, eventId, args.receiptId, args.outcome, { source, verdictRef: args.verdictRef });
     return {
       status: "persisted",
       durable: true,
       feedbackId,
       receiptId: args.receiptId,
       outcome: args.outcome,
+      source,
+      verified: expectedVerified,
       lifecycleReceipt: lifecycleReceipt("feedback", "persisted", feedbackId, eventId, readback),
       provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
       feedbackEvent: feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome }),
       feedbackPolicy: feedbackPolicy(feedbackEvent({ eventId, receiptId: args.receiptId, outcome: args.outcome })),
     };
   } catch (error) {
+    if (error instanceof BindingResolutionError) throw error;
     throw new Error(`durable feedback write failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
@@ -357,7 +424,10 @@ async function callTool(name, args, trace = {}) {
     takeRate(binding, "proposal");
     try { return await durableProposal(binding, args.emission); }
     catch (error) {
-      if (!advisoryPolicy()) throw error;
+      // An unresolvable binding is never eligible for advisory downgrade -- only a durable
+      // store that is reachable but whose write failed can be quarantined-ephemeral.
+      if (error instanceof BindingResolutionError) throw error;
+      if (!advisoryPolicy(binding)) throw error;
       const proposalId = receiptId("proposal", { scope: binding.scope_id, emission: args.emission });
       return text({ status: "quarantined_ephemeral", durable: false, proposalId, lifecycleReceipt: lifecycleReceipt("knowledge_propose", "quarantined_ephemeral", proposalId, receiptId("event", { operation: "knowledge_propose", proposalId }), args.emission), provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) } });
     }
@@ -365,11 +435,15 @@ async function callTool(name, args, trace = {}) {
   if (name === "membrane_feedback") {
     const binding = await authorize(args, "feedback");
     if (typeof args.receiptId !== "string" || !args.receiptId.trim() || !["used", "ignored", "contradicted"].includes(args.outcome)) throw new Error("invalid_feedback");
-    if (byteLength({ receiptId: args.receiptId, outcome: args.outcome }) > MAX_FEEDBACK_BYTES) throw new Error("feedback exceeds 2048 bytes");
+    if (args.verdictRef !== undefined && (typeof args.verdictRef !== "string" || !args.verdictRef.trim())) throw new Error("invalid_feedback_verdict_ref");
+    if (byteLength({ receiptId: args.receiptId, outcome: args.outcome, ...(args.verdictRef ? { verdictRef: args.verdictRef } : {}) }) > MAX_FEEDBACK_BYTES) throw new Error("feedback exceeds 2048 bytes");
     takeRate(binding, "feedback");
     try { return await durableFeedback(binding, args); }
     catch (error) {
-      if (!advisoryPolicy()) throw error;
+      // An unresolvable binding is never eligible for advisory downgrade -- only a durable
+      // store that is reachable but whose write failed can be accepted-advisory.
+      if (error instanceof BindingResolutionError) throw error;
+      if (!advisoryPolicy(binding)) throw error;
       const feedbackId = receiptId("feedback", { scope: binding.scope_id, receiptId: args.receiptId, outcome: args.outcome });
       return text({ status: "accepted_advisory", durable: false, feedbackId, receiptId: args.receiptId, outcome: args.outcome, lifecycleReceipt: lifecycleReceipt("feedback", "accepted_advisory", feedbackId, receiptId("event", { operation: "feedback", feedbackId }), { receiptId: args.receiptId, outcome: args.outcome }), feedbackEvent: feedbackEvent({ eventId: receiptId("event", { operation: "feedback", feedbackId }), receiptId: args.receiptId, outcome: args.outcome }), feedbackPolicy: feedbackPolicy(feedbackEvent({ eventId: receiptId("event", { operation: "feedback", feedbackId }), receiptId: args.receiptId, outcome: args.outcome })), provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) } });
     }

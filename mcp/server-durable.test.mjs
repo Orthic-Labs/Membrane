@@ -140,9 +140,11 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
       request(6, "membrane_working_context", { ...common, operation: "load", sessionId: "session-a", taskId: "task-a", asOf: "2026-08-02T12:00:00Z" }),
       request(7, "membrane_temporal_fact", { ...common, operation: "query", scopeId: "scope-a", subject: "repo", predicate: "owner", asOf: "2026-08-02T12:00:00Z" }),
       request(8, "membrane_scratchpad", { ...common, operation: "load", sessionId: "session-a", taskId: "task-a", asOf: "2026-08-02T12:00:00Z" }),
+      // F10: a plain agent self-report (no verdictRef) must persist as advisory/unverified --
+      // it can never land as a ranking-eligible source just because the caller claimed one.
       request(9, "membrane_feedback", { ...common, receiptId: proposal.durableId, outcome: "used" }),
     ], env);
-    assert.ok(second.every((response) => response.result.isError === false), second.map((response) => response.result.content[0].text));
+    assert.ok(second.every((response) => response.result.isError === false), second.map((response) => response.result.content[0].text).join(" | "));
     const secondById = Object.fromEntries(second.map((response) => [response.id, response]));
     assert.equal(JSON.parse(secondById[6].result.content[0].text).contexts.length, 1);
     assert.equal(JSON.parse(secondById[7].result.content[0].text).facts[0].fact_id, "fact-a");
@@ -150,6 +152,20 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
     const feedback = JSON.parse(secondById[9].result.content[0].text);
     assert.equal(feedback.status, "persisted");
     assert.equal(feedback.lifecycleReceipt.status, "persisted");
+    assert.equal(feedback.source, "advisory", "an unqualified self-report must persist as advisory");
+    assert.equal(feedback.verified, false, "an unqualified self-report must never land as a verified/ranking source");
+
+    // A self-report that names a resolvable cited verdict DOES persist as verified. Issued as
+    // its own request (not concurrently with the call above) to avoid exercising the resident
+    // service's post-restart event-outbox replay window with two simultaneous feedback writes.
+    const third = await rpc([
+      request(10, "membrane_feedback", { ...common, receiptId: "receipt-cited-1", outcome: "used", verdictRef: "verdict-doc#section-1" }),
+    ], env);
+    assert.equal(third[0].result.isError, false, third[0].result.content[0].text);
+    const citedFeedback = JSON.parse(third[0].result.content[0].text);
+    assert.equal(citedFeedback.status, "persisted");
+    assert.equal(citedFeedback.source, "cited_verdict");
+    assert.equal(citedFeedback.verified, true, "a resolvable cited verdict is verified and ranking-eligible");
     assert.ok(readFileSync(store).byteLength > 0);
   } finally {
     await stopCrypt(active);

@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildRepositoryCatalog } from "./repository-catalog.mjs";
 
 const server = fileURLToPath(new URL("./server.mjs", import.meta.url));
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
@@ -116,6 +117,118 @@ assert.match(feedbackReceipt.feedbackId, /^[a-z0-9][a-z0-9_-]{7,}$/i);
 assert.equal(feedback[0].result.isError, false);
 assert.deepEqual(feedback[0].result.structuredContent.data, feedbackReceipt);
 assert.equal(typeof feedback[0].result.content[0].text, "string");
+
+// F09: an unresolvable binding (runtime.json present but failing validation) is a distinct
+// hard failure -- advisory mode must NEVER convert it into a success shape.
+const corruptRoot = await mkdtemp(join(tmpdir(), "membrane-corrupt-binding-"));
+await mkdir(join(corruptRoot, "tools", "lib", "memory"), { recursive: true });
+await writeFile(join(corruptRoot, "tools", "lib", "memory", "runtime.json"), JSON.stringify({ schemaVersion: 1, serviceId: "crypt-local-v1", host: "127.0.0.1", port: 70 }), "utf8");
+const corruptEnrolled = join(corruptRoot, "enrolled");
+await mkdir(corruptEnrolled, { recursive: true });
+const corruptEnrolledCanonical = await realpath(corruptEnrolled);
+const corruptRegistry = join(corruptRoot, "registry.json");
+await writeFile(corruptRegistry, JSON.stringify({
+  schema_version: 1,
+  bindings: { [corruptEnrolledCanonical]: { repository_id: "repo-corrupt", scope_id: "scope-corrupt", provider_config: {}, grant_policy: { level: "write-proposed" } } },
+}), "utf8");
+const corruptAdvisoryEnv = { MEMBRANE_PROJECT_REGISTRY: corruptRegistry, MEMBRANE_DURABILITY_MODE: "advisory" };
+const corruptCaller = { root: corruptEnrolled, repositoryId: "repo-corrupt", scopeId: "scope-corrupt" };
+const unresolvableFeedback = await rpc([{
+  jsonrpc: "2.0", id: 40, method: "tools/call",
+  params: { name: "membrane_feedback", arguments: { repository: corruptEnrolled, caller: corruptCaller, receiptId: "receipt-unresolvable", outcome: "used" } },
+}], corruptAdvisoryEnv);
+assert.equal(unresolvableFeedback[0].result.isError, true, "an unresolvable binding must not be downgraded to a success shape");
+assert.match(toolError(unresolvableFeedback[0]), /binding could not be resolved to a real installation/i);
+const unresolvableProposal = await rpc([{
+  jsonrpc: "2.0", id: 41, method: "tools/call",
+  params: { name: "membrane_knowledge_propose", arguments: { repository: corruptEnrolled, caller: corruptCaller, emission: { text: "unresolvable" } } },
+}], corruptAdvisoryEnv);
+assert.equal(unresolvableProposal[0].result.isError, true, "an unresolvable binding must not be downgraded to a success shape");
+assert.match(toolError(unresolvableProposal[0]), /binding could not be resolved to a real installation/i);
+
+// F09: a genuine store-write failure IS eligible for advisory downgrade -- but only when the
+// BINDING itself says so (grant_policy.durability), independent of the process-wide env var.
+const bogusCrypt = "/nonexistent/membrane-test-crypt-binary";
+const perBindingRoot = await mkdtemp(join(tmpdir(), "membrane-per-binding-advisory-"));
+const perBindingEnrolled = join(perBindingRoot, "enrolled");
+await mkdir(perBindingEnrolled, { recursive: true });
+const perBindingCanonical = await realpath(perBindingEnrolled);
+const perBindingRegistry = join(perBindingRoot, "registry.json");
+await writeFile(perBindingRegistry, JSON.stringify({
+  schema_version: 1,
+  bindings: { [perBindingCanonical]: { repository_id: "repo-per-binding", scope_id: "scope-per-binding", provider_config: {}, grant_policy: { level: "write-proposed", durability: "advisory" } } },
+}), "utf8");
+const perBindingCaller = { root: perBindingEnrolled, repositoryId: "repo-per-binding", scopeId: "scope-per-binding" };
+const perBindingFeedback = await rpc([{
+  jsonrpc: "2.0", id: 42, method: "tools/call",
+  params: { name: "membrane_feedback", arguments: { repository: perBindingEnrolled, caller: perBindingCaller, receiptId: "receipt-per-binding", outcome: "used" } },
+}], { MEMBRANE_PROJECT_REGISTRY: perBindingRegistry, CRYPT_BIN: bogusCrypt }); // no MEMBRANE_DURABILITY_MODE env at all
+const perBindingReceipt = JSON.parse(perBindingFeedback[0].result.content[0].text);
+assert.equal(perBindingFeedback[0].result.isError, false, toolError(perBindingFeedback[0]));
+assert.equal(perBindingReceipt.status, "accepted_advisory", "grant_policy.durability=advisory downgrades a store-write failure without the env var");
+
+// An explicit per-binding "durable" policy must never be masked by the process-wide advisory
+// env override, even when that env var is set.
+const perBindingDurableRoot = await mkdtemp(join(tmpdir(), "membrane-per-binding-durable-"));
+const perBindingDurableEnrolled = join(perBindingDurableRoot, "enrolled");
+await mkdir(perBindingDurableEnrolled, { recursive: true });
+const perBindingDurableCanonical = await realpath(perBindingDurableEnrolled);
+const perBindingDurableRegistry = join(perBindingDurableRoot, "registry.json");
+await writeFile(perBindingDurableRegistry, JSON.stringify({
+  schema_version: 1,
+  bindings: { [perBindingDurableCanonical]: { repository_id: "repo-per-binding-durable", scope_id: "scope-per-binding-durable", provider_config: {}, grant_policy: { level: "write-proposed", durability: "durable" } } },
+}), "utf8");
+const perBindingDurableFeedback = await rpc([{
+  jsonrpc: "2.0", id: 43, method: "tools/call",
+  params: { name: "membrane_feedback", arguments: { repository: perBindingDurableEnrolled, caller: { root: perBindingDurableEnrolled, repositoryId: "repo-per-binding-durable", scopeId: "scope-per-binding-durable" }, receiptId: "receipt-per-binding-durable", outcome: "used" } },
+}], { MEMBRANE_PROJECT_REGISTRY: perBindingDurableRegistry, MEMBRANE_DURABILITY_MODE: "advisory", CRYPT_BIN: bogusCrypt });
+assert.equal(perBindingDurableFeedback[0].result.isError, true, "grant_policy.durability=durable must never be masked by the process-wide advisory env override");
+assert.match(toolError(perBindingDurableFeedback[0]), /durable feedback write failed/i);
+
+// C2-authz: repository-catalog wiring into authorize() -- a workspace-root-bound caller may
+// reach a distinct child repository ONLY via an explicit grant_policy.child_repository_ids
+// grant that the live catalog also confirms; every other cross-root call still denies exactly
+// as before.
+const catalogRoot = await mkdtemp(join(tmpdir(), "membrane-catalog-authz-"));
+const catalogWorkspace = join(catalogRoot, "workspace");
+await mkdir(catalogWorkspace, { recursive: true });
+const grantedChildDir = join(catalogWorkspace, "granted-child");
+const ungrantedChildDir = join(catalogWorkspace, "ungranted-child");
+await mkdir(join(grantedChildDir, ".git"), { recursive: true });
+await mkdir(join(ungrantedChildDir, ".git"), { recursive: true });
+const catalogWorkspaceCanonical = await realpath(catalogWorkspace);
+const catalog = await buildRepositoryCatalog(catalogWorkspace);
+const workspaceEntry = catalog.repositories.find((entry) => entry.role === "workspace-root");
+const grantedEntry = catalog.repositories.find((entry) => entry.root === "granted-child");
+const ungrantedEntry = catalog.repositories.find((entry) => entry.root === "ungranted-child");
+const catalogRegistry = join(catalogRoot, "registry.json");
+await writeFile(catalogRegistry, JSON.stringify({
+  schema_version: 2,
+  bindings: {
+    [catalogWorkspaceCanonical]: { repository_id: workspaceEntry.repository_id, scope_id: workspaceEntry.scope_id, provider_config: {}, grant_policy: { level: "write-proposed", child_repository_ids: [grantedEntry.repository_id] } },
+    [await realpath(grantedChildDir)]: { repository_id: grantedEntry.repository_id, scope_id: grantedEntry.scope_id, provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repository_id } },
+    [await realpath(ungrantedChildDir)]: { repository_id: ungrantedEntry.repository_id, scope_id: ungrantedEntry.scope_id, provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repository_id } },
+  },
+}), "utf8");
+const catalogEnv = { MEMBRANE_PROJECT_REGISTRY: catalogRegistry, MEMBRANE_DURABILITY_MODE: "advisory", CRYPT_BIN: bogusCrypt };
+const workspaceCaller = { root: catalogWorkspace, repositoryId: workspaceEntry.repository_id, scopeId: workspaceEntry.scope_id };
+const grantedAccess = await rpc([{
+  jsonrpc: "2.0", id: 44, method: "tools/call",
+  params: { name: "membrane_feedback", arguments: { repository: grantedChildDir, caller: workspaceCaller, receiptId: "receipt-granted-child", outcome: "used" } },
+}], catalogEnv);
+assert.equal(grantedAccess[0].result.isError, false, `explicit child grant must authorize cross-repository access: ${toolError(grantedAccess[0])}`);
+const ungrantedAccess = await rpc([{
+  jsonrpc: "2.0", id: 45, method: "tools/call",
+  params: { name: "membrane_feedback", arguments: { repository: ungrantedChildDir, caller: workspaceCaller, receiptId: "receipt-ungranted-child", outcome: "used" } },
+}], catalogEnv);
+assert.equal(ungrantedAccess[0].result.isError, true, "an ungranted child repository must still be denied");
+assert.match(toolError(ungrantedAccess[0]), /cross_root_binding_denied/);
+const revokedAccess = await rpc([{
+  jsonrpc: "2.0", id: 46, method: "tools/call",
+  params: { name: "membrane_feedback", arguments: { repository: catalogWorkspace, caller: { root: grantedChildDir, repositoryId: grantedEntry.repository_id, scopeId: grantedEntry.scope_id }, receiptId: "receipt-child-cannot-reach-parent", outcome: "used" } },
+}], catalogEnv);
+assert.equal(revokedAccess[0].result.isError, true, "a child repository must not gain reverse access to its parent workspace");
+assert.match(toolError(revokedAccess[0]), /cross_root_binding_denied/);
 
 await writeFile(registry, JSON.stringify({
   schema_version: 2,
