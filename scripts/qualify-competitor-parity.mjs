@@ -7,7 +7,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, extname, join, resolve } from "node:path";
 
 const ACCEPTED = [
   ...Array.from({ length: 21 }, (_, index) => `F${String(index + 1).padStart(2, "0")}`),
@@ -87,6 +87,32 @@ function currentEvidence() {
   const windows = platformReceipt("windows");
   return { source: existsSync(source) ? JSON.parse(readFileSync(source, "utf8")) : null, mac: existsSync(mac) ? JSON.parse(readFileSync(mac, "utf8")) : null, windows: existsSync(windows) ? JSON.parse(readFileSync(windows, "utf8")) : null };
 }
+function parseJsonOutput(check) {
+  if (check.status !== 0) return null;
+  try { return JSON.parse(check.output_tail); }
+  catch { return null; }
+}
+function sameSourceFingerprint(left, right) {
+  return Boolean(left && right
+    && left.membrane === right.membrane
+    && left.runner === right.runner
+    && left.findings === right.findings);
+}
+function eventDbPath(primaryDb) {
+  return join(dirname(primaryDb), `${basename(primaryDb, extname(primaryDb))}.membrane-events.sqlite3`);
+}
+function loadHostArtifact(platform, kind, releaseGeneration) {
+  const path = join(evidenceRoot, `${platform}-${kind}.json`);
+  if (!existsSync(path)) return { path, valid: false, value: null };
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8"));
+    const valid = value?.schema === `membrane.platform-${kind}.v1`
+      && value?.platform === platform
+      && value?.status === "passed"
+      && value?.release_generation === releaseGeneration;
+    return { path, sha256: fileHash(path), valid, value };
+  } catch { return { path, valid: false, value: null }; }
+}
 function runCommand(command, commandArgs, cwd, timeout = 20 * 60_000) {
   const execution = spawnSync(command, commandArgs, {
     cwd, encoding: "utf8", timeout, windowsHide: true,
@@ -97,6 +123,71 @@ function runCommand(command, commandArgs, cwd, timeout = 20 * 60_000) {
     command: [command, ...commandArgs].join(" "), cwd, status: execution.status,
     signal: execution.signal || null, timed_out: execution.error?.code === "ETIMEDOUT",
     output_sha256: sha256(output), output_tail: output,
+  };
+}
+function runPlatformPhase(platform) {
+  const source = currentEvidence().source;
+  const expectedNodePlatform = platform === "mac" ? "darwin" : "win32";
+  if (process.platform !== expectedNodePlatform) {
+    return {
+      ...base, platform, status: "blocked_wrong_platform",
+      finding_results: selected.map((id) => ({ id, status: "open", reason: `run ${platform} phase on ${expectedNodePlatform}` })),
+      open: selected,
+    };
+  }
+  const suffix = platform === "windows" ? ".exe" : "";
+  const cliPath = join(workspaceRoot, "tools", "bin", `memright${suffix}`);
+  const servicePath = join(workspaceRoot, "tools", "bin", `memright-service${suffix}`);
+  const installed = runCommand(cliPath, ["build-info"], workspaceRoot, 10_000);
+  const serviceIdentityCheck = runCommand(servicePath, ["build-info"], workspaceRoot, 10_000);
+  const health = runCommand("curl", ["--fail", "--silent", "--show-error", "--max-time", "5", "http://127.0.0.1:47851/health"], workspaceRoot, 10_000);
+  const service = platform === "mac"
+    ? runCommand("launchctl", ["print", `gui/${process.getuid()}/com.adrian.memright-serve`], workspaceRoot, 10_000)
+    : runCommand(join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"), ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Get-ScheduledTask -TaskName 'memright-serve' | Select-Object TaskName,State | ConvertTo-Json -Compress"], workspaceRoot, 10_000);
+  const primaryDb = process.env.MEMRIGHT_DB || join(workspaceRoot, "tools", ".cache", "memory", "memright-engine.db");
+  const eventsDb = process.env.MEMBRANE_EVENT_DB || eventDbPath(primaryDb);
+  const hostEvents = runCommand("sqlite3", ["-json", eventsDb, "SELECT client, COUNT(*) AS events, MAX(ts) AS latest_ts FROM context_event_log WHERE client IN ('claude_code', 'codex', 'ccx') GROUP BY client ORDER BY client"], workspaceRoot, 10_000);
+  const identity = parseJsonOutput(installed);
+  const serviceIdentity = parseJsonOutput(serviceIdentityCheck);
+  const healthJson = parseJsonOutput(health);
+  const hostCoverage = parseJsonOutput(hostEvents) || [];
+  const expectedCommit = git(membraneRoot, ["rev-parse", "HEAD"]);
+  const engineCurrent = identity?.memright_source_commit
+    ? spawnSync("git", ["diff", "--quiet", identity.memright_source_commit, "HEAD", "--", "engine"], { cwd: membraneRoot }).status === 0
+    : false;
+  const coveredClients = new Set(hostCoverage.filter((row) => Number(row.events) > 0).map((row) => row.client));
+  const rollback = loadHostArtifact(platform, "rollback", identity?.release_generation);
+  const scenarios = loadHostArtifact(platform, "scenarios", identity?.release_generation);
+  const traceIds = new Set((scenarios.value?.traces || []).map((trace) => trace.trace_id));
+  const scenariosValid = scenarios.valid
+    && scenarios.value?.scenario_count === 10
+    && scenarios.value?.scenarios_passed === 10
+    && traceIds.size === 10
+    && (scenarios.value?.telemetry?.catalog || 0) > 0
+    && (scenarios.value?.telemetry?.delivery || 0) > 0
+    && (scenarios.value?.telemetry?.feedback || 0) > 0;
+  const serviceRunning = platform === "mac"
+    ? /state = running/.test(service.output_tail)
+    : parseJsonOutput(service)?.State === 4 || /"State":"Running"/.test(service.output_tail);
+  const identityMatch = source?.status === "source_passed"
+    && sameSourceFingerprint(source.fingerprint, base.fingerprint)
+    && (identity?.memright_source_commit === expectedCommit || engineCurrent)
+    && identity?.release_generation === serviceIdentity?.release_generation
+    && healthJson?.releaseGeneration === identity?.release_generation
+    && serviceRunning
+    && ["claude_code", "codex", "ccx"].every((client) => coveredClients.has(client))
+    && (!has("--require-rollback") || rollback.valid)
+    && scenariosValid;
+  return {
+    ...base, platform,
+    checks: [installed, serviceIdentityCheck, health, service, hostEvents],
+    identity, service_identity: serviceIdentity,
+    installed_sha256: { cli: fileHash(cliPath), service: fileHash(servicePath) },
+    engine_source_current: engineCurrent, event_db: eventsDb, host_coverage: hostCoverage,
+    rollback, scenarios,
+    status: identityMatch ? `${platform}_host_passed` : `${platform}_host_failed`,
+    finding_results: selected.map((id) => ({ id, status: identityMatch ? `${platform}_host_passed` : "open", reason: identityMatch ? "installed identity, service, lifecycle, scenarios, & rollback match" : "installed platform evidence mismatch" })),
+    open: identityMatch ? [] : selected,
   };
 }
 function sourceSuites(ids) {
@@ -165,42 +256,33 @@ if (phase === "baseline") {
     open,
   };
 } else if (phase === "mac") {
-  const source = currentEvidence().source;
-  const installed = runCommand(join(workspaceRoot, "tools", "bin", "memright"), ["build-info"], workspaceRoot, 10_000);
-  const health = runCommand("curl", ["--fail", "--silent", "--show-error", "--max-time", "5", "http://127.0.0.1:47851/health"], workspaceRoot, 10_000);
-  const service = runCommand("launchctl", ["print", `gui/${process.getuid()}/com.adrian.memright-serve`], workspaceRoot, 10_000);
-  const db = process.env.MEMRIGHT_DB || join(workspaceRoot, "tools", ".cache", "memory", "memright-engine.db");
-  const hostEvents = runCommand("sqlite3", ["-json", db, "SELECT client, COUNT(*) AS events, MAX(ts) AS latest_ts FROM context_event_log WHERE client IN ('claude_code', 'codex', 'ccx') GROUP BY client ORDER BY client"], workspaceRoot, 10_000);
-  let hostCoverage = [];
-  let identity = null;
-  let healthJson = null;
-  try {
-    identity = JSON.parse(installed.output_tail);
-    healthJson = JSON.parse(health.output_tail);
-    hostCoverage = JSON.parse(hostEvents.output_tail);
-  } catch { /* receipt remains open */ }
-  const expectedCommit = git(membraneRoot, ["rev-parse", "HEAD"]);
-  const engineCurrent = identity?.memright_source_commit
-    ? spawnSync("git", ["diff", "--quiet", identity.memright_source_commit, "HEAD", "--", "engine"], { cwd: membraneRoot }).status === 0
-    : false;
-  const coveredClients = new Set(hostCoverage.filter((row) => Number(row.events) > 0).map((row) => row.client));
-  const identityMatch = source?.status === "source_passed"
-    && (identity?.memright_source_commit === expectedCommit || engineCurrent)
-    && healthJson?.releaseGeneration === identity?.release_generation
-    && /state = running/.test(service.output_tail)
-    && ["claude_code", "codex", "ccx"].every((client) => coveredClients.has(client));
-  result = {
-    ...base, platform: "mac", checks: [installed, health, service, hostEvents], identity, engine_source_current: engineCurrent, host_coverage: hostCoverage,
-    status: identityMatch ? "mac_host_passed" : "mac_host_failed",
-    finding_results: selected.map((id) => ({ id, status: identityMatch ? "mac_host_passed" : "open", reason: identityMatch ? "installed identity, service, & Claude/Codex/ccx event receipts match" : "installed identity, service, or host receipt mismatch" })),
-    open: identityMatch ? [] : selected,
-  };
+  result = runPlatformPhase("mac");
 } else if (phase === "windows") {
-  result = { ...base, status: "blocked_missing_installed_receipt", platform: phase, finding_results: selected.map((id) => ({ id, status: "open", reason: "no installed windows receipt" })), open: selected };
+  result = runPlatformPhase("windows");
 } else {
   const evidence = currentEvidence();
-  const platformOpen = ["source", "mac", "windows"].filter((name) => !evidence[name]);
-  result = { ...base, status: platformOpen.length ? "blocked_missing_phase_receipts" : "blocked_unvalidated_receipts", phase_receipts: Object.fromEntries(Object.entries(evidence).map(([name, receipt]) => [name, receipt?.status || "missing"])), open: ACCEPTED };
+  const expectedStatuses = { source: "source_passed", mac: "mac_host_passed", windows: "windows_host_passed" };
+  const invalid = Object.entries(expectedStatuses).filter(([name, status]) => {
+    const receipt = evidence[name];
+    return receipt?.status !== status
+      || receipt?.open?.length !== 0
+      || !sameSourceFingerprint(receipt?.fingerprint, base.fingerprint);
+  }).map(([name]) => name);
+  const generationMatch = evidence.mac?.identity?.release_generation
+    && evidence.mac.identity.release_generation === evidence.windows?.identity?.release_generation;
+  const sourceCommitMatch = evidence.mac?.identity?.memright_source_commit
+    && evidence.mac.identity.memright_source_commit === evidence.windows?.identity?.memright_source_commit;
+  const passed = invalid.length === 0 && generationMatch && sourceCommitMatch;
+  result = {
+    ...base,
+    status: passed ? "final_passed" : "final_failed",
+    phase_receipts: Object.fromEntries(Object.entries(evidence).map(([name, receipt]) => [name, receipt?.status || "missing"])),
+    invalid_phase_receipts: invalid,
+    release_generation_match: Boolean(generationMatch),
+    source_commit_match: Boolean(sourceCommitMatch),
+    finding_results: selected.map((id) => ({ id, status: passed ? "passed" : "open", reason: passed ? "source plus matching Mac/Windows installed receipts passed" : "phase receipt missing, stale, failed, or cross-generation" })),
+    open: passed ? [] : selected,
+  };
 }
 const name = phase === "final" ? "final-verification.json" : `${phase}.json`;
 result.evidence_path = join(evidenceRoot, name);
