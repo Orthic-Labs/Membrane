@@ -12,6 +12,10 @@ path = "src/main.rs"
 name = "memright-service"
 path = "src/service_main.rs"
 
+[[bin]]
+name = "crypt-service"
+path = "src/crypt_service_main.rs"
+
 [dependencies]
 membrane-runtime = { path = "../membrane-runtime" }
 

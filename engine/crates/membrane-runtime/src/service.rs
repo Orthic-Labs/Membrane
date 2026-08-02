@@ -68,30 +68,33 @@ fn runtime_from_exe_at_workspace(
             return None;
         }
         let bin = root.join("tools/bin");
-        let service = bin.join(if cfg!(windows) {
-            "memright-service.exe"
+        let service_names = if cfg!(windows) {
+            ["crypt-service.exe", "memright-service.exe"]
         } else {
-            "memright-service"
-        });
-        let metadata = std::fs::symlink_metadata(&service).ok()?;
-        if !metadata.file_type().is_symlink() {
-            return None;
-        }
-        let linked = std::fs::canonicalize(service).ok()?;
+            ["crypt-service", "memright-service"]
+        };
         let actual = std::fs::canonicalize(exe).ok()?;
-        (linked == actual).then_some(bin)
+        service_names.iter().find_map(|name| {
+            let service = bin.join(name);
+            let metadata = std::fs::symlink_metadata(&service).ok()?;
+            if !metadata.file_type().is_symlink() {
+                return None;
+            }
+            let linked = std::fs::canonicalize(service).ok()?;
+            (linked == actual).then_some(bin.clone())
+        })
     });
     let bin = direct_bin
         .map(Path::to_path_buf)
         .or(linked_bin)
         .ok_or_else(|| {
-            "memright-service must run from <workspace>/tools/bin or its exact canonical symlink"
+            "crypt-service must run from <workspace>/tools/bin or its exact canonical symlink"
                 .to_string()
         })?;
     let tools = bin
         .parent()
         .filter(|path| path.file_name().is_some_and(|name| name == "tools"))
-        .ok_or_else(|| "memright-service could not locate the tools directory".to_string())?;
+        .ok_or_else(|| "crypt-service could not locate the tools directory".to_string())?;
     let config_path = tools.join("lib/memory/runtime.json");
     let config: RuntimeConfig = serde_json::from_slice(
         &std::fs::read(&config_path)
@@ -212,7 +215,7 @@ mod tests {
         let workspace = temp.path().join("workspace");
         let bin = workspace.join("tools/bin");
         let config_dir = workspace.join("tools/lib/memory");
-        let relocated = temp.path().join("resident/memright-service");
+        let relocated = temp.path().join("resident/crypt-service");
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::create_dir_all(relocated.parent().unwrap()).unwrap();
@@ -222,7 +225,7 @@ mod tests {
             r#"{"schemaVersion":1,"serviceId":"memright-local-v1","host":"127.0.0.1","port":47851}"#,
         )
         .unwrap();
-        symlink(&relocated, bin.join("memright-service")).unwrap();
+        symlink(&relocated, bin.join("crypt-service")).unwrap();
 
         let runtime = runtime_from_exe_at_workspace(&relocated, Some(&workspace)).unwrap();
         assert_eq!(runtime.port, 47851);
