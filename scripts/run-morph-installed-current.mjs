@@ -9,8 +9,8 @@ const membraneRoot = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const root = resolve(membraneRoot, "..");
 const python = join(root, ".venv-tools", "bin", "python");
 const candidates = [
-  join(membraneRoot, "engine", "target", "debug", "crypt"),
   join(root, "tools", "bin", process.platform === "win32" ? "crypt.exe" : "crypt"),
+  join(membraneRoot, "engine", "target", "debug", "crypt"),
 ];
 const crypt = candidates.find(existsSync);
 const sourceRunner = join(root, "morph", "run_incremental_multiwriter.py");
