@@ -72,8 +72,8 @@ function promptFor(name, shellCommand) {
     `Reply on one line beginning exactly: branch=main scenario=${name} proof=`,
   ].join(" ");
 }
-function findTrace(db, cursor) {
-  const match = db.prepare(`
+async function findTrace(db, cursor) {
+  const statement = db.prepare(`
     SELECT trace_id, MAX(seq) AS last_seq
       FROM context_event_log
      WHERE seq > ?
@@ -81,9 +81,13 @@ function findTrace(db, cursor) {
     HAVING SUM(CASE WHEN phase='block.delivered' AND artifact_id=? THEN 1 ELSE 0 END) > 0
        AND SUM(CASE WHEN phase='turn.observed' AND reason_code='tool' AND client='claude_code' AND status='success' THEN 1 ELSE 0 END) > 0
      ORDER BY last_seq DESC LIMIT 1
-  `).get(cursor, BRANCH_ARTIFACT);
-  if (!match) fail("real host trace lacks linked branch delivery and tool receipt");
-  return match.trace_id;
+  `);
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const match = statement.get(cursor, BRANCH_ARTIFACT);
+    if (match) return match.trace_id;
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
+  }
+  fail("real host trace lacks linked branch delivery and tool receipt");
 }
 function postEvents(events) {
   const token = readFileSync(tokenPath, "utf8").trim();
@@ -98,7 +102,7 @@ function postEvents(events) {
       response.on("data", (chunk) => chunks.push(chunk));
       response.on("end", () => {
         const text = Buffer.concat(chunks).toString("utf8");
-        if (response.statusCode !== 201) return reject(new Error(`outcome telemetry rejected (${response.statusCode})`));
+        if (response.statusCode !== 201) return reject(new Error(`outcome telemetry rejected (${response.statusCode}): ${text.slice(0, 400)}`));
         try { resolvePromise(JSON.parse(text)); } catch { reject(new Error("outcome telemetry returned malformed JSON")); }
       });
     });
@@ -107,7 +111,7 @@ function postEvents(events) {
     request.end(body);
   });
 }
-function outcomeEvent(delivery, scenario, output) {
+function outcomeEvent(delivery, scenario) {
   const eventId = opaque("evt", `${scenario}:${delivery.trace_id}:outcome`);
   return {
     schema_version: 1, event_id: eventId, ts: new Date().toISOString(),
@@ -116,13 +120,13 @@ function outcomeEvent(delivery, scenario, output) {
     producer: "platform_qualification", producer_version: "1", session_id: delivery.session_id,
     turn_id: delivery.turn_id, trace_id: delivery.trace_id, span_id: opaque("span", eventId, 32),
     parent_span_id: delivery.span_id, artifact_family: delivery.artifact_family,
-    provider: "platform_observer", provider_version: "1", release_generation: delivery.release_generation,
+    provider: "membrane", provider_version: "1", release_generation: delivery.release_generation,
     phase: "turn.outcome", operation: "evaluate", status: "success", reason_code: "host_exit_zero",
     scope_id: delivery.scope_id, artifact_id: delivery.artifact_id,
     artifact_sha256: delivery.artifact_sha256, traffic_class: "eval",
     policy_version: delivery.policy_version, policy_activation_sha256: delivery.policy_activation_sha256,
     cohort: delivery.cohort, task_class: "coding", source_generation: delivery.source_generation,
-    quantity: 1, meta: { scenario, host_output_sha256: sha(output) }, measurements: [],
+    quantity: 1, measurements: [],
     links: [{ relation: "outcome_for", target_event_id: delivery.event_id }],
   };
 }
@@ -133,9 +137,9 @@ async function runScenario(db, scenario, shellCommand) {
   const parsed = parseClaude(host.stdout);
   const output = String(parsed.result || "").trim();
   if (!output.startsWith(`branch=main scenario=${scenario} proof=`)) fail(`${scenario}: model output did not use required branch context`);
-  const traceId = findTrace(db, cursor);
+  const traceId = await findTrace(db, cursor);
   const delivery = db.prepare("SELECT * FROM context_event_log WHERE trace_id=? AND phase='block.delivered' AND artifact_id=? AND status='success' ORDER BY seq DESC LIMIT 1").get(traceId, BRANCH_ARTIFACT);
-  const outcome = outcomeEvent(delivery, scenario, output);
+  const outcome = outcomeEvent(delivery, scenario);
   await postEvents([outcome]);
   const digest = /^[a-f0-9]{64}$/u.test(String(delivery.artifact_sha256 || "")) ? delivery.artifact_sha256 : "0".repeat(64);
   const feedback = command(cli, ["--db", memoryDb, "feedback", "--trace", traceId, "--candidate", BRANCH_CANDIDATE, "--sha", digest, "--outcome", "used", "--source", "observed_action", "--scope", workspaceRoot], 20_000);
