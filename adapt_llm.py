@@ -380,29 +380,66 @@ def call_lane(
     thinking: str = "adaptive",
     temperature: float = 0.2,
 ) -> str:
-    """Call a configured lane with explicit output and retry ceilings."""
-    if lane == "local":
-        return _local_llm(system, user)
-    if lane != "minimax":
-        raise ValueError(f"unsupported lane: {lane}")
-    return _minimax_llm(
+    """Call a configured lane with explicit output and retry ceilings.
+
+    Text-only convenience wrapper. Prefer ``call_lane_response`` when the
+    caller needs provider usage/stop metadata.
+    """
+    return call_lane_response(
         system,
         user,
+        lane=lane,
         max_tokens=max_tokens,
         attempts=attempts,
         thinking=thinking,
         temperature=temperature,
+    )["text"]
+
+
+def _normalize_usage(usage: object) -> dict:
+    if not isinstance(usage, dict):
+        return {}
+    return {key: value for key, value in usage.items() if value is not None}
+
+
+def _provider_meta(response: dict) -> dict:
+    return {
+        "usage": _normalize_usage(response.get("usage") or {}),
+        "model": response.get("model"),
+        "stop_reason": response.get("stop_reason"),
+    }
+
+
+def _audit_provider_usage(stage: str, response: dict) -> None:
+    """Persist content-free provider usage where natural (audit.jsonl)."""
+    meta = _provider_meta(response)
+    if not meta["usage"] and not meta["model"]:
+        return
+    entry = {"stage": stage, "event": "provider_usage", **meta}
+    with open(_audit_path(), "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry) + "\n")
+
+
+def _default_llm_response(system: str, user: str, lane: str = "local") -> dict:
+    response = call_lane_response(system, user, lane=lane, attempts=3)
+    _audit_provider_usage("extract", response)
+    return response
+
+
+def _default_synth_llm_response(system: str, user: str, lane: str = "local") -> dict:
+    response = call_lane_response(
+        system, user, lane=lane, attempts=3, max_tokens=SYNTH_MAX_TOKENS
     )
+    _audit_provider_usage("synthesize", response)
+    return response
 
 
 def _default_llm(system: str, user: str, lane: str = "local") -> str:
-    return call_lane(system, user, lane=lane, attempts=3)
+    return _default_llm_response(system, user, lane)["text"]
 
 
 def _default_synth_llm(system: str, user: str, lane: str = "local") -> str:
-    return call_lane(
-        system, user, lane=lane, attempts=3, max_tokens=SYNTH_MAX_TOKENS
-    )
+    return _default_synth_llm_response(system, user, lane)["text"]
 
 
 def _audit_path() -> Path:
@@ -502,6 +539,8 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
     (each tagged with `source: "model"` and a category from the canonical 8).
 
     On any non-success: caller treats the batch as not-advanced and retries.
+    Provider usage/stop metadata rides on the outcome when the default lane
+    path is used (custom ``llm`` callables remain text-only).
     """
     from outcomes import BatchOutcome, Outcome
 
@@ -514,8 +553,17 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
         if right.outcome not in (Outcome.SUCCESS, Outcome.VALID_EMPTY):
             return right
         combined = [*left.actions, *right.actions]
-        return (BatchOutcome.success(combined) if combined else
-                BatchOutcome.valid_empty("split window returned no observations"))
+        # Prefer the first non-empty usage receipt from the split windows.
+        meta_src = left if left.provider_receipt() else right
+        meta = {
+            "usage": meta_src.usage,
+            "model": meta_src.model,
+            "stop_reason": meta_src.stop_reason,
+        }
+        return (
+            BatchOutcome.success(combined, **meta) if combined else
+            BatchOutcome.valid_empty("split window returned no observations", **meta)
+        )
 
     if not batch:
         return BatchOutcome.valid_empty("empty batch")
@@ -526,20 +574,29 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
             _audit_call_failure("extract", RuntimeError("scanner-positive batch refused"))
             return BatchOutcome.scanner_blocked("scanner-positive batch")
     user = build_extract_payload(batch)
+    provider_kwargs: dict = {}
     try:
         if llm is None:
-            raw = _default_llm(EXTRACT_SYSTEM, user, lane)
+            response = _default_llm_response(EXTRACT_SYSTEM, user, lane)
+            raw = response.get("text") or ""
+            provider_kwargs = {
+                "usage": _normalize_usage(response.get("usage") or {}),
+                "model": response.get("model"),
+                "stop_reason": response.get("stop_reason"),
+            }
         else:
             raw = llm(EXTRACT_SYSTEM, user)
     except Exception as exc:
         _audit_call_failure("extract", exc)
         if len(batch) > 1 and "max_tokens" in str(exc).lower():
             return split_and_extract()
-        return BatchOutcome.provider_failed(f"{type(exc).__name__}: {str(exc)[:120]}")
+        return BatchOutcome.provider_failed(
+            f"{type(exc).__name__}: {str(exc)[:120]}", **provider_kwargs
+        )
     raw = (raw or "").strip()
     if not raw:
         _audit_call_failure("extract", RuntimeError("empty model response"))
-        return BatchOutcome.provider_failed("empty model response")
+        return BatchOutcome.provider_failed("empty model response", **provider_kwargs)
     parsed = parse_json_array(raw, "extract")
     # Distinguish a legitimately-empty array (VALID_EMPTY) from a model
     # response that wasn't an array at all (PARSE_FAILED).
@@ -548,12 +605,14 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
         if len(batch) > 1:
             return split_and_extract()
         _audit_parse_failure("extract", raw)
-        return BatchOutcome.parse_failed("response not an array")
+        return BatchOutcome.parse_failed("response not an array", **provider_kwargs)
     if not raw_stripped.startswith("["):
         if len(batch) > 1:
             return split_and_extract()
         _audit_parse_failure("extract", raw)
-        return BatchOutcome.parse_failed("response missing leading [")
+        return BatchOutcome.parse_failed(
+            "response missing leading [", **provider_kwargs
+        )
     out: list[dict] = []
     for item in parsed:
         if not isinstance(item, dict):
@@ -582,8 +641,10 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
         out.append({**item, "tool": tool, "scope": scope,
                     "session_id": session_id, "source": "model"})
     if not out:
-        return BatchOutcome.valid_empty("model returned no qualifying observations")
-    return BatchOutcome.success(out)
+        return BatchOutcome.valid_empty(
+            "model returned no qualifying observations", **provider_kwargs
+        )
+    return BatchOutcome.success(out, **provider_kwargs)
 
 
 def synthesize(existing: list[dict], observations: list[dict],
@@ -606,23 +667,34 @@ def synthesize(existing: list[dict], observations: list[dict],
             return BatchOutcome.scanner_blocked("scanner-positive synth payload")
     payload = json.dumps({"existing_rules": existing,
                           "new_observations": observations}, indent=1)
+    provider_kwargs: dict = {}
     try:
         if llm is None:
-            raw = _default_synth_llm(SYNTH_SYSTEM, payload, lane)
+            response = _default_synth_llm_response(SYNTH_SYSTEM, payload, lane)
+            raw = response.get("text") or ""
+            provider_kwargs = {
+                "usage": _normalize_usage(response.get("usage") or {}),
+                "model": response.get("model"),
+                "stop_reason": response.get("stop_reason"),
+            }
         else:
             raw = llm(SYNTH_SYSTEM, payload)
     except Exception as exc:
         _audit_call_failure("synthesize", exc)
-        return BatchOutcome.provider_failed(f"{type(exc).__name__}: {str(exc)[:120]}")
+        return BatchOutcome.provider_failed(
+            f"{type(exc).__name__}: {str(exc)[:120]}", **provider_kwargs
+        )
     raw = (raw or "").strip()
     if not raw:
         _audit_call_failure("synthesize", RuntimeError("empty model response"))
-        return BatchOutcome.provider_failed("empty synth response")
+        return BatchOutcome.provider_failed("empty synth response", **provider_kwargs)
     parsed = parse_json_array(raw, "synthesize")
     if raw and (raw[0] != "[" or not parsed):
         _audit_parse_failure("synthesize", raw)
     if not parsed:
-        return BatchOutcome.parse_failed("could not extract synth array")
+        return BatchOutcome.parse_failed(
+            "could not extract synth array", **provider_kwargs
+        )
     actions: list[dict] = []
     observation_by_id = {
         item["observation_id"]: item
@@ -656,9 +728,9 @@ def synthesize(existing: list[dict], observations: list[dict],
                 for value in linked
             ):
                 return BatchOutcome.parse_failed(
-                    "synth action missing valid observation_ids"
+                    "synth action missing valid observation_ids", **provider_kwargs
                 )
         actions.append(item)
     if not actions:
-        return BatchOutcome.valid_empty("no actions returned")
-    return BatchOutcome.success(actions)
+        return BatchOutcome.valid_empty("no actions returned", **provider_kwargs)
+    return BatchOutcome.success(actions, **provider_kwargs)

@@ -31,8 +31,8 @@ def _sha(value: bytes = b"x") -> str:
 
 def _evidence() -> dict:
     implementation_files = [
-        {"path": "tools/pipelines/memory/adapt/adapt.py", "sha256": _sha(b"adapt")},
-        {"path": "tools/pipelines/memory/adapt/cross_machine.py", "sha256": _sha(b"cross")},
+        {"path": "adapt/adapt.py", "sha256": _sha(b"adapt")},
+        {"path": "adapt/cross_machine.py", "sha256": _sha(b"cross")},
     ]
     aggregate = _sha(json.dumps(
         implementation_files,
@@ -84,8 +84,8 @@ def _evidence() -> dict:
             "passed_count": 17,
             "output_sha256": _sha(b"17 passed"),
             "files": [
-                {"path": "tools/pipelines/memory/adapt/test_multiwriter_conformance.py", "sha256": _sha(b"t1")},
-                {"path": "tools/pipelines/memory/adapt/test_run_incremental_multiwriter.py", "sha256": _sha(b"t2")},
+                {"path": "adapt/test_multiwriter_conformance.py", "sha256": _sha(b"t1")},
+                {"path": "adapt/test_run_incremental_multiwriter.py", "sha256": _sha(b"t2")},
             ],
         },
     }

@@ -132,6 +132,7 @@ def _emit_from_fixture(fx: dict, out_path: Path) -> dict:
 
     for act in synth_actions:
         admitted, why = admission.admit(
+            act.get("action", "add"),
             {**act, "scope": SCOPE},
             canonical_rules=canonical_rules,
             authority_manifest=authority_snapshot,

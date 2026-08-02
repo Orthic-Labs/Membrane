@@ -164,7 +164,7 @@ def evaluate(labels: list[dict], *, lane: str, run_llm) -> dict:
                     "confidence": 0.7,
                     "observations": 1,
                 }
-                ok, _why = admission.admit(action)
+                ok, _why = admission.admit("add", action)
                 if ok:
                     gated.append(obs)
         pipeline_emitted = bool(gated)

@@ -1,0 +1,8 @@
+schema_version: "1.0.0"
+profile: engine
+description: Universal Adapt admission safety patterns.
+
+regex_bans:
+  - id: transient-environment-claim
+    reason: transient-environment-claim
+    pattern: '(?i)\b(?:is|are|was|were)\s+(?:blocked|broken|unavailable|down|missing)\b|\bworkaround\b'

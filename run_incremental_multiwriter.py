@@ -276,8 +276,8 @@ def run_incremental(
     audit_path = workdir / "adjudication-audit.json"
     calls_dir = workdir / "calls"
     phase_receipts: list[dict[str, Any]] = []
-    adapt_path = root / "tools/pipelines/memory/adapt/adapt.py"
-    adjudicate_path = root / "tools/pipelines/memory/adapt/adjudicate_manifest.py"
+    adapt_path = ADAPT_DIR / "adapt.py"
+    adjudicate_path = ADAPT_DIR / "adjudicate_manifest.py"
 
     def record_failure(
         failed_phase: str,

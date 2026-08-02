@@ -131,6 +131,8 @@
           "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
           "needs_review": { "type": "boolean" },
           "evidence_count": { "type": "integer", "minimum": 0 },
+          "created_at": { "type": "string", "minLength": 1 },
+          "updated_at": { "type": "string", "minLength": 1 },
           "evidence_excerpt": {
             "type": "string",
             "description": "Bounded evidence fragment (not the full prompt); redaction already applied at extract."
@@ -179,6 +181,38 @@
               }
             },
             "description": "Stable evidence IDs so reviewers can cross-reference specific excerpts without ambiguity."
+          },
+          "operation": {
+            "type": "string",
+            "enum": ["add", "update", "deprecate"],
+            "description": "Synthesis operation that produced this candidate. Excluded from payload_sha256."
+          },
+          "machine": {
+            "type": "string",
+            "description": "Optional installation attribution. Excluded from payload_sha256."
+          },
+          "machine_only": {
+            "type": "boolean",
+            "description": "When true, the rule applies only on machine. Excluded from payload_sha256."
+          },
+          "lifecycle_state": {
+            "type": "string",
+            "enum": ["candidate", "active", "disputed", "deprecated", "superseded", "retired"],
+            "description": "Rule lifecycle axis. Excluded from payload_sha256."
+          },
+          "last_verified_at": {
+            "type": "string",
+            "description": "Optional reverification timestamp. Excluded from payload_sha256."
+          },
+          "verification_count": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Optional reverification count. Excluded from payload_sha256."
+          },
+          "scope_dimensions": {
+            "type": "object",
+            "additionalProperties": { "type": "string" },
+            "description": "Structured narrowing facets. Excluded from payload_sha256."
           }
         }
       }

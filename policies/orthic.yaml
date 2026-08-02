@@ -1,0 +1,17 @@
+schema_version: "1.0.0"
+profile: orthic
+description: Orthic workspace-specific admission bans (retired workflows and routing).
+
+regex_bans:
+  - id: retired-workflow-reference
+    reason: retired-workflow-reference
+    pattern: '(?i)(?:/review-cli|/review-self|cli-review\.py|three distinct review gates|use council for uncertainty, jury to challenge decisions)'
+  - id: obsolete-model-routing
+    reason: obsolete-model-routing
+    pattern: '(?i)(?:route architecture work to fable or opus|use opus subagents)'
+  - id: unapproved-worktree-mandate
+    reason: unapproved-worktree-mandate
+    pattern: '(?i)(?:give each (?:an )?isolated worktree|lanes? with worktree .*instructions)'
+  - id: overbroad-workflow-mandate
+    reason: overbroad-workflow-mandate
+    pattern: '(?i)(?:stop and ask for clarification rather than guessing when blocked or instructions are unclear|use STATE\.md as the source of truth for project state across tasks)'

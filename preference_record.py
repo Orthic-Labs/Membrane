@@ -574,16 +574,15 @@ def from_manifest_candidate(
 ) -> PreferenceRecord:
     """Convert an accepted manifest candidate into its canonical stored record.
 
-    The manifest file itself never carries `machine`/`machine_only` (kept
-    out of the schema-validated, hash-immutable candidate payload on
-    purpose — see manifest.IMMUTABLE_FIELDS). Callers applying an accepted
-    manifest may pass `machine` explicitly to attribute the record to the
-    installation performing the apply; omitted, it stays "" (unknown),
-    matching a legacy manifest record with no machine data at all.
+    Manifest candidates carry optional attribution, lifecycle, verification,
+    and scope-dimension metadata outside the hash-immutable payload. Callers
+    applying an accepted manifest may still pass ``machine`` explicitly to
+    attribute the row to the installation performing the apply when the
+    candidate omitted machine data.
     """
     return PreferenceRecord.from_synthesis(
         {
-            "action": "add",
+            "action": record.get("operation", record.get("_action", "add")),
             "name": record["id"],
             "category": record["category"],
             "rule": record["rule"],
@@ -596,16 +595,26 @@ def from_manifest_candidate(
         },
         scope=record["scope"],
         source_ids=tuple(record.get("source_ids", [])),
-        now=now,
+        now=now or record.get("updated_at") or record.get("created_at"),
         existing={
             "id": record["id"],
             "created_at": record.get("created_at", now or _now_iso()),
             "record_type": record.get("record_type", "unclassified"),
             "authority_effect": record.get("authority_effect", "neutral"),
             "retrieval_aliases": record.get("retrieval_aliases", ()),
+            "machine": record.get("machine", ""),
+            "machine_only": record.get("machine_only", False),
+            "lifecycle_state": record.get("lifecycle_state"),
+            "last_verified_at": record.get("last_verified_at", ""),
+            "verification_count": record.get("verification_count", 0),
+            "scope_dimensions": record.get("scope_dimensions", ()),
         },
-        machine=machine,
-        machine_only=machine_only,
+        machine=machine if machine is not None else record.get("machine"),
+        machine_only=machine_only if machine_only is not None else record.get("machine_only"),
+        lifecycle_state=record.get("lifecycle_state"),
+        last_verified_at=record.get("last_verified_at"),
+        verification_count=record.get("verification_count"),
+        scope_dimensions=record.get("scope_dimensions"),
     )
 
 
@@ -684,14 +693,19 @@ def to_manifest_candidate(record: PreferenceRecord,
                           *, evidence_excerpt: str = "",
                           human_note: str = "",
                           status: str = "pending",
-                          payload_sha256: str = "") -> dict:
+                          payload_sha256: str = "",
+                          operation: str = "add") -> dict:
     """Shape the record as a candidate for the manifest emission.
 
     ``payload_sha256`` should be computed over the immutable candidate
     payload (``manifest.candidate_payload``); the manifest module owns the
     canonical hash, so callers pass it in.
+
+    Optional attribution, lifecycle, verification, and scope-dimension
+    fields are included for round-trip fidelity but are excluded from
+    ``manifest.candidate_payload`` so they never perturb historical hashes.
     """
-    return {
+    candidate = {
         "id": record.id,
         "rule": record.rule,
         "category": record.category,
@@ -702,9 +716,29 @@ def to_manifest_candidate(record: PreferenceRecord,
         "confidence": record.confidence,
         "needs_review": record.needs_review,
         "evidence_count": record.evidence_count,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
         "evidence_excerpt": evidence_excerpt,
         "source_ids": sorted(record.source_ids),
         "retrieval_aliases": list(record.retrieval_aliases),
         "human_note": human_note,
         "payload_sha256": payload_sha256,
+        "operation": operation,
+        "machine": record.machine,
+        "machine_only": record.machine_only,
+        "lifecycle_state": record.lifecycle_state,
+        "last_verified_at": record.last_verified_at,
+        "verification_count": record.verification_count,
+        "scope_dimensions": dict(record.scope_dimensions),
     }
+    return candidate
+
+
+def load_manifest_candidate(candidate: dict, *, now: str | None = None) -> PreferenceRecord:
+    """Restore a ``PreferenceRecord`` from a manifest candidate dict."""
+    return from_manifest_candidate(candidate, now=now)
+
+
+def persist_manifest_candidate(record: PreferenceRecord, **kwargs) -> dict:
+    """Serialize a record to a manifest candidate dict (pre-hash)."""
+    return to_manifest_candidate(record, **kwargs)

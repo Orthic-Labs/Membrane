@@ -13,9 +13,8 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 
-# Workspace root derived from this file's location — a hardcoded D:/Claude
-# broke every non-Windows checkout (eval → adapt → memory → pipelines → tools → root).
-WS = Path(__file__).resolve().parents[5]
+# Workspace root derived from this file's location.
+WS = Path(__file__).resolve().parents[2]
 REPLAY_DIR = WS / "tools/pipelines/memory/replay"
 sys.path.insert(0, str(REPLAY_DIR))
 from chunk_tournament import ExactEmbeddingGemma

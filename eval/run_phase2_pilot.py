@@ -755,6 +755,7 @@ def _evaluate_arm(
         )
         if admitted:
             admitted, reason = admission.admit(
+                action.get("action", "add"),
                 {
                     "name": record.id,
                     "rule": record.rule,

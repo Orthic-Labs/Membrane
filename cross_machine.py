@@ -10,6 +10,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import rule_key
+
 
 class CrossMachineAdaptError(RuntimeError):
     """Raised when an Adapt manifest cannot safely join the shared rule pool."""
@@ -155,7 +157,8 @@ def load_canonical_rules(db_path: Path) -> dict[str, dict[str, Any]]:
         # raised here -- disabling canonical context entirely on a healthy pool.
         # A real duplicate is the same name in the SAME scope, and that still raises.
         scope = rule.get("scope") or ""
-        key = f"{scope}/{name}" if scope else name
+        rk = rule_key.RuleKey(scope=str(scope), record_id=name)
+        key = rk.formatted()
         if key in rules:
             raise CrossMachineAdaptError(f"duplicate canonical Adapt identity: {key}")
         rules[key] = rule

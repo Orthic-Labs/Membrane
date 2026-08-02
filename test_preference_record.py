@@ -77,10 +77,10 @@ def test_machine_field_present_round_trips_through_to_dict():
     assert rec2 == rec
 
 
-def test_machine_field_absent_from_manifest_candidate_payload():
-    """machine/machine_only must never leak into the manifest candidate: the
-    manifest schema has additionalProperties: false and manifest.py's
-    IMMUTABLE_FIELDS does not know about them."""
+def test_machine_field_present_in_manifest_candidate_but_not_payload():
+    """machine/machine_only ride on the candidate for round-trip fidelity but stay
+    out of manifest.candidate_payload so they never perturb payload_sha256."""
+    import manifest as manifest_mod
     rec = pr_mod.PreferenceRecord.from_synthesis(
         {"action": "add", "name": "x", "category": "tooling",
          "rule": "Prefer JSONL for structured logs.", "confidence": 0.7},
@@ -88,8 +88,10 @@ def test_machine_field_absent_from_manifest_candidate_payload():
         machine="adrian-mac", machine_only=True,
     )
     candidate = pr_mod.to_manifest_candidate(rec)
-    assert "machine" not in candidate
-    assert "machine_only" not in candidate
+    assert candidate["machine"] == "adrian-mac"
+    assert candidate["machine_only"] is True
+    assert "machine" not in manifest_mod.candidate_payload(candidate)
+    assert "machine_only" not in manifest_mod.candidate_payload(candidate)
 
 
 def test_to_memright_content_includes_machine_line_only_when_set():
@@ -251,9 +253,10 @@ def test_lifecycle_transition_to_unknown_state_raises():
         pr_mod.transition_lifecycle(rec, "not-a-real-state")
 
 
-def test_lifecycle_state_absent_from_manifest_candidate_payload():
+def test_lifecycle_state_present_in_manifest_candidate_but_not_payload():
     """record_type is orthogonal AND lifecycle_state stays out of the
-    hash-immutable manifest candidate, same as machine/machine_only."""
+    hash-immutable manifest candidate payload, not off the candidate itself."""
+    import manifest as manifest_mod
     rec = pr_mod.PreferenceRecord.from_synthesis(
         {"action": "add", "name": "x", "category": "workflow",
          "rule": "Always run focused tests before merging.", "confidence": 0.8},
@@ -261,8 +264,9 @@ def test_lifecycle_state_absent_from_manifest_candidate_payload():
         lifecycle_state="disputed",
     )
     candidate = pr_mod.to_manifest_candidate(rec)
-    assert "lifecycle_state" not in candidate
-    assert candidate["record_type"] == rec.record_type  # orthogonal, both present independently
+    assert candidate["lifecycle_state"] == "disputed"
+    assert "lifecycle_state" not in manifest_mod.candidate_payload(candidate)
+    assert candidate["record_type"] == rec.record_type
 
 
 def test_lifecycle_state_preserved_across_update_when_omitted():
@@ -484,3 +488,23 @@ def test_denied_scopes_hold_on_this_machine():
     assert ts.scope_denied(f"{local}-Health") is True
     assert ts.scope_denied(f"{local}-Health-medical-research-system") is True
     assert ts.scope_denied(f"{local}-heardright") is False
+
+
+def test_manifest_candidate_round_trip_preserves_optional_fields():
+    rec = pr_mod.PreferenceRecord.from_synthesis(
+        {"action": "add", "name": "x", "category": "tooling",
+         "rule": "Prefer JSONL for structured logs in shared pipelines.",
+         "confidence": 0.8},
+        scope="D--Claude", source_ids=("s1", "s2"),
+        machine="adrian-mac", machine_only=True,
+        lifecycle_state="disputed",
+        last_verified_at="2026-07-25T00:00:00+00:00",
+        verification_count=2,
+        scope_dimensions={"language": "python", "repo": "heardright"},
+    )
+    candidate = pr_mod.persist_manifest_candidate(rec, operation="update")
+    candidate["created_at"] = rec.created_at
+    loaded = pr_mod.load_manifest_candidate(candidate, now=rec.updated_at)
+    assert loaded == rec
+    assert candidate["operation"] == "update"
+    assert candidate["scope_dimensions"] == {"language": "python", "repo": "heardright"}

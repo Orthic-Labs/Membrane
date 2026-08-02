@@ -6,10 +6,15 @@ requires that the loader refuses:
   - unknown schema versions,
   - records whose ``payload_sha256`` mismatches their actual content,
   - any record with ``status == "pending"`` (apply-time inputs must be explicit),
-  - empty records sets, empty source_session_ids, or missing batch_id.
+  - missing batch_id or empty source_session_ids.
+
+  An empty ``records`` array is allowed and commits as a no-op batch.
 
 The loader never makes LLM/provider calls. It is the gate that prevents
 silently altered content from reaching MemRight.
+
+Zero-record manifests are valid committed no-ops: a successfully mined batch
+may bind source sessions without emitting durable candidates.
 
 Helpers:
   - ``candidate_payload(record)`` — the immutable fields that ``payload_sha256``
@@ -216,31 +221,8 @@ def apply_time_validate(path: Path) -> dict:
 
 
 # Backwards-compatible alias. adapt.apply_from_manifest + tests use this name.
-def load_and_validate(path: Path) -> dict:  # noqa: F811
+def load_and_validate(path: Path) -> dict:
     return apply_time_validate(path)
-
-    # Invariant: no record's content can have been edited post-emission.
-    bad = []
-    for rec in raw["records"]:
-        if rec["payload_sha256"] != payload_sha256(rec):
-            bad.append(rec["id"])
-    if bad:
-        raise ManifestError(
-            f"manifest payload_sha256 mismatch on records: {bad}; "
-            f"regenerate the manifest instead of editing it"
-        )
-
-    # Invariant: apply-time manifest must contain ONLY explicit decisions.
-    statuses = {r["status"] for r in raw["records"]}
-    if "pending" in statuses:
-        raise ManifestError(
-            "manifest contains status='pending'; resolve every record "
-            "to accepted/rejected before applying"
-        )
-    if not statuses.intersection({"accepted", "rejected"}):
-        raise ManifestError("manifest has no accepted or rejected records")
-
-    return raw
 
 
 def accepted_records(manifest: dict) -> list[dict]:

@@ -29,7 +29,9 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
 ADAPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = Path(__file__).resolve().parents[4]
+import workspace_runtime  # noqa: E402
+
+REPO_ROOT = workspace_runtime.workspace_root()
 TOOLS_LIB = REPO_ROOT / "tools" / "lib"
 MEMORY_DIR = REPO_ROOT / "tools" / "pipelines" / "memory"
 for directory in (REPO_ROOT, ADAPT_DIR, TOOLS_LIB, MEMORY_DIR):
@@ -38,10 +40,11 @@ for directory in (REPO_ROOT, ADAPT_DIR, TOOLS_LIB, MEMORY_DIR):
 
 import adapt_sessions  # noqa: E402
 import cross_machine  # noqa: E402
-import mirror_append_only  # noqa: E402
-from tools.pipelines.memory import context_session_adapters  # noqa: E402
-from tools.pipelines.memory import context_session_inventory  # noqa: E402
-from memory.runtime_config import memright_port  # noqa: E402
+
+mirror_append_only = workspace_runtime.mirror_append_only()
+context_session_adapters = workspace_runtime.context_session_adapters()
+context_session_inventory = workspace_runtime.context_session_inventory()
+memright_port = workspace_runtime.memright_port
 
 
 SCHEMA_VERSION = 1
@@ -58,21 +61,23 @@ DISCOVERY_FIELDS = ("discovered", *DISCOVERY_OUTCOMES, "pending")
 DEFAULT_IMPLEMENTATION_FILES = (
     "tools/pipelines/memory/context_session_adapters.py",
     "tools/pipelines/memory/context_session_inventory.py",
-    "tools/pipelines/memory/adapt/adapt.py",
-    "tools/pipelines/memory/adapt/adapt_sessions.py",
-    "tools/pipelines/memory/adapt/adapt_persistence.py",
-    "tools/pipelines/memory/adapt/cross_machine.py",
-    "tools/pipelines/memory/adapt/adjudicate_manifest.py",
-    "tools/pipelines/memory/adapt/manifest.py",
-    "tools/pipelines/memory/adapt/preference_record.py",
-    "tools/pipelines/memory/adapt/preference-manifest.schema.json",
-    "tools/pipelines/memory/adapt/multiwriter_conformance.py",
-    "tools/pipelines/memory/adapt/run_incremental_multiwriter.py",
+    "adapt/adapt.py",
+    "adapt/adapt_sessions.py",
+    "adapt/adapt_persistence.py",
+    "adapt/cross_machine.py",
+    "adapt/adjudicate_manifest.py",
+    "adapt/manifest.py",
+    "adapt/preference_record.py",
+    "adapt/preference-manifest.schema.json",
+    "adapt/multiwriter_conformance.py",
+    "adapt/run_incremental_multiwriter.py",
+    "adapt/morph_event_learning.py",
 )
 DEFAULT_TEST_FILES = (
     "tools/pipelines/memory/test_context_session_harnesses.py",
-    "tools/pipelines/memory/adapt/test_multiwriter_conformance.py",
-    "tools/pipelines/memory/adapt/test_run_incremental_multiwriter.py",
+    "adapt/test_multiwriter_conformance.py",
+    "adapt/test_run_incremental_multiwriter.py",
+    "adapt/test_morph_event_learning.py",
 )
 EVIDENCE_KEYS = {
     "installation_id",

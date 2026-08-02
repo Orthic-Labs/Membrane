@@ -48,30 +48,72 @@ class BatchOutcome:
     outcome: str
     actions: list[dict]
     reason: str = ""        # optional detail for retry decisions
+    usage: dict | None = None
+    model: str | None = None
+    stop_reason: str | None = None
 
     @classmethod
-    def success(cls, actions: list[dict]) -> "BatchOutcome":
-        return cls(Outcome.SUCCESS, list(actions))
+    def success(
+        cls,
+        actions: list[dict],
+        *,
+        usage: dict | None = None,
+        model: str | None = None,
+        stop_reason: str | None = None,
+    ) -> "BatchOutcome":
+        return cls(Outcome.SUCCESS, list(actions), "", usage, model, stop_reason)
 
     @classmethod
-    def valid_empty(cls, reason: str = "") -> "BatchOutcome":
-        return cls(Outcome.VALID_EMPTY, [], reason)
+    def valid_empty(
+        cls,
+        reason: str = "",
+        *,
+        usage: dict | None = None,
+        model: str | None = None,
+        stop_reason: str | None = None,
+    ) -> "BatchOutcome":
+        return cls(Outcome.VALID_EMPTY, [], reason, usage, model, stop_reason)
 
     @classmethod
     def scanner_blocked(cls, reason: str = "") -> "BatchOutcome":
         return cls(Outcome.SCANNER_BLOCKED, [], reason)
 
     @classmethod
-    def parse_failed(cls, reason: str = "") -> "BatchOutcome":
-        return cls(Outcome.PARSE_FAILED, [], reason)
+    def parse_failed(
+        cls,
+        reason: str = "",
+        *,
+        usage: dict | None = None,
+        model: str | None = None,
+        stop_reason: str | None = None,
+    ) -> "BatchOutcome":
+        return cls(Outcome.PARSE_FAILED, [], reason, usage, model, stop_reason)
 
     @classmethod
-    def provider_failed(cls, reason: str = "") -> "BatchOutcome":
-        return cls(Outcome.PROVIDER_FAILED, [], reason)
+    def provider_failed(
+        cls,
+        reason: str = "",
+        *,
+        usage: dict | None = None,
+        model: str | None = None,
+        stop_reason: str | None = None,
+    ) -> "BatchOutcome":
+        return cls(Outcome.PROVIDER_FAILED, [], reason, usage, model, stop_reason)
 
     @classmethod
     def invalid_prompt(cls, reason: str = "") -> "BatchOutcome":
         return cls(Outcome.INVALID_PROMPT, [], reason)
+
+    def provider_receipt(self) -> dict:
+        """Content-free provider metadata for journals/logs."""
+        receipt: dict = {}
+        if self.model:
+            receipt["model"] = self.model
+        if self.stop_reason is not None:
+            receipt["stop_reason"] = self.stop_reason
+        if self.usage:
+            receipt["usage"] = dict(self.usage)
+        return receipt
 
     @property
     def committable(self) -> bool:

@@ -391,11 +391,11 @@ def test_default_extraction_budget_is_large_but_output_bounded():
 def test_default_adapt_call_retries_transient_provider_failures(monkeypatch):
     seen = {}
 
-    def fake_call(system, user, *, lane, attempts):
+    def fake_call(system, user, *, lane, attempts, **_kwargs):
         seen.update(lane=lane, attempts=attempts)
-        return "[]"
+        return {"text": "[]", "model": "fake", "stop_reason": None, "usage": {}}
 
-    monkeypatch.setattr(tl, "call_lane", fake_call)
+    monkeypatch.setattr(tl, "call_lane_response", fake_call)
     assert tl._default_llm("system", "user", "minimax") == "[]"
     assert seen == {"lane": "minimax", "attempts": 3}
 
@@ -403,11 +403,11 @@ def test_default_adapt_call_retries_transient_provider_failures(monkeypatch):
 def test_synthesis_uses_larger_output_ceiling(monkeypatch):
     seen = {}
 
-    def fake_call(system, user, *, lane, attempts, max_tokens):
+    def fake_call(system, user, *, lane, attempts, max_tokens, **_kwargs):
         seen.update(lane=lane, attempts=attempts, max_tokens=max_tokens)
-        return "[]"
+        return {"text": "[]", "model": "fake", "stop_reason": None, "usage": {}}
 
-    monkeypatch.setattr(tl, "call_lane", fake_call)
+    monkeypatch.setattr(tl, "call_lane_response", fake_call)
     assert tl._default_synth_llm("system", "user", "minimax") == "[]"
     assert seen == {"lane": "minimax", "attempts": 3, "max_tokens": 16_384}
 
@@ -565,9 +565,15 @@ def test_call_lane_forwards_minimax_retry_and_output_ceilings(monkeypatch):
             thinking=thinking,
             temperature=temperature,
         )
-        return "[]"
+        return {
+            "text": "[]",
+            "model": "MiniMax-M3",
+            "stop_reason": "end_turn",
+            "stop_sequence": None,
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
 
-    monkeypatch.setattr(tl, "_minimax_llm", fake)
+    monkeypatch.setattr(tl, "_minimax_response", fake)
 
     assert tl.call_lane(
         "system", "user", lane="minimax", max_tokens=2048, attempts=1
@@ -580,12 +586,36 @@ def test_call_lane_forwards_minimax_retry_and_output_ceilings(monkeypatch):
     }
 
 
+def test_default_llm_surfaces_provider_usage_in_audit(tmp_path, monkeypatch):
+    audit = tmp_path / "audit.jsonl"
+    monkeypatch.setenv("ADAPT_AUDIT_FILE_OVERRIDE", str(audit))
+
+    def fake(_system, _user, **_kwargs):
+        return {
+            "text": "[]",
+            "model": "MiniMax-M3",
+            "stop_reason": "end_turn",
+            "stop_sequence": None,
+            "usage": {"input_tokens": 11, "output_tokens": 3},
+        }
+
+    monkeypatch.setattr(tl, "_minimax_response", fake)
+    assert tl._default_llm("system", "user", "minimax") == "[]"
+    lines = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
+    usage_events = [row for row in lines if row.get("event") == "provider_usage"]
+    assert usage_events
+    assert usage_events[-1]["usage"] == {"input_tokens": 11, "output_tokens": 3}
+    assert usage_events[-1]["model"] == "MiniMax-M3"
+
+
 # --- Task 3: orchestrator tests ---
 import importlib.util
 
 _spec = importlib.util.spec_from_file_location(
     "adapt_cli", Path(__file__).resolve().parent / "adapt.py")
 lt = importlib.util.module_from_spec(_spec)
+# Register before exec so taste/taste_apply host late-bind can see monkeypatches.
+sys.modules["adapt_cli"] = lt
 _spec.loader.exec_module(lt)
 
 
@@ -861,21 +891,37 @@ def test_normalize_category_remaps_unknown_to_misc_review():
 def test_admit_rejects_short_rule():
     from importlib import import_module
     adm = import_module("admission")
-    ok, why = adm.admit({"name": "x-y", "rule": "too short", "category": "workflow"})
-    assert (ok, why) == (False, "rule-too-short")
+    ok, why = adm.admit("add", {"name": "x-y", "rule": "too short", "category": "workflow"})
+    assert (ok, why) == (False, "rule-invalid-shape")
+
+
+def test_admit_rejects_add_without_canonical_target():
+    from importlib import import_module
+    adm = import_module("admission")
+    ok, why = adm.admit("add", {
+        "rule": "Always preserve this durable preference.",
+        "category": "workflow",
+    })
+    assert (ok, why) == (False, "add-target-missing")
+
+
+def test_rule_shape_does_not_depend_on_word_count():
+    from importlib import import_module
+    adm = import_module("admission")
+    assert adm.rule_shape_valid("Prefer JSONL logs.") is True
 
 
 def test_admit_rejects_misc_review_category():
     from importlib import import_module
     adm = import_module("admission")
-    ok, why = adm.admit({"name": "x-y", "rule": "do the thing properly", "category": "audit-foo"})
+    ok, why = adm.admit("add", {"name": "x-y", "rule": "do the thing properly", "category": "audit-foo"})
     assert (ok, why) == (False, "category-not-allowed")
 
 
 def test_admit_accepts_well_formed_rule():
     from importlib import import_module
     adm = import_module("admission")
-    ok, why = adm.admit({
+    ok, why = adm.admit("add", {
         "name": "x-y",
         "rule": "Always run the smoke gate on a greenfield change before merging.",
         "category": "workflow",
@@ -887,12 +933,58 @@ def test_admit_accepts_well_formed_rule():
 def test_admit_rejects_duplicate_name():
     from importlib import import_module
     adm = import_module("admission")
-    ok, why = adm.admit({
+    ok, why = adm.admit("add", {
         "name": "existing-rule",
         "rule": "Some sufficiently long durable rule sentence here.",
         "category": "workflow",
     }, canonical_rules={"existing-rule"})
     assert (ok, why) == (False, "rule-duplicate")
+
+
+def test_admit_accepts_concise_imperative_rule():
+    from importlib import import_module
+    adm = import_module("admission")
+    ok, why = adm.admit("add", {
+        "name": "adapt-verification-focused-tests",
+        "rule": "Run focused tests before broad build.",
+        "category": "verification",
+    })
+    assert ok is True
+    assert why == "ok"
+
+
+def test_admit_update_allows_existing_target():
+    from importlib import import_module
+    import rule_key as rk_mod
+    adm = import_module("admission")
+    index = rk_mod.RuleIndex.from_mapping({
+        "adapt-logging-jsonl-over-logfmt": {
+            "id": "adapt-logging-jsonl-over-logfmt",
+            "scope": "D--Claude",
+            "rule": "Prefer JSONL over logfmt for structured logs.",
+        }
+    })
+    ok, why = adm.admit("update", {
+        "name": "adapt-logging-jsonl-over-logfmt",
+        "rule": "Use JSONL for structured logs, never logfmt.",
+        "category": "tooling",
+        "scope": "D--Claude",
+    }, canonical_rules=index)
+    assert ok is True
+    assert why == "ok"
+
+
+def test_admit_update_rejects_missing_target():
+    from importlib import import_module
+    adm = import_module("admission")
+    ok, why = adm.admit("update", {
+        "name": "missing-rule",
+        "rule": "Use JSONL for structured logs, never logfmt.",
+        "category": "tooling",
+        "scope": "D--Claude",
+    })
+    assert ok is False
+    assert why == "update-target-missing"
 
 
 def test_run_journal_roundtrip(tmp_path):
@@ -1260,7 +1352,7 @@ def test_manifest_uses_only_action_linked_evidence(tmp_path):
 
 
 def test_admission_rejects_transient_environment_workaround_claim():
-    admitted, reason = lt.admission.admit({
+    admitted, reason = lt.admission.admit("add", {
         "name": "adapt-tooling-launch-installers",
         "category": "tooling",
         "rule": "Launch installers via cmd.exe because PowerShell is blocked in the agent sandbox.",
@@ -1290,7 +1382,7 @@ def test_admission_rejects_current_authority_drift():
         ),
     ]
     for rule, reason in cases:
-        admitted, actual = lt.admission.admit({
+        admitted, actual = lt.admission.admit("add", {
             "name": "stale-rule",
             "rule": rule,
             "category": "workflow",
@@ -2149,8 +2241,8 @@ def test_memright_mutation_timeouts_exceed_resident_read_timeout(monkeypatch):
         seen.append(kwargs["timeout"])
         return __import__("subprocess").CompletedProcess(command, 0, "{}", "")
 
-    monkeypatch.setattr(lt.shutil, "which", lambda _name: "memright")
-    monkeypatch.setattr(lt.subprocess, "run", fake_run)
+    monkeypatch.setattr(lt.taste.shutil, "which", lambda _name: "memright")
+    monkeypatch.setattr(lt.taste.subprocess, "run", fake_run)
     monkeypatch.setattr(rk.subprocess, "run", fake_run)
     assert lt._run_memright(["delete", "x"])
     assert rk._delete_via_memright("x", memright_bin="memright")

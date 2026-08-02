@@ -13,11 +13,17 @@ from typing import Sequence
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
+# Prefer the workspace_runtime contract when available (top-level submodule layout).
+try:
+    import workspace_runtime  # noqa: E402
+    WORKSPACE_ROOT = workspace_runtime.workspace_root()
+except Exception:
+    pass
 TOOLS_LIB = WORKSPACE_ROOT / "tools" / "lib"
 if str(TOOLS_LIB) not in sys.path:
     sys.path.insert(0, str(TOOLS_LIB))
 
-from memory.runtime_config import memright_port  # noqa: E402
+import workspace_runtime  # noqa: E402
 import preference_record  # noqa: E402
 
 
@@ -36,7 +42,7 @@ def _token_file() -> Path:
 
 
 def _base_url() -> str:
-    return f"http://127.0.0.1:{memright_port(os.environ)}"
+    return f"http://127.0.0.1:{workspace_runtime.memright_port(os.environ)}"
 
 
 def _normalize_scope(scope: str) -> str:
