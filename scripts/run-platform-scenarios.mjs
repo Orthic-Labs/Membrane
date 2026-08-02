@@ -46,7 +46,16 @@ function fail(message) { throw new Error(message); }
 function command(commandName, commandArgs, timeout = 180_000) {
   return spawnSync(commandName, commandArgs, {
     cwd: workspaceRoot, encoding: "utf8", timeout, windowsHide: true,
-    env: { ...process.env, WORKSPACE_ROOT: workspaceRoot },
+    env: {
+      ...process.env,
+      WORKSPACE_ROOT: workspaceRoot,
+      CRYPT_CLIENT: "claude_code",
+      RIGHTCONTEXT_POLICY_ENV_OVERRIDE: "1",
+      RIGHTCONTEXT_CONTEXT_SOURCE: "smoke",
+      RIGHTCONTEXT_MODE: "on",
+      RIGHTCONTEXT_COHORTS: "off",
+      CRYPT_TELEMETRY_INGRESS: join(workspaceRoot, "tools", ".cache", "memory", "context-telemetry-ingress.jsonl"),
+    },
   });
 }
 function rows(db, sql, ...params) { return db.prepare(sql).all(...params); }

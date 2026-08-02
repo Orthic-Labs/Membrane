@@ -691,18 +691,46 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
     }
     let deduped = content_or_source_deduped;
 
-    // 6. Token-budget admission — TWO PASSES (explicit policy, not a temporary workaround).
-    // Pass 1 admits per-source-class RESERVED LANES by score *within* the lane; pass 2 fills
-    // the remaining budget in global score order. POLICY: raw provider_score is never treated
+    // 6. Token-budget admission — RESERVED LANES then global fill (explicit policy, not a
+    // temporary workaround). Current Git identity receives two block slots before large
+    // memory/skill result sets can exhaust the packet block ceiling. Per-source-class token lanes
+    // then admit by score *within* each lane; the final pass fills remaining budget globally.
+    // POLICY: raw provider_score is never treated
     // as cross-provider-comparable. Overlay's flat recency prior (~0.6) and memory's cosine
     // (~0.3–0.5) live on different scales; lanes keep them from competing for the whole budget.
     // Full recalibration is out of scope — these constants *are* the calibration substitute.
     // Lane size 0 restores single-pass behavior; unused reservation returns to pass 2.
+    const IDENTITY_LANE_KIND: &str = "git_meta";
+    const IDENTITY_LANE_BLOCKS: usize = 2;
     const RESERVED_LANES: &[(&str, usize)] = &[("memory", 800), ("skill", 300)];
     const MAX_PACKET_BLOCKS: usize = 32;
     let mut admitted_tokens = 0usize;
     let mut admitted: Vec<&CandidateV1> = Vec::new();
     let mut lane_admitted: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for cand in deduped
+        .iter()
+        .filter(|candidate| {
+            candidate.source_kind == IDENTITY_LANE_KIND
+                && candidate.provider.as_deref() == Some("git")
+        })
+        .take(IDENTITY_LANE_BLOCKS)
+    {
+        if fallback_only && !(cand.protected || cand.source_kind == "portable_text_fallback") {
+            continue;
+        }
+        let cost = cand.estimated_tokens;
+        if admitted_tokens + cost > input.max_tokens {
+            continue;
+        }
+        admitted_tokens += cost;
+        admitted.push(*cand);
+        lane_admitted.insert(cand.id.clone());
+        decisions.push((
+            (*cand).clone(),
+            "admitted".into(),
+            "within_identity_lane".into(),
+        ));
+    }
     for (lane_kind, lane_budget) in RESERVED_LANES {
         let mut lane_tokens = 0usize;
         for cand in deduped.iter().filter(|c| c.source_kind == *lane_kind) {
@@ -1532,6 +1560,87 @@ mod tests {
                 .count(),
             8
         );
+    }
+
+    #[test]
+    fn current_git_identity_survives_memory_block_flood() {
+        let mut candidates = Vec::new();
+        for index in 0..32 {
+            let mut memory = candidate(
+                &format!("memory:role:relevant-{index:02}"),
+                "memory",
+                1,
+                0.8,
+                false,
+            );
+            memory.score_components.insert("structural".into(), 0.8);
+            candidates.push(memory);
+        }
+        let mut branch = candidate(
+            "git:meta:branch:main",
+            "git_meta",
+            8,
+            0.4,
+            false,
+        );
+        branch.provider = Some("git".into());
+        candidates.push(branch);
+
+        let out = plan(&empty_planner_input(candidates)).unwrap();
+        assert_eq!(out.packet.blocks.len(), 32);
+        assert!(out
+            .packet
+            .blocks
+            .iter()
+            .any(|block| block.id == "git:meta:branch:main"));
+    }
+
+    #[test]
+    fn git_identity_lane_rejects_source_kind_spoof() {
+        let mut candidates = Vec::new();
+        for index in 0..32 {
+            let mut memory = candidate(
+                &format!("memory:role:relevant-{index:02}"),
+                "memory",
+                1,
+                0.8,
+                false,
+            );
+            memory.score_components.insert("structural".into(), 0.8);
+            candidates.push(memory);
+        }
+        for index in 0..2 {
+            let mut spoof = candidate(
+                &format!("spoof:git-meta-{index}"),
+                "git_meta",
+                8,
+                0.9,
+                false,
+            );
+            spoof.provider = Some("crypt".into());
+            candidates.push(spoof);
+        }
+        let mut branch = candidate(
+            "git:meta:branch:main",
+            "git_meta",
+            8,
+            0.4,
+            false,
+        );
+        branch.provider = Some("git".into());
+        candidates.push(branch);
+
+        let out = plan(&empty_planner_input(candidates)).unwrap();
+        assert!(out
+            .packet
+            .blocks
+            .iter()
+            .any(|block| block.id == "git:meta:branch:main"));
+        assert!(!out
+            .packet
+            .blocks
+            .iter()
+            .any(|block| block.id.starts_with("spoof:")));
     }
 
     #[test]
