@@ -126,6 +126,12 @@ const EVENT_SCHEMA_VERSION: u32 = 1;
 const MAX_BATCH_EVENTS: usize = 256;
 const MAX_CHILDREN: usize = 32;
 pub const MAX_DURATION_MS: f64 = 86_400_000.0;
+/// Hard ceiling on `ObservableEventQuery::limit`. Bounds a single read regardless of caller input.
+const MAX_OBSERVABLE_QUERY_LIMIT: usize = 1_000;
+/// Internal safety valve on how many raw ledger rows a single observable-event read will scan
+/// before giving up and reporting the result as truncated. Bounds worst-case query cost when
+/// origin/event_type filtering (applied in Rust, not SQL) rejects most of a wide raw window.
+const MAX_OBSERVABLE_SCAN_ROWS: usize = 10_000;
 
 const REGISTRY_JSON: &str = include_str!("../../../../lib/context-telemetry-registry.json");
 const EXTENSION_PATTERN: &str = r"^ext\.[a-z0-9][a-z0-9_-]{0,31}\.[a-z0-9][a-z0-9._-]{0,46}$";
@@ -570,9 +576,7 @@ fn lifecycle_workspace_id(value: &str) -> String {
         value.to_string()
     } else {
         let canonical = value
-            .replace(':', "-")
-            .replace('\\', "-")
-            .replace('/', "-")
+            .replace([':', '\\', '/'], "-")
             .trim_matches('-')
             .to_string();
         format!(
@@ -617,6 +621,35 @@ fn lifecycle_artifact_id(value: &str, family: &str) -> String {
         },
         &sha256_text(value)[..32]
     )
+}
+
+/// Normalize a caller-supplied `event_type` taxonomy label into the bounded lowercase token the
+/// write path persists (see `ingest_observable_events`) and the read path matches against (see
+/// `query_observable_events`). Unlike `lifecycle_bounded_id`/`lifecycle_artifact_id`, this never
+/// hashes on the happy path: `event_type` is a small, bounded classification label rather than an
+/// opaque identifier, so it stays human-legible in storage and in query filters. Any input --
+/// including one that normalizes to empty -- always yields a value that passes `validate_meta`,
+/// so this can never turn a previously-accepted `ObservableEventV1` into a rejected one.
+fn lifecycle_event_type_token(value: &str) -> String {
+    let canonical: String = value
+        .trim()
+        .to_ascii_lowercase()
+        .chars()
+        .map(|character| {
+            if character.is_ascii_lowercase() || character.is_ascii_digit() {
+                character
+            } else {
+                '_'
+            }
+        })
+        .take(60)
+        .collect();
+    let trimmed = canonical.trim_matches('_');
+    if trimmed.is_empty() {
+        format!("type-{}", &sha256_text(value)[..16])
+    } else {
+        trimmed.to_string()
+    }
 }
 
 impl<'a> LifecycleEventBuilder<'a> {
@@ -1572,6 +1605,11 @@ fn validate_meta(meta: &BTreeMap<String, Value>) -> Result<(), ContextTelemetryE
         "shed_count",
         "installation_generation",
     ];
+    // Bounded taxonomy label carried alongside an observable event so it can be filtered on read
+    // (see `query_observable_events`). `lifecycle_event_type_token` is the only producer and
+    // always emits a value matching this shape, so this is purely additive: it never rejects a
+    // meta map that validated before this key existed.
+    const STRING_TOKEN_KEYS: &[&str] = &["event_type"];
     for (key, value) in meta {
         if BOOLEAN_KEYS.contains(&key.as_str()) && value.is_boolean() {
             continue;
@@ -1588,6 +1626,13 @@ fn validate_meta(meta: &BTreeMap<String, Value>) -> Result<(), ContextTelemetryE
             {
                 continue;
             }
+        }
+        if STRING_TOKEN_KEYS.contains(&key.as_str())
+            && value
+                .as_str()
+                .is_some_and(|candidate| candidate.len() <= 80 && has_token_tail(candidate, true, false))
+        {
+            continue;
         }
         return Err(invalid(
             "meta",
@@ -1678,7 +1723,7 @@ fn validate_event(event: &ContextEvent) -> Result<(), ContextTelemetryError> {
         validate_sha256(hash, "policy_activation_sha256")?;
     }
     if event.duration_ms.is_some_and(|duration| {
-        !duration.is_finite() || duration < 0.0 || duration > MAX_DURATION_MS
+        !duration.is_finite() || !(0.0..=MAX_DURATION_MS).contains(&duration)
     }) {
         return Err(invalid("duration_ms", "must be finite and bounded"));
     }
@@ -1709,7 +1754,7 @@ fn validate_event(event: &ContextEvent) -> Result<(), ContextTelemetryError> {
             let valid = match measurement.value {
                 MeasurementValue::Integer(value) => value >= 0 && value <= MAX_DURATION_MS as i64,
                 MeasurementValue::Real(value) => {
-                    value.is_finite() && value >= 0.0 && value <= MAX_DURATION_MS
+                    value.is_finite() && (0.0..=MAX_DURATION_MS).contains(&value)
                 }
                 MeasurementValue::Boolean(_) => false,
             };
@@ -2337,10 +2382,8 @@ fn rotate_consumed_prompt_ingress(active: &Path, cursor: u64) -> Result<(), Stri
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
         Err(_) => return Err("rotate prompt telemetry cursor".to_string()),
     };
-    if std::fs::rename(active, &sealed).is_err() {
-        if cursor_moved {
-            let _ = std::fs::rename(&sealed_cursor, &active_cursor);
-        }
+    if std::fs::rename(active, &sealed).is_err() && cursor_moved {
+        let _ = std::fs::rename(&sealed_cursor, &active_cursor);
     }
     Ok(())
 }
@@ -2441,10 +2484,16 @@ impl MemDb {
                 quantity: None,
                 token_count: None,
                 char_count: None,
-                meta: Some(BTreeMap::from([(
-                    "complete".to_string(),
-                    Value::Bool(event.completeness.values().all(|value| *value)),
-                )])),
+                meta: Some(BTreeMap::from([
+                    (
+                        "complete".to_string(),
+                        Value::Bool(event.completeness.values().all(|value| *value)),
+                    ),
+                    (
+                        "event_type".to_string(),
+                        Value::String(lifecycle_event_type_token(&event.event_type)),
+                    ),
+                ])),
                 measurements: Vec::new(),
                 links: Vec::new(),
             })
@@ -2586,6 +2635,243 @@ impl MemDb {
         tx.commit()?;
         Ok(receipt)
     }
+
+    /// USER-ORIGIN evidence only. This is the sole read path Morph Taste may use: there is no
+    /// parameter on `ObservableEventQuery` that can widen it, because origin scope is selected by
+    /// which function is called, never by caller-supplied data.
+    pub fn query_observable_events_for_taste(
+        &self,
+        filter: &ObservableEventQuery,
+    ) -> Result<ObservableEventQueryResult, ContextTelemetryError> {
+        self.query_observable_events(filter, ObservableOriginScope::TasteUserOnly)
+    }
+
+    /// Full authorized observable-event stream (every frozen origin), for Morph Insights.
+    pub fn query_observable_events_for_insights(
+        &self,
+        filter: &ObservableEventQuery,
+    ) -> Result<ObservableEventQueryResult, ContextTelemetryError> {
+        self.query_observable_events(filter, ObservableOriginScope::InsightsFullStream)
+    }
+
+    /// Shared read path behind the two public entry points above. Private so external callers can
+    /// never choose `ObservableOriginScope` themselves -- the only way to select a scope is to
+    /// call one of the two named public functions.
+    fn query_observable_events(
+        &self,
+        filter: &ObservableEventQuery,
+        scope: ObservableOriginScope,
+    ) -> Result<ObservableEventQueryResult, ContextTelemetryError> {
+        if filter.limit == 0 || filter.limit > MAX_OBSERVABLE_QUERY_LIMIT {
+            return Err(invalid(
+                "limit",
+                "must be between 1 and MAX_OBSERVABLE_QUERY_LIMIT",
+            ));
+        }
+        for (value, field) in [
+            (filter.since.as_deref(), "since"),
+            (filter.until.as_deref(), "until"),
+        ] {
+            if value.is_some_and(|value| !valid_utc_timestamp(value)) {
+                return Err(invalid(field, "must be RFC3339"));
+            }
+        }
+        if let (Some(since), Some(until)) = (filter.since.as_deref(), filter.until.as_deref()) {
+            if since > until {
+                return Err(invalid("since", "must not be after until"));
+            }
+        }
+
+        // Apply the same deterministic normalization the write path used at ingest, so a caller
+        // may filter using the same raw ids it originally sent to `ingest_observable_events`.
+        let session_key = filter
+            .session_id
+            .as_deref()
+            .map(|value| lifecycle_bounded_id(value, "session"));
+        let task_key = filter
+            .task_id
+            .as_deref()
+            .map(|value| lifecycle_artifact_id(value, "task"));
+        let trace_key = filter
+            .trace_id
+            .as_deref()
+            .map(|value| lifecycle_bounded_id(value, "trace"));
+        let event_type_key = filter.event_type.as_deref().map(lifecycle_event_type_token);
+
+        let conn = self.lock_events();
+        // `task_class = 'observable'` is the discriminator `ingest_observable_events` writes on
+        // every row it produces (and only that function ever sets it), so this scopes the read to
+        // ObservableEventV1-derived rows without needing a schema change or a new write-path flag.
+        let mut statement = conn.prepare(
+            "SELECT seq, event_id, ts, installation_id, session_id, artifact_id, trace_id,
+                    turn_id, reason_code, artifact_sha256, policy_activation_sha256, meta
+             FROM context_event_log
+             WHERE task_class = 'observable'
+               AND (?1 IS NULL OR ts >= ?1)
+               AND (?2 IS NULL OR ts <= ?2)
+               AND (?3 IS NULL OR installation_id = ?3)
+               AND (?4 IS NULL OR session_id = ?4)
+               AND (?5 IS NULL OR artifact_id = ?5)
+               AND (?6 IS NULL OR trace_id = ?6)
+               AND (?7 IS NULL OR seq > ?7)
+             ORDER BY seq ASC
+             LIMIT ?8",
+        )?;
+        let scan_limit = i64::try_from(MAX_OBSERVABLE_SCAN_ROWS).unwrap_or(i64::MAX);
+        let mut rows = statement.query(params![
+            filter.since,
+            filter.until,
+            filter.installation_id,
+            session_key,
+            task_key,
+            trace_key,
+            filter.after_sequence,
+            scan_limit,
+        ])?;
+
+        let mut matched: Vec<ObservableEventRow> = Vec::new();
+        let mut scanned = 0usize;
+        let mut last_seen_sequence: Option<i64> = None;
+        while let Some(row) = rows.next()? {
+            scanned += 1;
+            let sequence: i64 = row.get(0)?;
+            last_seen_sequence = Some(sequence);
+            // Origin lives in `reason_code` for observable-derived rows only (see
+            // `ingest_observable_events`); scope enforcement happens here, before a row is ever
+            // materialized into the result, so a Taste-scoped caller cannot see it even
+            // transiently.
+            let origin: Option<String> = row.get(8)?;
+            let origin = origin.unwrap_or_default();
+            if !scope.allows(&origin) {
+                continue;
+            }
+            let task_id: Option<String> = row.get(5)?;
+            let task_id = task_id.unwrap_or_default();
+            let meta_json: String = row.get(11)?;
+            let meta: BTreeMap<String, Value> = serde_json::from_str(&meta_json).unwrap_or_default();
+            let event_type = meta
+                .get("event_type")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            if let Some(expected) = event_type_key.as_deref() {
+                if event_type.as_deref() != Some(expected) {
+                    continue;
+                }
+            }
+            let complete = meta.get("complete").and_then(Value::as_bool);
+            let artifact_sha256: Option<String> = row.get(9)?;
+            let policy_activation_sha256: Option<String> = row.get(10)?;
+            matched.push(ObservableEventRow {
+                sequence,
+                event_id: row.get(1)?,
+                ts: row.get(2)?,
+                installation_id: row.get(3)?,
+                session_id: row.get(4)?,
+                task_id,
+                trace_id: row.get(6)?,
+                turn_id: row.get(7)?,
+                origin,
+                event_type,
+                content_digest: artifact_sha256.map(|hash| format!("sha256:{hash}")),
+                policy_snapshot_digest: policy_activation_sha256.map(|hash| format!("sha256:{hash}")),
+                complete,
+            });
+            if matched.len() > filter.limit {
+                break;
+            }
+        }
+        let hit_scan_cap = scanned >= MAX_OBSERVABLE_SCAN_ROWS;
+        let truncated = matched.len() > filter.limit || hit_scan_cap;
+        matched.truncate(filter.limit);
+        let next_cursor = if truncated {
+            matched
+                .last()
+                .map(|row| row.sequence)
+                .or(last_seen_sequence)
+        } else {
+            None
+        };
+        Ok(ObservableEventQueryResult {
+            rows: matched,
+            limit: filter.limit,
+            truncated,
+            next_cursor,
+        })
+    }
+}
+
+/// Which origin class a read of the observable-event ledger is authorized to return. Private:
+/// the only way to obtain one is through `query_observable_events_for_taste` or
+/// `query_observable_events_for_insights`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ObservableOriginScope {
+    /// Morph Taste: user-origin evidence only, per the L1 isolation mandate.
+    TasteUserOnly,
+    /// Morph Insights: the full authorized stream, every frozen origin value.
+    InsightsFullStream,
+}
+
+impl ObservableOriginScope {
+    fn allows(self, origin: &str) -> bool {
+        match self {
+            ObservableOriginScope::TasteUserOnly => origin == "user",
+            ObservableOriginScope::InsightsFullStream => true,
+        }
+    }
+}
+
+/// Bounded, explicit filter set for reading back persisted `ObservableEventV1` rows. Every
+/// identifier filter, when present, is matched using the same deterministic normalization the
+/// write path applies at ingest (`lifecycle_bounded_id` / `lifecycle_artifact_id` /
+/// `lifecycle_event_type_token`), so callers pass the same raw ids/labels they originally sent to
+/// `ingest_observable_events` -- never an internal hash. `limit` is required and bounded by
+/// `MAX_OBSERVABLE_QUERY_LIMIT`; `after_sequence` resumes a prior truncated read from its
+/// `next_cursor`, preserving append-order across pages.
+#[derive(Clone, Debug, Default)]
+pub struct ObservableEventQuery {
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub event_type: Option<String>,
+    pub session_id: Option<String>,
+    pub task_id: Option<String>,
+    pub trace_id: Option<String>,
+    pub installation_id: Option<String>,
+    pub after_sequence: Option<i64>,
+    pub limit: usize,
+}
+
+/// Content-free, opaque projection of one persisted observable-event ledger row. Every field is
+/// an id, a digest, a taxonomy label, or a boolean -- exactly the discipline `ObservableEventV1`
+/// itself enforces at ingest. No prompt, reply, argument, path, or raw error ever appears here.
+#[derive(Clone, Debug, Serialize, Eq, PartialEq)]
+pub struct ObservableEventRow {
+    /// Append-order position in the ledger (`context_event_log.seq`). This is the lineage/order
+    /// primitive: it is assigned once at insert, never reassigned, and is what makes replaying a
+    /// planted session's exact event order and lineage possible.
+    pub sequence: i64,
+    pub event_id: String,
+    pub ts: String,
+    pub installation_id: String,
+    pub session_id: String,
+    pub task_id: String,
+    pub trace_id: String,
+    pub turn_id: Option<String>,
+    pub origin: String,
+    pub event_type: Option<String>,
+    pub content_digest: Option<String>,
+    pub policy_snapshot_digest: Option<String>,
+    pub complete: Option<bool>,
+}
+
+/// Honest completeness envelope for an observable-event read. `truncated` and `next_cursor` are
+/// always populated together (`next_cursor.is_some() == truncated`, whenever at least one row was
+/// scanned), so a capped or partially-covered result can never be mistaken for a complete one.
+#[derive(Clone, Debug, Serialize, Eq, PartialEq)]
+pub struct ObservableEventQueryResult {
+    pub rows: Vec<ObservableEventRow>,
+    pub limit: usize,
+    pub truncated: bool,
+    pub next_cursor: Option<i64>,
 }
 
 #[cfg(test)]
@@ -2889,5 +3175,418 @@ mod lifecycle_intent_tests {
             (result.records, result.inserted, result.rejected),
             (1, 1, 0)
         );
+    }
+
+    fn observable_event(
+        event_id: &str,
+        session_id: &str,
+        task_id: &str,
+        trace_id: &str,
+        event_type: &str,
+        origin: &str,
+        ts: &str,
+    ) -> ObservableEventV1 {
+        ObservableEventV1 {
+            schema: "orthic.observable-event.v1".to_string(),
+            installation_id: "installation-a".to_string(),
+            client_id: "claude_code".to_string(),
+            session_id: session_id.to_string(),
+            task_id: task_id.to_string(),
+            // Each planted event gets its own turn -- the per-turn phase cardinality budget is an
+            // unrelated write-path guard, not something these query tests are exercising.
+            turn_id: format!("turn-{event_id}"),
+            trace_id: trace_id.to_string(),
+            event_id: event_id.to_string(),
+            event_type: event_type.to_string(),
+            origin: origin.to_string(),
+            content_ref_or_digest: format!("sha256:{}", "a".repeat(64)),
+            timestamp: ts.to_string(),
+            completeness: BTreeMap::from([("packet".to_string(), true)]),
+            policy_snapshot_digest: format!("sha256:{}", "b".repeat(64)),
+        }
+    }
+
+    fn ingest_events(db: &MemDb, events: Vec<ObservableEventV1>) {
+        let batch = ObservableEventBatchV1 { events };
+        db.ingest_observable_events(&batch, &lease()).unwrap();
+    }
+
+    #[test]
+    fn observable_query_reproduces_exact_order_and_lineage_for_a_planted_session() {
+        let db = MemDb::open_in_memory();
+        let session = "session-planted";
+        ingest_events(
+            &db,
+            vec![
+                observable_event(
+                    "evt-1",
+                    session,
+                    "task-1",
+                    "trace-1",
+                    "packet_delivered",
+                    "user",
+                    "2026-08-01T00:00:00Z",
+                ),
+                observable_event(
+                    "evt-2",
+                    session,
+                    "task-1",
+                    "trace-1",
+                    "tool_receipt",
+                    "tool",
+                    "2026-08-01T00:00:01Z",
+                ),
+                observable_event(
+                    "evt-3",
+                    session,
+                    "task-1",
+                    "trace-1",
+                    "packet_delivered",
+                    "assistant",
+                    "2026-08-01T00:00:02Z",
+                ),
+                observable_event(
+                    "evt-4",
+                    session,
+                    "task-1",
+                    "trace-1",
+                    "feedback_recorded",
+                    "user",
+                    "2026-08-01T00:00:03Z",
+                ),
+            ],
+        );
+
+        let filter = ObservableEventQuery {
+            session_id: Some(session.to_string()),
+            limit: 10,
+            ..Default::default()
+        };
+        let first = db.query_observable_events_for_insights(&filter).unwrap();
+        let second = db.query_observable_events_for_insights(&filter).unwrap();
+        assert_eq!(
+            first, second,
+            "an identical query must reproduce a byte-identical order and lineage"
+        );
+        assert_eq!(first.rows.len(), 4);
+        assert!(!first.truncated);
+        let event_types: Vec<_> = first
+            .rows
+            .iter()
+            .map(|row| row.event_type.clone().unwrap())
+            .collect();
+        assert_eq!(
+            event_types,
+            [
+                "packet_delivered",
+                "tool_receipt",
+                "packet_delivered",
+                "feedback_recorded",
+            ]
+        );
+        let sequences: Vec<_> = first.rows.iter().map(|row| row.sequence).collect();
+        let mut sorted = sequences.clone();
+        sorted.sort_unstable();
+        assert_eq!(
+            sequences, sorted,
+            "rows must come back in ascending append (lineage) order"
+        );
+    }
+
+    #[test]
+    fn taste_scope_never_returns_non_user_origin_events_even_when_present() {
+        let db = MemDb::open_in_memory();
+        let session = "session-mixed-origin";
+        let non_user_origins = ["assistant", "tool", "host", "service", "repository"];
+        let mut events = vec![observable_event(
+            "evt-user-1",
+            session,
+            "task-1",
+            "trace-1",
+            "packet_delivered",
+            "user",
+            "2026-08-01T00:00:00Z",
+        )];
+        for (index, origin) in non_user_origins.iter().enumerate() {
+            events.push(observable_event(
+                &format!("evt-{origin}-{index}"),
+                session,
+                "task-1",
+                "trace-1",
+                "packet_delivered",
+                origin,
+                &format!("2026-08-01T00:00:0{}Z", index + 1),
+            ));
+        }
+        events.push(observable_event(
+            "evt-user-2",
+            session,
+            "task-1",
+            "trace-1",
+            "packet_delivered",
+            "user",
+            "2026-08-01T00:00:06Z",
+        ));
+        ingest_events(&db, events);
+
+        let filter = ObservableEventQuery {
+            session_id: Some(session.to_string()),
+            limit: 100,
+            ..Default::default()
+        };
+        let taste = db.query_observable_events_for_taste(&filter).unwrap();
+        assert_eq!(taste.rows.len(), 2);
+        assert!(taste.rows.iter().all(|row| row.origin == "user"));
+
+        let insights = db.query_observable_events_for_insights(&filter).unwrap();
+        assert_eq!(
+            insights.rows.len(),
+            2 + non_user_origins.len(),
+            "the same store must still hold the non-user-origin rows Taste is forbidden to see"
+        );
+    }
+
+    #[test]
+    fn insights_scope_returns_the_full_authorized_stream() {
+        let db = MemDb::open_in_memory();
+        let session = "session-full-stream";
+        let origins = ["user", "assistant", "tool", "host", "service", "repository"];
+        let events: Vec<_> = origins
+            .iter()
+            .enumerate()
+            .map(|(index, origin)| {
+                observable_event(
+                    &format!("evt-{index}"),
+                    session,
+                    "task-1",
+                    "trace-1",
+                    "packet_delivered",
+                    origin,
+                    &format!("2026-08-01T00:00:0{index}Z"),
+                )
+            })
+            .collect();
+        ingest_events(&db, events);
+
+        let filter = ObservableEventQuery {
+            session_id: Some(session.to_string()),
+            limit: 100,
+            ..Default::default()
+        };
+        let insights = db.query_observable_events_for_insights(&filter).unwrap();
+        assert_eq!(insights.rows.len(), origins.len());
+        let seen_origins: HashSet<String> =
+            insights.rows.iter().map(|row| row.origin.clone()).collect();
+        let expected_origins: HashSet<String> =
+            origins.iter().map(|value| value.to_string()).collect();
+        assert_eq!(seen_origins, expected_origins);
+    }
+
+    #[test]
+    fn every_filter_dimension_selects_only_matching_rows() {
+        let db = MemDb::open_in_memory();
+        ingest_events(
+            &db,
+            vec![
+                observable_event(
+                    "evt-a",
+                    "session-x",
+                    "task-x",
+                    "trace-x",
+                    "packet_delivered",
+                    "user",
+                    "2026-08-01T00:00:00Z",
+                ),
+                observable_event(
+                    "evt-b",
+                    "session-x",
+                    "task-y",
+                    "trace-y",
+                    "tool_receipt",
+                    "tool",
+                    "2026-08-01T01:00:00Z",
+                ),
+                observable_event(
+                    "evt-c",
+                    "session-y",
+                    "task-x",
+                    "trace-x",
+                    "packet_delivered",
+                    "user",
+                    "2026-08-01T02:00:00Z",
+                ),
+                observable_event(
+                    "evt-d",
+                    "session-y",
+                    "task-z",
+                    "trace-z",
+                    "feedback_recorded",
+                    "assistant",
+                    "2026-08-01T03:00:00Z",
+                ),
+            ],
+        );
+        let base = ObservableEventQuery {
+            limit: 100,
+            ..Default::default()
+        };
+
+        let by_time = db
+            .query_observable_events_for_insights(&ObservableEventQuery {
+                until: Some("2026-08-01T01:00:00Z".to_string()),
+                ..base.clone()
+            })
+            .unwrap();
+        assert_eq!(by_time.rows.len(), 2);
+
+        let by_type = db
+            .query_observable_events_for_insights(&ObservableEventQuery {
+                event_type: Some("PACKET_DELIVERED".to_string()),
+                ..base.clone()
+            })
+            .unwrap();
+        assert_eq!(by_type.rows.len(), 2);
+        assert!(by_type
+            .rows
+            .iter()
+            .all(|row| row.event_type.as_deref() == Some("packet_delivered")));
+
+        let by_session = db
+            .query_observable_events_for_insights(&ObservableEventQuery {
+                session_id: Some("session-x".to_string()),
+                ..base.clone()
+            })
+            .unwrap();
+        assert_eq!(by_session.rows.len(), 2);
+
+        let by_task = db
+            .query_observable_events_for_insights(&ObservableEventQuery {
+                task_id: Some("task-x".to_string()),
+                ..base.clone()
+            })
+            .unwrap();
+        assert_eq!(by_task.rows.len(), 2);
+
+        let by_trace = db
+            .query_observable_events_for_insights(&ObservableEventQuery {
+                trace_id: Some("trace-z".to_string()),
+                ..base
+            })
+            .unwrap();
+        assert_eq!(by_trace.rows.len(), 1);
+        assert_eq!(
+            by_trace.rows[0].trace_id,
+            lifecycle_bounded_id("trace-z", "trace")
+        );
+    }
+
+    #[test]
+    fn truncation_and_resumption_are_reported_explicitly_never_silently() {
+        let db = MemDb::open_in_memory();
+        let session = "session-many";
+        let events: Vec<_> = (0..5)
+            .map(|index| {
+                observable_event(
+                    &format!("evt-{index}"),
+                    session,
+                    "task-1",
+                    "trace-1",
+                    "packet_delivered",
+                    "user",
+                    &format!("2026-08-01T00:00:0{index}Z"),
+                )
+            })
+            .collect();
+        ingest_events(&db, events);
+
+        let page_one = db
+            .query_observable_events_for_insights(&ObservableEventQuery {
+                session_id: Some(session.to_string()),
+                limit: 2,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(page_one.rows.len(), 2);
+        assert!(page_one.truncated);
+        assert!(page_one.next_cursor.is_some());
+
+        let page_two = db
+            .query_observable_events_for_insights(&ObservableEventQuery {
+                session_id: Some(session.to_string()),
+                limit: 2,
+                after_sequence: page_one.next_cursor,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(page_two.rows.len(), 2);
+        assert!(page_two.truncated);
+
+        let page_three = db
+            .query_observable_events_for_insights(&ObservableEventQuery {
+                session_id: Some(session.to_string()),
+                limit: 2,
+                after_sequence: page_two.next_cursor,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(page_three.rows.len(), 1);
+        assert!(!page_three.truncated);
+        assert!(page_three.next_cursor.is_none());
+
+        let paged_ids: Vec<_> = page_one
+            .rows
+            .iter()
+            .chain(page_two.rows.iter())
+            .chain(page_three.rows.iter())
+            .map(|row| row.event_id.clone())
+            .collect();
+        let full = db
+            .query_observable_events_for_insights(&ObservableEventQuery {
+                session_id: Some(session.to_string()),
+                limit: 100,
+                ..Default::default()
+            })
+            .unwrap();
+        let full_ids: Vec<_> = full.rows.iter().map(|row| row.event_id.clone()).collect();
+        assert_eq!(
+            paged_ids, full_ids,
+            "paging via next_cursor must cover every row exactly once, in order"
+        );
+    }
+
+    #[test]
+    fn returned_rows_carry_no_raw_content_only_opaque_ids_and_digests() {
+        let db = MemDb::open_in_memory();
+        let raw_session = "session-contains-a-realistic-looking-user-prompt-do-not-leak-this";
+        let digest = "c".repeat(64);
+        let mut event = observable_event(
+            "evt-content-free",
+            raw_session,
+            "task-1",
+            "trace-1",
+            "packet_delivered",
+            "user",
+            "2026-08-01T00:00:00Z",
+        );
+        event.content_ref_or_digest = format!("sha256:{digest}");
+        ingest_events(&db, vec![event]);
+
+        let result = db
+            .query_observable_events_for_insights(&ObservableEventQuery {
+                session_id: Some(raw_session.to_string()),
+                limit: 10,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(result.rows.len(), 1);
+        let row = &result.rows[0];
+        assert_ne!(
+            row.session_id, raw_session,
+            "session id must be opaque, never the raw caller-supplied value"
+        );
+        assert_eq!(row.session_id, lifecycle_bounded_id(raw_session, "session"));
+        assert_eq!(row.content_digest.as_deref(), Some(format!("sha256:{digest}").as_str()));
+        let serialized = serde_json::to_string(row).unwrap();
+        assert!(!serialized.contains("realistic-looking-user-prompt"));
     }
 }
