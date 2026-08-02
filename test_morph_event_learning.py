@@ -119,6 +119,7 @@ def test_real_persistence_readback_and_next_use(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace_root))
     monkeypatch.setenv("CONTEXT_HOME", str(tmp_path))
     monkeypatch.setenv("MEMRIGHT_API_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("MEMRIGHT_ALLOW_HASH", "1")
     monkeypatch.setenv("MEMRIGHT_PORT", str(port))
     monkeypatch.setenv("WORKSPACE_MEMORY_PORT", str(port))
     env = {
