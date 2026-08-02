@@ -132,7 +132,7 @@ def test_replay_uses_observer_timeout_and_preserves_serve_timing(monkeypatch, tm
 
     monkeypatch.setenv("RIGHTCONTEXT_SAMPLE_SOURCE", "real")
     assert mod._ccs_from_serve("production", str(tmp_path), 64) is not None
-    assert seen == [45.0, 0.25]
+    assert seen == [45.0, 0.35]
 
 
 def test_serve_forwards_exact_virtual_scope_descriptor(monkeypatch, tmp_path):

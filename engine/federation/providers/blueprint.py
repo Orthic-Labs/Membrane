@@ -20,6 +20,7 @@ from typing import Any
 
 from . import workspace_tools_path
 
+CORTEX_CLI_DEFAULT = Path(__file__).resolve().parents[4] / "cortex/scripts/blueprint.mjs"
 BLUEPRINT_CLI_DEFAULT = workspace_tools_path(
     "skills", "blueprint", "scripts", "blueprint.mjs"
 )
@@ -46,7 +47,10 @@ def _resolve_blueprint_cli() -> str:
     explicit = os.environ.get("BLUEPRINT_CLI")
     if explicit:
         return explicit
-    return str(BLUEPRINT_CLI_DEFAULT)
+    for candidate in (CORTEX_CLI_DEFAULT, BLUEPRINT_CLI_DEFAULT):
+        if candidate.exists():
+            return str(candidate)
+    return str(CORTEX_CLI_DEFAULT)
 
 
 def _resolve_node() -> str:

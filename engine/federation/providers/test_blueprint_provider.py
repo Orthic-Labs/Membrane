@@ -8,6 +8,22 @@ from federation.providers import blueprint
 from federation.providers.blueprint import candidate_cap
 
 
+def test_cli_resolution_prefers_cortex_and_retains_legacy_fallback(monkeypatch, tmp_path):
+    cortex_cli = tmp_path / "cortex" / "blueprint.mjs"
+    legacy_cli = tmp_path / "blueprint" / "blueprint.mjs"
+    cortex_cli.parent.mkdir()
+    legacy_cli.parent.mkdir()
+    cortex_cli.touch()
+    legacy_cli.touch()
+    monkeypatch.delenv("BLUEPRINT_CLI", raising=False)
+    monkeypatch.setattr(blueprint, "CORTEX_CLI_DEFAULT", cortex_cli)
+    monkeypatch.setattr(blueprint, "BLUEPRINT_CLI_DEFAULT", legacy_cli)
+
+    assert blueprint._resolve_blueprint_cli() == str(cortex_cli)
+    cortex_cli.unlink()
+    assert blueprint._resolve_blueprint_cli() == str(legacy_cli)
+
+
 def test_repo_code_candidate_cap_is_independent_of_large_context_budget():
     assert candidate_cap(2048, None) == 64
     assert candidate_cap(4096, None) == 64

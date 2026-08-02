@@ -15,7 +15,8 @@ from pathlib import Path
 
 
 _MEMORY_STAGE_NAMES = frozenset({"request_parse", "embed", "recall", "rank"})
-_PRODUCTION_SERVE_TIMEOUT_S = 0.25
+# Match the gateway's production fanout ceiling so this lane is not cancelled early.
+_PRODUCTION_SERVE_TIMEOUT_S = 0.35
 _REPLAY_SERVE_TIMEOUT_S = 45.0
 
 
