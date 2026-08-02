@@ -1,0 +1,4 @@
+.agent/
+.audit/
+.blueprint/
+__pycache__/
