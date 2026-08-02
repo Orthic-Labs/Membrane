@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const ACCEPTED = [
   ...Array.from({ length: 21 }, (_, index) => `F${String(index + 1).padStart(2, "0")}`),
@@ -25,7 +26,8 @@ const SOURCE_PROOF = {
   C15: ["benchmark"], C16: ["sync"], C17: ["membrane"],
 };
 const args = process.argv.slice(2);
-const membraneRoot = resolve(dirname(new URL(import.meta.url).pathname), "..");
+const scriptPath = fileURLToPath(import.meta.url);
+const membraneRoot = resolve(dirname(scriptPath), "..");
 const workspaceRoot = resolve(membraneRoot, "..");
 const valueFor = (flag) => {
   const index = args.indexOf(flag);
@@ -74,7 +76,7 @@ function fingerprint() {
   return {
     root: git(root, ["rev-parse", "HEAD"]),
     membrane: git(membraneRoot, ["rev-parse", "HEAD"]),
-    runner: fileHash(new URL(import.meta.url).pathname),
+    runner: fileHash(scriptPath),
     findings: fileHash(findingsPath),
   };
 }
@@ -201,7 +203,6 @@ function runPlatformPhase(platform) {
   };
 }
 function sourceSuites(ids) {
-  const membraneRoot = resolve(dirname(new URL(import.meta.url).pathname), "..");
   const root = resolve(membraneRoot, "..");
   const suites = [];
   const add = (key, command, commandArgs, cwd) => {

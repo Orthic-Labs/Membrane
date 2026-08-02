@@ -43,9 +43,9 @@ function atomicJson(path, value) {
   renameSync(temporary, path);
 }
 function fail(message) { throw new Error(message); }
-function command(commandName, commandArgs, timeout = 180_000) {
+function command(commandName, commandArgs, timeout = 180_000, input) {
   return spawnSync(commandName, commandArgs, {
-    cwd: workspaceRoot, encoding: "utf8", timeout, windowsHide: true,
+    cwd: workspaceRoot, encoding: "utf8", timeout, windowsHide: true, input,
     env: {
       ...process.env,
       WORKSPACE_ROOT: workspaceRoot,
@@ -137,6 +137,19 @@ async function runScenario(db, scenario, shellCommand) {
   const parsed = parseClaude(host.stdout);
   const output = String(parsed.result || "").trim();
   if (!output.startsWith(`branch=main scenario=${scenario} proof=`)) fail(`${scenario}: model output did not use required branch context`);
+  const python = process.platform === "win32" ? ["py", ["-3.11"]] : ["python3", []];
+  const observer = command(
+    python[0],
+    [...python[1], join(workspaceRoot, "tools", "hooks", "tool_observer.py")],
+    20_000,
+    JSON.stringify({
+      session_id: parsed.session_id,
+      tool_name: "Bash",
+      tool_input: { command: shellCommand },
+      tool_response: { stdout: output, exit_code: 0 },
+    }),
+  );
+  if (observer.status !== 0) fail(`${scenario}: tool observer failed: ${String(observer.stderr).slice(-1000)}`);
   const traceId = await findTrace(db, cursor);
   const delivery = db.prepare("SELECT * FROM context_event_log WHERE trace_id=? AND phase='block.delivered' AND artifact_id=? AND status='success' ORDER BY seq DESC LIMIT 1").get(traceId, BRANCH_ARTIFACT);
   const outcome = outcomeEvent(delivery, scenario);
