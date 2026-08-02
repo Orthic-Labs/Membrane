@@ -307,7 +307,10 @@ impl ObservableEventV1 {
                 return Err(invalid(field, "must be non-empty"));
             }
         }
-        if !matches!(self.origin.as_str(), "host" | "user" | "assistant" | "tool" | "repository" | "service") {
+        if !matches!(
+            self.origin.as_str(),
+            "host" | "user" | "assistant" | "tool" | "repository" | "service"
+        ) {
             return Err(invalid("origin", "must be a frozen origin value"));
         }
         let policy_digest = self
@@ -1829,6 +1832,36 @@ pub fn append_context_events_on(
     batch: &ContextEventBatch,
 ) -> Result<ContextEventBatchReceipt, ContextTelemetryError> {
     let prepared = prepare_batch(batch)?;
+    let has_event_table: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='context_event_log')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_event_table {
+        let batch_json = serde_json::to_string(batch)
+            .map_err(|error| ContextTelemetryError::Invalid(error.to_string()))?;
+        let batch_sha256 = sha256_text(&batch_json);
+        conn.execute(
+            "INSERT OR IGNORE INTO membrane_event_outbox
+                 (batch_sha256, batch_json, created_at) VALUES (?1, ?2, ?3)",
+            params![batch_sha256, batch_json, crate::time::now_iso()],
+        )?;
+        let events = prepared
+            .into_iter()
+            .map(|item| ContextEventReceipt {
+                event_id: item.event.event_id.clone(),
+                canonical_sha256: item.canonical_sha256,
+                disposition: "queued".to_string(),
+            })
+            .collect::<Vec<_>>();
+        return Ok(ContextEventBatchReceipt {
+            schema_version: EVENT_SCHEMA_VERSION,
+            complete: true,
+            inserted: events.len(),
+            duplicates: 0,
+            events,
+        });
+    }
     let mut receipts = Vec::with_capacity(prepared.len());
     let mut inserted = 0usize;
     let mut duplicates = 0usize;
@@ -2164,43 +2197,43 @@ pub fn drain_prompt_telemetry_ingress_once(
                     }
                 };
                 match ingested {
-                Ok(receipt) => {
-                    result.inserted += receipt.inserted;
-                    result.duplicates += receipt.duplicates;
-                }
-                Err(ContextTelemetryError::Database(_)) => {
-                    return Err("ingest prompt telemetry unavailable".to_string());
-                }
-                Err(ContextTelemetryError::Invalid(_)) => {
-                    persist_ingress_rejection(
-                        &rejection_path,
-                        offset,
-                        &record,
-                        "batch.invalid",
-                        batch_len,
-                    )?;
-                    result.rejected += 1;
-                }
-                Err(ContextTelemetryError::Conflict { .. }) => {
-                    persist_ingress_rejection(
-                        &rejection_path,
-                        offset,
-                        &record,
-                        "batch.event_conflict",
-                        batch_len,
-                    )?;
-                    result.rejected += 1;
-                }
-                Err(ContextTelemetryError::AttributionMismatch) => {
-                    persist_ingress_rejection(
-                        &rejection_path,
-                        offset,
-                        &record,
-                        "batch.attribution_mismatch",
-                        batch_len,
-                    )?;
-                    result.rejected += 1;
-                }
+                    Ok(receipt) => {
+                        result.inserted += receipt.inserted;
+                        result.duplicates += receipt.duplicates;
+                    }
+                    Err(ContextTelemetryError::Database(_)) => {
+                        return Err("ingest prompt telemetry unavailable".to_string());
+                    }
+                    Err(ContextTelemetryError::Invalid(_)) => {
+                        persist_ingress_rejection(
+                            &rejection_path,
+                            offset,
+                            &record,
+                            "batch.invalid",
+                            batch_len,
+                        )?;
+                        result.rejected += 1;
+                    }
+                    Err(ContextTelemetryError::Conflict { .. }) => {
+                        persist_ingress_rejection(
+                            &rejection_path,
+                            offset,
+                            &record,
+                            "batch.event_conflict",
+                            batch_len,
+                        )?;
+                        result.rejected += 1;
+                    }
+                    Err(ContextTelemetryError::AttributionMismatch) => {
+                        persist_ingress_rejection(
+                            &rejection_path,
+                            offset,
+                            &record,
+                            "batch.attribution_mismatch",
+                            batch_len,
+                        )?;
+                        result.rejected += 1;
+                    }
                 }
             }
             Err(reason_code) => {
@@ -2388,10 +2421,19 @@ impl MemDb {
                 reason_code: Some(event.origin.clone()),
                 scope_id: None,
                 artifact_id: Some(lifecycle_artifact_id(&event.task_id, "task")),
-                artifact_sha256: event.content_ref_or_digest.strip_prefix("sha256:").map(str::to_string),
+                artifact_sha256: event
+                    .content_ref_or_digest
+                    .strip_prefix("sha256:")
+                    .map(str::to_string),
                 traffic_class: "production".to_string(),
                 policy_version: None,
-                policy_activation_sha256: Some(event.policy_snapshot_digest.strip_prefix("sha256:").unwrap_or(&event.policy_snapshot_digest).to_string()),
+                policy_activation_sha256: Some(
+                    event
+                        .policy_snapshot_digest
+                        .strip_prefix("sha256:")
+                        .unwrap_or(&event.policy_snapshot_digest)
+                        .to_string(),
+                ),
                 cohort: None,
                 task_class: Some("observable".to_string()),
                 source_generation: None,
@@ -2415,11 +2457,60 @@ impl MemDb {
         &self,
         batch: &ContextEventBatch,
     ) -> Result<ContextEventBatchReceipt, ContextTelemetryError> {
-        let mut conn = self.lock();
+        let mut conn = self.lock_events();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let receipt = append_context_events_on(&tx, batch)?;
         tx.commit()?;
         Ok(receipt)
+    }
+
+    /// Replay durable memory-side event intents into Membrane's physical event database.
+    /// Event insertion precedes outbox deletion, so process failure can only cause idempotent replay.
+    pub fn flush_context_event_outbox(&self) -> Result<usize, ContextTelemetryError> {
+        let mut flushed = 0usize;
+        loop {
+            let next = {
+                let conn = self.lock();
+                conn.query_row(
+                    "SELECT id, batch_sha256, batch_json FROM membrane_event_outbox ORDER BY id LIMIT 1",
+                    [],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
+                    },
+                )
+                .optional()?
+            };
+            let Some((id, batch_sha256, batch_json)) = next else {
+                return Ok(flushed);
+            };
+            if sha256_text(&batch_json) != batch_sha256 {
+                return Err(ContextTelemetryError::Invalid(
+                    "membrane event outbox digest mismatch".to_string(),
+                ));
+            }
+            let batch: ContextEventBatch = serde_json::from_str(&batch_json)
+                .map_err(|error| ContextTelemetryError::Invalid(error.to_string()))?;
+            {
+                let mut events = self.lock_events();
+                let tx = events.transaction_with_behavior(TransactionBehavior::Immediate)?;
+                append_context_events_on(&tx, &batch)?;
+                tx.commit()?;
+            }
+            let deleted = self.lock().execute(
+                "DELETE FROM membrane_event_outbox WHERE id=?1 AND batch_sha256=?2",
+                params![id, batch_sha256],
+            )?;
+            if deleted != 1 {
+                return Err(ContextTelemetryError::Invalid(
+                    "membrane event outbox acknowledgement conflict".to_string(),
+                ));
+            }
+            flushed += batch.events.len();
+        }
     }
 
     /// Ingest locally produced events only when every envelope is bound to the active service
@@ -2431,7 +2522,7 @@ impl MemDb {
         lease: &ContextIngestLease,
     ) -> Result<ContextEventBatchReceipt, ContextTelemetryError> {
         lease.bind_batch(batch)?;
-        let mut conn = self.lock();
+        let mut conn = self.lock_events();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let observed_at = crate::time::now_iso();
         tx.execute(
@@ -2468,7 +2559,7 @@ impl MemDb {
         lease: &ContextIngestLease,
     ) -> Result<ContextEventBatchReceipt, ContextTelemetryError> {
         lease.bind_local_batch(batch)?;
-        let mut conn = self.lock();
+        let mut conn = self.lock_events();
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let observed_at = crate::time::now_iso();
         tx.execute(
@@ -2741,17 +2832,22 @@ mod lifecycle_intent_tests {
             event_id: "event-a".to_string(),
             event_type: "packet_delivered".to_string(),
             origin: "host".to_string(),
-            content_ref_or_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+            content_ref_or_digest:
+                "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    .to_string(),
             timestamp: "2026-08-01T00:00:00Z".to_string(),
             completeness: BTreeMap::from([(String::from("packet"), true)]),
-            policy_snapshot_digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+            policy_snapshot_digest:
+                "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                    .to_string(),
         };
         event.validate().unwrap();
         let mut invalid = event.clone();
         invalid.origin = "model".to_string();
         assert!(invalid.validate().is_err());
         invalid = event;
-        invalid.policy_snapshot_digest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        invalid.policy_snapshot_digest =
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
         assert!(invalid.validate().is_err());
     }
 
@@ -2780,8 +2876,18 @@ mod lifecycle_intent_tests {
             serde_json::to_vec(&serde_json::json!({ "observable_events": [event] })).unwrap(),
         )
         .unwrap();
-        std::fs::OpenOptions::new().append(true).open(&ingress).unwrap().write_all(b"\n").unwrap();
-        let result = drain_prompt_telemetry_ingress_once(&MemDb::open_in_memory(), &lease(), &ingress).unwrap();
-        assert_eq!((result.records, result.inserted, result.rejected), (1, 1, 0));
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&ingress)
+            .unwrap()
+            .write_all(b"\n")
+            .unwrap();
+        let result =
+            drain_prompt_telemetry_ingress_once(&MemDb::open_in_memory(), &lease(), &ingress)
+                .unwrap();
+        assert_eq!(
+            (result.records, result.inserted, result.rejected),
+            (1, 1, 0)
+        );
     }
 }

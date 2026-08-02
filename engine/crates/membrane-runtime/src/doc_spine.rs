@@ -397,7 +397,10 @@ fn hard_excluded(path: &Path) -> bool {
         .map(|component| component.to_ascii_lowercase())
         .collect::<Vec<_>>();
     components.iter().any(|component| {
-        matches!(component.as_str(), ".git" | "node_modules" | ".cache" | "target" | ".venv" | "vendor" | "memory-mirror")
+        matches!(
+            component.as_str(),
+            ".git" | "node_modules" | ".cache" | "target" | ".venv" | "vendor" | "memory-mirror"
+        )
     }) || components.last().is_some_and(|name| name == "memory.md")
 }
 
@@ -433,7 +436,16 @@ fn walk(
             }
             if kind.is_dir() {
                 let name = path.file_name().and_then(|v| v.to_str()).unwrap_or("");
-                if matches!(name, ".git" | "node_modules" | "target" | ".cache" | ".venv" | "vendor" | "memory-mirror") {
+                if matches!(
+                    name,
+                    ".git"
+                        | "node_modules"
+                        | "target"
+                        | ".cache"
+                        | ".venv"
+                        | "vendor"
+                        | "memory-mirror"
+                ) {
                     continue;
                 }
                 pending.push((path, depth + 1));

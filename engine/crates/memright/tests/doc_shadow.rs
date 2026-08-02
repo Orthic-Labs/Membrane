@@ -1,8 +1,8 @@
 use memright::doc_shadow::{
     evaluate_frozen_shadow_replay, evaluate_shadow_replay, select_doc_candidates_for_shadow,
     DocCandidateFreshnessV1, DocCandidateProviderCandidateV1, DocCandidateProviderPolicyV1,
-    DocTaskClassV1, DocumentClass, ReplayCandidateV1, ShadowReplayCaseV1, ShadowReplayDisposition,
-    FrozenShadowReplayReceiptV1,
+    DocTaskClassV1, DocumentClass, FrozenShadowReplayReceiptV1, ReplayCandidateV1,
+    ShadowReplayCaseV1, ShadowReplayDisposition,
 };
 
 fn candidate(doc_id: &str, section_id: Option<&str>, class: DocumentClass) -> ReplayCandidateV1 {
@@ -230,7 +230,8 @@ fn frozen_replay_receipt_is_byte_deterministic_for_distinct_cases_with_same_targ
         ],
     };
 
-    let forward = evaluate_frozen_shadow_replay(vec![exact_section.clone(), displaced_section.clone()]);
+    let forward =
+        evaluate_frozen_shadow_replay(vec![exact_section.clone(), displaced_section.clone()]);
     let reversed = evaluate_frozen_shadow_replay(vec![displaced_section, exact_section]);
 
     assert_eq!(

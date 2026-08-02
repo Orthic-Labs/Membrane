@@ -33,7 +33,7 @@ const rows = await rpc([
 ]);
 assert.match(rows[0].result.instructions, /federated context/i);
 const tools = rows[1].result.tools.map((tool) => tool.name).sort();
-assert.deepEqual(tools, ["membrane_checkpoint_load", "membrane_checkpoint_save", "membrane_context", "membrane_feedback", "membrane_knowledge_propose", "membrane_source_read"]);
+assert.deepEqual(tools, ["membrane_checkpoint_load", "membrane_checkpoint_save", "membrane_context", "membrane_feedback", "membrane_knowledge_propose", "membrane_scratchpad", "membrane_source_read", "membrane_temporal_fact", "membrane_working_context"]);
 assert.deepEqual(tools.filter((name) => /(?:^|_)(?:put|get|recall|doctor|schema|filesystem|plan_context)(?:$|_)/.test(name)), []);
 assert.deepEqual(rows[2].result.resources, [{ uri: "membrane://protocol/v1", name: "Membrane protocol v1", mimeType: "text/markdown" }]);
 assert.match(rows[3].result.contents[0].text, /federate/i);

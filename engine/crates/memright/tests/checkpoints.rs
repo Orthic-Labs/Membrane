@@ -114,7 +114,9 @@ fn checkpoint_preserves_installation_lineage_and_optional_goal_task_snapshots() 
     let checkpoint = checkpoint();
     store.save_checkpoint(&checkpoint).unwrap();
 
-    let loaded = store.load_checkpoint(&checkpoint.checkpoint_id, 150).unwrap();
+    let loaded = store
+        .load_checkpoint(&checkpoint.checkpoint_id, 150)
+        .unwrap();
     assert_eq!(loaded.installation_id, checkpoint.installation_id);
     assert_eq!(loaded.goal_snapshot, checkpoint.goal_snapshot);
     assert_eq!(loaded.task_snapshot, checkpoint.task_snapshot);
@@ -136,5 +138,8 @@ fn checkpoints_cannot_promote_their_summary_into_durable_memory() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(durable_rows, 0, "checkpoint save must never promote summary");
+    assert_eq!(
+        durable_rows, 0,
+        "checkpoint save must never promote summary"
+    );
 }

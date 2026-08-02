@@ -381,6 +381,17 @@ enum CheckpointCmd {
 }
 
 #[derive(Subcommand)]
+enum HygieneCmd {
+    /// Audit memory, context, provenance, link, embedding, and feedback hygiene.
+    Audit,
+    /// Emit a reversible cleanup plan. This command never mutates storage.
+    Clean {
+        #[arg(long)]
+        plan: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum Cmd {
     /// Print immutable build/source identity as JSON.
     BuildInfo,
@@ -415,6 +426,13 @@ enum Cmd {
         #[arg(long = "external-ref", value_name = "SLUG")]
         external_refs: Vec<String>,
     },
+    /// Inspect hygiene or emit a non-mutating cleanup plan.
+    Hygiene {
+        #[command(subcommand)]
+        command: HygieneCmd,
+    },
+    /// Explain one memory's content-free lifecycle, provenance, and use metadata.
+    Explain { id: String },
     /// Serve /health /recall /use on 127.0.0.1:<port>.
     Serve {
         #[arg(long)]
@@ -616,6 +634,16 @@ enum Cmd {
     /// Export the whole store as a canonical-scoped markdown tree (audit + sync medium).
     /// The DB stays authoritative; these files are generated FROM it.
     ExportMd { dir: String },
+    /// Export the whole store to `memright-export/` unless another directory is supplied.
+    Export {
+        #[arg(default_value = "memright-export")]
+        dir: PathBuf,
+    },
+    /// Import a canonical MemRight Markdown export from `memright-export/` by default.
+    Import {
+        #[arg(default_value = "memright-export")]
+        dir: PathBuf,
+    },
     /// Report token savings: recall (full-corpus vs injected chars) + per-verb transform savings
     /// + curate counts, summed since logging started. Tokens are estimated at ~4 chars/token.
     Metrics,
@@ -754,6 +782,218 @@ enum Cmd {
 
 fn open(db: &str) -> Result<MemoryStore, String> {
     MemoryStore::try_open(MemDb::open(db).map_err(|e| e.to_string())?)
+}
+
+fn query_ids(conn: &rusqlite::Connection, sql: &str) -> Result<Vec<String>, String> {
+    let mut statement = conn.prepare(sql).map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(rows)
+}
+
+fn table_exists(conn: &rusqlite::Connection, table: &str) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+        [table],
+        |row| row.get(0),
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn hygiene_report(db_path: &str) -> Result<serde_json::Value, String> {
+    let db = MemDb::open(db_path).map_err(|error| error.to_string())?;
+    let conn = db.lock();
+    let duplicate_groups = query_ids(
+        &conn,
+        "SELECT group_concat(id, ',') FROM memories GROUP BY lower(trim(content)) HAVING COUNT(*) > 1 ORDER BY MIN(id)",
+    )?;
+    let invalid_scopes = query_ids(
+        &conn,
+        "SELECT id FROM memories WHERE trim(scope_id)='' ORDER BY id",
+    )?;
+    let missing_provenance = query_ids(
+        &conn,
+        "SELECT id FROM memories WHERE COALESCE(source_ids,'[]')='[]' AND COALESCE(producer,'manual') IN ('','manual') ORDER BY id",
+    )?;
+    let stale_embeddings = query_ids(
+        &conn,
+        "SELECT id FROM memories WHERE embedding IS NULL OR length(embedding)=0 OR COALESCE(embed_model,'')='' ORDER BY id",
+    )?;
+    let orphaned_links = query_ids(
+        &conn,
+        "SELECT src_id || '->' || dst_slug FROM links WHERE src_id NOT IN (SELECT id FROM memories) ORDER BY src_id,dst_slug",
+    )?;
+    let unexercised_feedback = query_ids(
+        &conn,
+        "SELECT trace_id || ':' || candidate_id FROM context_feedback WHERE verified=0 ORDER BY trace_id,candidate_id",
+    )?;
+    let global_core_chars: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(length(content)),0) FROM memories WHERE scope_id='global' AND lifecycle_state='active'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    drop(conn);
+
+    let mut expired_working_context = Vec::new();
+    let mut unresolved_contradictions = Vec::new();
+    if let Some(path) = db.event_db_path() {
+        let events = rusqlite::Connection::open(path).map_err(|error| error.to_string())?;
+        if table_exists(&events, "membrane_working_context")? {
+            expired_working_context = query_ids(
+                &events,
+                "SELECT context_id FROM membrane_working_context WHERE state='active' AND expires_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now') ORDER BY context_id",
+            )?;
+        }
+        if table_exists(&events, "membrane_temporal_fact")? {
+            unresolved_contradictions = query_ids(
+                &events,
+                "SELECT scope_id || ':' || subject || ':' || predicate FROM membrane_temporal_fact WHERE valid_until IS NULL AND veracity='supported' GROUP BY scope_id,subject,predicate HAVING COUNT(*)>1 ORDER BY scope_id,subject,predicate",
+            )?;
+        }
+    }
+
+    let findings = serde_json::json!([
+        {"code":"duplicate_records","count":duplicate_groups.len(),"targets":duplicate_groups},
+        {"code":"expired_working_context","count":expired_working_context.len(),"targets":expired_working_context},
+        {"code":"unresolved_contradictions","count":unresolved_contradictions.len(),"targets":unresolved_contradictions},
+        {"code":"orphaned_links","count":orphaned_links.len(),"targets":orphaned_links},
+        {"code":"invalid_scopes","count":invalid_scopes.len(),"targets":invalid_scopes},
+        {"code":"stale_embeddings","count":stale_embeddings.len(),"targets":stale_embeddings},
+        {"code":"unexercised_feedback","count":unexercised_feedback.len(),"targets":unexercised_feedback},
+        {"code":"missing_provenance","count":missing_provenance.len(),"targets":missing_provenance},
+        {"code":"oversized_global_core","count":i64::from(global_core_chars > 262_144),"chars":global_core_chars,"limit_chars":262144}
+    ]);
+    let issue_count: usize = findings
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|finding| finding.get("count").and_then(serde_json::Value::as_u64))
+        .map(|count| count as usize)
+        .sum();
+    Ok(serde_json::json!({
+        "schema":"orthic.hygiene-audit.v1",
+        "status": if issue_count == 0 { "clean" } else { "issues" },
+        "issue_count": issue_count,
+        "findings": findings
+    }))
+}
+
+fn explain_memory(db_path: &str, id: &str) -> Result<serde_json::Value, String> {
+    let db = MemDb::open(db_path).map_err(|error| error.to_string())?;
+    let conn = db.lock();
+    conn.query_row(
+        "SELECT id,tier,scope_id,score,created_at,updated_at,access_count,inject_count,content_hash,embed_model,source_ids,artifact_family,producer,record_type,authority,influence_class,lifecycle_state,effective_from_ms,effective_until_ms,expires_at_ms,review_after_ms,superseded_by,priority_class,confidence,confidence_basis FROM memories WHERE id=?1",
+        [id],
+        |row| Ok(serde_json::json!({
+            "schema":"orthic.memory-explain.v1",
+            "id":row.get::<_,String>(0)?, "tier":row.get::<_,String>(1)?, "scope_id":row.get::<_,String>(2)?, "score":row.get::<_,f64>(3)?,
+            "created_at":row.get::<_,String>(4)?, "updated_at":row.get::<_,String>(5)?, "access_count":row.get::<_,i64>(6)?, "inject_count":row.get::<_,i64>(7)?,
+            "content_hash":row.get::<_,Option<String>>(8)?, "embed_model":row.get::<_,Option<String>>(9)?, "source_ids":row.get::<_,String>(10)?,
+            "artifact_family":row.get::<_,String>(11)?, "producer":row.get::<_,String>(12)?, "record_type":row.get::<_,String>(13)?, "authority":row.get::<_,String>(14)?, "influence_class":row.get::<_,String>(15)?,
+            "lifecycle":{"state":row.get::<_,String>(16)?,"effective_from_ms":row.get::<_,Option<i64>>(17)?,"effective_until_ms":row.get::<_,Option<i64>>(18)?,"expires_at_ms":row.get::<_,Option<i64>>(19)?,"review_after_ms":row.get::<_,Option<i64>>(20)?,"superseded_by":row.get::<_,Option<String>>(21)?,"priority_class":row.get::<_,String>(22)?},
+            "confidence":row.get::<_,Option<f64>>(23)?, "confidence_basis":row.get::<_,Option<String>>(24)?
+        })),
+    )
+    .map_err(|error| if matches!(error, rusqlite::Error::QueryReturnedNoRows) { format!("memory not found: {id}") } else { error.to_string() })
+}
+
+fn parse_exported_memory(path: &Path) -> Result<(String, String, String), String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|error| format!("read import {}: {error}", path.display()))?;
+    let rest = text
+        .strip_prefix("---\n")
+        .ok_or_else(|| format!("import missing frontmatter: {}", path.display()))?;
+    let (frontmatter, body) = rest
+        .split_once("\n---\n")
+        .ok_or_else(|| format!("import has unclosed frontmatter: {}", path.display()))?;
+    let mut id = None;
+    let mut scope = None;
+    for line in frontmatter.lines() {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        match key.trim() {
+            "id" => id = Some(value.trim().to_string()),
+            "scope" => scope = Some(value.trim().to_string()),
+            _ => {}
+        }
+    }
+    let id = id.ok_or_else(|| format!("import missing id: {}", path.display()))?;
+    let scope = scope.ok_or_else(|| format!("import missing scope: {}", path.display()))?;
+    let expected_prefix = format!("{scope}/");
+    if scope.trim().is_empty()
+        || !id.starts_with(&expected_prefix)
+        || id[expected_prefix.len()..].contains('/')
+    {
+        return Err(format!(
+            "import identity/scope mismatch: {}",
+            path.display()
+        ));
+    }
+    let content = body.trim().to_string();
+    if content.is_empty() {
+        return Err(format!("import has empty content: {}", path.display()));
+    }
+    Ok((id, scope, content))
+}
+
+fn import_markdown_tree(store: &MemoryStore, dir: &Path) -> Result<usize, String> {
+    let root = dir
+        .canonicalize()
+        .map_err(|error| format!("resolve import {}: {error}", dir.display()))?;
+    if !root.is_dir() {
+        return Err(format!("import path is not a directory: {}", dir.display()));
+    }
+    let mut files = Vec::new();
+    for scope_entry in std::fs::read_dir(&root).map_err(|error| error.to_string())? {
+        let scope_entry = scope_entry.map_err(|error| error.to_string())?;
+        if scope_entry
+            .file_type()
+            .map_err(|error| error.to_string())?
+            .is_symlink()
+            || !scope_entry.path().is_dir()
+        {
+            continue;
+        }
+        for entry in std::fs::read_dir(scope_entry.path()).map_err(|error| error.to_string())? {
+            let entry = entry.map_err(|error| error.to_string())?;
+            let file_type = entry.file_type().map_err(|error| error.to_string())?;
+            if !file_type.is_file()
+                || file_type.is_symlink()
+                || entry.path().extension().and_then(|value| value.to_str()) != Some("md")
+            {
+                continue;
+            }
+            let canonical = entry
+                .path()
+                .canonicalize()
+                .map_err(|error| error.to_string())?;
+            if !canonical.starts_with(&root) {
+                return Err(format!(
+                    "import path escapes root: {}",
+                    entry.path().display()
+                ));
+            }
+            files.push(canonical);
+        }
+    }
+    files.sort();
+    let mut imported = 0;
+    for path in files {
+        let (id, scope, content) = parse_exported_memory(&path)?;
+        let name = id
+            .rsplit('/')
+            .next()
+            .ok_or_else(|| "import id invalid".to_string())?;
+        store.try_put(name, &content, &scope, memright_core::MemoryTier::Semantic)?;
+        imported += 1;
+    }
+    Ok(imported)
 }
 
 fn cli_event_context() -> memright::store::MemoryEventContext {
@@ -2564,6 +2804,41 @@ fn run_main() -> Result<(), String> {
                 }
             }
         }
+        Cmd::Hygiene { command } => {
+            let report = hygiene_report(&db)?;
+            match command {
+                HygieneCmd::Audit => println!("{report}"),
+                HygieneCmd::Clean { plan } => {
+                    if !plan {
+                        return Err(
+                            "hygiene clean requires --plan; no implicit mutation is allowed".into(),
+                        );
+                    }
+                    let actions = report["findings"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter(|finding| finding["count"].as_u64().unwrap_or(0) > 0)
+                        .map(|finding| serde_json::json!({
+                            "code": finding["code"],
+                            "targets": finding.get("targets").cloned().unwrap_or_else(|| serde_json::json!([])),
+                            "action": "review_then_apply_separately"
+                        }))
+                        .collect::<Vec<_>>();
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "schema":"orthic.hygiene-clean-plan.v1",
+                            "applied":false,
+                            "reversible":true,
+                            "audit":report,
+                            "actions":actions
+                        })
+                    );
+                }
+            }
+        }
+        Cmd::Explain { id } => println!("{}", explain_memory(&db, &id)?),
         Cmd::BackoutSchemaV11 => {
             let restored = memright::memdb::backout_v11_to_v10(&db).map_err(|e| e.to_string())?;
             println!(
@@ -2952,6 +3227,32 @@ fn run_main() -> Result<(), String> {
             println!("{}", serde_json::json!({ "id": id, "restored": restored }));
         }
         Cmd::Get { id } => {
+            let payload = serde_json::json!({ "id": id }).to_string();
+            match try_service_post("/get", &payload) {
+                Ok(Some(response)) => {
+                    let value: serde_json::Value =
+                        serde_json::from_str(&response).map_err(|error| {
+                            format!("resident memright /get returned invalid JSON: {error}")
+                        })?;
+                    let content = value
+                        .get("content")
+                        .and_then(|item| item.as_str())
+                        .ok_or_else(|| "resident memright /get returned no content".to_string())?;
+                    if let Some(access_count) =
+                        value.get("access_count").and_then(|item| item.as_u64())
+                    {
+                        eprintln!("[use recorded] access_count={access_count}");
+                    }
+                    print!("{content}");
+                    return Ok(());
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    return Err(format!(
+                        "resident memright service failed /get; refusing direct DB fallback: {error}"
+                    ));
+                }
+            }
             let store = open(&db)?;
             let context = cli_event_context();
             match store.get_full_observed(&id, &context) {
@@ -3435,6 +3736,16 @@ fn run_main() -> Result<(), String> {
             let n = store.export_md(std::path::Path::new(&dir));
             println!("{{\"exported\":{n},\"dir\":{dir:?}}}");
         }
+        Cmd::Export { dir } => {
+            let store = open(&db)?;
+            let n = store.export_md(&dir);
+            println!("{}", serde_json::json!({"exported":n,"dir":dir}));
+        }
+        Cmd::Import { dir } => {
+            let store = open(&db)?;
+            let n = import_markdown_tree(&store, &dir)?;
+            println!("{}", serde_json::json!({"imported":n,"dir":dir}));
+        }
         Cmd::Metrics => {
             let store = open(&db)?;
             println!("{}", store.metrics_json());
@@ -3611,6 +3922,114 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn hygiene_clean_is_explicitly_plan_only() {
+        let parsed = super::Cli::try_parse_from(["memright", "hygiene", "clean", "--plan"])
+            .expect("hygiene clean plan parses");
+        assert!(matches!(
+            parsed.cmd,
+            super::Cmd::Hygiene {
+                command: super::HygieneCmd::Clean { plan: true }
+            }
+        ));
+        let parsed = super::Cli::try_parse_from(["memright", "hygiene", "clean"])
+            .expect("handler rejects mutation without plan");
+        assert!(matches!(
+            parsed.cmd,
+            super::Cmd::Hygiene {
+                command: super::HygieneCmd::Clean { plan: false }
+            }
+        ));
+    }
+
+    #[test]
+    fn hygiene_audit_and_explain_are_content_free_and_not_age_based() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("hygiene.db");
+        let db = memright::MemDb::open(&path).unwrap();
+        {
+            let conn = db.lock();
+            for id in ["global/old-preference", "global/duplicate"] {
+                conn.execute(
+                    "INSERT INTO memories(id,tier,content,keywords,score,created_at,access_count,scope_id,artifact_family,producer,record_type,authority,influence_class) VALUES(?1,'Semantic','private duplicate','',0.8,'2000-01-01T00:00:00Z',0,'global','memory','manual','preference','A2','reference')",
+                    [id],
+                )
+                .unwrap();
+            }
+            conn.execute(
+                "UPDATE memories SET content_hash='sha256:opaque',embed_model='model-a'",
+                [],
+            )
+            .unwrap();
+        }
+        if let Some(event_path) = db.event_db_path() {
+            let events = rusqlite::Connection::open(event_path).unwrap();
+            events.execute_batch("CREATE TABLE membrane_working_context(context_id TEXT PRIMARY KEY,session_id TEXT,task_id TEXT,payload_json TEXT,payload_sha256 TEXT,expires_at TEXT,state TEXT,created_at TEXT,closed_at TEXT); INSERT INTO membrane_working_context VALUES('expired','s','t','{}','sha256:x','2001-01-01T00:00:00.000Z','active','2000-01-01T00:00:00Z',NULL);").unwrap();
+        }
+        drop(db);
+
+        let report = super::hygiene_report(path.to_str().unwrap()).unwrap();
+        let finding = |code: &str| {
+            report["findings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["code"] == code)
+                .unwrap()["count"]
+                .as_u64()
+                .unwrap()
+        };
+        assert_eq!(finding("duplicate_records"), 1);
+        assert_eq!(finding("expired_working_context"), 1);
+        assert!(
+            report.to_string().find("age").is_none(),
+            "stable preferences must not decay by age"
+        );
+
+        let explained =
+            super::explain_memory(path.to_str().unwrap(), "global/old-preference").unwrap();
+        assert_eq!(explained["record_type"], "preference");
+        assert!(explained.get("content").is_none());
+        assert!(!explained.to_string().contains("private duplicate"));
+    }
+
+    #[test]
+    fn export_import_defaults_and_round_trip_content_scope() {
+        let export = super::Cli::try_parse_from(["memright", "export"]).unwrap();
+        assert!(matches!(
+            export.cmd,
+            super::Cmd::Export { ref dir } if dir == std::path::Path::new("memright-export")
+        ));
+        let import = super::Cli::try_parse_from(["memright", "import"]).unwrap();
+        assert!(matches!(
+            import.cmd,
+            super::Cmd::Import { ref dir } if dir == std::path::Path::new("memright-export")
+        ));
+
+        let temp = tempfile::tempdir().unwrap();
+        let source = memright::MemoryStore::open(
+            memright::MemDb::open(temp.path().join("source.db")).unwrap(),
+        );
+        source
+            .try_put(
+                "preference",
+                "keep exact content",
+                "scope-a",
+                memright_core::MemoryTier::Semantic,
+            )
+            .unwrap();
+        let tree = temp.path().join("export");
+        assert_eq!(source.export_md(&tree), 1);
+        let target = memright::MemoryStore::open(
+            memright::MemDb::open(temp.path().join("target.db")).unwrap(),
+        );
+        assert_eq!(super::import_markdown_tree(&target, &tree).unwrap(), 1);
+        assert_eq!(
+            target.get_full("scope-a/preference").unwrap().0,
+            "keep exact content"
+        );
     }
 
     fn federate_cli_with_budget(value: &str) -> Result<super::Cli, clap::Error> {

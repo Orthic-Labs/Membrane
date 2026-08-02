@@ -869,20 +869,29 @@ fn metadata_for_on(
     if let Some(current) = current {
         return Ok(current);
     }
-    conn.query_row(
-        "SELECT artifact_family, producer FROM context_event_log
-          WHERE artifact_id=?1 ORDER BY seq DESC LIMIT 1",
-        rusqlite::params![stable_artifact_id(memory_id)],
-        |row| {
-            Ok(MemoryRecordMetadata {
-                artifact_family: row.get(0)?,
-                producer: row.get(1)?,
-                record_type: "memory".to_string(),
-            })
-        },
-    )
-    .optional()
-    .map(|value| value.unwrap_or_default())
+    let has_local_event_table: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='context_event_log')",
+        [],
+        |row| row.get(0),
+    )?;
+    if has_local_event_table {
+        return conn
+            .query_row(
+                "SELECT artifact_family, producer FROM context_event_log
+                  WHERE artifact_id=?1 ORDER BY seq DESC LIMIT 1",
+                rusqlite::params![stable_artifact_id(memory_id)],
+                |row| {
+                    Ok(MemoryRecordMetadata {
+                        artifact_family: row.get(0)?,
+                        producer: row.get(1)?,
+                        record_type: "memory".to_string(),
+                    })
+                },
+            )
+            .optional()
+            .map(|value| value.unwrap_or_default());
+    }
+    Ok(MemoryRecordMetadata::default())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1765,6 +1774,8 @@ impl MemoryStore {
         tx.commit().map_err(|error| {
             self.persist_error(format!("external lifecycle commit failed: {error}"))
         })?;
+        drop(conn);
+        self.flush_event_outbox()?;
         Ok(())
     }
 
@@ -2030,6 +2041,8 @@ impl MemoryStore {
         .map_err(|e| self.persist_error(format!("memory lifecycle event failed: {e}")))?;
         tx.commit()
             .map_err(|e| self.persist_error(format!("memory commit failed: {e}")))?;
+        drop(conn);
+        self.flush_event_outbox()?;
         self.clear_last_persist_error();
         Ok(())
     }
@@ -2088,6 +2101,8 @@ impl MemoryStore {
         }
         tx.commit()
             .map_err(|e| self.persist_error(format!("memory delete commit failed: {e}")))?;
+        drop(conn);
+        self.flush_event_outbox()?;
         let _ = self
             .registry
             .write()
@@ -2377,6 +2392,7 @@ impl MemoryStore {
         tx.commit()
             .map_err(|e| self.persist_error(format!("dream commit failed: {e}")))?;
         drop(conn);
+        self.flush_event_outbox()?;
         {
             let mut registry = self.registry.write().unwrap_or_else(|e| e.into_inner());
             for id in &plan.pruned_ids {
@@ -2429,11 +2445,9 @@ impl MemoryStore {
     pub fn restore_quarantined(&self, id: &str) -> Result<bool, String> {
         let lock = MtimeLock::acquire(self.db_path.clone());
         lock.verify()?;
-        let mut conn = self.db.lock();
-        let tx = conn.transaction().map_err(|e| {
-            self.persist_error(format!("quarantine restore transaction failed: {e}"))
-        })?;
-        let restored_metadata = tx
+        let restored_metadata = self
+            .db
+            .lock_events()
             .query_row(
                 "SELECT artifact_family, producer FROM context_event_log
                   WHERE artifact_id=?1 ORDER BY seq DESC LIMIT 1",
@@ -2453,6 +2467,10 @@ impl MemoryStore {
                 ))
             })?
             .unwrap_or_default();
+        let mut conn = self.db.lock();
+        let tx = conn.transaction().map_err(|e| {
+            self.persist_error(format!("quarantine restore transaction failed: {e}"))
+        })?;
         let restored = tx
             .execute(
                 "INSERT INTO memories
@@ -2523,6 +2541,7 @@ impl MemoryStore {
         tx.commit()
             .map_err(|e| self.persist_error(format!("quarantine restore commit failed: {e}")))?;
         drop(conn);
+        self.flush_event_outbox()?;
 
         let restored_entry = {
             let conn = self.db.lock();
@@ -2692,6 +2711,8 @@ impl MemoryStore {
         }
         tx.commit()
             .map_err(|e| self.persist_error(format!("outcome commit failed: {e}")))?;
+        drop(conn);
+        self.flush_event_outbox()?;
         self.clear_last_persist_error();
         Ok(())
     }
@@ -2711,6 +2732,23 @@ impl MemoryStore {
     ) -> Result<(), String> {
         rec.validate()?;
         let canonical_trace = opaque_correlation_token(&rec.trace_id, "trace");
+        let artifact_id = stable_artifact_id(&rec.candidate_id);
+        let feedback_target = self
+            .db
+            .lock_events()
+            .query_row(
+                "SELECT event_id FROM context_event_log
+                  WHERE trace_id=?1 AND artifact_id=?2
+                    AND phase IN ('block.delivered','candidate.admitted','candidate.retrieved')
+                  ORDER BY CASE phase
+                    WHEN 'block.delivered' THEN 0
+                    WHEN 'candidate.admitted' THEN 1
+                    ELSE 2 END, seq DESC LIMIT 1",
+                rusqlite::params![canonical_trace, artifact_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| self.persist_error(format!("feedback link lookup failed: {error}")))?;
         let mut conn = self.db.lock();
         let tx = conn
             .transaction()
@@ -2754,21 +2792,6 @@ impl MemoryStore {
             self.persist_error(format!("feedback metadata load failed: {error}"))
         })?;
         let event_id = format!("feedback.{}", new_uuid_v4()?);
-        let artifact_id = stable_artifact_id(&rec.candidate_id);
-        let feedback_target = tx
-            .query_row(
-                "SELECT event_id FROM context_event_log
-                  WHERE trace_id=?1 AND artifact_id=?2
-                    AND phase IN ('block.delivered','candidate.admitted','candidate.retrieved')
-                  ORDER BY CASE phase
-                    WHEN 'block.delivered' THEN 0
-                    WHEN 'candidate.admitted' THEN 1
-                    ELSE 2 END, seq DESC LIMIT 1",
-                rusqlite::params![canonical_trace, artifact_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()
-            .map_err(|error| self.persist_error(format!("feedback link lookup failed: {error}")))?;
         let event = ContextEvent {
             schema_version: 1,
             event_id: event_id.clone(),
@@ -2895,6 +2918,8 @@ impl MemoryStore {
             .map_err(|error| self.persist_error(format!("feedback telemetry failed: {error}")))?;
         tx.commit()
             .map_err(|error| self.persist_error(format!("feedback commit failed: {error}")))?;
+        drop(conn);
+        self.flush_event_outbox()?;
         self.clear_last_persist_error();
         Ok(())
     }
@@ -3028,7 +3053,7 @@ impl MemoryStore {
             return Err("closure max_deliveries must be within 1..=10000".to_string());
         }
 
-        let mut conn = self.db.lock();
+        let mut conn = self.db.lock_events();
         let tx = conn
             .transaction()
             .map_err(|e| self.persist_error(format!("unknown closure transaction failed: {e}")))?;
@@ -4618,6 +4643,7 @@ impl MemoryStore {
         tx.commit()
             .map_err(|e| self.persist_error(format!("memory use commit failed: {e}")))?;
         drop(conn);
+        self.flush_event_outbox()?;
         {
             let mut reg = self.registry.write().unwrap_or_else(|e| e.into_inner());
             let mut entry = reg.remove(id).ok_or_else(|| {
@@ -4926,6 +4952,13 @@ impl MemoryStore {
     fn persist_error(&self, err: String) -> String {
         self.set_last_persist_error(err.clone());
         err
+    }
+
+    fn flush_event_outbox(&self) -> Result<(), String> {
+        self.db
+            .flush_context_event_outbox()
+            .map(|_| ())
+            .map_err(|error| self.persist_error(format!("membrane event replay failed: {error}")))
     }
 
     fn set_last_persist_error(&self, err: String) {
@@ -5444,6 +5477,8 @@ impl MemoryStore {
         tx.commit()
             .map_err(|e| MemoryBatchError::Persist(e.to_string()))?;
         drop(conn);
+        self.flush_event_outbox()
+            .map_err(MemoryBatchError::Persist)?;
         let mut registry = self.registry.write().unwrap_or_else(|e| e.into_inner());
         for entry in entries {
             registry.insert(entry);
@@ -5680,6 +5715,7 @@ impl MemoryStore {
         tx.commit()
             .map_err(|e| self.persist_error(format!("memory commit failed: {e}")))?;
         drop(conn);
+        self.flush_event_outbox()?;
         self.registry
             .write()
             .unwrap_or_else(|e| e.into_inner())
@@ -6022,6 +6058,8 @@ impl MemoryStore {
         }
         tx.commit()
             .map_err(|e| self.persist_error(format!("injection commit failed: {e}")))?;
+        drop(conn);
+        self.flush_event_outbox()?;
         self.clear_last_persist_error();
         Ok(())
     }

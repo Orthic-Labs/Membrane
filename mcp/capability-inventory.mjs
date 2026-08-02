@@ -4,6 +4,18 @@ import { TOOLS, TOOL_OUTPUT_SCHEMA } from "./server.mjs";
 export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) {
   const matrix = JSON.parse(await readFile(matrixPath ?? new URL("../../tether/hooks/membrane-capability-matrix.json", import.meta.url), "utf8"));
   const freeze = JSON.parse(await readFile(freezePath ?? new URL("../../docs/rightcontext/federation-freeze-v1.json", import.meta.url), "utf8"));
+  const toolTests = (name) => {
+    if (["membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad"].includes(name)) return ["mcp/working-context.test.mjs", "mcp/server-durable.test.mjs"];
+    if (["membrane_knowledge_propose", "membrane_feedback"].includes(name)) return ["mcp/server.test.mjs", "mcp/server-durable.test.mjs"];
+    return ["mcp/server.test.mjs"];
+  };
+  const capabilities = [
+    ...TOOLS.map(({ name }) => ({ capability: `mcp.${name}`, status: "shipped", test_ids: toolTests(name), artifact: "mcp/server.mjs", platforms: ["macOS", "Windows"] })),
+    ...Object.entries(matrix.hosts).map(([id]) => ({ capability: `adapter.${id}`, status: id === "generic_mcp" ? "shipped" : "partial", test_ids: id === "generic_mcp" ? ["mcp/adapters.test.mjs"] : [], artifact: "tether/hooks/membrane-capability-matrix.json", platforms: id === "generic_mcp" ? ["macOS", "Windows"] : [] })),
+  ];
+  for (const capability of capabilities) {
+    if (capability.status === "shipped" && (!capability.test_ids.length || !capability.artifact || !capability.platforms.length)) throw new Error(`shipped capability lacks proof: ${capability.capability}`);
+  }
   return {
     schema: "orthic.capability-inventory.v1",
     vocabulary: { current: ["Membrane", "Crypt", "Sentinel", "Morph", "Cortex"], compatibility: ["RightContext", "MemRight", "Tether", "Adapt", "Blueprint"] },
@@ -17,6 +29,7 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
     }])),
     support_tiers: matrix.support_tiers,
     contract_freeze: freeze.canonical,
+    capabilities,
     source_files: ["mcp/server.mjs", "tether/hooks/membrane-capability-matrix.json", "docs/rightcontext/federation-freeze-v1.json"],
   };
 }

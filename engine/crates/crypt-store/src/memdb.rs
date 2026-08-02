@@ -4,7 +4,7 @@
 
 use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 const SCHEMA: &str = "
@@ -242,7 +242,7 @@ CREATE TABLE IF NOT EXISTS memory_quarantine (
 
 /// Current durable MemRight schema contract. External migration tests must not
 /// duplicate this value, because a promoted schema version changes atomically.
-pub const LATEST_SCHEMA_VERSION: i64 = 20;
+pub const LATEST_SCHEMA_VERSION: i64 = 21;
 const SMOKE_ISOLATION_MIGRATION_ID: &str = "rc-2.3-smoke-spotcheck-production-v1";
 const SMOKE_ISOLATION_REASON: &str = "legacy_production_smoke_spotcheck";
 const SMOKE_RECALL_PREDICATE: &str =
@@ -1372,6 +1372,21 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                     )?;
                 }
             }
+            21 => {
+                tx.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS membrane_event_outbox (
+                         id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         batch_sha256 TEXT NOT NULL UNIQUE,
+                         batch_json TEXT NOT NULL,
+                         created_at TEXT NOT NULL
+                     );",
+                )?;
+                require_columns(
+                    &tx,
+                    "membrane_event_outbox",
+                    &["id", "batch_sha256", "batch_json", "created_at"],
+                )?;
+            }
             _ => unreachable!(),
         }
         tx.pragma_update(None, "user_version", next)?;
@@ -1386,6 +1401,8 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
 /// This removes only v20 lifecycle columns; row contents and all v19 metadata remain intact.
 /// Unknown newer schemas fail closed rather than risking a partial downgrade.
 pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
+    let path = path.as_ref();
+    backout_v21_to_v20(path)?;
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA busy_timeout=5000;")?;
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
@@ -1414,6 +1431,40 @@ pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     tx.commit()
 }
 
+fn backout_v21_to_v20(path: &Path) -> rusqlite::Result<()> {
+    let mut conn = Connection::open(path)?;
+    conn.execute_batch("PRAGMA busy_timeout=5000;")?;
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version < 21 {
+        return Ok(());
+    }
+    if version != 21 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    conn.execute_batch(crate::context_telemetry::CONTEXT_LEDGER_SCHEMA)?;
+    let event_path = resolve_event_db_path(path);
+    conn.execute(
+        "ATTACH DATABASE ?1 AS membrane_events",
+        [event_path.to_string_lossy().as_ref()],
+    )?;
+    let migration = (|| -> rusqlite::Result<()> {
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute_batch(
+            "INSERT OR IGNORE INTO main.context_installation SELECT * FROM membrane_events.context_installation;
+             INSERT OR IGNORE INTO main.context_event_log SELECT * FROM membrane_events.context_event_log;
+             INSERT OR IGNORE INTO main.context_event_measurement SELECT * FROM membrane_events.context_event_measurement;
+             INSERT OR IGNORE INTO main.context_event_link SELECT * FROM membrane_events.context_event_link;
+             INSERT OR REPLACE INTO main.context_ingest_checkpoint SELECT * FROM membrane_events.context_ingest_checkpoint;
+             DROP TABLE main.membrane_event_outbox;
+             PRAGMA main.user_version = 20;",
+        )?;
+        tx.commit()
+    })();
+    let detach = conn.execute_batch("DETACH DATABASE membrane_events;");
+    migration?;
+    detach
+}
+
 /// Older rollback entrypoints chain through v20 first when necessary. This keeps their existing
 /// lossless v19→… rollback contracts valid without accepting an unknown newer schema.
 fn backout_v20_if_present(path: &Path) -> rusqlite::Result<()> {
@@ -1423,6 +1474,10 @@ fn backout_v20_if_present(path: &Path) -> rusqlite::Result<()> {
     match version {
         0..=19 => Ok(()),
         20 => backout_v20_to_v19(path),
+        21 => {
+            backout_v21_to_v20(path)?;
+            backout_v20_to_v19(path)
+        }
         _ => Err(rusqlite::Error::InvalidQuery),
     }
 }
@@ -1746,14 +1801,91 @@ impl MemDbProbe {
     }
 }
 
+fn resolve_event_db_path(memory_path: &Path) -> PathBuf {
+    if let Some(path) = std::env::var_os("MEMBRANE_EVENT_DB") {
+        return PathBuf::from(path);
+    }
+    let stem = memory_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("crypt");
+    memory_path.with_file_name(format!("{stem}.membrane-events.sqlite3"))
+}
+
+fn extract_event_ledger(
+    memory_conn: &mut Connection,
+    event_path: &Path,
+) -> rusqlite::Result<Connection> {
+    let event_conn = Connection::open(event_path)?;
+    event_conn.execute_batch(
+        "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL; PRAGMA temp_store=MEMORY;",
+    )?;
+    event_conn.execute_batch(crate::context_telemetry::CONTEXT_LEDGER_SCHEMA)?;
+    drop(event_conn);
+
+    memory_conn.execute(
+        "ATTACH DATABASE ?1 AS membrane_events",
+        [event_path.to_string_lossy().as_ref()],
+    )?;
+    let migration = (|| -> rusqlite::Result<()> {
+        let has_legacy: bool = memory_conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM main.sqlite_master WHERE type='table' AND name='context_event_log')",
+            [],
+            |row| row.get(0),
+        )?;
+        if !has_legacy {
+            return Ok(());
+        }
+        let tx = memory_conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute_batch(
+            "INSERT OR IGNORE INTO membrane_events.context_installation SELECT * FROM main.context_installation;
+             INSERT OR IGNORE INTO membrane_events.context_event_log SELECT * FROM main.context_event_log;
+             INSERT OR IGNORE INTO membrane_events.context_event_measurement SELECT * FROM main.context_event_measurement;
+             INSERT OR IGNORE INTO membrane_events.context_event_link SELECT * FROM main.context_event_link;
+             INSERT OR REPLACE INTO membrane_events.context_ingest_checkpoint SELECT * FROM main.context_ingest_checkpoint;",
+        )?;
+        let missing: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM main.context_event_log source
+              LEFT JOIN membrane_events.context_event_log target USING(event_id)
+             WHERE target.event_id IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        if missing != 0 {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        tx.execute_batch(
+            "DROP TABLE main.context_event_link;
+             DROP TABLE main.context_event_measurement;
+             DROP TABLE main.context_event_log;
+             DROP TABLE main.context_installation;
+             DROP TABLE main.context_ingest_checkpoint;",
+        )?;
+        tx.commit()
+    })();
+    let detach = memory_conn.execute_batch("DETACH DATABASE membrane_events;");
+    migration?;
+    detach?;
+
+    let event_conn = Connection::open(event_path)?;
+    event_conn.execute_batch(
+        "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL; PRAGMA temp_store=MEMORY;",
+    )?;
+    Ok(event_conn)
+}
+
 #[derive(Clone)]
 pub struct MemDb {
     conn: Arc<Mutex<Connection>>,
+    event_conn: Arc<Mutex<Connection>>,
+    event_db_path: Option<Arc<PathBuf>>,
 }
 
 impl MemDb {
     /// Open (or create) the DB at `path`, WAL + busy timeout, run migrations.
     pub fn open<P: AsRef<Path>>(path: P) -> rusqlite::Result<Self> {
+        let path = path.as_ref();
         let mut conn = Connection::open(path)?;
         conn.execute_batch(
             "PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; PRAGMA synchronous=NORMAL; PRAGMA temp_store=MEMORY;",
@@ -1762,9 +1894,16 @@ impl MemDb {
         backfill_legacy_memory_identity(&mut conn)?;
         backfill_legacy_transform_identity(&mut conn)?;
         backfill_legacy_recall_identity(&mut conn)?;
-        Ok(Self {
+        let event_path = resolve_event_db_path(path);
+        let event_conn = extract_event_ledger(&mut conn, &event_path)?;
+        let db = Self {
             conn: Arc::new(Mutex::new(conn)),
-        })
+            event_conn: Arc::new(Mutex::new(event_conn)),
+            event_db_path: Some(Arc::new(event_path)),
+        };
+        db.flush_context_event_outbox()
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        Ok(db)
     }
 
     /// Ephemeral in-memory DB (tests / no path).
@@ -1777,8 +1916,11 @@ impl MemDb {
         backfill_legacy_transform_identity(&mut conn)
             .expect("backfill in-memory transform identity");
         backfill_legacy_recall_identity(&mut conn).expect("backfill in-memory recall identity");
+        let conn = Arc::new(Mutex::new(conn));
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            conn: conn.clone(),
+            event_conn: conn,
+            event_db_path: None,
         }
     }
 
@@ -1788,6 +1930,14 @@ impl MemDb {
     /// the mutex must not amplify it back to the whole service).
     pub fn lock(&self) -> MutexGuard<'_, Connection> {
         self.conn.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn lock_events(&self) -> MutexGuard<'_, Connection> {
+        self.event_conn.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn event_db_path(&self) -> Option<&Path> {
+        self.event_db_path.as_deref().map(PathBuf::as_path)
     }
 
     /// Probe the live SQLite connection without waiting behind another request. The sentinel query
@@ -3117,8 +3267,11 @@ mod tests {
         let db = MemDb::open(&path).unwrap();
         drop(db);
         backout_v11_to_v10(&path).unwrap();
+        let conn = Arc::new(Mutex::new(Connection::open(&path).unwrap()));
         let db = MemDb {
-            conn: Arc::new(Mutex::new(Connection::open(&path).unwrap())),
+            conn: conn.clone(),
+            event_conn: conn,
+            event_db_path: None,
         };
         insert_recall_fixture(&db, 50, "smoke-spotcheck", "production", "dry-run-target");
         drop(db);
@@ -3165,9 +3318,11 @@ mod tests {
         let db = MemDb::open(&path).unwrap();
         drop(db);
         backout_v11_to_v10(&path).unwrap();
-        let conn = Connection::open(&path).unwrap();
+        let conn = Arc::new(Mutex::new(Connection::open(&path).unwrap()));
         let db = MemDb {
-            conn: Arc::new(Mutex::new(conn)),
+            conn: conn.clone(),
+            event_conn: conn,
+            event_db_path: None,
         };
         insert_recall_fixture(&db, 60, "codex", "production", "roundtrip-production");
         insert_recall_fixture(
@@ -3482,7 +3637,7 @@ mod tests {
         let version: i64 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 20);
+        assert_eq!(version, LATEST_SCHEMA_VERSION);
     }
 
     #[test]

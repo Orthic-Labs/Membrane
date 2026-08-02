@@ -11,6 +11,8 @@ import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { bindingFor } from "./project-registry.mjs";
 import { installationBindingFor, installationEnv } from "./installation-binding.mjs";
 import { feedbackEvent, feedbackPolicy } from "./feedback-loop.mjs";
+import { eventDbFor, ProposalStore } from "./proposal-store.mjs";
+import { ScratchpadStore, WorkingContextStore } from "./working-context.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -21,6 +23,7 @@ const MAX_FEEDBACK_BYTES = 2 * 1024;
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMITS = { proposal: 12, checkpoint: 24, feedback: 48 };
 const rateWindows = new Map();
+const scratchpadStore = new ScratchpadStore();
 const CALLER_SCHEMA = {
   type: "object",
   required: ["root", "repositoryId", "scopeId"],
@@ -33,11 +36,14 @@ const CALLER_SCHEMA = {
   additionalProperties: false,
 };
 const TOOL_DEFINITIONS = [
-  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" } } } },
+  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" } } } },
   { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
   { name: "membrane_checkpoint_save", description: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.", inputSchema: { type: "object", required: ["repository", "caller", "checkpoint"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, checkpoint: { type: "object" } } } },
   { name: "membrane_checkpoint_load", description: "Load an unexpired A0 session checkpoint for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "id"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, id: { type: "string" }, asOfMs: { type: "integer", minimum: 0 } } } },
+  { name: "membrane_working_context", description: "Save, load, or close bounded session/task working context; durability must be explicit.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["save", "load", "close"] }, context: { type: "object" }, sessionId: { type: "string" }, taskId: { type: "string" }, contextId: { type: "string" }, asOf: { type: "string" } } } },
+  { name: "membrane_temporal_fact", description: "Record or query provenance-bound temporal facts with explicit single-valued predicate policy.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["record", "query"] }, fact: { type: "object" }, singleValuedPredicates: { type: "array", items: { type: "string" } }, scopeId: { type: "string" }, subject: { type: "string" }, predicate: { type: "string" }, asOf: { type: "string" } } } },
+  { name: "membrane_scratchpad", description: "Save, load, or clear ephemeral non-searchable session/task scratchpad state.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["save", "load", "clear"] }, scratchpad: { type: "object" }, sessionId: { type: "string" }, taskId: { type: "string" }, asOf: { type: "string" } } } },
   { name: "membrane_feedback", description: "Record bounded receipt-bound outcome feedback for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "receiptId", "outcome"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, receiptId: { type: "string" }, outcome: { type: "string", enum: ["used", "ignored", "contradicted"] } } } },
 ];
 const TOOLS = TOOL_DEFINITIONS;
@@ -61,7 +67,7 @@ const TOOL_OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-const protocol = `# Membrane MCP v1\n\nmembrane_context routes through the loopback /federate endpoint, never raw recall. Knowledge and feedback require durable MemRight persistence with LifecycleReceiptV1 readback; unavailable persistence is a tool error unless explicit advisory policy is selected. Checkpoints are A0 session orientation state. Source reads require a hash-bound DocReadV1 reference.`;
+const protocol = `# Membrane MCP v1\n\nmembrane_context routes through the loopback /federate endpoint, never raw recall, and injects exact session/task working context when supplied. Knowledge and feedback require durable MemRight persistence with LifecycleReceiptV1 readback; unavailable persistence is a tool error unless explicit advisory policy is selected. Working context is durable only when explicitly configured. Scratchpads are ephemeral, non-searchable, non-authoritative, and never consolidated. Temporal supersession requires an explicit single-valued predicate policy. Checkpoints are A0 session orientation state. Source reads require a hash-bound DocReadV1 reference.`;
 
 function text(value) {
   if (typeof value !== "string") return value;
@@ -111,7 +117,7 @@ function stableDescriptor(value) {
 function sameDescriptor(left, right) { return JSON.stringify(stableDescriptor(left)) === JSON.stringify(stableDescriptor(right)); }
 function permits(binding, action) {
   const level = callerLevel(binding);
-  if (["context", "source_read", "checkpoint_load"].includes(action)) return ["read-only", "write-proposed", "write-trusted", "admin"].includes(level);
+  if (["context", "source_read", "checkpoint_load", "working_context_load", "temporal_fact_query", "scratchpad_load"].includes(action)) return ["read-only", "write-proposed", "write-trusted", "admin"].includes(level);
   return ["write-proposed", "write-trusted", "admin"].includes(level);
 }
 function takeRate(binding, action) {
@@ -162,30 +168,20 @@ async function durableProposal(binding, emission) {
   const content = String(emission.text ?? emission.content ?? "").trim();
   if (!content) throw new Error("emission text is required");
   const proposalId = receiptId("proposal", { scope: binding.scope_id, emission });
-  const name = `membrane-${proposalId}`;
-  const scope = String(emission.scope ?? "proposed").trim() || "proposed";
-  const env = await bindingEnv(binding);
-  const binary = process.env.MEMRIGHT_BIN || "memright";
-  const out = await run(binary, memrightArgs([
-    "put", name, "--scope", scope, "--tier", "Working", "--artifact-family", "memory",
-    "--producer", "membrane", "--record-type", "knowledge_emission", "--authority", "A0",
-    "--influence-class", "data_only", "--session", binding.scope_id,
-  ], await installationBindingFor(binding)), `${content}\n`, env);
-  if (out.code !== 0) throw new Error(`durable proposal put failed: ${out.stderr.trim() || out.stdout.trim()}`);
-  let put;
-  try { put = JSON.parse(out.stdout.trim()); } catch { throw new Error("durable proposal put returned invalid JSON"); }
-  const durableId = String(put.put ?? put.id ?? "").trim();
-  if (!durableId) throw new Error("durable proposal put returned no id");
-  const readback = await run(binary, memrightArgs(["get", durableId], await installationBindingFor(binding)), "", env);
-  if (readback.code !== 0 || readback.stdout.trim() !== content) throw new Error(`durable proposal readback mismatch: ${readback.stderr.trim() || readback.stdout.trim()}`);
-  const eventId = receiptId("event", { operation: "knowledge_propose", durableId });
+  const installation = await installationBindingFor(binding);
+  const store = new ProposalStore(eventDbFor(installation.db));
+  let readback;
+  try { readback = store.create({ proposalId, repositoryId: binding.repository_id, scopeId: binding.scope_id, emission: { ...emission, text: content } }); }
+  finally { store.close(); }
+  const eventId = receiptId("event", { operation: "knowledge_propose", proposalId });
   return {
-    status: "persisted",
+    status: "needs_review",
     durable: true,
     proposalId,
-    durableId,
-    lifecycleReceipt: lifecycleReceipt("knowledge_propose", "persisted", durableId, eventId, readback.stdout.trim()),
-    provenance: { repositoryId: binding.repository_id, scopeId: scope, callerLevel: callerLevel(binding) },
+    durableId: proposalId,
+    reviewState: readback.state,
+    lifecycleReceipt: lifecycleReceipt("knowledge_propose", "needs_review", proposalId, eventId, readback),
+    provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) },
   };
 }
 async function durableFeedback(binding, args) {
@@ -222,7 +218,21 @@ async function callTool(name, args, trace = {}) {
     const install = await installationBindingFor(binding);
     const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, ...trace };
     const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: binding.root });
-    return text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
+    const packet = text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
+    if (!args.session || !args.taskId || !packet || typeof packet !== "object" || Array.isArray(packet)) return packet;
+    const store = new WorkingContextStore(eventDbFor(install.db));
+    let contexts;
+    try { contexts = store.activeContexts({ sessionId: args.session, taskId: args.taskId }); }
+    finally { store.close(); }
+    const budget = Number.isInteger(args.budget) ? args.budget : 4096;
+    let used = 0;
+    const workingContexts = contexts.filter((context) => {
+      const cost = Math.ceil(byteLength(context.items) / 4);
+      if (used + cost > budget) return false;
+      used += cost;
+      return true;
+    });
+    return { ...packet, working_contexts: workingContexts };
   }
   if (name === "membrane_source_read") {
     const binding = await authorize(args, "source_read");
@@ -245,6 +255,62 @@ async function callTool(name, args, trace = {}) {
     if (Number.isInteger(args.asOfMs)) params.push("--as-of-ms", String(args.asOfMs));
     const out = await run(process.env.MEMRIGHT_BIN || "memright", memrightArgs(params, install), "", await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "checkpoint_load_unavailable", detail: out.stderr.slice(0, 240) });
+  }
+  if (name === "membrane_working_context") {
+    const operation = args.operation;
+    const binding = await authorize(args, operation === "load" ? "working_context_load" : "checkpoint");
+    const install = await installationBindingFor(binding);
+    const store = new WorkingContextStore(eventDbFor(install.db));
+    try {
+      if (operation === "save") {
+        bounded(args.context, MAX_PROPOSAL_BYTES, "working context");
+        takeRate(binding, "checkpoint");
+        return { status: "saved", context: store.saveContext(args.context) };
+      }
+      if (operation === "load") {
+        if (!args.sessionId || !args.taskId) throw new Error("working_context_scope_required");
+        return { status: "loaded", contexts: store.activeContexts({ sessionId: args.sessionId, taskId: args.taskId, ...(args.asOf ? { asOf: args.asOf } : {}) }) };
+      }
+      if (operation === "close") {
+        if (!args.contextId) throw new Error("working_context_id_required");
+        return { status: "closed", contextId: args.contextId, closed: store.closeContext(args.contextId) };
+      }
+      throw new Error("working_context_operation_invalid");
+    } finally { store.close(); }
+  }
+  if (name === "membrane_temporal_fact") {
+    const operation = args.operation;
+    const binding = await authorize(args, operation === "query" ? "temporal_fact_query" : "checkpoint");
+    const install = await installationBindingFor(binding);
+    const store = new WorkingContextStore(eventDbFor(install.db));
+    try {
+      if (operation === "record") {
+        bounded(args.fact, MAX_PROPOSAL_BYTES, "temporal fact");
+        if (args.fact.scopeId !== binding.scope_id) throw new Error("temporal_fact_scope_denied");
+        takeRate(binding, "checkpoint");
+        return { status: "recorded", fact: store.recordTemporalFact(args.fact, { singleValuedPredicates: args.singleValuedPredicates || [] }) };
+      }
+      if (operation === "query") {
+        if (args.scopeId !== binding.scope_id || !args.subject || !args.predicate || !args.asOf) throw new Error("temporal_fact_query_invalid");
+        return { status: "loaded", facts: store.temporalFactsAsOf({ scopeId: args.scopeId, subject: args.subject, predicate: args.predicate, asOf: args.asOf }) };
+      }
+      throw new Error("temporal_fact_operation_invalid");
+    } finally { store.close(); }
+  }
+  if (name === "membrane_scratchpad") {
+    const operation = args.operation;
+    const binding = await authorize(args, operation === "load" ? "scratchpad_load" : "checkpoint");
+    const install = await installationBindingFor(binding);
+    const path = eventDbFor(install.db);
+    if (operation === "save") {
+      bounded(args.scratchpad, MAX_PROPOSAL_BYTES, "scratchpad");
+      takeRate(binding, "checkpoint");
+      return { status: "saved_ephemeral", scratchpad: scratchpadStore.save(path, args.scratchpad) };
+    }
+    if (!args.sessionId || !args.taskId) throw new Error("scratchpad_scope_required");
+    if (operation === "load") return { status: "loaded", scratchpad: scratchpadStore.load(path, { sessionId: args.sessionId, taskId: args.taskId, ...(args.asOf ? { asOf: args.asOf } : {}) }) };
+    if (operation === "clear") return { status: "cleared", cleared: scratchpadStore.clear(path, { sessionId: args.sessionId, taskId: args.taskId }) };
+    throw new Error("scratchpad_operation_invalid");
   }
   if (name === "membrane_knowledge_propose") {
     const binding = await authorize(args, "proposal");

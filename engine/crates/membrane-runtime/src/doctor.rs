@@ -485,8 +485,17 @@ mod tests {
         drop(connection);
 
         let report = run(&db).unwrap();
-        assert_eq!(check_by_code(&report, "MRD-LIFECYCLE-EXPIRED").sample_ids, vec!["expired"]);
-        assert_eq!(check_by_code(&report, "MRD-SUPERSEDED-INJECTED").sample_ids, vec!["superseded"]);
-        assert_eq!(check_by_code(&report, "MRD-CHECKPOINT-EXPIRED").sample_ids, vec!["checkpoint"]);
+        assert_eq!(
+            check_by_code(&report, "MRD-LIFECYCLE-EXPIRED").sample_ids,
+            vec!["expired"]
+        );
+        assert_eq!(
+            check_by_code(&report, "MRD-SUPERSEDED-INJECTED").sample_ids,
+            vec!["superseded"]
+        );
+        assert_eq!(
+            check_by_code(&report, "MRD-CHECKPOINT-EXPIRED").sample_ids,
+            vec!["checkpoint"]
+        );
     }
 }

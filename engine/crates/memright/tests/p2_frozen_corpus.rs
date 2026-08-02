@@ -88,11 +88,20 @@ fn p2_frozen_synthetic_corpus_is_immutable_and_exercises_declared_runtime_guards
         .flat_map(|case| case.coverage.iter().cloned())
         .collect();
     let required: std::collections::BTreeSet<_> = manifest.required_coverage.into_iter().collect();
-    assert_eq!(covered, required, "coverage labels drifted from immutable manifest");
+    assert_eq!(
+        covered, required,
+        "coverage labels drifted from immutable manifest"
+    );
     assert!(corpus.cases.iter().all(|case| !case.id.trim().is_empty()));
-    assert!(corpus.cases.iter().all(|case| !case.outcome.verdict.trim().is_empty()));
+    assert!(corpus
+        .cases
+        .iter()
+        .all(|case| !case.outcome.verdict.trim().is_empty()));
     for case in &corpus.cases {
-        assert_eq!(case.fixture_sha256, sha256_hex(case.fixture_text.as_bytes()));
+        assert_eq!(
+            case.fixture_sha256,
+            sha256_hex(case.fixture_text.as_bytes())
+        );
     }
 
     let store = MemoryStore::open(MemDb::open_in_memory());

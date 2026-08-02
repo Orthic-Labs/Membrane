@@ -10,4 +10,7 @@ test("capability inventory is generated from live MCP, adapter, and contract sur
   assert.equal(inventory.adapters.codex_cli.level, "L2");
   assert.equal(inventory.adapters.generic_mcp.level, "L0");
   assert.match(inventory.contract_freeze["context-contracts.schema.json"], /^[a-f0-9]{64}$/);
+  assert.ok(inventory.capabilities.length > inventory.mcp.tools.length);
+  assert.ok(inventory.capabilities.filter(({ status }) => status === "shipped").every(({ test_ids, artifact, platforms }) => test_ids.length && artifact && platforms.length));
+  assert.equal(inventory.capabilities.find(({ capability }) => capability === "adapter.ccx").status, "partial");
 });

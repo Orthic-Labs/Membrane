@@ -49,7 +49,8 @@ fn candidate(section_id: &str) -> ReplayCandidateV1 {
 
 fn projection_rows(db: &MemDb) -> Vec<(String, String)> {
     let conn = db.lock();
-    let rows = conn.prepare("SELECT kind, anchor_id FROM doc_projections ORDER BY kind, anchor_id")
+    let rows = conn
+        .prepare("SELECT kind, anchor_id FROM doc_projections ORDER BY kind, anchor_id")
         .expect("prepare projection read")
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
         .expect("query projection rows")

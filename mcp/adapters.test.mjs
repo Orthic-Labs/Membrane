@@ -7,6 +7,8 @@ test("X2 adapters share Membrane context and honest levels", () => {
   assert.equal(adapterManifest("windsurf").max_honest_level, "L1");
   assert.equal(adapterManifest("generic_mcp").max_honest_level, "L0");
   assert.equal(adapterManifest("generic_mcp").tool_receipts, false);
+  assert.equal(adapterManifest("cursor").install, undefined);
+  assert.equal(adapterManifest("windsurf").uninstall, undefined);
 });
 
 test("X2 adapter reports degraded state when shared client is unavailable", () => {

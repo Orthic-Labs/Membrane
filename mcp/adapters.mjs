@@ -7,7 +7,7 @@ const LEVELS = { cursor: "L1", windsurf: "L1", generic_mcp: "L0" };
 
 export function adapterManifest(name) {
   if (!LEVELS[name]) throw new Error("unsupported_adapter");
-  return { schema: "orthic.adapter-shim.v1", adapter_id: name, max_honest_level: LEVELS[name], injection: "membrane_context", tool_receipts: false, response_gate: false, install: `membrane adapter install ${name}`, uninstall: `membrane adapter uninstall ${name}` };
+  return { schema: "orthic.adapter-shim.v1", adapter_id: name, max_honest_level: LEVELS[name], injection: "membrane_context", tool_receipts: false, response_gate: false };
 }
 
 export function requestContext(name, request, { root = process.cwd(), client = CLIENT } = {}) {

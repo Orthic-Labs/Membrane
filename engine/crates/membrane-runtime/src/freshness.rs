@@ -161,15 +161,15 @@ pub fn source_barrier_receipt(
 ) -> serde_json::Value {
     let generation_id = contract_digest(
         verdict
-        .blueprint_generation
-        .clone()
-        .unwrap_or_else(|| digest_bytes(verdict.snapshot_id.as_bytes())),
+            .blueprint_generation
+            .clone()
+            .unwrap_or_else(|| digest_bytes(verdict.snapshot_id.as_bytes())),
     );
     let manifest_digest = contract_digest(
         verdict
-        .manifest_digest
-        .clone()
-        .unwrap_or_else(|| digest_bytes(verdict.snapshot_id.as_bytes())),
+            .manifest_digest
+            .clone()
+            .unwrap_or_else(|| digest_bytes(verdict.snapshot_id.as_bytes())),
     );
     let source_observation_digest = digest_bytes(
         serde_json::json!({
@@ -206,7 +206,9 @@ pub fn source_barrier_receipt(
 fn contract_digest(value: String) -> String {
     if value.len() == 71
         && value.starts_with("sha256:")
-        && value[7..].bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        && value[7..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
     {
         value
     } else {
@@ -1519,8 +1521,15 @@ mod tests {
         verdict.blueprint_generation = Some("xxh128:provider-generation".to_string());
         verdict.manifest_digest = Some("manifest-generation".to_string());
         let receipt = source_barrier_receipt(&verdict, "repo-a", "session-a", "/workspace");
-        for field in ["generation_id", "manifest_digest", "source_observation_digest", "dirty_overlay_digest"] {
-            assert!(receipt[field].as_str().is_some_and(|value| value.starts_with("sha256:") && value.len() == 71));
+        for field in [
+            "generation_id",
+            "manifest_digest",
+            "source_observation_digest",
+            "dirty_overlay_digest",
+        ] {
+            assert!(receipt[field]
+                .as_str()
+                .is_some_and(|value| value.starts_with("sha256:") && value.len() == 71));
         }
         assert_eq!(receipt["overlay_identity"]["session_id"], "session-a");
         assert_eq!(receipt["overlay_identity"]["worktree_path"], "/workspace");

@@ -94,9 +94,14 @@ fn sync_hard_excludes_memory_pointers_exports_and_dependency_trees() {
     let db = MemDb::open_in_memory();
     let report = doc_spine::sync(&db, temp.path()).unwrap();
     assert_eq!(report.registered, 1);
-    let path: String = db.lock().query_row(
-        "SELECT path FROM doc_artifacts WHERE lifecycle_state='active'", [], |r| r.get(0),
-    ).unwrap();
+    let path: String = db
+        .lock()
+        .query_row(
+            "SELECT path FROM doc_artifacts WHERE lifecycle_state='active'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
     assert_eq!(path, "public.md");
 }
 

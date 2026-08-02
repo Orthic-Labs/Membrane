@@ -1,8 +1,8 @@
 #![recursion_limit = "256"]
 
 use memright::context_telemetry::{
-    canonical_event_bytes, parse_context_event, validate_context_event, ContextEventBatch,
-    ContextTelemetryError, OperationAttribution,
+    append_context_events_on, canonical_event_bytes, parse_context_event, validate_context_event,
+    ContextEventBatch, ContextTelemetryError, OperationAttribution,
 };
 use memright::installation_identity::{InstallationIdentity, StartupClaim};
 use memright::memdb::{backout_v12_to_v11, backout_v13_to_v12, LATEST_SCHEMA_VERSION};
@@ -10,6 +10,86 @@ use memright::{MemDb, MemoryStore};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use sha2::Digest;
+
+#[test]
+fn event_ledger_is_physically_owned_by_membrane_database() {
+    let dir = tempfile::tempdir().unwrap();
+    let memory_path = dir.path().join("crypt.db");
+    let db = MemDb::open(&memory_path).unwrap();
+    db.ingest_context_events(&batch(vec![event("evt-membrane-owner")]))
+        .unwrap();
+    let event_path = db.event_db_path().unwrap().to_path_buf();
+    drop(db);
+
+    let memory = Connection::open(&memory_path).unwrap();
+    assert_eq!(
+        memory
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='context_event_log'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        memory
+            .query_row("SELECT COUNT(*) FROM membrane_event_outbox", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap(),
+        0
+    );
+
+    let events = Connection::open(event_path).unwrap();
+    assert_eq!(
+        events
+            .query_row("SELECT COUNT(*) FROM context_event_log", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap(),
+        1
+    );
+}
+
+#[test]
+fn committed_event_outbox_replays_after_process_restart() {
+    let dir = tempfile::tempdir().unwrap();
+    let memory_path = dir.path().join("crypt.db");
+    let db = MemDb::open(&memory_path).unwrap();
+    append_context_events_on(&db.lock(), &batch(vec![event("evt-restart-replay")])).unwrap();
+    assert_eq!(
+        db.lock()
+            .query_row("SELECT COUNT(*) FROM membrane_event_outbox", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap(),
+        1
+    );
+    let event_path = db.event_db_path().unwrap().to_path_buf();
+    drop(db);
+
+    let reopened = MemDb::open(&memory_path).unwrap();
+    assert_eq!(
+        reopened
+            .lock()
+            .query_row("SELECT COUNT(*) FROM membrane_event_outbox", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap(),
+        0
+    );
+    drop(reopened);
+    assert_eq!(
+        Connection::open(event_path)
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM context_event_log", [], |row| {
+                row.get::<_, i64>(0)
+            })
+            .unwrap(),
+        1
+    );
+}
 
 fn event(event_id: &str) -> Value {
     let digest32 =
@@ -534,6 +614,8 @@ fn v13_backout_and_reupgrade_preserve_ledger_rows() {
             .unwrap(),
         LATEST_SCHEMA_VERSION
     );
+    drop(conn);
+    let conn = upgraded.lock_events();
     assert_eq!(
         conn.query_row("SELECT COUNT(*) FROM context_event_log", [], |row| row
             .get::<_, i64>(0))

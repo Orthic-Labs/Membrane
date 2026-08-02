@@ -14,10 +14,31 @@ const server = fileURLToPath(new URL("./server.mjs", import.meta.url));
 async function rpc(messages, env) {
   const child = spawn(process.execPath, [server], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, env: { ...process.env, ...env } });
   let output = "";
-  child.stdout.on("data", (chunk) => { output += chunk; });
-  child.stdin.end(messages.map(JSON.stringify).join("\n") + "\n");
-  await new Promise((resolve, reject) => { child.once("error", reject); child.once("close", resolve); });
-  return output.trim().split("\n").filter(Boolean).map(JSON.parse);
+  let stderr = "";
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  let responses;
+  try {
+    responses = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`MCP response timeout: ${stderr}`)), 30_000);
+      child.once("error", reject);
+      child.once("close", (code) => {
+        if (output.trim().split("\n").filter(Boolean).length < messages.length) reject(new Error(`MCP exited ${code}: ${stderr}`));
+      });
+      child.stdout.on("data", (chunk) => {
+        output += chunk;
+        const lines = output.trim().split("\n").filter(Boolean);
+        if (lines.length === messages.length) {
+          clearTimeout(timer);
+          try { resolve(lines.map(JSON.parse)); } catch (error) { reject(error); }
+        }
+      });
+      child.stdin.end(messages.map(JSON.stringify).join("\n") + "\n");
+    });
+  } finally {
+    child.kill();
+    await Promise.race([once(child, "exit"), new Promise((resolve) => setTimeout(resolve, 1_000))]);
+  }
+  return responses;
 }
 
 async function freePort() {
@@ -64,7 +85,7 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
   await writeFile(token, "test-token\n", { mode: 0o600 });
   const env = {
     MEMBRANE_PROJECT_REGISTRY: registry,
-    MEMRIGHT_BIN: fileURLToPath(new URL("../../tools/bin/memright", import.meta.url)),
+    MEMRIGHT_BIN: process.env.MEMRIGHT_TEST_BIN || fileURLToPath(new URL("../../tools/bin/memright", import.meta.url)),
     MEMRIGHT_DB: store,
     MEMRIGHT_API_TOKEN_FILE: token,
   };
@@ -78,15 +99,35 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
     const first = await rpc([request(1, "membrane_knowledge_propose", { ...common, emission: { text: "durable proposal" } })], env);
     assert.equal(first[0].result.isError, false, first[0].result.content[0].text);
     const proposal = JSON.parse(first[0].result.content[0].text);
-    assert.equal(proposal.status, "persisted");
+    assert.equal(proposal.status, "needs_review");
     assert.equal(proposal.durable, true);
-    assert.equal(proposal.lifecycleReceipt.status, "persisted");
+    assert.equal(proposal.reviewState, "pending");
+    assert.equal(proposal.lifecycleReceipt.status, "needs_review");
+    const lifecycle = await rpc([
+      request(2, "membrane_working_context", { ...common, operation: "save", context: { sessionId: "session-a", taskId: "task-a", items: [{ ref: "sha256:a" }], expiresAt: "2030-08-03T00:00:00Z", durable: true, authority: "A1", sourceRefs: ["source-a"] } }),
+      request(3, "membrane_temporal_fact", { ...common, operation: "record", fact: { factId: "fact-a", subject: "repo", predicate: "owner", object: "adrian", observedAt: "2026-08-02T00:00:00Z", scopeId: "scope-a" }, singleValuedPredicates: ["owner"] }),
+      request(4, "membrane_scratchpad", { ...common, operation: "save", scratchpad: { sessionId: "session-a", taskId: "task-a", items: [{ note: "ephemeral" }], expiresAt: "2030-08-03T00:00:00Z" } }),
+    ], env);
+    assert.ok(lifecycle.every((response) => response.result.isError === false), lifecycle.map((response) => response.result.content[0].text));
+    const lifecycleById = Object.fromEntries(lifecycle.map((response) => [response.id, response]));
+    assert.equal(JSON.parse(lifecycleById[2].result.content[0].text).context.durable, true);
+    assert.equal(JSON.parse(lifecycleById[3].result.content[0].text).fact.fact_id, "fact-a");
+    assert.equal(JSON.parse(lifecycleById[4].result.content[0].text).scratchpad.items[0].note, "ephemeral");
     await stopMemright(resident);
     const restarted = await startMemright(env.MEMRIGHT_BIN, store, port, env);
     active = restarted;
-    const second = await rpc([request(2, "membrane_feedback", { ...common, receiptId: proposal.durableId, outcome: "used" })], env);
-    assert.equal(second[0].result.isError, false, second[0].result.content[0].text);
-    const feedback = JSON.parse(second[0].result.content[0].text);
+    const second = await rpc([
+      request(6, "membrane_working_context", { ...common, operation: "load", sessionId: "session-a", taskId: "task-a", asOf: "2026-08-02T12:00:00Z" }),
+      request(7, "membrane_temporal_fact", { ...common, operation: "query", scopeId: "scope-a", subject: "repo", predicate: "owner", asOf: "2026-08-02T12:00:00Z" }),
+      request(8, "membrane_scratchpad", { ...common, operation: "load", sessionId: "session-a", taskId: "task-a", asOf: "2026-08-02T12:00:00Z" }),
+      request(9, "membrane_feedback", { ...common, receiptId: proposal.durableId, outcome: "used" }),
+    ], env);
+    assert.ok(second.every((response) => response.result.isError === false), second.map((response) => response.result.content[0].text));
+    const secondById = Object.fromEntries(second.map((response) => [response.id, response]));
+    assert.equal(JSON.parse(secondById[6].result.content[0].text).contexts.length, 1);
+    assert.equal(JSON.parse(secondById[7].result.content[0].text).facts[0].fact_id, "fact-a");
+    assert.equal(JSON.parse(secondById[8].result.content[0].text).scratchpad, null);
+    const feedback = JSON.parse(secondById[9].result.content[0].text);
     assert.equal(feedback.status, "persisted");
     assert.equal(feedback.lifecycleReceipt.status, "persisted");
     assert.ok(readFileSync(store).byteLength > 0);

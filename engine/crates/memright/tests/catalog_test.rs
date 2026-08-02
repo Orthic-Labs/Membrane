@@ -231,9 +231,8 @@ fn plan_context_admits_candidates_and_persists_content_free_receipts() {
     let store = new_store();
     let metrics = TestMetrics::new();
     let mut candidate_b = make_candidate("b", "repo_code", 0.85, 200);
-    candidate_b["sourceHash"] = json!(
-        "sha256:1111111111111111111111111111111111111111111111111111111111111111"
-    );
+    candidate_b["sourceHash"] =
+        json!("sha256:1111111111111111111111111111111111111111111111111111111111111111");
     let body = json!({
         "scope_grant_id": "sg-plan",
         "max_tokens": 1_000,
