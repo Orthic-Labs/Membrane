@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 
 
-MODULE_PATH = Path(__file__).with_name("adapt_llm.py")
+MODULE_PATH = Path(__file__).with_name("morph_llm.py")
 
 
 def _module():
-    spec = importlib.util.spec_from_file_location("adapt_llm_transport_test", MODULE_PATH)
+    spec = importlib.util.spec_from_file_location("morph_llm_transport_test", MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -58,7 +58,7 @@ def test_minimax_lane_uses_local_mm_proxy_and_preserves_metadata(monkeypatch):
     assert captured["payload"]["model"] == "claude-sonnet-4-5"
     assert "opus" not in captured["payload"]["model"]
     assert "fable" not in captured["payload"]["model"]
-    assert captured["payload"]["thinking"] == {"type": "adaptive"}
+    assert captured["payload"]["thinking"] == {"type": "morphive"}
     assert result == {
         "text": "[]",
         "model": "MiniMax-M3",

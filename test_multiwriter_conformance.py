@@ -31,8 +31,8 @@ def _sha(value: bytes = b"x") -> str:
 
 def _evidence() -> dict:
     implementation_files = [
-        {"path": "adapt/adapt.py", "sha256": _sha(b"adapt")},
-        {"path": "adapt/cross_machine.py", "sha256": _sha(b"cross")},
+        {"path": "morph/cross_machine.py", "sha256": _sha(b"cross")},
+        {"path": "morph/morph.py", "sha256": _sha(b"morph")},
     ]
     aggregate = _sha(json.dumps(
         implementation_files,
@@ -75,7 +75,7 @@ def _evidence() -> dict:
             "events": 1880,
         },
         "scheduler": {
-            "name": "memright-daily",
+            "name": "crypt-daily",
             "disabled": True,
             "state": "disabled",
         },
@@ -84,8 +84,8 @@ def _evidence() -> dict:
             "passed_count": 17,
             "output_sha256": _sha(b"17 passed"),
             "files": [
-                {"path": "adapt/test_multiwriter_conformance.py", "sha256": _sha(b"t1")},
-                {"path": "adapt/test_run_incremental_multiwriter.py", "sha256": _sha(b"t2")},
+                {"path": "morph/test_multiwriter_conformance.py", "sha256": _sha(b"t1")},
+                {"path": "morph/test_run_incremental_multiwriter.py", "sha256": _sha(b"t2")},
             ],
         },
     }
@@ -98,7 +98,7 @@ def test_receipt_is_content_free_canonical_and_fresh():
     receipt = conformance.issue_receipt(evidence, now=NOW, ttl_seconds=900)
 
     assert receipt["schema_version"] == 1
-    assert receipt["kind"] == "adapt_multiwriter_conformance"
+    assert receipt["kind"] == "morph_multiwriter_conformance"
     assert receipt["issued_at"] == "2026-07-20T08:00:00Z"
     assert receipt["expires_at"] == "2026-07-20T08:15:00Z"
     assert receipt["receipt_sha256"] == conformance.receipt_sha256(receipt)
@@ -110,7 +110,7 @@ def test_receipt_is_content_free_canonical_and_fresh():
     )
 
 
-def test_discovery_counts_use_collision_safe_adapter_state_keys(tmp_path: Path):
+def test_discovery_counts_use_collision_safe_morpher_state_keys(tmp_path: Path):
     conformance = _module()
     first = tmp_path / "one" / "chat_history.jsonl"
     second = tmp_path / "two" / "chat_history.jsonl"
@@ -153,10 +153,10 @@ def test_discovery_counts_exclude_active_codex_task_from_pending(
 
 def test_defaults_accept_private_candidate_binding(tmp_path: Path, monkeypatch):
     conformance = _module()
-    binary = tmp_path / "memright-service.exe"
+    binary = tmp_path / "crypt-service.exe"
     release = tmp_path / "candidate-release.json"
-    monkeypatch.setenv("MEMRIGHT_CONFORMANCE_BINARY", str(binary))
-    monkeypatch.setenv("MEMRIGHT_CONFORMANCE_RELEASE_MANIFEST", str(release))
+    monkeypatch.setenv("CRYPT_CONFORMANCE_BINARY", str(binary))
+    monkeypatch.setenv("CRYPT_CONFORMANCE_RELEASE_MANIFEST", str(release))
 
     defaults = conformance._defaults(tmp_path)
 
@@ -233,7 +233,7 @@ def test_nested_unknown_field_cannot_put_content_in_receipt():
     evidence = _evidence()
     evidence["canonical_pool"]["transcript"] = "private prompt text"
 
-    with pytest.raises(conformance.ConformanceError, match="canonical Adapt pool fields"):
+    with pytest.raises(conformance.ConformanceError, match="canonical Morph pool fields"):
         conformance.issue_receipt(evidence, now=NOW, ttl_seconds=900)
 
 
@@ -264,7 +264,7 @@ def test_stale_or_overlong_receipt_is_rejected():
 @pytest.mark.parametrize(
     ("field", "match"),
     [
-        ("scheduler", "memright-daily"),
+        ("scheduler", "crypt-daily"),
         ("mirror", "append-only"),
         ("installed_service", "batch route"),
         ("focused_tests", "focused tests"),
@@ -330,7 +330,7 @@ def test_source_hashes_are_repo_relative_and_deterministic(tmp_path):
 
 def test_service_probe_binds_release_asset_hash_and_nonmutating_batch_route(tmp_path):
     conformance = _module()
-    binary = tmp_path / "memright-service.exe"
+    binary = tmp_path / "crypt-service.exe"
     binary.write_bytes(b"resident")
     release_path = tmp_path / "release.json"
     release = {

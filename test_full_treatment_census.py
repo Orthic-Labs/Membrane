@@ -11,10 +11,10 @@ import pytest
 # Same portability contract as test_delivery_parity.py: the census reads the
 # machine-local frozen evidence pack under .cache/ — skip with a named reason
 # on checkouts without it instead of failing.
-_FROZEN_TREATMENT = Path(__file__).resolve().parents[4] / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
+_FROZEN_TREATMENT = Path(__file__).resolve().parents[4] / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
 requires_frozen_treatment = pytest.mark.skipif(
     not _FROZEN_TREATMENT.exists(),
-    reason="machine-local frozen delivery-parity treatment absent (.cache/adapt-delivery-parity/full/frozen)",
+    reason="machine-local frozen delivery-parity treatment absent (.cache/morph-delivery-parity/full/frozen)",
 )
 
 
@@ -27,13 +27,13 @@ def _load():
 
 
 @requires_frozen_treatment
-def test_actual_census_covers_every_taste_and_adapt_record():
+def test_actual_census_covers_every_taste_and_morph_record():
     module = _load()
-    taste_rules, adapt_records = module.load_sources(
+    taste_rules, morph_records = module.load_sources(
         module.DEFAULT_TASTE, module.DEFAULT_TREATMENT
     )
     taste_cases = module.build_taste_cases(taste_rules)
-    adapt_cases = module.evidence.build_cases(adapt_records)
+    morph_cases = module.evidence.build_cases(morph_records)
     taste_facts = module.load_taste_artifact_facts(module.DEFAULT_TASTE)
     assert len(taste_rules) == len(taste_cases) == 52
     assert len({rule.category for rule in taste_rules}) == 18
@@ -42,5 +42,5 @@ def test_actual_census_covers_every_taste_and_adapt_record():
         "artifact_heading_occurrences": 34,
         "artifact_unique_headings": 18,
     }
-    assert len(adapt_records) == 57
-    assert sum(row["kind"] == "rule_self" for row in adapt_cases) == 57
+    assert len(morph_records) == 57
+    assert sum(row["kind"] == "rule_self" for row in morph_cases) == 57

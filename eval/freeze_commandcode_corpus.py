@@ -365,7 +365,7 @@ def freeze_corpus(
             "prompt_count": len(corpus.prompts),
             "batch_count": len(batches),
             "missing": corpus.missing,
-            "privacy": {"raw_local_only": True, "provider_calls": 0, "memright_writes": 0},
+            "privacy": {"raw_local_only": True, "provider_calls": 0, "crypt_writes": 0},
             "prompts": {"path": "prompts.jsonl", "bytes": len(prompt_bytes), "sha256": _sha256(prompt_bytes)},
             "sessions": [{
                 "source": session.source,

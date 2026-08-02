@@ -1,4 +1,4 @@
-"""Adapt rollback — safe-point capture + revert (Gate 4).
+"""Morph rollback — safe-point capture + revert (Gate 4).
 
 A safe-point is a small JSON file captured BEFORE any live apply. It records
 the minimal information needed to reverse that exact apply if anything goes
@@ -9,36 +9,36 @@ The captured shape is::
 
     {
       "batch_id":       "<journal batch id>",
-      "accepted_ids":   ["D--Claude/adapt-workflow-...", ...],
+      "accepted_ids":   ["D--Claude/morph-workflow-...", ...],
       "manifest_digest": "<sha256 over the immutable manifest payload>",
-      "db_path":        "<absolute path to the live MemRight DB>",
+      "db_path":        "<absolute path to the live Crypt DB>",
       "db_checksum":    "<sha256 of the live DB at capture time>",
       "db_backup_path": "<consistent SQLite backup>",
       "db_backup_checksum": "<sha256 of backup>",
-      "state_snapshot": "<verbatim text of ~/.claude/adapt/state.json>",
-      "rules_snapshot": "<verbatim text of ~/.claude/adapt/rules.json>",
-      "core_snapshot":  "<verbatim text of ~/.claude/adapt/core.json>",
+      "state_snapshot": "<verbatim text of ~/.claude/morph/state.json>",
+      "rules_snapshot": "<verbatim text of ~/.claude/morph/rules.json>",
+      "core_snapshot":  "<verbatim text of ~/.claude/morph/core.json>",
       "core_digest":    "<sha256 of core.json>",
       "created_at":     "<iso8601>"
     }
 
 Usage::
 
-    python tools/pipelines/memory/adapt/rollback.py create \
-        --manifest path/to/manifest.json --db /path/to/memright-engine.db
+    python tools/pipelines/memory/morph/rollback.py create \
+        --manifest path/to/manifest.json --db /path/to/crypt-engine.db
 
-    py -3.11 tools/pipelines/memory/adapt/rollback.py revert path/to/safepoint.json
+    py -3.11 tools/pipelines/memory/morph/rollback.py revert path/to/safepoint.json
                                       # default: DRY RUN
 
-    py -3.11 tools/pipelines/memory/adapt/rollback.py revert \
+    py -3.11 tools/pipelines/memory/morph/rollback.py revert \
         path/to/safepoint.json --apply
 
 The revert phase:
   - reads the safe-point,
   - prints the plan (which IDs would be deleted),
   - on ``--apply``: verifies the bound backup, deletes ONLY the recorded IDs
-    via the resident memright service (never raw SQL on the live DB), restores
-    Adapt's state/rules/core snapshots, and verifies ``PRAGMA integrity_check``.
+    via the resident crypt service (never raw SQL on the live DB), restores
+    Morph's state/rules/core snapshots, and verifies ``PRAGMA integrity_check``.
 
 This module is intentionally conservative — it does NOT have a ``--force``
 flag. If the integrity check fails, the operator is told and the partial
@@ -60,12 +60,12 @@ from pathlib import Path
 import preference_record
 
 WS = Path(os.environ.get("WORKSPACE_ROOT", Path(__file__).resolve().parents[4]))
-STATE_DIR = Path.home() / ".claude" / "adapt"
+STATE_DIR = Path.home() / ".claude" / "morph"
 STATE_FILE = STATE_DIR / "state.json"
 RULES_FILE = STATE_DIR / "rules.json"
 CORE_FILE = STATE_DIR / "core.json"
 SAFEPOINT_DIR = STATE_DIR / "safepoints"
-MEMRIGHT_MUTATION_TIMEOUT_SECONDS = 150
+CRYPT_MUTATION_TIMEOUT_SECONDS = 150
 
 
 # ----- small helpers -----
@@ -90,7 +90,7 @@ def _record_rollback(batch_id: str, deleted_count: int, integrity: str,
                      safe_point_path: Path) -> None:
     """Append a content-free rollback event without weakening rollback success."""
     audit_path = Path(os.environ.get(
-        "ADAPT_AUDIT_FILE_OVERRIDE", str(STATE_DIR / "audit.jsonl")
+        "MORPH_AUDIT_FILE_OVERRIDE", str(STATE_DIR / "audit.jsonl")
     ))
     event = {
         "ts": _now_iso(),
@@ -108,9 +108,9 @@ def _record_rollback(batch_id: str, deleted_count: int, integrity: str,
         print(f"  warning: rollback audit write failed: {exc}", file=sys.stderr)
 
 
-def _resolve_memright() -> str | None:
-    """Locate the `memright` shim; return None if unavailable."""
-    return shutil.which("memright")
+def _resolve_crypt() -> str | None:
+    """Locate the `crypt` shim; return None if unavailable."""
+    return shutil.which("crypt")
 
 
 def _snapshot_text(path: Path) -> tuple[bool, str]:
@@ -180,7 +180,7 @@ def create_safe_point(manifest: dict, db_path: Path,
       - ``db_checksum``: SHA-256 of the live DB at this instant,
       - ``state_snapshot``: verbatim text of state.json (or "" if absent).
 
-    The safe-point file path defaults to ``~/.claude/adapt/safepoints/<batch_id>.json``.
+    The safe-point file path defaults to ``~/.claude/morph/safepoints/<batch_id>.json``.
     """
     state_path = state_path or STATE_FILE
     rules_path = rules_path or RULES_FILE
@@ -196,7 +196,7 @@ def create_safe_point(manifest: dict, db_path: Path,
     manifest_digest = _sha256_text(json.dumps(manifest, sort_keys=True,
                                               ensure_ascii=False))
     if not db_path.exists():
-        raise FileNotFoundError(f"MemRight DB does not exist: {db_path}")
+        raise FileNotFoundError(f"Crypt DB does not exist: {db_path}")
     target = out_path or (SAFEPOINT_DIR / f"{manifest['batch_id']}.json")
     backup_path = target.with_suffix(".db")
     _backup_sqlite(db_path, backup_path)
@@ -262,7 +262,7 @@ def cmd_create(args: argparse.Namespace) -> int:
 
 
 def _discover_db_path(manifest: dict) -> Path | None:
-    """Best-effort: read the live DB path from memright runtime config."""
+    """Best-effort: read the live DB path from crypt runtime config."""
     runtime = WS / "tools" / "lib" / "memory" / "runtime.json"
     if runtime.exists():
         try:
@@ -273,7 +273,7 @@ def _discover_db_path(manifest: dict) -> Path | None:
         except Exception:
             pass
     # The repo-relative cache location is portable to every installation.
-    candidate = WS / "tools" / ".cache" / "memory" / "memright-engine.db"
+    candidate = WS / "tools" / ".cache" / "memory" / "crypt-engine.db"
     if candidate.exists():
         return candidate
     return None
@@ -324,29 +324,29 @@ def _verify_backup(sp: dict) -> tuple[bool, str]:
     return _verify_integrity(backup)
 
 
-def _delete_via_memright(name: str, memright_bin: str | Path | None = None) -> bool:
-    bin_path = str(memright_bin) if memright_bin else _resolve_memright()
+def _delete_via_crypt(name: str, crypt_bin: str | Path | None = None) -> bool:
+    bin_path = str(crypt_bin) if crypt_bin else _resolve_crypt()
     if not bin_path:
-        print(f"  error: memright shim not on PATH; cannot delete {name}",
+        print(f"  error: crypt shim not on PATH; cannot delete {name}",
               file=sys.stderr)
         return False
     try:
         res = subprocess.run(
             [bin_path, "delete", name], capture_output=True, text=True,
-            timeout=MEMRIGHT_MUTATION_TIMEOUT_SECONDS,
+            timeout=CRYPT_MUTATION_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired:
-        print(f"  error: memright delete {name} timed out", file=sys.stderr)
+        print(f"  error: crypt delete {name} timed out", file=sys.stderr)
         return False
     except OSError as exc:
-        print(f"  error: memright delete {name} failed: {exc}",
+        print(f"  error: crypt delete {name} failed: {exc}",
               file=sys.stderr)
         return False
     if res.returncode != 0:
         response = f"{res.stdout}\n{res.stderr}".replace("\\", "").lower()
         if "404 not found" in response and '"deleted":false' in response:
             return True
-        print(f"  error: memright delete {name} rc={res.returncode}: "
+        print(f"  error: crypt delete {name} rc={res.returncode}: "
               f"{res.stderr.strip()}", file=sys.stderr)
         return False
     return True
@@ -356,11 +356,11 @@ def revert(safe_point_path: Path, apply: bool = False,
            *, state_path: Path | None = None,
            rules_path: Path | None = None,
            core_path: Path | None = None,
-           memright_bin: str | Path | None = None) -> int:
+           crypt_bin: str | Path | None = None) -> int:
     """Revert a previously-applied manifest.
 
     Default: dry-run prints the plan. ``apply=True`` deletes the recorded
-    IDs, restores the captured Adapt state/rules/core files, and verifies
+    IDs, restores the captured Morph state/rules/core files, and verifies
     integrity. The DB backup is retained as an emergency artifact; it is not
     copied over a running live database.
     """
@@ -380,10 +380,10 @@ def revert(safe_point_path: Path, apply: bool = False,
         print(f"error: refusing rollback: {backup_message}", file=sys.stderr)
         return 2
 
-    # 1. Delete each ID via the resident memright service.
+    # 1. Delete each ID via the resident crypt service.
     failed = []
     for name in accepted_ids:
-        if _delete_via_memright(name, memright_bin=memright_bin):
+        if _delete_via_crypt(name, crypt_bin=crypt_bin):
             print(f"  deleted {name}")
         else:
             failed.append(name)
@@ -394,7 +394,7 @@ def revert(safe_point_path: Path, apply: bool = False,
             print(f"  - {n}", file=sys.stderr)
         return 1
 
-    # 2. Restore Adapt-owned file snapshots atomically.
+    # 2. Restore Morph-owned file snapshots atomically.
     state_path = state_path or STATE_FILE
     rules_path = rules_path or RULES_FILE
     core_path = core_path or CORE_FILE
@@ -404,7 +404,7 @@ def revert(safe_point_path: Path, apply: bool = False,
                       sp.get("rules_snapshot", ""))
     _restore_snapshot(core_path, sp.get("core_existed", False),
                       sp.get("core_snapshot", ""))
-    print(f"  Adapt state/rules/core snapshots restored")
+    print(f"  Morph state/rules/core snapshots restored")
 
     # 3. Verify integrity.
     db_path = Path(sp.get("db_path", ""))
@@ -440,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
                           help="explicit live DB path (defaults to runtime.json or canonical cache)")
     p_create.add_argument("--out", type=Path, default=None,
                           help="explicit safe-point output path (defaults to "
-                               "~/.claude/adapt/safepoints/<batch_id>.json)")
+                               "~/.claude/morph/safepoints/<batch_id>.json)")
     p_create.set_defaults(func=cmd_create)
 
     p_revert = sub.add_parser("revert", help="revert a previously-applied batch")

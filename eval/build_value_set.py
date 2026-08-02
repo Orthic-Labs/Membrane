@@ -1,4 +1,4 @@
-"""Build/validate the Adapt value-set (paired prompts for the Gate 0 A/B).
+"""Build/validate the Morph value-set (paired prompts for the Gate 0 A/B).
 
 The value-set is the operator-labeled dataset the Gate 0 evaluator grades against.
 Each row must include a stable `id`, the raw prompt, an arm (preference_relevant
@@ -11,12 +11,12 @@ This script:
   4. Verifies that arm proportions look like a real labeler (some relevance,
     some controls) — does NOT enforce a hard ratio
   5. Resolves each `expected_applicable_rule_ids` entry against the current
-    Adapt pool so rules named before deletion are caught at build time
-  6. Emits a frozen COPY to docs/baselines/adapt/value_set_<date>.jsonl on
+    Morph pool so rules named before deletion are caught at build time
+  6. Emits a frozen COPY to docs/baselines/morph/value_set_<date>.jsonl on
     successful validation, so the harness grades against an immutable record
 
 Run from workspace root:
-  py -3.11 tools/pipelines/memory/adapt/eval/build_value_set.py <value_set.json>
+  py -3.11 tools/pipelines/memory/morph/eval/build_value_set.py <value_set.json>
 """
 from __future__ import annotations
 
@@ -31,9 +31,9 @@ from collections import Counter
 from pathlib import Path
 
 WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
-ADAPT_DIR = WS / "tools" / "pipelines" / "memory" / "adapt"
-SCHEMA_PATH = ADAPT_DIR / "eval" / "value_set_schema.json"
-BASELINE_DIR = WS / "docs" / "baselines" / "adapt"
+MORPH_DIR = WS / "tools" / "pipelines" / "memory" / "morph"
+SCHEMA_PATH = MORPH_DIR / "eval" / "value_set_schema.json"
+BASELINE_DIR = WS / "docs" / "baselines" / "morph"
 
 
 def _load_schema() -> dict:
@@ -41,18 +41,18 @@ def _load_schema() -> dict:
 
 
 def _fetch_current_rule_ids() -> set[str]:
-    """Read live MemRight rows of the form D--Claude/adapt-<slug>."""
+    """Read live Crypt rows of the form D--Claude/morph-<slug>."""
     try:
         out = subprocess.check_output(
-            [str(WS / "tools" / "bin" / "memright.exe"), "list"],
+            [str(WS / "tools" / "bin" / "crypt.exe"), "list"],
             text=True, timeout=15,
         )
     except Exception as exc:
-        sys.stderr.write(f"warning: could not list memright ({exc}); "
+        sys.stderr.write(f"warning: could not list crypt ({exc}); "
                          f"skipping rule-id existence checks\n")
         return set()
     return {line.split()[-1].split("/")[-1] for line in out.splitlines()
-            if "/adapt-" in line}
+            if "/morph-" in line}
 
 
 def _hash_prompt(s: str) -> str:
@@ -97,7 +97,7 @@ def main() -> int:
         sys.stderr.write(f"warning: arm imbalance (relevant={relevant}, "
                          f"control={control}); plan target is ≥50 each\n")
 
-    # Validate expected-rule-id existence against current MemRight pool.
+    # Validate expected-rule-id existence against current Crypt pool.
     current_ids = _fetch_current_rule_ids()
     dead_refs: list[tuple[str, str]] = []
     for p in prompts:
@@ -109,7 +109,7 @@ def main() -> int:
                 dead_refs.append((p["id"], rid))
     if dead_refs:
         sys.stderr.write(f"warning: {len(dead_refs)} prompt(s) reference "
-                         f"rule ids not in current MemRight pool:\n")
+                         f"rule ids not in current Crypt pool:\n")
         for pid, rid in dead_refs[:20]:
             sys.stderr.write(f"  - prompt {pid} -> {rid}\n")
 

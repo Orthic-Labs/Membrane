@@ -1,4 +1,4 @@
-"""Gate 3 — review driver for a 10-session Adapt candidate manifest.
+"""Gate 3 — review driver for a 10-session Morph candidate manifest.
 
 The v2 plan's Gate 3 requires that every accepted candidate passes deterministic
 checks before any live apply, and that unsupported rules (no source excerpt
@@ -42,7 +42,7 @@ from pathlib import Path
 
 
 WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
-sys.path.insert(0, str(WS / "tools/pipelines/memory/adapt"))
+sys.path.insert(0, str(WS / "tools/pipelines/memory/morph"))
 import admission  # noqa: E402
 import preference_record as pr_mod  # noqa: E402
 
@@ -230,7 +230,7 @@ def _format_report(review: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manifest", type=Path, required=True,
-                    help="the reviewed Adapt candidate manifest to gate")
+                    help="the reviewed Morph candidate manifest to gate")
     ap.add_argument("--out", type=Path, required=True,
                     help="where to write gate3.report.json + gate3.report.md")
     args = ap.parse_args(argv)

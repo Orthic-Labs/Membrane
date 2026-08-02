@@ -1,4 +1,4 @@
-"""Taste — durable user preferences → MemRight."""
+"""Taste — durable user preferences → Crypt."""
 from __future__ import annotations
 
 import datetime as dt
@@ -12,8 +12,8 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import adapt_llm  # noqa: E402
-import adapt_sessions as ts  # noqa: E402
+import morph_llm  # noqa: E402
+import morph_sessions as ts  # noqa: E402
 try:
     import admission  # noqa: E402
 except ImportError:
@@ -29,9 +29,9 @@ import workspace_runtime  # noqa: E402
 
 def _host_module():
     """Prefer the CLI facade when tests monkeypatch symbols there."""
-    if "adapt_cli" in sys.modules:
-        return sys.modules["adapt_cli"]
-    return sys.modules.get("adapt")
+    if "morph_cli" in sys.modules:
+        return sys.modules["morph_cli"]
+    return sys.modules.get("morph")
 
 
 def _host_attr(name: str, default):
@@ -41,13 +41,13 @@ def _host_attr(name: str, default):
     return default
 
 RULES_FILE = ts.STATE_DIR / "rules.json"
-DIGEST_FILE = ts.STATE_DIR / "adapt-digest.md"
+DIGEST_FILE = ts.STATE_DIR / "morph-digest.md"
 WORKSPACE_ROOT = workspace_runtime.workspace_root()
-MEMRIGHT_MUTATION_TIMEOUT_SECONDS = 150
+CRYPT_MUTATION_TIMEOUT_SECONDS = 150
 
 
 def _installation_file() -> Path:
-    override = os.environ.get("ADAPT_INSTALLATION_FILE", "").strip()
+    override = os.environ.get("MORPH_INSTALLATION_FILE", "").strip()
     if override:
         return Path(override)
     root = _host_attr("WORKSPACE_ROOT", WORKSPACE_ROOT)
@@ -57,19 +57,19 @@ def _installation_file() -> Path:
 def _multiwriter_context(
     *, manifest_body: dict | None = None, required: bool = False
 ) -> tuple[str, dict] | None:
-    """Load the local UUID and canonical Adapt pool, or stay legacy before setup."""
+    """Load the local UUID and canonical Morph pool, or stay legacy before setup."""
     identity_path = _installation_file()
     if not identity_path.is_file():
         if required:
-            raise cross_machine.CrossMachineAdaptError(
+            raise cross_machine.CrossMachineMorphError(
                 "multiwriter manifest requires a local schema-v2 installation identity"
             )
         return None
     installation_id = cross_machine.load_installation_id(identity_path)
     db_path = rollback._discover_db_path(manifest_body or {})
     if db_path is None:
-        raise cross_machine.CrossMachineAdaptError(
-            "canonical MemRight DB is unavailable"
+        raise cross_machine.CrossMachineMorphError(
+            "canonical Crypt DB is unavailable"
         )
     rules = cross_machine.load_canonical_rules(db_path)
     return installation_id, rules
@@ -95,46 +95,46 @@ def _rules_path() -> Path:
 
 def _digest_path() -> Path:
     """Late-bound digest path; monkeypatching ts.STATE_DIR works in tests."""
-    return ts.STATE_DIR / "adapt-digest.md"
+    return ts.STATE_DIR / "morph-digest.md"
 
 
 def _audit_file() -> Path:
     """Compute audit target lazily, so tests can route writes via env override.
 
-    Tests that exercise `_audit` should `os.environ["ADAPT_AUDIT_FILE_OVERRIDE"]`
-    to a tmp_path before importing `adapt`. Operational runs have no override
-    and write to the canonical `~/.claude/adapt/audit.jsonl`.
+    Tests that exercise `_audit` should `os.environ["MORPH_AUDIT_FILE_OVERRIDE"]`
+    to a tmp_path before importing `morph`. Operational runs have no override
+    and write to the canonical `~/.claude/morph/audit.jsonl`.
     """
-    override = os.environ.get("ADAPT_AUDIT_FILE_OVERRIDE")
+    override = os.environ.get("MORPH_AUDIT_FILE_OVERRIDE")
     if override:
         return Path(override)
     return ts.STATE_DIR / "audit.jsonl"
 
 
-def _run_memright(args: list[str]) -> bool:
-    """Invoke the installed memright shim (never touches tokens). Fail closed with the error."""
-    bin_path = shutil.which("memright")
+def _run_crypt(args: list[str]) -> bool:
+    """Invoke the installed crypt shim (never touches tokens). Fail closed with the error."""
+    bin_path = shutil.which("crypt")
     if not bin_path:
-        print("error: memright shim not on PATH; install via setup-workspace.py first",
+        print("error: crypt shim not on PATH; install via setup-workspace.py first",
               file=sys.stderr)
         return False
     try:
         command = list(args)
         if command and command[0] == "put" and "--artifact-family" not in command:
             command.extend([
-                "--artifact-family", "adapt",
-                "--producer", "adapt",
+                "--artifact-family", "morph",
+                "--producer", "morph",
                 "--record-type", "preference",
             ])
         res = subprocess.run(
             [bin_path, *command], capture_output=True, text=True,
-            timeout=MEMRIGHT_MUTATION_TIMEOUT_SECONDS,
+            timeout=CRYPT_MUTATION_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"error: memright shim failed: {exc}", file=sys.stderr)
+        print(f"error: crypt shim failed: {exc}", file=sys.stderr)
         return False
     if res.returncode != 0:
-        print(f"error: memright {args[0]} rc={res.returncode}: {res.stderr.strip()}",
+        print(f"error: crypt {args[0]} rc={res.returncode}: {res.stderr.strip()}",
               file=sys.stderr)
         return False
     return True
@@ -142,17 +142,17 @@ def _run_memright(args: list[str]) -> bool:
 
 def preflight_apply(lane: str, allow_external: bool) -> bool:
     if not ts.scanner_available():
-        print("error: adapt apply requires detect-secrets or gitleaks before transcript text can leave the machine",
+        print("error: morph apply requires detect-secrets or gitleaks before transcript text can leave the machine",
               file=sys.stderr)
         return False
     if lane != "local" and not allow_external:
         print("error: external LLM lanes require --allow-external-lane", file=sys.stderr)
         return False
-    if not adapt_llm.lane_available(lane):
+    if not morph_llm.lane_available(lane):
         print(f"error: LLM lane unavailable: {lane}", file=sys.stderr)
         return False
-    if not _host_attr("_run_memright", _run_memright)(["--help"]):
-        print("error: memright shim is unavailable; run setup-workspace.py first", file=sys.stderr)
+    if not _host_attr("_run_crypt", _run_crypt)(["--help"]):
+        print("error: crypt shim is unavailable; run setup-workspace.py first", file=sys.stderr)
         return False
     return True
 
@@ -173,7 +173,7 @@ def rule_body(rule: dict, evidence: str, tool: str) -> str:
         if machine else ""
     )
     return (
-        f"**[adapt/{rule['category']}]** — {rule['rule']} "
+        f"**[morph/{rule['category']}]** — {rule['rule']} "
         f"Confidence: {rule['confidence']:.2f} "
         f"(observations: {rule['observations']}, needs_review: {str(rule.get('needs_review', False)).lower()}, "
         f"updated {today})\n"
@@ -216,7 +216,7 @@ def write_digest(rules: dict, path: Path) -> None:
     by_cat: dict[str, list[dict]] = defaultdict(list)
     for r in rules.values():
         by_cat[r["category"]].append(r)
-    lines = ["# Adapt digest (generated by adapt; MemRight rows are the source of truth)", ""]
+    lines = ["# Morph digest (generated by morph; Crypt rows are the source of truth)", ""]
     for cat in sorted(by_cat):
         lines.append(f"# {cat}")
         for r in sorted(by_cat[cat], key=lambda x: -x["confidence"]):
@@ -401,7 +401,7 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
                                          encoding="utf-8", dir=str(out_dir)) as tmp:
             tmp.write(body)
             tmp_path = tmp.name
-        ok = _host_attr("_run_memright", _run_memright)(["put", name, "--scope", scope, "--file", tmp_path])
+        ok = _host_attr("_run_crypt", _run_crypt)(["put", name, "--scope", scope, "--file", tmp_path])
         Path(tmp_path).unlink(missing_ok=True)
         if ok:
             rules[name] = record
@@ -410,7 +410,7 @@ def apply_actions(actions: list[dict], obs_by_cat: dict, rules: dict,
             changed += 1
         else:
             ok_all = False
-            _audit({"event": "memright_write_failed", "action": kind, "name": name, "scope": scope})
+            _audit({"event": "crypt_write_failed", "action": kind, "name": name, "scope": scope})
     return changed, ok_all
 
 def add_rule(rule_text: str, category: str, *, record_type: str = "operational_playbook",
@@ -418,11 +418,11 @@ def add_rule(rule_text: str, category: str, *, record_type: str = "operational_p
              machine_only: bool = False) -> int:
     """Operator-authored single-rule add — the lightweight path that skips mining.
 
-    Adapt's discover->extract(LLM)->synthesize(LLM) pipeline exists to pull rules
+    Morph's discover->extract(LLM)->synthesize(LLM) pipeline exists to pull rules
     out of MESSY transcripts. When the operator already has one clean rule, there is
     nothing to mine — so this goes straight to the SAME admission gate (category,
     non-empty, dedup, min-length, authority/permission-expansion quarantine) and, if
-    admitted, writes the MemRight row + local rules state + digest.
+    admitted, writes the Crypt row + local rules state + digest.
 
     Default record_type is `operational_playbook`: a domain gotcha surfaces via
     query-relevant recall (cos>=0.40) but stays OUT of the always-on compiled core.
@@ -482,7 +482,7 @@ def add_rule(rule_text: str, category: str, *, record_type: str = "operational_p
     with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as tmp:
         tmp.write(body)
         tmp_path = tmp.name
-    ok = _host_attr("_run_memright", _run_memright)(["put", rid, "--scope", scope, "--file", tmp_path])
+    ok = _host_attr("_run_crypt", _run_crypt)(["put", rid, "--scope", scope, "--file", tmp_path])
     Path(tmp_path).unlink(missing_ok=True)
     if not ok:
         return 1

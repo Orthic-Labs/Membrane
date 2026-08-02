@@ -10,9 +10,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
 HERE = Path(__file__).resolve().parent
-DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
-DEFAULT_BASELINE = ROOT / ".cache/adapt-delivery-parity/full/evidence-recall/results.json"
-DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/evidence-alias"
+DEFAULT_TREATMENT = ROOT / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
+DEFAULT_BASELINE = ROOT / ".cache/morph-delivery-parity/full/evidence-recall/results.json"
+DEFAULT_OUT = ROOT / ".cache/morph-delivery-parity/evidence-alias"
 MAX_ALIAS_CHARS = 320
 
 
@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--treatment", type=Path, default=DEFAULT_TREATMENT)
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     parser.add_argument("--live-db", type=Path, default=runner.DEFAULT_LIVE_DB)
-    parser.add_argument("--memright-bin", type=Path, default=runner.DEFAULT_MEMRIGHT)
+    parser.add_argument("--crypt-bin", type=Path, default=runner.DEFAULT_CRYPT)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args(argv)
@@ -73,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
     if not pre_ok:
         raise RuntimeError(f"live DB integrity failed before experiment: {pre_msg}")
     ranked, integrity = runner._run_replay_db(
-        args.memright_bin, args.live_db, args.out / "alias.db", cases,
+        args.crypt_bin, args.live_db, args.out / "alias.db", cases,
         args.out / "queries.jsonl", records)
     post_ok, post_count, post_msg = runner.value_ab.integrity_check(args.live_db)
     if not post_ok or post_count != pre_count:

@@ -2,7 +2,7 @@
 
 **AI assistants repeat the same mistakes because useful corrections disappear when the session ends. Morph mines local Codex and Claude transcripts for repeated, durable guidance and promotes it — through hard safety gates — into a small, scoped, reversible preference layer that future agents actually recall.**
 
-<sub>Display name <b>Morph</b>. Package and CLI ids remain <code>adapt</code> — not re-keyed.</sub>
+<sub>Package & CLI id: <code>morph</code>.</sub>
 
 ![license](https://img.shields.io/badge/license-source--available-df6428?style=flat-square&labelColor=111318)
 ![writes](https://img.shields.io/badge/writes-opt--in%2C%20manifest--gated-df6428?style=flat-square&labelColor=111318)
@@ -18,7 +18,7 @@ flowchart LR
     E --> S[dedupe ·<br/>synthesize]
     S --> A[authority checks<br/>origin quarantine]
     A --> M[immutable review manifest<br/>accepted / rejected / pending]
-    M --> G[conformance gate] --> W[transactional<br/>MemRight apply]
+    M --> G[conformance gate] --> W[transactional<br/>Crypt apply]
     W --> R[scoped recall<br/>in future sessions]
 ```
 
@@ -59,19 +59,19 @@ And it's reversible: a run journal checkpoints every stage; safe resume reuses c
 
 | Surface | Role | Status |
 |---|---|---|
-| **Taste** | durable preferences → MemRight | ships |
-| **Doctor** | multiwriter conformance receipts (`issue` / `validate`) | ships; Blueprint/Beacon checks not yet |
+| **Taste** | durable preferences → Crypt | ships |
+| **Doctor** | multiwriter conformance receipts (`issue` / `validate`) | ships; Blueprint/Sentinel checks not yet |
 | **Insights** | failure/waste mining | deferred — not a product yet |
 
 ## Using it
 
 ```sh
-python3 adapt.py --smoke                            # dry-run the whole pipeline
-python3 adapt.py --incremental --manifest pending.json
-python3 adapt.py --apply-from-manifest resolved.json
-python3 adapt.py --compile-core path/to/core.json
+python3 morph.py --smoke                            # dry-run the whole pipeline
+python3 morph.py --incremental --manifest pending.json
+python3 morph.py --apply-from-manifest resolved.json
+python3 morph.py --compile-core path/to/core.json
 
-python3 adapt.py \
+python3 morph.py \
   --add-rule "Always run focused tests before reporting a broad build complete." \
   --category verification
 
@@ -89,7 +89,7 @@ Writes are opt-in (`--apply`); smoke and manifest generation stay dry-run. Extra
 
 ## Current limits
 
-A standalone checkout depends on parent-workspace memory/session modules and an installed MemRight (`workspace_runtime.py` is the single import boundary; offline stubs exist but are barred from live applies). Model-assisted extraction needs a configured lane. Lexical contradiction detection catches direct polarity conflicts, not every semantic conflict. Doctor does not yet cover Blueprint or Beacon.
+A standalone checkout depends on parent-workspace memory/session modules and an installed Crypt (`workspace_runtime.py` is the single import boundary; offline stubs exist but are barred from live applies). Model-assisted extraction needs a configured lane. Lexical contradiction detection catches direct polarity conflicts, not every semantic conflict. Doctor does not yet cover Blueprint or Sentinel.
 
 ---
 

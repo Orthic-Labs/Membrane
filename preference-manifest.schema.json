@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "D:/Claude/tools/pipelines/memory/adapt/preference-manifest.schema.json",
-  "title": "Adapt preference manifest: adjudicated adaptation candidates",
-  "description": "Output of `adapt --manifest`, resolved by automated calibrated-primary adjudication, and consumed by `adapt --apply-from-manifest`. Each record is explicit accepted/rejected; payload_sha256 detects content edits; the schema refuses pending statuses on apply.",
+  "$id": "D:/Claude/tools/pipelines/memory/morph/preference-manifest.schema.json",
+  "title": "Morph preference manifest: adjudicated morphation candidates",
+  "description": "Output of `morph --manifest`, resolved by automated calibrated-primary adjudication, and consumed by `morph --apply-from-manifest`. Each record is explicit accepted/rejected; payload_sha256 detects content edits; the schema refuses pending statuses on apply.",
   "type": "object",
   "required": ["schema_version", "batch_id", "source_session_ids", "created_at", "records"],
   "additionalProperties": false,
@@ -28,7 +28,7 @@
     "canonical_pool_sha256": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$",
-      "description": "Digest of the canonical MemRight Adapt pool used during synthesis."
+      "description": "Digest of the canonical Crypt Morph pool used during synthesis."
     },
     "source_session_ids": {
       "type": "array",
@@ -83,7 +83,7 @@
     "records": {
       "type": "array",
       "minItems": 0,
-      "description": "May be empty when a successfully mined batch yields no durable candidates; apply commits the bound sessions without writing MemRight rows.",
+      "description": "May be empty when a successfully mined batch yields no durable candidates; apply commits the bound sessions without writing Crypt rows.",
       "items": {
         "type": "object",
         "required": ["id", "rule", "category", "scope", "status", "payload_sha256"],
@@ -91,7 +91,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "pattern": "^adapt-[a-z-]+-[a-z0-9-]+-[a-f0-9]{10}$",
+            "pattern": "^morph-[a-z-]+-[a-z0-9-]+-[a-f0-9]{10}$",
             "description": "Stable primary ID from preference_record.derive_id."
           },
           "rule": {

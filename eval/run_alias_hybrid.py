@@ -1,4 +1,4 @@
-"""Evaluate compiled Adapt core plus source-alias MemRight retrieval (arm G)."""
+"""Evaluate compiled Morph core plus source-alias Crypt retrieval (arm G)."""
 from __future__ import annotations
 
 import argparse
@@ -10,9 +10,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
 HERE = Path(__file__).resolve().parent
-PRIMARY = ROOT / ".cache/adapt-delivery-parity/full"
-DEFAULT_ALIAS_DB = ROOT / ".cache/adapt-delivery-parity/evidence-alias/alias.db"
-DEFAULT_CORE = ROOT / ".cache/adapt-delivery-parity/compiled-core/core.json"
+PRIMARY = ROOT / ".cache/morph-delivery-parity/full"
+DEFAULT_ALIAS_DB = ROOT / ".cache/morph-delivery-parity/evidence-alias/alias.db"
+DEFAULT_CORE = ROOT / ".cache/morph-delivery-parity/compiled-core/core.json"
 
 
 def _load(path: Path, name: str):
@@ -43,17 +43,17 @@ def combine_answers(primary: dict, arm_g: dict, cases: list[dict]) -> dict:
 
 
 def run_alias_retrieval(cases: list[dict], alias_db: Path, out: Path,
-                        memright: Path) -> dict:
+                        crypt: Path) -> dict:
     path = out / "retrieval.json"
     input_hash = runner.sha_json({"db": str(alias_db), "cases": cases})
     before_ok, before_count, before_msg = runner.value_ab.integrity_check(alias_db)
     if not before_ok:
         raise RuntimeError(f"alias DB integrity failed: {before_msg}")
     port = runner.value_ab._free_port()
-    service = runner.value_ab._start_service(memright, alias_db, port)
+    service = runner.value_ab._start_service(crypt, alias_db, port)
     try:
         runner.value_ab._wait_ready(port)
-        ranked = runner.replay_all(memright, alias_db, port, cases,
+        ranked = runner.replay_all(crypt, alias_db, port, cases,
                                    out / "inputs/G.jsonl")
     finally:
         runner.value_ab._stop_service(service)
@@ -77,15 +77,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--production-shape", action="store_true",
                         help="rebuild the alias DB through PreferenceRecord v1.2")
     parser.add_argument("--core-file", type=Path, default=DEFAULT_CORE)
-    parser.add_argument("--memright-bin", type=Path, default=runner.DEFAULT_MEMRIGHT)
+    parser.add_argument("--crypt-bin", type=Path, default=runner.DEFAULT_CRYPT)
     parser.add_argument("--grader-model", default=runner.DEFAULT_GRADER_MODEL)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
-    out = args.out or ROOT / ".cache/adapt-delivery-parity" / (
+    out = args.out or ROOT / ".cache/morph-delivery-parity" / (
         "alias-hybrid-smoke" if args.smoke else "alias-hybrid-deepseek")
     out.mkdir(parents=True, exist_ok=True)
     value_set = runner.read_json(PRIMARY / "frozen/value-set.json")
-    treatment = runner.read_json(PRIMARY / "frozen/adapt-treatment.json")
+    treatment = runner.read_json(PRIMARY / "frozen/morph-treatment.json")
     primary_actor = runner.read_json(PRIMARY / "actor-results.json")
     compiled = runner.read_json(args.core_file)
     cases = runner.select_cases(value_set["cases"], args.smoke)
@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.production_shape:
         alias_db = out / "production-alias.db"
         build = production.build_production_alias_db(
-            args.memright_bin, runner.DEFAULT_LIVE_DB, alias_db, treatment
+            args.crypt_bin, runner.DEFAULT_LIVE_DB, alias_db, treatment
         )
         runner.write_json(out / "production-alias-build.json", build)
 
@@ -107,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     grader_path = out / "grader-results.json"
     retrieval = combined = grades = None
     if args.stage in {"retrieval", "all"}:
-        retrieval = run_alias_retrieval(cases, alias_db, out, args.memright_bin)
+        retrieval = run_alias_retrieval(cases, alias_db, out, args.crypt_bin)
     elif retrieval_path.exists():
         retrieval = runner.read_json(retrieval_path)
     if args.stage in {"actor", "all"}:

@@ -1,4 +1,4 @@
-"""Canonical scoped identity for Adapt preference records.
+"""Canonical scoped identity for Morph preference records.
 
 Rule identity is always ``(scope, record_id)``, never a bare synthesis name
 and never whatever shape a caller happened to use as a dict key. The same
@@ -76,7 +76,7 @@ class RuleIndex:
         continue
       rk = RuleKey.from_row(str(key), row)
       if rk in by_key:
-        raise ValueError(f"duplicate canonical Adapt identity: {rk.formatted()}")
+        raise ValueError(f"duplicate canonical Morph identity: {rk.formatted()}")
       by_key[rk] = row
       by_id.setdefault(rk.record_id, []).append(rk)
     return cls(by_key=by_key, by_id=by_id)

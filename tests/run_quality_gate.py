@@ -1,10 +1,10 @@
-"""Quality gate runner for adapt.
+"""Quality gate runner for morph.
 
 For each labeled excerpt: synthesizes a single-turn session, runs the
 extract path through a mock LLM whose behavior we can probe, and reports
 precision / recall / specificity / dup-rate against the labels.
 
-Run from the adapt directory:
+Run from the morph directory:
     py -3.11 tests/run_quality_gate.py tests/labeled_corpus.jsonl
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ from typing import Callable
 WS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(WS))
 
-import adapt_llm as al  # noqa: E402
+import morph_llm as al  # noqa: E402
 import admission  # noqa: E402
 import outcomes  # noqa: E402
 
@@ -297,7 +297,7 @@ def main() -> int:
     print(f"running on {len(labels)} labeled excerpts (lane={args.lane})...")
     start = time.time()
     # When lane == "local" without an Ollama daemon, fall back to the
-    # heuristic LLM; otherwise the real adapt_llm provider runs.
+    # heuristic LLM; otherwise the real morph_llm provider runs.
     if args.lane == "local" and not al.lane_available("local"):
         llm_kind = "heuristic"
         print("  local lane unavailable (no Ollama); using heuristic LLM")

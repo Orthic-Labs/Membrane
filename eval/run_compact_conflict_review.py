@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run and strictly validate compact Adapt conflict-review packets."""
+"""Run and strictly validate compact Morph conflict-review packets."""
 from __future__ import annotations
 
 import argparse

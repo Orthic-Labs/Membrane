@@ -1,4 +1,4 @@
-"""Manifest loader + validator for adapt (Gate 1a contract).
+"""Manifest loader + validator for morph (Gate 1a contract).
 
 The manifest is the *only* path from dry-run output to live apply. Gate 1a
 requires that the loader refuses:
@@ -11,7 +11,7 @@ requires that the loader refuses:
   An empty ``records`` array is allowed and commits as a no-op batch.
 
 The loader never makes LLM/provider calls. It is the gate that prevents
-silently altered content from reaching MemRight.
+silently altered content from reaching Crypt.
 
 Zero-record manifests are valid committed no-ops: a successfully mined batch
 may bind source sessions without emitting durable candidates.
@@ -220,7 +220,7 @@ def apply_time_validate(path: Path) -> dict:
     return raw
 
 
-# Backwards-compatible alias. adapt.apply_from_manifest + tests use this name.
+# Backwards-compatible alias. morph.apply_from_manifest + tests use this name.
 def load_and_validate(path: Path) -> dict:
     return apply_time_validate(path)
 
@@ -237,7 +237,7 @@ def rejected_records(manifest: dict) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(description="Validate an adapt preference manifest")
+    ap = argparse.ArgumentParser(description="Validate an morph preference manifest")
     ap.add_argument("manifest", type=Path)
     ap.add_argument("--summary", action="store_true",
                     help="print accepted/rejected counts instead of full listing")

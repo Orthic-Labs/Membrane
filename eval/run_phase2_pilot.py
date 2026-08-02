@@ -1,7 +1,7 @@
-"""Run Adapt's sealed Phase 2 compiler bakeoff over a frozen pilot package.
+"""Run Morph's sealed Phase 2 compiler bakeoff over a frozen pilot package.
 
-The runner never discovers sessions, opens MemRight, or writes Adapt state. It
-shares one cached extraction pass across a no-new-record control, current Adapt
+The runner never discovers sessions, opens Crypt, or writes Morph state. It
+shares one cached extraction pass across a no-new-record control, current Morph
 synthesis, and bounded complete-set synthesis. Raw prompts/responses stay in
 the ignored local output directory; committed evidence is content-free.
 """
@@ -18,12 +18,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
-ADAPT_DIR = Path(__file__).resolve().parent.parent
+MORPH_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = Path(__file__).resolve().parents[5]
-sys.path.insert(0, str(ADAPT_DIR))
+sys.path.insert(0, str(MORPH_DIR))
 
-import adapt_llm  # noqa: E402
-import adapt_sessions  # noqa: E402
+import morph_llm  # noqa: E402
+import morph_sessions  # noqa: E402
 import admission  # noqa: E402
 import freeze_pilot  # noqa: E402
 import outcomes  # noqa: E402
@@ -46,7 +46,7 @@ PROVENANCE REQUIREMENT: every returned action must include
 `supporting_observation_ids`, a non-empty JSON array containing only the exact
 `observation_id` values that support that action. Do not cite observations that
 do not directly support the rule."""
-CURRENT_ADAPT_SYSTEM = adapt_llm.SYNTH_SYSTEM + SUPPORT_REQUIREMENT
+CURRENT_MORPH_SYSTEM = morph_llm.SYNTH_SYSTEM + SUPPORT_REQUIREMENT
 
 FULL_SET_SYSTEM = f"""You compile a complete bounded set of durable coding-AGENT preferences.
 
@@ -150,10 +150,10 @@ def _batch_checkpoint_identity(batch: FrozenBatch, lane: str) -> str:
         "batch_index": batch.index,
         "payload_sha256": batch.payload_sha256,
         "extract_system_sha256": _sha256_bytes(
-            adapt_llm.EXTRACT_SYSTEM.encode("utf-8")
+            morph_llm.EXTRACT_SYSTEM.encode("utf-8")
         ),
         "lane": lane,
-        "model": adapt_llm.MODEL,
+        "model": morph_llm.MODEL,
         "thinking": THINKING_MODE,
         "temperature": TEMPERATURE,
     }))
@@ -331,20 +331,20 @@ def build_preflight(
             (row["tool"], row["scope"], row["text"])
             for row in batch.records
         ]
-        if adapt_llm.extract_deterministic(turns):
+        if morph_llm.extract_deterministic(turns):
             alarm_batches.append(batch)
     planned_calls = len(batches) + len(alarm_batches) + 2
     extraction_chars = sum(
-        len(adapt_llm.EXTRACT_SYSTEM) + len(batch.payload) for batch in batches
+        len(morph_llm.EXTRACT_SYSTEM) + len(batch.payload) for batch in batches
     )
     recall_alarm_chars = sum(
-        len(adapt_llm.EXTRACT_SYSTEM) + len(batch.payload)
+        len(morph_llm.EXTRACT_SYSTEM) + len(batch.payload)
         for batch in alarm_batches
     )
     planned_chars = (
         extraction_chars
         + recall_alarm_chars
-        + len(CURRENT_ADAPT_SYSTEM)
+        + len(CURRENT_MORPH_SYSTEM)
         + len(FULL_SET_SYSTEM)
         + 2 * max_synth_input_chars
     )
@@ -376,7 +376,7 @@ def build_preflight(
         "external_payloads": True,
         "thinking_mode": THINKING_MODE,
         "temperature": TEMPERATURE,
-        "live_memright_writes": 0,
+        "live_crypt_writes": 0,
         "live_state_writes": 0,
     }
 
@@ -403,7 +403,7 @@ def ground_observations(
         if _normalize_evidence(evidence) not in _normalize_evidence(source_text):
             rejected.append({"reason": "evidence-not-verbatim", "prompt": prompt})
             continue
-        classification_reason = adapt_llm.preference_classification_reason(action)
+        classification_reason = morph_llm.preference_classification_reason(action)
         if classification_reason is not None:
             rejected.append({"reason": classification_reason, "prompt": prompt})
             continue
@@ -445,7 +445,7 @@ def _request_sha(
         "system": system,
         "user": user,
         "lane": lane,
-        "model": adapt_llm.MODEL,
+        "model": morph_llm.MODEL,
         "max_tokens": max_tokens,
         "thinking": thinking,
         "temperature": temperature,
@@ -466,7 +466,7 @@ def _legacy_request_sha(
         "system": system,
         "user": user,
         "lane": lane,
-        "model": adapt_llm.MODEL,
+        "model": morph_llm.MODEL,
         "max_tokens": max_tokens,
         "thinking": thinking,
     }))
@@ -492,7 +492,7 @@ def _seed_primary_cache(
         raise PilotError(f"primary cache seed is not successful: {source}")
     expected = _request_sha(
         "extract",
-        adapt_llm.EXTRACT_SYSTEM,
+        morph_llm.EXTRACT_SYSTEM,
         batch.payload,
         lane,
         EXTRACT_MAX_TOKENS,
@@ -501,7 +501,7 @@ def _seed_primary_cache(
     )
     legacy = _legacy_request_sha(
         "extract",
-        adapt_llm.EXTRACT_SYSTEM,
+        morph_llm.EXTRACT_SYSTEM,
         batch.payload,
         lane,
         EXTRACT_MAX_TOKENS,
@@ -555,26 +555,26 @@ def _cached_call(
             "stage": stage,
             "index": index,
             "lane": lane,
-            "model": adapt_llm.MODEL,
+            "model": morph_llm.MODEL,
             "max_tokens": max_tokens,
             "thinking": thinking,
             "temperature": temperature,
             "attempts": attempts,
             "status": "provider_failed",
             "error_type": type(exc).__name__,
-            "error": adapt_sessions.redact(str(exc))[:500],
+            "error": morph_sessions.redact(str(exc))[:500],
             "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
         })
         raise PilotError(f"provider failed at {stage}: {type(exc).__name__}") from exc
     if isinstance(response, dict):
         raw = str(response.get("text") or "")
-        provider_model = response.get("model") or adapt_llm.MODEL
+        provider_model = response.get("model") or morph_llm.MODEL
         stop_reason = response.get("stop_reason")
         stop_sequence = response.get("stop_sequence")
         usage = response.get("usage") or {}
     else:
         raw = str(response or "")
-        provider_model = adapt_llm.MODEL
+        provider_model = morph_llm.MODEL
         stop_reason = None
         stop_sequence = None
         usage = {}
@@ -585,7 +585,7 @@ def _cached_call(
             "stage": stage,
             "index": index,
             "lane": lane,
-            "model": adapt_llm.MODEL,
+            "model": morph_llm.MODEL,
             "max_tokens": max_tokens,
             "thinking": thinking,
             "temperature": temperature,
@@ -652,9 +652,9 @@ def _mark_parse_failure(
 
 
 def _parse_current_actions(raw: str) -> list[dict]:
-    parsed = adapt_llm.parse_json_array(raw, "phase2-current-synth")
+    parsed = morph_llm.parse_json_array(raw, "phase2-current-synth")
     if not parsed and raw.strip() not in ("[]", "```json\n[]\n```", "```\n[]\n```"):
-        raise PilotError("current Adapt synthesis parse failed")
+        raise PilotError("current Morph synthesis parse failed")
     actions = []
     for item in parsed:
         if not isinstance(item, dict) or item.get("action") not in (
@@ -683,7 +683,7 @@ def _parse_current_actions(raw: str) -> list[dict]:
 
 
 def parse_full_set(raw: str, *, rule_cap: int = DEFAULT_RULE_CAP) -> list[dict]:
-    parsed = adapt_llm.parse_json_array(raw, "phase2-full-set")
+    parsed = morph_llm.parse_json_array(raw, "phase2-full-set")
     if not parsed and raw.strip() not in ("[]", "```json\n[]\n```", "```\n[]\n```"):
         raise PilotError("bounded full-set parse failed")
     if len(parsed) > rule_cap:
@@ -802,16 +802,16 @@ def _protected_hashes(paths: Iterable[Path]) -> dict[str, str | None]:
 
 
 def _default_protected_paths() -> tuple[Path, ...]:
-    state = Path.home() / ".claude" / "adapt"
+    state = Path.home() / ".claude" / "morph"
     return (
         state / "state.json",
         state / "rules.json",
-        REPO_ROOT / "tools" / ".cache" / "memory" / "memright-engine.db",
+        REPO_ROOT / "tools" / ".cache" / "memory" / "crypt-engine.db",
     )
 
 
 def _default_call(system: str, user: str, max_tokens: int) -> dict:
-    return adapt_llm.call_lane_response(
+    return morph_llm.call_lane_response(
         system,
         user,
         lane="minimax",
@@ -851,7 +851,7 @@ def execute_pilot(
             (record["tool"], record["scope"], record["text"])
             for record in batch.records
         ]
-        if not adapt_sessions.scan_batch_for_secrets(turns):
+        if not morph_sessions.scan_batch_for_secrets(turns):
             blocked.append(batch.index)
     if blocked:
         raise PilotError(f"scanner blocked frozen extraction batches: {blocked}")
@@ -861,8 +861,8 @@ def execute_pilot(
     out_dir.mkdir(parents=True, exist_ok=True)
     protected = tuple(protected_paths or _default_protected_paths())
     before = _protected_hashes(protected)
-    previous_audit = os.environ.get("ADAPT_AUDIT_FILE_OVERRIDE")
-    os.environ["ADAPT_AUDIT_FILE_OVERRIDE"] = str(out_dir / "audit.jsonl")
+    previous_audit = os.environ.get("MORPH_AUDIT_FILE_OVERRIDE")
+    os.environ["MORPH_AUDIT_FILE_OVERRIDE"] = str(out_dir / "audit.jsonl")
     ledger = RequestLedger(max_provider_calls, max_input_chars)
     observations = []
     rejected_observations = []
@@ -875,7 +875,7 @@ def execute_pilot(
             if checkpoint is not None:
                 for _item in checkpoint["provider_evidence"]:
                     ledger.reserve(
-                        adapt_llm.EXTRACT_SYSTEM,
+                        morph_llm.EXTRACT_SYSTEM,
                         batch.payload,
                         EXTRACT_MAX_TOKENS,
                     )
@@ -901,12 +901,12 @@ def execute_pilot(
                 batch=batch,
                 lane=lane,
             )
-            ledger.reserve(adapt_llm.EXTRACT_SYSTEM, batch.payload, EXTRACT_MAX_TOKENS)
+            ledger.reserve(morph_llm.EXTRACT_SYSTEM, batch.payload, EXTRACT_MAX_TOKENS)
             raw = _cached_call(
                 cache_dir,
                 stage="extract",
                 index=batch.index,
-                system=adapt_llm.EXTRACT_SYSTEM,
+                system=morph_llm.EXTRACT_SYSTEM,
                 user=batch.payload,
                 lane=lane,
                 max_tokens=EXTRACT_MAX_TOKENS,
@@ -917,7 +917,7 @@ def execute_pilot(
                 (record["tool"], record["scope"], record["text"])
                 for record in batch.records
             ]
-            parsed = adapt_llm.extract_observations(
+            parsed = morph_llm.extract_observations(
                 turns,
                 llm=lambda _system, _user, response=raw: response,
                 lane="local",
@@ -935,24 +935,24 @@ def execute_pilot(
             actions = list(parsed.actions)
             batch_extract_outcomes = {f"primary:{parsed.outcome}": 1}
             provider_stages = ["extract"]
-            deterministic_signal = bool(adapt_llm.extract_deterministic(turns))
+            deterministic_signal = bool(morph_llm.extract_deterministic(turns))
             if parsed.outcome == outcomes.Outcome.VALID_EMPTY and deterministic_signal:
                 recall_provider_calls += 1
                 ledger.reserve(
-                    adapt_llm.EXTRACT_SYSTEM, batch.payload, EXTRACT_MAX_TOKENS
+                    morph_llm.EXTRACT_SYSTEM, batch.payload, EXTRACT_MAX_TOKENS
                 )
                 recall_raw = _cached_call(
                     cache_dir,
                     stage="extract-recall",
                     index=batch.index,
-                    system=adapt_llm.EXTRACT_SYSTEM,
+                    system=morph_llm.EXTRACT_SYSTEM,
                     user=batch.payload,
                     lane=lane,
                     max_tokens=EXTRACT_MAX_TOKENS,
                     call_fn=call_fn,
                     retry_failures=retry_failures,
                 )
-                recall = adapt_llm.extract_observations(
+                recall = morph_llm.extract_observations(
                     turns,
                     llm=lambda _system, _user, response=recall_raw: response,
                     lane="local",
@@ -1021,14 +1021,14 @@ def execute_pilot(
                 f"current synthesis input exceeds stage ceiling: "
                 f"{len(current_user)} > {max_synth_input_chars}"
             )
-        if not adapt_sessions.scan_batch_for_secrets_str(current_user):
-            raise PilotError("scanner blocked current Adapt synthesis payload")
-        ledger.reserve(CURRENT_ADAPT_SYSTEM, current_user, SYNTH_MAX_TOKENS)
+        if not morph_sessions.scan_batch_for_secrets_str(current_user):
+            raise PilotError("scanner blocked current Morph synthesis payload")
+        ledger.reserve(CURRENT_MORPH_SYSTEM, current_user, SYNTH_MAX_TOKENS)
         current_raw = _cached_call(
             cache_dir,
             stage="current-synth",
             index=1,
-            system=CURRENT_ADAPT_SYSTEM,
+            system=CURRENT_MORPH_SYSTEM,
             user=current_user,
             lane=lane,
             max_tokens=SYNTH_MAX_TOKENS,
@@ -1053,7 +1053,7 @@ def execute_pilot(
                 f"full-set synthesis input exceeds stage ceiling: "
                 f"{len(full_user)} > {max_synth_input_chars}"
             )
-        if not adapt_sessions.scan_batch_for_secrets_str(full_user):
+        if not morph_sessions.scan_batch_for_secrets_str(full_user):
             raise PilotError("scanner blocked bounded full-set synthesis payload")
         ledger.reserve(FULL_SET_SYSTEM, full_user, SYNTH_MAX_TOKENS)
         full_raw = _cached_call(
@@ -1076,9 +1076,9 @@ def execute_pilot(
             raise
     finally:
         if previous_audit is None:
-            os.environ.pop("ADAPT_AUDIT_FILE_OVERRIDE", None)
+            os.environ.pop("MORPH_AUDIT_FILE_OVERRIDE", None)
         else:
-            os.environ["ADAPT_AUDIT_FILE_OVERRIDE"] = previous_audit
+            os.environ["MORPH_AUDIT_FILE_OVERRIDE"] = previous_audit
 
     after = _protected_hashes(protected)
     if before != after:
@@ -1091,7 +1091,7 @@ def execute_pilot(
         "pilot_content_sha256": pilot.manifest["content_sha256"],
         "pilot_manifest_sha256": pilot.manifest["manifest_sha256"],
         "lane": lane,
-        "model": adapt_llm.MODEL,
+        "model": morph_llm.MODEL,
         "thinking_mode": THINKING_MODE,
         "temperature": TEMPERATURE,
         "complete_corpus": len(batches) == len(pilot.batches),
@@ -1121,11 +1121,11 @@ def execute_pilot(
                 "incumbent_rules_sha256": incumbent_hash,
                 "candidates": [],
             },
-            "current_adapt": _evaluate_arm(current_actions, observations, pilot),
+            "current_morph": _evaluate_arm(current_actions, observations, pilot),
             "bounded_full_set": _evaluate_arm(full_actions, observations, pilot),
         },
         "side_effects": {
-            "memright_calls": 0,
+            "crypt_calls": 0,
             "live_state_writes": 0,
             "protected_hashes_unchanged": True,
         },
@@ -1174,11 +1174,11 @@ def main(argv: list[str] | None = None) -> int:
             f"input_chars<={preflight['planned_input_chars']}"
         )
         if not args.execute:
-            print("phase2 preflight only; no provider or MemRight calls")
+            print("phase2 preflight only; no provider or Crypt calls")
             return 0
         if not args.allow_external_lane:
             raise PilotError("--execute requires --allow-external-lane")
-        if not adapt_llm.lane_available(args.lane):
+        if not morph_llm.lane_available(args.lane):
             raise PilotError(f"LLM lane unavailable: {args.lane}")
         result = execute_pilot(
             pilot,
@@ -1197,8 +1197,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     print(
         f"phase2 complete observations={result['common_extraction']['observation_count']} "
-        f"current={result['arms']['current_adapt']['admitted_count']}/"
-        f"{result['arms']['current_adapt']['candidate_count']} "
+        f"current={result['arms']['current_morph']['admitted_count']}/"
+        f"{result['arms']['current_morph']['candidate_count']} "
         f"full_set={result['arms']['bounded_full_set']['admitted_count']}/"
         f"{result['arms']['bounded_full_set']['candidate_count']}"
     )

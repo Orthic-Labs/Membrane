@@ -68,14 +68,14 @@ def test_new_sessions_excludes_files_after_corpus_cutoff(tmp_path, monkeypatch):
     session = tmp_path / "live.jsonl"
     session.write_text("{}\n", encoding="utf-8")
     monkeypatch.setattr(
-        fb.adapt_sessions, "discover", lambda: [("codex", session)]
+        fb.morph_sessions, "discover", lambda: [("codex", session)]
     )
     monkeypatch.setattr(
-        fb.adapt_sessions,
+        fb.morph_sessions,
         "parse_codex_session",
         lambda _path: pytest.fail("live session should not be parsed"),
     )
-    assert fb.adapt_sessions.new_sessions(
+    assert fb.morph_sessions.new_sessions(
         {"learned": {}}, before_mtime=session.stat().st_mtime - 1
     ) == []
 
@@ -141,7 +141,7 @@ def test_deterministic_scanner_block_is_not_retried(tmp_path, monkeypatch):
 
     monkeypatch.setattr(fb, "run_command", blocked)
     result = fb._run_with_retries(
-        ["adapt"], tmp_path / "commands.log", max_retries=3
+        ["morph"], tmp_path / "commands.log", max_retries=3
     )
     assert result.returncode == 2
     assert len(calls) == 1

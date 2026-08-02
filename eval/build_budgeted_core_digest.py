@@ -11,9 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
 HERE = Path(__file__).resolve().parent
-ADAPT_DIR = HERE.parent
-DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
-DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/compiled-core/core.json"
+MORPH_DIR = HERE.parent
+DEFAULT_TREATMENT = ROOT / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
+DEFAULT_OUT = ROOT / ".cache/morph-delivery-parity/compiled-core/core.json"
 
 SYSTEM = """Compile durable preferences into a compact always-loaded core.
 Input contains root-scoped standing preferences only. Deduplicate semantic overlaps. Keep only
@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     if len(sources) != 21:
         raise RuntimeError(f"expected 21 root standing preferences, found {len(sources)}")
     request = json.dumps({"preferences": sources}, ensure_ascii=False)
-    if not runner.adapt_sessions.scan_batch_for_secrets_str(request):
+    if not runner.morph_sessions.scan_batch_for_secrets_str(request):
         raise RuntimeError("secret scanner blocked core-digest payload")
     input_hash = runner.sha_json({"system": SYSTEM, "preferences": sources})
     if args.resume and args.out.exists():
@@ -79,9 +79,9 @@ def main(argv: list[str] | None = None) -> int:
         if cached.get("input_sha256") == input_hash:
             print(json.dumps(cached, indent=2))
             return 0
-    response = runner.adapt_llm.call_lane_response(
+    response = runner.morph_llm.call_lane_response(
         SYSTEM, request, lane="minimax", max_tokens=3000, attempts=2,
-        thinking="adaptive", temperature=0.1)
+        thinking="morphive", temperature=0.1)
     cleaned = response["text"].strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("\n", 1)[1].rsplit("```", 1)[0].strip()

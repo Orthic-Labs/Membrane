@@ -1,4 +1,4 @@
-"""Per-stage run journal for the adapt pipeline with payload persistence.
+"""Per-stage run journal for the morph pipeline with payload persistence.
 
 Design (Codex review 2026-07-12):
 - Each batch's stage progress is recorded with the actual outputs (observations,
@@ -26,7 +26,7 @@ import uuid
 from pathlib import Path
 from typing import Iterable, Optional
 
-STATE_DIR = Path.home() / ".claude" / "adapt"
+STATE_DIR = Path.home() / ".claude" / "morph"
 JOURNAL_FILE = STATE_DIR / "run_journal.jsonl"
 
 VALID_STAGES = (

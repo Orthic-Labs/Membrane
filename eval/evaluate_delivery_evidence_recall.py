@@ -1,4 +1,4 @@
-"""Exhaustively test whether Adapt records recall from their own source evidence."""
+"""Exhaustively test whether Morph records recall from their own source evidence."""
 from __future__ import annotations
 
 import argparse
@@ -11,9 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
 HERE = Path(__file__).resolve().parent
-DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
-DEFAULT_DB = ROOT / ".cache/adapt-delivery-parity/full/B.db"
-DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/full/evidence-recall"
+DEFAULT_TREATMENT = ROOT / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
+DEFAULT_DB = ROOT / ".cache/morph-delivery-parity/full/B.db"
+DEFAULT_OUT = ROOT / ".cache/morph-delivery-parity/full/evidence-recall"
 
 
 def _load(path: Path, name: str):
@@ -83,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--treatment", type=Path, default=DEFAULT_TREATMENT)
     parser.add_argument("--source-db", type=Path, default=DEFAULT_DB)
-    parser.add_argument("--memright-bin", type=Path, default=runner.DEFAULT_MEMRIGHT)
+    parser.add_argument("--crypt-bin", type=Path, default=runner.DEFAULT_CRYPT)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args(argv)
     treatment = json.loads(args.treatment.read_text(encoding="utf-8"))
@@ -96,18 +96,18 @@ def main(argv: list[str] | None = None) -> int:
     eval_db = args.out / "evidence-recall.db"
     runner.value_ab.snapshot_live_db(args.source_db, eval_db)
     port = runner.value_ab._free_port()
-    service = runner.value_ab._start_service(args.memright_bin, eval_db, port)
+    service = runner.value_ab._start_service(args.crypt_bin, eval_db, port)
     try:
         runner.value_ab._wait_ready(port)
         ranked = runner.replay_all(
-            args.memright_bin, eval_db, port, cases, args.out / "queries.jsonl")
+            args.crypt_bin, eval_db, port, cases, args.out / "queries.jsonl")
     finally:
         runner.value_ab._stop_service(service)
     result = {"record_count": len(records), "case_count": len(cases),
               **score_cases(cases, ranked)}
     runner.write_json(args.out / "results.json", result)
     m = result["metrics"]
-    lines = ["# Exhaustive Adapt source-evidence recall", "",
+    lines = ["# Exhaustive Morph source-evidence recall", "",
              f"- selected records: {len(records)}", f"- variant: {treatment.get('variant', 'raw')}",
              f"- total queries: {len(cases)}", "",
              "| Query kind | Cases | Hit@1 | Hit@5 | Hit@5 % | MRR@5 |",

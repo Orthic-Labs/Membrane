@@ -1,6 +1,6 @@
 """Tests for the optional machine-attribution fields on PreferenceRecord.
 
-Adrian's decision: "adapt has to be by machine and should be recorded with
+Adrian's decision: "morph has to be by machine and should be recorded with
 machine." `scope` (workspace-recall partition, IMMUTABLE_FIELDS in
 manifest.py / part of payload_sha256) is left untouched. `machine` and
 `machine_only` are new, optional, backward-compatible attribution fields —
@@ -22,7 +22,7 @@ def _legacy_dict_without_machine() -> dict:
     at all, matching every record written before this change."""
     return {
         "schema_version": "1.2.0",
-        "id": "adapt-tooling-legacy-abc1234567",
+        "id": "morph-tooling-legacy-abc1234567",
         "kind": "preference",
         "rule": "Prefer JSONL for structured logs.",
         "category": "tooling",
@@ -94,13 +94,13 @@ def test_machine_field_present_in_manifest_candidate_but_not_payload():
     assert "machine_only" not in manifest_mod.candidate_payload(candidate)
 
 
-def test_to_memright_content_includes_machine_line_only_when_set():
+def test_to_crypt_content_includes_machine_line_only_when_set():
     unset = pr_mod.PreferenceRecord.from_synthesis(
         {"action": "add", "name": "x", "category": "tooling",
          "rule": "Prefer JSONL for structured logs.", "confidence": 0.7},
         scope="D--Claude", source_ids=("s1",),
     )
-    assert "**Machine:**" not in pr_mod.to_memright_content(unset)
+    assert "**Machine:**" not in pr_mod.to_crypt_content(unset)
 
     attributed = pr_mod.PreferenceRecord.from_synthesis(
         {"action": "add", "name": "x", "category": "tooling",
@@ -108,7 +108,7 @@ def test_to_memright_content_includes_machine_line_only_when_set():
         scope="D--Claude", source_ids=("s1",),
         machine="adrian-mac", machine_only=True,
     )
-    body = pr_mod.to_memright_content(attributed)
+    body = pr_mod.to_crypt_content(attributed)
     assert "**Machine:** adrian-mac (machine-only)" in body
 
 
@@ -423,11 +423,11 @@ def test_scope_dimensions_absent_from_immutable_and_required_sets():
     assert "scope" in manifest_mod.IMMUTABLE_FIELDS  # unchanged contract
 
 
-# ----- AD1 derivation (adapt_sessions.dimensions_for_scope) -----
+# ----- AD1 derivation (morph_sessions.dimensions_for_scope) -----
 
 
 def test_dimensions_derived_from_scope_slug():
-    import adapt_sessions as ts
+    import morph_sessions as ts
 
     ws = ts.scope_for_cwd(str(ts._WORKSPACE_ROOT))
     assert ts.dimensions_for_scope(ws) == {}, "workspace root is not a repo"
@@ -440,28 +440,28 @@ def test_dimensions_derived_from_scope_slug():
 
 
 def test_dimensions_disagreement_yields_unqualified():
-    import adapt as adapt_mod
+    import morph as morph_mod
 
-    ws = __import__("adapt_sessions").scope_for_cwd(
-        str(__import__("adapt_sessions")._WORKSPACE_ROOT)
+    ws = __import__("morph_sessions").scope_for_cwd(
+        str(__import__("morph_sessions")._WORKSPACE_ROOT)
     )
     same = [{"scope": f"{ws}-heardright"}, {"scope": f"{ws}-heardright"}]
     mixed = [{"scope": f"{ws}-heardright"}, {"scope": f"{ws}-coderight"}]
-    assert adapt_mod._dimensions_for(same) == {"repo": "heardright"}
+    assert morph_mod._dimensions_for(same) == {"repo": "heardright"}
     # Mined across two repos == genuinely repo-agnostic. Narrowing to one would
     # silently stop it firing in the other.
-    assert adapt_mod._dimensions_for(mixed) == {}
+    assert morph_mod._dimensions_for(mixed) == {}
 
 
 # ----- Scope must name THIS machine, never a hardcoded peer -----
 #
-# Root cause of the three duplicate rows cleaned up 2026-07-26: adapt wrote the
+# Root cause of the three duplicate rows cleaned up 2026-07-26: morph wrote the
 # Windows literal "D--Claude" on a Mac, the mirror canonicalised it, and ingest
 # re-materialised it under the local slug -- two rows, one write.
 
 
 def test_local_workspace_scope_matches_this_machine():
-    import adapt_sessions as ts
+    import morph_sessions as ts
 
     assert ts.local_workspace_scope() == ts.scope_for_cwd(str(ts._WORKSPACE_ROOT))
 
@@ -470,19 +470,19 @@ def test_no_hardcoded_peer_scope_literal_in_production_paths():
     """Guard: the fallback and the operator-add default must both resolve to
     this machine's scope. A hardcoded peer literal here is what minted the
     duplicates, so it must never come back."""
-    import adapt as adapt_mod
-    import adapt_sessions as ts
+    import morph as morph_mod
+    import morph_sessions as ts
 
     local = ts.local_workspace_scope()
     # Disagreeing observations -> fallback. Must be local, not a peer literal.
-    assert adapt_mod._scope_for([{"scope": "a"}, {"scope": "b"}]) == local
-    assert adapt_mod._scope_for([]) == local
+    assert morph_mod._scope_for([{"scope": "a"}, {"scope": "b"}]) == local
+    assert morph_mod._scope_for([]) == local
 
 
 def test_denied_scopes_hold_on_this_machine():
     """Health scopes must be refused regardless of which machine's path form
     they take. The old check listed Windows-only literals and was dead here."""
-    import adapt_sessions as ts
+    import morph_sessions as ts
 
     local = ts.local_workspace_scope()
     assert ts.scope_denied(f"{local}-Health") is True

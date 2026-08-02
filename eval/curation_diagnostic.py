@@ -1,22 +1,22 @@
-"""Gate 5 — curation diagnostic for MemRight preference rows.
+"""Gate 5 — curation diagnostic for Crypt preference rows.
 
 Implements v2 plan Gate 5 step 1 + step 2:
 
-  Step 1. On a copied DB, run current Dream (``memright curate``) and
+  Step 1. On a copied DB, run current Dream (``crypt curate``) and
           assert every accepted preference either survives under its primary
           ID or is consolidated into a recorded primary with source provenance.
           Compare exact duplicate counts before/after; never assume semantic
           compression occurred.
 
   Step 2. Build a read-only near-duplicate candidate report from same-scope
-          ``adapt-*`` rows. Deterministic similarity finds candidates; an
-          Adapt manifest will adjudicate merge/update/deprecate. Dream remains
+          ``morph-*`` rows. Deterministic similarity finds candidates; an
+          Morph manifest will adjudicate merge/update/deprecate. Dream remains
           provider-free and performs only accepted deterministic mutations.
 
 This script is fully standalone and safe-by-construction: it copies the live
 DB via SQLite's backup API (read-only source), runs Dream against the COPY
-through a temporary isolated MemRight service, and never touches the live
-DB or the global MemRight config. Token/embedding pipelines are not invoked
+through a temporary isolated Crypt service, and never touches the live
+DB or the global Crypt config. Token/embedding pipelines are not invoked
 in step 1's pre/post comparison.
 
 Outputs::
@@ -26,9 +26,9 @@ Outputs::
 
 Usage::
 
-    py -3.11 tools/pipelines/memory/adapt/eval/curation_diagnostic.py \\
-        --live-db D:/Claude/tools/.cache/memory/memright-engine.db \\
-        --memright-bin D:/Claude/tools/bin/memright.exe \\
+    py -3.11 tools/pipelines/memory/morph/eval/curation_diagnostic.py \\
+        --live-db D:/Claude/tools/.cache/memory/crypt-engine.db \\
+        --crypt-bin D:/Claude/tools/bin/crypt.exe \\
         --out /tmp/curation
 """
 from __future__ import annotations
@@ -47,12 +47,12 @@ from pathlib import Path
 
 
 WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
-DEFAULT_LIVE = WS / "tools/.cache/memory/memright-engine.db"
-DEFAULT_MEMRIGHT = WS / "tools/bin/memright.exe"
-DEFAULT_OUT = WS / ".cache/adapt-curation"
+DEFAULT_LIVE = WS / "tools/.cache/memory/crypt-engine.db"
+DEFAULT_CRYPT = WS / "tools/bin/crypt.exe"
+DEFAULT_OUT = WS / ".cache/morph-curation"
 SERVICE_READY_TIMEOUT = 20.0
 
-ADAPT_PREFIX = "adapt-"
+MORPH_PREFIX = "morph-"
 
 
 # ----- DB plumbing (port from run_value_ab.py) -----
@@ -77,13 +77,13 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _start_service(memright: Path, db: Path, port: int) -> subprocess.Popen:
+def _start_service(crypt: Path, db: Path, port: int) -> subprocess.Popen:
     env = __import__("os").environ.copy()
-    env["MEMRIGHT_PORT"] = str(port)
+    env["CRYPT_PORT"] = str(port)
     env["WORKSPACE_MEMORY_PORT"] = str(port)
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     return subprocess.Popen(
-        [str(memright), "--db", str(db), "serve", "--port", str(port)],
+        [str(crypt), "--db", str(db), "serve", "--port", str(port)],
         env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         text=True, creationflags=flags,
     )
@@ -97,7 +97,7 @@ def _wait_ready(port: int) -> None:
             if c.connect_ex(("127.0.0.1", port)) == 0:
                 return
         time.sleep(0.05)
-    raise RuntimeError(f"memright on port {port} did not become ready")
+    raise RuntimeError(f"crypt on port {port} did not become ready")
 
 
 def _stop_service(svc: subprocess.Popen) -> None:
@@ -109,12 +109,12 @@ def _stop_service(svc: subprocess.Popen) -> None:
         svc.wait(timeout=5)
 
 
-def _run(memright: Path, db: Path, port: int, cmd: list[str],
+def _run(crypt: Path, db: Path, port: int, cmd: list[str],
          timeout: float = 30.0) -> tuple[int, str, str]:
     env = __import__("os").environ.copy()
-    env["MEMRIGHT_PORT"] = str(port)
+    env["CRYPT_PORT"] = str(port)
     env["WORKSPACE_MEMORY_PORT"] = str(port)
-    res = subprocess.run([str(memright), "--db", str(db), *cmd],
+    res = subprocess.run([str(crypt), "--db", str(db), *cmd],
                          text=True, encoding="utf-8",
                          capture_output=True, check=False, env=env,
                          timeout=timeout)
@@ -123,18 +123,18 @@ def _run(memright: Path, db: Path, port: int, cmd: list[str],
 
 # ----- Inventory + same-scope near-duplicate report -----
 
-def inventory_adapt_rows(db: Path) -> list[dict]:
-    """Read every adapt-prefixed row from the snapshot.
+def inventory_morph_rows(db: Path) -> list[dict]:
+    """Read every morph-prefixed row from the snapshot.
 
     Matches both:
-      - unscoped ids starting with `adapt-` (MemRight legacy layout)
-      - scope/adapt-* ids (``D--Claude/adapt-x-...``)
+      - unscoped ids starting with `morph-` (Crypt legacy layout)
+      - scope/morph-* ids (``D--Claude/morph-x-...``)
     """
     with sqlite3.connect(db) as conn:
         rows = conn.execute(
             "SELECT id, content FROM memories "
             "WHERE id LIKE ? OR id LIKE '%/' || ?",
-            (f"{ADAPT_PREFIX}%", f"{ADAPT_PREFIX}%"),
+            (f"{MORPH_PREFIX}%", f"{MORPH_PREFIX}%"),
         ).fetchall()
     return [{"id": rid, "content": content} for rid, content in rows]
 
@@ -190,21 +190,21 @@ def near_duplicate_candidates(rows: list[dict],
 
 # ----- Curation driver -----
 
-def diagnose(live_db: Path, memright: Path, out: Path) -> int:
+def diagnose(live_db: Path, crypt: Path, out: Path) -> int:
     out.mkdir(parents=True, exist_ok=True)
     snap = out / "snapshot.db"
     pre_count = snapshot_live(live_db, snap)
-    pre_rows = inventory_adapt_rows(snap)
+    pre_rows = inventory_morph_rows(snap)
     pre_id_count = len(pre_rows)
     pre_clusters = near_duplicate_candidates(pre_rows)
 
     port = _free_port()
-    svc = _start_service(memright, snap, port)
+    svc = _start_service(crypt, snap, port)
     curate_ok = False
     curate_error = None
     try:
         _wait_ready(port)
-        rc, _out, err = _run(memright, snap, port, ["curate"], timeout=120.0)
+        rc, _out, err = _run(crypt, snap, port, ["curate"], timeout=120.0)
         if rc != 0:
             curate_error = err.strip() or f"rc={rc}"
         else:
@@ -224,7 +224,7 @@ def diagnose(live_db: Path, memright: Path, out: Path) -> int:
     else:
         post_count = sqlite3.connect(snap).execute(
             "SELECT COUNT(*) FROM memories").fetchone()[0]
-        post_rows = inventory_adapt_rows(snap)
+        post_rows = inventory_morph_rows(snap)
     post_id_count = len(post_rows)
     post_clusters = near_duplicate_candidates(post_rows)
 
@@ -251,13 +251,13 @@ def diagnose(live_db: Path, memright: Path, out: Path) -> int:
         "curate_status": {"ok": curate_ok, "error": curate_error},
         "pre_curate": {
             "snapshot_rows": pre_count,
-            "adapt_row_count": pre_id_count,
+            "morph_row_count": pre_id_count,
             "cluster_count": len(pre_clusters),
             "max_cluster_size": max((c["size"] for c in pre_clusters), default=0),
         },
         "post_curate": {
             "snapshot_rows": post_count,
-            "adapt_row_count": post_id_count,
+            "morph_row_count": post_id_count,
             "cluster_count": len(post_clusters),
             "max_cluster_size": max((c["size"] for c in post_clusters), default=0),
         },
@@ -276,13 +276,13 @@ def diagnose(live_db: Path, memright: Path, out: Path) -> int:
         "",
         "## Pre-Dream",
         f"- rows in snapshot: {pre_count}",
-        f"- adapt-* rows:     {pre_id_count}",
+        f"- morph-* rows:     {pre_id_count}",
         f"- exact clusters:   {len(pre_clusters)}",
         f"- max cluster size: {max((c['size'] for c in pre_clusters), default=0)}",
         "",
         "## Post-Dream",
         f"- rows in snapshot: {post_count}",
-        f"- adapt-* rows:     {post_id_count}",
+        f"- morph-* rows:     {post_id_count}",
         f"- exact clusters:   {len(post_clusters)}",
         f"- max cluster size: {max((c['size'] for c in post_clusters), default=0)}",
         "",
@@ -303,7 +303,7 @@ def diagnose(live_db: Path, memright: Path, out: Path) -> int:
     (out / "curation.diagnostic.md").write_text("\n".join(md_lines) + "\n",
                                                   encoding="utf-8")
     print(f"diagnostic: {out / 'curation.diagnostic.md'}")
-    print(f"  adapt rows pre/post: {pre_id_count} -> {post_id_count}; "
+    print(f"  morph rows pre/post: {pre_id_count} -> {post_id_count}; "
           f"clusters pre/post: {len(pre_clusters)} -> {len(post_clusters)}; "
           f"curate ok={curate_ok}")
     return 0
@@ -312,19 +312,19 @@ def diagnose(live_db: Path, memright: Path, out: Path) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--live-db", type=Path, default=DEFAULT_LIVE)
-    ap.add_argument("--memright-bin", type=Path, default=DEFAULT_MEMRIGHT)
+    ap.add_argument("--crypt-bin", type=Path, default=DEFAULT_CRYPT)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = ap.parse_args(argv)
 
     if not args.live_db.exists():
         print(f"error: live DB missing: {args.live_db}", file=sys.stderr)
         return 2
-    if not args.memright_bin.exists():
-        print(f"error: memright binary missing: {args.memright_bin}",
+    if not args.crypt_bin.exists():
+        print(f"error: crypt binary missing: {args.crypt_bin}",
               file=sys.stderr)
         return 2
 
-    return diagnose(args.live_db, args.memright_bin, args.out)
+    return diagnose(args.live_db, args.crypt_bin, args.out)
 
 
 if __name__ == "__main__":

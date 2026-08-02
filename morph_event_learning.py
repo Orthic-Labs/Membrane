@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
-import adapt_persistence
+import morph_persistence
 import admission
 import observable_events
 import preference_record
@@ -46,6 +46,8 @@ class AdmittedLearning:
     rule_key: str
     record: preference_record.PreferenceRecord
     admission_reason: str = "ok"
+    approval_event_id: str = ""
+    feedback_sha256: str = ""
 
     @property
     def digest(self) -> str:
@@ -57,7 +59,18 @@ class AdmittedLearning:
             "rule_key": self.rule_key,
             "record": self.record.to_dict(),
             "admission_reason": self.admission_reason,
+            "approval_event_id": self.approval_event_id,
+            "feedback_sha256": self.feedback_sha256,
         })
+
+    @property
+    def approved(self) -> bool:
+        return bool(self.approval_event_id) and self.record.lifecycle_state == "active"
+
+
+def approval_text(learning: AdmittedLearning) -> str:
+    """Exact user feedback required to promote one event-derived proposal."""
+    return f"approve morph proposal {learning.digest}"
 
 
 def admit_user_event(
@@ -68,7 +81,7 @@ def admit_user_event(
     category: str,
     canonical_rules: rule_key.RuleIndex | dict | None = None,
 ) -> AdmittedLearning:
-    """Admit only exact user-authored event content; models cannot self-authorize."""
+    """Create a quarantined proposal from exact user-authored event content."""
     observable_events._validate(event)
     if event["origin"] != "user":
         raise MorphLearningError(f"origin-not-user:{event['origin']}")
@@ -102,11 +115,12 @@ def admit_user_event(
             **target,
             "confidence": 1.0,
             "observations": 1,
-            "needs_review": False,
+            "needs_review": True,
             "retrieval_aliases": (evidence_text,),
         },
         scope=scope,
         source_ids=(source_id,),
+        lifecycle_state="candidate",
     )
     key = rule_key.RuleKey(scope=scope, record_id=record.id)
     return AdmittedLearning(
@@ -119,6 +133,47 @@ def admit_user_event(
     )
 
 
+def approve_learning(
+    learning: AdmittedLearning,
+    *,
+    feedback_event: dict,
+    feedback_text: str,
+) -> AdmittedLearning:
+    """Bind separate user feedback before an event proposal can enter recall."""
+    if learning.approved:
+        raise MorphLearningError("learning-already-approved")
+    observable_events._validate(feedback_event)
+    if feedback_event["origin"] != "user":
+        raise MorphLearningError(f"feedback-origin-not-user:{feedback_event['origin']}")
+    if feedback_event["event_type"] not in LEARNABLE_EVENT_TYPES:
+        raise MorphLearningError(f"feedback-event-not-learnable:{feedback_event['event_type']}")
+    installation_id = learning.source_id.split(":", 3)[1]
+    if (
+        feedback_event["installation_id"] != installation_id
+        or feedback_event["trace_id"] != learning.trace_id
+    ):
+        raise MorphLearningError("feedback-lineage-mismatch")
+    if feedback_text != approval_text(learning):
+        raise MorphLearningError("feedback-approval-text-mismatch")
+    if feedback_event["content_ref_or_digest"] != _sha256_text(feedback_text):
+        raise MorphLearningError("feedback-content-digest-mismatch")
+    feedback_source = (
+        f"install:{feedback_event['installation_id']}:"
+        f"{feedback_event['client_id']}:{feedback_event['event_id']}"
+    )
+    record = replace(
+        preference_record.transition_lifecycle(learning.record, "active"),
+        needs_review=False,
+        source_ids=tuple((*learning.record.source_ids, feedback_source)),
+    )
+    return replace(
+        learning,
+        record=record,
+        approval_event_id=feedback_event["event_id"],
+        feedback_sha256=_sha256_text(feedback_text),
+    )
+
+
 def persist_learning(
     learning: AdmittedLearning,
     *,
@@ -126,8 +181,10 @@ def persist_learning(
     base_url: str,
     installation_id: str,
 ) -> dict:
-    """Persist one admitted learning through Morph's atomic batch path."""
-    receipt = adapt_persistence.persist_manifest_batch(
+    """Persist only an explicitly approved event-learning proposal."""
+    if not learning.approved:
+        raise MorphLearningError("proposal-not-approved")
+    receipt = morph_persistence.persist_manifest_batch(
         (learning.record,),
         manifest_batch_id=f"morph-event-{learning.event_id}-{learning.digest}",
         installation_id=installation_id,
@@ -136,7 +193,16 @@ def persist_learning(
     )
     if receipt.get("complete") is not True:
         raise MorphLearningError("persistence-incomplete")
-    return receipt
+    return {
+        **receipt,
+        "learning": {
+            "event_id": learning.event_id,
+            "trace_id": learning.trace_id,
+            "rule_key": learning.rule_key,
+            "approval_event_id": learning.approval_event_id,
+            "feedback_sha256": learning.feedback_sha256,
+        },
+    }
 
 
 def verify_next_use(
@@ -145,7 +211,9 @@ def verify_next_use(
     get_memory: Callable[[str], str],
     recall: Callable[[str, str], str],
 ) -> dict:
-    """Use independent read paths to prove stored content plus next-task delivery."""
+    """Use independent read paths to prove approved storage plus next-task delivery."""
+    if not learning.approved:
+        raise MorphLearningError("proposal-not-approved")
     body = get_memory(learning.rule_key)
     if learning.record.rule not in body:
         raise MorphLearningError("independent-readback-mismatch")
@@ -157,6 +225,7 @@ def verify_next_use(
         "trace_id": learning.trace_id,
         "candidate_digest": learning.digest,
         "rule_key": learning.rule_key,
+        "approval_event_id": learning.approval_event_id,
         "readback_sha256": _sha256_text(body),
         "delivery_sha256": _sha256_text(delivered),
         "delivered": True,

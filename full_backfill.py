@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drain all parked Adapt sessions through the production manifest path."""
+"""Drain all parked Morph sessions through the production manifest path."""
 from __future__ import annotations
 
 import argparse
@@ -13,15 +13,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
-import adapt_sessions
+import morph_sessions
 import rollback
 import run_journal
 
 
 ROOT = Path(__file__).resolve().parent
-ADAPT_SCRIPT = ROOT / "adapt.py"
+MORPH_SCRIPT = ROOT / "morph.py"
 ADJUDICATE_SCRIPT = ROOT / "adjudicate_manifest.py"
-DEFAULT_ROOT = Path.home() / ".claude" / "adapt" / "full-backfill"
+DEFAULT_ROOT = Path.home() / ".claude" / "morph" / "full-backfill"
 PRIMARY_MODEL = "minimax-m3-direct"
 MIN_PRECISION = 0.90
 MIN_RECALL = 0.60
@@ -139,7 +139,7 @@ def _session_refs_learned(journal: run_journal.RunJournal, batch_id: str) -> boo
     refs = discovered.get("session_refs") or []
     if not refs:
         return True  # Legacy journal entries have no exact tool/file identity.
-    learned = adapt_sessions.load_state().get("learned") or {}
+    learned = morph_sessions.load_state().get("learned") or {}
     return all(
         float(learned.get(ref["tool"], {}).get(ref["path_stem"], -1))
         >= float(ref["mtime"])
@@ -158,10 +158,10 @@ def _verify_committed(manifest_body: dict, journal: run_journal.RunJournal) -> N
         raise BackfillError(f"batch {batch_id} committed but source state did not advance")
     db_path = rollback._discover_db_path(manifest_body)
     if not db_path:
-        raise BackfillError("cannot discover live MemRight DB for integrity check")
+        raise BackfillError("cannot discover live Crypt DB for integrity check")
     ok, message = rollback._verify_integrity(db_path)
     if not ok:
-        raise BackfillError(f"MemRight integrity check failed: {message}")
+        raise BackfillError(f"Crypt integrity check failed: {message}")
 
 
 def _run_with_retries(
@@ -181,7 +181,7 @@ def _run_with_retries(
             return result
         if attempt < max_retries:
             wait = min(30, 2 ** attempt)
-            print(f"adapt full-backfill: retrying in {wait}s", flush=True)
+            print(f"morph full-backfill: retrying in {wait}s", flush=True)
             time.sleep(wait)
     return result
 
@@ -253,7 +253,7 @@ def run_backfill(args: argparse.Namespace) -> int:
                     journal, set(checkpoint["known_batch_ids"])
                 )
                 mining = [
-                    sys.executable, str(ADAPT_SCRIPT), "--backfill",
+                    sys.executable, str(MORPH_SCRIPT), "--backfill",
                     "--manifest", str(pending_path),
                     "--limit", str(args.chunk_sessions),
                     "--before-mtime", str(corpus_cutoff),
@@ -284,7 +284,7 @@ def run_backfill(args: argparse.Namespace) -> int:
                         "chunks": index - 1,
                         "corpus_cutoff_mtime": corpus_cutoff,
                     })
-                    print("adapt full-backfill: corpus drained", flush=True)
+                    print("morph full-backfill: corpus drained", flush=True)
                     return 0
                 checkpoint["phase"] = "mined"
                 write_json_atomic(checkpoint_path, checkpoint)
@@ -332,7 +332,7 @@ def run_backfill(args: argparse.Namespace) -> int:
                     write_json_atomic(checkpoint_path, checkpoint)
 
                 apply_result = run_command(
-                    [sys.executable, str(ADAPT_SCRIPT),
+                    [sys.executable, str(MORPH_SCRIPT),
                      "--apply-from-manifest", str(apply_path)],
                     command_log,
                 )
@@ -352,7 +352,7 @@ def run_backfill(args: argparse.Namespace) -> int:
             })
             write_json_atomic(checkpoint_path, checkpoint)
             print(
-                f"adapt full-backfill: chunk={index} sessions={checkpoint['sessions']} "
+                f"morph full-backfill: chunk={index} sessions={checkpoint['sessions']} "
                 f"accepted={checkpoint['accepted']} rejected={checkpoint['rejected']} committed",
                 flush=True,
             )
@@ -400,7 +400,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return run_backfill(parse_args(argv))
     except (BackfillError, OSError, ValueError, json.JSONDecodeError) as exc:
-        print(f"adapt full-backfill: STOPPED: {exc}", file=sys.stderr)
+        print(f"morph full-backfill: STOPPED: {exc}", file=sys.stderr)
         return 2
 
 

@@ -9,13 +9,13 @@ from pathlib import Path
 
 import pytest
 
-ADAPT_DIR = Path(__file__).resolve().parent
-EVAL_DIR = ADAPT_DIR / "eval"
-sys.path.insert(0, str(ADAPT_DIR))
+MORPH_DIR = Path(__file__).resolve().parent
+EVAL_DIR = MORPH_DIR / "eval"
+sys.path.insert(0, str(MORPH_DIR))
 sys.path.insert(0, str(EVAL_DIR))
 
-import adapt_llm
-import adapt_sessions
+import morph_llm
+import morph_sessions
 import freeze_pilot
 
 
@@ -27,7 +27,7 @@ def _session(
     scope: str,
     mtime: float,
     chars: int,
-) -> adapt_sessions.Session:
+) -> morph_sessions.Session:
     path = root / f"{tool}-{sid}.jsonl"
     text = f"{sid} durable preference " + "x" * chars
     if tool == "claude-code":
@@ -50,9 +50,9 @@ def _session(
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     os.utime(path, (mtime, mtime))
     parser = (
-        adapt_sessions.parse_claude_session
+        morph_sessions.parse_claude_session
         if tool == "claude-code"
-        else adapt_sessions.parse_codex_session
+        else morph_sessions.parse_codex_session
     )
     parsed = parser(path)
     assert parsed is not None
@@ -69,7 +69,7 @@ def _workspace(root: Path) -> Path:
     return root
 
 
-def _sessions(root: Path) -> list[adapt_sessions.Session]:
+def _sessions(root: Path) -> list[morph_sessions.Session]:
     return [
         _session(root, tool="claude-code", sid="c1", scope="repo-a", mtime=90, chars=100),
         _session(root, tool="claude-code", sid="c2", scope="repo-b", mtime=70, chars=3000),
@@ -86,7 +86,7 @@ def test_extract_payload_helper_matches_provider_user_payload():
         ("codex", "repo-b", "run focused tests"),
     ]
 
-    payload = adapt_llm.build_extract_payload(batch)
+    payload = morph_llm.build_extract_payload(batch)
 
     assert json.loads(payload) == [
         {"id": 1, "tool": "claude-code", "scope": "repo-a", "text": "always use JSONL"},
@@ -167,7 +167,7 @@ def test_freeze_writes_reproducible_local_package(tmp_path):
         (tmp_path / "out-a" / item["copy"]).is_file()
         for item in first["versions"]["files"]
     )
-    assert first["pilot_id"] == f"adapt-pilot-{first['content_sha256'][:12]}"
+    assert first["pilot_id"] == f"morph-pilot-{first['content_sha256'][:12]}"
     assert first["manifest_sha256"] == freeze_pilot.manifest_sha256(first)
     assert freeze_pilot.main([
         "--validate-only", str(tmp_path / "out-a" / "manifest.json")

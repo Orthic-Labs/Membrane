@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import adapt_persistence as persistence
+import morph_persistence as persistence
 import preference_record
 
 
@@ -29,7 +29,7 @@ class _Response:
 
 
 def _record(
-    record_id: str = "adapt-tooling-reviewed-1111111111",
+    record_id: str = "morph-tooling-reviewed-1111111111",
     scope: str = "D--Claude",
 ):
     return preference_record.from_manifest_candidate(
@@ -69,7 +69,7 @@ def test_batch_apply_is_one_authenticated_attributed_request(
                 "receipts": [
                     {
                         "item_id": body["items"][0]["item_id"],
-                        "memory_id": "D--Claude/adapt-tooling-reviewed-1111111111",
+                        "memory_id": "D--Claude/morph-tooling-reviewed-1111111111",
                         "status": "inserted",
                     }
                 ],
@@ -89,10 +89,10 @@ def test_batch_apply_is_one_authenticated_attributed_request(
     assert captured["request"].full_url.endswith("/v1/memories:batch")
     assert captured["request"].get_header("Authorization") == "Bearer test-secret"
     item = captured["body"]["items"][0]
-    assert item["name"] == "adapt-tooling-reviewed-1111111111"
+    assert item["name"] == "morph-tooling-reviewed-1111111111"
     assert item["source_ids"] == [SOURCE]
-    assert item["artifact_family"] == "adapt"
-    assert item["producer"] == "adapt"
+    assert item["artifact_family"] == "morph"
+    assert item["producer"] == "morph"
     assert item["record_type"] == "standing_preference"
     assert item["client"] == "codex"
     assert INSTALLATION in item["session_id"]
@@ -190,7 +190,7 @@ def test_batch_apply_refuses_incomplete_receipt(tmp_path: Path, monkeypatch) -> 
         ),
     )
 
-    with pytest.raises(persistence.AdaptPersistenceError, match="receipt"):
+    with pytest.raises(persistence.MorphPersistenceError, match="receipt"):
         persistence.persist_manifest_batch(
             [_record()],
             manifest_batch_id="20260720T100000-abcdef",
@@ -201,7 +201,7 @@ def test_batch_apply_refuses_incomplete_receipt(tmp_path: Path, monkeypatch) -> 
 
 
 def test_reviewed_manifest_id_is_not_rederived() -> None:
-    reviewed_id = "adapt-tooling-reviewed-1111111111"
+    reviewed_id = "morph-tooling-reviewed-1111111111"
     record = _record(reviewed_id)
 
     assert record.id == reviewed_id

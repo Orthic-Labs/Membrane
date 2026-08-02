@@ -15,7 +15,13 @@ import pytest
 import morph_event_learning as learning
 
 
-def _event(text: str, *, origin: str = "user", event_type: str = "user_correction") -> dict:
+def _event(
+    text: str,
+    *,
+    origin: str = "user",
+    event_type: str = "user_correction",
+    event_id: str = "event-e2e",
+) -> dict:
     return {
         "schema": "orthic.observable-event.v1",
         "installation_id": "install-e2e",
@@ -24,7 +30,7 @@ def _event(text: str, *, origin: str = "user", event_type: str = "user_correctio
         "task_id": "task-e2e",
         "turn_id": "turn-e2e",
         "trace_id": "trace-e2e",
-        "event_id": "event-e2e",
+        "event_id": event_id,
         "event_type": event_type,
         "origin": origin,
         "content_ref_or_digest": "sha256:" + hashlib.sha256(text.encode()).hexdigest(),
@@ -39,7 +45,9 @@ def test_only_hash_bound_user_events_can_enter_admission() -> None:
     admitted = learning.admit_user_event(
         _event(rule), evidence_text=rule, scope="Volumes-D-claude", category="tooling"
     )
-    assert admitted.rule_key.startswith("Volumes-D-claude/adapt-tooling-")
+    assert admitted.rule_key.startswith("Volumes-D-claude/morph-tooling-")
+    assert admitted.record.lifecycle_state == "candidate"
+    assert not admitted.approved
     assert admitted.record.source_ids == ("install:install-e2e:codex:event-e2e",)
     with pytest.raises(learning.MorphLearningError, match="origin-not-user"):
         learning.admit_user_event(
@@ -57,6 +65,36 @@ def test_only_hash_bound_user_events_can_enter_admission() -> None:
         )
 
 
+def test_event_learning_requires_separate_user_approval_before_persistence() -> None:
+    rule = "Always keep Morph learning proposals outside recall until approved."
+    proposal = learning.admit_user_event(
+        _event(rule), evidence_text=rule, scope="Volumes-D-claude", category="tooling"
+    )
+    with pytest.raises(learning.MorphLearningError, match="proposal-not-approved"):
+        learning.persist_learning(
+            proposal,
+            token_file=Path("/missing-token"),
+            base_url="http://127.0.0.1:1",
+            installation_id="install-e2e",
+        )
+    feedback = learning.approval_text(proposal)
+    approved = learning.approve_learning(
+        proposal,
+        feedback_event=_event(feedback, event_type="user_instruction", event_id="feedback-e2e"),
+        feedback_text=feedback,
+    )
+    assert approved.approved
+    assert approved.record.lifecycle_state == "active"
+    assert not approved.record.needs_review
+    assert approved.approval_event_id == "feedback-e2e"
+    with pytest.raises(learning.MorphLearningError, match="feedback-origin-not-user"):
+        learning.approve_learning(
+            proposal,
+            feedback_event=_event(feedback, origin="assistant", event_id="bad-feedback"),
+            feedback_text=feedback,
+        )
+
+
 def _free_port() -> int:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
@@ -64,7 +102,7 @@ def _free_port() -> int:
 
 
 def _run(binary: Path, db: Path, port: int, args: list[str]) -> str:
-    env = {**os.environ, "MEMRIGHT_PORT": str(port), "WORKSPACE_MEMORY_PORT": str(port)}
+    env = {**os.environ, "CRYPT_PORT": str(port), "WORKSPACE_MEMORY_PORT": str(port)}
     result = subprocess.run(
         [str(binary), "--db", str(db), *args],
         env=env,
@@ -98,14 +136,43 @@ def _recall(port: int, token: str, query: str, scope: str) -> str:
         return response.read().decode("utf-8")
 
 
+def _start_service(binary: Path, db: Path, port: int, env: dict[str, str]) -> subprocess.Popen:
+    service = subprocess.Popen(
+        [str(binary), "--db", str(db), "serve", "--port", str(port)],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        with socket.socket() as probe:
+            if probe.connect_ex(("127.0.0.1", port)) == 0:
+                return service
+        time.sleep(0.05)
+    stderr = service.stderr.read().strip() if service.stderr else ""
+    service.kill()
+    service.wait(timeout=5)
+    raise RuntimeError(f"isolated Crypt service did not start: {stderr}")
+
+
+def _stop_service(service: subprocess.Popen) -> None:
+    service.terminate()
+    try:
+        service.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        service.kill()
+        service.wait(timeout=5)
+
+
 @pytest.mark.skipif(os.environ.get("MORPH_E2E") != "1", reason="run by C14 qualifier")
 def test_real_persistence_readback_and_next_use(tmp_path: Path, monkeypatch) -> None:
-    binary = Path(os.environ["MEMRIGHT_BIN"]).resolve()
+    binary = Path(os.environ["CRYPT_BIN"]).resolve()
     db = tmp_path / "morph.db"
     live_db = Path(
         os.environ.get(
-            "MEMRIGHT_LIVE_DB",
-            Path(__file__).resolve().parent.parent / "tools/.cache/memory/memright-engine.db",
+            "CRYPT_LIVE_DB",
+            Path(__file__).resolve().parent.parent / "tools/.cache/memory/crypt-engine.db",
         )
     ).resolve()
     with sqlite3.connect(f"file:{live_db.as_posix()}?mode=ro", uri=True) as source:
@@ -118,33 +185,24 @@ def test_real_persistence_readback_and_next_use(tmp_path: Path, monkeypatch) -> 
     workspace_root = Path(__file__).resolve().parent.parent
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace_root))
     monkeypatch.setenv("CONTEXT_HOME", str(tmp_path))
-    monkeypatch.setenv("MEMRIGHT_API_TOKEN_FILE", str(token_file))
-    monkeypatch.setenv("MEMRIGHT_ALLOW_HASH", "1")
-    monkeypatch.setenv("MEMRIGHT_PORT", str(port))
+    monkeypatch.setenv("CRYPT_API_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("CRYPT_ALLOW_HASH", "1")
+    monkeypatch.setenv("CRYPT_PORT", str(port))
     monkeypatch.setenv("WORKSPACE_MEMORY_PORT", str(port))
     env = {
         **os.environ,
     }
-    service = subprocess.Popen(
-        [str(binary), "--db", str(db), "serve", "--port", str(port)],
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
+    service = _start_service(binary, db, port, env)
     try:
-        deadline = time.monotonic() + 20
-        while time.monotonic() < deadline:
-            with socket.socket() as probe:
-                if probe.connect_ex(("127.0.0.1", port)) == 0:
-                    break
-            time.sleep(0.05)
-        else:
-            stderr = service.stderr.read().strip() if service.stderr else ""
-            raise RuntimeError(f"isolated MemRight service did not start: {stderr}")
         rule = "Always use JSONL for Morph parity event-e2e logs."
-        admitted = learning.admit_user_event(
+        proposal = learning.admit_user_event(
             _event(rule), evidence_text=rule, scope="Volumes-D-claude", category="tooling"
+        )
+        feedback = learning.approval_text(proposal)
+        admitted = learning.approve_learning(
+            proposal,
+            feedback_event=_event(feedback, event_type="user_instruction", event_id="feedback-e2e"),
+            feedback_text=feedback,
         )
         receipt = learning.persist_learning(
             admitted,
@@ -153,6 +211,8 @@ def test_real_persistence_readback_and_next_use(tmp_path: Path, monkeypatch) -> 
             installation_id="install-e2e",
         )
         assert receipt["inserted"] == 1
+        _stop_service(service)
+        service = _start_service(binary, db, port, env)
         proof = learning.verify_next_use(
             admitted,
             get_memory=lambda memory_id: _run(binary, db, port, ["get", memory_id]),
@@ -161,9 +221,4 @@ def test_real_persistence_readback_and_next_use(tmp_path: Path, monkeypatch) -> 
         assert proof["delivered"] is True
         assert proof["event_id"] == "event-e2e"
     finally:
-        service.terminate()
-        try:
-            service.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            service.kill()
-            service.wait(timeout=5)
+        _stop_service(service)

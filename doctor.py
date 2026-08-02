@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Orthic Morph Doctor — expose multiwriter conformance with honest scope.
 
-Doctor today wraps the existing Adapt multi-installation conformance receipt
+Doctor today wraps the existing Morph multi-installation conformance receipt
 surface (``multiwriter_conformance``): installation identity, canonical pool,
-implementation/test hashes, MemRight service probe, transcript discovery
+implementation/test hashes, Crypt service probe, transcript discovery
 counts, and the append-only mirror boundary.
 
 Net-new / not-yet (do not pretend these exist):
   - Blueprint graph/claim health checks
-  - Beacon (Tether) receipt / e2e wiring checks
+  - Sentinel receipt / e2e wiring checks
   - Cross-system Doctor that assumes receipts those systems do not emit
 """
 from __future__ import annotations
@@ -32,8 +32,8 @@ SCOPE = {
     ],
     "not_yet": [
         "Blueprint graph/claim health",
-        "Beacon receipt / e2e wiring",
-        "cross-system Doctor assuming Blueprint/Beacon receipts",
+        "Sentinel receipt / e2e wiring",
+        "cross-system Doctor assuming Blueprint/Sentinel receipts",
     ],
 }
 
@@ -42,7 +42,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Orthic Morph Doctor — multiwriter conformance only. "
-            "Blueprint/Beacon checks are not-yet."
+            "Blueprint/Sentinel checks are not-yet."
         )
     )
     parser.add_argument(

@@ -1,9 +1,9 @@
-"""LLM lane for adapt: extraction + synthesis over MiniMax M3, or a local
+"""LLM lane for morph: extraction + synthesis over MiniMax M3, or a local
 OpenAI/Anthropic-compatible endpoint by default.
 
 The external lane uses the local Anthropic-compatible proxy that backs the
 workspace's ``mm`` launcher. Every string reaching this module was already
-redacted/scanner-checked by adapt_sessions.
+redacted/scanner-checked by morph_sessions.
 `llm` is injectable for tests: (system, user) -> str.
 """
 from __future__ import annotations
@@ -25,13 +25,13 @@ MODEL = "MiniMax-M3"
 # being down. "sonnet" is the slot actually bound to minimax:MiniMax-M3, and is
 # also the correct tier: extraction is subagent-class work, capped at sonnet by
 # the agent-routing rules. Never use an alias containing "fable" (qwen).
-MINIMAX_ALIAS = os.environ.get("ADAPT_MINIMAX_ALIAS", "claude-sonnet-4-5")
+MINIMAX_ALIAS = os.environ.get("MORPH_MINIMAX_ALIAS", "claude-sonnet-4-5")
 MINIMAX_PROXY_URL = os.environ.get(
-    "ADAPT_MINIMAX_PROXY_URL", "http://127.0.0.1:8801"
+    "MORPH_MINIMAX_PROXY_URL", "http://127.0.0.1:8801"
 ).rstrip("/")
-LOCAL_MODEL = os.environ.get("ADAPT_LOCAL_MODEL", "qwen2.5:7b-instruct")
+LOCAL_MODEL = os.environ.get("MORPH_LOCAL_MODEL", "qwen2.5:7b-instruct")
 # Local lane endpoint — any OpenAI/Anthropic-compatible server on loopback.
-_LOCAL_URL_RAW = os.environ.get("ADAPT_LOCAL_URL", "http://127.0.0.1:11434").rstrip("/")
+_LOCAL_URL_RAW = os.environ.get("MORPH_LOCAL_URL", "http://127.0.0.1:11434").rstrip("/")
 LOCAL_URL = (_LOCAL_URL_RAW if "://" in _LOCAL_URL_RAW else f"http://{_LOCAL_URL_RAW}").rstrip("/")
 BATCH_CHAR_BUDGET = 24_000
 MAX_TOKENS = 8192
@@ -179,7 +179,7 @@ def preference_classification_reason(item: dict) -> str | None:
 
 SYNTH_SYSTEM = """You maintain durable coding-AGENT preferences for an operator.
 
-INPUT: JSON with `existing_rules` (every current rule in MemRight, regardless of category)
+INPUT: JSON with `existing_rules` (every current rule in Crypt, regardless of category)
 and `new_observations` from the extraction pass. New observations use one of these 8 categories:
   workflow, verification, safety, architecture, tooling, code-style, documentation, model-routing
 
@@ -191,7 +191,7 @@ into coherent rules and omit weaker, narrow, or redundant candidates rather than
 
 Each action:
   {"action": "add" | "update" | "deprecate",
-   "name": "<adapt-{category}-{3-5-word-slug}>",
+   "name": "<morph-{category}-{3-5-word-slug}>",
    "category": "<one of the 8>",
    "rule": "<= 40 words, imperative>",
    "confidence": <0.3-0.95>,
@@ -260,7 +260,7 @@ def _minimax_response(
     *,
     max_tokens: int = MAX_TOKENS,
     attempts: int = 3,
-    thinking: str = "adaptive",
+    thinking: str = "morphive",
     temperature: float = 0.2,
 ) -> dict:
     """Call MiniMax through the local proxy used by the workspace ``mm`` launcher.
@@ -326,7 +326,7 @@ def _minimax_llm(
     *,
     max_tokens: int = MAX_TOKENS,
     attempts: int = 3,
-    thinking: str = "adaptive",
+    thinking: str = "morphive",
     temperature: float = 0.2,
 ) -> str:
     return _minimax_response(
@@ -346,7 +346,7 @@ def call_lane_response(
     lane: str = "local",
     max_tokens: int = MAX_TOKENS,
     attempts: int = 3,
-    thinking: str = "adaptive",
+    thinking: str = "morphive",
     temperature: float = 0.2,
 ) -> dict:
     """Call a lane while preserving provider stop and usage metadata."""
@@ -377,7 +377,7 @@ def call_lane(
     lane: str = "local",
     max_tokens: int = MAX_TOKENS,
     attempts: int = 3,
-    thinking: str = "adaptive",
+    thinking: str = "morphive",
     temperature: float = 0.2,
 ) -> str:
     """Call a configured lane with explicit output and retry ceilings.
@@ -443,9 +443,9 @@ def _default_synth_llm(system: str, user: str, lane: str = "local") -> str:
 
 
 def _audit_path() -> Path:
-    """Lazily resolve audit target, honoring ADAPT_AUDIT_FILE_OVERRIDE for tests."""
-    override = os.environ.get("ADAPT_AUDIT_FILE_OVERRIDE")
-    p = Path(override) if override else (Path.home() / ".claude" / "adapt" / "audit.jsonl")
+    """Lazily resolve audit target, honoring MORPH_AUDIT_FILE_OVERRIDE for tests."""
+    override = os.environ.get("MORPH_AUDIT_FILE_OVERRIDE")
+    p = Path(override) if override else (Path.home() / ".claude" / "morph" / "audit.jsonl")
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -453,8 +453,8 @@ def _audit_path() -> Path:
 def _audit_parse_failure(stage: str, raw: str) -> None:
     """Append capped/redacted raw output when a non-empty response fails JSON parsing."""
     try:
-        import adapt_sessions  # local import to avoid cycle at import time
-        redacted = adapt_sessions.redact(raw)
+        import morph_sessions  # local import to avoid cycle at import time
+        redacted = morph_sessions.redact(raw)
     except Exception:
         redacted = raw
     entry = {"stage": stage, "event": "parse_failure", "raw": redacted[:RAW_AUDIT_CHARS]}
@@ -569,8 +569,8 @@ def extract_observations(batch: list[tuple[str, str, str]], llm=None, lane: str 
         return BatchOutcome.valid_empty("empty batch")
     # Batch-level scanner guard: one subprocess per LLM call, not per turn.
     if lane != "local":
-        import adapt_sessions  # local import avoids cycle
-        if not adapt_sessions.scan_batch_for_secrets(batch):
+        import morph_sessions  # local import avoids cycle
+        if not morph_sessions.scan_batch_for_secrets(batch):
             _audit_call_failure("extract", RuntimeError("scanner-positive batch refused"))
             return BatchOutcome.scanner_blocked("scanner-positive batch")
     user = build_extract_payload(batch)
@@ -661,8 +661,8 @@ def synthesize(existing: list[dict], observations: list[dict],
     if not observations:
         return BatchOutcome.valid_empty("no observations to synthesize")
     if lane != "local":
-        import adapt_sessions
-        if not adapt_sessions.scan_batch_for_secrets_str(json.dumps(observations)):
+        import morph_sessions
+        if not morph_sessions.scan_batch_for_secrets_str(json.dumps(observations)):
             _audit_call_failure("synthesize", RuntimeError("scanner-positive synth payload refused"))
             return BatchOutcome.scanner_blocked("scanner-positive synth payload")
     payload = json.dumps({"existing_rules": existing,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve a pending Adapt manifest through blinded calibrated consensus."""
+"""Resolve a pending Morph manifest through blinded calibrated consensus."""
 from __future__ import annotations
 
 import argparse
@@ -21,7 +21,7 @@ DEFAULT_PRIMARY_MODEL = "minimax-m3-direct"
 
 def _load_phase3():
     path = ROOT / "eval" / "run_phase3_corroboration.py"
-    spec = importlib.util.spec_from_file_location("adapt_phase3", path)
+    spec = importlib.util.spec_from_file_location("morph_phase3", path)
     if not spec or not spec.loader:
         raise RuntimeError(f"cannot load corroboration panel: {path}")
     module = importlib.util.module_from_spec(spec)
@@ -31,7 +31,7 @@ def _load_phase3():
 
 def _load_manifest_module():
     path = ROOT / "manifest.py"
-    spec = importlib.util.spec_from_file_location("adapt_manifest_contract", path)
+    spec = importlib.util.spec_from_file_location("morph_manifest_contract", path)
     if not spec or not spec.loader:
         raise RuntimeError(f"cannot load manifest contract: {path}")
     module = importlib.util.module_from_spec(spec)
@@ -116,7 +116,7 @@ def resolve_manifest(manifest: dict, panel: dict) -> tuple[dict, dict]:
             "votes": decision.get("votes", {}) if decision else {},
         })
 
-    resolved["generator"] = "adapt-adjudicate-manifest/1"
+    resolved["generator"] = "morph-adjudicate-manifest/1"
     counts = {
         "accepted": sum(item["status"] == "accepted" for item in decisions),
         "rejected": sum(item["status"] == "rejected" for item in decisions),
@@ -318,7 +318,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             planned_calls <= args.max_provider_calls
             and planned_chars <= args.max_input_chars
         ),
-        "live_memright_writes": 0,
+        "live_crypt_writes": 0,
         "live_state_writes": 0,
     }
     if args.dry_run:
@@ -335,13 +335,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(f"output exists; use --resume: {path}")
 
     sys.path.insert(0, str(ROOT))
-    import adapt_sessions
+    import morph_sessions
     run = run_calibrated_panel(
         panel_module=panel, cases=cases, expected_controls=expected,
         model_ids=args.models, calibration_dir=calibration_dir,
         calls_dir=args.calls_dir / "candidates",
         call_fn=panel._call_model,
-        scanner=adapt_sessions.scan_batch_for_secrets_str,
+        scanner=morph_sessions.scan_batch_for_secrets_str,
         chunk_size=args.chunk_size,
         max_provider_calls=args.max_provider_calls,
         max_tokens=args.max_tokens,

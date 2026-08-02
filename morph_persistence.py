@@ -1,4 +1,4 @@
-"""Atomic, attributed persistence for multi-installation Adapt manifests."""
+"""Atomic, attributed persistence for multi-installation Morph manifests."""
 
 from __future__ import annotations
 
@@ -27,26 +27,26 @@ import workspace_runtime  # noqa: E402
 import preference_record  # noqa: E402
 
 
-class AdaptPersistenceError(RuntimeError):
-    """Raised when a reviewed Adapt batch was not durably committed as one unit."""
+class MorphPersistenceError(RuntimeError):
+    """Raised when a reviewed Morph batch was not durably committed as one unit."""
 
 
 def _token_file() -> Path:
-    configured = os.environ.get("MEMRIGHT_API_TOKEN_FILE", "").strip()
+    configured = os.environ.get("CRYPT_API_TOKEN_FILE", "").strip()
     if configured:
         return Path(configured)
     db = Path(os.environ.get(
-        "MEMRIGHT_DB", str(WORKSPACE_ROOT / "tools/.cache/memory/memright-engine.db")
+        "CRYPT_DB", str(WORKSPACE_ROOT / "tools/.cache/memory/crypt-engine.db")
     ))
     return db.parent / "api-token"
 
 
 def _base_url() -> str:
-    return f"http://127.0.0.1:{workspace_runtime.memright_port(os.environ)}"
+    return f"http://127.0.0.1:{workspace_runtime.crypt_port(os.environ)}"
 
 
 def _normalize_scope(scope: str) -> str:
-    """Mirror MemRight's leading Windows drive-token normalization."""
+    """Mirror Crypt's leading Windows drive-token normalization."""
     if len(scope) >= 2 and scope[0].islower() and scope[0].isascii() and scope[0].isalpha() and scope[1] == "-":
         return scope[0].upper() + scope[1:]
     return scope
@@ -71,12 +71,12 @@ def _request_body(
     installation_id: str,
 ) -> dict:
     batch_digest = hashlib.sha256(manifest_batch_id.encode("utf-8")).hexdigest()
-    batch_id = f"adapt-{installation_id}-{batch_digest[:32]}"
-    session_id = f"adapt-{installation_id}-{batch_digest[:24]}"
-    trace_id = f"adapt-trace-{installation_id}-{batch_digest[:24]}"
+    batch_id = f"morph-{installation_id}-{batch_digest[:32]}"
+    session_id = f"morph-{installation_id}-{batch_digest[:24]}"
+    trace_id = f"morph-trace-{installation_id}-{batch_digest[:24]}"
     items = []
     for ordinal, record in enumerate(records):
-        content = preference_record.to_memright_content(record)
+        content = preference_record.to_crypt_content(record)
         canonical = json.dumps(
             {
                 "name": record.id,
@@ -90,13 +90,13 @@ def _request_body(
         )
         item_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         items.append({
-            "item_id": f"adapt-{ordinal:04d}-{item_digest[:24]}",
+            "item_id": f"morph-{ordinal:04d}-{item_digest[:24]}",
             "name": record.id,
             "content": content,
             "scope": record.scope,
             "tier": "Semantic",
-            "artifact_family": "adapt",
-            "producer": "adapt",
+            "artifact_family": "morph",
+            "producer": "morph",
             "record_type": record.record_type,
             "client": _source_client(record.source_ids),
             "session_id": session_id,
@@ -118,7 +118,7 @@ def persist_manifest_batch(
     """Commit all accepted records with one inference batch and one DB transaction."""
     if not records:
         return {
-            "batch_id": f"adapt-empty-{manifest_batch_id}",
+            "batch_id": f"morph-empty-{manifest_batch_id}",
             "inserted": 0,
             "duplicates": 0,
             "complete": True,
@@ -133,9 +133,9 @@ def persist_manifest_batch(
     try:
         token = path.read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise AdaptPersistenceError("MemRight API token is unavailable") from exc
+        raise MorphPersistenceError("Crypt API token is unavailable") from exc
     if not token:
-        raise AdaptPersistenceError("MemRight API token is empty")
+        raise MorphPersistenceError("Crypt API token is empty")
     request = urllib.request.Request(
         f"{(base_url or _base_url()).rstrip('/')}/v1/memories:batch",
         data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
@@ -150,11 +150,11 @@ def persist_manifest_batch(
             status = response.status
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        raise AdaptPersistenceError(f"MemRight batch rejected with HTTP {exc.code}") from exc
+        raise MorphPersistenceError(f"Crypt batch rejected with HTTP {exc.code}") from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise AdaptPersistenceError("MemRight batch service is unavailable") from exc
+        raise MorphPersistenceError("Crypt batch service is unavailable") from exc
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise AdaptPersistenceError("MemRight batch receipt is not valid JSON") from exc
+        raise MorphPersistenceError("Crypt batch receipt is not valid JSON") from exc
 
     receipts = payload.get("receipts")
     expected_item_ids = {item["item_id"] for item in body["items"]}
@@ -178,5 +178,5 @@ def persist_manifest_batch(
             for row in receipts
         )
     ):
-        raise AdaptPersistenceError("MemRight batch receipt is incomplete or inconsistent")
+        raise MorphPersistenceError("Crypt batch receipt is incomplete or inconsistent")
     return payload

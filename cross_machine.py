@@ -1,4 +1,4 @@
-"""Fail-closed multi-installation contracts for Adapt transcript mining."""
+"""Fail-closed multi-installation contracts for Morph transcript mining."""
 
 from __future__ import annotations
 
@@ -13,12 +13,12 @@ from typing import Any
 import rule_key
 
 
-class CrossMachineAdaptError(RuntimeError):
-    """Raised when an Adapt manifest cannot safely join the shared rule pool."""
+class CrossMachineMorphError(RuntimeError):
+    """Raised when an Morph manifest cannot safely join the shared rule pool."""
 
 
 _RULE_LINE = re.compile(
-    r"^\*\*\[adapt/(?P<category>[a-z-]+)\]\*\* — (?P<rule>.+?) "
+    r"^\*\*\[morph/(?P<category>[a-z-]+)\]\*\* — (?P<rule>.+?) "
     r"Confidence: (?P<confidence>(?:0(?:\.\d+)?|1(?:\.0+)?)) "
     r"\(observations: (?P<observations>\d+), needs_review: "
     r"(?P<needs_review>true|false), updated \d{4}-\d{2}-\d{2}\)$"
@@ -38,9 +38,9 @@ def _uuid4(value: object) -> str:
     try:
         parsed = uuid.UUID(str(value))
     except (TypeError, ValueError) as exc:
-        raise CrossMachineAdaptError("invalid installation identity") from exc
+        raise CrossMachineMorphError("invalid installation identity") from exc
     if parsed.version != 4 or str(parsed) != str(value):
-        raise CrossMachineAdaptError("invalid installation identity")
+        raise CrossMachineMorphError("invalid installation identity")
     return str(parsed)
 
 
@@ -48,16 +48,16 @@ def load_installation_id(path: Path) -> str:
     try:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise CrossMachineAdaptError("installation identity is unavailable") from exc
+        raise CrossMachineMorphError("installation identity is unavailable") from exc
     if not isinstance(payload, dict) or payload.get("schema_version") != 2:
-        raise CrossMachineAdaptError("installation identity is not schema v2")
+        raise CrossMachineMorphError("installation identity is not schema v2")
     return _uuid4(payload.get("installation_id"))
 
 
 def qualify_source_session(installation_id: str, tool: str, session_id: str) -> str:
     installation = _uuid4(installation_id)
     if not isinstance(tool, str) or not _TOOL.fullmatch(tool) or not str(session_id).strip():
-        raise CrossMachineAdaptError("invalid source session identity")
+        raise CrossMachineMorphError("invalid source session identity")
     digest = hashlib.sha256(
         f"{tool}\0{session_id}".encode("utf-8")
     ).hexdigest()[:32]
@@ -74,20 +74,20 @@ def _parse_rule_row(
     record_type: str,
 ) -> tuple[str, dict[str, Any]] | None:
     name = memory_id[len(scope) + 1 :] if memory_id.startswith(f"{scope}/") else memory_id
-    if not name.startswith("adapt-"):
+    if not name.startswith("morph-"):
         return None
     first_line = content.splitlines()[0] if content else ""
-    if not first_line.startswith("**[adapt/"):
+    if not first_line.startswith("**[morph/"):
         return None
     match = _RULE_LINE.fullmatch(first_line)
     try:
         source_ids = json.loads(source_ids_raw)
     except json.JSONDecodeError as exc:
-        raise CrossMachineAdaptError(f"canonical Adapt row has invalid source IDs: {name}") from exc
+        raise CrossMachineMorphError(f"canonical Morph row has invalid source IDs: {name}") from exc
     if not isinstance(source_ids, list) or not all(isinstance(value, str) for value in source_ids):
-        raise CrossMachineAdaptError(f"canonical Adapt row has invalid source IDs: {name}")
+        raise CrossMachineMorphError(f"canonical Morph row has invalid source IDs: {name}")
     if match is None:
-        raise CrossMachineAdaptError(f"canonical Adapt row has invalid envelope: {name}")
+        raise CrossMachineMorphError(f"canonical Morph row has invalid envelope: {name}")
     retrieval_aliases: list[str] = []
     authority_effect = "neutral"
     envelope_record_type = record_type
@@ -121,10 +121,10 @@ def _parse_rule_row(
 
 
 def load_canonical_rules(db_path: Path) -> dict[str, dict[str, Any]]:
-    """Read the canonical Adapt pool from SQLite without mutating or embedding."""
+    """Read the canonical Morph pool from SQLite without mutating or embedding."""
     path = Path(db_path).resolve()
     if not path.is_file():
-        raise CrossMachineAdaptError(f"canonical MemRight DB is unavailable: {path}")
+        raise CrossMachineMorphError(f"canonical Crypt DB is unavailable: {path}")
     uri = f"file:{path.as_posix()}?mode=ro"
     try:
         conn = sqlite3.connect(uri, uri=True)
@@ -136,10 +136,10 @@ def load_canonical_rules(db_path: Path) -> dict[str, dict[str, Any]]:
         )
         rows = conn.execute(
             f"SELECT id, scope_id, content, source_ids, created_at, updated_at, {record_type} "
-            "FROM memories WHERE id LIKE '%/adapt-%' OR id LIKE 'adapt-%' ORDER BY id"
+            "FROM memories WHERE id LIKE '%/morph-%' OR id LIKE 'morph-%' ORDER BY id"
         ).fetchall()
     except sqlite3.Error as exc:
-        raise CrossMachineAdaptError("canonical Adapt pool query failed") from exc
+        raise CrossMachineMorphError("canonical Morph pool query failed") from exc
     finally:
         try:
             conn.close()
@@ -160,7 +160,7 @@ def load_canonical_rules(db_path: Path) -> dict[str, dict[str, Any]]:
         rk = rule_key.RuleKey(scope=str(scope), record_id=name)
         key = rk.formatted()
         if key in rules:
-            raise CrossMachineAdaptError(f"duplicate canonical Adapt identity: {key}")
+            raise CrossMachineMorphError(f"duplicate canonical Morph identity: {key}")
         rules[key] = rule
     return rules
 
@@ -196,10 +196,10 @@ def canonical_pool_sha256(rules: dict[str, dict[str, Any]]) -> str:
 
 def _validate_source_id(value: object) -> re.Match[str]:
     if not isinstance(value, str):
-        raise CrossMachineAdaptError("invalid installation-qualified source session")
+        raise CrossMachineMorphError("invalid installation-qualified source session")
     match = _SOURCE_ID.fullmatch(value)
     if match is None:
-        raise CrossMachineAdaptError("invalid installation-qualified source session")
+        raise CrossMachineMorphError("invalid installation-qualified source session")
     _uuid4(match.group("installation"))
     return match
 
@@ -213,22 +213,22 @@ def validate_multiwriter_binding(
     """Refuse apply when identity, evidence namespace, or canonical pool changed."""
     installation = _uuid4(installation_id)
     if manifest.get("installation_id") != installation:
-        raise CrossMachineAdaptError("manifest installation does not match this installation")
+        raise CrossMachineMorphError("manifest installation does not match this installation")
     expected = canonical_pool_sha256(canonical_rules)
     if manifest.get("canonical_pool_sha256") != expected:
-        raise CrossMachineAdaptError("canonical Adapt pool changed; regenerate the manifest")
+        raise CrossMachineMorphError("canonical Morph pool changed; regenerate the manifest")
     sources = manifest.get("source_session_ids")
     if not isinstance(sources, list) or not sources:
-        raise CrossMachineAdaptError("manifest has no installation-qualified source sessions")
+        raise CrossMachineMorphError("manifest has no installation-qualified source sessions")
     source_set = set(sources)
     if len(source_set) != len(sources):
-        raise CrossMachineAdaptError("manifest source sessions are duplicated")
+        raise CrossMachineMorphError("manifest source sessions are duplicated")
     for source in sources:
         match = _validate_source_id(source)
         if match.group("installation") != installation:
-            raise CrossMachineAdaptError("manifest source session belongs to another installation")
+            raise CrossMachineMorphError("manifest source session belongs to another installation")
     for record in manifest.get("records", []):
         for source in record.get("source_ids") or []:
             _validate_source_id(source)
             if source not in source_set:
-                raise CrossMachineAdaptError("record source is outside the bound manifest sessions")
+                raise CrossMachineMorphError("record source is outside the bound manifest sessions")

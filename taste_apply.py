@@ -1,4 +1,4 @@
-"""Taste apply — reviewed manifest → MemRight (zero LLM calls)."""
+"""Taste apply — reviewed manifest → Crypt (zero LLM calls)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import adapt_sessions as ts  # noqa: E402
+import morph_sessions as ts  # noqa: E402
 try:
     import run_journal  # noqa: E402
 except ImportError:
@@ -20,14 +20,14 @@ import manifest  # noqa: E402
 import authority  # noqa: E402
 import rollback  # noqa: E402
 import cross_machine  # noqa: E402
-import adapt_persistence  # noqa: E402
+import morph_persistence  # noqa: E402
 import taste  # noqa: E402
 
 
 def _host_module():
-    if "adapt_cli" in sys.modules:
-        return sys.modules["adapt_cli"]
-    return sys.modules.get("adapt")
+    if "morph_cli" in sys.modules:
+        return sys.modules["morph_cli"]
+    return sys.modules.get("morph")
 
 
 def _host_attr(name: str, default):
@@ -37,7 +37,7 @@ def _host_attr(name: str, default):
     return default
 
 def _preflight_apply_manifest() -> bool:
-    """Minimal preflight for `--apply-from-manifest`: memright + scanner only.
+    """Minimal preflight for `--apply-from-manifest`: crypt + scanner only.
 
     The LLM lane is irrelevant — no provider calls happen on apply.
     """
@@ -45,8 +45,8 @@ def _preflight_apply_manifest() -> bool:
         print("error: scanner (detect-secrets/gitleaks) unavailable; "
               "refusing manifest apply", file=sys.stderr)
         return False
-    if not _host_attr("_run_memright", taste._run_memright)(["--help"]):
-        print("error: memright shim unavailable; refusing manifest apply",
+    if not _host_attr("_run_crypt", taste._run_crypt)(["--help"]):
+        print("error: crypt shim unavailable; refusing manifest apply",
               file=sys.stderr)
         return False
     return True
@@ -54,11 +54,11 @@ def _preflight_apply_manifest() -> bool:
 
 def _create_apply_safepoint(manifest_body: dict) -> Path:
     """Create the mandatory pre-write Gate 4 safe-point."""
-    db_override = os.environ.get("ADAPT_SAFEPOINT_DB_OVERRIDE")
+    db_override = os.environ.get("MORPH_SAFEPOINT_DB_OVERRIDE")
     db_path = Path(db_override) if db_override else rollback._discover_db_path(manifest_body)
     if not db_path or not db_path.exists():
-        raise RuntimeError(f"MemRight DB unavailable for safe-point: {db_path}")
-    out_override = os.environ.get("ADAPT_SAFEPOINT_DIR_OVERRIDE")
+        raise RuntimeError(f"Crypt DB unavailable for safe-point: {db_path}")
+    out_override = os.environ.get("MORPH_SAFEPOINT_DIR_OVERRIDE")
     out_path = None
     if out_override:
         out_path = Path(out_override) / f"{manifest_body['batch_id']}.json"
@@ -80,7 +80,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
       - batch_id must match a journal discovered entry with the same sessions
       - only ``accepted`` records are written
       - state advances only after every put succeeds
-      - on any put failure, partial writes are rolled back via memright delete
+      - on any put failure, partial writes are rolled back via crypt delete
         and state does NOT advance
     """
     try:
@@ -131,7 +131,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
             )
         else:
             expected_sessions = j_sessions
-    except (cross_machine.CrossMachineAdaptError, KeyError) as exc:
+    except (cross_machine.CrossMachineMorphError, KeyError) as exc:
         print(f"error: refusing multiwriter manifest: {exc}", file=sys.stderr)
         return 2
     if expected_sessions != m_sessions:
@@ -165,7 +165,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
     if not _host_attr("_preflight_apply_manifest", _preflight_apply_manifest)():
         return 2
 
-    print(f"adapt: applying manifest {manifest_path}")
+    print(f"morph: applying manifest {manifest_path}")
     print(f"  batch_id={batch_id}, sessions={len(j_sessions)}, "
           f"accepted={len(accepted)}, rejected={len(rejected)}")
 
@@ -233,12 +233,12 @@ def apply_from_manifest(manifest_path: Path) -> int:
         assert multiwriter_context is not None
         installation_id, _canonical_rules = multiwriter_context
         try:
-            adapt_persistence.persist_manifest_batch(
+            morph_persistence.persist_manifest_batch(
                 prepared,
                 manifest_batch_id=batch_id,
                 installation_id=installation_id,
             )
-        except adapt_persistence.AdaptPersistenceError as exc:
+        except morph_persistence.MorphPersistenceError as exc:
             failed.append((batch_id, str(exc)))
             taste._audit({"event": "manifest_batch_apply_failed", "batch_id": batch_id,
                     "error": str(exc)})
@@ -254,20 +254,20 @@ def apply_from_manifest(manifest_path: Path) -> int:
     # multiwriter manifests, whose resident service transaction is all-or-nothing.
     if not failed and not multiwriter:
         for pr in prepared:
-            body = preference_record.to_memright_content(pr)
+            body = preference_record.to_crypt_content(pr)
             with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False,
                                              encoding="utf-8",
                                              dir=str(out_dir)) as tmp:
                 tmp.write(body)
                 tmp_path = tmp.name
             tmp_paths.append(Path(tmp_path))
-            ok = _host_attr("_run_memright", taste._run_memright)(["put", pr.id, "--scope", pr.scope, "--file", tmp_path])
+            ok = _host_attr("_run_crypt", taste._run_crypt)(["put", pr.id, "--scope", pr.scope, "--file", tmp_path])
             if ok:
                 written.append((pr.id, pr.scope))
                 taste._audit({"event": "manifest_applied", "id": pr.id,
                         "scope": pr.scope, "manifest": str(manifest_path)})
             else:
-                failed.append((pr.id, "memright put failed"))
+                failed.append((pr.id, "crypt put failed"))
                 taste._audit({"event": "manifest_apply_failed", "id": pr.id,
                         "scope": pr.scope})
                 break
@@ -285,7 +285,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
             for w, scope in written:
                 try:
                     qualified = f"{scope}/{w}"
-                    if _host_attr("_run_memright", taste._run_memright)(["delete", qualified]):
+                    if _host_attr("_run_crypt", taste._run_crypt)(["delete", qualified]):
                         taste._audit({"event": "manifest_rollback_deleted", "id": qualified})
                     else:
                         print(f"warn: failed to rollback {qualified}", file=sys.stderr)
@@ -308,7 +308,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
         dt.datetime.now(dt.timezone.utc).isoformat()
     ts.save_state(state)
 
-    # Mirror rules.json locally so adapt_digest stays usable.
+    # Mirror rules.json locally so morph_digest stays usable.
     try:
         rules_obj: dict = {}
         rp = taste._rules_path()
@@ -345,6 +345,6 @@ def apply_from_manifest(manifest_path: Path) -> int:
                names=[name for name, _scope in written])
     jrn.record(batch_id, "committed", applied=len(accepted),
                sessions=j_sessions)
-    print(f"adapt: applied {len(accepted)} manifest records; "
+    print(f"morph: applied {len(accepted)} manifest records; "
           f"sessions learned: {len(j_sessions)}")
     return 0

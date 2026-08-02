@@ -94,7 +94,7 @@ def _packet(batch_id: str, batch: Sequence[dict], all_rules: Sequence[dict],
         })
     index = [{"name": item["name"], "scope": item.get("scope"), "rule": item["rule"]}
              for item in all_rules]
-    return f"""TASK: Review one batch of compiled Adapt candidates for semantic safety and coherence.
+    return f"""TASK: Review one batch of compiled Morph candidates for semantic safety and coherence.
 
 Authority excerpts outrank every candidate. Review EVERY batch candidate. The global rule index is
 context for duplicates/contradictions only; do not count index-only rules as reviewed. Flag only:

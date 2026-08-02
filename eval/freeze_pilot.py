@@ -1,9 +1,9 @@
-"""Freeze a deterministic, local-only Adapt pilot corpus without model calls.
+"""Freeze a deterministic, local-only Morph pilot corpus without model calls.
 
 The package contains selected raw transcripts, parsed/redacted corpus rows,
 exact extraction payloads, authority source copies, recursive initial-rule
 artifacts, and a strict content-hashed manifest. Nothing is sent externally and
-no MemRight service is contacted.
+no Crypt service is contacted.
 """
 from __future__ import annotations
 
@@ -21,13 +21,13 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-ADAPT_DIR = Path(__file__).resolve().parent.parent
+MORPH_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = Path(__file__).resolve().parents[5]
 SCHEMA_PATH = Path(__file__).resolve().parent / "pilot-corpus.schema.json"
-sys.path.insert(0, str(ADAPT_DIR))
+sys.path.insert(0, str(MORPH_DIR))
 
-import adapt_llm  # noqa: E402
-import adapt_sessions  # noqa: E402
+import morph_llm  # noqa: E402
+import morph_sessions  # noqa: E402
 import authority  # noqa: E402
 
 SCHEMA_VERSION = "1.0.0"
@@ -70,23 +70,23 @@ def _safe(value: str) -> str:
     return _SAFE_RE.sub("-", value).strip("-") or "item"
 
 
-def _identity(session: adapt_sessions.Session) -> tuple[str, str, str]:
+def _identity(session: morph_sessions.Session) -> tuple[str, str, str]:
     return (session.tool, session.session_id, session.path.resolve().as_posix())
 
 
-def primary_scope(session: adapt_sessions.Session) -> str:
+def primary_scope(session: morph_sessions.Session) -> str:
     counts = collections.Counter(turn.scope for turn in session.turns)
     if not counts:
-        return adapt_sessions.scope_for_cwd(session.cwd)
+        return morph_sessions.scope_for_cwd(session.cwd)
     maximum = max(counts.values())
     return min(scope for scope, count in counts.items() if count == maximum)
 
 
-def _char_count(session: adapt_sessions.Session) -> int:
+def _char_count(session: morph_sessions.Session) -> int:
     return sum(len(turn.text) for turn in session.turns)
 
 
-def _size_bucket(session: adapt_sessions.Session) -> str:
+def _size_bucket(session: morph_sessions.Session) -> str:
     count = _char_count(session)
     for ceiling, label in SIZE_BUCKETS:
         if count <= ceiling:
@@ -94,8 +94,8 @@ def _size_bucket(session: adapt_sessions.Session) -> str:
     return "large"
 
 
-def _recency_map(sessions: Iterable[adapt_sessions.Session]) -> dict[tuple[str, str, str], str]:
-    by_tool: dict[str, list[adapt_sessions.Session]] = collections.defaultdict(list)
+def _recency_map(sessions: Iterable[morph_sessions.Session]) -> dict[tuple[str, str, str], str]:
+    by_tool: dict[str, list[morph_sessions.Session]] = collections.defaultdict(list)
     for session in sessions:
         by_tool[session.tool].append(session)
     result: dict[tuple[str, str, str], str] = {}
@@ -112,24 +112,24 @@ def _recency_map(sessions: Iterable[adapt_sessions.Session]) -> dict[tuple[str, 
 
 
 def _stratum_key(
-    session: adapt_sessions.Session,
+    session: morph_sessions.Session,
     recency: dict[tuple[str, str, str], str],
 ) -> tuple[str, str, str]:
     return (primary_scope(session), recency[_identity(session)], _size_bucket(session))
 
 
 def select_sessions(
-    sessions: Iterable[adapt_sessions.Session],
+    sessions: Iterable[morph_sessions.Session],
     *,
     target: int = DEFAULT_TARGET,
-) -> list[adapt_sessions.Session]:
+) -> list[morph_sessions.Session]:
     """Balance tools, then round-robin scope/recency/size strata deterministically."""
     if target <= 0:
         return []
     unique = {_identity(session): session for session in sessions if session.turns}
     ordered = [unique[key] for key in sorted(unique)]
     recency = _recency_map(ordered)
-    grouped: dict[str, dict[tuple[str, str, str], list[adapt_sessions.Session]]] = (
+    grouped: dict[str, dict[tuple[str, str, str], list[morph_sessions.Session]]] = (
         collections.defaultdict(lambda: collections.defaultdict(list))
     )
     for session in ordered:
@@ -142,7 +142,7 @@ def select_sessions(
 
     stratum_order = {tool: sorted(strata) for tool, strata in grouped.items()}
     pointers = {tool: 0 for tool in grouped}
-    selected: list[adapt_sessions.Session] = []
+    selected: list[morph_sessions.Session] = []
     tools = sorted(grouped)
     while len(selected) < min(target, len(ordered)):
         progressed = False
@@ -166,10 +166,10 @@ def select_sessions(
 
 
 def filter_settled_sessions(
-    sessions: Iterable[adapt_sessions.Session],
+    sessions: Iterable[morph_sessions.Session],
     *,
     eligible_before_ns: int | None,
-) -> list[adapt_sessions.Session]:
+) -> list[morph_sessions.Session]:
     if eligible_before_ns is None:
         return list(sessions)
     return [
@@ -216,19 +216,19 @@ def _artifact_files(roots: Iterable[Path]) -> list[tuple[str, Path, Path, str]]:
     return result
 
 
-def _turns_sha256(session: adapt_sessions.Session) -> str:
+def _turns_sha256(session: morph_sessions.Session) -> str:
     return _sha256_bytes(_json_bytes([
         {"scope": turn.scope, "text": turn.text}
         for turn in session.turns
     ]))
 
 
-def _stable_source_hash(session: adapt_sessions.Session) -> str:
+def _stable_source_hash(session: morph_sessions.Session) -> str:
     before = _sha256_file(session.path)
     parser = (
-        adapt_sessions.parse_claude_session
+        morph_sessions.parse_claude_session
         if session.tool == "claude-code"
-        else adapt_sessions.parse_codex_session
+        else morph_sessions.parse_codex_session
     )
     reparsed = parser(session.path)
     after = _sha256_file(session.path)
@@ -253,10 +253,10 @@ def _git_value(args: list[str]) -> str:
 
 def _version_record(out_dir: Path) -> dict:
     files = [
-        ADAPT_DIR / "adapt_sessions.py",
-        ADAPT_DIR / "adapt_llm.py",
-        ADAPT_DIR / "admission.py",
-        ADAPT_DIR / "outcomes.py",
+        MORPH_DIR / "morph_sessions.py",
+        MORPH_DIR / "morph_llm.py",
+        MORPH_DIR / "admission.py",
+        MORPH_DIR / "outcomes.py",
         Path(__file__).resolve(),
         SCHEMA_PATH,
     ]
@@ -275,18 +275,18 @@ def _version_record(out_dir: Path) -> dict:
         "git_dirty": bool(_git_value(["status", "--porcelain"])),
         "files": records,
         "constants": {
-            "batch_char_budget": adapt_llm.BATCH_CHAR_BUDGET,
-            "min_turn_chars": adapt_sessions.MIN_TURN_CHARS,
-            "max_turn_chars": adapt_sessions.MAX_TURN_CHARS,
-            "max_turns_per_session": adapt_sessions.MAX_TURNS_PER_SESSION,
-            "extract_system_sha256": _sha256_bytes(adapt_llm.EXTRACT_SYSTEM.encode("utf-8")),
-            "synth_system_sha256": _sha256_bytes(adapt_llm.SYNTH_SYSTEM.encode("utf-8")),
+            "batch_char_budget": morph_llm.BATCH_CHAR_BUDGET,
+            "min_turn_chars": morph_sessions.MIN_TURN_CHARS,
+            "max_turn_chars": morph_sessions.MAX_TURN_CHARS,
+            "max_turns_per_session": morph_sessions.MAX_TURNS_PER_SESSION,
+            "extract_system_sha256": _sha256_bytes(morph_llm.EXTRACT_SYSTEM.encode("utf-8")),
+            "synth_system_sha256": _sha256_bytes(morph_llm.SYNTH_SYSTEM.encode("utf-8")),
         },
     }
 
 
 def freeze_pilot(
-    sessions: Iterable[adapt_sessions.Session],
+    sessions: Iterable[morph_sessions.Session],
     out_dir: Path,
     *,
     target: int = DEFAULT_TARGET,
@@ -363,8 +363,8 @@ def freeze_pilot(
     (out_dir / corpus_rel).write_bytes(corpus_bytes)
     turns = [(row["tool"], row["scope"], row["text"]) for row in corpus_rows]
     batches = []
-    for index, batch in enumerate(adapt_llm.build_batches(turns), 1):
-        payload = adapt_llm.build_extract_payload(batch).encode("utf-8")
+    for index, batch in enumerate(morph_llm.build_batches(turns), 1):
+        payload = morph_llm.build_extract_payload(batch).encode("utf-8")
         payload_rel = Path("extraction-payloads") / f"batch-{index:03d}.json"
         (out_dir / payload_rel).parent.mkdir(parents=True, exist_ok=True)
         (out_dir / payload_rel).write_bytes(payload)
@@ -412,7 +412,7 @@ def freeze_pilot(
     )
     quality = {
         field.name: sum(item["stats"][field.name] for item in session_records)
-        for field in dataclasses.fields(adapt_sessions.ParseStats)
+        for field in dataclasses.fields(morph_sessions.ParseStats)
     }
     manifest = {
         "schema_version": SCHEMA_VERSION,
@@ -449,7 +449,7 @@ def freeze_pilot(
         "quality": quality,
         "sessions": session_records,
         "extraction": {
-            "batch_char_budget": adapt_llm.BATCH_CHAR_BUDGET,
+            "batch_char_budget": morph_llm.BATCH_CHAR_BUDGET,
             "batch_count": len(batches),
             "batches": batches,
         },
@@ -465,7 +465,7 @@ def freeze_pilot(
     }
     content_hash = _content_sha256(manifest)
     manifest["content_sha256"] = content_hash
-    manifest["pilot_id"] = f"adapt-pilot-{content_hash[:12]}"
+    manifest["pilot_id"] = f"morph-pilot-{content_hash[:12]}"
     manifest["manifest_sha256"] = manifest_sha256(manifest)
     manifest_path = out_dir / "manifest.json"
     manifest_path.write_text(
@@ -497,7 +497,7 @@ def validate_manifest(path: Path) -> dict:
         raise ValueError("pilot manifest hash mismatch")
     if raw["content_sha256"] != _content_sha256(raw):
         raise ValueError("pilot content hash mismatch")
-    if raw["pilot_id"] != f"adapt-pilot-{raw['content_sha256'][:12]}":
+    if raw["pilot_id"] != f"morph-pilot-{raw['content_sha256'][:12]}":
         raise ValueError("pilot id does not match content hash")
     package_root = path.parent
     checks = [(raw["corpus"]["path"], raw["corpus"]["sha256"])]
@@ -551,16 +551,16 @@ def validate_manifest(path: Path) -> dict:
     return raw
 
 
-def discover_all_sessions() -> list[adapt_sessions.Session]:
+def discover_all_sessions() -> list[morph_sessions.Session]:
     sessions = []
-    for tool, path in adapt_sessions.discover():
+    for tool, path in morph_sessions.discover():
         parser = (
-            adapt_sessions.parse_claude_session
+            morph_sessions.parse_claude_session
             if tool == "claude-code"
-            else adapt_sessions.parse_codex_session
+            else morph_sessions.parse_codex_session
         )
         session = parser(path)
-        if session is not None and not adapt_sessions.scope_excluded(session.cwd):
+        if session is not None and not morph_sessions.scope_excluded(session.cwd):
             sessions.append(session)
     return sessions
 
@@ -569,8 +569,8 @@ def _default_artifact_roots(workspace_root: Path) -> list[Path]:
     candidates = [
         workspace_root / ".commandcode" / "taste",
         Path.home() / ".commandcode" / "taste",
-        adapt_sessions.STATE_DIR / "rules.json",
-        adapt_sessions.STATE_DIR / "adapt-digest.md",
+        morph_sessions.STATE_DIR / "rules.json",
+        morph_sessions.STATE_DIR / "morph-digest.md",
     ]
     unique = []
     seen = set()

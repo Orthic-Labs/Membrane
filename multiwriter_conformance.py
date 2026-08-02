@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Issue and validate content-free Adapt multi-installation conformance receipts.
+"""Issue and validate content-free Morph multi-installation conformance receipts.
 
-The receipt binds one schema-v2 installation to the current canonical Adapt
+The receipt binds one schema-v2 installation to the current canonical Morph
 pool, exact implementation and test files, the installed resident binary and
 its authenticated atomic-batch route, local transcript discovery counts, the
-append-only Git mirror boundary, and a disabled ``memright-daily`` scheduler.
+append-only Git mirror boundary, and a disabled ``crypt-daily`` scheduler.
 It never starts, stops, installs, or schedules anything.
 """
 
@@ -28,27 +28,27 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
-ADAPT_DIR = Path(__file__).resolve().parent
+MORPH_DIR = Path(__file__).resolve().parent
 import workspace_runtime  # noqa: E402
 
 REPO_ROOT = workspace_runtime.workspace_root()
 TOOLS_LIB = REPO_ROOT / "tools" / "lib"
 MEMORY_DIR = REPO_ROOT / "tools" / "pipelines" / "memory"
-for directory in (REPO_ROOT, ADAPT_DIR, TOOLS_LIB, MEMORY_DIR):
+for directory in (REPO_ROOT, MORPH_DIR, TOOLS_LIB, MEMORY_DIR):
     if str(directory) not in sys.path:
         sys.path.insert(0, str(directory))
 
-import adapt_sessions  # noqa: E402
+import morph_sessions  # noqa: E402
 import cross_machine  # noqa: E402
 
 mirror_append_only = workspace_runtime.mirror_append_only()
 context_session_adapters = workspace_runtime.context_session_adapters()
 context_session_inventory = workspace_runtime.context_session_inventory()
-memright_port = workspace_runtime.memright_port
+crypt_port = workspace_runtime.crypt_port
 
 
 SCHEMA_VERSION = 1
-KIND = "adapt_multiwriter_conformance"
+KIND = "morph_multiwriter_conformance"
 MAX_RECEIPT_TTL_SECONDS = 3600
 DEFAULT_TTL_SECONDS = 900
 SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -61,23 +61,23 @@ DISCOVERY_FIELDS = ("discovered", *DISCOVERY_OUTCOMES, "pending")
 DEFAULT_IMPLEMENTATION_FILES = (
     "tools/pipelines/memory/context_session_adapters.py",
     "tools/pipelines/memory/context_session_inventory.py",
-    "adapt/adapt.py",
-    "adapt/adapt_sessions.py",
-    "adapt/adapt_persistence.py",
-    "adapt/cross_machine.py",
-    "adapt/adjudicate_manifest.py",
-    "adapt/manifest.py",
-    "adapt/preference_record.py",
-    "adapt/preference-manifest.schema.json",
-    "adapt/multiwriter_conformance.py",
-    "adapt/run_incremental_multiwriter.py",
-    "adapt/morph_event_learning.py",
+    "morph/morph.py",
+    "morph/morph_sessions.py",
+    "morph/morph_persistence.py",
+    "morph/cross_machine.py",
+    "morph/adjudicate_manifest.py",
+    "morph/manifest.py",
+    "morph/preference_record.py",
+    "morph/preference-manifest.schema.json",
+    "morph/multiwriter_conformance.py",
+    "morph/run_incremental_multiwriter.py",
+    "morph/morph_event_learning.py",
 )
 DEFAULT_TEST_FILES = (
     "tools/pipelines/memory/test_context_session_harnesses.py",
-    "adapt/test_multiwriter_conformance.py",
-    "adapt/test_run_incremental_multiwriter.py",
-    "adapt/test_morph_event_learning.py",
+    "morph/test_multiwriter_conformance.py",
+    "morph/test_run_incremental_multiwriter.py",
+    "morph/test_morph_event_learning.py",
 )
 EVIDENCE_KEYS = {
     "installation_id",
@@ -100,7 +100,7 @@ RECEIPT_KEYS = EVIDENCE_KEYS | {
 
 
 class ConformanceError(RuntimeError):
-    """Raised when an installation cannot safely run multiwriter Adapt."""
+    """Raised when an installation cannot safely run multiwriter Morph."""
 
 
 def _canonical(value: object) -> bytes:
@@ -196,7 +196,7 @@ def discovery_counts(
 ) -> dict[str, dict[str, int]]:
     clients = {str(client) for client in registered_clients}
     if any(not CLIENT_RE.fullmatch(client) for client in clients):
-        raise ConformanceError("session adapter registered an invalid client")
+        raise ConformanceError("session morpher registered an invalid client")
     counts = {
         client: {field: 0 for field in DISCOVERY_FIELDS}
         for client in sorted(clients)
@@ -204,14 +204,14 @@ def discovery_counts(
     learned = state.get("learned", {}) if isinstance(state, Mapping) else {}
     for item in discovered:
         if not isinstance(item, Mapping):
-            raise ConformanceError("session adapter emitted invalid accounting")
+            raise ConformanceError("session morpher emitted invalid accounting")
         client = str(item.get("client") or "")
         tool = str(item.get("tool") or "")
         outcome = str(item.get("outcome") or "")
         if not CLIENT_RE.fullmatch(client) or not CLIENT_RE.fullmatch(tool):
-            raise ConformanceError("session adapter emitted invalid accounting")
+            raise ConformanceError("session morpher emitted invalid accounting")
         if outcome not in DISCOVERY_OUTCOMES:
-            raise ConformanceError("session adapter emitted invalid accounting")
+            raise ConformanceError("session morpher emitted invalid accounting")
         path = Path(item.get("path"))
         counts.setdefault(client, {field: 0 for field in DISCOVERY_FIELDS})
         try:
@@ -225,7 +225,7 @@ def discovery_counts(
         prior = tool_state.get(state_key, -1.0) if isinstance(tool_state, Mapping) else -1.0
         if (
             outcome == "parsed"
-            and not adapt_sessions.is_active_session(tool, path)
+            and not morph_sessions.is_active_session(tool, path)
             and (not isinstance(prior, (int, float)) or prior < mtime)
         ):
             counts[client]["pending"] += 1
@@ -240,7 +240,7 @@ def discover_session_evidence(
 ) -> dict[str, Any]:
     """Return content-free registry accounting plus an in-memory source/client join."""
     registry = context_session_adapters.build_registry(
-        adapt_sessions,
+        morph_sessions,
         context_session_inventory.infer_candidate_client,
         env=env,
     )
@@ -266,7 +266,7 @@ def discover_session_evidence(
             "tool": candidate.tool,
             "path": candidate.path,
             "outcome": outcome,
-            "state_key": adapt_sessions.state_key(candidate.tool, candidate.path),
+            "state_key": morph_sessions.state_key(candidate.tool, candidate.path),
         })
         if parsed is not None and installation_id is not None:
             source_id = cross_machine.qualify_source_session(
@@ -277,7 +277,7 @@ def discover_session_evidence(
             existing = source_clients.setdefault(source_id, candidate.client)
             if existing != candidate.client:
                 raise ConformanceError("session source maps to multiple clients")
-    effective_state = state if state is not None else adapt_sessions.load_state()
+    effective_state = state if state is not None else morph_sessions.load_state()
     return {
         "discovery": discovery_counts(
             rows,
@@ -310,7 +310,7 @@ def _normalized_os() -> str:
         return "windows"
     if value == "Darwin":
         return "macos"
-    raise ConformanceError(f"unsupported Adapt conformance platform: {value}")
+    raise ConformanceError(f"unsupported Morph conformance platform: {value}")
 
 
 def _normalized_arch() -> str:
@@ -319,7 +319,7 @@ def _normalized_arch() -> str:
         return "x86_64"
     if value in {"arm64", "aarch64"}:
         return "aarch64"
-    raise ConformanceError(f"unsupported Adapt conformance architecture: {value}")
+    raise ConformanceError(f"unsupported Morph conformance architecture: {value}")
 
 
 def service_evidence(
@@ -336,13 +336,13 @@ def service_evidence(
         release_bytes = Path(release_manifest_path).read_bytes()
         release = json.loads(release_bytes)
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ConformanceError("MemRight release manifest is unavailable or invalid") from exc
+        raise ConformanceError("Crypt release manifest is unavailable or invalid") from exc
     if not isinstance(release, dict):
-        raise ConformanceError("MemRight release manifest is unavailable or invalid")
-    role = "service" if binary.name.startswith("memright-service") else "cli"
+        raise ConformanceError("Crypt release manifest is unavailable or invalid")
+    role = "service" if binary.name.startswith("crypt-service") else "cli"
     assets = release.get("assets")
     if not isinstance(assets, list):
-        raise ConformanceError("MemRight release manifest has no assets")
+        raise ConformanceError("Crypt release manifest has no assets")
     matches = [
         row
         for row in assets
@@ -389,13 +389,13 @@ def _read_json_response(request: urllib.request.Request, timeout: float) -> tupl
         status = exc.code
         raw = exc.read()
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise ConformanceError("resident MemRight service is unavailable") from exc
+        raise ConformanceError("resident Crypt service is unavailable") from exc
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConformanceError("resident MemRight response is not valid JSON") from exc
+        raise ConformanceError("resident Crypt response is not valid JSON") from exc
     if not isinstance(payload, dict):
-        raise ConformanceError("resident MemRight response is not an object")
+        raise ConformanceError("resident Crypt response is not an object")
     return status, payload
 
 
@@ -404,20 +404,20 @@ def probe_resident_service(
 ) -> dict[str, Any]:
     parsed = urllib.parse.urlsplit(service_url)
     if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"}:
-        raise ConformanceError("MemRight conformance probe must remain loopback-only")
+        raise ConformanceError("Crypt conformance probe must remain loopback-only")
     base = service_url.rstrip("/")
     health_request = urllib.request.Request(
         base + "/health", headers={"Accept": "application/json"}, method="GET"
     )
     health_status, health = _read_json_response(health_request, timeout)
     if health_status != 200 or health.get("ok") is not True:
-        raise ConformanceError("resident MemRight health is not green")
+        raise ConformanceError("resident Crypt health is not green")
     try:
         token = Path(token_file).read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise ConformanceError("MemRight API token is unavailable") from exc
+        raise ConformanceError("Crypt API token is unavailable") from exc
     if not token:
-        raise ConformanceError("MemRight API token is empty")
+        raise ConformanceError("Crypt API token is empty")
     route_request = urllib.request.Request(
         base + "/v1/memories:batch",
         data=b"{}",
@@ -460,7 +460,7 @@ def scheduler_evidence(
     current = system or platform.system()
     if current == "Windows":
         script = (
-            "$t=Get-ScheduledTask -TaskName 'memright-daily' -ErrorAction SilentlyContinue "
+            "$t=Get-ScheduledTask -TaskName 'crypt-daily' -ErrorAction SilentlyContinue "
             "| Select-Object -First 1; if($null -eq $t){'absent'}else{$t.State.ToString().ToLowerInvariant()}"
         )
         result = command_runner([
@@ -474,21 +474,21 @@ def scheduler_evidence(
             script,
         ])
         if result.returncode != 0:
-            raise ConformanceError("cannot inspect memright-daily scheduler")
+            raise ConformanceError("cannot inspect crypt-daily scheduler")
         state = result.stdout.strip().lower()
         disabled = state in {"absent", "disabled"}
     elif current == "Darwin":
         uid = str(os.getuid())
         result = command_runner([
-            "launchctl", "print", f"gui/{uid}/com.adrian.memright-daily"
+            "launchctl", "print", f"gui/{uid}/com.adrian.crypt-daily"
         ])
         disabled = result.returncode != 0
         state = "unloaded" if disabled else "loaded"
     else:
-        raise ConformanceError(f"unsupported Adapt scheduler platform: {current}")
+        raise ConformanceError(f"unsupported Morph scheduler platform: {current}")
     if not disabled:
-        raise ConformanceError("memright-daily must remain disabled")
-    return {"name": "memright-daily", "disabled": True, "state": state}
+        raise ConformanceError("crypt-daily must remain disabled")
+    return {"name": "crypt-daily", "disabled": True, "state": state}
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -523,7 +523,7 @@ def mirror_evidence(
             owner_cursor=f"{origin}.json",
             owner_installation_id=installation_id,
         )
-    except (cross_machine.CrossMachineAdaptError, mirror_append_only.AppendOnlyViolation) as exc:
+    except (cross_machine.CrossMachineMorphError, mirror_append_only.AppendOnlyViolation) as exc:
         raise ConformanceError("memory mirror append-only check failed") from exc
     head = _git(repo, "rev-parse", "HEAD")
     tree_oid = _git(repo, "rev-parse", f"HEAD:{mirror_relative.as_posix()}")
@@ -621,13 +621,13 @@ def collect_evidence(
     root = Path(repo_root).resolve()
     installation_id = cross_machine.load_installation_id(Path(installation_file))
     canonical_rules = cross_machine.load_canonical_rules(Path(db_path))
-    state = adapt_sessions.load_state()
+    state = morph_sessions.load_state()
     tests = (
         run_focused_tests(root)
         if focused_tests is None
         else _validated_prior_tests(root, focused_tests)
     )
-    url = service_url or f"http://127.0.0.1:{memright_port(os.environ)}"
+    url = service_url or f"http://127.0.0.1:{crypt_port(os.environ)}"
     token = Path(token_file) if token_file else Path(db_path).parent / "api-token"
     sessions = discover_session_evidence(
         state=state,
@@ -696,12 +696,12 @@ def _validate_evidence(evidence: Mapping[str, Any]) -> None:
     _uuid4(evidence.get("installation_id"))
     pool = evidence.get("canonical_pool")
     if not isinstance(pool, Mapping) or set(pool) != {"sha256", "rules"}:
-        raise ConformanceError("canonical Adapt pool fields are invalid")
+        raise ConformanceError("canonical Morph pool fields are invalid")
     if not isinstance(pool, Mapping):
-        raise ConformanceError("canonical Adapt pool evidence is invalid")
-    _require_hash(pool.get("sha256"), "canonical Adapt pool hash")
+        raise ConformanceError("canonical Morph pool evidence is invalid")
+    _require_hash(pool.get("sha256"), "canonical Morph pool hash")
     if isinstance(pool.get("rules"), bool) or not isinstance(pool.get("rules"), int) or pool["rules"] < 0:
-        raise ConformanceError("canonical Adapt pool rule count is invalid")
+        raise ConformanceError("canonical Morph pool rule count is invalid")
     implementation = evidence.get("implementation")
     if (
         not isinstance(implementation, Mapping)
@@ -795,11 +795,11 @@ def _validate_evidence(evidence: Mapping[str, Any]) -> None:
     if (
         not isinstance(scheduler, Mapping)
         or set(scheduler) != {"name", "disabled", "state"}
-        or scheduler.get("name") != "memright-daily"
+        or scheduler.get("name") != "crypt-daily"
         or scheduler.get("disabled") is not True
         or scheduler.get("state") not in {"absent", "disabled", "unloaded"}
     ):
-        raise ConformanceError("memright-daily must remain disabled")
+        raise ConformanceError("crypt-daily must remain disabled")
     tests = evidence.get("focused_tests")
     if (
         not isinstance(tests, Mapping)
@@ -884,22 +884,22 @@ def validate_receipt_payload(
 def _defaults(repo_root: Path) -> dict[str, Path]:
     root = Path(repo_root).resolve()
     os_name = _normalized_os()
-    binary_name = "memright-service.exe" if os_name == "windows" else "memright"
+    binary_name = "crypt-service.exe" if os_name == "windows" else "crypt"
     db = Path(os.environ.get(
-        "MEMRIGHT_DB", str(root / "tools/.cache/memory/memright-engine.db")
+        "CRYPT_DB", str(root / "tools/.cache/memory/crypt-engine.db")
     ))
     return {
         "installation_file": root / "tools/.cache/memory/installation.json",
         "db_path": db,
         "binary_path": Path(os.environ.get(
-            "MEMRIGHT_CONFORMANCE_BINARY", str(root / "tools/bin" / binary_name)
+            "CRYPT_CONFORMANCE_BINARY", str(root / "tools/bin" / binary_name)
         )),
         "release_manifest_path": Path(os.environ.get(
-            "MEMRIGHT_CONFORMANCE_RELEASE_MANIFEST",
-            str(root / "tools/lib/memright-release.json"),
+            "CRYPT_CONFORMANCE_RELEASE_MANIFEST",
+            str(root / "tools/lib/crypt-release.json"),
         )),
         "token_file": Path(os.environ.get(
-            "MEMRIGHT_API_TOKEN_FILE", str(db.parent / "api-token")
+            "CRYPT_API_TOKEN_FILE", str(db.parent / "api-token")
         )),
     }
 
@@ -981,7 +981,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             validate_receipt_file(args.receipt, **common)
             receipt = json.loads(args.receipt.read_text(encoding="utf-8"))
-    except (ConformanceError, cross_machine.CrossMachineAdaptError) as exc:
+    except (ConformanceError, cross_machine.CrossMachineMorphError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))
         return 1
     print(json.dumps({

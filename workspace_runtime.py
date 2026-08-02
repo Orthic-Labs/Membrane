@@ -1,15 +1,15 @@
-"""Parent-workspace interface for Orthic Morph / Adapt.
+"""Parent-workspace interface for Orthic Morph / Morph.
 
-Morph lives under ``adapt/`` but still needs a few parent-workspace services.
+Morph lives under ``morph/`` but still needs a few parent-workspace services.
 This module is the **only** import boundary for those deps. Do not vendor the
-parent tree into adapt/; wire through this adapter (or optional stubs).
+parent tree into morph/; wire through this adapter (or optional stubs).
 
 Required parent capabilities
 ----------------------------
-1. MemRight runtime config
-   - symbol: ``memright_port(env=None) -> int``
+1. Crypt runtime config
+   - symbol: ``crypt_port(env=None) -> int``
    - source: ``tools/lib/memory/runtime_config.py``
-   - used by: ``adapt_persistence``, ``multiwriter_conformance``
+   - used by: ``morph_persistence``, ``multiwriter_conformance``
 
 2. Session inventory / adapters
    - symbols: ``context_session_inventory``, ``context_session_adapters``
@@ -23,7 +23,7 @@ Required parent capabilities
 
 Optional stubs
 --------------
-Set ``MORPH_WORKSPACE_STUBS=1`` (or ``ADAPT_WORKSPACE_STUBS=1``) to load the
+Set ``MORPH_WORKSPACE_STUBS=1`` (or ``MORPH_WORKSPACE_STUBS=1``) to load the
 in-tree stub implementations instead of parent modules. Stubs are for unit
 tests / standalone dry imports only — they must not be used for live apply.
 
@@ -39,7 +39,7 @@ from types import ModuleType
 from typing import Any, Callable
 
 
-ADAPT_DIR = Path(__file__).resolve().parent
+MORPH_DIR = Path(__file__).resolve().parent
 
 
 class WorkspaceRuntimeUnavailable(RuntimeError):
@@ -48,7 +48,7 @@ class WorkspaceRuntimeUnavailable(RuntimeError):
 
 def _stubs_enabled() -> bool:
     return os.environ.get("MORPH_WORKSPACE_STUBS", "").strip() in {"1", "true", "yes"} or (
-        os.environ.get("ADAPT_WORKSPACE_STUBS", "").strip() in {"1", "true", "yes"}
+        os.environ.get("MORPH_WORKSPACE_STUBS", "").strip() in {"1", "true", "yes"}
     )
 
 
@@ -56,19 +56,19 @@ def workspace_root() -> Path:
     """Resolve the Damned Designs workspace that owns ``tools/``.
 
     Supports both layouts:
-      - top-level submodule: ``<workspace>/adapt``
-      - nested historical path: ``<workspace>/tools/pipelines/memory/adapt``
+      - top-level submodule: ``<workspace>/morph``
+      - nested historical path: ``<workspace>/tools/pipelines/memory/morph``
     """
     if os.environ.get("WORKSPACE_ROOT"):
         return Path(os.environ["WORKSPACE_ROOT"]).resolve()
-    candidates: list[Path] = [ADAPT_DIR.parent]
-    # Nested under tools/pipelines/memory/adapt → parents[4] == workspace
-    if len(ADAPT_DIR.parents) >= 5:
-        candidates.append(ADAPT_DIR.parents[4])
+    candidates: list[Path] = [MORPH_DIR.parent]
+    # Nested under tools/pipelines/memory/morph → parents[4] == workspace
+    if len(MORPH_DIR.parents) >= 5:
+        candidates.append(MORPH_DIR.parents[4])
     for candidate in candidates:
         if (candidate / "tools" / "lib").is_dir():
             return candidate
-    return ADAPT_DIR.parent
+    return MORPH_DIR.parent
 
 
 def _ensure_parent_paths(root: Path) -> None:
@@ -99,14 +99,14 @@ def _load_module(name: str, stub_factory: Callable[[], ModuleType]) -> ModuleTyp
 def _stub_runtime_config() -> ModuleType:
     mod = ModuleType("memory.runtime_config")
 
-    def memright_port(env=None, config_path=None) -> int:  # noqa: ANN001
+    def crypt_port(env=None, config_path=None) -> int:  # noqa: ANN001
         values = os.environ if env is None else env
-        for key in ("MEMRIGHT_PORT", "WORKSPACE_MEMORY_PORT"):
+        for key in ("CRYPT_PORT", "WORKSPACE_MEMORY_PORT"):
             if values.get(key):
                 return int(values[key])
         return 47851
 
-    mod.memright_port = memright_port  # type: ignore[attr-defined]
+    mod.crypt_port = crypt_port  # type: ignore[attr-defined]
     return mod
 
 
@@ -138,9 +138,9 @@ def _stub_session_adapters() -> ModuleType:
     return ModuleType("tools.pipelines.memory.context_session_adapters")
 
 
-def memright_port(env: Any = None, config_path: Any = None) -> int:
+def crypt_port(env: Any = None, config_path: Any = None) -> int:
     mod = _load_module("memory.runtime_config", _stub_runtime_config)
-    return mod.memright_port(env, config_path) if config_path is not None else mod.memright_port(env)
+    return mod.crypt_port(env, config_path) if config_path is not None else mod.crypt_port(env)
 
 
 def mirror_append_only() -> ModuleType:
@@ -164,7 +164,7 @@ def context_session_adapters() -> ModuleType:
 __all__ = [
     "WorkspaceRuntimeUnavailable",
     "workspace_root",
-    "memright_port",
+    "crypt_port",
     "mirror_append_only",
     "context_session_inventory",
     "context_session_adapters",

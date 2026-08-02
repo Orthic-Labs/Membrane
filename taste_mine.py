@@ -8,8 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import adapt_llm  # noqa: E402
-import adapt_sessions as ts  # noqa: E402
+import morph_llm  # noqa: E402
+import morph_sessions as ts  # noqa: E402
 import outcomes  # noqa: E402
 
 def _synth_committable(outcome: str) -> bool:
@@ -57,15 +57,15 @@ def _extraction_contract() -> dict:
     """Stable fingerprint for deciding whether cached extraction is reusable."""
     return {
         "version": 1,
-        "batch_char_budget": adapt_llm.BATCH_CHAR_BUDGET,
-        "max_tokens": adapt_llm.MAX_TOKENS,
+        "batch_char_budget": morph_llm.BATCH_CHAR_BUDGET,
+        "max_tokens": morph_llm.MAX_TOKENS,
         "extract_prompt_sha256": hashlib.sha256(
-            adapt_llm.EXTRACT_SYSTEM.encode("utf-8")
+            morph_llm.EXTRACT_SYSTEM.encode("utf-8")
         ).hexdigest(),
         "synth_prompt_sha256": hashlib.sha256(
-            adapt_llm.SYNTH_SYSTEM.encode("utf-8")
+            morph_llm.SYNTH_SYSTEM.encode("utf-8")
         ).hexdigest(),
-        "synth_max_tokens": adapt_llm.SYNTH_MAX_TOKENS,
+        "synth_max_tokens": morph_llm.SYNTH_MAX_TOKENS,
         "preference_prefilter_version": ts.PREFERENCE_PREFILTER_VERSION,
     }
 
@@ -125,11 +125,11 @@ def _extract_batches(batches: list[list[tuple[str, str, str]]], *, lane: str,
                 print(f"  extract batch {index}: {len(batch)} turns")
         if len(window) == 1:
             index, batch = window[0]
-            results = {index: adapt_llm.extract_observations(batch, lane=lane)}
+            results = {index: morph_llm.extract_observations(batch, lane=lane)}
         else:
             with ThreadPoolExecutor(max_workers=len(window)) as pool:
                 futures = {
-                    index: pool.submit(adapt_llm.extract_observations, batch, lane=lane)
+                    index: pool.submit(morph_llm.extract_observations, batch, lane=lane)
                     for index, batch in window
                 }
                 results = {}

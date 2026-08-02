@@ -1,7 +1,7 @@
-"""Deterministic authority snapshot and candidate safety checks for Adapt.
+"""Deterministic authority snapshot and candidate safety checks for Morph.
 
 The manifest freezes source identities and hashes; the source files remain the
-authority. Adapt uses this module to quarantine mechanically detectable
+authority. Morph uses this module to quarantine mechanically detectable
 conflicts before any candidate can become an instruction.
 """
 from __future__ import annotations

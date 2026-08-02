@@ -1,7 +1,7 @@
-"""Gate 0 step 2 — emit a 10-session Adapt candidate manifest for arm D.
+"""Gate 0 step 2 — emit a 10-session Morph candidate manifest for arm D.
 
 This script bypasses the live LLM lane by accepting canned ``extract`` and
-``synthesize`` payloads from a JSON fixture, runs the rest of the Adapt
+``synthesize`` payloads from a JSON fixture, runs the rest of the Morph
 pipeline (canned observations → synthesize → apply_actions manifest emission)
 with the new PreferenceRecord + manifest schema, and writes a schema-valid
 manifest to ``<out>``.
@@ -9,17 +9,17 @@ manifest to ``<out>``.
 Why fixture-driven instead of a real LLM run: a real emission costs tokens,
 takes minutes, and is data-dependent on sessions you may not want re-mined
 right now. The fixture path proves the structural contract end-to-end and
-produces an artifact ``run_value_ab.py --adapt-manifest`` can consume.
+produces an artifact ``run_value_ab.py --morph-manifest`` can consume.
 
 Switching from fixture to real LLM later is a one-line swap of the
-``extract_fn`` + ``synth_fn`` call sites for ``adapt_llm.extract_observations``
-+ ``adapt_llm.synthesize``. The rest of the path is unchanged.
+``extract_fn`` + ``synth_fn`` call sites for ``morph_llm.extract_observations``
++ ``morph_llm.synthesize``. The rest of the path is unchanged.
 
 Usage::
 
-    py -3.11 tools/pipelines/memory/adapt/eval/emit_arm_d_candidates.py \\
+    py -3.11 tools/pipelines/memory/morph/eval/emit_arm_d_candidates.py \\
         --fixture path/to/fixture.json \\
-        --out D:/Claude/.cache/adapt/review/10session.manifest.json
+        --out D:/Claude/.cache/morph/review/10session.manifest.json
 
 Fixture shape::
 
@@ -52,11 +52,11 @@ from pathlib import Path
 from collections import defaultdict
 
 WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
-sys.path.insert(0, str(WS / "tools/pipelines/memory/adapt"))
+sys.path.insert(0, str(WS / "tools/pipelines/memory/morph"))
 
 import preference_record as pr_mod  # noqa: E402
 import manifest  # noqa: E402
-import adapt  # noqa: E402
+import morph  # noqa: E402
 import authority  # noqa: E402
 
 
@@ -112,7 +112,7 @@ def _emit_from_fixture(fx: dict, out_path: Path) -> dict:
     """Run the structural pipeline against a fixture and write the manifest.
 
     The output manifest matches the Gate 1a schema and is what
-    ``run_value_ab.py --adapt-manifest`` consumes.
+    ``run_value_ab.py --morph-manifest`` consumes.
     """
     observations = list(fx["observations"])
     synth_actions = list(fx["synthesis_response"])
@@ -186,7 +186,7 @@ def _emit_from_fixture(fx: dict, out_path: Path) -> dict:
     return body
 
 
-# Late-bound so monkeypatch of adapt.ts.STATE_DIR still works if anyone
+# Late-bound so monkeypatch of morph.ts.STATE_DIR still works if anyone
 # imports this as a library and swaps state dirs.
 SCOPE = "D--Claude"
 

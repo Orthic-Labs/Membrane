@@ -1,23 +1,23 @@
-"""Adapt report — audit + journal + state dashboard (v2 plan acceptance criteria).
+"""Morph report — audit + journal + state dashboard (v2 plan acceptance criteria).
 
 The v2 plan's Acceptance Criteria require:
-> "the Adapt report also tracks rejection reasons, conflicts, stale rules,
+> "the Morph report also tracks rejection reasons, conflicts, stale rules,
 >  rollback events, token cost, and latency. Review these after the 10-session
 >  apply and each later chunk; no new monitoring service is required for this
 >  local on-demand phase."
 
 This script is the local on-demand report. It reads only the machine-local
-state under ``~/.claude/adapt/`` (audit.jsonl, run_journal.jsonl, state.json,
+state under ``~/.claude/morph/`` (audit.jsonl, run_journal.jsonl, state.json,
 rules.json, safepoints/) and emits both a structured JSON report and a
 markdown summary. No service dependency.
 
 Outputs::
 
-    <out>/adapt.report.json    structured counts + recent events
-    <out>/adapt.report.md      human-readable summary
+    <out>/morph.report.json    structured counts + recent events
+    <out>/morph.report.md      human-readable summary
 
-Every Adapt run writes audit entries with the same shape; the report extracts
-rejection reasons, admission decisions, memright-write failures, manifest
+Every Morph run writes audit entries with the same shape; the report extracts
+rejection reasons, admission decisions, crypt-write failures, manifest
 applications, and rollback events. Latency is the wall-clock difference
 between ``discovered`` and ``committed`` journal entries per batch.
 """
@@ -33,14 +33,14 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
-ADAPT_STATE = Path.home() / ".claude" / "adapt"
-AUDIT = ADAPT_STATE / "audit.jsonl"
-JOURNAL = ADAPT_STATE / "run_journal.jsonl"
-STATE_FILE = ADAPT_STATE / "state.json"
-RULES_FILE = ADAPT_STATE / "rules.json"
-SAFEPOINTS = ADAPT_STATE / "safepoints"
-HEARTBEAT = WS / "tools/.cache/metrics/memright-heartbeat.jsonl"
-MEMRIGHT_DB = WS / "tools/.cache/memory/memright-engine.db"
+MORPH_STATE = Path.home() / ".claude" / "morph"
+AUDIT = MORPH_STATE / "audit.jsonl"
+JOURNAL = MORPH_STATE / "run_journal.jsonl"
+STATE_FILE = MORPH_STATE / "state.json"
+RULES_FILE = MORPH_STATE / "rules.json"
+SAFEPOINTS = MORPH_STATE / "safepoints"
+HEARTBEAT = WS / "tools/.cache/metrics/crypt-heartbeat.jsonl"
+CRYPT_DB = WS / "tools/.cache/memory/crypt-engine.db"
 
 
 def _load_jsonl(path: Path) -> list[dict]:
@@ -100,7 +100,7 @@ def _effectiveness(db_path: Path | None) -> dict:
             try:
                 rows = conn.execute(
                     "SELECT event_kind, memory_id FROM memory_event_log "
-                    "WHERE memory_id LIKE '%/adapt-%' OR memory_id LIKE 'adapt-%'"
+                    "WHERE memory_id LIKE '%/morph-%' OR memory_id LIKE 'morph-%'"
                 )
                 for event, memory_id in rows:
                     if event == "inject":
@@ -121,9 +121,9 @@ def _effectiveness(db_path: Path | None) -> dict:
     }
 
 
-def build_report(state_dir: Path = ADAPT_STATE,
+def build_report(state_dir: Path = MORPH_STATE,
                  heartbeat_path: Path = HEARTBEAT,
-                 db_path: Path | None = MEMRIGHT_DB) -> dict:
+                 db_path: Path | None = CRYPT_DB) -> dict:
     audit = _load_jsonl(state_dir / "audit.jsonl")
     journal = _load_jsonl(state_dir / "run_journal.jsonl")
     state = _safe_load(state_dir / "state.json")
@@ -143,7 +143,7 @@ def build_report(state_dir: Path = ADAPT_STATE,
             actions[action] += 1
         if ev == "admission_rejected":
             rejection_reasons[entry.get("why", "unknown")] += 1
-        elif ev == "memright_write_failed":
+        elif ev == "crypt_write_failed":
             write_failures.append(entry)
         elif ev in ("manifest_applied", "manifest_apply_failed",
                     "manifest_rollback_deleted"):
@@ -151,26 +151,26 @@ def build_report(state_dir: Path = ADAPT_STATE,
         elif ev == "rollback":
             rollback_events.append(entry)
         rejection_reasons[str(entry).startswith("{") and ""]  # no-op safeguard
-    # LLM call failures (from adapt_llm).
+    # LLM call failures (from morph_llm).
     llm_failures = [e for e in audit if e.get("event") == "llm_call_failed"]
 
     receipts = [e for e in heartbeat if e.get("event") == "recall.delivery"]
     applicable_ids = {
         memory_id for receipt in receipts
-        for memory_id in receipt.get("applicable_adapt_ids", [])
+        for memory_id in receipt.get("applicable_morph_ids", [])
     }
     delivered_ids = {
         memory_id for receipt in receipts
-        for memory_id in receipt.get("delivered_adapt_ids", [])
+        for memory_id in receipt.get("delivered_morph_ids", [])
     }
     shadow = {
         "delivery_receipts": len(receipts),
         "applicable_occurrences": sum(
-            len(e.get("applicable_adapt_ids", [])) for e in receipts
+            len(e.get("applicable_morph_ids", [])) for e in receipts
         ),
         "applicable_unique": len(applicable_ids),
         "delivered_occurrences": sum(
-            len(e.get("delivered_adapt_ids", [])) for e in receipts
+            len(e.get("delivered_morph_ids", [])) for e in receipts
         ),
         "delivered_unique": len(delivered_ids),
         "core_deliveries": sum(bool(e.get("core_delivered")) for e in receipts),
@@ -211,7 +211,7 @@ def build_report(state_dir: Path = ADAPT_STATE,
         "batches_incomplete": incomplete,
         "actions": dict(actions),
         "admission_rejection_reasons": dict(rejection_reasons),
-        "memright_write_failures": len(write_failures),
+        "crypt_write_failures": len(write_failures),
         "llm_call_failures": len(llm_failures),
         "manifest_events": len(manifest_events),
         "rollback_events": len(rollback_events),
@@ -224,7 +224,7 @@ def build_report(state_dir: Path = ADAPT_STATE,
 
 
 def _format_report(rep: dict) -> str:
-    L = ["# Adapt report", ""]
+    L = ["# Morph report", ""]
     L.append(f"- generated: {rep['generated_at']}")
     L.append(f"- rules in rules.json: {rep['rules_count']}")
     L.append(f"- learned sessions total: {rep['learned_sessions_total']}")
@@ -253,7 +253,7 @@ def _format_report(rep: dict) -> str:
     L.append("")
     L.append("## Failure signals")
     L.append("")
-    L.append(f"- memright write failures: {rep['memright_write_failures']}")
+    L.append(f"- crypt write failures: {rep['crypt_write_failures']}")
     L.append(f"- llm call failures:        {rep['llm_call_failures']}")
     L.append(f"- manifest events:         {rep['manifest_events']}")
     L.append(f"- rollback events:         {rep['rollback_events']}")
@@ -283,21 +283,21 @@ def _format_report(rep: dict) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--state-dir", type=Path, default=ADAPT_STATE)
+    ap.add_argument("--state-dir", type=Path, default=MORPH_STATE)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--heartbeat", type=Path, default=HEARTBEAT)
-    ap.add_argument("--db", type=Path, default=MEMRIGHT_DB)
+    ap.add_argument("--db", type=Path, default=CRYPT_DB)
     args = ap.parse_args(argv)
 
     rep = build_report(
         state_dir=args.state_dir, heartbeat_path=args.heartbeat, db_path=args.db
     )
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "adapt.report.json").write_text(
+    (args.out / "morph.report.json").write_text(
         json.dumps(rep, indent=2, ensure_ascii=False), encoding="utf-8")
-    (args.out / "adapt.report.md").write_text(_format_report(rep),
+    (args.out / "morph.report.md").write_text(_format_report(rep),
                                               encoding="utf-8")
-    print(f"report: {args.out / 'adapt.report.md'}")
+    print(f"report: {args.out / 'morph.report.md'}")
     print(f"  rules: {rep['rules_count']}, "
           f"learned_sessions: {rep['learned_sessions_total']}, "
           f"batches: {rep['batch_total']}/{rep['batches_completed']} completed, "

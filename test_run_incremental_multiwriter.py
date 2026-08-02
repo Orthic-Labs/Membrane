@@ -21,7 +21,7 @@ def _module():
 
 def _record(status: str) -> dict:
     return {
-        "id": "adapt-verification-focused-tests-0123456789",
+        "id": "morph-verification-focused-tests-0123456789",
         "rule": "Run focused tests before completion.",
         "category": "verification",
         "scope": "global",
@@ -68,7 +68,7 @@ def test_runner_sequences_manifest_adjudication_and_manifest_apply(tmp_path):
 
     def command(argv, **_kwargs):
         calls.append(list(argv))
-        if "--manifest" in argv and Path(argv[1]).name == "adapt.py":
+        if "--manifest" in argv and Path(argv[1]).name == "morph.py":
             path = Path(argv[argv.index("--manifest") + 1])
             path.write_text(json.dumps(_manifest([_record("pending")])), encoding="utf-8")
         elif Path(argv[1]).name == "adjudicate_manifest.py":
@@ -91,7 +91,7 @@ def test_runner_sequences_manifest_adjudication_and_manifest_apply(tmp_path):
     )
 
     assert len(calls) == 3
-    assert calls[0][1].endswith("adapt.py")
+    assert calls[0][1].endswith("morph.py")
     assert calls[0][2:4] == ["--incremental", "--manifest"]
     assert "--limit" in calls[0]
     assert "--resume" in calls[0]
@@ -100,7 +100,7 @@ def test_runner_sequences_manifest_adjudication_and_manifest_apply(tmp_path):
     assert calls[0][calls[0].index("--lane") + 1] == "minimax"
     assert "--allow-external-lane" in calls[0]
     assert calls[1][1].endswith("adjudicate_manifest.py")
-    assert calls[2][1].endswith("adapt.py")
+    assert calls[2][1].endswith("morph.py")
     assert calls[2][2] == "--apply-from-manifest"
     assert "--apply" not in calls[2]
     assert validations == [tmp_path / "receipt.json", tmp_path / "receipt.json"]
@@ -174,7 +174,7 @@ def test_no_new_sessions_is_a_content_free_noop(tmp_path):
 
     def command(argv, **_kwargs):
         calls.append(list(argv))
-        return Result(stdout="adapt: no new sessions")
+        return Result(stdout="morph: no new sessions")
 
     summary = runner.run_incremental(
         receipt_path=tmp_path / "receipt.json",
@@ -188,7 +188,7 @@ def test_no_new_sessions_is_a_content_free_noop(tmp_path):
     assert summary["outcome"] == "no_new_sessions"
     assert summary["candidate_counts"] == {"accepted": 0, "pending": 0, "rejected": 0, "total": 0}
     encoded = json.dumps(summary)
-    assert "adapt: no new sessions" not in encoded
+    assert "morph: no new sessions" not in encoded
     assert "D:/Claude" not in encoded
 
 
@@ -208,7 +208,7 @@ def test_failed_stage_stops_before_apply_and_records_only_output_hashes(tmp_path
             client_inventory_provider=_client_inventory,
         )
     assert "sensitive" not in str(exc.value)
-    summary_path = next((tmp_path / "runs").glob("adapt-*/summary.json"))
+    summary_path = next((tmp_path / "runs").glob("morph-*/summary.json"))
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     assert summary["outcome"] == "failed"
     assert summary["failed_phase"] == "manifest_generation"
@@ -239,9 +239,9 @@ def test_default_command_runner_uses_argv_without_shell(monkeypatch):
         return Result()
 
     monkeypatch.setattr(runner.subprocess, "run", fake_run)
-    runner.run_command(["python", "adapt.py", "--incremental"])
+    runner.run_command(["python", "morph.py", "--incremental"])
 
-    assert captured["argv"] == ["python", "adapt.py", "--incremental"]
+    assert captured["argv"] == ["python", "morph.py", "--incremental"]
     assert captured["kwargs"]["shell"] is False
     assert captured["kwargs"]["capture_output"] is True
     assert captured["kwargs"]["text"] is True

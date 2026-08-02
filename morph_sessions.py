@@ -1,4 +1,4 @@
-"""Registry-ready transcript discovery and user-turn extraction for Adapt.
+"""Registry-ready transcript discovery and user-turn extraction for Morph.
 
 Only bounded, known harness transcript roots are searched. Ordinary workspace
 files are never considered transcripts. Only user-authored text blocks are
@@ -19,10 +19,10 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 
-STATE_DIR = Path.home() / ".claude" / "adapt"
+STATE_DIR = Path.home() / ".claude" / "morph"
 STATE_FILE = STATE_DIR / "state.json"
-# Same anchor as adapt.WORKSPACE_ROOT / preference_record._WORKSPACE_ROOT:
-# .../tools/pipelines/memory/adapt/<file> -> workspace root.
+# Same anchor as morph.WORKSPACE_ROOT / preference_record._WORKSPACE_ROOT:
+# .../tools/pipelines/memory/morph/<file> -> workspace root.
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
 
 MIN_TURN_CHARS = 10
@@ -123,7 +123,7 @@ def scanner_clean(text: str) -> bool:
         return False
     if text in _SCANNER_CACHE:
         return _SCANNER_CACHE[text]
-    with tempfile.TemporaryDirectory(prefix="adapt-scan-") as d:
+    with tempfile.TemporaryDirectory(prefix="morph-scan-") as d:
         p = Path(d) / "turn.txt"
         p.write_text(text, encoding="utf-8")
         if shutil.which("gitleaks"):
@@ -176,7 +176,7 @@ def scan_text(text: str) -> bool:
     """
     if not scanner_available():
         return False
-    with tempfile.TemporaryDirectory(prefix="adapt-scan-") as d:
+    with tempfile.TemporaryDirectory(prefix="morph-scan-") as d:
         p = Path(d) / "payload.txt"
         p.write_text(text, encoding="utf-8")
         if shutil.which("gitleaks"):
@@ -754,7 +754,7 @@ def is_active_session(
         value.strip()
         for value in (
             env.get("CODEX_THREAD_ID", ""),
-            *env.get("ADAPT_ACTIVE_CODEX_THREAD_IDS", "").split(","),
+            *env.get("MORPH_ACTIVE_CODEX_THREAD_IDS", "").split(","),
         )
         if value.strip()
     }

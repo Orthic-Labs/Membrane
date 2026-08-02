@@ -1,20 +1,20 @@
 """Gate 0 — 4-arm retrieval + behavior A/B harness (v2 plan, Gate 0 step 3).
 
-Pinned: 2026-07-13. Adapted from the sealed CommandCode A/B at
-``.cache/adapt-taste-ab/evaluate.py``; this script keeps the isolated-service
+Pinned: 2026-07-13. Morphed from the sealed CommandCode A/B at
+``.cache/morph-taste-ab/evaluate.py``; this script keeps the isolated-service
 machinery and replaces the 2-arm comparison with the v2 plan's 4 arms:
 
-  A: current MemRight recall only (baseline).
-  B: copied MemRight + the 16 CommandCode rules injected via `memright put`,
+  A: current Crypt recall only (baseline).
+  B: copied Crypt + the 16 CommandCode rules injected via `crypt put`,
      retrieved normally (proves retrieval value alone).
-  C: copied MemRight + the same 16 CommandCode rules as an ALWAYS-INJECTED
+  C: copied Crypt + the same 16 CommandCode rules as an ALWAYS-INJECTED
      static policy block (proves the value comes from retrieval vs always-on).
-  D: copied MemRight + accepted 10-session Adapt candidates, retrieved
-     normally (proves the Adapt pipeline produces a useful candidate set
+  D: copied Crypt + accepted 10-session Morph candidates, retrieved
+     normally (proves the Morph pipeline produces a useful candidate set
      when fed real session evidence).
 
 All four arms receive the SAME query set: 32 targeted prompts (16 rules ×
-2 paraphrases) plus 12 unrelated controls. Each arm runs an isolated MemRight
+2 paraphrases) plus 12 unrelated controls. Each arm runs an isolated Crypt
 service bound to a unique free port so live invariants stay verifiable.
 
 Grading is intentionally left to a separate ``grade.py`` so this harness
@@ -23,12 +23,12 @@ stays focused on the live-DB isolation contract. The grader consumes
 
 Usage::
 
-    py -3.11 tools/pipelines/memory/adapt/eval/run_value_ab.py \\
-        --live-db D:/Claude/tools/.cache/memory/memright-engine.db \\
-        --memright-bin D:/Claude/tools/bin/memright.exe \\
+    py -3.11 tools/pipelines/memory/morph/eval/run_value_ab.py \\
+        --live-db D:/Claude/tools/.cache/memory/crypt-engine.db \\
+        --crypt-bin D:/Claude/tools/bin/crypt.exe \\
         --taste-md D:/Claude/.commandcode/taste/taste.md \\
-        --adapt-manifest D:/Claude/.cache/adapt/review/10session.manifest.json \\
-        --out D:/Claude/.cache/adapt-value-ab/
+        --morph-manifest D:/Claude/.cache/morph/review/10session.manifest.json \\
+        --out D:/Claude/.cache/morph-value-ab/
 
 Add ``--smoke`` to use only 4 prompts for fast iteration.
 
@@ -37,7 +37,7 @@ Outputs::
     <out>/A.db                  baseline snapshot
     <out>/B.db                  + 16 CommandCode rules
     <out>/C.db                  + 16 rules (recall only; arm C prepends at prompt)
-    <out>/D.db                  + accepted Adapt candidates
+    <out>/D.db                  + accepted Morph candidates
     <out>/results.json          per-arm retrieval rows + ids + static-block
     <out>/report.md             human-readable summary
     <out>/integrity.json        pre/post DB integrity + row-count checks
@@ -71,10 +71,10 @@ from pathlib import Path
 # ----- paths & constants -----
 
 ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
-DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/memright-engine.db"
-DEFAULT_MEMRIGHT = ROOT / "tools/bin/memright.exe"
+DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/crypt-engine.db"
+DEFAULT_CRYPT = ROOT / "tools/bin/crypt.exe"
 DEFAULT_TASTE_MD = ROOT / ".commandcode/taste/taste.md"
-DEFAULT_OUT = ROOT / ".cache/adapt-value-ab"
+DEFAULT_OUT = ROOT / ".cache/morph-value-ab"
 SCOPE = "D--Claude"
 K = 10                              # recall@K
 SERVICE_READY_TIMEOUT = 20.0        # seconds to wait for service bind
@@ -151,7 +151,7 @@ class TasteRule:
         return slugify(self.text)
 
     def as_envelope(self) -> str:
-        """Body to feed into memright put. Mirrors evaluate.py."""
+        """Body to feed into crypt put. Mirrors evaluate.py."""
         return (
             f"Standing preference [{self.category}]: {self.text} "
             f"Source: CommandCode learn-taste. Confidence: {self.confidence:.2f}."
@@ -209,13 +209,13 @@ def _free_port() -> int:
         return probe.getsockname()[1]
 
 
-def _start_service(memright: Path, db: Path, port: int) -> subprocess.Popen:
+def _start_service(crypt: Path, db: Path, port: int) -> subprocess.Popen:
     env = os.environ.copy()
-    env["MEMRIGHT_PORT"] = str(port)
+    env["CRYPT_PORT"] = str(port)
     env["WORKSPACE_MEMORY_PORT"] = str(port)
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     return subprocess.Popen(
-        [str(memright), "--db", str(db), "serve", "--port", str(port)],
+        [str(crypt), "--db", str(db), "serve", "--port", str(port)],
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
@@ -232,20 +232,20 @@ def _wait_ready(port: int, deadline_s: float = SERVICE_READY_TIMEOUT) -> None:
             if client.connect_ex(("127.0.0.1", port)) == 0:
                 return
         time.sleep(0.05)
-    raise RuntimeError(f"memright service on port {port} did not become ready")
+    raise RuntimeError(f"crypt service on port {port} did not become ready")
 
 
-def _run_via_port(memright: Path, db: Path, port: int,
+def _run_via_port(crypt: Path, db: Path, port: int,
                   cmd: list[str], input_text: str | None = None) -> str:
     env = os.environ.copy()
-    env["MEMRIGHT_PORT"] = str(port)
+    env["CRYPT_PORT"] = str(port)
     env["WORKSPACE_MEMORY_PORT"] = str(port)
-    res = subprocess.run([str(memright), "--db", str(db), *cmd],
+    res = subprocess.run([str(crypt), "--db", str(db), *cmd],
                          input=input_text, text=True, encoding="utf-8",
                          capture_output=True, check=False, env=env)
     if res.returncode != 0:
         raise RuntimeError(
-            f"memright {cmd[0]} failed rc={res.returncode}: {res.stderr.strip()}"
+            f"crypt {cmd[0]} failed rc={res.returncode}: {res.stderr.strip()}"
         )
     return res.stdout
 
@@ -259,16 +259,16 @@ def _stop_service(svc: subprocess.Popen) -> None:
         svc.wait(timeout=5)
 
 
-def put_rule(memright: Path, db: Path, port: int, rule: TasteRule) -> None:
-    _run_via_port(memright, db, port,
+def put_rule(crypt: Path, db: Path, port: int, rule: TasteRule) -> None:
+    _run_via_port(crypt, db, port,
                   ["put", rule.name, "--scope", SCOPE, "--tier", "Semantic"],
                   input_text=rule.as_envelope())
 
 
-def put_pref_record(memright: Path, db: Path, port: int,
+def put_pref_record(crypt: Path, db: Path, port: int,
                     pref_id: str, scope: str, body: str) -> None:
-    """Insert an Adapt candidate preference record into the arm-D snapshot."""
-    _run_via_port(memright, db, port,
+    """Insert an Morph candidate preference record into the arm-D snapshot."""
+    _run_via_port(crypt, db, port,
                   ["put", pref_id, "--scope", scope, "--tier", "Semantic"],
                   input_text=body)
 
@@ -296,10 +296,10 @@ def build_query_rows(rules: list[TasteRule], smoke: bool) -> list[dict]:
     return rows
 
 
-def replay_arm(memright: Path, db: Path, port: int,
+def replay_arm(crypt: Path, db: Path, port: int,
                rows: list[dict], input_path: Path) -> tuple[dict[str, list[str]],
                                                           dict[str, list[str]]]:
-    """Run replay; also fetch each ranked row's text via `memright get` so the
+    """Run replay; also fetch each ranked row's text via `crypt get` so the
     grader can score the static-block text overlap for arm C. Returns
     (ranked_ids, ranked_texts).
     """
@@ -307,7 +307,7 @@ def replay_arm(memright: Path, db: Path, port: int,
         json.dumps({k: r[k] for k in ("row_id", "query", "scope")}) + "\n"
         for r in rows
     ), encoding="utf-8")
-    out = _run_via_port(memright, db, port,
+    out = _run_via_port(crypt, db, port,
                         ["replay", "--input", str(input_path), "-k", str(K)])
     parsed = [json.loads(l) for l in out.splitlines() if l.strip()]
     ranked_ids = {row["row_id"]: row["ranked_ids"] for row in parsed}
@@ -317,7 +317,7 @@ def replay_arm(memright: Path, db: Path, port: int,
         texts = []
         for mid in row["ranked_ids"]:
             try:
-                texts.append(_run_via_port(memright, db, port,
+                texts.append(_run_via_port(crypt, db, port,
                                            ["get", mid]))
             except Exception:
                 pass
@@ -330,25 +330,25 @@ def memory_contents(db: Path) -> dict[str, str]:
         return dict(conn.execute("SELECT id, content FROM memories"))
 
 
-# ----- adapt candidates -----
+# ----- morph candidates -----
 
-def load_adapt_manifest_records(path: Path | None) -> list[dict]:
-    """Load accepted records from a reviewed Adapt manifest, if any."""
+def load_morph_manifest_records(path: Path | None) -> list[dict]:
+    """Load accepted records from a reviewed Morph manifest, if any."""
     if path is None or not path.exists():
         return []
     body = json.loads(path.read_text(encoding="utf-8"))
     return [r for r in body.get("records", []) if r.get("status") == "accepted"]
 
 
-def adapt_record_envelope(rec: dict) -> str:
-    """Mirror the engine envelope used by adapt.to_memright_content."""
+def morph_record_envelope(rec: dict) -> str:
+    """Mirror the engine envelope used by morph.to_crypt_content."""
     cat = rec.get("category", "tooling")
     rule = rec.get("rule", "")
     conf = rec.get("confidence", 0.6)
     return (
-        f"**[adapt/{cat}]** — {rule} "
+        f"**[morph/{cat}]** — {rule} "
         f"Confidence: {conf:.2f} "
-        f"(adapt preference, source_ids={rec.get('source_ids', [])})."
+        f"(morph preference, source_ids={rec.get('source_ids', [])})."
     )
 
 
@@ -366,18 +366,18 @@ class ArmResult:
     notes: list[str] = field(default_factory=list)
 
 
-def run_arm_a(memright: Path, db: Path, rows: list[dict],
+def run_arm_a(crypt: Path, db: Path, rows: list[dict],
               tmp: Path) -> ArmResult:
     """Baseline: snapshot of live DB, no modifications."""
     snapshot_live_db(DEFAULT_LIVE_DB, db)
     port = _free_port()
-    svc = _start_service(memright, db, port)
+    svc = _start_service(crypt, db, port)
     try:
         _wait_ready(port)
         result = ArmResult(arm="A", db_path=str(db), port=port)
         for row in rows:
             t0 = time.monotonic()
-            ranked, texts = replay_arm(memright, db, port, [row],
+            ranked, texts = replay_arm(crypt, db, port, [row],
                                        tmp / f"A-{row['row_id']}.jsonl")
             dt_ms = int((time.monotonic() - t0) * 1000)
             result.ranked.update(ranked)
@@ -388,20 +388,20 @@ def run_arm_a(memright: Path, db: Path, rows: list[dict],
         _stop_service(svc)
 
 
-def run_arm_with_inject(memright: Path, db: Path, rows: list[dict],
+def run_arm_with_inject(crypt: Path, db: Path, rows: list[dict],
                         tmp: Path, arm_label: str,
                         inject_fn) -> ArmResult:
     """Generic: snapshot + start service + inject via inject_fn + replay."""
     snapshot_live_db(DEFAULT_LIVE_DB, db)
     port = _free_port()
-    svc = _start_service(memright, db, port)
+    svc = _start_service(crypt, db, port)
     try:
         _wait_ready(port)
-        inject_fn(memright, db, port)
+        inject_fn(crypt, db, port)
         result = ArmResult(arm=arm_label, db_path=str(db), port=port)
         for row in rows:
             t0 = time.monotonic()
-            ranked, texts = replay_arm(memright, db, port, [row],
+            ranked, texts = replay_arm(crypt, db, port, [row],
                                        tmp / f"{arm_label}-{row['row_id']}.jsonl")
             dt_ms = int((time.monotonic() - t0) * 1000)
             result.ranked.update(ranked)
@@ -432,10 +432,10 @@ def live_db_unchanged(live: Path, baseline_count: int) -> tuple[bool, str]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--live-db", type=Path, default=DEFAULT_LIVE_DB)
-    ap.add_argument("--memright-bin", type=Path, default=DEFAULT_MEMRIGHT)
+    ap.add_argument("--crypt-bin", type=Path, default=DEFAULT_CRYPT)
     ap.add_argument("--taste-md", type=Path, default=DEFAULT_TASTE_MD)
-    ap.add_argument("--adapt-manifest", type=Path, default=None,
-                    help="Reviewed 10-session Adapt manifest; populates arm D")
+    ap.add_argument("--morph-manifest", type=Path, default=None,
+                    help="Reviewed 10-session Morph manifest; populates arm D")
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--smoke", action="store_true",
                     help="use 2 rules × 2 paraphrases + 2 controls for fast iteration")
@@ -444,8 +444,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.live_db.exists():
         print(f"error: live DB not found: {args.live_db}", file=sys.stderr)
         return 2
-    if not args.memright_bin.exists():
-        print(f"error: memright binary not found: {args.memright_bin}",
+    if not args.crypt_bin.exists():
+        print(f"error: crypt binary not found: {args.crypt_bin}",
               file=sys.stderr)
         return 2
     if not args.taste_md.exists():
@@ -475,14 +475,14 @@ def main(argv: list[str] | None = None) -> int:
 
     # ----- Arm A: baseline -----
     print("arm A: baseline...")
-    arms.append(run_arm_a(args.memright_bin, args.out / "A.db", rows, tmp))
+    arms.append(run_arm_a(args.crypt_bin, args.out / "A.db", rows, tmp))
 
     # ----- Arm B: + 16 CommandCode rules -----
-    def _inject_b(memright, db, port):
+    def _inject_b(crypt, db, port):
         for r in rules:
-            put_rule(memright, db, port, r)
+            put_rule(crypt, db, port, r)
     print("arm B: +16 CommandCode rules...")
-    arms.append(run_arm_with_inject(args.memright_bin, args.out / "B.db",
+    arms.append(run_arm_with_inject(args.crypt_bin, args.out / "B.db",
                                     rows, tmp, "B", _inject_b))
 
     # ----- Arm C: + 16 rules as static block; engine unchanged -----
@@ -490,23 +490,23 @@ def main(argv: list[str] | None = None) -> int:
     # The arm records the block alongside the ranked output so graders can
     # apply the always-injected scoring rule consistently.
     print("arm C: +16 static-block (no DB change)...")
-    arms_c = run_arm_a(args.memright_bin, args.out / "C.db", rows, tmp)
+    arms_c = run_arm_a(args.crypt_bin, args.out / "C.db", rows, tmp)
     arms_c.arm = "C"
     arms_c.static_block = "\n".join(r.as_static_block() for r in rules)
     arms_c.notes.append("static policy block composed at grader layer; "
-                        "MemRight DB is identical to arm A")
+                        "Crypt DB is identical to arm A")
     arms.append(arms_c)
 
-    # ----- Arm D: + accepted Adapt candidates -----
-    adapt_records = load_adapt_manifest_records(args.adapt_manifest)
-    print(f"arm D: +{len(adapt_records)} accepted Adapt candidates "
-          f"(manifest={args.adapt_manifest})")
+    # ----- Arm D: + accepted Morph candidates -----
+    morph_records = load_morph_manifest_records(args.morph_manifest)
+    print(f"arm D: +{len(morph_records)} accepted Morph candidates "
+          f"(manifest={args.morph_manifest})")
 
-    def _inject_d(memright, db, port):
-        for rec in adapt_records:
-            put_pref_record(memright, db, port, rec["id"], rec.get("scope", SCOPE),
-                            adapt_record_envelope(rec))
-    arms.append(run_arm_with_inject(args.memright_bin, args.out / "D.db",
+    def _inject_d(crypt, db, port):
+        for rec in morph_records:
+            put_pref_record(crypt, db, port, rec["id"], rec.get("scope", SCOPE),
+                            morph_record_envelope(rec))
+    arms.append(run_arm_with_inject(args.crypt_bin, args.out / "D.db",
                                     rows, tmp, "D", _inject_d))
 
     # Post-arm: verify live DB unchanged + per-snapshot integrity.
@@ -579,7 +579,7 @@ def _format_report(results: dict, integrity: dict) -> str:
     lines.append("")
     lines.append("Per-arm retrieval rows + grader inputs are in `results.json`.")
     lines.append("Arm C's static policy block is composed at the grader layer; "
-                 "the MemRight DB is identical to arm A.")
+                 "the Crypt DB is identical to arm A.")
     return "\n".join(lines) + "\n"
 
 

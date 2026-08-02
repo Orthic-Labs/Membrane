@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 
-ADAPT_DIR = Path(__file__).resolve().parent
-EVAL_DIR = ADAPT_DIR / "eval"
-sys.path.insert(0, str(ADAPT_DIR))
+MORPH_DIR = Path(__file__).resolve().parent
+EVAL_DIR = MORPH_DIR / "eval"
+sys.path.insert(0, str(MORPH_DIR))
 sys.path.insert(0, str(EVAL_DIR))
 
-import adapt_sessions
+import morph_sessions
 import freeze_pilot
 import run_phase2_pilot as phase2
 
@@ -40,7 +40,7 @@ def _session(root: Path, tool: str, sid: str, text: str, mtime: float):
             "cwd": "D:/Claude",
             "message": {"content": text},
         }]
-        parser = adapt_sessions.parse_claude_session
+        parser = morph_sessions.parse_claude_session
     else:
         rows = [
             {"type": "session_meta", "payload": {
@@ -52,7 +52,7 @@ def _session(root: Path, tool: str, sid: str, text: str, mtime: float):
                 "content": [{"type": "input_text", "text": text}],
             }},
         ]
-        parser = adapt_sessions.parse_codex_session
+        parser = morph_sessions.parse_codex_session
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     os.utime(path, (mtime, mtime))
     parsed = parser(path)
@@ -117,7 +117,7 @@ def test_preflight_enforces_provider_call_and_input_ceilings(tmp_path):
     )
 
     alarm_batches = sum(
-        bool(phase2.adapt_llm.extract_deterministic([
+        bool(phase2.morph_llm.extract_deterministic([
             (row["tool"], row["scope"], row["text"])
             for row in batch.records
         ]))
@@ -225,7 +225,7 @@ def test_arm_quarantines_single_session_even_with_explicit_language(tmp_path):
     }]
     actions = [{
         "action": "add",
-        "name": "adapt-tooling-preserve-transcript-evidence",
+        "name": "morph-tooling-preserve-transcript-evidence",
         "category": "tooling",
         "rule": "Always preserve exact transcript evidence before changing shared workflow rules.",
         "confidence": 0.8,
@@ -243,16 +243,16 @@ def test_arm_quarantines_single_session_even_with_explicit_language(tmp_path):
 def test_execute_reuses_shared_extraction_and_cached_calls(tmp_path, monkeypatch):
     pilot = phase2.load_pilot(_pilot(tmp_path))
     monkeypatch.setattr(
-        phase2.adapt_sessions, "scan_batch_for_secrets", lambda batch: True
+        phase2.morph_sessions, "scan_batch_for_secrets", lambda batch: True
     )
     monkeypatch.setattr(
-        phase2.adapt_sessions, "scan_batch_for_secrets_str", lambda payload: True
+        phase2.morph_sessions, "scan_batch_for_secrets_str", lambda payload: True
     )
     calls = []
 
     def fake(system: str, user: str, max_tokens: int) -> str:
         calls.append((system, user, max_tokens))
-        if system == phase2.adapt_llm.EXTRACT_SYSTEM:
+        if system == phase2.morph_llm.EXTRACT_SYSTEM:
             records = json.loads(user)
             return json.dumps([
                 _typed_observation(record, prompt)
@@ -260,7 +260,7 @@ def test_execute_reuses_shared_extraction_and_cached_calls(tmp_path, monkeypatch
             ])
         observations = json.loads(user)["new_observations"]
         support = [item["observation_id"] for item in observations]
-        if system == phase2.CURRENT_ADAPT_SYSTEM:
+        if system == phase2.CURRENT_MORPH_SYSTEM:
             return json.dumps([{
                 "action": "add",
                 "name": "ignored",
@@ -300,7 +300,7 @@ def test_execute_reuses_shared_extraction_and_cached_calls(tmp_path, monkeypatch
         raise AssertionError("completed batch checkpoint should bypass extraction parsing")
 
     monkeypatch.setattr(
-        phase2.adapt_llm, "extract_observations", should_not_reparse
+        phase2.morph_llm, "extract_observations", should_not_reparse
     )
     second = phase2.execute_pilot(
         pilot,
@@ -320,7 +320,7 @@ def test_execute_reuses_shared_extraction_and_cached_calls(tmp_path, monkeypatch
     assert first["temperature"] == phase2.TEMPERATURE
     assert (out / "observations.json").is_file()
     assert first["arms"]["retrieval_only"]["candidate_count"] == 0
-    assert first["arms"]["current_adapt"]["admitted_count"] == 1
+    assert first["arms"]["current_morph"]["admitted_count"] == 1
     assert first["arms"]["bounded_full_set"]["admitted_count"] == 1
 
     saved_batch["raw_observation_count"] += 1
@@ -344,10 +344,10 @@ def test_full_set_parser_refuses_output_above_cap():
 def test_failed_provider_call_is_cached_and_retried_at_most_once(tmp_path, monkeypatch):
     pilot = phase2.load_pilot(_pilot(tmp_path))
     monkeypatch.setattr(
-        phase2.adapt_sessions, "scan_batch_for_secrets", lambda batch: True
+        phase2.morph_sessions, "scan_batch_for_secrets", lambda batch: True
     )
     monkeypatch.setattr(
-        phase2.adapt_sessions, "scan_batch_for_secrets_str", lambda payload: True
+        phase2.morph_sessions, "scan_batch_for_secrets_str", lambda payload: True
     )
     calls = 0
 
@@ -356,7 +356,7 @@ def test_failed_provider_call_is_cached_and_retried_at_most_once(tmp_path, monke
         calls += 1
         if calls == 1:
             raise ConnectionResetError("provider reset")
-        if system == phase2.adapt_llm.EXTRACT_SYSTEM:
+        if system == phase2.morph_llm.EXTRACT_SYSTEM:
             records = json.loads(user)
             return json.dumps([
                 _typed_observation(record, prompt)
@@ -374,7 +374,7 @@ def test_failed_provider_call_is_cached_and_retried_at_most_once(tmp_path, monke
         }
         return json.dumps([
             {"action": "add", "name": "ignored", "observations": 1, **common}
-            if system == phase2.CURRENT_ADAPT_SYSTEM else common
+            if system == phase2.CURRENT_MORPH_SYSTEM else common
         ])
 
     out = tmp_path / "retry"
@@ -396,7 +396,7 @@ def test_failed_provider_call_is_cached_and_retried_at_most_once(tmp_path, monke
         pilot, out, call_fn=flaky, retry_failures=True,
         max_provider_calls=10, max_input_chars=1_000_000,
     )
-    assert result["arms"]["current_adapt"]["admitted_count"] == 1
+    assert result["arms"]["current_morph"]["admitted_count"] == 1
     cached = json.loads((out / "calls" / "extract-001.json").read_text())
     assert cached["attempts"] == 2
 
@@ -404,7 +404,7 @@ def test_failed_provider_call_is_cached_and_retried_at_most_once(tmp_path, monke
 def test_provider_stop_reason_truncation_is_typed_and_cached(tmp_path, monkeypatch):
     pilot = phase2.load_pilot(_pilot(tmp_path))
     monkeypatch.setattr(
-        phase2.adapt_sessions, "scan_batch_for_secrets", lambda batch: True
+        phase2.morph_sessions, "scan_batch_for_secrets", lambda batch: True
     )
 
     def truncated(system: str, user: str, max_tokens: int) -> dict:
@@ -432,16 +432,16 @@ def test_valid_empty_with_deterministic_signal_gets_one_model_recall_pass(
 ):
     pilot = phase2.load_pilot(_pilot(tmp_path))
     monkeypatch.setattr(
-        phase2.adapt_sessions, "scan_batch_for_secrets", lambda batch: True
+        phase2.morph_sessions, "scan_batch_for_secrets", lambda batch: True
     )
     monkeypatch.setattr(
-        phase2.adapt_sessions, "scan_batch_for_secrets_str", lambda payload: True
+        phase2.morph_sessions, "scan_batch_for_secrets_str", lambda payload: True
     )
     extract_calls = 0
 
     def fake(system: str, user: str, max_tokens: int) -> str:
         nonlocal extract_calls
-        if system == phase2.adapt_llm.EXTRACT_SYSTEM:
+        if system == phase2.morph_llm.EXTRACT_SYSTEM:
             extract_calls += 1
             if extract_calls == 1:
                 return "[]"
@@ -462,7 +462,7 @@ def test_valid_empty_with_deterministic_signal_gets_one_model_recall_pass(
         }
         return json.dumps([
             {"action": "add", "name": "ignored", "observations": 1, **common}
-            if system == phase2.CURRENT_ADAPT_SYSTEM else common
+            if system == phase2.CURRENT_MORPH_SYSTEM else common
         ])
 
     result = phase2.execute_pilot(

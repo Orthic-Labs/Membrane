@@ -1,4 +1,4 @@
-"""Offline tests for the adapt pipeline. No network, no memright binary."""
+"""Offline tests for the morph pipeline. No network, no crypt binary."""
 import json
 import sys
 from pathlib import Path
@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Make the eval/ subpackage importable from tests too.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "eval"))
 
-import adapt_sessions as ts
+import morph_sessions as ts
 
 
 def _write(path: Path, lines: list[dict]) -> Path:
@@ -158,7 +158,7 @@ def test_cline_parser_uses_companion_workspace_metadata(tmp_path):
     assert session.turns[1].observed_at == "2026-07-20T04:08:41.694000Z"
 
 
-def test_parser_can_disable_adapt_turn_cap_for_independent_census(tmp_path):
+def test_parser_can_disable_morph_turn_cap_for_independent_census(tmp_path):
     rows = [
         {
             "type": "user",
@@ -223,7 +223,7 @@ def test_parallel_extract_window_preserves_ordered_checkpoints(tmp_path, monkeyp
         number = int(batch[0][2])
         return lt.outcomes.BatchOutcome.success([{"number": number}])
 
-    monkeypatch.setattr(lt.adapt_llm, "extract_observations", fake_extract)
+    monkeypatch.setattr(lt.morph_llm, "extract_observations", fake_extract)
     journal = lt.run_journal.RunJournal(tmp_path / "journal.jsonl")
     batches = [[("codex", "D--Claude", str(number))] for number in (1, 2, 3)]
 
@@ -246,7 +246,7 @@ def test_parallel_extract_stops_checkpoint_at_first_failure(tmp_path, monkeypatc
             return lt.outcomes.BatchOutcome.provider_failed("timeout")
         return lt.outcomes.BatchOutcome.success([{"number": number}])
 
-    monkeypatch.setattr(lt.adapt_llm, "extract_observations", fake_extract)
+    monkeypatch.setattr(lt.morph_llm, "extract_observations", fake_extract)
     journal = lt.run_journal.RunJournal(tmp_path / "journal.jsonl")
     batches = [[("codex", "D--Claude", str(number))] for number in (1, 2, 3)]
 
@@ -289,7 +289,7 @@ def test_redaction_strips_standalone_jwt():
 
 
 def test_scanner_positive_drops_batch_at_send(tmp_path, monkeypatch):
-    """Per-turn scanner was moved to per-batch in adapt_llm.extract_observations;
+    """Per-turn scanner was moved to per-batch in morph_llm.extract_observations;
     this test pins the batch-level contract via a direct call to scan_batch_for_secrets.
     """
     monkeypatch.setattr(ts, "scanner_clean", lambda text: True)
@@ -364,14 +364,14 @@ def test_active_codex_session_is_excluded_from_pending_queue(tmp_path, monkeypat
 def test_orchestrator_can_exclude_multiple_active_codex_sessions(tmp_path):
     first = tmp_path / "rollout-first-active.jsonl"
     second = tmp_path / "rollout-second-active.jsonl"
-    env = {"ADAPT_ACTIVE_CODEX_THREAD_IDS": "first-active, second-active"}
+    env = {"MORPH_ACTIVE_CODEX_THREAD_IDS": "first-active, second-active"}
 
     assert ts.is_active_session("codex", first, env=env)
     assert ts.is_active_session("codex", second, env=env)
 
 
 # --- Task 2: LLM lane tests ---
-import adapt_llm as tl
+import morph_llm as tl
 import outcomes
 
 
@@ -388,7 +388,7 @@ def test_default_extraction_budget_is_large_but_output_bounded():
     assert "at most 24 changed actions" in tl.SYNTH_SYSTEM
 
 
-def test_default_adapt_call_retries_transient_provider_failures(monkeypatch):
+def test_default_morph_call_retries_transient_provider_failures(monkeypatch):
     seen = {}
 
     def fake_call(system, user, *, lane, attempts, **_kwargs):
@@ -493,7 +493,7 @@ def test_extract_returns_provider_failed_on_provider_exception(tmp_path, monkeyp
     assert "llm_call_failed" in audit.read_text(encoding="utf-8")
 
 
-def test_extract_adaptively_splits_max_token_window():
+def test_extract_morphively_splits_max_token_window():
     calls = []
 
     def fake(_system, user):
@@ -517,7 +517,7 @@ def test_extract_adaptively_splits_max_token_window():
     assert {item["session_id"] for item in out.actions} == {"s1", "s2"}
 
 
-def test_extract_adaptively_splits_malformed_multi_turn_window():
+def test_extract_morphively_splits_malformed_multi_turn_window():
     def fake(_system, user):
         return "not json" if len(json.loads(user)) > 1 else "[]"
 
@@ -529,13 +529,13 @@ def test_extract_adaptively_splits_malformed_multi_turn_window():
 
 
 def test_synthesize_returns_update_action_with_envelope():
-    existing = [{"name": "adapt-logging-jsonl-over-logfmt", "category": "tooling",
+    existing = [{"name": "morph-logging-jsonl-over-logfmt", "category": "tooling",
                  "rule": "Prefer JSONL over logfmt for structured logs.", "confidence": 0.8,
                  "observations": 2, "scope": "D--Claude"}]
     new_obs = [{"category": "tooling", "observation": "use JSONL not logfmt",
                 "evidence": "always use JSONL", "tool": "codex", "scope": "D--Claude"}]
     fake = lambda system, user: json.dumps([
-        {"action": "update", "name": "adapt-logging-jsonl-over-logfmt", "category": "tooling",
+        {"action": "update", "name": "morph-logging-jsonl-over-logfmt", "category": "tooling",
          "rule": "Use JSONL for structured logs, never logfmt.", "confidence": 0.85,
          "observations": 3, "why": "re-endorsed in codex session"}])
     out = tl.synthesize(existing, new_obs, llm=fake)
@@ -546,7 +546,7 @@ def test_synthesize_returns_update_action_with_envelope():
 
 def test_synthesize_low_confidence_action_is_review_flagged():
     fake = lambda system, user: json.dumps([
-        {"action": "add", "name": "adapt-review-ask-first", "category": "workflow",
+        {"action": "add", "name": "morph-review-ask-first", "category": "workflow",
          "rule": "Ask before broad review changes are pushed.", "confidence": 0.35,
          "observations": 1, "why": "single weak hint"}])
     out = tl.synthesize([], [{"category": "workflow", "observation": "ask first"}], llm=fake)
@@ -581,14 +581,14 @@ def test_call_lane_forwards_minimax_retry_and_output_ceilings(monkeypatch):
     assert seen == {
         "max_tokens": 2048,
         "attempts": 1,
-        "thinking": "adaptive",
+        "thinking": "morphive",
         "temperature": 0.2,
     }
 
 
 def test_default_llm_surfaces_provider_usage_in_audit(tmp_path, monkeypatch):
     audit = tmp_path / "audit.jsonl"
-    monkeypatch.setenv("ADAPT_AUDIT_FILE_OVERRIDE", str(audit))
+    monkeypatch.setenv("MORPH_AUDIT_FILE_OVERRIDE", str(audit))
 
     def fake(_system, _user, **_kwargs):
         return {
@@ -612,14 +612,14 @@ def test_default_llm_surfaces_provider_usage_in_audit(tmp_path, monkeypatch):
 import importlib.util
 
 _spec = importlib.util.spec_from_file_location(
-    "adapt_cli", Path(__file__).resolve().parent / "adapt.py")
+    "morph_cli", Path(__file__).resolve().parent / "morph.py")
 lt = importlib.util.module_from_spec(_spec)
 # Register before exec so taste/taste_apply host late-bind can see monkeypatches.
-sys.modules["adapt_cli"] = lt
+sys.modules["morph_cli"] = lt
 _spec.loader.exec_module(lt)
 
 
-def test_apply_actions_upserts_via_memright(tmp_path, monkeypatch):
+def test_apply_actions_upserts_via_crypt(tmp_path, monkeypatch):
     calls = []
     bodies = []
     def fake_run(args):
@@ -627,10 +627,10 @@ def test_apply_actions_upserts_via_memright(tmp_path, monkeypatch):
         if args and args[0] == "put":
             bodies.append(Path(args[args.index("--file") + 1]).read_text(encoding="utf-8"))
         return True
-    monkeypatch.setattr(lt, "_run_memright", fake_run)
+    monkeypatch.setattr(lt, "_run_crypt", fake_run)
     monkeypatch.setattr(lt.ts, "scan_batch_for_secrets_str", lambda _text: True)
     rules = {}
-    actions = [{"action": "add", "name": "adapt-logging-jsonl-over-logfmt",
+    actions = [{"action": "add", "name": "morph-logging-jsonl-over-logfmt",
                 "category": "workflow", "rule": "Always prefer JSONL over logfmt for structured logging because line-delimited records survive tool rotations cleanly.",
                 "confidence": 0.7, "observations": 1, "why": "stated directly"}]
     obs_by_cat = {"workflow": [{"scope": "D--Claude", "tool": "claude-code",
@@ -638,22 +638,22 @@ def test_apply_actions_upserts_via_memright(tmp_path, monkeypatch):
                                "observation": "use JSONL"}]}
     changed, ok = lt.apply_actions(actions, obs_by_cat, rules, tmp_path, dry_run=False)
     assert changed == 1 and ok is True
-    assert "adapt-logging-jsonl-over-logfmt" in rules
+    assert "morph-logging-jsonl-over-logfmt" in rules
     assert len(calls) == 1
-    assert calls[0][:2] == ["put", "adapt-logging-jsonl-over-logfmt"]
+    assert calls[0][:2] == ["put", "morph-logging-jsonl-over-logfmt"]
     assert "--scope" in calls[0] and "D--Claude" in calls[0]
     assert "**Trigger phrases:** always use JSONL" in bodies[0]
-    assert rules["adapt-logging-jsonl-over-logfmt"]["retrieval_aliases"] == [
+    assert rules["morph-logging-jsonl-over-logfmt"]["retrieval_aliases"] == [
         "always use JSONL"
     ]
-    assert rules["adapt-logging-jsonl-over-logfmt"]["record_type"] == "standing_preference"
+    assert rules["morph-logging-jsonl-over-logfmt"]["record_type"] == "standing_preference"
 
 
 def test_apply_actions_enforces_supplied_authority_manifest(tmp_path, monkeypatch):
     import authority as authority_mod
 
     calls = []
-    monkeypatch.setattr(lt, "_run_memright", lambda args: calls.append(args) or True)
+    monkeypatch.setattr(lt, "_run_crypt", lambda args: calls.append(args) or True)
     frozen = authority_mod.build_manifest(
         tmp_path,
         directives=[{
@@ -665,7 +665,7 @@ def test_apply_actions_enforces_supplied_authority_manifest(tmp_path, monkeypatc
     )
     actions = [{
         "action": "add",
-        "name": "adapt-yaml-reports",
+        "name": "morph-yaml-reports",
         "category": "workflow",
         "rule": "Always use YAML for generated reports.",
         "confidence": 0.8,
@@ -693,11 +693,11 @@ def test_apply_actions_enforces_supplied_authority_manifest(tmp_path, monkeypatc
 
 def test_apply_is_idempotent_on_keep(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr(lt, "_run_memright", lambda args: calls.append(args) or True)
-    rules = {"adapt-logging-jsonl-over-logfmt": {
-        "name": "adapt-logging-jsonl-over-logfmt", "category": "workflow",
+    monkeypatch.setattr(lt, "_run_crypt", lambda args: calls.append(args) or True)
+    rules = {"morph-logging-jsonl-over-logfmt": {
+        "name": "morph-logging-jsonl-over-logfmt", "category": "workflow",
         "rule": "Use JSONL.", "confidence": 0.7, "observations": 1, "scope": "D--Claude"}}
-    actions = [{"action": "keep", "name": "adapt-logging-jsonl-over-logfmt",
+    actions = [{"action": "keep", "name": "morph-logging-jsonl-over-logfmt",
                 "category": "workflow", "rule": "Use JSONL.", "confidence": 0.7,
                 "observations": 1, "why": ""}]
     changed, ok = lt.apply_actions(actions, {"workflow": []}, rules, tmp_path, dry_run=False)
@@ -707,8 +707,8 @@ def test_apply_is_idempotent_on_keep(tmp_path, monkeypatch):
 
 def test_dry_run_never_writes(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr(lt, "_run_memright", lambda args: calls.append(args) or True)
-    actions = [{"action": "add", "name": "adapt-tooling-keep-it-boring",
+    monkeypatch.setattr(lt, "_run_crypt", lambda args: calls.append(args) or True)
+    actions = [{"action": "add", "name": "morph-tooling-keep-it-boring",
                 "category": "tooling",
                 "rule": "Prefer boring, well-trodden libraries over clever ones when both solve the same problem for this codebase.",
                 "confidence": 0.6, "observations": 1, "why": ""}]
@@ -718,9 +718,9 @@ def test_dry_run_never_writes(tmp_path, monkeypatch):
     assert calls == []
 
 
-def test_failed_memright_write_reports_not_ok(tmp_path, monkeypatch):
-    monkeypatch.setattr(lt, "_run_memright", lambda args: False)
-    actions = [{"action": "add", "name": "adapt-workflow-validate-first",
+def test_failed_crypt_write_reports_not_ok(tmp_path, monkeypatch):
+    monkeypatch.setattr(lt, "_run_crypt", lambda args: False)
+    actions = [{"action": "add", "name": "morph-workflow-validate-first",
                 "category": "workflow",
                 "rule": "Always validate the user's plan before starting implementation or pursuing unrelated tangents.",
                 "confidence": 0.6, "observations": 1, "why": ""}]
@@ -728,37 +728,37 @@ def test_failed_memright_write_reports_not_ok(tmp_path, monkeypatch):
     assert changed == 0 and ok is False
 
 
-def test_apply_preflight_requires_scanner_lane_and_memright(monkeypatch):
+def test_apply_preflight_requires_scanner_lane_and_crypt(monkeypatch):
     monkeypatch.setattr(lt.ts, "scanner_available", lambda: False)
     assert lt.preflight_apply("local", allow_external=False) is False
     monkeypatch.setattr(lt.ts, "scanner_available", lambda: True)
-    monkeypatch.setattr(lt.adapt_llm, "lane_available", lambda lane: False)
+    monkeypatch.setattr(lt.morph_llm, "lane_available", lambda lane: False)
     assert lt.preflight_apply("local", allow_external=False) is False
-    monkeypatch.setattr(lt.adapt_llm, "lane_available", lambda lane: True)
+    monkeypatch.setattr(lt.morph_llm, "lane_available", lambda lane: True)
     assert lt.preflight_apply("minimax", allow_external=False) is False
-    monkeypatch.setattr(lt, "_run_memright", lambda args: False)
+    monkeypatch.setattr(lt, "_run_crypt", lambda args: False)
     assert lt.preflight_apply("local", allow_external=False) is False
-    monkeypatch.setattr(lt, "_run_memright", lambda args: True)
+    monkeypatch.setattr(lt, "_run_crypt", lambda args: True)
     assert lt.preflight_apply("local", allow_external=False) is True
     assert lt.preflight_apply("minimax", allow_external=True) is True
 
 
 def test_rule_body_format():
-    body = lt.rule_body({"name": "adapt-logging-jsonl", "category": "logging",
+    body = lt.rule_body({"name": "morph-logging-jsonl", "category": "logging",
                          "rule": "Use JSONL for structured logging.", "confidence": 0.8,
                          "observations": 3},
                         evidence='always use JSONL', tool="claude-code")
-    assert body.startswith("**[adapt/logging]** — Use JSONL for structured logging.")
+    assert body.startswith("**[morph/logging]** — Use JSONL for structured logging.")
     assert "Confidence: 0.80 (observations: 3, needs_review: false" in body
     assert "**Why:**" in body and "**How to apply:**" in body
 
 
 def test_digest_written(tmp_path):
-    rules = {"adapt-logging-jsonl": {"name": "adapt-logging-jsonl", "category": "logging",
+    rules = {"morph-logging-jsonl": {"name": "morph-logging-jsonl", "category": "logging",
                                      "rule": "Use JSONL.", "confidence": 0.8,
                                      "observations": 3, "scope": "D--Claude"}}
-    lt.write_digest(rules, tmp_path / "adapt-digest.md")
-    text = (tmp_path / "adapt-digest.md").read_text(encoding="utf-8")
+    lt.write_digest(rules, tmp_path / "morph-digest.md")
+    text = (tmp_path / "morph-digest.md").read_text(encoding="utf-8")
     assert "# logging" in text and "Use JSONL." in text and "0.80" in text
 
 # --- privacy + audit-isolation contract tests added by 2026-07-12 fix pass ---
@@ -768,7 +768,7 @@ def test_extract_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
     """When the external-lane batch scanner flags the batch, extract returns
     SCANNER_BLOCKED — retryable, never leaked into LLM output."""
     audit = _audit_file_path(tmp_path)
-    import adapt_sessions as _ts
+    import morph_sessions as _ts
     monkeypatch.setattr(_ts, "scan_batch_for_secrets", lambda batch: False)
     fake = lambda system, user: json.dumps([
         {"category": "tooling", "observation": "x", "evidence": "y", "prompt": 1}])
@@ -781,7 +781,7 @@ def test_extract_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
 
 def test_synthesize_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
     audit = _audit_file_path(tmp_path)
-    import adapt_sessions as _ts
+    import morph_sessions as _ts
     sentinel = {"called": False}
     def fail_scan(s):
         sentinel["called"] = True
@@ -843,31 +843,31 @@ def test_extract_deterministic_still_available_for_diagnostic():
 
 
 def _audit_file_path(tmp_path):
-    """Helper: set ADAPT_AUDIT_FILE_OVERRIDE to tmp and return the resolved path."""
-    import adapt as _adapt_mod, os
+    """Helper: set MORPH_AUDIT_FILE_OVERRIDE to tmp and return the resolved path."""
+    import morph as _morph_mod, os
     p = tmp_path / "audit.jsonl"
-    os.environ["ADAPT_AUDIT_FILE_OVERRIDE"] = str(p)
+    os.environ["MORPH_AUDIT_FILE_OVERRIDE"] = str(p)
     return p
 
 
 def test_audit_writes_to_env_override_path(tmp_path, monkeypatch):
-    """The audit function routes to ADAPT_AUDIT_FILE_OVERRIDE when set, so
-    tests do not contaminate the real ~/.claude/adapt/audit.jsonl.
+    """The audit function routes to MORPH_AUDIT_FILE_OVERRIDE when set, so
+    tests do not contaminate the real ~/.claude/morph/audit.jsonl.
     """
     p = _audit_file_path(tmp_path)
     # Force a write through the orchestrator's _audit() helper.
-    import adapt as _adapt_mod
-    _adapt_mod._audit({"event": "test", "marker": "iso-override-ok"})
+    import morph as _morph_mod
+    _morph_mod._audit({"event": "test", "marker": "iso-override-ok"})
     text = p.read_text(encoding="utf-8")
     assert "iso-override-ok" in text
     assert "ts" in text
     # And NOT in the canonical user audit log.
-    canonical = Path.home() / ".claude" / "adapt" / "audit.jsonl"
+    canonical = Path.home() / ".claude" / "morph" / "audit.jsonl"
     if canonical.exists():
         canonical_text = canonical.read_text(encoding="utf-8")
         assert "iso-override-ok" not in canonical_text
     # Cleanup the env so it doesn't leak to subsequent tests.
-    monkeypatch.delenv("ADAPT_AUDIT_FILE_OVERRIDE", raising=False)
+    monkeypatch.delenv("MORPH_AUDIT_FILE_OVERRIDE", raising=False)
 
 # --- admission policy + run journal + taxonomy tests ---
 
@@ -945,7 +945,7 @@ def test_admit_accepts_concise_imperative_rule():
     from importlib import import_module
     adm = import_module("admission")
     ok, why = adm.admit("add", {
-        "name": "adapt-verification-focused-tests",
+        "name": "morph-verification-focused-tests",
         "rule": "Run focused tests before broad build.",
         "category": "verification",
     })
@@ -958,14 +958,14 @@ def test_admit_update_allows_existing_target():
     import rule_key as rk_mod
     adm = import_module("admission")
     index = rk_mod.RuleIndex.from_mapping({
-        "adapt-logging-jsonl-over-logfmt": {
-            "id": "adapt-logging-jsonl-over-logfmt",
+        "morph-logging-jsonl-over-logfmt": {
+            "id": "morph-logging-jsonl-over-logfmt",
             "scope": "D--Claude",
             "rule": "Prefer JSONL over logfmt for structured logs.",
         }
     })
     ok, why = adm.admit("update", {
-        "name": "adapt-logging-jsonl-over-logfmt",
+        "name": "morph-logging-jsonl-over-logfmt",
         "rule": "Use JSONL for structured logs, never logfmt.",
         "category": "tooling",
         "scope": "D--Claude",
@@ -1129,7 +1129,7 @@ def test_journal_replay_path_does_not_resend_extract(tmp_path):
     """
     from importlib import import_module
     rj = import_module("run_journal")
-    al = import_module("adapt_llm")
+    al = import_module("morph_llm")
 
     journal_path = tmp_path / "run_journal.jsonl"
     j = rj.RunJournal(journal_path)
@@ -1293,7 +1293,7 @@ def test_synthesize_requires_exact_observation_links_when_ids_are_present():
 
     def missing_link(_system, _user):
         return json.dumps([{
-            "action": "add", "name": "adapt-workflow-verify-code",
+            "action": "add", "name": "morph-workflow-verify-code",
             "category": "workflow", "rule": "Always verify actual code before reporting.",
             "confidence": 0.9, "observations": 1,
         }])
@@ -1309,7 +1309,7 @@ def test_synthesize_allows_linked_observation_category_correction():
         "observation": "Always verify the actual UI.", "evidence": "always verify UI",
     }]
     fake = lambda _system, _user: json.dumps([{
-        "action": "add", "name": "adapt-verification-verify-ui",
+        "action": "add", "name": "morph-verification-verify-ui",
         "category": "verification", "rule": "Always verify the actual UI before completion.",
         "confidence": 0.9, "observations": 1,
         "observation_ids": ["obs-000001"],
@@ -1330,7 +1330,7 @@ def test_manifest_uses_only_action_linked_evidence(tmp_path):
          "evidence": "always use py -3.11", "observation": "Always use py -3.11."},
     ]
     actions = [{
-        "action": "add", "name": "adapt-tooling-use-py311", "category": "tooling",
+        "action": "add", "name": "morph-tooling-use-py311", "category": "tooling",
         "rule": "Always use py -3.11 for Python commands in this workspace.",
         "confidence": 0.9, "observations": 1,
         "observation_ids": ["obs-000002"],
@@ -1353,7 +1353,7 @@ def test_manifest_uses_only_action_linked_evidence(tmp_path):
 
 def test_admission_rejects_transient_environment_workaround_claim():
     admitted, reason = lt.admission.admit("add", {
-        "name": "adapt-tooling-launch-installers",
+        "name": "morph-tooling-launch-installers",
         "category": "tooling",
         "rule": "Launch installers via cmd.exe because PowerShell is blocked in the agent sandbox.",
         "scope": "D--Claude",
@@ -1446,7 +1446,7 @@ def test_pref_record_derive_id_stable_for_same_input():
     b = pr_mod.derive_id("D--Claude", "workflow",
                          "Always use JSONL for structured logs, never logfmt.")
     assert a == b
-    assert a.startswith("adapt-workflow-")
+    assert a.startswith("morph-workflow-")
     # 10-hex-char sha suffix
     assert a.split("-")[-1].isalnum() and len(a.split("-")[-1]) == 10
 
@@ -1488,7 +1488,7 @@ def test_pref_record_from_synthesis_assigns_id_for_add():
          "confidence": 0.7, "observations": 2},
         scope="D--Claude", source_ids=("s1", "s2"),
     )
-    assert rec.id.startswith("adapt-tooling-")
+    assert rec.id.startswith("morph-tooling-")
     assert rec.source_ids == ("s1", "s2")
     assert rec.schema_version == pr_mod.SCHEMA_VERSION
     assert rec.kind == "preference"
@@ -1517,14 +1517,14 @@ def test_pref_record_from_synthesis_preserves_id_on_update():
 
 def test_pref_record_update_accepts_legacy_rule_without_id():
     updated = pr_mod.PreferenceRecord.from_synthesis(
-        {"action": "update", "name": "adapt-tooling-existing-abc123",
+        {"action": "update", "name": "morph-tooling-existing-abc123",
          "category": "tooling", "rule": "Prefer JSONL for structured logs.",
          "confidence": 0.85},
         scope="D--Claude", source_ids=("s1",),
-        existing={"name": "adapt-tooling-existing-abc123",
+        existing={"name": "morph-tooling-existing-abc123",
                   "created_at": "2026-07-01T00:00:00+00:00"},
     )
-    assert updated.id == "adapt-tooling-existing-abc123"
+    assert updated.id == "morph-tooling-existing-abc123"
     assert updated.created_at == "2026-07-01T00:00:00+00:00"
 
 
@@ -1544,15 +1544,15 @@ def test_pref_record_dict_round_trip_carries_all_required_fields():
     assert rec2 == rec
 
 
-def test_pref_record_to_memright_content_uses_existing_envelope():
+def test_pref_record_to_crypt_content_uses_existing_envelope():
     rec = pr_mod.PreferenceRecord.from_synthesis(
         {"action": "add", "name": "x",
          "category": "tooling", "rule": "Prefer JSONL for structured logs.",
          "confidence": 0.7, "observations": 3},
         scope="D--Claude", source_ids=("s1",),
     )
-    body = pr_mod.to_memright_content(rec)
-    assert body.startswith("**[adapt/tooling]**")
+    body = pr_mod.to_crypt_content(rec)
+    assert body.startswith("**[morph/tooling]**")
     assert "Prefer JSONL for structured logs." in body
     assert "Confidence:" in body and "How to apply:" in body
 
@@ -1577,7 +1577,7 @@ def test_pref_record_bounded_retrieval_aliases_round_trip_and_embed():
     data["source_ids"] = tuple(data["source_ids"])
     data["retrieval_aliases"] = tuple(data["retrieval_aliases"])
     assert pr_mod.PreferenceRecord(**data) == rec
-    body = pr_mod.to_memright_content(rec)
+    body = pr_mod.to_crypt_content(rec)
     assert "**Trigger phrases:**" in body
     assert "always use JSONL when the logs are machine readable" in body
 
@@ -1599,7 +1599,7 @@ def _build_valid_manifest(tmp_path, *, status="pending", batch_id="batch-1"):
     records = []
     for i, cat in enumerate(("tooling", "workflow", "verification")):
         rec = {
-            "id": f"adapt-{cat}-sample-{i:010x}",
+            "id": f"morph-{cat}-sample-{i:010x}",
             "rule": f"Always do thing number {i} in the right way to satisfy tests.",
             "category": cat,
             "scope": "D--Claude",
@@ -1673,7 +1673,7 @@ def test_manifest_accepts_empty_records_as_valid_noop_batch(tmp_path):
     body = {
         "schema_version": pr_mod.SCHEMA_VERSION,
         "batch_id": "x", "created_at": "2026-07-13T00:00:00Z",
-        "generator": "adapt.py --manifest",
+        "generator": "morph.py --manifest",
         "source_session_ids": ["s1"], "records": [],
     }
     p = tmp_path / "empty.json"
@@ -1705,15 +1705,15 @@ def test_manifest_refuses_missing_required_field(tmp_path):
 
 
 def _isolate_journal(tmp_path, monkeypatch):
-    """Redirect STATE_DIR + run_journal.JOURNAL_FILE + scanner/memright preflight
-    to test-only fakes. The apply path needs scanner_available + _run_memright
+    """Redirect STATE_DIR + run_journal.JOURNAL_FILE + scanner/crypt preflight
+    to test-only fakes. The apply path needs scanner_available + _run_crypt
     to pass before it ever touches the journal.
     """
     monkeypatch.setattr(lt.ts, "STATE_DIR", tmp_path)
     monkeypatch.setattr(lt.ts, "STATE_FILE", tmp_path / "state.json")
     monkeypatch.setattr(lt.run_journal, "JOURNAL_FILE", tmp_path / "run_journal.jsonl")
     monkeypatch.setattr(lt.ts, "scanner_available", lambda: True)
-    monkeypatch.setattr(lt, "_run_memright", lambda args: True)
+    monkeypatch.setattr(lt, "_run_crypt", lambda args: True)
     monkeypatch.setattr(
         lt, "_create_apply_safepoint",
         lambda manifest_body: tmp_path / "safepoint.json",
@@ -1732,7 +1732,7 @@ def test_apply_from_manifest_creates_safepoint_before_first_put(tmp_path, monkey
         lambda manifest_body: events.append("safepoint") or tmp_path / "sp.json",
     )
     monkeypatch.setattr(
-        lt, "_run_memright",
+        lt, "_run_crypt",
         lambda args: events.append(args[0]) or True,
     )
     assert lt.apply_from_manifest(p) == 0
@@ -1749,7 +1749,7 @@ def test_apply_from_manifest_refuses_writes_when_safepoint_fails(tmp_path, monke
         lambda manifest_body: (_ for _ in ()).throw(RuntimeError("backup failed")),
     )
     monkeypatch.setattr(
-        lt, "_run_memright",
+        lt, "_run_crypt",
         lambda args: puts.append(args) or True,
     )
     assert lt.apply_from_manifest(p) == 2
@@ -1757,7 +1757,7 @@ def test_apply_from_manifest_refuses_writes_when_safepoint_fails(tmp_path, monke
 
 
 def test_apply_from_manifest_refuses_when_journal_missing(tmp_path, monkeypatch):
-    """adapt.apply_from_manifest must refuse if no journal discovered entry exists."""
+    """morph.apply_from_manifest must refuse if no journal discovered entry exists."""
     p, _ = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-noj")
     _isolate_journal(tmp_path, monkeypatch)
     rc = lt.apply_from_manifest(p)
@@ -1765,11 +1765,11 @@ def test_apply_from_manifest_refuses_when_journal_missing(tmp_path, monkeypatch)
 
 
 def test_apply_from_manifest_atomic_rollback_on_write_failure(tmp_path, monkeypatch):
-    """If any memright put fails, partial writes are rolled back and state does not advance."""
+    """If any crypt put fails, partial writes are rolled back and state does not advance."""
     p, body = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-rb")
     journal = _isolate_journal(tmp_path, monkeypatch)
     journal.record("batch-rb", "discovered", sessions=["s1", "s2"])
-    # Override _run_memright: first put succeeds, second fails.
+    # Override _run_crypt: first put succeeds, second fails.
     state = {"phase": 0}
     deletes = []
     puts = []
@@ -1782,7 +1782,7 @@ def test_apply_from_manifest_atomic_rollback_on_write_failure(tmp_path, monkeypa
             deletes.append(args[1])
             return True
         return True
-    monkeypatch.setattr(lt, "_run_memright", fake_run)
+    monkeypatch.setattr(lt, "_run_crypt", fake_run)
     rc = lt.apply_from_manifest(p)
     assert rc == 1, "expected non-zero exit on partial write failure"
     assert len(puts) == 2, "apply must fail fast after the first put failure"
@@ -1834,7 +1834,7 @@ def test_multiwriter_apply_uses_one_atomic_attributed_batch(tmp_path, monkeypatc
     )
     batches = []
     monkeypatch.setattr(
-        lt.adapt_persistence,
+        lt.morph_persistence,
         "persist_manifest_batch",
         lambda records, **kwargs: batches.append((list(records), kwargs))
         or {
@@ -1844,9 +1844,9 @@ def test_multiwriter_apply_uses_one_atomic_attributed_batch(tmp_path, monkeypatc
             "receipts": [],
         },
     )
-    memright_calls = []
+    crypt_calls = []
     monkeypatch.setattr(
-        lt, "_run_memright", lambda args: memright_calls.append(args) or True
+        lt, "_run_crypt", lambda args: crypt_calls.append(args) or True
     )
 
     assert lt.apply_from_manifest(p) == 0
@@ -1857,7 +1857,7 @@ def test_multiwriter_apply_uses_one_atomic_attributed_batch(tmp_path, monkeypatc
     }
     assert all(set(record.source_ids) == set(body["source_session_ids"]) for record in records)
     assert kwargs["installation_id"] == installation
-    assert not [call for call in memright_calls if call and call[0] == "put"]
+    assert not [call for call in crypt_calls if call and call[0] == "put"]
 
 
 def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
@@ -1899,7 +1899,7 @@ def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
     )
     batches = []
     monkeypatch.setattr(
-        lt.adapt_persistence,
+        lt.morph_persistence,
         "persist_manifest_batch",
         lambda *args, **kwargs: batches.append((args, kwargs)),
     )
@@ -1921,7 +1921,7 @@ def test_apply_from_manifest_writes_only_accepted(tmp_path, monkeypatch):
         if args and args[0] == "put":
             puts.append(args[1])
         return True
-    monkeypatch.setattr(lt, "_run_memright", fake_run)
+    monkeypatch.setattr(lt, "_run_crypt", fake_run)
     rc = lt.apply_from_manifest(p)
     assert rc == 0
     assert len(puts) == 2
@@ -1938,7 +1938,7 @@ def test_apply_from_manifest_all_rejected_advances_state_without_put(
     journal.record("batch-rejected", "discovered", sessions=["s1", "s2"])
     calls = []
     monkeypatch.setattr(
-        lt, "_run_memright", lambda args: calls.append(args) or True
+        lt, "_run_crypt", lambda args: calls.append(args) or True
     )
 
     assert lt.apply_from_manifest(p) == 0
@@ -2000,13 +2000,13 @@ def test_apply_from_manifest_no_llm_call(tmp_path, monkeypatch):
     p, _ = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-nollm")
     journal = _isolate_journal(tmp_path, monkeypatch)
     journal.record("batch-nollm", "discovered", sessions=["s1", "s2"])
-    monkeypatch.setattr(lt, "_run_memright", lambda args: True)
+    monkeypatch.setattr(lt, "_run_crypt", lambda args: True)
     sentinel = {"llm": 0}
     def fake_llm(*args, **kwargs):
         sentinel["llm"] += 1
         return "[]"
-    monkeypatch.setattr(lt.adapt_llm, "extract_observations", fake_llm)
-    monkeypatch.setattr(lt.adapt_llm, "synthesize", fake_llm)
+    monkeypatch.setattr(lt.morph_llm, "extract_observations", fake_llm)
+    monkeypatch.setattr(lt.morph_llm, "synthesize", fake_llm)
     rc = lt.apply_from_manifest(p)
     assert rc == 0
     assert sentinel["llm"] == 0, "apply-from-manifest must not invoke any LLM call"
@@ -2032,7 +2032,7 @@ def test_apply_from_manifest_rechecks_permission_expansion(tmp_path, monkeypatch
             puts.append(args[1])
         return True
 
-    monkeypatch.setattr(lt, "_run_memright", fake_run)
+    monkeypatch.setattr(lt, "_run_crypt", fake_run)
 
     rc = lt.apply_from_manifest(p)
 
@@ -2073,7 +2073,7 @@ def test_apply_from_manifest_enforces_embedded_authority_snapshot(tmp_path, monk
             puts.append(args[1])
         return True
 
-    monkeypatch.setattr(lt, "_run_memright", fake_run)
+    monkeypatch.setattr(lt, "_run_crypt", fake_run)
 
     rc = lt.apply_from_manifest(p)
 
@@ -2105,7 +2105,7 @@ def _make_sqlite_db(path):
 
 def test_rollback_db_discovery_is_installation_relative(tmp_path, monkeypatch):
     monkeypatch.setattr(rk, "WS", tmp_path)
-    db = tmp_path / "tools" / ".cache" / "memory" / "memright-engine.db"
+    db = tmp_path / "tools" / ".cache" / "memory" / "crypt-engine.db"
     db.parent.mkdir(parents=True)
     _make_sqlite_db(db)
 
@@ -2169,7 +2169,7 @@ def test_rollback_dry_run_does_not_modify(tmp_path):
     assert state_path.read_text(encoding="utf-8") == "MODIFIED"
 
 
-def test_rollback_apply_deletes_via_memright(tmp_path, monkeypatch):
+def test_rollback_apply_deletes_via_crypt(tmp_path, monkeypatch):
     p, body = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-app")
     db = tmp_path / "engine.db"
     _make_sqlite_db(db)
@@ -2180,7 +2180,7 @@ def test_rollback_apply_deletes_via_memright(tmp_path, monkeypatch):
     monkeypatch.setattr(rk, "RULES_FILE", rules)
     monkeypatch.setattr(rk, "CORE_FILE", core)
     audit = tmp_path / "audit.jsonl"
-    monkeypatch.setenv("ADAPT_AUDIT_FILE_OVERRIDE", str(audit))
+    monkeypatch.setenv("MORPH_AUDIT_FILE_OVERRIDE", str(audit))
     state.write_text("pre-apply-state", encoding="utf-8")
     rules.write_text("pre-apply-rules", encoding="utf-8")
     core.write_text("pre-apply-core", encoding="utf-8")
@@ -2190,8 +2190,8 @@ def test_rollback_apply_deletes_via_memright(tmp_path, monkeypatch):
     state.write_text("post-apply-bad", encoding="utf-8")
     rules.write_text("post-apply-rules", encoding="utf-8")
     core.write_text("post-apply-core", encoding="utf-8")
-    # Patch shutil.which for sqlite3 (none) and memright delete (stub).
-    monkeypatch.setattr(rk, "_resolve_memright", lambda: "memright")
+    # Patch shutil.which for sqlite3 (none) and crypt delete (stub).
+    monkeypatch.setattr(rk, "_resolve_crypt", lambda: "crypt")
     monkeypatch.setattr(rk.shutil, "which", lambda name: None)
     captured = {"deleted": []}
     class FakeRun:
@@ -2199,7 +2199,7 @@ def test_rollback_apply_deletes_via_memright(tmp_path, monkeypatch):
         stdout = ""
         stderr = ""
     def fake_run(args, **kwargs):
-        if args and args[0] == "memright":
+        if args and args[0] == "crypt":
             captured["deleted"].append(args[2])
         return FakeRun()
     monkeypatch.setattr(rk.subprocess, "run", fake_run)
@@ -2234,24 +2234,24 @@ def test_rollback_integrity_uses_python_sqlite(tmp_path):
     assert message
 
 
-def test_memright_mutation_timeouts_exceed_resident_read_timeout(monkeypatch):
+def test_crypt_mutation_timeouts_exceed_resident_read_timeout(monkeypatch):
     seen = []
 
     def fake_run(command, **kwargs):
         seen.append(kwargs["timeout"])
         return __import__("subprocess").CompletedProcess(command, 0, "{}", "")
 
-    monkeypatch.setattr(lt.taste.shutil, "which", lambda _name: "memright")
+    monkeypatch.setattr(lt.taste.shutil, "which", lambda _name: "crypt")
     monkeypatch.setattr(lt.taste.subprocess, "run", fake_run)
     monkeypatch.setattr(rk.subprocess, "run", fake_run)
-    assert lt._run_memright(["delete", "x"])
-    assert rk._delete_via_memright("x", memright_bin="memright")
+    assert lt._run_crypt(["delete", "x"])
+    assert rk._delete_via_crypt("x", crypt_bin="crypt")
     assert seen == [150, 150]
 
 
 def test_rollback_delete_treats_already_absent_row_as_success(monkeypatch):
     error = (
-        'Error: "resident memright service failed /delete; refusing direct DB '
+        'Error: "resident crypt service failed /delete; refusing direct DB '
         'fallback: resident service returned HTTP/1.1 404 Not Found: '
         '{\\"deleted\\":false}"'
     )
@@ -2262,7 +2262,7 @@ def test_rollback_delete_treats_already_absent_row_as_success(monkeypatch):
             args[0], 1, "", error
         ),
     )
-    assert rk._delete_via_memright("missing", memright_bin="memright")
+    assert rk._delete_via_crypt("missing", crypt_bin="crypt")
 
 
 def test_rollback_refuses_corrupt_backup_before_delete(tmp_path, monkeypatch):
@@ -2283,8 +2283,8 @@ def test_rollback_refuses_corrupt_backup_before_delete(tmp_path, monkeypatch):
     Path(sp["db_backup_path"]).write_bytes(b"corrupt")
     deleted = []
     monkeypatch.setattr(
-        rk, "_delete_via_memright",
-        lambda name, memright_bin=None: deleted.append(name) or True,
+        rk, "_delete_via_crypt",
+        lambda name, crypt_bin=None: deleted.append(name) or True,
     )
     assert rk.revert(
         sp_path, apply=True, state_path=state, rules_path=rules, core_path=core
@@ -2494,7 +2494,7 @@ def test_grade_end_to_end_smoke(tmp_path):
 
 def test_pref_record_session_file_sha256(tmp_path):
     """Session.file_sha256 is a stable 64-hex string of the transcript bytes."""
-    import adapt_sessions as ts
+    import morph_sessions as ts
     f = _write(tmp_path / "s.jsonl", [
         {"type": "user", "userType": "external", "cwd": "D:\Claude",
          "sessionId": "x", "message": {"content": "hello world always jsonl logs"}},
@@ -2520,7 +2520,7 @@ def test_manifest_derive_evidence_id_stable_and_collision_resistant():
 def test_manifest_candidate_payload_includes_gate1b_fields(tmp_path):
     """The immutable payload now covers source_file_hashes + evidence_ids."""
     rec = {
-        "id": "adapt-tooling-sample-0000000000",
+        "id": "morph-tooling-sample-0000000000",
         "rule": "Always do the right thing in this particular way.",
         "category": "tooling",
         "scope": "D--Claude",
@@ -2548,7 +2548,7 @@ def test_manifest_candidate_payload_includes_gate1b_fields(tmp_path):
 def test_manifest_payload_sha256_stable_under_list_reorder(tmp_path):
     """Reordering source_file_hashes / evidence_ids must NOT change the hash."""
     rec_a = {
-        "id": "adapt-x-y-0000000000",
+        "id": "morph-x-y-0000000000",
         "rule": "Always do thing number zero in the right way here.",
         "category": "tooling", "scope": "D--Claude",
         "source_ids": ["s1", "s2"],
@@ -2577,10 +2577,10 @@ def test_apply_actions_emits_gate1b_fields(tmp_path, monkeypatch):
     """apply_actions with source_file_hashes argument populates per-record
     source_file_hashes[] + evidence_ids[].
     """
-    monkeypatch.setattr(lt, "_run_memright", lambda args: True)
+    monkeypatch.setattr(lt, "_run_crypt", lambda args: True)
     monkeypatch.setattr(lt.ts, "scan_batch_for_secrets_str", lambda _text: True)
     rules: dict = {}
-    actions = [{"action": "add", "name": "adapt-logging-jsonl-over-logfmt",
+    actions = [{"action": "add", "name": "morph-logging-jsonl-over-logfmt",
                "category": "tooling",
                "rule": "Always prefer JSONL over logfmt for structured logs.",
                "confidence": 0.7, "observations": 1, "why": "stated"}]
@@ -2617,14 +2617,14 @@ def test_apply_from_manifest_embeds_signed_retrieval_aliases(tmp_path, monkeypat
         if args and args[0] == "put":
             written.append(Path(args[args.index("--file") + 1]).read_text(encoding="utf-8"))
         return True
-    monkeypatch.setattr(lt, "_run_memright", fake_run)
+    monkeypatch.setattr(lt, "_run_crypt", fake_run)
     assert lt.apply_from_manifest(p) == 0
     assert "**Trigger phrases:** the exact phrase Adrian normally uses" in written[0]
 
 
 def test_manifest_payload_hash_binds_retrieval_aliases():
     record = {
-        "id": "adapt-tooling-use-jsonl-1234567890",
+        "id": "morph-tooling-use-jsonl-1234567890",
         "rule": "Always use JSONL for structured logs.",
         "category": "tooling", "scope": "D--Claude",
         "retrieval_aliases": ["my usual source phrase"],
@@ -2782,7 +2782,7 @@ def test_grade_arm_C_no_overlap_scores_zero():
 
 def test_lifecycle_emit_schema_review_apply_roundtrip(tmp_path, monkeypatch):
     """End-to-end: emit a manifest from a fixture -> schema-validate -> flip
-    status -> apply-time validate -> apply via memright (mocked)."""
+    status -> apply-time validate -> apply via crypt (mocked)."""
     import emit_arm_d_candidates as emit_mod
     import gate3_review as g3
 
@@ -2823,7 +2823,7 @@ def test_lifecycle_emit_schema_review_apply_roundtrip(tmp_path, monkeypatch):
         if args and args[0] == "put":
             puts.append(args[1])
         return True
-    monkeypatch.setattr(lt, "_run_memright", fake_run)
+    monkeypatch.setattr(lt, "_run_crypt", fake_run)
     rc2 = lt.apply_from_manifest(manifest_path)
     assert rc2 == 0
     assert len(puts) == len(m_apply["records"])
@@ -2832,9 +2832,9 @@ def test_lifecycle_emit_schema_review_apply_roundtrip(tmp_path, monkeypatch):
     assert written_ids == expected_ids
 
 
-def test_apply_idempotent_runs_each_id_through_memright_once(tmp_path, monkeypatch):
-    """Each apply pass writes every accepted id exactly once through memright.
-    Memright put is upsert by design, so a second run is safe."""
+def test_apply_idempotent_runs_each_id_through_crypt_once(tmp_path, monkeypatch):
+    """Each apply pass writes every accepted id exactly once through crypt.
+    Crypt put is upsert by design, so a second run is safe."""
     import emit_arm_d_candidates as emit_mod
     manifest_path = tmp_path / "idem.manifest.json"
     emit_mod.main(["--out", str(manifest_path)])
@@ -2854,7 +2854,7 @@ def test_apply_idempotent_runs_each_id_through_memright_once(tmp_path, monkeypat
         if args and args[0] == "put":
             puts_per_run.append(args[1])
         return True
-    monkeypatch.setattr(lt, "_run_memright", fake_run)
+    monkeypatch.setattr(lt, "_run_crypt", fake_run)
     rc = lt.apply_from_manifest(manifest_path)
     assert rc == 0
     n = len(puts_per_run)
@@ -2863,7 +2863,7 @@ def test_apply_idempotent_runs_each_id_through_memright_once(tmp_path, monkeypat
 
 def test_rollback_create_then_dryrun_does_not_modify(tmp_path, monkeypatch):
     """Create captures live invariants; dry-run prints the plan without
-    touching anything. The dry-run path does not require memright or
+    touching anything. The dry-run path does not require crypt or
     sqlite3."""
     import rollback as rk
     state = tmp_path / "state.json"
@@ -2903,7 +2903,7 @@ def test_gate3_evidence_count_zero_is_unsupported(tmp_path):
     fails -> Gate 3 hard-fails with rc=1."""
     import gate3_review as g3
     rec = {
-        "id": "adapt-x-y-0000000000",
+        "id": "morph-x-y-0000000000",
         "rule": "Always do thing number zero in the right way here.",
         "category": "tooling", "scope": "D--Claude",
         "status": "accepted",
@@ -2940,27 +2940,27 @@ def test_pref_record_round_trip_with_evidence_id():
     assert pr2 == pr
 
 
-def test_adapt_report_runs_on_clean_state(tmp_path, monkeypatch):
+def test_morph_report_runs_on_clean_state(tmp_path, monkeypatch):
     """The report generator must work even when nothing has been applied."""
-    state_dir = tmp_path / "adapt"
+    state_dir = tmp_path / "morph"
     state_dir.mkdir()
     (state_dir / "audit.jsonl").write_text("")
     (state_dir / "run_journal.jsonl").write_text("")
     (state_dir / "state.json").write_text('{"learned": {}}')
     (state_dir / "rules.json").write_text("{}")
-    import adapt_report as ar
+    import morph_report as ar
     rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out"),
                   "--heartbeat", str(tmp_path / "heartbeat.jsonl"),
                   "--db", str(tmp_path / "missing.db")])
     assert rc == 0
-    body = json.loads((tmp_path / "out" / "adapt.report.json").read_text())
+    body = json.loads((tmp_path / "out" / "morph.report.json").read_text())
     assert body["rules_count"] == 0
     assert body["learned_sessions_total"] == 0
     assert body["audit_total"] == 0
 
 
-def test_adapt_report_counts_admission_rejections(tmp_path):
-    state_dir = tmp_path / "adapt"
+def test_morph_report_counts_admission_rejections(tmp_path):
+    state_dir = tmp_path / "morph"
     state_dir.mkdir()
     audit = state_dir / "audit.jsonl"
     audit.write_text(
@@ -2974,19 +2974,19 @@ def test_adapt_report_counts_admission_rejections(tmp_path):
     (state_dir / "run_journal.jsonl").write_text("")
     (state_dir / "state.json").write_text('{"learned": {}}')
     (state_dir / "rules.json").write_text("{}")
-    import adapt_report as ar
+    import morph_report as ar
     rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out"),
                   "--heartbeat", str(tmp_path / "heartbeat.jsonl"),
                   "--db", str(tmp_path / "missing.db")])
     assert rc == 0
-    body = json.loads((tmp_path / "out" / "adapt.report.json").read_text())
+    body = json.loads((tmp_path / "out" / "morph.report.json").read_text())
     assert body["admission_rejection_reasons"]["rule-too-short"] == 1
     assert body["admission_rejection_reasons"]["category-not-allowed"] == 1
     assert body["actions"]["add"] == 1
 
 
-def test_adapt_report_tracks_incomplete_batches(tmp_path):
-    state_dir = tmp_path / "adapt"
+def test_morph_report_tracks_incomplete_batches(tmp_path):
+    state_dir = tmp_path / "morph"
     state_dir.mkdir()
     (state_dir / "audit.jsonl").write_text("")
     journal = state_dir / "run_journal.jsonl"
@@ -3002,26 +3002,26 @@ def test_adapt_report_tracks_incomplete_batches(tmp_path):
     )
     (state_dir / "state.json").write_text('{"learned": {"claude-code": {"s2": 1.0}}}')
     (state_dir / "rules.json").write_text("{}")
-    import adapt_report as ar
+    import morph_report as ar
     rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out"),
                   "--heartbeat", str(tmp_path / "heartbeat.jsonl"),
                   "--db", str(tmp_path / "missing.db")])
-    body = json.loads((tmp_path / "out" / "adapt.report.json").read_text())
+    body = json.loads((tmp_path / "out" / "morph.report.json").read_text())
     assert body["batches_completed"] == 1
     assert body["batches_incomplete"] == ["b1"]
     assert body["learned_sessions_total"] == 1
     assert body["latency_per_batch_seconds"]["b2"] == 5.0
 
 
-def test_adapt_report_aggregates_shadow_delivery_and_effectiveness(tmp_path):
+def test_morph_report_aggregates_shadow_delivery_and_effectiveness(tmp_path):
     import sqlite3
-    import adapt_report as ar
+    import morph_report as ar
 
-    state_dir = tmp_path / "adapt"
+    state_dir = tmp_path / "morph"
     state_dir.mkdir()
     (state_dir / "audit.jsonl").write_text(
-        json.dumps({"event": "shadow_conflict", "id": "D--Claude/adapt-a"}) + "\n"
-        + json.dumps({"event": "shadow_recorrection", "id": "D--Claude/adapt-b"}) + "\n"
+        json.dumps({"event": "shadow_conflict", "id": "D--Claude/morph-a"}) + "\n"
+        + json.dumps({"event": "shadow_recorrection", "id": "D--Claude/morph-b"}) + "\n"
     )
     (state_dir / "run_journal.jsonl").write_text("")
     (state_dir / "state.json").write_text('{"learned": {}}')
@@ -3029,9 +3029,9 @@ def test_adapt_report_aggregates_shadow_delivery_and_effectiveness(tmp_path):
     heartbeat = tmp_path / "heartbeat.jsonl"
     heartbeat.write_text(json.dumps({
         "event": "recall.delivery",
-        "applicable_adapt_ids": ["D--Claude/adapt-a", "D--Claude/adapt-b"],
-        "delivered_adapt_ids": ["D--Claude/adapt-a"],
-        "core_source_ids": ["adapt-core-a"],
+        "applicable_morph_ids": ["D--Claude/morph-a", "D--Claude/morph-b"],
+        "delivered_morph_ids": ["D--Claude/morph-a"],
+        "core_source_ids": ["morph-core-a"],
         "core_delivered": True,
         "context_chars": 400,
         "estimated_tokens": 100,
@@ -3042,9 +3042,9 @@ def test_adapt_report_aggregates_shadow_delivery_and_effectiveness(tmp_path):
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE memory_event_log (event_kind TEXT, memory_id TEXT)")
         conn.executemany("INSERT INTO memory_event_log VALUES (?, ?)", [
-            ("inject", "D--Claude/adapt-a"),
-            ("inject", "D--Claude/adapt-b"),
-            ("get", "D--Claude/adapt-a"),
+            ("inject", "D--Claude/morph-a"),
+            ("inject", "D--Claude/morph-b"),
+            ("get", "D--Claude/morph-a"),
         ])
     report = ar.build_report(
         state_dir=state_dir, heartbeat_path=heartbeat, db_path=db
@@ -3080,20 +3080,20 @@ def test_curation_near_duplicate_candidates_groups_by_normalized_text():
     assert "D--Claude/a-0000000001" in dup["member_ids"]
 
 
-def test_curation_inventory_filters_to_adapt_prefix(tmp_path):
+def test_curation_inventory_filters_to_morph_prefix(tmp_path):
     import sqlite3
     db = tmp_path / "engine.db"
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE memories (id TEXT, content TEXT)")
         conn.executemany("INSERT INTO memories VALUES (?, ?)",
-                         [("D--Claude/adapt-x-0000000000", "Use JSONL."),
+                         [("D--Claude/morph-x-0000000000", "Use JSONL."),
                           ("D--Claude/other-y-0000000000", "unrelated"),
-                          ("D--Claude/adapt-z-0000000000", "Run smoke.")])
+                          ("D--Claude/morph-z-0000000000", "Run smoke.")])
     import curation_diagnostic as cd
-    rows = cd.inventory_adapt_rows(db)
+    rows = cd.inventory_morph_rows(db)
     assert len(rows) == 2
     assert {r["id"] for r in rows} == {
-        "D--Claude/adapt-x-0000000000", "D--Claude/adapt-z-0000000000",
+        "D--Claude/morph-x-0000000000", "D--Claude/morph-z-0000000000",
     }
 
 
@@ -3113,9 +3113,9 @@ import pytest  # noqa: E402
 
 def test_add_rule_valid_dry_run(tmp_path, monkeypatch):
     """Operator single-rule add: a valid rule passes admission and previews clean."""
-    import adapt as _adapt
+    import morph as _morph
     monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
-    rc = _adapt.add_rule(
+    rc = _morph.add_rule(
         "Always inspect free disk space before kicking off a large multi-gigabyte build here.",
         "tooling", dry_run=True,
     )
@@ -3124,30 +3124,30 @@ def test_add_rule_valid_dry_run(tmp_path, monkeypatch):
 
 def test_add_rule_default_is_recall_gated_not_core(tmp_path, monkeypatch):
     """Default record_type keeps a domain gotcha OUT of the always-on compiled core."""
-    import adapt as _adapt
+    import morph as _morph
     import core_compiler
     monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
     # Build the record the way add_rule would (default record_type), and confirm the
     # core compiler does NOT select it (only standing_preference reaches the core).
     row = {
-        "id": "adapt-tooling-x", "rule": "some domain gotcha that is long enough to pass admission",
+        "id": "morph-tooling-x", "rule": "some domain gotcha that is long enough to pass admission",
         "record_type": "operational_playbook", "scope": "D--Claude", "status": "accepted",
     }
     assert core_compiler._sources({row["id"]: row}) == []
-    row_core = {**row, "id": "adapt-workflow-y", "record_type": "standing_preference"}
+    row_core = {**row, "id": "morph-workflow-y", "record_type": "standing_preference"}
     assert len(core_compiler._sources({row_core["id"]: row_core})) == 1
 
 
 def test_add_rule_rejects_too_short(tmp_path, monkeypatch):
-    import adapt as _adapt
+    import morph as _morph
     monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
-    assert _adapt.add_rule("use wincred", "tooling", dry_run=True) == 1
+    assert _morph.add_rule("use wincred", "tooling", dry_run=True) == 1
 
 
 def test_add_rule_rejects_unknown_category(tmp_path, monkeypatch):
-    import adapt as _adapt
+    import morph as _morph
     monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
-    rc = _adapt.add_rule(
+    rc = _morph.add_rule(
         "This is a perfectly long durable rule but the category is not in the taxonomy at all.",
         "not-a-real-category", dry_run=True,
     )

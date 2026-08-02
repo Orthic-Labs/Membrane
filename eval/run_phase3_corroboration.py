@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Blind semantic corroboration panel for frozen Phase 2 Adapt candidates."""
+"""Blind semantic corroboration panel for frozen Phase 2 Morph candidates."""
 from __future__ import annotations
 
 import argparse
@@ -19,7 +19,7 @@ from typing import Callable, Sequence
 WS = Path(
     os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
 ).expanduser().resolve()
-ADAPT_DIR = WS / "tools/pipelines/memory/adapt"
+MORPH_DIR = WS / "tools/pipelines/memory/morph"
 JURY_DIR = WS / "tools/review"
 SYSTEM = """You are a conservative adjudicator for coding-agent preference memory.
 Return only a JSON array with exactly one object per input item.
@@ -432,9 +432,9 @@ _PROVIDERS_LOCK = threading.Lock()
 def _call_model(model_id: str, system: str, user: str, max_tokens: int) -> str:
     provider_name, model = MODEL_SPECS[model_id]
     if provider_name == "minimax":
-        sys.path.insert(0, str(ADAPT_DIR))
-        import adapt_llm
-        response = adapt_llm.call_lane_response(
+        sys.path.insert(0, str(MORPH_DIR))
+        import morph_llm
+        response = morph_llm.call_lane_response(
             system, user, lane="minimax", max_tokens=max_tokens,
             attempts=3, thinking="disabled", temperature=0.0,
         )
@@ -511,7 +511,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "within_ceilings": (
             planned_calls <= args.max_provider_calls and planned_chars <= args.max_input_chars
         ),
-        "live_memright_writes": 0,
+        "live_crypt_writes": 0,
         "live_state_writes": 0,
     }
     if args.dry_run:
@@ -530,14 +530,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     })
     _write_json_atomic(args.out / "preflight.json", preflight)
 
-    sys.path.insert(0, str(ADAPT_DIR))
-    import adapt_sessions
+    sys.path.insert(0, str(MORPH_DIR))
+    import morph_sessions
     panel = run_panel(
         cases=cases,
         model_ids=args.models,
         output_dir=args.out,
         call_fn=_call_model,
-        scanner=adapt_sessions.scan_batch_for_secrets_str,
+        scanner=morph_sessions.scan_batch_for_secrets_str,
         chunk_size=args.chunk_size,
         max_provider_calls=args.max_provider_calls,
         max_tokens=args.max_tokens,
@@ -559,7 +559,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "ledger": panel["ledger"],
         "provider_failures": panel["failures"],
         **aggregate,
-        "side_effects": {"memright_calls": 0, "live_state_writes": 0},
+        "side_effects": {"crypt_calls": 0, "live_state_writes": 0},
     }
     report["content_sha256"] = _sha(report)
     _write_json_atomic(args.out / "results.json", report)

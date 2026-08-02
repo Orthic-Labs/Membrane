@@ -1,4 +1,4 @@
-"""Rollback smoke for synthetic or adjudicated records on a copied MemRight DB."""
+"""Rollback smoke for synthetic or adjudicated records on a copied Crypt DB."""
 from __future__ import annotations
 
 import argparse
@@ -14,11 +14,11 @@ from pathlib import Path
 ROOT = Path(
     os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
 ).expanduser().resolve()
-ADAPT = ROOT / "tools/pipelines/memory/adapt"
-sys.path.insert(0, str(ADAPT))
+MORPH = ROOT / "tools/pipelines/memory/morph"
+sys.path.insert(0, str(MORPH))
 
-import adapt as adapt_pipeline
-import adapt_sessions
+import morph as morph_pipeline
+import morph_sessions
 import manifest as manifest_contract
 import preference_record
 import rollback
@@ -71,11 +71,11 @@ def _memory_ids(db: Path) -> set[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live-db", type=Path, default=runner.DEFAULT_LIVE_DB)
-    parser.add_argument("--memright-bin", type=Path, default=runner.DEFAULT_MEMRIGHT)
+    parser.add_argument("--crypt-bin", type=Path, default=runner.DEFAULT_CRYPT)
     parser.add_argument("--manifest", type=Path,
                         help="resolved production manifest to apply/retrieve/revert")
     parser.add_argument("--out", type=Path,
-                        default=ROOT / ".cache/adapt-delivery-parity/rollback-smoke")
+                        default=ROOT / ".cache/morph-delivery-parity/rollback-smoke")
     args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
 
@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
             "batch_id": batch_id,
             "source_session_ids": source_ids,
             "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "generator": "adapt-rollback-exact-smoke",
+            "generator": "morph-rollback-exact-smoke",
             "records": records,
         }
         manifest_path = args.out / "manifest.json"
@@ -122,24 +122,24 @@ def main(argv: list[str] | None = None) -> int:
     expected_ids = {f"{record.scope}/{record.id}" for record in stored}
 
     port = runner._free_port()
-    service = runner._start_service(args.memright_bin, copied_db, port)
+    service = runner._start_service(args.crypt_bin, copied_db, port)
     env_keys = {
-        "MEMRIGHT_PORT": str(port),
+        "CRYPT_PORT": str(port),
         "WORKSPACE_MEMORY_PORT": str(port),
-        "ADAPT_SAFEPOINT_DB_OVERRIDE": str(copied_db),
-        "ADAPT_SAFEPOINT_DIR_OVERRIDE": str(args.out / "safepoints"),
-        "ADAPT_AUDIT_FILE_OVERRIDE": str(args.out / "audit.jsonl"),
+        "MORPH_SAFEPOINT_DB_OVERRIDE": str(copied_db),
+        "MORPH_SAFEPOINT_DIR_OVERRIDE": str(args.out / "safepoints"),
+        "MORPH_AUDIT_FILE_OVERRIDE": str(args.out / "audit.jsonl"),
     }
     old_env = {key: os.environ.get(key) for key in env_keys}
     try:
         runner._wait_ready(port)
         os.environ.update(env_keys)
-        adapt_sessions.STATE_DIR = state_dir
-        adapt_sessions.STATE_FILE = state
+        morph_sessions.STATE_DIR = state_dir
+        morph_sessions.STATE_FILE = state
         run_journal.JOURNAL_FILE = journal_path
         journal = run_journal.RunJournal(journal_path)
         journal.record(batch_id, "discovered", sessions=source_ids)
-        apply_rc = adapt_pipeline.apply_from_manifest(manifest_path)
+        apply_rc = morph_pipeline.apply_from_manifest(manifest_path)
         if apply_rc != 0:
             raise RuntimeError(f"production apply_from_manifest returned {apply_rc}")
         if not expected_ids.issubset(_memory_ids(copied_db)):
@@ -160,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
             for row in replay_rows
         ), encoding="utf-8")
         replay_output = runner._run_via_port(
-            args.memright_bin, copied_db, port,
+            args.crypt_bin, copied_db, port,
             ["replay", "--input", str(replay_input), "-k", "5"],
         )
         ranked = {
@@ -180,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         core.write_text("post-apply", encoding="utf-8")
         rc = rollback.revert(
             safe_point, apply=True, state_path=state, rules_path=rules,
-            core_path=core, memright_bin=args.memright_bin,
+            core_path=core, crypt_bin=args.crypt_bin,
         )
         if rc != 0:
             raise RuntimeError(f"rollback returned {rc}")

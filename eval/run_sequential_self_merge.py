@@ -17,9 +17,9 @@ from typing import Sequence
 WS = Path(
     os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
 ).expanduser().resolve()
-ADAPT_DIR = WS / "tools/pipelines/memory/adapt"
+MORPH_DIR = WS / "tools/pipelines/memory/morph"
 EVAL_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(ADAPT_DIR))
+sys.path.insert(0, str(MORPH_DIR))
 sys.path.insert(0, str(EVAL_DIR))
 import admission
 import authority
@@ -682,7 +682,7 @@ def load_commandcode_groups(
     root: Path, *, workspace_scope: str
 ) -> tuple[list[list[dict]], dict]:
     import freeze_commandcode_corpus
-    import adapt_sessions
+    import morph_sessions
 
     manifest = freeze_commandcode_corpus.validate_manifest(root / "manifest.json")
     prompt_path = root / manifest["prompts"]["path"]
@@ -708,10 +708,10 @@ def load_commandcode_groups(
         sanitized_group: list[dict] = []
         for row in selected:
             text = row["text"]
-            if adapt_sessions.text_excluded(text):
+            if morph_sessions.text_excluded(text):
                 excluded_rows += 1
                 continue
-            redacted = adapt_sessions.redact(text)
+            redacted = morph_sessions.redact(text)
             if redacted != text:
                 redacted_rows += 1
             sanitized_group.append({
@@ -727,7 +727,7 @@ def load_commandcode_groups(
     if offset != len(prompts):
         raise ValueError("frozen CommandCode batches do not consume every prompt")
     sanitized_manifest = dict(manifest)
-    sanitized_manifest["adapt_sanitization"] = {
+    sanitized_manifest["morph_sanitization"] = {
         "excluded_rows": excluded_rows,
         "redacted_rows": redacted_rows,
         "kept_rows": kept_rows,
@@ -900,8 +900,8 @@ def run_compiler(
 
 
 def _call_minimax(system: str, user: str, max_tokens: int) -> dict:
-    import adapt_llm
-    return adapt_llm.call_lane_response(
+    import morph_llm
+    return morph_llm.call_lane_response(
         system, user, lane="minimax", max_tokens=max_tokens,
         attempts=1, thinking="disabled", temperature=0.2,
     )
@@ -975,7 +975,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "corpus_id": corpus_id,
         "corpus_kind": "commandcode" if commandcode_manifest else "phase2-pilot",
         "corpus_sanitization": (
-            commandcode_manifest.get("adapt_sanitization") if commandcode_manifest else None
+            commandcode_manifest.get("morph_sanitization") if commandcode_manifest else None
         ),
         "turn_count": sum(len(group) for group in groups),
         "group_count": len(groups),
@@ -1001,7 +1001,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.initial_taste else None
         ),
         "initial_rule_count": len(initial_state),
-        "live_memright_writes": 0,
+        "live_crypt_writes": 0,
         "live_state_writes": 0,
     }
     if args.dry_run:
@@ -1014,12 +1014,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     _write_json(args.out / "preflight.json", preflight)
 
-    import adapt_sessions
+    import morph_sessions
     result = run_compiler(
         groups=groups,
         output_dir=args.out,
         call_fn=_call_minimax,
-        scanner=adapt_sessions.scan_batch_for_secrets_str,
+        scanner=morph_sessions.scan_batch_for_secrets_str,
         max_rules=args.rule_cap,
         max_provider_calls=args.max_provider_calls,
         max_input_chars=args.max_input_chars,
@@ -1044,7 +1044,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "prompt_sha256": hashlib.sha256(system.encode("utf-8")).hexdigest(),
         "preflight": preflight,
         **result,
-        "side_effects": {"memright_calls": 0, "live_state_writes": 0},
+        "side_effects": {"crypt_calls": 0, "live_state_writes": 0},
     }
     report["content_sha256"] = _hash_json(report)
     _write_json(args.out / "results.json", report)

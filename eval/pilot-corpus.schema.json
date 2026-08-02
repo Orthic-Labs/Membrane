@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Adapt frozen pilot corpus manifest",
+  "title": "Morph frozen pilot corpus manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -9,7 +9,7 @@
   ],
   "properties": {
     "schema_version": { "const": "1.0.0" },
-    "pilot_id": { "type": "string", "pattern": "^adapt-pilot-[a-f0-9]{12}$" },
+    "pilot_id": { "type": "string", "pattern": "^morph-pilot-[a-f0-9]{12}$" },
     "content_sha256": { "$ref": "#/definitions/sha256" },
     "manifest_sha256": { "$ref": "#/definitions/sha256" },
     "privacy": {

@@ -1,4 +1,4 @@
-"""Orthic Morph / Adapt CLI — Taste mining, apply, and doctor."""
+"""Orthic Morph / Morph CLI — Taste mining, apply, and doctor."""
 from __future__ import annotations
 
 import argparse
@@ -9,8 +9,8 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import adapt_llm  # noqa: E402
-import adapt_sessions as ts  # noqa: E402
+import morph_llm  # noqa: E402
+import morph_sessions as ts  # noqa: E402
 import outcomes  # noqa: E402
 try:
     import run_journal  # noqa: E402
@@ -50,7 +50,7 @@ def main() -> int:
     ap.add_argument("--machine-only", action="store_true",
                     help="for --add-rule: narrow this rule to the recording machine alone "
                          "(default: applies workspace-wide, unchanged from today)")
-    ap.add_argument("--apply", action="store_true", help="write to MemRight (default: dry-run)")
+    ap.add_argument("--apply", action="store_true", help="write to Crypt (default: dry-run)")
     ap.add_argument("--dry-run", action="store_true", help="explicit no-write preview")
     ap.add_argument("--limit", type=int, default=None, help="max sessions this run")
     ap.add_argument("--before-mtime", type=float, default=None,
@@ -98,7 +98,7 @@ def main() -> int:
             print("error: external core compiler lane requires --allow-external-lane",
                   file=sys.stderr)
             return 2
-        if not adapt_llm.lane_available(args.lane):
+        if not morph_llm.lane_available(args.lane):
             print(f"error: LLM lane unavailable: {args.lane}", file=sys.stderr)
             return 2
         try:
@@ -108,7 +108,7 @@ def main() -> int:
         except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
             print(f"error: core compilation failed: {exc}", file=sys.stderr)
             return 2
-        print(f"adapt: compiled {len(result['rules'])} core rules "
+        print(f"morph: compiled {len(result['rules'])} core rules "
               f"({result['estimated_tokens']} estimated tokens) -> {args.compile_core}")
         return 0
 
@@ -119,7 +119,7 @@ def main() -> int:
     if args.apply and not taste.preflight_apply(args.lane, args.allow_external_lane):
         return 2
     if args.apply and not taste.initialized(state) and not (args.smoke or args.first_run_ok):
-        print("error: first adapt apply requires --first-run-ok after smoke/dry-run review",
+        print("error: first morph apply requires --first-run-ok after smoke/dry-run review",
               file=sys.stderr)
         return 2
     if args.smoke:
@@ -128,15 +128,15 @@ def main() -> int:
         sessions = ts.new_sessions(state, limit=limit, before_mtime=args.before_mtime)
     if not sessions:
         if not args.quiet:
-            print("adapt: no new sessions")
+            print("morph: no new sessions")
         ts.save_state(state)   # persists excluded/empty markings
         return 0
-    print(f"adapt: {len(sessions)} sessions "
+    print(f"morph: {len(sessions)} sessions "
           f"({sum(len(s.turns) for s in sessions)} turns), dry_run={dry_run}")
     drops = sum(s.stats.dropped_turns for s in sessions)
     trunc = sum(s.stats.truncated_turns for s in sessions)
     scans = sum(s.stats.scanner_drops for s in sessions)
-    print(f"adapt: parser stats dropped={drops} truncated={trunc} scanner_drops={scans}")
+    print(f"morph: parser stats dropped={drops} truncated={trunc} scanner_drops={scans}")
 
     all_turn_count = sum(len(s.turns) for s in sessions)
     turns = []
@@ -146,7 +146,7 @@ def main() -> int:
             candidate = ts.preference_candidate_text(turn.text)
             if candidate is not None:
                 turns.append((session.tool, turn.scope, candidate, source_key))
-    print(f"adapt: preference prefilter kept={len(turns)}/{all_turn_count} turns "
+    print(f"morph: preference prefilter kept={len(turns)}/{all_turn_count} turns "
           f"({sum(len(turn[2]) for turn in turns)} chars)")
     session_refs = taste_mine._session_refs(sessions)
     observations: list[dict] = []
@@ -162,7 +162,7 @@ def main() -> int:
     if journal:
         pb = journal.pending_batch()
         if pb is not None and pb.get("batch_id") != batch_id:
-            print(f"adapt: resuming prior batch {pb['batch_id']} from stage "
+            print(f"morph: resuming prior batch {pb['batch_id']} from stage "
                   f"{pb.get('stage')} — pass --resume explicitly to retry it.",
                   file=sys.stderr)
         if args.resume and pb is not None:
@@ -174,7 +174,7 @@ def main() -> int:
                     journal.record(
                         pb["batch_id"], "abandoned", reason="session_identity_changed"
                     )
-                    print(f"adapt: abandoned stale journal batch {pb['batch_id']} "
+                    print(f"morph: abandoned stale journal batch {pb['batch_id']} "
                           "without advancing session state")
                 else:
                     print(f"error: refusing unsafe resume of {pb['batch_id']}: {mismatch}",
@@ -187,7 +187,7 @@ def main() -> int:
                     journal, batch_id
                 )
                 if completed_extract_batch:
-                    print(f"adapt: replayed {len(observations)} cached observations "
+                    print(f"morph: replayed {len(observations)} cached observations "
                           f"through extract batch {completed_extract_batch} from {batch_id}")
 
     if journal and replay is None:
@@ -199,28 +199,28 @@ def main() -> int:
 
     # ----- Stage 1: extract (ordered checkpoints over parallel windows) -----
     observations, extract_outcomes, extract_failure = taste_mine._extract_batches(
-        adapt_llm.build_batches(turns), lane=args.lane, journal=journal,
+        morph_llm.build_batches(turns), lane=args.lane, journal=journal,
         batch_id=batch_id, observations=observations,
         completed_batch=completed_extract_batch, quiet=args.quiet,
         workers=args.extract_workers,
     )
     if extract_failure:
         index, batch_outcome = extract_failure
-        print(f"adapt: extract batch {index} outcome={batch_outcome.outcome} "
+        print(f"morph: extract batch {index} outcome={batch_outcome.outcome} "
               f"reason={batch_outcome.reason}", file=sys.stderr)
-        print(f"adapt: NOT advancing state — outcome {batch_outcome.outcome}",
+        print(f"morph: NOT advancing state — outcome {batch_outcome.outcome}",
               file=sys.stderr)
         return 2
 
-    print(f"adapt: {len(observations)} candidate observations")
+    print(f"morph: {len(observations)} candidate observations")
     for index, observation in enumerate(observations, 1):
         observation["observation_id"] = f"obs-{index:06d}"
 
     # ----- Stage 2: synthesize ONCE with the full canonical existing-rules list -----
     try:
         multiwriter_context = taste._multiwriter_context()
-    except cross_machine.CrossMachineAdaptError as exc:
-        print(f"error: canonical Adapt context unavailable: {exc}", file=sys.stderr)
+    except cross_machine.CrossMachineMorphError as exc:
+        print(f"error: canonical Morph context unavailable: {exc}", file=sys.stderr)
         return 2
     if multiwriter_context is not None:
         installation_id, rules = multiwriter_context
@@ -239,9 +239,9 @@ def main() -> int:
     if replay is not None:
         replayed_synth, synth_outcome, actions = taste_mine._replayable_synth(journal, batch_id)
         if replayed_synth:
-            print(f"adapt: replayed {len(actions)} cached actions from {batch_id}")
+            print(f"morph: replayed {len(actions)} cached actions from {batch_id}")
     if not replayed_synth:
-        synth = adapt_llm.synthesize(existing_rules_for_synth, observations,
+        synth = morph_llm.synthesize(existing_rules_for_synth, observations,
                                      lane=args.lane)
         synth_outcome = synth.outcome
         actions = synth.actions
@@ -253,7 +253,7 @@ def main() -> int:
                            synth_reason=synth_reason, actions=actions,
                            **synth.provider_receipt())
     if not taste_mine._synth_committable(synth_outcome):
-        print(f"adapt: synth {synth_outcome}; reason={synth_reason}; "
+        print(f"morph: synth {synth_outcome}; reason={synth_reason}; "
               "not advancing state", file=sys.stderr)
         return 2
 
@@ -320,7 +320,7 @@ def main() -> int:
             "schema_version": preference_record.SCHEMA_VERSION,
             "batch_id": batch_id,
             "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "generator": "adapt.py --manifest",
+            "generator": "morph.py --manifest",
             "authority_manifest": authority_snapshot,
             "source_session_ids": source_session_ids,
             "records": schema_records,
@@ -335,14 +335,14 @@ def main() -> int:
         accepted = sum(1 for r in schema_records if r["status"] == "accepted")
         rejected = sum(1 for r in schema_records if r["status"] == "rejected")
         pending = sum(1 for r in schema_records if r["status"] == "pending")
-        print(f"adapt: wrote {args.manifest} "
+        print(f"morph: wrote {args.manifest} "
               f"({accepted} admissible / {rejected} admission-rejected / "
               f"{pending} pending review)")
         # new_sessions marks only parser-empty and deterministically excluded
         # files in this state object. Persist those skips so later chunks do
         # not repeatedly parse generated worker transcripts.
         ts.save_state(state)
-        print("adapt: resolve pending records with adjudicate_manifest.py; "
+        print("morph: resolve pending records with adjudicate_manifest.py; "
               "apply only the resulting content-hashed manifest.")
         return 0
 
@@ -356,7 +356,7 @@ def main() -> int:
 
     if not dry_run:
         if not ok_all:
-            print("error: one or more MemRight writes failed; state not advanced",
+            print("error: one or more Crypt writes failed; state not advanced",
                   file=sys.stderr)
             return 1
         taste.save_rules(rules)
@@ -367,16 +367,16 @@ def main() -> int:
         if journal:
             journal.record(batch_id, "committed", applied=changed,
                            sessions=[s.session_id for s in sessions])
-        print(f"adapt: applied {changed} rule changes; digest at {taste._digest_path()}")
+        print(f"morph: applied {changed} rule changes; digest at {taste._digest_path()}")
 
     if dry_run:
-        print("adapt: dry run — nothing written; re-run with --apply")
+        print("morph: dry run — nothing written; re-run with --apply")
     return 0
 
 
 
 def _dispatch(argv: list[str] | None = None) -> int:
-    """Support `adapt doctor ...` / `morph doctor ...` plus legacy flag CLI."""
+    """Support `morph doctor ...` / `morph doctor ...` plus legacy flag CLI."""
     import doctor as morph_doctor
 
     args = list(sys.argv[1:] if argv is None else argv)
