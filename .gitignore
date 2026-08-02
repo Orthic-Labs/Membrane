@@ -12,6 +12,7 @@ node_modules/
 .agent/
 .blueprint/
 .audit/
+memory-mirror/
 
 # OS noise
 .DS_Store
