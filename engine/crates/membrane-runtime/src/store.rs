@@ -1104,25 +1104,19 @@ pub struct SkillsSnapshot {
 fn default_embedder() -> (Arc<dyn Embedder>, Option<String>, bool) {
     #[cfg(feature = "fastembed")]
     {
+        if std::env::var("MEMRIGHT_ALLOW_HASH").as_deref() == Ok("1") {
+            let issue = "MEMRIGHT_ALLOW_HASH=1 enabled hash embedder".to_string();
+            eprintln!("[memory] {issue}");
+            return (Arc::new(HashEmbedder::new()), Some(issue), true);
+        }
         match memright_core::FastEmbedder::new() {
             Ok(f) => (Arc::new(f), None, true),
             Err(e) => {
-                if std::env::var("MEMRIGHT_ALLOW_HASH").as_deref() == Ok("1") {
-                    eprintln!("[memory] fastembed unavailable ({e}); MEMRIGHT_ALLOW_HASH=1 -> hash embedder");
-                    (
-                        Arc::new(HashEmbedder::new()),
-                        Some(format!(
-                            "fastembed unavailable ({e}); MEMRIGHT_ALLOW_HASH=1 enabled hash fallback"
-                        )),
-                        true,
-                    )
-                } else {
-                    let issue = format!(
-                        "fastembed init failed ({e}); memory writes disabled to avoid hash-vector corruption. Fix ORT_DYLIB_PATH/model cache, or set MEMRIGHT_ALLOW_HASH=1 to accept degraded embeddings."
-                    );
-                    eprintln!("[memory] {issue}");
-                    (Arc::new(HashEmbedder::new()), Some(issue), false)
-                }
+                let issue = format!(
+                    "fastembed init failed ({e}); memory writes disabled to avoid hash-vector corruption. Fix ORT_DYLIB_PATH/model cache, or set MEMRIGHT_ALLOW_HASH=1 to accept degraded embeddings."
+                );
+                eprintln!("[memory] {issue}");
+                (Arc::new(HashEmbedder::new()), Some(issue), false)
             }
         }
     }

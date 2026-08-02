@@ -88,6 +88,8 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
     MEMRIGHT_BIN: process.env.MEMRIGHT_TEST_BIN || fileURLToPath(new URL("../../tools/bin/memright", import.meta.url)),
     MEMRIGHT_DB: store,
     MEMRIGHT_API_TOKEN_FILE: token,
+    MEMRIGHT_ALLOW_HASH: "1",
+    WORKSPACE_ROOT: root,
   };
   const port = await freePort();
   env.MEMRIGHT_PORT = String(port);
