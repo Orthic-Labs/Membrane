@@ -7,7 +7,7 @@
   "machineTarget": "aarch64-apple-darwin",
   "machineArch": "aarch64",
   "release": {
-    "memrightSourceCommit": "32b056553781c6ec763f527d347a6e2f93aef248",
+    "cryptSourceCommit": "32b056553781c6ec763f527d347a6e2f93aef248",
     "sourceTreeSha256": "a589851134adff1bd978ed69d0fbd567ea38e60bab278c1a4bf695f6da5de470",
     "releaseGeneration": "sha256:a589851134adff1bd978ed69d0fbd567ea38e60bab278c1a4bf695f6da5de470",
     "productVersion": "0.1.1"
