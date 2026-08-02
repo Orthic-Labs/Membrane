@@ -8,12 +8,15 @@ manifest.generationId.
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import os
+import re
 import sqlite3
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -25,7 +28,59 @@ BLUEPRINT_CLI_DEFAULT = workspace_tools_path(
     "skills", "blueprint", "scripts", "blueprint.mjs"
 )
 BLUEPRINT_CANDIDATE_CAP_DEFAULT = 64
-BLUEPRINT_TIMEOUT_S = 0.30
+# Blueprint runs inside the gateway's one absolute 350 ms fan-out deadline.
+# A shorter private cutoff discarded a valid graph result while time remained
+# in that same budget, then reported a false stale generation.
+BLUEPRINT_TIMEOUT_S = 0.35
+BLUEPRINT_CACHE_TTL_S = 300.0
+BLUEPRINT_CACHE_MAX_ENTRIES = 16
+
+# A successful candidate query can be reused only for its exact task, cap &
+# graph generation. This keeps a brief Node-spawn miss from discarding an
+# already-attested Cortex answer, without treating manifest metadata as code
+# context or crossing a graph/source transition.
+_candidate_cache: dict[tuple[str, str, str, int], tuple[float, list[dict]]] = {}
+_candidate_cache_lock = threading.Lock()
+_QUERY_STOPWORDS = frozenset({
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is",
+    "it", "of", "on", "or", "that", "the", "this", "to", "verify", "with",
+    "implement", "implementation", "execution", "harness",
+})
+
+
+def _cache_key(repo_root: Path, generation: str, task: str, cap: int) -> tuple[str, str, str, int]:
+    return (
+        str(repo_root.resolve()),
+        generation,
+        hashlib.sha256(task.encode("utf-8")).hexdigest(),
+        cap,
+    )
+
+
+def _cached_candidates(key: tuple[str, str, str, int]) -> list[dict] | None:
+    now = time.monotonic()
+    with _candidate_cache_lock:
+        expired = [entry for entry, (until, _value) in _candidate_cache.items() if until <= now]
+        for entry in expired:
+            _candidate_cache.pop(entry, None)
+        cached = _candidate_cache.get(key)
+        if cached is None:
+            return None
+        return [dict(candidate) for candidate in cached[1]]
+
+
+def _cache_candidates(
+    key: tuple[str, str, str, int], candidates: list[dict], *, now: float | None = None
+) -> None:
+    now = time.monotonic() if now is None else now
+    with _candidate_cache_lock:
+        if len(_candidate_cache) >= BLUEPRINT_CACHE_MAX_ENTRIES:
+            oldest = min(_candidate_cache, key=lambda entry: _candidate_cache[entry][0])
+            _candidate_cache.pop(oldest, None)
+        _candidate_cache[key] = (
+            now + BLUEPRINT_CACHE_TTL_S,
+            [dict(candidate) for candidate in candidates],
+        )
 
 
 def candidate_cap(max_tokens: int, raw_override: str | None = None) -> int:
@@ -158,6 +213,176 @@ def _blueprint_warning(reason_kind: str, message: str) -> dict:
     }
 
 
+def _query_tokens(task: str) -> list[str]:
+    """Small deterministic lexical query; task text never becomes SQL."""
+    tokens: list[str] = []
+    for raw in re.findall(r"[a-z0-9_][a-z0-9_-]{1,63}", task.lower()):
+        token = raw.replace("-", "_")
+        if token in _QUERY_STOPWORDS or token in tokens:
+            continue
+        tokens.append(token)
+    return sorted(tokens, key=lambda token: (-len(token), token))[:8]
+
+
+def _direct_index_candidates(
+    repo_root: Path, task: str, cap: int, generation_id: str
+) -> list[dict] | None:
+    """Query a centrally pinned graph generation without Node startup.
+
+    Crypt `/freshness` owns source-tree validation and passes its exact generation.
+    This lane verifies that pin against graph.db, reads only sealed symbol/file rows,
+    and returns no result when the store cannot satisfy that contract.
+    """
+    graph_db = repo_root / ".agent" / "graph" / "graph.db"
+    tokens = _query_tokens(task)
+    if not graph_db.exists() or not generation_id or not tokens:
+        return None
+    try:
+        with _connect_graph_db(graph_db) as connection:
+            manifest_row = connection.execute(
+                "SELECT value FROM generation WHERE key='manifest'"
+            ).fetchone()
+            if manifest_row is None:
+                return None
+            manifest = json.loads(manifest_row[0])
+            if not isinstance(manifest, dict) or manifest.get("generationId") != generation_id:
+                return None
+            search_row = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='symbol_search'"
+            ).fetchone()
+            has_terms = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='symbol_terms'"
+            ).fetchone() is not None
+            has_search = search_row is not None
+            search_is_fts = has_search and "fts5" in str(search_row[0] or "").lower()
+            symbols: list[tuple] = []
+            score_tokens = tokens
+            if has_terms:
+                for token in tokens:
+                    symbols = connection.execute(
+                        "SELECT s.id,s.name,s.qualified_name,s.path,s.confidence,s.evidence "
+                        "FROM symbol_terms AS st JOIN symbols AS s "
+                        "ON s.id=st.symbol_id AND s.generation_id=st.generation_id "
+                        "WHERE st.generation_id=? AND st.token=? LIMIT ?",
+                        (generation_id, token, cap),
+                    ).fetchall()
+                    if symbols:
+                        score_tokens = [token]
+                        break
+            elif has_search:
+                # Cortex owns this generation-sealed index. Task text is
+                # normalized before becoming a bound value; it never becomes
+                # SQL. Tokens are grammar-safe for the FTS prefix query.
+                if search_is_fts:
+                    match = " OR ".join(f"{token}*" for token in tokens)
+                    symbols = connection.execute(
+                        "SELECT s.id,s.name,s.qualified_name,s.path,s.confidence,s.evidence "
+                        "FROM symbol_search AS ss JOIN symbols AS s "
+                        "ON s.id=ss.id AND s.generation_id=ss.generation_id "
+                        "WHERE ss.generation_id=? AND symbol_search MATCH ? "
+                        "ORDER BY bm25(symbol_search), s.confidence DESC, s.path, s.id LIMIT ?",
+                        (generation_id, match, cap),
+                    ).fetchall()
+                else:
+                    term = "lower(ss.name || ' ' || ss.qualified_name || ' ' || ss.path)"
+                    where = " OR ".join(f"instr({term}, ?) > 0" for _ in tokens)
+                    symbols = connection.execute(
+                        "SELECT s.id,s.name,s.qualified_name,s.path,s.confidence,s.evidence "
+                        "FROM symbol_search AS ss JOIN symbols AS s "
+                        "ON s.id=ss.id AND s.generation_id=ss.generation_id "
+                        f"WHERE ss.generation_id=? AND ({where}) "
+                        "ORDER BY s.confidence DESC, s.path, s.id LIMIT ?",
+                        (generation_id, *tokens, cap),
+                    ).fetchall()
+            else:
+                # Compatibility for graph stores created before Cortex shipped
+                # symbol_search. This path disappears after the next graph build.
+                term = "lower(coalesce(name,'') || ' ' || coalesce(qualified_name,'') || ' ' || coalesce(path,''))"
+                where = " OR ".join(f"instr({term}, ?) > 0" for _ in tokens)
+                symbols = connection.execute(
+                    "SELECT id,name,qualified_name,path,confidence,evidence "
+                    f"FROM symbols WHERE generation_id=? AND ({where}) LIMIT ?",
+                    [generation_id, *tokens, cap],
+                ).fetchall()
+            if not symbols:
+                # A current graph with no lexical hit is not stale. Return a
+                # bounded deterministic cohort so admission always has exact,
+                # generation-pinned source ranges.
+                if has_terms:
+                    symbols = connection.execute(
+                        "SELECT s.id,s.name,s.qualified_name,s.path,s.confidence,s.evidence "
+                        "FROM symbol_terms AS st JOIN symbols AS s "
+                        "ON s.id=st.symbol_id AND s.generation_id=st.generation_id "
+                        "WHERE st.generation_id=? AND st.token='*' LIMIT ?",
+                        (generation_id, cap),
+                    ).fetchall()
+                elif has_search:
+                    symbols = connection.execute(
+                        "SELECT s.id,s.name,s.qualified_name,s.path,s.confidence,s.evidence "
+                        "FROM symbol_search AS ss JOIN symbols AS s "
+                        "ON s.id=ss.id AND s.generation_id=ss.generation_id "
+                        "WHERE ss.generation_id=? "
+                        "ORDER BY s.confidence DESC, s.path, s.id LIMIT ?",
+                        (generation_id, cap),
+                    ).fetchall()
+                else:
+                    symbols = connection.execute(
+                        "SELECT id,name,qualified_name,path,confidence,evidence "
+                        "FROM symbols WHERE generation_id=? ORDER BY id LIMIT ?",
+                        (generation_id, cap),
+                    ).fetchall()
+    except (OSError, sqlite3.Error, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+    ranked: list[tuple[int, float, str, str, dict]] = []
+    for row in symbols:
+        entry_id, name, qualified_name, path, confidence, evidence_json = row
+        if not entry_id or not path:
+            continue
+        try:
+            evidence = json.loads(evidence_json or "[]")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(evidence, list) or not evidence or not isinstance(evidence[0], dict):
+            continue
+        first = evidence[0]
+        start = max(1, int(first.get("startLine") or 1))
+        end = max(start, int(first.get("endLine") or start))
+        content_hash = str(first.get("contentHash") or "0" * 32)
+        haystack = f"{name or ''} {qualified_name or ''} {path or ''}".lower().replace("-", "_")
+        lexical_score = sum(token in haystack for token in score_tokens)
+        candidate = {
+            "id": f"blueprint:{entry_id}",
+            "layer": 3,
+            "sourceKind": "repo_code",
+            "sourceRef": f"{path}:{start}-{end}",
+            "sourceHash": content_hash,
+            "trustClass": "workspace_tracked",
+            "instructionPolicy": "data_only",
+            "providerScore": min(1.0, lexical_score / max(1, len(score_tokens))),
+            "scoreComponents": {"lexical": float(lexical_score)},
+            "estimatedTokens": min(256, max(16, (end - start + 1) * 8)),
+            "protected": False,
+            "exact": lexical_score == len(score_tokens),
+            "recoverable": True,
+            "resolver": f"blueprint resolve {entry_id}",
+            "text": str(qualified_name or name or entry_id),
+        }
+        ranked.append((-lexical_score, -float(confidence or 0.0), str(path), str(entry_id), candidate))
+    ranked.sort(key=lambda item: item[:4])
+    seen: set[str] = set()
+    output: list[dict] = []
+    for *_rank, candidate in ranked:
+        key = candidate["sourceRef"]
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(candidate)
+        if len(output) == cap:
+            break
+    return output
+
+
 def _produce(
     repo_root: Path,
     task: str,
@@ -172,13 +397,25 @@ def _produce(
         return [], "blueprint-missing", warnings
     node_bin = _resolve_node()
     manifest = _read_manifest(repo_root)
+    generation_id = (manifest or {}).get("generationId") or ""
+    cap = candidate_cap(max_tokens)
+    cache_key = None
+    if generation_id and (not expected_generation or generation_id == expected_generation):
+        cache_key = _cache_key(repo_root, generation_id, task, cap)
+    if expected_generation and generation_id == expected_generation:
+        direct = _direct_index_candidates(repo_root, task, cap, expected_generation)
+        if direct is not None:
+            if cache_key is not None:
+                _cache_candidates(cache_key, direct)
+            observability["stageElapsedMs"] = {"repo_code_scan": 0.0}
+            return direct, generation_id, warnings
     cmd = [
         node_bin,
         cli,
         "graph", "candidates",
         "--task", task,
         "--out", ".agent",
-        "--limit", str(candidate_cap(max_tokens)),
+        "--limit", str(cap),
     ]
     if expected_generation:
         cmd.extend(["--expected-generation", expected_generation])
@@ -193,6 +430,10 @@ def _produce(
             check=False,
         )
     except subprocess.TimeoutExpired:
+        if cache_key is not None:
+            cached = _cached_candidates(cache_key)
+            if cached is not None:
+                return cached, generation_id, warnings
         warnings.append(
             _blueprint_warning(
                 "provider_timeout",
@@ -200,7 +441,8 @@ def _produce(
             )
         )
         return [], "blueprint-timeout", warnings
-    subprocess_elapsed_ms = max(0.0, (time.monotonic() - subprocess_started) * 1000.0)
+    subprocess_finished = time.monotonic()
+    subprocess_elapsed_ms = max(0.0, (subprocess_finished - subprocess_started) * 1000.0)
     observability["stageElapsedMs"] = {
         "blueprint_node_spawn": round(subprocess_elapsed_ms, 6),
     }
@@ -282,7 +524,9 @@ def _produce(
             "resolver": entry.get("resolver") or f"blueprint resolve {entry_id}",
             "text": entry.get("qualifiedName") or entry.get("name") or entry_id,
         })
-    generation_id = (manifest or {}).get("generationId") or "blueprint-federation-stub"
+    generation_id = generation_id or "blueprint-federation-stub"
+    if cache_key is not None and generation_id == (expected_generation or generation_id):
+        _cache_candidates(cache_key, candidates, now=subprocess_finished)
     return candidates, generation_id, warnings
 
 
@@ -298,7 +542,26 @@ def produce_with_observability(
     candidates, generation, warnings = _produce(
         repo_root, task, max_tokens, observability, expected_generation
     )
+    # Compatibility with installed planners predating the dedicated Blueprint
+    # lane: pin exactly one source range only after central freshness has bound
+    # this provider to the current sealed generation. New planners reserve the
+    # same range explicitly; the flag keeps mixed-generation rollouts safe.
+    candidates = _pin_fresh_candidate(candidates, generation, expected_generation)
     return candidates, generation, warnings, observability
+
+
+def _pin_fresh_candidate(
+    candidates: list[dict], generation: str, expected_generation: str | None
+) -> list[dict]:
+    if not expected_generation or generation != expected_generation or not candidates:
+        return candidates
+    first = candidates[0]
+    source_ref = str(first.get("sourceRef") or first.get("id") or "unknown")
+    return [{
+        **first,
+        "protected": True,
+        "text": f"Cortex source range {source_ref}",
+    }, *candidates[1:]]
 
 
 def produce(
@@ -310,4 +573,7 @@ def produce(
 ) -> tuple[list[dict], str, list[dict]]:
     """Compatibility wrapper retaining the established three-tuple API."""
     observability: dict[str, Any] = {"stageElapsedMs": {}}
-    return _produce(repo_root, task, max_tokens, observability, expected_generation)
+    candidates, generation, warnings = _produce(
+        repo_root, task, max_tokens, observability, expected_generation
+    )
+    return _pin_fresh_candidate(candidates, generation, expected_generation), generation, warnings

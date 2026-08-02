@@ -3,6 +3,7 @@
 
 import { spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
@@ -13,11 +14,13 @@ import { installationBindingFor, installationEnv } from "./installation-binding.
 import { feedbackEvent, feedbackPolicy } from "./feedback-loop.mjs";
 import { eventDbFor, ProposalStore } from "./proposal-store.mjs";
 import { ScratchpadStore, WorkingContextStore } from "./working-context.mjs";
+import { mintScopeGrantV1 } from "./scope-grant-v1.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
 const PROTOCOL_URI = "membrane://protocol/v1";
 const MAX_REQUEST_BYTES = 32 * 1024;
+const SCOPE_GRANT_FRESHNESS_TIMEOUT_MS = 1200;
 const MAX_PROPOSAL_BYTES = 16 * 1024;
 const MAX_FEEDBACK_BYTES = 2 * 1024;
 const RATE_WINDOW_MS = 60_000;
@@ -156,6 +159,32 @@ function run(command, args, input, env = process.env) {
   });
 }
 
+async function currentFreshness(binding, install, sessionId) {
+  try {
+    let token = "";
+    for (const tokenPath of [install.tokenPath, join(install.workspaceRoot, "tools", ".cache", "memory", "api-token")]) {
+      try {
+        token = (await readFile(tokenPath, "utf8")).trim();
+        if (token) break;
+      } catch {
+        // Match the MCP transport: an old registry path falls back to current workspace token.
+      }
+    }
+    if (!token) return null;
+    const response = await fetch(`${install.endpoint}/freshness`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify({ repoRoot: binding.root, repositoryId: binding.repository_id, sessionId }),
+      signal: AbortSignal.timeout(SCOPE_GRANT_FRESHNESS_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const body = await response.json();
+    return body && typeof body === "object" && !Array.isArray(body) ? body : null;
+  } catch {
+    return null;
+  }
+}
+
 function cryptArgs(args, bindingRecord) {
   const db = bindingRecord?.db || process.env.CRYPT_DB || "";
   return ["--db", db, ...args].filter((v, i) => !(i === 1 && !v));
@@ -223,7 +252,13 @@ async function callTool(name, args, trace = {}) {
     const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, ...trace };
     const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: binding.root });
     const packet = text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
-    if (!args.session || !args.taskId || !packet || typeof packet !== "object" || Array.isArray(packet)) return packet;
+    if (!packet || typeof packet !== "object" || Array.isArray(packet)) return packet;
+    if (args.session && args.taskId && packet.ok === true && packet.packet && typeof packet.packet === "object") {
+      const freshness = await currentFreshness(binding, install, args.session);
+      const scopeGrant = mintScopeGrantV1({ binding, args, packet: packet.packet, freshness });
+      if (scopeGrant) packet.scopeGrant = scopeGrant;
+    }
+    if (!args.session || !args.taskId) return packet;
     const store = new WorkingContextStore(eventDbFor(install.db));
     let contexts;
     try { contexts = store.activeContexts({ sessionId: args.session, taskId: args.taskId }); }

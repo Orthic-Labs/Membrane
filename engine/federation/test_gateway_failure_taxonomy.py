@@ -93,3 +93,24 @@ def test_bounded_fanout_returns_healthy_lanes_without_waiting_for_slow_provider(
     assert fast_lane[1] == [{"id": "fast:one"}]
     assert slow_lane[1] == []
     assert slow_lane[2][0]["kind"] == "provider_timeout"
+
+
+def test_bounded_fanout_runs_blueprint_before_parallel_lanes():
+    order = []
+
+    def crypt():
+        order.append("crypt")
+        return "crypt", [{"id": "crypt:one"}], []
+
+    def blueprint():
+        order.append("blueprint")
+        return "blueprint", [{"id": "blueprint:one"}], []
+
+    results = gateway._collect_tasks_bounded(
+        [("crypt", crypt), ("blueprint", blueprint)], timeout_s=0.1
+    )
+
+    assert order[0] == "blueprint"
+    assert next(result for result in results if result[0] == "blueprint")[1] == [
+        {"id": "blueprint:one"}
+    ]

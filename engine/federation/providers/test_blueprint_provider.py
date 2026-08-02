@@ -158,6 +158,111 @@ def test_provider_passes_central_generation_to_blueprint_cli(monkeypatch, tmp_pa
     assert observed["command"][index + 1] == expected
 
 
+def test_pinned_generation_queries_sqlite_without_node_spawn(monkeypatch, tmp_path):
+    graph_dir = tmp_path / ".agent" / "graph"
+    graph_dir.mkdir(parents=True)
+    generation = "xxh128:" + "1" * 32
+    evidence = json.dumps([{
+        "path": "src/bounded_runtime.rs", "startLine": 10, "endLine": 20,
+        "contentHash": "2" * 32,
+    }])
+    with sqlite3.connect(graph_dir / "graph.db") as connection:
+        connection.execute("CREATE TABLE generation (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        connection.execute("INSERT INTO generation VALUES ('manifest', ?)", (json.dumps({"generationId": generation}),))
+        connection.execute(
+            "CREATE TABLE symbols (id TEXT PRIMARY KEY, kind TEXT, labels TEXT, name TEXT, qualified_name TEXT, path TEXT, confidence REAL, evidence TEXT, generation_id TEXT, extra TEXT)"
+        )
+        connection.execute(
+            "CREATE TABLE files (path TEXT PRIMARY KEY, content_hash TEXT, language TEXT, provider TEXT, parse_status TEXT, error_node_count INTEGER, generation_id TEXT, node_id TEXT, labels TEXT, name TEXT, qualified_name TEXT, confidence REAL, evidence TEXT, extra TEXT)"
+        )
+        connection.execute(
+            "INSERT INTO symbols VALUES (?,?,?,?,?,?,?,?,?,?)",
+            ("symbol:bounded", "symbol", '["Function"]', "bounded_runtime", "bounded_runtime", "src/bounded_runtime.rs", 1.0, evidence, generation, "{}"),
+        )
+    cli = tmp_path / "blueprint.mjs"
+    cli.write_text("// must not run", encoding="utf-8")
+    monkeypatch.setattr(blueprint, "_resolve_blueprint_cli", lambda: str(cli))
+    monkeypatch.setattr(blueprint, "_resolve_node", lambda: "node")
+    monkeypatch.setattr(
+        blueprint.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("pinned direct index path spawned Node"),
+    )
+
+    candidates, observed_generation, warnings = blueprint.produce(
+        tmp_path, "bounded runtime implementation", 64, expected_generation=generation
+    )
+
+    assert observed_generation == generation
+    assert warnings == []
+    assert candidates[0]["sourceRef"] == "src/bounded_runtime.rs:10-20"
+    assert candidates[0]["id"] == "blueprint:symbol:bounded"
+    assert candidates[0]["protected"] is True
+    assert candidates[0]["text"] == "Cortex source range src/bounded_runtime.rs:10-20"
+
+
+def test_pinned_generation_uses_fts_and_returns_bounded_fallback_for_no_match(monkeypatch, tmp_path):
+    graph_dir = tmp_path / ".agent" / "graph"
+    graph_dir.mkdir(parents=True)
+    generation = "xxh128:" + "3" * 32
+    evidence = json.dumps([{
+        "path": "src/admission.rs", "startLine": 4, "endLine": 9,
+        "contentHash": "4" * 32,
+    }])
+    with sqlite3.connect(graph_dir / "graph.db") as connection:
+        connection.execute("CREATE TABLE generation (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        connection.execute("INSERT INTO generation VALUES ('manifest', ?)", (json.dumps({"generationId": generation}),))
+        connection.execute(
+            "CREATE TABLE symbols (id TEXT PRIMARY KEY, kind TEXT, labels TEXT, name TEXT, qualified_name TEXT, path TEXT, confidence REAL, evidence TEXT, generation_id TEXT, extra TEXT)"
+        )
+        connection.execute(
+            "CREATE VIRTUAL TABLE symbol_search USING fts5(id UNINDEXED, generation_id UNINDEXED, name, qualified_name, path)"
+        )
+        connection.execute(
+            "CREATE TABLE symbol_terms (generation_id TEXT, token TEXT, symbol_id TEXT, PRIMARY KEY (generation_id, token, symbol_id)) WITHOUT ROWID"
+        )
+        rows = [
+            ("symbol:admission", "admission_gate", "admission_gate", "src/admission.rs"),
+            ("symbol:capsule", "capsule_verify", "capsule_verify", "src/capsule.rs"),
+        ]
+        for entry_id, name, qualified_name, path in rows:
+            connection.execute(
+                "INSERT INTO symbols VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (entry_id, "symbol", '["Function"]', name, qualified_name, path, 1.0, evidence.replace("src/admission.rs", path), generation, "{}"),
+            )
+            connection.execute(
+                "INSERT INTO symbol_search VALUES (?,?,?,?,?)",
+                (entry_id, generation, name.replace("_", " "), qualified_name.replace("_", " "), path),
+            )
+            for token in ("*", name, *name.split("_")):
+                connection.execute(
+                    "INSERT OR IGNORE INTO symbol_terms VALUES (?,?,?)",
+                    (generation, token, entry_id),
+                )
+    cli = tmp_path / "blueprint.mjs"
+    cli.write_text("// must not run", encoding="utf-8")
+    monkeypatch.setattr(blueprint, "_resolve_blueprint_cli", lambda: str(cli))
+    monkeypatch.setattr(blueprint, "_resolve_node", lambda: "node")
+    monkeypatch.setattr(
+        blueprint.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("pinned FTS path spawned Node"),
+    )
+
+    matched, observed_generation, warnings = blueprint.produce(
+        tmp_path, "admission implementation", 1, expected_generation=generation
+    )
+    fallback, fallback_generation, fallback_warnings = blueprint.produce(
+        tmp_path, "termthatdoesnotexist", 1, expected_generation=generation
+    )
+
+    assert observed_generation == fallback_generation == generation
+    assert warnings == fallback_warnings == []
+    assert [candidate["id"] for candidate in matched] == ["blueprint:symbol:admission"]
+    assert len(fallback) == 1
+    assert fallback[0]["sourceRef"].startswith("src/")
+
+
 def test_provider_terminates_blueprint_at_lane_deadline(monkeypatch, tmp_path):
     cli = tmp_path / "blueprint.mjs"
     cli.write_text("// fixture", encoding="utf-8")
@@ -177,6 +282,58 @@ def test_provider_terminates_blueprint_at_lane_deadline(monkeypatch, tmp_path):
     assert generation == "blueprint-timeout"
     assert warnings[0]["kind"] == "provider_timeout"
     assert observed["timeout"] == blueprint.BLUEPRINT_TIMEOUT_S
+
+
+def test_timeout_reuses_only_exact_fresh_candidate_cache(monkeypatch, tmp_path):
+    cli = tmp_path / "blueprint.mjs"
+    cli.write_text("// fixture", encoding="utf-8")
+    expected = "generation-1"
+    payload = {
+        "schemaVersion": 1,
+        "candidates": [{
+            "id": "node-1",
+            "sourceRef": "src/app.py:1-2",
+            "sourceHash": "sha256:" + "0" * 64,
+            "qualifiedName": "app.main",
+        }],
+    }
+    blueprint._candidate_cache.clear()
+    monkeypatch.setattr(blueprint, "_resolve_blueprint_cli", lambda: str(cli))
+    monkeypatch.setattr(blueprint, "_resolve_node", lambda: "node")
+    monkeypatch.setattr(
+        blueprint,
+        "_read_manifest",
+        lambda _root: {"generationId": expected},
+    )
+    monkeypatch.setattr(
+        blueprint.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0, stdout=json.dumps(payload), stderr=""
+        ),
+    )
+    cached, generation, warnings = blueprint.produce(
+        tmp_path, "task-a", 64, expected_generation=expected
+    )
+    assert cached and generation == expected and warnings == []
+
+    def timeout(_command, **kwargs):
+        raise blueprint.subprocess.TimeoutExpired("node", kwargs["timeout"])
+
+    monkeypatch.setattr(blueprint.subprocess, "run", timeout)
+    reused, generation, warnings = blueprint.produce(
+        tmp_path, "task-a", 64, expected_generation=expected
+    )
+    assert reused == cached
+    assert generation == expected
+    assert warnings == []
+
+    missing, generation, warnings = blueprint.produce(
+        tmp_path, "task-b", 64, expected_generation=expected
+    )
+    assert missing == []
+    assert generation == "blueprint-timeout"
+    assert warnings[0]["kind"] == "provider_timeout"
 
 
 def test_manifest_reads_generation_envelope_from_graph_db(tmp_path):

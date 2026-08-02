@@ -274,18 +274,42 @@ def _collect_tasks_bounded(
     completed: queue.Queue[tuple[str, tuple[str, list[dict], list[dict]]]] = queue.Queue()
     pending = {name for name, _task in tasks}
 
-    def run(name: str, task: Any) -> None:
+    def invoke(name: str, task: Any) -> tuple[str, list[dict], list[dict]]:
         try:
-            result = task()
+            return task()
         except Exception as exc:  # provider isolation is the contract
-            result = (name, [], [_safe_emit_warning(name, exc)])
-        completed.put((name, result))
+            return (name, [], [_safe_emit_warning(name, exc)])
 
-    for name, task in tasks:
-        threading.Thread(target=run, args=(name, task), daemon=True).start()
+    def run(name: str, task: Any) -> None:
+        completed.put((name, invoke(name, task)))
 
     deadline = time.monotonic() + max(0.0, timeout_s)
     out: list[tuple[str, list[dict], list[dict]]] = []
+
+    # Cortex admission is a dependency, not an advisory lane. Execute its
+    # bounded, generation-pinned lookup before CPU-heavy providers can starve
+    # its Python thread under the GIL. Every other provider still fans out in
+    # parallel under the remainder of this same absolute deadline.
+    for name, task in tasks:
+        if name != "blueprint":
+            continue
+        result = invoke(name, task)
+        pending.remove(name)
+        if time.monotonic() <= deadline:
+            out.append(result)
+        else:
+            out.append((name, [], [{
+                "provider": name,
+                "kind": "provider_timeout",
+                "severity": "warning",
+                "message": "provider exceeded prompt fanout deadline",
+            }]))
+
+    for name, task in tasks:
+        if name not in pending:
+            continue
+        threading.Thread(target=run, args=(name, task), daemon=True).start()
+
     while pending:
         remaining = deadline - time.monotonic()
         if remaining <= 0:

@@ -633,19 +633,23 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
         deduped.push(cand);
     }
 
-    // 5. Rank by (providerScore desc, freshness desc, kind priority asc,
-    //    protected desc, exact desc, id asc).
+    // 5. Rank by (protected desc, providerScore desc, freshness desc, kind priority asc,
+    //    exact desc, id asc). Protected admission authority must win source/content
+    // deduplication before a higher-scored mutable provider can evict it.
     deduped.sort_by(|a, b| {
         let af = freshness_component(a);
         let bf = freshness_component(b);
         let ak = kind_priority(a);
         let bk = kind_priority(b);
-        b.provider_score
-            .partial_cmp(&a.provider_score)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        b.protected
+            .cmp(&a.protected)
+            .then_with(|| {
+                b.provider_score
+                    .partial_cmp(&a.provider_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .then(bf.partial_cmp(&af).unwrap_or(std::cmp::Ordering::Equal))
             .then(ak.cmp(&bk))
-            .then(b.protected.cmp(&a.protected))
             .then(b.exact.cmp(&a.exact))
             .then(a.id.cmp(&b.id))
     });
@@ -692,14 +696,17 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
     let deduped = content_or_source_deduped;
 
     // 6. Token-budget admission — RESERVED LANES then global fill (explicit policy, not a
-    // temporary workaround). Current Git identity receives two block slots before large
-    // memory/skill result sets can exhaust the packet block ceiling. Per-source-class token lanes
+    // temporary workaround). A fresh Blueprint repo-code result receives one block slot before
+    // other providers can exhaust the packet block ceiling. Current Git identity then receives
+    // two block slots before large memory/skill result sets can exhaust it. Per-source-class token lanes
     // then admit by score *within* each lane; the final pass fills remaining budget globally.
     // POLICY: raw provider_score is never treated
     // as cross-provider-comparable. Overlay's flat recency prior (~0.6) and memory's cosine
     // (~0.3–0.5) live on different scales; lanes keep them from competing for the whole budget.
     // Full recalibration is out of scope — these constants *are* the calibration substitute.
     // Lane size 0 restores single-pass behavior; unused reservation returns to pass 2.
+    const BLUEPRINT_REPO_CODE_LANE_KIND: &str = "repo_code";
+    const BLUEPRINT_REPO_CODE_LANE_BLOCKS: usize = 1;
     const IDENTITY_LANE_KIND: &str = "git_meta";
     const IDENTITY_LANE_BLOCKS: usize = 2;
     const RESERVED_LANES: &[(&str, usize)] = &[("memory", 800), ("skill", 300)];
@@ -707,6 +714,29 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
     let mut admitted_tokens = 0usize;
     let mut admitted: Vec<&CandidateV1> = Vec::new();
     let mut lane_admitted: std::collections::HashSet<String> = std::collections::HashSet::new();
+    if provider_status == ProviderStatus::Fresh {
+        for cand in deduped
+            .iter()
+            .filter(|candidate| {
+                candidate.source_kind == BLUEPRINT_REPO_CODE_LANE_KIND
+                    && candidate.provider.as_deref() == Some("blueprint")
+            })
+            .take(BLUEPRINT_REPO_CODE_LANE_BLOCKS)
+        {
+            let cost = cand.estimated_tokens;
+            if admitted_tokens + cost > input.max_tokens {
+                continue;
+            }
+            admitted_tokens += cost;
+            admitted.push(*cand);
+            lane_admitted.insert(cand.id.clone());
+            decisions.push((
+                (*cand).clone(),
+                "admitted".into(),
+                "within_blueprint_repo_code_lane".into(),
+            ));
+        }
+    }
     for cand in deduped
         .iter()
         .filter(|candidate| {
@@ -1345,6 +1375,44 @@ mod tests {
     }
 
     #[test]
+    fn protected_candidate_wins_duplicate_source_hash_over_higher_scored_live_candidate() {
+        let mut live = candidate("live-winner-before-protection", "repo_code_overlay", 20, 0.99, false);
+        live.provider = Some("live".into());
+        live.source_hash = format!("sha256:{}", "b".repeat(64));
+        live.text = "mutable live rendering".into();
+        let mut protected = candidate("protected-authority", "memory", 20, 0.01, true);
+        protected.provider = Some("crypt".into());
+        protected.source_hash = format!("sha256:{}", "B".repeat(64));
+        protected.text = "protected admission authority".into();
+
+        let out = plan(&empty_planner_input(vec![live, protected])).unwrap();
+
+        assert_eq!(out.packet.blocks.len(), 1);
+        assert_eq!(out.packet.blocks[0].id, "protected-authority");
+        let live_receipt = out.receipts.iter().find(|receipt| receipt.id == "live-winner-before-protection").unwrap();
+        assert_eq!(live_receipt.reason, "duplicate_source_hash");
+        assert_eq!(live_receipt.deduplicated_to.as_deref(), Some("protected-authority"));
+    }
+
+    #[test]
+    fn protected_candidate_wins_normalized_content_over_higher_scored_live_candidate() {
+        let mut live = candidate("live-winner-before-protection", "repo_code_overlay", 20, 0.99, false);
+        live.provider = Some("live".into());
+        live.text = "same protected fact\r\nwith whitespace   \r\n".into();
+        let mut protected = candidate("protected-authority", "doc", 20, 0.01, true);
+        protected.provider = Some("blueprint".into());
+        protected.text = "same protected fact\nwith whitespace\n".into();
+
+        let out = plan(&empty_planner_input(vec![live, protected])).unwrap();
+
+        assert_eq!(out.packet.blocks.len(), 1);
+        assert_eq!(out.packet.blocks[0].id, "protected-authority");
+        let live_receipt = out.receipts.iter().find(|receipt| receipt.id == "live-winner-before-protection").unwrap();
+        assert_eq!(live_receipt.reason, "duplicate_normalized_content");
+        assert_eq!(live_receipt.deduplicated_to.as_deref(), Some("protected-authority"));
+    }
+
+    #[test]
     fn allotments_normalize_scores_within_provider_lane_before_comparing_providers() {
         let mut alpha_high = candidate("alpha-high", "repo_code", 100, 0.9, false);
         alpha_high.provider = Some("alpha".into());
@@ -1593,6 +1661,53 @@ mod tests {
             .blocks
             .iter()
             .any(|block| block.id == "git:meta:branch:main"));
+    }
+
+    #[test]
+    fn fresh_blueprint_repo_code_survives_crypt_live_and_skill_block_flood() {
+        let mut candidates = Vec::new();
+        for index in 0..16 {
+            let mut memory = candidate(
+                &format!("memory:role:relevant-{index:02}"),
+                "memory",
+                1,
+                0.99,
+                false,
+            );
+            memory.score_components.insert("structural".into(), 0.99);
+            candidates.push(memory);
+        }
+        for index in 0..8 {
+            let mut live = candidate(
+                &format!("live:overlay:{index:02}"),
+                "repo_code_overlay",
+                1,
+                0.98,
+                false,
+            );
+            live.provider = Some("live".into());
+            candidates.push(live);
+        }
+        for index in 0..8 {
+            let mut skill = candidate(&format!("skill:result:{index:02}"), "skill", 1, 0.97, false);
+            skill.provider = Some("skills".into());
+            candidates.push(skill);
+        }
+        let mut cortex = candidate("blueprint:src:planner", "repo_code", 1, 0.01, false);
+        cortex.provider = Some("blueprint".into());
+        candidates.push(cortex);
+
+        let mut input = empty_planner_input(candidates);
+        input.max_tokens = 32;
+        let out = plan(&input).unwrap();
+
+        assert_eq!(out.packet.blocks.len(), 32);
+        assert_eq!(out.packet.budget.admitted_tokens, 32);
+        assert!(out
+            .packet
+            .blocks
+            .iter()
+            .any(|block| block.provider == "blueprint" && block.source_kind == "repo_code"));
     }
 
     #[test]
