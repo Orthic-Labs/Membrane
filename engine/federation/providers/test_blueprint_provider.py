@@ -158,6 +158,27 @@ def test_provider_passes_central_generation_to_blueprint_cli(monkeypatch, tmp_pa
     assert observed["command"][index + 1] == expected
 
 
+def test_provider_terminates_blueprint_at_lane_deadline(monkeypatch, tmp_path):
+    cli = tmp_path / "blueprint.mjs"
+    cli.write_text("// fixture", encoding="utf-8")
+    observed = {}
+    monkeypatch.setattr(blueprint, "_resolve_blueprint_cli", lambda: str(cli))
+    monkeypatch.setattr(blueprint, "_resolve_node", lambda: "node")
+
+    def run(_command, **kwargs):
+        observed["timeout"] = kwargs["timeout"]
+        raise blueprint.subprocess.TimeoutExpired("node", kwargs["timeout"])
+
+    monkeypatch.setattr(blueprint.subprocess, "run", run)
+
+    candidates, generation, warnings = blueprint.produce(tmp_path, "task", 4096)
+
+    assert candidates == []
+    assert generation == "blueprint-timeout"
+    assert warnings[0]["kind"] == "provider_timeout"
+    assert observed["timeout"] == blueprint.BLUEPRINT_TIMEOUT_S
+
+
 def test_manifest_reads_generation_envelope_from_graph_db(tmp_path):
     graph_dir = tmp_path / ".agent" / "graph"
     graph_dir.mkdir(parents=True)

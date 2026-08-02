@@ -25,6 +25,7 @@ BLUEPRINT_CLI_DEFAULT = workspace_tools_path(
     "skills", "blueprint", "scripts", "blueprint.mjs"
 )
 BLUEPRINT_CANDIDATE_CAP_DEFAULT = 64
+BLUEPRINT_TIMEOUT_S = 0.30
 
 
 def candidate_cap(max_tokens: int, raw_override: str | None = None) -> int:
@@ -182,14 +183,23 @@ def _produce(
     if expected_generation:
         cmd.extend(["--expected-generation", expected_generation])
     subprocess_started = time.monotonic()
-    proc = subprocess.run(
-        cmd,
-        cwd=str(repo_root),
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=BLUEPRINT_TIMEOUT_S,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        warnings.append(
+            _blueprint_warning(
+                "provider_timeout",
+                f"blueprint exceeded {BLUEPRINT_TIMEOUT_S:.2f}s process deadline",
+            )
+        )
+        return [], "blueprint-timeout", warnings
     subprocess_elapsed_ms = max(0.0, (time.monotonic() - subprocess_started) * 1000.0)
     observability["stageElapsedMs"] = {
         "blueprint_node_spawn": round(subprocess_elapsed_ms, 6),
