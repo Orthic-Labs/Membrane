@@ -1129,6 +1129,75 @@ fn freshness_response_body(v: &Value, verdict: &crate::freshness::FreshnessVerdi
     }
 }
 
+/// Which origin scope an observable-event read runs under. Chosen by the route the caller hit,
+/// never by a field in the request body — Taste must not be able to widen itself to
+/// assistant/model/tool origin simply by asking for it, which is why the two routes exist
+/// separately instead of one route with a scope parameter.
+enum ObservableQueryRoute {
+    Taste,
+    Insights,
+}
+
+fn observable_query_response(
+    store: &MemoryStore,
+    body: &str,
+    route: ObservableQueryRoute,
+) -> (u16, String) {
+    let Ok(request) = serde_json::from_str::<Value>(body) else {
+        return (
+            400,
+            serde_json::json!({ "error": "invalid observable event query" }).to_string(),
+        );
+    };
+    // `limit` is required with no default: a caller that omits it would otherwise silently receive
+    // whatever bound we picked and read a partial ledger as though it were the whole one.
+    let Some(limit) = request.get("limit").and_then(Value::as_u64) else {
+        return (
+            400,
+            serde_json::json!({ "error": "limit required" }).to_string(),
+        );
+    };
+    let text = |key: &str| {
+        request
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    let filter = crate::context_telemetry::ObservableEventQuery {
+        since: text("since"),
+        until: text("until"),
+        event_type: text("eventType"),
+        session_id: text("sessionId"),
+        task_id: text("taskId"),
+        trace_id: text("traceId"),
+        installation_id: text("installationId"),
+        after_sequence: request.get("afterSequence").and_then(Value::as_i64),
+        limit: limit as usize,
+    };
+    let queried = match route {
+        ObservableQueryRoute::Taste => store.db().query_observable_events_for_taste(&filter),
+        ObservableQueryRoute::Insights => store.db().query_observable_events_for_insights(&filter),
+    };
+    match queried {
+        Ok(result) => match serde_json::to_string(&result) {
+            Ok(payload) => (200, payload),
+            Err(_) => (
+                500,
+                serde_json::json!({ "error": "observable query serialization failed" }).to_string(),
+            ),
+        },
+        Err(crate::context_telemetry::ContextTelemetryError::Invalid(error)) => {
+            (400, serde_json::json!({ "error": error }).to_string())
+        }
+        Err(_) => (
+            500,
+            serde_json::json!({ "error": "observable event storage unavailable" }).to_string(),
+        ),
+    }
+}
+
 fn origin_allowed(headers: &HeaderMap, allowed_origins: &[String]) -> bool {
     let Some(origin) = headers.get(header::ORIGIN) else {
         return true;
@@ -1192,6 +1261,16 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     (
         "POST",
         "/v1/telemetry/observable-events:batch",
+        HttpWorkClass::General,
+    ),
+    (
+        "POST",
+        "/v1/telemetry/observable-events:query-taste",
+        HttpWorkClass::General,
+    ),
+    (
+        "POST",
+        "/v1/telemetry/observable-events:query-insights",
         HttpWorkClass::General,
     ),
     ("POST", "/v1/memories:batch", HttpWorkClass::Model),
@@ -2522,6 +2601,12 @@ fn route_with_context_ingest_lease(
                 serde_json::json!({ "error": "observable event storage unavailable" }).to_string(),
             ),
         };
+    }
+    if method == "POST" && path == "/v1/telemetry/observable-events:query-taste" {
+        return observable_query_response(store, body, ObservableQueryRoute::Taste);
+    }
+    if method == "POST" && path == "/v1/telemetry/observable-events:query-insights" {
+        return observable_query_response(store, body, ObservableQueryRoute::Insights);
     }
     if method == "POST" && path == "/v1/memories:batch" {
         let request = match serde_json::from_str::<MemoryBatchRequest>(body) {
@@ -6028,6 +6113,40 @@ mod tests {
         assert_eq!(value["edges"].as_array().unwrap().len(), 1);
         assert!(response.1.contains("global/first"));
         assert_eq!(value["edges"][0]["kind"], "semantic");
+    }
+
+    #[test]
+    fn observable_query_routes_require_an_explicit_limit() {
+        let store = MemoryStore::new();
+        for path in [
+            "/v1/telemetry/observable-events:query-taste",
+            "/v1/telemetry/observable-events:query-insights",
+        ] {
+            let response = route(&store, "POST", path, r#"{"sessionId":"s-1"}"#);
+            assert_eq!(response.0, 400, "{path} accepted a query with no limit");
+            assert!(response.1.contains("limit required"));
+        }
+    }
+
+    #[test]
+    fn observable_taste_route_cannot_be_widened_by_the_request_body() {
+        // The route is the only thing that selects origin scope. A caller asking for a wider
+        // origin in the body must not get one -- otherwise Taste could read assistant, model or
+        // tool events simply by naming them, which is exactly what L1 forbids.
+        let store = MemoryStore::new();
+        let widened = route(
+            &store,
+            "POST",
+            "/v1/telemetry/observable-events:query-taste",
+            r#"{"limit":10,"origin":"tool","scope":"insights","originScope":"InsightsFullStream"}"#,
+        );
+        assert_eq!(widened.0, 200);
+        let value: serde_json::Value = serde_json::from_str(&widened.1).unwrap();
+        assert!(
+            value["rows"].as_array().expect("rows array").is_empty(),
+            "taste route returned rows for a body-supplied wider origin"
+        );
+        assert_eq!(value["truncated"], false);
     }
 
     #[test]
