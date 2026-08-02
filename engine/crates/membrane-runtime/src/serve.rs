@@ -4200,6 +4200,14 @@ pub fn run(
     identity: &crate::installation_identity::InstallationIdentity,
     claim: &crate::installation_identity::StartupClaim,
 ) -> Result<(), String> {
+    #[cfg(feature = "fastembed")]
+    {
+        let ort_path = std::env::var_os("ORT_DYLIB_PATH")
+            .ok_or_else(|| "ORT_DYLIB_PATH is required for fastembed".to_string())?;
+        ort::init_from(std::path::PathBuf::from(ort_path))
+            .map_err(|error| format!("initialize ONNX Runtime: {error}"))?
+            .commit();
+    }
     let store = MemoryStore::try_open(MemDb::open(db_path).map_err(|e| e.to_string())?)?;
     let context_ingest_lease =
         crate::context_telemetry::ContextIngestLease::from_startup(identity, claim)
