@@ -42,6 +42,8 @@ const requestedRange = valueFor("--finding-range");
 function fail(message) { process.stderr.write(`${message}\n`); process.exitCode = 1; }
 function sha256(value) { return `sha256:${createHash("sha256").update(value).digest("hex")}`; }
 function fileHash(path) { return existsSync(path) ? sha256(readFileSync(path)) : null; }
+function normalizedTextHash(value) { return sha256(String(value).replace(/\r\n/g, "\n")); }
+function normalizedTextFileHash(path) { return existsSync(path) ? normalizedTextHash(readFileSync(path, "utf8")) : null; }
 function git(root, command) {
   try { return execFileSync("git", command, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); }
   catch { return null; }
@@ -76,7 +78,7 @@ function fingerprint() {
   return {
     root: git(root, ["rev-parse", "HEAD"]),
     membrane: git(membraneRoot, ["rev-parse", "HEAD"]),
-    runner: fileHash(scriptPath),
+    runner: normalizedTextFileHash(scriptPath),
     findings: fileHash(findingsPath),
   };
 }
@@ -224,6 +226,13 @@ function sourceSuites(ids) {
 }
 
 if (!PHASES.has(phase)) fail(`unsupported phase: ${phase}`);
+if (has("--self-test-fingerprint")) {
+  const lf = normalizedTextHash("alpha\nbeta\n");
+  if (lf !== normalizedTextHash("alpha\r\nbeta\r\n")) fail("fingerprint EOL normalization failed");
+  if (lf === normalizedTextHash("alpha\ngamma\n")) fail("fingerprint content-change detection failed");
+  process.stdout.write(`${JSON.stringify({ status: process.exitCode ? "failed" : "passed", fingerprint: lf })}\n`);
+  process.exit(process.exitCode || 0);
+}
 if (!existsSync(findingsPath)) fail(`findings missing: ${findingsPath}`);
 const ledger = parseFindings(readFileSync(findingsPath, "utf8"));
 const ledgerIds = new Set(ledger.ids);
