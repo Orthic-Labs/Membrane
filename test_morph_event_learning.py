@@ -3,9 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import socket
 import sqlite3
 import subprocess
+import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -150,9 +153,9 @@ def _start_service(binary: Path, db: Path, port: int, env: dict[str, str]) -> su
             if probe.connect_ex(("127.0.0.1", port)) == 0:
                 return service
         time.sleep(0.05)
-    stderr = service.stderr.read().strip() if service.stderr else ""
     service.kill()
     service.wait(timeout=5)
+    stderr = service.stderr.read().strip() if service.stderr else ""
     raise RuntimeError(f"isolated Crypt service did not start: {stderr}")
 
 
@@ -166,7 +169,12 @@ def _stop_service(service: subprocess.Popen) -> None:
 
 
 @pytest.mark.skipif(os.environ.get("MORPH_E2E") != "1", reason="run by C14 qualifier")
-def test_real_persistence_readback_and_next_use(tmp_path: Path, monkeypatch) -> None:
+def test_real_persistence_readback_and_next_use(
+    tmp_path: Path, monkeypatch, request: pytest.FixtureRequest
+) -> None:
+    if sys.platform == "darwin":
+        tmp_path = Path(tempfile.mkdtemp(prefix="morph-e2e-", dir=Path.home()))
+        request.addfinalizer(lambda: shutil.rmtree(tmp_path, ignore_errors=True))
     binary = Path(os.environ["CRYPT_BIN"]).resolve()
     db = tmp_path / "morph.db"
     live_db = Path(
@@ -187,6 +195,10 @@ def test_real_persistence_readback_and_next_use(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setenv("CONTEXT_HOME", str(tmp_path))
     monkeypatch.setenv("CRYPT_API_TOKEN_FILE", str(token_file))
     monkeypatch.setenv("CRYPT_ALLOW_HASH", "1")
+    if sys.platform == "darwin":
+        runtime = tmp_path / "libonnxruntime.dylib"
+        shutil.copy2(binary.parent / "libonnxruntime.dylib", runtime)
+        monkeypatch.setenv("ORT_DYLIB_PATH", str(runtime))
     monkeypatch.setenv("CRYPT_PORT", str(port))
     monkeypatch.setenv("WORKSPACE_MEMORY_PORT", str(port))
     env = {
