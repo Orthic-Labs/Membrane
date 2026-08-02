@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
 from dataclasses import dataclass, replace
@@ -10,6 +11,8 @@ from typing import Callable
 
 import morph_persistence
 import admission
+import event_ingestion
+import learning_outcomes
 import observable_events
 import preference_record
 import rule_key
@@ -80,8 +83,17 @@ def admit_user_event(
     scope: str,
     category: str,
     canonical_rules: rule_key.RuleIndex | dict | None = None,
+    now: str | None = None,
 ) -> AdmittedLearning:
-    """Create a quarantined proposal from exact user-authored event content."""
+    """Create a quarantined proposal from exact user-authored event content.
+
+    ``now`` is normally left as the default (current time). It exists so a
+    resumed ingestion cycle can deterministically REPLAY an already-proposed
+    event from ``learning_outcomes.LearningOutcomeStore`` — passing back the
+    original record timestamp reproduces a byte-identical
+    ``PreferenceRecord``/``digest`` instead of minting a new one every time the
+    ledger is rescanned (see ``morph_event_learning.run_taste_cycle``).
+    """
     observable_events._validate(event)
     if event["origin"] != "user":
         raise MorphLearningError(f"origin-not-user:{event['origin']}")
@@ -121,6 +133,7 @@ def admit_user_event(
         scope=scope,
         source_ids=(source_id,),
         lifecycle_state="candidate",
+        now=now,
     )
     key = rule_key.RuleKey(scope=scope, record_id=record.id)
     return AdmittedLearning(
@@ -203,6 +216,148 @@ def persist_learning(
             "feedback_sha256": learning.feedback_sha256,
         },
     }
+
+
+def run_taste_cycle(
+    transport: event_ingestion.EventTransport,
+    *,
+    installation_id: str,
+    scope: str,
+    category: str,
+    resolve_evidence: Callable[[dict], str],
+    cursor_store: event_ingestion.CursorStore | None = None,
+    outcome_store: learning_outcomes.LearningOutcomeStore | None = None,
+    canonical_rules: rule_key.RuleIndex | dict | None = None,
+    page_limit: int = event_ingestion.DEFAULT_PAGE_LIMIT,
+) -> dict:
+    """One resumable pull-and-process pass over the Taste stream.
+
+    This is the single place the ingestion, admission, and outcome-persistence
+    halves of C14/L2 meet, and it is deliberately the ONLY place that can ever
+    move a proposal to "approved". The approval check is a plain dict lookup
+    against events that ``event_ingestion.pull_stream`` actually returned this
+    call (or a prior call, replayed via the durable outcome ledger) — this
+    function never constructs, mutates, or injects a feedback event itself. A
+    proposal's own admission call cannot satisfy its own approval: the approval
+    match only fires for a *different*, later event whose exact text equals
+    ``approval_text(proposal)``, and that event can only come from the
+    read-only transport this function does not control (see
+    ``test_morph_event_learning.py::test_ingestion_cycle_cannot_self_approve``).
+
+    Rebuilds any still-pending proposals from ``outcome_store`` first (via a
+    deterministic replay of ``admit_user_event`` — never from anything Morph
+    invented this run), so an approval event arriving on a *later* call still
+    resolves correctly, not just one arriving in the same page as its proposal.
+    """
+    cursor_store = cursor_store or event_ingestion.CursorStore()
+    outcome_store = outcome_store or learning_outcomes.LearningOutcomeStore()
+
+    pending: dict[str, AdmittedLearning] = {}
+    for row in outcome_store.pending_proposals():
+        try:
+            replay = admit_user_event(
+                row["event"],
+                evidence_text=row["evidence_text"],
+                scope=row["scope"],
+                category=row["category"],
+                canonical_rules=canonical_rules,
+                now=row.get("record_now") or None,
+            )
+        except MorphLearningError:
+            continue
+        pending[approval_text(replay)] = replay
+
+    proposed: list[AdmittedLearning] = []
+    approved: list[AdmittedLearning] = []
+
+    def handle_page(rows: list[dict]) -> None:
+        for event in rows:
+            if event.get("event_type") not in LEARNABLE_EVENT_TYPES:
+                continue
+            evidence_text = resolve_evidence(event)
+
+            approval_match = pending.get(evidence_text)
+            if approval_match is not None:
+                try:
+                    result = approve_learning(
+                        approval_match, feedback_event=event, feedback_text=evidence_text,
+                    )
+                except MorphLearningError as exc:
+                    outcome_store.record(
+                        event_id=approval_match.event_id,
+                        trace_id=approval_match.trace_id,
+                        rule_key=approval_match.rule_key,
+                        evidence_sha256=approval_match.evidence_sha256,
+                        status="rejected",
+                        reason=str(exc),
+                    )
+                    pending.pop(evidence_text, None)
+                    continue
+                outcome_store.record(
+                    event_id=result.event_id,
+                    trace_id=result.trace_id,
+                    rule_key=result.rule_key,
+                    evidence_sha256=result.evidence_sha256,
+                    status="approved",
+                    digest=result.digest,
+                    approval_event_id=result.approval_event_id,
+                )
+                approved.append(result)
+                pending.pop(evidence_text, None)
+                continue
+
+            if outcome_store.already_processed(event["event_id"]):
+                continue
+            # Fixed explicitly (not left to admit_user_event's default "now") so
+            # created_at == updated_at from the start: a *single* captured value
+            # that a later replay-from-ledger can reproduce byte-for-byte via
+            # `now=`. Two independent `datetime.now()` calls inside one admission
+            # would never round-trip identically.
+            now_value = dt.datetime.now(dt.timezone.utc).isoformat()
+            try:
+                proposal = admit_user_event(
+                    event,
+                    evidence_text=evidence_text,
+                    scope=scope,
+                    category=category,
+                    canonical_rules=canonical_rules,
+                    now=now_value,
+                )
+            except MorphLearningError as exc:
+                outcome_store.record(
+                    event_id=event["event_id"],
+                    trace_id=event.get("trace_id", ""),
+                    rule_key="",
+                    evidence_sha256=_sha256_text(evidence_text),
+                    status="rejected",
+                    reason=str(exc),
+                )
+                continue
+            outcome_store.record(
+                event_id=proposal.event_id,
+                trace_id=proposal.trace_id,
+                rule_key=proposal.rule_key,
+                evidence_sha256=proposal.evidence_sha256,
+                status="proposed",
+                digest=proposal.digest,
+                event=event,
+                evidence_text=evidence_text,
+                scope=scope,
+                category=category,
+                record_now=now_value,
+            )
+            proposed.append(proposal)
+            pending[approval_text(proposal)] = proposal
+
+    event_ingestion.pull_stream(
+        transport,
+        stream="taste",
+        installation_id=installation_id,
+        cursor_store=cursor_store,
+        page_limit=page_limit,
+        on_page=handle_page,
+    )
+    return {"proposed": proposed, "approved": approved}
 
 
 def verify_next_use(
