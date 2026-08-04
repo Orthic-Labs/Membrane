@@ -285,6 +285,11 @@ pub struct ObservableEventV1 {
     pub timestamp: String,
     pub completeness: BTreeMap<String, bool>,
     pub policy_snapshot_digest: String,
+    /// Numeric-only, content-free duration (e.g. a tool call's completed_at - started_at, in
+    /// milliseconds). Never content: same discipline as the existing `duration_ms`/`measurements`
+    /// numeric fields on `ContextEvent`. Absent for producers that don't measure a span.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -326,6 +331,11 @@ impl ObservableEventV1 {
         validate_sha256(policy_digest, "policy_snapshot_digest")?;
         if !valid_utc_timestamp(&self.timestamp) {
             return Err(invalid("timestamp", "must be RFC3339"));
+        }
+        if let Some(duration_ms) = self.duration_ms {
+            if !duration_ms.is_finite() || duration_ms < 0.0 || duration_ms > MAX_DURATION_MS {
+                return Err(invalid("duration_ms", "must be finite and within bounds"));
+            }
         }
         Ok(())
     }
@@ -2480,7 +2490,7 @@ impl MemDb {
                 cohort: None,
                 task_class: Some("observable".to_string()),
                 source_generation: None,
-                duration_ms: None,
+                duration_ms: event.duration_ms,
                 quantity: None,
                 token_count: None,
                 char_count: None,
@@ -2654,6 +2664,16 @@ impl MemDb {
         self.query_observable_events(filter, ObservableOriginScope::InsightsFullStream)
     }
 
+    /// TOOL-ORIGIN evidence only (duration-bearing tool_receipt/tool_receipt_failed events). This
+    /// is the sole read path Sentinel time-accounting may use: mirrors `_for_taste`'s isolation --
+    /// scope is fixed by which function is called, never by caller-supplied data.
+    pub fn query_observable_events_for_sentinel(
+        &self,
+        filter: &ObservableEventQuery,
+    ) -> Result<ObservableEventQueryResult, ContextTelemetryError> {
+        self.query_observable_events(filter, ObservableOriginScope::SentinelToolOnly)
+    }
+
     /// Shared read path behind the two public entry points above. Private so external callers can
     /// never choose `ObservableOriginScope` themselves -- the only way to select a scope is to
     /// call one of the two named public functions.
@@ -2704,7 +2724,8 @@ impl MemDb {
         // ObservableEventV1-derived rows without needing a schema change or a new write-path flag.
         let mut statement = conn.prepare(
             "SELECT seq, event_id, ts, installation_id, session_id, artifact_id, trace_id,
-                    turn_id, reason_code, artifact_sha256, policy_activation_sha256, meta
+                    turn_id, reason_code, artifact_sha256, policy_activation_sha256, meta,
+                    duration_ms
              FROM context_event_log
              WHERE task_class = 'observable'
                AND (?1 IS NULL OR ts >= ?1)
@@ -2761,6 +2782,8 @@ impl MemDb {
             let complete = meta.get("complete").and_then(Value::as_bool);
             let artifact_sha256: Option<String> = row.get(9)?;
             let policy_activation_sha256: Option<String> = row.get(10)?;
+            let duration_ms: Option<f64> = row.get(12)?;
+            let duration_ms = duration_ms.map(|value| value.round() as i64);
             matched.push(ObservableEventRow {
                 sequence,
                 event_id: row.get(1)?,
@@ -2775,6 +2798,7 @@ impl MemDb {
                 content_digest: artifact_sha256.map(|hash| format!("sha256:{hash}")),
                 policy_snapshot_digest: policy_activation_sha256.map(|hash| format!("sha256:{hash}")),
                 complete,
+                duration_ms,
             });
             if matched.len() > filter.limit {
                 break;
@@ -2809,6 +2833,9 @@ enum ObservableOriginScope {
     TasteUserOnly,
     /// Morph Insights: the full authorized stream, every frozen origin value.
     InsightsFullStream,
+    /// Sentinel time-accounting: tool-origin evidence only (tool_receipt/tool_receipt_failed
+    /// events carrying duration_ms), never user/assistant content.
+    SentinelToolOnly,
 }
 
 impl ObservableOriginScope {
@@ -2816,6 +2843,7 @@ impl ObservableOriginScope {
         match self {
             ObservableOriginScope::TasteUserOnly => origin == "user",
             ObservableOriginScope::InsightsFullStream => true,
+            ObservableOriginScope::SentinelToolOnly => origin == "tool",
         }
     }
 }
@@ -2861,6 +2889,10 @@ pub struct ObservableEventRow {
     pub content_digest: Option<String>,
     pub policy_snapshot_digest: Option<String>,
     pub complete: Option<bool>,
+    /// Numeric-only duration in whole milliseconds (rounded from the stored REAL), when the
+    /// ingesting producer measured one. Integer, not f64, so this row can keep deriving `Eq`.
+    /// Same content-free discipline as every other field on this row.
+    pub duration_ms: Option<i64>,
 }
 
 /// Honest completeness envelope for an observable-event read. `truncated` and `next_cursor` are
@@ -3126,8 +3158,16 @@ mod lifecycle_intent_tests {
             policy_snapshot_digest:
                 "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
                     .to_string(),
+            duration_ms: None,
         };
         event.validate().unwrap();
+        let mut with_duration = event.clone();
+        with_duration.duration_ms = Some(1_500.0);
+        with_duration.validate().unwrap();
+        with_duration.duration_ms = Some(-1.0);
+        assert!(with_duration.validate().is_err());
+        with_duration.duration_ms = Some(f64::NAN);
+        assert!(with_duration.validate().is_err());
         let mut invalid = event.clone();
         invalid.origin = "model".to_string();
         assert!(invalid.validate().is_err());
@@ -3203,6 +3243,7 @@ mod lifecycle_intent_tests {
             timestamp: ts.to_string(),
             completeness: BTreeMap::from([("packet".to_string(), true)]),
             policy_snapshot_digest: format!("sha256:{}", "b".repeat(64)),
+            duration_ms: None,
         }
     }
 
@@ -3343,6 +3384,53 @@ mod lifecycle_intent_tests {
             insights.rows.len(),
             2 + non_user_origins.len(),
             "the same store must still hold the non-user-origin rows Taste is forbidden to see"
+        );
+    }
+
+    #[test]
+    fn sentinel_scope_returns_only_tool_origin_rows_with_their_duration() {
+        let db = MemDb::open_in_memory();
+        let session = "session-time-accounting";
+        let mut tool_call = observable_event(
+            "evt-tool-1",
+            session,
+            "task-1",
+            "trace-1",
+            "tool_receipt",
+            "tool",
+            "2026-08-01T00:00:00Z",
+        );
+        tool_call.duration_ms = Some(1_234.0);
+        let mut user_row = observable_event(
+            "evt-user-1",
+            session,
+            "task-1",
+            "trace-1",
+            "packet_delivered",
+            "user",
+            "2026-08-01T00:00:01Z",
+        );
+        user_row.duration_ms = Some(9_999.0);
+        ingest_events(&db, vec![tool_call, user_row]);
+
+        let filter = ObservableEventQuery {
+            session_id: Some(session.to_string()),
+            limit: 100,
+            ..Default::default()
+        };
+        let sentinel = db.query_observable_events_for_sentinel(&filter).unwrap();
+        assert_eq!(
+            sentinel.rows.len(),
+            1,
+            "sentinel time-accounting scope must exclude the non-tool-origin row"
+        );
+        assert_eq!(sentinel.rows[0].origin, "tool");
+        assert_eq!(sentinel.rows[0].duration_ms, Some(1_234));
+
+        let taste = db.query_observable_events_for_taste(&filter).unwrap();
+        assert!(
+            taste.rows.iter().all(|row| row.origin != "tool"),
+            "taste scope must never see the tool-origin duration row"
         );
     }
 

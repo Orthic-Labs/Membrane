@@ -3353,8 +3353,10 @@ fn run_main() -> Result<(), String> {
         Cmd::IngestSkills { root } => {
             let store = open(&db)?;
             let ws = skill_workspace_root(root);
-            let (ingested, skipped) = store.ingest_skills(&ws);
-            println!("{{\"skills_ingested\":{ingested},\"skills_skipped\":{skipped}}}");
+            let (ingested, skipped, pruned) = store.ingest_skills(&ws);
+            println!(
+                "{{\"skills_ingested\":{ingested},\"skills_skipped\":{skipped},\"skills_pruned\":{pruned}}}"
+            );
         }
         Cmd::Put {
             name,
@@ -3726,9 +3728,9 @@ fn run_main() -> Result<(), String> {
             let (edges, resolvable) = store.backfill_links();
             // Reingest git-tracked skill bodies into the engine skills table (portability store).
             let ws = skill_workspace_root(None);
-            let (skills_in, skills_skip) = store.ingest_skills(&ws);
+            let (skills_in, skills_skip, skills_pruned) = store.ingest_skills(&ws);
             println!(
-                "{{\"reindexed\":{n},\"skipped\":{skipped},\"link_edges\":{edges},\"resolvable_links\":{resolvable},\"skills_ingested\":{skills_in},\"skills_skipped\":{skills_skip}}}"
+                "{{\"reindexed\":{n},\"skipped\":{skipped},\"link_edges\":{edges},\"resolvable_links\":{resolvable},\"skills_ingested\":{skills_in},\"skills_skipped\":{skills_skip},\"skills_pruned\":{skills_pruned}}}"
             );
         }
         Cmd::ExportMd { dir } => {

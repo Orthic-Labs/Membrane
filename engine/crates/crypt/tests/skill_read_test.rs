@@ -141,7 +141,7 @@ fn skill_read_serves_from_engine_without_skills_directory() {
     {
         let memdb = crypt::MemDb::open(&db).unwrap();
         let store = crypt::MemoryStore::try_open(memdb).unwrap();
-        let (ingested, _) = store.ingest_skills(&repo);
+        let (ingested, _, _) = store.ingest_skills(&repo);
         assert_eq!(ingested, 1, "the tracked skill must ingest into the engine");
     }
     // Empty workspace root: no tools/skills anywhere near it.
@@ -169,6 +169,78 @@ fn skill_read_serves_from_engine_without_skills_directory() {
     assert_eq!(row["source"], "engine");
     assert_eq!(row["client"], "claude");
     assert_eq!(row["bytes_returned"], body.len());
+
+    let _ = fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn ingest_skills_prunes_a_skill_deleted_from_git_but_never_an_absent_tree() {
+    // The `adapt` failure: its source was deleted, but the engine row survived because ingest only
+    // added and updated. The skills provider kept advertising it and disk-first/engine-fallback
+    // resolution kept serving a body whose pipeline and vocabulary were both gone.
+    let tmp = std::env::temp_dir().join(format!("cr-skillprune-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let db = tmp.join("engine.db");
+    let repo = tmp.join("repo");
+    write(
+        &repo.join("tools/skills/keeper/SKILL.md"),
+        "---\nname: keeper\ndescription: stays\n---\n# Keeper\n",
+    );
+    write(
+        &repo.join("tools/skills/ghost/SKILL.md"),
+        "---\nname: ghost\ndescription: gets deleted\n---\n# Ghost\n",
+    );
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    git(&["init", "-q"]);
+    git(&["config", "user.email", "t@t.t"]);
+    git(&["config", "user.name", "t"]);
+    git(&["add", "-A"]);
+
+    let memdb = crypt::MemDb::open(&db).unwrap();
+    let store = crypt::MemoryStore::try_open(memdb).unwrap();
+    assert_eq!(store.ingest_skills(&repo), (2, 0, 0));
+    assert!(store.skill_from_db("ghost").is_some());
+
+    // Delete the skill the way a fold/retire actually happens: gone from disk and from the index.
+    fs::remove_dir_all(repo.join("tools/skills/ghost")).unwrap();
+    git(&["add", "-A"]);
+    assert_eq!(
+        store.ingest_skills(&repo),
+        (1, 0, 1),
+        "a skill removed from git must not survive in the engine"
+    );
+    assert!(
+        store.skill_from_db("ghost").is_none(),
+        "the retired skill must stop being served"
+    );
+    assert!(
+        store.skill_from_db("keeper").is_some(),
+        "the surviving skill must be untouched"
+    );
+
+    // Portability guard: a checkout WITHOUT tools/skills must never be read as "all skills were
+    // deleted", or the engine store this exists to carry would erase itself.
+    let bare = tmp.join("bare");
+    fs::create_dir_all(bare.join("tools")).unwrap();
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(&bare)
+        .args(["init", "-q"])
+        .output()
+        .unwrap();
+    assert_eq!(store.ingest_skills(&bare), (0, 0, 0));
+    assert!(
+        store.skill_from_db("keeper").is_some(),
+        "an empty skills tree must not prune the portability store"
+    );
 
     let _ = fs::remove_dir_all(&tmp);
 }

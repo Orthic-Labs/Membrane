@@ -1136,6 +1136,7 @@ fn freshness_response_body(v: &Value, verdict: &crate::freshness::FreshnessVerdi
 enum ObservableQueryRoute {
     Taste,
     Insights,
+    SentinelTimeAccounting,
 }
 
 fn observable_query_response(
@@ -1179,6 +1180,9 @@ fn observable_query_response(
     let queried = match route {
         ObservableQueryRoute::Taste => store.db().query_observable_events_for_taste(&filter),
         ObservableQueryRoute::Insights => store.db().query_observable_events_for_insights(&filter),
+        ObservableQueryRoute::SentinelTimeAccounting => {
+            store.db().query_observable_events_for_sentinel(&filter)
+        }
     };
     match queried {
         Ok(result) => match serde_json::to_string(&result) {
@@ -1271,6 +1275,11 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     (
         "POST",
         "/v1/telemetry/observable-events:query-insights",
+        HttpWorkClass::General,
+    ),
+    (
+        "POST",
+        "/v1/telemetry/observable-events:query-sentinel-time",
         HttpWorkClass::General,
     ),
     ("POST", "/v1/memories:batch", HttpWorkClass::Model),
@@ -2607,6 +2616,9 @@ fn route_with_context_ingest_lease(
     }
     if method == "POST" && path == "/v1/telemetry/observable-events:query-insights" {
         return observable_query_response(store, body, ObservableQueryRoute::Insights);
+    }
+    if method == "POST" && path == "/v1/telemetry/observable-events:query-sentinel-time" {
+        return observable_query_response(store, body, ObservableQueryRoute::SentinelTimeAccounting);
     }
     if method == "POST" && path == "/v1/memories:batch" {
         let request = match serde_json::from_str::<MemoryBatchRequest>(body) {
@@ -6121,6 +6133,7 @@ mod tests {
         for path in [
             "/v1/telemetry/observable-events:query-taste",
             "/v1/telemetry/observable-events:query-insights",
+            "/v1/telemetry/observable-events:query-sentinel-time",
         ] {
             let response = route(&store, "POST", path, r#"{"sessionId":"s-1"}"#);
             assert_eq!(response.0, 400, "{path} accepted a query with no limit");
@@ -6145,6 +6158,27 @@ mod tests {
         assert!(
             value["rows"].as_array().expect("rows array").is_empty(),
             "taste route returned rows for a body-supplied wider origin"
+        );
+        assert_eq!(value["truncated"], false);
+    }
+
+    #[test]
+    fn observable_sentinel_time_route_cannot_be_widened_by_the_request_body() {
+        // Mirrors observable_taste_route_cannot_be_widened_by_the_request_body: Sentinel's
+        // time-accounting route must stay tool-origin-only regardless of what a caller names in
+        // the body -- scope is fixed by the route, not by request data.
+        let store = MemoryStore::new();
+        let widened = route(
+            &store,
+            "POST",
+            "/v1/telemetry/observable-events:query-sentinel-time",
+            r#"{"limit":10,"origin":"user","scope":"insights","originScope":"InsightsFullStream"}"#,
+        );
+        assert_eq!(widened.0, 200);
+        let value: serde_json::Value = serde_json::from_str(&widened.1).unwrap();
+        assert!(
+            value["rows"].as_array().expect("rows array").is_empty(),
+            "sentinel-time route returned rows for a body-supplied wider origin"
         );
         assert_eq!(value["truncated"], false);
     }

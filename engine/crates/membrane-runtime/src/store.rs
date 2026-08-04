@@ -3288,9 +3288,16 @@ impl MemoryStore {
     /// Ingest every git-tracked skill body into the engine `skills` table — the portability store.
     /// Git stays the AUTHORING source (commit → reingest, like memories); the DB row is what
     /// travels cross-machine with the engine, so a session without the skills directory can still
-    /// load skills. Returns (ingested, skipped). Tracked-only (git ls-files) — untracked drafts
-    /// never enter the store.
-    pub fn ingest_skills(&self, workspace: &Path) -> (usize, usize) {
+    /// load skills. Returns (ingested, skipped, pruned). Tracked-only (git ls-files) — untracked
+    /// drafts never enter the store.
+    ///
+    /// Reconciles rather than only adding: a skill deleted or folded in git is removed here too.
+    /// Without this the row outlives its source forever and the skills provider keeps advertising
+    /// a skill whose body, pipeline, and vocabulary are all gone (observed with `adapt`, which
+    /// survived its own deletion and kept pointing at a removed pipeline and the retired name
+    /// "MemRight"). Pruning is skipped entirely when the workspace yielded no skills, so a machine
+    /// checked out without `tools/skills/` cannot wipe the portability store it was meant to carry.
+    pub fn ingest_skills(&self, workspace: &Path) -> (usize, usize, usize) {
         let skills_dir = workspace.join("tools").join("skills");
         let tracked = std::process::Command::new("git")
             .args([
@@ -3301,10 +3308,11 @@ impl MemoryStore {
                 "tools/skills/",
             ])
             .output();
-        let Ok(out) = tracked else { return (0, 0) };
+        let Ok(out) = tracked else { return (0, 0, 0) };
         let listing = String::from_utf8_lossy(&out.stdout);
         let mut ingested = 0usize;
         let mut skipped = 0usize;
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         let conn = self.db.lock();
         for rel in listing.lines() {
             let rel = rel.trim().replace('\\', "/");
@@ -3333,12 +3341,34 @@ impl MemoryStore {
                 )
                 .is_ok();
             if ok {
-                ingested += 1
+                ingested += 1;
+                seen.insert(name.to_string());
             } else {
                 skipped += 1
             }
         }
-        (ingested, skipped)
+        // Only reconcile against a workspace that actually produced skills. An empty result means
+        // "no skills tree here", never "every skill was deleted".
+        let mut pruned = 0usize;
+        if ingested > 0 {
+            let existing: Vec<String> = conn
+                .prepare("SELECT name FROM skills")
+                .and_then(|mut stmt| {
+                    stmt.query_map([], |row| row.get::<_, String>(0))
+                        .map(|rows| rows.filter_map(Result::ok).collect())
+                })
+                .unwrap_or_default();
+            for name in existing {
+                if !seen.contains(&name)
+                    && conn
+                        .execute("DELETE FROM skills WHERE name=?1", rusqlite::params![name])
+                        .is_ok()
+                {
+                    pruned += 1;
+                }
+            }
+        }
+        (ingested, skipped, pruned)
     }
 
     /// Engine-served skill body: (body, body_sha256) from the `skills` table, or None.

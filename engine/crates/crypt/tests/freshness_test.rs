@@ -491,14 +491,14 @@ fn skills_generation_changes_only_when_skill_snapshot_content_changes() {
     run_git(workspace.path(), &["add", "tools/skills/demo/SKILL.md"]);
 
     let store = crypt::MemoryStore::new();
-    assert_eq!(store.ingest_skills(workspace.path()), (1, 0));
+    assert_eq!(store.ingest_skills(workspace.path()), (1, 0, 0));
     let first = store.skills_generation().unwrap();
     let snapshot = store.skills_snapshot().unwrap();
     assert_eq!(snapshot.generation, first);
     assert_eq!(snapshot.skills.len(), 1);
     assert_eq!(snapshot.skills[0].name, "demo");
     assert_eq!(snapshot.skills[0].body_hash.len(), 64);
-    assert_eq!(store.ingest_skills(workspace.path()), (1, 0));
+    assert_eq!(store.ingest_skills(workspace.path()), (1, 0, 0));
     assert_eq!(store.skills_generation().unwrap(), first);
 
     std::fs::write(
@@ -506,7 +506,7 @@ fn skills_generation_changes_only_when_skill_snapshot_content_changes() {
         "---\ndescription: demo\n---\nsecond\n",
     )
     .unwrap();
-    assert_eq!(store.ingest_skills(workspace.path()), (1, 0));
+    assert_eq!(store.ingest_skills(workspace.path()), (1, 0, 0));
     assert_ne!(store.skills_generation().unwrap(), first);
 }
 
