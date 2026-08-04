@@ -30,6 +30,19 @@ const GIT_CHILD_TIMEOUT: Duration = Duration::from_secs(2);
 const CHILD_POLL_INTERVAL: Duration = Duration::from_millis(5);
 const FIRST_AFTER_IDLE_THRESHOLD: Duration = Duration::from_secs(5 * 60);
 
+/// Commits the sealed generation may lag HEAD before the graph is called stale.
+///
+/// Plan 1.2: staleness is "behind HEAD by more than N", default 1. Treating any
+/// difference as stale made an actively-committed worktree permanently alarmed.
+const MAX_GENERATION_COMMIT_LAG: u32 = 1;
+
+/// Paths whose churn must never influence a freshness verdict.
+///
+/// These are agent- and index-owned directories that change constantly as a
+/// side effect of normal operation. Counting them as overlay entries made the
+/// graph look dirty because the graph had just been rebuilt (plan 1.2).
+const IGNORED_OVERLAY_PREFIXES: &[&str] = &[".agent/", ".blueprint/", "memory-mirror/"];
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FreshnessEpoch {
@@ -40,6 +53,12 @@ pub struct FreshnessEpoch {
     pub graph_manifest_generation: Option<String>,
     pub graph_body_generation: Option<String>,
     pub skills_generation: Option<String>,
+    /// Commits HEAD is ahead of the sealed generation's base commit.
+    ///
+    /// `Some(0)` means the generation describes HEAD exactly. `None` means the
+    /// distance could not be measured (shallow clone, unrelated histories, or
+    /// a git failure) — callers must treat that as "unknown", not "current".
+    pub commit_distance: Option<u32>,
 }
 
 impl FreshnessEpoch {
@@ -56,6 +75,7 @@ impl FreshnessEpoch {
             graph_manifest_generation: Some(generation.to_string()),
             graph_body_generation: Some(generation.to_string()),
             skills_generation: Some(skills.to_string()),
+            commit_distance: Some(0),
         }
     }
 }
@@ -387,7 +407,17 @@ fn classify(
                 false,
                 vec!["commit_epoch_missing".to_string()],
             )
-        } else if epoch.head_commit != epoch.base_commit {
+        } else if epoch.head_commit != epoch.base_commit
+            && epoch
+                .commit_distance
+                .is_none_or(|distance| distance > MAX_GENERATION_COMMIT_LAG)
+        {
+            // Plan 1.2: stale means the generation is behind HEAD by more than
+            // MAX_GENERATION_COMMIT_LAG commits — not merely "different from
+            // HEAD". A single commit past the sealed generation is the normal
+            // steady state of an active worktree and used to trip a permanent
+            // alarm. An unmeasurable distance stays stale: unknown lag is not
+            // evidence of freshness.
             (
                 GraphState::StaleSnapshot,
                 ReindexState::Idle,
@@ -396,12 +426,15 @@ fn classify(
                 vec!["snapshot_base_differs_from_head".to_string()],
             )
         } else if overlay_count > 0 {
+            // Plan 1.2: a dirty worktree is an informational observation, never
+            // a staleness verdict. `DirtyOverlay` maps to the "current" class
+            // (see freshness_class) and the reason below is what surfaces it.
             (
                 GraphState::DirtyOverlay,
                 ReindexState::Idle,
                 "committed_snapshot",
                 true,
-                vec!["working_tree_dirty".to_string()],
+                vec!["dirty_overlay_observed".to_string()],
             )
         } else {
             (
@@ -655,8 +688,8 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
             .or(legacy_graph_body_generation);
 
         Ok(FreshnessEpoch {
-            head_commit: Some(head_commit),
-            base_commit,
+            head_commit: Some(head_commit.clone()),
+            base_commit: base_commit.clone(),
             manifest_digest: graph_db
                 .as_ref()
                 .and_then(|value| value.manifest_digest.clone())
@@ -664,6 +697,9 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
             blueprint_generation,
             graph_manifest_generation,
             graph_body_generation,
+            commit_distance: base_commit
+                .as_deref()
+                .and_then(|base| commit_distance(&self.repo_root, base, &head_commit)),
             skills_generation: Some(self.store.skills_generation()?),
         })
     }
@@ -861,6 +897,15 @@ fn read_stable_overlay(repo_root: &Path) -> Result<OverlayObservation, String> {
         let absolute = repo_root.join(path);
         !(absolute.is_dir() && absolute.join(".git").exists())
     });
+    // Plan 1.2: known-churn paths never trip staleness. Their contents change
+    // as a side effect of indexing and memory mirroring, so including them let
+    // a freshly rebuilt graph report its own output as a dirty worktree.
+    status_paths.retain(|(path, _)| {
+        let normalized = path.replace('\\', "/");
+        !IGNORED_OVERLAY_PREFIXES
+            .iter()
+            .any(|prefix| normalized.starts_with(prefix))
+    });
     if status_paths.len() > MAX_OVERLAY_FILES {
         return Ok(OverlayObservation {
             stable: false,
@@ -965,8 +1010,24 @@ fn git_status(repo_root: &Path) -> Result<GitStatusOutput, String> {
     })
 }
 
-fn git_text(repo_root: &Path, args: &[&str]) -> Result<String, String> {
-    let mut command = hidden_command("git");
+/// Commits `head` is ahead of `base`, or `None` when it cannot be measured.
+///
+/// Plan 1.1/1.2: freshness is a read-through proof, so the lag is measured from
+/// git at verdict time rather than copied from a sealed field. Shallow clones,
+/// unrelated histories, and pruned commits all fail here and yield `None`,
+/// which the classifier treats as unknown lag (stale), never as current.
+fn commit_distance(repo_root: &Path, base: &str, head: &str) -> Option<u32> {
+    if base == head {
+        return Some(0);
+    }
+    let range = format!("{base}..{head}");
+    git_text(repo_root, &["rev-list", "--count", &range])
+        .ok()?
+        .parse::<u32>()
+        .ok()
+}
+
+fn git_text(repo_root: &Path, args: &[&str]) -> Result<String, String> {    let mut command = hidden_command("git");
     command.arg("-C").arg(repo_root).args(args);
     let output = bounded_child_output(&mut command, GIT_CHILD_TIMEOUT, MAX_GIT_TEXT_BYTES, "git")?;
     if output.limit_exceeded {
@@ -1425,6 +1486,74 @@ mod tests {
         assert_eq!(
             parse_status(raw).unwrap(),
             vec![("src/copy.rs".to_string(), "C ".to_string())]
+        );
+    }
+
+    /// Build an epoch whose generation is coherent but sits `distance` commits
+    /// behind HEAD.
+    fn epoch_behind_head(distance: Option<u32>) -> FreshnessEpoch {
+        FreshnessEpoch {
+            base_commit: Some("base".to_string()),
+            commit_distance: distance,
+            ..FreshnessEpoch::coherent_for_test("head", "graph", "skills")
+        }
+    }
+
+    #[test]
+    fn generation_one_commit_behind_head_is_not_stale() {
+        // Plan 1.2: stale means behind HEAD by MORE than MAX_GENERATION_COMMIT_LAG.
+        // A single commit past the sealed generation is the ordinary steady
+        // state of an active worktree, and treating it as stale is exactly the
+        // always-on alarm Phase 1 removes.
+        let verdict = classify(epoch_behind_head(Some(1)), Vec::new(), 1, BTreeMap::new());
+        assert_eq!(verdict.graph_state, GraphState::Clean);
+    }
+
+    #[test]
+    fn generation_further_behind_head_than_the_lag_budget_is_stale() {
+        let verdict = classify(
+            epoch_behind_head(Some(MAX_GENERATION_COMMIT_LAG + 1)),
+            Vec::new(),
+            1,
+            BTreeMap::new(),
+        );
+        assert_eq!(verdict.graph_state, GraphState::StaleSnapshot);
+    }
+
+    #[test]
+    fn unmeasurable_commit_distance_stays_stale() {
+        // Unknown lag is not evidence of freshness: a shallow clone or a failed
+        // rev-list must not be reported as current.
+        let verdict = classify(epoch_behind_head(None), Vec::new(), 1, BTreeMap::new());
+        assert_eq!(verdict.graph_state, GraphState::StaleSnapshot);
+    }
+
+    #[test]
+    fn dirty_worktree_is_observed_but_never_stale() {
+        // Plan 1.2: dirty worktree -> informational `dirty_overlay_observed`,
+        // and DirtyOverlay maps to the "current" freshness class.
+        let verdict = classify(
+            FreshnessEpoch::coherent_for_test("head", "graph", "skills"),
+            vec![OverlayEntry {
+                path: "src/edited.rs".to_string(),
+                status: " M".to_string(),
+                content_hash: "sha256:abc".to_string(),
+            }],
+            1,
+            BTreeMap::new(),
+        );
+        assert_eq!(verdict.graph_state, GraphState::DirtyOverlay);
+        // DirtyOverlay is one of the two states that map to the "current"
+        // freshness class (see the `status` match in the receipt builder), so a
+        // dirty tree never reports as stale or blocked.
+        assert!(verdict.stable, "a dirty worktree must remain a stable verdict");
+        assert!(
+            verdict
+                .reasons
+                .iter()
+                .any(|reason| reason == "dirty_overlay_observed"),
+            "expected the informational dirty_overlay_observed reason, got {:?}",
+            verdict.reasons
         );
     }
 

@@ -13,6 +13,13 @@ from pathlib import Path
 
 CAP_BYTES = 1500
 
+# Plan convention 3: the one typed client identity, shared by every adapter and
+# telemetry surface. Adapters emit exactly these strings (see
+# sentinel/hooks/membrane-context.js and hooks/claude-code/tool-receipt.js);
+# anything else degrades to "other" at the adapter rather than inventing a new
+# name here.
+CLIENT_IDENTITIES = frozenset({"claude_code", "codex", "mcp", "api_worker", "other"})
+
 # Clients whose HOST already loads the workspace rule files (AGENTS.md,
 # .claude/rules/*.md, .codex/rules/*.md) at session start on its own —
 # e.g. Claude Code imports CLAUDE.md which chains into workspace rules, and
@@ -20,6 +27,9 @@ CAP_BYTES = 1500
 # text in the packet is a redundant (and truncated) duplicate of content the
 # client already has in full. Any client not in this set is assumed NOT to
 # self-load, so it gets the full content — correctness over token savings.
+#
+# "claude" is the retired pre-convention-3 spelling, kept only so a rolling
+# upgrade (new engine, not-yet-updated adapter) does not regress to inlining.
 SELF_LOADING_RULE_CLIENTS = frozenset({"claude", "claude_code", "codex"})
 
 

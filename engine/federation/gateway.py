@@ -155,15 +155,27 @@ def _freshness_token(repo_root: Path) -> str:
     return ""
 
 
-def _fetch_freshness_verdict(repo_root: Path) -> dict[str, Any] | None:
+def _fetch_freshness_verdict(repo_root: Path, session: str | None = None) -> dict[str, Any] | None:
     """Fetch the sole freshness verdict from the resident service.
 
     The gateway deliberately has no Git/manifest fallback implementation. If the service cannot
     produce a typed verdict, the existing terminal legacy path remains the safe fallback.
+
+    ``sessionId`` and ``worktreePath`` are REQUIRED by the route: without them it answers
+    400 ``sessionId required`` and every packet silently fell back to the unconditional
+    ``stale``/``indeterminate`` verdict below — the always-on alarm of plan defect 28,
+    produced here rather than by any real staleness. A caller with no session still needs a
+    verdict, so an explicit anonymous marker is sent instead of omitting the field.
     """
     port = os.environ.get("CRYPT_PORT") or os.environ.get("WORKSPACE_MEMORY_PORT") or "47851"
     token = _freshness_token(repo_root)
-    body = json.dumps({"repoRoot": str(repo_root)}).encode("utf-8")
+    body = json.dumps(
+        {
+            "repoRoot": str(repo_root),
+            "sessionId": str(session or "").strip() or "anonymous",
+            "worktreePath": str(repo_root),
+        }
+    ).encode("utf-8")
     request = urllib.request.Request(
         f"http://127.0.0.1:{port}/freshness",
         data=body,
@@ -439,6 +451,7 @@ def _gather_all_parallel(
     scope_grant_id: str | None,
     scope_descriptor: dict | None = None,
     client: str = "",
+    session: str | None = None,
 ) -> tuple[list[tuple[str, list[dict[str, Any]], list[dict[str, Any]]]], dict[str, Any]]:
     """Invoke every provider in PARALLEL; collect candidates + warnings.
 
@@ -450,7 +463,7 @@ def _gather_all_parallel(
     indexed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     expected_release_generation = _expected_release_generation()
     freshness_started = time.monotonic()
-    verdict = _fetch_freshness_verdict(repo_root)
+    verdict = _fetch_freshness_verdict(repo_root, session)
     freshness_elapsed_ms = max(0.0, (time.monotonic() - freshness_started) * 1000.0)
     if verdict is None:
         # No second Git/manifest implementation lives here. A missing central verdict is the one
@@ -900,6 +913,7 @@ def assemble_candidate_set(
         scope_grant_id=scope_grant_id,
         client=client,
         scope_descriptor=scope_descriptor,
+        session=session,
     )
     merge_started = time.monotonic()
     ccs = _merge_candidates(

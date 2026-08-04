@@ -71,7 +71,8 @@ export async function buildRepositoryCatalog(workspaceRoot, options = {}) {
       scope_id: scopeId(relativeRoot),
       role: relativeRoot === "." ? "workspace-root" : "child-repository",
       ...(relativeRoot === "." ? {} : { parent_repository_id: repositoryId(".") }),
-      blueprint_manifest: `${relativeRoot === "." ? "" : `${relativeRoot}/`}.blueprint/manifest.json`,
+      // Verified in cortex/scripts/blueprint.mjs and cortex/graph/static-provider.mjs: the manifest is stored inside graph.db, not as a JSON file.
+      cortex_graph: `${relativeRoot === "." ? "" : `${relativeRoot}/`}.agent/graph/graph.db`,
       grants: [],
     };
   });

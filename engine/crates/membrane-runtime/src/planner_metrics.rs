@@ -139,10 +139,10 @@ mod tests {
     #[test]
     fn last_fallback_round_trip() {
         let f = LastFallback::new();
-        f.record("blueprint_stale", "portable_text_only", "stale");
+        f.record("cortex_stale", "portable_text_only", "stale");
         let snap = f.snapshot();
         assert!(snap.is_set());
-        assert_eq!(snap.reason, "blueprint_stale");
+        assert_eq!(snap.reason, "cortex_stale");
         assert_eq!(snap.mode, "portable_text_only");
     }
 }

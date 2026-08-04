@@ -216,9 +216,9 @@ impl FallbackMode {
 #[serde(rename_all = "snake_case")]
 pub enum DegradationReason {
     None,
-    BlueprintStale,
-    BlueprintUnavailable,
-    BlueprintCorrupt,
+    CortexStale,
+    CortexUnavailable,
+    CortexCorrupt,
     ProviderCapabilityMissing,
     ReleaseGenerationMismatch,
     ReleaseGenerationUnavailable,
@@ -228,9 +228,9 @@ impl DegradationReason {
     fn as_str(&self) -> &'static str {
         match self {
             Self::None => "none",
-            Self::BlueprintStale => "blueprint_stale",
-            Self::BlueprintUnavailable => "blueprint_unavailable",
-            Self::BlueprintCorrupt => "blueprint_corrupt",
+            Self::CortexStale => "cortex_stale",
+            Self::CortexUnavailable => "cortex_unavailable",
+            Self::CortexCorrupt => "cortex_corrupt",
             Self::ProviderCapabilityMissing => "provider_capability_missing",
             Self::ReleaseGenerationMismatch => "release_generation_mismatch",
             Self::ReleaseGenerationUnavailable => "release_generation_unavailable",
@@ -508,13 +508,16 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
 
     let freshness_stale = input.candidate_set.freshness.stale;
     let graph_degradation_reason = match input.candidate_set.freshness.graph_state {
-        Some(GraphState::DirtyOverlay | GraphState::StaleSnapshot | GraphState::PartialReindex) => {
-            Some(DegradationReason::BlueprintStale)
+        // Plan 1.2: a dirty worktree is informational, never a degradation. It
+        // used to map to CortexStale, which is why an ordinary edited file put
+        // every packet into portable-text fallback.
+        Some(GraphState::StaleSnapshot | GraphState::PartialReindex) => {
+            Some(DegradationReason::CortexStale)
         }
         Some(
             GraphState::MissingSnapshot | GraphState::ConcurrentUpdate | GraphState::Indeterminate,
-        ) => Some(DegradationReason::BlueprintUnavailable),
-        Some(GraphState::Clean) | None => None,
+        ) => Some(DegradationReason::CortexUnavailable),
+        Some(GraphState::Clean | GraphState::DirtyOverlay) | None => None,
     };
     let release_degradation_reason = release_generation_degradation(&input.candidate_set.freshness);
     let provider_unsupported = input.candidate_set.provider.ends_with("-missing")
@@ -531,7 +534,7 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
     } else if freshness_stale {
         (
             FallbackMode::PortableTextOnly,
-            DegradationReason::BlueprintStale,
+            DegradationReason::CortexStale,
         )
     } else {
         (
@@ -1795,7 +1798,7 @@ mod tests {
         let out = plan(&input).unwrap();
         assert_eq!(out.provider_status, ProviderStatus::Stale);
         assert_eq!(out.fallback_mode, FallbackMode::PortableTextOnly);
-        assert_eq!(out.degradation_reason, DegradationReason::BlueprintStale);
+        assert_eq!(out.degradation_reason, DegradationReason::CortexStale);
         assert!(out.source_generation.is_none());
         // The protected anchor still admits even under fallback quarantine.
         assert_eq!(out.packet.blocks.len(), 1);
@@ -1924,9 +1927,16 @@ mod tests {
 
         let out = plan(&input).unwrap();
 
-        assert_eq!(out.provider_status, ProviderStatus::Degraded);
+        // Plan 1.2: a dirty worktree is advisory, exactly as this test's name
+        // says. It previously asserted Degraded/CortexStale, which is the
+        // always-on alarm Phase 1 removes — an ordinary edited file forced every
+        // packet to declare degraded context. The provenance assertions below
+        // are unchanged and still prove the overlay is fully attributed: the
+        // dirtiness remains VISIBLE (freshness_class, base_commit,
+        // overlay_digest), it just no longer counts as degradation.
+        assert_eq!(out.provider_status, ProviderStatus::Fresh);
         assert_eq!(out.fallback_mode, FallbackMode::None);
-        assert_eq!(out.degradation_reason, DegradationReason::BlueprintStale);
+        assert_eq!(out.degradation_reason, DegradationReason::None);
         assert_eq!(out.packet.blocks.len(), 1);
         assert_eq!(
             out.packet.blocks[0].base_commit.as_deref(),
