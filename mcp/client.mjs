@@ -176,6 +176,8 @@ function loadInput({ inputArg, maxTokens }) {
     anchors: parsed.anchors ?? "",
     scopeGrantId: parsed.scopeGrantId,
     scopeDescriptor: parsed.scopeDescriptor,
+    taskEnvelope: parsed.taskEnvelope,
+    turnEnvelope: parsed.turnEnvelope,
     ...boundedTrace(parsed),
   };
 }

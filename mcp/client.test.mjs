@@ -59,7 +59,12 @@ try {
     return { code, stdout, stderr, parsed: JSON.parse(stdout) };
   }
 
-  const absent = await runClient({ task: "large response", repo: process.cwd(), session: "session-fallback" });
+  const taskEnvelope = { schema: "orthic.task-envelope.v1", task_id: "task-1" };
+  const turnEnvelope = { schema: "orthic.turn-envelope.v1", task_id: "task-1", turn_id: "turn-1" };
+  const absent = await runClient({
+    task: "large response", repo: process.cwd(), session: "session-fallback",
+    taskEnvelope, turnEnvelope,
+  });
   assert.equal(absent.code, 0, absent.stderr);
   assert.equal(absent.parsed.traceId, "session-fallback");
   assert.equal(requests[0].headers.traceparent, undefined);
@@ -69,6 +74,8 @@ try {
   assert.equal(requests[0].headers["x-rightcontext-trace"], "session-fallback");
   assert.equal(requests[0].headers["x-membrane-version"], "membrane-mcp/1");
   assert.equal(requests[0].headers["x-rightcontext-version"], "rightcontext-mcp/1");
+  assert.deepEqual(requests[0].body.taskEnvelope, taskEnvelope);
+  assert.deepEqual(requests[0].body.turnEnvelope, turnEnvelope);
 
   const validTrace = {
     traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
