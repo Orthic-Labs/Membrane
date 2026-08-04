@@ -29,7 +29,7 @@ def _raw_candidate(anchor: str) -> dict:
         "layer": 1,
         "sourceKind": "anchor",
         "sourceRef": anchor,
-        "sourceHash": "0" * 64,
+        "sourceHash": "sha256:" + "0" * 64,
         "trustClass": "user_direct",
         "instructionPolicy": "data_only",
         "providerScore": 0.6,
@@ -68,7 +68,7 @@ def produce(repo_root: Path, anchors: list[str], task: str) -> list[dict]:
                 "layer": 3,
                 "sourceKind": "anchor",
                 "sourceRef": rel,
-                "sourceHash": "0" * 64,
+                "sourceHash": "sha256:" + "0" * 64,
                 "trustClass": "user_direct",
                 "instructionPolicy": "data_only",
                 "providerScore": 0.95,
@@ -103,7 +103,7 @@ def produce(repo_root: Path, anchors: list[str], task: str) -> list[dict]:
                     "layer": 3,
                     "sourceKind": "anchor",
                     "sourceRef": ev.get("path", anchor),
-                    "sourceHash": ev.get("contentHash", "0" * 64),
+                    "sourceHash": ev.get("contentHash", "sha256:" + "0" * 64),
                     "trustClass": "user_direct",
                     "instructionPolicy": "data_only",
                     "providerScore": 0.95,
@@ -112,7 +112,11 @@ def produce(repo_root: Path, anchors: list[str], task: str) -> list[dict]:
                     "protected": True,
                     "exact": True,
                     "recoverable": True,
-                    "resolver": f"blueprint resolve {anchor}",
+                    # Plan 3.4 resolver drift: the line above EXECUTES
+                    # `blueprint graph resolve <id>` so the published
+                    # resolver hint MUST match exactly the command run
+                    # (`blueprint graph resolve --node <id>` for re-fetch).
+                    "resolver": f"blueprint graph resolve --node {anchor}",
                     "text": anchor,
                 })
         except Exception:

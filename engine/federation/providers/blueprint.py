@@ -224,6 +224,29 @@ def _query_tokens(task: str) -> list[str]:
     return sorted(tokens, key=lambda token: (-len(token), token))[:8]
 
 
+_ZERO_SHA256 = "sha256:" + "0" * 64
+
+
+def _normalise_source_hash(value: object) -> str:
+    """Plan 3.4 hash prefix: return a `sha256:`-prefixed 64-char hex digest.
+
+    Accepts the modern `sha256:<64hex>` shape (live.py / gateway.py:92-96),
+    a bare 64-hex digest, or the legacy 32-char unprefixed form. Any other
+    shape collapses to the zero digest so consumers always see a uniformly
+    self-describing, correctly-widthed identifier.
+    """
+    raw = str(value or "")
+    if raw.startswith("sha256:") and len(raw.removeprefix("sha256:")) == 64:
+        normalised = raw.removeprefix("sha256:").lower()
+        if re.fullmatch(r"[0-9a-f]{64}", normalised):
+            return "sha256:" + normalised
+    if re.fullmatch(r"[0-9a-fA-F]{64}", raw):
+        return "sha256:" + raw.lower()
+    if re.fullmatch(r"[0-9a-fA-F]{32}", raw):
+        return "sha256:" + raw.lower().ljust(64, "0")
+    return _ZERO_SHA256
+
+
 def _direct_index_candidates(
     repo_root: Path, task: str, cap: int, generation_id: str
 ) -> list[dict] | None:
@@ -305,32 +328,11 @@ def _direct_index_candidates(
                     [generation_id, *tokens, cap],
                 ).fetchall()
             if not symbols:
-                # A current graph with no lexical hit is not stale. Return a
-                # bounded deterministic cohort so admission always has exact,
-                # generation-pinned source ranges.
-                if has_terms:
-                    symbols = connection.execute(
-                        "SELECT s.id,s.name,s.qualified_name,s.path,s.confidence,s.evidence "
-                        "FROM symbol_terms AS st JOIN symbols AS s "
-                        "ON s.id=st.symbol_id AND s.generation_id=st.generation_id "
-                        "WHERE st.generation_id=? AND st.token='*' LIMIT ?",
-                        (generation_id, cap),
-                    ).fetchall()
-                elif has_search:
-                    symbols = connection.execute(
-                        "SELECT s.id,s.name,s.qualified_name,s.path,s.confidence,s.evidence "
-                        "FROM symbol_search AS ss JOIN symbols AS s "
-                        "ON s.id=ss.id AND s.generation_id=ss.generation_id "
-                        "WHERE ss.generation_id=? "
-                        "ORDER BY s.confidence DESC, s.path, s.id LIMIT ?",
-                        (generation_id, cap),
-                    ).fetchall()
-                else:
-                    symbols = connection.execute(
-                        "SELECT id,name,qualified_name,path,confidence,evidence "
-                        "FROM symbols WHERE generation_id=? ORDER BY id LIMIT ?",
-                        (generation_id, cap),
-                    ).fetchall()
+                # A current graph with no lexical hit is the canonical case for
+                # abstention. Return an empty result so `_produce` can publish
+                # the plan 3.3 {abstained, reason: "no_relevant_seed"} signal
+                # instead of the retired arbitrary cohort.
+                pass
     except (OSError, sqlite3.Error, TypeError, ValueError, json.JSONDecodeError):
         return None
 
@@ -348,9 +350,19 @@ def _direct_index_candidates(
         first = evidence[0]
         start = max(1, int(first.get("startLine") or 1))
         end = max(start, int(first.get("endLine") or start))
-        content_hash = str(first.get("contentHash") or "0" * 32)
-        haystack = f"{name or ''} {qualified_name or ''} {path or ''}".lower().replace("-", "_")
-        lexical_score = sum(token in haystack for token in score_tokens)
+        # Plan 3.4 hash prefix: every emitted sourceHash is a self-describing
+        # `sha256:` hex digest at the same 64-character width already
+        # validated by gateway.py and emitted by live.py.
+        content_hash = _normalise_source_hash(first.get("contentHash") or "")
+        # Exactness matches Cortex (cortex/graph/static-provider.mjs:538-539):
+        # a symbol is exact only if its full lowercased qualified_name OR its
+        # last dotted segment equals one of the query tokens. The token set is
+        # already trimmed to a single winning term when symbol_terms exists.
+        qualified = str(qualified_name or name or "").lower()
+        short_name = qualified.rsplit(".", 1)[-1] if qualified else ""
+        lexical_score = sum(
+            1 for token in score_tokens if token == qualified or token == short_name
+        )
         candidate = {
             "id": f"blueprint:{entry_id}",
             "layer": 3,
@@ -359,13 +371,18 @@ def _direct_index_candidates(
             "sourceHash": content_hash,
             "trustClass": "workspace_tracked",
             "instructionPolicy": "data_only",
-            "providerScore": min(1.0, lexical_score / max(1, len(score_tokens))),
+            "providerScore": 1.0 if lexical_score == len(score_tokens) else 0.0,
             "scoreComponents": {"lexical": float(lexical_score)},
             "estimatedTokens": min(256, max(16, (end - start + 1) * 8)),
             "protected": False,
-            "exact": lexical_score == len(score_tokens),
+            "exact": bool(score_tokens) and lexical_score == len(score_tokens),
             "recoverable": True,
-            "resolver": f"blueprint resolve {entry_id}",
+            # Plan 3.4 resolver drift: candidates originated from the
+            # SQLite-pinned read, never from executing `graph resolve`. The
+            # published resolver must therefore name the same command-line
+            # shape that the source provider actually executes on a re-fetch
+            # (cortex/scripts/blueprint.mjs `graph resolve --node <id>`).
+            "resolver": f"blueprint graph resolve --node {entry_id}",
             "text": str(qualified_name or name or entry_id),
         }
         ranked.append((-lexical_score, -float(confidence or 0.0), str(path), str(entry_id), candidate))
@@ -390,6 +407,23 @@ def _produce(
     observability: dict[str, Any],
     expected_generation: str | None = None,
 ) -> tuple[list[dict], str, list[dict]]:
+    """Plan 3.3 contract:
+
+    `(candidates, generation, warnings)` is the established 3-tuple return
+    shape retained for callers. The abstention signal is attached to the
+    observability dict already passed in (option B from plan 3.3) under the
+    key ``abstention`` so gateway.py can promote it to its own typed envelope
+    without breaking the existing tuple contract.
+
+    Abstention triggers ONLY when all of the following hold — every other
+    provider failure mode degrades to its prior empty-list path with a
+    typed warning:
+
+    * the on-disk generation matches the centrally validated one (so the
+      graph is CURRENT, not stale);
+    * the SQLite-pinned direct index produced no candidates (no lexical
+      evidence under name equality).
+    """
     warnings: list[dict] = []
     cli = _resolve_blueprint_cli()
     if not Path(cli).exists():
@@ -405,9 +439,29 @@ def _produce(
     if expected_generation and generation_id == expected_generation:
         direct = _direct_index_candidates(repo_root, task, cap, expected_generation)
         if direct is not None:
+            observability["stageElapsedMs"] = {"repo_code_scan": 0.0}
+            if not direct:
+                # Pinned graph + zero lexical evidence => abstention. Plan 3.3
+                # contract: callers (gateway.py via produce_with_observability)
+                # surface abstained=True and reason="no_relevant_seed"; the
+                # generation id is still authoritative so downstream adapters
+                # can distinguish "no evidence" from "graph missing".
+                abstention = {
+                    "abstained": True,
+                    "reason": "no_relevant_seed",
+                    "candidates": [],
+                    "generationId": generation_id,
+                }
+                observability["abstention"] = abstention
+                warnings.append(_blueprint_warning(
+                    "blueprint_abstained_no_relevant_seed",
+                    f"fresh graph {generation_id} has no relevant seed for task",
+                ))
+                if cache_key is not None:
+                    _cache_candidates(cache_key, direct)
+                return [], generation_id, warnings
             if cache_key is not None:
                 _cache_candidates(cache_key, direct)
-            observability["stageElapsedMs"] = {"repo_code_scan": 0.0}
             return direct, generation_id, warnings
     cmd = [
         node_bin,
@@ -498,10 +552,14 @@ def _produce(
             ev_start = int(first_ev.get("startLine", 1))
             ev_end = int(first_ev.get("endLine", ev_start))
             source_ref = f"{ev_path}:{ev_start}-{ev_end}"
-            source_hash = first_ev.get("contentHash") or entry.get("sourceHash") or ("0" * 64)
+            # Plan 3.4 hash prefix: every emitted sourceHash must be a
+            # `sha256:`-prefixed 64-char hex digest (gateway.py:92-96),
+            # never the legacy unprefixed `"0"*32`.
+            raw_ev_hash = first_ev.get("contentHash") or entry.get("sourceHash") or ""
+            source_hash = _normalise_source_hash(raw_ev_hash)
         else:
             source_ref = entry.get("sourceRef") or entry_id
-            source_hash = entry.get("sourceHash") or ("0" * 64)
+            source_hash = _normalise_source_hash(entry.get("sourceHash") or "")
         if not source_ref:
             # Skip if neither shape carries a usable reference; surface
             # a ProviderWarning upstream instead of an empty candidate.
@@ -521,7 +579,11 @@ def _produce(
             "protected": bool(entry.get("protected", False)),
             "exact": bool(entry.get("exact", False)),
             "recoverable": bool(entry.get("recoverable", True)),
-            "resolver": entry.get("resolver") or f"blueprint resolve {entry_id}",
+            # Plan 3.4 resolver drift: this lane actually executes
+            # `blueprint.mjs graph candidates`; the per-id re-fetch contract
+            # is the same `blueprint graph resolve --node <id>` shape used
+            # by anchors.py:91 and Cortex at cortex/scripts/blueprint.mjs:2501.
+            "resolver": entry.get("resolver") or f"blueprint graph resolve --node {entry_id}",
             "text": entry.get("qualifiedName") or entry.get("name") or entry_id,
         })
     generation_id = generation_id or "blueprint-federation-stub"
@@ -539,29 +601,9 @@ def produce_with_observability(
 ) -> tuple[list[dict], str, list[dict], dict[str, Any]]:
     """Produce candidates plus bounded, content-free provider stage timings."""
     observability: dict[str, Any] = {"stageElapsedMs": {}}
-    candidates, generation, warnings = _produce(
+    return (*_produce(
         repo_root, task, max_tokens, observability, expected_generation
-    )
-    # Compatibility with installed planners predating the dedicated Blueprint
-    # lane: pin exactly one source range only after central freshness has bound
-    # this provider to the current sealed generation. New planners reserve the
-    # same range explicitly; the flag keeps mixed-generation rollouts safe.
-    candidates = _pin_fresh_candidate(candidates, generation, expected_generation)
-    return candidates, generation, warnings, observability
-
-
-def _pin_fresh_candidate(
-    candidates: list[dict], generation: str, expected_generation: str | None
-) -> list[dict]:
-    if not expected_generation or generation != expected_generation or not candidates:
-        return candidates
-    first = candidates[0]
-    source_ref = str(first.get("sourceRef") or first.get("id") or "unknown")
-    return [{
-        **first,
-        "protected": True,
-        "text": f"Cortex source range {source_ref}",
-    }, *candidates[1:]]
+    ), observability)
 
 
 def produce(
@@ -573,7 +615,6 @@ def produce(
 ) -> tuple[list[dict], str, list[dict]]:
     """Compatibility wrapper retaining the established three-tuple API."""
     observability: dict[str, Any] = {"stageElapsedMs": {}}
-    candidates, generation, warnings = _produce(
+    return _produce(
         repo_root, task, max_tokens, observability, expected_generation
     )
-    return _pin_fresh_candidate(candidates, generation, expected_generation), generation, warnings

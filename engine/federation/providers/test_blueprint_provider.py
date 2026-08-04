@@ -159,6 +159,10 @@ def test_provider_passes_central_generation_to_blueprint_cli(monkeypatch, tmp_pa
 
 
 def test_pinned_generation_queries_sqlite_without_node_spawn(monkeypatch, tmp_path):
+    # Plan 3.3 (defect 4): _pin_fresh_candidate was deleted. Earlier this test
+    # asserted `protected is True` and `text == "Cortex source range ..."`,
+    # but those came from the retired protection step. The candidate now
+    # reflects only what name-equality produced.
     graph_dir = tmp_path / ".agent" / "graph"
     graph_dir.mkdir(parents=True)
     generation = "xxh128:" + "1" * 32
@@ -197,11 +201,22 @@ def test_pinned_generation_queries_sqlite_without_node_spawn(monkeypatch, tmp_pa
     assert warnings == []
     assert candidates[0]["sourceRef"] == "src/bounded_runtime.rs:10-20"
     assert candidates[0]["id"] == "blueprint:symbol:bounded"
-    assert candidates[0]["protected"] is True
-    assert candidates[0]["text"] == "Cortex source range src/bounded_runtime.rs:10-20"
+    # Plan 3.4 hash prefix: emitted digest is always `sha256:` + 64-hex.
+    assert candidates[0]["sourceHash"] == "sha256:" + "2" * 32 + "0" * 32
+    # Plan 3.4 resolver drift: the published re-fetch shape names the same
+    # command actually executed elsewhere (`blueprint graph resolve --node`).
+    assert candidates[0]["resolver"] == "blueprint graph resolve --node symbol:bounded"
+    # Plan 3.3 defect 4 retired `_pin_fresh_candidate`, so neither the
+    # `protected` flag nor the rewrites `text` survive past the SQLite read.
+    assert candidates[0]["protected"] is False
+    assert candidates[0]["text"] == "bounded_runtime"
 
 
-def test_pinned_generation_uses_fts_and_returns_bounded_fallback_for_no_match(monkeypatch, tmp_path):
+def test_pinned_generation_uses_fts_and_abstains_on_no_match(monkeypatch, tmp_path):
+    # Plan 3.3 (defect 3): the legacy deterministic arbitrary-cohort fallback
+    # has been retired. A query whose tokens produce zero symbols under name
+    # equality now abstains (zero candidates + abstention warning), it does
+    # NOT return a `src/`-prefixed arbitrary cohort.
     graph_dir = tmp_path / ".agent" / "graph"
     graph_dir.mkdir(parents=True)
     generation = "xxh128:" + "3" * 32
@@ -252,15 +267,19 @@ def test_pinned_generation_uses_fts_and_returns_bounded_fallback_for_no_match(mo
     matched, observed_generation, warnings = blueprint.produce(
         tmp_path, "admission implementation", 1, expected_generation=generation
     )
-    fallback, fallback_generation, fallback_warnings = blueprint.produce(
+    abstained, abstained_generation, abstained_warnings = blueprint.produce(
         tmp_path, "termthatdoesnotexist", 1, expected_generation=generation
     )
 
-    assert observed_generation == fallback_generation == generation
-    assert warnings == fallback_warnings == []
+    assert observed_generation == abstained_generation == generation
+    # Matched query: returns the symbol it found and emits no warnings.
+    assert warnings == []
     assert [candidate["id"] for candidate in matched] == ["blueprint:symbol:admission"]
-    assert len(fallback) == 1
-    assert fallback[0]["sourceRef"].startswith("src/")
+    # Plan 3.3 abstention: pinned graph + no lexical hit = empty candidates
+    # + an abstention-typed warning.
+    assert abstained == []
+    abstention_kinds = [warning["kind"] for warning in abstained_warnings]
+    assert "blueprint_abstained_no_relevant_seed" in abstention_kinds
 
 
 def test_provider_terminates_blueprint_at_lane_deadline(monkeypatch, tmp_path):
