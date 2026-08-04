@@ -1,48 +1,10 @@
 """Paged, resumable Membrane -> Morph event ingestion boundary (plan C14 / L2).
 
-Membrane's crypt-store crate (``context_telemetry.rs``, commit ``4fe7804``) added the
-first read path over the observable-event store:
+The resident Crypt service exposes the two query routes used here. ``HttpEventTransport``
+adapts those routes to the transport protocol, while ``query_by_id`` retrieves the
+surrounding content for a taste candidate without widening Taste's origin-scoped query.
 
-    MemDb::query_observable_events_for_taste(&self, filter) -> ObservableEventQueryResult
-    MemDb::query_observable_events_for_insights(&self, filter) -> ObservableEventQueryResult
-
-There is **no HTTP route over these functions yet** (the orchestrator is wiring that
-separately), so this module talks to a small transport-agnostic ``EventTransport``
-protocol instead of a concrete HTTP client. Once the route exists, a thin adapter
-implementing ``query_for_taste`` / ``query_for_insights`` against it is a drop-in —
-nothing else in this module, or in ``morph_event_learning``, needs to change.
-
-Expected request/response shape (mirrors ``ObservableEventQuery`` /
-``ObservableEventQueryResult`` field-for-field so a future HTTP client is a thin
-wrapper, not a redesign):
-
-    request = {
-        "since": str | None, "until": str | None, "event_type": str | None,
-        "session_id": str | None, "task_id": str | None, "trace_id": str | None,
-        "installation_id": str | None, "after_sequence": int | None,
-        "limit": int,            # REQUIRED, 1..=1000 — the Rust side's Default
-                                  # gives an invalid 0; this module always sets it.
-    }
-    response = {
-        "rows": list[dict],      # orthic.observable-event.v1 rows
-        "limit": int,
-        "truncated": bool,       # True: more rows exist beyond this page
-        "next_cursor": int | None,
-    }
-
-Semantics this module exists to protect:
-
-- ``query_for_taste`` is the ONLY entry point Morph Taste may ever read from. It is
-  the one Membrane function that filters to user-origin before Morph sees a row —
-  Taste has no origin parameter by design, so origin filtering happens upstream of
-  this boundary, not here. This module adds a defence-in-depth check on top: any
-  row a taste-stream call returns with a non-"user" origin is treated as a
-  transport-contract violation and raised, never silently dropped or forwarded.
-- ``query_for_insights`` carries the full authorized stream (every origin) and must
-  never feed rule admission — callers route its rows only into
-  ``observable_events.consume_observable_events`` for Insights labelling.
-- A ``truncated: true`` result always means "more data now" and must be paged to
-  exhaustion before the caller's cursor is considered caught up.
+Expected request/response fields mirror the Rust query contract.
 """
 
 from __future__ import annotations
@@ -50,8 +12,15 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Callable, Protocol
+
+WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_PORT = 47851
+TOKEN_PATH = WORKSPACE_ROOT / "tools" / ".cache" / "memory" / "api-token"
 
 DEFAULT_PAGE_LIMIT = 200
 MAX_PAGE_LIMIT = 1000
@@ -66,11 +35,78 @@ class EventIngestionError(RuntimeError):
 
 
 class EventTransport(Protocol):
-    """Transport-agnostic boundary a real HTTP client will eventually implement."""
+    """Transport-agnostic boundary for the Membrane read routes."""
 
     def query_for_taste(self, query: dict[str, Any]) -> dict[str, Any]: ...
 
     def query_for_insights(self, query: dict[str, Any]) -> dict[str, Any]: ...
+
+
+def _crypt_base_url() -> str:
+    port = os.environ.get("CRYPT_PORT") or os.environ.get("WORKSPACE_MEMORY_PORT") or str(DEFAULT_PORT)
+    return f"http://127.0.0.1:{port}"
+
+
+def _token_path() -> Path:
+    return Path(os.environ.get("CRYPT_API_TOKEN_FILE", str(TOKEN_PATH)))
+
+
+class HttpEventTransport:
+    """Bearer-authenticated client for Crypt's observable-event query routes."""
+
+    def __init__(self, *, base_url: str | None = None, token_file: Path | None = None, timeout: float = 30.0) -> None:
+        self.base_url = (base_url or _crypt_base_url()).rstrip("/")
+        self.token_file = token_file or _token_path()
+        self.timeout = timeout
+
+    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            token = self.token_file.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise EventIngestionError("Crypt API token is unavailable") from exc
+        if not token:
+            raise EventIngestionError("Crypt API token is empty")
+        request = urllib.request.Request(
+            f"{self.base_url}{path}", data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                status = response.status
+                result = json.loads(response.read().decode())
+        except urllib.error.HTTPError as exc:
+            raise EventIngestionError(f"Crypt event query rejected with HTTP {exc.code}") from exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise EventIngestionError("Crypt event service is unavailable") from exc
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise EventIngestionError("Crypt event response is not valid JSON") from exc
+        if status != 200 or not isinstance(result, dict):
+            raise EventIngestionError("Crypt event response is malformed")
+        return result
+
+    def query_for_taste(self, query: dict[str, Any]) -> dict[str, Any]:
+        return self._post("/v1/telemetry/observable-events:query-taste", _wire_query(query))
+
+    def query_for_insights(self, query: dict[str, Any]) -> dict[str, Any]:
+        return self._post("/v1/telemetry/observable-events:query-insights", _wire_query(query))
+
+
+def _wire_query(query: dict[str, Any]) -> dict[str, Any]:
+    names = {"event_type": "eventType", "session_id": "sessionId", "task_id": "taskId", "trace_id": "traceId", "installation_id": "installationId", "after_sequence": "afterSequence"}
+    return {names.get(key, key): value for key, value in query.items()}
+
+
+def query_by_id(event_id: str, *, transport: EventTransport | None = None) -> dict[str, Any] | None:
+    """Fetch a candidate row by immutable event ID through authorized streams."""
+    if not isinstance(event_id, str) or not event_id.strip():
+        raise EventIngestionError("event_id is required")
+    client = transport or HttpEventTransport()
+    for method in (client.query_for_taste, client.query_for_insights):
+        result = method({"event_id": event_id, "limit": 1000})
+        for row in result.get("rows", []):
+            if row.get("event_id") == event_id:
+                return row
+    return None
 
 
 def _now_iso() -> str:
@@ -251,6 +287,8 @@ def pull_and_label_insights(
 __all__ = [
     "EventIngestionError",
     "EventTransport",
+    "HttpEventTransport",
+    "query_by_id",
     "CursorStore",
     "pull_stream",
     "pull_and_label_insights",

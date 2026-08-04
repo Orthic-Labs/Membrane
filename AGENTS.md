@@ -9,7 +9,11 @@
 - Lead with outcome, keep replies brief, & omit forced closing filler.
 - Never fabricate quotes, statistics, testimonials, stories, or evidence.
 - Open real visual artifacts for Adrian's approval.
-- Bound plans with low/likely/high ETA plus file, byte, line, & active-second ceilings.
+- Bound every plan with one total-minutes number plus file & line ceilings, & show the inputs — files, lines changed, code rate; never a low/high range & never from feel; see `/tasklist` for the enforced format.
+- Name every non-typing minute (inspect, compile, test, deploy, report); no overhead, buffer, or contingency bucket, & named parts sum to each step's span.
+- Write each step as an elapsed-clock span from minute 0 (`0–2`, `3–20`), parallelizing independent work so lanes overlap on that one clock.
+- Treat every ceiling as a stop-loss: on breach stop & report, never pad, revise silently, or bill external wait; score plan versus actual symmetrically, & record any variance past ±10%.
+- Never force-close a bounded subagent; report its estimated remaining time instead.
 
 ## Bootstrap & toolchains
 - After clone, pull, or a missing command, run `python3 tools/setup-workspace.py` on Mac or `py -3.11 tools\setup-workspace.py` on Windows, then `workspace-doctor`.
