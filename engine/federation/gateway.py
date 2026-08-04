@@ -438,6 +438,7 @@ def _gather_all_parallel(
     explicit_anchors: list[str],
     scope_grant_id: str | None,
     scope_descriptor: dict | None = None,
+    client: str = "",
 ) -> tuple[list[tuple[str, list[dict[str, Any]], list[dict[str, Any]]]], dict[str, Any]]:
     """Invoke every provider in PARALLEL; collect candidates + warnings.
 
@@ -607,7 +608,7 @@ def _gather_all_parallel(
             "crypt", crypt.produce_with_observability, repo_root, task, scope_grant_id, scope_descriptor
         )),
         ("git", lambda: _adapter("git", git_provider.produce, repo_root)),
-        ("rules", lambda: _adapter("rules", rules.produce, repo_root, task)),
+        ("rules", lambda: _adapter("rules", rules.produce, repo_root, task, client)),
         ("anchors", lambda: _adapter("anchors", anchors.produce, repo_root, explicit_anchors, task)),
     ]
     if bool(blueprint_state.get("usable")):
@@ -897,6 +898,7 @@ def assemble_candidate_set(
         max_tokens=max_tokens,
         explicit_anchors=explicit_anchors,
         scope_grant_id=scope_grant_id,
+        client=client,
         scope_descriptor=scope_descriptor,
     )
     merge_started = time.monotonic()
