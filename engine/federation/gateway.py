@@ -500,6 +500,11 @@ def _gather_all_parallel(
         "indexedAt": str(verdict.get("checkedAt") or indexed_at),
         "stale": False,
         "graphState": str(verdict.get("graphState") or "indeterminate"),
+        # The Cortex generation the packet was assembled against. Consumers had
+        # no way to tell WHICH graph answered them: `revision` is a per-request
+        # trace id, not a generation, so "is this packet current?" was
+        # unanswerable from the packet itself (plan 1.1).
+        "generationId": verdict.get("blueprintGeneration"),
         "snapshotId": verdict.get("snapshotId"),
         "baseCommit": verdict.get("baseCommit"),
         "blueprintBaseCommit": verdict.get("blueprintBaseCommit"),
@@ -806,6 +811,7 @@ def _merge_candidates(
     }
     for field in (
         "graphState",
+        "generationId",
         "snapshotId",
         "baseCommit",
         "overlayDigest",
