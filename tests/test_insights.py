@@ -342,7 +342,10 @@ def test_stale_terminology_surfacing_fires():
     events = [
         _ev(
             kind="assistant_message",
-            text="The blueprint provider returned blueprint_stale.",
+            # Retired spelling assembled from fragments on purpose: a literal here
+            # would be rewritten by the next vocabulary sweep and the test would
+            # then assert that CURRENT terminology is stale.
+            text=f"The {'blue' + 'print'} provider returned {'blue' + 'print_stale'}.",
             sequence=1,
         )
     ]

@@ -200,11 +200,24 @@ _RE_BROAD_SEARCH = re.compile(
     r"grep\s+-r\s+\.|grep\s+-R|grep\s+--recursive|"
     r"ripgrep.*--hidden|rg\s+--hidden)\b"
 )
-_RE_STALE_TERMS = re.compile(
-    r"(?im)\b(?:blueprint(?:_stale)?|rightcontext|right\s*context|"
-    r"glass_gen|glass_stale|host-adapter|ccx_client|"
-    r"\.blueprint/manifest)\b"
+# The RETIRED spellings are the payload here, so they are assembled from
+# fragments: a repo-wide vocabulary sweep once rewrote this pattern into the
+# CURRENT names, which silently inverted the detector into flagging correct
+# terminology. Keep the halves split so no literal survives a future sweep.
+_RETIRED_TERMS = "|".join(
+    [
+        "blue" + "print(?:_stale)?",
+        "mem" + "right",
+        "right" + r"\s*context",
+        "te" + "ther",
+        "glass_gen",
+        "glass_stale",
+        "host-adapter",
+        "ccx_client",
+        r"\." + "blue" + "print/manifest",
+    ]
 )
+_RE_STALE_TERMS = re.compile(rf"(?im)\b(?:{_RETIRED_TERMS})\b")
 _RE_PLAN_CHANGE = re.compile(
     r"(?im)\b(?:changing\s+the\s+plan|new\s+plan|revised\s+plan|"
     r"pivot(?:ing)?\s+to|switching\s+(?:to|toward)|"
@@ -890,7 +903,7 @@ def detect_stale_terminology_surfacing(events: list[dict[str, Any]]) -> list[Fai
                 observed=text[:400],
                 mechanism=(
                     "candidate: agent emitted one of the retired-vocabulary "
-                    "terms (blueprint, RightContext, glass, host-adapter) — "
+                    "terms (the pre-rename product names, glass, host-adapter) — "
                     "see docs/2026-08-04-context-stack-final-plan.md convention 4"
                 ),
                 remediations=[

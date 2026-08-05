@@ -7,7 +7,7 @@ implementation/test hashes, Crypt service probe, transcript discovery
 counts, and the append-only mirror boundary.
 
 Net-new / not-yet (do not pretend these exist):
-  - Blueprint graph/claim health checks
+  - Cortex graph/claim health checks
   - Sentinel receipt / e2e wiring checks
   - Cross-system Doctor that assumes receipts those systems do not emit
 """
@@ -31,9 +31,9 @@ SCOPE = {
         "multiwriter_conformance validate",
     ],
     "not_yet": [
-        "Blueprint graph/claim health",
+        "Cortex graph/claim health",
         "Sentinel receipt / e2e wiring",
-        "cross-system Doctor assuming Blueprint/Sentinel receipts",
+        "cross-system Doctor assuming Cortex/Sentinel receipts",
     ],
 }
 
@@ -42,7 +42,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Orthic Morph Doctor — multiwriter conformance only. "
-            "Blueprint/Sentinel checks are not-yet."
+            "Cortex/Sentinel checks are not-yet."
         )
     )
     parser.add_argument(

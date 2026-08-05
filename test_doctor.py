@@ -10,12 +10,12 @@ import doctor
 import workspace_runtime
 
 
-def test_doctor_scope_declares_blueprint_sentinel_not_yet(capsys):
+def test_doctor_scope_declares_cortex_sentinel_not_yet(capsys):
     assert doctor.main(["--scope"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload["product"] == "Orthic Morph Doctor"
     assert "multiwriter_conformance issue" in payload["implemented"]
-    assert any("Blueprint" in item for item in payload["not_yet"])
+    assert any("Cortex" in item for item in payload["not_yet"])
     assert any("Sentinel" in item for item in payload["not_yet"])
 
 
