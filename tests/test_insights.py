@@ -488,25 +488,25 @@ def test_cross_agent_repeats_clean():
 
 
 # ---------------------------------------------------------------------------
-# 16. sentinel_opened_never_closed
+# 16. forge_opened_never_closed
 # ---------------------------------------------------------------------------
 
-def test_sentinel_opened_never_closed_fires():
+def test_forge_opened_never_closed_fires():
     events = [
-        _ev(kind="assistant_message", text="sentinel rubric opened here", sequence=1),
+        _ev(kind="assistant_message", text="forge rubric opened here", sequence=1),
         _ev(kind="assistant_message", text="still in progress", sequence=2),
     ]
-    cards = insights.detect_sentinel_opened_never_closed(events)
+    cards = insights.detect_forge_opened_never_closed(events)
     assert len(cards) == 1
-    assert cards[0].detector == "sentinel_opened_never_closed"
+    assert cards[0].detector == "forge_opened_never_closed"
 
 
-def test_sentinel_opened_never_closed_clean():
+def test_forge_opened_never_closed_clean():
     events = [
-        _ev(kind="assistant_message", text="sentinel rubric opened here", sequence=1),
-        _ev(kind="assistant_message", text="sentinel rubric closed", sequence=2),
+        _ev(kind="assistant_message", text="forge rubric opened here", sequence=1),
+        _ev(kind="assistant_message", text="forge rubric closed", sequence=2),
     ]
-    cards = insights.detect_sentinel_opened_never_closed(events)
+    cards = insights.detect_forge_opened_never_closed(events)
     assert cards == []
 
 

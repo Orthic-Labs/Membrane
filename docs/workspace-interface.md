@@ -28,6 +28,6 @@ not be used for live Crypt apply or production Doctor receipts.
 ## What is intentionally out of scope
 
 - Vendoring the entire parent `tools/pipelines/memory` tree into `morph/`
-- Pretending Cortex/Sentinel Doctor checks exist (see `doctor.py --scope`)
+- Pretending Cortex/Forge Doctor checks exist (see `doctor.py --scope`)
 - A one-liner standalone wheel until Membrane/Crypt APIs and session
   inventory are either vendored or published as real packages

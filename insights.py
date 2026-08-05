@@ -31,7 +31,7 @@ Detectors implemented (all 18 named in the plan):
    13.  unaccepted_plan_change
    14.  tests_that_cannot_fail
    15.  cross_agent_repeats
-   16.  sentinel_opened_never_closed
+   16.  forge_opened_never_closed
    17.  guard_firings
    18.  user_asks_why_missed_or_postmortem
 
@@ -244,7 +244,7 @@ _RE_GUARD_FIRE = re.compile(
     r"hit|triggered|violat)|"
     r"admission\s+refused|"
     r"refus(?:ing|ed)\s+to\s+(?:proceed|apply|write)|"
-    r"sentinel[^a-z]+\s+(?:blocked|refused|rejected|stopping))"
+    r"forge[^a-z]+\s+(?:blocked|refused|rejected|stopping))"
 )
 _RE_POSTMORTEM = re.compile(
     r"(?im)\b(?:post-?mortem|postmortem|why\s+did\s+(?:you|this)\s+miss|"
@@ -274,13 +274,13 @@ _RE_SILENT_NARROW = re.compile(
     r"i'?ll\s+(?:just|only)\s+(?:do|handle|touch|fix))\b"
 )
 _RE_OPENED = re.compile(
-    r"(?im)\b(?:sentinel[^a-z]*?(?:opened|opening|opened\s+rubric|"
+    r"(?im)\b(?:forge[^a-z]*?(?:opened|opening|opened\s+rubric|"
     r"rubric[_-]?opened|\bopen\b[^.]*\brubric\b)|"
     r"\b(?:opened|opening)\b[^.]*\brubric\b|"
     r"rubric[^a-z]*?\b(?:opened|opening)\b)"
 )
 _RE_CLOSED = re.compile(
-    r"(?im)\b(?:sentinel[^a-z]*?(?:closed|closing|closed\s+rubric|"
+    r"(?im)\b(?:forge[^a-z]*?(?:closed|closing|closed\s+rubric|"
     r"rubric[_-]?closed|\bclose\b[^.]*\brubric\b)|"
     r"\b(?:closed|closing)\b[^.]*\brubric\b|"
     r"rubric[^a-z]*?\b(?:closed|closing)\b)"
@@ -1119,10 +1119,10 @@ def detect_cross_agent_repeats(events: list[dict[str, Any]]) -> list[FailureCard
 
 
 # ---------------------------------------------------------------------------
-# 16. sentinel_opened_never_closed
+# 16. forge_opened_never_closed
 # ---------------------------------------------------------------------------
 
-def detect_sentinel_opened_never_closed(
+def detect_forge_opened_never_closed(
     events: list[dict[str, Any]],
 ) -> list[FailureCardV1]:
     """Count 'opened' vs 'closed' occurrences in assistant_message text."""
@@ -1140,7 +1140,7 @@ def detect_sentinel_opened_never_closed(
         return []
     return [
         _card(
-            "sentinel_opened_never_closed",
+            "forge_opened_never_closed",
             "high",
             0.75,
             events=opens,
@@ -1149,7 +1149,7 @@ def detect_sentinel_opened_never_closed(
                 f"rubric-close markers only {len(closes)}×"
             ),
             mechanism=(
-                "candidate: sentinel rubric was opened without a matching "
+                "candidate: forge rubric was opened without a matching "
                 "close — kills 6.1's verify/close contract"
             ),
             remediations=[
@@ -1181,7 +1181,7 @@ def detect_guard_firings(events: list[dict[str, Any]]) -> list[FailureCardV1]:
                 user_expectation=_nearest_user_text(events, index),
                 mechanism=(
                     "candidate: a workspace guard fired — admission refused, "
-                    "scope violation, or sentinel blocked the action"
+                    "scope violation, or forge blocked the action"
                 ),
                 remediations=[
                     "candidate: report the guard's reason verbatim; do not "
@@ -1249,7 +1249,7 @@ ALL_DETECTORS: tuple[tuple[str, Callable[[list[dict[str, Any]]], list[FailureCar
     ("unaccepted_plan_change", detect_unaccepted_plan_change),
     ("tests_that_cannot_fail", detect_tests_that_cannot_fail),
     ("cross_agent_repeats", detect_cross_agent_repeats),
-    ("sentinel_opened_never_closed", detect_sentinel_opened_never_closed),
+    ("forge_opened_never_closed", detect_forge_opened_never_closed),
     ("guard_firings", detect_guard_firings),
     ("user_asks_why_missed_or_postmortem", detect_user_asks_why_missed_or_postmortem),
 )

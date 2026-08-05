@@ -8,7 +8,7 @@ counts, and the append-only mirror boundary.
 
 Net-new / not-yet (do not pretend these exist):
   - Cortex graph/claim health checks
-  - Sentinel receipt / e2e wiring checks
+  - Forge receipt / e2e wiring checks
   - Cross-system Doctor that assumes receipts those systems do not emit
 """
 from __future__ import annotations
@@ -32,8 +32,8 @@ SCOPE = {
     ],
     "not_yet": [
         "Cortex graph/claim health",
-        "Sentinel receipt / e2e wiring",
-        "cross-system Doctor assuming Cortex/Sentinel receipts",
+        "Forge receipt / e2e wiring",
+        "cross-system Doctor assuming Cortex/Forge receipts",
     ],
 }
 
@@ -42,7 +42,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Orthic Morph Doctor — multiwriter conformance only. "
-            "Cortex/Sentinel checks are not-yet."
+            "Cortex/Forge checks are not-yet."
         )
     )
     parser.add_argument(

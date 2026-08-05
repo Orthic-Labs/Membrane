@@ -782,9 +782,9 @@ def test_extract_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
 def test_synthesize_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
     audit = _audit_file_path(tmp_path)
     import morph_sessions as _ts
-    sentinel = {"called": False}
+    forge = {"called": False}
     def fail_scan(s):
-        sentinel["called"] = True
+        forge["called"] = True
         return False
     monkeypatch.setattr(_ts, "scan_batch_for_secrets_str", fail_scan)
     called = {"llm": False}
@@ -796,7 +796,7 @@ def test_synthesize_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
         lane="minimax")
     assert out.outcome == outcomes.Outcome.SCANNER_BLOCKED
     assert out.actions == []
-    assert sentinel["called"] is True
+    assert forge["called"] is True
     assert called["llm"] is False
     assert "synthesize" in audit.read_text(encoding="utf-8")
 
@@ -2001,15 +2001,15 @@ def test_apply_from_manifest_no_llm_call(tmp_path, monkeypatch):
     journal = _isolate_journal(tmp_path, monkeypatch)
     journal.record("batch-nollm", "discovered", sessions=["s1", "s2"])
     monkeypatch.setattr(lt, "_run_crypt", lambda args: True)
-    sentinel = {"llm": 0}
+    forge = {"llm": 0}
     def fake_llm(*args, **kwargs):
-        sentinel["llm"] += 1
+        forge["llm"] += 1
         return "[]"
     monkeypatch.setattr(lt.morph_llm, "extract_observations", fake_llm)
     monkeypatch.setattr(lt.morph_llm, "synthesize", fake_llm)
     rc = lt.apply_from_manifest(p)
     assert rc == 0
-    assert sentinel["llm"] == 0, "apply-from-manifest must not invoke any LLM call"
+    assert forge["llm"] == 0, "apply-from-manifest must not invoke any LLM call"
 
 
 def test_apply_from_manifest_rechecks_permission_expansion(tmp_path, monkeypatch):

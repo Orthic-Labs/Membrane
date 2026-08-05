@@ -5,7 +5,7 @@ Implementation is split along product boundaries:
   - ``taste_apply`` reviewed manifest apply (zero LLM)
   - ``taste_mine``  extract/synth orchestration helpers
   - ``cli``         flag-based Taste CLI + ``doctor`` dispatch
-  - ``doctor``      multiwriter conformance (Cortex/Sentinel = not-yet)
+  - ``doctor``      multiwriter conformance (Cortex/Forge = not-yet)
   - ``workspace_runtime`` parent Crypt/session/mirror import boundary
 
 CLI entry points:
