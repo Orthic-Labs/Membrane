@@ -11,7 +11,7 @@ import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { bindingFor } from "./project-registry.mjs";
 import { installationBindingFor, installationEnv } from "./installation-binding.mjs";
-import { buildRepositoryCatalog, hasExplicitChildGrant } from "./repository-catalog.mjs";
+import { buildRepositoryCatalog, hasExplicitChildGrant, resolveByAlias } from "./repository-catalog.mjs";
 import { feedbackEvent, feedbackPolicy } from "./feedback-loop.mjs";
 import { eventDbFor, ProposalStore } from "./proposal-store.mjs";
 import { ScratchpadStore, WorkingContextStore } from "./working-context.mjs";
@@ -40,7 +40,7 @@ const CALLER_SCHEMA = {
   additionalProperties: false,
 };
 const TOOL_DEFINITIONS = [
-  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" } } } },
+  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." } } } },
   { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
   { name: "membrane_checkpoint_save", description: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.", inputSchema: { type: "object", required: ["repository", "caller", "checkpoint"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, checkpoint: { type: "object" } } } },
@@ -316,6 +316,50 @@ async function callTool(name, args, trace = {}) {
   if (name === "membrane_context") {
     const binding = await authorize(args, "context");
     const install = await installationBindingFor(binding);
+
+    // Plan 4.2: workspace-scoped federation.
+    if (args.scope === "workspace") {
+      const catalog = await buildRepositoryCatalog(binding.root);
+      const repos = catalog?.repositories || [];
+      if (repos.length === 0) return { ok: false, error: "workspace_scope_no_repos", scope: "workspace" };
+      // Determine which repos are relevant to the task.
+      const taskText = String(args.task || "").toLowerCase();
+      const targets = repos.filter((entry) => {
+        // Always include the workspace root.
+        if (entry.role === "workspace-root") return true;
+        // Include repos whose aliases appear in the task text.
+        const aliases = entry.aliases || [];
+        return aliases.some((alias) => taskText.includes(alias.toLowerCase()));
+      });
+      // If no alias match, fan out to ALL child repos.
+      const selected = targets.length > 1 ? targets : repos;
+      const budget = Number.isInteger(args.budget) ? args.budget : 4096;
+      const perRepoBudget = Math.max(1, Math.floor(budget / selected.length));
+      const fused = { ok: true, scope: "workspace", repos: [], totalCandidates: 0, totalOmissions: 0 };
+      const trace = { traceparent: args.traceparent, tracestate: args.tracestate, baggage: args.baggage };
+      for (const entry of selected) {
+        const targetRoot = require("node:path").resolve(binding.root, entry.root || ".");
+        const request = { task: args.task, repo: targetRoot, maxTokens: perRepoBudget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, ...trace };
+        try {
+          const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: targetRoot });
+          const packet = JSON.parse(out.stdout.trim() || "{}");
+          fused.repos.push({
+            repoId: entry.repository_id,
+            generationId: packet.packet?.freshness?.revision || null,
+            candidates: (packet.packet?.blocks || []).length,
+            omissions: (packet.degradationReason && packet.degradationReason !== "none") ? [packet.degradationReason] : [],
+          });
+          fused.totalCandidates += (packet.packet?.blocks || []).length;
+          fused.totalOmissions += fused.repos[fused.repos.length - 1].omissions.length;
+        } catch {
+          fused.repos.push({ repoId: entry.repository_id, generationId: null, candidates: 0, omissions: ["federation_error"] });
+          fused.totalOmissions += 1;
+        }
+      }
+      return text(fused);
+    }
+
+    // Single-repo path (default).
     const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, ...trace };
     const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: binding.root });
     const packet = text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
