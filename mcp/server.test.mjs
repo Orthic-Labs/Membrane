@@ -478,3 +478,56 @@ const mbr2Denied = await rpc([{
 }], mbr2Env);
 assert.equal(mbr2Denied[0].result.isError, true, "read-only workspace caller must be denied a mutating child operation");
 assert.match(toolError(mbr2Denied[0]), /caller_not_authorized/);
+
+// MBR-003 (SN-NODE-02 / R03): every workspace target is authorized
+// independently through the SAME primitive a direct call uses. An adversarial
+// ungranted sibling is omitted with a typed denial receipt and is never
+// invoked, while a granted child is still federated to.
+const mbr3Root = await mkdtemp(join(tmpdir(), "membrane-mbr003-"));
+await mkdir(join(mbr3Root, "granted", ".git"), { recursive: true });
+await mkdir(join(mbr3Root, "ungranted", ".git"), { recursive: true });
+const mbr3Workspace = await realpath(mbr3Root);
+const mbr3Granted = await realpath(join(mbr3Root, "granted"));
+const mbr3Ungranted = await realpath(join(mbr3Root, "ungranted"));
+const mbr3Catalog = await buildRepositoryCatalog(mbr3Workspace);
+const mbr3Ws = mbr3Catalog.repositories.find((entry) => entry.role === "workspace-root");
+const mbr3G = mbr3Catalog.repositories.find((entry) => entry.role === "child-repository" && entry.root === "granted");
+const mbr3U = mbr3Catalog.repositories.find((entry) => entry.role === "child-repository" && entry.root === "ungranted");
+assert.ok(mbr3Ws && mbr3G && mbr3U, "MBR-003 fixture catalog has root plus granted and ungranted children");
+const mbr3Registry = join(mbr3Root, "registry.json");
+await writeFile(mbr3Registry, JSON.stringify({
+  schema_version: 1,
+  bindings: {
+    [mbr3Workspace]: {
+      repository_id: mbr3Ws.repository_id, scope_id: mbr3Ws.scope_id, provider_config: {},
+      grant_policy: { level: "write-trusted", child_repository_ids: [mbr3G.repository_id] },
+    },
+    [mbr3Granted]: {
+      repository_id: mbr3G.repository_id, scope_id: mbr3G.scope_id, provider_config: {},
+      grant_policy: { level: "write-trusted", parent_repository_id: mbr3Ws.repository_id },
+    },
+    [mbr3Ungranted]: {
+      repository_id: mbr3U.repository_id, scope_id: mbr3U.scope_id, provider_config: {},
+      grant_policy: { level: "write-trusted", parent_repository_id: mbr3Ws.repository_id },
+    },
+  },
+}), "utf8");
+const mbr3Env = { MEMBRANE_PROJECT_REGISTRY: mbr3Registry, CRYPT_PORT: "65532", CRYPT_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" };
+const mbr3Caller = { root: mbr3Workspace, repositoryId: mbr3Ws.repository_id, scopeId: mbr3Ws.scope_id };
+const mbr3Scope = await rpc([{
+  jsonrpc: "2.0", id: 90, method: "tools/call",
+  params: { name: "membrane_context", arguments: { task: "inspect", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace" } },
+}], mbr3Env);
+assert.equal(mbr3Scope[0].result.isError, false, toolError(mbr3Scope[0]));
+const mbr3Fused = mbr3Scope[0].result.structuredContent.data;
+const mbr3ByRoot = new Map((mbr3Fused.repos || []).map((entry) => {
+  const root = entry.repoId === mbr3G.repository_id ? "granted" : (entry.repoId === mbr3U.repository_id ? "ungranted" : "root");
+  return [root, entry];
+}));
+assert.ok(mbr3ByRoot.has("root"), "workspace root target is reached");
+assert.ok(mbr3ByRoot.has("granted"), "granted child target is reached");
+assert.ok(mbr3ByRoot.get("granted").omissions.includes("planner_unavailable"), "granted child WAS invoked (client attempted federation)");
+assert.ok(mbr3ByRoot.has("ungranted"), "ungranted sibling appears as a typed omission");
+assert.deepEqual(mbr3ByRoot.get("ungranted").omissions, ["target_denied"], "ungranted sibling is omitted with a typed denial receipt");
+assert.equal(mbr3ByRoot.get("ungranted").candidates, 0, "ungranted sibling is never consulted for candidates");
+assert.ok(!mbr3ByRoot.get("ungranted").omissions.includes("planner_unavailable"), "ungranted sibling was never called");

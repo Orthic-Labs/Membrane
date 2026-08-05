@@ -54,3 +54,23 @@ export async function authorizeTarget({
   if (!permitsLevel(effectiveLevel, action)) throw new Error("caller_not_authorized");
   return { callerBinding, targetBinding, effectiveLevel };
 }
+
+// MBR-003: the workspace aggregate must exercise exactly the same per-target
+// authorization primitive as a direct repository call. Returns the effective
+// level when the caller may reach the target for `action`; null on any denial
+// (cross-root without grant, or insufficient monotone authority).
+export async function canReachTarget({ callerBinding, targetBinding, action, taskGrantLevel, hasExplicitChildGrant }) {
+  try {
+    const authorized = await authorizeTarget({
+      callerBinding,
+      targetBinding,
+      childGrantLevel: targetBinding?.grant_policy?.level || "read-only",
+      taskGrantLevel,
+      action,
+      hasExplicitChildGrant,
+    });
+    return authorized.effectiveLevel;
+  } catch {
+    return null;
+  }
+}

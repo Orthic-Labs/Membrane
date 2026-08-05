@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { intersectAuthority, permitsLevel, authorizeTarget, levelRank } from "./authorization.mjs";
+import { intersectAuthority, permitsLevel, authorizeTarget, canReachTarget, levelRank } from "./authorization.mjs";
 
 test("intersectAuthority returns the monotone minimum of all authorities", () => {
   assert.equal(intersectAuthority("read-only", "write-trusted"), "read-only");
@@ -104,4 +104,16 @@ test("an ungranted cross-root call is denied before any level check", async () =
     }),
     /cross_root_binding_denied/,
   );
+});
+
+test("canReachTarget authorizes a granted sibling but omits an ungranted one", async () => {
+  const callerBinding = { repository_id: "ws-repo", grant_policy: { level: "write-trusted", child_repository_ids: ["granted-child"] } };
+  const granted = { repository_id: "granted-child", grant_policy: { level: "write-trusted" } };
+  const ungrantedSibling = { repository_id: "other-child", grant_policy: { level: "write-trusted" } };
+  // Granted sibling is reachable (non-null effective level).
+  assert.ok(await canReachTarget({ callerBinding, targetBinding: granted, action: "context", hasExplicitChildGrant: true }));
+  assert.ok(await canReachTarget({ callerBinding, targetBinding: granted, action: "context", taskGrantLevel: "write-trusted", hasExplicitChildGrant: true }));
+  // Ungranted sibling is never reachable, even at an admin task grant.
+  assert.equal(await canReachTarget({ callerBinding, targetBinding: ungrantedSibling, action: "context", taskGrantLevel: "admin", hasExplicitChildGrant: false }), null);
+  assert.equal(await canReachTarget({ callerBinding, targetBinding: ungrantedSibling, action: "feedback", taskGrantLevel: "admin", hasExplicitChildGrant: false }), null);
 });

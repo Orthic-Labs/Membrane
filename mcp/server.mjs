@@ -16,7 +16,7 @@ import { feedbackEvent, feedbackPolicy } from "./feedback-loop.mjs";
 import { eventDbFor, ProposalStore } from "./proposal-store.mjs";
 import { ScratchpadStore, WorkingContextStore } from "./working-context.mjs";
 import { mintScopeGrantV1 } from "./scope-grant-v1.mjs";
-import { intersectAuthority, permitsLevel } from "./authorization.mjs";
+import { intersectAuthority, permitsLevel, canReachTarget } from "./authorization.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -362,8 +362,29 @@ async function callTool(name, args, trace = {}) {
       const perRepoBudget = Math.max(1, Math.floor(budget / selected.length));
       const fused = { ok: true, scope: "workspace", repos: [], totalCandidates: 0, totalOmissions: 0 };
       const trace = { traceparent: args.traceparent, tracestate: args.tracestate, baggage: args.baggage };
+      const omitted = (entry, omission) => {
+        fused.repos.push({ repoId: entry.repository_id, basis: "denied", generationId: null, candidates: 0, omissions: [omission] });
+        fused.totalOmissions += 1;
+      };
+      // MBR-003 (SN-NODE-02 / R03): authorize EVERY workspace target independently
+      // through the same primitive a direct repository call uses, before any
+      // provider/client process is spawned. Adversarial ungranted siblings are
+      // omitted with a typed denial receipt and are never invoked.
+      const workspaceGrants = binding.grant_policy?.child_repository_ids;
+      const catalogRootId = repos.find((entry) => entry.role === "workspace-root")?.repository_id;
       for (const entry of selected) {
         const targetRoot = resolve(binding.root, entry.root === "." ? "." : entry.root);
+        let targetBinding;
+        try { targetBinding = await bindingFor(targetRoot); } catch { omitted(entry, "target_denied"); continue; }
+        const hasGrant = hasExplicitChildGrant(catalog, catalogRootId, entry.repository_id, workspaceGrants);
+        const effectiveLevel = await canReachTarget({
+          callerBinding: binding,
+          targetBinding,
+          action: "context",
+          taskGrantLevel: args.taskGrantLevel,
+          hasExplicitChildGrant: hasGrant,
+        });
+        if (!effectiveLevel) { omitted(entry, "target_denied"); continue; }
         const request = { task: args.task, repo: targetRoot, maxTokens: perRepoBudget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, ...trace };
         try {
           const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: targetRoot });
