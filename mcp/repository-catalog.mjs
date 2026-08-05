@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
+import { DatabaseSync } from "node:sqlite";
 import { defaultRegistryPath, enroll } from "./project-registry.mjs";
 
 // Resolved once: the absolute URL to Cortex's exported static-provider reader.
@@ -211,15 +212,42 @@ function aliasesFor(relativeRoot) {
 }
 
 /**
- * Determine watcher state. Phase 1/2.7 has not landed the resident Membrane
- * watcher yet, so the only honest verdict today is "unwatched". Once the
- * watcher is wired in, this is the single place that needs to narrow the
- * verdict to current/degraded/stale based on the live feed.
+ * Determine watcher state by reading the repo's `watch_state` table in graph.db.
  *
+ * Plan 2.7a: replaces the hardcoded "unwatched" stub. The keys written by
+ * the Cortex watchman supervisor (supervisor.mjs:73-112) are `watcher_pid`,
+ * `event_gap`, `event_gap_reason`, `last_error`, `source_clock`, `applied_clock`.
+ *
+ * Mapping to exactly four values (no others):
+ *   - no graph.db or no row → "unwatched"
+ *   - event_gap non-zero    → "stale"
+ *   - watcher_pid present and alive → "current"
+ *   - watcher_pid present but dead  → "degraded"
+ *
+ * @param {string} absoluteRoot absolute path to the repo root
  * @returns {"current"|"degraded"|"stale"|"unwatched"}
  */
-function readWatcherState() {
-  return "unwatched";
+function readWatcherState(absoluteRoot) {
+  const graphDbPath = join(absoluteRoot, ".agent", "graph", "graph.db");
+  if (!existsSync(graphDbPath)) return "unwatched";
+  let db;
+  try {
+    db = new DatabaseSync(graphDbPath, { open: true, readOnly: true });
+    const rows = db.prepare("SELECT key, value FROM watch_state").all();
+    if (!rows || rows.length === 0) return "unwatched";
+    const state = Object.fromEntries(rows.map((row) => [row.key, row.value]));
+    const pid = Number(state.watcher_pid ?? 0) || null;
+    const eventGap = Number(state.event_gap ?? 0);
+    if (eventGap) return "stale";
+    if (!pid) return "unwatched";
+    // pid is present and event_gap is zero; check if the process is alive.
+    try { process.kill(pid, 0); return "current"; } catch { return "degraded"; }
+  } catch {
+    // graph.db unreadable or missing watch_state table → unwatched
+    return "unwatched";
+  } finally {
+    if (db) { try { db.close(); } catch {} }
+  }
 }
 
 export async function buildRepositoryCatalog(workspaceRoot, options = {}) {
@@ -246,7 +274,7 @@ export async function buildRepositoryCatalog(workspaceRoot, options = {}) {
     const sourceCommit = readGitHead(absoluteRoot);
     const rootBinding = absoluteRoot;
     const aliases = aliasesFor(relativeRoot);
-    const watcherState = readWatcherState();
+    const watcherState = readWatcherState(absoluteRoot);
     const capabilities = capabilitiesFor({ relativeRoot, hasGraphDb, isWorkspaceRoot });
     // grantPolicy mirrors the existing enrollment shape so callers do not need
     // to special-case the new field. The workspace-root gets an empty
