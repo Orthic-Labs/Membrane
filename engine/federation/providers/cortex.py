@@ -12,7 +12,6 @@ import hashlib
 import math
 import os
 import re
-import sqlite3
 import shutil
 import subprocess
 import sys
@@ -138,59 +137,35 @@ def _resolve_node() -> str:
     )
 
 
-def _connect_graph_db(graph_db: Path) -> sqlite3.Connection:
-    """Open the Cortex store for reading, never writing to it.
-
-    A WAL database opened `mode=ro` needs an existing `-shm`, which a
-    read-only connection may not create. `cortex graph build` checkpoints
-    those sidecars away, so a freshly built store is unopenable read-only and
-    the lane degraded exactly when the graph was most current. Retry with
-    `immutable=1`, which needs no shared-memory file. Read-only is tried first
-    so an existing WAL is still honoured.
-    """
-    uri = graph_db.as_uri()
-    try:
-        connection = sqlite3.connect(f"{uri}?mode=ro", uri=True, timeout=0.05)
-        # sqlite3.connect is lazy: a WAL store missing its -shm only fails on
-        # first use, so force the open here or the fallback never fires.
-        connection.execute("SELECT 1").fetchone()
-        return connection
-    except sqlite3.Error:
-        return sqlite3.connect(f"{uri}?immutable=1", uri=True, timeout=0.05)
-
-
 def _read_manifest(repo_root: Path) -> dict | None:
     """Read the sealed Cortex generation, preferring the graph.db envelope.
 
-    Cortex's current store is SQLite. JSON manifests remain a compatibility
-    fallback for older repositories. The provider uses only generation
-    identity; the central Rust ``/freshness`` verdict owns freshness
-    classification.
+    Plan 3.2: direct sqlite3 access is deleted. The generation is read via
+    ``cortex.mjs graph status --json`` (the Node CLI reads graph.db internally).
+    Falls back to manifest.json files for older Cortex repos.
     """
-    graph_db = repo_root / ".agent" / "graph" / "graph.db"
-    if graph_db.exists():
+    # Try the CLI first (reads graph.db through Cortex's own reader).
+    cli = _resolve_cortex_cli()
+    node_bin = _resolve_node()
+    if Path(cli).exists() and node_bin:
         try:
-            with _connect_graph_db(graph_db) as connection:
-                row = connection.execute(
-                    "SELECT value FROM generation WHERE key = 'manifest'"
-                ).fetchone()
-                if row is not None:
-                    manifest = json.loads(row[0])
-                    if isinstance(manifest, dict) and manifest.get("generationId"):
-                        source = connection.execute(
-                            "SELECT value FROM generation WHERE key = 'sourceObservation'"
-                        ).fetchone()
-                        if source is not None:
-                            observation = json.loads(source[0])
-                            if isinstance(observation, dict):
-                                manifest.setdefault("baseCommit", observation.get("head"))
-                                manifest.setdefault("sourceState", "dirty" if observation.get("dirty") else "clean")
-                        return manifest
-        except (OSError, sqlite3.Error, TypeError, ValueError):
-            # A present but unreadable DB must not make the provider invent a
-            # generation. Legacy JSON is retained for older Cortex repos.
+            proc = subprocess.run(
+                [node_bin, cli, "graph", "status", "--json"],
+                cwd=str(repo_root),
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+                check=False,
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                payload = json.loads(proc.stdout.strip())
+                manifest = payload.get("manifest") if isinstance(payload, dict) else None
+                if isinstance(manifest, dict) and manifest.get("generationId"):
+                    return manifest
+        except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, TypeError, ValueError):
             pass
 
+    # Fallback: JSON manifest files (older Cortex repos).
     candidates = [
         repo_root / ".agent" / "graph" / "manifest.json",
         repo_root / ".agent" / "manifest.json",
@@ -247,157 +222,10 @@ def _normalise_source_hash(value: object) -> str:
     return _ZERO_SHA256
 
 
-def _direct_index_candidates(
-    repo_root: Path, task: str, cap: int, generation_id: str
-) -> list[dict] | None:
-    """Query a centrally pinned graph generation without Node startup.
-
-    Crypt `/freshness` owns source-tree validation and passes its exact generation.
-    This lane verifies that pin against graph.db, reads only sealed symbol/file rows,
-    and returns no result when the store cannot satisfy that contract.
-    """
-    graph_db = repo_root / ".agent" / "graph" / "graph.db"
-    tokens = _query_tokens(task)
-    if not graph_db.exists() or not generation_id or not tokens:
-        return None
-    try:
-        with _connect_graph_db(graph_db) as connection:
-            manifest_row = connection.execute(
-                "SELECT value FROM generation WHERE key='manifest'"
-            ).fetchone()
-            if manifest_row is None:
-                return None
-            manifest = json.loads(manifest_row[0])
-            if not isinstance(manifest, dict) or manifest.get("generationId") != generation_id:
-                return None
-            search_row = connection.execute(
-                "SELECT sql FROM sqlite_master WHERE type='table' AND name='symbol_search'"
-            ).fetchone()
-            has_terms = connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='symbol_terms'"
-            ).fetchone() is not None
-            has_search = search_row is not None
-            search_is_fts = has_search and "fts5" in str(search_row[0] or "").lower()
-            symbols: list[tuple] = []
-            score_tokens = tokens
-            if has_terms:
-                for token in tokens:
-                    symbols = connection.execute(
-                        "SELECT s.id,s.name,s.qualified_name,s.path,s.confidence,s.evidence "
-                        "FROM symbol_terms AS st JOIN symbols AS s "
-                        "ON s.id=st.symbol_id AND s.generation_id=st.generation_id "
-                        "WHERE st.generation_id=? AND st.token=? LIMIT ?",
-                        (generation_id, token, cap),
-                    ).fetchall()
-                    if symbols:
-                        score_tokens = [token]
-                        break
-            elif has_search:
-                # Cortex owns this generation-sealed index. Task text is
-                # normalized before becoming a bound value; it never becomes
-                # SQL. Tokens are grammar-safe for the FTS prefix query.
-                if search_is_fts:
-                    match = " OR ".join(f"{token}*" for token in tokens)
-                    symbols = connection.execute(
-                        "SELECT s.id,s.name,s.qualified_name,s.path,s.confidence,s.evidence "
-                        "FROM symbol_search AS ss JOIN symbols AS s "
-                        "ON s.id=ss.id AND s.generation_id=ss.generation_id "
-                        "WHERE ss.generation_id=? AND symbol_search MATCH ? "
-                        "ORDER BY bm25(symbol_search), s.confidence DESC, s.path, s.id LIMIT ?",
-                        (generation_id, match, cap),
-                    ).fetchall()
-                else:
-                    term = "lower(ss.name || ' ' || ss.qualified_name || ' ' || ss.path)"
-                    where = " OR ".join(f"instr({term}, ?) > 0" for _ in tokens)
-                    symbols = connection.execute(
-                        "SELECT s.id,s.name,s.qualified_name,s.path,s.confidence,s.evidence "
-                        "FROM symbol_search AS ss JOIN symbols AS s "
-                        "ON s.id=ss.id AND s.generation_id=ss.generation_id "
-                        f"WHERE ss.generation_id=? AND ({where}) "
-                        "ORDER BY s.confidence DESC, s.path, s.id LIMIT ?",
-                        (generation_id, *tokens, cap),
-                    ).fetchall()
-            else:
-                # Compatibility for graph stores created before Cortex shipped
-                # symbol_search. This path disappears after the next graph build.
-                term = "lower(coalesce(name,'') || ' ' || coalesce(qualified_name,'') || ' ' || coalesce(path,''))"
-                where = " OR ".join(f"instr({term}, ?) > 0" for _ in tokens)
-                symbols = connection.execute(
-                    "SELECT id,name,qualified_name,path,confidence,evidence "
-                    f"FROM symbols WHERE generation_id=? AND ({where}) LIMIT ?",
-                    [generation_id, *tokens, cap],
-                ).fetchall()
-            if not symbols:
-                # A current graph with no lexical hit is the canonical case for
-                # abstention. Return an empty result so `_produce` can publish
-                # the plan 3.3 {abstained, reason: "no_relevant_seed"} signal
-                # instead of the retired arbitrary cohort.
-                pass
-    except (OSError, sqlite3.Error, TypeError, ValueError, json.JSONDecodeError):
-        return None
-
-    ranked: list[tuple[int, float, str, str, dict]] = []
-    for row in symbols:
-        entry_id, name, qualified_name, path, confidence, evidence_json = row
-        if not entry_id or not path:
-            continue
-        try:
-            evidence = json.loads(evidence_json or "[]")
-        except (TypeError, json.JSONDecodeError):
-            continue
-        if not isinstance(evidence, list) or not evidence or not isinstance(evidence[0], dict):
-            continue
-        first = evidence[0]
-        start = max(1, int(first.get("startLine") or 1))
-        end = max(start, int(first.get("endLine") or start))
-        # Plan 3.4 hash prefix: every emitted sourceHash is a self-describing
-        # `sha256:` hex digest at the same 64-character width already
-        # validated by gateway.py and emitted by live.py.
-        content_hash = _normalise_source_hash(first.get("contentHash") or "")
-        # Exactness matches Cortex (cortex/graph/static-provider.mjs:538-539):
-        # a symbol is exact only if its full lowercased qualified_name OR its
-        # last dotted segment equals one of the query tokens. The token set is
-        # already trimmed to a single winning term when symbol_terms exists.
-        qualified = str(qualified_name or name or "").lower()
-        short_name = qualified.rsplit(".", 1)[-1] if qualified else ""
-        lexical_score = sum(
-            1 for token in score_tokens if token == qualified or token == short_name
-        )
-        candidate = {
-            "id": f"cortex:{entry_id}",
-            "layer": 3,
-            "sourceKind": "repo_code",
-            "sourceRef": f"{path}:{start}-{end}",
-            "sourceHash": content_hash,
-            "trustClass": "workspace_tracked",
-            "instructionPolicy": "data_only",
-            "providerScore": 1.0 if lexical_score == len(score_tokens) else 0.0,
-            "scoreComponents": {"lexical": float(lexical_score)},
-            "estimatedTokens": min(256, max(16, (end - start + 1) * 8)),
-            "protected": False,
-            "exact": bool(score_tokens) and lexical_score == len(score_tokens),
-            "recoverable": True,
-            # Plan 3.4 resolver drift: candidates originated from the
-            # SQLite-pinned read, never from executing `graph resolve`. The
-            # published resolver must therefore name the same command-line
-            # shape that the source provider actually executes on a re-fetch
-            # (cortex/scripts/cortex.mjs `graph resolve --node <id>`).
-            "resolver": f"cortex graph resolve --node {entry_id}",
-            "text": str(qualified_name or name or entry_id),
-        }
-        ranked.append((-lexical_score, -float(confidence or 0.0), str(path), str(entry_id), candidate))
-    ranked.sort(key=lambda item: item[:4])
-    seen: set[str] = set()
-    output: list[dict] = []
-    for *_rank, candidate in ranked:
-        key = candidate["sourceRef"]
-        if key in seen:
-            continue
-        seen.add(key)
-        output.append(candidate)
-        if len(output) == cap:
-            break
-    return output
+# Plan 3.2: _direct_index_candidates deleted — all candidate requests now
+# route through the Node CLI lane (cortex.mjs graph candidates). The pinned
+# generation is passed via --expected-generation, not by querying sqlite.
+# Abstention detection moved to _produce (below).
 
 
 def _produce(
@@ -421,8 +249,7 @@ def _produce(
 
     * the on-disk generation matches the centrally validated one (so the
       graph is CURRENT, not stale);
-    * the SQLite-pinned direct index produced no candidates (no lexical
-      evidence under name equality).
+    * the Node CLI returned no candidates (no lexical evidence).
     """
     warnings: list[dict] = []
     cli = _resolve_cortex_cli()
@@ -436,37 +263,6 @@ def _produce(
     cache_key = None
     if generation_id and (not expected_generation or generation_id == expected_generation):
         cache_key = _cache_key(repo_root, generation_id, task, cap)
-    if expected_generation and generation_id == expected_generation:
-        direct = _direct_index_candidates(repo_root, task, cap, expected_generation)
-        if direct is not None:
-            observability["stageElapsedMs"] = {"repo_code_scan": 0.0}
-            if not direct:
-                # Pinned graph + zero lexical evidence => abstention. Plan 3.3
-                # contract: callers (gateway.py via produce_with_observability)
-                # surface abstained=True and reason="no_relevant_seed"; the
-                # generation id is still authoritative so downstream adapters
-                # can distinguish "no evidence" from "graph missing".
-                abstention = {
-                    "abstained": True,
-                    "reason": "no_relevant_seed",
-                    "candidates": [],
-                    "generationId": generation_id,
-                }
-                observability["abstention"] = abstention
-                warnings.append(_cortex_warning(
-                    # Convention 4: agent-visible reasons say Cortex, never the
-                    # retired Cortex vocabulary. The abstention fix itself
-                    # introduced a `cortex_*` reason string — retiring a term
-                    # while emitting a new instance of it.
-                    "cortex_abstained_no_relevant_seed",
-                    f"fresh graph {generation_id} has no relevant seed for task",
-                ))
-                if cache_key is not None:
-                    _cache_candidates(cache_key, direct)
-                return [], generation_id, warnings
-            if cache_key is not None:
-                _cache_candidates(cache_key, direct)
-            return direct, generation_id, warnings
     cmd = [
         node_bin,
         cli,
@@ -591,6 +387,20 @@ def _produce(
             "text": entry.get("qualifiedName") or entry.get("name") or entry_id,
         })
     generation_id = generation_id or "cortex-federation-stub"
+    # Plan 3.3: when the graph is pinned (expected_generation matches) and the
+    # CLI returned zero candidates, this is abstention — not a failure. The
+    # graph is current but has no lexical evidence for this task.
+    if expected_generation and generation_id == expected_generation and not candidates:
+        observability["abstention"] = {
+            "abstained": True,
+            "reason": "no_relevant_seed",
+            "candidates": [],
+            "generationId": generation_id,
+        }
+        warnings.append(_cortex_warning(
+            "cortex_abstained_no_relevant_seed",
+            f"fresh graph {generation_id} has no relevant seed for task",
+        ))
     if cache_key is not None and generation_id == (expected_generation or generation_id):
         _cache_candidates(cache_key, candidates, now=subprocess_finished)
     return candidates, generation_id, warnings

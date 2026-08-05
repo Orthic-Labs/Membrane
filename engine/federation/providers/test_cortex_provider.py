@@ -1,5 +1,4 @@
 import json
-import sqlite3
 from types import SimpleNamespace
 
 import pytest
@@ -142,7 +141,9 @@ def test_provider_passes_central_generation_to_cortex_cli(monkeypatch, tmp_path)
         observed["command"] = command
         return SimpleNamespace(
             returncode=0,
-            stdout=json.dumps({"schemaVersion": 1, "candidates": []}),
+            stdout=json.dumps({"schemaVersion": 1, "candidates": [{"id": "x", "kind": "symbol",
+                "name": "x", "qualifiedName": "x", "path": "x.rs", "confidence": 1.0,
+                "evidence": [{"path": "x.rs", "startLine": 1, "endLine": 1, "contentHash": "a" * 32}]}]}),
             stderr="",
         )
 
@@ -158,40 +159,33 @@ def test_provider_passes_central_generation_to_cortex_cli(monkeypatch, tmp_path)
     assert observed["command"][index + 1] == expected
 
 
-def test_pinned_generation_queries_sqlite_without_node_spawn(monkeypatch, tmp_path):
-    # Plan 3.3 (defect 4): _pin_fresh_candidate was deleted. Earlier this test
-    # asserted `protected is True` and `text == "Cortex source range ..."`,
-    # but those came from the retired protection step. The candidate now
-    # reflects only what name-equality produced.
-    graph_dir = tmp_path / ".agent" / "graph"
-    graph_dir.mkdir(parents=True)
-    generation = "xxh128:" + "1" * 32
-    evidence = json.dumps([{
-        "path": "src/bounded_runtime.rs", "startLine": 10, "endLine": 20,
-        "contentHash": "2" * 32,
-    }])
-    with sqlite3.connect(graph_dir / "graph.db") as connection:
-        connection.execute("CREATE TABLE generation (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-        connection.execute("INSERT INTO generation VALUES ('manifest', ?)", (json.dumps({"generationId": generation}),))
-        connection.execute(
-            "CREATE TABLE symbols (id TEXT PRIMARY KEY, kind TEXT, labels TEXT, name TEXT, qualified_name TEXT, path TEXT, confidence REAL, evidence TEXT, generation_id TEXT, extra TEXT)"
-        )
-        connection.execute(
-            "CREATE TABLE files (path TEXT PRIMARY KEY, content_hash TEXT, language TEXT, provider TEXT, parse_status TEXT, error_node_count INTEGER, generation_id TEXT, node_id TEXT, labels TEXT, name TEXT, qualified_name TEXT, confidence REAL, evidence TEXT, extra TEXT)"
-        )
-        connection.execute(
-            "INSERT INTO symbols VALUES (?,?,?,?,?,?,?,?,?,?)",
-            ("symbol:bounded", "symbol", '["Function"]', "bounded_runtime", "bounded_runtime", "src/bounded_runtime.rs", 1.0, evidence, generation, "{}"),
-        )
+
+def test_pinned_generation_always_uses_cli_lane(monkeypatch, tmp_path):
+    """Plan 3.2: the direct sqlite3 lane is deleted. All candidate requests
+    route through cortex.mjs graph candidates, even for pinned generations."""
     cli = tmp_path / "cortex.mjs"
-    cli.write_text("// must not run", encoding="utf-8")
+    cli.write_text("// fixture", encoding="utf-8")
+    generation = "xxh128:" + "1" * 32
+    evidence = [{"path": "src/bounded_runtime.rs", "startLine": 10, "endLine": 20,
+                  "contentHash": "2" * 32}]
+    cli_output = json.dumps({
+        "schemaVersion": 1,
+        "candidates": [{
+            "id": "symbol:bounded", "kind": "symbol", "name": "bounded_runtime",
+            "qualifiedName": "bounded_runtime", "path": "src/bounded_runtime.rs",
+            "confidence": 1.0, "evidence": evidence,
+        }],
+    })
     monkeypatch.setattr(cortex, "_resolve_cortex_cli", lambda: str(cli))
     monkeypatch.setattr(cortex, "_resolve_node", lambda: "node")
     monkeypatch.setattr(
         cortex.subprocess,
         "run",
-        lambda *_args, **_kwargs: pytest.fail("pinned direct index path spawned Node"),
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=0, stdout=cli_output, stderr="",
+        ),
     )
+    monkeypatch.setattr(cortex, "_read_manifest", lambda _root: {"generationId": generation})
 
     candidates, observed_generation, warnings = cortex.produce(
         tmp_path, "bounded runtime implementation", 64, expected_generation=generation
@@ -199,70 +193,41 @@ def test_pinned_generation_queries_sqlite_without_node_spawn(monkeypatch, tmp_pa
 
     assert observed_generation == generation
     assert warnings == []
+    assert len(candidates) == 1
     assert candidates[0]["sourceRef"] == "src/bounded_runtime.rs:10-20"
     assert candidates[0]["id"] == "cortex:symbol:bounded"
-    # Plan 3.4 hash prefix: emitted digest is always `sha256:` + 64-hex.
     assert candidates[0]["sourceHash"] == "sha256:" + "2" * 32 + "0" * 32
-    # Plan 3.4 resolver drift: the published re-fetch shape names the same
-    # command actually executed elsewhere (`cortex graph resolve --node`).
     assert candidates[0]["resolver"] == "cortex graph resolve --node symbol:bounded"
-    # Plan 3.3 defect 4 retired `_pin_fresh_candidate`, so neither the
-    # `protected` flag nor the rewrites `text` survive past the SQLite read.
     assert candidates[0]["protected"] is False
     assert candidates[0]["text"] == "bounded_runtime"
 
 
-def test_pinned_generation_uses_fts_and_abstains_on_no_match(monkeypatch, tmp_path):
-    # Plan 3.3 (defect 3): the legacy deterministic arbitrary-cohort fallback
-    # has been retired. A query whose tokens produce zero symbols under name
-    # equality now abstains (zero candidates + abstention warning), it does
-    # NOT return a `src/`-prefixed arbitrary cohort.
-    graph_dir = tmp_path / ".agent" / "graph"
-    graph_dir.mkdir(parents=True)
-    generation = "xxh128:" + "3" * 32
-    evidence = json.dumps([{
-        "path": "src/admission.rs", "startLine": 4, "endLine": 9,
-        "contentHash": "4" * 32,
-    }])
-    with sqlite3.connect(graph_dir / "graph.db") as connection:
-        connection.execute("CREATE TABLE generation (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-        connection.execute("INSERT INTO generation VALUES ('manifest', ?)", (json.dumps({"generationId": generation}),))
-        connection.execute(
-            "CREATE TABLE symbols (id TEXT PRIMARY KEY, kind TEXT, labels TEXT, name TEXT, qualified_name TEXT, path TEXT, confidence REAL, evidence TEXT, generation_id TEXT, extra TEXT)"
-        )
-        connection.execute(
-            "CREATE VIRTUAL TABLE symbol_search USING fts5(id UNINDEXED, generation_id UNINDEXED, name, qualified_name, path)"
-        )
-        connection.execute(
-            "CREATE TABLE symbol_terms (generation_id TEXT, token TEXT, symbol_id TEXT, PRIMARY KEY (generation_id, token, symbol_id)) WITHOUT ROWID"
-        )
-        rows = [
-            ("symbol:admission", "admission_gate", "admission_gate", "src/admission.rs"),
-            ("symbol:capsule", "capsule_verify", "capsule_verify", "src/capsule.rs"),
-        ]
-        for entry_id, name, qualified_name, path in rows:
-            connection.execute(
-                "INSERT INTO symbols VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (entry_id, "symbol", '["Function"]', name, qualified_name, path, 1.0, evidence.replace("src/admission.rs", path), generation, "{}"),
-            )
-            connection.execute(
-                "INSERT INTO symbol_search VALUES (?,?,?,?,?)",
-                (entry_id, generation, name.replace("_", " "), qualified_name.replace("_", " "), path),
-            )
-            for token in ("*", name, *name.split("_")):
-                connection.execute(
-                    "INSERT OR IGNORE INTO symbol_terms VALUES (?,?,?)",
-                    (generation, token, entry_id),
-                )
+def test_pinned_generation_cli_abstains_on_no_match(monkeypatch, tmp_path):
+    """Plan 3.3: when the CLI returns zero candidates on a pinned generation,
+    the provider sets the abstention signal — not an arbitrary cohort."""
     cli = tmp_path / "cortex.mjs"
-    cli.write_text("// must not run", encoding="utf-8")
+    cli.write_text("// fixture", encoding="utf-8")
+    generation = "xxh128:" + "3" * 32
+    cli_output_empty = json.dumps({"schemaVersion": 1, "candidates": []})
+    cli_output_match = json.dumps({
+        "schemaVersion": 1,
+        "candidates": [{
+            "id": "symbol:admission", "kind": "symbol", "name": "admission_gate",
+            "qualifiedName": "admission_gate", "path": "src/admission.rs",
+            "confidence": 1.0,
+            "evidence": [{"path": "src/admission.rs", "startLine": 4, "endLine": 9, "contentHash": "4" * 32}],
+        }],
+    })
     monkeypatch.setattr(cortex, "_resolve_cortex_cli", lambda: str(cli))
     monkeypatch.setattr(cortex, "_resolve_node", lambda: "node")
-    monkeypatch.setattr(
-        cortex.subprocess,
-        "run",
-        lambda *_args, **_kwargs: pytest.fail("pinned FTS path spawned Node"),
-    )
+    monkeypatch.setattr(cortex, "_read_manifest", lambda _root: {"generationId": generation})
+
+    call_count = {"n": 0}
+    def mock_run(*_args, **_kwargs):
+        call_count["n"] += 1
+        output = cli_output_match if call_count["n"] == 1 else cli_output_empty
+        return SimpleNamespace(returncode=0, stdout=output, stderr="")
+    monkeypatch.setattr(cortex.subprocess, "run", mock_run)
 
     matched, observed_generation, warnings = cortex.produce(
         tmp_path, "admission implementation", 1, expected_generation=generation
@@ -272,11 +237,8 @@ def test_pinned_generation_uses_fts_and_abstains_on_no_match(monkeypatch, tmp_pa
     )
 
     assert observed_generation == abstained_generation == generation
-    # Matched query: returns the symbol it found and emits no warnings.
     assert warnings == []
     assert [candidate["id"] for candidate in matched] == ["cortex:symbol:admission"]
-    # Plan 3.3 abstention: pinned graph + no lexical hit = empty candidates
-    # + an abstention-typed warning.
     assert abstained == []
     abstention_kinds = [warning["kind"] for warning in abstained_warnings]
     assert "cortex_abstained_no_relevant_seed" in abstention_kinds
@@ -355,25 +317,13 @@ def test_timeout_reuses_only_exact_fresh_candidate_cache(monkeypatch, tmp_path):
     assert warnings[0]["kind"] == "provider_timeout"
 
 
-def test_manifest_reads_generation_envelope_from_graph_db(tmp_path):
+def test_manifest_reads_generation_from_manifest_json(tmp_path):
+    """Plan 3.2: _read_manifest now reads from manifest.json, not graph.db."""
     graph_dir = tmp_path / ".agent" / "graph"
     graph_dir.mkdir(parents=True)
-    with sqlite3.connect(graph_dir / "graph.db") as connection:
-        connection.execute("CREATE TABLE generation (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-        connection.execute(
-            "INSERT INTO generation(key, value) VALUES (?, ?)",
-            ("manifest", json.dumps({"generationId": "generation-db"})),
-        )
-        connection.execute(
-            "INSERT INTO generation(key, value) VALUES (?, ?)",
-            ("sourceObservation", json.dumps({"head": "commit-db", "dirty": False})),
-        )
-        connection.commit()
+    manifest = {"generationId": "generation-json", "baseCommit": "commit-json", "sourceState": "clean"}
+    (graph_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
-    manifest = cortex._read_manifest(tmp_path)
+    result = cortex._read_manifest(tmp_path)
 
-    assert manifest == {
-        "generationId": "generation-db",
-        "baseCommit": "commit-db",
-        "sourceState": "clean",
-    }
+    assert result["generationId"] == "generation-json"
