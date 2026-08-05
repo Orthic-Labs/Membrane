@@ -9,7 +9,7 @@
             "headCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            "blueprintGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "cortexGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphManifestGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphBodyGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
@@ -19,14 +19,14 @@
             "headCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            "blueprintGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "cortexGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphManifestGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphBodyGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
           }
         }
       ],
-      "expected": {"graphState": "clean", "stable": true, "attempts": 1, "blueprintClass": "committed_snapshot", "blueprintUsable": true}
+      "expected": {"graphState": "clean", "stable": true, "attempts": 1, "cortexClass": "committed_snapshot", "cortexUsable": true}
     },
     {
       "name": "dirty_overlay",
@@ -36,7 +36,7 @@
             "headCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            "blueprintGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "cortexGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphManifestGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphBodyGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
@@ -52,14 +52,14 @@
             "headCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            "blueprintGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "cortexGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphManifestGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphBodyGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
           }
         }
       ],
-      "expected": {"graphState": "dirty_overlay", "stable": true, "attempts": 1, "blueprintClass": "committed_snapshot", "blueprintUsable": true}
+      "expected": {"graphState": "dirty_overlay", "stable": true, "attempts": 1, "cortexClass": "committed_snapshot", "cortexUsable": true}
     },
     {
       "name": "stale_snapshot",
@@ -69,7 +69,7 @@
             "headCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            "blueprintGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "cortexGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphManifestGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphBodyGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
@@ -79,14 +79,14 @@
             "headCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            "blueprintGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "cortexGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphManifestGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphBodyGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
           }
         }
       ],
-      "expected": {"graphState": "stale_snapshot", "stable": true, "attempts": 1, "blueprintClass": "stale_snapshot", "blueprintUsable": true}
+      "expected": {"graphState": "stale_snapshot", "stable": true, "attempts": 1, "cortexClass": "stale_snapshot", "cortexUsable": true}
     },
     {
       "name": "missing_snapshot",
@@ -97,7 +97,7 @@
           "after": {"headCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"}
         }
       ],
-      "expected": {"graphState": "missing_snapshot", "stable": true, "attempts": 1, "blueprintClass": "unknown", "blueprintUsable": false}
+      "expected": {"graphState": "missing_snapshot", "stable": true, "attempts": 1, "cortexClass": "unknown", "cortexUsable": false}
     },
     {
       "name": "partial_reindex_manifest_body_mismatch",
@@ -107,7 +107,7 @@
             "headCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            "blueprintGeneration": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            "cortexGeneration": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
             "graphManifestGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphBodyGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
@@ -117,14 +117,14 @@
             "headCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            "blueprintGeneration": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+            "cortexGeneration": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
             "graphManifestGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphBodyGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
           }
         }
       ],
-      "expected": {"graphState": "partial_reindex", "stable": true, "attempts": 1, "blueprintClass": "unknown", "blueprintUsable": false}
+      "expected": {"graphState": "partial_reindex", "stable": true, "attempts": 1, "cortexClass": "unknown", "cortexUsable": false}
     },
     {
       "name": "partial_reindex_body_published_before_manifest",
@@ -134,7 +134,7 @@
             "headCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            "blueprintGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "cortexGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphManifestGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphBodyGeneration": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
             "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
@@ -144,14 +144,14 @@
             "headCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            "blueprintGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "cortexGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphManifestGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphBodyGeneration": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
             "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
           }
         }
       ],
-      "expected": {"graphState": "partial_reindex", "stable": true, "attempts": 1, "blueprintClass": "unknown", "blueprintUsable": false}
+      "expected": {"graphState": "partial_reindex", "stable": true, "attempts": 1, "cortexClass": "unknown", "cortexUsable": false}
     },
     {
       "name": "concurrent_commit_and_skills_ingest_retries_to_one_epoch",
@@ -161,7 +161,7 @@
             "headCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "baseCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "manifestDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-            "blueprintGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "cortexGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphManifestGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "graphBodyGeneration": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
             "skillsGeneration": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
@@ -171,7 +171,7 @@
             "headCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "baseCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
-            "blueprintGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "cortexGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
             "graphManifestGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
             "graphBodyGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
             "skillsGeneration": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
@@ -182,7 +182,7 @@
             "headCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "baseCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
-            "blueprintGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "cortexGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
             "graphManifestGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
             "graphBodyGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
             "skillsGeneration": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
@@ -192,14 +192,14 @@
             "headCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "baseCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             "manifestDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
-            "blueprintGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+            "cortexGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
             "graphManifestGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
             "graphBodyGeneration": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
             "skillsGeneration": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
           }
         }
       ],
-      "expected": {"graphState": "clean", "stable": true, "attempts": 2, "blueprintClass": "committed_snapshot", "blueprintUsable": true}
+      "expected": {"graphState": "clean", "stable": true, "attempts": 2, "cortexClass": "committed_snapshot", "cortexUsable": true}
     },
     {
       "name": "concurrent_update_exhausts_three_attempts",
@@ -208,7 +208,7 @@
         {"before": {"headCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}, "overlay": {"stable": true, "entries": []}, "after": {"headCommit": "cccccccccccccccccccccccccccccccccccccccc"}},
         {"before": {"headCommit": "cccccccccccccccccccccccccccccccccccccccc"}, "overlay": {"stable": true, "entries": []}, "after": {"headCommit": "dddddddddddddddddddddddddddddddddddddddd"}}
       ],
-      "expected": {"graphState": "concurrent_update", "stable": false, "attempts": 3, "blueprintClass": "unknown", "blueprintUsable": false}
+      "expected": {"graphState": "concurrent_update", "stable": false, "attempts": 3, "cortexClass": "unknown", "cortexUsable": false}
     }
   ]
 }
