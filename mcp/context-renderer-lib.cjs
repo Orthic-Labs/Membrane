@@ -151,13 +151,106 @@ function finalize(packet, doorChars = MAX_CONTEXT_CHARS) {
   return { body: sections.join("\n\n"), deliveredChars: used };
 }
 
+/**
+ * `ContextSessionV1` — the per-session delivery ledger (plan 2.3).
+ *
+ * Records what each session has already received so an unchanged turn can
+ * deliver zero static bytes, and so a self-loading host is never sent a
+ * duplicate of rules it loaded itself.
+ */
+class ContextSessionV1 {
+  constructor({ sessionId, client } = {}) {
+    this.schema = "orthic.context-session.v1";
+    this.sessionId = String(sessionId || "");
+    this.client = typedClient(client);
+    this.capabilities = {
+      loadsWorkspaceRules: loadsWorkspaceRules(this.client),
+      supportsResolvers: true,
+    };
+    this.delivered = [];
+    this.selectedRepoGenerations = {};
+  }
+
+  /** True when this exact content already reached this session. */
+  hasDelivered(id, sourceHash) {
+    return this.delivered.some(
+      (entry) => entry.id === id && entry.sourceHash === sourceHash,
+    );
+  }
+
+  /**
+   * Record a delivery. `native` means the host loaded it itself — zero bytes
+   * ride the prompt, but the fact is still recorded so we can prove it.
+   */
+  record(id, deliveryMode, sourceHash, bytes = 0) {
+    if (!DELIVERY_MODES.includes(deliveryMode)) {
+      throw new Error(
+        `deliveryMode must be one of ${DELIVERY_MODES.join("|")}, got ${deliveryMode}`,
+      );
+    }
+    const entry = { id: String(id), deliveryMode, sourceHash: String(sourceHash || ""), bytes };
+    this.delivered.push(entry);
+    return entry;
+  }
+
+  noteGeneration(repoId, generationId) {
+    if (repoId && generationId) this.selectedRepoGenerations[String(repoId)] = String(generationId);
+  }
+
+  toJSON() {
+    return {
+      schema: this.schema,
+      sessionId: this.sessionId,
+      client: this.client,
+      capabilities: this.capabilities,
+      delivered: this.delivered,
+      selectedRepoGenerations: this.selectedRepoGenerations,
+    };
+  }
+}
+
+/**
+ * Classify how each block should be delivered, and mark rule blocks a
+ * self-loading host already has as `native` so they are never serialized.
+ *
+ * Returns the ledger so a caller can persist it across turns.
+ */
+function applyDeliveryLedger(packet, session) {
+  const blocks = Array.isArray(packet?.blocks) ? packet.blocks : [];
+  for (const block of blocks) {
+    const id = String(block.id || "block");
+    const sourceHash = String(block.sourceHash || "");
+    const isRule = String(block.sourceKind || "") === "doc" && id.startsWith("rules:");
+
+    if (isRule && session.capabilities.loadsWorkspaceRules) {
+      block.text = "";
+      block.deliveryMode = "native";
+      session.record(id, "native", sourceHash, 0);
+      continue;
+    }
+    if (session.hasDelivered(id, sourceHash)) {
+      block.text = "";
+      block.deliveryMode = "reference";
+      block.dropReason = "already_delivered";
+      continue;
+    }
+    const bytes = typeof block.text === "string" ? Buffer.byteLength(block.text, "utf8") : 0;
+    const mode = bytes > 0 ? "inline" : "reference";
+    block.deliveryMode = mode;
+    session.record(id, mode, sourceHash, bytes);
+  }
+  return session;
+}
+
 module.exports = {
   CLIENT_IDENTITIES,
+  ContextSessionV1,
   DEFAULT_PACKET_CHAR_BUDGET,
   DELIVERY_MODES,
   MAX_CONTEXT_CHARS,
   MAX_PACKET_BYTES,
   SELF_LOADING_RULE_CLIENTS,
+  applyDeliveryLedger,
   digest,
   finalize,
   loadsWorkspaceRules,
