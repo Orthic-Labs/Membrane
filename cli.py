@@ -35,6 +35,8 @@ def main() -> int:
                       help="compile accepted root preferences into a bounded core artifact")
     mode.add_argument("--apply-from-manifest", type=Path, default=None,
                       help="skip LLM mining and atomically apply a reviewed manifest")
+    mode.add_argument("--insights", metavar="TRANSCRIPT", default=None,
+                      help="run Insights detectors on a transcript and print the JSON report (never writes to Membrane/Crypt/Taste)")
     mode.add_argument("--add-rule", metavar="RULE", default=None,
                       help="operator-authored single-rule add (skips LLM mining, still admission-gated); "
                            "requires --category; default record-type is operational_playbook (recall-gated)")
@@ -80,6 +82,15 @@ def main() -> int:
     # the journal so a stale manifest cannot route to the wrong batch.
     if args.apply_from_manifest:
         return taste_apply.apply_from_manifest(args.apply_from_manifest)
+
+    # ----- Gate 1b: Insights subcommand (plan 5.5) -----
+    # Never writes to Membrane, Crypt, or Taste. Prints JSON report to stdout.
+    if args.insights:
+        from insights import cli_insights  # noqa: E402
+        argv = [args.insights]
+        if args.quiet:
+            argv.append("--quiet")
+        return cli_insights(argv)
 
     if args.add_rule is not None:
         if not args.category:
