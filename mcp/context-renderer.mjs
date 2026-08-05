@@ -11,152 +11,29 @@
 // delivered and how — so "the host already has this" is a recorded fact rather
 // than an assumption. Native-loading hosts get rules marked delivered-by-host
 // and never serialized into the prompt.
+//
+// The rendering core (finalize, digest, constants) lives in a CommonJS module
+// so the Sentinel hook (CJS) can require it directly without a synchronous ESM
+// import. This ESM wrapper re-exports everything from the CJS lib plus the
+// ESM-only ContextSessionV1 class and applyDeliveryLedger. ONE implementation,
+// two loaders — the "two renderers" split is eliminated.
 
-import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const lib = require("./context-renderer-lib.cjs");
 
-/** Door cap for rendered content. */
-export const MAX_CONTEXT_CHARS = 30 * 1000;
-
-/** Contract default packet char budget (tools/lib/context_contracts.py rejects any other default). */
-export const DEFAULT_PACKET_CHAR_BUDGET = 30000;
-
-/** Max bytes of the serialized metadata block. */
-export const MAX_PACKET_BYTES = 64 * 1024;
-
-/**
- * The one typed client identity (plan convention 3).
- * Adapters emit exactly these; anything else degrades to "other".
- */
-export const CLIENT_IDENTITIES = Object.freeze([
-  "claude_code",
-  "codex",
-  "mcp",
-  "api_worker",
-  "other",
-]);
-
-/**
- * Clients whose host loads workspace rule files itself at session start.
- * Kept in sync with engine/federation/providers/rules.py:SELF_LOADING_RULE_CLIENTS.
- */
-export const SELF_LOADING_RULE_CLIENTS = Object.freeze(["claude_code", "codex"]);
-
-/** How a block's content reached the agent. */
-export const DELIVERY_MODES = Object.freeze(["native", "inline", "reference"]);
-
-export function digest(value) {
-  return `sha256:${createHash("sha256")
-    .update(typeof value === "string" ? value : JSON.stringify(value))
-    .digest("hex")}`;
-}
-
-/** Normalize any client string to the typed enum. */
-export function typedClient(value) {
-  const candidate = String(value || "").trim();
-  return CLIENT_IDENTITIES.includes(candidate) ? candidate : "other";
-}
-
-export function loadsWorkspaceRules(client) {
-  return SELF_LOADING_RULE_CLIENTS.includes(typedClient(client));
-}
-
-/**
- * Select blocks into the char budget and stamp per-block delivery accounting.
- *
- * Moved verbatim in behavior from the Sentinel hook; the ordering, budget
- * arithmetic, and accounting fields are unchanged so packets render
- * byte-identically. Only ownership moved.
- */
-export function finalize(packet, doorChars = MAX_CONTEXT_CHARS) {
-  const blocks = Array.isArray(packet.blocks) ? packet.blocks : [];
-  const budget =
-    packet.budget && typeof packet.budget === "object" ? packet.budget : (packet.budget = {});
-  const configured = Number.isInteger(budget.configuredPacketCharBudget)
-    ? budget.configuredPacketCharBudget
-    : Number.isInteger(budget.packetCharBudgetDefault)
-      ? budget.packetCharBudgetDefault
-      : DEFAULT_PACKET_CHAR_BUDGET;
-  const effective = Math.max(0, Math.min(configured, doorChars));
-  budget.packetCharBudgetDefault = DEFAULT_PACKET_CHAR_BUDGET;
-  budget.configuredPacketCharBudget = configured;
-  budget.effectivePacketCharBudget = effective;
-
-  // Highest priority first, stable within a priority so the same packet always
-  // renders the same way (the cache prefix depends on it).
-  const order = blocks
-    .map((block, index) => ({ block, index }))
-    .sort(
-      (left, right) =>
-        Number(right.block.priority || 0) - Number(left.block.priority || 0) ||
-        left.index - right.index,
-    );
-
-  const sections = [];
-  let used = 0;
-  for (const { block } of order) {
-    const text = typeof block.text === "string" ? block.text.trim() : "";
-    const resolver = typeof block.resolver === "string" ? block.resolver.trim() : "";
-    let deliveryClass = "metadata_only";
-    let dropReason = resolver ? "not_selected" : "missing_resolver";
-    let deliveredChars = 0;
-
-    if (text) {
-      const fragment = `--- ${block.id || "block"} (${block.provider || "federated"}) ---\n${text}`;
-      const candidate = (sections.length ? "\n\n" : "") + fragment;
-      if (used + candidate.length <= effective) {
-        sections.push(fragment);
-        used += candidate.length;
-        deliveredChars = candidate.length;
-        deliveryClass = "rendered";
-        dropReason = "none";
-      } else {
-        dropReason = "packet_budget_exceeded";
-        if (resolver) deliveryClass = "resolver_backed";
-      }
-    } else if (resolver) {
-      deliveryClass = "resolver_backed";
-      dropReason = "none";
-    }
-
-    const selectedTokens = Number(block.selectedTokens ?? block.estimatedTokens ?? 0) || 0;
-    Object.assign(block, {
-      deliveryStage: "finalized",
-      deliveryClass,
-      selectedTokens,
-      allottedTokens: Number(block.allottedTokens ?? selectedTokens) || 0,
-      renderedTokens: deliveredChars ? Math.ceil(deliveredChars / 4) : 0,
-      deliveredChars,
-      dropReason,
-    });
-  }
-
-  const accounting = {};
-  for (const block of blocks) {
-    const provider = String(block.provider || "federated");
-    const row =
-      accounting[provider] ||
-      (accounting[provider] = {
-        deliveryStage: "finalized",
-        selectedTokens: 0,
-        renderedTokens: 0,
-        deliveredChars: 0,
-        reasons: [],
-      });
-    row.selectedTokens += Number(block.selectedTokens || 0);
-    row.renderedTokens += Number(block.renderedTokens || 0);
-    row.deliveredChars += Number(block.deliveredChars || 0);
-    row.reasons.push(String(block.dropReason || "none"));
-  }
-  for (const row of Object.values(accounting)) {
-    const unique = [...new Set(row.reasons)];
-    delete row.reasons;
-    row.dropReason = unique.length === 1 ? unique[0] : "multiple";
-  }
-  if (Object.keys(accounting).length) packet.providerAccounting = accounting;
-  else delete packet.providerAccounting;
-
-  return { body: sections.join("\n\n"), deliveredChars: used };
-}
+// Re-export the core rendering surface. The tests import from here;
+// the Sentinel hook requires the .cjs directly.
+export const MAX_CONTEXT_CHARS = lib.MAX_CONTEXT_CHARS;
+export const DEFAULT_PACKET_CHAR_BUDGET = lib.DEFAULT_PACKET_CHAR_BUDGET;
+export const MAX_PACKET_BYTES = lib.MAX_PACKET_BYTES;
+export const CLIENT_IDENTITIES = lib.CLIENT_IDENTITIES;
+export const SELF_LOADING_RULE_CLIENTS = lib.SELF_LOADING_RULE_CLIENTS;
+export const DELIVERY_MODES = lib.DELIVERY_MODES;
+export const digest = lib.digest;
+export const typedClient = lib.typedClient;
+export const loadsWorkspaceRules = lib.loadsWorkspaceRules;
+export const finalize = lib.finalize;
 
 /**
  * `ContextSessionV1` — the per-session delivery ledger (plan 2.3).
