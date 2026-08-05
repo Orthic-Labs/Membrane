@@ -19,7 +19,7 @@ const PHASES = new Set(["baseline", "source", "mac", "windows", "final"]);
 const SOURCE_PROOF = {
   F01: ["membrane"], F02: ["membrane"], F03: ["membrane", "cortex"], F04: ["cortex"], F05: ["morph"],
   F06: ["engine"], F07: ["engine"], F08: ["membrane", "engine"], F09: ["membrane", "engine"], F10: ["engine"],
-  F11: ["engine", "cortex"], F12: ["membrane", "engine", "sync"], F13: ["m0"], F14: ["ccx"], F15: ["sentinel"], F16: ["sentinel"], F17: ["sentinel"], F18: ["engine"],
+  F11: ["engine", "cortex"], F12: ["membrane", "engine", "sync"], F13: ["m0"], F14: ["ccx"], F15: ["forge"], F16: ["forge"], F17: ["forge"], F18: ["engine"],
   F19: ["engine"], F20: ["engine"], F21: ["membrane"], C01: ["engine"], C02: ["cortex"], C03: ["benchmark"],
   C04: ["engine", "cortex"], C05: ["engine"], C06: ["engine", "cortex"], C07: ["engine"], C08: ["membrane"],
   C09: ["membrane"], C10: ["capability"], C11: ["rollout"], C12: ["membrane"], C13: ["membrane", "engine"], C14: ["morph"],
@@ -218,7 +218,7 @@ function sourceSuites(ids) {
   if (ids.includes("C11")) add("rollout", "node", ["--test", join(membraneRoot, "mcp", "rollout.test.mjs")], root);
   if (ids.includes("C16")) add("sync", join(root, ".venv-tools", "bin", "python"), ["-m", "unittest", "tools.pipelines.memory.test_sync"], root);
   if (ids.includes("C14")) add("morph", "node", [join(membraneRoot, "scripts", "run-morph-installed-current.mjs")], root);
-  if (ids.some((id) => /^F1[5-8]$/.test(id))) add("sentinel", "pnpm", ["--dir", join(root, "sentinel"), "test"], root);
+  if (ids.some((id) => /^F1[5-8]$/.test(id))) add("forge", "pnpm", ["--dir", join(root, "forge"), "test"], root);
   if (ids.some((id) => ["F07", "F08", "F09", "F10", "F11", "F18", "F19", "F20", "C01", "C04", "C05", "C06", "C07", "C13"].includes(id))) add("engine", "cargo", ["check", "--manifest-path", join(membraneRoot, "engine", "Cargo.toml"), "--workspace", "--all-targets"], root);
   if (ids.some((id) => ["F03", "F04", "F11", "C02", "C04", "C05", "C06", "C07"].includes(id))) add("cortex", "pnpm", ["--dir", join(root, "cortex"), "test:all"], root);
   if (ids.some((id) => ["F05", "F12", "C14"].includes(id))) add("morph", join(root, ".venv-tools", "bin", "python"), ["-m", "pytest", join(root, "morph")], root);

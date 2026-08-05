@@ -20,7 +20,7 @@ const sha = (value) => createHash("sha256").update(value).digest("hex");
 // every case is a literal transcription of the fixture's own `failure` column — the documented
 // pre-fix input — not bytes read from an actual checkout of a historical commit. Reproducing the
 // real historical behavior would require checking out an old commit of 5 different
-// language runtimes (Rust engine, JS membrane/cortex, Python sentinel/morph) and rebuilding each,
+// language runtimes (Rust engine, JS membrane/cortex, Python forge/morph) and rebuilding each,
 // which this workspace's primary-checkout-only / no-worktree-without-approval rule forbids doing
 // in place, and which a temporary worktree could only do with Adrian's explicit sign-off. So
 // `baseline_red` here proves "the documented failure input fails the current validator", not
@@ -71,7 +71,7 @@ const probes = {
     current: { before: { authority: "A1", source_refs: ["source-1"] }, after: { authority: "A1", source_refs: ["source-1"] } },
     valid: (value) => JSON.stringify(value.before) === JSON.stringify(value.after),
   },
-  "sentinel-mcp-output-schema": {
+  "forge-mcp-output-schema": {
     baseline: { structured_valid: false },
     current: { structured_valid: true },
     valid: (value) => value.structured_valid === true,
@@ -91,7 +91,7 @@ const suites = {
   // "current_green" for that fixture was gated on a suite that never actually exercised the fix.
   membrane: [process.execPath, ["--test", join(membraneRoot, "mcp/project-registry.test.mjs"), join(membraneRoot, "mcp/repository-catalog.test.mjs")], workspaceRoot],
   cortex: ["pnpm", ["--dir", join(workspaceRoot, "cortex"), "test:all"], workspaceRoot],
-  sentinel: ["pnpm", ["--dir", join(workspaceRoot, "sentinel"), "test"], workspaceRoot],
+  forge: ["pnpm", ["--dir", join(workspaceRoot, "forge"), "test"], workspaceRoot],
   morph: [join(workspaceRoot, ".venv-tools/bin/python"), ["-m", "pytest", join(workspaceRoot, "morph/tests")], workspaceRoot],
 };
 

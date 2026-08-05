@@ -28,7 +28,7 @@ CAP_BYTES = 1_500_000  # 1.5 MB hard ceiling on inline text; never truncates nor
 
 # Plan convention 3: the one typed client identity, shared by every adapter and
 # telemetry surface. Adapters emit exactly these strings (see
-# sentinel/hooks/membrane-context.js and hooks/claude-code/tool-receipt.js);
+# forge/hooks/membrane-context.js and hooks/claude-code/tool-receipt.js);
 # anything else degrades to "other" at the adapter rather than inventing a new
 # name here.
 CLIENT_IDENTITIES = frozenset({"claude_code", "codex", "mcp", "api_worker", "other"})

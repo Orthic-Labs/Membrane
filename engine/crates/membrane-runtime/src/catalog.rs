@@ -662,7 +662,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let crypt_path = dir.path().join("crypt-engine.db");
         let catalog_path = dir.path().join("catalog.db");
-        std::fs::write(&crypt_path, b"CRYPT_DB_SENTINEL").unwrap();
+        std::fs::write(&crypt_path, b"CRYPT_DB_FORGE").unwrap();
 
         let catalog = ContextCatalog::open(&catalog_path).unwrap();
         let _ = catalog; // touch handle
@@ -670,7 +670,7 @@ mod tests {
         // Crypt DB must be byte-identical — the catalog never opened it.
         assert_eq!(
             std::fs::read(&crypt_path).unwrap(),
-            b"CRYPT_DB_SENTINEL"
+            b"CRYPT_DB_FORGE"
         );
         // Catalog DB exists and has the v1 schema stamp.
         assert!(catalog_path.exists());

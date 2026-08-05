@@ -15,7 +15,7 @@
 // problem it solves; the routing is advisory and always yields a decision the
 // caller can ignore.
 
-// The routing logic lives in a CommonJS module so the Sentinel PreToolUse hook
+// The routing logic lives in a CommonJS module so the Forge PreToolUse hook
 // (CJS) can require it without a synchronous ESM import. This ESM wrapper
 // re-exports it as the typed/tested surface; the MCP server and the E2E tests
 // import from here, the live hook requires the .cjs. ONE implementation.
@@ -42,7 +42,7 @@ const {
 
 /**
  * Decide how a tool call should be routed. Delegates to the shared CJS
- * implementation so the live Sentinel hook and this ESM surface run identical
+ * implementation so the live Forge hook and this ESM surface run identical
  * logic.
  *
  * @returns {{decision:string, reason:string, suggestion?:string}}

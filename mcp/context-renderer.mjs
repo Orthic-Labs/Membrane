@@ -1,7 +1,7 @@
 // Membrane-owned context renderer and delivery ledger.
 //
-// Plan 2.2 (defect 27): rendering used to live in `sentinel/hooks/membrane-context.js`
-// — Sentinel's repo owned the shape of Membrane's own output. That ownership
+// Plan 2.2 (defect 27): rendering used to live in `forge/hooks/membrane-context.js`
+// — Forge's repo owned the shape of Membrane's own output. That ownership
 // inversion produced two renderers in practice: tests passed against one
 // adapter while the other behaved differently, and only one of them was ever
 // exercised by the packet contract. This module is the single renderer; host
@@ -13,7 +13,7 @@
 // and never serialized into the prompt.
 //
 // The rendering core (finalize, digest, constants) lives in a CommonJS module
-// so the Sentinel hook (CJS) can require it directly without a synchronous ESM
+// so the Forge hook (CJS) can require it directly without a synchronous ESM
 // import. This ESM wrapper re-exports everything from the CJS lib plus the
 // ESM-only ContextSessionV1 class and applyDeliveryLedger. ONE implementation,
 // two loaders — the "two renderers" split is eliminated.
@@ -23,7 +23,7 @@ const require = createRequire(import.meta.url);
 const lib = require("./context-renderer-lib.cjs");
 
 // Re-export the core rendering surface. The tests import from here;
-// the Sentinel hook requires the .cjs directly.
+// the Forge hook requires the .cjs directly.
 export const MAX_CONTEXT_CHARS = lib.MAX_CONTEXT_CHARS;
 export const DEFAULT_PACKET_CHAR_BUDGET = lib.DEFAULT_PACKET_CHAR_BUDGET;
 export const MAX_PACKET_BYTES = lib.MAX_PACKET_BYTES;
@@ -36,7 +36,7 @@ export const loadsWorkspaceRules = lib.loadsWorkspaceRules;
 export const finalize = lib.finalize;
 
 // Re-export the delivery ledger (plan 2.3). The class and applyDeliveryLedger
-// live in the CJS lib so the Sentinel hook can require them directly.
+// live in the CJS lib so the Forge hook can require them directly.
 export const ContextSessionV1 = lib.ContextSessionV1;
 export const applyDeliveryLedger = lib.applyDeliveryLedger;
 

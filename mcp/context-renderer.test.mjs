@@ -1,7 +1,7 @@
 // Contract tests for the Membrane-owned context renderer (plan 2.2) and the
 // ContextSessionV1 delivery ledger (plan 2.3).
 //
-// These assert behavior that used to live in Sentinel's repo. The point of
+// These assert behavior that used to live in Forge's repo. The point of
 // moving it is that ONE renderer is under test — previously each adapter could
 // drift from the other and only one was ever covered.
 

@@ -2665,13 +2665,13 @@ impl MemDb {
     }
 
     /// TOOL-ORIGIN evidence only (duration-bearing tool_receipt/tool_receipt_failed events). This
-    /// is the sole read path Sentinel time-accounting may use: mirrors `_for_taste`'s isolation --
+    /// is the sole read path Forge time-accounting may use: mirrors `_for_taste`'s isolation --
     /// scope is fixed by which function is called, never by caller-supplied data.
-    pub fn query_observable_events_for_sentinel(
+    pub fn query_observable_events_for_forge(
         &self,
         filter: &ObservableEventQuery,
     ) -> Result<ObservableEventQueryResult, ContextTelemetryError> {
-        self.query_observable_events(filter, ObservableOriginScope::SentinelToolOnly)
+        self.query_observable_events(filter, ObservableOriginScope::ForgeToolOnly)
     }
 
     /// Shared read path behind the two public entry points above. Private so external callers can
@@ -2833,9 +2833,9 @@ enum ObservableOriginScope {
     TasteUserOnly,
     /// Morph Insights: the full authorized stream, every frozen origin value.
     InsightsFullStream,
-    /// Sentinel time-accounting: tool-origin evidence only (tool_receipt/tool_receipt_failed
+    /// Forge time-accounting: tool-origin evidence only (tool_receipt/tool_receipt_failed
     /// events carrying duration_ms), never user/assistant content.
-    SentinelToolOnly,
+    ForgeToolOnly,
 }
 
 impl ObservableOriginScope {
@@ -2843,7 +2843,7 @@ impl ObservableOriginScope {
         match self {
             ObservableOriginScope::TasteUserOnly => origin == "user",
             ObservableOriginScope::InsightsFullStream => true,
-            ObservableOriginScope::SentinelToolOnly => origin == "tool",
+            ObservableOriginScope::ForgeToolOnly => origin == "tool",
         }
     }
 }
@@ -3388,7 +3388,7 @@ mod lifecycle_intent_tests {
     }
 
     #[test]
-    fn sentinel_scope_returns_only_tool_origin_rows_with_their_duration() {
+    fn forge_scope_returns_only_tool_origin_rows_with_their_duration() {
         let db = MemDb::open_in_memory();
         let session = "session-time-accounting";
         let mut tool_call = observable_event(
@@ -3418,14 +3418,14 @@ mod lifecycle_intent_tests {
             limit: 100,
             ..Default::default()
         };
-        let sentinel = db.query_observable_events_for_sentinel(&filter).unwrap();
+        let forge = db.query_observable_events_for_forge(&filter).unwrap();
         assert_eq!(
-            sentinel.rows.len(),
+            forge.rows.len(),
             1,
-            "sentinel time-accounting scope must exclude the non-tool-origin row"
+            "forge time-accounting scope must exclude the non-tool-origin row"
         );
-        assert_eq!(sentinel.rows[0].origin, "tool");
-        assert_eq!(sentinel.rows[0].duration_ms, Some(1_234));
+        assert_eq!(forge.rows[0].origin, "tool");
+        assert_eq!(forge.rows[0].duration_ms, Some(1_234));
 
         let taste = db.query_observable_events_for_taste(&filter).unwrap();
         assert!(

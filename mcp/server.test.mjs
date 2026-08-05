@@ -377,7 +377,7 @@ try {
     assert.equal(invalidById.get(id).result.isError, true, `invalid request ${id} returns an invalid-params tool result`);
     assert.match(invalidById.get(id).result.content[0].text, /Input validation error/i);
   }
-  assert.equal(federateHits, 0, "invalid tool arguments do not invoke the planner sentinel");
+  assert.equal(federateHits, 0, "invalid tool arguments do not invoke the planner forge");
   const tracedContext = await rpc([
     { jsonrpc: "2.0", id: 20, method: "server/discover", params: { _meta: modernMeta } },
     {
@@ -403,7 +403,7 @@ try {
   assert.equal(federateHeaders["x-rightcontext-trace"], "4bf92f3577b34da6a3ce929d0e0e4736");
   assert.equal(federateHeaders["x-membrane-version"], "membrane-mcp/1");
   assert.equal(federateHeaders["x-rightcontext-version"], "rightcontext-mcp/1");
-  assert.equal(federateHits, 1, "only valid context calls invoke the planner sentinel");
+  assert.equal(federateHits, 1, "only valid context calls invoke the planner forge");
 } finally {
   await new Promise((resolve) => federate.close(resolve));
 }

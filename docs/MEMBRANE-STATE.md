@@ -4,7 +4,7 @@
 
 ## Repository posture (honest)
 
-This tree is an **internal mirror / workspace-coupled checkout**, not a self-contained public product. Live planner hooks, Crypt DB paths, federation providers, and install binding assume the Damned Designs studio workspace (`tools/`, shared hooks, launchd/Task Scheduler wiring). Public MCP surface names use Membrane; RightContext remains a compatibility alias in headers, telemetry tokens, and historical evidence. Capability truth is generated from `mcp/server.mjs`, `sentinel/hooks/membrane-capability-matrix.json`, and `docs/rightcontext/federation-freeze-v1.json` by `mcp/capability-inventory.mjs`; exercised path: `mcp/capability-inventory.test.mjs`.
+This tree is an **internal mirror / workspace-coupled checkout**, not a self-contained public product. Live planner hooks, Crypt DB paths, federation providers, and install binding assume the Damned Designs studio workspace (`tools/`, shared hooks, launchd/Task Scheduler wiring). Public MCP surface names use Membrane; RightContext remains a compatibility alias in headers, telemetry tokens, and historical evidence. Capability truth is generated from `mcp/server.mjs`, `forge/hooks/membrane-capability-matrix.json`, and `docs/rightcontext/federation-freeze-v1.json` by `mcp/capability-inventory.mjs`; exercised path: `mcp/capability-inventory.test.mjs`.
 
 ## Cross-provider scores — lane policy (P1)
 
@@ -460,7 +460,7 @@ policy/cohort activation → wholly fresh replay. `crypt-daily` stays disabled a
   real failure would authorize a reviewed rollback-selection commit, state rejection record, and
   live exercise.
 - **RC-3.2-PHASE0 — FRESH REPLAY FAILED / CURRENT REPAIR AWAITING MAC EVIDENCE:** commit
-  `750a51ba13f74124ce792f69c24aaf33ac4abd63` made frozen-failure sentinels authoritative.
+  `750a51ba13f74124ce792f69c24aaf33ac4abd63` made frozen-failure forges authoritative.
   Installed Gate-1/2 edges are closed and the candidate policy is active. Three fresh `815cd511`
   runs are frozen failed/non-resumable at 7/60, 3/60, and 33/60 cells; the exact content-free
   bindings live in `rightcontext-evidence/g3/activation-815cd511/windows/activation-replay-v1.json`.
@@ -529,7 +529,7 @@ flowchart TB
 | 5 | **Link-graph recall** — `links(src,dst)` table (schema v8) from `[[wikilinks]]`; extract-on-write + backfill; shared one-hop recall at a discounted tier, depth 1, at most 20%/8 hits. The old federation merge is removed. | LIVE (333 edges at validation) | `memdb.rs` (links table), `store.rs` (`linked_neighbors`, `backfill_links`, `recall_scored_detailed`) | [plan](plans/2026-07-15-rightcontext-link-graph-recall.md) |
 | 6 | **Reversible governance** — low-effectiveness never-used rows move to schema-v10 quarantine with complete row preservation; transactional list/restore CLI and API; duplicate pruning remains permanent | LIVE | `memdb.rs`, `dream.rs`, `serve.rs`, `main.rs` | completion record in the cold-chat handoff |
 | 7 | **Codex hook parity** — `brief@local-brief` 1.0.4, one prompt hook, active-repo resolution, sealed memory/skill delivery, fail-open legacy path, no duplicate brief-policy injection | LIVE | `tools/codex-brief-plugin/recall_planner.js`, source plugin `hooks.json` | completion record in the cold-chat handoff |
-| 8 | **Membrane-owned observable event ledger** — frozen `ObservableEventV1` ingress, content-free host/tool receipts, append-only SQLite persistence, explicit ingress-unavailable status | PARTIAL / active source path; installed service readback pending | `engine/crates/crypt/src/context_telemetry.rs`, `mcp/server.mjs`, `sentinel/hooks/observable-ingress.js`, `sentinel/hooks/claude-code/tool-receipt.js` | Fable H2/L1 implementation |
+| 8 | **Membrane-owned observable event ledger** — frozen `ObservableEventV1` ingress, content-free host/tool receipts, append-only SQLite persistence, explicit ingress-unavailable status | PARTIAL / active source path; installed service readback pending | `engine/crates/crypt/src/context_telemetry.rs`, `mcp/server.mjs`, `forge/hooks/observable-ingress.js`, `forge/hooks/claude-code/tool-receipt.js` | Fable H2/L1 implementation |
 | — | **`RIGHTCONTEXT_MODE=on` flip** + flip-safety gate (degraded packet → legacy fallback) | **HISTORICAL 2026-07-16 FLIP, SUPERSEDED** — current machine uses the atomically activated candidate/on/50% policy; fail-safe loading and candidate fallback remain intact | `recall_planner.py` | memory `rightcontext-mode-on-flipped-2026-07-16` |
 
 **Operational note (P0 fix 2026-07-16, Sol audit):** between cutover and 2026-07-16 evening, the federation memory lane recalled from the **global corpus only** — clients send raw filesystem paths as scope and `/memory-candidates` did not normalize them, so project-scoped rows never matched (verified by live probe). Fixed via `canonical_scope_chain` (scope.rs) applied inside `memory_candidates_payload`; regression tests + redeploy same day. On-mode memory deliveries before the fix under-represented project memories.

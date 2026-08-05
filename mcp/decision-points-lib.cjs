@@ -1,7 +1,7 @@
 'use strict';
 // Single source of truth for the decision-point routing logic (plan 2.6).
 //
-// This file is CommonJS so the Sentinel PreToolUse hook (CJS) can require it
+// This file is CommonJS so the Forge PreToolUse hook (CJS) can require it
 // directly without a synchronous ESM import (which Node forbids). The ESM
 // wrapper `decision-points.mjs` re-exports the same values for the typed
 // test surface and MCP server. Both consumers share ONE implementation so a

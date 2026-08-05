@@ -27,7 +27,7 @@
 ## Mandatory systems
 - Use Crypt shims for durable memory; treat runtime storage as truth & Markdown as export.
 - Honor Membrane packets & report typed degradation without overstating enforcement.
-- Use Sentinel assess through close for architecture, non-obvious debugging, repeated failures, or signoff; locked-domain paths make it mandatory on evidence.
+- Use Forge assess through close for architecture, non-obvious debugging, repeated failures, or signoff; locked-domain paths make it mandatory on evidence.
 - Let rhook enforce Brief, Minimize, model caps, & safety guards; debug gates instead of bypassing them.
 - Run `tools/pipelines/hooks/status.py` for unhealthy context or hooks.
 - Run matching thread guard before substantial work; at CRITICAL, start a fresh task unless Adrian directs continuation after seeing its result.

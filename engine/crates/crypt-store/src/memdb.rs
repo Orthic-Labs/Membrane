@@ -1940,7 +1940,7 @@ impl MemDb {
         self.event_db_path.as_deref().map(PathBuf::as_path)
     }
 
-    /// Probe the live SQLite connection without waiting behind another request. The sentinel query
+    /// Probe the live SQLite connection without waiting behind another request. The forge query
     /// verifies both connection execution and the required primary table; an empty table is healthy.
     pub fn health_probe(&self) -> MemDbProbe {
         let (conn, recovered_poison) = match self.conn.try_lock() {
@@ -2879,7 +2879,7 @@ mod tests {
     }
 
     #[test]
-    fn health_probe_recovers_a_poisoned_connection_after_a_successful_sentinel() {
+    fn health_probe_recovers_a_poisoned_connection_after_a_successful_forge() {
         let db = MemDb::open_in_memory();
         let connection = Arc::clone(&db.conn);
         let poisoner = std::thread::spawn(move || {
@@ -2892,12 +2892,12 @@ mod tests {
         assert_eq!(db.health_probe(), MemDbProbe::Ok);
         assert!(
             !db.conn.is_poisoned(),
-            "a successful sentinel must clear recovered mutex poison"
+            "a successful forge must clear recovered mutex poison"
         );
     }
 
     #[test]
-    fn health_probe_keeps_poison_when_the_recovered_sentinel_fails() {
+    fn health_probe_keeps_poison_when_the_recovered_forge_fails() {
         let db = MemDb::open_in_memory();
         db.lock().execute("DROP TABLE memories", []).unwrap();
         let connection = Arc::clone(&db.conn);
@@ -2911,7 +2911,7 @@ mod tests {
         assert_eq!(db.health_probe(), MemDbProbe::Error);
         assert!(
             db.conn.is_poisoned(),
-            "a failed sentinel must not clear mutex poison"
+            "a failed forge must not clear mutex poison"
         );
     }
 

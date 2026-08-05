@@ -14,7 +14,7 @@ const sourceSync = join(root, "claudecodeX", "mac", "sync-claude-profile.py");
 const installedSync = join(homedir(), ".local", "share", "claudecodex", "mac", "sync-claude-profile.py");
 const sourceLauncher = join(root, "claudecodeX", "bin", "ccx");
 const installedLauncher = join(homedir(), "bin", "ccx");
-const contextHook = join(root, "sentinel", "hooks", "claude-code", "context.js");
+const contextHook = join(root, "forge", "hooks", "claude-code", "context.js");
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 const fileHash = (path) => sha256(readFileSync(path));
 const parseLines = (text) => text.split(/\r?\n/).filter(Boolean).flatMap((line) => {

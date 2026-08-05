@@ -144,11 +144,11 @@ fn catalog_opens_at_separate_path_and_does_not_touch_crypt_db() {
     let dir = tempfile::tempdir().unwrap();
     let crypt_path = dir.path().join("crypt-engine.db");
     let catalog_path = dir.path().join("catalog.db");
-    let sentinel = b"CRYPT_DB_SENTINEL_BYTES";
-    std::fs::write(&crypt_path, sentinel).unwrap();
+    let forge = b"CRYPT_DB_FORGE_BYTES";
+    std::fs::write(&crypt_path, forge).unwrap();
 
     let _catalog = ContextCatalog::open(&catalog_path).unwrap();
-    assert_eq!(std::fs::read(&crypt_path).unwrap(), sentinel);
+    assert_eq!(std::fs::read(&crypt_path).unwrap(), forge);
     let probe = Connection::open(&catalog_path).unwrap();
     let version: i64 = probe
         .query_row("PRAGMA user_version", [], |r| r.get(0))

@@ -9,7 +9,7 @@ import test from "node:test";
 
 import { PASS, ROUTE, SUGGEST, fallbackOmission, routeToolCall } from "./decision-points.mjs";
 
-const REPOS = ["cortex", "membrane", "sentinel", "morph", "heardright"];
+const REPOS = ["cortex", "membrane", "forge", "morph", "heardright"];
 const opts = { knownRepos: REPOS, currentRepo: "membrane" };
 
 function grep(pattern) {

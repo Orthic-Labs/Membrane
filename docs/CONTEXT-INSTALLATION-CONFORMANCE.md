@@ -14,7 +14,7 @@ UUIDs in its evidence. Windows and macOS are platform fixtures, not special iden
 - equal winner-map digests for every installation whose workspace membership interval was active at
   the snapshot cutoff;
 - zero fresh canonical lifecycle reconciliation gaps;
-- complete privacy-sentinel rejection with zero leaks;
+- complete privacy-forge rejection with zero leaks;
 - prompt p99 computed from the supplied samples and strictly below 1,000 ms;
 - `crypt-daily` absent, disabled, or unloaded; and
 - an ad-hoc snapshot declared `manual_unscheduled`.

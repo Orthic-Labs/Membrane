@@ -1,10 +1,10 @@
 'use strict';
 // Single source of truth for the rendering core (plan 2.2).
 //
-// The Membrane-owned renderer and the Sentinel hook MUST produce byte-identical
+// The Membrane-owned renderer and the Forge hook MUST produce byte-identical
 // output for the same packet. Both import/require this module rather than
 // carrying their own copy. The ESM wrapper `context-renderer.mjs` re-exports
-// everything here plus the ESM-only ContextSessionV1 class; the Sentinel hook
+// everything here plus the ESM-only ContextSessionV1 class; the Forge hook
 // (CJS) requires this directly.
 const { createHash } = require('node:crypto');
 
@@ -57,7 +57,7 @@ function loadsWorkspaceRules(client) {
 /**
  * Select blocks into the char budget and stamp per-block delivery accounting.
  *
- * This is the ONLY renderer; both the Membrane ESM surface and the Sentinel
+ * This is the ONLY renderer; both the Membrane ESM surface and the Forge
  * CJS hook delegate here so they can never drift.
  */
 function finalize(packet, doorChars = MAX_CONTEXT_CHARS) {
