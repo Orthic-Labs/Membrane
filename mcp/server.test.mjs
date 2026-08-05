@@ -443,3 +443,38 @@ assert.ok(Array.isArray(fused.repos), "scope=workspace returns a per-repository 
 assert.ok(fused.repos.length >= 2, `workspace fan-out reaches the workspace root and a child repo, got ${fused.repos.length}`);
 assert.ok(fused.repos.some((entry) => entry.repoId !== null), "fan-out produced a resolved repo entry");
 assert.doesNotMatch(JSON.stringify(fused.repos), /ReferenceError/);
+
+// MBR-002 integration (SN-NODE-02): a read-only workspace caller must not be
+// able to invoke a mutating operation on a write-trusted child even though the
+// child binding alone claims write-trusted; effective privilege is the
+// monotone intersection, not the target's declared level.
+const mbr2Root = await mkdtemp(join(tmpdir(), "membrane-mbr002-"));
+await mkdir(join(mbr2Root, "child", ".git"), { recursive: true });
+const mbr2Workspace = await realpath(mbr2Root);
+const mbr2Child = await realpath(join(mbr2Root, "child"));
+const mbr2Catalog = await buildRepositoryCatalog(mbr2Workspace);
+const mbr2WsEntry = mbr2Catalog.repositories.find((entry) => entry.role === "workspace-root");
+const mbr2ChildEntry = mbr2Catalog.repositories.find((entry) => entry.role === "child-repository");
+assert.ok(mbr2WsEntry && mbr2ChildEntry, "MBR-002 fixture catalog has a workspace root and one child");
+const mbr2Registry = join(mbr2Root, "registry.json");
+await writeFile(mbr2Registry, JSON.stringify({
+  schema_version: 1,
+  bindings: {
+    [mbr2Workspace]: {
+      repository_id: mbr2WsEntry.repository_id, scope_id: mbr2WsEntry.scope_id, provider_config: {},
+      grant_policy: { level: "read-only", child_repository_ids: [mbr2ChildEntry.repository_id] },
+    },
+    [mbr2Child]: {
+      repository_id: mbr2ChildEntry.repository_id, scope_id: mbr2ChildEntry.scope_id, provider_config: {},
+      grant_policy: { level: "write-trusted", parent_repository_id: mbr2WsEntry.repository_id },
+    },
+  },
+}), "utf8");
+const mbr2Env = { MEMBRANE_PROJECT_REGISTRY: mbr2Registry, MEMBRANE_DURABILITY_MODE: "advisory", CRYPT_BIN: "/nonexistent/membrane-test-crypt-binary" };
+const mbr2Caller = { root: mbr2Workspace, repositoryId: mbr2WsEntry.repository_id, scopeId: mbr2WsEntry.scope_id };
+const mbr2Denied = await rpc([{
+  jsonrpc: "2.0", id: 80, method: "tools/call",
+  params: { name: "membrane_feedback", arguments: { repository: mbr2Child, caller: mbr2Caller, receiptId: "mbr2-child-feedback", outcome: "used" } },
+}], mbr2Env);
+assert.equal(mbr2Denied[0].result.isError, true, "read-only workspace caller must be denied a mutating child operation");
+assert.match(toolError(mbr2Denied[0]), /caller_not_authorized/);

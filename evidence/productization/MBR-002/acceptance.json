@@ -1,0 +1,9 @@
+{
+  "schema": "orthic.membrane-evidence.acceptance.v1",
+  "taskId": "MBR-002",
+  "acceptance": "A read-only workspace caller cannot invoke any mutating child operation even when the child binding is write-trusted.",
+  "status": "pass",
+  "verifiedBy": "node --test mcp/authorization.test.mjs mcp/server.test.mjs",
+  "observed": "authorizeTarget denies feedback/checkpoint with effective read-only; server integration returns caller_not_authorized",
+  "at": "2026-08-05T23:47:51.071435+00:00"
+}

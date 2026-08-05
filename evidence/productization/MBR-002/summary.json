@@ -1,0 +1,21 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-002",
+  "title": "Intersect caller, target, task, and installation authority",
+  "commit": "TBD",
+  "acceptanceStatus": "pass",
+  "envBlocked": true,
+  "envBlockedReason": "full pnpm test is red at baseline on pre-existing repo-catalog/scripts sibling-fixture tests outside MBR-002 allowlist",
+  "snippetRefs": [
+    "SN-NODE-02"
+  ],
+  "recipeRefs": [
+    "R02"
+  ],
+  "changedFiles": [
+    "mcp/authorization.mjs",
+    "mcp/authorization.test.mjs",
+    "mcp/server.mjs",
+    "mcp/server.test.mjs"
+  ]
+}

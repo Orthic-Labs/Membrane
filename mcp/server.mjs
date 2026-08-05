@@ -16,6 +16,7 @@ import { feedbackEvent, feedbackPolicy } from "./feedback-loop.mjs";
 import { eventDbFor, ProposalStore } from "./proposal-store.mjs";
 import { ScratchpadStore, WorkingContextStore } from "./working-context.mjs";
 import { mintScopeGrantV1 } from "./scope-grant-v1.mjs";
+import { intersectAuthority, permitsLevel } from "./authorization.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -27,6 +28,11 @@ const MAX_FEEDBACK_BYTES = 2 * 1024;
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMITS = { proposal: 12, checkpoint: 24, feedback: 48 };
 const rateWindows = new Map();
+// Installation-authority ceiling for MBR-002 monotone intersection. Until a
+// per-installation policy is derived, the platform admission cap is
+// write-proposed so it never caps a legitimate caller below its own declared
+// level, while still bounding an over-privileged registry claim.
+const INSTALLATION_AUTHORITY_LEVEL = "write-proposed";
 const scratchpadStore = new ScratchpadStore();
 const CALLER_SCHEMA = {
   type: "object",
@@ -151,10 +157,21 @@ function stableDescriptor(value) {
   return value;
 }
 function sameDescriptor(left, right) { return JSON.stringify(stableDescriptor(left)) === JSON.stringify(stableDescriptor(right)); }
-function permits(binding, action) {
-  const level = callerLevel(binding);
-  if (["context", "source_read", "checkpoint_load", "working_context_load", "temporal_fact_query", "scratchpad_load"].includes(action)) return ["read-only", "write-proposed", "write-trusted", "admin"].includes(level);
-  return ["write-proposed", "write-trusted", "admin"].includes(level);
+// MBR-002 / SN-NODE-02: effective privilege is the intersection of installation,
+// caller, target, child-grant, and task/session authority. When no explicit
+// task/session grant travels on the envelope, the caller's own level is the
+// task authority so an absent grant never cold-caps legitimate same-root work
+// below the caller's persisted level.
+function effectiveAuthorityFor(callerBinding, targetBinding, sameRootBinding, granted, taskGrantLevel) {
+  const callerLevel = callerBinding?.grant_policy?.level || "read-only";
+  const targetLevel = targetBinding?.grant_policy?.level || "read-only";
+  return intersectAuthority(
+    INSTALLATION_AUTHORITY_LEVEL,
+    callerLevel,
+    targetLevel,
+    sameRootBinding ? "admin" : (granted ? targetLevel : "read-only"),
+    taskGrantLevel || callerLevel,
+  );
 }
 function takeRate(binding, action) {
   const limit = RATE_LIMITS[action];
@@ -191,12 +208,20 @@ async function authorize(args, action) {
   // registry's persisted grant_policy.child_repository_ids explicitly names it AND the live
   // repository catalog agrees that target is actually a child of that same workspace. Every
   // other cross-root call keeps failing exactly as before.
-  if (!sameRootBinding && !(await hasCatalogChildGrant(callerBinding, binding))) throw new Error("cross_root_binding_denied");
+  let granted = sameRootBinding;
+  if (!sameRootBinding) {
+    granted = await hasCatalogChildGrant(callerBinding, binding);
+    if (!granted) throw new Error("cross_root_binding_denied");
+  }
   // The caller must accurately self-report ITS OWN identity -- checked against callerBinding
   // (the caller's persisted registry entry), not the target's, since a granted cross-repository
   // call intentionally has binding !== callerBinding.
   if (caller.repositoryId !== callerBinding.repository_id || caller.scopeId !== callerBinding.scope_id || !sameDescriptor(callerDescriptor(caller), callerBinding.scope_descriptor)) throw new Error("caller_scope_binding_denied");
-  if (!permits(binding, action)) throw new Error("caller_not_authorized");
+  // MBR-002 / SN-NODE-02: a read-only caller stays read-only even when the target
+  // binding claims a higher (e.g. write-trusted) level; effective privilege is the
+  // exhaustion/intersection, not the target's declared level alone.
+  const effectiveLevel = effectiveAuthorityFor(callerBinding, binding, sameRootBinding, granted, args.taskGrantLevel);
+  if (!permitsLevel(effectiveLevel, action)) throw new Error("caller_not_authorized");
   return binding;
 }
 

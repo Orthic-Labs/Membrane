@@ -1,0 +1,6 @@
+$ node --test mcp/authorization.test.mjs mcp/server.test.mjs
+# pass (EXIT=0); deterministic unit tests + end-to-end authorize() integration.
+# Full task command is `pnpm test`; at baseline it is red in this isolated
+# worktree on PRE-EXISTING, out-of-scope environmental tests (repo-catalog
+# repo-count drift; scripts sibling forge/cortex/docs fixtures). Those are
+# unrelated to MBR-002, so it is recorded env-blocked with acceptance pass.
