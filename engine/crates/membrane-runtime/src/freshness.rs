@@ -1,4 +1,4 @@
-//! One content-free freshness verdict for every RightContext consumer.
+//! One content-free freshness verdict for every Membrane consumer.
 //!
 //! The evaluator uses an epoch sandwich: snapshot/skills epoch A, a self-stable
 //! bounded working-tree overlay, then epoch B. A verdict is returned only when
@@ -49,7 +49,7 @@ pub struct FreshnessEpoch {
     pub head_commit: Option<String>,
     pub base_commit: Option<String>,
     pub manifest_digest: Option<String>,
-    pub blueprint_generation: Option<String>,
+    pub cortex_generation: Option<String>,
     pub graph_manifest_generation: Option<String>,
     pub graph_body_generation: Option<String>,
     pub skills_generation: Option<String>,
@@ -71,7 +71,7 @@ impl FreshnessEpoch {
                 "sha256:{:x}",
                 Sha256::digest(generation.as_bytes())
             )),
-            blueprint_generation: Some(generation.to_string()),
+            cortex_generation: Some(generation.to_string()),
             graph_manifest_generation: Some(generation.to_string()),
             graph_body_generation: Some(generation.to_string()),
             skills_generation: Some(skills.to_string()),
@@ -135,7 +135,7 @@ pub struct ProviderVerdict {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderVerdicts {
-    pub blueprint: ProviderVerdict,
+    pub cortex: ProviderVerdict,
     pub dirty_overlay: ProviderVerdict,
     pub skills: ProviderVerdict,
 }
@@ -158,9 +158,9 @@ pub struct FreshnessVerdict {
     pub graph_state: GraphState,
     pub head_commit: Option<String>,
     pub base_commit: Option<String>,
-    pub blueprint_base_commit: Option<String>,
+    pub cortex_base_commit: Option<String>,
     pub manifest_digest: Option<String>,
-    pub blueprint_generation: Option<String>,
+    pub cortex_generation: Option<String>,
     pub skills_generation: Option<String>,
     pub overlay_digest: String,
     pub overlay_count: usize,
@@ -181,7 +181,7 @@ pub fn source_barrier_receipt(
 ) -> serde_json::Value {
     let generation_id = contract_digest(
         verdict
-            .blueprint_generation
+            .cortex_generation
             .clone()
             .unwrap_or_else(|| digest_bytes(verdict.snapshot_id.as_bytes())),
     );
@@ -195,7 +195,7 @@ pub fn source_barrier_receipt(
         serde_json::json!({
             "head": verdict.head_commit,
             "base": verdict.base_commit,
-            "blueprint_base": verdict.blueprint_base_commit,
+            "cortex_base": verdict.cortex_base_commit,
             "generation": generation_id,
         })
         .to_string()
@@ -373,7 +373,7 @@ fn classify(
         .collect::<Vec<_>>();
 
     let generations = [
-        epoch.blueprint_generation.as_ref(),
+        epoch.cortex_generation.as_ref(),
         epoch.graph_manifest_generation.as_ref(),
         epoch.graph_body_generation.as_ref(),
     ];
@@ -382,7 +382,7 @@ fn classify(
         && generations.windows(2).all(|pair| pair[0] == pair[1]);
     let snapshot_present = epoch.manifest_digest.is_some() && present_generations > 0;
 
-    let (graph_state, reindex_state, blueprint_class, blueprint_usable, mut reasons) =
+    let (graph_state, reindex_state, cortex_class, cortex_usable, mut reasons) =
         if !snapshot_present && present_generations == 0 {
             (
                 GraphState::MissingSnapshot,
@@ -453,7 +453,7 @@ fn classify(
     // Blueprint publish must not disable a verified Git overlay or a coherent skills snapshot.
     let skills_usable = epoch.skills_generation.is_some();
     let overlay_base_commit = epoch.head_commit.clone();
-    let blueprint_base_commit = epoch.base_commit.clone();
+    let cortex_base_commit = epoch.base_commit.clone();
     let overlay_usable = overlay_count > 0 && overlay_base_commit.is_some();
     let snapshot_id = digest_snapshot(&epoch, &overlay_digest);
 
@@ -474,9 +474,9 @@ fn classify(
         graph_state,
         head_commit: epoch.head_commit,
         base_commit: overlay_base_commit,
-        blueprint_base_commit,
+        cortex_base_commit,
         manifest_digest: epoch.manifest_digest,
-        blueprint_generation: epoch.blueprint_generation,
+        cortex_generation: epoch.cortex_generation,
         skills_generation: epoch.skills_generation,
         overlay_digest,
         overlay_count,
@@ -484,9 +484,9 @@ fn classify(
         reindex_state,
         overlay_entries: returned_entries,
         providers: ProviderVerdicts {
-            blueprint: ProviderVerdict {
-                freshness_class: blueprint_class.to_string(),
-                usable: blueprint_usable,
+            cortex: ProviderVerdict {
+                freshness_class: cortex_class.to_string(),
+                usable: cortex_usable,
             },
             dirty_overlay: ProviderVerdict {
                 freshness_class: if overlay_count == 0 {
@@ -544,9 +544,9 @@ fn unavailable(
         graph_state: state,
         head_commit: None,
         base_commit: None,
-        blueprint_base_commit: None,
+        cortex_base_commit: None,
         manifest_digest: None,
-        blueprint_generation: None,
+        cortex_generation: None,
         skills_generation: None,
         overlay_digest: empty_overlay_digest,
         overlay_count: 0,
@@ -554,7 +554,7 @@ fn unavailable(
         reindex_state: ReindexState::Unknown,
         overlay_entries: Vec::new(),
         providers: ProviderVerdicts {
-            blueprint: ProviderVerdict {
+            cortex: ProviderVerdict {
                 freshness_class: class.to_string(),
                 usable: false,
             },
@@ -649,9 +649,9 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
         // that predate the migration. The precedence must therefore be
         // graph.db FIRST. Reading the legacy `.blueprint/manifest.json` first
         // meant a stale doc-run generation outranked the freshly sealed store,
-        // so blueprint_generation and graph_body_generation disagreed and every
+        // so cortex_generation and graph_body_generation disagreed and every
         // verdict became a false `partial_reindex` that made the lane unusable.
-        let blueprint_generation = graph_db
+        let cortex_generation = graph_db
             .as_ref()
             .and_then(|value| value.generation_id.clone())
             .or_else(|| {
@@ -694,7 +694,7 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
                 .as_ref()
                 .and_then(|value| value.manifest_digest.clone())
                 .or(manifest_digest),
-            blueprint_generation,
+            cortex_generation,
             graph_manifest_generation,
             graph_body_generation,
             commit_distance: base_commit
@@ -1647,7 +1647,7 @@ mod tests {
     fn source_barrier_receipt_normalizes_provider_generation_digest() {
         let mut verdict = refresh_pending_verdict();
         verdict.graph_state = GraphState::Clean;
-        verdict.blueprint_generation = Some("xxh128:provider-generation".to_string());
+        verdict.cortex_generation = Some("xxh128:provider-generation".to_string());
         verdict.manifest_digest = Some("manifest-generation".to_string());
         let receipt = source_barrier_receipt(&verdict, "repo-a", "session-a", "/workspace");
         for field in [

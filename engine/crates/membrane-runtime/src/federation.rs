@@ -1,6 +1,6 @@
-//! RightContext federation gateway — Rust shell.
+//! Membrane federation gateway — Rust shell.
 //!
-//! Per dispatch §G3A + §G5: the authenticated local RightContext gateway
+//! Per dispatch §G3A + §G5: the authenticated local Membrane gateway
 //! is the SOLE owner of provider fan-out and admission. Clients (Claude,
 //! Codex, MCP) submit only (task, repo_root, client, session, max_tokens,
 //! anchors, scope_grant_id); the gateway invokes provider adapters in
@@ -263,7 +263,7 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
     Ok(payload)
 }
 
-/// RightContext Crypt durable-memory candidate provider. Pure in-process
+/// Membrane Crypt durable-memory candidate provider. Pure in-process
 /// read of eligible MemoryEntry rows normalised into ContextCandidateSet v1
 /// records (Layer 7, sourceKind "memory", trustClass "agent_verified").
 #[allow(clippy::too_many_arguments)]

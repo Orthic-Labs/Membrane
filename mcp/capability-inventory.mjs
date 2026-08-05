@@ -3,7 +3,7 @@ import { TOOLS, TOOL_OUTPUT_SCHEMA } from "./server.mjs";
 
 export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) {
   const matrix = JSON.parse(await readFile(matrixPath ?? new URL("../../sentinel/hooks/membrane-capability-matrix.json", import.meta.url), "utf8"));
-  const freeze = JSON.parse(await readFile(freezePath ?? new URL("../../docs/rightcontext/federation-freeze-v1.json", import.meta.url), "utf8"));
+  const freeze = JSON.parse(await readFile(freezePath ?? new URL("../../docs/membrane/federation-freeze-v1.json", import.meta.url), "utf8"));
   const toolTests = (name) => {
     if (["membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad"].includes(name)) return ["mcp/working-context.test.mjs", "mcp/server-durable.test.mjs"];
     if (["membrane_knowledge_propose", "membrane_feedback"].includes(name)) return ["mcp/server.test.mjs", "mcp/server-durable.test.mjs"];
@@ -30,6 +30,6 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
     support_tiers: matrix.support_tiers,
     contract_freeze: freeze.canonical,
     capabilities,
-    source_files: ["mcp/server.mjs", "sentinel/hooks/membrane-capability-matrix.json", "docs/rightcontext/federation-freeze-v1.json"],
+    source_files: ["mcp/server.mjs", "sentinel/hooks/membrane-capability-matrix.json", "docs/membrane/federation-freeze-v1.json"],
   };
 }

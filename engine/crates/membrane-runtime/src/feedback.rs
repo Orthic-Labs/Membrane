@@ -1,4 +1,4 @@
-//! Per-candidate recall feedback (the RightContext feedback rail).
+//! Per-candidate recall feedback (the Membrane feedback rail).
 //!
 //! A `FeedbackRecord` binds one admitted candidate (by the `ContextReceiptV2` join key
 //! `trace_id` + `candidate_id` + `content_sha256`) to an observed outcome. Only *verified*

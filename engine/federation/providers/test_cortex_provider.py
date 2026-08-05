@@ -4,24 +4,24 @@ from types import SimpleNamespace
 
 import pytest
 
-from federation.providers import blueprint
-from federation.providers.blueprint import candidate_cap
+from federation.providers import cortex
+from federation.providers.cortex import candidate_cap
 
 
 def test_cli_resolution_prefers_cortex_and_retains_legacy_fallback(monkeypatch, tmp_path):
-    cortex_cli = tmp_path / "cortex" / "blueprint.mjs"
-    legacy_cli = tmp_path / "blueprint" / "blueprint.mjs"
+    cortex_cli = tmp_path / "cortex" / "cortex.mjs"
+    legacy_cli = tmp_path / "cortex" / "cortex.mjs"
     cortex_cli.parent.mkdir()
     legacy_cli.parent.mkdir()
     cortex_cli.touch()
     legacy_cli.touch()
-    monkeypatch.delenv("BLUEPRINT_CLI", raising=False)
-    monkeypatch.setattr(blueprint, "CORTEX_CLI_DEFAULT", cortex_cli)
-    monkeypatch.setattr(blueprint, "BLUEPRINT_CLI_DEFAULT", legacy_cli)
+    monkeypatch.delenv("CORTEX_CLI", raising=False)
+    monkeypatch.setattr(cortex, "CORTEX_CLI_DEFAULT", cortex_cli)
+    monkeypatch.setattr(cortex, "CORTEX_SKILLS_CLI_DEFAULT", legacy_cli)
 
-    assert blueprint._resolve_blueprint_cli() == str(cortex_cli)
+    assert cortex._resolve_cortex_cli() == str(cortex_cli)
     cortex_cli.unlink()
-    assert blueprint._resolve_blueprint_cli() == str(legacy_cli)
+    assert cortex._resolve_cortex_cli() == str(legacy_cli)
 
 
 def test_repo_code_candidate_cap_is_independent_of_large_context_budget():
@@ -36,12 +36,12 @@ def test_repo_code_candidate_cap_is_bounded_and_invalid_override_is_safe():
 
 
 def test_observability_splits_subprocess_and_repo_scan_without_changing_produce(monkeypatch, tmp_path):
-    cli = tmp_path / "blueprint.mjs"
+    cli = tmp_path / "cortex.mjs"
     cli.write_text("// fixture", encoding="utf-8")
     payload = {
         "schemaVersion": 1,
         "freshness": {"stale": False},
-        "_rightcontext": {
+        "_membrane": {
             "stageElapsedMs": {
                 "repo_code_scan": 12.5,
                 "task": "must-not-propagate",
@@ -57,33 +57,33 @@ def test_observability_splits_subprocess_and_repo_scan_without_changing_produce(
         ],
     }
     monotonic_values = iter((100.0, 100.04, 200.0, 200.04))
-    monkeypatch.setattr(blueprint, "_resolve_blueprint_cli", lambda: str(cli))
-    monkeypatch.setattr(blueprint, "_resolve_node", lambda: "node")
+    monkeypatch.setattr(cortex, "_resolve_cortex_cli", lambda: str(cli))
+    monkeypatch.setattr(cortex, "_resolve_node", lambda: "node")
     monkeypatch.setattr(
-        blueprint,
+        cortex,
         "_read_manifest",
         lambda _root: {"generationId": "generation-1", "freshness": {"stale": False}},
     )
-    monkeypatch.setattr(blueprint.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(cortex.time, "monotonic", lambda: next(monotonic_values))
     monkeypatch.setattr(
-        blueprint.subprocess,
+        cortex.subprocess,
         "run",
         lambda *_args, **_kwargs: SimpleNamespace(
             returncode=0, stdout=json.dumps(payload), stderr=""
         ),
     )
 
-    candidates, generation, warnings, observability = blueprint.produce_with_observability(
+    candidates, generation, warnings, observability = cortex.produce_with_observability(
         tmp_path, "secret task", 4096
     )
-    legacy_result = blueprint.produce(tmp_path, "secret task", 4096)
+    legacy_result = cortex.produce(tmp_path, "secret task", 4096)
 
     assert generation == "generation-1"
     assert warnings == []
-    assert candidates[0]["id"] == "blueprint:node-1"
+    assert candidates[0]["id"] == "cortex:node-1"
     assert observability == {
         "stageElapsedMs": {
-            "blueprint_node_spawn": 27.5,
+            "cortex_node_spawn": 27.5,
             "repo_code_scan": 12.5,
         }
     }
@@ -94,46 +94,46 @@ def test_observability_splits_subprocess_and_repo_scan_without_changing_produce(
 
 
 def test_observability_preserves_positive_submillisecond_stage_timing(monkeypatch, tmp_path):
-    cli = tmp_path / "blueprint.mjs"
+    cli = tmp_path / "cortex.mjs"
     cli.write_text("// fixture", encoding="utf-8")
     payload = {
         "schemaVersion": 1,
-        "_rightcontext": {"stageElapsedMs": {"repo_code_scan": 0.0002}},
+        "_membrane": {"stageElapsedMs": {"repo_code_scan": 0.0002}},
         "candidates": [],
     }
     monotonic_values = iter((100.0, 100.0000004))
-    monkeypatch.setattr(blueprint, "_resolve_blueprint_cli", lambda: str(cli))
-    monkeypatch.setattr(blueprint, "_resolve_node", lambda: "node")
+    monkeypatch.setattr(cortex, "_resolve_cortex_cli", lambda: str(cli))
+    monkeypatch.setattr(cortex, "_resolve_node", lambda: "node")
     monkeypatch.setattr(
-        blueprint,
+        cortex,
         "_read_manifest",
         lambda _root: {"generationId": "generation-1", "freshness": {"stale": False}},
     )
-    monkeypatch.setattr(blueprint.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(cortex.time, "monotonic", lambda: next(monotonic_values))
     monkeypatch.setattr(
-        blueprint.subprocess,
+        cortex.subprocess,
         "run",
         lambda *_args, **_kwargs: SimpleNamespace(
             returncode=0, stdout=json.dumps(payload), stderr=""
         ),
     )
 
-    *_result, observability = blueprint.produce_with_observability(
+    *_result, observability = cortex.produce_with_observability(
         tmp_path, "task", 4096
     )
 
     assert observability["stageElapsedMs"]["repo_code_scan"] == pytest.approx(0.0002)
-    assert observability["stageElapsedMs"]["blueprint_node_spawn"] > 0
+    assert observability["stageElapsedMs"]["cortex_node_spawn"] > 0
 
 
-def test_provider_passes_central_generation_to_blueprint_cli(monkeypatch, tmp_path):
-    cli = tmp_path / "blueprint.mjs"
+def test_provider_passes_central_generation_to_cortex_cli(monkeypatch, tmp_path):
+    cli = tmp_path / "cortex.mjs"
     cli.write_text("// fixture", encoding="utf-8")
     observed = {}
-    monkeypatch.setattr(blueprint, "_resolve_blueprint_cli", lambda: str(cli))
-    monkeypatch.setattr(blueprint, "_resolve_node", lambda: "node")
+    monkeypatch.setattr(cortex, "_resolve_cortex_cli", lambda: str(cli))
+    monkeypatch.setattr(cortex, "_resolve_node", lambda: "node")
     monkeypatch.setattr(
-        blueprint,
+        cortex,
         "_read_manifest",
         lambda _root: {"generationId": "sha256:" + "1" * 64},
     )
@@ -146,9 +146,9 @@ def test_provider_passes_central_generation_to_blueprint_cli(monkeypatch, tmp_pa
             stderr="",
         )
 
-    monkeypatch.setattr(blueprint.subprocess, "run", run)
+    monkeypatch.setattr(cortex.subprocess, "run", run)
     expected = "sha256:" + "1" * 64
-    _candidates, generation, warnings = blueprint.produce(
+    _candidates, generation, warnings = cortex.produce(
         tmp_path, "task", 4096, expected_generation=expected
     )
 
@@ -183,29 +183,29 @@ def test_pinned_generation_queries_sqlite_without_node_spawn(monkeypatch, tmp_pa
             "INSERT INTO symbols VALUES (?,?,?,?,?,?,?,?,?,?)",
             ("symbol:bounded", "symbol", '["Function"]', "bounded_runtime", "bounded_runtime", "src/bounded_runtime.rs", 1.0, evidence, generation, "{}"),
         )
-    cli = tmp_path / "blueprint.mjs"
+    cli = tmp_path / "cortex.mjs"
     cli.write_text("// must not run", encoding="utf-8")
-    monkeypatch.setattr(blueprint, "_resolve_blueprint_cli", lambda: str(cli))
-    monkeypatch.setattr(blueprint, "_resolve_node", lambda: "node")
+    monkeypatch.setattr(cortex, "_resolve_cortex_cli", lambda: str(cli))
+    monkeypatch.setattr(cortex, "_resolve_node", lambda: "node")
     monkeypatch.setattr(
-        blueprint.subprocess,
+        cortex.subprocess,
         "run",
         lambda *_args, **_kwargs: pytest.fail("pinned direct index path spawned Node"),
     )
 
-    candidates, observed_generation, warnings = blueprint.produce(
+    candidates, observed_generation, warnings = cortex.produce(
         tmp_path, "bounded runtime implementation", 64, expected_generation=generation
     )
 
     assert observed_generation == generation
     assert warnings == []
     assert candidates[0]["sourceRef"] == "src/bounded_runtime.rs:10-20"
-    assert candidates[0]["id"] == "blueprint:symbol:bounded"
+    assert candidates[0]["id"] == "cortex:symbol:bounded"
     # Plan 3.4 hash prefix: emitted digest is always `sha256:` + 64-hex.
     assert candidates[0]["sourceHash"] == "sha256:" + "2" * 32 + "0" * 32
     # Plan 3.4 resolver drift: the published re-fetch shape names the same
-    # command actually executed elsewhere (`blueprint graph resolve --node`).
-    assert candidates[0]["resolver"] == "blueprint graph resolve --node symbol:bounded"
+    # command actually executed elsewhere (`cortex graph resolve --node`).
+    assert candidates[0]["resolver"] == "cortex graph resolve --node symbol:bounded"
     # Plan 3.3 defect 4 retired `_pin_fresh_candidate`, so neither the
     # `protected` flag nor the rewrites `text` survive past the SQLite read.
     assert candidates[0]["protected"] is False
@@ -254,57 +254,57 @@ def test_pinned_generation_uses_fts_and_abstains_on_no_match(monkeypatch, tmp_pa
                     "INSERT OR IGNORE INTO symbol_terms VALUES (?,?,?)",
                     (generation, token, entry_id),
                 )
-    cli = tmp_path / "blueprint.mjs"
+    cli = tmp_path / "cortex.mjs"
     cli.write_text("// must not run", encoding="utf-8")
-    monkeypatch.setattr(blueprint, "_resolve_blueprint_cli", lambda: str(cli))
-    monkeypatch.setattr(blueprint, "_resolve_node", lambda: "node")
+    monkeypatch.setattr(cortex, "_resolve_cortex_cli", lambda: str(cli))
+    monkeypatch.setattr(cortex, "_resolve_node", lambda: "node")
     monkeypatch.setattr(
-        blueprint.subprocess,
+        cortex.subprocess,
         "run",
         lambda *_args, **_kwargs: pytest.fail("pinned FTS path spawned Node"),
     )
 
-    matched, observed_generation, warnings = blueprint.produce(
+    matched, observed_generation, warnings = cortex.produce(
         tmp_path, "admission implementation", 1, expected_generation=generation
     )
-    abstained, abstained_generation, abstained_warnings = blueprint.produce(
+    abstained, abstained_generation, abstained_warnings = cortex.produce(
         tmp_path, "termthatdoesnotexist", 1, expected_generation=generation
     )
 
     assert observed_generation == abstained_generation == generation
     # Matched query: returns the symbol it found and emits no warnings.
     assert warnings == []
-    assert [candidate["id"] for candidate in matched] == ["blueprint:symbol:admission"]
+    assert [candidate["id"] for candidate in matched] == ["cortex:symbol:admission"]
     # Plan 3.3 abstention: pinned graph + no lexical hit = empty candidates
     # + an abstention-typed warning.
     assert abstained == []
     abstention_kinds = [warning["kind"] for warning in abstained_warnings]
-    assert "blueprint_abstained_no_relevant_seed" in abstention_kinds
+    assert "cortex_abstained_no_relevant_seed" in abstention_kinds
 
 
-def test_provider_terminates_blueprint_at_lane_deadline(monkeypatch, tmp_path):
-    cli = tmp_path / "blueprint.mjs"
+def test_provider_terminates_cortex_at_lane_deadline(monkeypatch, tmp_path):
+    cli = tmp_path / "cortex.mjs"
     cli.write_text("// fixture", encoding="utf-8")
     observed = {}
-    monkeypatch.setattr(blueprint, "_resolve_blueprint_cli", lambda: str(cli))
-    monkeypatch.setattr(blueprint, "_resolve_node", lambda: "node")
+    monkeypatch.setattr(cortex, "_resolve_cortex_cli", lambda: str(cli))
+    monkeypatch.setattr(cortex, "_resolve_node", lambda: "node")
 
     def run(_command, **kwargs):
         observed["timeout"] = kwargs["timeout"]
-        raise blueprint.subprocess.TimeoutExpired("node", kwargs["timeout"])
+        raise cortex.subprocess.TimeoutExpired("node", kwargs["timeout"])
 
-    monkeypatch.setattr(blueprint.subprocess, "run", run)
+    monkeypatch.setattr(cortex.subprocess, "run", run)
 
-    candidates, generation, warnings = blueprint.produce(tmp_path, "task", 4096)
+    candidates, generation, warnings = cortex.produce(tmp_path, "task", 4096)
 
     assert candidates == []
-    assert generation == "blueprint-timeout"
+    assert generation == "cortex-timeout"
     assert warnings[0]["kind"] == "provider_timeout"
-    assert observed["timeout"] == blueprint.BLUEPRINT_TIMEOUT_S
+    assert observed["timeout"] == cortex.CORTEX_TIMEOUT_S
 
 
 def test_timeout_reuses_only_exact_fresh_candidate_cache(monkeypatch, tmp_path):
-    cli = tmp_path / "blueprint.mjs"
+    cli = tmp_path / "cortex.mjs"
     cli.write_text("// fixture", encoding="utf-8")
     expected = "generation-1"
     payload = {
@@ -316,42 +316,42 @@ def test_timeout_reuses_only_exact_fresh_candidate_cache(monkeypatch, tmp_path):
             "qualifiedName": "app.main",
         }],
     }
-    blueprint._candidate_cache.clear()
-    monkeypatch.setattr(blueprint, "_resolve_blueprint_cli", lambda: str(cli))
-    monkeypatch.setattr(blueprint, "_resolve_node", lambda: "node")
+    cortex._candidate_cache.clear()
+    monkeypatch.setattr(cortex, "_resolve_cortex_cli", lambda: str(cli))
+    monkeypatch.setattr(cortex, "_resolve_node", lambda: "node")
     monkeypatch.setattr(
-        blueprint,
+        cortex,
         "_read_manifest",
         lambda _root: {"generationId": expected},
     )
     monkeypatch.setattr(
-        blueprint.subprocess,
+        cortex.subprocess,
         "run",
         lambda *_args, **_kwargs: SimpleNamespace(
             returncode=0, stdout=json.dumps(payload), stderr=""
         ),
     )
-    cached, generation, warnings = blueprint.produce(
+    cached, generation, warnings = cortex.produce(
         tmp_path, "task-a", 64, expected_generation=expected
     )
     assert cached and generation == expected and warnings == []
 
     def timeout(_command, **kwargs):
-        raise blueprint.subprocess.TimeoutExpired("node", kwargs["timeout"])
+        raise cortex.subprocess.TimeoutExpired("node", kwargs["timeout"])
 
-    monkeypatch.setattr(blueprint.subprocess, "run", timeout)
-    reused, generation, warnings = blueprint.produce(
+    monkeypatch.setattr(cortex.subprocess, "run", timeout)
+    reused, generation, warnings = cortex.produce(
         tmp_path, "task-a", 64, expected_generation=expected
     )
     assert reused == cached
     assert generation == expected
     assert warnings == []
 
-    missing, generation, warnings = blueprint.produce(
+    missing, generation, warnings = cortex.produce(
         tmp_path, "task-b", 64, expected_generation=expected
     )
     assert missing == []
-    assert generation == "blueprint-timeout"
+    assert generation == "cortex-timeout"
     assert warnings[0]["kind"] == "provider_timeout"
 
 
@@ -370,7 +370,7 @@ def test_manifest_reads_generation_envelope_from_graph_db(tmp_path):
         )
         connection.commit()
 
-    manifest = blueprint._read_manifest(tmp_path)
+    manifest = cortex._read_manifest(tmp_path)
 
     assert manifest == {
         "generationId": "generation-db",

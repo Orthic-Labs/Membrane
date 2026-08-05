@@ -2711,7 +2711,7 @@ impl MemoryStore {
         Ok(())
     }
 
-    /// Record one per-candidate feedback row (the RightContext feedback rail). Fail-closed: the
+    /// Record one per-candidate feedback row (the Membrane feedback rail). Fail-closed: the
     /// record must validate (a cited-verdict row needs a resolvable `verdict_ref`) before it is
     /// persisted. Idempotent by `(trace_id, candidate_id)` — a re-run at compaction upserts, never
     /// double-counts. Only `verified()` rows affect ranking; advisory rows persist for metrics.
@@ -3295,7 +3295,7 @@ impl MemoryStore {
     /// Without this the row outlives its source forever and the skills provider keeps advertising
     /// a skill whose body, pipeline, and vocabulary are all gone (observed with `adapt`, which
     /// survived its own deletion and kept pointing at a removed pipeline and the retired name
-    /// "MemRight"). Pruning is skipped entirely when the workspace yielded no skills, so a machine
+    /// "Crypt"). Pruning is skipped entirely when the workspace yielded no skills, so a machine
     /// checked out without `tools/skills/` cannot wipe the portability store it was meant to carry.
     pub fn ingest_skills(&self, workspace: &Path) -> (usize, usize, usize) {
         let skills_dir = workspace.join("tools").join("skills");

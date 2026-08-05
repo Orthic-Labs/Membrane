@@ -1,7 +1,7 @@
 //! G5 Lane B — Crypt durable-memory provider.
 //!
 //! Converts eligible `MemoryEntry` rows in `MemoryStore` into v1
-//! `ContextCandidate` records (Layer 7) for the RightContext planner. The
+//! `ContextCandidate` records (Layer 7) for the Membrane planner. The
 //! provider is in-process with the planner: it ONLY reads through the
 //! `MemoryStore` public API, never the filesystem, never the network, and
 //! never the bearer-token file. External clients still authenticate to the

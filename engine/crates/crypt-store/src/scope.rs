@@ -118,7 +118,7 @@ impl ScopeDescriptorV1 {
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct RightContextWorkspaceConfig {
+struct MembraneWorkspaceConfig {
     schema_version: u32,
     workspace_root: PathBuf,
     python_executable: PathBuf,
@@ -139,7 +139,7 @@ pub(crate) fn workspace_root_from(
         return validated_workspace_root(value);
     }
     let payload = std::fs::read(config_path?).ok()?;
-    let config: RightContextWorkspaceConfig = serde_json::from_slice(&payload).ok()?;
+    let config: MembraneWorkspaceConfig = serde_json::from_slice(&payload).ok()?;
     if config.schema_version != 2
         || !config.python_executable.is_absolute()
         || !config.python_executable.is_file()

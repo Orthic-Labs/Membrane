@@ -690,7 +690,7 @@ enum Cmd {
         #[arg(long)]
         spill_dir: PathBuf,
     },
-    /// RightContext planner admission slice. Reads a ContextCandidateSet v1
+    /// Membrane planner admission slice. Reads a ContextCandidateSet v1
     /// (JSON file path or stdin when omitted), runs the deterministic
     /// pure-in-process admission, emits a bounded ContextPacket v1 plus a
     /// content-free ContextReceipt v2 per candidate. No DB or repo access.
@@ -711,7 +711,7 @@ enum Cmd {
         #[arg(long, value_delimiter = ',')]
         accepted_receipt_versions: Vec<u32>,
     },
-    /// RightContext federation gateway entry. The SOLE owner of provider
+    /// Membrane federation gateway entry. The SOLE owner of provider
     /// fan-out + admission. Reads task, repository root, client/session
     /// identity, token budget, explicit anchors, and an optional ScopeGrant
     /// reference; runs all providers (Blueprint, Audit, Architect, Crypt,
@@ -758,7 +758,7 @@ enum Cmd {
         #[arg(long, value_delimiter = ',')]
         accepted_receipt_versions: Vec<u32>,
     },
-    /// RightContext Crypt durable-memory candidate provider. Pure in-process
+    /// Membrane Crypt durable-memory candidate provider. Pure in-process
     /// read of eligible MemoryEntry rows normalised into ContextCandidateSet
     /// v1 records (Layer 7, sourceKind "memory", trustClass "agent_verified").
     /// The federation gateway calls this as a subprocess; clients never call

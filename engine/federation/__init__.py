@@ -1,4 +1,4 @@
-"""RightContext federation gateway — Python orchestration layer.
+"""Membrane federation gateway — Python orchestration layer.
 
 This module is the SOLE owner of provider fan-out per dispatch §G3A + §G5.
 Clients (Claude, Codex, MCP) submit only (task, repo_root, client, session,

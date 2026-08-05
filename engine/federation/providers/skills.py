@@ -1,4 +1,4 @@
-"""Skills provider — the ninth RightContext producer.
+"""Skills provider — the ninth Membrane producer.
 
 Emits the engine-owned skill catalog (index only) as bounded, delivery-ready candidates, so a
 session in any repo discovers the same portable snapshot as memories without filesystem context

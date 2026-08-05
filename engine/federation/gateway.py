@@ -1,5 +1,5 @@
 #!/usr/bin/env py -3.11
-"""RightContext federation gateway CLI (Python orchestration layer).
+"""Membrane federation gateway CLI (Python orchestration layer).
 
 Subcommand: `py -3.11 membrane/engine/federation/gateway.py --task T --repo R
                     --max-tokens N --client C --session S
@@ -47,13 +47,13 @@ if str(_PARENT) not in sys.path:
 
 # Local providers — all in-process or short subprocess. None of them touch
 # the Crypt DB schema, all read-only or pure.
-from federation.providers import blueprint, audit, architect, crypt, git_provider  # noqa: E402
+from federation.providers import cortex, audit, architect, crypt, git_provider  # noqa: E402
 from federation.providers import live, rules, anchors, scope_grant  # noqa: E402
 from federation.providers import skills  # noqa: E402
 
 
 _PROVIDER_STAGE_NAMES = frozenset({
-    "request_parse", "embed", "recall", "rank", "blueprint_node_spawn", "repo_code_scan",
+    "request_parse", "embed", "recall", "rank", "cortex_node_spawn", "repo_code_scan",
 })
 _LANE_FAILURE_KINDS = frozenset({
     "timeout", "crash", "unavailable", "authentication", "invalid_output",
@@ -303,7 +303,7 @@ def _collect_tasks_bounded(
     # its Python thread under the GIL. Every other provider still fans out in
     # parallel under the remainder of this same absolute deadline.
     for name, task in tasks:
-        if name != "blueprint":
+        if name != "cortex":
             continue
         result = invoke(name, task)
         pending.remove(name)
@@ -359,12 +359,12 @@ def _collect_tasks_bounded(
 
 
 def _manifest_digest(repo_root: Path) -> str:
-    manifest_path = repo_root / ".blueprint" / "manifest.json"
+    manifest_path = repo_root / ".cortex" / "manifest.json"
     try:
         content = manifest_path.read_bytes()
     except OSError as exc:
         raise PermissionError(
-            f"scope_grant_invalid: blueprint manifest unavailable at {manifest_path}"
+            f"scope_grant_invalid: cortex manifest unavailable at {manifest_path}"
         ) from exc
     return "sha256:" + hashlib.sha256(content).hexdigest()
 
@@ -504,10 +504,10 @@ def _gather_all_parallel(
         # no way to tell WHICH graph answered them: `revision` is a per-request
         # trace id, not a generation, so "is this packet current?" was
         # unanswerable from the packet itself (plan 1.1).
-        "generationId": verdict.get("blueprintGeneration"),
+        "generationId": verdict.get("cortexGeneration"),
         "snapshotId": verdict.get("snapshotId"),
         "baseCommit": verdict.get("baseCommit"),
-        "blueprintBaseCommit": verdict.get("blueprintBaseCommit"),
+        "cortexBaseCommit": verdict.get("cortexBaseCommit"),
         "overlayDigest": verdict.get("overlayDigest"),
         "serviceGeneration": verdict.get("serviceGeneration"),
         "expectedReleaseGeneration": expected_release_generation,
@@ -518,12 +518,12 @@ def _gather_all_parallel(
         "cacheAgeMs": verdict.get("cacheAgeMs"),
         "refreshInFlight": bool(verdict.get("refreshInFlight", False)),
         "_providerFreshness": {
-            "blueprint": (providers_state.get("blueprint") or {}).get("freshnessClass"),
+            "cortex": (providers_state.get("cortex") or {}).get("freshnessClass"),
             "live": (providers_state.get("dirtyOverlay") or {}).get("freshnessClass"),
             "skills": (providers_state.get("skills") or {}).get("freshnessClass"),
         },
         "_providerBaseCommit": {
-            "blueprint": verdict.get("blueprintBaseCommit"),
+            "cortex": verdict.get("cortexBaseCommit"),
             "live": verdict.get("baseCommit"),
         },
     }
@@ -532,7 +532,7 @@ def _gather_all_parallel(
         return [], freshness
     provider_elapsed_ms: dict[str, float] = {}
     provider_stage_elapsed_ms: dict[str, dict[str, float]] = {}
-    expected_blueprint_generation = str(verdict.get("blueprintGeneration") or "")
+    expected_cortex_generation = str(verdict.get("cortexGeneration") or "")
     expected_skills_generation = str(verdict.get("skillsGeneration") or "")
 
     # Build the list of (name, callable, args) — the actual fan-out.
@@ -588,16 +588,16 @@ def _gather_all_parallel(
                             stages[stage] = numeric
                 if stages:
                     provider_stage_elapsed_ms[name] = stages
-        if name == "blueprint" and str(generation or "") != expected_blueprint_generation:
+        if name == "cortex" and str(generation or "") != expected_cortex_generation:
             return (
                 name,
                 [],
                 [
                     {
-                        "provider": "blueprint",
-                        "kind": "blueprint_generation_changed",
+                        "provider": "cortex",
+                        "kind": "cortex_generation_changed",
                         "severity": "warning",
-                        "message": "blueprint generation changed after freshness verdict",
+                        "message": "cortex generation changed after freshness verdict",
                     }
                 ],
             )
@@ -616,7 +616,7 @@ def _gather_all_parallel(
             )
         return (name, cands, warnings)
 
-    blueprint_state = providers_state.get("blueprint") or {}
+    cortex_state = providers_state.get("cortex") or {}
     overlay_state = providers_state.get("dirtyOverlay") or {}
     skills_state = providers_state.get("skills") or {}
     tasks = [
@@ -629,17 +629,17 @@ def _gather_all_parallel(
         ("rules", lambda: _adapter("rules", rules.produce, repo_root, task, client)),
         ("anchors", lambda: _adapter("anchors", anchors.produce, repo_root, explicit_anchors, task)),
     ]
-    if bool(blueprint_state.get("usable")):
+    if bool(cortex_state.get("usable")):
         tasks.append(
             (
-                "blueprint",
+                "cortex",
                 lambda: _adapter(
-                    "blueprint",
-                    blueprint.produce_with_observability,
+                    "cortex",
+                    cortex.produce_with_observability,
                     repo_root,
                     task,
                     max_tokens,
-                    expected_generation=expected_blueprint_generation,
+                    expected_generation=expected_cortex_generation,
                 ),
             )
         )
@@ -668,17 +668,17 @@ def _gather_all_parallel(
     # Parallel fan-out under one absolute budget. Slow lanes receive typed terminals and cannot
     # hold the prompt waiter open.
     out: list[tuple[str, list[dict[str, Any]], list[dict[str, Any]]]] = []
-    if not bool(blueprint_state.get("usable")):
+    if not bool(cortex_state.get("usable")):
         out.append(
             (
-                "blueprint",
+                "cortex",
                 [],
                 [
                     {
-                        "provider": "blueprint",
-                        "kind": "blueprint_lane_degraded",
+                        "provider": "cortex",
+                        "kind": "cortex_lane_degraded",
                         "severity": "warning",
-                        "message": f"blueprint lane unavailable: {freshness['graphState']}",
+                        "message": f"cortex lane unavailable: {freshness['graphState']}",
                     }
                 ],
             )
@@ -709,7 +709,7 @@ def _gather_all_parallel(
     }
 
     order = {name: index for index, name in enumerate(
-        ("blueprint", "audit", "architect", "crypt", "git", "live", "rules", "anchors", "skills")
+        ("cortex", "audit", "architect", "crypt", "git", "live", "rules", "anchors", "skills")
     )}
     out.sort(key=lambda item: order.get(item[0], len(order)))
     freshness["_providerElapsedMs"] = {
@@ -747,8 +747,8 @@ def _merge_candidates(
     provider_counts: dict[str, int] = {}
     provider_freshness = freshness.get("_providerFreshness") or {}
     provider_base_commit = dict(freshness.get("_providerBaseCommit") or {})
-    if freshness.get("blueprintBaseCommit"):
-        provider_base_commit.setdefault("blueprint", freshness["blueprintBaseCommit"])
+    if freshness.get("cortexBaseCommit"):
+        provider_base_commit.setdefault("cortex", freshness["cortexBaseCommit"])
     graph_state = str(freshness.get("graphState") or "indeterminate")
 
     for provider_name, candidates, warnings in per_provider_candidates:
@@ -767,7 +767,7 @@ def _merge_candidates(
                 explicit_provider_class = provider_freshness.get(provider_name)
                 if explicit_provider_class:
                     stamped["freshnessClass"] = explicit_provider_class
-                elif provider_name == "blueprint":
+                elif provider_name == "cortex":
                     stamped["freshnessClass"] = (
                         "committed_snapshot" if graph_state == "clean" else "stale_snapshot"
                     )
@@ -995,7 +995,7 @@ def main(argv: list[str] | None = None) -> int:
     raw_argv = sys.argv[1:] if argv is None else argv
     if "--serve-stdio" in raw_argv:
         return serve_stdio()
-    parser = argparse.ArgumentParser(description="RightContext federation gateway")
+    parser = argparse.ArgumentParser(description="Membrane federation gateway")
     parser.add_argument("--task", required=True)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--max-tokens", type=int, default=4096)

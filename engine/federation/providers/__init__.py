@@ -1,4 +1,4 @@
-"""RightContext provider adapters — federation gateway inputs.
+"""Membrane provider adapters — federation gateway inputs.
 
 Each module exposes a `produce(repo_root, task, ...) -> ([candidate, ...],
 generation_id)` function. Candidates are ContentCandidateSet v1 records
