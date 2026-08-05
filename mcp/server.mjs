@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
@@ -338,7 +338,7 @@ async function callTool(name, args, trace = {}) {
       const fused = { ok: true, scope: "workspace", repos: [], totalCandidates: 0, totalOmissions: 0 };
       const trace = { traceparent: args.traceparent, tracestate: args.tracestate, baggage: args.baggage };
       for (const entry of selected) {
-        const targetRoot = require("node:path").resolve(binding.root, entry.root || ".");
+        const targetRoot = resolve(binding.root, entry.root === "." ? "." : entry.root);
         const request = { task: args.task, repo: targetRoot, maxTokens: perRepoBudget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, ...trace };
         try {
           const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: targetRoot });

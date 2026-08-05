@@ -407,3 +407,39 @@ try {
 } finally {
   await new Promise((resolve) => federate.close(resolve));
 }
+
+// MBR-001 (SN-NODE-01): remove the CommonJS `require()` from the ESM workspace
+// federation branch. Before this task the workspace branch called
+// require("node:path").resolve(...) under ESM, which throws ReferenceError:
+// require is not defined in ESM. Import `resolve` normally and drive exactly
+// the acceptance: an executable test invokes scope=workspace and reaches the
+// first child repository without a ReferenceError.
+const workspaceRoot = await mkdtemp(join(tmpdir(), "membrane-workspace-catalog-"));
+await mkdir(join(workspaceRoot, "child", ".git"), { recursive: true }); // child repo marker => child-repository catalog entry
+const workspaceCanonical = await realpath(workspaceRoot);
+await realpath(join(workspaceRoot, "child"));
+const workspaceRegistry = join(workspaceRoot, "registry.json");
+await writeFile(workspaceRegistry, JSON.stringify({
+  schema_version: 1,
+  bindings: {
+    [workspaceCanonical]: { repository_id: "ws-repo", scope_id: "ws-scope", provider_config: {}, grant_policy: { level: "read-only" } },
+  },
+}), "utf8");
+// A loopback port with no listener so the per-child federation clients fail fast
+// and deterministically (they emit a typed fallback envelope rather than hanging).
+const deadCryptPort = 65533;
+const wsCaller = { root: workspaceCanonical, repositoryId: "ws-repo", scopeId: "ws-scope" };
+const workspaceContext = await rpc([{
+  jsonrpc: "2.0", id: 70, method: "tools/call",
+  params: { name: "membrane_context", arguments: { task: "inspect", repository: workspaceCanonical, caller: wsCaller, scope: "workspace" } },
+}], { MEMBRANE_PROJECT_REGISTRY: workspaceRegistry, CRYPT_PORT: String(deadCryptPort), CRYPT_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" });
+const workspaceRow = workspaceContext[0];
+assert.equal(workspaceRow.result.isError, false, `scope=workspace must reach the first child without ReferenceError: ${toolError(workspaceRow)}`);
+assert.doesNotMatch(toolError(workspaceRow), /ReferenceError/);
+const fused = workspaceRow.result.structuredContent.data;
+assert.equal(fused.ok, true);
+assert.equal(fused.scope, "workspace");
+assert.ok(Array.isArray(fused.repos), "scope=workspace returns a per-repository fan-out trace");
+assert.ok(fused.repos.length >= 2, `workspace fan-out reaches the workspace root and a child repo, got ${fused.repos.length}`);
+assert.ok(fused.repos.some((entry) => entry.repoId !== null), "fan-out produced a resolved repo entry");
+assert.doesNotMatch(JSON.stringify(fused.repos), /ReferenceError/);
