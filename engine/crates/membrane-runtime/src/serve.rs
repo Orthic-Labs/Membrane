@@ -4290,6 +4290,41 @@ fn sha256_hex(s: &str) -> String {
 }
 
 /// Open the DB and serve the contract forever on IPv4 loopback only.
+
+/// Find cortex-watch.mjs in the workspace relative to this binary's location.
+fn find_cortex_watch() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let engine_dir = exe.parent()?.parent()?; // target/debug -> engine
+    let workspace = engine_dir.parent()?; // engine -> workspace
+    let candidate = workspace.join("cortex").join("scripts").join("cortex-watch.mjs");
+    if candidate.exists() {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
+/// Spawn cortex-watch.mjs start as a background child process.
+fn spawn_watcher(script: &std::path::Path) -> Option<std::process::Child> {
+    match std::process::Command::new("node")
+        .arg(script)
+        .arg("start")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        Ok(child) => {
+            eprintln!("crypt watcher: spawned pid {}", child.id());
+            Some(child)
+        }
+        Err(error) => {
+            eprintln!("crypt watcher: spawn failed: {error}");
+            None
+        }
+    }
+}
+
+/// Open the DB and serve the contract forever on IPv4 loopback only.
 ///
 /// Opens a separate catalog SQLite at `<context-home>/catalog.db` for G3B
 /// planner routes. The catalog lives on its own connection — the Crypt DB
@@ -4351,6 +4386,44 @@ pub fn run(
         catalog_path.display()
     );
     let api_token = Some(configured_api_token(std::path::Path::new(db_path))?);
+
+    // Plan 2.7b: spawn the Cortex workspace watcher as a supervised child
+    // process. cortex-watch.mjs start reads ~/.cortex/watch.json for enrolled
+    // repos and runs WatchSupervisor — one FSEvents subscription per root,
+    // never a second watcher. If a live watcher_pid is already recorded, we
+    // adopt it rather than spawning a duplicate.
+    let cortex_watch = find_cortex_watch();
+    let mut watcher_child: Option<std::process::Child> = None;
+    if let Some(ref watch_script) = cortex_watch {
+        // Check if a watcher is already running by reading its pidfile.
+        let pidfile = std::path::PathBuf::from(
+            std::env::var("HOME").unwrap_or_default(),
+        ).join(".cortex").join("watchman.pid");
+        let existing_pid = std::fs::read_to_string(&pidfile)
+            .ok()
+            .and_then(|s| s.trim().parse::<u32>().ok());
+        if let Some(pid) = existing_pid {
+            // Check if the process is alive.
+            let alive = std::process::Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if alive {
+                eprintln!("crypt watcher: adopting existing pid {pid}");
+            } else {
+                eprintln!("crypt watcher: pid {pid} dead, spawning fresh");
+                watcher_child = spawn_watcher(watch_script);
+            }
+        } else {
+            watcher_child = spawn_watcher(watch_script);
+        }
+    } else {
+        eprintln!("crypt watcher: cortex-watch.mjs not found, watcher disabled");
+    }
+
     let app = build_router(
         store,
         Some(catalog),
@@ -4360,7 +4433,7 @@ pub fn run(
         REQUEST_TIMEOUT,
         MAX_CONCURRENT_REQUESTS,
     );
-    tokio::runtime::Builder::new_multi_thread()
+    let server_result = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .map_err(|error| error.to_string())?
@@ -4371,7 +4444,16 @@ pub fn run(
             axum::serve(listener, app)
                 .await
                 .map_err(|error| error.to_string())
-        })
+        });
+
+    // Plan 2.7b: clean up the watcher child on service stop.
+    if let Some(mut child) = watcher_child {
+        eprintln!("crypt watcher: stopping pid {}", child.id());
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    server_result
 }
 
 #[cfg(test)]
