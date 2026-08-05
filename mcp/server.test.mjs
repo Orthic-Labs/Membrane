@@ -429,9 +429,17 @@ await writeFile(workspaceRegistry, JSON.stringify({
 // and deterministically (they emit a typed fallback envelope rather than hanging).
 const deadCryptPort = 65533;
 const wsCaller = { root: workspaceCanonical, repositoryId: "ws-repo", scopeId: "ws-scope" };
+// MBR-004 bounded routing: select the workspace root and the child explicitly so
+// the task still fans out to the first child; a no-match task would abstain.
+const wsFixtureCatalog = await buildRepositoryCatalog(workspaceCanonical);
+const wsRootEntry = wsFixtureCatalog.repositories.find((entry) => entry.role === "workspace-root");
+const wsChildEntry = wsFixtureCatalog.repositories.find((entry) => entry.role === "child-repository");
 const workspaceContext = await rpc([{
   jsonrpc: "2.0", id: 70, method: "tools/call",
-  params: { name: "membrane_context", arguments: { task: "inspect", repository: workspaceCanonical, caller: wsCaller, scope: "workspace" } },
+  params: {
+    name: "membrane_context",
+    arguments: { task: "inspect", repository: workspaceCanonical, caller: wsCaller, scope: "workspace", explicitRepositoryIds: [wsRootEntry?.repository_id, wsChildEntry?.repository_id].filter(Boolean) },
+  },
 }], { MEMBRANE_PROJECT_REGISTRY: workspaceRegistry, CRYPT_PORT: String(deadCryptPort), CRYPT_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" });
 const workspaceRow = workspaceContext[0];
 assert.equal(workspaceRow.result.isError, false, `scope=workspace must reach the first child without ReferenceError: ${toolError(workspaceRow)}`);
@@ -516,7 +524,10 @@ const mbr3Env = { MEMBRANE_PROJECT_REGISTRY: mbr3Registry, CRYPT_PORT: "65532", 
 const mbr3Caller = { root: mbr3Workspace, repositoryId: mbr3Ws.repository_id, scopeId: mbr3Ws.scope_id };
 const mbr3Scope = await rpc([{
   jsonrpc: "2.0", id: 90, method: "tools/call",
-  params: { name: "membrane_context", arguments: { task: "inspect", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace" } },
+  params: {
+    name: "membrane_context",
+    arguments: { task: "inspect", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace", explicitRepositoryIds: [mbr3Ws.repository_id, mbr3G.repository_id, mbr3U.repository_id] },
+  },
 }], mbr3Env);
 assert.equal(mbr3Scope[0].result.isError, false, toolError(mbr3Scope[0]));
 const mbr3Fused = mbr3Scope[0].result.structuredContent.data;
@@ -531,3 +542,20 @@ assert.ok(mbr3ByRoot.has("ungranted"), "ungranted sibling appears as a typed omi
 assert.deepEqual(mbr3ByRoot.get("ungranted").omissions, ["target_denied"], "ungranted sibling is omitted with a typed denial receipt");
 assert.equal(mbr3ByRoot.get("ungranted").candidates, 0, "ungranted sibling is never consulted for candidates");
 assert.ok(!mbr3ByRoot.get("ungranted").omissions.includes("planner_unavailable"), "ungranted sibling was never called");
+
+// MBR-004 integration: a workspace task with no explicit or mentioned target
+// abstains (reports target_selection_abstained) instead of querying every repo.
+const mbr4Abstained = await rpc([{
+  jsonrpc: "2.0", id: 91, method: "tools/call",
+  params: {
+    name: "membrane_context",
+    arguments: { task: "entirely unrelated sentence without any repo alias", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace" },
+  },
+}], mbr3Env);
+assert.equal(mbr4Abstained[0].result.isError, false, toolError(mbr4Abstained[0]));
+const mbr4Data = mbr4Abstained[0].result.structuredContent.data;
+assert.equal(mbr4Data.scope, "workspace");
+assert.equal(mbr4Data.ok, false);
+assert.equal(mbr4Data.error, "target_selection_abstained");
+assert.ok(Array.isArray(mbr4Data.considered), "abstention reports the set of repositories considered");
+assert.ok(!Array.isArray(mbr4Data.repos) || mbr4Data.repos.length === 0, "no repository was queried on abstention");

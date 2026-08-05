@@ -1,0 +1,21 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-004",
+  "title": "Replace all-repository no-match fan-out with bounded routing",
+  "commit": "TBD",
+  "acceptanceStatus": "pass",
+  "envBlocked": true,
+  "envBlockedReason": "full pnpm test is red at baseline on pre-existing repo-catalog/scripts sibling-fixture tests outside MBR-004 allowlist",
+  "snippetRefs": [
+    "SN-NODE-03"
+  ],
+  "recipeRefs": [
+    "R03"
+  ],
+  "changedFiles": [
+    "mcp/server.mjs",
+    "mcp/server.test.mjs",
+    "mcp/workspace-routing.mjs",
+    "mcp/workspace-routing.test.mjs"
+  ]
+}

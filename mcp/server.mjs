@@ -17,6 +17,7 @@ import { eventDbFor, ProposalStore } from "./proposal-store.mjs";
 import { ScratchpadStore, WorkingContextStore } from "./working-context.mjs";
 import { mintScopeGrantV1 } from "./scope-grant-v1.mjs";
 import { intersectAuthority, permitsLevel, canReachTarget } from "./authorization.mjs";
+import { selectWorkspaceTargets } from "./workspace-routing.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -46,7 +47,7 @@ const CALLER_SCHEMA = {
   additionalProperties: false,
 };
 const TOOL_DEFINITIONS = [
-  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." } } } },
+  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." }, explicitRepositoryIds: { type: "array", items: { type: "string" }, description: "MBR-004 bounded routing: workspace scope only. Exact repository ids to select even without an alias mention." } } } },
   { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
   { name: "membrane_checkpoint_save", description: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.", inputSchema: { type: "object", required: ["repository", "caller", "checkpoint"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, checkpoint: { type: "object" } } } },
@@ -347,17 +348,13 @@ async function callTool(name, args, trace = {}) {
       const catalog = await buildRepositoryCatalog(binding.root);
       const repos = catalog?.repositories || [];
       if (repos.length === 0) return { ok: false, error: "workspace_scope_no_repos", scope: "workspace" };
-      // Determine which repos are relevant to the task.
-      const taskText = String(args.task || "").toLowerCase();
-      const targets = repos.filter((entry) => {
-        // Always include the workspace root.
-        if (entry.role === "workspace-root") return true;
-        // Include repos whose aliases appear in the task text.
-        const aliases = entry.aliases || [];
-        return aliases.some((alias) => taskText.includes(alias.toLowerCase()));
-      });
-      // If no alias match, fan out to ALL child repos.
-      const selected = targets.length > 1 ? targets : repos;
+      // MBR-004 / SN-NODE-03: bounded routing. A task with no explicit or
+      // mentioned target abstains instead of querying every repository.
+      const routing = selectWorkspaceTargets({ catalog, task: args.task, explicitRepositoryIds: args.explicitRepositoryIds || [] });
+      if (routing.status === "abstained") {
+        return text({ ok: false, scope: "workspace", error: routing.reason, considered: routing.considered });
+      }
+      const selected = routing.targets;
       const budget = Number.isInteger(args.budget) ? args.budget : 4096;
       const perRepoBudget = Math.max(1, Math.floor(budget / selected.length));
       const fused = { ok: true, scope: "workspace", repos: [], totalCandidates: 0, totalOmissions: 0 };

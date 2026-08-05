@@ -1,0 +1,9 @@
+{
+  "schema": "orthic.membrane-evidence.acceptance.v1",
+  "taskId": "MBR-004",
+  "acceptance": "A task with no alias or confident target does not query every repository and reports target_selection_abstained.",
+  "status": "pass",
+  "verifiedBy": "node --test mcp/workspace-routing.test.mjs mcp/server.test.mjs",
+  "observed": "no-match workspace task returns target_selection_abstained; explicitRepositoryIds select exact targets; MAX_WORKSPACE_TARGETS caps fan-out",
+  "at": "2026-08-05T23:57:29.551542+00:00"
+}
