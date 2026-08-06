@@ -219,7 +219,51 @@ function finalize(packet, doorChars = MAX_CONTEXT_CHARS) {
   if (Object.keys(accounting).length) packet.providerAccounting = accounting;
   else delete packet.providerAccounting;
 
+  // MBR-011: surface a selected-without-delivery failure on the packet itself.
+  packet.deliveryOutcome = evaluateDeliveryOutcome(packet);
+
   return { body: sections.join("\n\n"), deliveredChars: used };
+}
+
+/** MBR-011: the ONE stable alert id for a selected-without-delivery failure. */
+const SELECTED_WITHOUT_DELIVERY_ALERT = "selected_without_delivery";
+
+/**
+ * MBR-011: a packet that selected content but delivered NOTHING to the agent —
+ * by any mode — is a visible failure, not a quiet success.
+ *
+ * A block counts as delivered when it reached the agent by any proven mode:
+ * rendered inline (`deliveredChars > 0`), natively loaded with a matching host
+ * receipt (`deliveryMode === "native"`, MBR-010), or already delivered in a
+ * prior turn (`dropReason === "already_delivered"`). When at least one block
+ * was selected (`selectedTokens > 0`) but zero blocks reached the agent, the
+ * outcome is `degraded`, exactly one stable alert id is emitted, and release
+ * promotion is blocked.
+ *
+ * @param {object} packet a finalized packet (blocks carry delivery accounting)
+ * @returns {{status:"ok"|"degraded", alert:string|null, selected:number, delivered:number, releasePromotionBlocked:boolean}}
+ */
+function evaluateDeliveryOutcome(packet) {
+  const blocks = Array.isArray(packet?.blocks) ? packet.blocks : [];
+  let selected = 0;
+  let delivered = 0;
+  for (const block of blocks) {
+    const selectedTokens = Number(block.selectedTokens ?? block.estimatedTokens ?? 0) || 0;
+    if (selectedTokens > 0) selected += 1;
+    const reached =
+      block.deliveryMode === "native" ||
+      Number(block.deliveredChars ?? 0) > 0 ||
+      block.dropReason === "already_delivered";
+    if (reached) delivered += 1;
+  }
+  const failed = selected > 0 && delivered === 0;
+  return {
+    status: failed ? "degraded" : "ok",
+    alert: failed ? SELECTED_WITHOUT_DELIVERY_ALERT : null,
+    selected,
+    delivered,
+    releasePromotionBlocked: failed,
+  };
 }
 
 /**
@@ -362,9 +406,11 @@ module.exports = {
   MAX_CONTEXT_CHARS,
   MAX_PACKET_BYTES,
   NATIVE_DELIVERY_STATUSES,
+  SELECTED_WITHOUT_DELIVERY_ALERT,
   SELF_LOADING_RULE_CLIENTS,
   applyDeliveryLedger,
   digest,
+  evaluateDeliveryOutcome,
   finalize,
   loadsWorkspaceRules,
   matchHostDeliveryReceipt,

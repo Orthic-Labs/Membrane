@@ -206,6 +206,44 @@ fn context_registry() -> &'static ContextRegistry {
 pub fn registered_artifact_family(value: &str) -> bool {
     context_registry().artifact_families.contains(value) || valid_namespaced_extension(value)
 }
+
+/// MBR-011: the ONE stable alert id for a selected-without-delivery failure.
+pub const SELECTED_WITHOUT_DELIVERY_ALERT: &str = "selected_without_delivery";
+
+/// MBR-011: the delivery verdict for a turn. This mirrors the renderer's
+/// `evaluateDeliveryOutcome` (mcp/context-renderer-lib.cjs) so the persistent
+/// telemetry layer and the in-prompt renderer agree byte-for-byte on the same
+/// selected/delivered counts and the same promotion decision.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryOutcome {
+    /// "ok" | "degraded". Not a telemetry event status token — this is the
+    /// turn-level verdict surfaced to callers and release tooling.
+    pub status: &'static str,
+    /// Exactly one stable alert id when the turn failed, else None.
+    pub alert: Option<&'static str>,
+    pub selected: i64,
+    pub delivered: i64,
+    /// True iff a release built on this turn must NOT be promoted.
+    pub release_promotion_blocked: bool,
+}
+
+/// MBR-011: a turn that selected content but delivered NOTHING is a visible
+/// failure, not a quiet success. When `selected > 0` and `delivered == 0` the
+/// status is "degraded", exactly one stable alert id is emitted, and release
+/// promotion is blocked.
+pub fn evaluate_delivery_outcome(selected: i64, delivered: i64) -> DeliveryOutcome {
+    let selected = selected.max(0);
+    let delivered = delivered.max(0);
+    let failed = selected > 0 && delivered == 0;
+    DeliveryOutcome {
+        status: if failed { "degraded" } else { "ok" },
+        alert: failed.then_some(SELECTED_WITHOUT_DELIVERY_ALERT),
+        selected,
+        delivered,
+        release_promotion_blocked: failed,
+    }
+}
 const OPERATIONS: &[&str] = &[
     "read",
     "write",
@@ -2955,6 +2993,35 @@ mod lifecycle_intent_tests {
             os_type: std::env::consts::OS,
             arch: std::env::consts::ARCH,
         }
+    }
+
+    #[test]
+    fn mbr011_selected_without_delivery_is_a_degraded_visible_failure() {
+        // selected>0 and delivered==0 → degraded, one stable alert, promotion blocked.
+        let outcome = evaluate_delivery_outcome(3, 0);
+        assert_eq!(outcome.status, "degraded");
+        assert_eq!(outcome.alert, Some(SELECTED_WITHOUT_DELIVERY_ALERT));
+        assert_eq!(outcome.alert, Some("selected_without_delivery"));
+        assert!(outcome.release_promotion_blocked);
+        assert_eq!(outcome.selected, 3);
+        assert_eq!(outcome.delivered, 0);
+    }
+
+    #[test]
+    fn mbr011_any_delivery_or_no_selection_clears_the_failure() {
+        // delivered>0 → ok, no alert, promotion allowed.
+        let delivered = evaluate_delivery_outcome(3, 1);
+        assert_eq!(delivered.status, "ok");
+        assert_eq!(delivered.alert, None);
+        assert!(!delivered.release_promotion_blocked);
+        // nothing selected → ok even with zero delivered.
+        let empty = evaluate_delivery_outcome(0, 0);
+        assert_eq!(empty.status, "ok");
+        assert_eq!(empty.alert, None);
+        assert!(!empty.release_promotion_blocked);
+        // negative inputs are clamped, never panic.
+        let clamped = evaluate_delivery_outcome(-5, -1);
+        assert_eq!(clamped.status, "ok");
     }
 
     #[test]

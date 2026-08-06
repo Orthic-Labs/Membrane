@@ -21,6 +21,12 @@ import {
   typedClient,
   validateHostDeliveryReceipt,
 } from "./context-renderer.mjs";
+import { createRequire } from "node:module";
+
+// MBR-011 owns context-renderer-lib.cjs (not context-renderer.mjs in this
+// book), so the delivery-outcome symbols are pulled from the CJS lib directly.
+const require = createRequire(import.meta.url);
+const { evaluateDeliveryOutcome, SELECTED_WITHOUT_DELIVERY_ALERT } = require("./context-renderer-lib.cjs");
 
 function blockOf(overrides = {}) {
   return {
@@ -243,4 +249,39 @@ test("render reports a degraded state honestly and ships no body", () => {
   assert.match(out, /^Membrane: degraded/);
   assert.match(out, /omissions: cortex_unavailable/);
   assert.ok(!out.includes("<membrane-context "), "a degraded result must not render a context body");
+});
+
+test("MBR-011: selected>0 with delivered=0 is a degraded visible failure that blocks promotion", () => {
+  // Two selected blocks, but the packet budget drops both → nothing reaches the
+  // agent. That is a failure, not a quiet success.
+  const packet = { blocks: [blockOf({ text: "x".repeat(500), selectedTokens: 100 }), blockOf({ id: "b2", text: "y".repeat(500), selectedTokens: 50 })] };
+  finalize(packet, 50); // budget too small to render either
+  const outcome = packet.deliveryOutcome;
+  assert.equal(outcome.status, "degraded");
+  assert.equal(outcome.alert, SELECTED_WITHOUT_DELIVERY_ALERT);
+  assert.equal(outcome.releasePromotionBlocked, true);
+  assert.ok(outcome.selected > 0);
+  assert.equal(outcome.delivered, 0);
+});
+
+test("MBR-011: the alert id is stable and exactly one is emitted", () => {
+  assert.equal(SELECTED_WITHOUT_DELIVERY_ALERT, "selected_without_delivery");
+  const outcome = evaluateDeliveryOutcome({ blocks: [blockOf({ selectedTokens: 10, deliveredChars: 0 })] });
+  assert.equal(outcome.alert, "selected_without_delivery");
+});
+
+test("MBR-011: any delivered block clears the failure", () => {
+  const outcome = evaluateDeliveryOutcome({ blocks: [blockOf({ selectedTokens: 10, deliveredChars: 5 })] });
+  assert.equal(outcome.status, "ok");
+  assert.equal(outcome.alert, null);
+  assert.equal(outcome.releasePromotionBlocked, false);
+});
+
+test("MBR-011: native or already-delivered blocks count as delivered (no false failure)", () => {
+  // A natively-loaded rule (MBR-010) delivered zero rendered chars but DID
+  // reach the agent — it must not trigger a selected-without-delivery failure.
+  const outcome = evaluateDeliveryOutcome({ blocks: [blockOf({ selectedTokens: 10, deliveryMode: "native", deliveredChars: 0 })] });
+  assert.equal(outcome.status, "ok");
+  const referenced = evaluateDeliveryOutcome({ blocks: [blockOf({ selectedTokens: 10, deliveredChars: 0, dropReason: "already_delivered" })] });
+  assert.equal(referenced.status, "ok");
 });
