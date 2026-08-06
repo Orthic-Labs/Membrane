@@ -6,6 +6,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { defaultRegistryPath, enroll } from "./project-registry.mjs";
+import { readCortexReadiness } from "./cortex-readiness.mjs";
 
 // Resolved once: the absolute URL to Cortex's exported static-provider reader.
 // Membrane never re-parses graph.db — it calls the exported readGeneration,
@@ -228,26 +229,11 @@ function aliasesFor(relativeRoot) {
  * @returns {"current"|"degraded"|"stale"|"unwatched"}
  */
 function readWatcherState(absoluteRoot) {
-  const graphDbPath = join(absoluteRoot, ".agent", "graph", "graph.db");
-  if (!existsSync(graphDbPath)) return "unwatched";
-  let db;
-  try {
-    db = new DatabaseSync(graphDbPath, { open: true, readOnly: true });
-    const rows = db.prepare("SELECT key, value FROM watch_state").all();
-    if (!rows || rows.length === 0) return "unwatched";
-    const state = Object.fromEntries(rows.map((row) => [row.key, row.value]));
-    const pid = Number(state.watcher_pid ?? 0) || null;
-    const eventGap = Number(state.event_gap ?? 0);
-    if (eventGap) return "stale";
-    if (!pid) return "unwatched";
-    // pid is present and event_gap is zero; check if the process is alive.
-    try { process.kill(pid, 0); return "current"; } catch { return "degraded"; }
-  } catch {
-    // graph.db unreadable or missing watch_state table → unwatched
-    return "unwatched";
-  } finally {
-    if (db) { try { db.close(); } catch {} }
-  }
+  // MBR-009: delegate to Cortex's authoritative readiness contract. Stale
+  // actors (never started / process dead / owner superseded) are unwatched;
+  // stale data (event gap / pending events) is degraded/stale. A supervisor
+  // restart no longer marks live repos dead.
+  return readCortexReadiness(absoluteRoot).freshness;
 }
 
 export async function buildRepositoryCatalog(workspaceRoot, options = {}) {

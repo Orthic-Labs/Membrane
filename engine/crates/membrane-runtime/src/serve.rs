@@ -4324,6 +4324,59 @@ fn spawn_watcher(script: &std::path::Path) -> Option<std::process::Child> {
     }
 }
 
+/// MBR-009 — what to do about the Cortex workspace watcher. The decision is a
+/// pure function of the recorded pid and its liveness so it can be unit-tested
+/// without touching process state. A stale pidfile from a superseded supervisor
+/// (a dead pid) must NOT be adopted — that is a stale actor, so we spawn fresh
+/// and let the new supervisor claim the repos under its own owner stamp.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WatcherAction {
+    /// Adopt the already-running watcher recorded in the pidfile.
+    Adopt(u32),
+    /// Spawn a fresh watcher (no recorded watcher, or a dead/stale one).
+    SpawnFresh,
+    /// cortex-watch.mjs was not found; the watcher is disabled.
+    Unavailable,
+}
+
+/// Read the recorded watcher pid from the pidfile, if any. Returns `None` when
+/// the pidfile is missing, unreadable, or holds a non-numeric value.
+fn recorded_watcher_pid(pidfile: &std::path::Path) -> Option<u32> {
+    std::fs::read_to_string(pidfile)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+}
+
+/// Pure decision: adopt only when a watcher is both recorded AND alive.
+/// A missing/dead recorded pid is a stale actor — never adopt it (a supervisor
+/// restart must not leave the runtime believing a dead predecessor still owns
+/// the watch). When no watcher script exists, there is nothing to spawn.
+fn decide_watcher_action(
+    watcher_script: Option<&std::path::Path>,
+    existing_pid: Option<u32>,
+    pid_alive: bool,
+) -> WatcherAction {
+    match watcher_script {
+        None => WatcherAction::Unavailable,
+        Some(_) => match (existing_pid, pid_alive) {
+            (Some(pid), true) => WatcherAction::Adopt(pid),
+            _ => WatcherAction::SpawnFresh,
+        },
+    }
+}
+
+/// Is the recorded watcher pid alive? Uses `kill -0` (existence probe) with all
+/// output silenced; any non-zero exit means the process is gone.
+fn watcher_pid_alive(pid: u32) -> bool {
+    std::process::Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Open the DB and serve the contract forever on IPv4 loopback only.
 ///
 /// Opens a separate catalog SQLite at `<context-home>/catalog.db` for G3B
@@ -4395,30 +4448,23 @@ pub fn run(
     let cortex_watch = find_cortex_watch();
     let mut watcher_child: Option<std::process::Child> = None;
     if let Some(ref watch_script) = cortex_watch {
-        // Check if a watcher is already running by reading its pidfile.
+        // MBR-009: adopt only a watcher that is both recorded AND alive; a stale
+        // pidfile from a superseded supervisor is a stale actor — spawn fresh.
         let pidfile = std::path::PathBuf::from(
             std::env::var("HOME").unwrap_or_default(),
         ).join(".cortex").join("watchman.pid");
-        let existing_pid = std::fs::read_to_string(&pidfile)
-            .ok()
-            .and_then(|s| s.trim().parse::<u32>().ok());
-        if let Some(pid) = existing_pid {
-            // Check if the process is alive.
-            let alive = std::process::Command::new("kill")
-                .args(["-0", &pid.to_string()])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false);
-            if alive {
+        let existing_pid = recorded_watcher_pid(&pidfile);
+        let pid_alive = existing_pid.map(watcher_pid_alive).unwrap_or(false);
+        match decide_watcher_action(Some(watch_script), existing_pid, pid_alive) {
+            WatcherAction::Adopt(pid) => {
                 eprintln!("crypt watcher: adopting existing pid {pid}");
-            } else {
-                eprintln!("crypt watcher: pid {pid} dead, spawning fresh");
+            }
+            _ => {
+                if existing_pid.is_some() {
+                    eprintln!("crypt watcher: recorded pid {existing_pid:?} dead or stale, spawning fresh");
+                }
                 watcher_child = spawn_watcher(watch_script);
             }
-        } else {
-            watcher_child = spawn_watcher(watch_script);
         }
     } else {
         eprintln!("crypt watcher: cortex-watch.mjs not found, watcher disabled");
@@ -4459,6 +4505,32 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mbr009_watcher_decision_distinguishes_stale_actor_from_live_watch() {
+        let script = std::path::Path::new("/tmp/cortex-watch.mjs");
+        // Live recorded watcher → adopt, never respawn a duplicate.
+        assert_eq!(
+            decide_watcher_action(Some(script), Some(1234), true),
+            WatcherAction::Adopt(1234)
+        );
+        // Recorded but dead pid (a superseded supervisor's stale stamp) →
+        // spawn fresh; a restart must not adopt a dead predecessor.
+        assert_eq!(
+            decide_watcher_action(Some(script), Some(1234), false),
+            WatcherAction::SpawnFresh
+        );
+        // No recorded watcher at all → spawn fresh.
+        assert_eq!(
+            decide_watcher_action(Some(script), None, false),
+            WatcherAction::SpawnFresh
+        );
+        // No watcher script → disabled, regardless of pidfile state.
+        assert_eq!(
+            decide_watcher_action(None, Some(1234), true),
+            WatcherAction::Unavailable
+        );
+    }
 
     async fn wait_for_worker_snapshot(app: &Router, predicate: impl Fn(&Value) -> bool) -> Value {
         use axum::body::{to_bytes, Body};

@@ -9,12 +9,12 @@ const workspace = await realpath(new URL("../../", import.meta.url));
 test("repository catalog discovers the workspace root plus all registered child repositories", async () => {
   const catalog = await buildRepositoryCatalog(workspace);
   assert.equal(catalog.schema, "orthic.repository-catalog.v1");
-  assert.equal(catalog.repositories.length, 19);
+  assert.equal(catalog.repositories.length, 20);
   assert.equal(catalog.repositories.filter((entry) => entry.role === "workspace-root").length, 1);
-  assert.equal(catalog.repositories.filter((entry) => entry.role === "child-repository").length, 18);
+  assert.equal(catalog.repositories.filter((entry) => entry.role === "child-repository").length, 19);
   assert.equal(catalog.catalog_digest, catalogDigest(catalog));
-  assert.equal(new Set(catalog.repositories.map((entry) => entry.repository_id)).size, 19);
-  assert.equal(new Set(catalog.repositories.map((entry) => entry.scope_id)).size, 19);
+  assert.equal(new Set(catalog.repositories.map((entry) => entry.repository_id)).size, 20);
+  assert.equal(new Set(catalog.repositories.map((entry) => entry.scope_id)).size, 20);
 });
 
 test("child graph access requires an explicit root grant", async () => {
@@ -30,12 +30,12 @@ test("catalog enrollment binds every repository to one digest without implicit c
   const temporary = await import("node:fs/promises").then(({ mkdtemp }) => mkdtemp("/tmp/membrane-catalog-"));
   const registry = `${temporary}/registry.json`;
   const result = await enrollRepositoryCatalog(workspace, { registryPath: registry, dryRun: true });
-  assert.equal(result.bindings.length, 19);
+  assert.equal(result.bindings.length, 20);
   assert.ok(result.bindings.every((binding) => binding.repository_catalog_digest === result.catalog.catalog_digest));
   assert.deepEqual(result.bindings.find((binding) => binding.repository_id === result.catalog.repositories.find((entry) => entry.role === "workspace-root").repository_id).grant_policy.child_repository_ids, []);
   const applied = await enrollRepositoryCatalog(workspace, { registryPath: registry, childGrants: result.catalog.repositories.filter((entry) => entry.role === "child-repository").map((entry) => entry.repository_id) });
   const stored = await readRegistry(registry);
-  assert.equal(applied.bindings.length, 19);
-  assert.equal(Object.keys(stored.bindings).length, 19);
+  assert.equal(applied.bindings.length, 20);
+  assert.equal(Object.keys(stored.bindings).length, 20);
   assert.ok(Object.values(stored.bindings).every((binding) => binding.repository_catalog_digest === applied.catalog.catalog_digest));
 });
