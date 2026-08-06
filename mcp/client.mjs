@@ -40,6 +40,7 @@ import { readFileSync, statSync, existsSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { request as httpRequest } from "node:http";
 import { pathToFileURL } from "node:url";
+import { performance } from "node:perf_hooks";
 
 const DEFAULT_PORT = 47851;
 const REQUEST_TIMEOUT_MS = 1500;
@@ -182,17 +183,26 @@ function loadInput({ inputArg, maxTokens }) {
   };
 }
 
-function postPlanner({ host, port, path, body, token, traceId }) {
+function postPlanner({ host, port, path, body, token, traceId, deadlineAtMs }) {
   const trace = boundedTrace(body);
+  // MBR-005: honor the parent's single absolute monotonic deadline; never take a
+  // fresh inner timeout longer than the remaining budget.
+  if (deadlineAtMs) {
+    const remaining = Math.max(0, Math.floor(deadlineAtMs - performance.now()));
+    if (remaining <= 0) return Promise.reject(new Error("deadline_exceeded"));
+  }
   return new Promise((resolve, reject) => {
     const json = Buffer.from(JSON.stringify(body), "utf8");
+    const timeoutMs = deadlineAtMs
+      ? Math.max(1, Math.min(REQUEST_TIMEOUT_MS, Math.floor(deadlineAtMs - performance.now())))
+      : REQUEST_TIMEOUT_MS;
     const req = httpRequest(
       {
         hostname: host,
         port,
         path,
         method: "POST",
-        timeout: REQUEST_TIMEOUT_MS,
+        timeout: timeoutMs,
         headers: {
           "content-type": "application/json; charset=utf-8",
           "content-length": String(json.byteLength),
@@ -311,6 +321,8 @@ async function main() {
   const token = readToken();
   const port = readPort();
   const host = "127.0.0.1";
+  const deadlineEnv = Number(process.env.MEMBRANE_DEADLINE_AT_MS);
+  const deadlineAtMs = Number.isFinite(deadlineEnv) && deadlineEnv > 0 ? deadlineEnv : null;
 
   let response;
   try {
@@ -321,6 +333,7 @@ async function main() {
       body: payload,
       token,
       traceId,
+      deadlineAtMs,
     });
   } catch (e) {
     emitFallbackEvent({

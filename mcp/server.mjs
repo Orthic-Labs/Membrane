@@ -18,6 +18,7 @@ import { ScratchpadStore, WorkingContextStore } from "./working-context.mjs";
 import { mintScopeGrantV1 } from "./scope-grant-v1.mjs";
 import { intersectAuthority, permitsLevel, canReachTarget } from "./authorization.mjs";
 import { selectWorkspaceTargets } from "./workspace-routing.mjs";
+import { createDeadline, deadlineSignal, mapConcurrent, terminalReason } from "./deadline.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -34,6 +35,9 @@ const rateWindows = new Map();
 // write-proposed so it never caps a legitimate caller below its own declared
 // level, while still bounding an over-privileged registry claim.
 const INSTALLATION_AUTHORITY_LEVEL = "write-proposed";
+// MBR-005 (SN-NODE-04 / R04): one ingress deadline and a bounded fan-out.
+const WORKSPACE_TIMEOUT_MS = 2500;
+const WORKSPACE_CONCURRENCY = 2;
 const scratchpadStore = new ScratchpadStore();
 const CALLER_SCHEMA = {
   type: "object",
@@ -47,7 +51,7 @@ const CALLER_SCHEMA = {
   additionalProperties: false,
 };
 const TOOL_DEFINITIONS = [
-  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." }, explicitRepositoryIds: { type: "array", items: { type: "string" }, description: "MBR-004 bounded routing: workspace scope only. Exact repository ids to select even without an alias mention." } } } },
+  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." }, explicitRepositoryIds: { type: "array", items: { type: "string" }, description: "MBR-004 bounded routing: workspace scope only. Exact repository ids to select even without an alias mention." }, deadlineMs: { type: "integer", minimum: 1, description: "MBR-005: optional absolute budget for the workspace fan-out in ms; one ingress deadline bounds all children." } } } },
   { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
   { name: "membrane_checkpoint_save", description: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.", inputSchema: { type: "object", required: ["repository", "caller", "checkpoint"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, checkpoint: { type: "object" } } } },
@@ -226,16 +230,39 @@ async function authorize(args, action) {
   return binding;
 }
 
-function run(command, args, input, env = process.env) {
+function run(command, args, input, env = process.env, signal) {
+  // MBR-005: if the caller already aborted, do not spawn a child at all.
+  if (signal?.aborted) return Promise.resolve({ code: 124, stdout: "", stderr: signal.reason?.message || "cancelled" });
   return new Promise((resolve) => {
-    const child = spawn(command, args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env });
+    const child = spawn(command, args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe"], env, signal });
+    const terminate = () => { try { child.kill(); } catch (_) {} };
+    signal?.addEventListener("abort", terminate, { once: true });
     let stdout = "", stderr = "";
     child.stdout.on("data", (chunk) => { stdout += chunk; });
     child.stderr.on("data", (chunk) => { stderr += chunk; });
     child.on("error", (error) => resolve({ code: 127, stdout, stderr: error.message }));
-    child.on("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
+    child.on("close", (code) => { signal?.removeEventListener("abort", terminate); resolve({ code: code ?? 1, stdout, stderr }); });
     child.stdin.end(input);
   });
+}
+
+// MBR-005 / R04: bounded-concurrency fan-out with STABLE, index-aligned output
+// order and abort-awareness. On abort it marks never-started lanes as aborted
+// instead of dropping partial receipts; items already running finish (their
+// run() resolves with the deadline/cancel reason) and are recorded in place.
+async function runBoundedOrdered(items, limit, fn, signal) {
+  const out = new Array(items.length).fill(undefined);
+  let cursor = 0;
+  async function worker() {
+    while (true) {
+      const index = cursor++;
+      if (index >= items.length) return;
+      if (signal?.aborted) { out[index] = { aborted: true }; continue; }
+      out[index] = await fn(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
 
 async function currentFreshness(binding, install, sessionId) {
@@ -359,20 +386,22 @@ async function callTool(name, args, trace = {}) {
       const perRepoBudget = Math.max(1, Math.floor(budget / selected.length));
       const fused = { ok: true, scope: "workspace", repos: [], totalCandidates: 0, totalOmissions: 0 };
       const trace = { traceparent: args.traceparent, tracestate: args.tracestate, baggage: args.baggage };
-      const omitted = (entry, omission) => {
-        fused.repos.push({ repoId: entry.repository_id, basis: "denied", generationId: null, candidates: 0, omissions: [omission] });
-        fused.totalOmissions += 1;
-      };
-      // MBR-003 (SN-NODE-02 / R03): authorize EVERY workspace target independently
-      // through the same primitive a direct repository call uses, before any
-      // provider/client process is spawned. Adversarial ungranted siblings are
-      // omitted with a typed denial receipt and are never invoked.
       const workspaceGrants = binding.grant_policy?.child_repository_ids;
       const catalogRootId = repos.find((entry) => entry.role === "workspace-root")?.repository_id;
-      for (const entry of selected) {
+      // MBR-003 authorizes EVERY target independently (same primitive as direct
+      // calls). MBR-005 (SN-NODE-04 / R04) bounds the whole fan-out by ONE
+      // absolute monotonic ingress deadline with bounded concurrency; receipts
+      // stay in stable repository order. Denied/aborted/expired targets become
+      // typed terminal omissions, never collapsed into federation_error.
+      const deadlineMs = createDeadline(Number.isInteger(args.deadlineMs) ? args.deadlineMs : WORKSPACE_TIMEOUT_MS);
+      const lane = deadlineSignal(deadlineMs);
+      const abortRow = (entry) => ({ row: { repoId: entry.repository_id, basis: "aborted", generationId: null, candidates: 0, omissions: [terminalReason(lane.signal) || "cancelled"] }, omissions: 1, candidates: 0 });
+      const deniedRow = (entry) => ({ row: { repoId: entry.repository_id, basis: "denied", generationId: null, candidates: 0, omissions: ["target_denied"] }, omissions: 1, candidates: 0 });
+      const results = await runBoundedOrdered(selected, WORKSPACE_CONCURRENCY, async (entry) => {
+        if (lane.signal.aborted) return abortRow(entry);
         const targetRoot = resolve(binding.root, entry.root === "." ? "." : entry.root);
         let targetBinding;
-        try { targetBinding = await bindingFor(targetRoot); } catch { omitted(entry, "target_denied"); continue; }
+        try { targetBinding = await bindingFor(targetRoot); } catch { return deniedRow(entry); }
         const hasGrant = hasExplicitChildGrant(catalog, catalogRootId, entry.repository_id, workspaceGrants);
         const effectiveLevel = await canReachTarget({
           callerBinding: binding,
@@ -381,24 +410,33 @@ async function callTool(name, args, trace = {}) {
           taskGrantLevel: args.taskGrantLevel,
           hasExplicitChildGrant: hasGrant,
         });
-        if (!effectiveLevel) { omitted(entry, "target_denied"); continue; }
+        if (!effectiveLevel) return deniedRow(entry);
         const request = { task: args.task, repo: targetRoot, maxTokens: perRepoBudget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, ...trace };
-        try {
-          const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: targetRoot });
-          const packet = JSON.parse(out.stdout.trim() || "{}");
-          fused.repos.push({
+        const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: targetRoot, MEMBRANE_DEADLINE_AT_MS: String(deadlineMs) }, lane.signal);
+        const reason = terminalReason(lane.signal);
+        if (reason) return { row: { repoId: entry.repository_id, basis: "aborted", generationId: null, candidates: 0, omissions: [reason] }, omissions: 1, candidates: 0 };
+        const packet = text(out.stdout.trim() || "");
+        const degraded = Boolean(packet?.degradationReason && packet.degradationReason !== "none");
+        return {
+          row: {
             repoId: entry.repository_id,
-            generationId: packet.packet?.freshness?.revision || null,
-            candidates: (packet.packet?.blocks || []).length,
-            omissions: (packet.degradationReason && packet.degradationReason !== "none") ? [packet.degradationReason] : [],
-          });
-          fused.totalCandidates += (packet.packet?.blocks || []).length;
-          fused.totalOmissions += fused.repos[fused.repos.length - 1].omissions.length;
-        } catch {
-          fused.repos.push({ repoId: entry.repository_id, generationId: null, candidates: 0, omissions: ["federation_error"] });
-          fused.totalOmissions += 1;
-        }
+            generationId: packet?.packet?.freshness?.revision || null,
+            candidates: (packet?.packet?.blocks || []).length,
+            omissions: degraded ? [packet.degradationReason] : [],
+          },
+          omissions: degraded ? 1 : 0,
+          candidates: (packet?.packet?.blocks || []).length,
+        };
+      }, lane.signal);
+      for (const item of results) {
+        if (!item) continue;
+        fused.repos.push(item.row);
+        fused.totalOmissions += item.omissions;
+        fused.totalCandidates += item.candidates;
       }
+      fused.repos.sort((a, b) => String(a.repoId).localeCompare(String(b.repoId))); // stable receipt order by repository id
+      if (lane.signal.aborted) fused.deadlineExceeded = true;
+      lane.close();
       return text(fused);
     }
 
