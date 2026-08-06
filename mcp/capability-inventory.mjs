@@ -2,8 +2,10 @@ import { readFile } from "node:fs/promises";
 import { TOOLS, TOOL_OUTPUT_SCHEMA } from "./server.mjs";
 
 export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) {
-  const matrix = JSON.parse(await readFile(matrixPath ?? new URL("../../forge/hooks/membrane-capability-matrix.json", import.meta.url), "utf8"));
-  const freeze = JSON.parse(await readFile(freezePath ?? new URL("../../docs/membrane/federation-freeze-v1.json", import.meta.url), "utf8"));
+  // MBR-015: default to Membrane's OWN vendored data (docs/membrane/), never a
+  // sibling source path. Callers may still inject explicit paths for fixtures.
+  const matrix = JSON.parse(await readFile(matrixPath ?? new URL("../docs/membrane/capability-matrix.v1.json", import.meta.url), "utf8"));
+  const freeze = JSON.parse(await readFile(freezePath ?? new URL("../docs/membrane/federation-freeze-v1.json", import.meta.url), "utf8"));
   const toolTests = (name) => {
     if (["membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad"].includes(name)) return ["mcp/working-context.test.mjs", "mcp/server-durable.test.mjs"];
     if (["membrane_knowledge_propose", "membrane_feedback"].includes(name)) return ["mcp/server.test.mjs", "mcp/server-durable.test.mjs"];
@@ -11,7 +13,7 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
   };
   const capabilities = [
     ...TOOLS.map(({ name }) => ({ capability: `mcp.${name}`, status: "shipped", test_ids: toolTests(name), artifact: "mcp/server.mjs", platforms: ["macOS", "Windows"] })),
-    ...Object.entries(matrix.hosts).map(([id]) => ({ capability: `adapter.${id}`, status: id === "generic_mcp" ? "shipped" : "partial", test_ids: id === "generic_mcp" ? ["mcp/adapters.test.mjs"] : [], artifact: "forge/hooks/membrane-capability-matrix.json", platforms: id === "generic_mcp" ? ["macOS", "Windows"] : [] })),
+    ...Object.entries(matrix.hosts).map(([id]) => ({ capability: `adapter.${id}`, status: id === "generic_mcp" ? "shipped" : "partial", test_ids: id === "generic_mcp" ? ["mcp/adapters.test.mjs"] : [], artifact: "docs/membrane/capability-matrix.v1.json", platforms: id === "generic_mcp" ? ["macOS", "Windows"] : [] })),
   ];
   for (const capability of capabilities) {
     if (capability.status === "shipped" && (!capability.test_ids.length || !capability.artifact || !capability.platforms.length)) throw new Error(`shipped capability lacks proof: ${capability.capability}`);
@@ -30,6 +32,6 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
     support_tiers: matrix.support_tiers,
     contract_freeze: freeze.canonical,
     capabilities,
-    source_files: ["mcp/server.mjs", "forge/hooks/membrane-capability-matrix.json", "docs/membrane/federation-freeze-v1.json"],
+    source_files: ["mcp/server.mjs", "docs/membrane/capability-matrix.v1.json", "docs/membrane/federation-freeze-v1.json"],
   };
 }

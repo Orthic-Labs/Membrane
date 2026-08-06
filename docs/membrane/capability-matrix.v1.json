@@ -1,0 +1,49 @@
+{
+  "schema": "orthic.host-capability-matrix.v1",
+  "hosts": {
+    "claude_code": {
+      "injection": ["SessionStart", "UserPromptSubmit"],
+      "tool_receipts": ["PreToolUse", "PostToolUse"],
+      "response_gate": ["Stop"],
+      "max_honest_level": "L4"
+    },
+    "ccx": {
+      "inherits": "claude_code",
+      "gateway": ":8801",
+      "max_honest_level": "L4"
+    },
+    "codex_cli": {
+      "injection": ["SessionStart", "UserPromptSubmit"],
+      "tool_receipts": ["PreToolUse", "PostToolUse", "PostToolUseFailure"],
+      "response_gate": ["Stop"],
+      "max_honest_level": "L2"
+    },
+    "cdx": {
+      "inherits": "codex_cli",
+      "max_honest_level": "L2"
+    },
+    "coderight": {
+      "injection": ["in-process"],
+      "tool_receipts": ["native broker"],
+      "response_gate": ["native"],
+      "max_honest_level": "L5"
+    },
+    "cursor_windsurf": {
+      "injection": ["rules file", "MCP"],
+      "tool_receipts": [],
+      "response_gate": [],
+      "max_honest_level": "L1"
+    },
+    "generic_mcp": {
+      "injection": ["model-invoked tools"],
+      "tool_receipts": [],
+      "response_gate": [],
+      "max_honest_level": "L0"
+    }
+  },
+  "support_tiers": {
+    "tier_1": ["macOS", "Windows"],
+    "tier_2_best_effort": ["Linux"]
+  },
+  "states": ["fully_enforced", "context_enforced", "advisory", "degraded", "blocked"]
+}

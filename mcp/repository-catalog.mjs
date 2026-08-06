@@ -11,7 +11,15 @@ import { readCortexReadiness } from "./cortex-readiness.mjs";
 // Resolved once: the absolute URL to Cortex's exported static-provider reader.
 // Membrane never re-parses graph.db — it calls the exported readGeneration,
 // which is the only contract for reading a persisted generation.
+//
+// MBR-015: this is OPTIONAL and sibling-independent. The default points at a
+// sibling source checkout, but the import is a guarded dynamic import (it
+// degrades to a null generation when absent), so the installed runtime needs
+// no sibling source tree. `MEMBRANE_CORTEX_STATIC_PROVIDER` overrides the path
+// for installed layouts that ship the reader at a different location.
 const CORTEX_STATIC_PROVIDER_URL = (() => {
+  const override = process.env.MEMBRANE_CORTEX_STATIC_PROVIDER?.trim();
+  if (override) return pathToFileURL(resolve(override)).href;
   const here = dirname(fileURLToPath(import.meta.url));
   // membrane/mcp/repository-catalog.mjs -> membrane/mcp -> membrane -> workspace -> cortex/graph/static-provider.mjs
   return pathToFileURL(resolve(here, "..", "..", "cortex", "graph", "static-provider.mjs")).href;
