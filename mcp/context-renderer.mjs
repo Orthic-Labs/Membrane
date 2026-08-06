@@ -30,10 +30,14 @@ export const MAX_PACKET_BYTES = lib.MAX_PACKET_BYTES;
 export const CLIENT_IDENTITIES = lib.CLIENT_IDENTITIES;
 export const SELF_LOADING_RULE_CLIENTS = lib.SELF_LOADING_RULE_CLIENTS;
 export const DELIVERY_MODES = lib.DELIVERY_MODES;
+export const HOST_DELIVERY_RECEIPT_SCHEMA = lib.HOST_DELIVERY_RECEIPT_SCHEMA;
+export const NATIVE_DELIVERY_STATUSES = lib.NATIVE_DELIVERY_STATUSES;
 export const digest = lib.digest;
 export const typedClient = lib.typedClient;
 export const loadsWorkspaceRules = lib.loadsWorkspaceRules;
 export const finalize = lib.finalize;
+export const matchHostDeliveryReceipt = lib.matchHostDeliveryReceipt;
+export const validateHostDeliveryReceipt = lib.validateHostDeliveryReceipt;
 
 // Re-export the delivery ledger (plan 2.3). The class and applyDeliveryLedger
 // live in the CJS lib so the Forge hook can require them directly.

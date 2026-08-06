@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/host-delivery-receipt.v1.schema.json",
+  "title": "HostDeliveryReceiptV1",
+  "description": "MBR-010: a host-issued proof that the host natively loaded a specific piece of content for a specific session. A block may only be recorded as native-delivered when a receipt matches client + sessionId + sourceHash. An absent receipt yields delivery=missing; a present-but-mismatched or malformed receipt yields delivery=unknown; neither may be reported as native-delivered.",
+  "type": "object",
+  "required": ["schema", "receipt_id", "client", "sessionId", "sourceHash", "deliveredAt", "mechanism"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "orthic.host-delivery-receipt.v1"
+    },
+    "receipt_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Host-issued unique identifier for this delivery event."
+    },
+    "client": {
+      "type": "string",
+      "enum": ["claude_code", "codex", "mcp", "api_worker", "other"],
+      "description": "Typed client identity that loaded the content (plan convention 3)."
+    },
+    "sessionId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Session the content was loaded into."
+    },
+    "sourceHash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "description": "Content digest the host claims to have loaded natively."
+    },
+    "deliveredAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the host loaded the content."
+    },
+    "mechanism": {
+      "type": "string",
+      "minLength": 1,
+      "description": "How the host loaded it (e.g. workspace_rules, native_load, system_prompt_injection)."
+    }
+  }
+}

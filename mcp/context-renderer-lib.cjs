@@ -38,6 +38,77 @@ const SELF_LOADING_RULE_CLIENTS = Object.freeze(["claude_code", "codex"]);
 /** How a block's content reached the agent. */
 const DELIVERY_MODES = Object.freeze(["native", "inline", "reference"]);
 
+/** MBR-010: schema id every host-issued native-delivery receipt must carry. */
+const HOST_DELIVERY_RECEIPT_SCHEMA = "orthic.host-delivery-receipt.v1";
+
+/**
+ * MBR-010: the verdict for a native-delivery claim. A block may only be
+ * reported as `native` when a host-issued receipt matches client + sessionId +
+ * sourceHash. Absent receipt → `missing`; present-but-mismatched or malformed
+ * → `unknown`. Never report `native` on `missing`/`unknown`.
+ */
+const NATIVE_DELIVERY_STATUSES = Object.freeze(["native", "unknown", "missing"]);
+
+const SOURCE_HASH_RE = /^sha256:[a-f0-9]{64}$/;
+
+/**
+ * Validate and normalize a host-delivery receipt. Returns the normalized
+ * receipt, or `null` when the value is malformed (wrong schema id, missing
+ * required field, bad sourceHash shape). A malformed receipt is NEVER proof of
+ * native delivery.
+ */
+function validateHostDeliveryReceipt(receipt) {
+  if (!receipt || typeof receipt !== "object") return null;
+  if (receipt.schema !== HOST_DELIVERY_RECEIPT_SCHEMA) return null;
+  const receiptId = String(receipt.receipt_id || "").trim();
+  const sessionId = String(receipt.sessionId || "").trim();
+  const sourceHash = String(receipt.sourceHash || "").trim();
+  const mechanism = String(receipt.mechanism || "").trim();
+  const deliveredAt = String(receipt.deliveredAt || "").trim();
+  const client = typedClient(receipt.client);
+  if (!receiptId || !sessionId || !mechanism || !deliveredAt) return null;
+  if (!SOURCE_HASH_RE.test(sourceHash)) return null;
+  if (Number.isNaN(Date.parse(deliveredAt))) return null;
+  return {
+    schema: HOST_DELIVERY_RECEIPT_SCHEMA,
+    receipt_id: receiptId,
+    client,
+    sessionId,
+    sourceHash,
+    deliveredAt,
+    mechanism,
+  };
+}
+
+/**
+ * MBR-010: match a candidate block against the host-issued receipts for a
+ * session. Returns one of NATIVE_DELIVERY_STATUSES:
+ *   - "native"  : a well-formed receipt matches client + sessionId + sourceHash
+ *   - "missing" : no receipts were issued for this session at all
+ *   - "unknown" : receipts exist but none validly cover this content
+ */
+function matchHostDeliveryReceipt(receipts, { client, sessionId, sourceHash } = {}) {
+  const list = Array.isArray(receipts) ? receipts : [];
+  if (list.length === 0) return "missing";
+  const wantClient = typedClient(client);
+  const wantSession = String(sessionId || "");
+  const wantHash = String(sourceHash || "");
+  for (const candidate of list) {
+    const receipt = validateHostDeliveryReceipt(candidate);
+    if (!receipt) continue;
+    if (
+      receipt.client === wantClient &&
+      receipt.sessionId === wantSession &&
+      receipt.sourceHash === wantHash
+    ) {
+      return "native";
+    }
+  }
+  // Receipts were issued but none validly covers THIS content (or all were
+  // malformed). That is "unknown", never "native".
+  return "unknown";
+}
+
 function digest(value) {
   return `sha256:${createHash("sha256")
     .update(typeof value === "string" ? value : JSON.stringify(value))
@@ -159,7 +230,7 @@ function finalize(packet, doorChars = MAX_CONTEXT_CHARS) {
  * duplicate of rules it loaded itself.
  */
 class ContextSessionV1 {
-  constructor({ sessionId, client } = {}) {
+  constructor({ sessionId, client, hostReceipts } = {}) {
     this.schema = "orthic.context-session.v1";
     this.sessionId = String(sessionId || "");
     this.client = typedClient(client);
@@ -169,6 +240,9 @@ class ContextSessionV1 {
     };
     this.delivered = [];
     this.selectedRepoGenerations = {};
+    // MBR-010: the host-issued native-delivery receipts for this session. Only
+    // these prove a block reached the agent natively.
+    this.hostReceipts = Array.isArray(hostReceipts) ? hostReceipts.slice() : [];
   }
 
   /** True when this exact content already reached this session. */
@@ -176,6 +250,26 @@ class ContextSessionV1 {
     return this.delivered.some(
       (entry) => entry.id === id && entry.sourceHash === sourceHash,
     );
+  }
+
+  /** Record a host-issued native-delivery receipt for this session. */
+  recordHostReceipt(receipt) {
+    const normalized = validateHostDeliveryReceipt(receipt);
+    if (!normalized) throw new Error("invalid host delivery receipt");
+    this.hostReceipts.push(normalized);
+    return normalized;
+  }
+
+  /**
+   * MBR-010: the receipt-verified native-delivery verdict for a piece of
+   * content in this session: "native" | "unknown" | "missing".
+   */
+  nativeDeliveryStatus(sourceHash) {
+    return matchHostDeliveryReceipt(this.hostReceipts, {
+      client: this.client,
+      sessionId: this.sessionId,
+      sourceHash,
+    });
   }
 
   /**
@@ -205,6 +299,7 @@ class ContextSessionV1 {
       capabilities: this.capabilities,
       delivered: this.delivered,
       selectedRepoGenerations: this.selectedRepoGenerations,
+      hostReceipts: this.hostReceipts,
     };
   }
 }
@@ -223,9 +318,25 @@ function applyDeliveryLedger(packet, session) {
     const isRule = String(block.sourceKind || "") === "doc" && id.startsWith("rules:");
 
     if (isRule && session.capabilities.loadsWorkspaceRules) {
-      block.text = "";
-      block.deliveryMode = "native";
-      session.record(id, "native", sourceHash, 0);
+      // MBR-010: native delivery must be PROVEN by a host-issued receipt that
+      // matches client + sessionId + sourceHash. Absent receipt → "missing";
+      // mismatched/malformed → "unknown"; neither may be reported native. Only
+      // a matched receipt lets the block skip serialization as native-loaded.
+      const status = session.nativeDeliveryStatus(sourceHash);
+      block.delivery = status;
+      if (status === "native") {
+        block.text = "";
+        block.deliveryMode = "native";
+        session.record(id, "native", sourceHash, 0);
+        continue;
+      }
+      // Unproven native claim: deliver the content inline so the host actually
+      // receives it, and record the receipt gap honestly instead of assuming
+      // the host already had it.
+      block.nativeDeliveryGap = status === "missing" ? "no_host_receipt" : "receipt_mismatch";
+      const ruleBytes = typeof block.text === "string" ? Buffer.byteLength(block.text, "utf8") : 0;
+      block.deliveryMode = ruleBytes > 0 ? "inline" : "reference";
+      session.record(id, block.deliveryMode, sourceHash, ruleBytes);
       continue;
     }
     if (session.hasDelivered(id, sourceHash)) {
@@ -247,12 +358,16 @@ module.exports = {
   ContextSessionV1,
   DEFAULT_PACKET_CHAR_BUDGET,
   DELIVERY_MODES,
+  HOST_DELIVERY_RECEIPT_SCHEMA,
   MAX_CONTEXT_CHARS,
   MAX_PACKET_BYTES,
+  NATIVE_DELIVERY_STATUSES,
   SELF_LOADING_RULE_CLIENTS,
   applyDeliveryLedger,
   digest,
   finalize,
   loadsWorkspaceRules,
+  matchHostDeliveryReceipt,
   typedClient,
+  validateHostDeliveryReceipt,
 };

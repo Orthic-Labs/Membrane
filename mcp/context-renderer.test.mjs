@@ -12,11 +12,14 @@ import {
   CLIENT_IDENTITIES,
   ContextSessionV1,
   DEFAULT_PACKET_CHAR_BUDGET,
+  NATIVE_DELIVERY_STATUSES,
   applyDeliveryLedger,
   finalize,
   loadsWorkspaceRules,
+  matchHostDeliveryReceipt,
   render,
   typedClient,
+  validateHostDeliveryReceipt,
 } from "./context-renderer.mjs";
 
 function blockOf(overrides = {}) {
@@ -84,19 +87,93 @@ test("finalize renders highest priority first, stable within a priority", () => 
   assert.ok(body.indexOf("--- low ") < body.indexOf("--- low2"), body);
 });
 
-test("a self-loading host never receives rule bytes but the delivery is recorded", () => {
-  // Plan 2.3: native-loading hosts get rules marked delivered-by-host and
-  // never serialized — the duplicate-truncated-rules bug.
-  const session = new ContextSessionV1({ sessionId: "s1", client: "claude_code" });
+test("a self-loading host with a matching host receipt never receives rule bytes (MBR-010)", () => {
+  // Native delivery is allowed ONLY because the host issued a receipt that
+  // matches client + sessionId + sourceHash. The block is not serialized.
+  const sourceHash = `sha256:${"a".repeat(64)}`;
+  const session = new ContextSessionV1({
+    sessionId: "s1",
+    client: "claude_code",
+    hostReceipts: [{
+      schema: "orthic.host-delivery-receipt.v1",
+      receipt_id: "r1",
+      client: "claude_code",
+      sessionId: "s1",
+      sourceHash,
+      deliveredAt: "2026-08-07T00:00:00Z",
+      mechanism: "workspace_rules",
+    }],
+  });
   const packet = {
-    blocks: [blockOf({ id: "rules:AGENTS.md", sourceKind: "doc", text: "RULE BODY" })],
+    blocks: [blockOf({ id: "rules:AGENTS.md", sourceKind: "doc", text: "RULE BODY", sourceHash })],
   };
   applyDeliveryLedger(packet, session);
-  assert.equal(packet.blocks[0].text, "", "rule body must not be serialized to a self-loading host");
+  assert.equal(packet.blocks[0].text, "", "natively-loaded rule body must not be serialized");
   assert.equal(packet.blocks[0].deliveryMode, "native");
+  assert.equal(packet.blocks[0].delivery, "native");
   const entry = session.delivered.find((d) => d.id === "rules:AGENTS.md");
   assert.equal(entry.deliveryMode, "native");
   assert.equal(entry.bytes, 0);
+});
+
+test("MBR-010: absent host receipt produces delivery=missing, never native", () => {
+  // A self-loading host with NO receipt must not be assumed to have the rules.
+  const sourceHash = `sha256:${"b".repeat(64)}`;
+  const session = new ContextSessionV1({ sessionId: "s1", client: "claude_code" });
+  const packet = {
+    blocks: [blockOf({ id: "rules:AGENTS.md", sourceKind: "doc", text: "RULE BODY", sourceHash })],
+  };
+  applyDeliveryLedger(packet, session);
+  assert.equal(packet.blocks[0].delivery, "missing");
+  assert.notEqual(packet.blocks[0].deliveryMode, "native", "no receipt → never native-delivered");
+  assert.equal(packet.blocks[0].text, "RULE BODY", "unproven native claim falls back to inline delivery");
+  assert.equal(packet.blocks[0].nativeDeliveryGap, "no_host_receipt");
+});
+
+test("MBR-010: mismatched host receipt produces delivery=unknown, never native", () => {
+  // The host issued a receipt, but for DIFFERENT content — it does not prove
+  // this block was natively loaded.
+  const session = new ContextSessionV1({
+    sessionId: "s1",
+    client: "claude_code",
+    hostReceipts: [{
+      schema: "orthic.host-delivery-receipt.v1",
+      receipt_id: "r1",
+      client: "claude_code",
+      sessionId: "s1",
+      sourceHash: `sha256:${"0".repeat(64)}`, // different content
+      deliveredAt: "2026-08-07T00:00:00Z",
+      mechanism: "workspace_rules",
+    }],
+  });
+  const packet = {
+    blocks: [blockOf({ id: "rules:AGENTS.md", sourceKind: "doc", text: "RULE BODY", sourceHash: `sha256:${"c".repeat(64)}` })],
+  };
+  applyDeliveryLedger(packet, session);
+  assert.equal(packet.blocks[0].delivery, "unknown");
+  assert.notEqual(packet.blocks[0].deliveryMode, "native", "mismatched receipt → never native-delivered");
+  assert.equal(packet.blocks[0].nativeDeliveryGap, "receipt_mismatch");
+});
+
+test("MBR-010: a malformed receipt is never proof of native delivery", () => {
+  const session = new ContextSessionV1({
+    sessionId: "s1",
+    client: "codex",
+    hostReceipts: [{ schema: "wrong.schema", receipt_id: "x" }],
+  });
+  const status = session.nativeDeliveryStatus(`sha256:${"d".repeat(64)}`);
+  assert.equal(status, "unknown");
+  assert.equal(validateHostDeliveryReceipt({ schema: "wrong.schema" }), null);
+});
+
+test("MBR-010: matchHostDeliveryReceipt distinguishes native/unknown/missing", () => {
+  const hash = `sha256:${"e".repeat(64)}`;
+  const good = { schema: "orthic.host-delivery-receipt.v1", receipt_id: "r", client: "codex", sessionId: "s", sourceHash: hash, deliveredAt: "2026-08-07T00:00:00Z", mechanism: "native_load" };
+  assert.equal(matchHostDeliveryReceipt([], { client: "codex", sessionId: "s", sourceHash: hash }), "missing");
+  assert.equal(matchHostDeliveryReceipt([good], { client: "codex", sessionId: "s", sourceHash: hash }), "native");
+  assert.equal(matchHostDeliveryReceipt([good], { client: "codex", sessionId: "s", sourceHash: `sha256:${"f".repeat(64)}` }), "unknown");
+  assert.equal(matchHostDeliveryReceipt([good], { client: "claude_code", sessionId: "s", sourceHash: hash }), "unknown");
+  assert.deepEqual([...NATIVE_DELIVERY_STATUSES].sort(), ["missing", "native", "unknown"]);
 });
 
 test("a headless client receives rule content inline", () => {
