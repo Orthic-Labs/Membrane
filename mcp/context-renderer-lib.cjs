@@ -115,6 +115,34 @@ function digest(value) {
     .digest("hex")}`;
 }
 
+/**
+ * MBR-012: the ONE canonical serialization of delivered content. Every
+ * delivered-content surface — bytes, chars, tokens, and the content hash — is
+ * derived from the SAME UTF-8 byte sequence here, so the in-prompt renderer,
+ * the persistent telemetry, the delivery ledger, and the receipt digest all
+ * agree byte-for-byte on a qualification fixture.
+ *
+ * Canonical conventions (documented in schemas/delivery-metrics.v1.schema.json):
+ *   - bytes  : number of UTF-8 bytes of the exact content string.
+ *   - chars  : number of Unicode code points (NOT UTF-16 code units — a
+ *              multi-byte or surrogate-pair character counts once).
+ *   - tokens : ceil(bytes / 4). The single token estimate, derived from bytes
+ *              so it can never disagree with the byte count.
+ *   - sha256 : hex digest of the exact UTF-8 bytes.
+ *
+ * The Rust mirror `crypt_store::context_telemetry::canonical_delivery_metrics`
+ * implements the identical conventions and is pinned to the same fixture.
+ */
+function canonicalDeliveryMetrics(text) {
+  const value = typeof text === "string" ? text : "";
+  const utf8 = Buffer.from(value, "utf8");
+  const bytes = utf8.length;
+  const chars = [...value].length;
+  const tokens = Math.ceil(bytes / 4);
+  const sha256 = `sha256:${createHash("sha256").update(utf8).digest("hex")}`;
+  return { bytes, chars, tokens, sha256 };
+}
+
 /** Normalize any client string to the typed enum. */
 function typedClient(value) {
   const candidate = String(value || "").trim();
@@ -183,13 +211,23 @@ function finalize(packet, doorChars = MAX_CONTEXT_CHARS) {
     }
 
     const selectedTokens = Number(block.selectedTokens ?? block.estimatedTokens ?? 0) || 0;
+    // MBR-012: the four delivered-content surfaces (bytes, chars, tokens, hash)
+    // all derive from ONE canonical UTF-8 serialization of the block's content,
+    // stamped only when the block actually rendered. Non-rendered blocks carry
+    // zeroed metrics so bytes/chars/tokens/hash can never disagree about whether
+    // content was delivered.
+    const contentMetrics = deliveryClass === "rendered" ? canonicalDeliveryMetrics(text) : canonicalDeliveryMetrics("");
     Object.assign(block, {
       deliveryStage: "finalized",
       deliveryClass,
       selectedTokens,
       allottedTokens: Number(block.allottedTokens ?? selectedTokens) || 0,
-      renderedTokens: deliveredChars ? Math.ceil(deliveredChars / 4) : 0,
+      renderedTokens: contentMetrics.tokens,
       deliveredChars,
+      deliveredBytes: contentMetrics.bytes,
+      deliveredCodePoints: contentMetrics.chars,
+      contentHash: contentMetrics.sha256,
+      deliveryMetrics: contentMetrics,
       dropReason,
     });
   }
@@ -378,7 +416,7 @@ function applyDeliveryLedger(packet, session) {
       // receives it, and record the receipt gap honestly instead of assuming
       // the host already had it.
       block.nativeDeliveryGap = status === "missing" ? "no_host_receipt" : "receipt_mismatch";
-      const ruleBytes = typeof block.text === "string" ? Buffer.byteLength(block.text, "utf8") : 0;
+      const ruleBytes = canonicalDeliveryMetrics(typeof block.text === "string" ? block.text : "").bytes;
       block.deliveryMode = ruleBytes > 0 ? "inline" : "reference";
       session.record(id, block.deliveryMode, sourceHash, ruleBytes);
       continue;
@@ -389,7 +427,7 @@ function applyDeliveryLedger(packet, session) {
       block.dropReason = "already_delivered";
       continue;
     }
-    const bytes = typeof block.text === "string" ? Buffer.byteLength(block.text, "utf8") : 0;
+    const bytes = canonicalDeliveryMetrics(typeof block.text === "string" ? block.text : "").bytes;
     const mode = bytes > 0 ? "inline" : "reference";
     block.deliveryMode = mode;
     session.record(id, mode, sourceHash, bytes);
@@ -409,6 +447,7 @@ module.exports = {
   SELECTED_WITHOUT_DELIVERY_ALERT,
   SELF_LOADING_RULE_CLIENTS,
   applyDeliveryLedger,
+  canonicalDeliveryMetrics,
   digest,
   evaluateDeliveryOutcome,
   finalize,

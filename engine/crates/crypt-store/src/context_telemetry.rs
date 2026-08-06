@@ -244,6 +244,35 @@ pub fn evaluate_delivery_outcome(selected: i64, delivered: i64) -> DeliveryOutco
         release_promotion_blocked: failed,
     }
 }
+
+/// MBR-012: the canonical delivered-content metrics. This mirrors
+/// `canonicalDeliveryMetrics` (mcp/context-renderer-lib.cjs) so the Rust
+/// telemetry and the JS renderer agree byte-for-byte on a qualification fixture.
+/// Conventions: bytes = UTF-8 byte count; chars = Unicode code-point count;
+/// tokens = ceil(bytes/4); sha256 = hex digest of the UTF-8 bytes.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeliveryMetrics {
+    pub bytes: u64,
+    pub chars: u64,
+    pub tokens: u64,
+    pub sha256: String,
+}
+
+/// MBR-012: derive all four delivered-content surfaces from one UTF-8
+/// serialization so they can never disagree.
+pub fn canonical_delivery_metrics(text: &str) -> DeliveryMetrics {
+    let bytes = text.as_bytes().len() as u64;
+    let chars = text.chars().count() as u64;
+    let tokens = (bytes + 3) / 4;
+    let sha256 = format!("sha256:{:x}", Sha256::digest(text.as_bytes()));
+    DeliveryMetrics {
+        bytes,
+        chars,
+        tokens,
+        sha256,
+    }
+}
 const OPERATIONS: &[&str] = &[
     "read",
     "write",
@@ -1676,9 +1705,9 @@ fn validate_meta(meta: &BTreeMap<String, Value>) -> Result<(), ContextTelemetryE
             }
         }
         if STRING_TOKEN_KEYS.contains(&key.as_str())
-            && value
-                .as_str()
-                .is_some_and(|candidate| candidate.len() <= 80 && has_token_tail(candidate, true, false))
+            && value.as_str().is_some_and(|candidate| {
+                candidate.len() <= 80 && has_token_tail(candidate, true, false)
+            })
         {
             continue;
         }
@@ -2807,7 +2836,8 @@ impl MemDb {
             let task_id: Option<String> = row.get(5)?;
             let task_id = task_id.unwrap_or_default();
             let meta_json: String = row.get(11)?;
-            let meta: BTreeMap<String, Value> = serde_json::from_str(&meta_json).unwrap_or_default();
+            let meta: BTreeMap<String, Value> =
+                serde_json::from_str(&meta_json).unwrap_or_default();
             let event_type = meta
                 .get("event_type")
                 .and_then(Value::as_str)
@@ -2834,7 +2864,8 @@ impl MemDb {
                 origin,
                 event_type,
                 content_digest: artifact_sha256.map(|hash| format!("sha256:{hash}")),
-                policy_snapshot_digest: policy_activation_sha256.map(|hash| format!("sha256:{hash}")),
+                policy_snapshot_digest: policy_activation_sha256
+                    .map(|hash| format!("sha256:{hash}")),
                 complete,
                 duration_ms,
             });
@@ -3022,6 +3053,34 @@ mod lifecycle_intent_tests {
         // negative inputs are clamped, never panic.
         let clamped = evaluate_delivery_outcome(-5, -1);
         assert_eq!(clamped.status, "ok");
+    }
+
+    #[test]
+    fn mbr012_canonical_delivery_metrics_match_js_fixture_byte_for_byte() {
+        // The same fixture is pinned in mcp/delivery-serialization.test.mjs; the
+        // two implementations must agree byte-for-byte on all four surfaces.
+        let metrics = canonical_delivery_metrics("Membrane café ☕");
+        assert_eq!(metrics.bytes, 18);
+        assert_eq!(metrics.chars, 15);
+        assert_eq!(metrics.tokens, 5);
+        assert_eq!(
+            metrics.sha256,
+            "sha256:8444cb5ce2a629fbeae804c4ec724128c835fd6885e37c98fb17bca2b5a3456e"
+        );
+        // tokens derive from bytes: ceil(bytes/4).
+        assert_eq!(metrics.tokens, (metrics.bytes + 3) / 4);
+    }
+
+    #[test]
+    fn mbr012_empty_content_has_zero_metrics_and_empty_sha256() {
+        let metrics = canonical_delivery_metrics("");
+        assert_eq!(metrics.bytes, 0);
+        assert_eq!(metrics.chars, 0);
+        assert_eq!(metrics.tokens, 0);
+        assert_eq!(
+            metrics.sha256,
+            "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 
     #[test]
@@ -3740,7 +3799,10 @@ mod lifecycle_intent_tests {
             "session id must be opaque, never the raw caller-supplied value"
         );
         assert_eq!(row.session_id, lifecycle_bounded_id(raw_session, "session"));
-        assert_eq!(row.content_digest.as_deref(), Some(format!("sha256:{digest}").as_str()));
+        assert_eq!(
+            row.content_digest.as_deref(),
+            Some(format!("sha256:{digest}").as_str())
+        );
         let serialized = serde_json::to_string(row).unwrap();
         assert!(!serialized.contains("realistic-looking-user-prompt"));
     }
