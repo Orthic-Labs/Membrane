@@ -51,7 +51,7 @@ const CALLER_SCHEMA = {
   additionalProperties: false,
 };
 const TOOL_DEFINITIONS = [
-  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." }, explicitRepositoryIds: { type: "array", items: { type: "string" }, description: "MBR-004 bounded routing: workspace scope only. Exact repository ids to select even without an alias mention." }, deadlineMs: { type: "integer", minimum: 1, description: "MBR-005: optional absolute budget for the workspace fan-out in ms; one ingress deadline bounds all children." } } } },
+  { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." }, explicitRepositoryIds: { type: "array", items: { type: "string" }, description: "MBR-004 bounded routing: workspace scope only. Exact repository ids to select even without an alias mention." }, deadlineMs: { type: "integer", minimum: 1, description: "MBR-005: optional absolute budget for the workspace fan-out in ms; one ingress deadline bounds all children." }, taskEnvelope: { type: "object", description: "MBR-007: orthic.task-envelope.v1 identity preserved end to end." }, turnEnvelope: { type: "object", description: "MBR-007: orthic.turn-envelope.v1 identity preserved end to end." }, clientEnvelope: { type: "object", description: "MBR-007: orthic.client-envelope.v1 identity." }, overlay: { type: "object", description: "MBR-007: orthic.overlay-identity.v1 worktree/session overlay." } } } },
   { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
   { name: "membrane_checkpoint_save", description: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.", inputSchema: { type: "object", required: ["repository", "caller", "checkpoint"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, checkpoint: { type: "object" } } } },
@@ -260,6 +260,41 @@ function repositoryIdentity(packet, entry) {
   return { generationId, manifestDigest, sourceCommit, identityStatus, identityReason };
 }
 
+// MBR-007 / R06: build exact versioned envelopes and preserve them byte-for-byte
+// across the request. Missing fields stay null/unknown; identities are never
+// synthesized from unrelated deployment variables.
+function requestEnvelopeFor(args) {
+  const task = args.taskEnvelope || {};
+  const turn = args.turnEnvelope || {};
+  const clientEnv = args.clientEnvelope || {};
+  const overlay = args.overlay || {};
+  const sessionId = turn.sessionId || args.session || null;
+  return {
+    taskEnvelope: {
+      schema: "orthic.task-envelope.v1",
+      taskId: task.taskId || args.taskId || null,
+      text: task.text || args.task || null,
+      intent: task.intent || args.intent || null,
+    },
+    turnEnvelope: {
+      schema: "orthic.turn-envelope.v1",
+      turnId: turn.turnId || null,
+      sessionId,
+      sequence: Number.isInteger(turn.sequence) ? turn.sequence : null,
+    },
+    clientEnvelope: {
+      schema: "orthic.client-envelope.v1",
+      clientId: clientEnv.clientId || args.client || "mcp",
+      adapterVersion: clientEnv.adapterVersion || null,
+    },
+    overlay: {
+      schema: "orthic.overlay-identity.v1",
+      sessionId: overlay.sessionId || sessionId,
+      worktreePath: overlay.worktreePath || args.repo || args.repository || null,
+    },
+  };
+}
+
 // MBR-005 / R04: bounded-concurrency fan-out with STABLE, index-aligned output
 // order and abort-awareness. On abort it marks never-started lanes as aborted
 // instead of dropping partial receipts; items already running finish (their
@@ -402,6 +437,7 @@ async function callTool(name, args, trace = {}) {
       const trace = { traceparent: args.traceparent, tracestate: args.tracestate, baggage: args.baggage };
       const workspaceGrants = binding.grant_policy?.child_repository_ids;
       const catalogRootId = repos.find((entry) => entry.role === "workspace-root")?.repository_id;
+      const workspaceEnvelope = requestEnvelopeFor(args);
       // MBR-003 authorizes EVERY target independently (same primitive as direct
       // calls). MBR-005 (SN-NODE-04 / R04) bounds the whole fan-out by ONE
       // absolute monotonic ingress deadline with bounded concurrency; receipts
@@ -425,7 +461,7 @@ async function callTool(name, args, trace = {}) {
           hasExplicitChildGrant: hasGrant,
         });
         if (!effectiveLevel) return deniedRow(entry);
-        const request = { task: args.task, repo: targetRoot, maxTokens: perRepoBudget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, ...trace };
+      const request = { task: args.task, repo: targetRoot, maxTokens: perRepoBudget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, taskEnvelope: workspaceEnvelope.taskEnvelope, turnEnvelope: workspaceEnvelope.turnEnvelope, clientEnvelope: workspaceEnvelope.clientEnvelope, overlay: workspaceEnvelope.overlay, ...trace };
         const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: targetRoot, MEMBRANE_DEADLINE_AT_MS: String(deadlineMs) }, lane.signal);
         const reason = terminalReason(lane.signal);
         if (reason) return { row: { repoId: entry.repository_id, basis: "aborted", generationId: null, candidates: 0, omissions: [reason] }, omissions: 1, candidates: 0 };
@@ -452,11 +488,17 @@ async function callTool(name, args, trace = {}) {
       fused.repos.sort((a, b) => String(a.repoId).localeCompare(String(b.repoId))); // stable receipt order by repository id
       if (lane.signal.aborted) fused.deadlineExceeded = true;
       lane.close();
+      // MBR-007 / R06: preserve the exact versioned envelopes on the delivery.
+      fused.taskEnvelope = workspaceEnvelope.taskEnvelope;
+      fused.turnEnvelope = workspaceEnvelope.turnEnvelope;
+      fused.clientEnvelope = workspaceEnvelope.clientEnvelope;
+      fused.overlay = workspaceEnvelope.overlay;
       return text(fused);
     }
 
     // Single-repo path (default).
-    const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, ...trace };
+    const singleEnvelope = requestEnvelopeFor(args);
+    const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, taskEnvelope: singleEnvelope.taskEnvelope, turnEnvelope: singleEnvelope.turnEnvelope, clientEnvelope: singleEnvelope.clientEnvelope, overlay: singleEnvelope.overlay, ...trace };
     const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: binding.root });
     const packet = text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
     if (!packet || typeof packet !== "object" || Array.isArray(packet)) return packet;
@@ -465,7 +507,13 @@ async function callTool(name, args, trace = {}) {
       const scopeGrant = mintScopeGrantV1({ binding, args, packet: packet.packet, freshness });
       if (scopeGrant) packet.scopeGrant = scopeGrant;
     }
-    if (!args.session || !args.taskId) return packet;
+    if (!args.session || !args.taskId) {
+      // MBR-007 / R06: exact envelopes ride on the delivery even without a session.
+      if (args.taskEnvelope || args.turnEnvelope) {
+        return { ...packet, taskEnvelope: singleEnvelope.taskEnvelope, turnEnvelope: singleEnvelope.turnEnvelope, clientEnvelope: singleEnvelope.clientEnvelope, overlay: singleEnvelope.overlay };
+      }
+      return packet;
+    }
     const store = new WorkingContextStore(eventDbFor(install.db));
     let contexts;
     try { contexts = store.activeContexts({ sessionId: args.session, taskId: args.taskId }); }

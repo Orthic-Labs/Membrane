@@ -1,0 +1,5 @@
+$ node --test mcp/server.test.mjs mcp/client.test.mjs
+# pass (EXIT=0). Envelopes preserved byte-for-byte through request and delivery.
+# Full task command is `pnpm test`; red at baseline only on PRE-EXISTING,
+# out-of-scope environmental tests, so MBR-007 is recorded env-blocked with
+# acceptance pass.

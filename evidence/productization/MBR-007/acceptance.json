@@ -1,0 +1,9 @@
+{
+  "schema": "orthic.membrane-evidence.acceptance.v1",
+  "taskId": "MBR-007",
+  "acceptance": "A fixture sends taskEnvelope and turnEnvelope together and verifies exact identities in provider and delivery receipts.",
+  "status": "pass",
+  "verifiedBy": "node --test mcp/server.test.mjs mcp/client.test.mjs",
+  "observed": "fixture taskEnvelope/turnEnvelope/clientEnvelope surfaced exactly (taskId task_alpha, turnId turn_1, sessionId sess_a, overlay worktreePath) on the delivery",
+  "at": "2026-08-06T00:16:43.517842+00:00"
+}

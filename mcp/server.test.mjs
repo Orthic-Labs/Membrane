@@ -572,3 +572,29 @@ assert.equal(mbr4Data.ok, false);
 assert.equal(mbr4Data.error, "target_selection_abstained");
 assert.ok(Array.isArray(mbr4Data.considered), "abstention reports the set of repositories considered");
 assert.ok(!Array.isArray(mbr4Data.repos) || mbr4Data.repos.length === 0, "no repository was queried on abstention");
+
+// MBR-007 (R06): exact task/turn/client/overlay envelopes are preserved end to
+// end -- a fixture sends taskEnvelope and turnEnvelope together and the delivery
+// carries the exact identities (never synthesized or dropped).
+const mbr7TaskEnvelope = { schema: "orthic.task-envelope.v1", taskId: "task_alpha", text: "do the thing", intent: "implementation" };
+const mbr7TurnEnvelope = { schema: "orthic.turn-envelope.v1", turnId: "turn_1", sessionId: "sess_a", sequence: 1 };
+const mbr7ClientEnvelope = { schema: "orthic.client-envelope.v1", clientId: "fixture_client", adapterVersion: "1.0.0" };
+const mbr7Call = await rpc([{
+  jsonrpc: "2.0", id: 95, method: "tools/call",
+  params: {
+    name: "membrane_context",
+    arguments: {
+      task: "do the thing", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace",
+      explicitRepositoryIds: [mbr3Ws.repository_id],
+      taskEnvelope: mbr7TaskEnvelope, turnEnvelope: mbr7TurnEnvelope, clientEnvelope: mbr7ClientEnvelope,
+    },
+  },
+}], mbr3Env);
+assert.equal(mbr7Call[0].result.isError, false, toolError(mbr7Call[0]));
+const mbr7Data = mbr7Call[0].result.structuredContent.data;
+assert.equal(mbr7Data.taskEnvelope.schema, "orthic.task-envelope.v1");
+assert.equal(mbr7Data.taskEnvelope.taskId, "task_alpha");
+assert.equal(mbr7Data.turnEnvelope.turnId, "turn_1");
+assert.equal(mbr7Data.turnEnvelope.sessionId, "sess_a");
+assert.equal(mbr7Data.clientEnvelope.clientId, "fixture_client");
+assert.equal(mbr7Data.overlay.worktreePath, mbr3Workspace, "overlay worktree identity is preserved");

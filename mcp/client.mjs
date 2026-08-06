@@ -354,6 +354,9 @@ async function main() {
       packet: null,
       receipts: [],
       error: "planner_transport_failure",
+      // MBR-007 / R06: preserve the exact versioned envelopes end to end.
+      ...(payload.taskEnvelope ? { taskEnvelope: payload.taskEnvelope } : {}),
+      ...(payload.turnEnvelope ? { turnEnvelope: payload.turnEnvelope } : {}),
     };
     process.stdout.write(JSON.stringify(fallback) + "\n");
     return 2;

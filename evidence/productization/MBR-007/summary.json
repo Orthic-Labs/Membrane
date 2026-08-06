@@ -1,0 +1,20 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-007",
+  "title": "Preserve task, turn, session, client, and worktree envelopes end to end",
+  "commit": "TBD",
+  "acceptanceStatus": "pass",
+  "envBlocked": true,
+  "envBlockedReason": "full pnpm test is red at baseline on pre-existing repo-catalog/scripts sibling-fixture tests outside MBR-007 allowlist",
+  "snippetRefs": [
+    "SN-NODE-05"
+  ],
+  "recipeRefs": [
+    "R06"
+  ],
+  "changedFiles": [
+    "mcp/server.mjs",
+    "mcp/client.mjs",
+    "mcp/server.test.mjs"
+  ]
+}
