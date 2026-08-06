@@ -11,7 +11,10 @@ members = [
 [workspace.package]
 edition = "2021"
 authors = ["Crypt"]
-license = "UNLICENSED"
+# MBR-014: one controlling license for every crate — the proprietary Orthic Labs
+# Source Use License in the repository-root LICENSE file (not an SPDX id, so it
+# is named via license-file). Member crates inherit it via license-file.workspace.
+license-file = "../LICENSE"
 
 [workspace.dependencies]
 serde       = { version = "1",  features = ["derive"] }

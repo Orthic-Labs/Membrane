@@ -2,6 +2,7 @@
 name = "crypt-store"
 version = "0.1.0"
 edition.workspace = true
+license-file.workspace = true
 description = "Crypt SQLite store, installation identity, scopes, and durable telemetry."
 
 [dependencies]
