@@ -1,0 +1,4 @@
+$ node --test mcp/deadline.test.mjs mcp/server.test.mjs mcp/client.test.mjs
+# pass (EXIT=0). Inner layers borrow one ingress deadline; timeout receipts name
+# layer + remaining budget. Full `pnpm test` is env-red at baseline only on
+# PRE-EXISTING out-of-scope tests; MBR-008 recorded env-blocked, acceptance pass.

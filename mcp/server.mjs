@@ -18,7 +18,7 @@ import { ScratchpadStore, WorkingContextStore } from "./working-context.mjs";
 import { mintScopeGrantV1 } from "./scope-grant-v1.mjs";
 import { intersectAuthority, permitsLevel, canReachTarget } from "./authorization.mjs";
 import { selectWorkspaceTargets } from "./workspace-routing.mjs";
-import { createDeadline, deadlineSignal, mapConcurrent, terminalReason } from "./deadline.mjs";
+import { createDeadline, deadlineSignal, mapConcurrent, terminalReason, timeoutReceipt } from "./deadline.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -445,7 +445,12 @@ async function callTool(name, args, trace = {}) {
       // typed terminal omissions, never collapsed into federation_error.
       const deadlineMs = createDeadline(Number.isInteger(args.deadlineMs) ? args.deadlineMs : WORKSPACE_TIMEOUT_MS);
       const lane = deadlineSignal(deadlineMs);
-      const abortRow = (entry, reason) => ({ row: { repoId: entry.repository_id, basis: "aborted", generationId: null, manifestDigest: null, sourceCommit: "", identityStatus: "unknown", identityReason: "generation_identity_unavailable", candidates: 0, omissions: [reason || terminalReason(lane.signal) || "cancelled"] }, omissions: 1, candidates: 0 });
+      const abortRow = (entry, reason) => {
+        const r = reason || terminalReason(lane.signal) || "cancelled";
+        const row = { repoId: entry.repository_id, basis: "aborted", generationId: null, manifestDigest: null, sourceCommit: "", identityStatus: "unknown", identityReason: "generation_identity_unavailable", candidates: 0, omissions: [r] };
+        if (r === "deadline_exceeded") row.timeoutReceipt = timeoutReceipt("server.fan-out", deadlineMs);
+        return { row, omissions: 1, candidates: 0 };
+      };
       const deniedRow = (entry) => ({ row: { repoId: entry.repository_id, basis: "denied", generationId: null, manifestDigest: null, sourceCommit: "", identityStatus: "unknown", identityReason: "generation_identity_unavailable", candidates: 0, omissions: ["target_denied"] }, omissions: 1, candidates: 0 });
       const results = await runBoundedOrdered(selected, WORKSPACE_CONCURRENCY, async (entry) => {
         if (lane.signal.aborted) return abortRow(entry);

@@ -64,3 +64,15 @@ export function terminalReason(signal) {
   if (!signal?.aborted) return null;
   return signal.reason?.message === "deadline_exceeded" ? "deadline_exceeded" : "cancelled";
 }
+
+// MBR-008 / SN-NODE-04: a typed timeout receipt names the layer that hit the
+// caller deadline and the remaining budget, so an inner layer can never be
+// blamed for a deadline it only borrowed from the caller.
+export function timeoutReceipt(layer, deadlineMs) {
+  return {
+    schema: "orthic.timeout-receipt.v1",
+    layer,
+    remainingMs: remainingMs(deadlineMs),
+    exceeded: remainingMs(deadlineMs) <= 0,
+  };
+}

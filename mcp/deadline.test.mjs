@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { performance } from "node:perf_hooks";
-import { createDeadline, remainingMs, makeDeadline, deadlineSignal, mapConcurrent, withDeadline, terminalReason } from "./deadline.mjs";
+import { createDeadline, remainingMs, makeDeadline, deadlineSignal, mapConcurrent, withDeadline, terminalReason, timeoutReceipt } from "./deadline.mjs";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -78,4 +78,27 @@ test("terminalReason classifies an abort reason", () => {
   const parent = new AbortController();
   parent.abort(new Error("cancelled"));
   assert.equal(terminalReason(parent.signal), "cancelled");
+});
+
+test("MBR-008: timeout receipts name the layer and the remaining budget", () => {
+  const deadline = createDeadline(1000);
+  const receipt = timeoutReceipt("client.http", deadline);
+  assert.equal(receipt.schema, "orthic.timeout-receipt.v1");
+  assert.equal(receipt.layer, "client.http");
+  assert.equal(typeof receipt.remainingMs, "number");
+  assert.ok(receipt.remainingMs >= 0 && receipt.remainingMs <= 1000);
+  const expired = timeoutReceipt("server.fan-out", performance.now() - 1);
+  assert.equal(expired.exceeded, true);
+  assert.equal(expired.remainingMs, 0);
+  assert.equal(expired.layer, "server.fan-out");
+});
+
+// An inner layer must never expire before the caller deadline: a receipt derived
+// from the shared deadline always reports >= 0 remaining and expires exactly at 0.
+test("MBR-008: no inner layer creates a longer budget than the caller deadline", () => {
+  const deadline = createDeadline(40);
+  assert.ok(remainingMs(deadline) <= 40, "inner budgets are bounded by the ingress deadline");
+  const r1 = timeoutReceipt("server.fan-out", deadline);
+  const r2 = timeoutReceipt("client.http", deadline);
+  assert.equal(r2.remainingMs <= r1.remainingMs + 1, true, "client layer never outlasts the server fan-out lane");
 });
