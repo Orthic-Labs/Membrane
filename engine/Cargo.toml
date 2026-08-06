@@ -6,6 +6,7 @@ members = [
     "crates/crypt",
     "crates/crypt-store",
     "crates/membrane-runtime",
+    "crates/membrane-protocol",
 ]
 
 [workspace.package]

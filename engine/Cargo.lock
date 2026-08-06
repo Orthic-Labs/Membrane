@@ -1952,6 +1952,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "membrane-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "membrane-runtime"
 version = "0.1.0"
 dependencies = [
