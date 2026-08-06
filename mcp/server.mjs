@@ -246,6 +246,20 @@ function run(command, args, input, env = process.env, signal) {
   });
 }
 
+// MBR-006 / R05: canonical generation + manifest identity. Reads ONLY
+// freshness.generationId (never the retired freshness.revision hub identity);
+// falls back to the catalog identity captured in this same request snapshot;
+// otherwise reports a typed unknown reason.
+function repositoryIdentity(packet, entry) {
+  const freshness = packet?.packet?.freshness || {};
+  const generationId = freshness.generationId ?? entry?.cortexGenerationId ?? null;
+  const manifestDigest = freshness.manifestDigest ?? entry?.manifestDigest ?? null;
+  const sourceCommit = freshness.sourceCommit ?? entry?.sourceCommit ?? "";
+  const identityStatus = generationId ? "known" : "unknown";
+  const identityReason = identityStatus === "known" ? null : "generation_identity_unavailable";
+  return { generationId, manifestDigest, sourceCommit, identityStatus, identityReason };
+}
+
 // MBR-005 / R04: bounded-concurrency fan-out with STABLE, index-aligned output
 // order and abort-awareness. On abort it marks never-started lanes as aborted
 // instead of dropping partial receipts; items already running finish (their
@@ -395,8 +409,8 @@ async function callTool(name, args, trace = {}) {
       // typed terminal omissions, never collapsed into federation_error.
       const deadlineMs = createDeadline(Number.isInteger(args.deadlineMs) ? args.deadlineMs : WORKSPACE_TIMEOUT_MS);
       const lane = deadlineSignal(deadlineMs);
-      const abortRow = (entry) => ({ row: { repoId: entry.repository_id, basis: "aborted", generationId: null, candidates: 0, omissions: [terminalReason(lane.signal) || "cancelled"] }, omissions: 1, candidates: 0 });
-      const deniedRow = (entry) => ({ row: { repoId: entry.repository_id, basis: "denied", generationId: null, candidates: 0, omissions: ["target_denied"] }, omissions: 1, candidates: 0 });
+      const abortRow = (entry, reason) => ({ row: { repoId: entry.repository_id, basis: "aborted", generationId: null, manifestDigest: null, sourceCommit: "", identityStatus: "unknown", identityReason: "generation_identity_unavailable", candidates: 0, omissions: [reason || terminalReason(lane.signal) || "cancelled"] }, omissions: 1, candidates: 0 });
+      const deniedRow = (entry) => ({ row: { repoId: entry.repository_id, basis: "denied", generationId: null, manifestDigest: null, sourceCommit: "", identityStatus: "unknown", identityReason: "generation_identity_unavailable", candidates: 0, omissions: ["target_denied"] }, omissions: 1, candidates: 0 });
       const results = await runBoundedOrdered(selected, WORKSPACE_CONCURRENCY, async (entry) => {
         if (lane.signal.aborted) return abortRow(entry);
         const targetRoot = resolve(binding.root, entry.root === "." ? "." : entry.root);
@@ -417,10 +431,11 @@ async function callTool(name, args, trace = {}) {
         if (reason) return { row: { repoId: entry.repository_id, basis: "aborted", generationId: null, candidates: 0, omissions: [reason] }, omissions: 1, candidates: 0 };
         const packet = text(out.stdout.trim() || "");
         const degraded = Boolean(packet?.degradationReason && packet.degradationReason !== "none");
+        const identity = repositoryIdentity(packet, entry);
         return {
           row: {
             repoId: entry.repository_id,
-            generationId: packet?.packet?.freshness?.revision || null,
+            ...identity,
             candidates: (packet?.packet?.blocks || []).length,
             omissions: degraded ? [packet.degradationReason] : [],
           },

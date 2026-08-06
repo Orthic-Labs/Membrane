@@ -543,6 +543,19 @@ assert.deepEqual(mbr3ByRoot.get("ungranted").omissions, ["target_denied"], "ungr
 assert.equal(mbr3ByRoot.get("ungranted").candidates, 0, "ungranted sibling is never consulted for candidates");
 assert.ok(!mbr3ByRoot.get("ungranted").omissions.includes("planner_unavailable"), "ungranted sibling was never called");
 
+// MBR-006 (R05): every workspace repository row carries a canonical generation
+// identity or a typed unknown reason -- generationId (never a revision hub
+// identity), manifestDigest, sourceCommit, identityStatus, identityReason.
+for (const [key, row] of mbr3ByRoot.entries()) {
+  assert.equal(typeof row.identityStatus, "string", `${key} row declares an identityStatus`);
+  assert.ok(["known", "unknown"].includes(row.identityStatus), `${key} row identityStatus is known|unknown`);
+  if (row.identityStatus === "known") assert.equal(row.identityReason, null);
+  if (row.identityStatus === "unknown") assert.equal(typeof row.identityReason, "string");
+  assert.ok(Object.prototype.hasOwnProperty.call(row, "manifestDigest"), `${key} row carries manifestDigest`);
+  assert.ok(Object.prototype.hasOwnProperty.call(row, "sourceCommit"), `${key} row carries sourceCommit`);
+  assert.equal(Object.prototype.hasOwnProperty.call(row, "revision"), false, `${key} row must not use the retired freshness.revision identity`);
+}
+
 // MBR-004 integration: a workspace task with no explicit or mentioned target
 // abstains (reports target_selection_abstained) instead of querying every repo.
 const mbr4Abstained = await rpc([{

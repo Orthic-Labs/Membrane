@@ -1,0 +1,9 @@
+{
+  "schema": "orthic.membrane-evidence.acceptance.v1",
+  "taskId": "MBR-006",
+  "acceptance": "Every workspace repository row has a current generation identity or a typed unknown reason.",
+  "status": "pass",
+  "verifiedBy": "node --test mcp/server.test.mjs mcp/client.test.mjs",
+  "observed": "rows carry generationId/manifestDigest/sourceCommit + identityStatus known|unknown and identityReason; revision hub identity retired in row schema",
+  "at": "2026-08-06T00:09:52.366101+00:00"
+}
