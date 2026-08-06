@@ -18,6 +18,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { TOOLS } from "../../mcp/server.mjs";
+import {
+  platformStatus,
+  renderArchitectureDoc,
+  renderOperationsDoc,
+  renderProductDoc,
+  renderProtocolDoc,
+} from "./render-docs.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..");
@@ -25,6 +32,7 @@ const TRUTH_JSON = join(REPO_ROOT, "operations", "product-truth.json");
 const TRUTH_DOC = join(REPO_ROOT, "docs", "product-truth.md");
 const README = join(REPO_ROOT, "README.md");
 const MATRIX = join(REPO_ROOT, "docs", "membrane", "capability-matrix.v1.json");
+const MANIFEST = join(REPO_ROOT, "docs", "MEMBRANE-CURRENT-STATE-MANIFEST.json");
 
 const TRUTH_SCHEMA = "orthic.product-truth.v1";
 
@@ -38,7 +46,6 @@ function canonicalJson(value) {
   }
   return JSON.stringify(value);
 }
-
 /** Compute the product truth from live source. Deterministic — no timestamps. */
 export async function computeProductTruth() {
   const tools = TOOLS.map((tool) => tool.name).sort();
@@ -54,10 +61,52 @@ export async function computeProductTruth() {
   };
 }
 
+/** Read the platform status (support tiers) from the capability matrix. */
+export async function computePlatformStatus() {
+  const matrix = JSON.parse(await readFile(MATRIX, "utf8"));
+  return platformStatus(matrix);
+}
+
 function renderTruthJson(truth) {
   // Pretty-printed but key-sorted canonical JSON, stable across runs.
   const sorted = JSON.parse(canonicalJson(truth));
   return `${JSON.stringify(sorted, null, 2)}\n`;
+}
+
+// MBR-1001 — The generated product docs and the manifest's productTruth block
+// are derived from the same truth/platform computation, so regeneration is
+// deterministic and --check can prove them current.
+
+/** Map of generated doc path -> rendered content. */
+export function renderGeneratedDocs(truth, platforms) {
+  return new Map([
+    [join(REPO_ROOT, "docs", "product.md"), renderProductDoc(truth, platforms)],
+    [join(REPO_ROOT, "docs", "architecture.md"), renderArchitectureDoc(truth, platforms)],
+    [join(REPO_ROOT, "docs", "operations.md"), renderOperationsDoc(truth, platforms)],
+    [join(REPO_ROOT, "docs", "protocol.md"), renderProtocolDoc(truth, platforms)],
+  ]);
+}
+
+/**
+ * Render the manifest with its productTruth block derived from source. All
+ * other manifest content is preserved byte-for-byte (key order retained);
+ * only the derived block is replaced.
+ */
+export function renderManifest(manifestText, truth, platforms) {
+  const manifest = JSON.parse(manifestText);
+  manifest.productTruth = {
+    mcpToolCount: truth.toolCount,
+    mcpTools: truth.tools,
+    adapterCount: truth.adapterCount,
+    adapters: truth.adapters,
+    platforms: {
+      tier1: platforms.tier1,
+      tier2BestEffort: platforms.bestEffort,
+    },
+    generatedFrom: truth.generatedFrom,
+    generatedBy: "tools/productization/generate-product-truth.mjs",
+  };
+  return `${JSON.stringify(manifest, null, 2)}\n`;
 }
 
 function renderTruthDoc(truth) {
@@ -118,9 +167,20 @@ export function evaluateReadmeAgainstTruth(readmeText, truth, { docPresent = tru
 export async function checkProductTruth() {
   const failures = [];
   const truth = await computeProductTruth();
+  const platforms = await computePlatformStatus();
 
   // 1. Generated artifacts must be present and byte-for-byte current.
-  for (const [path, expected] of [[TRUTH_JSON, renderTruthJson(truth)], [TRUTH_DOC, renderTruthDoc(truth)]]) {
+  const expectedArtifacts = new Map([
+    [TRUTH_JSON, renderTruthJson(truth)],
+    [TRUTH_DOC, renderTruthDoc(truth)],
+    ...renderGeneratedDocs(truth, platforms),
+  ]);
+  if (existsSync(MANIFEST)) {
+    expectedArtifacts.set(MANIFEST, renderManifest(await readFile(MANIFEST, "utf8"), truth, platforms));
+  } else {
+    failures.push(`missing generated artifact: ${MANIFEST}`);
+  }
+  for (const [path, expected] of expectedArtifacts) {
     if (!existsSync(path)) {
       failures.push(`missing generated artifact: ${path}`);
       continue;
@@ -144,11 +204,16 @@ export async function checkProductTruth() {
 /** Write the generated truth artifacts. */
 export async function generateProductTruth() {
   const truth = await computeProductTruth();
-  await mkdir(dirname(TRUTH_JSON), { recursive: true });
-  await mkdir(dirname(TRUTH_DOC), { recursive: true });
-  await writeFile(TRUTH_JSON, renderTruthJson(truth));
-  await writeFile(TRUTH_DOC, renderTruthDoc(truth));
-  return { truth, written: [TRUTH_JSON, TRUTH_DOC] };
+  const platforms = await computePlatformStatus();
+  const artifacts = new Map([
+    [TRUTH_JSON, renderTruthJson(truth)],
+    [TRUTH_DOC, renderTruthDoc(truth)],
+    ...renderGeneratedDocs(truth, platforms),
+    [MANIFEST, renderManifest(await readFile(MANIFEST, "utf8"), truth, platforms)],
+  ]);
+  for (const path of artifacts.keys()) await mkdir(dirname(path), { recursive: true });
+  for (const [path, content] of artifacts) await writeFile(path, content);
+  return { truth, written: [...artifacts.keys()] };
 }
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -167,4 +232,3 @@ if (isMain) {
     for (const path of written) console.log(`  wrote ${path}`);
   }
 }
-

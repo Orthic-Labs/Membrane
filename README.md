@@ -89,4 +89,8 @@ This checkout is an internal mirror of a workspace-coupled control plane for the
 ## Repository truth docs
 - [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
 - [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
+- [Operations](docs/operations.md) — run and verify the product-truth surface (generated, code-grounded)
+- [Protocol](docs/protocol.md) — MCP tool contract and behavior (generated, code-grounded)
+
+Gate: `node tools/productization/check-docs.mjs --check` fails on a broken README link, a stale generated doc, a wrong tool count, or stale platform status.
 <!-- blueprint:docs:end -->
