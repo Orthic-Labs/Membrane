@@ -25,6 +25,7 @@
 
 pub mod canonical;
 pub mod installation;
+pub mod lease;
 pub mod operations;
 pub mod types;
 
@@ -33,6 +34,7 @@ pub use installation::{
     canonical_data_root, ApiSchemaV1, ComponentV1, HandshakeError, InstallationManifestV1,
     MANIFEST_SCHEMA_VERSION, PROTOCOL_SCHEMA_VERSION,
 };
+pub use lease::{ComponentLeaseV1, COMPONENT_LEASE_SCHEMA_VERSION};
 pub use operations::{
     operations, operations_slice, ErrorResult, OperationIndexEntry, OperationResult, OperationSpec,
     OperationsIndex, ResultKind, SuccessResult, OPERATIONS,

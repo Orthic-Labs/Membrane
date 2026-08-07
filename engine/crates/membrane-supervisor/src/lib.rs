@@ -10,6 +10,7 @@
 //!
 //! MBR-201: build a per-user Membrane supervisor.
 
+pub mod admission;
 pub mod config;
 pub mod error;
 pub mod lease;
@@ -18,6 +19,7 @@ pub mod resident;
 pub mod supervisor;
 pub mod watcher;
 
+pub use admission::{evaluate, AdmissionDecision};
 pub use config::{
     RestartPolicy, SupervisorConfig, WatcherPolicy, CONFIG_SCHEMA_VERSION, DEFAULT_LOOPBACK_PORT,
 };

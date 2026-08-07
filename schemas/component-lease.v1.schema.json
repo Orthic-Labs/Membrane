@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/component-lease.v1.schema.json",
+  "title": "ComponentLeaseV1",
+  "description": "MBR-202 component lease. Carries installation identity, release generation, data-root digest, validity window, and signature. The admission gate rejects any lease whose installation, release, data root, or expiry diverges from the supervisor's active lease. Canonical Rust source of truth: engine/crates/membrane-protocol/src/lease.rs (ComponentLeaseV1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "installationId",
+    "releaseGeneration",
+    "dataRootDigest",
+    "issuedAt",
+    "expiresAt",
+    "signature"
+  ],
+  "properties": {
+    "installationId": {
+      "type": "string",
+      "minLength": 36
+    },
+    "releaseGeneration": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "dataRootDigest": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "issuedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expiresAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}
