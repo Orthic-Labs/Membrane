@@ -13,6 +13,14 @@ impl McpServer {
             "notifications/initialized" => return None,
             "tools/list" => json!({"tools": crate::tools::definitions()}),
             "resources/list" => json!({"resources": [{"name": "Membrane protocol v1", "uri": "membrane://protocol/v1", "mimeType": "text/markdown"}]}),
+            "prompts/list" => crate::prompts::list_payload(),
+            "prompts/get" => {
+                let name = request.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
+                match crate::prompts::get_payload(name) {
+                    Some(payload) => payload,
+                    None => json!({"error": "unknown_prompt", "name": name}),
+                }
+            }
             "ping" => json!({}),
             "tools/call" => {
                 let name = request.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
