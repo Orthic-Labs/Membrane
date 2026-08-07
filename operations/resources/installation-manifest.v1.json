@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "name": "installation-manifest",
+  "version": 1,
+  "uri": "membrane://resource/installation-manifest/v1",
+  "mimeType": "application/json",
+  "description": "Active Membrane installation manifest: installation identity, release generation, components, bound API schemas, data root digest, and native platform. The resource is bounded to the caller's `installation.read` grant and never crosses installation boundaries.",
+  "accessGrants": ["installation.read"],
+  "authorityEscalation": false,
+  "authorityNotes": "Reads return the active installation's manifest only. The manifest cannot be used to widen authority beyond `installation.read`. A caller without the grant receives a typed `resource_access_denied` rejection — no content is leaked.",
+  "template": {
+    "uriTemplate": "membrane://resource/installation-manifest/v1",
+    "arguments": []
+  },
+  "body": {
+    "schemaVersion": 1,
+    "manifestVersion": 1,
+    "installationId": "<stable-uuidv4>",
+    "startupGeneration": "<monotonic-u64>",
+    "releaseGeneration": "<sha256-hex>",
+    "dataRootDigest": "<sha256-hex>",
+    "nativePlatform": "<darwin|linux|windows>",
+    "components": [
+      {
+        "name": "membrane-runtime",
+        "version": "<semver>",
+        "digestSha256": "<sha256-hex>"
+      },
+      {
+        "name": "membrane-mcp",
+        "version": "<semver>",
+        "digestSha256": "<sha256-hex>"
+      },
+      {
+        "name": "membrane-protocol",
+        "version": "<semver>",
+        "digestSha256": "<sha256-hex>"
+      }
+    ],
+    "apiSchemas": [
+      {
+        "name": "scope-grant",
+        "version": 1,
+        "digestSha256": "<sha256-hex>"
+      },
+      {
+        "name": "context-packet",
+        "version": 1,
+        "digestSha256": "<sha256-hex>"
+      },
+      {
+        "name": "knowledge-emission",
+        "version": 1,
+        "digestSha256": "<sha256-hex>"
+      }
+    ]
+  },
+  "example": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "resources/read",
+    "params": {
+      "uri": "membrane://resource/installation-manifest/v1",
+      "accessGrants": ["installation.read"]
+    }
+  },
+  "exampleRejection": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "error": {
+        "kind": "error",
+        "code": "resource_access_denied",
+        "message": "resources/read requires one of the grants in accessGrants: [installation.read]; caller presented []",
+        "retryable": false,
+        "details": {
+          "resource": "installation-manifest",
+          "requiredGrants": ["installation.read"],
+          "presentedGrants": []
+        }
+      }
+    }
+  }
+}

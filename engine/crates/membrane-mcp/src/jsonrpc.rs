@@ -12,10 +12,30 @@ impl McpServer {
             "initialize" => crate::initialize_response(),
             "notifications/initialized" => return None,
             "tools/list" => json!({"tools": crate::tools::definitions()}),
-            "resources/list" => json!({"resources": [{"name": "Membrane protocol v1", "uri": "membrane://protocol/v1", "mimeType": "text/markdown"}]}),
+            "resources/list" => crate::resources::list_payload(),
+            "resources/read" => {
+                let uri = request
+                    .pointer("/params/uri")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                let grants = request
+                    .pointer("/params/accessGrants")
+                    .and_then(Value::as_array)
+                    .map(|entries| {
+                        entries
+                            .iter()
+                            .filter_map(|entry| entry.as_str())
+                            .collect::<Vec<&str>>()
+                    })
+                    .unwrap_or_default();
+                crate::resources::read_result_payload(crate::resources::read_payload(uri, &grants))
+            }
             "prompts/list" => crate::prompts::list_payload(),
             "prompts/get" => {
-                let name = request.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
+                let name = request
+                    .pointer("/params/name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
                 match crate::prompts::get_payload(name) {
                     Some(payload) => payload,
                     None => json!({"error": "unknown_prompt", "name": name}),
@@ -23,12 +43,26 @@ impl McpServer {
             }
             "ping" => json!({}),
             "tools/call" => {
-                let name = request.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
-                if crate::tools::definitions().as_array().unwrap().iter().any(|t| t["name"] == name) {
+                let name = request
+                    .pointer("/params/name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if crate::tools::definitions()
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|t| t["name"] == name)
+                {
                     json!({"content": [{"type": "text", "text": "{}"}], "structuredContent": {"data": {}, "trace": {}}, "isError": false})
-                } else { json!({"content": [{"type": "text", "text": "unknown tool"}], "isError": true}) }
+                } else {
+                    json!({"content": [{"type": "text", "text": "unknown tool"}], "isError": true})
+                }
             }
-            _ => return Some(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Method not found"}})),
+            _ => {
+                return Some(
+                    json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Method not found"}}),
+                )
+            }
         };
         Some(json!({"jsonrpc":"2.0","id":id,"result":result}))
     }
@@ -40,8 +74,11 @@ pub fn serve_stdio() -> io::Result<()> {
     let mut stdout = io::BufWriter::new(io::stdout().lock());
     for line in stdin.lock().lines() {
         let line = line?;
-        if line.trim().is_empty() { continue; }
-        let request: Value = serde_json::from_str(&line).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let request: Value = serde_json::from_str(&line)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         if let Some(response) = server.dispatch(&request) {
             writeln!(stdout, "{}", response)?;
             stdout.flush()?;
