@@ -1,0 +1,22 @@
+import test from "node:test"; import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"; import { tmpdir } from "node:os";
+import { join } from "node:path"; import { spawnSync } from "node:child_process";
+const manifest = join(process.cwd(), "engine/Cargo.toml");
+const target = mkdtempSync(join(tmpdir(), "membrane-compact-target-")); const build = spawnSync("cargo", ["build", "--quiet", "--manifest-path", manifest, "-p", "membrane", "--bin", "membrane-compact", "--target-dir", target], { encoding: "utf8" }); assert.equal(build.status, 0, build.stderr);
+const binary = join(target, "debug", "membrane-compact"), invoke = (args) => spawnSync(binary, args, { encoding: "utf8" });
+const compact = (root, kind, script) => invoke(["run", kind, "--raw-root", root, "--max-lines", "1", "--", process.execPath, "-e", script]);
+test("compactors retain raw, redact summary, & fail closed", () => { const root = mkdtempSync(join(tmpdir(), "membrane-compact-fail-"));
+  for (const [index, kind] of ["git", "tests", "build", "package", "containers", "logs"].entries()) {
+    const secret = ["ghp_abcdefghijklmnopqrstuvwxyz123456", "AKIA1234567890ABCDEF", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature", "Bearer opaque-value"][index % 4], raw = `ERROR ${kind} ${secret}\nall details\n`, run = compact(root, kind, `process.stdout.write(${JSON.stringify(raw)}); process.exit(7)`);
+    assert.equal(run.status, 7, run.stderr); const result = JSON.parse(run.stdout);
+    assert.equal(result.commandSucceeded, false); assert.equal(result.signalLineCount, 1); assert.equal(result.omittedSignalLineCount, 0);
+    assert.equal(result.summary.split("\n").filter(Boolean).length, 1);
+    assert.match(result.summary, /REDACTED/); assert.doesNotMatch(result.summary, new RegExp(secret.split(" ")[0])); assert.ok(!result.rawPointer.startsWith("/")); assert.equal(readFileSync(join(root, result.rawPointer), "utf8"), raw);
+  } const getRoot = mkdtempSync(join(tmpdir(), "membrane-compact-get-")), result = JSON.parse(compact(getRoot, "tests", "console.log('ERROR exact');").stdout);
+  assert.equal(invoke(["get", result.rawDigest, "--raw-root", getRoot]).stdout, "ERROR exact\n"); assert.equal(invoke(["get", "not-a-digest", "--raw-root", getRoot]).status, 2); writeFileSync(join(getRoot, result.rawPointer), "tampered\n"); const get = invoke(["get", result.rawDigest, "--raw-root", getRoot]); assert.equal(get.status, 2); assert.match(get.stderr, /hash mismatch/);
+  const flagsRoot = mkdtempSync(join(tmpdir(), "membrane-compact-flags-")); const misordered = invoke(["run", "tests", "--max-lines", "1", "--raw-root", flagsRoot, "--", "missing"]); assert.equal(misordered.status, 2);
+  const afterSeparator = invoke(["run", "tests", "--raw-root", flagsRoot, "--", "missing", "--max-lines", "0"]); assert.equal(afterSeparator.status, 2); assert.match(afterSeparator.stderr, /execute missing/);
+  for (const args of [["run", "tests", "--raw-root", flagsRoot, "--unknown", "x", "--", "missing"], ["run", "tests", "--raw-root", flagsRoot, "--raw-root", flagsRoot, "--", "missing"]]) assert.equal(invoke(args).status, 2);
+  const crowded = JSON.parse(compact(flagsRoot, "tests", "console.log('ERROR one\\nERROR two')").stdout); assert.equal(crowded.summary.trim(), "ERROR one"); assert.equal(crowded.omittedSignalLineCount, 1);
+  const overflow = compact(flagsRoot, "logs", "process.stdout.write('x'.repeat(16*1024*1024+1))"); assert.equal(overflow.status, 2); assert.match(overflow.stderr, /command_output_limit_exceeded/);
+});

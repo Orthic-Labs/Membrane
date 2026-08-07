@@ -7,6 +7,7 @@
 
 pub mod cli;
 pub mod cli_parity;
+pub mod compression;
 pub mod dispatch;
 pub mod install_tx;
 pub mod migration;
