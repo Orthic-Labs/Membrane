@@ -1,0 +1,16 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-010",
+  "title": "Require host-issued native-delivery receipts",
+  "commit": "1df8077ae22a5cc451928457d0be6b949bddfab1",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "mcp/context-renderer-lib.cjs",
+    "mcp/context-renderer.mjs",
+    "mcp/context-renderer.test.mjs",
+    "schemas/host-delivery-receipt.v1.schema.json"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-202",
+  "title": "Implement exact-build and data-root admission leases",
+  "commit": "53506e4f674e30d98f7022f837cdd16ffd14f2a7",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "engine/crates/membrane-protocol/src/lease.rs",
+    "engine/crates/membrane-protocol/src/lib.rs",
+    "engine/crates/membrane-supervisor/src/admission.rs",
+    "engine/crates/membrane-supervisor/src/lib.rs",
+    "engine/crates/membrane-supervisor/tests/admission.rs",
+    "schemas/component-lease.v1.schema.json",
+    "tests/supervisor/fixtures/component-lease-v1.golden.json"
+  ]
+}

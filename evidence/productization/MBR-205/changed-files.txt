@@ -1,0 +1,8 @@
+docs/uninstall.md
+engine/crates/membrane/src/dispatch.rs
+engine/crates/membrane/src/lib.rs
+engine/crates/membrane/src/modes.rs
+engine/crates/membrane/src/uninstall.rs
+mcp/install.mjs
+tests/install/uninstall-js.test.mjs
+tests/install/uninstall-rust.test.mjs

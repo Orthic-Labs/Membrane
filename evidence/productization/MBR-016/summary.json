@@ -1,0 +1,14 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-016",
+  "title": "Replace test-presence shipped labels with five-gate status",
+  "commit": "4dc277cc084b67f343a7558994a78b53f4507afc",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "mcp/capability-inventory.mjs",
+    "mcp/capability-inventory.test.mjs"
+  ]
+}

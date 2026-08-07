@@ -1,0 +1,25 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-103",
+  "title": "Move the public MCP hot path to Rust",
+  "commit": "ed10dcb13dc06e334a0f377cce234e2336f839a1",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "engine/Cargo.lock",
+    "engine/Cargo.toml",
+    "engine/crates/membrane-mcp/Cargo.toml",
+    "engine/crates/membrane-mcp/src/discovery.rs",
+    "engine/crates/membrane-mcp/src/jsonrpc.rs",
+    "engine/crates/membrane-mcp/src/lib.rs",
+    "engine/crates/membrane-mcp/src/tools.rs",
+    "engine/crates/membrane-mcp/tests/discovery_roundtrip.rs",
+    "engine/crates/membrane/Cargo.toml",
+    "engine/crates/membrane/src/modes.rs",
+    "mcp/membrane-mcp-native.mjs",
+    "mcp/server.test.mjs",
+    "tests/compat/mcp-discovery.test.mjs"
+  ]
+}

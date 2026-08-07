@@ -1,0 +1,23 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-302",
+  "title": "Generate CLI parity from the operation registry",
+  "commit": "62793f07c22e4b13af057f75541c9364eaefe535",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "docs/cli/PARITY.md",
+    "engine/crates/membrane-protocol/src/lib.rs",
+    "engine/crates/membrane-protocol/src/operations.rs",
+    "engine/crates/membrane/Cargo.toml",
+    "engine/crates/membrane/build.rs",
+    "engine/crates/membrane/src/bin/cli-parity.rs",
+    "engine/crates/membrane/src/cli_parity.rs",
+    "engine/crates/membrane/src/dispatch.rs",
+    "engine/crates/membrane/src/generated_cli_subcommands.rs",
+    "engine/crates/membrane/src/lib.rs",
+    "tests/cli/cli-parity.test.mjs"
+  ]
+}

@@ -1,0 +1,12 @@
+engine/Cargo.lock
+engine/crates/crypt-store/Cargo.toml
+engine/crates/crypt-store/src/db.rs
+engine/crates/crypt-store/src/lib.rs
+engine/crates/membrane-protocol/Cargo.toml
+engine/crates/membrane-protocol/src/lib.rs
+engine/crates/membrane-protocol/src/observable_event.rs
+engine/crates/membrane-runtime/src/lib.rs
+mcp/observable-events.mjs
+operations/observable-event.v1.golden.json
+schemas/observable-event.v1.schema.json
+tests/events/observable-event.test.mjs

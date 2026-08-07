@@ -1,0 +1,12 @@
+docs/cli/README.md
+engine/Cargo.lock
+engine/Cargo.toml
+engine/crates/membrane-runtime/src/cli.rs
+engine/crates/membrane-runtime/src/serve.rs
+engine/crates/membrane-runtime/src/service.rs
+engine/crates/membrane/Cargo.toml
+engine/crates/membrane/src/dispatch.rs
+engine/crates/membrane/src/lib.rs
+engine/crates/membrane/src/main.rs
+engine/crates/membrane/src/modes.rs
+engine/crates/membrane/tests/dispatch.rs

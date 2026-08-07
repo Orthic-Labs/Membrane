@@ -1,0 +1,13 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-1003",
+  "title": "Create clear product positioning and boundary docs",
+  "commit": "f8d32430520907db0c9fe3fac1c417c1dfaa810f",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "docs/portfolio-boundaries.md"
+  ]
+}

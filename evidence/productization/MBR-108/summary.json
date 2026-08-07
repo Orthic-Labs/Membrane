@@ -1,0 +1,18 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-108",
+  "title": "Separate application, control, and data planes",
+  "commit": "0a19455e8e450c548a1bd1731e66a94ece593e26",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "docs/architecture.md",
+    "engine/crates/membrane-runtime/src/lib.rs",
+    "engine/crates/membrane-runtime/src/planes.rs",
+    "engine/crates/membrane/src/modes.rs",
+    "operations/plane-boundaries.v1.golden.json",
+    "tools/productization/render-docs.mjs"
+  ]
+}

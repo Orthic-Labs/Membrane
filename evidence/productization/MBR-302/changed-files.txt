@@ -1,0 +1,11 @@
+docs/cli/PARITY.md
+engine/crates/membrane-protocol/src/lib.rs
+engine/crates/membrane-protocol/src/operations.rs
+engine/crates/membrane/Cargo.toml
+engine/crates/membrane/build.rs
+engine/crates/membrane/src/bin/cli-parity.rs
+engine/crates/membrane/src/cli_parity.rs
+engine/crates/membrane/src/dispatch.rs
+engine/crates/membrane/src/generated_cli_subcommands.rs
+engine/crates/membrane/src/lib.rs
+tests/cli/cli-parity.test.mjs

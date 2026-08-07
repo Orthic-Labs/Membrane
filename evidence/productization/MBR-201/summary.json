@@ -1,0 +1,32 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-201",
+  "title": "Build a per-user Membrane supervisor",
+  "commit": "8ff2e00351b9642cbfe5301f6cf5ee26877d298f",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "docs/operations/supervisor.md",
+    "docs/operations/watcher-lifecycle.md",
+    "engine/Cargo.lock",
+    "engine/Cargo.toml",
+    "engine/crates/membrane-supervisor/Cargo.toml",
+    "engine/crates/membrane-supervisor/src/bin/membrane_supervisor.rs",
+    "engine/crates/membrane-supervisor/src/config.rs",
+    "engine/crates/membrane-supervisor/src/error.rs",
+    "engine/crates/membrane-supervisor/src/lease.rs",
+    "engine/crates/membrane-supervisor/src/lib.rs",
+    "engine/crates/membrane-supervisor/src/lock.rs",
+    "engine/crates/membrane-supervisor/src/resident.rs",
+    "engine/crates/membrane-supervisor/src/supervisor.rs",
+    "engine/crates/membrane-supervisor/src/watcher.rs",
+    "engine/crates/membrane-supervisor/tests/acceptance.rs",
+    "install/config.example.json",
+    "install/lease.example.json",
+    "install/linux/membrane-supervisor.service",
+    "install/macos/com.membrane.supervisor.plist",
+    "install/windows/membrane-supervisor.xml"
+  ]
+}

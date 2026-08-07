@@ -1,0 +1,17 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-012",
+  "title": "Canonicalize delivered bytes, chars, tokens, and hashes",
+  "commit": "8a8d3dff92f5d7cf6571eefe7cf89de3fbbd69ef",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "engine/crates/crypt-store/src/context_telemetry.rs",
+    "mcp/context-renderer-lib.cjs",
+    "mcp/delivery-serialization.mjs",
+    "mcp/delivery-serialization.test.mjs",
+    "schemas/delivery-metrics.v1.schema.json"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-009",
+  "title": "Consume authoritative Cortex supervisor readiness",
+  "commit": "1e6626a3ae81b89baff3af7c27cfb754f189b01e",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "engine/crates/membrane-runtime/src/serve.rs",
+    "mcp/cortex-readiness.mjs",
+    "mcp/cortex-readiness.test.mjs",
+    "mcp/repository-catalog.mjs",
+    "mcp/repository-catalog.test.mjs"
+  ]
+}

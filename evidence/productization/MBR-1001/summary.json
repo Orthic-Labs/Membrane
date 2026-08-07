@@ -1,0 +1,22 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-1001",
+  "title": "Replace missing/stale generated product docs",
+  "commit": "f61e634d641de4ad8278079b00b426b36a73fbc8",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "README.md",
+    "docs/MEMBRANE-CURRENT-STATE-MANIFEST.json",
+    "docs/architecture.md",
+    "docs/operations.md",
+    "docs/product.md",
+    "docs/protocol.md",
+    "tools/productization/check-docs.mjs",
+    "tools/productization/check-docs.test.mjs",
+    "tools/productization/generate-product-truth.mjs",
+    "tools/productization/render-docs.mjs"
+  ]
+}

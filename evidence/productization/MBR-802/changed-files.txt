@@ -1,0 +1,5 @@
+docs/security/adversarial-authorization-suite.md
+scripts/qualification/run-adversarial.mjs
+tests/adversarial/authorization-adversarial.test.mjs
+tests/adversarial/scope-grant-adversarial.test.mjs
+tests/fixtures/adversarial/fixtures.mjs

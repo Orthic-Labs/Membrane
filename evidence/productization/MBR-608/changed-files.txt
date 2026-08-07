@@ -1,0 +1,12 @@
+docs/architecture.md
+engine/crates/crypt-core/src/planner.rs
+engine/crates/membrane-core/Cargo.toml
+engine/crates/membrane-core/README.md
+engine/crates/membrane-core/src/budget.rs
+engine/crates/membrane-core/src/lane.rs
+engine/crates/membrane-core/src/lib.rs
+engine/crates/membrane-core/src/reconcile.rs
+engine/crates/membrane-protocol/src/types.rs
+mcp/context-renderer-lib.cjs
+tests/admission/budget-lane-reconciliation.test.mjs
+tools/productization/render-docs.mjs

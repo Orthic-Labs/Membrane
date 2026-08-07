@@ -1,0 +1,19 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-502",
+  "title": "Add passive Git/read provenance adapter",
+  "commit": "8d813c8dabb1dccd0053bb36bc08471e70f31e1c",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "adapters/provenance/index.mjs",
+    "adapters/provenance/index.test.mjs",
+    "docs/privacy.md",
+    "engine/crates/membrane-runtime/src/lib.rs",
+    "engine/crates/membrane-runtime/src/provenance.rs",
+    "tests/provenance/bridge.mjs",
+    "tests/provenance/runtime-observe.test.mjs"
+  ]
+}

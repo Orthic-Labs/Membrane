@@ -1,0 +1,10 @@
+docs/clients/README.md
+docs/clients/support-matrix.v1.json
+mcp/install.mjs
+operations/clients.capabilities.v1.json
+operations/clients.yaml
+schemas/client-capability.v1.schema.json
+schemas/client-support-matrix.v1.schema.json
+tests/clients/client-matrix.test.mjs
+tools/productization/README.md
+tools/productization/generate-client-matrix.mjs

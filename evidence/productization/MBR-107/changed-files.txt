@@ -1,0 +1,16 @@
+docs/compatibility/README.md
+engine/crates/crypt/src/crypt_service_main.rs
+engine/crates/crypt/src/facade.rs
+engine/crates/crypt/src/lib.rs
+engine/crates/crypt/src/main.rs
+engine/crates/crypt/tests/db_first.rs
+engine/crates/crypt/tests/doc_spine_shadow_replay_corpus.rs
+engine/crates/crypt/tests/migration_notice_once.rs
+engine/crates/crypt/tests/public_api_signature.rs
+engine/crates/membrane-runtime/src/lib.rs
+engine/crates/membrane-runtime/src/vocabulary.rs
+engine/crates/membrane-runtime/tests/vocabulary_source_of_truth.rs
+engine/crates/membrane/src/cli.rs
+engine/crates/membrane/src/lib.rs
+engine/crates/membrane/src/modes.rs
+engine/crates/membrane/src/serve.rs

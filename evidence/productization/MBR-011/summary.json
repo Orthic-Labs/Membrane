@@ -1,0 +1,15 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-011",
+  "title": "Promote selected-without-delivery to a visible failure",
+  "commit": "b74a5111595800f6177fae8cde6822a6afe78e6a",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "engine/crates/crypt-store/src/context_telemetry.rs",
+    "mcp/context-renderer-lib.cjs",
+    "mcp/context-renderer.test.mjs"
+  ]
+}

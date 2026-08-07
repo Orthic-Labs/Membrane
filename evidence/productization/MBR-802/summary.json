@@ -1,0 +1,17 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-802",
+  "title": "Create authorization and prompt-injection adversarial suite",
+  "commit": "a96a1a97484ed91c22250ea631a206b2dfff60aa",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "docs/security/adversarial-authorization-suite.md",
+    "scripts/qualification/run-adversarial.mjs",
+    "tests/adversarial/authorization-adversarial.test.mjs",
+    "tests/adversarial/scope-grant-adversarial.test.mjs",
+    "tests/fixtures/adversarial/fixtures.mjs"
+  ]
+}

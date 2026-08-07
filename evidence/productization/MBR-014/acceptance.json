@@ -1,0 +1,9 @@
+{
+  "schema": "orthic.membrane-evidence.acceptance.v1",
+  "taskId": "MBR-014",
+  "acceptance": "Every source and binary artifact names one controlling license and package validation passes.",
+  "status": "pass",
+  "verifiedBy": "node tools/productization/generate-product-truth.mjs --check && pnpm test && cargo metadata --manifest-path engine/Cargo.toml --no-deps",
+  "observed": "Exact task commit is present in the integrated Book 1 tree; every declared deferred command passed in the final phased gate.",
+  "at": "2026-08-07T19:44:45.528Z"
+}

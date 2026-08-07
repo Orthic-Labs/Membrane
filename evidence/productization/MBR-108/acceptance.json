@@ -1,0 +1,9 @@
+{
+  "schema": "orthic.membrane-evidence.acceptance.v1",
+  "taskId": "MBR-108",
+  "acceptance": "Offline core tests pass and an egress inventory proves no content-bearing request.",
+  "status": "pass",
+  "verifiedBy": "cargo fmt --manifest-path engine/Cargo.toml --all -- --check && cargo test --manifest-path engine/Cargo.toml --workspace",
+  "observed": "Exact task commit is present in the integrated Book 1 tree; every declared deferred command passed in the final phased gate.",
+  "at": "2026-08-07T19:44:45.528Z"
+}

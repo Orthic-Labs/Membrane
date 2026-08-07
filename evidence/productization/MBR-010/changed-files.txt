@@ -1,0 +1,4 @@
+mcp/context-renderer-lib.cjs
+mcp/context-renderer.mjs
+mcp/context-renderer.test.mjs
+schemas/host-delivery-receipt.v1.schema.json

@@ -1,0 +1,20 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-207",
+  "title": "Add per-client adapter heartbeat and mechanism receipt",
+  "commit": "2f9f5a8c50cc76983799b3077f34f52d831c9d75",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "engine/crates/membrane-protocol/src/heartbeat.rs",
+    "engine/crates/membrane-protocol/src/lib.rs",
+    "engine/crates/membrane-supervisor/src/error.rs",
+    "engine/crates/membrane-supervisor/src/heartbeat.rs",
+    "engine/crates/membrane-supervisor/src/lib.rs",
+    "mcp/adapters.mjs",
+    "schemas/adapter-heartbeat.v1.schema.json",
+    "tests/adapters/heartbeat-classifier.test.mjs"
+  ]
+}

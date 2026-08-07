@@ -1,0 +1,29 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-303",
+  "title": "Add MCP prompts for common workflows",
+  "commit": "ee498954dbe943c97bbcb156f13dd59a46695ef6",
+  "acceptanceStatus": "pass",
+  "envBlocked": false,
+  "book": 1,
+  "bookGateHead": "9c6c99340ac4b4e9cee0d452b6cc105722ad0a3a",
+  "changedFiles": [
+    "docs/workflows/checkpoint.md",
+    "docs/workflows/plan.md",
+    "docs/workflows/recap.md",
+    "docs/workflows/summarize.md",
+    "engine/crates/membrane-mcp/src/discovery.rs",
+    "engine/crates/membrane-mcp/src/jsonrpc.rs",
+    "engine/crates/membrane-mcp/src/lib.rs",
+    "engine/crates/membrane-mcp/src/prompts.rs",
+    "engine/crates/membrane-mcp/tests/prompts.rs",
+    "mcp/prompts.mjs",
+    "operations/prompts/checkpoint.v1.json",
+    "operations/prompts/plan.v1.json",
+    "operations/prompts/prompts-index.v1.json",
+    "operations/prompts/recap.v1.json",
+    "operations/prompts/summarize.v1.json",
+    "tests/mcp-prompts/prompts.contract.test.mjs",
+    "tests/mcp-prompts/prompts.parity.test.mjs"
+  ]
+}
