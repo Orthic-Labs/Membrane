@@ -37,4 +37,5 @@ node --test engine/crates/membrane-protocol/bindings/roundtrip.test.mjs
 
 Both suites read the **same** fixture files and assert the **same** canonical
 `sha256:` digests, so a contract drift fails on both sides. See
-`docs/protocol/source-of-truth.md` for the full story.
+[`docs/protocol/source-of-truth.md`](https://github.com/Orthic-Labs/Membrane/blob/main/docs/protocol/source-of-truth.md)
+for the full story.

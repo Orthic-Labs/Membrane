@@ -87,9 +87,8 @@ pub struct ContractShape {
     pub fixture: &'static str,
 }
 
-// Schemas live at the repo root under `schemas/`; fixtures under `operations/`.
-// `CARGO_MANIFEST_DIR` is `engine/crates/membrane-protocol`, so the repo root is
-// three levels up.
+// Schemas & fixtures ship in this crate under `assets/`. The source repository
+// retains matching canonical files at its root for its non-Rust bindings.
 const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../..");
 
 macro_rules! shape {
@@ -100,12 +99,12 @@ macro_rules! shape {
             fixture_path: concat!("operations/", $fixture),
             schema: include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../../schemas/",
+                "/assets/schemas/",
                 $schema
             )),
             fixture: include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../../operations/",
+                "/assets/operations/",
                 $fixture
             )),
         }

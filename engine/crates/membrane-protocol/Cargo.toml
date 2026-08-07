@@ -4,6 +4,12 @@ version = "0.1.0"
 edition.workspace = true
 license-file.workspace = true
 description = "Membrane protocol contract: the single source of truth for the five typed shapes (ScopeGrant, ContextCandidateSet, ContextPacket, ContextReceipt, KnowledgeEmission), their canonical JSON Schemas, and the cross-language canonical byte/digest contract."
+readme = "README.md"
+repository = "https://github.com/Orthic-Labs/Membrane"
+documentation = "https://github.com/Orthic-Labs/Membrane/tree/main/docs/sdk"
+homepage = "https://github.com/Orthic-Labs/Membrane"
+keywords = ["membrane", "protocol", "contracts", "serde"]
+categories = ["encoding", "data-structures"]
 
 [dependencies]
 serde = { workspace = true }

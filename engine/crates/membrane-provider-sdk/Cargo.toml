@@ -4,13 +4,20 @@ version = "0.1.0"
 edition.workspace = true
 license-file.workspace = true
 description = "Membrane provider SDK. Exposes the typed Provider trait, the canonical Fixture shape, and the run_conformance harness so external adapters (Cortex, Crypt, custom) implement Membrane operations against the same contract the runtime and the MCP tool surface use."
+readme = "README.md"
+repository = "https://github.com/Orthic-Labs/Membrane"
+documentation = "https://github.com/Orthic-Labs/Membrane/tree/main/docs/sdk"
+homepage = "https://github.com/Orthic-Labs/Membrane"
+keywords = ["membrane", "provider", "sdk", "conformance"]
+categories = ["development-tools::testing", "api-bindings"]
+exclude = ["tests/downstream_fixture.rs", "tests/downstream-fixture"]
 
 [lib]
 name = "membrane_provider_sdk"
 path = "src/lib.rs"
 
 [dependencies]
-membrane-protocol = { path = "../membrane-protocol" }
+membrane-protocol = { version = "0.1", path = "../membrane-protocol" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/context-packet.v1.schema.json",
+  "title": "ContextPacketV1",
+  "description": "MBR-101: the bounded packet the admission planner emits under one token budget — what the agent actually receives. Canonical Rust source of truth: engine/crates/membrane-protocol/src/types.rs (ContextPacketV1).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "traceId", "task", "mode", "budget", "allocations", "blocks", "omissions"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "traceId": { "type": "string", "minLength": 1 },
+    "task": { "type": "string", "minLength": 1 },
+    "mode": { "type": "string", "minLength": 1 },
+    "budget": { "$ref": "#/$defs/budget" },
+    "allocations": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "providerAccounting": { "type": "object", "additionalProperties": { "$ref": "#/$defs/providerAccounting" } },
+    "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } },
+    "omissions": { "type": "array", "items": { "$ref": "#/$defs/omission" } }
+  },
+  "$defs": {
+    "deliveryStage": { "type": "string", "enum": ["planned", "finalized"] },
+    "deliveryClass": { "type": "string", "enum": ["resolver_backed", "metadata_only", "rendered"] },
+    "dropReason": {
+      "type": "string",
+      "enum": ["none", "missing_resolver", "trust_gate_dropped", "seal_failed", "additional_context_char_cap", "packet_budget_exceeded", "not_selected", "multiple"]
+    },
+    "freshnessClass": {
+      "type": "string",
+      "enum": ["current", "committed_snapshot", "dirty_overlay", "stale_snapshot", "unknown"]
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxTokens", "admittedTokens"],
+      "properties": {
+        "maxTokens": { "type": "integer", "minimum": 0 },
+        "admittedTokens": { "type": "integer", "minimum": 0 },
+        "packetCharBudgetDefault": { "type": "integer", "minimum": 0 },
+        "packetCharBudgetOverride": { "type": "integer", "minimum": 0 },
+        "packetCharBudgetModel": { "type": "string" },
+        "configuredPacketCharBudget": { "type": "integer", "minimum": 0 },
+        "effectivePacketCharBudget": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "providerAccounting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deliveryStage", "selectedTokens", "renderedTokens", "deliveredChars", "dropReason"],
+      "properties": {
+        "deliveryStage": { "$ref": "#/$defs/deliveryStage" },
+        "selectedTokens": { "type": "integer", "minimum": 0 },
+        "renderedTokens": { "type": "integer", "minimum": 0 },
+        "deliveredChars": { "type": "integer", "minimum": 0 },
+        "dropReason": { "$ref": "#/$defs/dropReason" }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "layer", "provider", "sourceKind", "sourceRef", "sourceHash",
+        "trustClass", "instructionPolicy", "priority", "estimatedTokens",
+        "protected", "recoverable", "resolver", "text"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "layer": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "provider": { "type": "string", "minLength": 1 },
+        "sourceKind": { "type": "string", "minLength": 1 },
+        "sourceRef": { "type": "string" },
+        "sourceHash": { "type": "string" },
+        "trustClass": { "type": "string", "minLength": 1 },
+        "instructionPolicy": { "type": "string" },
+        "baseCommit": { "type": "string" },
+        "overlayDigest": { "type": "string" },
+        "freshnessClass": { "$ref": "#/$defs/freshnessClass" },
+        "snapshotId": { "type": "string" },
+        "priority": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "estimatedTokens": { "type": "integer", "minimum": 0 },
+        "deliveryStage": { "$ref": "#/$defs/deliveryStage" },
+        "deliveryClass": { "$ref": "#/$defs/deliveryClass" },
+        "selectedTokens": { "type": "integer", "minimum": 0 },
+        "allottedTokens": { "type": "integer", "minimum": 0 },
+        "renderedTokens": { "type": "integer", "minimum": 0 },
+        "deliveredChars": { "type": "integer", "minimum": 0 },
+        "dropReason": { "$ref": "#/$defs/dropReason" },
+        "protected": { "type": "boolean" },
+        "recoverable": { "type": "boolean" },
+        "resolver": { "type": "string" },
+        "text": { "type": "string" }
+      }
+    },
+    "omission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "reason"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "layer": { "type": ["integer", "null"], "minimum": 0, "maximum": 255 },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}
