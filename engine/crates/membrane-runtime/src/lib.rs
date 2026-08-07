@@ -10,6 +10,7 @@ pub mod catalog;
 pub mod checkpoint;
 pub mod cli;
 pub mod compress;
+pub mod diagnostic_bundle;
 pub mod digest;
 pub mod doc_candidate_provider;
 pub mod doc_projection;

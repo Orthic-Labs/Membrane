@@ -419,6 +419,9 @@ enum Cmd {
     Doctor {
         #[arg(long)]
         json: bool,
+        /// Write a content-free, hash-manifested diagnostic bundle.
+        #[arg(long, value_name = "FILE")]
+        bundle: Option<PathBuf>,
         /// Suppress only these stable doctor finding codes.
         #[arg(long = "suppress", value_name = "CODE")]
         suppressions: Vec<String>,
@@ -2787,6 +2790,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         }
         Cmd::Doctor {
             json,
+            bundle,
             suppressions,
             external_refs,
         } => {
@@ -2795,6 +2799,9 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 external_refs.iter().map(String::as_str).collect::<Vec<_>>();
             let report =
                 crypt::doctor::run_with_policy(&db, &suppressed_codes, &allowed_external_refs)?;
+            if let Some(bundle) = bundle {
+                crypt::diagnostic_bundle::write(&bundle, Path::new(&db), &report)?;
+            }
             if json {
                 println!(
                     "{}",

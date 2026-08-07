@@ -1032,6 +1032,21 @@ fn read_token_file(path: &std::path::Path) -> std::io::Result<String> {
     Ok(token)
 }
 
+/// Validate a configured token file without exposing its value or repairing permissions. Support
+/// diagnostics must stay read-only, unlike runtime startup which normalizes token permissions.
+pub(crate) fn token_file_is_valid_without_mutation(path: &std::path::Path) -> bool {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return false;
+    }
+    let Ok(token) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    !token.trim().is_empty() && validate_api_token(token.trim()).is_ok()
+}
+
 fn hex(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut encoded = String::with_capacity(bytes.len() * 2);
