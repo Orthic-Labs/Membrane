@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/client-capability.v1.schema.json",
+  "title": "ClientCapabilityV1",
+  "description": "MBR-206 client-capability envelope. One envelope per AI/MCP client the Membrane runtime knows how to enroll. Each envelope declares its transport, discovery method, native install commands, supported operations, and the authority the install path may grant. The matrix generator (tools/productization/generate-client-matrix.mjs) reads operations/clients.yaml and emits a list of envelopes matching this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "displayName",
+    "transport",
+    "discoveryMethod",
+    "installCommand",
+    "supportedOperations",
+    "authorityGrant",
+    "honestLevel",
+    "schemaVersion"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Stable, lowercase, snake-case client identifier (e.g. claude, codex, cursor, windsurf, generic_mcp)."
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-facing client name shown in operator-facing output."
+    },
+    "transport": {
+      "type": "string",
+      "enum": ["stdio", "loopback"],
+      "description": "Transport the client uses to reach the Membrane server. stdio = native MCP CLI launches the server as a child process; loopback = client connects to a per-user Membrane supervisor port."
+    },
+    "discoveryMethod": {
+      "type": "string",
+      "minLength": 1,
+      "description": "How the install path confirms the client is present on the host (e.g. native-mcp-cli, rules-file-and-mcp, mcp-stdio-only)."
+    },
+    "installCommand": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Reference install command template. <node> and <server> are substituted at run time."
+    },
+    "detectCommand": {
+      "type": "string",
+      "description": "Argument vector used to confirm the client binary is installed (typically --version)."
+    },
+    "binaryEnv": {
+      "type": "string",
+      "description": "Optional environment variable that overrides the client binary path."
+    },
+    "scopeDefault": {
+      "type": "string",
+      "description": "Default scope applied when enrolling this client. Claude supports local/project/user; other clients use a fixed default."
+    },
+    "honestLevel": {
+      "type": "string",
+      "enum": ["L0", "L1", "L2", "L3", "L4", "L5"],
+      "description": "Highest Membrane honesty level the client can deliver end-to-end."
+    },
+    "authorityGrant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxLevel", "scopes", "loopbackOnly"],
+      "properties": {
+        "maxLevel": {
+          "type": "string",
+          "enum": ["L0", "L1", "L2", "L3", "L4", "L5"]
+        },
+        "scopes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "loopbackOnly": {
+          "type": "boolean"
+        }
+      }
+    },
+    "supportedOperations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^membrane_[a-z][a-z0-9_]*$"
+      },
+      "description": "Operations the client can honor end-to-end. Every name MUST exist in operations/operations/operations-index.v1.golden.json."
+    },
+    "degradedOperations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^membrane_[a-z][a-z0-9_]*$"
+      },
+      "description": "Operations the client can call but not enforce. These are not advertised as supported."
+    }
+  }
+}

@@ -1,0 +1,313 @@
+{
+  "cells": [
+    {
+      "client": "claude",
+      "operation": "membrane_context",
+      "support": "supported"
+    },
+    {
+      "client": "claude",
+      "operation": "membrane_source_read",
+      "support": "supported"
+    },
+    {
+      "client": "claude",
+      "operation": "membrane_knowledge_propose",
+      "support": "supported"
+    },
+    {
+      "client": "claude",
+      "operation": "membrane_checkpoint_save",
+      "support": "supported"
+    },
+    {
+      "client": "claude",
+      "operation": "membrane_checkpoint_load",
+      "support": "supported"
+    },
+    {
+      "client": "claude",
+      "operation": "membrane_working_context",
+      "support": "supported"
+    },
+    {
+      "client": "claude",
+      "operation": "membrane_temporal_fact",
+      "support": "supported"
+    },
+    {
+      "client": "claude",
+      "operation": "membrane_scratchpad",
+      "support": "supported"
+    },
+    {
+      "client": "claude",
+      "operation": "membrane_feedback",
+      "support": "supported"
+    },
+    {
+      "client": "codex",
+      "operation": "membrane_context",
+      "support": "supported"
+    },
+    {
+      "client": "codex",
+      "operation": "membrane_source_read",
+      "support": "supported"
+    },
+    {
+      "client": "codex",
+      "operation": "membrane_knowledge_propose",
+      "support": "supported"
+    },
+    {
+      "client": "codex",
+      "operation": "membrane_checkpoint_save",
+      "support": "supported"
+    },
+    {
+      "client": "codex",
+      "operation": "membrane_checkpoint_load",
+      "support": "supported"
+    },
+    {
+      "client": "codex",
+      "operation": "membrane_working_context",
+      "support": "supported"
+    },
+    {
+      "client": "codex",
+      "operation": "membrane_temporal_fact",
+      "support": "supported"
+    },
+    {
+      "client": "codex",
+      "operation": "membrane_scratchpad",
+      "support": "supported"
+    },
+    {
+      "client": "codex",
+      "operation": "membrane_feedback",
+      "support": "supported"
+    },
+    {
+      "client": "cursor",
+      "operation": "membrane_context",
+      "support": "supported"
+    },
+    {
+      "client": "cursor",
+      "operation": "membrane_source_read",
+      "support": "degraded"
+    },
+    {
+      "client": "cursor",
+      "operation": "membrane_knowledge_propose",
+      "support": "degraded"
+    },
+    {
+      "client": "cursor",
+      "operation": "membrane_checkpoint_save",
+      "support": "degraded"
+    },
+    {
+      "client": "cursor",
+      "operation": "membrane_checkpoint_load",
+      "support": "degraded"
+    },
+    {
+      "client": "cursor",
+      "operation": "membrane_working_context",
+      "support": "supported"
+    },
+    {
+      "client": "cursor",
+      "operation": "membrane_temporal_fact",
+      "support": "degraded"
+    },
+    {
+      "client": "cursor",
+      "operation": "membrane_scratchpad",
+      "support": "degraded"
+    },
+    {
+      "client": "cursor",
+      "operation": "membrane_feedback",
+      "support": "degraded"
+    },
+    {
+      "client": "windsurf",
+      "operation": "membrane_context",
+      "support": "supported"
+    },
+    {
+      "client": "windsurf",
+      "operation": "membrane_source_read",
+      "support": "degraded"
+    },
+    {
+      "client": "windsurf",
+      "operation": "membrane_knowledge_propose",
+      "support": "degraded"
+    },
+    {
+      "client": "windsurf",
+      "operation": "membrane_checkpoint_save",
+      "support": "degraded"
+    },
+    {
+      "client": "windsurf",
+      "operation": "membrane_checkpoint_load",
+      "support": "degraded"
+    },
+    {
+      "client": "windsurf",
+      "operation": "membrane_working_context",
+      "support": "supported"
+    },
+    {
+      "client": "windsurf",
+      "operation": "membrane_temporal_fact",
+      "support": "degraded"
+    },
+    {
+      "client": "windsurf",
+      "operation": "membrane_scratchpad",
+      "support": "degraded"
+    },
+    {
+      "client": "windsurf",
+      "operation": "membrane_feedback",
+      "support": "degraded"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "membrane_context",
+      "support": "supported"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "membrane_source_read",
+      "support": "degraded"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "membrane_knowledge_propose",
+      "support": "degraded"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "membrane_checkpoint_save",
+      "support": "degraded"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "membrane_checkpoint_load",
+      "support": "degraded"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "membrane_working_context",
+      "support": "degraded"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "membrane_temporal_fact",
+      "support": "degraded"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "membrane_scratchpad",
+      "support": "degraded"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "membrane_feedback",
+      "support": "degraded"
+    }
+  ],
+  "clients": [
+    {
+      "displayName": "Claude Code",
+      "honestLevel": "L4",
+      "id": "claude",
+      "transport": "stdio"
+    },
+    {
+      "displayName": "Codex CLI",
+      "honestLevel": "L2",
+      "id": "codex",
+      "transport": "stdio"
+    },
+    {
+      "displayName": "Cursor",
+      "honestLevel": "L1",
+      "id": "cursor",
+      "transport": "stdio"
+    },
+    {
+      "displayName": "Windsurf",
+      "honestLevel": "L1",
+      "id": "windsurf",
+      "transport": "stdio"
+    },
+    {
+      "displayName": "Generic MCP client",
+      "honestLevel": "L0",
+      "id": "generic_mcp",
+      "transport": "stdio"
+    }
+  ],
+  "generatedFrom": [
+    "operations/operations/operations-index.v1.golden.json"
+  ],
+  "matrixVersion": 1,
+  "operations": [
+    {
+      "errorVersion": 1,
+      "name": "membrane_context",
+      "schemaVersion": 1
+    },
+    {
+      "errorVersion": 1,
+      "name": "membrane_source_read",
+      "schemaVersion": 1
+    },
+    {
+      "errorVersion": 1,
+      "name": "membrane_knowledge_propose",
+      "schemaVersion": 1
+    },
+    {
+      "errorVersion": 1,
+      "name": "membrane_checkpoint_save",
+      "schemaVersion": 1
+    },
+    {
+      "errorVersion": 1,
+      "name": "membrane_checkpoint_load",
+      "schemaVersion": 1
+    },
+    {
+      "errorVersion": 1,
+      "name": "membrane_working_context",
+      "schemaVersion": 1
+    },
+    {
+      "errorVersion": 1,
+      "name": "membrane_temporal_fact",
+      "schemaVersion": 1
+    },
+    {
+      "errorVersion": 1,
+      "name": "membrane_scratchpad",
+      "schemaVersion": 1
+    },
+    {
+      "errorVersion": 1,
+      "name": "membrane_feedback",
+      "schemaVersion": 1
+    }
+  ],
+  "schemaVersion": 1
+}

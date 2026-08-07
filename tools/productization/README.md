@@ -1,0 +1,82 @@
+# tools/productization/
+
+Deterministic, locally invoked productization utilities. Nothing in this directory
+adds or modifies `.github/workflows/**` or any CI configuration; every entry is
+either a node script or a manual command runner.
+
+## Entries in this directory
+
+| File | Owner task | Purpose |
+|---|---|---|
+| `generate-product-truth.mjs` | MBR-013 | Builds the canonical `operations/product-truth.json` artifact. |
+| `check-docs.mjs` | MBR-1001 | One-shot local gate that fails on stale generated docs or broken README links. |
+| `render-docs.mjs` | MBR-1001 | Renderers for the four generated product docs. |
+| `generate-client-matrix.mjs` | MBR-206 | Builds the MBR-206 client registry capabilities + support matrix. |
+
+## MBR-206 — generate-client-matrix.mjs
+
+Reads:
+
+- `operations/clients.yaml` — the human-authored client registry.
+- `operations/operations/operations-index.v1.golden.json` — the MBR-301
+  operation universe.
+
+Emits:
+
+- `operations/clients.capabilities.v1.json` — capability envelopes
+  conforming to `schemas/client-capability.v1.schema.json`.
+- `docs/clients/support-matrix.v1.json` — the client × operation
+  matrix conforming to `schemas/client-support-matrix.v1.schema.json`.
+
+Both artifacts are byte-stable across runs. The script refuses to emit
+when the registry references an operation that does not exist in the
+operation index, when a client id is duplicated, or when an operation
+appears in both `supportedOperations` and `degradedOperations`.
+
+### Run
+
+```sh
+node tools/productization/generate-client-matrix.mjs
+```
+
+Exits 0 with two `wrote …` lines on success, exits 1 with a thrown
+contract error on failure.
+
+### Programmatic use
+
+The generator exports the same builder functions the companion test
+imports, so `tests/clients/client-matrix.test.mjs` can verify the
+generator without touching disk:
+
+```js
+import {
+  buildArtifacts,
+  parseYaml,
+  stableStringify,
+} from "../../tools/productization/generate-client-matrix.mjs";
+
+const registry = parseYaml(yamlText);
+const index = JSON.parse(indexText);
+const { capabilities, matrix } = buildArtifacts(registry, index);
+const sameAgain = stableStringify(buildArtifacts(registry, index).matrix);
+assert.equal(stableStringify(matrix), sameAgain);  // byte-stable
+```
+
+### Contract checks the generator enforces
+
+- Every `id` is unique across clients.
+- Every `supportedOperations` / `degradedOperations` entry exists in
+  the operation index.
+- The same operation name never appears in both
+  `supportedOperations` and `degradedOperations` for the same client.
+- Every required envelope field is present (`id`, `displayName`,
+  `transport`, `discoveryMethod`, `installCommand`, `honestLevel`,
+  `authorityGrant`, `supportedOperations`, `schemaVersion`).
+
+## Book-mode note
+
+In book mode, this script is committed in the MBR-206 commit but the
+manifest `commands` list (which contains `pnpm test` and Cargo
+commands) is **not** executed at task time. The generator itself is
+pure and side-effect-isolated; it is safe to invoke locally at any
+point. The Book 1 gate is the first time the full verification runs.
