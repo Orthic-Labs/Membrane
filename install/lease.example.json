@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "supervisorInstanceId": "sup-0123456789abcdef0123456789abcdef",
+  "issuance": 1,
+  "residentPidExpected": 4242,
+  "loopbackPort": 47851,
+  "mintedAt": "2026-08-07T12:00:00Z",
+  "contentDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+}

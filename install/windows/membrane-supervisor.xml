@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<!--
+  Membrane supervisor — Windows Task Scheduler entry.
+
+  Imported by:
+    schtasks /Create /TN "Membrane\Supervisor" /XML install\windows\supervisor.xml
+
+  Per-user (the engine database and PID lock are per-user). The installer places the
+  supervisor's binary at the path the installer chose; the placeholders below are
+  rewrites the installer performs just before import.
+
+  MBR-201: build a per-user Membrane supervisor.
+-->
+<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>Orthic Labs</Author>
+    <Description>Per-user Membrane supervisor. Owns one resident, publishes discovery, dedupes the cortex watcher. Survives user logon and restarts on failure.</Description>
+    <URI>\Membrane\Supervisor</URI>
+  </RegistrationInfo>
+
+  <Triggers>
+    <!-- Boot time trigger so the supervisor is up after a restart, before logon. -->
+    <BootTrigger>
+      <Enabled>true</Enabled>
+    </BootTrigger>
+    <!-- Logon trigger so a returning user always has the supervisor alive. -->
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT15S</Delay>
+    </LogonTrigger>
+  </Triggers>
+
+  <Principals>
+    <Principal id="Author">
+      <!-- Run as the interactive user so the engine database and per-user PID lock land
+           in the user's scope, not System. Group="Users" gives the supervisor interactive
+           session access so it can publish artefacts into the user's profile. -->
+      <GroupId>S-1-5-4</GroupId>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>5</Priority>
+  </Settings>
+
+  <Actions>
+    <Exec>
+      <!-- The installer rewrites the placeholders at first install. The supervisor
+           runs in `run` mode with an explicit --config path so the user-visible
+           supervisor.json is the one source of truth. -->
+      <Command>C:\Program Files\Membrane\bin\membrane-supervisor.exe</Command>
+      <Arguments>run --config %LOCALAPPDATA%\Membrane\supervisor.json</Arguments>
+      <WorkingDirectory>C:\Program Files\Membrane\bin</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>

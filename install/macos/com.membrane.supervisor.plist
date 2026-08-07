@@ -1,0 +1,88 @@
+><?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Membrane supervisor — launchd per-user agent.
+
+  Loaded by `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.membrane.supervisor.plist`
+  on install. The unit is per-user so two users on the same Mac never compete for the
+  supervisor lock.
+
+  MBR-201: build a per-user Membrane supervisor.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>com.membrane.supervisor</string>
+
+    <!-- Run only for the current GUI user. We never run at the system level: the engine
+         database is per-user and per-installation, and the lease authority is gated by the
+         per-user supervisor PID lock. -->
+    <key>LimitLoadToSessionType</key>
+    <array>
+      <string>Aqua</string>
+    </array>
+
+    <!-- Launch at login and keep alive across the lifetime of the GUI session. We restart
+         on crash (SuccessfulExit=false), and rely on the membrane-supervisor's own
+         restart policy for the resident. Throttling below keeps a real crash loop from
+         spinning the unit. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+      <key>SuccessfulExit</key>
+      <false/>
+      <key>Crashed</key>
+      <true/>
+    </dict>
+
+    <!-- Throttle restart attempts so a crash loop does not pin a CPU. The membrane
+         supervisor's own restart policy applies on top of this in-process. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Hard wall-clock ceiling for any single invocation. Beyond this launchd treats
+         the supervisor as stuck and SIGKILLs it; on next bootstrap we recover. -->
+    <key>ExitTimeOut</key>
+    <integer>90</integer>
+
+    <!-- Per-tick process-type and resource hints. Daemon (no Dock badge, no UI) and modest
+         file-descriptor floor so the OS does not evict the supervisor under load. -->
+    <key>ProcessType</key>
+    <string>Daemon</string>
+    <key>SoftResourceLimits</key>
+    <dict>
+      <key>NumberOfFiles</key>
+      <integer>512</integer>
+    </dict>
+
+    <!-- Top-level arguments: run-mode + explicit config path. The installer rewrites the
+         placeholder `--config` path during `membrane install`. -->
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/local/bin/membrane-supervisor</string>
+      <string>run</string>
+      <string>--config</string>
+      <string>/Users/__USER__/Library/Application Support/Membrane/supervisor.json</string>
+    </array>
+
+    <!-- Launchd's stdout/stderr must be drained even though the supervisor is a daemon.
+         macOS deletes the user's tty on a GUI session switch; logs go to a file. -->
+    <key>StandardOutPath</key>
+    <string>/Users/__USER__/Library/Logs/Membrane/supervisor.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/__USER__/Library/Logs/Membrane/supervisor.err.log</string>
+
+    <!-- Env: explicit PATH so the supervisor can find the membrane binary on a fresh
+         user session, and HOME so the runtime config is anchored to the right tree. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+      <key>HOME</key>
+      <string>/Users/__USER__</string>
+      <key>CRYPT_USE_SUPERVISOR</key>
+      <string>1</string>
+    </dict>
+  </dict>
+</plist>

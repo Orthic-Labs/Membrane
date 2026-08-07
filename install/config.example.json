@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "residentBinary": "/usr/local/bin/membrane",
+  "leasePath": "/Users/example/Library/Application Support/Membrane/supervisor/lease.json",
+  "endpointPath": "/Users/example/Library/Application Support/Membrane/supervisor/endpoint.json",
+  "statusPath": "/Users/example/Library/Application Support/Membrane/supervisor/status.json",
+  "pidLockPath": "/Users/example/Library/Application Support/Membrane/supervisor/supervisor.pid",
+  "loopbackPort": 47851,
+  "restartPolicy": {
+    "maxRestarts": 5,
+    "windowSeconds": 60,
+    "initialBackoffSeconds": 1,
+    "maxBackoffSeconds": 30,
+    "backoffMultiplier": 2
+  },
+  "watcherPolicy": {
+    "managed": true,
+    "pidFile": "/Users/example/.cortex/watchman.pid",
+    "script": "/usr/local/bin/cortex-watch.mjs"
+  },
+  "lifetimeSeconds": 86400
+}

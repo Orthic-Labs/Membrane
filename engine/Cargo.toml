@@ -8,6 +8,7 @@ members = [
     "crates/membrane",
     "crates/membrane-runtime",
     "crates/membrane-protocol",
+    "crates/membrane-supervisor",
 ]
 
 [workspace.package]
