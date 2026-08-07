@@ -6,6 +6,21 @@
 use crate::dispatch::{MembraneMode, ParsedInvocation};
 use crate::{EXIT_INTERNAL_ERROR, EXIT_OK, EXIT_USER_ERROR};
 
+/// MBR-108: map a parsed mode to the process plane it executes in. The mapping is the single
+/// source of truth referenced by `docs/architecture.md` and by
+/// `operations/plane-boundaries.v1.golden.json`. Adding a new mode without updating this
+/// helper is a contract violation.
+pub fn plane_of(mode: &MembraneMode) -> membrane_runtime::Plane {
+    match mode {
+        // All three user-facing entry points belong to the Application plane.
+        MembraneMode::Cli => membrane_runtime::Plane::Application,
+        MembraneMode::StdioMcp => membrane_runtime::Plane::Application,
+        MembraneMode::LoopbackApi => membrane_runtime::Plane::Application,
+        // The supervisor's resident child is the Control plane.
+        MembraneMode::SupervisorChild => membrane_runtime::Plane::Control,
+    }
+}
+
 /// Outcome of a dispatched mode. The binary maps this to a process exit code.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DispatchOutcome {
@@ -170,6 +185,30 @@ mod tests {
         assert_eq!(
             DispatchOutcome::InternalError("y".into()).exit_code(),
             EXIT_INTERNAL_ERROR
+        );
+    }
+
+    #[test]
+    fn plane_of_maps_user_facing_modes_to_application() {
+        assert_eq!(
+            plane_of(&MembraneMode::Cli),
+            membrane_runtime::Plane::Application
+        );
+        assert_eq!(
+            plane_of(&MembraneMode::StdioMcp),
+            membrane_runtime::Plane::Application
+        );
+        assert_eq!(
+            plane_of(&MembraneMode::LoopbackApi),
+            membrane_runtime::Plane::Application
+        );
+    }
+
+    #[test]
+    fn plane_of_maps_supervisor_child_to_control() {
+        assert_eq!(
+            plane_of(&MembraneMode::SupervisorChild),
+            membrane_runtime::Plane::Control
         );
     }
 }

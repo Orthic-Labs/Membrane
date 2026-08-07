@@ -62,8 +62,52 @@ Supported platforms are **macOS and Windows** (tier 1). Linux is tier-2 best-eff
 
 ## Derived from
 
-- `mcp/server.mjs`
 - `mcp/context-renderer-lib.cjs`
 - `engine/crates/membrane-core/`
 - `engine/crates/membrane-protocol/src/types.rs`
+- `mcp/server.mjs`
 - `docs/membrane/capability-matrix.v1.json`
+
+## Process plane separation (MBR-108)
+
+The membrane executable is partitioned into three process planes. Each plane
+owns its own entry point, its own failure domain, and the files it may write.
+Adding a fourth plane is a breaking change to the contract.
+
+| Plane | Owns | Reads from | Writes to |
+|---|---|---|---|
+| Application | CLI subcommands, stdio MCP, loopback HTTP API, MCP routing | Data | — |
+| Control | supervisor-child, leases, lockfile, heartbeat publication, restart policy | Data | Data |
+| Data | SQLite catalog, receipts, snapshot manifests, heartbeat rows, installation identity | — | — |
+
+Rules:
+
+- The Data plane never owns a network port. A path under `engine/crates/crypt-store/`
+  MUST NOT import a transport crate.
+- The Control plane never opens SQLite directly. Lease, lockfile, and heartbeat
+  writes go through the typed Data-plane API exposed by `membrane_supervisor`.
+- The Application plane never writes to disk except via the Control or Data
+  plane. `membrane_runtime::serve` and `membrane_runtime::cli` only emit
+  typed receipts; they never call `std::fs` directly outside the receipts
+  registry.
+
+Mode → plane mapping (single source of truth: `membrane::modes::plane_of`):
+
+- `membrane cli …` → Application
+- `membrane stdio` (stdio MCP) → Application
+- `membrane loopback-api` → Application
+- `membrane supervisor-child` → Control
+
+The typed contract lives at `engine/crates/membrane-runtime/src/planes.rs`
+(`Plane`, `PlaneBoundary`, `PLANE_BOUNDARIES`, `plane_for_path`). The golden
+fixture is `operations/plane-boundaries.v1.golden.json`; the runtime
+classifies a source file into a plane by the crate segment that owns it
+(`membrane-runtime` / `membrane-mcp` → Application,
+`membrane-supervisor` → Control, `crypt-store` → Data).
+
+Forbid list (enforced by review at book-end):
+
+- A pull request that opens SQLite outside the Data plane.
+- A pull request that adds a transport crate dependency to the Data plane.
+- A pull request that adds a fourth entry to `PLANE_BOUNDARIES` without
+  bumping `plane-boundaries.v1.golden.json` to v2.

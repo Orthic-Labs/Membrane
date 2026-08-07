@@ -26,6 +26,7 @@ pub mod outline;
 pub mod paths;
 pub mod plan_context;
 pub mod planner_metrics;
+pub mod planes;
 pub mod prep;
 pub mod receipt;
 pub mod release_identity;
@@ -58,6 +59,7 @@ pub use scope::{
     normalize_scope, path_to_scope, scope_chain, ScopeDescriptorError, ScopeDescriptorV1,
 };
 pub use paths::{cache_root, config_root, data_root, log_root, Roots, PRODUCT_DIR_NAME};
+pub use planes::{Plane, PlaneBoundary, PLANE_BOUNDARIES, plane_for_path};
 pub use receipt::{
     clear_receipt_registry, is_receipt_owned, register_receipt_owned, register_receipt_owned_path,
     remove_receipt_owned, snapshot as receipt_snapshot, ReceiptError, ReceiptOwnedFile,

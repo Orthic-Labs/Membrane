@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "contract": "MBR-108: separate application, control, and data planes",
+  "source": "engine/crates/membrane-runtime/src/planes.rs",
+  "planes": [
+    {
+      "name": "application",
+      "ownsProcess": true,
+      "ownsFiles": [
+        "engine/crates/membrane-runtime/src/cli.rs",
+        "engine/crates/membrane-runtime/src/serve.rs",
+        "engine/crates/membrane-runtime/src/planes.rs",
+        "engine/crates/membrane-mcp/src/"
+      ],
+      "readsFrom": ["data"],
+      "writesTo": []
+    },
+    {
+      "name": "control",
+      "ownsProcess": true,
+      "ownsFiles": [
+        "engine/crates/membrane-supervisor/src/supervisor.rs",
+        "engine/crates/membrane-supervisor/src/resident.rs",
+        "engine/crates/membrane-supervisor/src/lease.rs",
+        "engine/crates/membrane-supervisor/src/lock.rs",
+        "engine/crates/membrane-supervisor/src/watcher.rs"
+      ],
+      "readsFrom": ["data"],
+      "writesTo": ["data"]
+    },
+    {
+      "name": "data",
+      "ownsProcess": false,
+      "ownsFiles": [
+        "engine/crates/crypt-store/src/db.rs",
+        "engine/crates/crypt-store/src/memdb.rs",
+        "engine/crates/crypt-store/src/scope.rs",
+        "engine/crates/crypt-store/src/context_telemetry.rs",
+        "engine/crates/crypt-store/src/installation_identity.rs"
+      ],
+      "readsFrom": [],
+      "writesTo": []
+    }
+  ],
+  "modeMapping": {
+    "Cli": "application",
+    "StdioMcp": "application",
+    "LoopbackApi": "application",
+    "SupervisorChild": "control"
+  }
+}
