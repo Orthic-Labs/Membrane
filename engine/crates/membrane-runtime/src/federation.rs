@@ -244,6 +244,11 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
         "releaseGenerationStatus": out.release_generation_status,
         "structuredEvent": out.structured_event,
     });
+    if let Some(packet) = payload.get("packet") {
+        payload["cachePrefixDiagnostic"] =
+            serde_json::to_value(crate::cache_prefix::diagnose_cache_prefix(packet, None))
+                .expect("cache prefix diagnostic serializes");
+    }
     if let (Some(payload_fields), Some(observability_fields)) =
         (payload.as_object_mut(), observability.as_object())
     {
@@ -672,6 +677,29 @@ fn which(name: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn federation_emits_content_free_cache_prefix_diagnostic() {
+        let ccs = include_str!("../../../../operations/context-candidate-set.v1.golden.json");
+        let payload = envelope_from_ccs(
+            ccs,
+            EnvelopeInput {
+                max_tokens: 4096,
+                packet_char_budget_override: None,
+                packet_char_budget_model: None,
+                accepted_receipt_versions: vec![2],
+                scope_grant_present: false,
+                gateway_process_ms: 0.0,
+            },
+        )
+        .expect("golden CCS plans");
+        let diagnostic = &payload["cachePrefixDiagnostic"];
+        assert_eq!(diagnostic["schemaVersion"], 1);
+        let serialized = serde_json::to_string(diagnostic).unwrap();
+        assert!(!serialized.contains("ScopeGrantV1"));
+        assert!(!serialized.contains("single source of truth"));
+        assert!(diagnostic["blockDigests"].is_array());
+    }
 
     #[test]
     fn missing_session_uses_canonical_opaque_identity() {
