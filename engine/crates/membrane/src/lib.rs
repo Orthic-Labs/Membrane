@@ -13,6 +13,7 @@ pub mod migration;
 pub mod modes;
 pub mod serve;
 pub mod uninstall;
+pub mod update;
 
 pub use dispatch::{parse_mode, MembraneMode, ParsedInvocation};
 
@@ -29,6 +30,7 @@ pub use uninstall::{
     OwnershipTable, UninstallError, UninstallOutcome, UninstallReceiptV1,
     UNINSTALL_RECEIPT_SCHEMA_VERSION,
 };
+pub use update::{update, UpdateHooks, UpdatePhase, UpdatePlan, UpdateReceiptV1, UPDATE_RECEIPT_FILE, UPDATE_RECEIPT_SCHEMA_VERSION};
 
 /// Process-wide exit-code contract. The binary returns these to the OS so scripts and the
 /// supervisor can distinguish "user error" from "internal failure" without parsing stderr.
