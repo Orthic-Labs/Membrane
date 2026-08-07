@@ -3,8 +3,39 @@
 //!
 //! MBR-102: create one membrane executable with mode subcommands.
 
-use clap::{Parser, Subcommand};
+use crate::generate_cli_subcommands;
+use clap::{Arg, Command as ClapCommand, Parser, Subcommand};
 use std::ffi::OsString;
+
+const GENERATED_CLI_SUBCOMMANDS: &str = include_str!("generated_cli_subcommands.rs");
+
+const fn const_starts_with(value: &str, prefix: &str) -> bool {
+    let value = value.as_bytes();
+    let prefix = prefix.as_bytes();
+    if value.len() < prefix.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < prefix.len() {
+        if value[index] != prefix[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+const _: () = {
+    let _generator: fn(&[membrane_protocol::operations::OperationSpec]) -> String =
+        generate_cli_subcommands;
+    assert!(const_starts_with(
+        GENERATED_CLI_SUBCOMMANDS,
+        concat!(
+            "// GENERATED — DO NOT EDIT\n// operation_registry_version: ",
+            env!("MEMBRANE_OPERATION_REGISTRY_VERSION")
+        )
+    ));
+};
 
 /// The four product-facing modes. Anything else is rejected before reaching the dispatcher.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -198,6 +229,53 @@ pub struct UninstallInvocation {
     pub dry_run: bool,
 }
 
+/// Hardcoded clap projection checked against the operation registry by the
+/// `cli-parity` binary. The empty query returns the subcommand inventory.
+pub fn cli_parser_snapshot(name: &str) -> Option<Vec<(String, String)>> {
+    include!("generated_cli_subcommands.rs")
+}
+
+fn parse_registry_operation(args: &[OsString]) -> Option<Result<ParsedInvocation, String>> {
+    let requested = args.get(1)?.to_str()?;
+    let spec = membrane_protocol::operations::OPERATIONS
+        .iter()
+        .find(|spec| crate::cli_parity::cli_subcommand_name(spec.id) == requested)?;
+    let command_name: &'static str = Box::leak(requested.to_string().into_boxed_str());
+    let mut operation = ClapCommand::new(command_name).about(spec.help);
+    for parameter in spec.parameters {
+        let mut arg = Arg::new(parameter.name)
+            .long(parameter.name)
+            .help(parameter.help)
+            .num_args(1);
+        if let Some(default) = parameter.default {
+            arg = arg.default_value(default);
+        }
+        operation = operation.arg(arg);
+    }
+    let parser = ClapCommand::new("membrane")
+        .disable_help_subcommand(true)
+        .subcommand_required(true)
+        .subcommand(operation);
+    Some(
+        parser
+            .try_get_matches_from(args.iter())
+            .map(|_| ParsedInvocation {
+                mode: MembraneMode::Cli,
+                cli_tail: args
+                    .iter()
+                    .skip(1)
+                    .map(|arg| arg.to_string_lossy().into_owned())
+                    .collect(),
+                framing: String::new(),
+                port: 0,
+                lease: None,
+                install: None,
+                uninstall: None,
+            })
+            .map_err(|error| error.to_string()),
+    )
+}
+
 pub fn parse_mode<I, T>(args: I) -> Result<ParsedInvocation, String>
 where
     I: IntoIterator<Item = T>,
@@ -205,6 +283,9 @@ where
 {
     // `clap` insists on consuming argv; we rebuild a Vec so error messages stay clean.
     let collected: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    if let Some(operation) = parse_registry_operation(&collected) {
+        return operation;
+    }
     let parsed = Cli::try_parse_from(collected.iter()).map_err(|err| err.to_string())?;
     let invocation = match parsed.command {
         Command::Cli(args) => ParsedInvocation {
@@ -310,8 +391,12 @@ mod tests {
 
     #[test]
     fn stdio_mcp_rejects_unknown_framing() {
-        let err =
-            parse_mode(["membrane", "stdio-mcp", "--framing", "lsp"].iter().copied()).unwrap_err();
+        let err = parse_mode(
+            ["membrane", "stdio-mcp", "--framing", "lsp"]
+                .iter()
+                .copied(),
+        )
+        .unwrap_err();
         assert!(err.contains("unsupported stdio-mcp framing"));
     }
 
@@ -324,16 +409,19 @@ mod tests {
 
     #[test]
     fn loopback_api_rejects_privileged_port() {
-        let err = parse_mode(["membrane", "loopback-api", "--port", "80"].iter().copied())
-            .unwrap_err();
+        let err =
+            parse_mode(["membrane", "loopback-api", "--port", "80"].iter().copied()).unwrap_err();
         assert!(err.contains("port 80 is privileged"));
     }
 
     #[test]
     fn supervisor_child_accepts_lease_path() {
-        let inv =
-            parse_mode(["membrane", "supervisor-child", "--lease", "/var/run/lease"].iter().copied())
-                .unwrap();
+        let inv = parse_mode(
+            ["membrane", "supervisor-child", "--lease", "/var/run/lease"]
+                .iter()
+                .copied(),
+        )
+        .unwrap();
         assert_eq!(inv.mode, MembraneMode::SupervisorChild);
         assert_eq!(
             inv.lease.as_deref().unwrap(),

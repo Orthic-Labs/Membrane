@@ -6,6 +6,7 @@
 //! MBR-102: create one membrane executable with mode subcommands.
 
 pub mod cli;
+pub mod cli_parity;
 pub mod dispatch;
 pub mod install_tx;
 pub mod modes;
@@ -15,6 +16,7 @@ pub mod uninstall;
 pub use dispatch::{parse_mode, MembraneMode, ParsedInvocation};
 
 pub use cli::{run_cli, run_cli_from};
+pub use cli_parity::{check_parity, generate_cli_subcommands, CliParityReport};
 pub use install_tx::{
     commit, execute_plan, InstallError, InstallOutcome, InstallPlan, InstallReceiptV1,
     InstallStage, InstallStep, INSTALL_RECEIPT_SCHEMA_VERSION,

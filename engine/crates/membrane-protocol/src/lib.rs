@@ -32,7 +32,9 @@ pub mod operations;
 pub mod types;
 
 pub use canonical::{canonical_json_of, canonicalize, digest_str};
-pub use heartbeat::{AdapterHeartbeatV1, AdapterStatus, MechanismReceiptV1, ADAPTER_HEARTBEAT_SCHEMA_VERSION};
+pub use heartbeat::{
+    AdapterHeartbeatV1, AdapterStatus, MechanismReceiptV1, ADAPTER_HEARTBEAT_SCHEMA_VERSION,
+};
 pub use installation::{
     canonical_data_root, ApiSchemaV1, ComponentV1, HandshakeError, InstallationManifestV1,
     MANIFEST_SCHEMA_VERSION, PROTOCOL_SCHEMA_VERSION,
@@ -42,8 +44,9 @@ pub use observable_event::{
     ObservableEventKindV1, ObservableEventV1, OBSERVABLE_EVENT_SCHEMA_VERSION,
 };
 pub use operations::{
-    operations, operations_slice, ErrorResult, OperationIndexEntry, OperationResult, OperationSpec,
-    OperationsIndex, ResultKind, SuccessResult, OPERATIONS,
+    operations, operations_slice, ErrorResult, OperationEnvelope, OperationIndexEntry,
+    OperationParameter, OperationResult, OperationSpec, OperationsIndex, ResultKind, SuccessResult,
+    OPERATIONS,
 };
 pub use types::*;
 

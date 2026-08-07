@@ -75,7 +75,7 @@ pub enum OperationResult {
     Error(ErrorResult),
 }
 
-/// One operation's contract envelope.
+/// One operation response envelope.
 ///
 /// `schemaVersion` is the INDEPENDENT contract version of this operation.
 /// `errorVersion` is the INDEPENDENT error-taxonomy version. The two advance
@@ -83,11 +83,27 @@ pub enum OperationResult {
 /// `schemaVersion`; adding a new output field does not move `errorVersion`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct OperationSpec {
+pub struct OperationEnvelope {
     pub schema_version: u32,
     pub operation: String,
     pub error_version: u32,
     pub result: OperationResult,
+}
+
+/// One registry-owned CLI parameter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OperationParameter {
+    pub name: &'static str,
+    pub default: Option<&'static str>,
+    pub help: &'static str,
+}
+
+/// The CLI-facing projection of one operation in the canonical registry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OperationSpec {
+    pub id: &'static str,
+    pub help: &'static str,
+    pub parameters: &'static [OperationParameter],
 }
 
 /// One operation's index entry. Mirrors
@@ -311,14 +327,60 @@ pub fn operations() -> Vec<OperationIndexEntry> {
     ]
 }
 
-/// Backwards-compatible alias for the const-style accessor the original
-/// draft of the contract used. Returns a slice borrowed from a thread-local
-/// cache so the call site can iterate `&OPERATIONS` exactly as before; the
-/// cache is initialized once on first access.
-pub static OPERATIONS: std::sync::OnceLock<Vec<OperationIndexEntry>> = std::sync::OnceLock::new();
+/// Cached index entries retained for schema/fixture compatibility.
+static OPERATION_INDEX_ENTRIES: std::sync::OnceLock<Vec<OperationIndexEntry>> =
+    std::sync::OnceLock::new();
 
-/// Helper: get the canonical operations list (initializes the
-/// `OPERATIONS` cache on first call).
+/// The typed operation registry consumed by generated CLI surfaces.
+pub static OPERATIONS: &[OperationSpec] = &[
+    OperationSpec {
+        id: "membrane_context",
+        help: "Federated context packet for one exact caller binding.",
+        parameters: &[],
+    },
+    OperationSpec {
+        id: "membrane_source_read",
+        help: "Hash-bound DocReadV1 section fetch for one exact caller binding.",
+        parameters: &[],
+    },
+    OperationSpec {
+        id: "membrane_knowledge_propose",
+        help: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.",
+        parameters: &[],
+    },
+    OperationSpec {
+        id: "membrane_checkpoint_save",
+        help: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.",
+        parameters: &[],
+    },
+    OperationSpec {
+        id: "membrane_checkpoint_load",
+        help: "Load an unexpired A0 session checkpoint for one exact caller binding.",
+        parameters: &[],
+    },
+    OperationSpec {
+        id: "membrane_working_context",
+        help: "Save, load, or close bounded session/task working context; durability must be explicit.",
+        parameters: &[],
+    },
+    OperationSpec {
+        id: "membrane_temporal_fact",
+        help: "Record or query provenance-bound temporal facts with explicit single-valued predicate policy.",
+        parameters: &[],
+    },
+    OperationSpec {
+        id: "membrane_scratchpad",
+        help: "Save, load, or clear ephemeral non-searchable session/task scratchpad state.",
+        parameters: &[],
+    },
+    OperationSpec {
+        id: "membrane_feedback",
+        help: "Record bounded receipt-bound outcome feedback for quarantine review.",
+        parameters: &[],
+    },
+];
+
+/// Helper: get the canonical index entries (initializes the cache on first call).
 pub fn operations_slice() -> &'static [OperationIndexEntry] {
-    OPERATIONS.get_or_init(operations).as_slice()
+    OPERATION_INDEX_ENTRIES.get_or_init(operations).as_slice()
 }

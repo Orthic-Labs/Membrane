@@ -13,6 +13,10 @@ path = "src/lib.rs"
 name = "membrane"
 path = "src/main.rs"
 
+[[bin]]
+name = "cli-parity"
+path = "src/bin/cli-parity.rs"
+
 [dependencies]
 membrane-mcp = { path = "../membrane-mcp" }
 membrane-runtime = { path = "../membrane-runtime" }
@@ -21,6 +25,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 clap = { version = "4", features = ["derive"] }
+sha2 = "0.10"
+
+[build-dependencies]
+serde_json = { workspace = true }
 sha2 = "0.10"
 
 [dev-dependencies]
