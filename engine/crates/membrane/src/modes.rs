@@ -42,6 +42,14 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
     // The runtime CLI owns its own argv. We reconstruct a Vec<&str> so it sees the same shape
     // it would have seen from a direct invocation. `tail` is empty when the user typed
     // `membrane cli` with no subcommand; the runtime prints help and returns Ok.
+    //
+    // MBR-107: stamp the canonical product-surface notice on first invocation so
+    // operators see a single structured log line telling them the legacy `crypt`
+    // binary is a compatibility facade. Subsequent calls in this process are silent
+    // (guarded inside `membrane_runtime::vocabulary::emit_facade_notice_once`).
+    let _ = membrane_runtime::vocabulary::emit_facade_notice_once(
+        membrane_runtime::vocabulary::ProductSurface::Membrane,
+    );
     let mut argv: Vec<String> = Vec::with_capacity(tail.len() + 1);
     argv.push("membrane".to_string());
     argv.extend_from_slice(tail);

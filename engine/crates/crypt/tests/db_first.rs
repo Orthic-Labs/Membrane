@@ -121,7 +121,6 @@ fn serve_routes_put_get_list_delete_dashboard() {
     let (c, b) = crypt::serve::route_for_tests(&s, "POST", "/delete", r#"{"id":"global/r1"}"#);
     assert_eq!(c, 200);
     assert!(b.contains("true"));
-    let (c, _) =
-        crypt::serve::route_for_tests(&s, "POST", "/put", r#"{"name":"","content":""}"#);
+    let (c, _) = crypt::serve::route_for_tests(&s, "POST", "/put", r#"{"name":"","content":""}"#);
     assert_eq!(c, 400);
 }

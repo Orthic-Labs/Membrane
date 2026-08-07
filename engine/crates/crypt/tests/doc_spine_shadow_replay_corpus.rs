@@ -1,8 +1,6 @@
 use std::{collections::HashSet, fs, path::Path};
 
-use crypt::doc_shadow::{
-    evaluate_frozen_shadow_replay, ShadowReplayCaseV1, ShadowReplayReportV1,
-};
+use crypt::doc_shadow::{evaluate_frozen_shadow_replay, ShadowReplayCaseV1, ShadowReplayReportV1};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 

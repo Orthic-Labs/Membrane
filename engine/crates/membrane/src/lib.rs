@@ -5,10 +5,15 @@
 //!
 //! MBR-102: create one membrane executable with mode subcommands.
 
+pub mod cli;
 pub mod dispatch;
 pub mod modes;
+pub mod serve;
 
 pub use dispatch::{parse_mode, MembraneMode, ParsedInvocation};
+
+pub use cli::{run_cli, run_cli_from};
+pub use serve::run_loopback_api;
 
 /// Process-wide exit-code contract. The binary returns these to the OS so scripts and the
 /// supervisor can distinguish "user error" from "internal failure" without parsing stderr.

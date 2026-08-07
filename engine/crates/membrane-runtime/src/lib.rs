@@ -34,9 +34,15 @@ pub mod skel;
 pub mod store;
 pub use crypt_store::{context_telemetry, installation_identity, memdb, scope, time};
 pub mod truncate;
+pub mod vocabulary;
 
 // Re-export OKF utilities so consumers import from one crate (`crypt`) during unification.
 pub use crypt_format::okf;
+pub use vocabulary::{
+    crypt_migration_notice_text, crypt_notice_emitted, emit_facade_notice_once,
+    membrane_notice_emitted, membrane_product_surface_notice_text, format_notice_log_line,
+    ProductSurface, CRYPT_FACADE_MIGRATION_NOTICE, MEMBRANE_PRODUCT_SURFACE_NOTICE,
+};
 
 pub use admission_policy::{
     admit, AdmissionDecision, AdmissionError, AdmissionRequest, Authority, InstructionPolicy,
