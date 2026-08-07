@@ -1,7 +1,8 @@
 #![recursion_limit = "256"]
 
 use crypt::context_telemetry::{
-    append_context_events_on, canonical_event_bytes, parse_context_event, validate_context_event,
+    append_context_events_on, canonical_event_bytes, parse_context_event,
+    truncate_sealed_context_segment, validate_context_event, verify_context_event_integrity,
     ContextEventBatch, ContextTelemetryError, OperationAttribution,
 };
 use crypt::installation_identity::{InstallationIdentity, StartupClaim};
@@ -10,6 +11,120 @@ use crypt::{MemDb, MemoryStore};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use sha2::Digest;
+
+#[test]
+fn context_chain_detects_hash_tamper_and_replays_idempotently() {
+    let db = MemDb::open_in_memory();
+    db.ingest_context_events(&batch(vec![event("evt-integrity")]))
+        .unwrap();
+    assert_eq!(
+        verify_context_event_integrity(&db.lock_events()).unwrap(),
+        1
+    );
+    db.ingest_context_events(&batch(vec![event("evt-integrity")]))
+        .unwrap();
+    assert_eq!(
+        verify_context_event_integrity(&db.lock_events()).unwrap(),
+        1
+    );
+    db.lock_events()
+        .execute(
+            "UPDATE context_event_log SET phase='provider.completed' WHERE seq=1",
+            [],
+        )
+        .unwrap();
+    assert!(verify_context_event_integrity(&db.lock_events()).is_err());
+}
+
+#[test]
+fn context_chain_detects_missing_sidecar_and_ordinal_reorder() {
+    let db = MemDb::open_in_memory();
+    db.ingest_context_events(&batch(vec![event("evt-integrity-2")]))
+        .unwrap();
+    db.lock_events()
+        .execute("DELETE FROM context_event_integrity WHERE seq=1", [])
+        .unwrap();
+    assert!(verify_context_event_integrity(&db.lock_events()).is_err());
+    let db = MemDb::open_in_memory();
+    db.ingest_context_events(&batch(vec![event("evt-integrity-3")]))
+        .unwrap();
+    db.lock_events()
+        .execute(
+            "UPDATE context_event_integrity SET ordinal=2 WHERE seq=1",
+            [],
+        )
+        .unwrap();
+    assert!(verify_context_event_integrity(&db.lock_events()).is_err());
+}
+
+#[test]
+fn sealed_context_segment_truncates_with_receipt_and_retained_anchor() {
+    let db = MemDb::open_in_memory();
+    let events = (0..256)
+        .map(|index| {
+            let mut value = event(&format!("evt-segment-{index}"));
+            value["turn_id"] = json!(format!("turn-{index:032x}"));
+            value
+        })
+        .collect();
+    db.ingest_context_events(&batch(events)).unwrap();
+    let mut retained = event("evt-segment-retained");
+    retained["turn_id"] = json!(format!("turn-{:032x}", 256));
+    db.ingest_context_events(&batch(vec![retained])).unwrap();
+    assert_eq!(
+        verify_context_event_integrity(&db.lock_events()).unwrap(),
+        257
+    );
+
+    let mut conn = db.lock_events();
+    let segment: String = conn
+        .query_row(
+            "SELECT segment_key FROM context_event_segment WHERE sealed_at IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let receipt = truncate_sealed_context_segment(&mut conn, &segment).unwrap();
+    assert_eq!(receipt.len(), 64);
+    assert_eq!(
+        conn.query_row(
+            "SELECT removed_count FROM context_event_retention_receipt WHERE receipt_id=?1",
+            [&receipt],
+            |row| row.get::<_, i64>(0),
+        )
+        .unwrap(),
+        256
+    );
+    assert_eq!(verify_context_event_integrity(&conn).unwrap(), 1);
+    conn.execute(
+        "UPDATE context_event_retention_receipt SET removed_count=255 WHERE receipt_id=?1",
+        [&receipt],
+    )
+    .unwrap();
+    assert!(verify_context_event_integrity(&conn).is_err());
+}
+
+#[test]
+fn newest_sealed_segment_cannot_be_truncated() {
+    let db = MemDb::open_in_memory();
+    let events = (0..256)
+        .map(|i| {
+            let mut value = event(&format!("evt-newest-{i}"));
+            value["turn_id"] = json!(format!("turn-{i:032x}"));
+            value
+        })
+        .collect();
+    db.ingest_context_events(&batch(events)).unwrap();
+    let mut conn = db.lock_events();
+    let segment: String = conn
+        .query_row(
+            "SELECT segment_key FROM context_event_segment WHERE sealed_at IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(truncate_sealed_context_segment(&mut conn, &segment).is_err());
+}
 
 #[test]
 fn event_ledger_is_physically_owned_by_membrane_database() {
@@ -586,6 +701,9 @@ fn v13_backout_and_reupgrade_preserve_ledger_rows() {
     let db = MemDb::open(&path).unwrap();
     db.ingest_context_events(&batch(vec![event("evt-v13-round-trip")]))
         .unwrap();
+    let mut second = event("evt-v13-round-trip-2");
+    second["turn_id"] = json!("turn-00000000000000000000000000001302");
+    db.ingest_context_events(&batch(vec![second])).unwrap();
     drop(db);
 
     backout_v13_to_v12(&path).unwrap();
@@ -599,7 +717,7 @@ fn v13_backout_and_reupgrade_preserve_ledger_rows() {
         conn.query_row("SELECT COUNT(*) FROM context_event_log", [], |row| row
             .get::<_, i64>(0))
             .unwrap(),
-        1
+        2
     );
     assert_eq!(conn.query_row(
         "SELECT COUNT(*) FROM pragma_table_info('context_event_log') WHERE name='policy_activation_sha256'",
@@ -620,8 +738,16 @@ fn v13_backout_and_reupgrade_preserve_ledger_rows() {
         conn.query_row("SELECT COUNT(*) FROM context_event_log", [], |row| row
             .get::<_, i64>(0))
             .unwrap(),
-        1
+        2
     );
+    assert_eq!(
+        conn.query_row("SELECT event_count FROM context_event_segment", [], |row| {
+            row.get::<_, i64>(0)
+        },)
+            .unwrap(),
+        2
+    );
+    assert_eq!(verify_context_event_integrity(&conn).unwrap(), 2);
     assert_eq!(conn.query_row(
         "SELECT COUNT(*) FROM pragma_table_info('context_event_log') WHERE name='policy_activation_sha256'",
         [], |row| row.get::<_, i64>(0),

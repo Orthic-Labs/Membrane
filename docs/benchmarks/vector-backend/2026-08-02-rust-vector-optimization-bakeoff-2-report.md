@@ -1,7 +1,7 @@
 # Rust vector optimization bakeoff 2 — final cross-host report
 
 **Date:** 2026-08-02
-**Decision:** keep vectors in MemRight; implement resident in-process f32 dispatch.
+**Decision:** keep vectors inside Crypt/Membrane; implement resident in-process f32 dispatch.
 **Evidence:** Windows `f20f5ab`; Mac unified rerun from same source; 38 bundles,
 25,410 measurements across both hosts.
 
@@ -113,7 +113,7 @@ measured upgrade rather than v1 requirement.
 
 ### Build status
 
-Core dispatcher & live recall wiring are default-on. `MEMRIGHT_VECTOR_DISPATCH_V2`
+Core dispatcher & live recall wiring are default-on. `CRYPT_VECTOR_DISPATCH_V2`
 set to `0`/`false`/`off`/`legacy` is an immediate fallback that restores scalar-A
 `retrieve_hybrid` routing on next store open; unset or any other value keeps v2
 active and builds the resident projection at store startup. Mixed dimensions,
@@ -121,7 +121,11 @@ absent projection or query mismatch fail closed to scalar A.
 
 Mac validation: 175 `crypt-core` tests, 269 `membrane-runtime` tests, core
 Clippy `-D warnings`, plus flag-on scoped & unscoped acceptance passed. Production
-commit follows crate-migration commit because both currently share staged paths.
+source commit is `4bd2f9d9af5817d496925b8b36b6488e417d8d4a`; default-on integration
+is `4089a8f29ce098f162ede83c96c12ec5305e0c93`; both are ancestors of the
+Book 1 seal `787568c98e50efcd1a92b473c64849380bb723e9`. This binds source lineage,
+not a packaged release: no installed Mac/Windows receipt in this report binds
+that exact integration commit or a release generation.
 
 ## Acceptance before default-on
 
@@ -147,5 +151,9 @@ commit follows crate-migration commit because both currently share staged paths.
 
 - Mac: `docs/benchmarks/vector-backend/round1/lane-simd-mac/`.
 - Windows: `engine/vector-bakeoff/lane-simd-windows/` from pushed `f20f5ab`.
+- Paired runtime ranking receipts: `evidence/g2/final-d891b274/macos/vector-ranking-v2.json`
+  and `evidence/g2/final-d891b274/windows/vector-ranking-v2.json`. These prove
+  measured runtime behavior for their bound release only; they do not certify
+  later source commits as installed.
 - Canonical config: `engine/vector-bakeoff/config/crossover-v1.json`, SHA-256
   `0abb7ef1ef52617c9b839a0f49b9a58b0ec74c3ef548d81d21a8e4bb25831205`.

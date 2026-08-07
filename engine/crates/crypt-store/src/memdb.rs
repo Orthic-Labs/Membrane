@@ -242,7 +242,7 @@ CREATE TABLE IF NOT EXISTS memory_quarantine (
 
 /// Current durable Crypt schema contract. External migration tests must not
 /// duplicate this value, because a promoted schema version changes atomically.
-pub const LATEST_SCHEMA_VERSION: i64 = 21;
+pub const LATEST_SCHEMA_VERSION: i64 = 22;
 const SMOKE_ISOLATION_MIGRATION_ID: &str = "rc-2.3-smoke-spotcheck-production-v1";
 const SMOKE_ISOLATION_REASON: &str = "legacy_production_smoke_spotcheck";
 const SMOKE_RECALL_PREDICATE: &str =
@@ -1387,6 +1387,27 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                     &["id", "batch_sha256", "batch_json", "created_at"],
                 )?;
             }
+            22 => {
+                tx.execute_batch(crate::context_telemetry::CONTEXT_LEDGER_SCHEMA)?;
+                let rows: Vec<(i64, String, String)> = tx
+                    .prepare(
+                        "SELECT seq,event_id,canonical_sha256 FROM context_event_log ORDER BY seq",
+                    )?
+                    .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                    .collect::<rusqlite::Result<_>>()?;
+                let mut prev = "0".to_string();
+                for (ordinal, (seq, event_id, canonical)) in rows.iter().enumerate() {
+                    let n = (ordinal % 256 + 1) as i64;
+                    let segment_start = ordinal - (ordinal % 256);
+                    let segment = format!("seg-{}", rows[segment_start].0);
+                    let chain = crate::context_telemetry::chain_digest(
+                        &segment, n, event_id, canonical, &prev,
+                    );
+                    tx.execute("INSERT OR IGNORE INTO context_event_integrity(seq,event_id,canonical_sha256,prev_chain_sha256,chain_sha256,segment_key,ordinal) VALUES (?1,?2,?3,?4,?5,?6,?7)", rusqlite::params![seq,event_id,canonical,prev,chain,segment,n])?;
+                    tx.execute("INSERT INTO context_event_segment(segment_key,first_seq,last_seq,event_count,content_sha256,sealed_at) VALUES (?1,?2,?2,1,?3,CASE WHEN ?4=256 THEN ?5 END) ON CONFLICT(segment_key) DO UPDATE SET last_seq=excluded.last_seq,event_count=context_event_segment.event_count+1,content_sha256=excluded.content_sha256,sealed_at=CASE WHEN context_event_segment.event_count+1=256 THEN ?5 ELSE context_event_segment.sealed_at END", rusqlite::params![segment,seq,crate::context_telemetry::segment_digest(&segment,n,event_id,canonical,&prev),n,crate::time::now_iso()])?;
+                    prev = chain;
+                }
+            }
             _ => unreachable!(),
         }
         tx.pragma_update(None, "user_version", next)?;
@@ -1402,6 +1423,7 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
 /// Unknown newer schemas fail closed rather than risking a partial downgrade.
 pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     let path = path.as_ref();
+    backout_v22_to_v21(path)?;
     backout_v21_to_v20(path)?;
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA busy_timeout=5000;")?;
@@ -1431,6 +1453,19 @@ pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     tx.commit()
 }
 
+fn backout_v22_to_v21(path: &Path) -> rusqlite::Result<()> {
+    let conn = Connection::open(path)?;
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version < 22 {
+        return Ok(());
+    }
+    if version != 22 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    conn.execute_batch("PRAGMA foreign_keys=OFF; DROP TABLE IF EXISTS context_event_retention_receipt; DROP TABLE IF EXISTS context_event_segment; DROP TABLE IF EXISTS context_event_integrity; PRAGMA foreign_keys=ON; PRAGMA user_version=21;")?;
+    Ok(())
+}
+
 fn backout_v21_to_v20(path: &Path) -> rusqlite::Result<()> {
     let mut conn = Connection::open(path)?;
     conn.execute_batch("PRAGMA busy_timeout=5000;")?;
@@ -1442,6 +1477,11 @@ fn backout_v21_to_v20(path: &Path) -> rusqlite::Result<()> {
         return Err(rusqlite::Error::InvalidQuery);
     }
     conn.execute_batch(crate::context_telemetry::CONTEXT_LEDGER_SCHEMA)?;
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS context_event_retention_receipt;
+         DROP TABLE IF EXISTS context_event_segment;
+         DROP TABLE IF EXISTS context_event_integrity;",
+    )?;
     let event_path = resolve_event_db_path(path);
     conn.execute(
         "ATTACH DATABASE ?1 AS membrane_events",
@@ -1475,6 +1515,11 @@ fn backout_v20_if_present(path: &Path) -> rusqlite::Result<()> {
         0..=19 => Ok(()),
         20 => backout_v20_to_v19(path),
         21 => {
+            backout_v21_to_v20(path)?;
+            backout_v20_to_v19(path)
+        }
+        22 => {
+            backout_v22_to_v21(path)?;
             backout_v21_to_v20(path)?;
             backout_v20_to_v19(path)
         }
@@ -1841,6 +1886,9 @@ fn extract_event_ledger(
         tx.execute_batch(
             "INSERT OR IGNORE INTO membrane_events.context_installation SELECT * FROM main.context_installation;
              INSERT OR IGNORE INTO membrane_events.context_event_log SELECT * FROM main.context_event_log;
+             INSERT OR IGNORE INTO membrane_events.context_event_integrity SELECT * FROM main.context_event_integrity;
+             INSERT OR IGNORE INTO membrane_events.context_event_segment SELECT * FROM main.context_event_segment;
+             INSERT OR IGNORE INTO membrane_events.context_event_retention_receipt SELECT * FROM main.context_event_retention_receipt;
              INSERT OR IGNORE INTO membrane_events.context_event_measurement SELECT * FROM main.context_event_measurement;
              INSERT OR IGNORE INTO membrane_events.context_event_link SELECT * FROM main.context_event_link;
              INSERT OR REPLACE INTO membrane_events.context_ingest_checkpoint SELECT * FROM main.context_ingest_checkpoint;",
@@ -1856,7 +1904,10 @@ fn extract_event_ledger(
             return Err(rusqlite::Error::InvalidQuery);
         }
         tx.execute_batch(
-            "DROP TABLE main.context_event_link;
+            "DROP TABLE main.context_event_retention_receipt;
+             DROP TABLE main.context_event_segment;
+             DROP TABLE main.context_event_integrity;
+             DROP TABLE main.context_event_link;
              DROP TABLE main.context_event_measurement;
              DROP TABLE main.context_event_log;
              DROP TABLE main.context_installation;

@@ -1,10 +1,28 @@
 # Membrane — Windows + Mac current state and backlog (source of truth)
 
-**What this is:** the single cross-platform current-state map of Membrane (the umbrella context system; historically called RightContext in older docs and internal aliases) and Crypt (its durable-memory engine; literal `crypt*` identifiers remain compatibility surfaces) for both Windows and Mac. Design rationale lives in `docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` (2026-07-12, design-era) and `tools/lib/CONTEXT-ENGINEERING.md`; the operational telemetry/identity coverage contract and 2026-07-21 audit are in `docs/MEMBRANE-TELEMETRY-IDENTITY.md`; per-feature ADRs + measurements live in the `docs/plans/2026-07-*` files linked below. This doc is the index of *what is live now* and *what is next*. Last updated **2026-08-01**.
+**What this is:** the single cross-platform current-state map of Membrane (the umbrella context system; historically called RightContext in older docs and internal aliases) and Crypt (its durable-memory engine; literal `crypt*` identifiers remain compatibility surfaces) for both Windows and Mac. Design rationale lives in `docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` (2026-07-12, design-era) and `tools/lib/CONTEXT-ENGINEERING.md`; the operational telemetry/identity coverage contract and 2026-07-21 audit are in `docs/MEMBRANE-TELEMETRY-IDENTITY.md`; per-feature ADRs + measurements live in the `docs/plans/2026-07-*` files linked below. This doc is the index of *what is live now* and *what is next*. Last updated **2026-08-08**.
 
 ## Repository posture (honest)
 
 This tree is an **internal mirror / workspace-coupled checkout**, not a self-contained public product. Live planner hooks, Crypt DB paths, federation providers, and install binding assume the Damned Designs studio workspace (`tools/`, shared hooks, launchd/Task Scheduler wiring). Public MCP surface names use Membrane; RightContext remains a compatibility alias in headers, telemetry tokens, and historical evidence. Capability truth is generated from `mcp/server.mjs`, `forge/hooks/membrane-capability-matrix.json`, and `docs/rightcontext/federation-freeze-v1.json` by `mcp/capability-inventory.mjs`; exercised path: `mcp/capability-inventory.test.mjs`.
+
+## Vector dispatch v2 — source accepted, release binding open
+
+The vector bakeoff is complete; do not rerun it as a Book 2/3 prerequisite.
+Commit `4bd2f9d9` implemented resident f32 dispatch, and `4089a8f2` made it
+default-on behind `CRYPT_VECTOR_DISPATCH_V2`; both are ancestors of Book 1 seal
+`787568c9`. Existing paired ranking receipts remain valid for their exact bound
+releases. A later release may be called shipped only after its release manifest
+binds source/tree, environment variable name, release generation, and installed
+Mac/Windows receipts.
+
+## Canonical event integrity — source implemented, release binding open
+
+Schema v22 seals `context_event_log` with canonical row verification, a global
+hash chain, fixed 256-event segments, & atomic complete-segment retention
+receipts. Migration, downgrade/re-upgrade, tamper, reorder, segment, & retention
+tests pass. Legacy `memory_event_log` remains `legacy_unsealed`; no release
+evidence may describe all event history as sealed until that stream is adapted.
 
 ## Cross-provider scores — lane policy (P1)
 

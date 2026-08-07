@@ -120,12 +120,75 @@ CREATE TABLE IF NOT EXISTS context_ingest_checkpoint (
     checksum_sha256 TEXT NOT NULL,
     updated_at      TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS context_event_integrity (
+    seq INTEGER PRIMARY KEY,
+    event_id TEXT NOT NULL UNIQUE,
+    canonical_sha256 TEXT NOT NULL,
+    prev_chain_sha256 TEXT NOT NULL,
+    chain_sha256 TEXT NOT NULL,
+    segment_key TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    FOREIGN KEY (seq) REFERENCES context_event_log(seq) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS context_event_segment (
+    segment_key TEXT PRIMARY KEY,
+    first_seq INTEGER NOT NULL,
+    last_seq INTEGER NOT NULL,
+    event_count INTEGER NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    sealed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS context_event_retention_receipt (
+    receipt_id TEXT PRIMARY KEY,
+    segment_key TEXT NOT NULL,
+    first_removed_seq INTEGER NOT NULL,
+    last_removed_seq INTEGER NOT NULL,
+    removed_count INTEGER NOT NULL,
+    removed_sha256 TEXT NOT NULL,
+    prior_chain_sha256 TEXT NOT NULL,
+    anchor_chain_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 "#;
 
 const EVENT_SCHEMA_VERSION: u32 = 1;
 const MAX_BATCH_EVENTS: usize = 256;
 const MAX_CHILDREN: usize = 32;
 pub const MAX_DURATION_MS: f64 = 86_400_000.0;
+const INTEGRITY_GENESIS: &str = "0";
+
+pub(crate) fn chain_digest(
+    segment: &str,
+    ordinal: i64,
+    event_id: &str,
+    canonical: &str,
+    prev: &str,
+) -> String {
+    let mut h = Sha256::new();
+    h.update(b"membrane-context-chain-v1\0");
+    h.update(segment.as_bytes());
+    h.update([0]);
+    h.update(ordinal.to_string().as_bytes());
+    h.update([0]);
+    h.update(event_id.as_bytes());
+    h.update([0]);
+    h.update(canonical.as_bytes());
+    h.update([0]);
+    h.update(prev.as_bytes());
+    format!("{:x}", h.finalize())
+}
+pub(crate) fn segment_digest(
+    segment: &str,
+    ordinal: i64,
+    event_id: &str,
+    canonical: &str,
+    prev: &str,
+) -> String {
+    sha256_text(&format!(
+        "{segment}:{ordinal}:{}",
+        chain_digest(segment, ordinal, event_id, canonical, prev)
+    ))
+}
 /// Hard ceiling on `ObservableEventQuery::limit`. Bounds a single read regardless of caller input.
 const MAX_OBSERVABLE_QUERY_LIMIT: usize = 1_000;
 /// Internal safety valve on how many raw ledger rows a single observable-event read will scan
@@ -1379,6 +1442,248 @@ pub enum ContextTelemetryError {
     Database(#[from] rusqlite::Error),
 }
 
+/// Verify canonical hashes and the append chain. Legacy `memory_event_log` is intentionally not
+/// covered by this API and remains reported as an unsealed compatibility stream.
+pub fn verify_context_event_integrity(
+    conn: &rusqlite::Connection,
+) -> Result<usize, ContextTelemetryError> {
+    let logs: i64 = conn.query_row("SELECT COUNT(*) FROM context_event_log", [], |r| r.get(0))?;
+    let sealed: i64 = conn.query_row("SELECT COUNT(*) FROM context_event_integrity", [], |r| {
+        r.get(0)
+    })?;
+    if logs != sealed {
+        return Err(invalid(
+            "context_event_log",
+            "integrity coverage is incomplete",
+        ));
+    }
+    let mut receipts = conn.prepare("SELECT receipt_id,segment_key,first_removed_seq,last_removed_seq,removed_count,removed_sha256,prior_chain_sha256,anchor_chain_sha256 FROM context_event_retention_receipt")?;
+    for row in receipts.query_map([], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, i64>(2)?,
+            r.get::<_, i64>(3)?,
+            r.get::<_, i64>(4)?,
+            r.get::<_, String>(5)?,
+            r.get::<_, String>(6)?,
+            r.get::<_, String>(7)?,
+        ))
+    })? {
+        let (id, segment, first, last, count, removed_sha, prior, anchor) = row?;
+        let expected = sha256_text(&format!(
+            "{segment}:{first}:{last}:{count}:{removed_sha}:{prior}:{anchor}"
+        ));
+        if id != expected {
+            return Err(invalid(
+                "context_event_retention_receipt",
+                "integrity verification failed",
+            ));
+        }
+    }
+    let segment_rows: i64 =
+        conn.query_row("SELECT COUNT(*) FROM context_event_segment", [], |row| {
+            row.get(0)
+        })?;
+    let distinct_segments: i64 = conn.query_row(
+        "SELECT COUNT(DISTINCT segment_key) FROM context_event_integrity",
+        [],
+        |row| row.get(0),
+    )?;
+    if segment_rows != distinct_segments {
+        return Err(invalid(
+            "context_event_segment",
+            "integrity coverage is incomplete",
+        ));
+    }
+    let mut segs = conn.prepare(
+        "SELECT segment_key,first_seq,last_seq,event_count,content_sha256,sealed_at
+         FROM context_event_segment",
+    )?;
+    for row in segs.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, i64>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, Option<String>>(5)?,
+        ))
+    })? {
+        let (segment, first, last, expected, content, sealed_at) = row?;
+        let (actual, actual_first, actual_last): (i64, Option<i64>, Option<i64>) = conn.query_row(
+            "SELECT COUNT(*),MIN(seq),MAX(seq) FROM context_event_integrity
+                 WHERE segment_key=?1",
+            [&segment],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        let (last_ordinal, last_chain): (i64, String) = conn.query_row(
+            "SELECT ordinal,chain_sha256 FROM context_event_integrity
+             WHERE segment_key=?1 ORDER BY seq DESC LIMIT 1",
+            [&segment],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        let expected_content = sha256_text(&format!("{segment}:{last_ordinal}:{last_chain}"));
+        if actual != expected
+            || actual_first != Some(first)
+            || actual_last != Some(last)
+            || content != expected_content
+            || (expected == 256) != sealed_at.is_some()
+        {
+            return Err(invalid(
+                "context_event_segment",
+                "integrity coverage is incomplete",
+            ));
+        }
+    }
+    let mut stmt = conn.prepare("SELECT i.seq,e.event_id,e.canonical_sha256,i.canonical_sha256,i.prev_chain_sha256,i.chain_sha256,i.segment_key,i.ordinal FROM context_event_log e JOIN context_event_integrity i ON i.seq=e.seq ORDER BY e.seq")?;
+    let mut rows = stmt.query([])?;
+    let mut previous: Option<(String, i64, String)> = None;
+    let mut count = 0;
+    while let Some(row) = rows.next()? {
+        let _seq: i64 = row.get(0)?;
+        let event_id: String = row.get(1)?;
+        let canonical: String = row.get(2)?;
+        let sealed_canonical: String = row.get(3)?;
+        let prev: String = row.get(4)?;
+        let chain: String = row.get(5)?;
+        let segment: String = row.get(6)?;
+        let ordinal: i64 = row.get(7)?;
+        if canonical != sealed_canonical || canonical_row_hash(conn, _seq)? != canonical {
+            return Err(invalid(
+                "context_event_log",
+                "integrity verification failed",
+            ));
+        }
+        if previous.as_ref().is_some_and(|(s, o, _)| *s == segment && *o + 1 != ordinal)
+            || previous.as_ref().is_some_and(|(_, _, c)| *c != prev)
+            || (previous.as_ref().is_some_and(|(s, _, _)| *s != segment) && ordinal != 1)
+            || (previous.is_none() && prev != INTEGRITY_GENESIS && conn.query_row("SELECT COUNT(*) FROM context_event_retention_receipt WHERE anchor_chain_sha256=?1", [&prev], |r| r.get::<_, i64>(0)).unwrap_or(0) == 0) {
+            return Err(invalid("context_event_log", "integrity verification failed"));
+        }
+        if chain_digest(&segment, ordinal, &event_id, &canonical, &prev) != chain {
+            return Err(invalid(
+                "context_event_log",
+                "integrity verification failed",
+            ));
+        }
+        previous = Some((segment, ordinal, chain));
+        count += 1;
+    }
+    Ok(count)
+}
+
+fn canonical_row_hash(
+    conn: &rusqlite::Connection,
+    seq: i64,
+) -> Result<String, ContextTelemetryError> {
+    let raw: String = conn.query_row(
+        r#"SELECT json_object(
+            'event_id', event_id, 'schema_version', schema_version, 'ts', ts,
+            'installation_id', installation_id, 'service_instance_id', service_instance_id,
+            'workspace_id', workspace_id, 'client', client, 'client_version', client_version,
+            'producer', producer, 'producer_version', producer_version, 'session_id', session_id,
+            'turn_id', turn_id, 'trace_id', trace_id, 'span_id', span_id,
+            'parent_span_id', parent_span_id, 'artifact_family', artifact_family,
+            'provider', provider, 'provider_version', provider_version,
+            'release_generation', release_generation, 'phase', phase, 'operation', operation,
+            'status', status, 'reason_code', reason_code, 'scope_id', scope_id,
+            'artifact_id', artifact_id, 'artifact_sha256', artifact_sha256,
+            'traffic_class', traffic_class, 'policy_version', policy_version,
+            'policy_activation_sha256', policy_activation_sha256, 'cohort', cohort,
+            'task_class', task_class, 'source_generation', source_generation,
+            'duration_ms', duration_ms, 'quantity', quantity, 'token_count', token_count,
+            'char_count', char_count,
+            'meta', CASE WHEN meta='{}' THEN NULL ELSE json(meta) END,
+            'measurements', json(COALESCE((
+                SELECT json_group_array(json(item)) FROM (
+                    SELECT CASE m.value_type
+                        WHEN 'integer' THEN json_object('name',m.name,'value',m.value_integer,'unit',m.unit)
+                        WHEN 'real' THEN json_object('name',m.name,'value',m.value_real,'unit',m.unit)
+                        ELSE json_object('name',m.name,'value',json(CASE WHEN m.value_boolean=1 THEN 'true' ELSE 'false' END),'unit',m.unit)
+                    END AS item
+                    FROM context_event_measurement m
+                    WHERE m.event_id=context_event_log.event_id
+                    ORDER BY m.rowid
+                )
+            ), '[]')),
+            'links', json(COALESCE((
+                SELECT json_group_array(json(item)) FROM (
+                    SELECT json_object('relation',l.relation,'target_event_id',l.target_event_id) AS item
+                    FROM context_event_link l
+                    WHERE l.event_id=context_event_log.event_id
+                    ORDER BY l.rowid
+                )
+            ), '[]'))
+        ) FROM context_event_log WHERE seq=?1"#,
+        [seq],
+        |row| row.get(0),
+    )?;
+    let mut value: Value = serde_json::from_str(&raw)
+        .map_err(|_| invalid("context_event_log", "cannot reconstruct canonical event"))?;
+    if let Some(object) = value.as_object_mut() {
+        object.retain(|_, value| !value.is_null());
+    }
+    let event: ContextEvent = serde_json::from_value(value)
+        .map_err(|_| invalid("context_event_log", "cannot reconstruct canonical event"))?;
+    Ok(format!(
+        "{:x}",
+        Sha256::digest(canonical_event_bytes(&event)?)
+    ))
+}
+
+/// Remove one complete sealed segment, leaving a hash receipt as its retention anchor.
+pub fn truncate_sealed_context_segment(
+    conn: &mut rusqlite::Connection,
+    segment: &str,
+) -> Result<String, ContextTelemetryError> {
+    verify_context_event_integrity(conn)?;
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let (first, last, content, sealed): (i64, i64, String, Option<String>) = tx.query_row(
+        "SELECT first_seq,last_seq,content_sha256,sealed_at
+         FROM context_event_segment WHERE segment_key=?1",
+        [segment],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    if sealed.is_none() {
+        return Err(ContextTelemetryError::Invalid(
+            "segment is not sealed".into(),
+        ));
+    }
+    let (removed, prior): (i64, String) = tx.query_row("SELECT COUNT(*),COALESCE((SELECT chain_sha256 FROM context_event_integrity WHERE segment_key=?1 ORDER BY seq DESC LIMIT 1),'') FROM context_event_integrity WHERE segment_key=?1", [segment], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    let anchor: String = tx.query_row("SELECT COALESCE(prev_chain_sha256,'') FROM context_event_integrity WHERE seq>?1 ORDER BY seq LIMIT 1", [last], |r| r.get(0)).optional()?.unwrap_or_default();
+    if anchor.is_empty() {
+        return Err(ContextTelemetryError::Invalid(
+            "cannot truncate newest segment".into(),
+        ));
+    }
+    if !anchor.is_empty() && anchor != prior {
+        return Err(ContextTelemetryError::Invalid(
+            "retention anchor mismatch".into(),
+        ));
+    }
+    let receipt = sha256_text(&format!(
+        "{segment}:{first}:{last}:{removed}:{content}:{prior}:{anchor}"
+    ));
+    tx.execute("INSERT INTO context_event_retention_receipt(receipt_id,segment_key,first_removed_seq,last_removed_seq,removed_count,removed_sha256,prior_chain_sha256,anchor_chain_sha256,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)", params![receipt,segment,first,last,removed,content,prior,anchor,crate::time::now_iso()])?;
+    tx.execute("DELETE FROM context_event_measurement WHERE event_id IN (SELECT event_id FROM context_event_log WHERE seq BETWEEN ?1 AND ?2)", params![first,last])?;
+    tx.execute("DELETE FROM context_event_link WHERE event_id IN (SELECT event_id FROM context_event_log WHERE seq BETWEEN ?1 AND ?2)", params![first,last])?;
+    tx.execute(
+        "DELETE FROM context_event_integrity WHERE segment_key=?1",
+        [segment],
+    )?;
+    tx.execute(
+        "DELETE FROM context_event_log WHERE seq BETWEEN ?1 AND ?2",
+        params![first, last],
+    )?;
+    tx.execute(
+        "DELETE FROM context_event_segment WHERE segment_key=?1",
+        [segment],
+    )?;
+    tx.commit()?;
+    Ok(receipt)
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct PromptIngressDrain {
     pub records: usize,
@@ -2067,6 +2372,40 @@ pub fn append_context_events_on(
                 prepared_event.meta_json,
                 prepared_event.canonical_sha256,
             ],
+        )?;
+        let seq = conn.last_insert_rowid();
+        let active: Option<(String, i64, String)> = conn.query_row(
+            "SELECT segment_key, ordinal, chain_sha256 FROM context_event_integrity ORDER BY seq DESC LIMIT 1",
+            [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))).optional()?;
+        let (segment, ordinal, prev) = match active {
+            Some((segment, ordinal, prev)) if ordinal < 256 => (segment, ordinal + 1, prev),
+            Some((_, _, prev)) => (format!("seg-{seq}"), 1, prev),
+            _ => (format!("seg-{seq}"), 1, INTEGRITY_GENESIS.to_string()),
+        };
+        let chain = chain_digest(
+            &segment,
+            ordinal,
+            &event.event_id,
+            &prepared_event.canonical_sha256,
+            &prev,
+        );
+        conn.execute(
+            "INSERT INTO context_event_integrity(seq,event_id,canonical_sha256,prev_chain_sha256,chain_sha256,segment_key,ordinal)
+             VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params![seq, event.event_id, prepared_event.canonical_sha256, prev, chain, segment, ordinal],
+        )?;
+        let content = segment_digest(
+            &segment,
+            ordinal,
+            &event.event_id,
+            &prepared_event.canonical_sha256,
+            &prev,
+        );
+        conn.execute(
+            "INSERT INTO context_event_segment(segment_key,first_seq,last_seq,event_count,content_sha256,sealed_at)
+             VALUES (?1,?2,?2,1,?3,CASE WHEN ?4=256 THEN ?5 END)
+             ON CONFLICT(segment_key) DO UPDATE SET last_seq=excluded.last_seq,event_count=context_event_segment.event_count+1,content_sha256=excluded.content_sha256,sealed_at=CASE WHEN context_event_segment.event_count+1=256 THEN ?5 ELSE context_event_segment.sealed_at END",
+            params![segment, seq, content, ordinal, crate::time::now_iso()],
         )?;
 
         for measurement in &event.measurements {
