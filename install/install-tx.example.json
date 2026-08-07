@@ -1,0 +1,31 @@
+{
+  "plan_id": "mbr-203-tx-install-example",
+  "scratch_root": "/tmp/membrane-scratch",
+  "steps": [
+    {
+      "stage": "Enumerate",
+      "action": "mkdir -p /tmp/membrane-scratch/manifest && echo 'enumerate' > /tmp/membrane-scratch/manifest/enumerate.json",
+      "rollback": "rm -rf /tmp/membrane-scratch/manifest"
+    },
+    {
+      "stage": "WriteManifest",
+      "action": "echo 'manifest' > /tmp/membrane-scratch/manifest/manifest.json",
+      "rollback": "rm -f /tmp/membrane-scratch/manifest/manifest.json"
+    },
+    {
+      "stage": "MintLease",
+      "action": "echo 'lease' > /tmp/membrane-scratch/supervisor/lease.json",
+      "rollback": "rm -rf /tmp/membrane-scratch/supervisor"
+    },
+    {
+      "stage": "PublishReceipt",
+      "action": "echo 'receipt' > /tmp/membrane-scratch/install-receipt.json",
+      "rollback": "rm -f /tmp/membrane-scratch/install-receipt.json"
+    },
+    {
+      "stage": "RegisterBindings",
+      "action": "echo 'bindings' > /tmp/membrane-scratch/bindings.json",
+      "rollback": "rm -f /tmp/membrane-scratch/bindings.json"
+    }
+  ]
+}

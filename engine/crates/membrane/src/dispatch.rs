@@ -19,6 +19,10 @@ pub enum MembraneMode {
     /// The supervisor's resident child: owns the engine DB and accepts lease tokens from
     /// `LoopbackApi` clients.
     SupervisorChild,
+    /// MBR-203: transactional install. Runs an install plan against a scratch
+    /// `MEMBRANE_ROOT` and only on `commit` renames the scratch root to the
+    /// target root. See `crate::install_tx` for the contract.
+    Install,
 }
 
 impl MembraneMode {
@@ -28,6 +32,7 @@ impl MembraneMode {
             MembraneMode::StdioMcp => "stdio-mcp",
             MembraneMode::LoopbackApi => "loopback-api",
             MembraneMode::SupervisorChild => "supervisor-child",
+            MembraneMode::Install => "install",
         }
     }
 }
@@ -55,6 +60,8 @@ enum Command {
     LoopbackApi(LoopbackArgs),
     /// Resident child process owned by the per-user supervisor.
     SupervisorChild(SupervisorArgs),
+    /// MBR-203: transactional install against a scratch `MEMBRANE_ROOT`.
+    Install(InstallArgs),
 }
 
 #[derive(Debug, clap::Args)]
@@ -90,6 +97,32 @@ struct SupervisorArgs {
     lease: Option<std::path::PathBuf>,
 }
 
+/// MBR-203: install subcommand arguments. The binary accepts an optional
+/// `--plan` JSON; when omitted, it executes a default plan with the five
+/// standard stages and `true` actions so the operator can hand-edit the JSON
+/// to populate the real work. `--dry-run` runs the plan against the scratch
+/// root and prints the receipt without renaming scratch to target.
+#[derive(Debug, clap::Args)]
+struct InstallArgs {
+    /// Scratch `MEMBRANE_ROOT` — the install plan runs against this root first.
+    /// Nothing in the target root is touched until `commit`.
+    #[arg(long)]
+    scratch_root: std::path::PathBuf,
+    /// Target `MEMBRANE_ROOT` — the scratch root is atomically renamed to
+    /// this path on `commit`.
+    #[arg(long)]
+    target_root: std::path::PathBuf,
+    /// Path to a JSON file describing the install plan. When omitted the
+    /// binary executes a default plan with the five standard stages and
+    /// no-op actions.
+    #[arg(long)]
+    plan: Option<std::path::PathBuf>,
+    /// Run the plan end-to-end against the scratch root and emit a receipt
+    /// without renaming the scratch root to the target root.
+    #[arg(long, default_value_t = false)]
+    dry_run: bool,
+}
+
 /// Fully-parsed invocation handed to the dispatcher. The dispatcher never touches argv again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedInvocation {
@@ -102,6 +135,20 @@ pub struct ParsedInvocation {
     pub port: u16,
     /// For `SupervisorChild`, the lease path if the supervisor provided one.
     pub lease: Option<std::path::PathBuf>,
+    /// MBR-203: for `Install` mode, the scratch root, target root, optional
+    /// plan path, and dry-run flag. `None` for every other mode.
+    pub install: Option<InstallInvocation>,
+}
+
+/// MBR-203: install invocation handed to the dispatcher's install handler.
+/// Lives next to [`ParsedInvocation`] so the CLI argument list stays in one
+/// place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstallInvocation {
+    pub scratch_root: std::path::PathBuf,
+    pub target_root: std::path::PathBuf,
+    pub plan: Option<std::path::PathBuf>,
+    pub dry_run: bool,
 }
 
 pub fn parse_mode<I, T>(args: I) -> Result<ParsedInvocation, String>
@@ -119,6 +166,7 @@ where
             framing: String::new(),
             port: 0,
             lease: None,
+            install: None,
         },
         Command::StdioMcp(args) => {
             if args.framing != "jsonl" {
@@ -133,6 +181,7 @@ where
                 framing: args.framing,
                 port: 0,
                 lease: None,
+                install: None,
             }
         }
         Command::LoopbackApi(args) => {
@@ -148,6 +197,7 @@ where
                 framing: String::new(),
                 port: args.port,
                 lease: None,
+                install: None,
             }
         }
         Command::SupervisorChild(args) => ParsedInvocation {
@@ -156,6 +206,20 @@ where
             framing: String::new(),
             port: 0,
             lease: args.lease,
+            install: None,
+        },
+        Command::Install(args) => ParsedInvocation {
+            mode: MembraneMode::Install,
+            cli_tail: Vec::new(),
+            framing: String::new(),
+            port: 0,
+            lease: None,
+            install: Some(InstallInvocation {
+                scratch_root: args.scratch_root,
+                target_root: args.target_root,
+                plan: args.plan,
+                dry_run: args.dry_run,
+            }),
         },
     };
     Ok(invocation)

@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // Native client enrollment. Client configuration is changed only through native MCP CLIs.
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdir, rename, writeFile, readFile, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { bindingFor, canonicalRoot, defaultRegistryPath, enroll, installationFor, removeBinding, rotateToken } from "./project-registry.mjs";
 import { installationBindingFor } from "./installation-binding.mjs";
@@ -265,4 +268,233 @@ if (process.argv[1] === SELF) {
   else if (command === "uninstall") process.stdout.write(JSON.stringify(await uninstall(args[0], args.slice(1))) + "\n");
   else if (command === "token") process.stdout.write(JSON.stringify(await token(args[0], args[1], args.slice(2))) + "\n");
   else throw new Error(usage());
+}
+// -----------------------------------------------------------------------------
+// MBR-203 — Transactional install contract (additive).
+//
+// Mirrors `engine/crates/membrane/src/install_tx.rs` on the JS side. The Rust
+// binary and the JS enrollment CLI both consume the same `InstallPlan` /
+// `InstallReceiptV1` JSON shape so an operator can hand-edit one plan and
+// hand it to either side. The contract is identical:
+//
+//   1. Install applies under a scratch MEMBRANE_ROOT.
+//   2. Stages run in order; each stage has an action and a rollback.
+//   3. The receipt is rewritten on disk after every stage.
+//   4. A stage failure runs every prior rollback in reverse and marks the
+//      receipt `rolled_back`.
+//   5. `commit` is the only operation that touches the target root: it
+//      atomically renames the scratch root to the target root.
+//
+// This block stays additive: no existing export above is renamed, removed,
+// or re-exported; later install surfaces append their own sections.
+// -----------------------------------------------------------------------------
+
+export const INSTALL_RECEIPT_SCHEMA_VERSION = 1;
+export const INSTALL_RECEIPT_FILE_NAME = "install-receipt.json";
+
+export const INSTALL_STAGES = Object.freeze({
+  Enumerate: "Enumerate",
+  WriteManifest: "WriteManifest",
+  MintLease: "MintLease",
+  PublishReceipt: "PublishReceipt",
+  RegisterBindings: "RegisterBindings",
+});
+
+/**
+ * Thrown by `executePlan` when a stage fails. The rolled-back receipt is
+ * carried on the error so the caller can surface it without re-reading the
+ * scratch root.
+ */
+export class InstallRolledBackError extends Error {
+  constructor(reason, receipt) {
+    super(`install rolled back: ${reason}`);
+    this.name = "InstallRolledBackError";
+    this.reason = reason;
+    this.receipt = receipt;
+  }
+}
+
+function isInstallStage(value) {
+  return typeof value === "string" && Object.values(INSTALL_STAGES).includes(value);
+}
+
+function runInstallCommand(command) {
+  if (typeof command !== "string" || command.trim().length === 0) return;
+  try {
+    if (process.platform === "win32") {
+      execFileSync("cmd", ["/C", command], { stdio: ["ignore", "ignore", "pipe"] });
+    } else {
+      execFileSync("sh", ["-c", command], { stdio: ["ignore", "ignore", "pipe"] });
+    }
+  } catch (error) {
+    const stderr = error.stderr ? error.stderr.toString() : "";
+    const stdout = error.stdout ? error.stdout.toString() : "";
+    throw new Error(
+      `exit=${error.status ?? "?"} stderr=${stderr.trim()} stdout=${stdout.trim()}`,
+    );
+  }
+}
+
+function computeInstallCommitDigest(plan) {
+  const payload = JSON.stringify({
+    plan_id: plan.plan_id,
+    scratch_root: plan.scratch_root,
+    steps: plan.steps,
+  });
+  return `sha256:${createHash("sha256").update(payload).digest("hex")}`;
+}
+
+async function persistInstallReceipt(receipt, path) {
+  const body = JSON.stringify(receipt, null, 2);
+  const tmp = `${path}.tmp`;
+  await writeFile(tmp, body, "utf8");
+  await rename(tmp, path);
+}
+
+/**
+ * Drive `plan` stage by stage against `scratchRoot`. Persists a typed
+ * receipt after every stage; on any stage failure, runs every previously
+ * completed stage's `rollback` in reverse order, marks the receipt
+ * `rolled_back`, and throws `InstallRolledBackError` with the receipt
+ * attached.
+ *
+ * A second call against the same scratch root with the same `plan_id` and
+ * a previously committed receipt is a noop: the existing receipt is
+ * returned verbatim and no stage runs.
+ *
+ * @param {{plan_id: string, scratch_root: string, steps: Array<{stage: string, action: string, rollback: string}>}} plan
+ * @param {string} scratchRoot
+ * @param {number} startedAtUnixMs
+ * @returns {Promise<object>} the receipt
+ */
+export async function executePlan(plan, scratchRoot, startedAtUnixMs) {
+  if (!plan || typeof plan !== "object") {
+    throw new Error("install plan is required");
+  }
+  if (typeof plan.plan_id !== "string" || plan.plan_id.trim().length === 0) {
+    throw new Error("install plan.plan_id is required");
+  }
+  if (plan.scratch_root !== scratchRoot) {
+    throw new Error(
+      `install plan scratch_root ${plan.scratch_root} does not match provided scratchRoot ${scratchRoot}`,
+    );
+  }
+  if (!Array.isArray(plan.steps)) {
+    throw new Error("install plan.steps must be an array");
+  }
+  for (const step of plan.steps) {
+    if (!isInstallStage(step.stage)) {
+      throw new Error(`unknown install stage: ${step.stage}`);
+    }
+    if (typeof step.action !== "string") {
+      throw new Error("install step action must be a string");
+    }
+    if (typeof step.rollback !== "string") {
+      throw new Error("install step rollback must be a string");
+    }
+  }
+
+  await mkdir(scratchRoot, { recursive: true });
+  const receiptPath = join(scratchRoot, INSTALL_RECEIPT_FILE_NAME);
+
+  // Idempotency: a committed receipt with the same plan_id is reused verbatim.
+  try {
+    const existingText = await readFile(receiptPath, "utf8");
+    const existing = JSON.parse(existingText);
+    if (
+      existing
+      && existing.schema_version === INSTALL_RECEIPT_SCHEMA_VERSION
+      && existing.plan_id === plan.plan_id
+      && existing.outcome === "committed"
+    ) {
+      return existing;
+    }
+  } catch {
+    // No existing receipt — fall through.
+  }
+
+  const receipt = {
+    schema_version: INSTALL_RECEIPT_SCHEMA_VERSION,
+    plan_id: plan.plan_id,
+    commit_digest: computeInstallCommitDigest(plan),
+    started_at_unix_ms: startedAtUnixMs,
+    finished_at_unix_ms: null,
+    stages_completed: [],
+    outcome: "pending",
+    rollback_actions: [],
+  };
+  await persistInstallReceipt(receipt, receiptPath);
+
+  for (let index = 0; index < plan.steps.length; index++) {
+    const step = plan.steps[index];
+    try {
+      runInstallCommand(step.action);
+    } catch (error) {
+      const rollbackActions = [];
+      for (let prior = index - 1; prior >= 0; prior--) {
+        try {
+          runInstallCommand(plan.steps[prior].rollback);
+        } catch {
+          // Best-effort: record the chain regardless of per-rollback failure.
+        }
+        rollbackActions.push(plan.steps[prior].rollback);
+      }
+      receipt.stages_completed = plan.steps.slice(0, index).map((s) => s.stage);
+      receipt.rollback_actions = rollbackActions;
+      receipt.outcome = { rolled_back: { reason: error.message } };
+      receipt.finished_at_unix_ms = startedAtUnixMs;
+      await persistInstallReceipt(receipt, receiptPath);
+      throw new InstallRolledBackError(error.message, receipt);
+    }
+    receipt.stages_completed.push(step.stage);
+    await persistInstallReceipt(receipt, receiptPath);
+  }
+
+  receipt.finished_at_unix_ms = startedAtUnixMs;
+  await persistInstallReceipt(receipt, receiptPath);
+  return receipt;
+}
+
+/**
+ * Atomic rename from scratch to target. The only operation that touches the
+ * target root. Sets the receipt outcome to `committed` and rewrites the
+ * receipt under the target root so the live install carries the audit trail.
+ *
+ * @param {object} receipt
+ * @param {string} scratchRoot
+ * @param {string} targetRoot
+ * @param {number} [nowUnixMs]
+ */
+export async function commit(receipt, scratchRoot, targetRoot, nowUnixMs) {
+  if (!receipt || receipt.outcome !== "pending") {
+    throw new Error(
+      `cannot commit receipt with outcome ${receipt?.outcome ?? "?"} — only Pending receipts are committable`,
+    );
+  }
+  let scratchStat;
+  try {
+    scratchStat = await stat(scratchRoot);
+  } catch {
+    throw new Error(`scratch root ${scratchRoot} does not exist`);
+  }
+  if (!scratchStat.isDirectory()) {
+    throw new Error(`scratch root ${scratchRoot} is not a directory`);
+  }
+  try {
+    await stat(targetRoot);
+    throw new Error(
+      `target root ${targetRoot} already exists; refusing to clobber an existing install`,
+    );
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const parent = dirname(targetRoot);
+  if (parent && parent !== "." && parent !== "/") {
+    await mkdir(parent, { recursive: true });
+  }
+  await rename(scratchRoot, targetRoot);
+  receipt.outcome = "committed";
+  receipt.finished_at_unix_ms = nowUnixMs ?? Date.now();
+  const receiptPath = join(targetRoot, INSTALL_RECEIPT_FILE_NAME);
+  await persistInstallReceipt(receipt, receiptPath);
 }

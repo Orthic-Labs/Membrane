@@ -7,12 +7,17 @@
 
 pub mod cli;
 pub mod dispatch;
+pub mod install_tx;
 pub mod modes;
 pub mod serve;
 
 pub use dispatch::{parse_mode, MembraneMode, ParsedInvocation};
 
 pub use cli::{run_cli, run_cli_from};
+pub use install_tx::{
+    commit, execute_plan, InstallError, InstallOutcome, InstallPlan, InstallReceiptV1,
+    InstallStage, InstallStep, INSTALL_RECEIPT_SCHEMA_VERSION,
+};
 pub use serve::run_loopback_api;
 
 /// Process-wide exit-code contract. The binary returns these to the OS so scripts and the

@@ -3,7 +3,7 @@
 //!
 //! MBR-102: create one membrane executable with mode subcommands.
 
-use crate::dispatch::{MembraneMode, ParsedInvocation};
+use crate::dispatch::{InstallInvocation, MembraneMode, ParsedInvocation};
 use crate::{EXIT_INTERNAL_ERROR, EXIT_OK, EXIT_USER_ERROR};
 
 /// MBR-108: map a parsed mode to the process plane it executes in. The mapping is the single
@@ -12,10 +12,13 @@ use crate::{EXIT_INTERNAL_ERROR, EXIT_OK, EXIT_USER_ERROR};
 /// helper is a contract violation.
 pub fn plane_of(mode: &MembraneMode) -> membrane_runtime::Plane {
     match mode {
-        // All three user-facing entry points belong to the Application plane.
+        // All four user-facing entry points belong to the Application plane.
+        // Install is treated as Application because it runs the same
+        // per-stage effect callback the operator invokes from a script.
         MembraneMode::Cli => membrane_runtime::Plane::Application,
         MembraneMode::StdioMcp => membrane_runtime::Plane::Application,
         MembraneMode::LoopbackApi => membrane_runtime::Plane::Application,
+        MembraneMode::Install => membrane_runtime::Plane::Application,
         // The supervisor's resident child is the Control plane.
         MembraneMode::SupervisorChild => membrane_runtime::Plane::Control,
     }
@@ -50,6 +53,15 @@ pub fn dispatch(invocation: &ParsedInvocation) -> DispatchOutcome {
         MembraneMode::StdioMcp => dispatch_stdio_mcp(),
         MembraneMode::LoopbackApi => dispatch_loopback_api(invocation.port),
         MembraneMode::SupervisorChild => dispatch_supervisor_child(invocation.lease.as_deref()),
+        MembraneMode::Install => match invocation.install.as_ref() {
+            Some(invocation) => dispatch_install(invocation),
+            // The parser refuses to construct a `ParsedInvocation` whose
+            // `mode == Install` without an `install` payload; reaching this
+            // branch is a logic bug, not a user error.
+            None => DispatchOutcome::InternalError(
+                "install mode invoked without an install invocation".to_string(),
+            ),
+        },
     }
 }
 
@@ -140,6 +152,150 @@ fn dispatch_supervisor_child(lease: Option<&std::path::Path>) -> DispatchOutcome
         Ok(()) => DispatchOutcome::Ok,
         Err(error) => classify_runtime_error(error),
     }
+}
+
+/// MBR-203: install handler. Loads the plan (or builds a default), runs
+/// `execute_plan` against the scratch root, and only calls `commit` when
+/// `--dry-run` is not set. The receipt is printed to stdout on success.
+fn dispatch_install(invocation: &InstallInvocation) -> DispatchOutcome {
+    let plan = match load_install_plan(invocation) {
+        Ok(plan) => plan,
+        Err(error) => return DispatchOutcome::UserError(error),
+    };
+    let now = now_unix_ms();
+    let mut receipt = match crate::install_tx::execute_plan(
+        plan,
+        &invocation.scratch_root,
+        now,
+        |step| run_step_command(step),
+    ) {
+        Ok(receipt) => receipt,
+        Err(crate::install_tx::InstallError::RolledBack { reason, .. }) => {
+            return DispatchOutcome::InternalError(format!(
+                "install rolled back: {reason}"
+            ));
+        }
+        Err(error) => {
+            return DispatchOutcome::InternalError(format!("install failed: {error}"));
+        }
+    };
+    if !invocation.dry_run {
+        if let Err(error) = crate::install_tx::commit(
+            &mut receipt,
+            &invocation.scratch_root,
+            &invocation.target_root,
+            now,
+        ) {
+            return DispatchOutcome::InternalError(format!(
+                "install commit failed: {error}"
+            ));
+        }
+    }
+    match serde_json::to_string_pretty(&receipt) {
+        Ok(json) => {
+            println!("{json}");
+            DispatchOutcome::Ok
+        }
+        Err(error) => DispatchOutcome::InternalError(format!(
+            "install serialize receipt: {error}"
+        )),
+    }
+}
+
+/// MBR-203: run one step's `action` (or `rollback`) as an opaque shell
+/// command. The framework stays generic — the callback decides how the
+/// step string is interpreted. Here we run it via `sh -c` (POSIX) or
+/// `cmd /C` (Windows); tests inject their own callbacks.
+fn run_step_command(step: &crate::install_tx::InstallStep) -> Result<(), String> {
+    let trimmed = step.action.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+    let output = if cfg!(windows) {
+        std::process::Command::new("cmd")
+            .arg("/C")
+            .arg(trimmed)
+            .output()
+    } else {
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg(trimmed)
+            .output()
+    };
+    let output = output.map_err(|error| format!("spawn: {error}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "exit={:?} stderr={} stdout={}",
+            output.status.code(),
+            stderr.trim(),
+            stdout.trim()
+        ));
+    }
+    Ok(())
+}
+
+/// Load the install plan from `--plan`, or build a default plan with the
+/// five standard stages and `true` actions when no plan was supplied.
+fn load_install_plan(
+    invocation: &InstallInvocation,
+) -> Result<crate::install_tx::InstallPlan, String> {
+    if let Some(path) = &invocation.plan {
+        let body = std::fs::read(path)
+            .map_err(|error| format!("install: read plan {}: {error}", path.display()))?;
+        let mut plan: crate::install_tx::InstallPlan = serde_json::from_slice(&body)
+            .map_err(|error| format!("install: parse plan {}: {error}", path.display()))?;
+        if plan.scratch_root.as_os_str().is_empty() {
+            plan.scratch_root = invocation.scratch_root.clone();
+        }
+        if plan.scratch_root != invocation.scratch_root {
+            return Err(format!(
+                "install: plan scratch_root {:?} does not match --scratch-root {:?}",
+                plan.scratch_root, invocation.scratch_root
+            ));
+        }
+        return Ok(plan);
+    }
+    let now = now_unix_ms();
+    Ok(crate::install_tx::InstallPlan {
+        plan_id: format!("mbr-203-default-{now}"),
+        scratch_root: invocation.scratch_root.clone(),
+        steps: vec![
+            crate::install_tx::InstallStep {
+                stage: crate::install_tx::InstallStage::Enumerate,
+                action: "true".to_string(),
+                rollback: "true".to_string(),
+            },
+            crate::install_tx::InstallStep {
+                stage: crate::install_tx::InstallStage::WriteManifest,
+                action: "true".to_string(),
+                rollback: "true".to_string(),
+            },
+            crate::install_tx::InstallStep {
+                stage: crate::install_tx::InstallStage::MintLease,
+                action: "true".to_string(),
+                rollback: "true".to_string(),
+            },
+            crate::install_tx::InstallStep {
+                stage: crate::install_tx::InstallStage::PublishReceipt,
+                action: "true".to_string(),
+                rollback: "true".to_string(),
+            },
+            crate::install_tx::InstallStep {
+                stage: crate::install_tx::InstallStage::RegisterBindings,
+                action: "true".to_string(),
+                rollback: "true".to_string(),
+            },
+        ],
+    })
+}
+
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Runtime errors are mostly user-visible (bad arguments, missing runtime, lease rejection), so
