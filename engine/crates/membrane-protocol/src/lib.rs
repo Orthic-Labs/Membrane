@@ -30,7 +30,7 @@ pub mod types;
 
 pub use canonical::{canonical_json_of, canonicalize, digest_str};
 pub use installation::{
-    canonical_data_root, ComponentV1, HandshakeError, InstallationManifestV1,
+    canonical_data_root, ApiSchemaV1, ComponentV1, HandshakeError, InstallationManifestV1,
     MANIFEST_SCHEMA_VERSION, PROTOCOL_SCHEMA_VERSION,
 };
 pub use operations::{

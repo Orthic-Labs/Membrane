@@ -178,6 +178,22 @@ pub fn run_service() -> Result<(), String> {
             .ok_or_else(|| "resolve workspace root from database path".to_string())?,
     );
     let (identity, claim) = prepare_runtime_identity(&runtime)?;
+    let workspace_root = runtime
+        .db
+        .ancestors()
+        .nth(4)
+        .ok_or_else(|| "resolve workspace root from database path".to_string())?;
+    // Publish the IPC handshake manifest before any peer can connect. This
+    // is a hard requirement of the MBR-105 contract: a resident that has
+    // not published its manifest must reject every handshake. We deliberately
+    // do this AFTER `prepare_runtime_identity` so the manifest always
+    // reflects the just-minted startup generation. A failure to publish is
+    // fatal: the resident would otherwise serve requests that no peer can
+    // verify, which silently breaks the contract.
+    let active_manifest =
+        crate::installation_manifest::build_active_manifest(&identity, &claim, workspace_root);
+    crate::installation_manifest::publish_active_manifest(active_manifest)
+        .map_err(|error| format!("publish installation manifest: {error}"))?;
     std::env::set_var("CRYPT_INSTALLATION_ID", &identity.installation_id);
     std::env::set_var("CRYPT_SERVICE_INSTANCE_ID", &claim.service_instance_id);
     crypt::serve::run(

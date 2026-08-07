@@ -19,6 +19,8 @@ pub mod federation;
 pub mod federation_worker;
 pub mod feedback;
 pub mod freshness;
+pub mod digest;
+pub mod installation_manifest;
 pub mod memory_provider;
 pub mod outline;
 pub mod plan_context;

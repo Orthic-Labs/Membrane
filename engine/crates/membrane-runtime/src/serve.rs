@@ -1078,7 +1078,10 @@ fn reject(status: StatusCode, message: &str) -> Response {
 /// (`"freshness-http"` / the raw `repoRoot`) let every caller that omitted its identity collapse
 /// onto the same receipt identity, which defeats the receipt's purpose — both are now required,
 /// with no fallback value invented on the caller's behalf.
-fn freshness_response_body(v: &Value, verdict: &crate::freshness::FreshnessVerdict) -> (u16, String) {
+fn freshness_response_body(
+    v: &Value,
+    verdict: &crate::freshness::FreshnessVerdict,
+) -> (u16, String) {
     let Some(session_id) = v
         .get("sessionId")
         .and_then(Value::as_str)
@@ -1114,12 +1117,8 @@ fn freshness_response_body(v: &Value, verdict: &crate::freshness::FreshnessVerdi
             )
         }
     };
-    payload_value["sourceBarrierReceipt"] = crate::freshness::source_barrier_receipt(
-        verdict,
-        repository_id,
-        session_id,
-        worktree_path,
-    );
+    payload_value["sourceBarrierReceipt"] =
+        crate::freshness::source_barrier_receipt(verdict, repository_id, session_id, worktree_path);
     match serde_json::to_string(&payload_value) {
         Ok(payload) => (200, payload),
         Err(_) => (
@@ -1797,6 +1796,36 @@ async fn workload_ingress(
     response
 }
 
+/// MBR-105: every IPC handshake that carries an `X-Membrane-Manifest` header
+/// is compared to the active manifest. A request whose manifest is missing
+/// (legacy client) passes through unchanged; a request with a present but
+/// mismatched manifest is rejected with a typed error response so the
+/// peer knows which invariant failed. The check runs after the workload
+/// ingress so a rejected handshake still consumes a permit (matching the
+/// behavior of any other auth-style middleware).
+async fn handshake_ingress(request: Request, next: Next) -> Response {
+    let header_value = request
+        .headers()
+        .get(crate::installation_manifest::HANDSHAKE_HEADER)
+        .and_then(|value| value.to_str().ok());
+    match crate::installation_manifest::ParsedManifest::parse_header(header_value) {
+        crate::installation_manifest::ParsedManifest::Absent => next.run(request).await,
+        crate::installation_manifest::ParsedManifest::Invalid(reason) => reject(
+            StatusCode::BAD_REQUEST,
+            &format!("invalid X-Membrane-Manifest header: {reason}"),
+        ),
+        crate::installation_manifest::ParsedManifest::Present(observed) => {
+            match crate::installation_manifest::verify_handshake(&observed) {
+                Ok(()) => next.run(request).await,
+                Err(error) => reject(
+                    StatusCode::MISDIRECTED_REQUEST,
+                    &format!("IPC handshake rejected: {}", error.label()),
+                ),
+            }
+        }
+    }
+}
+
 async fn livez(State(state): State<AppState>) -> Response {
     json_response(
         StatusCode::OK,
@@ -1951,6 +1980,10 @@ fn build_router_inner(
         .route("/health", get(detailed_health))
         .with_state(state)
         .merge(workload)
+        // The handshake gate applies to every route, including the liveness
+        // probes, so a garbage X-Membrane-Manifest header is rejected with
+        // 400 before the request reaches the handler.
+        .layer(axum::middleware::from_fn(handshake_ingress))
 }
 
 #[cfg(test)]
@@ -4296,7 +4329,10 @@ fn find_cortex_watch() -> Option<std::path::PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let engine_dir = exe.parent()?.parent()?; // target/debug -> engine
     let workspace = engine_dir.parent()?; // engine -> workspace
-    let candidate = workspace.join("cortex").join("scripts").join("cortex-watch.mjs");
+    let candidate = workspace
+        .join("cortex")
+        .join("scripts")
+        .join("cortex-watch.mjs");
     if candidate.exists() {
         Some(candidate)
     } else {
@@ -4450,9 +4486,9 @@ pub fn run(
     if let Some(ref watch_script) = cortex_watch {
         // MBR-009: adopt only a watcher that is both recorded AND alive; a stale
         // pidfile from a superseded supervisor is a stale actor — spawn fresh.
-        let pidfile = std::path::PathBuf::from(
-            std::env::var("HOME").unwrap_or_default(),
-        ).join(".cortex").join("watchman.pid");
+        let pidfile = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+            .join(".cortex")
+            .join("watchman.pid");
         let existing_pid = recorded_watcher_pid(&pidfile);
         let pid_alive = existing_pid.map(watcher_pid_alive).unwrap_or(false);
         match decide_watcher_action(Some(watch_script), existing_pid, pid_alive) {
@@ -4533,7 +4569,9 @@ pub fn run_stdio_mcp() -> Result<(), String> {
         }
         let response = stdio_dispatch_request(trimmed)?;
         writeln!(output, "{response}").map_err(|error| format!("write stdio response: {error}"))?;
-        output.flush().map_err(|error| format!("flush stdio response: {error}"))?;
+        output
+            .flush()
+            .map_err(|error| format!("flush stdio response: {error}"))?;
     }
 }
 
@@ -6501,8 +6539,7 @@ mod tests {
 
     #[test]
     fn add_route_is_disabled_and_prefix_routes_do_not_match() {
-        let dir =
-            std::env::temp_dir().join(format!("crypt-serve-add-off-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("crypt-serve-add-off-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let md = dir.join("secret.md");
         std::fs::write(&md, "PRIVATE SECRET SHOULD NOT INGEST").unwrap();
@@ -7095,5 +7132,77 @@ mod tests {
         let response = route(&store, "POST", "/curate", r#"{"today":"2026-07-10"}"#);
         assert_eq!(response.0, 200, "response: {}", response.1);
         assert_eq!(store.len(), 1, "resident registry must reflect pruning");
+    }
+
+    // MBR-105: handshake gate middleware. The gate's three behaviors are:
+    //   1. absent header → request passes through unchanged;
+    //   2. malformed header → 400 with a descriptive reason;
+    //   3. present-but-unparseable or wrong manifest → 400 / 421.
+    // Cases (1) and (2) are observable without a published active manifest;
+    // case (3) is covered by the membrane-protocol round-trip tests because
+    // it depends on the OnceLock which can only be set once per process.
+    #[tokio::test]
+    async fn handshake_ingress_passes_through_when_header_is_absent() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use tower::ServiceExt;
+
+        let store = MemoryStore::new();
+        let app = build_router(
+            store,
+            None,
+            None,
+            8765,
+            None,
+            std::time::Duration::from_secs(2),
+            4,
+        );
+        // No X-Membrane-Manifest header — legacy client path.
+        let response = app
+            .oneshot(Request::get("/livez").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_ne!(
+            response.status(),
+            axum::http::StatusCode::MISDIRECTED_REQUEST,
+            "absent handshake header must not produce 421"
+        );
+    }
+
+    #[tokio::test]
+    async fn handshake_ingress_rejects_garbage_header_with_400() {
+        use axum::body::Body;
+        use axum::http::{header, Request, StatusCode};
+        use tower::ServiceExt;
+
+        let store = MemoryStore::new();
+        let app = build_router(
+            store,
+            None,
+            None,
+            8765,
+            None,
+            std::time::Duration::from_secs(2),
+            4,
+        );
+        let response = app
+            .oneshot(
+                Request::get("/livez")
+                    .header(
+                        header::HeaderName::from_static(
+                            crate::installation_manifest::HANDSHAKE_HEADER,
+                        ),
+                        "not-json-at-all",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "garbage X-Membrane-Manifest header must produce 400"
+        );
     }
 }

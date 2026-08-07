@@ -9,6 +9,7 @@ description = "Membrane federation, freshness, planning, and service runtime."
 crypt-store = { path = "../crypt-store" }
 crypt-core = { package = "crypt-core", path = "../crypt-core" }
 crypt-format = { package = "crypt-format", path = "../crypt-format" }
+membrane-protocol = { path = "../membrane-protocol" }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
