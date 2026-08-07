@@ -10,6 +10,7 @@ pub mod dispatch;
 pub mod install_tx;
 pub mod modes;
 pub mod serve;
+pub mod uninstall;
 
 pub use dispatch::{parse_mode, MembraneMode, ParsedInvocation};
 
@@ -19,6 +20,11 @@ pub use install_tx::{
     InstallStage, InstallStep, INSTALL_RECEIPT_SCHEMA_VERSION,
 };
 pub use serve::run_loopback_api;
+pub use uninstall::{
+    execute_uninstall, load_table, register, revoke_unowned, OwnershipClaim, OwnershipKind,
+    OwnershipTable, UninstallError, UninstallOutcome, UninstallReceiptV1,
+    UNINSTALL_RECEIPT_SCHEMA_VERSION,
+};
 
 /// Process-wide exit-code contract. The binary returns these to the OS so scripts and the
 /// supervisor can distinguish "user error" from "internal failure" without parsing stderr.

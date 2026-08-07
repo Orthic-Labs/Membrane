@@ -3,7 +3,7 @@
 //!
 //! MBR-102: create one membrane executable with mode subcommands.
 
-use crate::dispatch::{InstallInvocation, MembraneMode, ParsedInvocation};
+use crate::dispatch::{InstallInvocation, MembraneMode, ParsedInvocation, UninstallInvocation};
 use crate::{EXIT_INTERNAL_ERROR, EXIT_OK, EXIT_USER_ERROR};
 
 /// MBR-108: map a parsed mode to the process plane it executes in. The mapping is the single
@@ -15,10 +15,13 @@ pub fn plane_of(mode: &MembraneMode) -> membrane_runtime::Plane {
         // All four user-facing entry points belong to the Application plane.
         // Install is treated as Application because it runs the same
         // per-stage effect callback the operator invokes from a script.
+        // Uninstall is treated as Application because it is the symmetric
+        // mirror of install and shares its ownership contract.
         MembraneMode::Cli => membrane_runtime::Plane::Application,
         MembraneMode::StdioMcp => membrane_runtime::Plane::Application,
         MembraneMode::LoopbackApi => membrane_runtime::Plane::Application,
         MembraneMode::Install => membrane_runtime::Plane::Application,
+        MembraneMode::Uninstall => membrane_runtime::Plane::Application,
         // The supervisor's resident child is the Control plane.
         MembraneMode::SupervisorChild => membrane_runtime::Plane::Control,
     }
@@ -60,6 +63,15 @@ pub fn dispatch(invocation: &ParsedInvocation) -> DispatchOutcome {
             // branch is a logic bug, not a user error.
             None => DispatchOutcome::InternalError(
                 "install mode invoked without an install invocation".to_string(),
+            ),
+        },
+        MembraneMode::Uninstall => match invocation.uninstall.as_ref() {
+            Some(invocation) => dispatch_uninstall(invocation),
+            // The parser refuses to construct a `ParsedInvocation` whose
+            // `mode == Uninstall` without an `uninstall` payload; reaching
+            // this branch is a logic bug, not a user error.
+            None => DispatchOutcome::InternalError(
+                "uninstall mode invoked without an uninstall invocation".to_string(),
             ),
         },
     }
@@ -109,8 +121,7 @@ fn is_doctor_paths_invocation(tail: &[String]) -> bool {
 fn run_doctor_paths(args: &[String]) -> DispatchOutcome {
     let _ = args; // reserved for future flags
     let roots = membrane_runtime::paths::Roots::resolve();
-    let owned: Vec<membrane_runtime::ReceiptOwnedFile> =
-        membrane_runtime::receipt_snapshot();
+    let owned: Vec<membrane_runtime::ReceiptOwnedFile> = membrane_runtime::receipt_snapshot();
     let payload = serde_json::json!({
         "schemaVersion": 1,
         "product": membrane_runtime::PRODUCT_DIR_NAME,
@@ -163,22 +174,18 @@ fn dispatch_install(invocation: &InstallInvocation) -> DispatchOutcome {
         Err(error) => return DispatchOutcome::UserError(error),
     };
     let now = now_unix_ms();
-    let mut receipt = match crate::install_tx::execute_plan(
-        plan,
-        &invocation.scratch_root,
-        now,
-        |step| run_step_command(step),
-    ) {
-        Ok(receipt) => receipt,
-        Err(crate::install_tx::InstallError::RolledBack { reason, .. }) => {
-            return DispatchOutcome::InternalError(format!(
-                "install rolled back: {reason}"
-            ));
-        }
-        Err(error) => {
-            return DispatchOutcome::InternalError(format!("install failed: {error}"));
-        }
-    };
+    let mut receipt =
+        match crate::install_tx::execute_plan(plan, &invocation.scratch_root, now, |step| {
+            run_step_command(step)
+        }) {
+            Ok(receipt) => receipt,
+            Err(crate::install_tx::InstallError::RolledBack { reason, .. }) => {
+                return DispatchOutcome::InternalError(format!("install rolled back: {reason}"));
+            }
+            Err(error) => {
+                return DispatchOutcome::InternalError(format!("install failed: {error}"));
+            }
+        };
     if !invocation.dry_run {
         if let Err(error) = crate::install_tx::commit(
             &mut receipt,
@@ -186,9 +193,7 @@ fn dispatch_install(invocation: &InstallInvocation) -> DispatchOutcome {
             &invocation.target_root,
             now,
         ) {
-            return DispatchOutcome::InternalError(format!(
-                "install commit failed: {error}"
-            ));
+            return DispatchOutcome::InternalError(format!("install commit failed: {error}"));
         }
     }
     match serde_json::to_string_pretty(&receipt) {
@@ -196,9 +201,101 @@ fn dispatch_install(invocation: &InstallInvocation) -> DispatchOutcome {
             println!("{json}");
             DispatchOutcome::Ok
         }
-        Err(error) => DispatchOutcome::InternalError(format!(
-            "install serialize receipt: {error}"
-        )),
+        Err(error) => DispatchOutcome::InternalError(format!("install serialize receipt: {error}")),
+    }
+}
+
+/// MBR-205: uninstall handler. Loads the ownership table from
+/// `receipt_root`, filters the operator's `--candidate` paths through
+/// `revoke_unowned`, and either prints the authorised set (`--dry-run`)
+/// or removes each authorised path with `std::fs::remove_dir_all` /
+/// `std::fs::remove_file` based on the path's file kind.
+fn dispatch_uninstall(invocation: &UninstallInvocation) -> DispatchOutcome {
+    let table = match crate::uninstall::load_table(&invocation.receipt_root) {
+        Ok(table) => table,
+        Err(error) => {
+            return DispatchOutcome::InternalError(format!(
+                "uninstall: load ownership table: {error}"
+            ));
+        }
+    };
+
+    if invocation.dry_run {
+        // Dry-run: print the authorised set as JSON so the operator can
+        // pipe the result without parsing two layouts. Refused paths are
+        // echoed alongside so the operator sees what would be left alone.
+        let authorised = crate::uninstall::revoke_unowned(&table, &invocation.candidates);
+        let refused: Vec<&std::path::PathBuf> = invocation
+            .candidates
+            .iter()
+            .filter(|candidate| !authorised.contains(candidate))
+            .collect();
+        let payload = serde_json::json!({
+            "mode": "uninstall",
+            "dry_run": true,
+            "receipt_root": invocation.receipt_root,
+            "installation_id": table.installation_id,
+            "authorised": authorised,
+            "refused": refused,
+        });
+        match serde_json::to_string_pretty(&payload) {
+            Ok(json) => {
+                println!("{json}");
+                DispatchOutcome::Ok
+            }
+            Err(error) => DispatchOutcome::InternalError(format!(
+                "uninstall dry-run serialize payload: {error}"
+            )),
+        }
+    } else {
+        let now = now_unix_ms();
+        let remove_result = crate::uninstall::execute_uninstall(
+            table,
+            invocation.candidates.clone(),
+            now,
+            |path| {
+                let metadata = match std::fs::symlink_metadata(path) {
+                    Ok(metadata) => metadata,
+                    Err(error) => {
+                        return Err(format!("stat: {error}"));
+                    }
+                };
+                let result = if metadata.is_dir() {
+                    std::fs::remove_dir_all(path)
+                } else {
+                    std::fs::remove_file(path)
+                };
+                result.map_err(|error| format!("{error}"))
+            },
+        );
+        let receipt = match remove_result {
+            Ok(receipt) => receipt,
+            Err(crate::uninstall::UninstallError::RemoveFailed { path, reason }) => {
+                return DispatchOutcome::InternalError(format!(
+                    "uninstall: remove failed at {}: {reason}",
+                    path.display()
+                ));
+            }
+            Err(error) => {
+                return DispatchOutcome::InternalError(format!("uninstall: {error}"));
+            }
+        };
+        // Persist the receipt alongside the ownership table so a forensic
+        // read sees both the original ownership record and the uninstall
+        // audit trail in one place. A persist failure is reported as an
+        // internal error so the operator notices the gap.
+        if let Err(error) = crate::uninstall::persist_receipt(&invocation.receipt_root, &receipt) {
+            return DispatchOutcome::InternalError(format!("uninstall: persist receipt: {error}"));
+        }
+        match serde_json::to_string_pretty(&receipt) {
+            Ok(json) => {
+                println!("{json}");
+                DispatchOutcome::Ok
+            }
+            Err(error) => {
+                DispatchOutcome::InternalError(format!("uninstall: serialize receipt: {error}"))
+            }
+        }
     }
 }
 

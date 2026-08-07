@@ -23,6 +23,11 @@ pub enum MembraneMode {
     /// `MEMBRANE_ROOT` and only on `commit` renames the scratch root to the
     /// target root. See `crate::install_tx` for the contract.
     Install,
+    /// MBR-205: ownership-safe uninstall. Loads the ownership table from
+    /// `--receipt-root`, filters `--candidate` paths through
+    /// `revoke_unowned`, and only removes the ones the runtime
+    /// registered. See `crate::uninstall` for the contract.
+    Uninstall,
 }
 
 impl MembraneMode {
@@ -33,6 +38,7 @@ impl MembraneMode {
             MembraneMode::LoopbackApi => "loopback-api",
             MembraneMode::SupervisorChild => "supervisor-child",
             MembraneMode::Install => "install",
+            MembraneMode::Uninstall => "uninstall",
         }
     }
 }
@@ -62,6 +68,10 @@ enum Command {
     SupervisorChild(SupervisorArgs),
     /// MBR-203: transactional install against a scratch `MEMBRANE_ROOT`.
     Install(InstallArgs),
+    /// MBR-205: ownership-safe uninstall. The default plan is to refuse
+    /// every path the operator names as a `--candidate` unless the
+    /// ownership table at `--receipt-root` records it.
+    Uninstall(UninstallArgs),
 }
 
 #[derive(Debug, clap::Args)]
@@ -123,6 +133,28 @@ struct InstallArgs {
     dry_run: bool,
 }
 
+/// MBR-205: uninstall subcommand arguments. The binary reads the
+/// ownership table from `--receipt-root`, filters `--candidate` paths
+/// through `revoke_unowned`, and only removes the ones the runtime
+/// registered. `--dry-run` prints the authorised set without removing
+/// anything.
+#[derive(Debug, clap::Args)]
+struct UninstallArgs {
+    /// Receipt root — the directory `install-receipt.json` and
+    /// `ownership.json` live under. The ownership table is loaded from
+    /// `<receipt-root>/ownership.json`; when the file is missing the
+    /// uninstall refuses everything and exits `RefusedAll`.
+    #[arg(long)]
+    receipt_root: std::path::PathBuf,
+    /// Path the operator wants to remove. May be supplied multiple
+    /// times. Anything not in the ownership table is refused.
+    #[arg(long, value_name = "PATH")]
+    candidate: Vec<std::path::PathBuf>,
+    /// Print the authorised set and exit 0 without removing anything.
+    #[arg(long, default_value_t = false)]
+    dry_run: bool,
+}
+
 /// Fully-parsed invocation handed to the dispatcher. The dispatcher never touches argv again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedInvocation {
@@ -138,6 +170,10 @@ pub struct ParsedInvocation {
     /// MBR-203: for `Install` mode, the scratch root, target root, optional
     /// plan path, and dry-run flag. `None` for every other mode.
     pub install: Option<InstallInvocation>,
+    /// MBR-205: for `Uninstall` mode, the receipt root, the candidate
+    /// paths the operator asked about, and the dry-run flag. `None` for
+    /// every other mode.
+    pub uninstall: Option<UninstallInvocation>,
 }
 
 /// MBR-203: install invocation handed to the dispatcher's install handler.
@@ -148,6 +184,17 @@ pub struct InstallInvocation {
     pub scratch_root: std::path::PathBuf,
     pub target_root: std::path::PathBuf,
     pub plan: Option<std::path::PathBuf>,
+    pub dry_run: bool,
+}
+
+/// MBR-205: uninstall invocation handed to the dispatcher's uninstall
+/// handler. The handler loads the ownership table from `receipt_root`,
+/// filters `candidates` through `revoke_unowned`, and either prints
+/// the authorised set (dry-run) or removes them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UninstallInvocation {
+    pub receipt_root: std::path::PathBuf,
+    pub candidates: Vec<std::path::PathBuf>,
     pub dry_run: bool,
 }
 
@@ -167,6 +214,7 @@ where
             port: 0,
             lease: None,
             install: None,
+            uninstall: None,
         },
         Command::StdioMcp(args) => {
             if args.framing != "jsonl" {
@@ -182,6 +230,7 @@ where
                 port: 0,
                 lease: None,
                 install: None,
+                uninstall: None,
             }
         }
         Command::LoopbackApi(args) => {
@@ -198,6 +247,7 @@ where
                 port: args.port,
                 lease: None,
                 install: None,
+                uninstall: None,
             }
         }
         Command::SupervisorChild(args) => ParsedInvocation {
@@ -207,6 +257,7 @@ where
             port: 0,
             lease: args.lease,
             install: None,
+            uninstall: None,
         },
         Command::Install(args) => ParsedInvocation {
             mode: MembraneMode::Install,
@@ -218,6 +269,20 @@ where
                 scratch_root: args.scratch_root,
                 target_root: args.target_root,
                 plan: args.plan,
+                dry_run: args.dry_run,
+            }),
+            uninstall: None,
+        },
+        Command::Uninstall(args) => ParsedInvocation {
+            mode: MembraneMode::Uninstall,
+            cli_tail: Vec::new(),
+            framing: String::new(),
+            port: 0,
+            lease: None,
+            install: None,
+            uninstall: Some(UninstallInvocation {
+                receipt_root: args.receipt_root,
+                candidates: args.candidate,
                 dry_run: args.dry_run,
             }),
         },

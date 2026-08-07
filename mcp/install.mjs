@@ -498,3 +498,155 @@ export async function commit(receipt, scratchRoot, targetRoot, nowUnixMs) {
   const receiptPath = join(targetRoot, INSTALL_RECEIPT_FILE_NAME);
   await persistInstallReceipt(receipt, receiptPath);
 }
+
+// -----------------------------------------------------------------------------
+// MBR-205 — Ownership-safe uninstall (additive).
+//
+// Mirrors `engine/crates/membrane/src/uninstall.rs` on the JS side. The JS
+// enrollment CLI uses these helpers to refuse the same candidates the Rust
+// binary would refuse, so the operator gets the same refuse-by-default
+// contract from either entry point. The contract is:
+//
+//   1. The ownership table lives at `<receiptRoot>/ownership.json`.
+//   2. A missing table is treated as empty — `authorizeUninstall` returns
+//      an empty authorised set and the caller refuses everything.
+//   3. `registerOwnershipClaim` rejects duplicate `(kind, path)` pairs
+//      with `DuplicateOwnershipError` so the audit trail cannot be
+//      silently overwritten.
+//
+// This block stays additive: no existing export above is renamed, removed,
+// or re-exported. The integrator merges the MBR-205 additions with the
+// MBR-203 and MBR-206 blocks by concatenating the three sections.
+// -----------------------------------------------------------------------------
+
+export const UNINSTALL_RECEIPT_SCHEMA_VERSION = 1;
+export const OWNERSHIP_TABLE_FILE_NAME = "ownership.json";
+export const UNINSTALL_RECEIPT_FILE_NAME = "uninstall-receipt.json";
+
+export const OWNERSHIP_KINDS = Object.freeze({
+  Manifest: "Manifest",
+  Lease: "Lease",
+  Receipt: "Receipt",
+  Binding: "Binding",
+});
+
+/**
+ * Thrown by `registerOwnershipClaim` when the caller asks to record a
+ * `(kind, path)` pair that is already in the table. The audit trail must
+ * never be silently overwritten, so the duplicate is surfaced as a typed
+ * error instead of being merged.
+ */
+export class DuplicateOwnershipError extends Error {
+  constructor(kind, path) {
+    super(`duplicate ownership claim for kind ${kind} at path ${path}`);
+    this.name = "DuplicateOwnershipError";
+    this.kind = kind;
+    this.path = path;
+  }
+}
+
+function isOwnershipKind(value) {
+  return typeof value === "string" && Object.values(OWNERSHIP_KINDS).includes(value);
+}
+
+/**
+ * Build a fresh ownership table tied to a stable `installation_id`. The id
+ * is `sha256:<hex>` of the receipt root so two installs at different paths
+ * cannot collide.
+ *
+ * @param {string} receiptRoot
+ * @returns {{installationId: string, claims: Array<object>}}
+ */
+export function freshOwnershipTable(receiptRoot) {
+  const digest = createHash("sha256").update(String(receiptRoot)).digest("hex");
+  return { installationId: `sha256:${digest}`, claims: [] };
+}
+
+/**
+ * Load the ownership table from `<receiptRoot>/ownership.json`. When the
+ * file is missing a fresh table is returned; a corrupt file surfaces as
+ * `ParseError` so the caller can decide whether to fail loudly or fall
+ * through. The shape is `{ installationId, claims: [{ kind, path,
+ * receiptId, registeredAtUnixMs }] }`.
+ *
+ * @param {string} receiptRoot
+ * @returns {Promise<{installationId: string, claims: Array<object>}>}
+ */
+export async function loadOwnershipTable(receiptRoot) {
+  const tablePath = join(receiptRoot, OWNERSHIP_TABLE_FILE_NAME);
+  try {
+    const text = await readFile(tablePath, "utf8");
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.claims)) {
+      throw new Error("ownership table is malformed: missing claims array");
+    }
+    return parsed;
+  } catch (error) {
+    if (error.code === "ENOENT") return freshOwnershipTable(receiptRoot);
+    throw error;
+  }
+}
+
+/**
+ * Register one ownership claim. Rejects duplicate `(kind, path)` pairs
+ * with `DuplicateOwnershipError`. The claim shape is `{ kind, path,
+ * receiptId, registeredAtUnixMs }`. Same path with a different kind is
+ * permitted; same kind with a different path is permitted.
+ *
+ * @param {{installationId: string, claims: Array<object>}} table
+ * @param {{kind: string, path: string, receiptId: string, registeredAtUnixMs: number}} claim
+ * @returns {void}
+ */
+export function registerOwnershipClaim(table, claim) {
+  if (!table || !Array.isArray(table.claims)) {
+    throw new Error("ownership table is required");
+  }
+  if (!isOwnershipKind(claim.kind)) {
+    throw new Error(`unknown ownership kind: ${claim.kind}`);
+  }
+  if (typeof claim.path !== "string" || claim.path.length === 0) {
+    throw new Error("ownership claim path must be a non-empty string");
+  }
+  for (const existing of table.claims) {
+    if (existing.kind === claim.kind && existing.path === claim.path) {
+      throw new DuplicateOwnershipError(claim.kind, claim.path);
+    }
+  }
+  table.claims.push(claim);
+}
+
+/**
+ * Return the subset of `candidates` that ARE in the ownership table.
+ * Anything not in the table is left alone — the caller is expected to log
+ * a warning so the operator sees which paths were refused. The returned
+ * vector preserves the input order so the receipt's `removed` list
+ * matches what the operator typed on the command line.
+ *
+ * @param {{installationId: string, claims: Array<object>}} table
+ * @param {string[]} candidates
+ * @returns {string[]}
+ */
+export function authorizeUninstall(table, candidates) {
+  const claims = (table && Array.isArray(table.claims)) ? table.claims : [];
+  const authorised = [];
+  for (const candidate of candidates) {
+    if (claims.some((claim) => claim.path === candidate)) authorised.push(candidate);
+  }
+  return authorised;
+}
+
+/**
+ * Persist the ownership table to `<receiptRoot>/ownership.json`. Atomic
+ * write (tmp + rename) so a half-written table can never be parsed.
+ *
+ * @param {string} receiptRoot
+ * @param {{installationId: string, claims: Array<object>}} table
+ * @returns {Promise<void>}
+ */
+export async function persistOwnershipTable(receiptRoot, table) {
+  const path = join(receiptRoot, OWNERSHIP_TABLE_FILE_NAME);
+  const body = JSON.stringify(table, null, 2);
+  const tmp = `${path}.tmp`;
+  await writeFile(tmp, body, "utf8");
+  await rename(tmp, path);
+}
