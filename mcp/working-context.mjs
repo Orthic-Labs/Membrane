@@ -117,6 +117,30 @@ export class WorkingContextStore {
     return [...durable, ...ephemeral].sort((left, right) => left.context_id.localeCompare(right.context_id));
   }
 
+  // Durable context history is ordered by its immutable insertion key. A cursor
+  // names that key, so rows appended while a client pages cannot repeat rows.
+  activeContextPage({ sessionId, taskId, asOf = new Date().toISOString(), cursor, limit = 50 }) {
+    const at = instant(asOf, "working_context_as_of");
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("working_context_page_limit_invalid");
+    let after = null;
+    if (cursor !== undefined) {
+      try { after = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")); }
+      catch { throw new Error("working_context_page_cursor_invalid"); }
+      if (!Array.isArray(after) || after.length !== 2 || after.some((value) => typeof value !== "string" || value.length === 0 || value.length > 256)) throw new Error("working_context_page_cursor_invalid");
+    }
+    const rows = this.db.prepare(`SELECT payload_json,created_at,context_id
+      FROM membrane_working_context
+      WHERE session_id=? AND task_id=? AND state='active' AND expires_at>?
+      ${after ? "AND (created_at>? OR (created_at=? AND context_id>?))" : ""}
+      ORDER BY created_at,context_id LIMIT ?`).all(sessionId, taskId, at, ...(after ? [after[0], after[0], after[1]] : []), limit + 1);
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    return {
+      items: page.map((row) => JSON.parse(row.payload_json)),
+      nextCursor: rows.length > limit && last ? Buffer.from(JSON.stringify([last.created_at, last.context_id])).toString("base64url") : null,
+    };
+  }
+
   closeContext(contextId) {
     for (const values of ephemeralContexts.values()) if (values.delete(contextId)) return true;
     return this.db.prepare("UPDATE membrane_working_context SET state='closed',closed_at=? WHERE context_id=? AND state='active'").run(new Date().toISOString(), contextId).changes === 1;

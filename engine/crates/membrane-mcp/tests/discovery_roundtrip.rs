@@ -8,5 +8,5 @@ fn discovery_matches_initialize_contract() {
         initialize_response()["protocolVersion"]
     );
     assert_eq!(discovery["serverInfo"]["name"], "membrane");
-    assert_eq!(discovery["tools"].as_array().unwrap().len(), 9);
+    assert_eq!(discovery["tools"].as_array().unwrap().len(), 0);
 }

@@ -43,6 +43,24 @@ test("L3 durable working context survives restart, expires, and injects only exa
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("MBR-305: durable context history pages by immutable insertion cursor", () => {
+  const root = mkdtempSync(join(tmpdir(), "membrane-context-page-"));
+  const path = join(root, "events.sqlite3");
+  try {
+    const store = new WorkingContextStore(path);
+    for (const contextId of ["context-a", "context-b", "context-c"]) {
+      store.saveContext({ contextId, sessionId: "s", taskId: "t", items: [], expiresAt: "2026-08-03T00:00:00Z", durable: true });
+    }
+    const first = store.activeContextPage({ sessionId: "s", taskId: "t", asOf: "2026-08-02T00:00:00Z", limit: 2 });
+    assert.deepEqual(first.items.map((row) => row.context_id), ["context-a", "context-b"]);
+    store.saveContext({ contextId: "context-z", sessionId: "s", taskId: "t", items: [], expiresAt: "2026-08-03T00:00:00Z", durable: true });
+    const second = store.activeContextPage({ sessionId: "s", taskId: "t", asOf: "2026-08-02T00:00:00Z", cursor: first.nextCursor, limit: 2 });
+    assert.deepEqual(second.items.map((row) => row.context_id), ["context-c", "context-z"]);
+    assert.equal(second.nextCursor, null);
+    store.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 test("L3 temporal as-of closes only explicit single-valued predicates", () => {
   const root = mkdtempSync(join(tmpdir(), "membrane-temporal-fact-"));
   const path = join(root, "events.sqlite3");

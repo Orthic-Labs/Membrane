@@ -11,13 +11,28 @@ const server = fileURLToPath(new URL("./server.mjs", import.meta.url));
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 assert.equal(packageJson.engines?.node, ">=20");
 assert.equal(packageJson.dependencies?.["@modelcontextprotocol/server"], "2.0.0");
+let activeServerChildren = 0;
 
-async function rpc(messages, env = {}) {
+function spawnServer(env) {
   const child = spawn(process.execPath, [server], {
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
     env: { ...process.env, ...env },
   });
+  activeServerChildren += 1;
+  let settled = false;
+  const settle = () => {
+    if (settled) return;
+    settled = true;
+    activeServerChildren -= 1;
+  };
+  child.once("error", settle);
+  child.once("close", settle);
+  return child;
+}
+
+async function rpc(messages, env = {}) {
+  const child = spawnServer(env);
   let output = "";
   let errorOutput = "";
   const expectedResponses = messages.filter((message) => message.id !== undefined).length;
@@ -29,7 +44,8 @@ async function rpc(messages, env = {}) {
   });
   child.stdout.on("data", (chunk) => {
     output += chunk;
-    if (output.split("\n").filter(Boolean).length >= expectedResponses) responsesReady();
+    const rows = output.split("\n").filter(Boolean).map(JSON.parse);
+    if (rows.filter((row) => row.id !== undefined).length >= expectedResponses) responsesReady();
   });
   child.stderr.on("data", (chunk) => { errorOutput += chunk; });
   child.stdin.write(messages.map(JSON.stringify).join("\n") + "\n");
@@ -46,7 +62,52 @@ async function rpc(messages, env = {}) {
   child.stdin.end();
   const { code, signal } = await closePromise;
   assert.equal(code, 0, `RPC exited code=${code}, signal=${signal}: ${errorOutput.trim()}`);
-  return output.trim().split("\n").filter(Boolean).map(JSON.parse);
+  return output.trim().split("\n").filter(Boolean).map(JSON.parse).filter((row) => row.id !== undefined);
+}
+async function openRpc(env = {}) {
+  const child = spawnServer(env);
+  const rows = [];
+  const waiters = new Map();
+  let buffer = "";
+  let closed = false;
+  // Attach the terminal listeners before any request can make the child exit.
+  // `close()` ends stdin; registering `close` afterwards races a fast stdio
+  // shutdown and leaves this focused test process open forever.
+  const closePromise = new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code) => resolve(code));
+  });
+  child.stdout.on("data", (chunk) => {
+    buffer += chunk;
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines.filter(Boolean)) {
+      const row = JSON.parse(line);
+      rows.push(row);
+      const waiter = waiters.get(row.id);
+      if (waiter) { waiters.delete(row.id); waiter.resolve(row); }
+    }
+  });
+  const request = (message) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`RPC timed out waiting for ${message.id}`)), 10_000);
+    waiters.set(message.id, { resolve: (row) => { clearTimeout(timer); resolve(row); } });
+    child.stdin.write(`${JSON.stringify(message)}\n`);
+  });
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    child.stdin.end();
+    const code = await closePromise;
+    if (code !== 0) throw new Error(`RPC exited ${code}`);
+  };
+  return { child, rows, request, close };
+}
+async function waitFor(predicate, message, timeoutMs = 1_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error(message);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 function toolError(row) { return row.error?.message || row.result?.content?.[0]?.text || ""; }
 
@@ -82,6 +143,75 @@ await writeFile(registry, JSON.stringify({
   bindings: { [enrolledCanonicalRoot]: { repository_id: "repo-a", scope_id: "scope-a", provider_config: {}, grant_policy: { level: "write-proposed" } } },
 }), "utf8");
 const advisoryEnv = { MEMBRANE_PROJECT_REGISTRY: registry, MEMBRANE_DURABILITY_MODE: "advisory" };
+
+// MBR-305 wire contract: SDK-managed logging, progress, & cursor pagination
+// travel over stdio rather than only through lifecycle/store helper tests.
+const lifecycleFederate = createServer((request, response) => {
+  const chunks = [];
+  request.on("data", (chunk) => chunks.push(chunk));
+  request.on("end", () => {
+    if (JSON.parse(Buffer.concat(chunks).toString("utf8")).task === "wait for cancellation") return;
+    const body = JSON.stringify({ providerStatus: "ready", packet: { blocks: [] }, receipts: [] });
+    response.writeHead(200, { "content-type": "application/json", "content-length": Buffer.byteLength(body) });
+    response.end(body);
+  });
+});
+await new Promise((resolve, reject) => { lifecycleFederate.once("error", reject); lifecycleFederate.listen(0, "127.0.0.1", resolve); });
+let live;
+let cancelled;
+try {
+  const { port } = lifecycleFederate.address();
+  live = await openRpc({ ...advisoryEnv, CRYPT_PORT: String(port), CRYPT_API_TOKEN: "test-token" });
+  const caller = { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" };
+  await live.request({ jsonrpc: "2.0", id: 300, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "mbr305", version: "1" } } });
+  await live.request({ jsonrpc: "2.0", id: 301, method: "logging/setLevel", params: { level: "debug" } });
+  const context = await live.request({ jsonrpc: "2.0", id: 302, method: "tools/call", params: { name: "membrane_context", arguments: { task: "lifecycle", repository: enrolledRoot, caller }, _meta: { progressToken: "mbr305-progress" } } });
+  assert.equal(context.result.isError, false, toolError(context));
+  const progress = live.rows.filter((row) => row.method === "notifications/progress").map((row) => row.params.progress);
+  assert.deepEqual(progress, [0, 10, 40, 100]);
+  const logs = live.rows.filter((row) => row.method === "notifications/message");
+  assert.ok(logs.length >= 2, "SDK logging/setLevel delivers lifecycle logs");
+  assert.ok(logs.every((row) => row.params.level === "info" && row.params.data.schema === "orthic.mcp.lifecycle-log.v1"));
+
+  await mkdir(join(enrolledRoot, "tools", ".cache", "memory"), { recursive: true });
+  const contextBase = { sessionId: "mbr305-session", taskId: "mbr305-task", items: [], expiresAt: "2026-08-03T00:00:00Z", durable: true };
+  for (const [id, contextId] of [[303, "mbr305-a"], [304, "mbr305-b"]]) {
+    const saved = await live.request({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "membrane_working_context", arguments: { repository: enrolledRoot, caller, operation: "save", context: { ...contextBase, contextId } } } });
+    assert.equal(saved.result.isError, false, toolError(saved));
+  }
+  const firstPage = await live.request({ jsonrpc: "2.0", id: 305, method: "tools/call", params: { name: "membrane_working_context", arguments: { repository: enrolledRoot, caller, operation: "load", sessionId: contextBase.sessionId, taskId: contextBase.taskId, asOf: "2026-08-02T00:00:00Z", limit: 1 } } });
+  const page = firstPage.result.structuredContent.data;
+  assert.equal(page.contexts[0].context_id, "mbr305-a");
+  assert.ok(page.nextCursor);
+  const secondPage = await live.request({ jsonrpc: "2.0", id: 306, method: "tools/call", params: { name: "membrane_working_context", arguments: { repository: enrolledRoot, caller, operation: "load", sessionId: contextBase.sessionId, taskId: contextBase.taskId, asOf: "2026-08-02T00:00:00Z", cursor: page.nextCursor, limit: 1 } } });
+  assert.equal(secondPage.result.structuredContent.data.contexts[0].context_id, "mbr305-b");
+  const emptyCursor = await live.request({ jsonrpc: "2.0", id: 307, method: "tools/call", params: { name: "membrane_working_context", arguments: { repository: enrolledRoot, caller, operation: "load", sessionId: contextBase.sessionId, taskId: contextBase.taskId, cursor: "" } } });
+  assert.equal(emptyCursor.result.isError, true);
+  assert.match(toolError(emptyCursor), /working_context_page_cursor_invalid/);
+  await live.close();
+
+  cancelled = await openRpc({ ...advisoryEnv, CRYPT_PORT: String(port), CRYPT_API_TOKEN: "test-token" });
+  await cancelled.request({ jsonrpc: "2.0", id: 308, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "mbr305-cancel", version: "1" } } });
+  const cancellationStarted = Date.now();
+  cancelled.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 309, method: "tools/call", params: { name: "membrane_context", arguments: { task: "wait for cancellation", repository: enrolledRoot, caller }, _meta: { progressToken: "mbr305-cancel-progress" } } })}\n`);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  cancelled.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 309, reason: "cancelled" } })}\n`);
+  await waitFor(
+    () => cancelled.rows.some((row) => row.method === "notifications/message" && row.params.data.event === "cancelled"),
+    "cancellation lifecycle log was not emitted",
+  );
+  const terminalOffset = cancelled.rows.length;
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.ok(Date.now() - cancellationStarted < 500, "cancellation settles inside grace plus observation window");
+  assert.equal(cancelled.rows.some((row) => row.id === 309), false, "cancelled request has no late response");
+  assert.deepEqual(cancelled.rows.slice(terminalOffset).filter((row) => row.method === "notifications/progress"), [], "cancelled request has no late progress");
+  assert.deepEqual(cancelled.rows.slice(terminalOffset).filter((row) => row.method === "notifications/message"), [], "cancelled request has no late lifecycle log");
+  await cancelled.close();
+} finally {
+  await cancelled?.close();
+  await live?.close();
+  await new Promise((resolve) => lifecycleFederate.close(resolve));
+}
 
 const legacySession = await rpc([
   { jsonrpc: "2.0", id: 30, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "legacy-session-test", version: "1.0.0" } } },
@@ -622,3 +752,4 @@ assert.equal(mbr7Data.turnEnvelope.turnId, "turn_1");
 assert.equal(mbr7Data.turnEnvelope.sessionId, "sess_a");
 assert.equal(mbr7Data.clientEnvelope.clientId, "fixture_client");
 assert.equal(mbr7Data.overlay.worktreePath, mbr3Workspace, "overlay worktree identity is preserved");
+assert.equal(activeServerChildren, 0, "every test-owned MCP server exited before test completion");

@@ -42,22 +42,7 @@ impl McpServer {
                 }
             }
             "ping" => json!({}),
-            "tools/call" => {
-                let name = request
-                    .pointer("/params/name")
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                if crate::tools::definitions()
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .any(|t| t["name"] == name)
-                {
-                    json!({"content": [{"type": "text", "text": "{}"}], "structuredContent": {"data": {}, "trace": {}}, "isError": false})
-                } else {
-                    json!({"content": [{"type": "text", "text": "unknown tool"}], "isError": true})
-                }
-            }
+            "tools/call" => json!({"content": [{"type": "text", "text": "native_tool_execution_unsupported"}], "isError": true}),
             _ => {
                 return Some(
                     json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Method not found"}}),

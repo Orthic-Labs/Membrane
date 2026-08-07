@@ -19,6 +19,7 @@ import { mintScopeGrantV1 } from "./scope-grant-v1.mjs";
 import { intersectAuthority, permitsLevel, canReachTarget } from "./authorization.mjs";
 import { selectWorkspaceTargets } from "./workspace-routing.mjs";
 import { createDeadline, deadlineSignal, mapConcurrent, terminalReason, timeoutReceipt } from "./deadline.mjs";
+import { boundedLifecycleId, createLifecycle, withCancellationGrace } from "./lifecycle.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -56,7 +57,7 @@ const TOOL_DEFINITIONS = [
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
   { name: "membrane_checkpoint_save", description: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.", inputSchema: { type: "object", required: ["repository", "caller", "checkpoint"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, checkpoint: { type: "object" } } } },
   { name: "membrane_checkpoint_load", description: "Load an unexpired A0 session checkpoint for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "id"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, id: { type: "string" }, asOfMs: { type: "integer", minimum: 0 } } } },
-  { name: "membrane_working_context", description: "Save, load, or close bounded session/task working context; durability must be explicit.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["save", "load", "close"] }, context: { type: "object" }, sessionId: { type: "string" }, taskId: { type: "string" }, contextId: { type: "string" }, asOf: { type: "string" } } } },
+  { name: "membrane_working_context", description: "Save, load, or close bounded session/task working context; durability must be explicit.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["save", "load", "close"] }, context: { type: "object" }, sessionId: { type: "string" }, taskId: { type: "string" }, contextId: { type: "string" }, asOf: { type: "string" }, cursor: { type: "string", maxLength: 512 }, limit: { type: "integer", minimum: 1, maximum: 100 } } } },
   { name: "membrane_temporal_fact", description: "Record or query provenance-bound temporal facts with explicit single-valued predicate policy.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["record", "query"] }, fact: { type: "object" }, singleValuedPredicates: { type: "array", items: { type: "string" } }, scopeId: { type: "string" }, subject: { type: "string" }, predicate: { type: "string" }, asOf: { type: "string" } } } },
   { name: "membrane_scratchpad", description: "Save, load, or clear ephemeral non-searchable session/task scratchpad state.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["save", "load", "clear"] }, scratchpad: { type: "object" }, sessionId: { type: "string" }, taskId: { type: "string" }, asOf: { type: "string" } } } },
   { name: "membrane_feedback", description: "Record bounded receipt-bound outcome feedback for quarantine review. Self-reported outcomes are advisory (non-ranking) unless verdictRef names a resolvable cited verdict.", inputSchema: { type: "object", required: ["repository", "caller", "receiptId", "outcome"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, receiptId: { type: "string" }, outcome: { type: "string", enum: ["used", "ignored", "contradicted"] }, verdictRef: { type: "string", minLength: 1 } } } },
@@ -414,8 +415,9 @@ async function durableFeedback(binding, args) {
     throw new Error(`durable feedback write failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
-async function callTool(name, args, trace = {}) {
+async function callTool(name, args, trace = {}, lifecycle) {
   if (name === "membrane_context") {
+    await lifecycle?.checkpoint("authorization", 10);
     const binding = await authorize(args, "context");
     const install = await installationBindingFor(binding);
 
@@ -444,7 +446,7 @@ async function callTool(name, args, trace = {}) {
       // stay in stable repository order. Denied/aborted/expired targets become
       // typed terminal omissions, never collapsed into federation_error.
       const deadlineMs = createDeadline(Number.isInteger(args.deadlineMs) ? args.deadlineMs : WORKSPACE_TIMEOUT_MS);
-      const lane = deadlineSignal(deadlineMs);
+      const lane = deadlineSignal(deadlineMs, lifecycle?.signal);
       const abortRow = (entry, reason) => {
         const r = reason || terminalReason(lane.signal) || "cancelled";
         const row = { repoId: entry.repository_id, basis: "aborted", generationId: null, manifestDigest: null, sourceCommit: "", identityStatus: "unknown", identityReason: "generation_identity_unavailable", candidates: 0, omissions: [r] };
@@ -452,6 +454,7 @@ async function callTool(name, args, trace = {}) {
         return { row, omissions: 1, candidates: 0 };
       };
       const deniedRow = (entry) => ({ row: { repoId: entry.repository_id, basis: "denied", generationId: null, manifestDigest: null, sourceCommit: "", identityStatus: "unknown", identityReason: "generation_identity_unavailable", candidates: 0, omissions: ["target_denied"] }, omissions: 1, candidates: 0 });
+      await lifecycle?.checkpoint("provider_dispatch", 30);
       const results = await runBoundedOrdered(selected, WORKSPACE_CONCURRENCY, async (entry) => {
         if (lane.signal.aborted) return abortRow(entry);
         const targetRoot = resolve(binding.root, entry.root === "." ? "." : entry.root);
@@ -490,6 +493,7 @@ async function callTool(name, args, trace = {}) {
         fused.totalOmissions += item.omissions;
         fused.totalCandidates += item.candidates;
       }
+      await lifecycle?.checkpoint("provider_results", 80);
       fused.repos.sort((a, b) => String(a.repoId).localeCompare(String(b.repoId))); // stable receipt order by repository id
       if (lane.signal.aborted) fused.deadlineExceeded = true;
       lane.close();
@@ -502,9 +506,10 @@ async function callTool(name, args, trace = {}) {
     }
 
     // Single-repo path (default).
+    await lifecycle?.checkpoint("provider_dispatch", 40);
     const singleEnvelope = requestEnvelopeFor(args);
     const request = { task: args.task, repo: binding.root, maxTokens: args.budget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, taskEnvelope: singleEnvelope.taskEnvelope, turnEnvelope: singleEnvelope.turnEnvelope, clientEnvelope: singleEnvelope.clientEnvelope, overlay: singleEnvelope.overlay, ...trace };
-    const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: binding.root });
+    const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: binding.root }, lifecycle?.signal);
     const packet = text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
     if (!packet || typeof packet !== "object" || Array.isArray(packet)) return packet;
     if (args.session && args.taskId && packet.ok === true && packet.packet && typeof packet.packet === "object") {
@@ -531,6 +536,7 @@ async function callTool(name, args, trace = {}) {
       used += cost;
       return true;
     });
+    await lifecycle?.checkpoint("packet_ready", 90);
     return { ...packet, working_contexts: workingContexts };
   }
   if (name === "membrane_source_read") {
@@ -568,7 +574,11 @@ async function callTool(name, args, trace = {}) {
       }
       if (operation === "load") {
         if (!args.sessionId || !args.taskId) throw new Error("working_context_scope_required");
-        return { status: "loaded", contexts: store.activeContexts({ sessionId: args.sessionId, taskId: args.taskId, ...(args.asOf ? { asOf: args.asOf } : {}) }) };
+        if (args.cursor !== undefined || args.limit !== undefined) {
+          const page = store.activeContextPage({ sessionId: args.sessionId, taskId: args.taskId, ...(args.asOf ? { asOf: args.asOf } : {}), ...(args.cursor !== undefined ? { cursor: args.cursor } : {}), ...(args.limit !== undefined ? { limit: args.limit } : {}) });
+          return { status: "loaded", contexts: page.items, nextCursor: page.nextCursor };
+        }
+        return { status: "loaded", contexts: store.activeContexts({ sessionId: args.sessionId, taskId: args.taskId, ...(args.asOf ? { asOf: args.asOf } : {}) }), nextCursor: null };
       }
       if (operation === "close") {
         if (!args.contextId) throw new Error("working_context_id_required");
@@ -710,10 +720,10 @@ function structuredResult(data, trace = {}) {
     isError: false,
   };
 }
-export function buildServer() {
+export function buildServer({ shutdownSignal } = {}) {
   const server = new McpServer(
     { name: "membrane", version: "1.0.0" },
-    { instructions: "Use membrane_context for federated context through /federate. Never expect raw memory CRUD." },
+    { capabilities: { logging: {} }, instructions: "Use membrane_context for federated context through /federate. Never expect raw memory CRUD." },
   );
   for (const tool of TOOLS) {
     server.registerTool(tool.name, {
@@ -722,7 +732,26 @@ export function buildServer() {
       outputSchema: fromJsonSchema(TOOL_OUTPUT_SCHEMA),
     }, async (args, ctx) => {
       const trace = boundedTrace(ctx.mcpReq._meta);
-      return structuredResult(await callTool(tool.name, args, trace), trace);
+      const requestSignal = shutdownSignal ? AbortSignal.any([ctx.mcpReq.signal, shutdownSignal]) : ctx.mcpReq.signal;
+      const lifecycle = createLifecycle({
+        operation: tool.name,
+        requestId: boundedLifecycleId(ctx.mcpReq.id),
+        signal: requestSignal,
+        progressToken: ctx.mcpReq._meta?.progressToken,
+        log: async (event) => ctx.mcpReq.log("info", event, "membrane"),
+        progress: async (event) => {
+          if (event.progressToken !== undefined) await ctx.mcpReq.notify({ method: "notifications/progress", params: event });
+        },
+      });
+      await lifecycle.begin();
+      try {
+        const result = await withCancellationGrace(() => callTool(tool.name, args, trace, lifecycle), { signal: requestSignal });
+        await lifecycle.complete();
+        return structuredResult(result, trace);
+      } catch (error) {
+        if (requestSignal.aborted) await lifecycle.cancelled();
+        throw error;
+      }
     });
   }
   server.registerResource("Membrane protocol v1", PROTOCOL_URI, { mimeType: "text/markdown" }, async (uri) => {
@@ -732,7 +761,15 @@ export function buildServer() {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  serveStdio(() => buildServer(), { onerror: (error) => process.stderr.write(`membrane-mcp: ${error.message}\n`) });
+  const shutdown = new AbortController();
+  const stdio = serveStdio(() => buildServer({ shutdownSignal: shutdown.signal }), { onerror: (error) => process.stderr.write(`membrane-mcp: ${error.message}\n`) });
+  // The SDK transport listens for data but does not close itself when a parent
+  // closes stdin. Close its pinned instance explicitly so MCP subprocesses do
+  // not survive a client disconnect or test harness shutdown.
+  process.stdin.once("end", () => {
+    shutdown.abort(new Error("stdio_closed"));
+    void stdio.close();
+  });
 }
 
 export { TOOLS, TOOL_OUTPUT_SCHEMA };
