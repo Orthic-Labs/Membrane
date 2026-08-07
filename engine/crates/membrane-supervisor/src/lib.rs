@@ -17,6 +17,7 @@ pub mod heartbeat;
 pub mod lease;
 pub mod lock;
 pub mod resident;
+pub mod startup;
 pub mod supervisor;
 pub mod watcher;
 
@@ -32,6 +33,11 @@ pub use lease::{
 };
 pub use lock::{pid_alive_probe, release_if_owned, try_acquire_until, LockOutcome, SupervisorLock};
 pub use resident::{preflight_resident_binary, ResidentHandle, ResidentInvocation};
+pub use startup::{
+    install_operation, load as load_startup_opt_in, opt_in as opt_in_startup,
+    persist as persist_startup_opt_in, resume_operation, uninstall_operation, StartupOperation,
+    StartupPlatform, StartupReceiptV1, STARTUP_RECEIPT_FILE, STARTUP_RECEIPT_SCHEMA_VERSION,
+};
 pub use supervisor::{
     default_state_path, dry_run, interruptible_sleep, load_or_init_state, save_state, CheckReport,
     CycleOutcome, Supervisor, SupervisorState, SUPERVISOR_STATE_SCHEMA_VERSION,

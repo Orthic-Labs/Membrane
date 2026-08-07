@@ -97,6 +97,16 @@ holding the lock is a real problem the user needs to see.
 
 ## Restart policy
 
+## Opt-in startup (MBR-208)
+
+Startup is disabled until the current user opts in. macOS uses only
+`~/Library/LaunchAgents/com.membrane.supervisor.plist`; Windows uses only
+`\Membrane\Supervisor` at least privilege. `startup-opt-in.json` records the
+owned entry. Resume validates persisted opt-in and returns a reconciliation
+operation for current supervisor lease state; uninstall removes it only when its
+receipt has the exact Membrane owner and canonical entry. Enterprise service
+deployment is separate, explicit administrator work and is never selected by opt-in.
+
 The supervisor's restart policy is configured in `install/config.example.json`. It
 applies only to the resident (the OS service manager restarts the supervisor itself):
 
