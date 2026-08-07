@@ -3,6 +3,7 @@
 //! These modules retain existing SQLite schema, durable identifiers, and installation lineage.
 
 pub mod context_telemetry;
+pub mod db;
 pub mod installation_identity;
 pub mod memdb;
 pub mod scope;

@@ -27,6 +27,7 @@ pub mod canonical;
 pub mod heartbeat;
 pub mod installation;
 pub mod lease;
+pub mod observable_event;
 pub mod operations;
 pub mod types;
 
@@ -37,6 +38,9 @@ pub use installation::{
     MANIFEST_SCHEMA_VERSION, PROTOCOL_SCHEMA_VERSION,
 };
 pub use lease::{ComponentLeaseV1, COMPONENT_LEASE_SCHEMA_VERSION};
+pub use observable_event::{
+    ObservableEventKindV1, ObservableEventV1, OBSERVABLE_EVENT_SCHEMA_VERSION,
+};
 pub use operations::{
     operations, operations_slice, ErrorResult, OperationIndexEntry, OperationResult, OperationSpec,
     OperationsIndex, ResultKind, SuccessResult, OPERATIONS,
@@ -132,6 +136,11 @@ pub const SHAPES: &[ContractShape] = &[
         "KnowledgeEmissionV1",
         "knowledge-emission.v1.schema.json",
         "knowledge-emission.v1.golden.json"
+    ),
+    shape!(
+        "ObservableEventV1",
+        "observable-event.v1.schema.json",
+        "observable-event.v1.golden.json"
     ),
 ];
 
