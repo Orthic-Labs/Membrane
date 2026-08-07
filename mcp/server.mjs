@@ -55,6 +55,7 @@ const CALLER_SCHEMA = {
 const TOOL_DEFINITIONS = [
   { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." }, explicitRepositoryIds: { type: "array", items: { type: "string" }, description: "MBR-004 bounded routing: workspace scope only. Exact repository ids to select even without an alias mention." }, deadlineMs: { type: "integer", minimum: 1, description: "MBR-005: optional absolute budget for the workspace fan-out in ms; one ingress deadline bounds all children." }, taskEnvelope: { type: "object", description: "MBR-007: orthic.task-envelope.v1 identity preserved end to end." }, turnEnvelope: { type: "object", description: "MBR-007: orthic.turn-envelope.v1 identity preserved end to end." }, clientEnvelope: { type: "object", description: "MBR-007: orthic.client-envelope.v1 identity." }, overlay: { type: "object", description: "MBR-007: orthic.overlay-identity.v1 worktree/session overlay." } } } },
   { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
+  { name: "membrane_cortex", description: "Bounded Cortex architecture, symbol, reference, impact, or changes view with generation freshness and source-hash resolver handles.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], additionalProperties: false, properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["architecture", "symbol", "reference", "references", "impact", "changes"] }, node: { type: "string", minLength: 1, maxLength: 256, pattern: "^[A-Za-z0-9_.$:/-]+$" }, depth: { type: "integer", minimum: 1, maximum: 5 }, limit: { type: "integer", minimum: 1, maximum: 100 }, budget: { type: "integer", minimum: 1, maximum: 10000 } }, oneOf: [{ properties: { operation: { enum: ["architecture", "changes"] } }, not: { required: ["node"] } }, { properties: { operation: { enum: ["symbol", "reference", "references", "impact"] } }, required: ["node"] }] } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
   { name: "membrane_checkpoint_save", description: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.", inputSchema: { type: "object", required: ["repository", "caller", "checkpoint"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, checkpoint: { type: "object" } } } },
   { name: "membrane_checkpoint_load", description: "Load an unexpired A0 session checkpoint for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "id"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, id: { type: "string" }, asOfMs: { type: "integer", minimum: 0 } } } },
@@ -416,6 +417,93 @@ async function durableFeedback(binding, args) {
     throw new Error(`durable feedback write failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
+
+const CORTEX_OPERATIONS = new Set(["architecture", "symbol", "reference", "references", "impact", "changes"]);
+const SAFE_CORTEX_VALUE = /^[A-Za-z0-9_.$:/-]{1,256}$/;
+const SHA256 = /^sha256:[0-9a-f]{64}$/;
+const GIT_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+function cortexValue(value) { return typeof value === "string" && SAFE_CORTEX_VALUE.test(value) ? value : null; }
+function cortexHash(value) { return typeof value === "string" && SHA256.test(value) ? value : null; }
+function validCortexAuth(args) {
+  const caller = args.caller;
+  const bounded = (value, max) => typeof value === "string" && value.length > 0 && Buffer.byteLength(value, "utf8") <= max;
+  if (!bounded(args.repository, 4096) || !caller || typeof caller !== "object" || Array.isArray(caller)) return false;
+  if (!bounded(caller.root, 4096) || !bounded(caller.repositoryId, 256) || !bounded(caller.scopeId, 256)) return false;
+  const allowed = new Set(["root", "repositoryId", "scopeId", "scopeDescriptor"]);
+  return Object.keys(caller).every((key) => allowed.has(key)) && (caller.scopeDescriptor === undefined || (caller.scopeDescriptor && typeof caller.scopeDescriptor === "object" && !Array.isArray(caller.scopeDescriptor)));
+}
+function cortexInteger(value, fallback, min, max, field) {
+  if (value === undefined) return fallback;
+  if (!Number.isInteger(value) || value < min || value > max) throw new Error(`invalid cortex ${field}`);
+  return value;
+}
+export function cortexCommand(args) {
+  const operation = args.operation;
+  if (!CORTEX_OPERATIONS.has(operation)) throw new Error("invalid cortex operation");
+  if (!validCortexAuth(args)) throw new Error("invalid cortex auth envelope");
+  const allowed = operation === "architecture" || operation === "changes" ? new Set(["repository", "caller", "operation", "limit", "budget"])
+    : new Set(["repository", "caller", "operation", "node", "limit", "budget", "depth"]);
+  for (const key of Object.keys(args)) if (!allowed.has(key)) throw new Error(`invalid cortex ${key}`);
+  const term = args.node ?? args.query;
+  if (operation === "architecture" || operation === "changes" ? (args.node !== undefined || args.query !== undefined || args.from !== undefined || args.to !== undefined)
+    : !cortexValue(term)) throw new Error("invalid cortex node or query");
+  const limit = cortexInteger(args.limit, 20, 1, 100, "limit");
+  const budget = cortexInteger(args.budget, 2000, 1, 10000, "budget");
+  const depth = args.depth === undefined ? null : cortexInteger(args.depth, 1, 1, 5, "depth");
+  const command = operation === "architecture" ? ["architecture"]
+    : operation === "changes" ? ["manifest"]
+    : operation === "symbol" ? ["resolve", "--node", term]
+    : (operation === "references" || operation === "reference") ? ["neighbors", "--node", term, "--direction", "both"]
+    : operation === "impact" ? ["impact", "--node", term]
+    : ["search", "--query", term];
+  command.push("--json", "--limit", String(limit), "--budget", String(budget));
+  if (depth !== null) command.push("--depth", String(depth));
+  return { operation, command };
+}
+function cortexFreshness(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const generationId = cortexValue(value.generationId || value.id);
+  const barrierResult = value.barrierResult === "caught_up" || value.barrierResult === "timeout" ? value.barrierResult : null;
+  const receiptId = cortexValue(value.receiptId);
+  return generationId && barrierResult && receiptId ? { generationId, barrierResult, receiptId } : null;
+}
+export function sanitizeCortexPayload(payload, operation) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("cortex_unavailable");
+  const freshness = cortexFreshness(payload.freshness || payload.freshnessReceipt || payload.manifest || payload.sourceGeneration);
+  if (operation === "changes") {
+    const generationId = cortexValue(payload.generationId);
+    const manifestDigest = cortexHash(payload.manifestDigest);
+    const observation = payload.sourceObservation;
+    const commitValue = observation?.commit || observation?.head;
+    const commit = typeof commitValue === "string" && GIT_COMMIT.test(commitValue) ? commitValue : null;
+    const clean = typeof observation?.clean === "boolean" ? observation.clean : null;
+    if (!generationId || !manifestDigest || !commit || clean === null || !freshness || freshness.generationId !== generationId) throw new Error("cortex_unavailable");
+    return { operation, sourceGeneration: generationId, freshness, changes: { generationId, manifestDigest, sourceObservation: { commit, clean } }, resolver: "cortex graph manifest --json" };
+  }
+  const rows = payload.results || payload.nodes || payload.impacted || payload.examples || (payload.id ? [payload] : []);
+  const items = (Array.isArray(rows) ? rows : [rows]).filter((row) => row && typeof row === "object").map((row) => {
+    const id = cortexValue(row.id || row.nodeId || row.path);
+    const sourceHash = cortexHash(row.sourceHash || row.contentHash || row.contentDigest);
+    const resolver = id ? `cortex graph resolve --node ${id}` : null;
+    return { id, name: cortexValue(row.name || row.qualifiedName), kind: cortexValue(row.kind), path: cortexValue(row.path || row.sourceRef), sourceHash, startLine: Number.isInteger(row.startLine) && row.startLine > 0 ? row.startLine : null, endLine: Number.isInteger(row.endLine) && row.endLine > 0 ? row.endLine : null, freshness, resolver: resolver && resolver.length <= 320 ? resolver : null };
+  }).filter((item) => item.id && item.sourceHash && item.freshness && item.resolver);
+  return { operation, sourceGeneration: freshness?.generationId || null, freshness, items };
+}
+export async function cortexCapability(binding, args, signal) {
+  const cli = process.env.CORTEX_CLI || resolve(HERE, "..", "..", "cortex", "scripts", "cortex.mjs");
+  const { operation, command } = cortexCommand(args);
+  let out;
+  try {
+    out = await run(process.execPath, [cli, "graph", ...command], "", { ...process.env, WORKSPACE_ROOT: binding.root }, signal);
+  } catch {
+    throw new Error("cortex_unavailable");
+  }
+  if (out.code !== 0) throw new Error("cortex_unavailable");
+  let payload;
+  try { payload = JSON.parse(out.stdout); } catch { throw new Error("cortex_unavailable"); }
+  try { return sanitizeCortexPayload(payload, operation); }
+  catch { throw new Error("cortex_unavailable"); }
+}
 async function callTool(name, args, trace = {}, lifecycle) {
   if (name === "membrane_context") {
     await lifecycle?.checkpoint("authorization", 10);
@@ -545,6 +633,10 @@ async function callTool(name, args, trace = {}, lifecycle) {
     const install = await installationBindingFor(binding);
     const out = await run(process.env.CRYPT_BIN || "crypt", cryptArgs(["doc", "read", "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash], install), "", await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "source_read_unavailable", detail: out.stderr.slice(0, 240) });
+  }
+  if (name === "membrane_cortex") {
+    const binding = await authorize(args, "context");
+    return cortexCapability(binding, args, lifecycle?.signal);
   }
   if (name === "membrane_checkpoint_save") {
     const binding = await authorize(args, "checkpoint");

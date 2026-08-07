@@ -3,7 +3,7 @@
   "groups": {
     "default": ["membrane_context"],
     "memory": ["membrane_context", "membrane_knowledge_propose", "membrane_checkpoint_save", "membrane_checkpoint_load", "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback"],
-    "cortex": ["membrane_source_read"],
+    "cortex": ["membrane_source_read", "membrane_cortex"],
     "diagnostic": []
   }
 }
