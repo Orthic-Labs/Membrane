@@ -11,7 +11,7 @@ impl McpServer {
         let result = match method {
             "initialize" => crate::initialize_response(),
             "notifications/initialized" => return None,
-            "tools/list" => json!({"tools": crate::tools::definitions()}),
+            "tools/list" => json!({"tools": crate::tools::negotiated_definitions(request.get("params"))}),
             "resources/list" => crate::resources::list_payload(),
             "resources/read" => {
                 let uri = request

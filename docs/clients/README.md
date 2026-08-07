@@ -10,6 +10,11 @@ operator-facing view of the Membrane client surface.
 
 ## Files
 
+`operations/toolsets.yaml` is valid JSON-as-YAML discovery policy. Clients may
+send `params._meta["membrane.toolsets.v1"]` to `tools/list`; invalid requests
+fall back to `membrane_context`. Native discovery negotiates same metadata but
+advertises no tools until native tool execution exists.
+
 | Path | Purpose |
 |---|---|
 | `operations/clients.yaml` | Human-authored registry — one row per client. |

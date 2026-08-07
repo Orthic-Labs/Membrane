@@ -20,6 +20,7 @@ import { intersectAuthority, permitsLevel, canReachTarget } from "./authorizatio
 import { selectWorkspaceTargets } from "./workspace-routing.mjs";
 import { createDeadline, deadlineSignal, mapConcurrent, terminalReason, timeoutReceipt } from "./deadline.mjs";
 import { boundedLifecycleId, createLifecycle, withCancellationGrace } from "./lifecycle.mjs";
+import { toolsetNames } from "./toolsets.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -754,6 +755,11 @@ export function buildServer({ shutdownSignal } = {}) {
       }
     });
   }
+  server.server.setRequestHandler("tools/list", (request) => ({
+    tools: TOOLS.filter((tool) => toolsetNames(request.params).includes(tool.name)).map((tool) => ({
+      name: tool.name, description: tool.description, inputSchema: tool.inputSchema, outputSchema: TOOL_OUTPUT_SCHEMA,
+    })),
+  }));
   server.registerResource("Membrane protocol v1", PROTOCOL_URI, { mimeType: "text/markdown" }, async (uri) => {
     return { contents: [{ uri: uri.href, mimeType: "text/markdown", text: protocol }] };
   });

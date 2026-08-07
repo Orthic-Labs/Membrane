@@ -119,11 +119,15 @@ const rows = await rpc([
 ]);
 assert.match(rows[0].result.instructions, /federated context/i);
 const tools = rows[1].result.tools.map((tool) => tool.name).sort();
-assert.deepEqual(tools, ["membrane_checkpoint_load", "membrane_checkpoint_save", "membrane_context", "membrane_feedback", "membrane_knowledge_propose", "membrane_scratchpad", "membrane_source_read", "membrane_temporal_fact", "membrane_working_context"]);
+assert.deepEqual(tools, ["membrane_context"]);
 assert.deepEqual(tools.filter((name) => /(?:^|_)(?:put|get|recall|doctor|schema|filesystem|plan_context)(?:$|_)/.test(name)), []);
 assert.deepEqual(rows[2].result.resources, [{ uri: "membrane://protocol/v1", name: "Membrane protocol v1", mimeType: "text/markdown" }]);
 assert.match(rows[3].result.contents[0].text, /federate/i);
 assert.doesNotMatch(rows[3].result.contents[0].text, /plan_context/i);
+const cortexToolset = await rpc([{ jsonrpc: "2.0", id: 5, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["cortex"] } } }]);
+assert.deepEqual(cortexToolset[0].result.tools.map((tool) => tool.name).sort(), ["membrane_context", "membrane_source_read"]);
+const invalidToolset = await rpc([{ jsonrpc: "2.0", id: 6, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["cortex", "cortex"] } } }]);
+assert.deepEqual(invalidToolset[0].result.tools.map((tool) => tool.name), ["membrane_context"]);
 for (const tool of rows[1].result.tools) {
   assert.ok(tool.outputSchema, `${tool.name} declares an output schema`);
   assert.equal(tool.inputSchema.properties.traceparent, undefined, `${tool.name} does not advertise traceparent as an argument`);
@@ -467,6 +471,7 @@ const modern = await rpc([
 ], advisoryEnv);
 const modernById = new Map(modern.map((row) => [row.id, row]));
 assert.deepEqual(modernById.get(10).result.supportedVersions, ["2026-07-28"]);
+assert.deepEqual(modernById.get(11).result.tools.map((tool) => tool.name), ["membrane_context"]);
 for (const tool of modernById.get(11).result.tools) {
   assert.ok(tool.outputSchema, `${tool.name} declares an output schema`);
 }
@@ -477,6 +482,7 @@ for (const id of [12, 13, 16, 17, 18, 19, 29]) {
   assert.ok(row.result.structuredContent, "modern calls include structuredContent");
   assert.equal(typeof row.result.content?.[0]?.text, "string", "modern calls retain text fallback");
 }
+assert.equal(modernById.get(12).result.isError, false, "direct calls stay available when discovery hides feedback");
 assert.deepEqual(modernById.get(12).result.structuredContent.trace, {
   traceparent: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
   tracestate: "\t1@system=foo \t, \t, vendor=bar\t",
