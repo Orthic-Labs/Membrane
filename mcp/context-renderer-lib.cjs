@@ -49,6 +49,118 @@ const HOST_DELIVERY_RECEIPT_SCHEMA = "orthic.host-delivery-receipt.v1";
  */
 const NATIVE_DELIVERY_STATUSES = Object.freeze(["native", "unknown", "missing"]);
 
+/**
+ * MBR-608: the four explicit lanes every block occupies under the single
+ * cross-provider attention budget. The order is the contract order; both
+ * the Rust reconciliation and the JS reconciliation iterate this exact
+ * sequence so receipts never reorder.
+ */
+const BUDGET_LANE_KINDS = Object.freeze(["native", "rendered", "resolver_backed", "metadata_only"]);
+
+/**
+ * MBR-608: the lane every block lands in given `deliveryClass` and
+ * `deliveryMode`. `Native` delivery always wins, regardless of
+ * `deliveryClass` — a host with a matching host receipt already has the
+ * content zero bytes / zero tokens. Returns `null` when the block cannot be
+ * mapped to any lane; the reconciliation then records an unclassified block.
+ */
+function classifyBudgetLane(block) {
+  if (!block || typeof block !== "object") return null;
+  if (block.deliveryMode === "native") return "native";
+  switch (block.deliveryClass) {
+    case "rendered":
+      return "rendered";
+    case "metadata_only":
+      return "metadata_only";
+    case "resolver_backed":
+      return "resolver_backed";
+    default:
+      return null;
+  }
+}
+
+/**
+ * MBR-608: stable alert ids emitted by the reconciliation. The first
+ * failure (in deterministic order) wins; the others are computed but only
+ * the surfaced one is the receipt's `alert` field.
+ */
+const BUDGET_RECONCILIATION_ALERTS = Object.freeze({
+  unclassified: "budget_lane_unclassified",
+  globalCeilingExceeded: "global_ceiling_exceeded",
+  selectedWithoutDelivered: "selected_without_delivered",
+});
+
+/**
+ * MBR-608: build a single, cross-provider budget reconciliation from a
+ * finalized packet. The reconciliation is the receipt-side check that
+ * selected and delivered tokens agree under one budget; the only source of
+ * truth is the per-block `lane` the renderer stamps. The planner-side
+ * CrossProviderBudget is the pre-image; this function is the canonical
+ * post-image that receipts carry.
+ */
+function reconcileBudget(packet) {
+  const blocks = Array.isArray(packet?.blocks) ? packet.blocks : [];
+  const budget = packet?.budget && typeof packet.budget === "object" ? packet.budget : {};
+  const maxTokens = Number.isInteger(budget.maxTokens) ? budget.maxTokens : 0;
+
+  // Initialize one zero-default row per lane, in the contract order.
+  const lanes = BUDGET_LANE_KINDS.map((lane) => ({
+    lane,
+    selectedTokens: 0,
+    deliveredTokens: 0,
+    deliveredChars: 0,
+    blocks: 0,
+  }));
+  const laneIndex = Object.fromEntries(lanes.map((row, index) => [row.lane, index]));
+
+  let unclassifiedBlocks = 0;
+  for (const block of blocks) {
+    const lane = classifyBudgetLane(block);
+    if (lane === null) {
+      unclassifiedBlocks += 1;
+      continue;
+    }
+    const row = lanes[laneIndex[lane]];
+    row.selectedTokens += Number(block?.selectedTokens ?? 0) || 0;
+    row.deliveredTokens +=
+      lane === "rendered" ? Number(block?.renderedTokens ?? 0) || 0 : 0;
+    row.deliveredChars += Number(block?.deliveredChars ?? 0) || 0;
+    row.blocks += 1;
+  }
+
+  const totalSelectedTokens = lanes.reduce((sum, row) => sum + row.selectedTokens, 0);
+  const totalDeliveredTokens = lanes.reduce((sum, row) => sum + row.deliveredTokens, 0);
+  const totalDeliveredChars = lanes.reduce((sum, row) => sum + row.deliveredChars, 0);
+
+  const ceilingExceeded = maxTokens > 0 && totalSelectedTokens > maxTokens;
+  const selectedWithoutDelivered = lanes.some(
+    (row) => row.lane === "rendered" && row.selectedTokens > row.deliveredTokens,
+  );
+
+  let alert = null;
+  if (unclassifiedBlocks > 0) {
+    alert = BUDGET_RECONCILIATION_ALERTS.unclassified;
+  } else if (ceilingExceeded) {
+    alert = BUDGET_RECONCILIATION_ALERTS.globalCeilingExceeded;
+  } else if (selectedWithoutDelivered) {
+    alert = BUDGET_RECONCILIATION_ALERTS.selectedWithoutDelivered;
+  }
+
+  const reconciliation = {
+    schemaVersion: 1,
+    maxTokens,
+    totalSelectedTokens,
+    totalDeliveredTokens,
+    totalDeliveredChars,
+    lanes,
+    unclassifiedBlocks,
+    balanced: alert === null,
+    alert,
+  };
+  if (alert === null) delete reconciliation.alert;
+  return reconciliation;
+}
+
 const SOURCE_HASH_RE = /^sha256:[a-f0-9]{64}$/;
 
 /**
@@ -230,6 +342,11 @@ function finalize(packet, doorChars = MAX_CONTEXT_CHARS) {
       deliveryMetrics: contentMetrics,
       dropReason,
     });
+    // MBR-608: stamp the explicit lane this block occupies under the single
+    // cross-provider budget. If `deliveryMode` was set elsewhere (e.g. by
+    // applyDeliveryLedger for natively-loaded rules), preserve it so
+    // classifyBudgetLane routes the block to the native lane.
+    block.lane = classifyBudgetLane(block);
   }
 
   const accounting = {};
@@ -259,6 +376,11 @@ function finalize(packet, doorChars = MAX_CONTEXT_CHARS) {
 
   // MBR-011: surface a selected-without-delivery failure on the packet itself.
   packet.deliveryOutcome = evaluateDeliveryOutcome(packet);
+
+  // MBR-608: build the single cross-provider budget reconciliation and
+  // stamp it on the packet. This is the receipt-side check that every
+  // block's selected tokens and delivered tokens agree under one budget.
+  packet.reconciliation = reconcileBudget(packet);
 
   return { body: sections.join("\n\n"), deliveredChars: used };
 }
@@ -447,12 +569,17 @@ module.exports = {
   SELECTED_WITHOUT_DELIVERY_ALERT,
   SELF_LOADING_RULE_CLIENTS,
   applyDeliveryLedger,
+  // MBR-608: cross-provider budget lane API.
+  BUDGET_LANE_KINDS,
+  BUDGET_RECONCILIATION_ALERTS,
   canonicalDeliveryMetrics,
+  classifyBudgetLane,
   digest,
   evaluateDeliveryOutcome,
   finalize,
   loadsWorkspaceRules,
   matchHostDeliveryReceipt,
+  reconcileBudget,
   typedClient,
   validateHostDeliveryReceipt,
 };

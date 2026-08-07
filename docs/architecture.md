@@ -15,12 +15,46 @@ lives in `docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` and `docs/MEMBRANE-ADR-IN
 | Client adapters | `docs/membrane/capability-matrix.v1.json` | seven host adapters, per-host honest capability levels |
 | Federation gateway | loopback `POST /federate` | parallel provider fan-out behind the context tool |
 | Crypt engine | `engine/` | durable memory: Rust CLI plus loopback service over SQLite |
+| Cross-provider budget | `mcp/context-renderer-lib.cjs` + `engine/crates/membrane-core/` | one attention budget with explicit lanes; every receipt carries a reconciliation |
 
 ## Interfaces
 
 - `membrane_context` and the other eight MCP tools are the client contract;
   provider internals never leak into adapters.
 - The federation gateway is the only route from tools to memory/recall providers.
+- The cross-provider budget (MBR-608) reconciles every receipt's selected
+  and delivered tokens under one budget, split into four explicit lanes.
+  See [Cross-provider budget model](#cross-provider-budget-model) below.
+
+## Cross-provider budget model
+
+The planner fills a single global token ceiling; the renderer emits against
+it; the receipt carries the reconciliation. Lanes are the contract surface
+that sums to the global total — there is no separate per-provider counter.
+
+| Lane | When a block lands here | Token consumption |
+|---|---|---|
+| `native` | Host loaded the content with a matching host receipt (MBR-010) | zero bytes; zero tokens |
+| `rendered` | The renderer serialized inline text into the prompt | `renderedTokens` |
+| `resolver_backed` | Resolver reference only; the agent retrieves on demand | zero tokens; `deliveredChars` only |
+| `metadata_only` | Metadata without content | zero tokens; zero bytes |
+
+Lanes are mutually exclusive per block. The reconciliation on every
+`context.receipt` packet (`packet.reconciliation`) carries the per-lane
+totals and the global total, plus a stable alert id on the FIRST failure in
+deterministic order:
+
+- `budget_lane_unclassified` — a block could not be mapped to any lane
+  (contract drift; the renderer must stamp `block.lane`).
+- `global_ceiling_exceeded` — selected tokens exceed `packet.budget.maxTokens`.
+- `selected_without_delivered` — a rendered lane selected more tokens than
+  it delivered (visible failure like MBR-011's alert).
+
+The source of truth is `mcp/context-renderer-lib.cjs` (the only renderer the
+Membrane-owned surface and the Forge hook share). The Rust mirror lives at
+`engine/crates/membrane-core/src/reconcile.rs` and the typed contract lives
+at `engine/crates/membrane-protocol/src/types.rs` (`BudgetLaneKind`,
+`BudgetReconciliationV1`, `BudgetReconciliationRowV1`).
 
 ## Platform status
 
@@ -29,4 +63,7 @@ Supported platforms are **macOS and Windows** (tier 1). Linux is tier-2 best-eff
 ## Derived from
 
 - `mcp/server.mjs`
+- `mcp/context-renderer-lib.cjs`
+- `engine/crates/membrane-core/`
+- `engine/crates/membrane-protocol/src/types.rs`
 - `docs/membrane/capability-matrix.v1.json`

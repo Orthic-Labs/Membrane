@@ -1379,7 +1379,13 @@ mod tests {
 
     #[test]
     fn protected_candidate_wins_duplicate_source_hash_over_higher_scored_live_candidate() {
-        let mut live = candidate("live-winner-before-protection", "repo_code_overlay", 20, 0.99, false);
+        let mut live = candidate(
+            "live-winner-before-protection",
+            "repo_code_overlay",
+            20,
+            0.99,
+            false,
+        );
         live.provider = Some("live".into());
         live.source_hash = format!("sha256:{}", "b".repeat(64));
         live.text = "mutable live rendering".into();
@@ -1392,14 +1398,27 @@ mod tests {
 
         assert_eq!(out.packet.blocks.len(), 1);
         assert_eq!(out.packet.blocks[0].id, "protected-authority");
-        let live_receipt = out.receipts.iter().find(|receipt| receipt.id == "live-winner-before-protection").unwrap();
+        let live_receipt = out
+            .receipts
+            .iter()
+            .find(|receipt| receipt.id == "live-winner-before-protection")
+            .unwrap();
         assert_eq!(live_receipt.reason, "duplicate_source_hash");
-        assert_eq!(live_receipt.deduplicated_to.as_deref(), Some("protected-authority"));
+        assert_eq!(
+            live_receipt.deduplicated_to.as_deref(),
+            Some("protected-authority")
+        );
     }
 
     #[test]
     fn protected_candidate_wins_normalized_content_over_higher_scored_live_candidate() {
-        let mut live = candidate("live-winner-before-protection", "repo_code_overlay", 20, 0.99, false);
+        let mut live = candidate(
+            "live-winner-before-protection",
+            "repo_code_overlay",
+            20,
+            0.99,
+            false,
+        );
         live.provider = Some("live".into());
         live.text = "same protected fact\r\nwith whitespace   \r\n".into();
         let mut protected = candidate("protected-authority", "doc", 20, 0.01, true);
@@ -1410,9 +1429,16 @@ mod tests {
 
         assert_eq!(out.packet.blocks.len(), 1);
         assert_eq!(out.packet.blocks[0].id, "protected-authority");
-        let live_receipt = out.receipts.iter().find(|receipt| receipt.id == "live-winner-before-protection").unwrap();
+        let live_receipt = out
+            .receipts
+            .iter()
+            .find(|receipt| receipt.id == "live-winner-before-protection")
+            .unwrap();
         assert_eq!(live_receipt.reason, "duplicate_normalized_content");
-        assert_eq!(live_receipt.deduplicated_to.as_deref(), Some("protected-authority"));
+        assert_eq!(
+            live_receipt.deduplicated_to.as_deref(),
+            Some("protected-authority")
+        );
     }
 
     #[test]
@@ -1647,13 +1673,7 @@ mod tests {
             memory.score_components.insert("structural".into(), 0.8);
             candidates.push(memory);
         }
-        let mut branch = candidate(
-            "git:meta:branch:main",
-            "git_meta",
-            8,
-            0.4,
-            false,
-        );
+        let mut branch = candidate("git:meta:branch:main", "git_meta", 8, 0.4, false);
         branch.provider = Some("git".into());
         candidates.push(branch);
 
@@ -1738,13 +1758,7 @@ mod tests {
             spoof.provider = Some("crypt".into());
             candidates.push(spoof);
         }
-        let mut branch = candidate(
-            "git:meta:branch:main",
-            "git_meta",
-            8,
-            0.4,
-            false,
-        );
+        let mut branch = candidate("git:meta:branch:main", "git_meta", 8, 0.4, false);
         branch.provider = Some("git".into());
         candidates.push(branch);
 
@@ -2120,18 +2134,9 @@ mod tests {
             packet["providerAccounting"]["blueprint"]["selectedTokens"],
             100
         );
-        assert_eq!(
-            packet["providerAccounting"]["crypt"]["selectedTokens"],
-            40
-        );
-        assert_eq!(
-            packet["providerAccounting"]["crypt"]["renderedTokens"],
-            0
-        );
-        assert_eq!(
-            packet["providerAccounting"]["crypt"]["deliveredChars"],
-            0
-        );
+        assert_eq!(packet["providerAccounting"]["crypt"]["selectedTokens"], 40);
+        assert_eq!(packet["providerAccounting"]["crypt"]["renderedTokens"], 0);
+        assert_eq!(packet["providerAccounting"]["crypt"]["deliveredChars"], 0);
         assert_eq!(
             packet["providerAccounting"]["crypt"]["dropReason"],
             "missing_resolver"

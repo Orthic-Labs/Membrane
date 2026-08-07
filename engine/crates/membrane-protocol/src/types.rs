@@ -237,6 +237,71 @@ pub enum DeliveryClass {
     Rendered,
 }
 
+/// MBR-608: explicit lane every block occupies under the single
+/// cross-provider attention budget. Lanes are mutually exclusive per block;
+/// the cross-provider total is the sum of the per-lane totals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BudgetLaneKind {
+    /// Host-loaded content with a matching host receipt (MBR-010). Zero bytes
+    /// / tokens; the host already has the data.
+    Native,
+    /// Inline text the renderer serialized into the prompt.
+    Rendered,
+    /// Resolver-backed reference; the agent retrieves on demand.
+    ResolverBacked,
+    /// Metadata without content. Zero tokens; zero bytes.
+    MetadataOnly,
+}
+
+impl BudgetLaneKind {
+    /// Stable, lowercase label shared with the JS renderer and the
+    /// receipt code. The label is the canonical string contract.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Native => "native",
+            Self::Rendered => "rendered",
+            Self::ResolverBacked => "resolver_backed",
+            Self::MetadataOnly => "metadata_only",
+        }
+    }
+
+    /// True when the lane consumes tokens. `Native`, `ResolverBacked`, and
+    /// `MetadataOnly` are zero-token lanes; only `Rendered` adds to the
+    /// cross-provider selected/delivered totals.
+    pub fn consumes_tokens(&self) -> bool {
+        matches!(self, Self::Rendered)
+    }
+}
+
+impl std::fmt::Display for BudgetLaneKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// The fixed, ordered set of lanes. The order is the contract order; both
+/// the Rust and TypeScript reconciliations iterate this exact sequence so the
+/// receipts never reorder.
+pub const BUDGET_LANE_KINDS: &[BudgetLaneKind] = &[
+    BudgetLaneKind::Native,
+    BudgetLaneKind::Rendered,
+    BudgetLaneKind::ResolverBacked,
+    BudgetLaneKind::MetadataOnly,
+];
+
+/// MBR-608: how the content reached the agent at the renderer's level of
+/// detail. Carries the same wire-level meaning as the JS
+/// `mcp/context-renderer-lib.cjs` `deliveryMode` enum but is the canonical
+/// Rust type for IPC and the receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryMode {
+    Native,
+    Inline,
+    Reference,
+}
+
 /// Why content was (or would be) dropped from the final packet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -280,6 +345,38 @@ pub struct ProviderAccountingV1 {
     pub drop_reason: DropReason,
 }
 
+/// MBR-608: one row of the receipt-side reconciliation. Each row is one
+/// lane under the single cross-provider attention budget. The list always
+/// iterates in the canonical lane order: `native`, `rendered`,
+/// `resolver_backed`, `metadata_only`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BudgetReconciliationRowV1 {
+    pub lane: BudgetLaneKind,
+    pub selected_tokens: u32,
+    pub delivered_tokens: u32,
+    pub delivered_chars: u32,
+    pub blocks: u32,
+}
+
+/// MBR-608: the single receipt-side reconciliation. Every receipt carries
+/// one. The per-lane totals are the sum of the per-block lane totals; the
+/// alert id is the FIRST failure (deterministic order).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BudgetReconciliationV1 {
+    pub schema_version: u32,
+    pub max_tokens: u32,
+    pub total_selected_tokens: u32,
+    pub total_delivered_tokens: u32,
+    pub total_delivered_chars: u32,
+    pub lanes: Vec<BudgetReconciliationRowV1>,
+    pub unclassified_blocks: u32,
+    pub balanced: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alert: Option<String>,
+}
+
 /// One admitted block of context in the packet the agent receives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -320,6 +417,14 @@ pub struct BlockV1 {
     pub protected: bool,
     pub recoverable: bool,
     pub resolver: String,
+    /// MBR-608: how the content reached the agent (native / inline / reference).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_mode: Option<DeliveryMode>,
+    /// MBR-608: the explicit lane this block occupies under the single
+    /// cross-provider budget. The renderer stamps this when the block
+    /// finalizes; the receipt reconciliation sums per-block lanes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<BudgetLaneKind>,
     pub text: String,
 }
 
@@ -337,6 +442,10 @@ pub struct ContextPacketV1 {
     pub provider_accounting: BTreeMap<String, ProviderAccountingV1>,
     pub blocks: Vec<BlockV1>,
     pub omissions: Vec<OmissionV1>,
+    /// MBR-608: the single cross-provider budget reconciliation. Every
+    /// receipt carries one of these.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reconciliation: Option<BudgetReconciliationV1>,
 }
 
 // ============================================================================

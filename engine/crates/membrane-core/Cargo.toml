@@ -1,0 +1,22 @@
+[package]
+name = "membrane-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["Crypt"]
+license-file = "../LICENSE"
+description = "Membrane cross-provider budget and lane reconciliation. Owns the single cross-provider attention budget whose explicit lanes reconcile every receipt's selected and delivered tokens."
+
+# Standalone workspace marker so the crate can be checked in isolation
+# (`cargo check --manifest-path`) before the integrator adds it to the
+# shared workspace. The integrator removes `[workspace]` and converts
+# the duplicated keys to `*.workspace = true` references when adding the
+# crate to `engine/Cargo.toml`.
+[workspace]
+
+[dependencies]
+membrane-protocol = { path = "../membrane-protocol" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+
+[dev-dependencies]
