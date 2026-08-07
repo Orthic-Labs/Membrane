@@ -28,6 +28,7 @@ pub mod plan_context;
 pub mod planner_metrics;
 pub mod planes;
 pub mod prep;
+pub mod provenance;
 pub mod receipt;
 pub mod release_identity;
 pub mod runc;
@@ -37,6 +38,10 @@ pub mod skel;
 pub mod store;
 pub use crypt_store::{context_telemetry, installation_identity, memdb, scope, time};
 pub use crypt_store::db::{record_observable_event, StoreError};
+pub use provenance::{
+    capture_working_tree, observe, record_provenance, ProvenanceError, ProvenanceRowV1,
+    WorkingTreeSnapshotV1, PROVENANCE_ROW_SCHEMA_VERSION, WORKING_TREE_SNAPSHOT_SCHEMA_VERSION,
+};
 pub mod truncate;
 pub mod vocabulary;
 
