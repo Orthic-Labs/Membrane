@@ -24,6 +24,7 @@
 //! See `docs/protocol/source-of-truth.md` for the full contract story.
 
 pub mod canonical;
+pub mod fusion;
 pub mod heartbeat;
 pub mod installation;
 pub mod lease;
@@ -32,6 +33,7 @@ pub mod operations;
 pub mod types;
 
 pub use canonical::{canonical_json_of, canonicalize, digest_str};
+pub use fusion::{FusionDecisionV1, FusionReceiptV1};
 pub use heartbeat::{
     AdapterHeartbeatV1, AdapterStatus, MechanismReceiptV1, ADAPTER_HEARTBEAT_SCHEMA_VERSION,
 };

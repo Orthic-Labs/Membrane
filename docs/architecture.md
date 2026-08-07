@@ -56,6 +56,16 @@ Membrane-owned surface and the Forge hook share). The Rust mirror lives at
 at `engine/crates/membrane-protocol/src/types.rs` (`BudgetLaneKind`,
 `BudgetReconciliationV1`, `BudgetReconciliationRowV1`).
 
+## Deterministic fusion baseline (MBR-407)
+
+Completed provider sets enter `membrane_core::fuse` as a fixed corpus. It
+orders canonical authority (`user_direct`, `local_trusted`, through `remote_untrusted`), then
+freshness, then provider-local score, candidate
+id, source hash, source reference, text, then canonical candidate bytes; then orders lanes by reciprocal
+rank denominator, candidate id, provider id, source hash, source reference,
+then text, then canonical candidate bytes. Quotas & `maxItems` are hard bounds. Duplicate source hashes lose unless protected.
+`FusionReceiptV1` records every decision, provider order, bounds, & rank denominator; it never treats local scores as probabilities.
+
 ## Platform status
 
 Supported platforms are **macOS and Windows** (tier 1). Linux is tier-2 best-effort.

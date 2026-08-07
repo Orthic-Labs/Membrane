@@ -34,10 +34,12 @@
 //! logic on top of those types.
 
 pub mod budget;
+pub mod fusion;
 pub mod lane;
 pub mod reconcile;
 
 pub use budget::CrossProviderBudget;
+pub use fusion::{fuse, FusionBounds, FusionResult, DEFAULT_MAX_ITEMS, DEFAULT_RRF_K};
 pub use lane::{
     lane_from_block, LaneAccounting, LaneAllocation, BUDGET_LANE_KINDS,
 };
