@@ -24,6 +24,7 @@
 //! See `docs/protocol/source-of-truth.md` for the full contract story.
 
 pub mod canonical;
+pub mod compression;
 pub mod fusion;
 pub mod heartbeat;
 pub mod installation;
@@ -33,6 +34,10 @@ pub mod operations;
 pub mod types;
 
 pub use canonical::{canonical_json_of, canonicalize, digest_str};
+pub use compression::{
+    CompressionReceiptV1, DroppedSpanV1, ImmutableSourceError, ImmutableSourceReason,
+    NonEmptyString, SpanV1, COMPRESSION_RECEIPT_SCHEMA_VERSION,
+};
 pub use fusion::{FusionDecisionV1, FusionReceiptV1};
 pub use heartbeat::{
     AdapterHeartbeatV1, AdapterStatus, MechanismReceiptV1, ADAPTER_HEARTBEAT_SCHEMA_VERSION,
