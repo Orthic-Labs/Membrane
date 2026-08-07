@@ -59,6 +59,7 @@ pub enum MembraneMode {
     /// `revoke_unowned`, and only removes the ones the runtime
     /// registered. See `crate::uninstall` for the contract.
     Uninstall,
+    MigrateLegacy,
 }
 
 impl MembraneMode {
@@ -70,6 +71,7 @@ impl MembraneMode {
             MembraneMode::SupervisorChild => "supervisor-child",
             MembraneMode::Install => "install",
             MembraneMode::Uninstall => "uninstall",
+            MembraneMode::MigrateLegacy => "migrate-legacy",
         }
     }
 }
@@ -103,6 +105,8 @@ enum Command {
     /// every path the operator names as a `--candidate` unless the
     /// ownership table at `--receipt-root` records it.
     Uninstall(UninstallArgs),
+    /// MBR-210: move recognized legacy state without copying or starting a daemon.
+    MigrateLegacy(MigrateLegacyArgs),
 }
 
 #[derive(Debug, clap::Args)]
@@ -186,6 +190,12 @@ struct UninstallArgs {
     dry_run: bool,
 }
 
+#[derive(Debug, clap::Args)]
+struct MigrateLegacyArgs {
+    #[arg(long)] legacy_root: std::path::PathBuf,
+    #[arg(long)] target_root: std::path::PathBuf,
+}
+
 /// Fully-parsed invocation handed to the dispatcher. The dispatcher never touches argv again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedInvocation {
@@ -205,6 +215,7 @@ pub struct ParsedInvocation {
     /// paths the operator asked about, and the dry-run flag. `None` for
     /// every other mode.
     pub uninstall: Option<UninstallInvocation>,
+    pub migration: Option<MigrationInvocation>,
 }
 
 /// MBR-203: install invocation handed to the dispatcher's install handler.
@@ -228,6 +239,8 @@ pub struct UninstallInvocation {
     pub candidates: Vec<std::path::PathBuf>,
     pub dry_run: bool,
 }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MigrationInvocation { pub legacy_root: std::path::PathBuf, pub target_root: std::path::PathBuf }
 
 /// Hardcoded clap projection checked against the operation registry by the
 /// `cli-parity` binary. The empty query returns the subcommand inventory.
@@ -271,6 +284,7 @@ fn parse_registry_operation(args: &[OsString]) -> Option<Result<ParsedInvocation
                 lease: None,
                 install: None,
                 uninstall: None,
+                migration: None,
             })
             .map_err(|error| error.to_string()),
     )
@@ -296,6 +310,7 @@ where
             lease: None,
             install: None,
             uninstall: None,
+            migration: None,
         },
         Command::StdioMcp(args) => {
             if args.framing != "jsonl" {
@@ -312,6 +327,7 @@ where
                 lease: None,
                 install: None,
                 uninstall: None,
+                migration: None,
             }
         }
         Command::LoopbackApi(args) => {
@@ -329,6 +345,7 @@ where
                 lease: None,
                 install: None,
                 uninstall: None,
+                migration: None,
             }
         }
         Command::SupervisorChild(args) => ParsedInvocation {
@@ -339,6 +356,7 @@ where
             lease: args.lease,
             install: None,
             uninstall: None,
+            migration: None,
         },
         Command::Install(args) => ParsedInvocation {
             mode: MembraneMode::Install,
@@ -353,6 +371,7 @@ where
                 dry_run: args.dry_run,
             }),
             uninstall: None,
+            migration: None,
         },
         Command::Uninstall(args) => ParsedInvocation {
             mode: MembraneMode::Uninstall,
@@ -366,7 +385,9 @@ where
                 candidates: args.candidate,
                 dry_run: args.dry_run,
             }),
+            migration: None,
         },
+        Command::MigrateLegacy(args) => ParsedInvocation { mode: MembraneMode::MigrateLegacy, cli_tail: Vec::new(), framing: String::new(), port: 0, lease: None, install: None, uninstall: None, migration: Some(MigrationInvocation { legacy_root: args.legacy_root, target_root: args.target_root }) },
     };
     Ok(invocation)
 }

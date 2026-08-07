@@ -22,6 +22,7 @@ pub fn plane_of(mode: &MembraneMode) -> membrane_runtime::Plane {
         MembraneMode::LoopbackApi => membrane_runtime::Plane::Application,
         MembraneMode::Install => membrane_runtime::Plane::Application,
         MembraneMode::Uninstall => membrane_runtime::Plane::Application,
+        MembraneMode::MigrateLegacy => membrane_runtime::Plane::Application,
         // The supervisor's resident child is the Control plane.
         MembraneMode::SupervisorChild => membrane_runtime::Plane::Control,
     }
@@ -74,6 +75,7 @@ pub fn dispatch(invocation: &ParsedInvocation) -> DispatchOutcome {
                 "uninstall mode invoked without an uninstall invocation".to_string(),
             ),
         },
+        MembraneMode::MigrateLegacy => match invocation.migration.as_ref() { Some(migration) => match crate::migration::migrate(&migration.legacy_root, &migration.target_root) { Ok(receipt) => { println!("{}", serde_json::to_string_pretty(&receipt).unwrap()); DispatchOutcome::Ok }, Err(error) => DispatchOutcome::UserError(format!("migration: {error}")) }, None => DispatchOutcome::InternalError("migration mode invoked without payload".into()) },
     }
 }
 
