@@ -23,9 +23,11 @@ pub mod digest;
 pub mod installation_manifest;
 pub mod memory_provider;
 pub mod outline;
+pub mod paths;
 pub mod plan_context;
 pub mod planner_metrics;
 pub mod prep;
+pub mod receipt;
 pub mod release_identity;
 pub mod runc;
 pub mod serve;
@@ -54,6 +56,12 @@ pub use checkpoint::{
 pub use crypt_store::MemDb;
 pub use scope::{
     normalize_scope, path_to_scope, scope_chain, ScopeDescriptorError, ScopeDescriptorV1,
+};
+pub use paths::{cache_root, config_root, data_root, log_root, Roots, PRODUCT_DIR_NAME};
+pub use receipt::{
+    clear_receipt_registry, is_receipt_owned, register_receipt_owned, register_receipt_owned_path,
+    remove_receipt_owned, snapshot as receipt_snapshot, ReceiptError, ReceiptOwnedFile,
+    UninstallReceipt,
 };
 pub use store::{
     MemoryEventContext, MemoryLifecycleError, MemoryLifecycleEventV1, MemoryLifecycleInputV1,

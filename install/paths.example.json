@@ -1,0 +1,52 @@
+{
+  "$schema": "https://docs.membrane/schemas/paths.v1.schema.json",
+  "schemaVersion": 1,
+  "description": "MBR-106: stable config, data, cache, and log roots. The installer rewrites the placeholders below to the resolved per-user tree before persisting supervisor.json. `membrane cli doctor paths` prints the same values at runtime so an operator can diff a live install against this template.",
+  "product": "Membrane",
+  "roots": {
+    "config": {
+      "purpose": "durable settings; lease file; supervisor.json; never thrown away",
+      "linux": "${XDG_CONFIG_HOME:-$HOME/.config}/membrane",
+      "macos": "$HOME/Library/Application Support/Membrane",
+      "windows": "%APPDATA%\\Membrane",
+      "overrideEnv": "MEMBRANE_CONFIG_ROOT"
+    },
+    "data": {
+      "purpose": "persistent memory DB; checkpoints; supervisor state; survives update",
+      "linux": "${XDG_DATA_HOME:-$HOME/.local/share}/membrane",
+      "macos": "$HOME/Library/Application Support/Membrane",
+      "windows": "%LOCALAPPDATA%\\Membrane",
+      "overrideEnv": "MEMBRANE_DATA_ROOT"
+    },
+    "cache": {
+      "purpose": "regenerable caches (fastembed artifacts, downloaded models); safe to wipe",
+      "linux": "${XDG_CACHE_HOME:-$HOME/.cache}/membrane",
+      "macos": "$HOME/Library/Caches/Membrane",
+      "windows": "%LOCALAPPDATA%\\Membrane",
+      "overrideEnv": "MEMBRANE_CACHE_ROOT"
+    },
+    "log": {
+      "purpose": "append-only logs from resident and supervisor; rotates independently of data",
+      "linux": "${XDG_STATE_HOME:-$HOME/.local/state}/membrane/log",
+      "macos": "$HOME/Library/Logs/Membrane",
+      "windows": "%LOCALAPPDATA%\\Membrane",
+      "overrideEnv": "MEMBRANE_LOG_ROOT"
+    }
+  },
+  "receipt": {
+    "description": "tracks every file the runtime writes outside the four stable roots",
+    "owner": "membrane-runtime",
+    "uninstallRespects": "files outside the four roots are removed only when listed here",
+    "exampleEntries": [
+      {
+        "path": "/tmp/membrane-install-marker.json",
+        "owner": "installer-bootstrap",
+        "directory": false
+      }
+    ]
+  },
+  "placeholders": {
+    "__USER__": "current shell user; installer substitutes $USER or %USERNAME%",
+    "__HOME__": "current user home; installer reads $HOME or %USERPROFILE%"
+  }
+}

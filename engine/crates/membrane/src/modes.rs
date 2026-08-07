@@ -50,6 +50,13 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
     let _ = membrane_runtime::vocabulary::emit_facade_notice_once(
         membrane_runtime::vocabulary::ProductSurface::Membrane,
     );
+    // MBR-106: intercept `cli doctor paths` before forwarding to the runtime so
+    // the existing `cli doctor --json` surface is untouched. The runtime still
+    // owns every other `cli ...` invocation; the binary only adds the new
+    // `doctor paths` capability the install/uninstall residue audit needs.
+    if is_doctor_paths_invocation(tail) {
+        return run_doctor_paths(&tail[2..]);
+    }
     let mut argv: Vec<String> = Vec::with_capacity(tail.len() + 1);
     argv.push("membrane".to_string());
     argv.extend_from_slice(tail);
@@ -57,6 +64,45 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
     match membrane_runtime::cli::run_cli_from(&refs) {
         Ok(()) => DispatchOutcome::Ok,
         Err(error) => classify_runtime_error(error),
+    }
+}
+
+/// MBR-106: returns `true` when `cli doctor paths [--json]` was requested. Only
+/// this one binary-level subcommand is intercepted; every other `cli doctor`
+/// invocation falls through to the runtime unchanged so the legacy
+/// `cli doctor --json --suppress=...` surface keeps working byte-for-byte.
+fn is_doctor_paths_invocation(tail: &[String]) -> bool {
+    tail.len() >= 2 && tail[0] == "doctor" && tail[1] == "paths"
+}
+
+/// MBR-106: print the four stable roots and any receipt-owned files as JSON.
+/// `args` is the trailing slice after `doctor paths`; today the only flag
+/// accepted is `--json`, which is the default (we always print JSON so the
+/// installer can pipe it without parsing two layouts).
+fn run_doctor_paths(args: &[String]) -> DispatchOutcome {
+    let _ = args; // reserved for future flags
+    let roots = membrane_runtime::paths::Roots::resolve();
+    let owned: Vec<membrane_runtime::ReceiptOwnedFile> =
+        membrane_runtime::receipt_snapshot();
+    let payload = serde_json::json!({
+        "schemaVersion": 1,
+        "product": membrane_runtime::PRODUCT_DIR_NAME,
+        "roots": {
+            "config": roots.config,
+            "data": roots.data,
+            "cache": roots.cache,
+            "log": roots.log,
+        },
+        "receiptOwned": owned,
+    });
+    match serde_json::to_string_pretty(&payload) {
+        Ok(json) => {
+            println!("{json}");
+            DispatchOutcome::Ok
+        }
+        Err(error) => DispatchOutcome::InternalError(format!(
+            "doctor paths: serialize roots payload: {error}"
+        )),
     }
 }
 
