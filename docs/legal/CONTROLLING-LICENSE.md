@@ -7,4 +7,4 @@ Because that license is proprietary (not an OSI/SPDX identifier), each package m
 - **JavaScript** — `package.json` sets `"license": "SEE LICENSE IN LICENSE"`.
 - **Rust engine** — `engine/Cargo.toml` sets `workspace.package.license-file = "../LICENSE"`, and every member crate (`engine/crates/*/Cargo.toml`) inherits it via `license-file.workspace = true`. `cargo metadata --no-deps` resolves each crate's `license_file` to the repository-root `LICENSE`.
 
-There is no separate EULA, privacy policy, or third-party notice file in this repository; the single `LICENSE` file is the controlling instrument. If a `THIRD-PARTY` notice is ever required, it belongs alongside this file under `docs/legal/`.
+Root companion files `EULA.txt`, `PRIVACY.md`, and `THIRD-PARTY-NOTICES.txt` expose distribution-facing legal metadata. They add no license grant or restriction: `LICENSE` remains the sole controlling agreement. Release packaging must bind those companion files plus an artifact-specific dependency inventory before distribution.

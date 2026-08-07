@@ -1,0 +1,6 @@
+Membrane End User License Agreement
+
+The Orthic Labs Source Use License v1.0 in LICENSE is the complete and
+controlling agreement for use of this package and its accompanying materials.
+This file is a package-facing pointer to that license; it adds no terms.
+Copyright © 2026 Damned Ventures LLC. All rights reserved.

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "product": "Membrane",
+  "controllingLicense": {
+    "title": "Orthic Labs Source Use License v1.0",
+    "path": "LICENSE"
+  },
+  "packageDocuments": [
+    {
+      "kind": "eula",
+      "path": "EULA.txt"
+    },
+    {
+      "kind": "privacy",
+      "path": "PRIVACY.md"
+    },
+    {
+      "kind": "third-party-notices",
+      "path": "THIRD-PARTY-NOTICES.txt"
+    }
+  ],
+  "distributionBinding": {
+    "status": "unconfigured",
+    "requiredForRelease": true
+  },
+  "packageRegistry": {
+    "license": "SEE LICENSE IN LICENSE"
+  },
+  "thirdPartyInventory": {
+    "scope": "locked-javascript-and-rust-resolutions",
+    "pnpmLockfile": "pnpm-lock.yaml",
+    "cargoLockfile": "engine/Cargo.lock"
+  }
+}
