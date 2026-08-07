@@ -703,8 +703,13 @@ mod tests {
             "Vast.ai GPU rental uses the vastai CLI and an API key from the env.",
             vec![],
         );
-        let payload =
-            memory_candidates_payload(&store, "answer briefly and tersely please", "global", 5, None);
+        let payload = memory_candidates_payload(
+            &store,
+            "answer briefly and tersely please",
+            "global",
+            5,
+            None,
+        );
         let cands = payload["candidates"].as_array().expect("candidates array");
         assert!(!cands.is_empty(), "expected memory candidates");
         let top = &cands[0];
@@ -716,10 +721,7 @@ mod tests {
         );
         // text is CONTENT, not an id/slug (the bug this fixes).
         assert!(!text.starts_with("memory:role:") && !text.starts_with("mem-"));
-        assert!(top["resolver"]
-            .as_str()
-            .unwrap()
-            .starts_with("crypt get "));
+        assert!(top["resolver"].as_str().unwrap().starts_with("crypt get "));
     }
 
     fn touch_gateway(root: &Path, layout: &[&str]) -> PathBuf {

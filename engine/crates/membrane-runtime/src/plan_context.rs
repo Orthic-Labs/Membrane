@@ -12,9 +12,7 @@
 //! payload so callers (test harnesses, the orchestrator) can distinguish
 //! planner-rejected input from CLI misuse. Exit code is non-zero on error.
 
-use crypt_core::planner::{
-    plan, ContextCandidateSetV1, PlannerError, PlannerInput, PlannerOutput,
-};
+use crypt_core::planner::{plan, ContextCandidateSetV1, PlannerError, PlannerInput, PlannerOutput};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 

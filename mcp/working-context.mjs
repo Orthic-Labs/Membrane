@@ -1,10 +1,22 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
 const MAX_ITEMS = 128;
 const MAX_TOKENS = 8192;
 const ephemeralContexts = new Map();
 const scratchpads = new Map();
+
+// MBR-505: stable kind labels for the bounded working-context envelope.
+export const WORKING_CONTEXT_KIND_NORMAL = "context.working_context";
+export const WORKING_CONTEXT_KIND_BUDGET_EXCEEDED = "context.budget_exceeded";
+
+// MBR-505: schema versions kept in lock-step with
+// `engine/crates/membrane-runtime/src/working_context.rs`. Bumped on
+// incompatible shape changes; downstream consumers refuse unknown
+// versions.
+export const WORKING_CONTEXT_BUDGET_SCHEMA_VERSION = 1;
+export const WORKING_CONTEXT_SELECTION_SCHEMA_VERSION = 1;
+export const WORKING_CONTEXT_ENVELOPE_SCHEMA_VERSION = 1;
 
 const digest = (value) => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 const instant = (value, label) => {
@@ -157,4 +169,195 @@ export class ScratchpadStore {
   clear(path, { sessionId, taskId }) {
     return scratchpads.delete(contextKey(path, sessionId, taskId));
   }
+}
+
+// MBR-505: the TypeScript twin of
+// `engine/crates/membrane-runtime/src/working_context.rs`. The pure
+// `selectWorkingContext` helper walks a candidate list in order and
+// stops the moment any of the three caps is hit, marking the resulting
+// selection as `exceeded` with a stable lowercase reason
+// (`max_blocks`, `max_bytes`, or `max_recent_turns`). The runtime emits
+// a typed `context.budget_exceeded` envelope when this happens and
+// falls back to metadata-only delivery.
+
+function assertNonNegativeInteger(field, value) {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`budget_invalid: ${field} must be a non-negative integer (got ${value})`);
+  }
+}
+
+// Local canonical-JSON helper (sorted keys, no whitespace). Mirrors
+// `engine/crates/membrane-protocol/src/canonical.rs::canonicalize` and
+// the same `canonicalJsonStringify` exported by `mcp/observable-events.mjs`
+// — kept local so this module stays self-contained and the existing
+// working-context surface keeps its tiny dependency footprint.
+function canonicalJsonStringify(value) {
+  if (value === null) return "null";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error("working_context_payload_nan");
+    }
+    return JSON.stringify(value);
+  }
+  if (typeof value === "string") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    const inner = value.map((item) => canonicalJsonStringify(item));
+    return `[${inner.join(",")}]`;
+  }
+  if (typeof value === "object") {
+    const keys = Object.keys(value).sort();
+    const parts = keys.map((key) => `${JSON.stringify(key)}:${canonicalJsonStringify(value[key])}`);
+    return `{${parts.join(",")}}`;
+  }
+  throw new Error(`working_context_payload_unsupported: ${typeof value}`);
+}
+
+function canonicalDigestOf(value) {
+  const canonical = canonicalJsonStringify(value);
+  return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
+}
+
+// Mint a lowercase UUIDv4 from 16 random bytes. Mirrors the Rust
+// `mint_v4_uuid` helper in `working_context.rs`.
+function mintV4Uuid() {
+  const bytes = randomBytes(16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return (
+    `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+  );
+}
+
+/**
+ * Pure selection function. Mirrors the Rust `select_working_context`.
+ *
+ * @param {string[]} candidates - block ids in input order.
+ * @param {number[]} candidateBytes - parallel array of byte sizes.
+ * @param {{ maxBlocks: number, maxBytes: number, maxRecentTurns: number }} budget
+ * @returns {{ schemaVersion: number, selectedBlocks: string[], selectedBytes: number, budget: object, exceeded: boolean, exceededReason: string|null }}
+ */
+export function selectWorkingContext(candidates, candidateBytes, budget) {
+  if (!Array.isArray(candidates) || !Array.isArray(candidateBytes)) {
+    throw new Error("budget_invalid: candidates and candidateBytes must be arrays");
+  }
+  if (candidates.length !== candidateBytes.length) {
+    throw new Error(
+      `budget_invalid: candidates.length (${candidates.length}) must equal candidateBytes.length (${candidateBytes.length})`,
+    );
+  }
+  if (candidates.length === 0) {
+    throw new Error("no_candidates");
+  }
+  assertNonNegativeInteger("maxBlocks", budget.maxBlocks);
+  assertNonNegativeInteger("maxBytes", budget.maxBytes);
+  assertNonNegativeInteger("maxRecentTurns", budget.maxRecentTurns);
+  if (budget.maxBlocks === 0 || budget.maxBytes === 0 || budget.maxRecentTurns === 0) {
+    throw new Error(
+      `budget_invalid: budget caps must all be positive (got maxBlocks=${budget.maxBlocks}, maxBytes=${budget.maxBytes}, maxRecentTurns=${budget.maxRecentTurns})`,
+    );
+  }
+
+  const maxBlocks = budget.maxBlocks;
+  const maxBytes = budget.maxBytes;
+  const maxRecentTurns = budget.maxRecentTurns;
+
+  const selectedBlocks = [];
+  let selectedBytes = 0;
+  let exceeded = false;
+  let exceededReason = null;
+
+  for (let index = 0; index < candidates.length; index += 1) {
+    // Recency cap is checked first so a stale block never wins over a
+    // fresh one just because the latter happens to be larger.
+    if (index >= maxRecentTurns) {
+      exceeded = true;
+      exceededReason = "max_recent_turns";
+      break;
+    }
+    if (selectedBlocks.length >= maxBlocks) {
+      exceeded = true;
+      exceededReason = "max_blocks";
+      break;
+    }
+    const prospective = selectedBytes + Number(candidateBytes[index]);
+    if (prospective > maxBytes) {
+      exceeded = true;
+      exceededReason = "max_bytes";
+      break;
+    }
+    selectedBlocks.push(candidates[index]);
+    selectedBytes = prospective;
+  }
+
+  return {
+    schemaVersion: WORKING_CONTEXT_SELECTION_SCHEMA_VERSION,
+    selectedBlocks,
+    selectedBytes,
+    budget: {
+      schemaVersion: WORKING_CONTEXT_BUDGET_SCHEMA_VERSION,
+      maxBlocks: budget.maxBlocks,
+      maxBytes: budget.maxBytes,
+      maxRecentTurns: budget.maxRecentTurns,
+    },
+    exceeded,
+    exceededReason,
+  };
+}
+
+// Strip the digest field, canonicalize, and hash — the same
+// self-referential pattern the Rust `recompute_digest` uses. Exported
+// so tests can construct envelopes with controlled digests.
+export function recomputeWorkingContextDigest(envelope) {
+  const withoutDigest = { ...envelope };
+  delete withoutDigest.digest;
+  return canonicalDigestOf(withoutDigest);
+}
+
+/**
+ * Wrap a selection into a typed envelope, minting a fresh `envelopeId`
+ * and computing the self-referential `digest`. The `kind` label is
+ * chosen from the selection's `exceeded` flag.
+ *
+ * @param {object} selection - the output of `selectWorkingContext`.
+ * @param {number} nowUnixMs - producing runtime wall clock (ms).
+ * @returns {object} the envelope, with `digest` already computed.
+ */
+export function renderWorkingContext(selection, nowUnixMs) {
+  if (!Number.isInteger(nowUnixMs) || nowUnixMs < 0) {
+    throw new Error("budget_invalid: nowUnixMs must be a non-negative integer");
+  }
+  const kind = selection.exceeded
+    ? WORKING_CONTEXT_KIND_BUDGET_EXCEEDED
+    : WORKING_CONTEXT_KIND_NORMAL;
+  const envelope = {
+    schemaVersion: WORKING_CONTEXT_ENVELOPE_SCHEMA_VERSION,
+    envelopeId: mintV4Uuid(),
+    kind,
+    selection,
+    emittedAtUnixMs: nowUnixMs,
+    digest: "",
+  };
+  envelope.digest = recomputeWorkingContextDigest(envelope);
+  return envelope;
+}
+
+/**
+ * Recompute the envelope's digest and return true iff it matches.
+ * Returns false on tampered selection, unknown schema version, or any
+ * structural mismatch.
+ *
+ * @param {object} envelope
+ * @returns {boolean}
+ */
+export function verifyWorkingContextEnvelope(envelope) {
+  if (!envelope || typeof envelope !== "object") return false;
+  if (envelope.schemaVersion !== WORKING_CONTEXT_ENVELOPE_SCHEMA_VERSION) return false;
+  if (typeof envelope.envelopeId !== "string" || envelope.envelopeId.length === 0) return false;
+  if (typeof envelope.kind !== "string" || envelope.kind.length === 0) return false;
+  if (!envelope.selection || typeof envelope.selection !== "object") return false;
+  if (!Number.isInteger(envelope.emittedAtUnixMs) || envelope.emittedAtUnixMs < 0) return false;
+  if (typeof envelope.digest !== "string" || envelope.digest.length === 0) return false;
+  return recomputeWorkingContextDigest(envelope) === envelope.digest;
 }

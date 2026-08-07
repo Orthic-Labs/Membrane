@@ -668,10 +668,7 @@ mod tests {
         let _ = catalog; // touch handle
 
         // Crypt DB must be byte-identical — the catalog never opened it.
-        assert_eq!(
-            std::fs::read(&crypt_path).unwrap(),
-            b"CRYPT_DB_FORGE"
-        );
+        assert_eq!(std::fs::read(&crypt_path).unwrap(), b"CRYPT_DB_FORGE");
         // Catalog DB exists and has the v1 schema stamp.
         assert!(catalog_path.exists());
         let conn = rusqlite::Connection::open(&catalog_path).unwrap();

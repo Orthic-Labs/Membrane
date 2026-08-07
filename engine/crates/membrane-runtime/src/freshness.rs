@@ -1027,7 +1027,8 @@ fn commit_distance(repo_root: &Path, base: &str, head: &str) -> Option<u32> {
         .ok()
 }
 
-fn git_text(repo_root: &Path, args: &[&str]) -> Result<String, String> {    let mut command = hidden_command("git");
+fn git_text(repo_root: &Path, args: &[&str]) -> Result<String, String> {
+    let mut command = hidden_command("git");
     command.arg("-C").arg(repo_root).args(args);
     let output = bounded_child_output(&mut command, GIT_CHILD_TIMEOUT, MAX_GIT_TEXT_BYTES, "git")?;
     if output.limit_exceeded {
@@ -1546,7 +1547,10 @@ mod tests {
         // DirtyOverlay is one of the two states that map to the "current"
         // freshness class (see the `status` match in the receipt builder), so a
         // dirty tree never reports as stale or blocked.
-        assert!(verdict.stable, "a dirty worktree must remain a stable verdict");
+        assert!(
+            verdict.stable,
+            "a dirty worktree must remain a stable verdict"
+        );
         assert!(
             verdict
                 .reasons

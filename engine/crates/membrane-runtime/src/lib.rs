@@ -10,6 +10,7 @@ pub mod catalog;
 pub mod checkpoint;
 pub mod cli;
 pub mod compress;
+pub mod digest;
 pub mod doc_candidate_provider;
 pub mod doc_projection;
 pub mod doc_shadow;
@@ -19,14 +20,13 @@ pub mod federation;
 pub mod federation_worker;
 pub mod feedback;
 pub mod freshness;
-pub mod digest;
 pub mod installation_manifest;
 pub mod memory_provider;
 pub mod outline;
 pub mod paths;
 pub mod plan_context;
-pub mod planner_metrics;
 pub mod planes;
+pub mod planner_metrics;
 pub mod prep;
 pub mod provenance;
 pub mod receipt;
@@ -36,21 +36,28 @@ pub mod serve;
 pub mod service;
 pub mod skel;
 pub mod store;
-pub use crypt_store::{context_telemetry, installation_identity, memdb, scope, time};
 pub use crypt_store::db::{record_observable_event, StoreError};
+pub use crypt_store::{context_telemetry, installation_identity, memdb, scope, time};
 pub use provenance::{
     capture_working_tree, observe, record_provenance, ProvenanceError, ProvenanceRowV1,
     WorkingTreeSnapshotV1, PROVENANCE_ROW_SCHEMA_VERSION, WORKING_TREE_SNAPSHOT_SCHEMA_VERSION,
 };
 pub mod truncate;
 pub mod vocabulary;
+pub mod working_context;
 
 // Re-export OKF utilities so consumers import from one crate (`crypt`) during unification.
 pub use crypt_format::okf;
 pub use vocabulary::{
     crypt_migration_notice_text, crypt_notice_emitted, emit_facade_notice_once,
-    membrane_notice_emitted, membrane_product_surface_notice_text, format_notice_log_line,
+    format_notice_log_line, membrane_notice_emitted, membrane_product_surface_notice_text,
     ProductSurface, CRYPT_FACADE_MIGRATION_NOTICE, MEMBRANE_PRODUCT_SURFACE_NOTICE,
+};
+pub use working_context::{
+    render_working_context, select_working_context, verify_envelope, WorkingContextBudgetV1,
+    WorkingContextEnvelopeV1, WorkingContextError, WorkingContextSelectionV1,
+    WORKING_CONTEXT_BUDGET_SCHEMA_VERSION, WORKING_CONTEXT_ENVELOPE_SCHEMA_VERSION,
+    WORKING_CONTEXT_SELECTION_SCHEMA_VERSION,
 };
 
 pub use admission_policy::{
@@ -61,15 +68,15 @@ pub use checkpoint::{
     CheckpointError, CheckpointSourceRefV1, CheckpointSourceResolutionV1, CheckpointV1,
 };
 pub use crypt_store::MemDb;
-pub use scope::{
-    normalize_scope, path_to_scope, scope_chain, ScopeDescriptorError, ScopeDescriptorV1,
-};
 pub use paths::{cache_root, config_root, data_root, log_root, Roots, PRODUCT_DIR_NAME};
-pub use planes::{Plane, PlaneBoundary, PLANE_BOUNDARIES, plane_for_path};
+pub use planes::{plane_for_path, Plane, PlaneBoundary, PLANE_BOUNDARIES};
 pub use receipt::{
     clear_receipt_registry, is_receipt_owned, register_receipt_owned, register_receipt_owned_path,
     remove_receipt_owned, snapshot as receipt_snapshot, ReceiptError, ReceiptOwnedFile,
     UninstallReceipt,
+};
+pub use scope::{
+    normalize_scope, path_to_scope, scope_chain, ScopeDescriptorError, ScopeDescriptorV1,
 };
 pub use store::{
     MemoryEventContext, MemoryLifecycleError, MemoryLifecycleEventV1, MemoryLifecycleInputV1,
