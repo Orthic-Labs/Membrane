@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_checkpoint_load",
+  "errorVersion": 1,
+  "result": {
+    "kind": "success",
+    "data": {
+      "status": "loaded",
+      "checkpoint": { "id": "ckpt-mbr-301-001", "sessionId": "session-mbr-301", "createdAt": "2026-08-07T05:21:00.000Z" }
+    }
+  }
+}

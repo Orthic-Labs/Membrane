@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_scratchpad",
+  "errorVersion": 1,
+  "result": {
+    "kind": "error",
+    "code": "scratchpad_operation_invalid",
+    "message": "operation must be one of save, load, clear",
+    "retryable": false,
+    "details": { "received": "archive" }
+  }
+}

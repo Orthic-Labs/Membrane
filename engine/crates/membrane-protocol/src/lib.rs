@@ -24,9 +24,19 @@
 //! See `docs/protocol/source-of-truth.md` for the full contract story.
 
 pub mod canonical;
+pub mod installation;
+pub mod operations;
 pub mod types;
 
 pub use canonical::{canonical_json_of, canonicalize, digest_str};
+pub use installation::{
+    canonical_data_root, ComponentV1, HandshakeError, InstallationManifestV1,
+    MANIFEST_SCHEMA_VERSION, PROTOCOL_SCHEMA_VERSION,
+};
+pub use operations::{
+    operations, operations_slice, ErrorResult, OperationIndexEntry, OperationResult, OperationSpec,
+    OperationsIndex, ResultKind, SuccessResult, OPERATIONS,
+};
 pub use types::*;
 
 use serde::Serialize;
