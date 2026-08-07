@@ -53,9 +53,9 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
 }
 
 fn dispatch_stdio_mcp() -> DispatchOutcome {
-    match membrane_runtime::serve::run_stdio_mcp() {
+    match membrane_mcp::serve_stdio() {
         Ok(()) => DispatchOutcome::Ok,
-        Err(error) => classify_runtime_error(error),
+        Err(error) => DispatchOutcome::InternalError(error.to_string()),
     }
 }
 

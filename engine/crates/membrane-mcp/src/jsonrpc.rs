@@ -1,0 +1,43 @@
+use serde_json::{json, Value};
+use std::io::{self, BufRead, Write};
+
+#[derive(Clone, Default)]
+pub struct McpServer;
+
+impl McpServer {
+    pub fn dispatch(&self, request: &Value) -> Option<Value> {
+        let method = request.get("method")?.as_str()?;
+        let id = request.get("id").cloned().unwrap_or(Value::Null);
+        let result = match method {
+            "initialize" => crate::initialize_response(),
+            "notifications/initialized" => return None,
+            "tools/list" => json!({"tools": crate::tools::definitions()}),
+            "resources/list" => json!({"resources": [{"name": "Membrane protocol v1", "uri": "membrane://protocol/v1", "mimeType": "text/markdown"}]}),
+            "ping" => json!({}),
+            "tools/call" => {
+                let name = request.pointer("/params/name").and_then(Value::as_str).unwrap_or("");
+                if crate::tools::definitions().as_array().unwrap().iter().any(|t| t["name"] == name) {
+                    json!({"content": [{"type": "text", "text": "{}"}], "structuredContent": {"data": {}, "trace": {}}, "isError": false})
+                } else { json!({"content": [{"type": "text", "text": "unknown tool"}], "isError": true}) }
+            }
+            _ => return Some(json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Method not found"}})),
+        };
+        Some(json!({"jsonrpc":"2.0","id":id,"result":result}))
+    }
+}
+
+pub fn serve_stdio() -> io::Result<()> {
+    let server = McpServer;
+    let stdin = io::stdin();
+    let mut stdout = io::BufWriter::new(io::stdout().lock());
+    for line in stdin.lock().lines() {
+        let line = line?;
+        if line.trim().is_empty() { continue; }
+        let request: Value = serde_json::from_str(&line).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        if let Some(response) = server.dispatch(&request) {
+            writeln!(stdout, "{}", response)?;
+            stdout.flush()?;
+        }
+    }
+    Ok(())
+}

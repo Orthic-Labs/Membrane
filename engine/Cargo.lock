@@ -1956,8 +1956,20 @@ name = "membrane"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "membrane-mcp",
  "membrane-protocol",
  "membrane-runtime",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "membrane-mcp"
+version = "0.1.0"
+dependencies = [
+ "membrane-protocol",
  "serde",
  "serde_json",
  "tempfile",

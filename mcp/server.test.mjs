@@ -19,9 +19,33 @@ async function rpc(messages, env = {}) {
     env: { ...process.env, ...env },
   });
   let output = "";
-  child.stdout.on("data", (chunk) => { output += chunk; });
-  child.stdin.end(messages.map(JSON.stringify).join("\n") + "\n");
-  await new Promise((resolve, reject) => { child.once("error", reject); child.once("close", resolve); });
+  let errorOutput = "";
+  const expectedResponses = messages.filter((message) => message.id !== undefined).length;
+  let responsesReady;
+  const responsePromise = new Promise((resolve) => { responsesReady = resolve; });
+  const closePromise = new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code, signal) => resolve({ code, signal }));
+  });
+  child.stdout.on("data", (chunk) => {
+    output += chunk;
+    if (output.split("\n").filter(Boolean).length >= expectedResponses) responsesReady();
+  });
+  child.stderr.on("data", (chunk) => { errorOutput += chunk; });
+  child.stdin.write(messages.map(JSON.stringify).join("\n") + "\n");
+  const timeout = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error(`RPC timed out waiting for ${expectedResponses} responses`)), 60_000).unref();
+  });
+  await Promise.race([
+    responsePromise,
+    closePromise.then(({ code, signal }) => {
+      throw new Error(`RPC closed before every response (code=${code}, signal=${signal}): ${errorOutput.trim()}`);
+    }),
+    timeout,
+  ]);
+  child.stdin.end();
+  const { code, signal } = await closePromise;
+  assert.equal(code, 0, `RPC exited code=${code}, signal=${signal}: ${errorOutput.trim()}`);
   return output.trim().split("\n").filter(Boolean).map(JSON.parse);
 }
 function toolError(row) { return row.error?.message || row.result?.content?.[0]?.text || ""; }

@@ -1,0 +1,19 @@
+[package]
+name = "membrane-mcp"
+version = "0.1.0"
+edition.workspace = true
+license-file.workspace = true
+description = "Native (Rust) public MCP hot path for Membrane. Serves the same JSON-RPC discovery surface as the legacy JS server so a clean user machine does not require Node."
+
+[lib]
+name = "membrane_mcp"
+path = "src/lib.rs"
+
+[dependencies]
+membrane-protocol = { path = "../membrane-protocol" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
