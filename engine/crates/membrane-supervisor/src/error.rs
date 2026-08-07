@@ -42,6 +42,17 @@ pub enum SupervisorError {
     #[error("watcher coordinator could not decide action: {reason}")]
     WatcherDecision { reason: String },
 
+    /// MBR-207: the heartbeat table reported one client as both
+    /// installed and delivering — the Hub/CLI conflation the supervisor
+    /// exists to prevent. Carries the offending client id and the two
+    /// statuses so the receipt can be reproduced.
+    #[error("heartbeat conflation for client {client_id}: installed and delivering coexist")]
+    HeartbeatConflation {
+        client_id: String,
+        installed: bool,
+        delivering: bool,
+    },
+
     /// A generic IO failure. Kept distinct from the typed cases above so callers can match.
     #[error("supervisor IO failure at {path}: {reason}")]
     Io { path: PathBuf, reason: String },
@@ -57,6 +68,7 @@ impl SupervisorError {
             SupervisorError::ResidentSpawn { .. } => "resident-spawn-failed",
             SupervisorError::PublishFailed { .. } => "publish-failed",
             SupervisorError::WatcherDecision { .. } => "watcher-decision-failed",
+            SupervisorError::HeartbeatConflation { .. } => "heartbeat-conflation",
             SupervisorError::Io { .. } => "io-failed",
         }
     }

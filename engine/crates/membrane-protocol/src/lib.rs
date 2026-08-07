@@ -24,12 +24,14 @@
 //! See `docs/protocol/source-of-truth.md` for the full contract story.
 
 pub mod canonical;
+pub mod heartbeat;
 pub mod installation;
 pub mod lease;
 pub mod operations;
 pub mod types;
 
 pub use canonical::{canonical_json_of, canonicalize, digest_str};
+pub use heartbeat::{AdapterHeartbeatV1, AdapterStatus, MechanismReceiptV1, ADAPTER_HEARTBEAT_SCHEMA_VERSION};
 pub use installation::{
     canonical_data_root, ApiSchemaV1, ComponentV1, HandshakeError, InstallationManifestV1,
     MANIFEST_SCHEMA_VERSION, PROTOCOL_SCHEMA_VERSION,

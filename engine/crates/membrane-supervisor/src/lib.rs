@@ -13,6 +13,7 @@
 pub mod admission;
 pub mod config;
 pub mod error;
+pub mod heartbeat;
 pub mod lease;
 pub mod lock;
 pub mod resident;
@@ -24,13 +25,12 @@ pub use config::{
     RestartPolicy, SupervisorConfig, WatcherPolicy, CONFIG_SCHEMA_VERSION, DEFAULT_LOOPBACK_PORT,
 };
 pub use error::{Result, SupervisorError};
+pub use heartbeat::{detect_conflation, summarize_status, HeartbeatTable};
 pub use lease::{
     publish_lease, SupervisorEndpointV1, SupervisorLeaseV1, SUPERVISOR_ENDPOINT_SCHEMA_VERSION,
     SUPERVISOR_LEASE_SCHEMA_VERSION,
 };
-pub use lock::{
-    pid_alive_probe, release_if_owned, try_acquire_until, LockOutcome, SupervisorLock,
-};
+pub use lock::{pid_alive_probe, release_if_owned, try_acquire_until, LockOutcome, SupervisorLock};
 pub use resident::{preflight_resident_binary, ResidentHandle, ResidentInvocation};
 pub use supervisor::{
     default_state_path, dry_run, interruptible_sleep, load_or_init_state, save_state, CheckReport,
