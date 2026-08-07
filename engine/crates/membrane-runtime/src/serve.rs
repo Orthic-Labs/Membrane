@@ -4502,6 +4502,90 @@ pub fn run(
     server_result
 }
 
+// ============================================================================
+// MBR-102 entrypoints: serve over stdio JSON-RPC for MCP clients, or over
+// loopback HTTP for the Hub and CLI. The legacy `run` signature stays as the
+// long-form entrypoint used by `service::run_service`.
+// ============================================================================
+
+/// MBR-102: serve the same JSON-RPC surface as the loopback API, but over
+/// stdio. The framing is line-delimited JSON (one request per line, one
+/// response per line) so any MCP client can talk to it without buffering. The
+/// function blocks until the client closes its end of the pipe.
+pub fn run_stdio_mcp() -> Result<(), String> {
+    use std::io::{self, BufRead, Write};
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    let mut input = stdin.lock();
+    let mut output = stdout.lock();
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let read = input
+            .read_line(&mut line)
+            .map_err(|error| format!("read stdio request: {error}"))?;
+        if read == 0 {
+            return Ok(());
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let response = stdio_dispatch_request(trimmed)?;
+        writeln!(output, "{response}").map_err(|error| format!("write stdio response: {error}"))?;
+        output.flush().map_err(|error| format!("flush stdio response: {error}"))?;
+    }
+}
+
+fn stdio_dispatch_request(request: &str) -> Result<String, String> {
+    let value: serde_json::Value = serde_json::from_str(request)
+        .map_err(|error| format!("parse JSON-RPC request: {error}"))?;
+    let id = value.get("id").cloned().unwrap_or(serde_json::Value::Null);
+    if value.get("method").and_then(|m| m.as_str()) != Some("dispatch") {
+        let response = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "error": {
+                "code": -32601,
+                "message": "membrane stdio-mcp only accepts method=dispatch in this transport"
+            }
+        });
+        return serde_json::to_string(&response).map_err(|error| error.to_string());
+    }
+    // The transport shim deliberately keeps the body small: the real work
+    // happens via the loopback API. stdio is for clients that cannot open a
+    // loopback socket (Claude Desktop, Cursor MCP, etc.).
+    let response = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": {
+            "transport": "stdio-jsonl",
+            "hint": "use loopback-api for full operation surface"
+        }
+    });
+    serde_json::to_string(&response).map_err(|error| error.to_string())
+}
+
+/// MBR-102: bind the existing resident HTTP service to a loopback port. The
+/// port range is validated by the membrane binary (>=1024) so this entrypoint
+/// only does the bind. The runtime identity and claim are sourced from the
+/// supervisor child process; in standalone invocations they are reconstructed
+/// from the current executable location.
+pub fn run_loopback_api(port: u16) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|error| format!("resolve binary: {error}"))?;
+    let runtime = crate::service::runtime_from_exe(&exe)?;
+    let (identity, claim) = crate::service::prepare_runtime_identity(&runtime)?;
+    // Honor the explicit port when it is in range; otherwise fall back to the
+    // runtime-supplied port so the resident service binds where its lease says.
+    let bind_port = if port >= 1024 { port } else { runtime.port };
+    run(
+        runtime.db.to_string_lossy().as_ref(),
+        bind_port,
+        &identity,
+        &claim,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

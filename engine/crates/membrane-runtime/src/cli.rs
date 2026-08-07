@@ -1183,10 +1183,7 @@ fn service_api_token() -> Result<Option<String>, String> {
             .trim()
             .to_string();
         if token.is_empty() {
-            return Err(format!(
-                "CRYPT_API_TOKEN_FILE {} is empty",
-                path.display()
-            ));
+            return Err(format!("CRYPT_API_TOKEN_FILE {} is empty", path.display()));
         }
         if token.contains(['\r', '\n']) {
             return Err("CRYPT_API_TOKEN_FILE contains a newline".to_string());
@@ -2528,11 +2525,17 @@ fn replay_queries<R: Read>(
 }
 
 fn run_main() -> Result<(), String> {
+    run_main_with_argv(std::env::args().collect())
+}
+
+/// MBR-102: accept an explicit argv so the membrane binary can forward `membrane cli ...`
+/// without re-execing.
+fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
     let deployed = current_deployed_runtime();
     if let Some(runtime) = &deployed {
         apply_deployed_runtime_defaults(runtime);
     }
-    let cli = Cli::parse();
+    let cli = Cli::parse_from(&argv);
     if let Cmd::Installation { command } = &cli.cmd {
         return run_installation(command);
     }
@@ -3058,9 +3061,8 @@ fn run_main() -> Result<(), String> {
                     "status=ok".to_string(),
                 )
             };
-            let drop_meta = crypt::compress::drop_manifest_meta(
-                &crypt::compress::drop_manifest(&src, &out),
-            );
+            let drop_meta =
+                crypt::compress::drop_manifest_meta(&crypt::compress::drop_manifest(&src, &out));
             let meta = format!("{meta};{drop_meta}");
             log_transform_best_effort(
                 &db,
@@ -3115,9 +3117,8 @@ fn run_main() -> Result<(), String> {
                     "status=ok".to_string(),
                 )
             };
-            let drop_meta = crypt::compress::drop_manifest_meta(
-                &crypt::compress::drop_manifest(&input, &out),
-            );
+            let drop_meta =
+                crypt::compress::drop_manifest_meta(&crypt::compress::drop_manifest(&input, &out));
             let meta = format!("{meta};{drop_meta}");
             log_transform_best_effort(
                 &db,
@@ -3147,8 +3148,7 @@ fn run_main() -> Result<(), String> {
             );
         }
         Cmd::Curate { today } => {
-            let today =
-                today.unwrap_or_else(|| crypt::time::now_iso().chars().take(10).collect());
+            let today = today.unwrap_or_else(|| crypt::time::now_iso().chars().take(10).collect());
             let payload = serde_json::json!({ "today": today }).to_string();
             match try_service_post("/curate", &payload) {
                 Ok(Some(resp)) => {
@@ -3915,8 +3915,8 @@ mod tests {
                 ..
             }
         ));
-        let skel = super::Cli::try_parse_from(["crypt", "skel", "--budget", "64", "src/lib.rs"])
-            .unwrap();
+        let skel =
+            super::Cli::try_parse_from(["crypt", "skel", "--budget", "64", "src/lib.rs"]).unwrap();
         assert!(matches!(
             skel.cmd,
             super::Cmd::Skel {
@@ -4011,9 +4011,8 @@ mod tests {
         ));
 
         let temp = tempfile::tempdir().unwrap();
-        let source = crypt::MemoryStore::open(
-            crypt::MemDb::open(temp.path().join("source.db")).unwrap(),
-        );
+        let source =
+            crypt::MemoryStore::open(crypt::MemDb::open(temp.path().join("source.db")).unwrap());
         source
             .try_put(
                 "preference",
@@ -4024,9 +4023,8 @@ mod tests {
             .unwrap();
         let tree = temp.path().join("export");
         assert_eq!(source.export_md(&tree), 1);
-        let target = crypt::MemoryStore::open(
-            crypt::MemDb::open(temp.path().join("target.db")).unwrap(),
-        );
+        let target =
+            crypt::MemoryStore::open(crypt::MemDb::open(temp.path().join("target.db")).unwrap());
         assert_eq!(super::import_markdown_tree(&target, &tree).unwrap(), 1);
         assert_eq!(
             target.get_full("scope-a/preference").unwrap().0,
@@ -4168,13 +4166,10 @@ mod tests {
         };
         assert!(!apply);
 
-        assert!(super::Cli::try_parse_from([
-            "crypt",
-            "isolate-smoke-recalls",
-            "--expected",
-            "2"
-        ])
-        .is_err());
+        assert!(
+            super::Cli::try_parse_from(["crypt", "isolate-smoke-recalls", "--expected", "2"])
+                .is_err()
+        );
         let parsed =
             super::Cli::try_parse_from(["crypt", "isolate-smoke-recalls", "--apply"]).unwrap();
         let super::Cmd::IsolateSmokeRecalls { apply } = parsed.cmd else {
@@ -4233,10 +4228,7 @@ mod tests {
 
         let runtime = super::deployed_runtime_from_exe(&bin.join("crypt.exe")).unwrap();
         assert_eq!(runtime.port, 47851);
-        assert_eq!(
-            runtime.db,
-            root.join("tools/.cache/memory/crypt-engine.db")
-        );
+        assert_eq!(runtime.db, root.join("tools/.cache/memory/crypt-engine.db"));
         assert_eq!(
             runtime.token_file,
             root.join("tools/.cache/memory/api-token")
@@ -5482,16 +5474,27 @@ pub fn run_cli() {
         .stack_size(16 * 1024 * 1024)
         .spawn(run_main)
         .map_err(|error| format!("start crypt CLI: {error}"))
-        .and_then(|thread| {
-            thread
-                .join()
-                .map_err(|_| "crypt CLI panicked".to_string())
-        })
+        .and_then(|thread| thread.join().map_err(|_| "crypt CLI panicked".to_string()))
         .and_then(|result| result);
     if let Err(error) = result {
         eprintln!("{error}");
         std::process::exit(1);
     }
+}
+
+/// MBR-102 entrypoint: run the CLI with an explicit argv. The membrane binary forwards the
+/// `cli` subcommand tail here, so the runtime does not see the legacy `crypt` argv shape and
+/// the legacy `crypt` binary keeps working from its own argv.
+pub fn run_cli_from(argv: &[&str]) -> Result<(), String> {
+    let argv: Vec<String> = argv.iter().map(|arg| arg.to_string()).collect();
+    std::thread::Builder::new()
+        .name("membrane-cli".into())
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || run_main_with_argv(argv))
+        .map_err(|error| format!("start membrane CLI: {error}"))?
+        .join()
+        .map_err(|_| "membrane CLI panicked".to_string())
+        .and_then(|result| result)
 }
 
 fn secret_value_looks_credible(value: &str) -> bool {

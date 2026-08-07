@@ -1,0 +1,25 @@
+[package]
+name = "membrane"
+version = "0.1.0"
+edition.workspace = true
+license-file.workspace = true
+description = "Single membrane executable. Dispatches CLI, stdio MCP, loopback API, and supervisor-child modes from one signed binary."
+
+[lib]
+name = "membrane"
+path = "src/lib.rs"
+
+[[bin]]
+name = "membrane"
+path = "src/main.rs"
+
+[dependencies]
+membrane-runtime = { path = "../membrane-runtime" }
+membrane-protocol = { path = "../membrane-protocol" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"

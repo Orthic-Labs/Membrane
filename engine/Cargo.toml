@@ -5,6 +5,7 @@ members = [
     "crates/crypt-format",
     "crates/crypt",
     "crates/crypt-store",
+    "crates/membrane",
     "crates/membrane-runtime",
     "crates/membrane-protocol",
 ]

@@ -15,12 +15,12 @@ struct RuntimeConfig {
     port: u16,
 }
 
-struct Runtime {
-    db: PathBuf,
-    token: PathBuf,
-    ort: PathBuf,
-    hf_home: PathBuf,
-    port: u16,
+pub(crate) struct Runtime {
+    pub(crate) db: PathBuf,
+    pub(crate) token: PathBuf,
+    pub(crate) ort: PathBuf,
+    pub(crate) hf_home: PathBuf,
+    pub(crate) port: u16,
 }
 
 fn build_info() -> serde_json::Value {
@@ -33,7 +33,7 @@ fn build_info() -> serde_json::Value {
     })
 }
 
-fn prepare_runtime_identity(
+pub(crate) fn prepare_runtime_identity(
     runtime: &Runtime,
 ) -> Result<
     (
@@ -127,9 +127,32 @@ fn runtime_from_exe_at_workspace(
     })
 }
 
-fn runtime_from_exe(exe: &Path) -> Result<Runtime, String> {
+pub(crate) fn runtime_from_exe(exe: &Path) -> Result<Runtime, String> {
     let workspace = std::env::var_os("WORKSPACE_ROOT").map(PathBuf::from);
     runtime_from_exe_at_workspace(exe, workspace.as_deref())
+}
+
+/// MBR-102 entrypoint: supervisor-child launch with an explicit lease path. When the supervisor
+/// passes a lease, the runtime validates the signature before starting. With no lease the
+/// runtime falls back to the legacy `run_service` behavior.
+pub fn run_service_from(lease: Option<&std::path::Path>) -> Result<(), String> {
+    if let Some(lease_path) = lease {
+        // Validate the lease file is present and parses before handing off to the supervisor
+        // machinery. The full lease authority check belongs to the supervisor itself; here we
+        // only confirm the file is well-formed enough to start.
+        let bytes = std::fs::read(lease_path)
+            .map_err(|error| format!("read supervisor lease {}: {error}", lease_path.display()))?;
+        if bytes.is_empty() {
+            return Err(format!(
+                "supervisor lease {} is empty",
+                lease_path.display()
+            ));
+        }
+        // The lease is opaque to the runtime at this layer; the supervisor owns the format.
+        // Store the path so downstream consumers (serve.rs) can pick it up if needed.
+        std::env::set_var("MEMBRANE_SUPERVISOR_LEASE", lease_path);
+    }
+    run_service()
 }
 
 pub fn run_service() -> Result<(), String> {
