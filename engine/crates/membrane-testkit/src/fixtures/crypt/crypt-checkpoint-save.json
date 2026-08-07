@@ -1,0 +1,42 @@
+{
+  "name": "crypt-checkpoint-save",
+  "operation": "membrane_checkpoint_save",
+  "description": "Crypt adapter returns a successful checkpoint-save envelope. Mirrors the shape of operations/operations/membrane-checkpoint-save.v1.golden.json.",
+  "request": {
+    "scope": "workspace",
+    "taskEnvelope": {
+      "schema": "orthic.task-envelope.v1",
+      "taskId": "task-mbr-104-crypt-cp"
+    },
+    "turnEnvelope": {
+      "schema": "orthic.turn-envelope.v1",
+      "turnId": "turn-1",
+      "sessionId": "session-mbr-104-crypt",
+      "sequence": 1
+    },
+    "checkpoint": {
+      "id": "ckpt-mbr-104-crypt",
+      "payload": { "marker": "mbr-104-conformance" }
+    }
+  },
+  "expectedResponse": {
+    "kind": "success",
+    "data": {
+      "ok": true,
+      "checkpointId": "ckpt-mbr-104-crypt",
+      "status": "saved",
+      "durable": true,
+      "bytes": 22,
+      "taskEnvelope": {
+        "schema": "orthic.task-envelope.v1",
+        "taskId": "task-mbr-104-crypt-cp"
+      },
+      "turnEnvelope": {
+        "schema": "orthic.turn-envelope.v1",
+        "turnId": "turn-1",
+        "sessionId": "session-mbr-104-crypt",
+        "sequence": 1
+      }
+    }
+  }
+}

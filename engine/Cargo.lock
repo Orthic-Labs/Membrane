@@ -1987,6 +1987,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "membrane-provider-sdk"
+version = "0.1.0"
+dependencies = [
+ "membrane-protocol",
+ "membrane-testkit",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "membrane-runtime"
 version = "0.1.0"
 dependencies = [
@@ -2029,6 +2041,15 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "membrane-testkit"
+version = "0.1.0"
+dependencies = [
+ "membrane-provider-sdk",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
