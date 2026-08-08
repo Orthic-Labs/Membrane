@@ -61,3 +61,30 @@ impl ReleaseChannelV1 {
             && self.schema_compatibility == SchemaCompatibility::Compatible
     }
 }
+
+impl ReleaseChannel {
+    /// The exact wire string this variant serializes to/from (`#[serde(rename_all = "lowercase")]`).
+    /// Used by `compatibility_policy` to run the one raw-string fail-closed
+    /// parse path (`compatibility_policy::parse_channel`) against both an
+    /// untrusted wire value and an already-typed `ReleaseChannel`, so there
+    /// is a single enforcement code path rather than two that could drift.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Stable => "stable",
+            Self::Beta => "beta",
+            Self::Nightly => "nightly",
+        }
+    }
+}
+
+impl SchemaCompatibility {
+    /// The exact wire string this variant serializes to/from (`#[serde(rename_all = "snake_case")]`).
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Compatible => "compatible",
+            Self::MigrationRequired => "migration_required",
+            Self::Incompatible => "incompatible",
+            Self::Unknown => "unknown",
+        }
+    }
+}

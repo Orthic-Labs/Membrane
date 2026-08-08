@@ -24,6 +24,7 @@
 //! See `docs/protocol/source-of-truth.md` for the full contract story.
 
 pub mod canonical;
+pub mod compatibility_policy;
 pub mod compression;
 pub mod fusion;
 pub mod heartbeat;
@@ -41,6 +42,10 @@ pub mod team_policy;
 pub mod types;
 
 pub use canonical::{canonical_json_of, canonicalize, digest_str};
+pub use compatibility_policy::{
+    evaluate_compatibility, evaluate_release_channel, AdmittedRelease, CompatibilityViolation,
+    RawReleaseDescriptor,
+};
 pub use compression::{
     CompressionReceiptV1, DroppedSpanV1, ImmutableSourceError, ImmutableSourceReason,
     NonEmptyString, SpanV1, COMPRESSION_RECEIPT_SCHEMA_VERSION,

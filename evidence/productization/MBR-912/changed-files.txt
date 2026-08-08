@@ -1,0 +1,11 @@
+engine/crates/membrane-protocol/src/compatibility_policy.rs
+engine/crates/membrane-protocol/src/release_channel.rs
+engine/crates/membrane-protocol/src/lib.rs
+release/channels/compatibility-policy.mjs
+release/channels/README.md
+docs/compatibility/release-channels.md
+tests/compat/release-channel-compatibility.test.mjs
+evidence/productization/MBR-912/summary.json
+evidence/productization/MBR-912/acceptance.json
+evidence/productization/MBR-912/commands.log
+evidence/productization/MBR-912/changed-files.txt

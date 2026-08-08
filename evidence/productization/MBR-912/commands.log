@@ -1,0 +1,63 @@
+$ node --test tests/compat/release-channel-compatibility.test.mjs
+✔ unknown channel is refused (1.623334ms)
+✔ unsupported schema version is refused (0.095084ms)
+✔ unrecognized schemaCompatibility string is refused (0.072667ms)
+✔ explicit schemaCompatibility=unknown is refused, never treated as compatible (0.069083ms)
+✔ incompatible schema is refused (0.418541ms)
+✔ downgrade is refused (0.098541ms)
+✔ equal version is refused, not treated as an upgrade (0.077625ms)
+✔ unparseable candidate version is refused (0.127291ms)
+✔ unparseable current (locally installed) version is refused (0.116ms)
+✔ every independent violation is collected, not just the first (0.132958ms)
+✔ a compatible upgrade on a known channel is admitted (0.104917ms)
+✔ a migration_required upgrade is admitted and flagged, not refused (0.069125ms)
+✔ evaluateReleaseChannel adapts a schema-valid object through the same path (0.095917ms)
+✔ a null/missing signedUpdateEvidence never implies an admitted update decision by itself (0.076916ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 63.722167
+
+# This is the only executable command run for this task. It is a plain Node
+# structural/behavioral test over the new dependency-free JS mirror of the
+# fail-closed compatibility policy in release/channels/compatibility-policy.mjs.
+# No fixtures, no filesystem writes, no network -- pure function calls.
+
+# The Rust counterpart, engine/crates/membrane-protocol/src/compatibility_policy.rs,
+# carries the identical set of #[test]s (unknown channel / unsupported schema
+# version / unproven schemaCompatibility / downgrade / equal-version /
+# unparseable-version / multi-violation / admit / migration_required-admit /
+# typed-descriptor wrapper / as_str round trip). Per this task's hard rule
+# ("NEVER run cargo build / cargo test / cargo check / clippy"), these were
+# NOT executed here; they are reasoned through by type and left for
+# `cargo test --manifest-path engine/Cargo.toml --workspace` at the Book 3
+# final phased gate, exactly like MBR-903's and MBR-911's own #[test] blocks.
+
+# No cargo, pnpm, Tauri, right-release, codesign, notarytool, stapler,
+# spctl, signtool, or AzureSignTool command was run. No mutating git command
+# (add/commit/checkout/stash/reset/rebase/push) was run at any point.
+# `git status`/`git log`/`git show`/`git merge-base` (all read-only) were
+# used only to inspect prior history for release/channels/**,
+# engine/crates/membrane-protocol/src/release_channel.rs, and
+# docs/compatibility/** before writing this task's own files -- discovering
+# that MBR-912 had a prior partial commit (62c29923, already an ancestor of
+# HEAD) that added the read-only descriptive contract but no enforcement
+# code; this task's diff extends that prior work with the actual fail-closed
+# policy, it does not replace or duplicate it.
+
+# node scripts/release/verify-release-plan.mjs --task MBR-912 (the manifest's
+# `commands` entry) -- NOT RUN. Per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md and
+# this task's explicit instructions, the manifest commands list is executed
+# once at the final phased book gate, not per task; acceptance.json status
+# stays pending_book_gate.
+
+# tests/compat/mcp-discovery.test.mjs -- NOT run and NOT modified. It was
+# already failing for an unrelated environment reason before this task
+# started (per this task's brief) and this task's allowed paths exclude
+# fixing it; adding release-channel-compatibility.test.mjs as a second file
+# under tests/compat/ does not change mcp-discovery.test.mjs's own content
+# or behavior.
