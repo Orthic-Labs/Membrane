@@ -31,6 +31,7 @@ pub mod installation;
 pub mod lease;
 pub mod observable_event;
 pub mod operations;
+pub mod source_resolution;
 pub mod types;
 
 pub use canonical::{canonical_json_of, canonicalize, digest_str};
@@ -54,6 +55,9 @@ pub use operations::{
     operations, operations_slice, ErrorResult, OperationEnvelope, OperationIndexEntry,
     OperationParameter, OperationResult, OperationSpec, OperationsIndex, ResultKind, SuccessResult,
     OPERATIONS,
+};
+pub use source_resolution::{
+    SourceResolutionReceiptV1, SourceResolutionStatusV1, SOURCE_RESOLUTION_RECEIPT_SCHEMA_VERSION,
 };
 pub use types::*;
 

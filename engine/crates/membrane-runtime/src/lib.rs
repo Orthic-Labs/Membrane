@@ -37,6 +37,7 @@ pub mod runc;
 pub mod serve;
 pub mod service;
 pub mod skel;
+pub mod source_resolution;
 pub mod store;
 pub use crypt_store::db::{record_observable_event, StoreError};
 pub use crypt_store::{context_telemetry, installation_identity, memdb, scope, time};

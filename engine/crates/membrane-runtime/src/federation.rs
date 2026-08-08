@@ -181,7 +181,7 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
     // ScopeGrant is rejected. Detect that envelope and surface it
     // before attempting strict CCS deserialization.
     let parse_started = Instant::now();
-    let raw_value: Value = match serde_json::from_str(stdout) {
+    let mut raw_value: Value = match serde_json::from_str(stdout) {
         Ok(v) => v,
         Err(e) => {
             return Err(format!(
@@ -207,6 +207,8 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
         }
     }
     let observability = gateway_observability(&raw_value);
+    let source_resolution_receipts =
+        crate::source_resolution::gate_source_resolutions(&mut raw_value);
     let ccs: ContextCandidateSetV1 = match serde_json::from_value(raw_value) {
         Ok(v) => v,
         Err(e) => {
@@ -243,6 +245,7 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
         "observedReleaseGeneration": out.observed_release_generation,
         "releaseGenerationStatus": out.release_generation_status,
         "structuredEvent": out.structured_event,
+        "sourceResolutionReceipts": source_resolution_receipts,
     });
     if let Some(packet) = payload.get("packet") {
         payload["cachePrefixDiagnostic"] =
@@ -678,11 +681,11 @@ fn which(name: &str) -> Option<PathBuf> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn federation_emits_content_free_cache_prefix_diagnostic() {
-        let ccs = include_str!("../../../../operations/context-candidate-set.v1.golden.json");
+    #[test] #[rustfmt::skip] fn federation_emits_content_free_cache_prefix_diagnostic() {
+        let mut source: Value = serde_json::from_str(include_str!("../../../../operations/context-candidate-set.v1.golden.json")).unwrap(); source["generationId"] = serde_json::json!("gen-current"); source["candidates"][0]["sourceKind"] = serde_json::json!("graph");
+        source["candidates"][0]["sourceResolution"] = serde_json::json!({"schemaVersion":1,"candidateId":"cand-blueprint-types","provider":"cortex-treesitter","status":"resolved","expectedHash":"sha256:0000000000000000000000000000000000000000000000000000000000000011","resolvedHash":"sha256:0000000000000000000000000000000000000000000000000000000000000011","expectedGeneration":"gen-current","resolvedGeneration":"gen-current","expectedPath":"engine/crates/membrane-protocol/src/types.rs:1-60","resolvedPath":"engine/crates/membrane-protocol/src/types.rs:1-60","resolver":"source_read"}); let ccs = serde_json::to_string(&source).unwrap();
         let payload = envelope_from_ccs(
-            ccs,
+            &ccs,
             EnvelopeInput {
                 max_tokens: 4096,
                 packet_char_budget_override: None,
@@ -699,6 +702,7 @@ mod tests {
         assert!(!serialized.contains("ScopeGrantV1"));
         assert!(!serialized.contains("single source of truth"));
         assert!(diagnostic["blockDigests"].is_array());
+        assert_eq!(payload["sourceResolutionReceipts"].as_array().unwrap().len(), 1);
     }
 
     #[test]
