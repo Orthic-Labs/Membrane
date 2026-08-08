@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Membrane platform artifact acceptance receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "receiptId", "mode", "commit", "releaseGeneration", "version", "platform", "artifact", "trust", "lifecycle", "environment"],
+  "properties": {
+    "schema": { "const": "orthic.membrane.platform-acceptance.v1" },
+    "receiptId": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+    "mode": { "enum": ["source-ready", "clean-vm"] },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "releaseGeneration": { "$ref": "#/$defs/digest" },
+    "version": { "type": "string", "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "platform": { "enum": ["macos", "windows"] },
+    "artifact": { "type": "object", "additionalProperties": false, "required": ["name", "sha256"], "properties": { "name": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/$defs/digest" } } },
+    "trust": { "type": "object" },
+    "lifecycle": { "type": "object", "additionalProperties": false, "required": ["install", "startup", "update", "uninstall"], "properties": { "install": { "const": "pass" }, "startup": { "const": "pass" }, "update": { "const": "pass" }, "uninstall": { "const": "pass" } } },
+    "environment": { "type": "object", "additionalProperties": false, "required": ["clean", "machineDigest", "bypassWarnings"], "properties": { "clean": { "const": true }, "machineDigest": { "$ref": "#/$defs/digest" }, "bypassWarnings": { "const": false } } }
+  },
+  "allOf": [
+    { "if": { "properties": { "platform": { "const": "macos" } } }, "then": { "properties": { "trust": { "$ref": "#/$defs/macTrust" } } } },
+    { "if": { "properties": { "platform": { "const": "windows" } } }, "then": { "properties": { "trust": { "$ref": "#/$defs/windowsTrust" } } } }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "macTrust": { "type": "object", "additionalProperties": false, "required": ["codesign", "notarization", "staple", "gatekeeper"], "properties": { "codesign": { "const": "pass" }, "notarization": { "const": "pass" }, "staple": { "const": "pass" }, "gatekeeper": { "const": "pass" } } },
+    "windowsTrust": { "type": "object", "additionalProperties": false, "required": ["authenticode", "publicTrust", "rfc3161"], "properties": { "authenticode": { "const": "pass" }, "publicTrust": { "const": "pass" }, "rfc3161": { "const": "pass" } } }
+  }
+}
