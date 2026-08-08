@@ -88,6 +88,15 @@ pub fn provider_readiness_hub_read(readiness: ProviderReadinessV1) -> HubReadV1 
         _ => HubReadV1::Unavailable { reason },
     }
 }
+pub fn scratchpad_hub_read(session: &str) -> HubReadV1 {
+    match crate::scratchpad::hub_summary(session) {
+        Ok(item) => HubReadV1::Available {
+            items: vec![item],
+            metadata: HubMetadataV1::default(),
+        },
+        Err(reason) => HubReadV1::Unavailable { reason },
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct HubMetadataV1 {
@@ -375,5 +384,15 @@ mod tests {
         assert!(encoded["deliveries"]["source"].is_null());
         assert!(encoded["deliveries"]["evidence"].is_null());
         assert_eq!(encoded["schemaVersion"], 1);
+    }
+    #[test]
+    fn scratchpad_hub_is_content_free_and_validates_scope() {
+        assert!(
+            matches!(scratchpad_hub_read("s"), HubReadV1::Available { ref items, .. } if items[0]["entries"] == 0)
+        );
+        assert!(matches!(
+            scratchpad_hub_read(""),
+            HubReadV1::Unavailable { .. }
+        ));
     }
 }

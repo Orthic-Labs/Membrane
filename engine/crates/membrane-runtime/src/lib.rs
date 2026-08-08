@@ -36,6 +36,7 @@ pub mod provenance;
 pub mod receipt;
 pub mod release_identity;
 pub mod runc;
+pub mod scratchpad;
 pub mod serve;
 pub mod service;
 pub mod skel;

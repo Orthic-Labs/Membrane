@@ -3241,6 +3241,18 @@ fn route_with_context_ingest_lease(
     } else {
         serde_json::Value::Null
     };
+    if method == "POST" && path == "/scratchpad" {
+        return (200, crate::scratchpad::handle(&v).to_string());
+    }
+    if method == "POST" && path == "/scratchpad/session-close" {
+        let session = v
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let (status, body) = crate::scratchpad::close_response(session);
+        return (status, body.to_string());
+    }
     let request_parse_ms = request_parse_started.elapsed().as_secs_f64() * 1000.0;
     if method == "POST" && path == "/recall" {
         let query = v.get("query").and_then(|x| x.as_str()).unwrap_or("").trim();
@@ -3951,6 +3963,9 @@ fn planner_route(
     } else {
         Value::Null
     };
+    if method == "POST" && path == "/scratchpad" {
+        return (200, crate::scratchpad::handle(&v).to_string());
+    }
     if method == "POST" && path == "/scope_grants" {
         return planner_post_scope_grants(catalog, &v);
     }
