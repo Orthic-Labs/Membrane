@@ -32,6 +32,7 @@ pub mod installation;
 pub mod lease;
 pub mod observable_event;
 pub mod operations;
+pub mod portable_pack;
 pub mod provider_readiness;
 pub mod source_resolution;
 pub mod status;
@@ -62,6 +63,7 @@ pub use operations::{
     OperationParameter, OperationResult, OperationSpec, OperationsIndex, ResultKind, SuccessResult,
     OPERATIONS,
 };
+pub use portable_pack::{PortableContextPackV1, PortablePackError, PortablePackSignatureV1};
 pub use provider_readiness::{
     ProviderIdentityV1, ProviderObservationV1, ProviderReadinessStateV1, ProviderReadinessV1,
     ProviderTestQueryV1, PROVIDER_READINESS_SCHEMA_VERSION,
