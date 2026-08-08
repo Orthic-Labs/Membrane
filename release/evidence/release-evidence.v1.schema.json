@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "orthic.membrane.release-evidence.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "release", "artifact", "sbom", "provenance", "toolchain", "tests", "signatures", "platform_trust", "compatibility", "install_receipts", "event_history"],
+  "properties": {
+    "schema": { "const": "orthic.membrane.release-evidence.v1" },
+    "release": { "$ref": "#/$defs/release" },
+    "artifact": { "$ref": "#/$defs/file" },
+    "sbom": { "$ref": "#/$defs/file" },
+    "provenance": { "$ref": "#/$defs/file" },
+    "toolchain": { "$ref": "#/$defs/file" },
+    "tests": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/file" } },
+    "signatures": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/trust" } },
+    "platform_trust": { "$ref": "#/$defs/trust" },
+    "compatibility": { "$ref": "#/$defs/file" },
+    "install_receipts": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/install" } },
+    "event_history": { "type": "object", "additionalProperties": false, "required": ["status", "receipt"], "properties": { "status": { "enum": ["sealed", "legacy-unsealed"] }, "receipt": { "$ref": "#/$defs/file" } } }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "file": { "type": "object", "additionalProperties": false, "required": ["path", "sha256"], "properties": { "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/$defs/sha" } } },
+    "release": { "type": "object", "additionalProperties": false, "required": ["tag", "commit", "tree", "generation", "target", "artifact_sha256", "vector_dispatch"], "properties": { "tag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$" }, "commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" }, "tree": { "type": "string", "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$" }, "generation": { "$ref": "#/$defs/sha" }, "target": { "enum": ["mac-arm64", "mac-x64", "windows-x64", "windows-arm64"] }, "artifact_sha256": { "$ref": "#/$defs/sha" }, "vector_dispatch": { "const": "CRYPT_VECTOR_DISPATCH_V2" } } },
+    "trust": { "type": "object", "additionalProperties": false, "required": ["kind", "identity", "subject_sha256", "receipt"], "properties": { "kind": { "enum": ["ed25519", "apple-notary", "windows-authenticode"] }, "identity": { "type": "string", "minLength": 1 }, "subject_sha256": { "$ref": "#/$defs/sha" }, "receipt": { "$ref": "#/$defs/file" } } },
+    "install": { "type": "object", "additionalProperties": false, "required": ["os", "vector_dispatch", "contract", "receipt"], "properties": { "os": { "enum": ["macos", "windows"] }, "vector_dispatch": { "const": "CRYPT_VECTOR_DISPATCH_V2" }, "contract": { "$ref": "#/$defs/file" }, "receipt": { "$ref": "#/$defs/file" } } }
+  }
+}
