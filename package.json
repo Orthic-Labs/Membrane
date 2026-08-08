@@ -17,7 +17,7 @@
     "@tauri-apps/api": "^2.0.0"
   },
   "devDependencies": {
-    "@rightkit/release": "0.2.51",
+    "@rightkit/release": "0.2.52",
     "@tauri-apps/cli": "^2.0.0"
   }
 }
