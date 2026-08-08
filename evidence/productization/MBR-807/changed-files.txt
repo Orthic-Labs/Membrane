@@ -1,0 +1,10 @@
+scripts/release/evidence/sbom.mjs
+scripts/release/evidence/sbom.test.mjs
+scripts/release/evidence/manifest.mjs
+scripts/release/evidence/manifest.test.mjs
+release/evidence/sbom.v1.schema.json
+docs/release/evidence.md
+evidence/productization/MBR-807/summary.json
+evidence/productization/MBR-807/acceptance.json
+evidence/productization/MBR-807/commands.log
+evidence/productization/MBR-807/changed-files.txt

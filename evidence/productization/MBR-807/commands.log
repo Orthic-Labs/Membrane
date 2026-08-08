@@ -1,0 +1,53 @@
+$ node --test scripts/release/evidence/sbom.test.mjs scripts/release/evidence/manifest.test.mjs
+✔ readReleaseGeneration fails closed when MBR-903's file is missing, and rejects the wrong schema (2.286833ms)
+✔ buildProvenance reads this repository's real current HEAD commit read-only (42.545833ms)
+✔ buildProvenance fails closed on a commit git cannot resolve (14.928792ms)
+✔ buildToolchain reads this repository's real, declared toolchain constraints without invoking a compiler (1.524375ms)
+✔ buildReleaseGenerationEvidence binds to MBR-903's real release_generation, writes real SBOM/provenance/toolchain evidence derived from this repo's real lockfiles, and reports every remaining requirement as a gap instead of fabricating it (48.039916ms)
+✔ assembleReleaseEvidenceManifest fails closed on a missing required field (0.149375ms)
+✔ a manifest assembled with a real MBR-903-style release_generation passes the pre-existing verifier unmodified (7.052333ms)
+✔ generateSbom against this repo's real membrane-hub lockfiles produces only resolved, hash-bound components and no gaps (5.711083ms)
+✔ generateSbom is deterministic and hash-binds the exact lockfile bytes it read (3.564ms)
+✔ generateSbom fails closed on a missing lockfile instead of silently skipping it (0.354708ms)
+✔ parsePnpmLock resolves a normal entry and reports a gap for one with no resolution (0.229ms)
+✔ parsePnpmLock returns nothing when there is no packages: section (0.136625ms)
+✔ parseCargoLock resolves a registry crate, records a local path member honestly, and gaps a checksum-less registry source (0.141167ms)
+✔ a generated SBOM round-trips through JSON to a temp file unchanged (4.801916ms)
+# tests 14, pass 14, fail 0.
+
+# This is the only executable command run for this task. Both files are this
+# task's own new tests over its own new pure functions and fixture-backed
+# I/O in scripts/release/evidence/{sbom,manifest}.mjs.
+#
+# No test fixture mutated this repository. Confirmed after the run:
+#   $ git status --short -- evidence/releases scripts/release/evidence \
+#       release/evidence docs/release evidence/productization/MBR-807
+#   ?? release/evidence/sbom.v1.schema.json
+#   ?? scripts/release/evidence/
+# -- i.e. only this task's own new files; nothing under evidence/releases/
+# (outside this task's allowed paths) and no temp/fixture leakage. Every
+# filesystem fixture in both test files is written under node:os tmpdir()
+# (via mkdtempSync) and removed in a `finally` block.
+#
+# manifest.test.mjs's git-dependent tests (buildProvenance, and
+# buildReleaseGenerationEvidence's binding test) read this repository's
+# real, already-existing HEAD commit read-only, via `git rev-parse HEAD`,
+# `git rev-parse HEAD^{tree}`, and `git show -s --format=...`. No test in
+# this task, anywhere, ran a mutating git command (init/add/commit/
+# checkout/stash/reset/rebase/push) -- against this repository or any
+# other, including inside temp fixtures.
+#
+# No cargo, pnpm, Tauri, right-release, codesign, notarytool, stapler,
+# spctl, signtool, or AzureSignTool command was run.
+#
+# scripts/release/verify-release-evidence.mjs and
+# scripts/release/pipeline/identity.mjs -- NOT MODIFIED. Read and imported
+# only (manifest.mjs imports verifyReleaseEvidence from the former;
+# manifest.test.mjs imports computeReleaseGeneration/VECTOR_DISPATCH from
+# the latter, both pre-existing and unmodified).
+#
+# node scripts/qualification/run.mjs --task MBR-807 (the manifest's
+# `commands` entry) -- NOT RUN. Per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md
+# and this task's explicit instructions, the manifest commands list is
+# executed once at the final phased book gate, not per task; acceptance.json
+# status stays pending_book_gate.
