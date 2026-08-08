@@ -12,6 +12,7 @@ pub mod dispatch;
 pub mod install_tx;
 pub mod migration;
 pub mod modes;
+pub mod read_dedup;
 pub mod serve;
 pub mod uninstall;
 pub mod update;
@@ -24,14 +25,19 @@ pub use install_tx::{
     commit, execute_plan, InstallError, InstallOutcome, InstallPlan, InstallReceiptV1,
     InstallStage, InstallStep, INSTALL_RECEIPT_SCHEMA_VERSION,
 };
-pub use migration::{migrate, MigrationReceiptV1, MIGRATION_RECEIPT_FILE_NAME, MIGRATION_RECEIPT_SCHEMA_VERSION};
+pub use migration::{
+    migrate, MigrationReceiptV1, MIGRATION_RECEIPT_FILE_NAME, MIGRATION_RECEIPT_SCHEMA_VERSION,
+};
 pub use serve::run_loopback_api;
 pub use uninstall::{
     execute_uninstall, load_table, register, revoke_unowned, OwnershipClaim, OwnershipKind,
     OwnershipTable, UninstallError, UninstallOutcome, UninstallReceiptV1,
     UNINSTALL_RECEIPT_SCHEMA_VERSION,
 };
-pub use update::{update, UpdateHooks, UpdatePhase, UpdatePlan, UpdateReceiptV1, UPDATE_RECEIPT_FILE, UPDATE_RECEIPT_SCHEMA_VERSION};
+pub use update::{
+    update, UpdateHooks, UpdatePhase, UpdatePlan, UpdateReceiptV1, UPDATE_RECEIPT_FILE,
+    UPDATE_RECEIPT_SCHEMA_VERSION,
+};
 
 /// Process-wide exit-code contract. The binary returns these to the OS so scripts and the
 /// supervisor can distinguish "user error" from "internal failure" without parsing stderr.

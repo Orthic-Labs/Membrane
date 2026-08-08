@@ -155,7 +155,12 @@ pub fn retrieve_raw(raw_root: &Path, digest: &str) -> Result<String, String> {
     }
     Ok(raw)
 }
-fn store_raw(root: &Path, digest: &str, raw: &str) -> Result<PathBuf, String> {
+pub(crate) fn verify_source_hash(expected: &str, source: &str) -> Result<(), String> {
+    (digest_str(source) == expected)
+        .then_some(())
+        .ok_or_else(|| "immutable source hash mismatch".into())
+}
+pub(crate) fn store_raw(root: &Path, digest: &str, raw: &str) -> Result<PathBuf, String> {
     let path = digest_path(root, digest);
     std::fs::create_dir_all(path.parent().unwrap())
         .map_err(|error| format!("create raw output root: {error}"))?;
