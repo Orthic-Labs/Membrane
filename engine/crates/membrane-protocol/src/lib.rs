@@ -75,8 +75,10 @@ pub use provider_readiness::{
     ProviderIdentityV1, ProviderObservationV1, ProviderReadinessStateV1, ProviderReadinessV1,
     ProviderTestQueryV1, PROVIDER_READINESS_SCHEMA_VERSION,
 };
-pub use release_channel::{ReleaseChannel, ReleaseChannelV1, SchemaCompatibility, SupportState,
-    SupportWindowV1, RELEASE_CHANNEL_SCHEMA_VERSION};
+pub use release_channel::{
+    ReleaseChannel, ReleaseChannelV1, SchemaCompatibility, SupportState, SupportWindowV1,
+    RELEASE_CHANNEL_SCHEMA_VERSION,
+};
 pub use source_resolution::{
     SourceResolutionReceiptV1, SourceResolutionStatusV1, SOURCE_RESOLUTION_RECEIPT_SCHEMA_VERSION,
 };
@@ -85,8 +87,8 @@ pub use status::{
     InstallationStatusV1, MultidimensionalStatusV1, MULTIDIMENSIONAL_STATUS_SCHEMA_VERSION,
 };
 pub use team_policy::{
-    EncryptedReplicationEnvelopeV1, TeamPolicyReceiptV1, TeamPolicyScopeV1,
-    TeamPolicySyncV1, TeamSyncOptInV1, TEAM_POLICY_SCHEMA_VERSION,
+    EncryptedReplicationEnvelopeV1, TeamPolicyReceiptV1, TeamPolicyScopeV1, TeamPolicySyncV1,
+    TeamSyncOptInV1, TEAM_POLICY_SCHEMA_VERSION,
 };
 pub use types::*;
 

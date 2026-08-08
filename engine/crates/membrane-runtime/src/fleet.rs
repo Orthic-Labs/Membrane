@@ -64,14 +64,42 @@ pub fn project_fleet(
         return Err(FleetProjectionError::TooManyRows);
     }
     let present = |value: &str| !value.trim().is_empty();
-    let values = [state.into(), reason.into(), source.into(), evidence.into(), resolver.into()];
+    let values = [
+        state.into(),
+        reason.into(),
+        source.into(),
+        evidence.into(),
+        resolver.into(),
+    ];
     let installation_ok = |row: &FleetInstallation| {
-        [&row.installation_id, &row.state, &row.reason, &row.source, &row.evidence, &row.resolver].iter().all(|value| present(value))
+        [
+            &row.installation_id,
+            &row.state,
+            &row.reason,
+            &row.source,
+            &row.evidence,
+            &row.resolver,
+        ]
+        .iter()
+        .all(|value| present(value))
     };
     let replication_ok = |row: &ReplicationObservation| {
-        [&row.observer_id, &row.origin_id, &row.state, &row.reason, &row.source, &row.evidence, &row.resolver].iter().all(|value| present(value))
+        [
+            &row.observer_id,
+            &row.origin_id,
+            &row.state,
+            &row.reason,
+            &row.source,
+            &row.evidence,
+            &row.resolver,
+        ]
+        .iter()
+        .all(|value| present(value))
     };
-    if !values.iter().all(|value| present(value)) || !installations.iter().all(installation_ok) || !replication.iter().all(replication_ok) {
+    if !values.iter().all(|value| present(value))
+        || !installations.iter().all(installation_ok)
+        || !replication.iter().all(replication_ok)
+    {
         return Err(FleetProjectionError::MissingEvidence);
     }
     installations.sort_by(|a, b| a.installation_id.cmp(&b.installation_id));

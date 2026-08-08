@@ -13,9 +13,8 @@ pub mod temporal;
 pub mod time;
 
 pub use maintenance_exec::{
-    BoundedMaintenanceOperation, MaintenanceExecError, MaintenanceExecKind,
-    MaintenanceExecOutcome, MaintenanceExecReceipt, MaintenanceUnitOfWork,
-    MAINTENANCE_EXEC_RECEIPT_SCHEMA_VERSION,
+    BoundedMaintenanceOperation, MaintenanceExecError, MaintenanceExecKind, MaintenanceExecOutcome,
+    MaintenanceExecReceipt, MaintenanceUnitOfWork, MAINTENANCE_EXEC_RECEIPT_SCHEMA_VERSION,
 };
 pub use memdb::MemDb;
 pub use team_sync::{

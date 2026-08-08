@@ -46,11 +46,7 @@ pub struct PlatformVerification {
 /// Trusted adapters perform cryptographic/platform verification. Wire evidence
 /// never carries caller-asserted verification booleans.
 pub trait UpdateTrustVerifier {
-    fn verify_tauri(
-        &self,
-        artifact_sha256: &str,
-        evidence: &TauriSignatureEvidence,
-    ) -> bool;
+    fn verify_tauri(&self, artifact_sha256: &str, evidence: &TauriSignatureEvidence) -> bool;
     fn verify_platform(
         &self,
         artifact_sha256: &str,
@@ -127,7 +123,11 @@ pub fn verify<V: UpdateTrustVerifier>(
             failures.push(FailureCode::PlatformTrustInvalid.code());
         }
     }
-    let outcome = if failures.is_empty() { "verified" } else { "blocked" };
+    let outcome = if failures.is_empty() {
+        "verified"
+    } else {
+        "blocked"
+    };
     let receipt = receipt(candidate, outcome, failures);
     if outcome == "verified" {
         Ok(VerifiedUpdate(receipt))
@@ -149,9 +149,12 @@ fn identity_valid(candidate: &UpdateCandidate) -> bool {
 }
 
 fn valid_sha256(value: &str) -> bool {
-    value
-        .strip_prefix("sha256:")
-        .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()))
+    value.strip_prefix("sha256:").is_some_and(|hex| {
+        hex.len() == 64
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    })
 }
 
 /// `to` must be a strictly greater `major.minor.patch` than `from`. Either
@@ -233,9 +236,15 @@ mod tests {
         fn verify_tauri(&self, artifact_sha256: &str, evidence: &TauriSignatureEvidence) -> bool {
             evidence.signed_sha256 == artifact_sha256
                 && !evidence.signature.is_empty()
-                && self.trusted_tauri_key_ids.contains(&evidence.key_id.as_str())
+                && self
+                    .trusted_tauri_key_ids
+                    .contains(&evidence.key_id.as_str())
         }
-        fn verify_platform(&self, _artifact_sha256: &str, _evidence: &PlatformTrustEvidence) -> PlatformVerification {
+        fn verify_platform(
+            &self,
+            _artifact_sha256: &str,
+            _evidence: &PlatformTrustEvidence,
+        ) -> PlatformVerification {
             PlatformVerification {
                 signature_valid: self.platform_signature_valid,
                 platform_trust_valid: self.platform_trust_valid,
@@ -243,7 +252,8 @@ mod tests {
         }
     }
 
-    const ARTIFACT_SHA256: &str = "sha256:0000000000000000000000000000000000000000000000000000000000ab";
+    const ARTIFACT_SHA256: &str =
+        "sha256:0000000000000000000000000000000000000000000000000000000000ab";
     const TRUSTED_KEY: &str = "rightsuite-updater-key-2026";
 
     fn fully_trusting_verifier() -> MockVerifier {
@@ -287,7 +297,10 @@ mod tests {
         let outcome = verify(&candidate, &fully_trusting_verifier());
         let BlockedUpdate(receipt) = outcome.expect_err("empty signature bytes must fail closed");
         assert_eq!(receipt.outcome, "blocked");
-        assert_eq!(receipt.failures, vec![FailureCode::InvalidEvidenceIdentity.code()]);
+        assert_eq!(
+            receipt.failures,
+            vec![FailureCode::InvalidEvidenceIdentity.code()]
+        );
         // No activation API exists on this crate; a `BlockedUpdate` cannot
         // have mutated anything, so the current version is preserved by
         // construction. The receipt still names the version pair for audit.
@@ -301,7 +314,10 @@ mod tests {
         candidate.tauri.key_id = "attacker-controlled-key".to_string();
         let outcome = verify(&candidate, &fully_trusting_verifier());
         let BlockedUpdate(receipt) = outcome.expect_err("unrecognized key must fail closed");
-        assert_eq!(receipt.failures, vec![FailureCode::TauriUpdaterSignatureInvalid.code()]);
+        assert_eq!(
+            receipt.failures,
+            vec![FailureCode::TauriUpdaterSignatureInvalid.code()]
+        );
     }
 
     #[test]
@@ -312,8 +328,12 @@ mod tests {
             platform_trust_valid: true,
         };
         let outcome = verify(&candidate("0.1.5", "0.1.6"), &verifier);
-        let BlockedUpdate(receipt) = outcome.expect_err("one of two signatures invalid must fail closed");
-        assert_eq!(receipt.failures, vec![FailureCode::PlatformSignatureInvalid.code()]);
+        let BlockedUpdate(receipt) =
+            outcome.expect_err("one of two signatures invalid must fail closed");
+        assert_eq!(
+            receipt.failures,
+            vec![FailureCode::PlatformSignatureInvalid.code()]
+        );
     }
 
     #[test]
@@ -324,8 +344,12 @@ mod tests {
             platform_trust_valid: true,
         };
         let outcome = verify(&candidate("0.1.5", "0.1.6"), &verifier);
-        let BlockedUpdate(receipt) = outcome.expect_err("the other one-of-two case must also fail closed");
-        assert_eq!(receipt.failures, vec![FailureCode::TauriUpdaterSignatureInvalid.code()]);
+        let BlockedUpdate(receipt) =
+            outcome.expect_err("the other one-of-two case must also fail closed");
+        assert_eq!(
+            receipt.failures,
+            vec![FailureCode::TauriUpdaterSignatureInvalid.code()]
+        );
     }
 
     #[test]
@@ -336,22 +360,34 @@ mod tests {
             platform_trust_valid: false,
         };
         let outcome = verify(&candidate("0.1.5", "0.1.6"), &verifier);
-        let BlockedUpdate(receipt) = outcome.expect_err("codesigned but unnotarized must fail closed");
-        assert_eq!(receipt.failures, vec![FailureCode::PlatformTrustInvalid.code()]);
+        let BlockedUpdate(receipt) =
+            outcome.expect_err("codesigned but unnotarized must fail closed");
+        assert_eq!(
+            receipt.failures,
+            vec![FailureCode::PlatformTrustInvalid.code()]
+        );
     }
 
     #[test]
     fn downgrade_blocks_even_with_two_fully_valid_signatures() {
         let outcome = verify(&candidate("0.2.0", "0.1.9"), &fully_trusting_verifier());
-        let BlockedUpdate(receipt) = outcome.expect_err("a downgrade must fail closed regardless of signature validity");
-        assert_eq!(receipt.failures, vec![FailureCode::DowngradeRejected.code()]);
+        let BlockedUpdate(receipt) =
+            outcome.expect_err("a downgrade must fail closed regardless of signature validity");
+        assert_eq!(
+            receipt.failures,
+            vec![FailureCode::DowngradeRejected.code()]
+        );
     }
 
     #[test]
     fn unparseable_version_is_treated_as_a_downgrade() {
         let outcome = verify(&candidate("0.1.5", "latest"), &fully_trusting_verifier());
-        let BlockedUpdate(receipt) = outcome.expect_err("an unparseable target version must fail closed");
-        assert_eq!(receipt.failures, vec![FailureCode::DowngradeRejected.code()]);
+        let BlockedUpdate(receipt) =
+            outcome.expect_err("an unparseable target version must fail closed");
+        assert_eq!(
+            receipt.failures,
+            vec![FailureCode::DowngradeRejected.code()]
+        );
     }
 
     #[test]
@@ -360,8 +396,12 @@ mod tests {
         candidate.platform.signed_sha256 =
             "sha256:1111111111111111111111111111111111111111111111111111111111ab".to_string();
         let outcome = verify(&candidate, &fully_trusting_verifier());
-        let BlockedUpdate(receipt) = outcome.expect_err("evidence bound to two different artifacts must fail closed");
-        assert_eq!(receipt.failures, vec![FailureCode::InvalidEvidenceIdentity.code()]);
+        let BlockedUpdate(receipt) =
+            outcome.expect_err("evidence bound to two different artifacts must fail closed");
+        assert_eq!(
+            receipt.failures,
+            vec![FailureCode::InvalidEvidenceIdentity.code()]
+        );
     }
 
     #[test]
@@ -369,14 +409,21 @@ mod tests {
         let mut candidate = candidate("0.1.5", "0.1.6");
         candidate.artifact_sha256 = "not-a-hash".to_string();
         let outcome = verify(&candidate, &fully_trusting_verifier());
-        assert!(outcome.is_err(), "a non-SHA-256 artifact identity must fail closed");
+        assert!(
+            outcome.is_err(),
+            "a non-SHA-256 artifact identity must fail closed"
+        );
     }
 
     #[test]
     fn version_triple_parses_semver_and_tolerates_prerelease_suffixes() {
         assert_eq!(version_triple("0.1.5"), Some((0, 1, 5)));
         assert_eq!(version_triple("2.1.0-rc.1"), Some((2, 1, 0)));
-        assert_eq!(version_triple("v1.2.3"), None, "a leading 'v' is not a digit");
+        assert_eq!(
+            version_triple("v1.2.3"),
+            None,
+            "a leading 'v' is not a digit"
+        );
         assert_eq!(version_triple("1.2"), None, "patch component is required");
         assert_eq!(version_triple(""), None);
     }
@@ -385,8 +432,14 @@ mod tests {
     fn is_upgrade_requires_a_strictly_greater_triple() {
         assert!(is_upgrade("0.1.5", "0.1.6"));
         assert!(is_upgrade("0.1.5", "1.0.0"));
-        assert!(!is_upgrade("0.1.5", "0.1.5"), "equal versions are not an upgrade");
-        assert!(!is_upgrade("0.2.0", "0.1.9"), "a downgrade is not an upgrade");
+        assert!(
+            !is_upgrade("0.1.5", "0.1.5"),
+            "equal versions are not an upgrade"
+        );
+        assert!(
+            !is_upgrade("0.2.0", "0.1.9"),
+            "a downgrade is not an upgrade"
+        );
         assert!(!is_upgrade("0.1.5", "not-a-version"));
     }
 }

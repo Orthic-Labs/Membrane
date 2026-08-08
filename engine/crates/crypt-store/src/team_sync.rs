@@ -129,7 +129,9 @@ pub struct TeamSyncAuditRecord {
 pub enum TeamSyncStoreError {
     #[error("policy failed structural bounds validation; refusing to touch team sync state")]
     InvalidBounds,
-    #[error("team sync is not opted in on this installation; refusing to admit or persist any policy")]
+    #[error(
+        "team sync is not opted in on this installation; refusing to admit or persist any policy"
+    )]
     NotOptedIn,
     #[error("policy tenant/team does not match the locally opted-in tenant/team")]
     TenantOrTeamMismatch,
@@ -159,7 +161,8 @@ impl MemDb {
         key_id: &str,
         enabled_at: &str,
     ) -> Result<TeamSyncOptInRecord, TeamSyncStoreError> {
-        if tenant_id.is_empty() || team_id.is_empty() || key_id.is_empty() || enabled_at.is_empty() {
+        if tenant_id.is_empty() || team_id.is_empty() || key_id.is_empty() || enabled_at.is_empty()
+        {
             return Err(TeamSyncStoreError::InvalidOptIn);
         }
         self.ensure_team_sync_schema()?;
@@ -189,7 +192,9 @@ impl MemDb {
     }
 
     /// `None` means team sync is off on this installation (the default).
-    pub fn team_sync_opt_in_status(&self) -> Result<Option<TeamSyncOptInRecord>, TeamSyncStoreError> {
+    pub fn team_sync_opt_in_status(
+        &self,
+    ) -> Result<Option<TeamSyncOptInRecord>, TeamSyncStoreError> {
         self.ensure_team_sync_schema()?;
         let conn = self.lock();
         Ok(conn
@@ -407,7 +412,10 @@ mod tests {
             .commit_team_policy_admission(&policy(1, "key-1"), true, "accepted")
             .unwrap_err();
         assert!(matches!(error, TeamSyncStoreError::NotOptedIn));
-        assert_eq!(db.team_sync_audit_log("tenant-1", "team-1", 10).unwrap(), vec![]);
+        assert_eq!(
+            db.team_sync_audit_log("tenant-1", "team-1", 10).unwrap(),
+            vec![]
+        );
     }
 
     #[test]
@@ -432,19 +440,30 @@ mod tests {
             .commit_team_policy_admission(&policy(1, "key-1"), true, "accepted")
             .unwrap_err();
         assert!(matches!(error, TeamSyncStoreError::TenantOrTeamMismatch));
-        assert_eq!(db.team_sync_audit_log("tenant-1", "team-1", 10).unwrap(), vec![]);
+        assert_eq!(
+            db.team_sync_audit_log("tenant-1", "team-1", 10).unwrap(),
+            vec![]
+        );
     }
 
     #[test]
     fn refuses_when_key_id_does_not_match_opt_in_key() {
         let db = MemDb::open_in_memory();
-        db.enable_team_sync_opt_in("tenant-1", "team-1", "key-rotated-away", "2026-08-08T00:00:00Z")
-            .unwrap();
+        db.enable_team_sync_opt_in(
+            "tenant-1",
+            "team-1",
+            "key-rotated-away",
+            "2026-08-08T00:00:00Z",
+        )
+        .unwrap();
         let error = db
             .commit_team_policy_admission(&policy(1, "key-1"), true, "accepted")
             .unwrap_err();
         assert!(matches!(error, TeamSyncStoreError::KeyMismatch));
-        assert_eq!(db.team_sync_audit_log("tenant-1", "team-1", 10).unwrap(), vec![]);
+        assert_eq!(
+            db.team_sync_audit_log("tenant-1", "team-1", 10).unwrap(),
+            vec![]
+        );
     }
 
     #[test]
@@ -547,7 +566,9 @@ mod tests {
             "membrane_team_sync_state",
             "membrane_team_sync_audit_log",
         ] {
-            let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})")).unwrap();
+            let mut stmt = conn
+                .prepare(&format!("PRAGMA table_info({table})"))
+                .unwrap();
             let columns: Vec<String> = stmt
                 .query_map([], |row| row.get::<_, String>(1))
                 .unwrap()
@@ -577,6 +598,10 @@ mod tests {
         assert_eq!(log[0].generation, 2, "newest first");
         assert_eq!(log[1].generation, 1);
 
-        assert_eq!(db.team_sync_audit_log("tenant-1", "other-team", 10).unwrap(), vec![]);
+        assert_eq!(
+            db.team_sync_audit_log("tenant-1", "other-team", 10)
+                .unwrap(),
+            vec![]
+        );
     }
 }

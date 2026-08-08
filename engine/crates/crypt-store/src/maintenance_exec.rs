@@ -349,7 +349,10 @@ mod tests {
             .expect("cancellation is a normal, receipted outcome");
 
         assert_eq!(receipt.outcome, MaintenanceExecOutcome::RolledBackCancelled);
-        assert_eq!(receipt.units_committed, 0, "a rolled-back run commits nothing");
+        assert_eq!(
+            receipt.units_committed, 0,
+            "a rolled-back run commits nothing"
+        );
         assert_eq!(
             scratch_row_count(&db),
             0,
@@ -420,7 +423,10 @@ mod tests {
             .execute_bounded_maintenance(&operation, &|| 0, &|| false, &mut work)
             .expect("a failing unit is a normal, receipted outcome");
 
-        assert_eq!(receipt.outcome, MaintenanceExecOutcome::RolledBackUnitFailed);
+        assert_eq!(
+            receipt.outcome,
+            MaintenanceExecOutcome::RolledBackUnitFailed
+        );
         assert_eq!(
             scratch_row_count(&db),
             0,

@@ -54,7 +54,9 @@ pub struct ReleaseChannelV1 {
 
 impl ReleaseChannelV1 {
     pub fn update_available(&self) -> bool {
-        self.signed_update_evidence.as_deref().is_some_and(|value| !value.trim().is_empty())
+        self.signed_update_evidence
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
     }
     pub fn is_schema_current(&self) -> bool {
         self.schema_version == RELEASE_CHANNEL_SCHEMA_VERSION

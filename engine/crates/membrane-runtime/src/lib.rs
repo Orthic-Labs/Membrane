@@ -14,8 +14,8 @@ pub mod cli;
 pub mod code_batch;
 pub mod compress;
 pub mod compression_provider;
-pub mod diagnostic_bundle;
 pub mod delivery_trace_view;
+pub mod diagnostic_bundle;
 pub mod digest;
 pub mod doc_candidate_provider;
 pub mod doc_projection;
@@ -25,8 +25,8 @@ pub mod doctor;
 pub mod federation;
 pub mod federation_worker;
 pub mod feedback;
-pub mod freshness;
 pub mod fleet;
+pub mod freshness;
 pub mod hub;
 pub mod installation_manifest;
 pub mod mcp_http;
@@ -96,13 +96,12 @@ pub use receipt::{
 pub use scope::{
     normalize_scope, path_to_scope, scope_chain, ScopeDescriptorError, ScopeDescriptorV1,
 };
-pub use team_policy::{
-    admit_team_policy, admit_team_policy_with_opt_in, TeamPolicyAdmission,
-    TeamPolicyAdmissionReason, TeamPolicyTrustVerifier, TrustedPolicyVerification,
-};
 pub use store::{
     MemoryEventContext, MemoryLifecycleError, MemoryLifecycleEventV1, MemoryLifecycleInputV1,
     MemoryLifecycleKind, MemoryLifecycleOperation, MemoryLifecycleOperationV1,
-    MemoryLifecycleReceiptV1, MemoryPriorityError, MemoryStore, VerifiedMemoryActor,
-    RecallResult,
+    MemoryLifecycleReceiptV1, MemoryPriorityError, MemoryStore, RecallResult, VerifiedMemoryActor,
+};
+pub use team_policy::{
+    admit_team_policy, admit_team_policy_with_opt_in, TeamPolicyAdmission,
+    TeamPolicyAdmissionReason, TeamPolicyTrustVerifier, TrustedPolicyVerification,
 };

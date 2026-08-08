@@ -34,10 +34,10 @@ pub use lease::{
 };
 pub use lock::{pid_alive_probe, release_if_owned, try_acquire_until, LockOutcome, SupervisorLock};
 pub use maintenance::{
-    plan as plan_maintenance, AuthorityReceipt, MaintenanceAuthorityVerifier, MaintenanceDisposition, MaintenanceKind,
-    MaintenanceOperation, MaintenancePlan, MaintenanceReason, MaintenanceReceipt,
-    MaintenanceRequest, MAINTENANCE_RECEIPT_SCHEMA_VERSION, MAX_MAINTENANCE_BUDGET_UNITS,
-    MAX_MAINTENANCE_WINDOW_MS,
+    plan as plan_maintenance, AuthorityReceipt, MaintenanceAuthorityVerifier,
+    MaintenanceDisposition, MaintenanceKind, MaintenanceOperation, MaintenancePlan,
+    MaintenanceReason, MaintenanceReceipt, MaintenanceRequest, MAINTENANCE_RECEIPT_SCHEMA_VERSION,
+    MAX_MAINTENANCE_BUDGET_UNITS, MAX_MAINTENANCE_WINDOW_MS,
 };
 pub use resident::{preflight_resident_binary, ResidentHandle, ResidentInvocation};
 pub use startup::{

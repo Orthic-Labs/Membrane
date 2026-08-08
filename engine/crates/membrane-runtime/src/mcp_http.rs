@@ -114,9 +114,7 @@ fn strip_port(host_header: &str) -> &str {
         };
     }
     match host_header.rsplit_once(':') {
-        Some((host, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => {
-            host
-        }
+        Some((host, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => host,
         _ => host_header,
     }
 }

@@ -559,8 +559,14 @@ pub struct ScoredRecallHit {
 /// values never enter memory text or bypass scope/lifecycle admission.
 #[derive(Clone, Debug)]
 pub enum RecallResult {
-    Memory { entry: MemoryEntry, score: f32 },
-    Temporal { fact: crypt_store::TemporalFact, score: f32 },
+    Memory {
+        entry: MemoryEntry,
+        score: f32,
+    },
+    Temporal {
+        fact: crypt_store::TemporalFact,
+        score: f32,
+    },
 }
 
 /// Content-free wall-clock decomposition for the live memory-candidate lane.
@@ -1334,7 +1340,11 @@ impl MemoryStore {
             if request.scope_chain.is_empty() {
                 request.scope_chain = scopes.to_vec();
             }
-            if request.scope_chain.iter().any(|scope| !scopes.contains(scope)) {
+            if request
+                .scope_chain
+                .iter()
+                .any(|scope| !scopes.contains(scope))
+            {
                 return self
                     .recall_scored_at(query, limit, scopes, as_of_ms, include_expired)
                     .into_iter()
@@ -1351,10 +1361,11 @@ impl MemoryStore {
             }
         }
         let memory_limit = limit.saturating_sub(out.len());
-        out.extend(self
-            .recall_scored_at(query, memory_limit, scopes, as_of_ms, include_expired)
-            .into_iter()
-            .map(|(entry, score)| RecallResult::Memory { entry, score }));
+        out.extend(
+            self.recall_scored_at(query, memory_limit, scopes, as_of_ms, include_expired)
+                .into_iter()
+                .map(|(entry, score)| RecallResult::Memory { entry, score }),
+        );
         out
     }
     fn embed_query_cached(&self, text: &str) -> Vec<f32> {

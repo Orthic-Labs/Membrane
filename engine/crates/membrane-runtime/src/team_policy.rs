@@ -17,7 +17,12 @@ pub trait TeamPolicyTrustVerifier {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TeamPolicyAdmissionReason {
-    Accepted, InvalidBounds, Replay, UntrustedEncryption, Unauthorized, UserScopeBroadened,
+    Accepted,
+    InvalidBounds,
+    Replay,
+    UntrustedEncryption,
+    Unauthorized,
+    UserScopeBroadened,
     /// This installation has not explicitly opted in to team sync (or the opt-in record itself
     /// is malformed). Team sync is off by default; nothing admits until a local caller enables it.
     SyncNotOptedIn,
@@ -33,8 +38,11 @@ pub enum TeamPolicyAdmissionReason {
 impl TeamPolicyAdmissionReason {
     fn code(self) -> &'static str {
         match self {
-            Self::Accepted => "accepted", Self::InvalidBounds => "invalid_bounds", Self::Replay => "replay",
-            Self::UntrustedEncryption => "untrusted_encryption", Self::Unauthorized => "unauthorized",
+            Self::Accepted => "accepted",
+            Self::InvalidBounds => "invalid_bounds",
+            Self::Replay => "replay",
+            Self::UntrustedEncryption => "untrusted_encryption",
+            Self::Unauthorized => "unauthorized",
             Self::UserScopeBroadened => "user_scope_broadened",
             Self::SyncNotOptedIn => "sync_not_opted_in",
             Self::TenantOrTeamMismatch => "tenant_or_team_mismatch",
@@ -44,26 +52,52 @@ impl TeamPolicyAdmissionReason {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TeamPolicyAdmission { pub receipt: TeamPolicyReceiptV1, pub reason: TeamPolicyAdmissionReason }
-
-pub fn admit_team_policy(policy: &TeamPolicySyncV1, verifier: &dyn TeamPolicyTrustVerifier) -> TeamPolicyAdmission {
-    let reason = if !policy.has_valid_bounds() { TeamPolicyAdmissionReason::InvalidBounds } else {
-        let verification = verifier.verify(policy);
-        if policy.generation <= verification.current_generation { TeamPolicyAdmissionReason::Replay }
-        else if !verification.encrypted { TeamPolicyAdmissionReason::UntrustedEncryption }
-        else if !verification.authorized { TeamPolicyAdmissionReason::Unauthorized }
-        else if !verification.user_origin_learning_scope_preserved { TeamPolicyAdmissionReason::UserScopeBroadened }
-        else { TeamPolicyAdmissionReason::Accepted }
-    };
-    let admitted = reason == TeamPolicyAdmissionReason::Accepted;
-    TeamPolicyAdmission { reason, receipt: TeamPolicyReceiptV1 {
-        schema_version: TEAM_POLICY_SCHEMA_VERSION, policy_id: policy.policy_id.clone(), tenant_id: policy.tenant_id.clone(),
-        team_id: policy.team_id.clone(), generation: policy.generation, envelope_id: policy.envelope.envelope_id.clone(),
-        ciphertext_sha256: policy.envelope.ciphertext_sha256.clone(), admitted, reason: reason.code().into(),
-    }}
+pub struct TeamPolicyAdmission {
+    pub receipt: TeamPolicyReceiptV1,
+    pub reason: TeamPolicyAdmissionReason,
 }
 
-fn rejection_receipt(policy: &TeamPolicySyncV1, reason: TeamPolicyAdmissionReason) -> TeamPolicyAdmission {
+pub fn admit_team_policy(
+    policy: &TeamPolicySyncV1,
+    verifier: &dyn TeamPolicyTrustVerifier,
+) -> TeamPolicyAdmission {
+    let reason = if !policy.has_valid_bounds() {
+        TeamPolicyAdmissionReason::InvalidBounds
+    } else {
+        let verification = verifier.verify(policy);
+        if policy.generation <= verification.current_generation {
+            TeamPolicyAdmissionReason::Replay
+        } else if !verification.encrypted {
+            TeamPolicyAdmissionReason::UntrustedEncryption
+        } else if !verification.authorized {
+            TeamPolicyAdmissionReason::Unauthorized
+        } else if !verification.user_origin_learning_scope_preserved {
+            TeamPolicyAdmissionReason::UserScopeBroadened
+        } else {
+            TeamPolicyAdmissionReason::Accepted
+        }
+    };
+    let admitted = reason == TeamPolicyAdmissionReason::Accepted;
+    TeamPolicyAdmission {
+        reason,
+        receipt: TeamPolicyReceiptV1 {
+            schema_version: TEAM_POLICY_SCHEMA_VERSION,
+            policy_id: policy.policy_id.clone(),
+            tenant_id: policy.tenant_id.clone(),
+            team_id: policy.team_id.clone(),
+            generation: policy.generation,
+            envelope_id: policy.envelope.envelope_id.clone(),
+            ciphertext_sha256: policy.envelope.ciphertext_sha256.clone(),
+            admitted,
+            reason: reason.code().into(),
+        },
+    }
+}
+
+fn rejection_receipt(
+    policy: &TeamPolicySyncV1,
+    reason: TeamPolicyAdmissionReason,
+) -> TeamPolicyAdmission {
     TeamPolicyAdmission {
         reason,
         receipt: TeamPolicyReceiptV1 {
@@ -139,12 +173,19 @@ mod tests {
             team_id: "team-1".into(),
             user_id: "user-1".into(),
             generation,
-            scopes: vec![TeamPolicyScopeV1::Tenant, TeamPolicyScopeV1::Team, TeamPolicyScopeV1::User],
+            scopes: vec![
+                TeamPolicyScopeV1::Tenant,
+                TeamPolicyScopeV1::Team,
+                TeamPolicyScopeV1::User,
+            ],
             admin_policy_sha256: format!("sha256:{}", "b".repeat(64)),
             offboarded_user_ids: vec![],
             key_rotation_id: "rot-1".into(),
             audit_export_id: "audit-1".into(),
-            envelope: EncryptedReplicationEnvelopeV1 { generation, ..envelope(key_id) },
+            envelope: EncryptedReplicationEnvelopeV1 {
+                generation,
+                ..envelope(key_id)
+            },
         }
     }
 
@@ -201,31 +242,46 @@ mod tests {
         other_team.envelope.team_id = "team-2".into();
         let admission =
             admit_team_policy_with_opt_in(&other_team, &opted_in("key-1"), &TrustedVerifier);
-        assert_eq!(admission.reason, TeamPolicyAdmissionReason::TenantOrTeamMismatch);
+        assert_eq!(
+            admission.reason,
+            TeamPolicyAdmissionReason::TenantOrTeamMismatch
+        );
         assert!(!admission.receipt.admitted);
     }
 
     #[test]
     fn a_rotated_key_is_never_silently_followed() {
-        let admission =
-            admit_team_policy_with_opt_in(&policy(1, "key-rotated"), &opted_in("key-1"), &TrustedVerifier);
+        let admission = admit_team_policy_with_opt_in(
+            &policy(1, "key-rotated"),
+            &opted_in("key-1"),
+            &TrustedVerifier,
+        );
         assert_eq!(admission.reason, TeamPolicyAdmissionReason::KeyMismatch);
         assert!(!admission.receipt.admitted);
     }
 
     #[test]
     fn opted_in_matching_trusted_policy_is_accepted() {
-        let admission =
-            admit_team_policy_with_opt_in(&policy(1, "key-1"), &opted_in("key-1"), &TrustedVerifier);
+        let admission = admit_team_policy_with_opt_in(
+            &policy(1, "key-1"),
+            &opted_in("key-1"),
+            &TrustedVerifier,
+        );
         assert_eq!(admission.reason, TeamPolicyAdmissionReason::Accepted);
         assert!(admission.receipt.admitted);
     }
 
     #[test]
     fn opt_in_gate_never_overrides_untrusted_encryption() {
-        let admission =
-            admit_team_policy_with_opt_in(&policy(1, "key-1"), &opted_in("key-1"), &UntrustedVerifier);
-        assert_eq!(admission.reason, TeamPolicyAdmissionReason::UntrustedEncryption);
+        let admission = admit_team_policy_with_opt_in(
+            &policy(1, "key-1"),
+            &opted_in("key-1"),
+            &UntrustedVerifier,
+        );
+        assert_eq!(
+            admission.reason,
+            TeamPolicyAdmissionReason::UntrustedEncryption
+        );
         assert!(!admission.receipt.admitted);
     }
 
@@ -233,7 +289,8 @@ mod tests {
     fn malformed_opt_in_record_fails_closed_even_if_marked_enabled() {
         let mut malformed = opted_in("key-1");
         malformed.tenant_id = String::new(); // enabled=true but missing tenant: not well-formed
-        let admission = admit_team_policy_with_opt_in(&policy(1, "key-1"), &malformed, &TrustedVerifier);
+        let admission =
+            admit_team_policy_with_opt_in(&policy(1, "key-1"), &malformed, &TrustedVerifier);
         assert_eq!(admission.reason, TeamPolicyAdmissionReason::SyncNotOptedIn);
     }
 }

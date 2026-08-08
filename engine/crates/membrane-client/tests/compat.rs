@@ -27,8 +27,7 @@ fn golden(name: &str) -> Value {
     let path = repo_root().join("operations/operations").join(name);
     let text = fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
-    serde_json::from_str(&text)
-        .unwrap_or_else(|error| panic!("parse {}: {error}", path.display()))
+    serde_json::from_str(&text).unwrap_or_else(|error| panic!("parse {}: {error}", path.display()))
 }
 
 fn error_codes_for(operation: &str) -> Vec<String> {
@@ -38,7 +37,8 @@ fn error_codes_for(operation: &str) -> Vec<String> {
         .expect("operations-index.operations is an array")
         .iter()
         .find(|entry| entry["name"] == operation)
-        .unwrap_or_else(|| panic!("{operation} present in operations-index.v1.golden.json"))["errorCodes"]
+        .unwrap_or_else(|| panic!("{operation} present in operations-index.v1.golden.json"))
+        ["errorCodes"]
         .as_array()
         .expect("errorCodes is an array")
         .iter()

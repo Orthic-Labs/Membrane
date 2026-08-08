@@ -20,7 +20,13 @@ pub struct HttpAdmissionPolicy {
 }
 
 impl HttpAdmissionPolicy {
-    pub fn local(installation_id: impl Into<String>, host: impl Into<String>, origin: impl Into<String>, bearer_token: impl Into<String>, session_binding: impl Into<String>) -> Self {
+    pub fn local(
+        installation_id: impl Into<String>,
+        host: impl Into<String>,
+        origin: impl Into<String>,
+        bearer_token: impl Into<String>,
+        session_binding: impl Into<String>,
+    ) -> Self {
         Self {
             installation_id: installation_id.into(),
             allowed_hosts: vec![host.into()],
@@ -70,28 +76,87 @@ pub struct HttpAdmissionReceipt {
 }
 
 impl HttpAdmissionReceipt {
-    fn allow() -> Self { Self { accepted: true, denial: None, transport: "streamable_http" } }
-    fn deny(denial: HttpDenialCode) -> Self { Self { accepted: false, denial: Some(denial), transport: "streamable_http" } }
+    fn allow() -> Self {
+        Self {
+            accepted: true,
+            denial: None,
+            transport: "streamable_http",
+        }
+    }
+    fn deny(denial: HttpDenialCode) -> Self {
+        Self {
+            accepted: false,
+            denial: Some(denial),
+            transport: "streamable_http",
+        }
+    }
 }
 
 /// Admits one optional HTTP request without retaining request content or secrets.
-pub fn admit(policy: &HttpAdmissionPolicy, request: &HttpAdmissionRequest<'_>) -> HttpAdmissionReceipt {
-    if !request.peer_ip.is_loopback() { return HttpAdmissionReceipt::deny(HttpDenialCode::NonLoopbackPeer); }
+pub fn admit(
+    policy: &HttpAdmissionPolicy,
+    request: &HttpAdmissionRequest<'_>,
+) -> HttpAdmissionReceipt {
+    if !request.peer_ip.is_loopback() {
+        return HttpAdmissionReceipt::deny(HttpDenialCode::NonLoopbackPeer);
+    }
     // Host resolution must be loopback too: a hostname changing between checks
     // is denied rather than being trusted after a DNS rebinding attempt.
-    if !request.resolved_host_ip.is_loopback() { return HttpAdmissionReceipt::deny(HttpDenialCode::DnsRebinding); }
-    if !policy.allowed_hosts.iter().any(|value| value == request.host) { return HttpAdmissionReceipt::deny(HttpDenialCode::HostNotAllowed); }
-    if !policy.allowed_origins.iter().any(|value| value == request.origin) { return HttpAdmissionReceipt::deny(HttpDenialCode::OriginNotAllowed); }
-    if policy.installation_id != request.installation_id { return HttpAdmissionReceipt::deny(HttpDenialCode::InstallationMismatch); }
-    if request.bearer_token.is_empty() { return HttpAdmissionReceipt::deny(HttpDenialCode::MissingBearer); }
-    if request.bearer_token.len() > 512 || !constant_time_eq(request.bearer_token.as_bytes(), policy.expected_bearer_token.as_bytes()) { return HttpAdmissionReceipt::deny(HttpDenialCode::InvalidBearer); }
-    if request.session_binding.is_empty() || request.session_binding.len() > 256 || !constant_time_eq(request.session_binding.as_bytes(), policy.expected_session_binding.as_bytes()) { return HttpAdmissionReceipt::deny(HttpDenialCode::SessionMismatch); }
-    if request.body_bytes > policy.max_body_bytes { return HttpAdmissionReceipt::deny(HttpDenialCode::BodyTooLarge); }
-    if request.deadline_ms == 0 || request.deadline_ms > policy.max_deadline_ms { return HttpAdmissionReceipt::deny(HttpDenialCode::DeadlineTooLong); }
+    if !request.resolved_host_ip.is_loopback() {
+        return HttpAdmissionReceipt::deny(HttpDenialCode::DnsRebinding);
+    }
+    if !policy
+        .allowed_hosts
+        .iter()
+        .any(|value| value == request.host)
+    {
+        return HttpAdmissionReceipt::deny(HttpDenialCode::HostNotAllowed);
+    }
+    if !policy
+        .allowed_origins
+        .iter()
+        .any(|value| value == request.origin)
+    {
+        return HttpAdmissionReceipt::deny(HttpDenialCode::OriginNotAllowed);
+    }
+    if policy.installation_id != request.installation_id {
+        return HttpAdmissionReceipt::deny(HttpDenialCode::InstallationMismatch);
+    }
+    if request.bearer_token.is_empty() {
+        return HttpAdmissionReceipt::deny(HttpDenialCode::MissingBearer);
+    }
+    if request.bearer_token.len() > 512
+        || !constant_time_eq(
+            request.bearer_token.as_bytes(),
+            policy.expected_bearer_token.as_bytes(),
+        )
+    {
+        return HttpAdmissionReceipt::deny(HttpDenialCode::InvalidBearer);
+    }
+    if request.session_binding.is_empty()
+        || request.session_binding.len() > 256
+        || !constant_time_eq(
+            request.session_binding.as_bytes(),
+            policy.expected_session_binding.as_bytes(),
+        )
+    {
+        return HttpAdmissionReceipt::deny(HttpDenialCode::SessionMismatch);
+    }
+    if request.body_bytes > policy.max_body_bytes {
+        return HttpAdmissionReceipt::deny(HttpDenialCode::BodyTooLarge);
+    }
+    if request.deadline_ms == 0 || request.deadline_ms > policy.max_deadline_ms {
+        return HttpAdmissionReceipt::deny(HttpDenialCode::DeadlineTooLong);
+    }
     HttpAdmissionReceipt::allow()
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
-    if left.len() != right.len() { return false; }
-    left.iter().zip(right).fold(0_u8, |difference, (a, b)| difference | (a ^ b)) == 0
+    if left.len() != right.len() {
+        return false;
+    }
+    left.iter()
+        .zip(right)
+        .fold(0_u8, |difference, (a, b)| difference | (a ^ b))
+        == 0
 }

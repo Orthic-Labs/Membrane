@@ -101,7 +101,10 @@ pub struct MaintenancePlan {
 }
 
 /// Evaluate a bounded request. Callers execute only `operation`, outside foreground handling.
-pub fn plan<V: MaintenanceAuthorityVerifier>(request: &MaintenanceRequest, verifier: &V) -> MaintenancePlan {
+pub fn plan<V: MaintenanceAuthorityVerifier>(
+    request: &MaintenanceRequest,
+    verifier: &V,
+) -> MaintenancePlan {
     let rejection = validate(request, verifier);
     let scheduled = rejection.is_none();
     let receipt = MaintenanceReceipt {
@@ -109,9 +112,14 @@ pub fn plan<V: MaintenanceAuthorityVerifier>(request: &MaintenanceRequest, verif
         request_id: request.request_id.clone(),
         scheduler_id: request.scheduler_id.clone(),
         kind: request.kind,
-        disposition: if scheduled { MaintenanceDisposition::Scheduled } else { MaintenanceDisposition::Rejected },
+        disposition: if scheduled {
+            MaintenanceDisposition::Scheduled
+        } else {
+            MaintenanceDisposition::Rejected
+        },
         reason: rejection,
-        authority_receipt_id: nonempty(&request.authority.receipt_id).then(|| request.authority.receipt_id.clone()),
+        authority_receipt_id: nonempty(&request.authority.receipt_id)
+            .then(|| request.authority.receipt_id.clone()),
         budget_units: request.budget_units,
         deadline_unix_ms: request.deadline_unix_ms,
     };
@@ -126,27 +134,58 @@ pub fn plan<V: MaintenanceAuthorityVerifier>(request: &MaintenanceRequest, verif
     MaintenancePlan { receipt, operation }
 }
 
-fn validate<V: MaintenanceAuthorityVerifier>(request: &MaintenanceRequest, verifier: &V) -> Option<MaintenanceReason> {
-    if request.cancelled { return Some(MaintenanceReason::Cancelled); }
-    if !safe_id(&request.request_id) || !safe_id(&request.scheduler_id) { return Some(MaintenanceReason::AuthorityMissing); }
-    if request.budget_units == 0 { return Some(MaintenanceReason::BudgetExhausted); }
-    if request.budget_units > MAX_MAINTENANCE_BUDGET_UNITS { return Some(MaintenanceReason::BudgetExceeded); }
-    if request.deadline_unix_ms <= request.now_unix_ms { return Some(MaintenanceReason::DeadlineExpired); }
-    if request.deadline_unix_ms.saturating_sub(request.now_unix_ms) > MAX_MAINTENANCE_WINDOW_MS { return Some(MaintenanceReason::DeadlineTooLong); }
+fn validate<V: MaintenanceAuthorityVerifier>(
+    request: &MaintenanceRequest,
+    verifier: &V,
+) -> Option<MaintenanceReason> {
+    if request.cancelled {
+        return Some(MaintenanceReason::Cancelled);
+    }
+    if !safe_id(&request.request_id) || !safe_id(&request.scheduler_id) {
+        return Some(MaintenanceReason::AuthorityMissing);
+    }
+    if request.budget_units == 0 {
+        return Some(MaintenanceReason::BudgetExhausted);
+    }
+    if request.budget_units > MAX_MAINTENANCE_BUDGET_UNITS {
+        return Some(MaintenanceReason::BudgetExceeded);
+    }
+    if request.deadline_unix_ms <= request.now_unix_ms {
+        return Some(MaintenanceReason::DeadlineExpired);
+    }
+    if request.deadline_unix_ms.saturating_sub(request.now_unix_ms) > MAX_MAINTENANCE_WINDOW_MS {
+        return Some(MaintenanceReason::DeadlineTooLong);
+    }
     if !nonempty(&request.authority.receipt_id) || !nonempty(&request.authority.issuer_id) {
         return Some(MaintenanceReason::AuthorityMissing);
     }
-    if request.authority.issuer_id == request.scheduler_id || request.authority.subject_id != request.scheduler_id {
+    if request.authority.issuer_id == request.scheduler_id
+        || request.authority.subject_id != request.scheduler_id
+    {
         return Some(MaintenanceReason::AuthoritySelfCertified);
     }
-    if !verifier.verify(&request.authority) { return Some(MaintenanceReason::AuthorityUnverified); }
-    if request.authority.scope != "maintenance" { return Some(MaintenanceReason::AuthorityScopeDenied); }
-    if !request.authority.allowed_kinds.contains(&request.kind) { return Some(MaintenanceReason::AuthorityCapabilityDenied); }
+    if !verifier.verify(&request.authority) {
+        return Some(MaintenanceReason::AuthorityUnverified);
+    }
+    if request.authority.scope != "maintenance" {
+        return Some(MaintenanceReason::AuthorityScopeDenied);
+    }
+    if !request.authority.allowed_kinds.contains(&request.kind) {
+        return Some(MaintenanceReason::AuthorityCapabilityDenied);
+    }
     None
 }
 
-fn nonempty(value: &str) -> bool { !value.trim().is_empty() }
-fn safe_id(value: &str) -> bool { !value.is_empty() && value.len() <= 160 && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte)) }
+fn nonempty(value: &str) -> bool {
+    !value.trim().is_empty()
+}
+fn safe_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 160
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
+}
 
 #[cfg(test)]
 mod tests {
@@ -154,12 +193,16 @@ mod tests {
 
     struct AllowAll;
     impl MaintenanceAuthorityVerifier for AllowAll {
-        fn verify(&self, _receipt: &AuthorityReceipt) -> bool { true }
+        fn verify(&self, _receipt: &AuthorityReceipt) -> bool {
+            true
+        }
     }
 
     struct DenyAll;
     impl MaintenanceAuthorityVerifier for DenyAll {
-        fn verify(&self, _receipt: &AuthorityReceipt) -> bool { false }
+        fn verify(&self, _receipt: &AuthorityReceipt) -> bool {
+            false
+        }
     }
 
     fn base_authority() -> AuthorityReceipt {
@@ -188,9 +231,14 @@ mod tests {
     #[test]
     fn schedules_a_well_formed_request() {
         let outcome = plan(&base_request(), &AllowAll);
-        assert_eq!(outcome.receipt.disposition, MaintenanceDisposition::Scheduled);
+        assert_eq!(
+            outcome.receipt.disposition,
+            MaintenanceDisposition::Scheduled
+        );
         assert!(outcome.receipt.reason.is_none());
-        let operation = outcome.operation.expect("scheduled request returns an operation");
+        let operation = outcome
+            .operation
+            .expect("scheduled request returns an operation");
         assert_eq!(operation.request_id, "req-1");
         assert_eq!(operation.authority_receipt_id, "auth-1");
     }
@@ -200,8 +248,14 @@ mod tests {
         let mut request = base_request();
         request.authority.issuer_id = "scheduler-1".into();
         let outcome = plan(&request, &AllowAll);
-        assert_eq!(outcome.receipt.disposition, MaintenanceDisposition::Rejected);
-        assert_eq!(outcome.receipt.reason, Some(MaintenanceReason::AuthoritySelfCertified));
+        assert_eq!(
+            outcome.receipt.disposition,
+            MaintenanceDisposition::Rejected
+        );
+        assert_eq!(
+            outcome.receipt.reason,
+            Some(MaintenanceReason::AuthoritySelfCertified)
+        );
         assert!(outcome.operation.is_none());
     }
 
@@ -210,13 +264,19 @@ mod tests {
         let mut request = base_request();
         request.authority.subject_id = "someone-else".into();
         let outcome = plan(&request, &AllowAll);
-        assert_eq!(outcome.receipt.reason, Some(MaintenanceReason::AuthoritySelfCertified));
+        assert_eq!(
+            outcome.receipt.reason,
+            Some(MaintenanceReason::AuthoritySelfCertified)
+        );
     }
 
     #[test]
     fn rejects_when_verifier_declines_even_though_fields_look_valid() {
         let outcome = plan(&base_request(), &DenyAll);
-        assert_eq!(outcome.receipt.reason, Some(MaintenanceReason::AuthorityUnverified));
+        assert_eq!(
+            outcome.receipt.reason,
+            Some(MaintenanceReason::AuthorityUnverified)
+        );
         assert!(outcome.operation.is_none());
     }
 
@@ -225,7 +285,10 @@ mod tests {
         let mut request = base_request();
         request.authority.scope = "not-maintenance".into();
         let outcome = plan(&request, &AllowAll);
-        assert_eq!(outcome.receipt.reason, Some(MaintenanceReason::AuthorityScopeDenied));
+        assert_eq!(
+            outcome.receipt.reason,
+            Some(MaintenanceReason::AuthorityScopeDenied)
+        );
     }
 
     #[test]
@@ -233,7 +296,10 @@ mod tests {
         let mut request = base_request();
         request.kind = MaintenanceKind::ProposalCreation;
         let outcome = plan(&request, &AllowAll);
-        assert_eq!(outcome.receipt.reason, Some(MaintenanceReason::AuthorityCapabilityDenied));
+        assert_eq!(
+            outcome.receipt.reason,
+            Some(MaintenanceReason::AuthorityCapabilityDenied)
+        );
     }
 
     #[test]
@@ -241,7 +307,10 @@ mod tests {
         let mut request = base_request();
         request.budget_units = 0;
         let outcome = plan(&request, &AllowAll);
-        assert_eq!(outcome.receipt.reason, Some(MaintenanceReason::BudgetExhausted));
+        assert_eq!(
+            outcome.receipt.reason,
+            Some(MaintenanceReason::BudgetExhausted)
+        );
     }
 
     #[test]
@@ -249,7 +318,10 @@ mod tests {
         let mut request = base_request();
         request.budget_units = MAX_MAINTENANCE_BUDGET_UNITS + 1;
         let outcome = plan(&request, &AllowAll);
-        assert_eq!(outcome.receipt.reason, Some(MaintenanceReason::BudgetExceeded));
+        assert_eq!(
+            outcome.receipt.reason,
+            Some(MaintenanceReason::BudgetExceeded)
+        );
     }
 
     #[test]
@@ -258,7 +330,10 @@ mod tests {
         request.now_unix_ms = 1_000;
         request.deadline_unix_ms = 1_000;
         let outcome = plan(&request, &AllowAll);
-        assert_eq!(outcome.receipt.reason, Some(MaintenanceReason::DeadlineExpired));
+        assert_eq!(
+            outcome.receipt.reason,
+            Some(MaintenanceReason::DeadlineExpired)
+        );
     }
 
     #[test]
@@ -267,7 +342,10 @@ mod tests {
         request.now_unix_ms = 0;
         request.deadline_unix_ms = MAX_MAINTENANCE_WINDOW_MS + 1;
         let outcome = plan(&request, &AllowAll);
-        assert_eq!(outcome.receipt.reason, Some(MaintenanceReason::DeadlineTooLong));
+        assert_eq!(
+            outcome.receipt.reason,
+            Some(MaintenanceReason::DeadlineTooLong)
+        );
     }
 
     #[test]
@@ -275,7 +353,10 @@ mod tests {
         let mut request = base_request();
         request.cancelled = true;
         let outcome = plan(&request, &AllowAll);
-        assert_eq!(outcome.receipt.disposition, MaintenanceDisposition::Rejected);
+        assert_eq!(
+            outcome.receipt.disposition,
+            MaintenanceDisposition::Rejected
+        );
         assert_eq!(outcome.receipt.reason, Some(MaintenanceReason::Cancelled));
         assert!(outcome.operation.is_none());
     }
@@ -285,12 +366,18 @@ mod tests {
         let mut request = base_request();
         request.cancelled = true;
         let outcome = plan(&request, &AllowAll);
-        assert_eq!(outcome.receipt.authority_receipt_id.as_deref(), Some("auth-1"));
+        assert_eq!(
+            outcome.receipt.authority_receipt_id.as_deref(),
+            Some("auth-1")
+        );
     }
 
     #[test]
     fn every_receipt_carries_the_declared_schema_version() {
         let outcome = plan(&base_request(), &AllowAll);
-        assert_eq!(outcome.receipt.schema_version, MAINTENANCE_RECEIPT_SCHEMA_VERSION);
+        assert_eq!(
+            outcome.receipt.schema_version,
+            MAINTENANCE_RECEIPT_SCHEMA_VERSION
+        );
     }
 }

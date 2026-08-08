@@ -139,11 +139,11 @@ pub fn evaluate_compatibility(
         Ok(SchemaCompatibility::Incompatible) => {
             violations.push(CompatibilityViolation::IncompatibleSchema)
         }
-        Ok(SchemaCompatibility::Unknown) => violations.push(
-            CompatibilityViolation::UnknownSchemaCompatibility(
+        Ok(SchemaCompatibility::Unknown) => {
+            violations.push(CompatibilityViolation::UnknownSchemaCompatibility(
                 candidate.schema_compatibility.clone(),
-            ),
-        ),
+            ))
+        }
         Ok(SchemaCompatibility::Compatible) | Ok(SchemaCompatibility::MigrationRequired) => {}
         Err(violation) => violations.push(violation.clone()),
     }
@@ -155,7 +155,9 @@ pub fn evaluate_compatibility(
             current: current_version.to_string(),
             candidate: candidate.release.clone(),
         }),
-        Err(unparseable) => violations.push(CompatibilityViolation::UnparseableVersion(unparseable)),
+        Err(unparseable) => {
+            violations.push(CompatibilityViolation::UnparseableVersion(unparseable))
+        }
     }
 
     match channel {
@@ -252,7 +254,12 @@ mod tests {
     use super::*;
     use crate::release_channel::SupportWindowV1;
 
-    fn descriptor(channel: &str, release: &str, schema_version: u32, schema_compatibility: &str) -> RawReleaseDescriptor {
+    fn descriptor(
+        channel: &str,
+        release: &str,
+        schema_version: u32,
+        schema_compatibility: &str,
+    ) -> RawReleaseDescriptor {
         RawReleaseDescriptor {
             schema_version,
             channel: channel.to_string(),
@@ -264,42 +271,58 @@ mod tests {
     #[test]
     fn unknown_channel_is_refused() {
         let candidate = descriptor("canary", "1.1.0", 1, "compatible");
-        let violations = evaluate_compatibility("1.0.0", &candidate).expect_err("unknown channel must fail closed");
-        assert!(violations.contains(&CompatibilityViolation::UnknownChannel("canary".to_string())));
+        let violations = evaluate_compatibility("1.0.0", &candidate)
+            .expect_err("unknown channel must fail closed");
+        assert!(violations.contains(&CompatibilityViolation::UnknownChannel(
+            "canary".to_string()
+        )));
     }
 
     #[test]
     fn unsupported_schema_version_is_refused() {
         let candidate = descriptor("stable", "1.1.0", 2, "compatible");
-        let violations = evaluate_compatibility("1.0.0", &candidate).expect_err("unsupported schema version must fail closed");
+        let violations = evaluate_compatibility("1.0.0", &candidate)
+            .expect_err("unsupported schema version must fail closed");
         assert!(violations.contains(&CompatibilityViolation::UnsupportedSchemaVersion(2)));
     }
 
     #[test]
     fn unknown_schema_compatibility_string_is_refused() {
         let candidate = descriptor("stable", "1.1.0", 1, "maybe");
-        let violations = evaluate_compatibility("1.0.0", &candidate).expect_err("an unrecognized schemaCompatibility string must fail closed");
-        assert!(violations.contains(&CompatibilityViolation::UnknownSchemaCompatibility("maybe".to_string())));
+        let violations = evaluate_compatibility("1.0.0", &candidate)
+            .expect_err("an unrecognized schemaCompatibility string must fail closed");
+        assert!(
+            violations.contains(&CompatibilityViolation::UnknownSchemaCompatibility(
+                "maybe".to_string()
+            ))
+        );
     }
 
     #[test]
     fn explicit_unknown_schema_compatibility_is_refused_not_assumed_compatible() {
         let candidate = descriptor("stable", "1.1.0", 1, "unknown");
-        let violations = evaluate_compatibility("1.0.0", &candidate).expect_err("schemaCompatibility=unknown must never be treated as compatible");
-        assert!(violations.contains(&CompatibilityViolation::UnknownSchemaCompatibility("unknown".to_string())));
+        let violations = evaluate_compatibility("1.0.0", &candidate)
+            .expect_err("schemaCompatibility=unknown must never be treated as compatible");
+        assert!(
+            violations.contains(&CompatibilityViolation::UnknownSchemaCompatibility(
+                "unknown".to_string()
+            ))
+        );
     }
 
     #[test]
     fn incompatible_schema_is_refused() {
         let candidate = descriptor("stable", "1.1.0", 1, "incompatible");
-        let violations = evaluate_compatibility("1.0.0", &candidate).expect_err("incompatible schema must fail closed");
+        let violations = evaluate_compatibility("1.0.0", &candidate)
+            .expect_err("incompatible schema must fail closed");
         assert_eq!(violations, vec![CompatibilityViolation::IncompatibleSchema]);
     }
 
     #[test]
     fn downgrade_is_refused() {
         let candidate = descriptor("stable", "0.9.0", 1, "compatible");
-        let violations = evaluate_compatibility("1.0.0", &candidate).expect_err("a downgrade must fail closed");
+        let violations =
+            evaluate_compatibility("1.0.0", &candidate).expect_err("a downgrade must fail closed");
         assert!(violations.contains(&CompatibilityViolation::Downgrade {
             current: "1.0.0".to_string(),
             candidate: "0.9.0".to_string(),
@@ -309,35 +332,54 @@ mod tests {
     #[test]
     fn equal_version_is_refused_not_an_upgrade() {
         let candidate = descriptor("stable", "1.0.0", 1, "compatible");
-        let violations = evaluate_compatibility("1.0.0", &candidate).expect_err("an equal version is not an upgrade");
-        assert!(violations.iter().any(|v| matches!(v, CompatibilityViolation::Downgrade { .. })));
+        let violations = evaluate_compatibility("1.0.0", &candidate)
+            .expect_err("an equal version is not an upgrade");
+        assert!(violations
+            .iter()
+            .any(|v| matches!(v, CompatibilityViolation::Downgrade { .. })));
     }
 
     #[test]
     fn unparseable_candidate_version_is_refused() {
         let candidate = descriptor("stable", "latest", 1, "compatible");
-        let violations = evaluate_compatibility("1.0.0", &candidate).expect_err("an unparseable candidate version must fail closed");
-        assert!(violations.contains(&CompatibilityViolation::UnparseableVersion("latest".to_string())));
+        let violations = evaluate_compatibility("1.0.0", &candidate)
+            .expect_err("an unparseable candidate version must fail closed");
+        assert!(
+            violations.contains(&CompatibilityViolation::UnparseableVersion(
+                "latest".to_string()
+            ))
+        );
     }
 
     #[test]
     fn unparseable_current_version_is_refused() {
         let candidate = descriptor("stable", "1.1.0", 1, "compatible");
-        let violations = evaluate_compatibility("not-a-version", &candidate).expect_err("an unparseable local version must also fail closed");
-        assert!(violations.contains(&CompatibilityViolation::UnparseableVersion("not-a-version".to_string())));
+        let violations = evaluate_compatibility("not-a-version", &candidate)
+            .expect_err("an unparseable local version must also fail closed");
+        assert!(
+            violations.contains(&CompatibilityViolation::UnparseableVersion(
+                "not-a-version".to_string()
+            ))
+        );
     }
 
     #[test]
     fn multiple_simultaneous_violations_are_all_reported() {
         let candidate = descriptor("canary", "0.9.0", 2, "incompatible");
-        let violations = evaluate_compatibility("1.0.0", &candidate).expect_err("every independent violation must be collected");
-        assert_eq!(violations.len(), 4, "unknown channel + unsupported schema version + incompatible schema + downgrade");
+        let violations = evaluate_compatibility("1.0.0", &candidate)
+            .expect_err("every independent violation must be collected");
+        assert_eq!(
+            violations.len(),
+            4,
+            "unknown channel + unsupported schema version + incompatible schema + downgrade"
+        );
     }
 
     #[test]
     fn compatible_upgrade_is_admitted() {
         let candidate = descriptor("stable", "1.1.0", 1, "compatible");
-        let admitted = evaluate_compatibility("1.0.0", &candidate).expect("a real upgrade on a known channel with compatible schema must be admitted");
+        let admitted = evaluate_compatibility("1.0.0", &candidate)
+            .expect("a real upgrade on a known channel with compatible schema must be admitted");
         assert_eq!(admitted.channel, ReleaseChannel::Stable);
         assert_eq!(admitted.release, "1.1.0");
         assert!(!admitted.migration_required);
@@ -346,9 +388,13 @@ mod tests {
     #[test]
     fn migration_required_upgrade_is_admitted_and_flagged() {
         let candidate = descriptor("beta", "2.0.0", 1, "migration_required");
-        let admitted = evaluate_compatibility("1.9.0", &candidate).expect("migration_required is admissible, not a refusal");
+        let admitted = evaluate_compatibility("1.9.0", &candidate)
+            .expect("migration_required is admissible, not a refusal");
         assert_eq!(admitted.channel, ReleaseChannel::Beta);
-        assert!(admitted.migration_required, "the caller must still see that a migration step is required before activation");
+        assert!(
+            admitted.migration_required,
+            "the caller must still see that a migration step is required before activation"
+        );
     }
 
     #[test]
@@ -367,7 +413,8 @@ mod tests {
             rollback: "restore prior release".to_string(),
             signed_update_evidence: Some("sha256:signed-evidence-placeholder".to_string()),
         };
-        let admitted = evaluate_release_channel("1.1.0", &typed).expect("a typed, schema-valid descriptor with a real upgrade must be admitted");
+        let admitted = evaluate_release_channel("1.1.0", &typed)
+            .expect("a typed, schema-valid descriptor with a real upgrade must be admitted");
         assert_eq!(admitted.channel, ReleaseChannel::Nightly);
         assert_eq!(admitted.release, "1.2.0-nightly.3");
     }

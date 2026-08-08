@@ -125,7 +125,13 @@ impl TemporalFactStore {
                 .collect::<rusqlite::Result<_>>()
                 .map_err(|e| e.to_string())?;
             if !current.is_empty() && fact.supersedes.is_none() {
-                fact.supersedes = Some(current.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>().join(","));
+                fact.supersedes = Some(
+                    current
+                        .iter()
+                        .map(|(id, _)| id.clone())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                );
             }
             if current.iter().any(|(_, from)| from >= &fact.valid_from) {
                 return Err("temporal_fact_conflict".into());
@@ -188,7 +194,8 @@ impl TemporalFactStore {
                     },
                 )
                 .map_err(|e| e.to_string())?;
-            let scoped = rows.collect::<rusqlite::Result<Vec<_>>>()
+            let scoped = rows
+                .collect::<rusqlite::Result<Vec<_>>>()
                 .map_err(|e| e.to_string())?;
             // Most-specific scope wins; ancestors are fallback only.
             if !scoped.is_empty() {
@@ -320,17 +327,23 @@ mod tests {
         let mut parent = fact("parent", "parent", "2026-08-01T00:00:00Z");
         parent.scope_id = "global".into();
         store.record(parent, false).unwrap();
-        let current = store.query(TemporalFactQuery {
-            scope_chain: vec!["workspace".into(), "global".into()],
-            subject: "repo".into(), predicate: "owner".into(),
-            as_of: "2026-08-01T12:00:00Z".into(),
-        }).unwrap();
+        let current = store
+            .query(TemporalFactQuery {
+                scope_chain: vec!["workspace".into(), "global".into()],
+                subject: "repo".into(),
+                predicate: "owner".into(),
+                as_of: "2026-08-01T12:00:00Z".into(),
+            })
+            .unwrap();
         assert_eq!(current[0].fact_id, "local");
-        let expired = store.query(TemporalFactQuery {
-            scope_chain: vec!["workspace".into(), "global".into()],
-            subject: "repo".into(), predicate: "owner".into(),
-            as_of: "2026-08-03T00:00:00Z".into(),
-        }).unwrap();
+        let expired = store
+            .query(TemporalFactQuery {
+                scope_chain: vec!["workspace".into(), "global".into()],
+                subject: "repo".into(),
+                predicate: "owner".into(),
+                as_of: "2026-08-03T00:00:00Z".into(),
+            })
+            .unwrap();
         assert_eq!(expired[0].fact_id, "parent");
     }
 }
