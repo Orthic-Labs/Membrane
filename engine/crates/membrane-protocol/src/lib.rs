@@ -37,6 +37,7 @@ pub mod provider_readiness;
 pub mod release_channel;
 pub mod source_resolution;
 pub mod status;
+pub mod team_policy;
 pub mod types;
 
 pub use canonical::{canonical_json_of, canonicalize, digest_str};
@@ -77,6 +78,10 @@ pub use source_resolution::{
 pub use status::{
     AdapterLifecycleStatusV1, DeliveryReasonV1, DeliveryStatusV1, InstallationReasonV1,
     InstallationStatusV1, MultidimensionalStatusV1, MULTIDIMENSIONAL_STATUS_SCHEMA_VERSION,
+};
+pub use team_policy::{
+    EncryptedReplicationEnvelopeV1, TeamPolicyReceiptV1, TeamPolicyScopeV1,
+    TeamPolicySyncV1, TEAM_POLICY_SCHEMA_VERSION,
 };
 pub use types::*;
 

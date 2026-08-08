@@ -49,6 +49,7 @@ pub mod skel;
 pub mod source_resolution;
 pub mod sources_explorer;
 pub mod store;
+pub mod team_policy;
 pub use crypt_store::db::{record_observable_event, StoreError};
 pub use crypt_store::{context_telemetry, installation_identity, memdb, scope, time};
 pub use provenance::{
@@ -93,6 +94,10 @@ pub use receipt::{
 };
 pub use scope::{
     normalize_scope, path_to_scope, scope_chain, ScopeDescriptorError, ScopeDescriptorV1,
+};
+pub use team_policy::{
+    admit_team_policy, TeamPolicyAdmission, TeamPolicyAdmissionReason, TeamPolicyTrustVerifier,
+    TrustedPolicyVerification,
 };
 pub use store::{
     MemoryEventContext, MemoryLifecycleError, MemoryLifecycleEventV1, MemoryLifecycleInputV1,
