@@ -1,0 +1,37 @@
+{
+  "schema": "orthic.membrane.windows-release.v2",
+  "product": "Membrane",
+  "delegatesBuildAndSignTo": "apps/membrane-hub/right-release.config.mjs#targets.win",
+  "canonicalCommands": {
+    "doctor": "pnpm --dir apps/membrane-hub release:doctor -- --platform win",
+    "build": "pnpm --dir apps/membrane-hub release:build:win"
+  },
+  "forbidden": [
+    "AzureSignTool invoked directly from this repository",
+    "signtool sign invoked directly from this repository",
+    "a bespoke signing-plan schema that does not read RightKit's own sealed manifest"
+  ],
+  "sealedManifest": {
+    "producedBy": "tools/rightkit/packages/release/build-release.mjs sealRelease() via right-release build",
+    "schema": 1,
+    "required": ["releaseId", "app", "version", "commit", "platform", "files", "checkpoints"],
+    "requiredCheckpoints": ["preflight_complete", "build_complete", "signed", "hardened", "sealed"],
+    "installerFileRole": "installer",
+    "installerNamePattern": "Membrane_<version>_x64-setup.exe"
+  },
+  "innerPeCoverage": {
+    "status": "gap",
+    "cause": "apps/membrane-hub/right-release.config.mjs targets.win.sign.files and .installer.artifacts name only the outer NSIS installer, and RightKit signs sign.files after target.package (tauri build --bundles nsis) has already run -- after NSIS has embedded the main binary and the externalBin sidecars inside the installer via src-tauri/windows/installer.nsi. Signing a file on disk afterward does not reach the copy already inside the installer.",
+    "innerBinariesSource": "apps/membrane-hub/src-tauri/tauri.conf.json bundle.externalBin (crypt-service, membrane) plus the main compiled binary (membrane-hub.exe, from src-tauri/Cargo.toml package.name)",
+    "minimumPayloadCount": 3,
+    "requiredProofPerPayload": "signtool verify /pa /tw, recorded in the lifecycle receipt's payloads[] as { name, sha256, verify: \"pass\" }",
+    "closingThisGapRequires": "editing apps/membrane-hub/right-release.config.mjs and apps/membrane-hub/package.json's rightkit:package:win script to sign compiled binaries before NSIS bundles them -- both outside this repair's allowed scope"
+  },
+  "lifecycleReceipt": {
+    "schema": "windows-installer-receipt.v1",
+    "requiredGates": ["signature", "install", "update", "uninstall"],
+    "verify": ["signtool", "verify", "/pa", "/tw"],
+    "note": "Clean-machine install/update/uninstall and per-PE signtool verification are not produced by RightKit; this receipt is the piece this repository still owns."
+  },
+  "publish": false
+}

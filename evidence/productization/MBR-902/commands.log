@@ -1,0 +1,49 @@
+$ node --test scripts/release/windows/contract.full.test.mjs
+✔ validateSealedManifest requires RightKit's real sealed shape and checkpoints
+✔ validateExpectedPayloads rejects too-short or malformed payload lists
+✔ minimumExpectedPayloadCount reads externalBin + main binary from tauri.conf.json, read-only
+✔ validateLifecycleReceipt passes only when the outer installer and every inner PE are proven
+# tests 4, pass 4, fail 0.
+
+# This is the only executable command run for this repair. It is a plain
+# Node structural/contract test over the rewritten pure functions in
+# scripts/release/windows/contract.mjs (validateSealedManifest,
+# validateExpectedPayloads, minimumExpectedPayloadCount,
+# validateLifecycleReceipt). No AzureSignTool, SignTool, cargo, pnpm,
+# right-release, or Tauri command was run.
+
+# tests/release/windows.test.mjs (pre-existing, repo root, outside this
+# repair's allowed file set) was NOT executed here: this repair's dispatch
+# instructions permit running only the specific test file this repair wrote
+# or updated. validateReleaseManifest/signingPlan/validateReceipt, which it
+# imports, are kept byte-for-byte in contract.mjs, so it is expected to keep
+# passing unmodified -- NOT RUN, by instruction scope, not by failure.
+
+# pnpm release:doctor / pnpm release:build:win -- NOT RUN. Both require a
+# Windows machine with the Rust/Tauri toolchain and Azure Artifact Signing
+# credentials; this repair's hard rules forbid running cargo, pnpm, Tauri,
+# or right-release from here. These are Adrian's next step on Windows,
+# after pulling this commit.
+
+# node scripts/release/windows/verify-release.mjs -- NOT RUN. It validates
+# a RightKit-sealed release-manifest.json, an expected-payloads.json, and a
+# lifecycle receipt.json that only exist after a real Windows build/sign/
+# install/update/uninstall cycle; there is no such fixture on this
+# checkout, and contract.full.test.mjs already exercises every branch of
+# the functions it calls directly.
+
+# AzureSignTool / signtool sign / signtool verify /pa /tw -- NOT RUN. These
+# require Azure Artifact Signing credentials and a Windows machine with a
+# human present for the PIN/passkey step; per this repair's hard rules they
+# are never invoked from this repository, and were never invoked by the
+# repaired scripts either (only tools/rightkit/packages/release/
+# sign-windows.mjs, RightKit's own script, invokes signtool, via
+# `pnpm release:build:win`).
+
+# cargo build/test, pnpm build, and any Tauri NSIS packaging command -- NOT
+# RUN. Per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md these run once at the
+# final phased book gate, and are RightKit's job via
+# `pnpm release:build:win`, not this repository's.
+
+# No mutating git command (add/commit/checkout/stash/reset/rebase) was run
+# at any point in this repair.

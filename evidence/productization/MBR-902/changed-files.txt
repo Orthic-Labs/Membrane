@@ -1,0 +1,15 @@
+packaging/windows/release-contract.json
+scripts/release/windows/contract.mjs
+scripts/release/windows/contract.full.test.mjs
+scripts/release/windows/verify-release.mjs
+docs/release/windows.md
+evidence/productization/MBR-902/summary.json
+evidence/productization/MBR-902/acceptance.json
+evidence/productization/MBR-902/commands.log
+evidence/productization/MBR-902/changed-files.txt
+
+Removed (duplicated RightKit's own tools/rightkit/packages/release/sign-windows.mjs):
+scripts/release/windows/prepare-signing.mjs
+scripts/release/windows/sign-all.mjs
+scripts/release/windows/verify-all-receipt.mjs
+scripts/release/windows/verify-receipt.mjs
