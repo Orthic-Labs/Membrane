@@ -16,6 +16,7 @@ pub mod error;
 pub mod heartbeat;
 pub mod lease;
 pub mod lock;
+pub mod maintenance;
 pub mod resident;
 pub mod startup;
 pub mod supervisor;
@@ -32,6 +33,12 @@ pub use lease::{
     SUPERVISOR_LEASE_SCHEMA_VERSION,
 };
 pub use lock::{pid_alive_probe, release_if_owned, try_acquire_until, LockOutcome, SupervisorLock};
+pub use maintenance::{
+    plan as plan_maintenance, AuthorityReceipt, MaintenanceAuthorityVerifier, MaintenanceDisposition, MaintenanceKind,
+    MaintenanceOperation, MaintenancePlan, MaintenanceReason, MaintenanceReceipt,
+    MaintenanceRequest, MAINTENANCE_RECEIPT_SCHEMA_VERSION, MAX_MAINTENANCE_BUDGET_UNITS,
+    MAX_MAINTENANCE_WINDOW_MS,
+};
 pub use resident::{preflight_resident_binary, ResidentHandle, ResidentInvocation};
 pub use startup::{
     install_operation, load as load_startup_opt_in, opt_in as opt_in_startup,
