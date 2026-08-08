@@ -12,6 +12,54 @@ either a node script or a manual command runner.
 | `check-docs.mjs` | MBR-1001 | One-shot local gate that fails on stale generated docs or broken README links. |
 | `render-docs.mjs` | MBR-1001 | Renderers for the four generated product docs. |
 | `generate-client-matrix.mjs` | MBR-206 | Builds the MBR-206 client registry capabilities + support matrix. |
+| `generate-support-matrix.mjs` | MBR-808 | Derives the published support-tier matrix from MBR-801 conformance receipts. |
+
+## MBR-808 — generate-support-matrix.mjs
+
+Reads:
+
+- `evidence/qualification/mbr801/<platform>/receipt.json` — real MBR-801
+  installed-path conformance receipts (`orthic.mbr801-installed-receipt.v1`),
+  produced by `node scripts/qualification/run.mjs` and validated here through
+  the existing `scripts/qualification/verify-mbr801-evidence.mjs` (never
+  re-implemented).
+- `docs/clients/support-matrix.v1.json` — the MBR-206 client registry, for the
+  canonical client-id universe. Read-only; this generator never writes it.
+
+Emits:
+
+- `docs/support-matrix.md` and `docs/support-matrix.json` — the platform ×
+  client × feature tier table (`qualified` or `unavailable`, with a reason;
+  never a fabricated `unsupported` state).
+- The `<!-- support-matrix:start -->` / `<!-- support-matrix:end -->` block in
+  `README.md`.
+- `server.json`'s per-target `nativeArtifacts[*].platformReceipt` fields (the
+  MCP Registry server descriptor), left untouched when nothing semantically
+  changes so it never gets gratuitously reformatted.
+
+A platform/client pair is `qualified` only when a receipt for that exact
+platform verifies as `passed` for the current commit and release generation,
+and that receipt names that exact client. Everything else — no receipt, a
+stale commit, a different release generation, a different client, or a
+malformed/incomplete receipt — renders `unavailable`.
+
+### Run
+
+```sh
+node tools/productization/generate-support-matrix.mjs [--commit <sha>] [--release-generation <hex>]
+```
+
+Without `--release-generation` (no MBR-807/903 release evidence yet exists
+in this repository), every row honestly renders `unavailable`.
+
+### Programmatic use
+
+```js
+import { buildMatrix, render } from "../../tools/productization/generate-support-matrix.mjs";
+
+const matrix = buildMatrix({ commit, releaseGeneration, clients, receiptPaths });
+console.log(render(matrix));
+```
 
 ## MBR-206 — generate-client-matrix.mjs
 

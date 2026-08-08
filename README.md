@@ -103,3 +103,14 @@ and [public support boundaries](website/support-boundaries.md).
 
 Gate: `node tools/productization/check-docs.mjs --check` fails on a broken README link, a stale generated doc, a wrong tool count, or stale platform status.
 <!-- blueprint:docs:end -->
+
+<!-- support-matrix:start -->
+## Support tier matrix
+
+Generated from current MBR-801 installed-path conformance receipts — 0 of 10
+platform/client pairs currently qualified. Full table, tiers, and reasons:
+[docs/support-matrix.md](docs/support-matrix.md) (also machine-readable at `docs/support-matrix.json`).
+This block, the JSON/MD matrix, and `server.json`'s per-target `platformReceipt`
+fields are all written by `node tools/productization/generate-support-matrix.mjs`
+from the same receipts; none of them is hand-maintained.
+<!-- support-matrix:end -->

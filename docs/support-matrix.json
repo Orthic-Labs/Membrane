@@ -1,8 +1,10 @@
 {
   "schema": "orthic.membrane.support-tier-matrix.v1",
   "generatedFrom": {
-    "commit": "064a08c4f6f8704fa5b44f0ed09336877ba0311f",
-    "receiptDirectory": "evidence/qualification"
+    "commit": "1b8ce5540bb973f49d96b481cb861640aa9ad7de",
+    "releaseGeneration": null,
+    "source": "scripts/qualification/run.mjs + scripts/qualification/verify-mbr801-evidence.mjs",
+    "receiptDirectory": "evidence/qualification/mbr801"
   },
   "rows": [
     {
@@ -10,90 +12,80 @@
       "client": "claude",
       "feature": "installed-path",
       "tier": "unavailable",
-      "sourceReady": false,
-      "receipt": null,
-      "reason": "current client-specific clean-VM qualification receipt unavailable"
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
     },
     {
       "platform": "macos",
       "client": "codex",
       "feature": "installed-path",
       "tier": "unavailable",
-      "sourceReady": false,
-      "receipt": null,
-      "reason": "current client-specific clean-VM qualification receipt unavailable"
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
     },
     {
       "platform": "macos",
       "client": "cursor",
       "feature": "installed-path",
       "tier": "unavailable",
-      "sourceReady": false,
-      "receipt": null,
-      "reason": "current client-specific clean-VM qualification receipt unavailable"
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
     },
     {
       "platform": "macos",
       "client": "generic_mcp",
       "feature": "installed-path",
       "tier": "unavailable",
-      "sourceReady": false,
-      "receipt": null,
-      "reason": "current client-specific clean-VM qualification receipt unavailable"
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
     },
     {
       "platform": "macos",
       "client": "windsurf",
       "feature": "installed-path",
       "tier": "unavailable",
-      "sourceReady": false,
-      "receipt": null,
-      "reason": "current client-specific clean-VM qualification receipt unavailable"
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
     },
     {
       "platform": "windows",
       "client": "claude",
       "feature": "installed-path",
       "tier": "unavailable",
-      "sourceReady": false,
-      "receipt": null,
-      "reason": "current client-specific clean-VM qualification receipt unavailable"
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
     },
     {
       "platform": "windows",
       "client": "codex",
       "feature": "installed-path",
       "tier": "unavailable",
-      "sourceReady": false,
-      "receipt": null,
-      "reason": "current client-specific clean-VM qualification receipt unavailable"
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
     },
     {
       "platform": "windows",
       "client": "cursor",
       "feature": "installed-path",
       "tier": "unavailable",
-      "sourceReady": false,
-      "receipt": null,
-      "reason": "current client-specific clean-VM qualification receipt unavailable"
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
     },
     {
       "platform": "windows",
       "client": "generic_mcp",
       "feature": "installed-path",
       "tier": "unavailable",
-      "sourceReady": false,
-      "receipt": null,
-      "reason": "current client-specific clean-VM qualification receipt unavailable"
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
     },
     {
       "platform": "windows",
       "client": "windsurf",
       "feature": "installed-path",
       "tier": "unavailable",
-      "sourceReady": false,
-      "receipt": null,
-      "reason": "current client-specific clean-VM qualification receipt unavailable"
+      "reason": "no current commit/release-generation to verify against (release evidence not yet published)",
+      "receipt": null
     }
   ]
 }
