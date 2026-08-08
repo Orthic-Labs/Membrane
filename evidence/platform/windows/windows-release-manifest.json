@@ -1,0 +1,22 @@
+{
+  "schema": "windows-release-manifest.v1",
+  "product_version": "0.1.0",
+  "source_commit": "12a11fc55ec8e312406bdd5caa3862f7624fd558",
+  "installer_path": "apps/membrane-hub/src-tauri/target/release/bundle/nsis/Membrane_0.1.0_x64-setup.exe",
+  "installer_sha256": "a566e83eec45fe67fd37e3f4f83ff47a3c8ab45f01af88b9d25609efabddb269",
+  "unsigned_installer_sha256": "293b384759fa83d950e7718015d8a2bac8e43b1c04dc6763ede9bfa1b55fb500",
+  "payloads": [
+    {
+      "name": "membrane-hub.exe",
+      "sha256": "70c2fe34c54daf4d28e953233ca3af3a3d862159324c7184b0e3de403214c0dc",
+      "signature": "azure-public-trust-sha256-rfc3161"
+    }
+  ],
+  "signing": {
+    "provider": "azure-artifact-signing",
+    "trust": "public",
+    "digest": "sha256",
+    "timestamp": "rfc3161",
+    "verification": "signtool verify /pa /tw"
+  }
+}
