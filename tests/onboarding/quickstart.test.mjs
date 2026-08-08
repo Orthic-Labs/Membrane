@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { spawnSync } from "node:child_process";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+const root = join(fileURLToPath(new URL("../..", import.meta.url)));
+const script = join(root, "examples/quickstart/run.mjs");
+const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
+const receipt = { status: "enrolled", receipt_id: "r", repository_id: "repo", scope_id: "scope" };
+test("quickstart emits explicitly synthetic packet only with receipt and service", () => { const result = run(); assert.equal(result.status, 0, result.stderr); const output = JSON.parse(result.stdout); assert.ok(output.packet); assert.equal(output.executionMode, "fixture"); assert.equal(output.evidenceAuthority, "synthetic"); assert.equal(output.receipts[0].receipt_id, "enroll-demo-0001"); });
+test("forced degradation is explicit and packet-free", () => { const output = JSON.parse(run("--degraded").stdout); assert.equal(output.packet, null); assert.equal(output.providerStatus, "degraded"); assert.equal(output.degradationReason, "service_unavailable"); });
+test("missing service fails closed", () => { const fixture = mkdtempSync(join(tmpdir(), "mbr-onboarding-")); writeFileSync(join(fixture, "enrollment-receipt.json"), JSON.stringify(receipt)); const result = spawnSync(process.execPath, [script], { encoding: "utf8", env: { ...process.env, MEMBRANE_QUICKSTART_FIXTURE: fixture } }); assert.notEqual(result.status, 0); assert.match(result.stderr, /service\/receipt absent/); });
