@@ -21,6 +21,7 @@ import { selectWorkspaceTargets } from "./workspace-routing.mjs";
 import { createDeadline, deadlineSignal, mapConcurrent, terminalReason, timeoutReceipt } from "./deadline.mjs";
 import { boundedLifecycleId, createLifecycle, withCancellationGrace } from "./lifecycle.mjs";
 import { toolsetNames } from "./toolsets.mjs";
+import { executeCodeBatch } from "../operations/code/mbr402-batch.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -55,7 +56,7 @@ const CALLER_SCHEMA = {
 const TOOL_DEFINITIONS = [
   { name: "membrane_context", description: "Federated context packet for one exact caller binding.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." }, explicitRepositoryIds: { type: "array", items: { type: "string" }, description: "MBR-004 bounded routing: workspace scope only. Exact repository ids to select even without an alias mention." }, deadlineMs: { type: "integer", minimum: 1, description: "MBR-005: optional absolute budget for the workspace fan-out in ms; one ingress deadline bounds all children." }, taskEnvelope: { type: "object", description: "MBR-007: orthic.task-envelope.v1 identity preserved end to end." }, turnEnvelope: { type: "object", description: "MBR-007: orthic.turn-envelope.v1 identity preserved end to end." }, clientEnvelope: { type: "object", description: "MBR-007: orthic.client-envelope.v1 identity." }, overlay: { type: "object", description: "MBR-007: orthic.overlay-identity.v1 worktree/session overlay." } } } },
   { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
-  { name: "membrane_cortex", description: "Bounded Cortex architecture, symbol, reference, impact, or changes view with generation freshness and source-hash resolver handles.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], additionalProperties: false, properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["architecture", "symbol", "reference", "references", "impact", "changes"] }, node: { type: "string", minLength: 1, maxLength: 256, pattern: "^[A-Za-z0-9_.$:/-]+$" }, depth: { type: "integer", minimum: 1, maximum: 5 }, limit: { type: "integer", minimum: 1, maximum: 100 }, budget: { type: "integer", minimum: 1, maximum: 10000 } }, oneOf: [{ properties: { operation: { enum: ["architecture", "changes"] } }, not: { required: ["node"] } }, { properties: { operation: { enum: ["symbol", "reference", "references", "impact"] } }, required: ["node"] }] } },
+  { name: "membrane_cortex", description: "Bounded Cortex architecture, symbol, reference, impact, or changes view with generation freshness and source-hash resolver handles.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], additionalProperties: false, properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["architecture", "symbol", "reference", "references", "impact", "changes"] }, node: { type: "string", minLength: 1, maxLength: 256, pattern: "^[A-Za-z0-9_.$:/-]+$" }, depth: { type: "integer", minimum: 1, maximum: 5 }, limit: { type: "integer", minimum: 1, maximum: 100 }, budget: { type: "integer", minimum: 1, maximum: 10000 }, deadlineMs: { type: "integer", minimum: 1, maximum: 5000 }, items: { type: "array", minItems: 1, maxItems: 50, items: { type: "object" } } }, oneOf: [{ properties: { operation: { enum: ["architecture", "changes"] } }, not: { required: ["node"] } }, { properties: { operation: { enum: ["symbol", "reference", "references", "impact"] } }, required: ["node"] }] } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
   { name: "membrane_checkpoint_save", description: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.", inputSchema: { type: "object", required: ["repository", "caller", "checkpoint"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, checkpoint: { type: "object" } } } },
   { name: "membrane_checkpoint_load", description: "Load an unexpired A0 session checkpoint for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "id"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, id: { type: "string" }, asOfMs: { type: "integer", minimum: 0 } } } },
@@ -441,7 +442,7 @@ export function cortexCommand(args) {
   const operation = args.operation;
   if (!CORTEX_OPERATIONS.has(operation)) throw new Error("invalid cortex operation");
   if (!validCortexAuth(args)) throw new Error("invalid cortex auth envelope");
-  const allowed = operation === "architecture" || operation === "changes" ? new Set(["repository", "caller", "operation", "limit", "budget"])
+  const allowed = operation === "architecture" || operation === "changes" ? new Set(["repository", "caller", "operation", "limit", "budget", "items", "deadlineMs"])
     : new Set(["repository", "caller", "operation", "node", "limit", "budget", "depth"]);
   for (const key of Object.keys(args)) if (!allowed.has(key)) throw new Error(`invalid cortex ${key}`);
   const term = args.node ?? args.query;
@@ -459,6 +460,36 @@ export function cortexCommand(args) {
   command.push("--json", "--limit", String(limit), "--budget", String(budget));
   if (depth !== null) command.push("--depth", String(depth));
   return { operation, command };
+}
+
+export async function cortexBatchCapability(binding, args, signal) {
+  const batch = args.items;
+  return executeCodeBatch({
+    items: batch,
+    deadlineMs: args.deadlineMs ?? 5000,
+    signal,
+    authorize: async (item) => {
+      const target = { ...item, repository: item.repository || args.repository, caller: item.caller || args.caller, operation: item.operation || args.operation };
+      if (!item || typeof item !== "object" || !CORTEX_OPERATIONS.has(target.operation) || typeof item.generationId !== "string" || !item.generationId || typeof item.sourceHash !== "string" || !item.sourceHash) return { ok: false, code: "freshness_required" };
+      const commandArgs = { repository: target.repository, caller: target.caller, operation: target.operation };
+      if (target.node !== undefined) commandArgs.node = target.node;
+      if (target.limit !== undefined) commandArgs.limit = target.limit;
+      if (target.budget !== undefined) commandArgs.budget = target.budget;
+      if (target.depth !== undefined) commandArgs.depth = target.depth;
+      cortexCommand(commandArgs);
+      const targetBinding = await authorize(target, "context");
+      if (targetBinding.cortex_generation_id && targetBinding.cortex_generation_id !== item.generationId) return { ok: false, code: "stale_generation" };
+      if (!cortexHash(item.sourceHash)) return { ok: false, code: "invalid_source_hash" };
+      return { ok: true, repositoryRoot: targetBinding.root, authority: callerLevel(targetBinding), generationId: item.generationId, sourceHash: item.sourceHash };
+    },
+    provider: async (admitted, abort) => {
+      const cli = process.env.CORTEX_CLI || resolve(HERE, "..", "..", "cortex", "scripts", "cortex.mjs");
+      const safeItems = admitted.map(({ id, operation, node, limit, budget, depth, repositoryRoot, authority, generationId, sourceHash }) => ({ id, operation, ...(node ? { node } : {}), ...(limit ? { limit } : {}), ...(budget ? { budget } : {}), ...(depth ? { depth } : {}), repositoryRoot, authority, generationId, sourceHash }));
+      const out = await run(process.execPath, [cli, "graph", "batch", "--json"], JSON.stringify({ items: safeItems }), { ...process.env, WORKSPACE_ROOT: binding.root }, abort);
+      if (out.code !== 0) return [];
+      try { const parsed = JSON.parse(out.stdout); return Array.isArray(parsed) ? parsed : parsed.items; } catch { return []; }
+    },
+  });
 }
 function cortexFreshness(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -636,6 +667,7 @@ async function callTool(name, args, trace = {}, lifecycle) {
   }
   if (name === "membrane_cortex") {
     const binding = await authorize(args, "context");
+    if (Array.isArray(args.items)) return cortexBatchCapability(binding, args, lifecycle?.signal);
     return cortexCapability(binding, args, lifecycle?.signal);
   }
   if (name === "membrane_checkpoint_save") {

@@ -34,7 +34,9 @@ fn package_crate(
         .expect("cargo must package the downstream dependency");
     assert!(status.success(), "{package} package creation failed");
 
-    let archive = target.join("package").join(format!("{package}-{version}.crate"));
+    let archive = target
+        .join("package")
+        .join(format!("{package}-{version}.crate"));
     let unpacked = target.join("unpacked");
     fs::create_dir_all(&unpacked).expect("package extraction directory must be created");
     let status = Command::new("tar")
@@ -63,14 +65,18 @@ fn downstream_fixture_compiles_against_packaged_semver_compatible_sdk_releases()
         std::process::id()
     ));
     let protocol = package_crate(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../membrane-protocol/Cargo.toml").as_path(),
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../membrane-protocol/Cargo.toml")
+            .as_path(),
         "membrane-protocol",
         "0.1.0",
         &target.join("protocol-package"),
         None,
     );
     let sdk = package_crate(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml").as_path(),
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("Cargo.toml")
+            .as_path(),
         "membrane-provider-sdk",
         env!("CARGO_PKG_VERSION"),
         &target.join("sdk-package"),
@@ -99,6 +105,9 @@ fn downstream_fixture_compiles_against_packaged_semver_compatible_sdk_releases()
         .env("CARGO_TARGET_DIR", target.join("consumer-target"))
         .status()
         .expect("cargo must compile the downstream fixture");
-    assert!(status.success(), "packaged downstream fixture did not compile");
+    assert!(
+        status.success(),
+        "packaged downstream fixture did not compile"
+    );
     let _ = std::fs::remove_dir_all(target);
 }

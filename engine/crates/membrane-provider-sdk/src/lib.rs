@@ -65,10 +65,15 @@
 //! crates show two reference adapters. See `docs/providers/README.md` for
 //! the full adapter-authoring guide.
 
+pub mod batch;
 pub mod conformance;
 pub mod error;
 pub mod provider;
 
+pub use batch::{
+    CodeBatchItemV1, CodeBatchReceiptV1, MAX_BATCH_BYTES, MAX_BATCH_DEADLINE_MS, MAX_BATCH_ITEMS,
+    MAX_BATCH_TOKENS,
+};
 pub use conformance::{run_conformance, ConformanceReport, Fixture, FixtureFailure};
 pub use error::{ProviderError, Result};
 pub use provider::{CapabilityV1, Provider};

@@ -10,6 +10,7 @@ pub mod cache_prefix;
 pub mod catalog;
 pub mod checkpoint;
 pub mod cli;
+pub mod code_batch;
 pub mod compress;
 pub mod compression_provider;
 pub mod diagnostic_bundle;
@@ -86,5 +87,6 @@ pub use scope::{
 };
 pub use store::{
     MemoryEventContext, MemoryLifecycleError, MemoryLifecycleEventV1, MemoryLifecycleInputV1,
-    MemoryLifecycleKind, MemoryPriorityError, MemoryStore,
+    MemoryLifecycleKind, MemoryLifecycleOperation, MemoryLifecycleOperationV1,
+    MemoryLifecycleReceiptV1, MemoryPriorityError, MemoryStore, VerifiedMemoryActor,
 };
