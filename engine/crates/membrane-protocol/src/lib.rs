@@ -81,7 +81,7 @@ pub use status::{
 };
 pub use team_policy::{
     EncryptedReplicationEnvelopeV1, TeamPolicyReceiptV1, TeamPolicyScopeV1,
-    TeamPolicySyncV1, TEAM_POLICY_SCHEMA_VERSION,
+    TeamPolicySyncV1, TeamSyncOptInV1, TEAM_POLICY_SCHEMA_VERSION,
 };
 pub use types::*;
 

@@ -97,8 +97,8 @@ pub use scope::{
     normalize_scope, path_to_scope, scope_chain, ScopeDescriptorError, ScopeDescriptorV1,
 };
 pub use team_policy::{
-    admit_team_policy, TeamPolicyAdmission, TeamPolicyAdmissionReason, TeamPolicyTrustVerifier,
-    TrustedPolicyVerification,
+    admit_team_policy, admit_team_policy_with_opt_in, TeamPolicyAdmission,
+    TeamPolicyAdmissionReason, TeamPolicyTrustVerifier, TrustedPolicyVerification,
 };
 pub use store::{
     MemoryEventContext, MemoryLifecycleError, MemoryLifecycleEventV1, MemoryLifecycleInputV1,
