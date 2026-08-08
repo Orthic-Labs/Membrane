@@ -1,0 +1,100 @@
+{
+  "schema": "orthic.membrane.windows-release-evidence.v1",
+  "capturedAt": "2026-08-08T13:54:33.8232296Z",
+  "contentFree": true,
+  "status": "fail",
+  "publish": false,
+  "release": {
+    "app": "membrane-hub",
+    "version": "0.1.1",
+    "sourceCommit": "53efa898701a1289dc0236c8ffed0da98299a550",
+    "sourceTree": "f519fcdb1ae7a98cd388a429c2e15fedfdd8d112",
+    "sealedReleaseId": "membrane-hub-0.1.1-53efa898",
+    "releaseGeneration": "sha256:136b7ab0c0ff1b3bca3475012fdc965af28c1046912585e6d590d9636e5c3623"
+  },
+  "artifacts": {
+    "installer": {
+      "name": "Membrane_0.1.1_x64-setup.exe",
+      "sizeBytes": 2197000,
+      "sha256": "db12690dcc6b8c040a816b316c1db916ceca4c60bc7f743a65d61d8d12b3aef2",
+      "authenticodeSha256": "dfd5bee5de49551d5035da80cde093bb62051c557a9ec524a343f4201cebf36f"
+    },
+    "updaterSignature": {
+      "name": "Membrane_0.1.1_x64-setup.exe.sig",
+      "sizeBytes": 420,
+      "sha256": "b72dc875f5e6823114ecbff252572077acf32d7410317d1902a104a463d31240"
+    },
+    "sealedManifestSha256": "136b7ab0c0ff1b3bca3475012fdc965af28c1046912585e6d590d9636e5c3623",
+    "hardeningReceiptSha256": "6db6f6bade55789617cd31c3a975b7dad1bcd5a5aeeae92314966e874de3ec39"
+  },
+  "build": {
+    "command": "pnpm release:build:win",
+    "heavyCommandCount": 1,
+    "rightKitVersion": "0.2.51",
+    "doctor": "pass",
+    "packageChecks": "25-pass",
+    "hardening": "pass",
+    "sourceBinding": "pass",
+    "seal": "pass"
+  },
+  "signing": {
+    "provider": "azure-artifact-signing",
+    "publicTrust": "pass",
+    "fileDigest": "sha256",
+    "rfc3161Timestamp": "pass",
+    "timestampUtc": "2026-08-08T13:46:03Z",
+    "tauriUpdaterSignature": "pass",
+    "installerSigntoolPaTw": "pass",
+    "shippedPeSigntoolPaTw": {
+      "status": "fail",
+      "checked": 2,
+      "passed": 0,
+      "failed": [
+        "membrane-hub.exe",
+        "uninstall.exe"
+      ],
+      "error": "No signature found"
+    }
+  },
+  "lifecycle": {
+    "cleanPerUserInstall": "pass",
+    "installedVersion": "0.1.1",
+    "startup": "pass",
+    "installedExecutableSha256": "b17e0fed968be38eb07c8f7ecc9d8b8da4289a9b5c44d0272b30244a11f3e641",
+    "sameVersionRepair": "pass",
+    "sameVersionUpdateMode": "pass",
+    "priorVersionUpgrade": "not-run-no-prior-sealed-installer",
+    "embeddedIcon": "pass-32x32",
+    "desktopShortcutIconTarget": "pass",
+    "gracefulShutdown": "fail",
+    "forcedOwnedProcessShutdown": "pass",
+    "uninstall": "pass"
+  },
+  "cleanup": {
+    "processes": 0,
+    "services": 0,
+    "installDirectoryPresent": false,
+    "uninstallRegistrationPresent": false,
+    "startupRegistrationPresent": false,
+    "shortcutsPresent": false,
+    "appDataPresent": false,
+    "productRegistryKeyPresent": false
+  },
+  "findings": [
+    {
+      "gate": "shipped-pe-signatures",
+      "status": "fail",
+      "reason": "Installer is signed, but both installed PE payloads are unsigned."
+    },
+    {
+      "gate": "graceful-shutdown",
+      "status": "fail",
+      "reason": "popover.html lacks the import map required by popover.mjs, so Tauri API imports fail before the Quit handler binds."
+    },
+    {
+      "gate": "workspace-bootstrap",
+      "status": "fail",
+      "reason": "Workspace setup and workspace-doctor rejected two unrelated root GitHub Actions workflows."
+    }
+  ]
+}
