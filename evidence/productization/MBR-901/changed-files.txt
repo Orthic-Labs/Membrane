@@ -1,0 +1,14 @@
+packaging/macos/entitlements.plist
+scripts/release/macos/contract.mjs
+scripts/release/macos/release-macos.mjs
+scripts/release/macos/release-macos-pipeline.test.mjs
+docs/release/macos.md
+evidence/productization/MBR-901/summary.json
+evidence/productization/MBR-901/commands.log
+evidence/productization/MBR-901/changed-files.txt
+evidence/productization/MBR-901/acceptance.json
+
+Deleted (superseded bespoke signing-order contract; RightKit/Tauri already
+own signing order and identity):
+packaging/macos/release-contract.json
+packaging/macos/bundle-manifest.json
