@@ -14,6 +14,13 @@ use tauri::{Emitter, Manager, PhysicalPosition};
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
 
+// MBR-911: dual-signature update-admission gate. Not yet called from the
+// running tray/service wiring below -- see the module doc comment in
+// update_admission.rs for why (no macOS RightKit updater artifact exists
+// yet) -- but present and tested so the update flow that does exist can be
+// gated on it without further plumbing changes.
+mod update_admission;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CachedSnapshot {
     pub schema_version: u32,

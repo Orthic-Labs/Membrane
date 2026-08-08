@@ -1,0 +1,52 @@
+$ node --test tests/update/dual-signature.test.mjs scripts/release/updater/contract.test.mjs
+MBR-911 release-time dual-signature admission contract: PASS
+✔ versionTriple parses semver and rejects short/unparseable versions
+✔ isUpgrade requires a strictly greater triple
+✔ validateUpdaterManifestEntry accepts RightKit's real shape and rejects a missing signature
+✔ both signatures valid and version advancing: verifies with no failures
+✔ missing Tauri updater signature blocks
+✔ incomplete platform trust (one leg failed out of several) blocks
+✔ Tauri signature present but platform receipt is for the wrong platform blocks
+✔ a downgrade blocks even with two fully valid signatures
+✔ an unparseable target version is treated as a downgrade and blocks
+✔ a mismatched artifact hash between the manifest identity and the platform receipt blocks
+✔ an unregistered updater platform key blocks rather than being silently accepted
+✔ only RightKit's currently-declared updater platform key is registered
+MBR-911 trusted dual-signature source contract: PASS
+✔ tests/update/dual-signature.test.mjs
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+
+# Per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md and this task's hard rules, the
+# manifest command (`node scripts/release/verify-release-plan.mjs --task
+# MBR-911`) was NOT executed during this task — that script does not exist
+# on this tree yet (no task has created it) and it is out of this task's
+# allowlist (scripts/release/updater/** only, not scripts/release/*.mjs) to
+# create it. It is deferred to the Book 3 final phased gate, gate phase 3.1,
+# alongside every other MBR-9xx `verify-release-plan.mjs --task` invocation.
+#
+# NOT run, by hard rule, at any point in this task:
+#   - cargo build / cargo test / cargo check / clippy / rustc, including
+#     `cargo test --manifest-path engine/Cargo.toml --workspace` (would
+#     execute the new #[test] module in engine/crates/membrane-updater and
+#     the one in apps/membrane-hub/src-tauri/src/update_admission.rs) and
+#     `cargo check --manifest-path apps/membrane-hub/src-tauri/Cargo.toml`
+#     (would type-check the new membrane-updater path dependency and the
+#     mod update_admission; wiring in main.rs). Both are reasoned through by
+#     type in this task and left for the Book 3 final phased gate.
+#   - Any Tauri/pnpm build (`pnpm build`, `tauri build`, `right-release
+#     build`).
+#   - Any signing/verification tool: `pnpm exec tauri signer sign`,
+#     `codesign`, `spctl`, `signtool`, notarytool, or AzureSignTool. This
+#     task's Rust adapter (update_admission.rs) and RightKit's own pipeline
+#     (tools/rightkit/packages/release/*) are read and consumed as reference
+#     shapes only; nothing that shells out to a signing/verification tool
+#     was invoked.
+#
+# No mutating git command (add/commit/checkout/stash/reset/rebase) was run
+# at any point in this task.
