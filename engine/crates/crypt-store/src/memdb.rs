@@ -30,6 +30,24 @@ CREATE TABLE IF NOT EXISTS memories (
     authority    TEXT NOT NULL DEFAULT 'A2',
     influence_class TEXT NOT NULL DEFAULT 'reference'
 );
+CREATE TABLE IF NOT EXISTS membrane_temporal_fact (
+    fact_id TEXT PRIMARY KEY,
+    subject TEXT NOT NULL,
+    predicate TEXT NOT NULL,
+    object_json TEXT NOT NULL,
+    scope_id TEXT NOT NULL,
+    authority TEXT NOT NULL,
+    veracity TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    valid_from TEXT NOT NULL,
+    valid_until TEXT,
+    expires_at TEXT,
+    supersedes TEXT,
+    payload_sha256 TEXT NOT NULL,
+    transition_sha256 TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS membrane_temporal_fact_asof
+ ON membrane_temporal_fact(scope_id,subject,predicate,valid_from,valid_until);
 CREATE TABLE IF NOT EXISTS recall_log (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     ts             TEXT NOT NULL,

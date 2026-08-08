@@ -7,6 +7,10 @@ pub mod db;
 pub mod installation_identity;
 pub mod memdb;
 pub mod scope;
+pub mod temporal;
 pub mod time;
 
 pub use memdb::MemDb;
+pub use temporal::{
+    TemporalFact, TemporalFactQuery, TemporalFactReceipt, TemporalFactStore, TemporalTransition,
+};

@@ -93,4 +93,5 @@ pub use store::{
     MemoryEventContext, MemoryLifecycleError, MemoryLifecycleEventV1, MemoryLifecycleInputV1,
     MemoryLifecycleKind, MemoryLifecycleOperation, MemoryLifecycleOperationV1,
     MemoryLifecycleReceiptV1, MemoryPriorityError, MemoryStore, VerifiedMemoryActor,
+    RecallResult,
 };

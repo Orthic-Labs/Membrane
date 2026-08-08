@@ -555,6 +555,14 @@ pub struct ScoredRecallHit {
     pub origin: &'static str,
 }
 
+/// One typed normal-recall result. Temporal facts stay structured so object
+/// values never enter memory text or bypass scope/lifecycle admission.
+#[derive(Clone, Debug)]
+pub enum RecallResult {
+    Memory { entry: MemoryEntry, score: f32 },
+    Temporal { fact: crypt_store::TemporalFact, score: f32 },
+}
+
 /// Content-free wall-clock decomposition for the live memory-candidate lane.
 /// Values are observational only and never affect retrieval or ranking.
 #[derive(Clone, Copy, Debug, Default)]
@@ -1303,6 +1311,52 @@ fn validate_embedding(vector: Vec<f32>, expected_dim: usize) -> Result<Vec<f32>,
 }
 
 impl MemoryStore {
+    /// Durable temporal-fact lane sharing this store's admission database.
+    pub fn temporal_facts(&self) -> crypt_store::TemporalFactStore {
+        crypt_store::TemporalFactStore::new(self.db.clone())
+    }
+
+    /// Compose ordinary memory recall with an explicitly scoped temporal query.
+    /// Temporal facts use the same caller scope chain and fixed as-of instant;
+    /// callers must opt into this typed lane rather than receiving content-free
+    /// facts accidentally through text recall.
+    pub fn recall_typed_at(
+        &self,
+        query: &str,
+        limit: usize,
+        scopes: &[String],
+        as_of_ms: i64,
+        include_expired: bool,
+        temporal: Option<crypt_store::TemporalFactQuery>,
+    ) -> Vec<RecallResult> {
+        let mut out = Vec::new();
+        if let Some(mut request) = temporal {
+            if request.scope_chain.is_empty() {
+                request.scope_chain = scopes.to_vec();
+            }
+            if request.scope_chain.iter().any(|scope| !scopes.contains(scope)) {
+                return self
+                    .recall_scored_at(query, limit, scopes, as_of_ms, include_expired)
+                    .into_iter()
+                    .map(|(entry, score)| RecallResult::Memory { entry, score })
+                    .collect();
+            }
+            if let Ok(facts) = self.temporal_facts().query(request) {
+                for fact in facts {
+                    if out.len() >= limit {
+                        break;
+                    }
+                    out.push(RecallResult::Temporal { fact, score: 1.0 });
+                }
+            }
+        }
+        let memory_limit = limit.saturating_sub(out.len());
+        out.extend(self
+            .recall_scored_at(query, memory_limit, scopes, as_of_ms, include_expired)
+            .into_iter()
+            .map(|(entry, score)| RecallResult::Memory { entry, score }));
+        out
+    }
     fn embed_query_cached(&self, text: &str) -> Vec<f32> {
         let pipeline = self.embedder.pipeline_fingerprint();
         let key = format!("{}:{}:{}", pipeline.digest, "query", content_hash(text));
