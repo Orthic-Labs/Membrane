@@ -1,5 +1,21 @@
 # Membrane install contract (MBR-203)
 
+## Homebrew source contract (MBR-904)
+
+`packaging/homebrew/Casks/membrane.rb` &
+`packaging/homebrew/Formula/membrane.rb` are intentionally fail-closed until a
+release authority fills `packaging/homebrew/release.v1.json` with immutable
+version, per-architecture URL/SHA-256, commit, release generation, & receipt identity. Neither file is an install
+path today: do not run `brew install membrane` or `brew install --cask membrane`.
+
+When release evidence exists, generated Cask metadata must bind signed,
+notarized, stapled DMG to both `mac-arm64` & `mac-x64`. Generated Formula
+metadata must bind prebuilt CLI/daemon artifacts, digests, & release signatures to same
+architectures. Upgrade replaces only matching signed releases; uninstall removes
+installed application or CLI/daemon files; zap needs operator confirmation before
+removing user state. `brew doctor` is insufficient: release doctor must verify
+artifact digest, source identity, signatures, plus macOS notarization staple.
+
 The Membrane binary installs under a scratch `MEMBRANE_ROOT` and only
 promotes that scratch tree to the target root on `commit`. Every install is
 staged, typed, and idempotent; no partial install survives an interrupted
