@@ -1,5 +1,5 @@
 // GENERATED — DO NOT EDIT
-// operation_registry_version: sha256:256091ff5ed4b04d2604a71e66f56db47c391689a83f7bb67be600c6ae057227
+// operation_registry_version: sha256:86c6a13b09eae9b28f05c60c4e6f6f3e92cf699de1d54a838410130e42e6ea0a
 match name {
     "" => Some(vec![
         ("membrane_context".to_string(), String::new()),
