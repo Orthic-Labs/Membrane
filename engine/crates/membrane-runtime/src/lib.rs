@@ -14,6 +14,7 @@ pub mod code_batch;
 pub mod compress;
 pub mod compression_provider;
 pub mod diagnostic_bundle;
+pub mod delivery_trace_view;
 pub mod digest;
 pub mod doc_candidate_provider;
 pub mod doc_projection;
