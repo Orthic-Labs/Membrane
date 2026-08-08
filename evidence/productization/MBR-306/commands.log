@@ -1,0 +1,19 @@
+# task=MBR-306; book=3 (Wave 4); status=implemented_pending_book_gate
+# Per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md ("Task implementation state" and
+# "Local dispatch utility incompatibility"): no per-task test/qualification/PPM
+# gate. Manifest commands are deliberately NOT executed in this task change;
+# they run once, manually, at the Book 3 Wave 4 final phased gate against the
+# integrated tree.
+#
+# Hard rule for this task change: never run cargo build / cargo test / cargo
+# check / clippy / rustc / any Tauri or pnpm release build; the orchestrator
+# runs heavy commands at gate time.
+
+$ cargo fmt --manifest-path engine/Cargo.toml --all -- --check
+# NOT RUN (deferred to Book 3 Wave 4 gate)
+
+$ cargo test --manifest-path engine/Cargo.toml --workspace
+# NOT RUN (deferred to Book 3 Wave 4 gate)
+
+$ pnpm test
+# NOT RUN (deferred to Book 3 Wave 4 gate)

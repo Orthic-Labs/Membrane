@@ -29,6 +29,7 @@ pub mod freshness;
 pub mod fleet;
 pub mod hub;
 pub mod installation_manifest;
+pub mod mcp_http;
 pub mod memory_provider;
 pub mod memory_sentinel_view;
 pub mod notifications;

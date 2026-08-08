@@ -1,0 +1,33 @@
+{
+  "schema": "orthic.membrane-evidence.acceptance.v1",
+  "taskId": "MBR-306",
+  "acceptance": "Remote-origin and DNS-rebinding tests fail closed; stdio remains default.",
+  "status": "pending_book_gate",
+  "verifiedBy": "cargo fmt --manifest-path engine/Cargo.toml --all -- --check && cargo test --manifest-path engine/Cargo.toml --workspace && pnpm test",
+  "demonstration": {
+    "remoteOriginFailsClosed": "engine/crates/membrane-runtime/src/mcp_http.rs #[tokio::test] remote_origin_fails_closed sends an admitted-everywhere-else request whose Origin header is https://attacker.example (not in the policy's allowed_origins) and asserts HTTP 403 with denial=origin_not_allowed.",
+    "dnsRebindingFailsClosed": [
+      "#[tokio::test] dns_rebinding_resolved_host_fails_closed: Host header names an allowed literal, but the injected resolver answers a public IP (203.0.113.5) for it at request time; asserts HTTP 403 with denial=dns_rebinding.",
+      "#[tokio::test] unresolvable_host_fails_closed_as_dns_rebinding: resolver returns no answer; asserts the request is denied as dns_rebinding rather than admitted on ambiguous DNS state (fail closed)."
+    ],
+    "otherFailClosedCoverage": [
+      "#[tokio::test] non_loopback_peer_fails_closed (peer_ip not loopback -> non_loopback_peer)",
+      "#[tokio::test] missing_bearer_fails_closed",
+      "#[tokio::test] wrong_bearer_fails_closed_without_leaking_the_expected_token (denial=invalid_bearer; asserts the serialized denial response never contains the wrong or the expected token value)",
+      "#[test] denial_response_never_carries_bearer_or_session_values (serializes a denied HttpAdmissionReceipt and asserts it contains neither the offered nor the expected secret)"
+    ],
+    "stdioRemainsDefault": [
+      "No code path in engine/crates/membrane-runtime/src/service.rs (run_service, run_service_from) or engine/crates/membrane-runtime/src/serve.rs (run, run_stdio_mcp, run_loopback_api) calls anything in mcp_http — verifiable by inspection of the diff, since neither file's default-path functions were changed to reference the new module.",
+      "membrane_mcp::jsonrpc::serve_stdio and membrane-runtime::serve::run_stdio_mcp are unmodified by this change.",
+      "#[tokio::test] accepted_request_dispatches_the_same_result_as_stdio_json_rpc proves the HTTP transport is an alternate admission-gated entrypoint onto membrane_mcp::McpServer::dispatch — the same dispatcher stdio uses — rather than a second, divergent implementation; it is additive, not a replacement default.",
+      "mcp_http::run_mcp_streamable_http / run_mcp_streamable_http_for_resident are the only way to open this listener and are not called by any default startup path in this diff."
+    ],
+    "loopbackAndAuth": [
+      "mcp_http::run_mcp_streamable_http binds tokio::net::TcpListener to (Ipv4Addr::LOCALHOST, port) only, matching the existing loopback Crypt API's own bind convention in serve::run.",
+      "run_mcp_streamable_http_for_resident sources its bearer token via the widened-visibility serve::configured_api_token (the existing CRYPT_API_TOKEN / CRYPT_API_TOKEN_FILE / api-token-file credential path used by the loopback Crypt API) instead of minting a parallel credential.",
+      "No log line in mcp_http.rs prints a bearer token, session binding, or request body; only the bind address/port is logged at startup."
+    ]
+  },
+  "observed": "Task is implemented with deterministic #[tokio::test]/#[test] Rust tests in the same change, per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md (no per-task gate; one consolidated Book 3 final phased gate). Manifest commands are intentionally not executed here and status is intentionally not set to pass. The Book 3 Wave 4 gate phase must run cargo fmt --check, cargo test --workspace, and pnpm test against the integrated tree and confirm these tests pass before this task's acceptanceStatus/status can be finalized to pass.",
+  "at": null
+}

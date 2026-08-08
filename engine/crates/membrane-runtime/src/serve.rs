@@ -898,7 +898,10 @@ impl Drop for WorkerExecutionGuard {
     }
 }
 
-fn configured_api_token(db_path: &std::path::Path) -> Result<String, String> {
+/// MBR-306: `pub(crate)` (rather than private) so the optional Streamable
+/// HTTP MCP transport (`crate::mcp_http`) sources its bearer token from this
+/// exact credential path instead of minting a parallel one.
+pub(crate) fn configured_api_token(db_path: &std::path::Path) -> Result<String, String> {
     let fallback = db_path
         .parent()
         .unwrap_or_else(|| std::path::Path::new("."))

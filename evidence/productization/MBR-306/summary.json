@@ -1,0 +1,24 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-306",
+  "title": "Add authenticated loopback Streamable HTTP only where needed",
+  "commit": null,
+  "acceptanceStatus": "pending_book_gate",
+  "envBlocked": false,
+  "book": 3,
+  "bookGateHead": null,
+  "note": "Per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md, this task is implemented and its tests are written in this change, but manifest commands are not executed and status is not set to pass here. The orchestrator commits, runs the Wave 4 phase of the Book 3 final phased gate, and finalizes this evidence.",
+  "changedFiles": [
+    "docs/protocol/http-mcp.md",
+    "engine/crates/membrane-runtime/Cargo.toml",
+    "engine/crates/membrane-runtime/src/lib.rs",
+    "engine/crates/membrane-runtime/src/mcp_http.rs",
+    "engine/crates/membrane-runtime/src/serve.rs"
+  ],
+  "implementation": {
+    "newModule": "engine/crates/membrane-runtime/src/mcp_http.rs",
+    "summary": "Adds the one real listener for the optional Streamable HTTP MCP transport whose pure admission contract (engine/crates/membrane-mcp/src/http_security.rs, added in commit 543d1dec) previously opened no socket. The new membrane-runtime::mcp_http module binds 127.0.0.1 only, exposes a single POST /mcp route, re-resolves the request's Host header live on every request (never cached) for DNS-rebinding admission, calls membrane_mcp::http_security::admit before ever reaching membrane_mcp::McpServer::dispatch (the same dispatcher stdio uses), sources its bearer token from the existing loopback Crypt API credential path (serve::configured_api_token, widened from private to pub(crate)), and binds session identity to the resident's per-boot StartupClaim::service_instance_id. Nothing in service::run_service or serve::run (the default resident startup path) calls this module; a caller must explicitly invoke run_mcp_streamable_http or run_mcp_streamable_http_for_resident to open the listener, so stdio remains the default MCP transport.",
+    "newDependency": "membrane-mcp = { path = \"../membrane-mcp\" } added to engine/crates/membrane-runtime/Cargo.toml — an existing sibling workspace crate already present in engine/Cargo.lock with its own resolved dependencies (membrane-protocol, serde, serde_json, thiserror); no new external crate is introduced. engine/Cargo.lock itself is not modified here (it is outside this task's allowlist); cargo will refresh the membrane-runtime dependency edge automatically the next time it builds the workspace, which the book gate does.",
+    "cliWiring": "Intentionally out of scope. engine/crates/membrane-runtime/src/cli.rs (5629 lines) was left untouched to avoid unreviewable risk of an exhaustive-match compile break in code outside this task's diff, given the hard rule against running cargo to verify. The transport is fully implemented and independently testable as a library entrypoint (mcp_http::run_mcp_streamable_http / run_mcp_streamable_http_for_resident); wiring an operator-facing CLI verb to it is a natural follow-up but is not required by MBR-306's stated acceptance criterion."
+  }
+}
