@@ -27,6 +27,7 @@ pub mod freshness;
 pub mod hub;
 pub mod installation_manifest;
 pub mod memory_provider;
+pub mod notifications;
 pub mod outline;
 pub mod paths;
 pub mod plan_context;
@@ -75,6 +76,9 @@ pub use checkpoint::{
     CheckpointError, CheckpointSourceRefV1, CheckpointSourceResolutionV1, CheckpointV1,
 };
 pub use crypt_store::MemDb;
+pub use crypt_store::{
+    TemporalFact, TemporalFactQuery, TemporalFactReceipt, TemporalFactStore, TemporalTransition,
+};
 pub use paths::{cache_root, config_root, data_root, log_root, Roots, PRODUCT_DIR_NAME};
 pub use planes::{plane_for_path, Plane, PlaneBoundary, PLANE_BOUNDARIES};
 pub use receipt::{
