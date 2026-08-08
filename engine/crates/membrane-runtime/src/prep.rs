@@ -4,7 +4,7 @@
 //! doc). This module writes prepared files under `out_dir` and returns a JSON
 //! manifest whose entry shape is branch-specific.
 
-use crate::{compress, outline, skel};
+use crate::{compress, compression_provider, outline, skel};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -26,6 +26,13 @@ pub struct PrepEntry {
     pub budget_tok: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub drop_manifest: Option<compress::DropManifest>,
+}
+
+/// Query-aware provider entrypoint used after authority/freshness admission.
+pub fn prepare_query_aware(
+    request: compression_provider::CompressionRequest,
+) -> compression_provider::CompressionResult {
+    compression_provider::compress_query_aware(&request)
 }
 
 fn is_code_ext(path: &Path) -> bool {
