@@ -1,0 +1,7 @@
+{
+  "schema": "orthic.membrane.macos-release.v1",
+  "product": "Membrane",
+  "required": ["commit", "version", "app", "dmg", "appSha256", "dmgSha256"],
+  "receiptRequired": ["codesign", "notary", "staple"],
+  "publish": false
+}
