@@ -214,11 +214,16 @@ pub fn source_barrier_receipt(
         "barrier_clock": 0,
         "applied_graph_clock": 0,
         "event_gap": verdict.reasons.iter().any(|reason| reason == "event_gap"),
-        "generation_id": generation_id,
+        "generation_id": generation_id.clone(),
         "manifest_digest": manifest_digest,
         "source_observation_digest": source_observation_digest,
         "dirty_overlay_digest": contract_digest(verdict.overlay_digest.clone()),
-        "overlay_identity": { "session_id": session_id, "worktree_path": worktree_path },
+        "overlay_identity": {
+            "session_id": session_id,
+            "worktree_path": worktree_path,
+            "generation_id": generation_id,
+            "overlay_digest": contract_digest(verdict.overlay_digest.clone()),
+        },
         "status": status,
     })
 }
@@ -1666,5 +1671,13 @@ mod tests {
         }
         assert_eq!(receipt["overlay_identity"]["session_id"], "session-a");
         assert_eq!(receipt["overlay_identity"]["worktree_path"], "/workspace");
+        assert_eq!(
+            receipt["overlay_identity"]["generation_id"],
+            receipt["generation_id"]
+        );
+        assert_eq!(
+            receipt["overlay_identity"]["overlay_digest"],
+            receipt["dirty_overlay_digest"]
+        );
     }
 }

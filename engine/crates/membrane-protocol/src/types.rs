@@ -127,6 +127,21 @@ pub enum ReleaseGenerationStatus {
     Unavailable,
 }
 
+/// Identity of the dirty overlay used for one retrieval. Overlay state is
+/// session-local even when the committed graph is shared.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OverlayIdentityV1 {
+    #[serde(alias = "session_id")]
+    pub session_id: String,
+    #[serde(alias = "worktree_path")]
+    pub worktree_path: String,
+    #[serde(alias = "generation_id")]
+    pub generation_id: String,
+    #[serde(alias = "overlay_digest")]
+    pub overlay_digest: String,
+}
+
 /// Freshness provenance shared by every candidate in the set.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -148,6 +163,8 @@ pub struct FreshnessV1 {
     pub observed_release_generation: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub release_generation_status: Option<ReleaseGenerationStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overlay_identity: Option<OverlayIdentityV1>,
 }
 
 /// The provider's self-declared admission ceiling.

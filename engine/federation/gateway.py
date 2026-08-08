@@ -155,6 +155,14 @@ def _freshness_token(repo_root: Path) -> str:
     return ""
 
 
+def _contract_digest(value: str) -> str:
+    if len(value) == 71 and value.startswith("sha256:") and all(
+        char in "0123456789abcdef" for char in value[7:]
+    ):
+        return value
+    return "sha256:" + hashlib.sha256(value.encode()).hexdigest()
+
+
 def _fetch_freshness_verdict(repo_root: Path, session: str | None = None) -> dict[str, Any] | None:
     """Fetch the sole freshness verdict from the resident service.
 
@@ -190,6 +198,29 @@ def _fetch_freshness_verdict(repo_root: Path, session: str | None = None) -> dic
     if not isinstance(payload, dict) or payload.get("schemaVersion") != 1:
         return None
     if not isinstance(payload.get("graphState"), str):
+        return None
+    receipt = payload.get("sourceBarrierReceipt")
+    identity = receipt.get("overlay_identity") if isinstance(receipt, dict) else None
+    expected_path = str(repo_root.resolve())
+    generation = payload.get("cortexGeneration")
+    overlay_digest = payload.get("overlayDigest")
+    dirty_digest = receipt.get("dirty_overlay_digest") if isinstance(receipt, dict) else None
+    if (
+        not isinstance(identity, dict)
+        or identity.get("session_id") != (str(session or "").strip() or "anonymous")
+        or identity.get("worktree_path") != expected_path
+        or not isinstance(identity.get("generation_id"), str)
+        or not identity.get("generation_id")
+        or not isinstance(identity.get("overlay_digest"), str)
+        or not identity.get("overlay_digest")
+        or not isinstance(generation, str)
+        or not generation
+        or not isinstance(overlay_digest, str)
+        or not overlay_digest
+        or identity.get("generation_id") != _contract_digest(str(generation or ""))
+        or identity.get("overlay_digest") != _contract_digest(str(overlay_digest or ""))
+        or dirty_digest != identity.get("overlay_digest")
+    ):
         return None
     return payload
 
@@ -509,6 +540,7 @@ def _gather_all_parallel(
         "baseCommit": verdict.get("baseCommit"),
         "cortexBaseCommit": verdict.get("cortexBaseCommit"),
         "overlayDigest": verdict.get("overlayDigest"),
+        "overlayIdentity": (verdict.get("sourceBarrierReceipt") or {}).get("overlay_identity"),
         "serviceGeneration": verdict.get("serviceGeneration"),
         "expectedReleaseGeneration": expected_release_generation,
         "observedReleaseGeneration": observed_release_generation,
@@ -815,6 +847,7 @@ def _merge_candidates(
         "snapshotId",
         "baseCommit",
         "overlayDigest",
+        "overlayIdentity",
         "expectedReleaseGeneration",
         "observedReleaseGeneration",
         "releaseGenerationStatus",

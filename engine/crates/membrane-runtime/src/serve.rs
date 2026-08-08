@@ -1096,6 +1096,7 @@ fn reject(status: StatusCode, message: &str) -> Response {
 fn freshness_response_body(
     v: &Value,
     verdict: &crate::freshness::FreshnessVerdict,
+    repo_root: &std::path::Path,
 ) -> (u16, String) {
     let Some(session_id) = v
         .get("sessionId")
@@ -1119,6 +1120,24 @@ fn freshness_response_body(
             serde_json::json!({ "error": "worktreePath required" }).to_string(),
         );
     };
+    let requested_worktree = match crate::freshness::canonical_repo_root(
+        std::path::Path::new(worktree_path),
+        &configured_workspace_root(),
+    ) {
+        Ok(root) => root,
+        Err(_) => {
+            return (
+                400,
+                serde_json::json!({ "error": "worktreePath invalid" }).to_string(),
+            )
+        }
+    };
+    if requested_worktree != repo_root {
+        return (
+            409,
+            serde_json::json!({ "error": "worktreePath does not match repoRoot" }).to_string(),
+        );
+    }
     let repository_id = v
         .get("repositoryId")
         .and_then(Value::as_str)
@@ -1132,8 +1151,12 @@ fn freshness_response_body(
             )
         }
     };
-    payload_value["sourceBarrierReceipt"] =
-        crate::freshness::source_barrier_receipt(verdict, repository_id, session_id, worktree_path);
+    payload_value["sourceBarrierReceipt"] = crate::freshness::source_barrier_receipt(
+        verdict,
+        repository_id,
+        session_id,
+        &repo_root.to_string_lossy(),
+    );
     match serde_json::to_string(&payload_value) {
         Ok(payload) => (200, payload),
         Err(_) => (
@@ -1540,8 +1563,8 @@ async fn dispatch(
         };
         let verdict = state
             .freshness
-            .latest_or_schedule(state.store.as_ref().clone(), repo_root);
-        let (status, payload) = freshness_response_body(&value, &verdict);
+            .latest_or_schedule(state.store.as_ref().clone(), repo_root.clone());
+        let (status, payload) = freshness_response_body(&value, &verdict, &repo_root);
         return json_response(
             StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
             payload,
@@ -2527,8 +2550,8 @@ fn route_with_context_ingest_lease(
             }
             Err(error) => return (400, serde_json::json!({ "error": error }).to_string()),
         };
-        let verdict = crate::freshness::evaluate_repository_freshness(store, repo_root);
-        return freshness_response_body(&v, &verdict);
+        let verdict = crate::freshness::evaluate_repository_freshness(store, repo_root.clone());
+        return freshness_response_body(&v, &verdict, &repo_root);
     }
     if method == "POST" && path == "/skills-snapshot" {
         return match store.skills_snapshot() {

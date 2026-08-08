@@ -1,3 +1,4 @@
+use crate::OverlayIdentityV1;
 use serde::{Deserialize, Serialize};
 pub const SOURCE_RESOLUTION_RECEIPT_SCHEMA_VERSION: u32 = 1;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +50,8 @@ pub struct SourceResolutionReceiptV1 {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_path: Option<String>,
     pub resolver: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overlay_identity: Option<OverlayIdentityV1>,
 }
 impl SourceResolutionReceiptV1 {
     pub fn is_exact_current_source(&self) -> bool {
@@ -82,6 +85,7 @@ mod tests {
             expected_path: "src/lib.rs".into(),
             resolved_path: Some("src/lib.rs".into()),
             resolver: "cortex graph resolve --node symbol".into(),
+            overlay_identity: None,
         }
     }
     #[test] #[rustfmt::skip] fn exact_identity_is_required() {

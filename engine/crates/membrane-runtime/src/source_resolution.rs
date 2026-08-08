@@ -10,10 +10,22 @@ fn needs_resolution(candidate: &Value) -> bool {
     matches!(kind.as_str(), "graph" | "vector")
 }
 
+fn valid_source_path(value: &str) -> bool {
+    !value.is_empty()
+        && !value.starts_with('/')
+        && !value.contains('\\')
+        && std::path::Path::new(value).components().all(|component| {
+            !matches!(
+                component,
+                std::path::Component::ParentDir | std::path::Component::RootDir
+            )
+        })
+}
+
 #[rustfmt::skip] fn valid_hash(value: &str) -> bool { value.len() == 71 && value.starts_with("sha256:") && value[7..].bytes().all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f')) }
 #[rustfmt::skip] fn missing_status(candidate: &Value, provider: &str, generation: &str) -> SourceResolutionStatusV1 {
     let text = |key| candidate.get(key).and_then(Value::as_str).unwrap_or_default();
-    if text("id").is_empty() { SourceResolutionStatusV1::MissingIdentity } else if text("provider").is_empty() && provider.is_empty() { SourceResolutionStatusV1::MissingProvider } else if !valid_hash(text("sourceHash")) { SourceResolutionStatusV1::MissingHash } else if generation.is_empty() { SourceResolutionStatusV1::MissingGeneration } else if text("sourceRef").is_empty() { SourceResolutionStatusV1::MissingPath } else if text("resolver").is_empty() { SourceResolutionStatusV1::ResolverUnavailable } else { SourceResolutionStatusV1::Unresolved }
+    if text("id").is_empty() { SourceResolutionStatusV1::MissingIdentity } else if text("provider").is_empty() && provider.is_empty() { SourceResolutionStatusV1::MissingProvider } else if !valid_hash(text("sourceHash")) { SourceResolutionStatusV1::MissingHash } else if generation.is_empty() { SourceResolutionStatusV1::MissingGeneration } else if !valid_source_path(text("sourceRef")) { SourceResolutionStatusV1::MissingPath } else if text("resolver").is_empty() { SourceResolutionStatusV1::ResolverUnavailable } else { SourceResolutionStatusV1::Unresolved }
 }
 
 fn unresolved(candidate: &Value, provider: &str, generation: &str) -> SourceResolutionReceiptV1 {
@@ -49,6 +61,7 @@ fn unresolved(candidate: &Value, provider: &str, generation: &str) -> SourceReso
             .and_then(Value::as_str)
             .unwrap_or_default()
             .into(),
+        overlay_identity: None,
     }
 }
 
@@ -85,7 +98,11 @@ fn unresolved(candidate: &Value, provider: &str, generation: &str) -> SourceReso
         || receipt.resolved_generation.as_deref() != Some(generation)
     {
         SourceResolutionStatusV1::GenerationMismatch
-    } else if receipt.expected_path != path || receipt.resolved_path.as_deref() != Some(path) {
+    } else if !valid_source_path(path)
+        || !valid_source_path(&receipt.expected_path)
+        || receipt.expected_path != path
+        || receipt.resolved_path.as_deref().is_none_or(|value| !valid_source_path(value))
+        || receipt.resolved_path.as_deref() != Some(path) {
         SourceResolutionStatusV1::PathMismatch
     } else if receipt.resolver != resolver { SourceResolutionStatusV1::Unresolved
     } else if receipt.is_exact_current_source() {
@@ -104,6 +121,10 @@ fn unresolved(candidate: &Value, provider: &str, generation: &str) -> SourceReso
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
+    let overlay_identity = candidate_set
+        .get("freshness")
+        .and_then(|freshness| freshness.get("overlayIdentity"))
+        .and_then(|value| serde_json::from_value(value.clone()).ok());
     let generation = candidate_set.as_object_mut().and_then(|object| object.remove("generationId")).and_then(|value| value.as_str().map(str::to_owned)).unwrap_or_default();
     let Some(candidates) = candidate_set
         .get_mut("candidates")
@@ -116,10 +137,14 @@ fn unresolved(candidate: &Value, provider: &str, generation: &str) -> SourceReso
     candidates.retain_mut(|candidate| {
         let raw = candidate.as_object_mut().and_then(|object| object.remove("sourceResolution"));
         if !needs_resolution(candidate) { return true; }
-        let receipt = raw
+        let mut receipt = raw
             .and_then(|value| serde_json::from_value(value).ok())
             .map(|value| verify(value, candidate, &provider, &generation))
             .unwrap_or_else(|| unresolved(candidate, &provider, &generation));
+        if receipt.overlay_identity != overlay_identity {
+            receipt.status = SourceResolutionStatusV1::GenerationMismatch;
+        }
+        receipt.overlay_identity = overlay_identity.clone();
         let admitted = receipt.status == SourceResolutionStatusV1::Resolved;
         if !admitted {
             omissions.push(json!({"id": receipt.candidate_id, "layer": candidate.get("layer").cloned().unwrap_or(Value::Null),
