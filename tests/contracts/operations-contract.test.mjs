@@ -98,10 +98,15 @@ test("every required MCP tool is covered by the operations contract", () => {
     "membrane_scratchpad",
     "membrane_feedback",
   ];
-  const actual = OPERATIONS.map((op) => op.name);
-  assert.deepEqual(
-    actual,
-    expected,
-    "OPERATIONS must list every MCP tool the platform exposes",
-  );
+  // MBR-701 added the hub.capabilities/hub.snapshot Hub facade entries to
+  // OPERATIONS; they are deliberately not MCP tools (absent from
+  // mcp/toolsets.mjs), so this asserts the required MCP tool names are a
+  // subset of the registry rather than an exact match against it.
+  const actual = new Set(OPERATIONS.map((op) => op.name));
+  for (const name of expected) {
+    assert.ok(
+      actual.has(name),
+      `OPERATIONS must list every MCP tool the platform exposes (missing ${name})`,
+    );
+  }
 });

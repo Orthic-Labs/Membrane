@@ -66,7 +66,7 @@ test("finalize stamps the lane on every rendered block", () => {
     budget: { maxTokens: 1000 },
     blocks: [
       blockOf({ id: "rendered", text: "rendered body" }),
-      blockOf({ id: "metadata", text: "", deliveryClass: "metadata_only", deliveryMode: "reference" }),
+      blockOf({ id: "metadata", text: "", resolver: "", deliveryClass: "metadata_only", deliveryMode: "reference" }),
     ],
   };
   finalize(packet, DEFAULT_PACKET_CHAR_BUDGET);
@@ -78,7 +78,11 @@ test("finalize stamps the lane on every rendered block", () => {
 test("finalize stamps a reconciliation on the packet", () => {
   const packet = {
     budget: { maxTokens: 1000 },
-    blocks: [blockOf({ selectedTokens: 25, renderedTokens: 25, deliveredChars: 100, text: "hello" })],
+    // MBR-012: finalize() always recomputes renderedTokens/deliveredChars from
+    // the real text via canonicalDeliveryMetrics; a renderedTokens/deliveredChars
+    // override is discarded. Use text whose real token count (ceil(bytes/4))
+    // matches selectedTokens so the block reconciles.
+    blocks: [blockOf({ selectedTokens: 25, text: "x".repeat(100) })],
   };
   finalize(packet, DEFAULT_PACKET_CHAR_BUDGET);
   assert.ok(packet.reconciliation, "reconciliation must be stamped on the packet");
@@ -96,17 +100,20 @@ test("finalize stamps a reconciliation on the packet", () => {
 test("reconcileBudget sums per-lane totals to the global total (MBR-608)", () => {
   const packet = {
     budget: { maxTokens: 1000 },
+    // MBR-012: renderedTokens/deliveredChars are always recomputed from the
+    // real text, so each block's text is sized to actually carry its claimed
+    // selectedTokens (ceil(bytes/4)) once rendered.
     blocks: [
-      blockOf({ id: "r1", selectedTokens: 30, renderedTokens: 30, deliveredChars: 120, text: "abc" }),
-      blockOf({ id: "r2", selectedTokens: 20, renderedTokens: 20, deliveredChars: 80, text: "def" }),
-      blockOf({ id: "m1", deliveryClass: "metadata_only", deliveryMode: "reference", selectedTokens: 0, renderedTokens: 0, deliveredChars: 0, text: "" }),
+      blockOf({ id: "r1", selectedTokens: 30, text: "x".repeat(120) }),
+      blockOf({ id: "r2", selectedTokens: 20, text: "x".repeat(80) }),
+      blockOf({ id: "m1", resolver: "", deliveryClass: "metadata_only", deliveryMode: "reference", selectedTokens: 0, text: "" }),
     ],
   };
   finalize(packet, DEFAULT_PACKET_CHAR_BUDGET);
   const reconciliation = packet.reconciliation;
   assert.equal(reconciliation.totalSelectedTokens, 50);
   assert.equal(reconciliation.totalDeliveredTokens, 50);
-  assert.equal(reconciliation.totalDeliveredChars, 200);
+  assert.equal(reconciliation.totalDeliveredChars, 248);
   // Every per-lane row equals the sum of the per-block lane totals.
   for (const row of reconciliation.lanes) {
     const sum = packet.blocks
@@ -152,15 +159,17 @@ test("reconcileBudget flags a selected-without-delivered drift as the alert", ()
     blocks: [
       blockOf({
         id: "dropped",
+        // selectedTokens deliberately overstates the block's real content so
+        // it lands in the rendered lane but under-delivers.
         selectedTokens: 50,
-        renderedTokens: 0,
-        deliveredChars: 0,
-        text: "x".repeat(500),
+        text: "hi",
       }),
     ],
   };
-  // Force a tiny budget so the block is dropped (rendered tokens stay 0).
-  finalize(packet, 10);
+  // The block fits easily and lands in the rendered lane; its real rendered
+  // token count (ceil(bytes/4), MBR-012) is far below the claimed
+  // selectedTokens, which is what the alert must catch.
+  finalize(packet, DEFAULT_PACKET_CHAR_BUDGET);
   assert.equal(packet.reconciliation.balanced, false);
   assert.equal(packet.reconciliation.alert, BUDGET_RECONCILIATION_ALERTS.selectedWithoutDelivered);
 });
