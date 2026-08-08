@@ -1937,6 +1937,7 @@ dependencies = [
 name = "membrane-hub"
 version = "0.1.5"
 dependencies = [
+ "membrane-updater",
  "serde",
  "serde_json",
  "tauri",
@@ -1944,6 +1945,13 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tempfile",
  "window-vibrancy",
+]
+
+[[package]]
+name = "membrane-updater"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
