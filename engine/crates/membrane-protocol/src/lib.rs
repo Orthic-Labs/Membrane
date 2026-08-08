@@ -33,6 +33,7 @@ pub mod lease;
 pub mod observable_event;
 pub mod operations;
 pub mod source_resolution;
+pub mod status;
 pub mod types;
 
 pub use canonical::{canonical_json_of, canonicalize, digest_str};
@@ -62,6 +63,10 @@ pub use operations::{
 };
 pub use source_resolution::{
     SourceResolutionReceiptV1, SourceResolutionStatusV1, SOURCE_RESOLUTION_RECEIPT_SCHEMA_VERSION,
+};
+pub use status::{
+    AdapterLifecycleStatusV1, DeliveryReasonV1, DeliveryStatusV1, InstallationReasonV1,
+    InstallationStatusV1, MultidimensionalStatusV1, MULTIDIMENSIONAL_STATUS_SCHEMA_VERSION,
 };
 pub use types::*;
 

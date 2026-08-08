@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "state": "unavailable",
+  "installation": {
+    "state": "unavailable",
+    "reason": "wrong_installation"
+  },
+  "adapter": {
+    "state": "available",
+    "status": "delivering"
+  },
+  "delivery": {
+    "state": "degraded",
+    "reason": "selected_without_delivery",
+    "selected": 3,
+    "delivered": 0,
+    "alert": "selected_without_delivery"
+  }
+}
