@@ -8,11 +8,12 @@ The MCP server speaks MCP over stdio and serves both the 2025-03-26 and
 2026-07-28 MCP discovery eras. Caller authorization is bound to the exact
 repository, root, and scope of each request.
 
-## Tools (9)
+## Tools (10)
 
 | `membrane_checkpoint_load` |
 | `membrane_checkpoint_save` |
 | `membrane_context` |
+| `membrane_cortex` |
 | `membrane_feedback` |
 | `membrane_knowledge_propose` |
 | `membrane_scratchpad` |

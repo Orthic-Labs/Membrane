@@ -51,24 +51,36 @@ test("a tool list missing a real tool (understating the surface) is rejected", a
   await assert.rejects(() => verifyServerJson({ directory, requirePublished: false }), /declares 9 tool\(s\); the live server \+ operations registry has 10/);
 });
 
-test("silently upgrading the known gap to operations_registry coverage is rejected", async () => {
+test("fabricating a gap for a contract-covered tool is rejected", async () => {
+  // membrane_cortex used to be the registry's one real gap, and this test
+  // used to prove server.json could not silently upgrade it. That gap is now
+  // closed (real OPERATIONS entry + golden fixtures), so the drift that is
+  // actually possible today is the opposite one: understating a covered tool
+  // as a gap. The verifier must reject in that direction too -- server.json
+  // has to match the live derivation exactly, not merely err "safely".
   const directory = await fixture((server) => {
     const cortex = server.tools.find((tool) => tool.name === "membrane_cortex");
-    cortex.contractCoverage = "operations_registry";
-    delete cortex.gapReason;
+    cortex.contractCoverage = "gap";
+    cortex.gapReason = "fabricated: not absent from OPERATIONS at all";
   });
   await assert.rejects(
     () => verifyServerJson({ directory, requirePublished: false }),
-    /tool "membrane_cortex" must declare contractCoverage "gap"/,
+    /tool "membrane_cortex" must declare contractCoverage "operations_registry"/,
   );
 });
 
-test("a gap entry without a gapReason is rejected", async () => {
-  const directory = await fixture((server) => {
-    const cortex = server.tools.find((tool) => tool.name === "membrane_cortex");
-    delete cortex.gapReason;
-  });
-  await assert.rejects(() => verifyServerJson({ directory, requirePublished: false }), /must carry a non-empty gapReason/);
+test("no exposed tool is an uncontracted gap in the live registry", () => {
+  // The "a declared gap must carry a non-empty gapReason" rule can no longer
+  // be exercised through server.json, because the live derivation contains no
+  // gaps to mutate. That rule stays covered at its own layer by the synthetic
+  // -registry test in tool-contract-coverage.test.mjs, which does not depend
+  // on any tool being unregistered. What is worth asserting here is the state
+  // itself: every exposed tool is contract-covered. If a future tool ships
+  // without an OPERATIONS entry this fails, and the gap-shaped tests above
+  // become meaningful again.
+  const coverage = computeToolContractCoverage();
+  const gaps = coverage.filter((entry) => entry.contractCoverage === "gap");
+  assert.deepEqual(gaps.map((entry) => entry.name), [], "every exposed MCP tool must be backed by the operations registry");
 });
 
 test("a contract-covered tool carrying a stray gapReason is rejected", async () => {

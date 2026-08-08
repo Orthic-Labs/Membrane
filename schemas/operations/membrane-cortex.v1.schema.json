@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/operations/membrane-cortex.v1.schema.json",
+  "title": "MembraneCortexV1",
+  "description": "MBR-301: operation-specific contract for the membrane_cortex MCP tool (added by MBR-401). Bounded Cortex architecture, symbol, reference, impact, snapshot, and changes views with generation freshness and source-hash resolver handles, via mcp/server.mjs cortexCapability()/cortexBatchCapability(). The sub-operation is carried in `operation` (architecture, symbol, reference, references, impact, changes, snapshot_get, snapshot_list, changes_since); a request with an `items` array instead runs the MBR-402 fail-closed batch path and returns per-item receipts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "operation", "errorVersion", "result"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "operation": { "type": "string", "const": "membrane_cortex" },
+    "errorVersion": { "type": "integer", "const": 1, "description": "Independent error-taxonomy version. Bumping this revises the typed error codes for this operation only." },
+    "result": { "$ref": "#/$defs/result" }
+  },
+  "$defs": {
+    "result": { "oneOf": [{ "$ref": "#/$defs/success" }, { "$ref": "#/$defs/error" }] },
+    "success": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "data"],
+      "properties": {
+        "kind": { "type": "string", "const": "success" },
+        "data": { "$ref": "#/$defs/cortexOutput" }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "code", "message", "retryable"],
+      "properties": {
+        "kind": { "type": "string", "const": "error" },
+        "code": { "$ref": "#/$defs/errorCode" },
+        "message": { "type": "string", "minLength": 1 },
+        "retryable": { "type": "boolean" },
+        "details": { "type": "object" }
+      }
+    },
+    "errorCode": {
+      "type": "string",
+      "enum": [
+        "cortex_unavailable",
+        "cortex_envelope_invalid",
+        "cortex_caller_scope_binding_denied",
+        "cortex_caller_not_authorized",
+        "cortex_cross_root_denied",
+        "cortex_batch_invalid"
+      ]
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generationId", "barrierResult", "receiptId"],
+      "properties": {
+        "generationId": { "type": "string", "minLength": 1 },
+        "barrierResult": { "type": "string", "enum": ["caught_up", "timeout"] },
+        "receiptId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sourceHash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "gitCommit": {
+      "type": "string",
+      "minLength": 40
+    },
+    "generationIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["generationId", "manifestDigest", "sourceObservation"],
+      "properties": {
+        "generationId": { "type": "string", "minLength": 1 },
+        "manifestDigest": { "$ref": "#/$defs/sourceHash" },
+        "sourceObservation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["head", "dirty"],
+          "properties": {
+            "head": { "$ref": "#/$defs/gitCommit" },
+            "dirty": { "type": "boolean", "const": false, "description": "cortexGitIdentity() only resolves a non-null identity for a clean (dirty=false) source observation; a dirty source fails closed as cortex_unavailable instead of being surfaced here." }
+          }
+        }
+      }
+    },
+    "cortexNodeItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "kind", "path", "sourceHash", "startLine", "endLine", "freshness", "resolver"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "name": { "type": ["string", "null"] },
+        "kind": { "type": ["string", "null"] },
+        "path": { "type": ["string", "null"] },
+        "sourceHash": { "$ref": "#/$defs/sourceHash" },
+        "startLine": { "type": ["integer", "null"], "minimum": 1 },
+        "endLine": { "type": ["integer", "null"], "minimum": 1 },
+        "freshness": { "$ref": "#/$defs/freshness" },
+        "resolver": { "type": "string", "minLength": 1, "maxLength": 320, "description": "e.g. `cortex graph resolve --node <id>`" }
+      }
+    },
+    "cortexNodeListOutput": {
+      "description": "sanitizeCortexPayload()'s default branch: architecture, symbol, reference, references, impact.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "sourceGeneration", "freshness", "items"],
+      "properties": {
+        "operation": { "type": "string", "enum": ["architecture", "symbol", "reference", "references", "impact"] },
+        "sourceGeneration": { "type": ["string", "null"] },
+        "freshness": { "oneOf": [{ "$ref": "#/$defs/freshness" }, { "type": "null" }] },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/cortexNodeItem" } }
+      }
+    },
+    "cortexChangesOutput": {
+      "description": "sanitizeCortexPayload() operation === \"changes\": manifest identity, distinct commit/clean naming from the snapshot family's head/dirty naming.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "sourceGeneration", "freshness", "changes", "resolver"],
+      "properties": {
+        "operation": { "type": "string", "const": "changes" },
+        "sourceGeneration": { "type": "string", "minLength": 1 },
+        "freshness": { "$ref": "#/$defs/freshness" },
+        "changes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["generationId", "manifestDigest", "sourceObservation"],
+          "properties": {
+            "generationId": { "type": "string", "minLength": 1 },
+            "manifestDigest": { "$ref": "#/$defs/sourceHash" },
+            "sourceObservation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["commit", "clean"],
+              "properties": {
+                "commit": { "$ref": "#/$defs/gitCommit" },
+                "clean": { "type": "boolean" }
+              }
+            }
+          }
+        },
+        "resolver": { "type": "string", "const": "cortex graph manifest --json" }
+      }
+    },
+    "cortexSnapshotLeaf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/sourceHash" }
+      }
+    },
+    "cortexSnapshotGetOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "name", "generationId", "manifestDigest", "sourceObservation", "leaves"],
+      "properties": {
+        "operation": { "type": "string", "const": "snapshot_get" },
+        "name": { "type": "string", "minLength": 1 },
+        "generationId": { "type": "string", "minLength": 1 },
+        "manifestDigest": { "$ref": "#/$defs/sourceHash" },
+        "sourceObservation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["head", "dirty"],
+          "properties": {
+            "head": { "$ref": "#/$defs/gitCommit" },
+            "dirty": { "type": "boolean", "const": false }
+          }
+        },
+        "leaves": { "type": "array", "items": { "$ref": "#/$defs/cortexSnapshotLeaf" } }
+      }
+    },
+    "cortexSnapshotListEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "generationId", "manifestDigest", "sourceObservation"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "generationId": { "type": "string", "minLength": 1 },
+        "manifestDigest": { "$ref": "#/$defs/sourceHash" },
+        "sourceObservation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["head", "dirty"],
+          "properties": {
+            "head": { "$ref": "#/$defs/gitCommit" },
+            "dirty": { "type": "boolean", "const": false }
+          }
+        }
+      }
+    },
+    "cortexSnapshotListOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "snapshots"],
+      "properties": {
+        "operation": { "type": "string", "const": "snapshot_list" },
+        "snapshots": { "type": "array", "items": { "$ref": "#/$defs/cortexSnapshotListEntry" } }
+      }
+    },
+    "cortexChangeRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "kind"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["added", "modified", "deleted"] }
+      }
+    },
+    "cortexChangesSinceReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "limit", "truncated"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "truncated": { "type": "boolean" }
+      }
+    },
+    "cortexChangesSinceOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "base", "head", "changes", "receipt"],
+      "properties": {
+        "operation": { "type": "string", "const": "changes_since" },
+        "base": { "$ref": "#/$defs/generationIdentity" },
+        "head": { "$ref": "#/$defs/generationIdentity" },
+        "changes": { "type": "array", "items": { "$ref": "#/$defs/cortexChangeRow" } },
+        "receipt": { "$ref": "#/$defs/cortexChangesSinceReceipt" }
+      }
+    },
+    "cortexBatchReceipt": {
+      "description": "operations/code/mbr402-batch.mjs executeCodeBatch() per-item receipt, in request order. `data` is present only when status is \"success\"; `code` (and optional `detail`) only when status is \"terminal\".",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["success", "terminal"] },
+        "data": {},
+        "code": { "type": "string", "minLength": 1 },
+        "detail": {}
+      }
+    },
+    "cortexBatchOutput": {
+      "description": "membrane_cortex called with an `items` array runs the batch path; the tool result IS the receipts array (not wrapped in an object).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/cortexBatchReceipt" }
+    },
+    "cortexOutput": {
+      "oneOf": [
+        { "$ref": "#/$defs/cortexNodeListOutput" },
+        { "$ref": "#/$defs/cortexChangesOutput" },
+        { "$ref": "#/$defs/cortexSnapshotGetOutput" },
+        { "$ref": "#/$defs/cortexSnapshotListOutput" },
+        { "$ref": "#/$defs/cortexChangesSinceOutput" },
+        { "$ref": "#/$defs/cortexBatchOutput" }
+      ]
+    }
+  }
+}

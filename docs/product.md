@@ -11,11 +11,12 @@ narrative overview; this file carries the source-derived facts.
 
 ## Public surface
 
-- **MCP server** — nine tools over stdio:
+- **MCP server** — ten tools over stdio:
 
 | `membrane_checkpoint_load` |
 | `membrane_checkpoint_save` |
 | `membrane_context` |
+| `membrane_cortex` |
 | `membrane_feedback` |
 | `membrane_knowledge_propose` |
 | `membrane_scratchpad` |

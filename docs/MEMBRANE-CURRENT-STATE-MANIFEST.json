@@ -60,11 +60,12 @@
     "B9": "implemented with seven deterministic gap evals and separate locked read-only lanes; golden-set growth pending"
   },
   "productTruth": {
-    "mcpToolCount": 9,
+    "mcpToolCount": 10,
     "mcpTools": [
       "membrane_checkpoint_load",
       "membrane_checkpoint_save",
       "membrane_context",
+      "membrane_cortex",
       "membrane_feedback",
       "membrane_knowledge_propose",
       "membrane_scratchpad",

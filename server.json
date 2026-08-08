@@ -30,11 +30,7 @@
     { "name": "membrane_checkpoint_load", "contractCoverage": "operations_registry" },
     { "name": "membrane_checkpoint_save", "contractCoverage": "operations_registry" },
     { "name": "membrane_context", "contractCoverage": "operations_registry" },
-    {
-      "name": "membrane_cortex",
-      "contractCoverage": "gap",
-      "gapReason": "membrane_cortex is exposed as a real MCP tool in mcp/server.mjs but has no entry in the OPERATIONS cross-operation registry (engine/crates/membrane-protocol/bindings/operations.mjs): no schemaVersion/errorVersion pair, no golden success/error fixtures, and no closed error-code taxonomy validated by validateOperationFixtures()."
-    },
+    { "name": "membrane_cortex", "contractCoverage": "operations_registry" },
     { "name": "membrane_feedback", "contractCoverage": "operations_registry" },
     { "name": "membrane_knowledge_propose", "contractCoverage": "operations_registry" },
     { "name": "membrane_scratchpad", "contractCoverage": "operations_registry" },

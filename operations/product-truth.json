@@ -14,11 +14,12 @@
     "docs/membrane/capability-matrix.v1.json"
   ],
   "schema": "orthic.product-truth.v1",
-  "toolCount": 9,
+  "toolCount": 10,
   "tools": [
     "membrane_checkpoint_load",
     "membrane_checkpoint_save",
     "membrane_context",
+    "membrane_cortex",
     "membrane_feedback",
     "membrane_knowledge_propose",
     "membrane_scratchpad",

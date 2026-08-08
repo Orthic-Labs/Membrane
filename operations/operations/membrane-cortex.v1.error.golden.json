@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "operation": "membrane_cortex",
+  "errorVersion": 1,
+  "result": {
+    "kind": "error",
+    "code": "cortex_unavailable",
+    "message": "cortex_unavailable",
+    "retryable": true,
+    "details": { "operation": "symbol", "node": "engine/crates/membrane-protocol/src/operations.rs:OperationSpec" }
+  }
+}

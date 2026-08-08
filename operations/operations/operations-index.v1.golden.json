@@ -38,6 +38,22 @@
       ]
     },
     {
+      "name": "membrane_cortex",
+      "schemaVersion": 1,
+      "errorVersion": 1,
+      "schemaPath": "schemas/operations/membrane-cortex.v1.schema.json",
+      "successFixture": "operations/operations/membrane-cortex.v1.golden.json",
+      "errorFixture": "operations/operations/membrane-cortex.v1.error.golden.json",
+      "errorCodes": [
+        "cortex_unavailable",
+        "cortex_envelope_invalid",
+        "cortex_caller_scope_binding_denied",
+        "cortex_caller_not_authorized",
+        "cortex_cross_root_denied",
+        "cortex_batch_invalid"
+      ]
+    },
+    {
       "name": "membrane_knowledge_propose",
       "schemaVersion": 1,
       "errorVersion": 1,

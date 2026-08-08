@@ -46,6 +46,16 @@
       "support": "supported"
     },
     {
+      "client": "claude",
+      "operation": "hub.capabilities",
+      "support": "unsupported"
+    },
+    {
+      "client": "claude",
+      "operation": "hub.snapshot",
+      "support": "unsupported"
+    },
+    {
       "client": "codex",
       "operation": "membrane_context",
       "support": "supported"
@@ -91,6 +101,16 @@
       "support": "supported"
     },
     {
+      "client": "codex",
+      "operation": "hub.capabilities",
+      "support": "unsupported"
+    },
+    {
+      "client": "codex",
+      "operation": "hub.snapshot",
+      "support": "unsupported"
+    },
+    {
       "client": "cursor",
       "operation": "membrane_context",
       "support": "supported"
@@ -136,6 +156,16 @@
       "support": "degraded"
     },
     {
+      "client": "cursor",
+      "operation": "hub.capabilities",
+      "support": "unsupported"
+    },
+    {
+      "client": "cursor",
+      "operation": "hub.snapshot",
+      "support": "unsupported"
+    },
+    {
       "client": "windsurf",
       "operation": "membrane_context",
       "support": "supported"
@@ -181,6 +211,16 @@
       "support": "degraded"
     },
     {
+      "client": "windsurf",
+      "operation": "hub.capabilities",
+      "support": "unsupported"
+    },
+    {
+      "client": "windsurf",
+      "operation": "hub.snapshot",
+      "support": "unsupported"
+    },
+    {
       "client": "generic_mcp",
       "operation": "membrane_context",
       "support": "supported"
@@ -224,6 +264,16 @@
       "client": "generic_mcp",
       "operation": "membrane_feedback",
       "support": "degraded"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "hub.capabilities",
+      "support": "unsupported"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "hub.snapshot",
+      "support": "unsupported"
     }
   ],
   "clients": [
@@ -306,6 +356,16 @@
     {
       "errorVersion": 1,
       "name": "membrane_feedback",
+      "schemaVersion": 1
+    },
+    {
+      "errorVersion": 1,
+      "name": "hub.capabilities",
+      "schemaVersion": 1
+    },
+    {
+      "errorVersion": 1,
+      "name": "hub.snapshot",
       "schemaVersion": 1
     }
   ],

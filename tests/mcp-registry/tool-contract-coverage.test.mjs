@@ -27,25 +27,26 @@ test("a tool with a matching OPERATIONS entry is marked operations_registry, wit
   }
 });
 
-test("membrane_cortex is the known, real, currently uncontracted gap", () => {
-  // Ground truth, not an assumption: membrane_cortex is a real tool
-  // (mcp/server.mjs TOOLS) with no matching name in the OPERATIONS
-  // cross-operation registry (engine/crates/membrane-protocol/bindings/
-  // operations.mjs) as of this task. If a future task adds a
-  // "membrane_cortex" OPERATIONS entry with real golden fixtures, this
-  // assertion -- and the corresponding server.json entry -- must be
-  // updated together; until then, server.json must not silently claim
-  // full contract coverage for it.
-  assert.ok(TOOLS.some((tool) => tool.name === "membrane_cortex"), "precondition: membrane_cortex must be a real exposed tool for this test to be meaningful");
-  assert.ok(!OPERATIONS.some((operation) => operation.name === "membrane_cortex"), "precondition: membrane_cortex must currently be absent from OPERATIONS for this test to be meaningful");
+test("membrane_cortex is contract-covered, closing the gap this test previously pinned", () => {
+  // This test formerly asserted membrane_cortex was an uncontracted gap and
+  // said that assertion "and the corresponding server.json entry must be
+  // updated together" once a task added a real OPERATIONS entry. That task
+  // landed: membrane_cortex now has an OPERATIONS entry, a per-operation
+  // schema, and golden success/error fixtures. So the assertion is inverted
+  // here rather than deleted -- the coverage computation must reflect the
+  // registry as it actually is, in either direction. The general mechanism
+  // (an uncontracted tool is reported as a declared gap, never as fabricated
+  // coverage) stays covered by the synthetic-registry test below, which is
+  // where that guarantee belongs -- it does not depend on any one tool's
+  // registration state.
+  assert.ok(TOOLS.some((tool) => tool.name === "membrane_cortex"), "membrane_cortex must be a real exposed tool");
+  assert.ok(OPERATIONS.some((operation) => operation.name === "membrane_cortex"), "membrane_cortex must now be present in OPERATIONS");
 
   const coverage = computeToolContractCoverage();
   const entry = coverage.find((candidate) => candidate.name === "membrane_cortex");
   assert.ok(entry, "membrane_cortex must appear in the coverage list");
-  assert.equal(entry.contractCoverage, CONTRACT_COVERAGE_GAP);
-  assert.equal(typeof entry.gapReason, "string");
-  assert.ok(entry.gapReason.length > 0);
-  assert.match(entry.gapReason, /OPERATIONS/);
+  assert.notEqual(entry.contractCoverage, CONTRACT_COVERAGE_GAP);
+  assert.equal(entry.gapReason, undefined, "a contract-covered tool must not carry a gapReason");
 });
 
 test("a synthetic tool absent from a synthetic operations registry is a declared gap, not fabricated coverage", () => {

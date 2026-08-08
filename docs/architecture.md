@@ -11,7 +11,7 @@ lives in `docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` and `docs/MEMBRANE-ADR-IN
 
 | Component | Source of truth | Role |
 |---|---|---|
-| MCP server | `mcp/server.mjs` | nine tools over stdio; dual-era MCP discovery |
+| MCP server | `mcp/server.mjs` | ten tools over stdio; dual-era MCP discovery |
 | Client adapters | `docs/membrane/capability-matrix.v1.json` | seven host adapters, per-host honest capability levels |
 | Federation gateway | loopback `POST /federate` | parallel provider fan-out behind the context tool |
 | Crypt engine | `engine/` | durable memory: Rust CLI plus loopback service over SQLite |
@@ -19,7 +19,7 @@ lives in `docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` and `docs/MEMBRANE-ADR-IN
 
 ## Interfaces
 
-- `membrane_context` and the other eight MCP tools are the client contract;
+- `membrane_context` and the other nine MCP tools are the client contract;
   provider internals never leak into adapters.
 - The federation gateway is the only route from tools to memory/recall providers.
 - The cross-provider budget (MBR-608) reconciles every receipt's selected
@@ -55,16 +55,6 @@ Membrane-owned surface and the Forge hook share). The Rust mirror lives at
 `engine/crates/membrane-core/src/reconcile.rs` and the typed contract lives
 at `engine/crates/membrane-protocol/src/types.rs` (`BudgetLaneKind`,
 `BudgetReconciliationV1`, `BudgetReconciliationRowV1`).
-
-## Deterministic fusion baseline (MBR-407)
-
-Completed provider sets enter `membrane_core::fuse` as a fixed corpus. It
-orders canonical authority (`user_direct`, `local_trusted`, through `remote_untrusted`), then
-freshness, then provider-local score, candidate
-id, source hash, source reference, text, then canonical candidate bytes; then orders lanes by reciprocal
-rank denominator, candidate id, provider id, source hash, source reference,
-then text, then canonical candidate bytes. Quotas & `maxItems` are hard bounds. Duplicate source hashes lose unless protected.
-`FusionReceiptV1` records every decision, provider order, bounds, & rank denominator; it never treats local scores as probabilities.
 
 ## Platform status
 

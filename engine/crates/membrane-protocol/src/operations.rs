@@ -174,7 +174,7 @@ fn entry(
 
 /// The canonical cross-operation registry, in stable order. The TS binding
 /// (`bindings/operations.mjs`) mirrors this list; both sides are required
-/// to expose the SAME 9 operations in the SAME order so the index-round-trip
+/// to expose the SAME 10 operations in the SAME order so the index-round-trip
 /// test can pin a single digest.
 pub fn operations() -> Vec<OperationIndexEntry> {
     vec![
@@ -211,6 +211,22 @@ pub fn operations() -> Vec<OperationIndexEntry> {
                 "source_read_anchor_missing",
                 "source_read_scope_denied",
                 "source_read_envelope_invalid",
+            ],
+        ),
+        entry(
+            "membrane_cortex",
+            1,
+            1,
+            "schemas/operations/membrane-cortex.v1.schema.json",
+            "operations/operations/membrane-cortex.v1.golden.json",
+            "operations/operations/membrane-cortex.v1.error.golden.json",
+            &[
+                "cortex_unavailable",
+                "cortex_envelope_invalid",
+                "cortex_caller_scope_binding_denied",
+                "cortex_caller_not_authorized",
+                "cortex_cross_root_denied",
+                "cortex_batch_invalid",
             ],
         ),
         entry(
