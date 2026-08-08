@@ -75,7 +75,18 @@ pub fn dispatch(invocation: &ParsedInvocation) -> DispatchOutcome {
                 "uninstall mode invoked without an uninstall invocation".to_string(),
             ),
         },
-        MembraneMode::MigrateLegacy => match invocation.migration.as_ref() { Some(migration) => match crate::migration::migrate(&migration.legacy_root, &migration.target_root) { Ok(receipt) => { println!("{}", serde_json::to_string_pretty(&receipt).unwrap()); DispatchOutcome::Ok }, Err(error) => DispatchOutcome::UserError(format!("migration: {error}")) }, None => DispatchOutcome::InternalError("migration mode invoked without payload".into()) },
+        MembraneMode::MigrateLegacy => match invocation.migration.as_ref() {
+            Some(migration) => {
+                match crate::migration::migrate(&migration.legacy_root, &migration.target_root) {
+                    Ok(receipt) => {
+                        println!("{}", serde_json::to_string_pretty(&receipt).unwrap());
+                        DispatchOutcome::Ok
+                    }
+                    Err(error) => DispatchOutcome::UserError(format!("migration: {error}")),
+                }
+            }
+            None => DispatchOutcome::InternalError("migration mode invoked without payload".into()),
+        },
     }
 }
 

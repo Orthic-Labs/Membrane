@@ -192,8 +192,10 @@ struct UninstallArgs {
 
 #[derive(Debug, clap::Args)]
 struct MigrateLegacyArgs {
-    #[arg(long)] legacy_root: std::path::PathBuf,
-    #[arg(long)] target_root: std::path::PathBuf,
+    #[arg(long)]
+    legacy_root: std::path::PathBuf,
+    #[arg(long)]
+    target_root: std::path::PathBuf,
 }
 
 /// Fully-parsed invocation handed to the dispatcher. The dispatcher never touches argv again.
@@ -240,7 +242,10 @@ pub struct UninstallInvocation {
     pub dry_run: bool,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MigrationInvocation { pub legacy_root: std::path::PathBuf, pub target_root: std::path::PathBuf }
+pub struct MigrationInvocation {
+    pub legacy_root: std::path::PathBuf,
+    pub target_root: std::path::PathBuf,
+}
 
 /// Hardcoded clap projection checked against the operation registry by the
 /// `cli-parity` binary. The empty query returns the subcommand inventory.
@@ -387,7 +392,19 @@ where
             }),
             migration: None,
         },
-        Command::MigrateLegacy(args) => ParsedInvocation { mode: MembraneMode::MigrateLegacy, cli_tail: Vec::new(), framing: String::new(), port: 0, lease: None, install: None, uninstall: None, migration: Some(MigrationInvocation { legacy_root: args.legacy_root, target_root: args.target_root }) },
+        Command::MigrateLegacy(args) => ParsedInvocation {
+            mode: MembraneMode::MigrateLegacy,
+            cli_tail: Vec::new(),
+            framing: String::new(),
+            port: 0,
+            lease: None,
+            install: None,
+            uninstall: None,
+            migration: Some(MigrationInvocation {
+                legacy_root: args.legacy_root,
+                target_root: args.target_root,
+            }),
+        },
     };
     Ok(invocation)
 }

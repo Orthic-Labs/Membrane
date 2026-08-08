@@ -11,7 +11,9 @@ impl McpServer {
         let result = match method {
             "initialize" => crate::initialize_response(),
             "notifications/initialized" => return None,
-            "tools/list" => json!({"tools": crate::tools::negotiated_definitions(request.get("params"))}),
+            "tools/list" => {
+                json!({"tools": crate::tools::negotiated_definitions(request.get("params"))})
+            }
             "resources/list" => crate::resources::list_payload(),
             "resources/read" => {
                 let uri = request
@@ -42,7 +44,9 @@ impl McpServer {
                 }
             }
             "ping" => json!({}),
-            "tools/call" => json!({"content": [{"type": "text", "text": "native_tool_execution_unsupported"}], "isError": true}),
+            "tools/call" => {
+                json!({"content": [{"type": "text", "text": "native_tool_execution_unsupported"}], "isError": true})
+            }
             _ => {
                 return Some(
                     json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"Method not found"}}),
