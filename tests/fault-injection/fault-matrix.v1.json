@@ -1,0 +1,9 @@
+{"schemaVersion":1,"kind":"membrane-fault-matrix","scenarios":[
+ {"id":"provider-timeout","fault":"provider_timeout","expected":{"status":"degraded","code":"provider_timeout"}},
+ {"id":"watcher-restart","fault":"watcher_restart","expected":{"status":"recovering","code":"watcher_restarted"}},
+ {"id":"wrong-installation","fault":"wrong_installation","expected":{"status":"blocked","code":"blocked_wrong_installation"}},
+ {"id":"missing-host-load","fault":"missing_host_load","expected":{"status":"degraded","code":"host_load_missing"}},
+ {"id":"db-failure","fault":"db_failure","expected":{"status":"degraded","code":"database_unavailable"}},
+ {"id":"schema-skew","fault":"schema_skew","expected":{"status":"blocked","code":"schema_incompatible"}},
+ {"id":"zero-delivery","fault":"zero_delivery","expected":{"status":"degraded","code":"selected_without_delivery"}}
+]}

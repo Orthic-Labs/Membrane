@@ -1,0 +1,11 @@
+[package]
+name = "membrane-fault-injection"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+membrane-protocol = { path = "../../engine/crates/membrane-protocol" }
+membrane-runtime = { path = "../../engine/crates/membrane-runtime" }
+crypt-store = { path = "../../engine/crates/crypt-store" }
+serde_json = "1"
+tempfile = "3"
