@@ -3,14 +3,14 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, PhysicalPosition};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CachedSnapshot {
@@ -23,6 +23,7 @@ const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const MAX_SNAPSHOT_BYTES: u64 = 1024 * 1024;
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const POLL_TIMEOUT: Duration = Duration::from_secs(2);
+type ServiceState = Arc<Mutex<Option<Child>>>;
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     fs::create_dir_all(path.parent().ok_or("cache_parent_missing")?).map_err(|e| e.to_string())?;
@@ -102,7 +103,7 @@ fn parse_snapshot(bytes: &[u8]) -> Result<CachedSnapshot, String> {
     })
 }
 
-fn fetch_snapshot(program: &str) -> Result<CachedSnapshot, String> {
+fn fetch_snapshot(program: &Path) -> Result<CachedSnapshot, String> {
     let mut child = Command::new(program)
         .args(["cli", "hub-snapshot"])
         .stdin(Stdio::null())
@@ -138,6 +139,92 @@ fn fetch_snapshot(program: &str) -> Result<CachedSnapshot, String> {
         return Err("hub_service_unavailable".into());
     }
     parse_snapshot(&bytes)
+}
+
+fn workspace_root() -> Option<PathBuf> {
+    std::env::var_os("MEMBRANE_WORKSPACE_ROOT")
+        .or_else(|| std::env::var_os("WORKSPACE_ROOT"))
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute() && path.is_dir())
+        .or_else(|| {
+            [
+                PathBuf::from("/Volumes/D/claude"),
+                PathBuf::from(r"D:\Claude"),
+            ]
+            .into_iter()
+            .find(|path| path.is_dir())
+        })
+}
+
+fn bundled_binary(name: &str) -> PathBuf {
+    let suffix = if cfg!(windows) { ".exe" } else { "" };
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| {
+            path.parent()
+                .map(|parent| parent.join(format!("{name}{suffix}")))
+        })
+        .unwrap_or_else(|| PathBuf::from(format!("{name}{suffix}")))
+}
+
+fn start_crypt_service() -> Result<Child, String> {
+    let program = std::env::var_os("MEMBRANE_CRYPT_SERVICE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| bundled_binary("crypt-service"));
+    if !program.is_file() {
+        return Err("crypt_service_missing".into());
+    }
+    let root = workspace_root().ok_or("workspace_root_unavailable")?;
+    let mut child = Command::new(program)
+        .env("MEMBRANE_OWNER_PIPE", "1")
+        .env("WORKSPACE_ROOT", root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| "crypt_service_start_failed".to_string())?;
+    std::thread::sleep(Duration::from_millis(120));
+    if child
+        .try_wait()
+        .map_err(|_| "crypt_service_wait_failed")?
+        .is_some()
+    {
+        return Err("crypt_service_start_failed".into());
+    }
+    Ok(child)
+}
+
+fn stop_crypt_service(service: &ServiceState) {
+    if let Ok(mut guard) = service.lock() {
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+fn toggle_popover(app: &tauri::AppHandle, position: PhysicalPosition<f64>) {
+    let Some(window) = app.get_webview_window("hub") else {
+        return;
+    };
+    if window.is_visible().unwrap_or(false) {
+        let _ = window.hide();
+        return;
+    }
+    if let Ok(size) = window.outer_size() {
+        let mut x = (position.x - f64::from(size.width) / 2.0).round() as i32;
+        let mut y = (position.y + 12.0).round() as i32;
+        if let Ok(Some(monitor)) = window.current_monitor() {
+            let left = monitor.position().x + 8;
+            let top = monitor.position().y + 24;
+            let right = monitor.position().x + monitor.size().width as i32 - size.width as i32 - 8;
+            x = x.clamp(left, right.max(left));
+            y = y.max(top);
+        }
+        let _ = window.set_position(PhysicalPosition::new(x, y));
+    }
+    let _ = window.show();
+    let _ = window.set_focus();
 }
 
 fn apply_poll_result(
@@ -190,13 +277,23 @@ fn startup_setting(app: tauri::AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn quit_app(app: tauri::AppHandle) {
+fn quit_app(app: tauri::AppHandle, service: tauri::State<'_, ServiceState>) {
+    stop_crypt_service(&service);
     app.exit(0);
+}
+
+#[tauri::command]
+fn hide_popover(app: tauri::AppHandle) -> Result<(), String> {
+    app.get_webview_window("hub")
+        .ok_or_else(|| "popover_unavailable".to_string())?
+        .hide()
+        .map_err(|_| "popover_hide_failed".to_string())
 }
 
 fn main() {
     tauri::Builder::default()
         .manage(Arc::new(Mutex::new(PathBuf::from("snapshot.json"))))
+        .manage(Arc::new(Mutex::new(None::<Child>)))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("hub") {
                 let _ = w.show();
@@ -207,9 +304,13 @@ fn main() {
             snapshot,
             set_startup,
             startup_setting,
+            hide_popover,
             quit_app
         ])
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            app.handle()
+                .set_activation_policy(tauri::ActivationPolicy::Accessory)?;
             let cache = app
                 .path()
                 .app_data_dir()
@@ -217,21 +318,23 @@ fn main() {
                 .join("snapshot.json");
             fs::create_dir_all(cache.parent().unwrap())?;
             *app.state::<Arc<Mutex<PathBuf>>>().lock().unwrap() = cache.clone();
-            let show = MenuItemBuilder::with_id("show", "Open Hub").build(app)?;
-            let diagnostics = MenuItemBuilder::with_id("diagnostics", "Copy diagnostics").build(app)?;
+            let diagnostics =
+                MenuItemBuilder::with_id("diagnostics", "Copy diagnostics").build(app)?;
             let trace = MenuItemBuilder::with_id("trace", "Latest trace").build(app)?;
-            let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&show, &diagnostics, &trace, &quit]).build()?;
-            let mut tray = TrayIconBuilder::new()
+            let quit = MenuItemBuilder::with_id("quit", "Quit Membrane").build(app)?;
+            let menu = MenuBuilder::new(app)
+                .items(&[&diagnostics, &trace, &quit])
+                .build()?;
+            let tray_icon = tauri::image::Image::from_bytes(include_bytes!(
+                "../../assets/tray/membrane-template.png"
+            ))?;
+            let tray = TrayIconBuilder::new()
                 .menu(&menu)
-                .tooltip("Membrane Hub — read-only status")
+                .show_menu_on_left_click(false)
+                .icon(tray_icon)
+                .icon_as_template(true)
+                .tooltip("Membrane — status")
                 .on_menu_event(|app, event| match event.id().as_ref() {
-                    "show" => {
-                        if let Some(w) = app.get_webview_window("hub") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
-                    }
                     "diagnostics" => {
                         if let Some(w) = app.get_webview_window("hub") {
                             let _ = w.show();
@@ -253,31 +356,39 @@ fn main() {
                     if let tauri::tray::TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
+                        position,
                         ..
                     } = event
                     {
-                        if let Some(w) = tray.app_handle().get_webview_window("hub") {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
+                        toggle_popover(tray.app_handle(), position);
                     }
-                });
-            if let Some(icon) = app.default_window_icon() {
-                tray = tray.icon(icon.clone())
-            }
-            let tray = tray.build(app)?;
+                })
+                .build(app)?;
             if let Some(w) = app.get_webview_window("hub") {
                 let hidden = w.clone();
-                w.on_window_event(move |event| {
-                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                w.on_window_event(move |event| match event {
+                    tauri::WindowEvent::CloseRequested { api, .. } => {
                         api.prevent_close();
                         let _ = hidden.hide();
                     }
+                    tauri::WindowEvent::Focused(false) => {
+                        let _ = hidden.hide();
+                    }
+                    _ => {}
                 });
                 w.hide()?;
             }
+            if let Some(root) = workspace_root() {
+                std::env::set_var("WORKSPACE_ROOT", root);
+            }
+            let child = start_crypt_service().map_err(std::io::Error::other)?;
+            *app.state::<ServiceState>()
+                .lock()
+                .map_err(|_| std::io::Error::other("service_state_unavailable"))? = Some(child);
             let handle = app.handle().clone();
-            let program = std::env::var("MEMBRANE_COMMAND").unwrap_or_else(|_| "membrane".into());
+            let program = std::env::var_os("MEMBRANE_COMMAND")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| bundled_binary("membrane"));
             std::thread::spawn(move || loop {
                 let current = apply_poll_result(&cache, fetch_snapshot(&program));
                 let tooltip = current

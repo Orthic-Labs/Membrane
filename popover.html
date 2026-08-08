@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Membrane Hub</title><link rel="stylesheet" href="src/popover.css"></head>
 <body><main id="popover" aria-live="polite" aria-atomic="true">
-  <header><div><p class="eyebrow">MEMBRANE HUB</p><h1 id="overall">Offline</h1><p id="reason" class="muted">No cached snapshot</p></div><button id="close" class="icon" aria-label="Close">×</button></header>
+  <header><div class="brand"><span class="brand-mark" aria-hidden="true"></span><div><p class="eyebrow">MEMBRANE</p><h1 id="overall">Offline</h1><p id="reason" class="muted">No cached snapshot</p></div></div><button id="close" class="icon" aria-label="Close status panel">×</button></header>
   <dl class="facts"><div><dt>Last delivery</dt><dd id="delivery">Unknown</dd></div><div><dt>Sources</dt><dd id="sources">Unknown</dd></div><div><dt>Fleet</dt><dd id="fleet">Unknown</dd></div></dl>
   <p id="observed" class="muted"></p><p id="announce" class="sr-only" aria-live="polite"></p>
-  <nav aria-label="Actions"><button id="open">Open Hub</button><button id="diagnostics">Copy diagnostics</button><button id="trace" disabled>Latest trace</button><button id="quit" class="danger">Quit</button></nav>
+  <nav aria-label="Actions"><button id="diagnostics">Copy diagnostics</button><button id="trace" disabled>Latest trace</button><button id="quit" class="danger">Quit Membrane</button></nav>
 </main><script type="module" src="src/popover.mjs"></script></body></html>

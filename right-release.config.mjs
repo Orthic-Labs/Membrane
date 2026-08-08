@@ -6,6 +6,7 @@ const buildInputs = {
   include: [
     "index.html", "popover.html", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "scripts/**", "src/**", "assets/**",
     "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs", "src-tauri/tauri.conf.json", "src-tauri/src/**",
+    "../../engine/Cargo.toml", "../../engine/Cargo.lock", "../../engine/crates/**",
   ],
   exclude: ["**/tests/**", "dist/**", "node_modules/**", "src-tauri/target/**", "src-tauri/gen/**"],
 };
