@@ -87,6 +87,7 @@ import { reconcile as reconcileGraph } from "../watchman/reconcile.mjs";
 import { syncToCurrentSource } from "../graph/barrier.mjs";
 import { checkScopeGrant, issueScopeGrant } from "../lib/receipt-store.mjs";
 import { incrementTelemetry, readTelemetry } from "../lib/telemetry.mjs";
+import { createSnapshot, getSnapshot, listSnapshots, changesSince } from "../graph/snapshots.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -821,7 +822,7 @@ function gitSourceObservation(root) {
   if (!head) return null;
   try {
     const status = execFileSync("git", [
-      "status", "--porcelain=v1", "-z", "--untracked-files=no", "--", ".",
+      "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ".",
       ":(exclude).agent", ":(exclude).agent/**",
       ":(exclude)docs/product.md", ":(exclude)docs/architecture.md",
     ], {
@@ -2030,6 +2031,28 @@ async function runGraphCommand(root, outDir, subcommand, args) {
     freshnessReceipt,
     ...(freshnessReceipt?.barrierResult !== "caught_up" ? { stale: true } : {}),
   });
+  if (["snapshot", "changes-since"].includes(subcommand)) {
+    const barrier = await queryFreshnessBarrier(root, outDir, args);
+    if (barrier.barrierResult !== "caught_up") { console.error(JSON.stringify({ error: "stale_blocked", barrier })); return 3; }
+    const dbPath = join(root, outDir, "graph", "graph.db");
+    if (!existsSync(dbPath)) { console.error(JSON.stringify({ error: "graph_missing" })); return 2; }
+    const action = subcommand === "changes-since" ? "changes-since" : String(args._[0] ?? args.action ?? "list");
+    const db = action === "create" ? openStore(dbPath) : openStoreReadOnly(dbPath);
+    try {
+      let result;
+      if (action === "create") result = createSnapshot(db, args.name ?? args._[1], root);
+      else if (action === "get") result = getSnapshot(db, args.name ?? args._[1]);
+      else if (action === "changes-since" || subcommand === "changes-since") result = changesSince(db, args.name ?? args._[1] ?? args._[0], { limit: args.limit });
+      else if (action === "list") result = listSnapshots(db);
+      else throw Object.assign(new Error("snapshot_invalid_action"), { code: "snapshot_invalid_action" });
+      console.log(JSON.stringify(result, null, 2));
+      return 0;
+    } catch (error) {
+      const code = String(error?.code ?? "snapshot_error");
+      console.error(JSON.stringify({ schemaVersion: 1, error: { code } }));
+      return 2;
+    } finally { closeStore(db); }
+  }
   if (subcommand === "build") {
     const generation = buildGraphGeneration(root, { outDir });
     generation.sourceObservation = gitSourceObservation(root);

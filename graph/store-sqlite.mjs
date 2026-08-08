@@ -495,6 +495,20 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_document_supersession_generation ON document_supersession(generation_id);
     `);
   },
+  // Migration 17 — immutable named, generation-bound review snapshots.
+  (db) => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS named_snapshot (
+        name TEXT PRIMARY KEY,
+        repo_root TEXT NOT NULL,
+        generation_id TEXT NOT NULL,
+        manifest_digest TEXT NOT NULL,
+        identity_json TEXT NOT NULL,
+        created_ms INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_named_snapshot_generation ON named_snapshot(generation_id);
+    `);
+  },
 ];
 
 /** Current schema version = number of migrations. Derived, so it cannot desync. */
@@ -519,6 +533,9 @@ export function listArtifactState(db) {
 export function migrate(db) {
   db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);");
   let version = getSchemaVersion(db);
+  if (!Number.isInteger(version) || version < 0 || version > MIGRATIONS.length) {
+    throw new Error(`invalid graph store schema version: ${version}`);
+  }
   const initialVersion = version;
   while (version < MIGRATIONS.length) {
     db.exec("BEGIN;");
