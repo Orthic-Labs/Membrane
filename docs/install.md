@@ -38,6 +38,55 @@ an install path until release authority changes state to `ready` with all
 immutable evidence. Real Windows clean-machine install, upgrade, & uninstall
 receipts remain required.
 
+### Real artifact source: RightKit, not a parallel release notion
+
+RightKit already builds & signs the Windows artifact this app ships
+(`apps/membrane-hub/right-release.config.mjs`'s `targets.win`, run via
+`pnpm --dir apps/membrane-hub run release:build:win`), and seals a
+`release-manifest.json` at
+`.right-release/sealed/<app>-<version>-<commit8>/windows/release-manifest.json`
+naming the one x64 NSIS installer, its real SHA-256, & the public R2 route key
+(`membrane/installers/windows/current/Membrane_x64-setup.exe`). `right-release
+upload` resolves that key against the same public download base
+(`https://pub-6c73208d46c245a9b4881d5e02f6b618.r2.dev`, or
+`RIGHTAPPS_PUBLIC_DOWNLOAD_BASE`) this channel contract must use.
+
+`scripts/release/channels/right-release-source.mjs` reads & independently
+re-verifies that sealed manifest (schema, checkpoints through `sealed`,
+on-disk file hash/size) the same way RightKit's own upload tool does, then
+derives `{version, commit, installerName, installerSha256, installerUrl}`
+from it — never from a hand-authored value. It fails closed, as a declared
+gap, if the sealed manifest ever carries more than one installer artifact or
+a non-x64 name: only the single x64 NSIS installer RightKit's `targets.win`
+produces today is a supported channel target.
+
+`scripts/release/channels/generate-windows-channels.mjs` combines that real
+artifact with a validated MBR-902 clean-machine receipt (reusing
+`../windows/contract.mjs#validateReceipt` & `../verify-windows-channels.mjs#verifyWindowsChannels`
+unmodified) to build & validate the actual installable manifests:
+
+- `scripts/release/channels/winget-manifest.mjs` — the real WinGet 3-file
+  YAML manifest (`version` / `installer` / `defaultLocale`), written under
+  `packaging/winget/manifests/o/Orthic/Membrane/<version>/`. `InstallerType:
+  nsis`, `Architecture: x64`, `InstallerSwitches: {Silent: "/S",
+  SilentWithProgress: "/S"}`, `UpgradeBehavior: install` for installed-version
+  detection.
+- `scripts/release/channels/scoop-manifest.mjs` — the real Scoop bucket
+  manifest fields (`packaging/scoop/membrane.json`): `architecture.64bit.installer/uninstaller`
+  with `/S`, plus `checkver`/`autoupdate` for version-detected upgrade.
+
+Both builders refuse (`buildWingetManifests`/`buildScoopManifest`) unless the
+windows-channels contract's `state` is `"ready"`, and both outputs are run
+through a validator (`validateWingetManifests`/`validateScoopManifest`)
+before anything is written. While no Windows release has been sealed yet —
+today's true state — `packaging/winget/manifests/o/Orthic/Membrane/UNAVAILABLE/`
+holds the intentionally-invalid placeholder trio (`PackageVersion:
+"0.0.0-unavailable"`, non-URL/non-hash sentinels) that same validator
+rejects, mirroring `packaging/homebrew/Casks/membrane.rb`'s fail-closed
+`raise` for WinGet's declarative format. Neither generator ever executes
+`winget`, `scoop`, `signtool`, or any build/publish command — they only read
+already-sealed/already-verified JSON and write manifest text files.
+
 The Membrane binary installs under a scratch `MEMBRANE_ROOT` and only
 promotes that scratch tree to the target root on `commit`. Every install is
 staged, typed, and idempotent; no partial install survives an interrupted

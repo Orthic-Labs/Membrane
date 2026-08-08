@@ -1,0 +1,54 @@
+$ node --test tests/platform/windows/winget-manifest.test.mjs tests/platform/windows/scoop-manifest.test.mjs tests/platform/windows/generate-windows-channels.test.mjs
+✔ today's real membrane checkout has no sealed Windows release: nothing is invented
+✔ verifySealedWindowsManifest fails closed on a tampered installer, a missing checkpoint, or a bad commit
+✔ deriveWindowsChannelArtifact declares a gap instead of guessing on multiple or non-x64 installers
+✔ deriveWindowsChannelArtifact binds the exact RightKit-sourced hash and the real public R2 URL
+✔ generateWindowsChannels reports unavailable, and writes nothing, when no sealed release or receipt exists
+✔ generateWindowsChannels turns a verified sealed release plus a passing receipt into ready, validated Winget & Scoop manifests
+✔ generateWindowsChannels stays unavailable when the receipt does not match the sealed hash
+✔ buildScoopManifest refuses a non-ready contract
+✔ buildScoopManifest binds the same signed x64 NSIS installer Winget uses, with silent install/uninstall and version-detected upgrade
+✔ unavailableScoopManifest matches the committed packaging/scoop/membrane.json and is accepted as a non-installable placeholder
+✔ validateScoopManifest fails closed on a placeholder or half-specified installable manifest
+✔ buildWingetManifests refuses a non-ready contract
+✔ buildWingetManifests binds one real signed x64 NSIS installer across all three files
+✔ unavailableWingetManifests is intentionally invalid, never a plausible fake
+✔ validateWingetManifests fails closed on an inconsistent or placeholder trio
+✔ renderWingetYaml emits deterministic, correctly nested YAML
+✔ the committed UNAVAILABLE manifest trio matches the fail-closed generator output exactly
+# tests 17, pass 17, fail 0
+
+$ node --test tests/platform/windows/package-channels.test.mjs
+# pre-existing test, not modified by this task; run to confirm no regression
+# against the unmodified packaging/winget/release.v1.json, packaging/scoop/membrane.json,
+# and scripts/release/verify-windows-channels.mjs this task reads but never writes.
+✔ Windows channel source contract cannot publish or install placeholders
+✔ ready channels bind one signed NSIS artifact to Winget & Scoop
+# tests 2, pass 2, fail 0
+
+# These are the only commands run for this task: node --test against the three
+# test files this task wrote, plus one pre-existing, unmodified test file in
+# the same directory (tests/platform/windows/package-channels.test.mjs) run
+# read-only to confirm no regression -- no cargo/pnpm/Tauri build, no
+# winget/scoop/signtool/right-release invocation, no mutating git command, and
+# node scripts/release/verify-release-plan.mjs (the manifest's `commands`
+# entry) was NOT run -- it does not exist on this tree yet and running it is
+# reserved for the book gate per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md.
+#
+# Correction applied mid-task: the orchestrator clarified that RightKit
+# (tools/rightkit/packages/release/) already owns Windows signing and is
+# already wired into apps/membrane-hub (right-release.config.mjs,
+# `pnpm run release:build:win`), and that the channel manifests must consume
+# RightKit's actual sealed release output, not an independent notion of a
+# release. scripts/release/channels/right-release-source.mjs was added to
+# read & independently re-verify RightKit's sealed
+# .right-release/sealed/<app>-<version>-<commit8>/windows/release-manifest.json
+# (schema, checkpoints, on-disk file hash/size) and to derive
+# version/commit/installer name/SHA-256/public URL from it -- reusing the
+# same PUBLIC_DOWNLOAD_BASE constant RightKit's own
+# tools/rightkit/packages/release/pub-upload.mjs uses -- rather than from any
+# hand-authored value. generate-windows-channels.mjs was rewired to source
+# from that module. This checkout has no sealed Windows release yet (only
+# mac releases exist under .right-release/sealed/), which the added test
+# "today's real membrane checkout has no sealed Windows release: nothing is
+# invented" asserts directly against the live repo root.
