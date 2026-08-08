@@ -84,11 +84,17 @@ fn runtime_from_exe_at_workspace(
             (linked == actual).then_some(bin.clone())
         })
     });
+    let membrane_owned_bin = workspace_root
+        .filter(|root| root.is_absolute())
+        .filter(|_| std::env::var("MEMBRANE_OWNER_PIPE").as_deref() == Ok("1"))
+        .map(|root| root.join("tools/bin"))
+        .filter(|bin| bin.is_dir());
     let bin = direct_bin
         .map(Path::to_path_buf)
         .or(linked_bin)
+        .or(membrane_owned_bin)
         .ok_or_else(|| {
-            "crypt-service must run from <workspace>/tools/bin or its exact canonical symlink"
+            "crypt-service must be Membrane-owned or run from its exact canonical tools/bin path"
                 .to_string()
         })?;
     let tools = bin
