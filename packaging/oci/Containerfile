@@ -1,0 +1,10 @@
+# SOURCE CONTRACT ONLY: release.v1.json state=unavailable prevents publishing.
+FROM ghcr.io/orthic/membrane-runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+USER 65532:65532
+WORKDIR /var/lib/membrane
+ENV MEMBRANE_ROOT=/var/lib/membrane MEMBRANE_CONFIG=/etc/membrane/config.json
+COPY --chown=65532:65532 membrane /usr/local/bin/membrane
+VOLUME ["/var/lib/membrane"]
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD ["/usr/local/bin/membrane", "health", "--headless"]
+ENTRYPOINT ["/usr/local/bin/membrane"]

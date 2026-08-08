@@ -1,0 +1,14 @@
+{
+  "schema": "orthic.membrane.oci-release.v1",
+  "state": "unavailable",
+  "publish": false,
+  "image": "registry.invalid/orthic/membrane",
+  "base": "ghcr.io/orthic/membrane-runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "identity": {
+    "tag": "UNAVAILABLE",
+    "commit": "0000000000000000000000000000000000000000",
+    "release_generation": "0000000000000000000000000000000000000000000000000000000000000000",
+    "artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "evidence": { "sbom": null, "ed25519": null, "cosign": null, "rootlessHealth": null, "secretScan": null }
+}

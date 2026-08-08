@@ -1,5 +1,14 @@
 # Membrane install contract (MBR-203)
 
+## OCI source contract (MBR-910)
+
+`packaging/oci/` is optional headless deployment source, never desktop default.
+Its manifest is deliberately `unavailable`, `publish: false`, & uses invalid
+identity/evidence placeholders; do not build, pull, or publish it. Promotion
+requires exact artifact SHA-256, source commit, release generation, SBOM,
+Ed25519 signature, cosign receipt, rootless health receipt, secret-scan receipt, & real registry
+evidence bound to identical image digest.
+
 ## Homebrew source contract (MBR-904)
 
 `packaging/homebrew/Casks/membrane.rb` &
