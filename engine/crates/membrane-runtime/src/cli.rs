@@ -520,6 +520,8 @@ enum Cmd {
     BackoutSchemaV11,
     /// Remove v20 lifecycle columns transactionally and return to the v19 schema shape.
     BackoutSchemaV20,
+    /// Remove causal-learning schema v23 and return to v22.
+    BackoutSchemaV23,
     /// Plan (default) or transactionally apply the RC-2.3 production-smoke isolation.
     IsolateSmokeRecalls {
         #[arg(long)]
@@ -556,6 +558,15 @@ enum Cmd {
         #[arg(long)]
         max_deliveries: usize,
     },
+    /// Preregister an immutable causal-learning experiment from JSON.
+    LearningRegister {
+        #[arg(long)]
+        input: PathBuf,
+    },
+    /// Evaluate trusted controlled evidence and apply only a qualified update.
+    LearningQualify { experiment: String },
+    /// Read one immutable learning-promotion receipt.
+    LearningReceipt { experiment: String },
     /// Ingest git-tracked skill bodies into the engine `skills` table WITHOUT the full re-embed
     /// that `reindex` does. Cheap (no embedding) — run after `git pull` (daily-sync) so the other
     /// machine's engine store stays current with authored skills.
@@ -2872,6 +2883,13 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 serde_json::json!({"schema_version": 19, "backed_out": true})
             );
         }
+        Cmd::BackoutSchemaV23 => {
+            crypt::memdb::backout_v23_to_v22(&db).map_err(|error| error.to_string())?;
+            println!(
+                "{}",
+                serde_json::json!({"schema_version":22,"backed_out":true})
+            );
+        }
         Cmd::IsolateSmokeRecalls { apply } => {
             let report = if apply {
                 MemDb::open(&db)
@@ -3364,6 +3382,33 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 max_deliveries,
             )?;
             println!("{{\"ok\":true,\"closed\":{closed}}}");
+        }
+        Cmd::LearningRegister { input } => {
+            let request: crypt::store::LearningExperimentV1 =
+                serde_json::from_slice(&std::fs::read(input).map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?;
+            let store = open(&db)?;
+            let request_sha256 = store.register_learning_experiment(&request)?;
+            println!(
+                "{}",
+                serde_json::json!({"schemaVersion":1,"experimentId":request.experiment_id,"requestSha256":request_sha256,"status":"registered"})
+            );
+        }
+        Cmd::LearningQualify { experiment } => {
+            let store = open(&db)?;
+            println!(
+                "{}",
+                serde_json::to_string(&store.qualify_learning_experiment(&experiment)?)
+                    .map_err(|e| e.to_string())?
+            );
+        }
+        Cmd::LearningReceipt { experiment } => {
+            let store = open(&db)?;
+            println!(
+                "{}",
+                serde_json::to_string(&store.learning_promotion_receipt(&experiment)?)
+                    .map_err(|e| e.to_string())?
+            );
         }
         Cmd::SkillRead { .. } => unreachable!("handled before database resolution"),
         Cmd::IngestSkills { root } => {

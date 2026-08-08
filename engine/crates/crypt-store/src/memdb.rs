@@ -242,7 +242,7 @@ CREATE TABLE IF NOT EXISTS memory_quarantine (
 
 /// Current durable Crypt schema contract. External migration tests must not
 /// duplicate this value, because a promoted schema version changes atomically.
-pub const LATEST_SCHEMA_VERSION: i64 = 22;
+pub const LATEST_SCHEMA_VERSION: i64 = 23;
 const SMOKE_ISOLATION_MIGRATION_ID: &str = "rc-2.3-smoke-spotcheck-production-v1";
 const SMOKE_ISOLATION_REASON: &str = "legacy_production_smoke_spotcheck";
 const SMOKE_RECALL_PREDICATE: &str =
@@ -1408,6 +1408,49 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                     prev = chain;
                 }
             }
+            23 => {
+                add_column(&tx, "context_feedback", "qualified_experiment_id", "TEXT")?;
+                tx.execute_batch(
+                    "CREATE TABLE learning_experiment (
+                         experiment_id TEXT PRIMARY KEY,
+                         request_sha256 TEXT NOT NULL,
+                         policy_version TEXT NOT NULL,
+                         policy_activation_sha256 TEXT NOT NULL,
+                         task_class TEXT NOT NULL,
+                         observed_since TEXT NOT NULL,
+                         observed_through TEXT NOT NULL,
+                         min_per_cohort INTEGER NOT NULL CHECK(min_per_cohort > 0),
+                         min_effect_bps INTEGER NOT NULL CHECK(min_effect_bps BETWEEN -10000 AND 10000),
+                         created_at TEXT NOT NULL
+                     );
+                     CREATE TABLE learning_update_target (
+                         experiment_id TEXT NOT NULL,
+                         ordinal INTEGER NOT NULL,
+                         memory_id TEXT NOT NULL,
+                         content_sha256 TEXT NOT NULL,
+                         delta_micros INTEGER NOT NULL CHECK(delta_micros BETWEEN -1000000 AND 1000000),
+                         PRIMARY KEY(experiment_id, ordinal),
+                         UNIQUE(experiment_id, memory_id),
+                         FOREIGN KEY(experiment_id) REFERENCES learning_experiment(experiment_id) ON DELETE RESTRICT
+                     );
+                     CREATE TABLE learning_promotion_receipt (
+                         experiment_id TEXT PRIMARY KEY,
+                         evidence_sha256 TEXT NOT NULL,
+                         control_count INTEGER NOT NULL,
+                         control_success INTEGER NOT NULL,
+                         candidate_count INTEGER NOT NULL,
+                         candidate_success INTEGER NOT NULL,
+                         effect_bps INTEGER NOT NULL,
+                         disposition TEXT NOT NULL CHECK(disposition IN ('qualified','rejected')),
+                         reason_code TEXT NOT NULL,
+                         applied_count INTEGER NOT NULL,
+                         created_at TEXT NOT NULL,
+                         FOREIGN KEY(experiment_id) REFERENCES learning_experiment(experiment_id) ON DELETE RESTRICT
+                     );
+                     CREATE INDEX idx_learning_experiment_policy ON learning_experiment(policy_version, task_class);
+                     CREATE INDEX idx_learning_target_memory ON learning_update_target(memory_id);",
+                )?;
+            }
             _ => unreachable!(),
         }
         tx.pragma_update(None, "user_version", next)?;
@@ -1423,6 +1466,7 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
 /// Unknown newer schemas fail closed rather than risking a partial downgrade.
 pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     let path = path.as_ref();
+    backout_v23_to_v22(path)?;
     backout_v22_to_v21(path)?;
     backout_v21_to_v20(path)?;
     let mut conn = Connection::open(path)?;
@@ -1451,6 +1495,25 @@ pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     }
     tx.pragma_update(None, "user_version", 19)?;
     tx.commit()
+}
+
+/// Remove only the causal-learning v23 tables and feedback qualification marker.
+pub fn backout_v23_to_v22<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
+    let conn = Connection::open(path)?;
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version < 23 {
+        return Ok(());
+    }
+    if version != 23 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    conn.execute_batch(
+        "DROP TABLE learning_promotion_receipt;
+         DROP TABLE learning_update_target;
+         DROP TABLE learning_experiment;
+         ALTER TABLE context_feedback DROP COLUMN qualified_experiment_id;
+         PRAGMA user_version=22;",
+    )
 }
 
 fn backout_v22_to_v21(path: &Path) -> rusqlite::Result<()> {
@@ -1519,6 +1582,12 @@ fn backout_v20_if_present(path: &Path) -> rusqlite::Result<()> {
             backout_v20_to_v19(path)
         }
         22 => {
+            backout_v22_to_v21(path)?;
+            backout_v21_to_v20(path)?;
+            backout_v20_to_v19(path)
+        }
+        23 => {
+            backout_v23_to_v22(path)?;
             backout_v22_to_v21(path)?;
             backout_v21_to_v20(path)?;
             backout_v20_to_v19(path)

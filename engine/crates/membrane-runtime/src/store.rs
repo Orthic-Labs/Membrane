@@ -67,6 +67,10 @@ fn protected_priority_bonus_enabled() -> bool {
     )
 }
 
+#[cfg(test)]
+#[path = "../../../../tests/outcomes/causal_promotion.rs"]
+mod causal_promotion;
+
 /// Vector dispatch v2 (resident in-process f32 index) is default-on. Set
 /// `CRYPT_VECTOR_DISPATCH_V2` to `0`/`false`/`off`/`legacy` for an immediate
 /// fallback to the legacy scalar-A `retrieve_hybrid` routing (restored on next
@@ -217,6 +221,45 @@ impl MemoryLifecycleInputV1 {
         }
         Ok(())
     }
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LearningUpdateTargetV1 {
+    pub memory_id: String,
+    pub content_sha256: String,
+    pub delta_micros: i64,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LearningExperimentV1 {
+    pub schema_version: u32,
+    pub experiment_id: String,
+    pub policy_version: String,
+    pub policy_activation_sha256: String,
+    pub task_class: String,
+    pub observed_since: String,
+    pub observed_through: String,
+    pub min_per_cohort: u32,
+    pub min_effect_bps: i32,
+    pub targets: Vec<LearningUpdateTargetV1>,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LearningPromotionReceiptV1 {
+    pub schema_version: u32,
+    pub experiment_id: String,
+    pub evidence_sha256: String,
+    pub control_count: u32,
+    pub control_success: u32,
+    pub candidate_count: u32,
+    pub candidate_success: u32,
+    pub effect_bps: i32,
+    pub disposition: String,
+    pub reason_code: String,
+    pub applied_count: u32,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -2715,7 +2758,8 @@ impl MemoryStore {
     /// Record one per-candidate feedback row (the Membrane feedback rail). Fail-closed: the
     /// record must validate (a cited-verdict row needs a resolvable `verdict_ref`) before it is
     /// persisted. Idempotent by `(trace_id, candidate_id)` — a re-run at compaction upserts, never
-    /// double-counts. Only `verified()` rows affect ranking; advisory rows persist for metrics.
+    /// double-counts. Rows remain evidence-only until a preregistered controlled experiment is
+    /// qualified and applied; caller-selected feedback never changes ranking directly.
     pub fn record_feedback(&self, rec: &FeedbackRecord) -> Result<(), String> {
         self.record_feedback_observed(rec, &MemoryEventContext::default())
     }
@@ -2789,20 +2833,6 @@ impl MemoryStore {
             ],
         )
         .map_err(|e| self.persist_error(format!("feedback upsert failed: {e}")))?;
-        if rec.verified() {
-            let delta = match rec.outcome {
-                Outcome::Used => 0.08_f64,
-                Outcome::Ignored => -0.08_f64,
-                Outcome::Contradicted => -0.35_f64,
-            };
-            tx.execute(
-                "UPDATE memories
-                    SET score = MIN(1.0, MAX(0.0, score + ?2)), updated_at = ?3
-                  WHERE id = ?1",
-                rusqlite::params![rec.candidate_id, delta, crate::time::now_iso()],
-            )
-            .map_err(|e| self.persist_error(format!("feedback score update failed: {e}")))?;
-        }
         let metadata = if let Some(target) = feedback_target.as_ref() {
             MemoryRecordMetadata {
                 artifact_family: target.2.clone(),
@@ -3492,7 +3522,11 @@ impl MemoryStore {
             .join(",");
         let sql = format!(
             "SELECT candidate_id, outcome, verified, content_sha256 FROM context_feedback \
-             WHERE candidate_id IN ({placeholders})"
+             WHERE qualified_experiment_id IS NOT NULL AND EXISTS (\
+                 SELECT 1 FROM learning_promotion_receipt r\
+                  WHERE r.experiment_id = context_feedback.qualified_experiment_id\
+                    AND r.disposition = 'qualified'\
+             ) AND candidate_id IN ({placeholders})"
         );
         let mut stmt = match conn.prepare(&sql) {
             Ok(s) => s,
@@ -4645,6 +4679,325 @@ impl MemoryStore {
         tx.commit()
             .map_err(|e| format!("policy assignment commit failed: {e}"))?;
         Ok(persisted)
+    }
+
+    /// Preregister one immutable ranking experiment and its exact ordered update set.
+    pub fn register_learning_experiment(
+        &self,
+        request: &LearningExperimentV1,
+    ) -> Result<String, String> {
+        let hash_ok = |value: &str| {
+            value.len() == 64
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        };
+        if request.schema_version != 1
+            || !valid_opaque_id(&request.experiment_id, 160)
+            || !valid_opaque_id(&request.policy_version, 80)
+            || !valid_registry_token(&request.task_class)
+            || !hash_ok(&request.policy_activation_sha256)
+            || request.observed_since >= request.observed_through
+            || !request.observed_since.ends_with('Z')
+            || !request.observed_through.ends_with('Z')
+            || !(1..=5_000).contains(&request.min_per_cohort)
+            || !(-10_000..=10_000).contains(&request.min_effect_bps)
+            || request.targets.is_empty()
+            || request.targets.len() > 64
+        {
+            return Err("learning experiment is invalid or unbounded".into());
+        }
+        let mut ids = HashSet::new();
+        if request.targets.iter().any(|target| {
+            target.memory_id.trim().is_empty()
+                || target.memory_id.len() > 512
+                || target.memory_id.chars().any(char::is_control)
+                || !hash_ok(&target.content_sha256)
+                || target.delta_micros == 0
+                || !(-1_000_000..=1_000_000).contains(&target.delta_micros)
+                || !ids.insert(target.memory_id.as_str())
+        }) {
+            return Err("learning update target is invalid or duplicated".into());
+        }
+        let canonical = serde_json::to_string(request).map_err(|e| e.to_string())?;
+        let request_sha256 = content_hash(&canonical);
+        let mut conn = self.db.lock();
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let existing: Option<String> = tx
+            .query_row(
+                "SELECT request_sha256 FROM learning_experiment WHERE experiment_id=?1",
+                [&request.experiment_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if let Some(existing) = existing {
+            return if existing == request_sha256 {
+                Ok(existing)
+            } else {
+                Err("learning experiment id conflicts with prior request".into())
+            };
+        }
+        for target in &request.targets {
+            let (content, stored): (String, Option<String>) = tx
+                .query_row(
+                    "SELECT content,content_hash FROM memories WHERE id=?1",
+                    [&target.memory_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(|_| format!("learning target missing: {}", target.memory_id))?;
+            if stored.unwrap_or_else(|| content_hash(&content)) != target.content_sha256 {
+                return Err(format!(
+                    "learning target hash mismatch: {}",
+                    target.memory_id
+                ));
+            }
+        }
+        tx.execute(
+            "INSERT INTO learning_experiment VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+            rusqlite::params![
+                request.experiment_id,
+                request_sha256,
+                request.policy_version,
+                request.policy_activation_sha256,
+                request.task_class,
+                request.observed_since,
+                request.observed_through,
+                request.min_per_cohort,
+                request.min_effect_bps,
+                crate::time::now_iso()
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        for (ordinal, target) in request.targets.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO learning_update_target VALUES (?1,?2,?3,?4,?5)",
+                rusqlite::params![
+                    request.experiment_id,
+                    ordinal as i64,
+                    target.memory_id,
+                    target.content_sha256,
+                    target.delta_micros
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(request_sha256)
+    }
+
+    pub fn learning_promotion_receipt(
+        &self,
+        experiment_id: &str,
+    ) -> Result<Option<LearningPromotionReceiptV1>, String> {
+        self.db.lock().query_row(
+            "SELECT evidence_sha256,control_count,control_success,candidate_count,candidate_success,effect_bps,disposition,reason_code,applied_count FROM learning_promotion_receipt WHERE experiment_id=?1",
+            [experiment_id], |row| Ok(LearningPromotionReceiptV1 { schema_version:1, experiment_id:experiment_id.into(), evidence_sha256:row.get(0)?, control_count:row.get::<_,i64>(1)? as u32, control_success:row.get::<_,i64>(2)? as u32, candidate_count:row.get::<_,i64>(3)? as u32, candidate_success:row.get::<_,i64>(4)? as u32, effect_bps:row.get::<_,i64>(5)? as i32, disposition:row.get(6)?, reason_code:row.get(7)?, applied_count:row.get::<_,i64>(8)? as u32 })).optional().map_err(|e| e.to_string())
+    }
+
+    /// Evaluate only persisted trusted evidence, then atomically apply the preregistered deltas.
+    pub fn qualify_learning_experiment(
+        &self,
+        experiment_id: &str,
+    ) -> Result<LearningPromotionReceiptV1, String> {
+        if let Some(receipt) = self.learning_promotion_receipt(experiment_id)? {
+            return Ok(receipt);
+        }
+        let (
+            request_sha256,
+            policy,
+            activation,
+            task,
+            since,
+            through,
+            min_n,
+            margin,
+            created,
+            targets,
+        ) = {
+            let conn = self.db.lock();
+            let row = conn.query_row("SELECT request_sha256,policy_version,policy_activation_sha256,task_class,observed_since,observed_through,min_per_cohort,min_effect_bps,created_at FROM learning_experiment WHERE experiment_id=?1", [experiment_id], |r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?,r.get::<_,String>(4)?,r.get::<_,String>(5)?,r.get::<_,i64>(6)?,r.get::<_,i64>(7)?,r.get::<_,String>(8)?))).map_err(|_| "learning experiment not found".to_string())?;
+            let targets = conn.prepare("SELECT memory_id,content_sha256,delta_micros FROM learning_update_target WHERE experiment_id=?1 ORDER BY ordinal").and_then(|mut s| s.query_map([experiment_id], |r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,r.get::<_,i64>(2)?)))?.collect::<rusqlite::Result<Vec<_>>>()).map_err(|e| e.to_string())?;
+            (
+                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, targets,
+            )
+        };
+        if through > crate::time::now_iso() {
+            return Err("learning observation window is still open".into());
+        }
+        let artifact_ids = targets
+            .iter()
+            .flat_map(|(id, _, _)| {
+                let digest = content_hash(id);
+                [
+                    stable_artifact_id(id),
+                    format!("memory.{digest}"),
+                    format!("artifact.{digest}"),
+                ]
+            })
+            .collect::<HashSet<_>>();
+        let mut evidence = vec![request_sha256];
+        let mut candidate_traces = Vec::new();
+        let mut counts = [0_i64; 4];
+        if created <= since {
+            let events = self.db.lock_events();
+            let mut statement = events.prepare("SELECT v.event_id,v.canonical_sha256,v.trace_id,v.cohort,v.reason_code,o.event_id FROM context_event_log v JOIN context_event_link vl ON vl.event_id=v.event_id AND vl.relation='verdict_for' JOIN context_event_log o ON o.event_id=vl.target_event_id AND o.trace_id=v.trace_id AND o.phase='turn.outcome' AND o.status='success' AND o.provider IN ('live','audit') AND o.producer IN ('live','audit') AND o.traffic_class='production' AND o.ts>=?1 AND o.ts<=?2 AND o.policy_version=v.policy_version AND o.policy_activation_sha256=v.policy_activation_sha256 AND o.task_class=v.task_class AND o.cohort=v.cohort AND o.reason_code=v.reason_code WHERE v.phase='verdict.recorded' AND v.status='success' AND v.provider IN ('live','audit') AND v.producer IN ('live','audit') AND v.traffic_class='production' AND v.ts>=?1 AND v.ts<=?2 AND v.policy_version=?3 AND v.policy_activation_sha256=?4 AND v.task_class=?5 AND v.cohort IN ('control','candidate') AND EXISTS(SELECT 1 FROM context_event_log a WHERE a.trace_id=v.trace_id AND a.phase='policy.assigned' AND a.status='success' AND a.provider='policy' AND a.producer='policy' AND a.traffic_class='production' AND a.ts>=?1 AND a.ts<=?2 AND a.policy_version=v.policy_version AND a.policy_activation_sha256=v.policy_activation_sha256 AND a.cohort=v.cohort AND a.task_class=v.task_class) AND EXISTS(SELECT 1 FROM context_event_log x WHERE x.trace_id=v.trace_id AND x.phase='policy.exposed' AND x.status='success' AND x.provider='policy' AND x.producer='policy' AND x.traffic_class='production' AND x.ts>=?1 AND x.ts<=?2 AND x.policy_version=v.policy_version AND x.policy_activation_sha256=v.policy_activation_sha256 AND x.cohort=v.cohort AND x.task_class=v.task_class) ORDER BY v.event_id LIMIT 10001").map_err(|e| e.to_string())?;
+            let rows = statement
+                .query_map(
+                    rusqlite::params![since, through, policy, activation, task],
+                    |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, String>(2)?,
+                            r.get::<_, String>(3)?,
+                            r.get::<_, String>(4)?,
+                            r.get::<_, String>(5)?,
+                        ))
+                    },
+                )
+                .map_err(|e| e.to_string())?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|e| e.to_string())?;
+            if rows.len() > 10_000 {
+                return Err("learning evidence exceeds 10000 observations".into());
+            }
+            let mut seen = HashSet::new();
+            for (event_id, canonical, trace, cohort, outcome, outcome_id) in rows {
+                if !seen.insert(trace.clone()) {
+                    return Err("learning evidence has duplicate verdict trace".into());
+                }
+                if cohort == "candidate" {
+                    let mut chain = events.prepare("SELECT e.phase,e.event_id,e.canonical_sha256,e.artifact_id FROM context_event_log e WHERE e.trace_id=?1 AND e.phase IN ('candidate.retrieved','candidate.admitted','block.delivered','candidate.used') AND e.status='success' AND e.traffic_class='production' AND e.provider='live' AND e.producer='live' AND e.policy_version=?2 AND e.policy_activation_sha256=?3 AND e.task_class=?4 AND e.cohort=?5 AND e.ts>=?6 AND e.ts<=?7 ORDER BY e.event_id").map_err(|e| e.to_string())?;
+                    let chain = chain
+                        .query_map(
+                            rusqlite::params![
+                                &trace, policy, activation, task, cohort, since, through
+                            ],
+                            |r| {
+                                Ok((
+                                    r.get::<_, String>(0)?,
+                                    r.get::<_, String>(1)?,
+                                    r.get::<_, String>(2)?,
+                                    r.get::<_, Option<String>>(3)?,
+                                ))
+                            },
+                        )
+                        .map_err(|e| e.to_string())?
+                        .collect::<rusqlite::Result<Vec<_>>>()
+                        .map_err(|e| e.to_string())?;
+                    let complete = artifact_ids.iter().any(|artifact| {
+                        let id = |phase| chain.iter().find(|row| row.0 == phase && row.3.as_deref() == Some(artifact)).map(|row| row.1.as_str());
+                        let Some((retrieved,admitted,delivered,used)) = id("candidate.retrieved").zip(id("candidate.admitted")).zip(id("block.delivered").zip(id("candidate.used"))).map(|((a,b),(c,d))|(a,b,c,d)) else { return false; };
+                        let linked = |source:&str, relation:&str, target:&str| events.query_row("SELECT EXISTS(SELECT 1 FROM context_event_link WHERE event_id=?1 AND relation=?2 AND target_event_id=?3)",rusqlite::params![source,relation,target],|r|r.get::<_,bool>(0)).unwrap_or(false);
+                        linked(admitted,"candidate_of",retrieved) && linked(used,"observed_use_of",delivered) && linked(&outcome_id,"outcome_for",delivered)
+                    });
+                    if !complete {
+                        continue;
+                    }
+                    candidate_traces.push(trace.clone());
+                    counts[2] += 1;
+                    counts[3] += (outcome == "task_succeeded") as i64;
+                    for row in chain {
+                        evidence.push(format!("{}:{}", row.1, row.2));
+                    }
+                } else {
+                    counts[0] += 1;
+                    counts[1] += (outcome == "task_succeeded") as i64;
+                }
+                evidence.push(format!("{event_id}:{canonical}"));
+            }
+        }
+        evidence.sort();
+        let evidence_sha256 = content_hash(&evidence.join("\n"));
+        let effect = if counts[0] > 0 && counts[2] > 0 {
+            (((counts[3] * counts[0] - counts[1] * counts[2]) * 10_000) / (counts[0] * counts[2]))
+                as i32
+        } else {
+            0
+        };
+        let (disposition, reason) = if created > since {
+            ("rejected", "experiment_not_preregistered")
+        } else if counts[0] < min_n || counts[2] < min_n {
+            ("rejected", "insufficient_cohort_evidence")
+        } else if effect < margin as i32 {
+            ("rejected", "controlled_margin_not_met")
+        } else {
+            ("qualified", "controlled_comparison_passed")
+        };
+        let applied = if disposition == "qualified" {
+            targets.len() as u32
+        } else {
+            0
+        };
+        let receipt = LearningPromotionReceiptV1 {
+            schema_version: 1,
+            experiment_id: experiment_id.into(),
+            evidence_sha256,
+            control_count: counts[0] as u32,
+            control_success: counts[1] as u32,
+            candidate_count: counts[2] as u32,
+            candidate_success: counts[3] as u32,
+            effect_bps: effect,
+            disposition: disposition.into(),
+            reason_code: reason.into(),
+            applied_count: applied,
+        };
+        let mut conn = self.db.lock();
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let mut new_scores = Vec::new();
+        if disposition == "qualified" {
+            for (id, expected, delta) in &targets {
+                let (content, stored, score): (String, Option<String>, f64) = tx
+                    .query_row(
+                        "SELECT content,content_hash,score FROM memories WHERE id=?1",
+                        [id],
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                    )
+                    .map_err(|_| format!("learning target missing: {id}"))?;
+                if stored.unwrap_or_else(|| content_hash(&content)) != *expected {
+                    return Err(format!("learning target hash changed: {id}"));
+                }
+                let score = (score + (*delta as f64 / 1_000_000.0)).clamp(0.0, 1.0);
+                tx.execute(
+                    "UPDATE memories SET score=?2,updated_at=?3 WHERE id=?1",
+                    rusqlite::params![id, score, crate::time::now_iso()],
+                )
+                .map_err(|e| e.to_string())?;
+                new_scores.push((id.clone(), score));
+            }
+            for trace in &candidate_traces {
+                tx.execute("UPDATE context_feedback SET qualified_experiment_id=?2 WHERE trace_id=?1 AND verified=1",rusqlite::params![trace,experiment_id]).map_err(|e|e.to_string())?;
+            }
+        }
+        tx.execute(
+            "INSERT INTO learning_promotion_receipt VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            rusqlite::params![
+                experiment_id,
+                receipt.evidence_sha256,
+                counts[0],
+                counts[1],
+                counts[2],
+                counts[3],
+                effect,
+                disposition,
+                reason,
+                applied,
+                crate::time::now_iso()
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        if !new_scores.is_empty() {
+            let mut registry = self.registry.write().unwrap_or_else(|e| e.into_inner());
+            for (id, score) in new_scores {
+                if let Some(mut entry) = registry.remove(&id) {
+                    entry.score = score;
+                    registry.insert(entry);
+                }
+            }
+        }
+        Ok(receipt)
     }
 
     /// Token-savings report for `crypt metrics`. `None` if nothing has been recalled yet.
@@ -7472,7 +7825,7 @@ mod tests {
     }
 
     #[test]
-    fn gate_history_drops_superseded_veto() {
+    fn gate_history_requires_qualification_and_drops_superseded_veto() {
         let m = MemoryStore::new();
         let e = m.remember(
             "nginx is dockerized so diff the confs before any rebuild",
@@ -7489,6 +7842,26 @@ mod tests {
             scope_id: "global".into(),
         })
         .unwrap();
+        let unqualified = m.gate_history_for(&[&e]);
+        assert!(EffectivenessGate::default().should_inject(&unqualified, &e.id));
+        m.db.lock()
+            .execute(
+                "UPDATE context_feedback SET qualified_experiment_id='test-qualified'",
+                [],
+            )
+            .unwrap();
+        m.db.lock()
+            .execute(
+                "INSERT INTO learning_experiment VALUES ('test-qualified','x','p','x','code','2025-01-01','2026-01-01',1,0,'2025-01-01')",
+                [],
+            )
+            .unwrap();
+        m.db.lock()
+            .execute(
+                "INSERT INTO learning_promotion_receipt VALUES ('test-qualified','x',1,1,1,1,0,'qualified','test',1,'2025-01-01')",
+                [],
+            )
+            .unwrap();
         let hist = m.gate_history_for(&[&e]);
         assert!(
             !EffectivenessGate::default().should_inject(&hist, &e.id),
@@ -7505,7 +7878,7 @@ mod tests {
     }
 
     #[test]
-    fn recall_scored_applies_verified_feedback_veto_until_superseded() {
+    fn recall_scored_applies_only_qualified_feedback_veto_until_superseded() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("recall-veto.db");
         let store = MemoryStore::open(MemDb::open(&db_path).unwrap());
@@ -7531,6 +7904,29 @@ mod tests {
                 scope_id: "global".into(),
             })
             .unwrap();
+
+        let not_vetoed = store.recall_scored(
+            "nginx rebuild configuration diffs",
+            5,
+            &["global".to_string()],
+        );
+        assert!(not_vetoed.iter().any(|(entry, _)| entry.id == id));
+        store
+            .db
+            .lock()
+            .execute(
+                "UPDATE context_feedback SET qualified_experiment_id='test-qualified'",
+                [],
+            )
+            .unwrap();
+        store.db.lock().execute(
+            "INSERT INTO learning_experiment VALUES ('test-qualified','x','p','x','code','2025-01-01','2026-01-01',1,0,'2025-01-01')",
+            [],
+        ).unwrap();
+        store.db.lock().execute(
+            "INSERT INTO learning_promotion_receipt VALUES ('test-qualified','x',1,1,1,1,0,'qualified','test',1,'2025-01-01')",
+            [],
+        ).unwrap();
 
         let vetoed = store.recall_scored(
             "nginx rebuild configuration diffs",

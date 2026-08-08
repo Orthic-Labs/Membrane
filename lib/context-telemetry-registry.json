@@ -45,6 +45,7 @@
     "candidate.contradicted": {"consumer": "promotion", "question": "Which delivered candidates were contradicted by verified outcomes?", "retention": "canonical", "required": true, "max_events_per_turn": 128, "max_bytes_per_event": 4096},
     "candidate.unknown": {"consumer": "reconciliation", "question": "Which delivered candidates lack admissible value evidence?", "retention": "canonical", "required": true, "max_events_per_turn": 128, "max_bytes_per_event": 4096},
     "turn.outcome": {"consumer": "promotion", "question": "What frozen or verified outcome closes this turn?", "retention": "canonical", "required": true, "max_events_per_turn": 1, "max_bytes_per_event": 4096},
+    "verdict.recorded": {"consumer": "promotion", "question": "Which trusted host or audit verdict closes an observed outcome?", "retention": "canonical", "required": true, "max_events_per_turn": 1, "max_bytes_per_event": 4096},
     "write.requested": {"consumer": "reconciliation", "question": "Did every requested durable mutation enter accounting?", "retention": "canonical", "required": true, "max_events_per_turn": 64, "max_bytes_per_event": 4096},
     "validation.started": {"consumer": "reconciliation", "question": "Did write validation start?", "retention": "canonical", "required": true, "max_events_per_turn": 64, "max_bytes_per_event": 4096},
     "validation.terminal": {"consumer": "dashboard", "question": "How did write validation terminate?", "retention": "canonical", "required": true, "max_events_per_turn": 64, "max_bytes_per_event": 4096},

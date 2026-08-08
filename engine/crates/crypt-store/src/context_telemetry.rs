@@ -375,8 +375,10 @@ const RELATIONS: &[&str] = &[
     "candidate_of",
     "delivered_as",
     "feedback_for",
+    "observed_use_of",
     "replicated_from",
     "outcome_for",
+    "verdict_for",
 ];
 const MEASUREMENT_UNITS: &[&str] = &[
     "ms",
@@ -2086,6 +2088,30 @@ fn validate_event(event: &ContextEvent) -> Result<(), ContextTelemetryError> {
     }
     require_registered(&event.operation, "operation", OPERATIONS)?;
     require_registered(&event.status, "status", STATUSES)?;
+    if event.phase == "verdict.recorded" {
+        if !matches!(event.provider.as_str(), "live" | "audit")
+            || !matches!(event.producer.as_str(), "live" | "audit")
+            || event.traffic_class != "production"
+            || !matches!(event.cohort.as_deref(), Some("control" | "candidate"))
+            || event.policy_version.is_none()
+            || event.policy_activation_sha256.is_none()
+            || event
+                .task_class
+                .as_deref()
+                .is_none_or(|value| value == "unknown")
+            || !matches!(
+                event.reason_code.as_deref(),
+                Some("task_succeeded" | "task_failed")
+            )
+            || event.links.len() != 1
+            || event.links[0].relation != "verdict_for"
+        {
+            return Err(invalid(
+                "verdict.recorded",
+                "requires trusted live/audit production attribution and one verdict_for link",
+            ));
+        }
+    }
     if TERMINAL_REASON_STATUSES.contains(&event.status.as_str()) && event.reason_code.is_none() {
         return Err(invalid(
             "reason_code",
