@@ -21,6 +21,10 @@
 //! store, but those reads are out of scope for the conformance adapter
 //! — the SDK is the contract layer, not the implementation layer.
 
+use membrane_provider_sdk::provider::{
+    ProviderIdentityV1, ProviderObservationV1, ProviderReadinessStateV1, ProviderReadinessV1,
+    ProviderTestQueryV1, PROVIDER_READINESS_SCHEMA_VERSION,
+};
 use membrane_provider_sdk::{
     run_conformance, CapabilityV1, ConformanceReport, Fixture, Provider, ProviderError, Result,
 };
@@ -58,6 +62,33 @@ impl Provider for CortexExample {
     fn initialize(&mut self, _config: &Value) -> Result<()> {
         self.ready = true;
         Ok(())
+    }
+
+    fn readiness(&self) -> ProviderReadinessV1 {
+        let identity = ProviderIdentityV1 {
+            provider_id: "cortex-example".into(),
+            installation_id: "example-installation".into(),
+            service_id: "cortex-example-service".into(),
+            release_generation: "example-v1".into(),
+            data_root_digest: "sha256:example-root".into(),
+        };
+        if !self.ready {
+            return ProviderReadinessV1::unknown(identity, "not_initialized");
+        }
+        ProviderReadinessV1 {
+            schema_version: PROVIDER_READINESS_SCHEMA_VERSION,
+            state: ProviderReadinessStateV1::Ready,
+            identity,
+            observation: Some(ProviderObservationV1 {
+                observed_at_unix_ms: 1,
+                fresh_for_ms: 60_000,
+            }),
+            test_query: Some(ProviderTestQueryV1 {
+                name: "context-smoke".into(),
+                succeeded: true,
+            }),
+            reason: "authoritative_test_passed".into(),
+        }
     }
 
     fn list_capabilities(&self) -> Vec<CapabilityV1> {

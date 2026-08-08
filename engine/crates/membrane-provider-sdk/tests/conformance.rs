@@ -14,6 +14,10 @@
 //! This integration test file is compiled but the workspace test command
 //! is deferred.
 
+use membrane_provider_sdk::provider::{
+    ProviderIdentityV1, ProviderObservationV1, ProviderReadinessStateV1, ProviderReadinessV1,
+    ProviderTestQueryV1, PROVIDER_READINESS_SCHEMA_VERSION,
+};
 use membrane_provider_sdk::{run_conformance, CapabilityV1, Provider, ProviderError, Result};
 use membrane_testkit::golden_fixtures;
 use serde_json::{json, Value};
@@ -30,10 +34,41 @@ impl CortexAdapter {
     }
 }
 
+fn readiness(provider_id: &str, ready: bool) -> ProviderReadinessV1 {
+    let identity = ProviderIdentityV1 {
+        provider_id: provider_id.into(),
+        installation_id: "fixture-installation".into(),
+        service_id: "fixture-service".into(),
+        release_generation: "fixture-release".into(),
+        data_root_digest: "sha256:fixture-root".into(),
+    };
+    if !ready {
+        return ProviderReadinessV1::unknown(identity, "not_initialized");
+    }
+    ProviderReadinessV1 {
+        schema_version: PROVIDER_READINESS_SCHEMA_VERSION,
+        state: ProviderReadinessStateV1::Ready,
+        identity,
+        observation: Some(ProviderObservationV1 {
+            observed_at_unix_ms: 1,
+            fresh_for_ms: 1,
+        }),
+        test_query: Some(ProviderTestQueryV1 {
+            name: "fixture".into(),
+            succeeded: true,
+        }),
+        reason: "authoritative_test_passed".into(),
+    }
+}
+
 impl Provider for CortexAdapter {
     fn initialize(&mut self, _config: &Value) -> Result<()> {
         self.ready = true;
         Ok(())
+    }
+
+    fn readiness(&self) -> ProviderReadinessV1 {
+        readiness("cortex", self.ready)
     }
 
     fn list_capabilities(&self) -> Vec<CapabilityV1> {
@@ -141,6 +176,10 @@ impl Provider for CryptAdapter {
     fn initialize(&mut self, _config: &Value) -> Result<()> {
         self.ready = true;
         Ok(())
+    }
+
+    fn readiness(&self) -> ProviderReadinessV1 {
+        readiness("crypt", self.ready)
     }
 
     fn list_capabilities(&self) -> Vec<CapabilityV1> {

@@ -1,5 +1,6 @@
 use membrane_protocol::{
-    HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1, HUB_SCHEMA_VERSION,
+    HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1, ProviderIdentityV1,
+    ProviderReadinessStateV1, ProviderReadinessV1, HUB_SCHEMA_VERSION,
 };
 use serde_json::Value;
 
@@ -14,6 +15,79 @@ pub const HUB_RESOURCES: [&str; 8] = [
     "alerts",
 ];
 pub const HUB_OPERATIONS: [&str; 2] = ["hub.capabilities", "hub.snapshot"];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderReadinessAdapterV1 {
+    pub expected_identity: ProviderIdentityV1,
+    pub now_unix_ms: u64,
+}
+
+impl ProviderReadinessAdapterV1 {
+    pub fn evaluate(
+        &self,
+        reply: Option<ProviderReadinessV1>,
+        process_exists: bool,
+    ) -> ProviderReadinessV1 {
+        let Some(mut readiness) = reply else {
+            return ProviderReadinessV1::unknown(
+                self.expected_identity.clone(),
+                if process_exists {
+                    "process_exists_without_readiness"
+                } else {
+                    "readiness_missing"
+                },
+            );
+        };
+        if let Some(reason) = readiness.contract_error() {
+            readiness.state = ProviderReadinessStateV1::Unknown;
+            readiness.reason = reason.into();
+            return readiness;
+        }
+        if readiness.identity != self.expected_identity {
+            readiness.state = ProviderReadinessStateV1::Unavailable;
+            readiness.reason = "identity_drift".into();
+            return readiness;
+        }
+        let Some(observation) = &readiness.observation else {
+            readiness.state = ProviderReadinessStateV1::Unknown;
+            readiness.reason = "observation_missing".into();
+            return readiness;
+        };
+        if observation
+            .observed_at_unix_ms
+            .saturating_add(observation.fresh_for_ms)
+            < self.now_unix_ms
+        {
+            readiness.state = ProviderReadinessStateV1::Unavailable;
+            readiness.reason = "readiness_stale".into();
+            return readiness;
+        }
+        if readiness.state == ProviderReadinessStateV1::Ready
+            && !matches!(readiness.test_query, Some(ref query) if query.succeeded)
+        {
+            readiness.state = ProviderReadinessStateV1::Degraded;
+            readiness.reason = "test_query_failed".into();
+        }
+        readiness
+    }
+}
+
+pub fn provider_readiness_hub_read(readiness: ProviderReadinessV1) -> HubReadV1 {
+    let reason = readiness.reason.clone();
+    let item = serde_json::to_value(readiness).expect("provider readiness serializes");
+    match item["state"].as_str() {
+        Some("ready") => HubReadV1::Available {
+            items: vec![item],
+            metadata: HubMetadataV1::default(),
+        },
+        Some("degraded") => HubReadV1::Degraded {
+            reason,
+            items: vec![item],
+            metadata: HubMetadataV1::default(),
+        },
+        _ => HubReadV1::Unavailable { reason },
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct HubMetadataV1 {
@@ -190,6 +264,78 @@ impl HubFacadeV1 {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn identity(provider: &str) -> ProviderIdentityV1 {
+        ProviderIdentityV1 {
+            provider_id: provider.into(),
+            installation_id: "installation".into(),
+            service_id: "service".into(),
+            release_generation: "release".into(),
+            data_root_digest: "root".into(),
+        }
+    }
+
+    fn readiness(state: ProviderReadinessStateV1) -> ProviderReadinessV1 {
+        ProviderReadinessV1 {
+            schema_version: 1,
+            state,
+            identity: identity("provider"),
+            observation: Some(membrane_protocol::ProviderObservationV1 {
+                observed_at_unix_ms: 100,
+                fresh_for_ms: 50,
+            }),
+            test_query: Some(membrane_protocol::ProviderTestQueryV1 {
+                name: "smoke".into(),
+                succeeded: true,
+            }),
+            reason: "authoritative".into(),
+        }
+    }
+
+    #[test]
+    fn readiness_requires_authoritative_fresh_identity_bound_evidence() {
+        let adapter = ProviderReadinessAdapterV1 {
+            expected_identity: identity("provider"),
+            now_unix_ms: 125,
+        };
+        for state in [
+            ProviderReadinessStateV1::Ready,
+            ProviderReadinessStateV1::Degraded,
+            ProviderReadinessStateV1::Unavailable,
+            ProviderReadinessStateV1::Unknown,
+        ] {
+            assert_eq!(adapter.evaluate(Some(readiness(state)), false).state, state);
+        }
+        let mut drift = readiness(ProviderReadinessStateV1::Ready);
+        drift.identity.provider_id = "foreign".into();
+        assert_eq!(
+            adapter.evaluate(Some(drift), true).state,
+            ProviderReadinessStateV1::Unavailable
+        );
+        let stale_adapter = ProviderReadinessAdapterV1 {
+            now_unix_ms: 151,
+            ..adapter.clone()
+        };
+        let stale = stale_adapter.evaluate(Some(readiness(ProviderReadinessStateV1::Ready)), true);
+        assert_eq!(stale.reason, "readiness_stale");
+        let missing = adapter.evaluate(None, true);
+        assert_eq!(missing.state, ProviderReadinessStateV1::Unknown);
+        assert_eq!(missing.reason, "process_exists_without_readiness");
+        for (state, rank) in [
+            (ProviderReadinessStateV1::Ready, 0),
+            (ProviderReadinessStateV1::Degraded, 1),
+            (ProviderReadinessStateV1::Unavailable, 2),
+            (ProviderReadinessStateV1::Unknown, 2),
+        ] {
+            let read = provider_readiness_hub_read(readiness(state));
+            assert!(matches!(
+                (rank, read),
+                (0, HubReadV1::Available { .. })
+                    | (1, HubReadV1::Degraded { .. })
+                    | (2, HubReadV1::Unavailable { .. })
+            ));
+        }
+    }
 
     #[test]
     fn facade_preserves_observed_truth_without_inferred_liveness() {

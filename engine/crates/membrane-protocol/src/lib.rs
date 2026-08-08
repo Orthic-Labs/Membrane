@@ -32,6 +32,7 @@ pub mod installation;
 pub mod lease;
 pub mod observable_event;
 pub mod operations;
+pub mod provider_readiness;
 pub mod source_resolution;
 pub mod status;
 pub mod types;
@@ -60,6 +61,10 @@ pub use operations::{
     operations, operations_slice, ErrorResult, OperationEnvelope, OperationIndexEntry,
     OperationParameter, OperationResult, OperationSpec, OperationsIndex, ResultKind, SuccessResult,
     OPERATIONS,
+};
+pub use provider_readiness::{
+    ProviderIdentityV1, ProviderObservationV1, ProviderReadinessStateV1, ProviderReadinessV1,
+    ProviderTestQueryV1, PROVIDER_READINESS_SCHEMA_VERSION,
 };
 pub use source_resolution::{
     SourceResolutionReceiptV1, SourceResolutionStatusV1, SOURCE_RESOLUTION_RECEIPT_SCHEMA_VERSION,

@@ -21,6 +21,10 @@
 //! response for every fixture in the supplied set.
 
 use crate::error::Result;
+pub use membrane_protocol::{
+    ProviderIdentityV1, ProviderObservationV1, ProviderReadinessStateV1, ProviderReadinessV1,
+    ProviderTestQueryV1, PROVIDER_READINESS_SCHEMA_VERSION,
+};
 use serde::{Deserialize, Serialize};
 
 /// A single declared capability: the operation name plus the operation's
@@ -51,6 +55,9 @@ pub trait Provider: Send + Sync {
     /// A second call MUST be idempotent or return
     /// `ProviderError::Uninitialized`-class error.
     fn initialize(&mut self, config: &serde_json::Value) -> Result<()>;
+
+    /// Return one authoritative, typed observation; process existence is not readiness.
+    fn readiness(&self) -> ProviderReadinessV1;
 
     /// Every operation this provider claims to support.
     ///

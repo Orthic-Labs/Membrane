@@ -17,7 +17,7 @@
 //! `cargo test --workspace` sweep separately.
 
 use crate::error::ProviderError;
-use crate::provider::Provider;
+use crate::provider::{Provider, ProviderReadinessStateV1};
 use membrane_protocol::canonicalize;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -120,6 +120,36 @@ pub fn run_conformance<P: Provider + ?Sized>(
         provider: std::any::type_name::<P>().to_string(),
         ..ConformanceReport::default()
     };
+
+    let readiness = provider.readiness();
+    let readiness_error = readiness
+        .contract_error()
+        .map(str::to_owned)
+        .or_else(|| {
+            (readiness.state != ProviderReadinessStateV1::Ready)
+                .then(|| format!("provider readiness is {:?}", readiness.state))
+        })
+        .or_else(|| {
+            readiness
+                .observation
+                .is_none()
+                .then(|| "provider readiness observation is missing".into())
+        })
+        .or_else(|| {
+            (!matches!(readiness.test_query, Some(ref query) if query.succeeded))
+                .then(|| "provider readiness test query did not succeed".into())
+        });
+    if let Some(reason) = readiness_error {
+        report.failed.push(FixtureFailure {
+            fixture: "provider-readiness".into(),
+            operation: "readiness".into(),
+            reason,
+            expected: None,
+            actual: serde_json::to_value(readiness)
+                .ok()
+                .map(|value| canonicalize(&value)),
+        });
+    }
 
     let capabilities: std::collections::BTreeSet<String> = provider
         .list_capabilities()

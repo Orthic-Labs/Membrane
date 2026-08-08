@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "state": "ready",
+  "identity": {
+    "providerId": "cortex",
+    "installationId": "installation-1",
+    "serviceId": "service-1",
+    "releaseGeneration": "release-1",
+    "dataRootDigest": "sha256:data-root-1"
+  },
+  "observation": {"observedAtUnixMs": 1000, "freshForMs": 5000},
+  "testQuery": {"name": "context-smoke", "succeeded": true},
+  "reason": "authoritative_test_passed"
+}
