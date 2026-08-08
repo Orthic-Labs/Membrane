@@ -18,6 +18,9 @@ test("Cortex operations use bounded argv", () => {
   }
   for (const args of [{ operation: "symbol", node: "bad value" }, { operation: "impact", node: "x", limit: 0 }, { operation: "changes", query: "x", budget: 10001 }, { operation: "reference", node: "x", depth: 6 }, { operation: "architecture", node: "x" }, { operation: "impact", node: "x", from: "a" }]) assert.throws(() => cortexCommand({ ...auth, ...args }));
   assert.throws(() => cortexCommand({ operation: "architecture" }), /auth envelope/);
+  const snap = cortexCommand({ ...auth, operation: "snapshot_get", name: "base" });
+  assert.deepEqual(snap.command.slice(0, 4), ["snapshot", "get", "base", "--json"]);
+  assert.throws(() => cortexCommand({ ...auth, operation: "changes_since", name: "bad name" }), /snapshot name/);
 });
 
 test("Cortex payload is content-free and hash-bound", () => {
@@ -51,4 +54,14 @@ test("Cortex failures never echo CLI stderr", async () => {
     if (previous === undefined) delete process.env.CORTEX_CLI;
     else process.env.CORTEX_CLI = previous;
   }
+});
+
+test("snapshot payloads are identity-only and bounded", () => {
+  const hash = `xxh128:${"a".repeat(32)}`;
+  const identity = { generationId: hash, manifestDigest: hash, sourceObservation: { head: "b".repeat(40), dirty: false } };
+  const got = sanitizeCortexPayload({ name: "base", ...identity, leaves: [{ path: "src/a.ts", digest: hash }], ignored: "raw" }, "snapshot_get");
+  assert.equal(got.leaves[0].path, "src/a.ts"); assert.doesNotMatch(JSON.stringify(got), /ignored|raw/);
+  const delta = sanitizeCortexPayload({ base: identity, head: identity, changes: [{ path: "src/a.ts", kind: "modified" }], receipt: { total: 1, limit: 10, truncated: false } }, "changes_since");
+  assert.equal(delta.receipt.total, 1);
+  assert.throws(() => sanitizeCortexPayload({ base: identity, head: { ...identity, sourceObservation: { head: "b".repeat(40), dirty: true } }, changes: [], receipt: { total: 0, limit: 10, truncated: false } }, "changes_since"), /cortex_unavailable/);
 });
