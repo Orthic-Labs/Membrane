@@ -1,0 +1,85 @@
+$ node --test tests/platform/acceptance/windows-installed-acceptance.test.mjs
+✔ accepts a fully bound, fully signed, clean-VM Windows receipt (3.275875ms)
+✔ FAILS CLOSED when the outer installer is signed but one inner-PE payload was never verified (the confirmed RightKit NSIS gap) (1.033ms)
+✔ FAILS CLOSED when an inner-PE payload is entirely absent from the lifecycle receipt (0.269333ms)
+✔ FAILS CLOSED when fewer inner PEs are proven than the Tauri sidecar count requires (0.1795ms)
+✔ FAILS CLOSED, never assume-pass, when the lifecycle receipt is entirely missing (0.136375ms)
+✔ FAILS CLOSED when the platform-acceptance receipt is source-ready, not installed (0.114292ms)
+✔ FAILS CLOSED when bypass warnings were shown on the clean VM (0.177583ms)
+✔ FAILS CLOSED when Windows trust (Authenticode/Public Trust/RFC3161) is incomplete (0.175666ms)
+✔ FAILS CLOSED when the platform receipt's artifact sha256 does not match RightKit's sealed installer (0.168875ms)
+✔ FAILS CLOSED when the platform receipt's commit does not match RightKit's sealed manifest commit (1.07875ms)
+✔ verifyWindowsInstalledAcceptanceFromFiles reads all four documents and accepts a consistent set (29.622083ms)
+✔ CLI rejects missing arguments before validating anything (138.838584ms)
+✔ CLI exits non-zero and FAILS CLOSED on the outer-signed/inner-unsigned defect via real files (177.686375ms)
+✔ CLI exits 0 and prints PASS for a fully consistent, fully signed set (174.902875ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 729.308667
+
+$ node --test tests/platform/acceptance/macos-installed-acceptance.test.mjs
+✔ accepts a fully bound, fully signed, clean-VM macOS receipt (129.965375ms)
+✔ FAILS CLOSED when the sealed DMG on disk was tampered with after sealing (6.839375ms)
+✔ FAILS CLOSED when the platform receipt's artifact sha256 does not match RightKit's sealed installer (5.297209ms)
+✔ FAILS CLOSED when the macOS release receipt's recorded hash does not match the actual .app/.dmg bytes (168.852041ms)
+✔ FAILS CLOSED when the macOS release receipt's checks are not all validated (e.g. Gatekeeper skipped) (119.509375ms)
+✔ FAILS CLOSED, never assume-pass, when the macOS release receipt file is missing (2.906708ms)
+✔ FAILS CLOSED when macOS trust (codesign/notarization/staple/gatekeeper) is incomplete (2.224333ms)
+✔ FAILS CLOSED when the platform receipt is source-ready, not installed (4.542083ms)
+✔ resolves relative --dmg to the same file the sealed manifest names, and rejects a different-but-existing dmg path (122.530458ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 976.983667
+
+# These are the only two commands executed for this task. Both are plain
+# `node --test` runs of this task's own new test files. Neither test file
+# spawns a real signing tool:
+#   - windows-installed-acceptance.test.mjs is pure-JSON validation plus
+#     real-subprocess CLI runs of this task's own
+#     scripts/release/acceptance/windows-installed-acceptance.mjs, which
+#     itself only reads and cross-validates JSON (never invokes signtool,
+#     AzureSignTool, or right-release).
+#   - macos-installed-acceptance.test.mjs builds real temp-directory
+#     fixtures (an empty .app dir, a fixture .dmg file, a fixture sealed
+#     release-manifest.json) and calls this task's own
+#     scripts/release/acceptance/macos-installed-acceptance.mjs, which
+#     spawns scripts/release/macos/release-macos.mjs's `verify-receipt`
+#     command -- a pure hash-comparison path that never shells out to
+#     codesign, notarytool, spctl, hdiutil, xcrun, or stapler.
+#
+# No cargo build/test, no pnpm/Tauri build, no right-release, no
+# codesign/notarytool/spctl/hdiutil/xcrun/stapler/signtool/AzureSignTool
+# invocation, and no mutating git command was run at any point in this task.
+#
+# `node scripts/release/verify-platform-artifacts.mjs --all` (the manifest
+# command) was NOT run -- per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md, manifest
+# commands execute once at the final phased book gate, not per task.
+#
+# The real, credentialled commands this task's acceptance layer wraps, all
+# deferred to the Book 3 final phased gate on Adrian's macOS and Windows
+# machines:
+#
+#   pnpm --dir apps/membrane-hub release:doctor -- --platform mac
+#   pnpm --dir apps/membrane-hub release:build:mac
+#   node scripts/release/macos/release-macos.mjs verify --app <path>.app --dmg <path>.dmg --sealed-dir <path>
+#   node scripts/release/macos/release-macos.mjs receipt --app <path>.app --dmg <path>.dmg --commit <sha> --version <semver> --out <path>
+#   node scripts/release/macos/release-macos.mjs platform-receipt --out <path> --mode clean-vm --clean --machine-digest <sha256> ...
+#   node scripts/release/acceptance/macos-installed-acceptance.mjs <platform-receipt.json> <sealed-dir> <app-path> <dmg-path> <macos-receipt.json>
+#
+#   pnpm --dir apps/membrane-hub release:doctor -- --platform win
+#   pnpm --dir apps/membrane-hub release:build:win
+#   node scripts/release/windows/verify-release.mjs <release-manifest.json> <expected-payloads.json> <receipt.json> <tauri.conf.json>
+#   node scripts/release/acceptance/windows-installed-acceptance.mjs <platform-receipt.json> <release-manifest.json> <expected-payloads.json> <lifecycle-receipt.json> <tauri.conf.json>
+#
+# All of these require real signing/notarization credentials and a clean
+# macOS/Windows VM, none of which are available or invoked in this task.
