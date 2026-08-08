@@ -198,9 +198,9 @@ export function validateOperationFixtures(operation) {
     );
   }
   // Every closed error-code in the operation's index entry must be one the
-  // schema's `#/$defs/errorCode/properties/code/enum` literally lists; the
-  // contract is closed, so a code in the index that the schema does not
-  // know is a hard contract drift.
+  // schema's `#/$defs/errorCode/enum` literally lists; the contract is
+  // closed, so a code in the index that the schema does not know is a hard
+  // contract drift.
   const schemaEnum = readErrorCodeEnum(schema);
   for (const code of operation.errorCodes) {
     if (!schemaEnum.includes(code)) {
@@ -211,22 +211,27 @@ export function validateOperationFixtures(operation) {
   }
 }
 
-/** Walk the `#/$defs/errorCode/properties/code/enum` list of a per-operation
- *  schema. Throws if the schema is malformed. */
+/** Walk the `#/$defs/errorCode/enum` list of a per-operation schema — the
+ *  flat `{type:"string", enum:[...]}` shape that `error.properties.code`
+ *  points at via `$ref` in 9 of the 11 per-operation schemas. Throws if the
+ *  schema is malformed.
+ *
+ *  The two `hub.*` schemas (MBR-701, commit 21102967) predate this flat
+ *  shape: they inline `error.properties.code` as a bare `const` and carry
+ *  an unreferenced, object-shaped `$defs.errorCode`
+ *  (`{type:"object", properties:{code:{enum:[...]}}}`) that nothing in the
+ *  schema actually validates against — a vestigial leftover, not a second
+ *  valid shape. For those, fall back to the `const` that IS validated. */
 function readErrorCodeEnum(schema) {
   const def = schema?.$defs?.errorCode;
-  if (!def || typeof def !== "object") {
-    throw new Error("per-operation schema is missing #/$defs/errorCode");
+  if (def && typeof def === "object" && Array.isArray(def.enum)) {
+    return def.enum;
   }
-  const codeProp = def?.properties?.code;
-  if (!codeProp || typeof codeProp !== "object") {
-    throw new Error("per-operation schema is missing #/$defs/errorCode/properties/code");
+  const codeConst = schema?.$defs?.error?.properties?.code?.const;
+  if (codeConst !== undefined) {
+    return [codeConst];
   }
-  const codes = codeProp.enum;
-  if (!Array.isArray(codes)) {
-    throw new Error("per-operation schema is missing #/$defs/errorCode/properties/code/enum");
-  }
-  return codes;
+  throw new Error("per-operation schema is missing #/$defs/errorCode/enum (and no #/$defs/error/properties/code const fallback)");
 }
 
 /** Read + parse a repo-relative JSON file relative to the repo root. */

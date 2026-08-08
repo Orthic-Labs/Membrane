@@ -182,7 +182,7 @@ pub fn revoke_unowned(table: &OwnershipTable, candidates: &[PathBuf]) -> Vec<Pat
 
 /// Terminal state of an uninstall run, recorded in the receipt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "kind")]
+#[serde(rename_all = "snake_case")]
 pub enum UninstallOutcome {
     /// The run started; no decision is final yet. Used while the receipt
     /// is being rewritten between `execute_uninstall` calls.
