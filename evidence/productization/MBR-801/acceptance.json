@@ -1,0 +1,10 @@
+{
+  "schema": "orthic.membrane-evidence.acceptance.v1",
+  "taskId": "MBR-801",
+  "acceptance": "All ten scenarios complete with unique traces on macOS and Windows.",
+  "status": "pending_book_gate",
+  "verifiedBy": "node --test tests/e2e/mbr801-run-harness.test.mjs",
+  "observed": "The installed-path harness (scripts/qualification/run.mjs) is implemented with injectable signed-build verification, host-identity resolution, real scenario execution (delegating to scripts/run-platform-scenarios.mjs), and benchmark aggregation (delegating to mcp/e2e-benchmark.mjs). Its deterministic test suite drives the harness for both the macos and windows platform values and proves all ten canonical scenarios complete with a trace ID, that the ten trace IDs on each platform are unique, that the twenty trace IDs across both platforms are globally unique, and that both resulting receipts verify as status=passed under the pre-existing scripts/qualification/verify-mbr801-evidence.mjs validator given one shared commit and release generation. The real installed-path execution against actual signed macOS and Windows builds (`node scripts/qualification/run.mjs --task MBR-801`) is deferred to the Book 2 final phased gate per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md; this task does not execute it and does not claim acceptance pass.",
+  "deferredCommand": "node scripts/qualification/run.mjs --task MBR-801",
+  "at": "2026-08-08T17:00:00.000Z"
+}

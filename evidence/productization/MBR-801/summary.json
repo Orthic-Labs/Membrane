@@ -1,0 +1,15 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-801",
+  "title": "Run exact installed-path ten-scenario harness",
+  "commit": "TBD",
+  "acceptanceStatus": "pending_book_gate",
+  "envBlocked": false,
+  "book": 2,
+  "changedFiles": [
+    "docs/evaluation/mbr801-run-harness.md",
+    "scripts/qualification/run.mjs",
+    "tests/e2e/mbr801-run-harness.test.mjs"
+  ],
+  "notes": "Implements the installed-path ten-scenario harness invoked by the manifest as `node scripts/qualification/run.mjs --task MBR-801`. Every real-execution dependency (signed-build verification via scripts/release/verify-release-evidence.mjs, real installed-path scenario execution via scripts/run-platform-scenarios.mjs, and real benchmark aggregation via mcp/e2e-benchmark.mjs) is wired as the default implementation and is injectable for deterministic testing. Deterministic tests in tests/e2e/mbr801-run-harness.test.mjs inject fakes to prove, for both macos and windows, that all ten canonical scenarios complete with a unique trace ID, and that the resulting receipts verify as passed under the existing scripts/qualification/verify-mbr801-evidence.mjs validator with a shared commit and release generation. Per the Book-Mode execution rules, the manifest command itself (a real installed, signed-build execution requiring a live Membrane service, installed crypt CLI, live event-log database, and a real client host on each real platform) is deferred to the Book 2 final phased gate and was not executed during this task."
+}
