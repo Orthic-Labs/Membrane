@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "kind": "membrane-fault-suite",
+  "receipts": [
+    {
+      "schemaVersion": 1,
+      "kind": "membrane-fault-receipt",
+      "scenarioId": "provider-timeout",
+      "status": "degraded",
+      "code": "provider_timeout",
+      "activated": true,
+      "observed": {
+        "status": "degraded",
+        "code": "provider_timeout",
+        "healthy": false,
+        "alert": "provider_timeout"
+      },
+      "recovery": {
+        "ok": true,
+        "status": "contained"
+      },
+      "cleanup": "complete",
+      "timestamp": 1700000000000,
+      "deadlineMs": 1500,
+      "inputDigest": "sha256:21a70b8809ccb6f5839d9e6a5c790c06f992389ddf638a95a62b1e378183c287",
+      "content": null
+    },
+    {
+      "schemaVersion": 1,
+      "kind": "membrane-fault-receipt",
+      "scenarioId": "watcher-restart",
+      "status": "recovering",
+      "code": "watcher_restarted",
+      "activated": true,
+      "observed": {
+        "status": "recovering",
+        "code": "watcher_restarted",
+        "healthy": false,
+        "alert": "watcher_restarted"
+      },
+      "recovery": {
+        "ok": true,
+        "status": "current"
+      },
+      "cleanup": "complete",
+      "timestamp": 1700000000000,
+      "deadlineMs": 1500,
+      "inputDigest": "sha256:9e0bcc4dfbd5ff8d64ed06885197c8ee1d1e5e72b468ab7624b78cf507748844",
+      "content": null
+    },
+    {
+      "schemaVersion": 1,
+      "kind": "membrane-fault-receipt",
+      "scenarioId": "wrong-installation",
+      "status": "blocked",
+      "code": "blocked_wrong_installation",
+      "activated": true,
+      "observed": {
+        "status": "blocked",
+        "code": "blocked_wrong_installation",
+        "healthy": false,
+        "alert": "blocked_wrong_installation"
+      },
+      "recovery": {
+        "ok": true,
+        "status": "contained"
+      },
+      "cleanup": "complete",
+      "timestamp": 1700000000000,
+      "deadlineMs": 1500,
+      "inputDigest": "sha256:4b975929498bb1c9c554166c6c67ec37750fe4346a8b6aa54ea2aa60b1068631",
+      "content": null
+    },
+    {
+      "schemaVersion": 1,
+      "kind": "membrane-fault-receipt",
+      "scenarioId": "missing-host-load",
+      "status": "degraded",
+      "code": "host_load_missing",
+      "activated": true,
+      "observed": {
+        "status": "degraded",
+        "code": "host_load_missing",
+        "healthy": false,
+        "alert": "host_load_missing"
+      },
+      "recovery": {
+        "ok": true,
+        "status": "contained"
+      },
+      "cleanup": "complete",
+      "timestamp": 1700000000000,
+      "deadlineMs": 1500,
+      "inputDigest": "sha256:b298db7d45817b361a226dc01a1476f7bddf4137d40de28f721fa87fbf3c0596",
+      "content": null
+    },
+    {
+      "schemaVersion": 1,
+      "kind": "membrane-fault-receipt",
+      "scenarioId": "db-failure",
+      "status": "degraded",
+      "code": "database_unavailable",
+      "activated": true,
+      "observed": {
+        "status": "degraded",
+        "code": "database_unavailable",
+        "healthy": false,
+        "alert": "database_unavailable"
+      },
+      "recovery": {
+        "ok": true,
+        "status": "contained"
+      },
+      "cleanup": "complete",
+      "timestamp": 1700000000000,
+      "deadlineMs": 1500,
+      "inputDigest": "sha256:50ea9e518c669dda360525ee07d30b856d9230680616fb54467309569d70705c",
+      "content": null
+    },
+    {
+      "schemaVersion": 1,
+      "kind": "membrane-fault-receipt",
+      "scenarioId": "schema-skew",
+      "status": "blocked",
+      "code": "schema_incompatible",
+      "activated": true,
+      "observed": {
+        "status": "blocked",
+        "code": "schema_incompatible",
+        "healthy": false,
+        "alert": "schema_incompatible"
+      },
+      "recovery": {
+        "ok": true,
+        "status": "contained"
+      },
+      "cleanup": "complete",
+      "timestamp": 1700000000000,
+      "deadlineMs": 1500,
+      "inputDigest": "sha256:2764fa3a9778ed97226636356c507165e99aabf80b773527517a8b183a86f878",
+      "content": null
+    },
+    {
+      "schemaVersion": 1,
+      "kind": "membrane-fault-receipt",
+      "scenarioId": "zero-delivery",
+      "status": "degraded",
+      "code": "selected_without_delivery",
+      "activated": true,
+      "observed": {
+        "status": "degraded",
+        "code": "selected_without_delivery",
+        "healthy": false,
+        "alert": "selected_without_delivery"
+      },
+      "recovery": {
+        "ok": true,
+        "status": "contained"
+      },
+      "cleanup": "complete",
+      "timestamp": 1700000000000,
+      "deadlineMs": 1500,
+      "inputDigest": "sha256:20796fbd312d7616c68650cfce70b3a67164f0ce06c5e25243f134536ed87f78",
+      "content": null
+    }
+  ]
+}

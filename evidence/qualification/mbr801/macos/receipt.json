@@ -1,0 +1,133 @@
+{
+  "schema": "orthic.mbr801-installed-receipt.v1",
+  "platform": "macos",
+  "status": "incomplete",
+  "commit": "39feb543f7fc614297b033c69098d9841e64d89b",
+  "release_generation": null,
+  "installed_execution": false,
+  "signature_status": "unavailable",
+  "artifact_sha256": null,
+  "client": "claude_code",
+  "model": "",
+  "host": "Adrians-MacBook-Air.local",
+  "scenario_count": 10,
+  "scenarios_passed": 0,
+  "traces": [
+    {
+      "trace_id": null,
+      "scenario_id": "repository_orientation",
+      "archive_path": "trace-0.json",
+      "gates": {
+        "provider": "failed",
+        "delivery": "failed",
+        "outcome": "failed"
+      }
+    },
+    {
+      "trace_id": null,
+      "scenario_id": "cross_repo_impact",
+      "archive_path": "trace-1.json",
+      "gates": {
+        "provider": "failed",
+        "delivery": "failed",
+        "outcome": "failed"
+      }
+    },
+    {
+      "trace_id": null,
+      "scenario_id": "preference_application",
+      "archive_path": "trace-2.json",
+      "gates": {
+        "provider": "failed",
+        "delivery": "failed",
+        "outcome": "failed"
+      }
+    },
+    {
+      "trace_id": null,
+      "scenario_id": "stale_graph_immediate_edit",
+      "archive_path": "trace-3.json",
+      "gates": {
+        "provider": "failed",
+        "delivery": "failed",
+        "outcome": "failed"
+      }
+    },
+    {
+      "trace_id": null,
+      "scenario_id": "contradiction",
+      "archive_path": "trace-4.json",
+      "gates": {
+        "provider": "failed",
+        "delivery": "failed",
+        "outcome": "failed"
+      }
+    },
+    {
+      "trace_id": null,
+      "scenario_id": "denied_scope",
+      "archive_path": "trace-5.json",
+      "gates": {
+        "provider": "failed",
+        "delivery": "failed",
+        "outcome": "failed"
+      }
+    },
+    {
+      "trace_id": null,
+      "scenario_id": "tool_proof_criteria",
+      "archive_path": "trace-6.json",
+      "gates": {
+        "provider": "failed",
+        "delivery": "failed",
+        "outcome": "failed"
+      }
+    },
+    {
+      "trace_id": null,
+      "scenario_id": "user_correction",
+      "archive_path": "trace-7.json",
+      "gates": {
+        "provider": "failed",
+        "delivery": "failed",
+        "outcome": "failed"
+      }
+    },
+    {
+      "trace_id": null,
+      "scenario_id": "memory_temporal_as_of",
+      "archive_path": "trace-8.json",
+      "gates": {
+        "provider": "failed",
+        "delivery": "failed",
+        "outcome": "failed"
+      }
+    },
+    {
+      "trace_id": null,
+      "scenario_id": "provider_timeout_degradation",
+      "archive_path": "trace-9.json",
+      "gates": {
+        "provider": "failed",
+        "delivery": "failed",
+        "outcome": "failed"
+      }
+    }
+  ],
+  "benchmark": {
+    "status": "blocked_incomplete_path",
+    "reason": "no live installed event-log database available for benchmark aggregation"
+  },
+  "generated_at": "2026-08-08T20:34:31.283Z",
+  "reasons": [
+    "release generation unavailable",
+    "installed execution not proven",
+    "signature status is not passed",
+    "artifact sha256 missing or malformed",
+    "real client, model, or host identity is missing",
+    "one or more scenarios did not produce a trace id",
+    "trace IDs are not unique across all ten scenarios",
+    "provider, delivery, or outcome gate failed for one or more scenarios",
+    "benchmark is incomplete"
+  ]
+}
