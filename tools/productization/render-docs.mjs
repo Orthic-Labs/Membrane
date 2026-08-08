@@ -233,6 +233,20 @@ export function renderOperationsDoc(truth, platforms) {
     "",
     platformSentence(platforms),
     "",
+    // These runbook links used to live only as a hand-edit inside the
+    // generated file, so the next regeneration silently deleted them and
+    // broke tests/runbook-links/hub-alerts.test.mjs. Emitting them from the
+    // generator is what makes them survive -- a generated doc cannot carry
+    // hand-maintained content.
+    "## Hub alerts & reasons",
+    "",
+    "Hub is read-only: an alert never authorizes an in-place repair. Use the canonical",
+    "[Hub alert runbook](troubleshooting/hub-alerts.md), which maps every stable reason",
+    "to its precise entry, smallest safe first action, and repair boundary. Topic runbooks",
+    "cover [diagnostics](troubleshooting/diagnostics.md), [backups](troubleshooting/backups.md),",
+    "[migrations](troubleshooting/migrations.md), [update rollback](troubleshooting/update-rollback.md),",
+    "and [support bundles](troubleshooting/support-bundles.md).",
+    "",
   ].join("\n");
 }
 

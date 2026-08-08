@@ -28,3 +28,12 @@ cargo test --workspace --features fastembed      # with real ONNX embeddings
 ## Platform status
 
 Supported platforms are **macOS and Windows** (tier 1). Linux is tier-2 best-effort.
+
+## Hub alerts & reasons
+
+Hub is read-only: an alert never authorizes an in-place repair. Use the canonical
+[Hub alert runbook](troubleshooting/hub-alerts.md), which maps every stable reason
+to its precise entry, smallest safe first action, and repair boundary. Topic runbooks
+cover [diagnostics](troubleshooting/diagnostics.md), [backups](troubleshooting/backups.md),
+[migrations](troubleshooting/migrations.md), [update rollback](troubleshooting/update-rollback.md),
+and [support bundles](troubleshooting/support-bundles.md).

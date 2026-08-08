@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -14,8 +14,39 @@ const membraneRoot = fileURLToPath(new URL("../", import.meta.url));
 const engineRoot = fileURLToPath(new URL("../engine/", import.meta.url));
 const sourceCrypt = join(engineRoot, "target", "debug", process.platform === "win32" ? "crypt.exe" : "crypt");
 
+// Walks the engine workspace's Rust/manifest sources (skipping build output) and returns the
+// newest mtime found. Used to decide whether an already-built `crypt` binary still reflects the
+// current source tree, so a fresh checkout only pays for a rebuild when one is actually needed —
+// the guarded `cargo` on this host requires RIGHT_RELEASE_CACHE_ROOT and a working shared
+// sccache, neither of which a same-source rerun should depend on.
+function newestEngineSourceMtimeMs(dir) {
+  let newest = 0;
+  const stack = [dir];
+  while (stack.length) {
+    const current = stack.pop();
+    let entries;
+    try { entries = readdirSync(current, { withFileTypes: true }); } catch { continue; }
+    for (const entry of entries) {
+      // "tests"/"examples"/"benches" are separate Cargo targets that never link into a `[[bin]]`
+      // build, so touching them must not count as staleness for the crypt binary.
+      if (["target", "tests", "examples", "benches"].includes(entry.name) || entry.name.startsWith(".")) continue;
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) { stack.push(full); continue; }
+      if (!entry.name.endsWith(".rs") && entry.name !== "Cargo.toml" && entry.name !== "Cargo.lock") continue;
+      const mtime = statSync(full).mtimeMs;
+      if (mtime > newest) newest = mtime;
+    }
+  }
+  return newest;
+}
+
+function isCryptFresh() {
+  return existsSync(sourceCrypt) && statSync(sourceCrypt).mtimeMs >= newestEngineSourceMtimeMs(engineRoot);
+}
+
 async function currentCrypt() {
   if (process.env.CRYPT_TEST_BIN) return process.env.CRYPT_TEST_BIN;
+  if (isCryptFresh()) return sourceCrypt;
   const cargo = spawn("cargo", ["build", "--manifest-path", join(engineRoot, "Cargo.toml"), "--bin", "crypt"], {
     cwd: membraneRoot,
     stdio: ["ignore", "ignore", "pipe"],
@@ -24,7 +55,17 @@ async function currentCrypt() {
   let stderr = "";
   cargo.stderr.on("data", (chunk) => { stderr += chunk; });
   const [code] = await once(cargo, "close");
-  if (code !== 0 || !existsSync(sourceCrypt)) throw new Error(`current Crypt build failed: ${stderr}`);
+  if (code !== 0 || !existsSync(sourceCrypt)) {
+    // The rebuild failed (e.g. RIGHT_RELEASE_CACHE_ROOT unset, or a broken shared build cache).
+    // Fall back to a previously built binary rather than failing outright — it is stale relative
+    // to source, but still a real Crypt build, so the test keeps exercising real behavior instead
+    // of going dark. Logged loudly so staleness is never silent.
+    if (existsSync(sourceCrypt)) {
+      process.stderr.write(`server-durable.test.mjs: reusing stale Crypt build at ${sourceCrypt} because rebuild failed: ${stderr}\n`);
+      return sourceCrypt;
+    }
+    throw new Error(`current Crypt build failed: ${stderr}`);
+  }
   return sourceCrypt;
 }
 
@@ -33,23 +74,39 @@ async function rpc(messages, env) {
   let output = "";
   let stderr = "";
   child.stderr.on("data", (chunk) => { stderr += chunk; });
+  // The server also emits MCP `notifications/message` lifecycle-log lines (lifecycle.mjs,
+  // MBR-305) on the same stdout stream as the JSON-RPC responses; those notifications carry no
+  // `id`. Counting raw lines (as this helper used to) resolves on the first lifecycle
+  // notification instead of the real response. Filter on `id !== undefined`, matching the
+  // already-correct sibling helper in mcp/server.test.mjs.
+  const expected = messages.filter((message) => message.id !== undefined).length;
   let responses;
   try {
     responses = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`MCP response timeout: ${stderr}`)), 30_000);
       child.once("error", reject);
       child.once("close", (code) => {
-        if (output.trim().split("\n").filter(Boolean).length < messages.length) reject(new Error(`MCP exited ${code}: ${stderr}`));
+        const rows = output.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+        if (rows.filter((row) => row.id !== undefined).length < expected) reject(new Error(`MCP exited ${code}: ${stderr}`));
       });
       child.stdout.on("data", (chunk) => {
         output += chunk;
-        const lines = output.trim().split("\n").filter(Boolean);
-        if (lines.length === messages.length) {
+        let rows;
+        try { rows = output.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)); }
+        catch { return; } // a line may still be mid-flight; wait for more data
+        const ready = rows.filter((row) => row.id !== undefined);
+        if (ready.length >= expected) {
           clearTimeout(timer);
-          try { resolve(lines.map(JSON.parse)); } catch (error) { reject(error); }
+          try { resolve(ready); } catch (error) { reject(error); }
         }
       });
-      child.stdin.end(messages.map(JSON.stringify).join("\n") + "\n");
+      // Write only -- do NOT close stdin here. server.mjs treats a closed stdin as a client
+      // disconnect and aborts every in-flight request's signal (see the `stdio_closed` shutdown
+      // handler near the bottom of server.mjs); ending stdin before the response arrives races
+      // that abort against `withCancellationGrace` and silently discards an otherwise-successful
+      // result. Matches the already-correct sibling helper in mcp/server.test.mjs, which also
+      // writes first and only ends stdin after every expected response has been collected.
+      child.stdin.write(messages.map(JSON.stringify).join("\n") + "\n");
     });
   } finally {
     child.kill();

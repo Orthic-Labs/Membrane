@@ -12,6 +12,11 @@
     },
     {
       "client": "claude",
+      "operation": "membrane_cortex",
+      "support": "unsupported"
+    },
+    {
+      "client": "claude",
       "operation": "membrane_knowledge_propose",
       "support": "supported"
     },
@@ -64,6 +69,11 @@
       "client": "codex",
       "operation": "membrane_source_read",
       "support": "supported"
+    },
+    {
+      "client": "codex",
+      "operation": "membrane_cortex",
+      "support": "unsupported"
     },
     {
       "client": "codex",
@@ -119,6 +129,11 @@
       "client": "cursor",
       "operation": "membrane_source_read",
       "support": "degraded"
+    },
+    {
+      "client": "cursor",
+      "operation": "membrane_cortex",
+      "support": "unsupported"
     },
     {
       "client": "cursor",
@@ -174,6 +189,11 @@
       "client": "windsurf",
       "operation": "membrane_source_read",
       "support": "degraded"
+    },
+    {
+      "client": "windsurf",
+      "operation": "membrane_cortex",
+      "support": "unsupported"
     },
     {
       "client": "windsurf",
@@ -229,6 +249,11 @@
       "client": "generic_mcp",
       "operation": "membrane_source_read",
       "support": "degraded"
+    },
+    {
+      "client": "generic_mcp",
+      "operation": "membrane_cortex",
+      "support": "unsupported"
     },
     {
       "client": "generic_mcp",
@@ -321,6 +346,11 @@
     {
       "errorVersion": 1,
       "name": "membrane_source_read",
+      "schemaVersion": 1
+    },
+    {
+      "errorVersion": 1,
+      "name": "membrane_cortex",
       "schemaVersion": 1
     },
     {

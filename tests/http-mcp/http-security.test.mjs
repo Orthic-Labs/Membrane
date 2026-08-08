@@ -6,7 +6,10 @@ const source = readFileSync(new URL('../../engine/crates/membrane-mcp/src/http_s
 const schema = JSON.parse(readFileSync(new URL('../../schemas/http-mcp-security.v1.schema.json', import.meta.url), 'utf8'));
 
 test('HTTP admission is pure, loopback-only & keeps stdio default', () => {
-  assert.match(source, /pub fn admit\(policy: &HttpAdmissionPolicy/);
+  // Whitespace-tolerant: rustfmt wraps this signature across lines once the
+  // parameter list grows, and the contract being asserted is "admit takes the
+  // policy by reference", not how rustfmt happened to lay it out today.
+  assert.match(source, /pub fn admit\(\s*policy: &HttpAdmissionPolicy/);
   assert.match(source, /peer_ip\.is_loopback\(\)/);
   assert.match(source, /resolved_host_ip\.is_loopback\(\)/);
   assert.match(source, /HostNotAllowed|OriginNotAllowed|DnsRebinding/);
