@@ -11,6 +11,8 @@ use std::{
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder};
 use tauri::{Emitter, Manager, PhysicalPosition};
+#[cfg(target_os = "macos")]
+use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CachedSnapshot {
@@ -213,7 +215,7 @@ fn toggle_popover(app: &tauri::AppHandle, position: PhysicalPosition<f64>) {
     }
     if let Ok(size) = window.outer_size() {
         let mut x = (position.x - f64::from(size.width) / 2.0).round() as i32;
-        let mut y = (position.y + 12.0).round() as i32;
+        let mut y = (position.y + 2.0).round() as i32;
         if let Ok(Some(monitor)) = window.current_monitor() {
             let left = monitor.position().x + 8;
             let top = monitor.position().y + 24;
@@ -365,6 +367,14 @@ fn main() {
                 })
                 .build(app)?;
             if let Some(w) = app.get_webview_window("hub") {
+                #[cfg(target_os = "macos")]
+                apply_vibrancy(
+                    &w,
+                    NSVisualEffectMaterial::Popover,
+                    Some(NSVisualEffectState::Active),
+                    Some(18.0),
+                )
+                .map_err(|e| e.to_string())?;
                 let hidden = w.clone();
                 w.on_window_event(move |event| match event {
                     tauri::WindowEvent::CloseRequested { api, .. } => {
