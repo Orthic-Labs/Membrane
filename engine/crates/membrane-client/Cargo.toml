@@ -1,0 +1,13 @@
+[package]
+name = "membrane-client"
+version = "0.1.0"
+edition.workspace = true
+license-file.workspace = true
+description = "Transport-injected client for canonical Membrane v1 operation envelopes"
+
+[lib]
+name = "membrane_client"
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = { workspace = true }
