@@ -4,13 +4,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "membrane-client"
-version = "0.0.0"
-description = "Local transport-injected client for Membrane protocol envelopes"
+version = "0.1.0"
+description = "Thin, transport-injected Membrane SDK client and content-free analysis helpers. Ships no daemon, binary, or core application code; callers inject their own local transport."
+readme = "README.md"
+license = { text = "Orthic Labs Source Use License v1.0 (source-available, not OSI open source; see repository LICENSE)." }
 requires-python = ">=3.11"
 dependencies = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: Other/Proprietary License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Typing :: Typed",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+include-package-data = false
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+membrane_client = ["py.typed"]

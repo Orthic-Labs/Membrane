@@ -36,6 +36,24 @@ requiring review to notice:
   tests/sdk.python_client_test` from the repository root, or `python3
   tests/sdk/python_client_test.py`).
 
+## Python packaging boundary and daemon-version compatibility
+
+MBR-909 adds two further Python-only test files that do not have Rust/
+TypeScript equivalents because they check packaging concerns specific to
+publishing `membrane-client` on PyPI as a standalone distribution:
+
+- `tests/sdk/python_package_boundary_test.py` proves the package
+  (`packages/python/`) is a thin client only — no core app, no other SDK,
+  no native binary — against the machine-checkable declaration in
+  `packages/python/package-boundary.v1.json` /
+  `schemas/sdk-python-package-boundary.v1.schema.json`. See
+  `docs/sdk/python-publishing.md`.
+- `tests/sdk/python_daemon_compatibility_test.py` proves the client accepts
+  every daemon receipt-schema version `schemas/context-receipt.v1.schema.json`
+  currently lists as supported (today: `1` and `2`, i.e. the previous and
+  current supported daemon) and fails closed against a newer, unsupported
+  one. See `docs/sdk/python.md`'s "Daemon compatibility" section.
+
 ## HTTP transport
 
 `docs/sdk/http-transport.md` documents the wire contract for injecting a

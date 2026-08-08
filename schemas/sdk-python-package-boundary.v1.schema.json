@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/sdk-python-package-boundary.v1.schema.json",
+  "title": "SdkPythonPackageBoundaryV1",
+  "description": "MBR-909: the declared distribution boundary for the membrane-client Python package. Encodes 'publish the SDK, not the core app' as data: which top-level importable packages the sdist/wheel may contain, which repository path prefixes must never appear inside it, and which file extensions (native binaries, installers, archives) are forbidden. tests/sdk/python_package_boundary_test.py reads this document plus packages/python/pyproject.toml and the on-disk package tree, and fails if any of them drift from this declaration. Canonical instance: packages/python/package-boundary.v1.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "distributionName",
+    "packageRoot",
+    "allowedTopLevelPackages",
+    "forbiddenPathPrefixes",
+    "forbiddenFileExtensions",
+    "runtimeDependencies",
+    "corePublishing"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "distributionName": { "type": "string", "minLength": 1 },
+    "packageRoot": {
+      "type": "string",
+      "description": "Repository-relative directory setuptools resolves packages from (pyproject.toml [tool.setuptools.packages.find].where).",
+      "minLength": 1
+    },
+    "allowedTopLevelPackages": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "forbiddenPathPrefixes": {
+      "type": "array",
+      "description": "Repository-relative path prefixes that must never be reachable from this package's build metadata (the core app, other SDKs, and tooling).",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "forbiddenFileExtensions": {
+      "type": "array",
+      "description": "File suffixes that would indicate a bundled native binary, installer, or archive rather than pure Python source/metadata.",
+      "items": { "type": "string", "pattern": "^\\.[A-Za-z0-9]+$" },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "runtimeDependencies": {
+      "type": "array",
+      "description": "Declared [project].dependencies. Must stay empty for a thin transport-injected client.",
+      "items": { "type": "string" },
+      "maxItems": 0
+    },
+    "corePublishing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publishesCoreApp", "bundlesDaemonBinary", "note"],
+      "properties": {
+        "publishesCoreApp": { "const": false },
+        "bundlesDaemonBinary": { "const": false },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "distributionName": "membrane-client",
+  "packageRoot": "src",
+  "allowedTopLevelPackages": ["membrane_client"],
+  "forbiddenPathPrefixes": [
+    "engine/",
+    "apps/",
+    "packaging/",
+    "release/",
+    "install/",
+    "npm/",
+    "packages/typescript/"
+  ],
+  "forbiddenFileExtensions": [
+    ".so", ".pyd", ".dylib", ".dll", ".exe", ".app", ".bin",
+    ".whl", ".tar", ".tar.gz", ".zip", ".dmg", ".msi", ".appimage"
+  ],
+  "runtimeDependencies": [],
+  "corePublishing": {
+    "publishesCoreApp": false,
+    "bundlesDaemonBinary": false,
+    "note": "membrane-client ships only transport-injected client code and content-free analysis helpers under src/membrane_client. It never vendors, downloads, or bundles the membrane daemon, its binaries, or any other package's sources. A caller who needs the daemon installs it separately; this package only points at it through an injected transport."
+  }
+}
