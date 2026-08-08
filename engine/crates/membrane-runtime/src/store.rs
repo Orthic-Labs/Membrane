@@ -7,6 +7,7 @@
 //! experience. Persisted to the `memories` table of the evolution database.
 
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -5930,6 +5931,88 @@ impl MemoryStore {
         Ok((n, skipped))
     }
 
+    /// Write a deterministic, content-free-by-default vault review artifact.
+    pub fn export_vault_review(
+        &self,
+        path: &Path,
+        format: &str,
+        include_content: bool,
+    ) -> Result<usize, String> {
+        let conn = self.db.lock();
+        let mut statement = conn
+            .prepare(
+                "SELECT id,tier,scope_id,content_hash,lifecycle_state,effective_from_ms,\
+                 effective_until_ms,expires_at_ms,review_after_ms,superseded_by,priority_class,\
+                 confidence,confidence_basis,source_ids,artifact_family,producer,record_type,\
+                 authority,influence_class,content FROM memories ORDER BY \
+                 CASE WHEN review_after_ms IS NULL THEN 1 ELSE 0 END,review_after_ms,\
+                 CASE priority_class WHEN 'protected' THEN 0 ELSE 1 END,id COLLATE BINARY",
+            )
+            .map_err(|error| error.to_string())?;
+        let mut memories: Vec<serde_json::Value> = statement
+            .query_map([], |row| {
+                let sources: String = row.get(13)?;
+                let mut item = serde_json::json!({
+                    "id":row.get::<_,String>(0)?, "tier":row.get::<_,String>(1)?,
+                    "scope":row.get::<_,String>(2)?, "contentHash":row.get::<_,Option<String>>(3)?,
+                    "lifecycle":{"state":row.get::<_,String>(4)?,"effectiveFromMs":row.get::<_,Option<i64>>(5)?,"effectiveUntilMs":row.get::<_,Option<i64>>(6)?,"expiresAtMs":row.get::<_,Option<i64>>(7)?,"reviewAfterMs":row.get::<_,Option<i64>>(8)?,"supersededBy":row.get::<_,Option<String>>(9)?},
+                    "priority":row.get::<_,String>(10)?, "confidence":row.get::<_,Option<f64>>(11)?,
+                    "confidenceBasis":row.get::<_,Option<String>>(12)?,
+                    "sourceRefs":serde_json::from_str::<serde_json::Value>(&sources).unwrap_or(serde_json::Value::Null),
+                    "artifactFamily":row.get::<_,String>(14)?, "producer":row.get::<_,String>(15)?,
+                    "recordType":row.get::<_,String>(16)?, "authority":row.get::<_,String>(17)?,
+                    "influenceClass":row.get::<_,String>(18)?,
+                });
+                if include_content {
+                    item["content"] = serde_json::Value::String(row.get(19)?);
+                }
+                Ok(item)
+            })
+            .map_err(|error| error.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|error: rusqlite::Error| error.to_string())?;
+        drop(statement);
+        let links: Vec<(String, String)> = memories
+            .iter()
+            .filter_map(|item| {
+                Some((
+                    item["id"].as_str()?.into(),
+                    item["lifecycle"]["supersededBy"].as_str()?.into(),
+                ))
+            })
+            .collect();
+        for (rank, item) in memories.iter_mut().enumerate() {
+            let id = item["id"].as_str().unwrap_or_default().to_string();
+            item["queueRank"] = serde_json::json!(rank + 1);
+            item["supersedes"] = serde_json::json!(links
+                .iter()
+                .filter_map(|(old, new)| (new == &id).then_some(old))
+                .collect::<Vec<_>>());
+            let mut events = conn.prepare("SELECT ts,event_kind,surface,session_id,trace_id,event_uid,installation_id,client,turn_id,artifact_id,identity_status,meta FROM memory_event_log WHERE memory_id=?1 ORDER BY event_id").map_err(|e| e.to_string())?;
+            item["events"] = serde_json::Value::Array(events.query_map([&id], |row| {
+                let meta: String = row.get(11)?;
+                let meta = serde_json::from_str::<serde_json::Value>(&meta).unwrap_or_default();
+                Ok(serde_json::json!({"ts":row.get::<_,String>(0)?,"kind":row.get::<_,String>(1)?,"surface":row.get::<_,String>(2)?,"sessionId":row.get::<_,Option<String>>(3)?,"traceId":row.get::<_,Option<String>>(4)?,"eventUid":row.get::<_,Option<String>>(5)?,"installationId":row.get::<_,Option<String>>(6)?,"client":row.get::<_,Option<String>>(7)?,"turnId":row.get::<_,Option<String>>(8)?,"artifactId":row.get::<_,Option<String>>(9)?,"identityStatus":row.get::<_,String>(10)?,"authority":meta.get("authority"),"actor":meta.get("actor"),"reasonRef":meta.get("reason_ref"),"originEventUid":meta.get("origin_event_uid")}))
+            }).map_err(|e| e.to_string())?.collect::<Result<_,_>>().map_err(|e: rusqlite::Error| e.to_string())?);
+            let mut evidence = conn.prepare("SELECT trace_id,outcome,verified,verdict_ref,ts FROM context_feedback WHERE candidate_id=?1 ORDER BY ts,trace_id").map_err(|e| e.to_string())?;
+            item["reviewEvidence"] = serde_json::Value::Array(evidence.query_map([&id], |row| Ok(serde_json::json!({"traceId":row.get::<_,String>(0)?,"outcome":row.get::<_,String>(1)?,"verified":row.get::<_,i64>(2)? != 0,"verdictRef":row.get::<_,Option<String>>(3)?,"ts":row.get::<_,String>(4)?}))).map_err(|e| e.to_string())?.collect::<Result<_,_>>().map_err(|e: rusqlite::Error| e.to_string())?);
+        }
+        drop(conn);
+        let report = serde_json::json!({
+            "schemaVersion":1, "kind":"crypt.vault-review", "contentIncluded":include_content,
+            "ordering":"reviewAfterMs asc nulls-last, protected first, id bytewise",
+            "sections":{"memories":{"status":"available","source":"memories"},"events":{"status":"available","source":"memory_event_log"},"reviewEvidence":{"status":"available","source":"context_feedback"},"approvals":{"status":"unavailable","reason":"authoritative_table_absent"},"contextPackRefs":{"status":"unavailable","reason":"authoritative_table_absent"}},
+            "memories":memories
+        });
+        let bytes = match format {
+            "json" => serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
+            "markdown" | "md" => vault_review_markdown(&report).into_bytes(),
+            _ => return Err("vault review format must be json or markdown".into()),
+        };
+        atomic_review_write(path, &bytes)?;
+        Ok(report["memories"].as_array().map_or(0, Vec::len))
+    }
+
     /// Export the whole store as a markdown tree — the audit trail + cross-machine sync medium.
     /// The DB stays authoritative; these files are generated FROM it (provenance DB->file).
     /// Scopes under the workspace root are canonicalized to `WS[-…]` so mirrors from different
@@ -6190,6 +6273,106 @@ impl MemoryStore {
     }
 }
 
+fn vault_review_markdown(report: &serde_json::Value) -> String {
+    let mut out = format!(
+        "# Crypt vault review\n\nSchema: 1\n\nContent included: {}\n\n## Section availability\n\n",
+        report["contentIncluded"]
+    );
+    for name in [
+        "memories",
+        "events",
+        "reviewEvidence",
+        "approvals",
+        "contextPackRefs",
+    ] {
+        out.push_str(&format!(
+            "- `{name}`: {}\n",
+            serde_json::to_string(&report["sections"][name]).unwrap_or_default()
+        ));
+    }
+    for (index, memory) in report["memories"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        let mut metadata = memory.clone();
+        let content = metadata
+            .as_object_mut()
+            .and_then(|item| item.remove("content"));
+        out.push_str(&format!("\n## Review item {}\n\nMetadata:\n\n", index + 1));
+        for line in serde_json::to_string_pretty(&metadata)
+            .unwrap_or_default()
+            .lines()
+        {
+            out.push_str(&format!("    {line}\n"));
+        }
+        if let Some(content) = content.and_then(|value| value.as_str().map(str::to_string)) {
+            out.push_str("\nContent:\n\n");
+            for line in content.lines() {
+                out.push_str(&format!("    {line}\n"));
+            }
+        }
+    }
+    out
+}
+
+fn atomic_review_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let mut payload = bytes.to_vec();
+    if !payload.ends_with(b"\n") {
+        payload.push(b'\n');
+    }
+    let parent = path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut cursor = PathBuf::new();
+    for component in parent.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err("vault export path is unsafe".into());
+        }
+        cursor.push(component);
+        if std::fs::symlink_metadata(&cursor).is_ok_and(|meta| meta.file_type().is_symlink()) {
+            return Err("vault export path is unsafe".into());
+        }
+    }
+    let parent_meta = std::fs::symlink_metadata(parent)
+        .map_err(|e| format!("vault export parent unavailable: {e}"))?;
+    if !parent_meta.is_dir() || parent_meta.file_type().is_symlink() || path.file_name().is_none() {
+        return Err("vault export path is unsafe".into());
+    }
+    if let Ok(meta) = std::fs::symlink_metadata(path) {
+        if meta.file_type().is_symlink() || !meta.is_file() {
+            return Err("vault export target must be a regular file".into());
+        }
+        if std::fs::read(path).map_err(|e| e.to_string())? == payload {
+            return Ok(());
+        }
+    }
+    static TEMP_ID: AtomicU64 = AtomicU64::new(0);
+    let name = path.file_name().unwrap().to_string_lossy();
+    let temp = parent.join(format!(
+        ".{name}.{}.{}.tmp",
+        std::process::id(),
+        TEMP_ID.fetch_add(1, Ordering::Relaxed)
+    ));
+    let result = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)
+            .map_err(|e| format!("vault export temp create failed: {e}"))?;
+        file.write_all(&payload)
+            .and_then(|_| file.sync_all())
+            .map_err(|e| format!("vault export write failed: {e}"))?;
+        std::fs::rename(&temp, path).map_err(|e| format!("vault export atomic replace failed: {e}"))
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    result
+}
+
 /// Extract distinctive keywords from a goal: lowercased words ≥ 4 chars,
 /// deduplicated, minus a few common stopwords.
 fn keywords_of(goal: &str) -> Vec<String> {
@@ -6228,6 +6411,93 @@ fn sanitize_memory_id(value: &str) -> String {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+    #[test]
+    fn vault_review_is_stable_ordered_and_content_opt_in() {
+        let store = MemoryStore::new();
+        store.db.lock().execute_batch(
+            "INSERT INTO memories(id,tier,content,keywords,score,created_at,access_count,scope_id,content_hash,source_ids,artifact_family,producer,record_type,authority,influence_class,lifecycle_state,review_after_ms,superseded_by,priority_class,confidence,confidence_basis)
+             VALUES('scope/a','Semantic','SECRET-A','',0.8,'2026-01-01T00:00:00Z',0,'scope','hash-a','[\"source-a\"]','memory','manual','decision','A2','reference','superseded',20,'scope/b','normal',0.7,'reviewed'),
+                   ('scope/b','Semantic','SECRET-B','',0.9,'2026-01-02T00:00:00Z',0,'scope','hash-b','[]','memory','manual','decision','A1','reference','active',10,NULL,'protected',0.9,'approved');
+             INSERT INTO memory_event_log(ts,event_kind,memory_id,surface,session_id,trace_id,scope_id,quantity,meta,event_uid,installation_id,client,turn_id,artifact_id,identity_status)
+             VALUES('2026-01-03T00:00:00Z','superseded','scope/a','cli','session-x','trace-x','scope',1,'{\"authority\":\"A1\",\"reason_ref\":\"review-1\"}','event-1','install-1','codex','turn-1','artifact-1','observed');
+             INSERT INTO context_feedback(trace_id,candidate_id,content_sha256,outcome,verified,verdict_ref,scope_id,ts)
+             VALUES('trace-x','scope/a','hash-a','contradicted',1,'review-1','scope','2026-01-03T00:00:00Z');"
+        ).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let json_path = dir.path().join("review.json");
+        let markdown_path = dir.path().join("review.md");
+        assert_eq!(
+            store
+                .export_vault_review(&json_path, "json", false)
+                .unwrap(),
+            2
+        );
+        let first = std::fs::read(&json_path).unwrap();
+        assert_eq!(
+            store
+                .export_vault_review(&json_path, "json", false)
+                .unwrap(),
+            2
+        );
+        assert_eq!(first, std::fs::read(&json_path).unwrap());
+        assert_eq!(
+            store
+                .export_vault_review(&markdown_path, "markdown", true)
+                .unwrap(),
+            2
+        );
+        drop(store);
+        let report: serde_json::Value = serde_json::from_slice(&first).unwrap();
+        assert_eq!(report["memories"][0]["id"], "scope/b");
+        assert_eq!(
+            report["memories"][1]["lifecycle"]["supersededBy"],
+            "scope/b"
+        );
+        assert_eq!(report["memories"][0]["supersedes"][0], "scope/a");
+        assert_eq!(report["memories"][1]["events"][0]["authority"], "A1");
+        assert_eq!(
+            report["memories"][1]["events"][0]["installationId"],
+            "install-1"
+        );
+        assert_eq!(
+            report["memories"][1]["reviewEvidence"][0]["outcome"],
+            "contradicted"
+        );
+        assert_eq!(report["sections"]["approvals"]["status"], "unavailable");
+        assert_eq!(
+            report["sections"]["contextPackRefs"]["status"],
+            "unavailable"
+        );
+        assert!(!String::from_utf8_lossy(&first).contains("SECRET"));
+        let markdown = std::fs::read_to_string(markdown_path).unwrap();
+        assert!(
+            markdown.contains("SECRET-A") && markdown.find("Metadata:") < markdown.find("Content:")
+        );
+        #[cfg(unix)]
+        {
+            let link = dir.path().join("unsafe.json");
+            std::os::unix::fs::symlink(&json_path, &link).unwrap();
+            assert_eq!(
+                store_export_error(&link),
+                "vault export target must be a regular file"
+            );
+            let real = dir.path().join("real");
+            std::fs::create_dir(&real).unwrap();
+            let linked_parent = dir.path().join("linked");
+            std::os::unix::fs::symlink(real, &linked_parent).unwrap();
+            assert_eq!(
+                store_export_error(&linked_parent.join("review.json")),
+                "vault export path is unsafe"
+            );
+        }
+    }
+
+    fn store_export_error(path: &Path) -> String {
+        MemoryStore::new()
+            .export_vault_review(path, "json", false)
+            .unwrap_err()
+    }
 
     struct BatchOnlyEmbedder {
         calls: Arc<AtomicUsize>,

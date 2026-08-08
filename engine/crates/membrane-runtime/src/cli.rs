@@ -642,6 +642,15 @@ enum Cmd {
         #[arg(default_value = "crypt-export")]
         dir: PathBuf,
     },
+    /// Export a deterministic review queue; content is omitted unless explicitly requested.
+    VaultExport {
+        #[arg(long)]
+        output: PathBuf,
+        #[arg(long, default_value = "json")]
+        format: String,
+        #[arg(long)]
+        include_content: bool,
+    },
     /// Import a canonical Crypt Markdown export from `crypt-export/` by default.
     Import {
         #[arg(default_value = "crypt-export")]
@@ -3750,6 +3759,18 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             let n = store.export_md(&dir);
             println!("{}", serde_json::json!({"exported":n,"dir":dir}));
         }
+        Cmd::VaultExport {
+            output,
+            format,
+            include_content,
+        } => {
+            let store = open(&db)?;
+            let n = store.export_vault_review(&output, &format, include_content)?;
+            println!(
+                "{}",
+                serde_json::json!({"schemaVersion":1,"exported":n,"output":output,"format":format,"contentIncluded":include_content})
+            );
+        }
         Cmd::Import { dir } => {
             let store = open(&db)?;
             let n = import_markdown_tree(&store, &dir)?;
@@ -4006,6 +4027,17 @@ mod tests {
 
     #[test]
     fn export_import_defaults_and_round_trip_content_scope() {
+        let review = super::Cli::try_parse_from([
+            "crypt",
+            "vault-export",
+            "--output",
+            "review.json",
+            "--include-content",
+        ])
+        .unwrap();
+        assert!(
+            matches!(review.cmd, super::Cmd::VaultExport { ref output, ref format, include_content: true } if output == Path::new("review.json") && format == "json")
+        );
         let export = super::Cli::try_parse_from(["crypt", "export"]).unwrap();
         assert!(matches!(
             export.cmd,
