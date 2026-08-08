@@ -1,13 +1,66 @@
+import json
 import sys
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "packages/python/src"))
+REPO_ROOT = Path(__file__).parents[2]
+sys.path.insert(0, str(REPO_ROOT / "packages/python/src"))
 from membrane_client import MembraneClient, ProtocolError, analyze_packet, analyze_receipt
 
 
 def envelope(operation, result):
     return {"schemaVersion": 1, "operation": operation, "errorVersion": 1, "result": result}
+
+
+def golden(name):
+    """Load the exact same canonical v1 fixture the TypeScript
+    (tests/sdk/cross-language-compat.test.mjs) and Rust
+    (engine/crates/membrane-client/tests/compat.rs) compatibility suites
+    read, so all three SDKs are proven against identical fixture bytes
+    rather than independently authored equivalents."""
+    with open(REPO_ROOT / "operations/operations" / name, encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+class PythonClientGoldenFixtureTest(unittest.TestCase):
+    """MBR-308: same shared fixtures as the TypeScript and Rust suites."""
+
+    def test_context_golden_success_matches_the_shared_fixture(self):
+        response = golden("membrane-context.v1.golden.json")
+        client = MembraneClient(lambda *_: response)
+        self.assertEqual(client.context({}), response["result"]["data"])
+
+    def test_context_golden_error_is_typed_and_retryable(self):
+        response = golden("membrane-context.v1.error.golden.json")
+        client = MembraneClient(lambda *_: response)
+        with self.assertRaises(ProtocolError) as error:
+            client.context({})
+        self.assertEqual(error.exception.code, "context_deadline_exceeded")
+        self.assertTrue(error.exception.retryable)
+
+    def test_source_read_golden_success_matches_the_shared_fixture(self):
+        response = golden("membrane-source-read.v1.golden.json")
+        client = MembraneClient(lambda *_: response)
+        self.assertEqual(client.source_read({}), response["result"]["data"])
+
+    def test_source_read_golden_error_is_typed_and_not_retryable(self):
+        response = golden("membrane-source-read.v1.error.golden.json")
+        client = MembraneClient(lambda *_: response)
+        with self.assertRaises(ProtocolError) as error:
+            client.source_read({})
+        self.assertEqual(error.exception.code, "source_read_hash_mismatch")
+        self.assertFalse(error.exception.retryable)
+
+    def test_every_indexed_error_code_round_trips_for_each_operation(self):
+        index = golden("operations-index.v1.golden.json")
+        by_name = {entry["name"]: entry["errorCodes"] for entry in index["operations"]}
+        for operation in ("membrane_context", "membrane_source_read"):
+            for code in by_name[operation]:
+                response = envelope(operation, {"kind": "error", "code": code, "message": "typed", "retryable": False})
+                client = MembraneClient(lambda *_ , response=response: response)
+                with self.assertRaises(ProtocolError) as error:
+                    client.call(operation, {})
+                self.assertEqual(error.exception.code, code)
 
 
 class PythonClientTest(unittest.TestCase):
