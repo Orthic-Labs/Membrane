@@ -189,6 +189,11 @@ fn startup_setting(app: tauri::AppHandle) -> Result<bool, String> {
         .unwrap_or(false))
 }
 
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(Arc::new(Mutex::new(PathBuf::from("snapshot.json"))))
@@ -201,7 +206,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             snapshot,
             set_startup,
-            startup_setting
+            startup_setting,
+            quit_app
         ])
         .setup(|app| {
             let cache = app
@@ -212,8 +218,10 @@ fn main() {
             fs::create_dir_all(cache.parent().unwrap())?;
             *app.state::<Arc<Mutex<PathBuf>>>().lock().unwrap() = cache.clone();
             let show = MenuItemBuilder::with_id("show", "Open Hub").build(app)?;
+            let diagnostics = MenuItemBuilder::with_id("diagnostics", "Copy diagnostics").build(app)?;
+            let trace = MenuItemBuilder::with_id("trace", "Latest trace").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
+            let menu = MenuBuilder::new(app).items(&[&show, &diagnostics, &trace, &quit]).build()?;
             let mut tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .tooltip("Membrane Hub — read-only status")
@@ -222,6 +230,20 @@ fn main() {
                         if let Some(w) = app.get_webview_window("hub") {
                             let _ = w.show();
                             let _ = w.set_focus();
+                        }
+                    }
+                    "diagnostics" => {
+                        if let Some(w) = app.get_webview_window("hub") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                            let _ = app.emit("popover-diagnostics", ());
+                        }
+                    }
+                    "trace" => {
+                        if let Some(w) = app.get_webview_window("hub") {
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                            let _ = app.emit("popover-trace", ());
                         }
                     }
                     "quit" => app.exit(0),
