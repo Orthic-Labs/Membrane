@@ -86,6 +86,15 @@ This checkout is an internal mirror of a workspace-coupled control plane for the
 <a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Cortex">Cortex</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/Morph">Morph</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
 
 <!-- blueprint:docs:start -->
+## Support & pricing boundaries
+
+The free/local operational boundary does not condition local correctness on payment, hosted service,
+or telemetry. It is not a license grant. Paid support and prices are **unavailable**; team sync, fleet,
+policy, managed updates, and optional telemetry are **undecided**. Any future
+paid capability must never gate local safety, authority, receipts, updates, or
+export. See [pricing](docs/pricing.md), [support policy](docs/support-policy.md),
+and [public support boundaries](website/support-boundaries.md).
+
 ## Repository truth docs
 - [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
 - [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)

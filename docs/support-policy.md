@@ -30,3 +30,13 @@ Keep generated client artifacts synchronized with their registry and contract
 tests ([`docs/clients/README.md`](clients/README.md)). Updates are transactional
 and receipt-backed ([`docs/update.md`](update.md)); do not infer upgrade safety
 from a passing source-only test when installed receipts are missing.
+
+## Commercial boundary
+
+The free/local operational boundary is repository-confined operation with
+local safety, authority, typed receipts, update verification/rollback paths, and export. None requires an
+account, payment, hosted service, or telemetry. Possible paid team sync,
+fleet administration, policy management, managed updates, or optional
+telemetry are **undecided**; paid support, prices, and SLAs are **unavailable**.
+Any future paid capability is additive and must never gate local safety,
+authority, receipts, updates, or export. This is not a license or public-availability grant. See [`pricing.md`](pricing.md).
