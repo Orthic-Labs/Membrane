@@ -31,6 +31,6 @@ if (typeof document !== 'undefined') (async () => {
   $('trace').onclick=async()=>{ const id=$('trace').dataset.traceId; if(id) { try { await navigator.clipboard?.writeText(id); $('announce').textContent='Latest trace copied'; } catch { $('announce').textContent='Trace unavailable'; } } };
   listen('popover-diagnostics', ()=>$('diagnostics').click()); listen('popover-trace', ()=>$('trace').click());
   window.addEventListener('keydown', e=>{ if(e.key==='Escape') hide(); });
-  current.onFocusChanged(({payload})=>{ if(!payload) hide(); else $('close').focus(); });
+  current.onFocusChanged(({payload})=>{ if(!payload) hide(); });
   refresh(); listen('hub-snapshot-tick', refresh);
 })();

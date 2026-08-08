@@ -1935,7 +1935,7 @@ dependencies = [
 
 [[package]]
 name = "membrane-hub"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -1943,6 +1943,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-single-instance",
  "tempfile",
+ "window-vibrancy",
 ]
 
 [[package]]
