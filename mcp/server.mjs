@@ -519,12 +519,12 @@ async function callTool(name, args, trace = {}, lifecycle) {
       // mentioned target abstains instead of querying every repository.
       const routing = selectWorkspaceTargets({ catalog, task: args.task, explicitRepositoryIds: args.explicitRepositoryIds || [] });
       if (routing.status === "abstained") {
-        return text({ ok: false, scope: "workspace", error: routing.reason, considered: routing.considered });
+        return text({ ok: false, scope: "workspace", error: routing.reason, considered: routing.considered, routing: routing.receipt });
       }
       const selected = routing.targets;
       const budget = Number.isInteger(args.budget) ? args.budget : 4096;
       const perRepoBudget = Math.max(1, Math.floor(budget / selected.length));
-      const fused = { ok: true, scope: "workspace", repos: [], totalCandidates: 0, totalOmissions: 0 };
+      const fused = { ok: true, scope: "workspace", repos: [], totalCandidates: 0, totalOmissions: 0, routing: routing.receipt };
       const trace = { traceparent: args.traceparent, tracestate: args.tracestate, baggage: args.baggage };
       const workspaceGrants = binding.grant_policy?.child_repository_ids;
       const catalogRootId = repos.find((entry) => entry.role === "workspace-root")?.repository_id;

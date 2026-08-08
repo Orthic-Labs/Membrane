@@ -607,6 +607,8 @@ assert.doesNotMatch(toolError(workspaceRow), /ReferenceError/);
 const fused = workspaceRow.result.structuredContent.data;
 assert.equal(fused.ok, true);
 assert.equal(fused.scope, "workspace");
+assert.equal(fused.routing.policy, "catalog-relevance-v1");
+assert.equal(fused.routing.catalogDigest, wsFixtureCatalog.catalog_digest);
 assert.ok(Array.isArray(fused.repos), "scope=workspace returns a per-repository fan-out trace");
 assert.ok(fused.repos.length >= 2, `workspace fan-out reaches the workspace root and a child repo, got ${fused.repos.length}`);
 assert.ok(fused.repos.some((entry) => entry.repoId !== null), "fan-out produced a resolved repo entry");
@@ -686,7 +688,7 @@ const mbr3Scope = await rpc([{
   jsonrpc: "2.0", id: 90, method: "tools/call",
   params: {
     name: "membrane_context",
-    arguments: { task: "inspect", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace", explicitRepositoryIds: [mbr3Ws.repository_id, mbr3G.repository_id, mbr3U.repository_id] },
+    arguments: { task: "inspect ungranted", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace", explicitRepositoryIds: [mbr3Ws.repository_id, mbr3G.repository_id] },
   },
 }], mbr3Env);
 assert.equal(mbr3Scope[0].result.isError, false, toolError(mbr3Scope[0]));
@@ -702,6 +704,7 @@ assert.ok(mbr3ByRoot.has("ungranted"), "ungranted sibling appears as a typed omi
 assert.deepEqual(mbr3ByRoot.get("ungranted").omissions, ["target_denied"], "ungranted sibling is omitted with a typed denial receipt");
 assert.equal(mbr3ByRoot.get("ungranted").candidates, 0, "ungranted sibling is never consulted for candidates");
 assert.ok(!mbr3ByRoot.get("ungranted").omissions.includes("planner_unavailable"), "ungranted sibling was never called");
+assert.ok(mbr3Fused.routing.selected.some((entry) => entry.repoId === mbr3U.repository_id && entry.evidence.includes("alias")), "catalog relevance selected ungranted sibling before independent authorization denied invocation");
 
 // MBR-006 (R05): every workspace repository row carries a canonical generation
 // identity or a typed unknown reason -- generationId (never a revision hub
