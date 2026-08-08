@@ -16,6 +16,19 @@ installed application or CLI/daemon files; zap needs operator confirmation befor
 removing user state. `brew doctor` is insufficient: release doctor must verify
 artifact digest, source identity, signatures, plus macOS notarization staple.
 
+## Windows channel source contract (MBR-905)
+
+`packaging/winget/release.v1.json` binds one exact signed NSIS installer to
+version, 40-character commit, release generation, HTTPS URL, SHA-256, silent
+install/uninstall `/S`, installed-version upgrade detection, & a hash-bound
+MBR-902 receipt proving Authenticode, Windows Public Trust, RFC3161, plus clean
+install/update/uninstall. Winget & Scoop must use
+that identical URL/hash pair. `packaging/scoop/membrane.json` intentionally
+has no URL or hash while contract state is `unavailable`; neither channel is
+an install path until release authority changes state to `ready` with all
+immutable evidence. Real Windows clean-machine install, upgrade, & uninstall
+receipts remain required.
+
 The Membrane binary installs under a scratch `MEMBRANE_ROOT` and only
 promotes that scratch tree to the target root on `commit`. Every install is
 staged, typed, and idempotent; no partial install survives an interrupted

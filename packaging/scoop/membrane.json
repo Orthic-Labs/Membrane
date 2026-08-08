@@ -1,0 +1,7 @@
+{
+  "version": "0.0.0-unavailable",
+  "description": "Membrane is intentionally unavailable until signed Windows release evidence exists.",
+  "homepage": "https://github.com/orthic/membrane",
+  "license": "UNLICENSED",
+  "notes": "Do not install: this source contract has no artifact URL or checksum."
+}
