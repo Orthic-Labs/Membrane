@@ -173,6 +173,8 @@ export const OPERATIONS = [
       "feedback_independent_readback_mismatch",
     ],
   },
+  { name: "hub.capabilities", schemaVersion: 1, errorVersion: 1, schemaPath: "schemas/operations/hub-capabilities.v1.schema.json", successFixture: "operations/operations/hub-capabilities.v1.golden.json", errorFixture: "operations/operations/hub-capabilities.v1.error.golden.json", errorCodes: ["hub_unavailable"] },
+  { name: "hub.snapshot", schemaVersion: 1, errorVersion: 1, schemaPath: "schemas/operations/hub-snapshot.v1.schema.json", successFixture: "operations/operations/hub-snapshot.v1.golden.json", errorFixture: "operations/operations/hub-snapshot.v1.error.golden.json", errorCodes: ["hub_unavailable"] },
 ];
 
 /** Validate one operation's success and error fixtures against the

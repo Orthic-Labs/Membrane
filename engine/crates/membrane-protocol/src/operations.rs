@@ -324,6 +324,24 @@ pub fn operations() -> Vec<OperationIndexEntry> {
                 "feedback_independent_readback_mismatch",
             ],
         ),
+        entry(
+            "hub.capabilities",
+            1,
+            1,
+            "schemas/operations/hub-capabilities.v1.schema.json",
+            "operations/operations/hub-capabilities.v1.golden.json",
+            "operations/operations/hub-capabilities.v1.error.golden.json",
+            &["hub_unavailable"],
+        ),
+        entry(
+            "hub.snapshot",
+            1,
+            1,
+            "schemas/operations/hub-snapshot.v1.schema.json",
+            "operations/operations/hub-snapshot.v1.golden.json",
+            "operations/operations/hub-snapshot.v1.error.golden.json",
+            &["hub_unavailable"],
+        ),
     ]
 }
 
@@ -378,6 +396,8 @@ pub static OPERATIONS: &[OperationSpec] = &[
         help: "Record bounded receipt-bound outcome feedback for quarantine review.",
         parameters: &[],
     },
+    OperationSpec { id: "hub.capabilities", help: "Read-only Hub capability manifest.", parameters: &[] },
+    OperationSpec { id: "hub.snapshot", help: "Read-only Hub status snapshot.", parameters: &[] },
 ];
 
 /// Helper: get the canonical index entries (initializes the cache on first call).

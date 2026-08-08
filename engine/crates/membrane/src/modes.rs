@@ -98,6 +98,26 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
     if is_doctor_paths_invocation(tail) {
         return run_doctor_paths(&tail[2..]);
     }
+    if matches!(tail, [operation] if operation == "hub-capabilities" || operation == "hub-snapshot")
+    {
+        let operation = if tail[0] == "hub-capabilities" {
+            "hub.capabilities"
+        } else {
+            "hub.snapshot"
+        };
+        let facade = membrane_runtime::hub::HubFacadeV1::new(None);
+        let inputs = membrane_runtime::hub::HubInputsV1::unavailable("source_not_connected");
+        return match facade
+            .dispatch_json(operation, 0, inputs)
+            .and_then(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
+        {
+            Ok(json) => {
+                println!("{json}");
+                DispatchOutcome::Ok
+            }
+            Err(error) => DispatchOutcome::InternalError(format!("{operation}: {error}")),
+        };
+    }
     let mut argv: Vec<String> = Vec::with_capacity(tail.len() + 1);
     argv.push("membrane".to_string());
     argv.extend_from_slice(tail);

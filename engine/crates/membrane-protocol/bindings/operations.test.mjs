@@ -28,7 +28,7 @@ import {
 // pins the SAME digest. A drift in the Rust registry, the on-disk JSON, or
 // the canonical rules fails BOTH suites.
 const PINNED_INDEX_DIGEST =
-  "sha256:2959d24c20aa4fbf69ebdd329398c18bf183b3dbaacdf4dccc63bb8ad256fbf9";
+  "sha256:4f40ab3b07cf80e6e905de1c454388c1e8074d5f0b3d1001fe82fe3f11e69567";
 
 for (const operation of OPERATIONS) {
   test(`${operation.name}: validates, round-trips, and lists every error code in the schema`, () => {
@@ -47,6 +47,8 @@ test("OPERATIONS registry covers every required MCP tool", () => {
     "membrane_temporal_fact",
     "membrane_scratchpad",
     "membrane_feedback",
+    "hub.capabilities",
+    "hub.snapshot",
   ];
   assert.deepEqual(
     OPERATIONS.map((op) => op.name),

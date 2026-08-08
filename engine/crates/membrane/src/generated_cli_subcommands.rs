@@ -1,5 +1,5 @@
 // GENERATED — DO NOT EDIT
-// operation_registry_version: sha256:8b3f3a9e7633d68212487a03545cec53da02262a69639f343e92f23307645586
+// operation_registry_version: sha256:256091ff5ed4b04d2604a71e66f56db47c391689a83f7bb67be600c6ae057227
 match name {
     "" => Some(vec![
         ("membrane_context".to_string(), String::new()),
@@ -11,6 +11,8 @@ match name {
         ("membrane_temporal_fact".to_string(), String::new()),
         ("membrane_scratchpad".to_string(), String::new()),
         ("membrane_feedback".to_string(), String::new()),
+        ("hub-capabilities".to_string(), String::new()),
+        ("hub-snapshot".to_string(), String::new()),
     ]),
     "membrane_context" => Some(vec![ // Federated context packet for one exact caller binding.
     ]),
@@ -29,6 +31,10 @@ match name {
     "membrane_scratchpad" => Some(vec![ // Save, load, or clear ephemeral non-searchable session/task scratchpad state.
     ]),
     "membrane_feedback" => Some(vec![ // Record bounded receipt-bound outcome feedback for quarantine review.
+    ]),
+    "hub-capabilities" => Some(vec![ // Read-only Hub capability manifest.
+    ]),
+    "hub-snapshot" => Some(vec![ // Read-only Hub status snapshot.
     ]),
     _ => None,
 }

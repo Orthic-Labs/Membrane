@@ -27,6 +27,7 @@ pub mod canonical;
 pub mod compression;
 pub mod fusion;
 pub mod heartbeat;
+pub mod hub;
 pub mod installation;
 pub mod lease;
 pub mod observable_event;
@@ -42,6 +43,9 @@ pub use compression::{
 pub use fusion::{FusionDecisionV1, FusionReceiptV1};
 pub use heartbeat::{
     AdapterHeartbeatV1, AdapterStatus, MechanismReceiptV1, ADAPTER_HEARTBEAT_SCHEMA_VERSION,
+};
+pub use hub::{
+    HubCapabilitiesV1, HubSectionV1, HubSnapshotV1, HubStateV1, HubStreamV1, HUB_SCHEMA_VERSION,
 };
 pub use installation::{
     canonical_data_root, ApiSchemaV1, ComponentV1, HandshakeError, InstallationManifestV1,
