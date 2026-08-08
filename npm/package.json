@@ -1,0 +1,9 @@
+{
+  "name": "@orthic/membrane",
+  "version": "0.0.0-source",
+  "description": "Thin platform bootstrap for the Membrane native runtime",
+  "type": "module",
+  "exports": "./index.mjs",
+  "engines": { "node": ">=20" },
+  "files": ["index.mjs", "package.json"]
+}
