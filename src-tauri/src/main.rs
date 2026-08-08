@@ -110,7 +110,7 @@ fn fetch_snapshot(program: &str) -> Result<CachedSnapshot, String> {
         .stdout(Stdio::piped())
         .spawn()
         .map_err(|_| "hub_service_unavailable")?;
-    let mut stdout = child.stdout.take().ok_or("hub_snapshot_pipe_missing")?;
+    let stdout = child.stdout.take().ok_or("hub_snapshot_pipe_missing")?;
     let reader = thread::spawn(move || {
         let mut bytes = Vec::new();
         stdout
