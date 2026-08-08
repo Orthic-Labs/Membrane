@@ -1,0 +1,99 @@
+{
+  "schema": "orthic.membrane.support-tier-matrix.v1",
+  "generatedFrom": {
+    "commit": "064a08c4f6f8704fa5b44f0ed09336877ba0311f",
+    "receiptDirectory": "evidence/qualification"
+  },
+  "rows": [
+    {
+      "platform": "macos",
+      "client": "claude",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "sourceReady": false,
+      "receipt": null,
+      "reason": "current client-specific clean-VM qualification receipt unavailable"
+    },
+    {
+      "platform": "macos",
+      "client": "codex",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "sourceReady": false,
+      "receipt": null,
+      "reason": "current client-specific clean-VM qualification receipt unavailable"
+    },
+    {
+      "platform": "macos",
+      "client": "cursor",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "sourceReady": false,
+      "receipt": null,
+      "reason": "current client-specific clean-VM qualification receipt unavailable"
+    },
+    {
+      "platform": "macos",
+      "client": "generic_mcp",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "sourceReady": false,
+      "receipt": null,
+      "reason": "current client-specific clean-VM qualification receipt unavailable"
+    },
+    {
+      "platform": "macos",
+      "client": "windsurf",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "sourceReady": false,
+      "receipt": null,
+      "reason": "current client-specific clean-VM qualification receipt unavailable"
+    },
+    {
+      "platform": "windows",
+      "client": "claude",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "sourceReady": false,
+      "receipt": null,
+      "reason": "current client-specific clean-VM qualification receipt unavailable"
+    },
+    {
+      "platform": "windows",
+      "client": "codex",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "sourceReady": false,
+      "receipt": null,
+      "reason": "current client-specific clean-VM qualification receipt unavailable"
+    },
+    {
+      "platform": "windows",
+      "client": "cursor",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "sourceReady": false,
+      "receipt": null,
+      "reason": "current client-specific clean-VM qualification receipt unavailable"
+    },
+    {
+      "platform": "windows",
+      "client": "generic_mcp",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "sourceReady": false,
+      "receipt": null,
+      "reason": "current client-specific clean-VM qualification receipt unavailable"
+    },
+    {
+      "platform": "windows",
+      "client": "windsurf",
+      "feature": "installed-path",
+      "tier": "unavailable",
+      "sourceReady": false,
+      "receipt": null,
+      "reason": "current client-specific clean-VM qualification receipt unavailable"
+    }
+  ]
+}
