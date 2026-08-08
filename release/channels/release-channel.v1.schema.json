@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "membrane/release-channel.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "channel", "release", "support", "schemaCompatibility", "migration", "rollback", "signedUpdateEvidence"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "channel": {"enum": ["stable", "beta", "nightly"]},
+    "release": {"type": "string", "minLength": 1},
+    "support": {"type": "object", "additionalProperties": false, "required": ["state", "startsAt", "endsAt"], "properties": {"state": {"enum": ["supported", "degraded", "unsupported", "unknown"]}, "startsAt": {"type": "string"}, "endsAt": {"type": ["string", "null"]}}},
+    "schemaCompatibility": {"enum": ["compatible", "migration_required", "incompatible", "unknown"]},
+    "migration": {"type": "string", "minLength": 1},
+    "rollback": {"type": "string", "minLength": 1},
+    "signedUpdateEvidence": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]}
+  }
+}

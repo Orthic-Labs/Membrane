@@ -34,6 +34,7 @@ pub mod observable_event;
 pub mod operations;
 pub mod portable_pack;
 pub mod provider_readiness;
+pub mod release_channel;
 pub mod source_resolution;
 pub mod status;
 pub mod types;
@@ -68,6 +69,8 @@ pub use provider_readiness::{
     ProviderIdentityV1, ProviderObservationV1, ProviderReadinessStateV1, ProviderReadinessV1,
     ProviderTestQueryV1, PROVIDER_READINESS_SCHEMA_VERSION,
 };
+pub use release_channel::{ReleaseChannel, ReleaseChannelV1, SchemaCompatibility, SupportState,
+    SupportWindowV1, RELEASE_CHANNEL_SCHEMA_VERSION};
 pub use source_resolution::{
     SourceResolutionReceiptV1, SourceResolutionStatusV1, SOURCE_RESOLUTION_RECEIPT_SCHEMA_VERSION,
 };
