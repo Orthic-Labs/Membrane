@@ -24,7 +24,12 @@ const target = process.env.TAURI_ENV_TARGET_TRIPLE || targets[`${process.platfor
 if (!target) throw new Error(`unsupported sidecar target: ${process.platform}-${process.arch}`);
 const repo = new URL("../../../", import.meta.url);
 const engine = new URL("engine/Cargo.toml", repo);
-const engineTarget = new URL("engine/target/", repo);
+// The global cargo policy requires target dirs inside the shared cache root
+// when one is configured; a repo-local engine/target is refused by the guard.
+const cacheRoot = process.env.RIGHT_RELEASE_CACHE_ROOT;
+const engineTarget = cacheRoot
+  ? new URL(`file://${cacheRoot}/dev-targets/membrane-engine/`)
+  : new URL("engine/target/", repo);
 const result = spawnSync("cargo", ["build", "--manifest-path", engine.pathname, "--release", "--target", target, "-p", "crypt", "-p", "membrane", "--bin", "crypt-service", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CARGO_TARGET_DIR: engineTarget.pathname } });
 if (result.error) throw result.error;
 if (result.status !== 0) throw new Error(`Membrane sidecar build failed with exit ${result.status}`);
