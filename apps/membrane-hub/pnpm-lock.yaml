@@ -13,16 +13,16 @@ importers:
         version: 2.11.1
     devDependencies:
       '@rightkit/release':
-        specifier: 0.2.50
-        version: 0.2.50
+        specifier: 0.2.51
+        version: 0.2.51
       '@tauri-apps/cli':
         specifier: ^2.0.0
         version: 2.11.4
 
 packages:
 
-  '@rightkit/release@0.2.50':
-    resolution: {integrity: sha512-hvqIcUNwD1HBQ733dDpcZJ7LcY5nZlfVU8LxqOT0Qx7UJF/IOv66odyYHGZpU0eKLPN8Y6yLYlop2qL0p4uNZg==}
+  '@rightkit/release@0.2.51':
+    resolution: {integrity: sha512-Ta/exJflFSJkHil48R+0tz5DhaJAkUVCdDI7efcIU95ey2lbmz7mhUT3YuANtGFF2l/ZuwcjyXqymdxhvgBRYQ==}
     hasBin: true
 
   '@tauri-apps/api@2.11.1':
@@ -106,7 +106,7 @@ packages:
 
 snapshots:
 
-  '@rightkit/release@0.2.50': {}
+  '@rightkit/release@0.2.51': {}
 
   '@tauri-apps/api@2.11.1': {}
 
