@@ -6,6 +6,7 @@
 extern crate self as crypt;
 
 pub mod admission_policy;
+pub mod agent_adapter_view;
 pub mod cache_prefix;
 pub mod catalog;
 pub mod checkpoint;
