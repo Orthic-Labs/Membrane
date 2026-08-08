@@ -1,0 +1,24 @@
+$ node --test benchmarks/memory/runner.test.mjs scripts/qualification/memory/run-memory-benchmarks.test.mjs
+# tests 13, pass 13, fail 0. Covers: explicit degrade with no dataset root
+# configured; explicit degrade when a configured dataset root does not exist
+# on disk (path is only stat'd, never fetched); explicit degrade when a
+# dataset root exists but no executor is supplied; a verified "ran" result
+# when both are present; "invalid" (not a fabricated pass) when an executor
+# payload conflates a Membrane/managed score or omits required identity;
+# runAllMemoryBenchmarks / CLI runReport cover every declared benchmark
+# (LoCoMo, LongMemEval, BEAM) independently; CLI arg parsing.
+
+$ node --test benchmarks/memory/memory-benchmark.test.mjs
+# tests 6, pass 6, fail 0. Pre-existing MBR-805 adapter/contract/verifier
+# coverage (adapter role/raw preservation, metric-group separation,
+# rejection of estimated values and componentUnderTest/membraneScore
+# attribution) — re-run here to confirm no regression from adding the
+# runner on top of the existing contract.
+
+# The manifest command `node scripts/qualification/run.mjs --task MBR-805`
+# was NOT executed: scripts/qualification/run.mjs is reserved by a
+# concurrent lane and does not exist yet on this tree, and per the book-mode
+# execution rules the manifest commands list is run once at the final
+# phased book gate (Gate phase 3.2 — Wave 4 phase), not at task-implementation
+# time. No cargo/pnpm build or release command, no mutating git command, and
+# no dataset download or network call was run at any point in this task.
