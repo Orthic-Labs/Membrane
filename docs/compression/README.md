@@ -10,3 +10,5 @@ Canonical serde bytes sort every key without whitespace. Receipt & nested span
 objects reject unknown fields; contract strings are nonempty & span offsets are
 bounded to Rust `u32`. Recovery errors structurally distinguish unavailable
 resolvers from immutable-source hash mismatches.
+
+Protected evidence is defined by [protected-evidence.md](protected-evidence.md): criteria, errors, IDs, hashes, quoted evidence, security findings, and complete-read blocks remain byte-identical before any lossy line budget.
