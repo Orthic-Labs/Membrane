@@ -3675,8 +3675,8 @@ impl MemoryStore {
         let sql = format!(
             "SELECT candidate_id, outcome, verified, content_sha256 FROM context_feedback \
              WHERE qualified_experiment_id IS NOT NULL AND EXISTS (\
-                 SELECT 1 FROM learning_promotion_receipt r\
-                  WHERE r.experiment_id = context_feedback.qualified_experiment_id\
+                 SELECT 1 FROM learning_promotion_receipt r \
+                  WHERE r.experiment_id = context_feedback.qualified_experiment_id \
                     AND r.disposition = 'qualified'\
              ) AND candidate_id IN ({placeholders})"
         );

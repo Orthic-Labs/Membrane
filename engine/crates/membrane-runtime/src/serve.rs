@@ -1321,6 +1321,8 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ),
     ("POST", "/v1/memories:batch", HttpWorkClass::Model),
     ("POST", "/memory-lifecycle", HttpWorkClass::General),
+    ("POST", "/scratchpad", HttpWorkClass::General),
+    ("POST", "/scratchpad/session-close", HttpWorkClass::General),
     ("POST", "/put", HttpWorkClass::Model),
     ("POST", "/delete", HttpWorkClass::General),
     ("POST", "/list", HttpWorkClass::General),
@@ -4956,9 +4958,11 @@ mod tests {
             let path_end = path.find('"').expect("handler path terminator");
             implemented.insert((method, &path[..path_end]));
         }
-        // Root/index share one condition; livez is a direct Axum route outside dispatch.
+        // Root/index share one condition; livez and scratchpad are handled before dispatch.
         implemented.insert(("GET", "/index.html"));
         implemented.insert(("GET", "/livez"));
+        implemented.insert(("POST", "/scratchpad"));
+        implemented.insert(("POST", "/scratchpad/session-close"));
 
         let registered: std::collections::HashSet<_> = HTTP_ROUTE_SPECS
             .iter()

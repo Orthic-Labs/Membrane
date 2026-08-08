@@ -50,7 +50,7 @@ pub fn project_delivery_trace(report: &Value) -> DeliveryTraceView {
     let event_store_digest = text(event, "digest", "event_store_digest").or_else(|| text(data, "eventStoreDigest", "event_store_digest"));
     let outcome_digest = text(outcome, "digest", "outcome_digest").or_else(|| text(data, "outcomeDigest", "outcome_digest"));
     let values = [&packet_digest, &host_digest, &event_store_digest, &outcome_digest];
-    let missing = values.iter().any(Option::is_none);
+    let missing = values.iter().any(|value| value.is_none());
     let mismatch = !missing && values.windows(2).any(|pair| pair[0] != pair[1]);
     let (state, reason) = if missing { ("unavailable", "unknown — packet, host, event-store, or outcome digest missing") }
         else if mismatch { ("degraded", "digest mismatch — trace receipts do not reconcile") }

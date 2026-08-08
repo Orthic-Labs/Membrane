@@ -1968,6 +1968,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "membrane-client"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "membrane-mcp"
 version = "0.1.0"
 dependencies = [
@@ -2054,6 +2061,13 @@ dependencies = [
  "membrane-provider-sdk",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "membrane-updater"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

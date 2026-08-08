@@ -106,9 +106,10 @@ impl TemporalFactStore {
             if existing != digest(&fact)? {
                 return Err("temporal_fact_conflict".into());
             }
+            let payload_sha256 = digest(&fact)?;
             return Ok(TemporalFactReceipt {
                 fact_id: fact.fact_id,
-                payload_sha256: digest(&fact)?,
+                payload_sha256,
                 transitions: vec![],
             });
         }

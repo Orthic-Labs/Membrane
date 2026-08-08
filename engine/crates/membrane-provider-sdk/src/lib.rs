@@ -25,6 +25,7 @@
 //! use membrane_provider_sdk::{
 //!     run_conformance, CapabilityV1, Fixture, Provider, ProviderError, Result,
 //! };
+//! use membrane_provider_sdk::provider::{ProviderIdentityV1, ProviderReadinessV1};
 //! use serde_json::json;
 //!
 //! struct EchoProvider {
@@ -36,6 +37,13 @@
 //!     fn initialize(&mut self, _config: &serde_json::Value) -> Result<()> {
 //!         self.ready = true;
 //!         Ok(())
+//!     }
+//!     fn readiness(&self) -> ProviderReadinessV1 {
+//!         ProviderReadinessV1::unknown(ProviderIdentityV1 {
+//!             provider_id: "echo".into(), installation_id: "example".into(),
+//!             service_id: "echo-service".into(), release_generation: "dev".into(),
+//!             data_root_digest: "sha256:example".into(),
+//!         }, "example readiness is not observed")
 //!     }
 //!     fn list_capabilities(&self) -> Vec<CapabilityV1> {
 //!         self.ops
