@@ -1,0 +1,42 @@
+$ node --test apps/membrane-hub/tests/actions.mjs tests/hub-actions/actions.test.mjs
+# tests 13, pass 13, fail 0.
+# ✔ all post-v1 actions require a distinct capability & repair path
+# ✔ builder never dispatches or claims success
+# ✔ missing nonce or capability stays unavailable without UI optimism
+# ✔ action payloads are exact & bounded
+# ✔ every request carries a stable digest the runtime receipt must prove against
+# ✔ a shape-valid, correctly bound receipt is the only way to reach proven
+# ✔ a runtime-rejected outcome never becomes a proven success
+# ✔ a receipt bound to a different request, action, or repair path is rejected as unproven
+# ✔ a receipt can never be applied to a request that was never granted
+# ✔ renderer is read-only, escapes evidence, & never renders unproven success
+# ✔ Hub action request binds granted capability & explicit confirmation
+# ✔ unknown requests cannot become mutations
+# ✔ repair path survives every outcome: a rejected or unbound receipt still surfaces the exact repair route
+
+$ node --test apps/membrane-hub/tests/*.mjs
+# tests 32, pass 32, fail 0.
+# Full apps/membrane-hub test directory (agents-adapters, cache-backed suites,
+# delivery-trace, memory-sentinel, release-channel, sources-explorer, and the
+# actions suite above) run together to confirm this task's changes introduce
+# no regression anywhere else in the Hub.
+
+# These are the only executable commands run for this task: plain Node
+# --test runs of the task's own new/updated test files plus the full Hub
+# test directory. No cargo, no rustc, no Tauri/pnpm release build, and no
+# npm/npx (pnpm-only workspace) were invoked.
+
+# cargo fmt --manifest-path engine/Cargo.toml --all -- --check         -- NOT RUN
+# cargo test --manifest-path engine/Cargo.toml --workspace             -- NOT RUN
+# pnpm --dir apps/membrane-hub test                                    -- NOT RUN
+# cargo check --manifest-path apps/membrane-hub/src-tauri/Cargo.toml   -- NOT RUN
+#
+# Per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md, "Do not execute the manifest
+# `commands` list and do not write `acceptance.json.status = pass` yet" at
+# task-implementation time; the manifest commands run once at the final
+# phased book gate (Gate phase 3.2 -- Wave 4 phase). This task's dispatch
+# instructions additionally forbid running any cargo build/test/check/
+# clippy/rustc command, and any Tauri or pnpm release build, directly.
+#
+# No mutating git command (add/commit/checkout/stash/reset/rebase/push) was
+# run at any point in this task.

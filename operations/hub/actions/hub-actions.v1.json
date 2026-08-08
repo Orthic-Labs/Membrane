@@ -6,6 +6,24 @@
   "required": ["schemaVersion", "actions", "runtimeReceipt"],
   "properties": {
     "schemaVersion": { "const": 1 },
+    "request": {
+      "type": "object",
+      "description": "The inert, frozen request the Hub renderer may build & hand to a trusted runtime. Never a dispatch or a claim of success.",
+      "required": ["state", "schemaVersion", "kind", "actionId", "capability", "capabilityReceiptId", "confirmationNonce", "payload", "rollbackOrRepair", "requestDigest"],
+      "properties": {
+        "state": { "const": "awaiting-trusted-runtime" },
+        "schemaVersion": { "const": 1 },
+        "kind": { "const": "hub.action.request" },
+        "actionId": { "enum": ["restart", "reconcile", "rotate-token", "review-proposal", "restore-quarantine", "apply-update"] },
+        "capability": { "type": "string", "minLength": 1 },
+        "capabilityReceiptId": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,160}$" },
+        "confirmationNonce": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{16,128}$" },
+        "payload": { "type": "object" },
+        "rollbackOrRepair": { "type": "string", "pattern": "^repair/hub/[a-z-]+$" },
+        "requestDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "sha256 over the canonical (key-sorted) actionId, capability, capabilityReceiptId, confirmationNonce, & payload. The runtime receipt must echo this digest exactly or the Hub renders unavailable." }
+      },
+      "additionalProperties": false
+    },
     "actions": {
       "type": "array",
       "items": {
