@@ -1,9 +1,11 @@
 {
   "name": "@orthic/membrane",
+  "mcpName": "io.github.orthic-labs/membrane",
   "version": "0.0.0-source",
   "description": "Thin platform bootstrap for the Membrane native runtime",
   "type": "module",
   "exports": "./index.mjs",
+  "repository": "https://github.com/orthic-labs/membrane",
   "engines": { "node": ">=20" },
   "files": ["index.mjs", "package.json"]
 }

@@ -1,0 +1,29 @@
+{
+  "name": "io.github.orthic-labs/membrane",
+  "version": "0.0.0-source",
+  "description": "Membrane MCP server native-runtime bootstrap",
+  "repository": "https://github.com/orthic-labs/membrane",
+  "npm": {
+    "package": "@orthic/membrane",
+    "mcpName": "io.github.orthic-labs/membrane",
+    "install": "npm:@orthic/membrane@0.0.0-source"
+  },
+  "publication": {
+    "namespaceStatus": "unverified",
+    "artifactStatus": "unpublished",
+    "namespaceReceipt": null
+  },
+  "nativeArtifacts": {
+    "darwin-arm64": { "package": "@orthic/membrane-darwin-arm64", "version": "0.0.0-source", "sha256": null, "signature": null, "platformReceipt": null },
+    "darwin-x64": { "package": "@orthic/membrane-darwin-x64", "version": "0.0.0-source", "sha256": null, "signature": null, "platformReceipt": null },
+    "linux-arm64": { "package": "@orthic/membrane-linux-arm64", "version": "0.0.0-source", "sha256": null, "signature": null, "platformReceipt": null },
+    "linux-x64": { "package": "@orthic/membrane-linux-x64", "version": "0.0.0-source", "sha256": null, "signature": null, "platformReceipt": null },
+    "win32-arm64": { "package": "@orthic/membrane-win32-arm64", "version": "0.0.0-source", "sha256": null, "signature": null, "platformReceipt": null },
+    "win32-x64": { "package": "@orthic/membrane-win32-x64", "version": "0.0.0-source", "sha256": null, "signature": null, "platformReceipt": null }
+  },
+  "signatureRequirements": {
+    "artifact": { "algorithm": "ed25519", "subject": "sha256" },
+    "darwin": { "platform": "apple-notary" },
+    "win32": { "platform": "windows-authenticode" }
+  }
+}
