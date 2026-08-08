@@ -5,6 +5,7 @@
   "identifier": "com.membrane.hub",
   "build": { "beforeBuildCommand": "pnpm build", "frontendDist": "../dist" },
   "bundle": {
+    "windows": { "nsis": { "template": "windows/installer.nsi" } },
     "macOS": { "signingIdentity": "Developer ID Application: Adrian D'souza (6KLGD3LLKF)" },
     "icon": [
       "../assets/Membrane-Icon-Pack/Drop-in/32x32.png",
