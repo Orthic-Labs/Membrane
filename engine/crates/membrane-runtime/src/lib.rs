@@ -28,6 +28,7 @@ pub mod fleet;
 pub mod hub;
 pub mod installation_manifest;
 pub mod memory_provider;
+pub mod memory_sentinel_view;
 pub mod notifications;
 pub mod outline;
 pub mod paths;
