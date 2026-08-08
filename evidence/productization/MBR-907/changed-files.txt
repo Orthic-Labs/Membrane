@@ -1,0 +1,10 @@
+server.json
+docs/install-registry.md
+scripts/release/registry/tool-contract-coverage.mjs
+scripts/release/registry/verify-server-json.mjs
+tests/mcp-registry/tool-contract-coverage.test.mjs
+tests/mcp-registry/verify-server-json.test.mjs
+evidence/productization/MBR-907/summary.json
+evidence/productization/MBR-907/commands.log
+evidence/productization/MBR-907/changed-files.txt
+evidence/productization/MBR-907/acceptance.json

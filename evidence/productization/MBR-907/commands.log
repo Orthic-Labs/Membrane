@@ -1,0 +1,70 @@
+$ node --test tests/mcp-registry/*.test.mjs
+✔ source metadata binds official MCP identity and pinned install route (4.327042ms)
+✔ unverified namespace or artifacts fail closed for installation (3.043708ms)
+✔ identity and native artifact tampering are rejected (24.049292ms)
+✔ publication flags cannot substitute for namespace and artifact proof (15.966125ms)
+✔ every real MCP tool from mcp/server.mjs appears exactly once, sorted by name (1.927375ms)
+✔ a tool with a matching OPERATIONS entry is marked operations_registry, with no gapReason (0.17525ms)
+✔ membrane_cortex is the known, real, currently uncontracted gap (0.259959ms)
+✔ a synthetic tool absent from a synthetic operations registry is a declared gap, not fabricated coverage (0.313084ms)
+✔ real server.json's tools field matches the live TOOLS + OPERATIONS derivation exactly (1.59075ms)
+✔ unpublished checkout fails closed even though tool coverage is correct (honest pre-release state) (5.064958ms)
+✔ with requirePublished:false, the real repo's identity and tool coverage both verify (2.256792ms)
+✔ a missing tools array is rejected (15.593ms)
+✔ a tool list missing a real tool (understating the surface) is rejected (9.818083ms)
+✔ silently upgrading the known gap to operations_registry coverage is rejected (11.358167ms)
+✔ a gap entry without a gapReason is rejected (8.670042ms)
+✔ a contract-covered tool carrying a stray gapReason is rejected (10.560333ms)
+✔ an invented tool name not in the live server is rejected (9.939916ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 351.670125
+
+# This includes the pre-existing tests/mcp-registry/registry.test.mjs (4/4,
+# from an earlier, incomplete pass at this task: commit f0ac76de "feat(distribution):
+# add MCP Registry source metadata", landed before MBR-903/MBR-906 in this
+# branch's history, not using the MBR-907 commit-message convention or
+# writing task evidence) unchanged, plus this task's two new test files:
+# tests/mcp-registry/tool-contract-coverage.test.mjs (4/4),
+# tests/mcp-registry/verify-server-json.test.mjs (9/9).
+
+$ node scripts/release/registry/verify-server-json.mjs
+MCP registry server.json contract: registry namespace or native artifacts are unpublished
+
+# Correct, honest, current-state failure: no MCP Registry namespace
+# reservation and no npm publish exist yet, so requirePublished (default
+# true) fails closed exactly as it should pre-release. Demonstrated
+# separately with requirePublished:false in
+# tests/mcp-registry/verify-server-json.test.mjs ("with requirePublished:false,
+# the real repo's identity and tool coverage both verify"), which passes.
+
+$ node scripts/release/registry/tool-contract-coverage.mjs
+[
+  { "name": "membrane_checkpoint_load", "contractCoverage": "operations_registry" },
+  { "name": "membrane_checkpoint_save", "contractCoverage": "operations_registry" },
+  { "name": "membrane_context", "contractCoverage": "operations_registry" },
+  { "name": "membrane_cortex", "contractCoverage": "gap", "gapReason": "membrane_cortex is exposed as a real MCP tool in mcp/server.mjs but has no entry in the OPERATIONS cross-operation registry (engine/crates/membrane-protocol/bindings/operations.mjs): no schemaVersion/errorVersion pair, no golden success/error fixtures, and no closed error-code taxonomy validated by validateOperationFixtures()." },
+  { "name": "membrane_feedback", "contractCoverage": "operations_registry" },
+  { "name": "membrane_knowledge_propose", "contractCoverage": "operations_registry" },
+  { "name": "membrane_scratchpad", "contractCoverage": "operations_registry" },
+  { "name": "membrane_source_read", "contractCoverage": "operations_registry" },
+  { "name": "membrane_temporal_fact", "contractCoverage": "operations_registry" },
+  { "name": "membrane_working_context", "contractCoverage": "operations_registry" }
+]
+
+# No cargo, pnpm, Tauri, right-release, npm publish, codesign, notarytool,
+# stapler, spctl, signtool, or AzureSignTool command was run. No mutating
+# git command (add/commit/checkout/stash/reset/rebase/push) was run. No
+# MCP Registry submission, namespace reservation, or signing occurred. The
+# manifest command `node scripts/release/verify-release-plan.mjs --task
+# MBR-907` was not run: per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md, per-task
+# manifest command execution and acceptance.json status "pass" are reserved
+# for the Book 3 final phased gate; that script also does not exist in this
+# checkout yet (it is created by a later, gate-owning change, outside this
+# task's allowlist). No .github/workflows/**, CI, or hosted/self-hosted
+# runner configuration was added.
