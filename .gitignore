@@ -2,6 +2,7 @@
 **/target/
 node_modules/
 **/dist/
+/.right-release/
 
 # Local runtime state (never belongs in the repo)
 *.db
