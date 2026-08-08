@@ -1,0 +1,28 @@
+{
+  "schema": "orthic.membrane-evidence.summary.v1",
+  "taskId": "MBR-508",
+  "title": "Run bounded sleep-time maintenance",
+  "commit": "TBD",
+  "acceptanceStatus": "pending_book_gate",
+  "envBlocked": false,
+  "snippetRefs": [
+    "SN-RUST-05"
+  ],
+  "recipeRefs": [
+    "R34"
+  ],
+  "changedFiles": [
+    "engine/crates/crypt-store/src/maintenance_exec.rs",
+    "engine/crates/crypt-store/src/lib.rs",
+    "engine/crates/membrane-supervisor/src/maintenance.rs",
+    "docs/operations/maintenance.md",
+    "tests/maintenance/maintenance-exec-contract.test.mjs"
+  ],
+  "notes": [
+    "engine/crates/membrane-supervisor/src/maintenance.rs, its module registration in engine/crates/membrane-supervisor/src/lib.rs, tests/maintenance/maintenance-contract.test.mjs, and docs/operations/maintenance.md already existed on this tree from an earlier, incomplete pass at this same task (commit 17910595, message 'feat(supervisor): add bounded maintenance planning contract'). That pass built the pure planner (plan_maintenance): a caller-supplied authority receipt checked through a trusted MaintenanceAuthorityVerifier, refusal of self-certification (issuer must not equal scheduler; subject must equal scheduler), scope/capability checks, budget (1-10,000 units) and deadline (<=15 minutes) bounds, and cancellation -- but it opens no storage and had no executable #[test] coverage, only a source-text-scanning contract test.",
+    "This task adds the missing store-side half and its deterministic test coverage: engine/crates/crypt-store/src/maintenance_exec.rs executes an already-planned, already-bounded operation against the Crypt SQLite store. It never certifies authority itself (refuses to run without a caller-supplied authority_receipt_id and contains no verification logic), runs every offered unit inside one IMMEDIATE transaction that commits only on a full in-budget, on-time, uncancelled pass, and drops (never commits) the transaction on cancellation, deadline expiry, budget exhaustion, or unit failure -- so a crash or interruption never leaves the store partially written. It is registered in engine/crates/crypt-store/src/lib.rs.",
+    "20 new Rust #[test] functions were added in this task's own commit and left unexecuted per the book-mode execution rules: 13 in engine/crates/membrane-supervisor/src/maintenance.rs exercising plan_maintenance's authority/self-certification/scope/capability/budget/deadline/cancellation logic (that file previously had zero executable tests), and 7 in engine/crates/crypt-store/src/maintenance_exec.rs exercising execute_bounded_maintenance's authority gate, commit path, cancellation rollback, deadline rollback, budget rollback, and unit-failure rollback against an in-memory SQLite store. A new companion structural test, tests/maintenance/maintenance-exec-contract.test.mjs, was written and executed directly with node --test (not cargo) -- see commands.log.",
+    "No cargo build/test/check/clippy/fmt, no Tauri or pnpm release build, and no mutating git command was run. The manifest commands (cargo fmt --check, cargo test --workspace) were not executed: per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md they run once at the final phased book gate (Gate phase 3.2 -- Wave 4 phase), not at task-implementation time.",
+    "engine/crates/membrane-runtime/** was not touched: it is reserved by a concurrent lane per this task's explicit dispatch instructions, even though the source manifest's allowedPaths lists it."
+  ]
+}
