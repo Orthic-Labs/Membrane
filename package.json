@@ -1,1 +1,23 @@
-{"name":"membrane-hub","private":true,"type":"module","scripts":{"build":"node scripts/build-frontend.mjs","test":"node --test tests/*.mjs"},"dependencies":{"@tauri-apps/api":"^2.0.0"},"devDependencies":{"@tauri-apps/cli":"^2.0.0"}}
+{
+  "name": "membrane-hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.18.0",
+  "scripts": {
+    "build": "node scripts/build-frontend.mjs",
+    "test": "node --test tests/*.mjs",
+    "rightkit:package:mac": "node scripts/build-mac-release.mjs",
+    "rightkit:package:win": "pnpm exec tauri build --bundles nsis",
+    "release:doctor": "right-release doctor",
+    "release:build:mac": "right-release build --platform mac",
+    "release:build:win": "right-release build --platform win"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0"
+  },
+  "devDependencies": {
+    "@rightkit/release": "0.2.50",
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
