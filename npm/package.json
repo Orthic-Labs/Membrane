@@ -5,7 +5,16 @@
   "description": "Thin platform bootstrap for the Membrane native runtime",
   "type": "module",
   "exports": "./index.mjs",
+  "bin": { "membrane": "./bin/membrane.mjs" },
   "repository": "https://github.com/orthic-labs/membrane",
   "engines": { "node": ">=20" },
-  "files": ["index.mjs", "package.json"]
+  "files": ["index.mjs", "bin/membrane.mjs", "package.json"],
+  "optionalDependencies": {
+    "@orthic/membrane-darwin-arm64": "0.0.0-source",
+    "@orthic/membrane-darwin-x64": "0.0.0-source",
+    "@orthic/membrane-linux-arm64": "0.0.0-source",
+    "@orthic/membrane-linux-x64": "0.0.0-source",
+    "@orthic/membrane-win32-arm64": "0.0.0-source",
+    "@orthic/membrane-win32-x64": "0.0.0-source"
+  }
 }

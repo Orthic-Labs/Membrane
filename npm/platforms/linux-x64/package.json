@@ -1,0 +1,10 @@
+{
+  "name": "@orthic/membrane-linux-x64",
+  "version": "0.0.0-source",
+  "description": "Membrane native runtime for Linux x64. Installed automatically as an optionalDependency of @orthic/membrane; not for direct use. No Membrane release-pipeline target builds this platform today (release/contracts/platforms.v1.json has no linux entry); this package is a declared placeholder until one exists.",
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": "https://github.com/orthic-labs/membrane",
+  "engines": { "node": ">=20" }
+}

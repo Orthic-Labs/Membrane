@@ -1,0 +1,42 @@
+$ node --test tests/npm/*.test.mjs scripts/release/npm/*.test.mjs
+✔ npm platform keys with no Membrane release-pipeline target are declared, permanent gaps (2.347833ms)
+✔ resolveNpmPlatformArtifact rejects an unknown npm platform key (0.627416ms)
+✔ no release-generation recorded yet is a declared gap, never a fabricated artifact (0.451167ms)
+✔ a verified pipeline target resolves to its real, recorded artifact (2.346292ms)
+✔ a pending or not-buildable pipeline target never fabricates a verified artifact (1.137292ms)
+✔ resolveAllNpmPlatformArtifacts aggregates every platform's real state without throwing (1.873708ms)
+✔ today's real Membrane checkout has no release-generation recorded for a plausible release: nothing is invented (0.188959ms)
+✔ selectPlatform maps supported host tuples (1.372083ms)
+✔ unsupported hosts fail closed (0.348875ms)
+✔ digest and signed metadata are checked before dispatch (1.403625ms)
+✔ digest mismatch prevents package loading (0.572292ms)
+✔ signature verification and package binding are mandatory (0.563292ms)
+✔ runInstall verifies and dispatches the co-installed platform package (2.158959ms)
+✔ unsupported host tuples fail closed before any package is loaded (0.618667ms)
+✔ a missing optional platform package is a declared gap, not a crash (0.207625ms)
+✔ a platform package that exports no artifact/metadata is a declared gap (1.146ms)
+✔ checksum mismatch is rejected before dispatch (0.374417ms)
+✔ signature mismatch is rejected before dispatch (0.13425ms)
+✔ without an injected trust root, the default verifySignature fails closed instead of fabricating trust (0.397709ms)
+✔ every PLATFORM_PACKAGES entry has a matching npm/platforms/<key>/package.json (1.281958ms)
+✔ each per-platform package.json declares the exact registered name and valid os/cpu constraints (3.26575ms)
+✔ no per-platform package declares a bundled native binary (this task resolves and fetches; it does not ship binaries) (2.459708ms)
+✔ the root @orthic/membrane package depends on every platform package as an optionalDependency (0.145042ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 101.89375
+
+# No cargo, pnpm, Tauri, right-release, npm publish, codesign, notarytool,
+# signtool, or AzureSignTool command was run. No mutating git command
+# (add/commit/checkout/stash/reset/rebase/push) was run. The full
+# `node scripts/release/verify-release-plan.mjs --task MBR-906` manifest
+# command was not run: per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md, per-task
+# manifest command execution and acceptance.json status "pass" are reserved
+# for the Book 3 final phased gate; that script also does not exist in this
+# checkout yet (it is created by a later gate-owning change, outside this
+# task's allowlist).

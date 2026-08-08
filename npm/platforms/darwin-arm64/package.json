@@ -1,0 +1,10 @@
+{
+  "name": "@orthic/membrane-darwin-arm64",
+  "version": "0.0.0-source",
+  "description": "Membrane native runtime for macOS arm64 (Apple Silicon). Installed automatically as an optionalDependency of @orthic/membrane; not for direct use. Contains no native binary until a real signed release is published (see docs/install-npm.md).",
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": "https://github.com/orthic-labs/membrane",
+  "engines": { "node": ">=20" }
+}

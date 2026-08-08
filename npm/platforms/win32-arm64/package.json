@@ -1,0 +1,10 @@
+{
+  "name": "@orthic/membrane-win32-arm64",
+  "version": "0.0.0-source",
+  "description": "Membrane native runtime for Windows arm64. Installed automatically as an optionalDependency of @orthic/membrane; not for direct use. windows-arm64 is conformance-only in release/contracts/platforms.v1.json until an installed receipt promotes it; this package carries no binary until that happens.",
+  "os": ["win32"],
+  "cpu": ["arm64"],
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": "https://github.com/orthic-labs/membrane",
+  "engines": { "node": ">=20" }
+}
