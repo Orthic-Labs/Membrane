@@ -205,7 +205,100 @@ fn stop_crypt_service(service: &ServiceState) {
     }
 }
 
-fn toggle_popover(app: &tauri::AppHandle, position: PhysicalPosition<f64>) {
+/// Menu-bar state. The three glyphs differ by silhouette because a template
+/// image has no colour and a badge finer than a point vanishes at 18pt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayStatus {
+    Available,
+    Degraded,
+    Unavailable,
+    /// No snapshot at all. Shown with the same solid glyph as `Unavailable`
+    /// (the hub cannot serve anything either way) but a distinct tooltip, so
+    /// "we don't know" is never rendered as "we're healthy".
+    Offline,
+}
+
+fn section_state(value: &serde_json::Value) -> Option<&str> {
+    value
+        .as_str()
+        .or_else(|| value.get("state").and_then(serde_json::Value::as_str))
+}
+
+fn state_rank(state: &str) -> Option<u8> {
+    match state {
+        "unavailable" => Some(0),
+        "degraded" => Some(1),
+        "available" => Some(2),
+        _ => None,
+    }
+}
+
+/// Mirrors the popover's aggregation: worst present state wins, and a payload
+/// with no explicit `overall` stays Offline rather than being promoted.
+pub fn tray_status(snapshot: Option<&CachedSnapshot>) -> TrayStatus {
+    let Some(payload) = snapshot.map(|s| &s.payload).and_then(|p| p.as_object()) else {
+        return TrayStatus::Offline;
+    };
+    if payload.get("overall").and_then(section_state).is_none() {
+        return TrayStatus::Offline;
+    }
+    match payload
+        .values()
+        .filter_map(section_state)
+        .filter_map(state_rank)
+        .min()
+    {
+        Some(0) => TrayStatus::Unavailable,
+        Some(1) => TrayStatus::Degraded,
+        Some(2) => TrayStatus::Available,
+        _ => TrayStatus::Offline,
+    }
+}
+
+pub fn tray_tooltip(status: TrayStatus) -> &'static str {
+    match status {
+        TrayStatus::Available => "Membrane — available",
+        TrayStatus::Degraded => "Membrane — degraded",
+        TrayStatus::Unavailable => "Membrane — unavailable",
+        TrayStatus::Offline => "Membrane — offline, no cached snapshot",
+    }
+}
+
+// macOS forces menu-bar images to 18pt tall, so 36px is exactly 2x there;
+// Windows tray slots take 32px.
+#[cfg(target_os = "macos")]
+macro_rules! tray_asset {
+    ($name:literal) => {
+        include_bytes!(concat!("../../assets/tray/", $name, "-36.png"))
+    };
+}
+#[cfg(not(target_os = "macos"))]
+macro_rules! tray_asset {
+    ($name:literal) => {
+        include_bytes!(concat!("../../assets/tray/", $name, "-32.png"))
+    };
+}
+
+fn tray_icon(status: TrayStatus) -> tauri::Result<tauri::image::Image<'static>> {
+    let bytes: &[u8] = match status {
+        TrayStatus::Available => tray_asset!("membrane-template"),
+        TrayStatus::Degraded => tray_asset!("membrane-degraded-template"),
+        TrayStatus::Unavailable | TrayStatus::Offline => tray_asset!("membrane-unavailable-template"),
+    };
+    tauri::image::Image::from_bytes(bytes).map(tauri::image::Image::to_owned)
+}
+
+/// Anchors the popover under the tray icon itself rather than under the cursor,
+/// so the arrow lines up wherever the click landed inside the icon.
+fn popover_origin(icon: tauri::Rect, window_width: u32, scale: f64) -> (i32, i32) {
+    let position = icon.position.to_physical::<f64>(scale);
+    let size = icon.size.to_physical::<f64>(scale);
+    let x = (position.x + size.width / 2.0 - f64::from(window_width) / 2.0).round() as i32;
+    let y = (position.y + size.height).round() as i32;
+    (x, y)
+}
+
+fn toggle_popover(app: &tauri::AppHandle, icon: tauri::Rect) {
     let Some(window) = app.get_webview_window("hub") else {
         return;
     };
@@ -214,8 +307,8 @@ fn toggle_popover(app: &tauri::AppHandle, position: PhysicalPosition<f64>) {
         return;
     }
     if let Ok(size) = window.outer_size() {
-        let mut x = (position.x - f64::from(size.width) / 2.0).round() as i32;
-        let mut y = (position.y + 2.0).round() as i32;
+        let scale = window.scale_factor().unwrap_or(1.0);
+        let (mut x, mut y) = popover_origin(icon, size.width, scale);
         if let Ok(Some(monitor)) = window.current_monitor() {
             let left = monitor.position().x + 8;
             let top = monitor.position().y + 24;
@@ -327,15 +420,12 @@ fn main() {
             let menu = MenuBuilder::new(app)
                 .items(&[&diagnostics, &trace, &quit])
                 .build()?;
-            let tray_icon = tauri::image::Image::from_bytes(include_bytes!(
-                "../../assets/tray/membrane-template.png"
-            ))?;
             let tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .icon(tray_icon)
+                .icon(tray_icon(TrayStatus::Offline)?)
                 .icon_as_template(true)
-                .tooltip("Membrane — status")
+                .tooltip(tray_tooltip(TrayStatus::Offline))
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "diagnostics" => {
                         if let Some(w) = app.get_webview_window("hub") {
@@ -358,11 +448,11 @@ fn main() {
                     if let tauri::tray::TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
-                        position,
+                        rect,
                         ..
                     } = event
                     {
-                        toggle_popover(tray.app_handle(), position);
+                        toggle_popover(tray.app_handle(), rect);
                     }
                 })
                 .build(app)?;
@@ -401,13 +491,12 @@ fn main() {
                 .unwrap_or_else(|| bundled_binary("membrane"));
             std::thread::spawn(move || loop {
                 let current = apply_poll_result(&cache, fetch_snapshot(&program));
-                let tooltip = current
-                    .as_ref()
-                    .map(|snapshot| {
-                        format!("Membrane Hub — observed {}", snapshot.observed_at_unix_ms)
-                    })
-                    .unwrap_or_else(|_| "Membrane Hub — offline".into());
-                let _ = tray.set_tooltip(Some(tooltip));
+                let status = tray_status(current.as_ref().ok());
+                if let Ok(icon) = tray_icon(status) {
+                    let _ = tray.set_icon(Some(icon));
+                    let _ = tray.set_icon_as_template(true);
+                }
+                let _ = tray.set_tooltip(Some(tray_tooltip(status)));
                 let _ = handle.emit("hub-snapshot-tick", ());
                 std::thread::sleep(POLL_INTERVAL);
             });
@@ -481,6 +570,75 @@ mod tests {
             "snapshot_too_large"
         );
     }
+    fn snapshot_with(payload: serde_json::Value) -> CachedSnapshot {
+        CachedSnapshot {
+            schema_version: 1,
+            observed_at_unix_ms: 1,
+            payload,
+        }
+    }
+
+    #[test]
+    fn tray_status_never_promotes_missing_data_to_healthy() {
+        assert_eq!(tray_status(None), TrayStatus::Offline);
+        // No explicit overall: unknown, not available.
+        let implicit = snapshot_with(serde_json::json!({"deliveries":{"state":"available"}}));
+        assert_eq!(tray_status(Some(&implicit)), TrayStatus::Offline);
+        let empty = snapshot_with(serde_json::json!({}));
+        assert_eq!(tray_status(Some(&empty)), TrayStatus::Offline);
+    }
+
+    #[test]
+    fn tray_status_takes_the_worst_present_state() {
+        let healthy = snapshot_with(
+            serde_json::json!({"overall":"available","deliveries":{"state":"available"}}),
+        );
+        assert_eq!(tray_status(Some(&healthy)), TrayStatus::Available);
+        let mixed = snapshot_with(
+            serde_json::json!({"overall":"available","deliveries":{"state":"degraded"}}),
+        );
+        assert_eq!(tray_status(Some(&mixed)), TrayStatus::Degraded);
+        let broken = snapshot_with(
+            serde_json::json!({"overall":"degraded","sources":{"state":"unavailable"}}),
+        );
+        assert_eq!(tray_status(Some(&broken)), TrayStatus::Unavailable);
+    }
+
+    #[test]
+    fn every_status_has_a_distinct_template_glyph_and_tooltip() {
+        for status in [
+            TrayStatus::Available,
+            TrayStatus::Degraded,
+            TrayStatus::Unavailable,
+            TrayStatus::Offline,
+        ] {
+            let icon = tray_icon(status).expect("tray glyph decodes");
+            assert_eq!(icon.width(), icon.height(), "glyph must be square");
+            // A template image carries shape in alpha only: RGB stays black.
+            assert!(
+                icon.rgba().chunks_exact(4).all(|px| px[..3] == [0, 0, 0]),
+                "{status:?} glyph is not a pure-black template"
+            );
+            assert!(tray_tooltip(status).starts_with("Membrane — "));
+        }
+        assert_ne!(
+            tray_tooltip(TrayStatus::Offline),
+            tray_tooltip(TrayStatus::Unavailable)
+        );
+    }
+
+    #[test]
+    fn popover_anchors_under_the_icon_centre() {
+        let icon = tauri::Rect {
+            position: tauri::LogicalPosition::new(100.0, 0.0).into(),
+            size: tauri::LogicalSize::new(24.0, 24.0).into(),
+        };
+        // Icon spans 100..124, centre 112; a 300-wide popover starts at -38.
+        assert_eq!(popover_origin(icon, 300, 1.0), (-38, 24));
+        // Scale factor applies to the icon rect, not the already-physical window.
+        assert_eq!(popover_origin(icon, 300, 2.0), (74, 48));
+    }
+
     #[test]
     fn parser_accepts_hub_operation_envelope() {
         let snapshot = parse_snapshot(
