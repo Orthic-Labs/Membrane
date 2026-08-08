@@ -1,5 +1,6 @@
 //! Native JSON-RPC MCP surface for Membrane.
 mod discovery;
+pub mod http_security;
 mod jsonrpc;
 mod prompts;
 mod resources;
