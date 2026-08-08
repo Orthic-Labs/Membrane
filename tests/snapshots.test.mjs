@@ -22,6 +22,8 @@ test("named snapshots are idempotent and changes are deterministic/bounded", () 
     db.prepare("INSERT INTO generation_leaf(path,kind,digest) VALUES (?,?,?)").run("b.ts", "file", "d3");
     const delta = changesSince(db, "base", { limit: 1 });
     assert.deepEqual(delta.changes, [{ path: "a.ts", kind: "modified" }]);
+    assert.deepEqual(delta.base.sourceObservation, { head: "h1", dirty: false });
+    assert.deepEqual(delta.head.sourceObservation, { head: "h1", dirty: false });
     assert.equal(delta.receipt.truncated, true);
     assert.equal(getSnapshot(db, "base").generationId, "g1");
     assert.equal(listSnapshots(db).length, 1);

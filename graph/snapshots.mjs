@@ -71,5 +71,11 @@ export function changesSince(db, name, { limit = 100 } = {}) {
   }
   changes.sort((a, b) => a.path.localeCompare(b.path) || a.kind.localeCompare(b.kind));
   const cap = Math.min(10000, Number(limit));
-  return { name: snapshot.name, base: { generationId: snapshot.generationId, manifestDigest: snapshot.manifestDigest }, head: { generationId: current.generationId, manifestDigest: current.manifestDigest }, changes: changes.slice(0, cap), receipt: { total: changes.length, limit: cap, truncated: changes.length > cap } };
+  return {
+    name: snapshot.name,
+    base: { generationId: snapshot.generationId, manifestDigest: snapshot.manifestDigest, sourceObservation: snapshot.sourceObservation },
+    head: { generationId: current.generationId, manifestDigest: current.manifestDigest, sourceObservation: current.sourceObservation },
+    changes: changes.slice(0, cap),
+    receipt: { total: changes.length, limit: cap, truncated: changes.length > cap },
+  };
 }
