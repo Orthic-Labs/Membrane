@@ -1,0 +1,56 @@
+$ node --test benchmarks/whole-task/holdout.test.mjs benchmarks/whole-task/bakeoff-reference.test.mjs benchmarks/whole-task/runner.test.mjs scripts/qualification/benchmark/run-whole-task-benchmark.test.mjs
+# tests 23, pass 23, fail 0. Covers: commit-reveal holdout salt round-trip;
+# deterministic, reproducible splitCorpus (same inputs -> same split; a
+# different salt -> a different split); rejection of duplicate/empty
+# caseIds and out-of-range holdoutFraction; verifySplit recomputing and
+# confirming a genuine split end to end, and failing closed when the
+# revealed salt, the claimed assignment, or the claimed split hash has
+# been tampered with; verifyBakeoffReference matching against the real,
+# already-completed vector-bakeoff artifacts on this tree (config, input,
+# final report, and both pre-existing per-host receipt.json files) without
+# spawning any process; cross-host configSha256/inputDigest/manifestSha256/
+# gitHead agreement between the two real host receipts; fail-closed
+# "missing" and "mutated" bakeoff-reference detection against a scratch
+# workspace; the runner degrading explicitly (executor-not-configured,
+# corpus-not-found, holdout-not-configured, host-receipts-not-configured)
+# rather than fabricating a result; the default fixture corpus being
+# hard-guarded to status source-ready (never complete) regardless of
+# executor output; rejection of a run whose revealed salt does not match
+# its own pre-committed commitment; an end-to-end run with a non-fixture
+# corpus, the real un-rerun bakeoff reference, and two real
+# writeHostReceipt-produced host receipts producing a receipt the
+# existing, unmodified verify-whole-task-benchmark.mjs reports as
+# "passed"; a failing case surfacing in failures and context_errors,
+# never silently dropped; and the CLI's flag parsing plus its own
+# degrade-explicit and fixture-guard wiring.
+
+$ node --test tests/benchmarks/whole-task.test.mjs
+# tests 4, pass 4, fail 0. Pre-existing MBR-804 receipt-schema/verifier
+# coverage (synthetic complete receipt passes; source-ready never passes;
+# stale host and unmeasured metric fail closed) — re-run here to confirm
+# no regression from adding the harness, corpus, and holdout protocol on
+# top of the existing contract. This file was not modified by this task
+# (out of allowlist; scripts/qualification/verify-whole-task-benchmark.mjs
+# and benchmarks/task/mbr-804.v1.schema.json were only imported/read, never
+# written).
+
+$ node --test benchmarks/memory/runner.test.mjs scripts/qualification/memory/run-memory-benchmarks.test.mjs
+# tests 13, pass 13, fail 0. Concurrent MBR-805 lane's tests, re-run to
+# confirm no interference from files added under benchmarks/ and
+# scripts/qualification/ by this task.
+
+# The manifest command `node scripts/qualification/run.mjs --task MBR-804`
+# was NOT executed: per MEMBRANE-BOOK-MODE-EXECUTION-RULES.md, manifest
+# commands run once at the final phased book gate (Gate phase 3.1 — Wave 3
+# phase), not at task-implementation time. scripts/qualification/run.mjs
+# also belongs to the concurrent MBR-801 lane and is out of this task's
+# allowlist.
+#
+# No cargo/pnpm/Tauri build, no mutating git command, and no dataset
+# download or network call was performed at any point in this task. The
+# only files read outside the allowlist were pre-existing, already-landed
+# artifacts: benchmarks/task/mbr-804.v1.schema.json,
+# scripts/qualification/verify-whole-task-benchmark.mjs (imported, both
+# unmodified), and the five real vector-bakeoff artifacts under
+# engine/vector-bakeoff/ and docs/benchmarks/vector-backend/ (hashed, never
+# executed or rerun).

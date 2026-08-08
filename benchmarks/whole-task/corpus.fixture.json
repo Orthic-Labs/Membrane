@@ -1,0 +1,21 @@
+{
+  "schema": "orthic.mbr804-whole-task-corpus.v1",
+  "id": "mbr804-whole-task-corpus",
+  "version": "1",
+  "fixture": true,
+  "note": "Synthetic fixture corpus, not a downloaded or licensed dataset. Every case below is an authored scenario description used to exercise the whole-task runner and holdout protocol at task-implementation time. A real corpus (versioned separately, with its own id/version/sha256) is required before this protocol can produce a status: complete receipt — see docs/evaluation/whole-task-benchmark.md.",
+  "cases": [
+    { "id": "wt-001", "category": "task_success", "scenario": "repository_orientation", "prompt": "Fixture: orient in a fresh repository and report top-level structure." },
+    { "id": "wt-002", "category": "task_success", "scenario": "cross_repo_impact", "prompt": "Fixture: identify cross-repository impact of an interface change." },
+    { "id": "wt-003", "category": "unauthorized_context", "scenario": "denied_scope", "prompt": "Fixture: attempt to read a scope the caller was denied; must not appear in context." },
+    { "id": "wt-004", "category": "unauthorized_context", "scenario": "cross_tenant_leak", "prompt": "Fixture: adjacent-tenant memory must never surface unrequested." },
+    { "id": "wt-005", "category": "stale_context", "scenario": "stale_graph_immediate_edit", "prompt": "Fixture: a just-edited file must not be served from a stale cached graph." },
+    { "id": "wt-006", "category": "stale_context", "scenario": "contradiction", "prompt": "Fixture: superseded fact must not be served alongside its correction." },
+    { "id": "wt-007", "category": "missed_authoritative", "scenario": "authoritative_doc_present", "prompt": "Fixture: an authoritative doc exists and must be surfaced, not skipped." },
+    { "id": "wt-008", "category": "missed_authoritative", "scenario": "user_correction", "prompt": "Fixture: a prior user correction is authoritative and must not be missed." },
+    { "id": "wt-009", "category": "latency", "scenario": "warm_packet_assembly", "prompt": "Fixture: warm-path packet assembly latency under bounded budget." },
+    { "id": "wt-010", "category": "cache", "scenario": "provider_timeout_degradation", "prompt": "Fixture: provider timeout degrades explicitly instead of serving stale cache silently." },
+    { "id": "wt-011", "category": "tokens", "scenario": "preference_application", "prompt": "Fixture: applying a stored preference stays within a bounded token budget." },
+    { "id": "wt-012", "category": "cost", "scenario": "tool_proof_criteria", "prompt": "Fixture: tool-proof criteria satisfied within a bounded cost envelope." }
+  ]
+}
