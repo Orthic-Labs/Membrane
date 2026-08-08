@@ -1,0 +1,1 @@
+{"$schema":"https://schema.tauri.app/config/2","productName":"Membrane Hub","version":"0.1.0","identifier":"com.membrane.hub","build":{"frontendDist":"../"},"bundle":{"icon":["icons/icon.png"]},"app":{"withGlobalTauri":false,"windows":[{"label":"hub","title":"Membrane Hub","width":360,"height":240,"resizable":false,"visible":false}]},"plugins":{"single-instance":{}}}
