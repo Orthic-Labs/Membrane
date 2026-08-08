@@ -22,7 +22,7 @@ export function validateRelease(input) {
   const artifact = required(input, "artifact_sha256"); if (!HEX64.test(artifact)) fail("artifact_sha256 must be SHA-256");
   const evidence = required(input, "evidence_sha256"); if (!HEX64.test(evidence)) fail("evidence_sha256 must be SHA-256");
   if (input.publish !== false) fail("publish must be false");
-  if (!Array.isArray(input.stages) || JSON.stringify(input.stages) !== JSON.stringify(contract.stages)) fail("stages must be provenance,sbom,sign,notary,verify in order");
+  if (!Array.isArray(input.stages) || JSON.stringify(input.stages) !== JSON.stringify(contract.stages)) fail("stages must be provenance,sbom,sign,platform_trust,verify in order");
   if (!input.provenance || !input.sbom || !input.sign || !input.platform_trust || !input.verify) fail("each stage requires immutable evidence reference");
   for (const stage of contract.stages) { const value = input[stage]; if (typeof value !== "object" || !HEX64.test(value.sha256 || "") || value.status !== "planned") fail(`${stage} evidence must be planned with SHA-256`); }
   const expectedTrust = platforms.platforms[target].os === "macos" ? "apple-notary" : "windows-authenticode";
