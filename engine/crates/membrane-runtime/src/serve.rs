@@ -16,7 +16,7 @@ use crate::memdb::MemDb;
 use crate::scope::{normalize_scope, scope_chain};
 use crate::store::{
     ExternalLifecycleStage, MemoryBatchError, MemoryBatchRequest, MemoryEventContext,
-    MemoryLifecycleInputV1, MemoryStore,
+    MemoryLifecycleInputV1, MemoryLifecycleOperationV1, MemoryStore, VerifiedMemoryActor,
 };
 use axum::body::Bytes;
 use axum::extract::rejection::BytesRejection;
@@ -1320,6 +1320,7 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
         HttpWorkClass::General,
     ),
     ("POST", "/v1/memories:batch", HttpWorkClass::Model),
+    ("POST", "/memory-lifecycle", HttpWorkClass::General),
     ("POST", "/put", HttpWorkClass::Model),
     ("POST", "/delete", HttpWorkClass::General),
     ("POST", "/list", HttpWorkClass::General),
@@ -2518,6 +2519,43 @@ fn route_with_context_ingest_lease(
     }
     if method == "POST" && path == "/anchor/retrieve" {
         return anchor_retrieve_response(body);
+    }
+    if method == "POST" && path == "/memory-lifecycle" {
+        let Some(_lease) = context_ingest_lease else {
+            return (503, r#"{"error":"verified startup lease required"}"#.into());
+        };
+        let value = match json_body(body) {
+            Ok(value) => value,
+            Err(response) => return response,
+        };
+        let request: MemoryLifecycleOperationV1 =
+            match serde_json::from_value(value.clone()) {
+                Ok(request) => request,
+                Err(error) => return (
+                    400,
+                    serde_json::json!({"error": format!("invalid lifecycle operation: {error}")})
+                        .to_string(),
+                ),
+            };
+        let request_digest = sha256_bytes(body.as_bytes());
+        let actor = match VerifiedMemoryActor::from_execution_context(
+            "membrane-runtime",
+            "A1",
+            "startup_lease",
+            &format!("lifecycle-{}", &request_digest[..16]),
+            &format!("lifecycle-{}", &request_digest[16..32]),
+        ) {
+            Ok(actor) => actor,
+            Err(error) => return (403, serde_json::json!({"error": error}).to_string()),
+        };
+        return match store.execute_lifecycle_operation(&request, &actor) {
+            Ok(receipt) => (
+                200,
+                serde_json::to_string(&receipt)
+                    .unwrap_or_else(|_| "{\"error\":\"serialization failed\"}".into()),
+            ),
+            Err(error) => (409, serde_json::json!({"error": error}).to_string()),
+        };
     }
     if method == "POST" && path == "/expand" {
         return expand_anchor_response(body, &configured_anchor_directory());

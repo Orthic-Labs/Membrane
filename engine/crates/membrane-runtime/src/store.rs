@@ -345,6 +345,104 @@ pub enum MemoryLifecycleKind {
     Superseded,
 }
 
+/// Trusted execution identity for lifecycle mutations.  This is deliberately
+/// constructed outside request JSON (manifest/startup lease/loopback), so a
+/// caller cannot self-assert actor or authority in a mutation body.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerifiedMemoryActor {
+    pub actor: String,
+    pub authority: String,
+    pub origin: String,
+    pub session_id: String,
+    pub trace_id: String,
+}
+
+impl VerifiedMemoryActor {
+    pub fn from_execution_context(
+        actor: &str,
+        authority: &str,
+        origin: &str,
+        session_id: &str,
+        trace_id: &str,
+    ) -> Result<Self, String> {
+        let actor = actor.trim();
+        let authority = authority.trim();
+        let origin = origin.trim();
+        if actor.is_empty() || session_id.trim().is_empty() || trace_id.trim().is_empty() {
+            return Err("verified actor, session_id, and trace_id are required".into());
+        }
+        if !matches!(origin, "manifest" | "startup_lease" | "loopback") {
+            return Err("lifecycle origin is not a verified execution context".into());
+        }
+        if !matches!(authority, "A1" | "A2" | "A3" | "A4" | "A5") {
+            return Err(
+                "lifecycle authority must be verified (A1..=A5); A0 is not accepted".into(),
+            );
+        }
+        if !valid_registry_token(actor)
+            || !valid_registry_token(session_id)
+            || !valid_registry_token(trace_id)
+        {
+            return Err("verified actor fields contain invalid tokens".into());
+        }
+        Ok(Self {
+            actor: actor.into(),
+            authority: authority.into(),
+            origin: origin.into(),
+            session_id: session_id.into(),
+            trace_id: trace_id.into(),
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryLifecycleOperation {
+    Create,
+    Update,
+    Supersede,
+    Forget,
+    Consolidate,
+    Quarantine,
+    Review,
+    Explain,
+    Restore,
+}
+
+/// Content-free operation descriptor.  Actor/provenance is supplied by
+/// [`VerifiedMemoryActor`], never by this descriptor.
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MemoryLifecycleOperationV1 {
+    pub operation: MemoryLifecycleOperation,
+    pub memory_id: String,
+    pub replacement_id: Option<String>,
+    pub scope_id: Option<String>,
+    pub expected_content_sha256: Option<String>,
+    pub reason_ref: String,
+    #[serde(default)]
+    pub content: Option<String>,
+    #[serde(default)]
+    pub tier: Option<MemoryTier>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryLifecycleReceiptV1 {
+    pub schema: &'static str,
+    pub operation: MemoryLifecycleOperation,
+    pub memory_id: String,
+    pub status: String,
+    pub reversible: bool,
+    pub actor: String,
+    pub authority: String,
+    pub origin: String,
+    pub session_id: String,
+    pub trace_id: String,
+    pub reason_ref: String,
+}
+
 impl MemoryLifecycleEventV1 {
     #[allow(clippy::too_many_arguments)]
     pub fn superseded(
@@ -5252,6 +5350,172 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// Execute an explicit lifecycle verb using a verified execution identity.
+    /// Request descriptors intentionally contain no actor or authority fields.
+    pub fn execute_lifecycle_operation(
+        &self,
+        request: &MemoryLifecycleOperationV1,
+        actor: &VerifiedMemoryActor,
+    ) -> Result<MemoryLifecycleReceiptV1, String> {
+        if request.memory_id.trim().is_empty() || request.reason_ref.trim().is_empty() {
+            return Err("memory_id and reason_ref are required".into());
+        }
+        if request
+            .scope_id
+            .as_deref()
+            .is_some_and(|scope| scope.trim().is_empty())
+        {
+            return Err("scope_id cannot be empty".into());
+        }
+        let mut context = MemoryEventContext::new(&actor.origin)
+            .with_session(&actor.session_id)
+            .with_trace(&actor.trace_id);
+        context.turn_id = Some(actor.trace_id.clone());
+        let scope = request.scope_id.as_deref().unwrap_or("global");
+        let expected = request.expected_content_sha256.as_deref();
+        if let Some(expected) = expected {
+            let actual: Option<String> = self
+                .db
+                .lock()
+                .query_row(
+                    "SELECT content_hash FROM memories WHERE id=?1",
+                    rusqlite::params![&request.memory_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| e.to_string())?;
+            if actual.as_deref() != Some(expected) {
+                return Err("lifecycle hash guard failed".into());
+            }
+        }
+        let (status, reversible) = match request.operation {
+            MemoryLifecycleOperation::Supersede => {
+                let replacement = request
+                    .replacement_id
+                    .as_deref()
+                    .ok_or_else(|| "replacement_id is required for supersede".to_string())?;
+                let event = MemoryLifecycleEventV1::superseded(
+                    format!("lifecycle:{}:{}", actor.trace_id, request.memory_id),
+                    &request.memory_id,
+                    replacement,
+                    scope,
+                    crate::time::now_millis() as i64,
+                    &actor.actor,
+                    &actor.authority,
+                    &request.reason_ref,
+                    &actor.trace_id,
+                );
+                self.apply_lifecycle_event(&event)
+                    .map_err(|e| e.to_string())?;
+                ("superseded", true)
+            }
+            MemoryLifecycleOperation::Forget => {
+                self.try_delete_observed(&request.memory_id, &context)?;
+                ("forgotten", false)
+            }
+            MemoryLifecycleOperation::Restore => {
+                if self.restore_quarantined(&request.memory_id)? {
+                    ("restored", true)
+                } else {
+                    return Err("memory is not quarantined".into());
+                }
+            }
+            MemoryLifecycleOperation::Review | MemoryLifecycleOperation::Explain => {
+                if self
+                    .db
+                    .lock()
+                    .query_row(
+                        "SELECT 1 FROM memories WHERE id=?1 UNION ALL SELECT 1 FROM memory_quarantine WHERE id=?1 LIMIT 1",
+                        rusqlite::params![&request.memory_id],
+                        |_| Ok(()),
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?
+                    .is_none()
+                {
+                    return Err(format!("memory {:?} not found", request.memory_id));
+                }
+                (
+                    if matches!(request.operation, MemoryLifecycleOperation::Explain) {
+                        "explained"
+                    } else {
+                        "reviewed"
+                    },
+                    true,
+                )
+            }
+            MemoryLifecycleOperation::Consolidate => {
+                if !matches!(actor.authority.as_str(), "A1" | "A2") {
+                    return Err("consolidation requires A1 or A2 authority".into());
+                }
+                ("consolidation_requested", true)
+            }
+            MemoryLifecycleOperation::Create | MemoryLifecycleOperation::Update => {
+                let content = request
+                    .content
+                    .as_deref()
+                    .ok_or_else(|| "content is required for create/update".to_string())?;
+                let scope_id = request.scope_id.as_deref().unwrap_or("global");
+                let tier = request.tier.unwrap_or(MemoryTier::Semantic);
+                let id = request
+                    .memory_id
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&request.memory_id);
+                self.try_put_observed(id, content, scope_id, tier, &context)?;
+                (
+                    if matches!(request.operation, MemoryLifecycleOperation::Create) {
+                        "created"
+                    } else {
+                        "updated"
+                    },
+                    true,
+                )
+            }
+            MemoryLifecycleOperation::Quarantine => {
+                let mut conn = self.db.lock();
+                let tx = conn.transaction().map_err(|e| e.to_string())?;
+                let exists: Option<String> = tx
+                    .query_row(
+                        "SELECT id FROM memories WHERE id=?1",
+                        rusqlite::params![&request.memory_id],
+                        |row| row.get(0),
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?;
+                if exists.is_none() {
+                    return Err(format!("memory {:?} not found", request.memory_id));
+                }
+                let now = crate::time::now_iso();
+                tx.execute("INSERT INTO memory_quarantine (id,tier,content,keywords,score,created_at,updated_at,access_count,embedding,embedding_q,scope_id,inject_count,content_hash,embed_model,source_ids,authority,influence_class,lifecycle_state,effective_from_ms,effective_until_ms,expires_at_ms,review_after_ms,superseded_by,priority_class,confidence,confidence_basis,quarantined_at,reason) SELECT id,tier,content,keywords,score,created_at,updated_at,access_count,embedding,embedding_q,scope_id,inject_count,content_hash,embed_model,source_ids,authority,influence_class,lifecycle_state,effective_from_ms,effective_until_ms,expires_at_ms,review_after_ms,superseded_by,priority_class,confidence,confidence_basis,?2,?3 FROM memories WHERE id=?1 ON CONFLICT(id) DO UPDATE SET quarantined_at=excluded.quarantined_at,reason=excluded.reason", rusqlite::params![&request.memory_id, now, &request.reason_ref]).map_err(|e| e.to_string())?;
+                tx.execute(
+                    "DELETE FROM memories WHERE id=?1",
+                    rusqlite::params![&request.memory_id],
+                )
+                .map_err(|e| e.to_string())?;
+                tx.commit().map_err(|e| e.to_string())?;
+                self.registry
+                    .write()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .remove(&request.memory_id);
+                ("quarantined", true)
+            }
+        };
+        Ok(MemoryLifecycleReceiptV1 {
+            schema: "orthic.memory-lifecycle-receipt.v1",
+            operation: request.operation.clone(),
+            memory_id: request.memory_id.clone(),
+            status: status.into(),
+            reversible,
+            actor: actor.actor.clone(),
+            authority: actor.authority.clone(),
+            origin: actor.origin.clone(),
+            session_id: actor.session_id.clone(),
+            trace_id: actor.trace_id.clone(),
+            reason_ref: request.reason_ref.clone(),
+        })
+    }
+
     /// Protect retention for an approved memory. This never changes recall eligibility;
     /// optional rank treatment remains post-gate and policy-flagged.
     pub fn set_priority_class(
@@ -9287,5 +9551,65 @@ mod tests {
         // vocabulary grows).
         assert!(!status.status.is_empty(), "status string should be set");
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn lifecycle_actor_rejects_body_style_identity_and_a0() {
+        assert!(
+            VerifiedMemoryActor::from_execution_context("", "A1", "loopback", "s", "t").is_err()
+        );
+        assert!(
+            VerifiedMemoryActor::from_execution_context("agent", "A0", "loopback", "s", "t")
+                .is_err()
+        );
+        assert!(VerifiedMemoryActor::from_execution_context(
+            "agent",
+            "A1",
+            "request_body",
+            "s",
+            "t"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn lifecycle_supersede_hash_guard_and_receipt_are_content_free() {
+        let store = MemoryStore::new();
+        store
+            .try_put("old", "old value", "global", MemoryTier::Semantic)
+            .unwrap();
+        store
+            .try_put("new", "new value", "global", MemoryTier::Semantic)
+            .unwrap();
+        let actor = VerifiedMemoryActor::from_execution_context(
+            "reviewer",
+            "A1",
+            "loopback",
+            "session-1",
+            "trace-1",
+        )
+        .unwrap();
+        let request = MemoryLifecycleOperationV1 {
+            operation: MemoryLifecycleOperation::Supersede,
+            memory_id: "global/old".into(),
+            replacement_id: Some("global/new".into()),
+            scope_id: Some("global".into()),
+            expected_content_sha256: Some(content_hash("old value")),
+            reason_ref: "review-1".into(),
+            content: None,
+            tier: None,
+        };
+        let receipt = store.execute_lifecycle_operation(&request, &actor).unwrap();
+        assert_eq!(receipt.status, "superseded");
+        assert!(receipt.reversible);
+        assert_eq!(receipt.actor, "reviewer");
+        assert!(!serde_json::to_string(&receipt)
+            .unwrap()
+            .contains("old value"));
+        let wrong = MemoryLifecycleOperationV1 {
+            expected_content_sha256: Some(content_hash("spoofed")),
+            ..request
+        };
+        assert!(store.execute_lifecycle_operation(&wrong, &actor).is_err());
     }
 }
