@@ -12,6 +12,7 @@ members = [
     "crates/membrane-supervisor",
     "crates/membrane-provider-sdk",
     "crates/membrane-testkit",
+    "crates/membrane-updater",
 ]
 
 [workspace.package]

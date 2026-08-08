@@ -1,0 +1,13 @@
+[package]
+name = "membrane-updater"
+version = "0.1.0"
+edition = "2021"
+license-file = "../../../LICENSE"
+description = "Content-free dual-signature admission contract for Membrane updates"
+
+[lib]
+name = "membrane_updater"
+path = "src/lib.rs"
+
+[dependencies]
+serde.workspace = true
