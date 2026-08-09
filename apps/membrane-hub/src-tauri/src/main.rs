@@ -212,16 +212,15 @@ fn stop_crypt_service(service: &ServiceState) {
     }
 }
 
-/// Menu-bar state. The three glyphs differ by silhouette because a template
-/// image has no colour and a badge finer than a point vanishes at 18pt.
+/// Menu-bar state. Every state shows the same Membrane hex-brain mark and
+/// differs by colour only, using the palette in `src/popover.css`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayStatus {
     Available,
     Degraded,
     Unavailable,
-    /// No snapshot at all. Shown with the same solid glyph as `Unavailable`
-    /// (the hub cannot serve anything either way) but a distinct tooltip, so
-    /// "we don't know" is never rendered as "we're healthy".
+    /// No snapshot at all. Carries its own muted grey and a distinct tooltip,
+    /// so "we don't know" is never rendered as "we're healthy".
     Offline,
 }
 
@@ -272,7 +271,9 @@ pub fn tray_tooltip(status: TrayStatus) -> &'static str {
 }
 
 // macOS forces menu-bar images to 18pt tall, so 36px is exactly 2x there;
-// Windows tray slots take 32px.
+// Windows tray slots take 32px. Both are cropped to the glyph's own bounds by
+// scripts/tray-icons.mjs, so the mark fills its slot instead of sitting inside
+// transparent padding that the 18pt scale would otherwise spend.
 #[cfg(target_os = "macos")]
 macro_rules! tray_asset {
     ($name:literal) => {
@@ -288,9 +289,10 @@ macro_rules! tray_asset {
 
 fn tray_icon(status: TrayStatus) -> tauri::Result<tauri::image::Image<'static>> {
     let bytes: &[u8] = match status {
-        TrayStatus::Available => tray_asset!("membrane-template"),
-        TrayStatus::Degraded => tray_asset!("membrane-degraded-template"),
-        TrayStatus::Unavailable | TrayStatus::Offline => tray_asset!("membrane-unavailable-template"),
+        TrayStatus::Available => tray_asset!("membrane-available"),
+        TrayStatus::Degraded => tray_asset!("membrane-degraded"),
+        TrayStatus::Unavailable => tray_asset!("membrane-unavailable"),
+        TrayStatus::Offline => tray_asset!("membrane-offline"),
     };
     tauri::image::Image::from_bytes(bytes).map(tauri::image::Image::to_owned)
 }
@@ -431,7 +433,9 @@ fn main() {
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .icon(tray_icon(TrayStatus::Offline)?)
-                .icon_as_template(true)
+                // Not a template: macOS ignores RGB in a template image and
+                // tints the alpha itself, which would discard the status colour.
+                .icon_as_template(false)
                 .tooltip(tray_tooltip(TrayStatus::Offline))
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "diagnostics" => {
@@ -501,7 +505,7 @@ fn main() {
                 let status = tray_status(current.as_ref().ok());
                 if let Ok(icon) = tray_icon(status) {
                     let _ = tray.set_icon(Some(icon));
-                    let _ = tray.set_icon_as_template(true);
+                    let _ = tray.set_icon_as_template(false);
                 }
                 let _ = tray.set_tooltip(Some(tray_tooltip(status)));
                 let _ = handle.emit("hub-snapshot-tick", ());
@@ -611,22 +615,72 @@ mod tests {
         assert_eq!(tray_status(Some(&broken)), TrayStatus::Unavailable);
     }
 
+    /// Locks the three properties the tray art has to keep: it is always the
+    /// same Membrane mark, states are told apart by colour alone, and the mark
+    /// is cropped tight so it fills the menu bar's fixed 18pt slot.
     #[test]
-    fn every_status_has_a_distinct_template_glyph_and_tooltip() {
-        for status in [
+    fn every_status_shares_one_mark_and_differs_only_by_colour() {
+        let statuses = [
             TrayStatus::Available,
             TrayStatus::Degraded,
             TrayStatus::Unavailable,
             TrayStatus::Offline,
-        ] {
+        ];
+        let mut colours = Vec::new();
+        let mut silhouette: Option<Vec<u8>> = None;
+
+        for status in statuses {
             let icon = tray_icon(status).expect("tray glyph decodes");
-            assert_eq!(icon.width(), icon.height(), "glyph must be square");
-            // A template image carries shape in alpha only: RGB stays black.
+            let (width, height) = (icon.width() as usize, icon.height() as usize);
+            let rgba = icon.rgba();
+
+            // Same artwork every time: compare the alpha channel, which is the
+            // shape. A silhouette drift means someone drew a new glyph.
+            let alpha: Vec<u8> = rgba.chunks_exact(4).map(|px| px[3]).collect();
+            match &silhouette {
+                None => silhouette = Some(alpha),
+                Some(first) => assert_eq!(
+                    first, &alpha,
+                    "{status:?} uses a different silhouette; states differ by colour only"
+                ),
+            }
+
+            // One opaque colour, and not black -- a black glyph would mean the
+            // tint was lost and the icon fell back to template-style artwork.
+            let mut opaque = rgba
+                .chunks_exact(4)
+                .filter(|px| px[3] > 200)
+                .map(|px| [px[0], px[1], px[2]]);
+            let colour = opaque.next().expect("glyph has opaque pixels");
             assert!(
-                icon.rgba().chunks_exact(4).all(|px| px[..3] == [0, 0, 0]),
-                "{status:?} glyph is not a pure-black template"
+                opaque.all(|px| px == colour),
+                "{status:?} is not a single flat colour"
             );
+            assert_ne!(colour, [0, 0, 0], "{status:?} lost its status colour");
+            colours.push(colour);
+
+            // Cropped tight: every edge carries ink, so none of the 18pt slot
+            // is spent on transparent padding.
+            let at = |x: usize, y: usize| rgba[(y * width + x) * 4 + 3];
+            assert!((0..width).any(|x| at(x, 0) > 8), "{status:?} pads the top");
+            assert!(
+                (0..width).any(|x| at(x, height - 1) > 8),
+                "{status:?} pads the bottom"
+            );
+            assert!((0..height).any(|y| at(0, y) > 8), "{status:?} pads the left");
+            assert!(
+                (0..height).any(|y| at(width - 1, y) > 8),
+                "{status:?} pads the right"
+            );
+
             assert!(tray_tooltip(status).starts_with("Membrane — "));
+        }
+
+        for (index, colour) in colours.iter().enumerate() {
+            assert!(
+                !colours[index + 1..].contains(colour),
+                "two statuses share the colour {colour:?}"
+            );
         }
         assert_ne!(
             tray_tooltip(TrayStatus::Offline),
