@@ -122,7 +122,7 @@ def test_discovery_counts_use_collision_safe_morpher_state_keys(tmp_path: Path):
         {"client": "grok-build", "tool": "grok-build", "path": first, "outcome": "parsed", "state_key": "one"},
         {"client": "grok-build", "tool": "grok-build", "path": second, "outcome": "parsed", "state_key": "two"},
     ]
-    state = {"learned": {"grok-build": {"one": first.stat().st_mtime}}}
+    state = {"learned": {"one": "sha256:already-learned"}}
 
     counts = conformance.discovery_counts(rows, state, registered_clients=["grok-build"])
 
@@ -139,7 +139,7 @@ def test_discovery_counts_exclude_active_codex_task_from_pending(
         "client": "codex",
         "tool": "codex",
         "path": active,
-        "outcome": "parsed",
+        "outcome": "skipped",
         "state_key": active.stem,
     }]
 
@@ -147,7 +147,7 @@ def test_discovery_counts_exclude_active_codex_task_from_pending(
         rows, {"learned": {}}, registered_clients=["codex"]
     )
 
-    assert counts["codex"]["parsed"] == 1
+    assert counts["codex"]["skipped"] == 1
     assert counts["codex"]["pending"] == 0
 
 
@@ -295,8 +295,7 @@ def test_discovery_counts_are_registry_client_split_without_session_identifiers(
         path.write_text("{}\n", encoding="utf-8")
     state = {
         "learned": {
-            "claude-code": {claude_a.stem: claude_a.stat().st_mtime},
-            "codex": {},
+            claude_a.stem: "sha256:already-learned",
         }
     }
 

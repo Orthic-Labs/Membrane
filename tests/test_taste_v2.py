@@ -15,8 +15,10 @@ runs the entire suite without any external dependency.
 """
 from __future__ import annotations
 
+import dataclasses
 import sys
 import unittest
+import copy
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -47,6 +49,11 @@ def _ev(
     parser_digest: str = "sha256:deadbeef",
 ) -> dict:
     """Build a TranscriptEventV1-shaped dict."""
+    event_flags = {
+        "synthetic": False, "meta": False, "privateReasoningOmitted": False,
+        "redacted": False, "isError": False, "isSidechain": False,
+        **(flags or {}),
+    }
     return {
         "eventId": event_id or f"evt_{sequence:04d}",
         "rowIndex": row_index,
@@ -68,11 +75,11 @@ def _ev(
         "sessionId": session_id,
         "transcriptId": transcript_id,
         "parserDigest": parser_digest,
-        "synthetic": bool(flags and flags.get("synthetic")),
-        "meta": bool(flags and flags.get("meta")),
-        "privateReasoningOmitted": bool(flags and flags.get("privateReasoningOmitted")),
-        "redacted": bool(flags and flags.get("redacted")),
-        "flags": flags or {},
+        "synthetic": event_flags["synthetic"],
+        "meta": event_flags["meta"],
+        "privateReasoningOmitted": event_flags["privateReasoningOmitted"],
+        "redacted": event_flags["redacted"],
+        "flags": event_flags,
     }
 
 
@@ -99,6 +106,16 @@ def _correction_session() -> list[dict]:
             byte_start=271, byte_end=400,
         ),
     ]
+
+
+def _source_context() -> list[dict]:
+    return [{
+        "eventId": "e1", "kind": "user_message", "role": "user",
+        "classification": "successful_readonly",
+        "flags": {name: False for name in taste_v2.SOURCE_FLAG_NAMES},
+        "byteStart": 0, "byteEnd": 10, "text": "x", "truncated": False,
+        "isSource": True,
+    }]
 
 
 def _decision_session() -> list[dict]:
@@ -238,6 +255,7 @@ class ContextPreservationTests(unittest.TestCase):
         total_chars = sum(
             len(ev["text"].rstrip("…"))
             for ev in c.contextEvents
+            if not ev["isSource"]
         )
         self.assertLessEqual(total_chars, 20)
 
@@ -282,6 +300,30 @@ class AuthoritativeProvenanceTests(unittest.TestCase):
         c = taste_v2.extract_candidates(events, scope="workspace")[0]
         self.assertEqual(c.transportNote, taste_v2.TRANSPORT_GAP_NOTE)
         self.assertIn("event-content lookup", c.transportNote)
+
+    def test_malicious_nested_provenance_matrix_rejects_before_admission(self):
+        candidate = taste_v2.extract_candidates(_correction_session(), scope="workspace")[0]
+        cases = {
+            "source text": lambda c: c.contextEvents[-1].__setitem__("text", "forged"),
+            "source flag": lambda c: c.contextEvents[-1]["flags"].__setitem__("meta", True),
+            "source role": lambda c: c.contextEvents[-1].__setitem__("role", "assistant"),
+            "source span": lambda c: c.contextEvents[-1].__setitem__("byteEnd", 401),
+            "second source": lambda c: c.contextEvents[0].__setitem__("isSource", True),
+        }
+        for name, mutate in cases.items():
+            with self.subTest(name=name):
+                forged = copy.deepcopy(candidate)
+                mutate(forged)
+                rejected = taste_v2.admit_candidate(forged)
+                self.assertEqual(rejected.lifecycleState, "rejected")
+                self.assertIn("candidate source context", rejected.admissionReason)
+
+    def test_candidate_requires_exact_parser_flags_and_source_context(self):
+        candidate = taste_v2.extract_candidates(_correction_session(), scope="workspace")[0]
+        with self.assertRaisesRegex(taste_v2.TasteV2Error, "exactly the six boolean"):
+            dataclasses.replace(candidate, sourceFlags=(("synthetic", False),))
+        with self.assertRaisesRegex(taste_v2.TasteV2Error, "contextEvents must be non-empty"):
+            dataclasses.replace(candidate, contextEvents=[])
 
 
 # ---------------------------------------------------------------------------
@@ -384,8 +426,10 @@ class SchemaValidationTests(unittest.TestCase):
                 sourceRowIndex=1, sourceSequence=1,
                 sourceHost="claude_code", sourceSessionId="s1",
                 sourceTranscriptId="t1", sourceParserDigest="sha256:xx",
-                contextEvents=[{"eventId": "e1", "kind": "user_message",
-                                 "byteStart": 0, "byteEnd": 10, "text": "x"}],
+                sourceKind="user_message", sourceRole="user",
+                sourceClassification="successful_readonly",
+                sourceFlags=tuple((name, False) for name in taste_v2.SOURCE_FLAG_NAMES),
+                contextEvents=_source_context(),
                 contextByteSpans=[(0, 10)],
                 evidenceId="ev1", evidenceText="x",
                 lifecycleState="bogus",
@@ -401,6 +445,9 @@ class SchemaValidationTests(unittest.TestCase):
                 sourceRowIndex=1, sourceSequence=1,
                 sourceHost="claude_code", sourceSessionId="s1",
                 sourceTranscriptId="t1", sourceParserDigest="sha256:xx",
+                sourceKind="user_message", sourceRole="user",
+                sourceClassification="successful_readonly",
+                sourceFlags=tuple((name, False) for name in taste_v2.SOURCE_FLAG_NAMES),
                 contextEvents=[],
                 contextByteSpans=[],
                 evidenceId="ev1", evidenceText="x",
@@ -416,8 +463,10 @@ class SchemaValidationTests(unittest.TestCase):
                 sourceRowIndex=1, sourceSequence=1,
                 sourceHost="claude_code", sourceSessionId="s1",
                 sourceTranscriptId="t1", sourceParserDigest="sha256:xx",
-                contextEvents=[{"eventId": "e1", "kind": "user_message",
-                                 "byteStart": 0, "byteEnd": 10, "text": "x"}],
+                sourceKind="user_message", sourceRole="user",
+                sourceClassification="successful_readonly",
+                sourceFlags=tuple((name, False) for name in taste_v2.SOURCE_FLAG_NAMES),
+                contextEvents=_source_context(),
                 contextByteSpans=[(0, 10)],
                 evidenceId="ev1", evidenceText="x",
             )

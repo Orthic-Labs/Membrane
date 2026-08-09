@@ -38,12 +38,12 @@ for directory in (REPO_ROOT, MORPH_DIR, TOOLS_LIB, MEMORY_DIR):
     if str(directory) not in sys.path:
         sys.path.insert(0, str(directory))
 
-import morph_sessions  # noqa: E402
 import cross_machine  # noqa: E402
+import taste_runtime  # noqa: E402
+import taste_v2_pipeline  # noqa: E402
+import transcript_sources  # noqa: E402
 
 mirror_append_only = workspace_runtime.mirror_append_only()
-context_session_adapters = workspace_runtime.context_session_adapters()
-context_session_inventory = workspace_runtime.context_session_inventory()
 crypt_port = workspace_runtime.crypt_port
 
 
@@ -61,8 +61,10 @@ DISCOVERY_FIELDS = ("discovered", *DISCOVERY_OUTCOMES, "pending")
 DEFAULT_IMPLEMENTATION_FILES = (
     "tools/pipelines/memory/context_session_adapters.py",
     "tools/pipelines/memory/context_session_inventory.py",
-    "morph/morph.py",
-    "morph/morph_sessions.py",
+    "morph/taste_apply.py",
+    "morph/taste_runtime.py",
+    "morph/taste_v2_pipeline.py",
+    "morph/transcript_sources.py",
     "morph/morph_persistence.py",
     "morph/cross_machine.py",
     "morph/adjudicate_manifest.py",
@@ -220,13 +222,12 @@ def discovery_counts(
             raise ConformanceError("transcript discovery changed during conformance") from exc
         counts[client]["discovered"] += 1
         counts[client][outcome] += 1
-        tool_state = learned.get(tool, {}) if isinstance(learned, Mapping) else {}
+        # Taste v2 owns one canonical learned map keyed by source-local key;
+        # legacy per-tool session state must never influence conformance.
         state_key = str(item.get("state_key") or path.stem)
-        prior = tool_state.get(state_key, -1.0) if isinstance(tool_state, Mapping) else -1.0
         if (
             outcome == "parsed"
-            and not morph_sessions.is_active_session(tool, path)
-            and (not isinstance(prior, (int, float)) or prior < mtime)
+            and (not isinstance(learned, Mapping) or state_key not in learned)
         ):
             counts[client]["pending"] += 1
     return {client: counts[client] for client in sorted(counts)}
@@ -238,51 +239,45 @@ def discover_session_evidence(
     installation_id: str | None = None,
     env: Mapping[str, str] = os.environ,
 ) -> dict[str, Any]:
-    """Return content-free registry accounting plus an in-memory source/client join."""
-    registry = context_session_adapters.build_registry(
-        morph_sessions,
-        context_session_inventory.infer_candidate_client,
-        env=env,
+    """Return content-free Taste v2 discovery, quarantine & source-client join."""
+    del env  # Discovery owns its environment boundary through transcript_sources.
+    effective_state = state if state is not None else taste_v2_pipeline.load_state(
+        taste_runtime.state_path()
+    )
+    learned = effective_state.get("learned", {}) if isinstance(effective_state, Mapping) else {}
+    discovered = transcript_sources.discover()
+    selected, quarantined = transcript_sources.select_sources(
+        discovered, learned=learned if isinstance(learned, dict) else {}
     )
     rows: list[dict[str, Any]] = []
     source_clients: dict[str, str] = {}
-    for candidate in registry.discover():
-        try:
-            parsed = candidate.parser(candidate.path, max_turns=None)
-        except (OSError, UnicodeError):
-            parsed = None
-            outcome = "unreadable"
-        except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
-            parsed = None
-            outcome = "malformed"
-        else:
-            outcome = (
-                "parsed"
-                if parsed is not None
-                else context_session_inventory.unparsed_reason(candidate.path)
-            )
+    clients: set[str] = set()
+    for source in [*selected, *quarantined]:
+        host = source.spec.host
+        client = "claude" if host == "claude_code" else "codex" if host == "codex" else source.spec.tool
+        outcome = "parsed" if source in selected else "skipped"
+        clients.add(client)
         rows.append({
-            "client": candidate.client,
-            "tool": candidate.tool,
-            "path": candidate.path,
+            "client": client,
+            "tool": source.spec.tool,
+            "path": source.path,
             "outcome": outcome,
-            "state_key": morph_sessions.state_key(candidate.tool, candidate.path),
+            "state_key": source.local_source_key,
         })
-        if parsed is not None and installation_id is not None:
+        if outcome == "parsed" and installation_id is not None:
             source_id = cross_machine.qualify_source_session(
                 installation_id,
-                str(getattr(parsed, "tool")),
-                str(getattr(parsed, "session_id")),
+                source.spec.tool,
+                source.session_id,
             )
-            existing = source_clients.setdefault(source_id, candidate.client)
-            if existing != candidate.client:
+            existing = source_clients.setdefault(source_id, client)
+            if existing != client:
                 raise ConformanceError("session source maps to multiple clients")
-    effective_state = state if state is not None else morph_sessions.load_state()
     return {
         "discovery": discovery_counts(
             rows,
             effective_state,
-            registered_clients=registry.clients,
+            registered_clients=clients,
         ),
         "source_clients": source_clients,
     }
@@ -621,7 +616,7 @@ def collect_evidence(
     root = Path(repo_root).resolve()
     installation_id = cross_machine.load_installation_id(Path(installation_file))
     canonical_rules = cross_machine.load_canonical_rules(Path(db_path))
-    state = morph_sessions.load_state()
+    state = taste_v2_pipeline.load_state(taste_runtime.state_path())
     tests = (
         run_focused_tests(root)
         if focused_tests is None

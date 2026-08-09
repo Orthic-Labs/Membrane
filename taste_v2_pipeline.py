@@ -27,12 +27,18 @@ STATE_KEY = "taste_v2"
 EXTRACTION_CONTRACT = "taste-v2-direct-transcripts-1"
 
 def source_hash(path: Path) -> str:
-    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    return transcript_sources.source_hash(path)
 
 def discover(home: Path | None = None):
     return transcript_sources.discover(home)
 
-def source_id(source: transcript_sources.TranscriptSource) -> str:
+def source_id(source: transcript_sources.TranscriptSource,
+              installation_id: str | None = None) -> str:
+    if installation_id:
+        import cross_machine
+        return cross_machine.qualify_source_session(
+            installation_id, source.spec.tool, source.local_source_key,
+        )
     return f"{source.spec.host}:{source.session_id}:{source.path.name}"
 
 def load_state(path: Path) -> dict:
@@ -45,26 +51,51 @@ def save_state(path: Path, state: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
 
-def source_refs(sources: list[transcript_sources.TranscriptSource]) -> list[dict[str, Any]]:
-    return [{"source_id": source_id(s), "tool": s.spec.tool, "host": s.spec.host,
+def source_refs(sources: list[transcript_sources.TranscriptSource],
+                installation_id: str | None = None) -> list[dict[str, Any]]:
+    return [{"source_id": source_id(s, installation_id), "tool": s.spec.tool, "host": s.spec.host,
              "path": str(s.path), "mtime_ns": s.path.stat().st_mtime_ns,
              "source_sha256": source_hash(s.path)} for s in sources]
 
 def pending_sources(sources: list[transcript_sources.TranscriptSource], state: dict,
                     *, limit: int | None = None, before_mtime: float | None = None,
-                    newest: bool = False) -> list[transcript_sources.TranscriptSource]:
+                    newest: bool = False,
+                    installation_id: str | None = None) -> list[transcript_sources.TranscriptSource]:
+    """Apply incremental learned/mtime filter to sources already partitioned by ``select_sources``.
+
+    Callers must pass the ``selected`` half of ``transcript_sources.select_sources``: every
+    source here is supported, has populated ``metadata``, and is not active. ``limit`` here
+    only orders and trims; the inspection/cap budget lives in ``select_sources``.
+    """
     learned = state.get("learned", {})
-    eligible = [s for s in sources if s.spec.host in transcript_sources.SUPPORTED_HOSTS and not s.metadata.exclusion_reason
-                and (before_mtime is None or s.path.stat().st_mtime <= before_mtime)
-                and learned.get(source_id(s)) != source_hash(s.path)]
+    eligible: list[transcript_sources.TranscriptSource] = []
+    for source in sources:
+        if source.spec.host not in transcript_sources.SUPPORTED_HOSTS:
+            continue
+        if source.metadata is None or source.metadata.exclusion_reason:
+            continue
+        if before_mtime is not None and source.path.stat().st_mtime > before_mtime:
+            continue
+        learned_id = source_id(source, installation_id)
+        if learned.get(learned_id) == source_hash(source.path):
+            continue
+        eligible.append(source)
     eligible.sort(key=lambda s: s.path.stat().st_mtime, reverse=newest)
     if limit is not None:
         eligible = eligible[:limit]
     return sorted(eligible, key=lambda s: s.path.stat().st_mtime)
 
-def quarantine_sources(sources: list[transcript_sources.TranscriptSource]) -> list[dict[str, str]]:
-    return [{"source_id": source_id(s), "host": str(s.spec.host), "reason": s.metadata.exclusion_reason or "unsupported-host"}
-            for s in sources if s.spec.host not in transcript_sources.SUPPORTED_HOSTS or s.metadata.exclusion_reason]
+def quarantine_sources(sources: list[transcript_sources.TranscriptSource],
+                       installation_id: str | None = None) -> list[dict[str, str]]:
+    """Project already-quarantined descriptors (post-``select_sources``) to journal rows."""
+    rows: list[dict[str, str]] = []
+    for source in sources:
+        host = source.spec.host
+        reason = source.metadata.exclusion_reason if source.metadata is not None else ""
+        if host not in transcript_sources.SUPPORTED_HOSTS and not reason:
+            reason = "unsupported-host"
+        rows.append({"source_id": source_id(source, installation_id), "host": str(host), "reason": reason or "unsupported-host"})
+    return rows
 
 def extract_source(source: transcript_sources.TranscriptSource, *, scope: str = "workspace") -> list[taste_v2.TasteCandidateV1]:
     if source.spec.host not in transcript_sources.SUPPORTED_HOSTS or source.metadata.exclusion_reason:
@@ -98,6 +129,8 @@ def evidence_context(candidate: taste_v2.TasteCandidateV1) -> dict[str, Any]:
         "sourceKind": candidate.sourceKind, "sourceRole": candidate.sourceRole,
         "sourceClassification": candidate.sourceClassification,
         "sourceFlags": dict(candidate.sourceFlags),
+        "evidenceId": candidate.evidenceId,
+        "evidenceText": candidate.evidenceText,
         "contextEvents": candidate.contextEvents,
     }
 

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+import manifest
 
 
 MODULE_PATH = Path(__file__).parent / "adjudicate_manifest.py"
@@ -40,6 +41,15 @@ def _manifest(records: list[dict]) -> dict:
         "source_session_ids": ["session-1"],
         "created_at": "2026-07-14T00:00:00Z",
         "records": records,
+    }
+
+
+def test_historical_v12_payload_projection_omits_v13_provenance() -> None:
+    record = _record("morph-verification-focused-tests-0123456789")
+    projection = manifest.candidate_payload(record)
+    assert set(projection) == {
+        "id", "rule", "category", "scope", "source_ids", "source_file_hashes",
+        "evidence_ids", "evidence_count", "evidence_excerpt",
     }
 
 

@@ -205,12 +205,15 @@
             "type": "array",
             "items": {
               "type": "object",
-              "required": ["sourceEventId", "sourceSessionId", "sourceTranscriptId", "sourceParserDigest", "sourceRowIndex", "sourceSequence", "sourceByteStart", "sourceByteEnd", "contextEvents"],
+              "required": ["sourceEventId", "sourceSessionId", "sourceTranscriptId", "sourceParserDigest", "sourceRowIndex", "sourceSequence", "sourceByteStart", "sourceByteEnd", "sourceKind", "sourceRole", "sourceClassification", "sourceFlags", "evidenceId", "evidenceText", "contextEvents"],
               "additionalProperties": false,
               "properties": {
                 "sourceEventId": {"type": "string"}, "sourceSessionId": {"type": "string"}, "sourceTranscriptId": {"type": "string"}, "sourceParserDigest": {"type": "string"},
                 "sourceRowIndex": {"type": "integer"}, "sourceSequence": {"type": "integer"}, "sourceByteStart": {"type": "integer"}, "sourceByteEnd": {"type": "integer"},
-                "contextEvents": {"type": "array"}
+                "sourceKind": {"const": "user_message"}, "sourceRole": {"const": "user"}, "sourceClassification": {"type": "string", "minLength": 1},
+                "sourceFlags": {"type": "object", "additionalProperties": false, "required": ["synthetic", "meta", "privateReasoningOmitted", "redacted", "isError", "isSidechain"], "properties": {"synthetic": {"type": "boolean"}, "meta": {"type": "boolean"}, "privateReasoningOmitted": {"type": "boolean"}, "redacted": {"type": "boolean"}, "isError": {"type": "boolean"}, "isSidechain": {"type": "boolean"}}},
+                "evidenceId": {"type": "string", "minLength": 1}, "evidenceText": {"type": "string", "minLength": 1},
+                "contextEvents": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["eventId", "kind", "role", "classification", "flags", "byteStart", "byteEnd", "text", "truncated", "isSource"], "properties": {"eventId": {"type": "string"}, "kind": {"type": "string"}, "role": {"type": ["string", "null"]}, "classification": {"type": "string"}, "flags": {"type": "object", "additionalProperties": false, "required": ["synthetic", "meta", "privateReasoningOmitted", "redacted", "isError", "isSidechain"], "properties": {"synthetic": {"type": "boolean"}, "meta": {"type": "boolean"}, "privateReasoningOmitted": {"type": "boolean"}, "redacted": {"type": "boolean"}, "isError": {"type": "boolean"}, "isSidechain": {"type": "boolean"}}}, "byteStart": {"type": "integer", "minimum": 0}, "byteEnd": {"type": "integer", "minimum": 0}, "text": {"type": "string"}, "truncated": {"type": "boolean"}, "isSource": {"type": "boolean"}}}}
               }
             }
           },

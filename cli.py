@@ -4,7 +4,9 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -13,11 +15,14 @@ import manifest  # noqa: E402
 import preference_record  # noqa: E402
 import run_journal  # noqa: E402
 import taste_apply  # noqa: E402
+import taste_runtime  # noqa: E402
 import taste_v2  # noqa: E402
 import taste_v2_pipeline as pipeline  # noqa: E402
+import transcript_sources  # noqa: E402
 
 
-def _candidate_records(sources, refs, authority_manifest: dict) -> tuple[list[dict], list[dict]]:
+def _candidate_records(sources, refs, authority_manifest: dict,
+                       installation_id: str) -> tuple[list[dict], list[dict]]:
     """Build immutable pending/rejected records from span-preserving candidates."""
     by_rule: dict[str, list] = {}
     quarantined: list[dict] = []
@@ -26,13 +31,13 @@ def _candidate_records(sources, refs, authority_manifest: dict) -> tuple[list[di
         try:
             candidates = pipeline.extract_source(source)
         except Exception as exc:
-            quarantined.append({"source_id": pipeline.source_id(source),
+            quarantined.append({"source_id": pipeline.source_id(source, installation_id),
                                 "reason": f"parse-failed:{type(exc).__name__}"})
             continue
         for candidate in candidates:
             admitted = taste_v2.admit_candidate(candidate)
             if admitted.lifecycleState != "active":
-                quarantined.append({"source_id": pipeline.source_id(source),
+                quarantined.append({"source_id": pipeline.source_id(source, installation_id),
                                     "evidence_id": admitted.evidenceId,
                                     "reason": admitted.admissionReason})
                 continue
@@ -42,13 +47,13 @@ def _candidate_records(sources, refs, authority_manifest: dict) -> tuple[list[di
         group.sort(key=lambda item: (item[1].sourceTranscriptId, item[1].sourceSequence,
                                      item[1].sourceByteStart))
         first = group[0][1]
-        source_ids = sorted({pipeline.source_id(source) for source, _candidate in group})
+        source_ids = sorted({pipeline.source_id(source, installation_id) for source, _candidate in group})
         contexts = [pipeline.evidence_context(candidate) for _source, candidate in group]
         evidence_ids = [{"evidence_id": manifest.derive_evidence_id(first.scope, candidate.evidenceText),
-                         "source_session_id": pipeline.source_id(source),
+                         "source_session_id": pipeline.source_id(source, installation_id),
                          "excerpt": candidate.evidenceText}
                         for source, candidate in group]
-        source_hashes = [{"session_id": pipeline.source_id(source),
+        source_hashes = [{"session_id": pipeline.source_id(source, installation_id),
                           "sha256": ref_by_path[str(source.path)]["source_sha256"].removeprefix("sha256:")}
                          for source, _candidate in group]
         action = {"action": "add", "name": rule_id, "category": first.category,
@@ -72,16 +77,29 @@ def _mine(args: argparse.Namespace) -> int:
     if args.apply:
         print("error: mined output cannot apply; review then use --apply-from-manifest", file=sys.stderr)
         return 2
+    try:
+        installation_id, canonical_rules = taste_runtime.multiwriter_context(
+            manifest_body={}, required=True,
+        )
+    except taste_runtime.CrossMachineMorphError as exc:
+        print(f"error: mining requires multiwriter binding: {exc}", file=sys.stderr)
+        return 2
     state_path = Path.home() / ".claude" / "morph" / "taste-v2-state.json"
     state = pipeline.load_state(state_path)
-    all_sources = pipeline.discover()
-    sources = pipeline.pending_sources(all_sources, state, limit=3 if args.smoke else args.limit,
-                                       before_mtime=args.before_mtime, newest=args.smoke)
-    quarantine = pipeline.quarantine_sources(all_sources)
+    discovered = pipeline.discover()
+    learn_cap = 3 if args.smoke else args.limit
+    selected, typed_quarantine = transcript_sources.select_sources(
+        discovered, learned=state.get("learned", {}), limit=learn_cap,
+        installation_id=installation_id,
+    )
+    sources = pipeline.pending_sources(selected, state, limit=learn_cap,
+                                       before_mtime=args.before_mtime, newest=args.smoke,
+                                       installation_id=installation_id)
+    quarantine = pipeline.quarantine_sources(typed_quarantine, installation_id)
     if not sources:
         print("morph: no new direct transcript sources")
         return 0
-    refs = pipeline.source_refs(sources)
+    refs = pipeline.source_refs(sources, installation_id)
     journal = run_journal.RunJournal()
     batch_id = run_journal.new_batch_id()
     replay = journal.pending_batch() if args.resume else None
@@ -101,7 +119,9 @@ def _mine(args: argparse.Namespace) -> int:
                        source_refs=refs, extraction_contract=pipeline.extraction_contract(),
                        quarantined_sources=quarantine)
     authority_manifest = authority.build_manifest(Path(__file__).resolve().parents[1])
-    records, extraction_quarantine = _candidate_records(sources, refs, authority_manifest)
+    records, extraction_quarantine = _candidate_records(
+        sources, refs, authority_manifest, installation_id,
+    )
     journal.record(batch_id, "extracted", source_parser_digests=sorted({
         context["sourceParserDigest"] for record in records
         for context in record["evidenceContexts"]
@@ -112,10 +132,28 @@ def _mine(args: argparse.Namespace) -> int:
         body = {"schema_version": preference_record.DIRECT_MANIFEST_SCHEMA_VERSION, "batch_id": batch_id,
                 "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
                 "generator": "morph.py --manifest direct-transcript-v2",
+                "installation_id": installation_id,
+                "canonical_pool_sha256": taste_runtime.cross_machine.canonical_pool_sha256(canonical_rules),
                 "authority_manifest": authority_manifest,
                 "source_session_ids": [row["source_id"] for row in refs], "source_refs": refs, "records": records}
         args.manifest.parent.mkdir(parents=True, exist_ok=True)
-        args.manifest.write_text(json.dumps(body, indent=2, ensure_ascii=False), encoding="utf-8")
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=args.manifest.parent,
+                prefix=f".{args.manifest.name}.", suffix=".tmp", delete=False,
+            ) as handle:
+                temporary_path = Path(handle.name)
+                handle.write(json.dumps(body, indent=2, ensure_ascii=False))
+            manifest.validate_schema(temporary_path)
+            os.replace(temporary_path, args.manifest)
+            temporary_path = None
+        except (OSError, manifest.ManifestError) as exc:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
+            journal.record(batch_id, "abandoned", reason="manifest_validation_failed")
+            print(f"error: manifest validation failed: {exc}", file=sys.stderr)
+            return 2
         print(f"morph: wrote {args.manifest} ({len(records)} pending; {len(quarantine) + len(extraction_quarantine)} quarantined)")
         return 0
     print(f"morph: direct transcript dry run ({len(sources)} sources; {len(records)} pending; {len(quarantine) + len(extraction_quarantine)} quarantined)")

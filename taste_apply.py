@@ -20,11 +20,17 @@ import preference_record  # noqa: E402
 import manifest  # noqa: E402
 import authority  # noqa: E402
 import rollback  # noqa: E402
+import morph_persistence  # noqa: E402
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+
+# Kept as a module hook for test/runtime injection; implementation stays in the
+# direct-runtime boundary, which delegates identity semantics to cross_machine.
+_multiwriter_context = runtime.multiwriter_context
 
 def _runtime_hook(name: str, default):
     host = sys.modules.get("morph_cli") or sys.modules.get("morph")
-    return getattr(host, name, default) if host else default
+    # Do not invoke Morph facade's lazy legacy imports while applying Taste v2.
+    return host.__dict__.get(name, default) if host else default
 
 def _preflight_apply_manifest() -> bool:
     """Minimal preflight for `--apply-from-manifest`: crypt + scanner only.
@@ -85,6 +91,27 @@ def apply_from_manifest(manifest_path: Path) -> int:
               file=sys.stderr)
         return 2
 
+    is_multiwriter = m.get("schema_version") == "1.3.0"
+    installation_id: str | None = None
+    canonical_rules: dict | None = None
+    if is_multiwriter:
+        # Binding is deliberately first: no discovered payload, safe-point, or
+        # network write is consulted before installation/pool validation.
+        try:
+            installation_id, canonical_rules = _runtime_hook(
+                "_multiwriter_context", _multiwriter_context
+            )(
+                manifest_body=m, required=True
+            )
+            runtime.validate_multiwriter_binding(
+                m,
+                installation_id=installation_id,
+                canonical_rules=canonical_rules,
+            )
+        except runtime.CrossMachineMorphError as exc:
+            print(f"error: refusing multiwriter manifest apply: {exc}", file=sys.stderr)
+            return 2
+
     jrn = run_journal.RunJournal()
     discovered = jrn.cached_payload(batch_id, "discovered")
     if not discovered or "sessions" not in discovered:
@@ -93,12 +120,26 @@ def apply_from_manifest(manifest_path: Path) -> int:
               file=sys.stderr)
         return 2
     session_refs = discovered.get("source_refs")
-    if m.get("schema_version") != "1.3.0" and not session_refs:
+    if not is_multiwriter and not session_refs:
         session_refs = [{"source_id": value, "source_sha256": ""} for value in discovered.get("sessions", [])]
-    if not session_refs or (m.get("schema_version") == "1.3.0" and m.get("source_refs") != session_refs):
+    if not session_refs:
         print("error: journal source_refs mismatch manifest", file=sys.stderr)
         return 2
-    j_sessions = [ref["source_id"] for ref in session_refs]
+    if is_multiwriter:
+        try:
+            j_sessions = runtime.qualify_session_sources(session_refs, installation_id)
+        except (KeyError, ValueError, runtime.CrossMachineMorphError) as exc:
+            print(f"error: journal source_refs cannot be qualified: {exc}", file=sys.stderr)
+            return 2
+        qualified_refs = [
+            {**ref, "source_id": source_id}
+            for ref, source_id in zip(session_refs, j_sessions)
+        ]
+        if m.get("source_refs") != qualified_refs:
+            print("error: journal source_refs mismatch manifest", file=sys.stderr)
+            return 2
+    else:
+        j_sessions = [ref["source_id"] for ref in session_refs]
     if m["source_session_ids"] != j_sessions:
         print("error: source_session_ids mismatch journal source_refs", file=sys.stderr)
         return 2
@@ -124,30 +165,21 @@ def apply_from_manifest(manifest_path: Path) -> int:
             print(f"  - {record_id}: {reason}", file=sys.stderr)
         return 2
 
-    if not _preflight_apply_manifest():
+    # v1.3 persists through one authenticated API request, not Crypt CLI.
+    if not is_multiwriter and not _preflight_apply_manifest():
         return 2
 
     print(f"morph: applying manifest {manifest_path}")
     print(f"  batch_id={batch_id}, sessions={len(j_sessions)}, "
           f"accepted={len(accepted)}, rejected={len(rejected)}")
 
-    try:
-        safe_point = _runtime_hook("_create_apply_safepoint", _create_apply_safepoint)(m)
-    except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
-        print(f"error: refusing manifest apply; safe-point failed: {exc}",
-              file=sys.stderr)
-        jrn.record(batch_id, "applied", applied=0, ok=False,
-                   failed=["safepoint"])
-        return 2
-    print(f"  safepoint={safe_point}")
-
     # Parse the complete accepted set before any mutation.
     out_dir = runtime.state_dir()
-    out_dir.mkdir(parents=True, exist_ok=True)
     tmp_paths: list[Path] = []
     written: list[tuple[str, str]] = []
     failed: list[tuple[str, str]] = []
     prepared: list[preference_record.PreferenceRecord] = []
+    batch_receipt: dict | None = None
 
     # Optional attribution and lifecycle metadata ride on the candidate but stay
     # outside manifest.candidate_payload's hash whitelist.
@@ -170,7 +202,32 @@ def apply_from_manifest(manifest_path: Path) -> int:
             continue
         prepared.append(pr)
 
-    if not failed:
+    if not failed and is_multiwriter:
+        try:
+            safe_point = _runtime_hook("_create_apply_safepoint", _create_apply_safepoint)(m)
+            print(f"  safepoint={safe_point}")
+            if prepared:
+                batch_receipt = _runtime_hook(
+                    "persist_manifest_batch", morph_persistence.persist_manifest_batch
+                )(
+                    prepared,
+                    manifest_batch_id=batch_id,
+                    installation_id=installation_id,
+                )
+                if batch_receipt.get("complete") is not True:
+                    raise morph_persistence.MorphPersistenceError("Crypt batch receipt is incomplete")
+        except (OSError, RuntimeError, ValueError, sqlite3.Error,
+                morph_persistence.MorphPersistenceError) as exc:
+            failed.append(("batch", str(exc)))
+    elif not failed and not is_multiwriter:
+        try:
+            safe_point = _runtime_hook("_create_apply_safepoint", _create_apply_safepoint)(m)
+        except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+            print(f"error: refusing manifest apply; safe-point failed: {exc}", file=sys.stderr)
+            jrn.record(batch_id, "applied", applied=0, ok=False, failed=["safepoint"])
+            return 2
+        print(f"  safepoint={safe_point}")
+        out_dir.mkdir(parents=True, exist_ok=True)
         for pr in prepared:
             body = preference_record.to_crypt_content(pr)
             with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False,
@@ -194,8 +251,9 @@ def apply_from_manifest(manifest_path: Path) -> int:
             pass
 
     if failed:
-        for w, scope in written:
-            _runtime_hook("_run_crypt", runtime.run_crypt)(["delete", f"{scope}/{w}"])
+        if not is_multiwriter:
+            for w, scope in written:
+                _runtime_hook("_run_crypt", runtime.run_crypt)(["delete", f"{scope}/{w}"])
         print(f"error: {len(failed)} write(s) failed; rolled back "
               f"{len(written)} write(s); refusing state advance",
               file=sys.stderr)
@@ -206,8 +264,12 @@ def apply_from_manifest(manifest_path: Path) -> int:
         return 1
 
     state = runtime.load_json(runtime.state_path(), {"learned": {}})
-    for ref in session_refs:
-        if ref.get("source_sha256"): state.setdefault("learned", {})[ref["source_id"]] = ref["source_sha256"]
+    learned_refs = zip(j_sessions, session_refs) if is_multiwriter else (
+        (ref["source_id"], ref) for ref in session_refs
+    )
+    for source_id, ref in learned_refs:
+        if ref.get("source_sha256"):
+            state.setdefault("learned", {})[source_id] = ref["source_sha256"]
     state["initialized_at"] = state.get("initialized_at") or dt.datetime.now(dt.timezone.utc).isoformat()
     runtime.write_json_atomic(runtime.state_path(), state)
 
@@ -241,8 +303,18 @@ def apply_from_manifest(manifest_path: Path) -> int:
     except Exception as exc:
         print(f"warn: rules.json mirror write failed: {exc}", file=sys.stderr)
 
-    jrn.record(batch_id, "applied", applied=len(accepted), ok=True,
-               names=[name for name, _scope in written])
+    applied_payload = {
+        "applied": len(accepted),
+        "ok": True,
+        "names": (
+            [record.id for record in prepared]
+            if is_multiwriter else [name for name, _scope in written]
+        ),
+    }
+    if is_multiwriter:
+        if batch_receipt is not None:
+            applied_payload["receipt"] = batch_receipt
+    jrn.record(batch_id, "applied", **applied_payload)
     jrn.record(batch_id, "committed", applied=len(accepted),
                sessions=j_sessions)
     print(f"morph: applied {len(accepted)} manifest records; "

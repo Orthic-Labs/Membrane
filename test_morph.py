@@ -1837,11 +1837,29 @@ def test_multiwriter_apply_uses_one_atomic_attributed_batch(tmp_path, monkeypatc
             installation, "claude-code", "s2"
         ),
     }
+    body["schema_version"] = "1.3.0"
     body["installation_id"] = installation
     body["canonical_pool_sha256"] = cross_machine.canonical_pool_sha256({})
     body["source_session_ids"] = [qualified["s1"], qualified["s2"]]
+    journal_refs = [
+        {"source_id": "s1", "tool": "codex", "host": "codex", "path": "s1.jsonl", "mtime_ns": 1, "source_sha256": "sha256:" + "a" * 64},
+        {"source_id": "s2", "tool": "claude-code", "host": "claude_code", "path": "s2.jsonl", "mtime_ns": 2, "source_sha256": "sha256:" + "b" * 64},
+    ]
+    body["source_refs"] = [
+        {**ref, "source_id": source_id}
+        for ref, source_id in zip(journal_refs, body["source_session_ids"])
+    ]
     for record in body["records"]:
         record["source_ids"] = list(body["source_session_ids"])
+        record["evidenceContexts"] = [{
+            "sourceEventId": "event", "sourceSessionId": "s1", "sourceTranscriptId": "s1",
+            "sourceParserDigest": "parser", "sourceRowIndex": 1, "sourceSequence": 1,
+            "sourceByteStart": 0, "sourceByteEnd": 1, "sourceKind": "user_message",
+            "sourceRole": "user", "sourceClassification": "user_authored",
+            "sourceFlags": {"synthetic": False, "meta": False, "privateReasoningOmitted": False, "redacted": False, "isError": False, "isSidechain": False},
+            "evidenceId": "evidence", "evidenceText": "evidence",
+            "contextEvents": [{"eventId": "event", "kind": "user_message", "role": "user", "classification": "user_authored", "flags": {"synthetic": False, "meta": False, "privateReasoningOmitted": False, "redacted": False, "isError": False, "isSidechain": False}, "byteStart": 0, "byteEnd": 1, "text": "evidence", "truncated": False, "isSource": True}],
+        }]
         record["payload_sha256"] = mf.payload_sha256(record)
     p.write_text(json.dumps(body), encoding="utf-8")
 
@@ -1850,37 +1868,80 @@ def test_multiwriter_apply_uses_one_atomic_attributed_batch(tmp_path, monkeypatc
         "batch-multiwriter",
         "discovered",
         sessions=["s1", "s2"],
-        session_refs=[
-            {"session_id": "s1", "tool": "codex", "path_stem": "s1", "mtime": 1},
-            {
-                "session_id": "s2",
-                "tool": "claude-code",
-                "path_stem": "s2",
-                "mtime": 2,
-            },
-        ],
+        source_refs=journal_refs,
     )
     monkeypatch.setattr(
         lt, "_multiwriter_context", lambda **_kwargs: (installation, {})
     )
-    batches = []
-    monkeypatch.setattr(
-        lt.morph_persistence,
-        "persist_manifest_batch",
-        lambda records, **kwargs: batches.append((list(records), kwargs))
-        or {
-            "complete": True,
-            "inserted": len(records),
-            "duplicates": 0,
-            "receipts": [],
-        },
-    )
+    # A real local HTTP service proves the v1.3 path emits precisely one
+    # authenticated batch request containing its two accepted records.
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Thread
+    body["records"][2]["status"] = "rejected"
+    body["records"][2]["payload_sha256"] = mf.payload_sha256(body["records"][2])
+    p.write_text(json.dumps(body), encoding="utf-8")
+    requests = []
+    incomplete = [False]
+
+    class BatchHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            requests.append((self.path, self.headers["Authorization"], payload))
+            reply = {
+                "batch_id": payload["batch_id"], "inserted": len(payload["items"]),
+                "duplicates": 0, "complete": True,
+                "receipts": [{"item_id": item["item_id"], "memory_id": f"{item['scope']}/{item['name']}", "status": "inserted"} for item in payload["items"][:1 if incomplete[0] else None]],
+            }
+            encoded = json.dumps(reply).encode("utf-8")
+            self.send_response(201)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, *_args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), BatchHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    token = tmp_path / "api-token"
+    token.write_text("test-token", encoding="utf-8")
+    monkeypatch.setenv("CRYPT_API_TOKEN_FILE", str(token))
+    monkeypatch.setenv("MORPH_STATE_DIR", str(tmp_path / "runtime"))
+    monkeypatch.setattr(lt.morph_persistence, "_base_url", lambda: f"http://127.0.0.1:{server.server_port}")
     crypt_calls = []
     monkeypatch.setattr(
         lt, "_run_crypt", lambda args: crypt_calls.append(args) or True
     )
 
-    assert lt.apply_from_manifest(p) == 2
+    try:
+        assert lt.apply_from_manifest(p) == 0
+        state_path = tmp_path / "runtime" / "taste-v2-state.json"
+        committed_state = state_path.read_bytes()
+        incomplete_body = dict(body)
+        incomplete_body["batch_id"] = "batch-multiwriter-incomplete"
+        incomplete_path = tmp_path / "manifest-incomplete.json"
+        incomplete_path.write_text(json.dumps(incomplete_body), encoding="utf-8")
+        journal.record(
+            "batch-multiwriter-incomplete", "discovered",
+            sessions=["s1", "s2"], source_refs=journal_refs,
+        )
+        incomplete[0] = True
+        assert lt.apply_from_manifest(incomplete_path) == 1
+        assert state_path.read_bytes() == committed_state
+        assert journal.last_stage("batch-multiwriter-incomplete") == "applied"
+    finally:
+        server.shutdown()
+        thread.join()
+        server.server_close()
+    assert len(requests) == 2
+    path, authorization, request = requests[0]
+    assert path == "/v1/memories:batch"
+    assert authorization == "Bearer test-token"
+    assert len(request["items"]) == 2
+    assert len(requests[1][2]["items"]) == 2
+    assert crypt_calls == []
 
 
 def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
@@ -1893,11 +1954,17 @@ def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
     p, body = _build_valid_manifest(
         tmp_path, status="accepted", batch_id="batch-stale-pool"
     )
+    body["schema_version"] = "1.3.0"
     body["installation_id"] = installation
     body["canonical_pool_sha256"] = cross_machine.canonical_pool_sha256({})
     body["source_session_ids"] = [source]
+    journal_ref = {"source_id": "s1", "tool": "codex", "host": "codex", "path": "s1.jsonl", "mtime_ns": 1, "source_sha256": "sha256:" + "a" * 64}
+    body["source_refs"] = [{**journal_ref, "source_id": source}]
     for record in body["records"]:
         record["source_ids"] = [source]
+        record["evidenceContexts"] = [{
+            "sourceEventId": "event", "sourceSessionId": "s1", "sourceTranscriptId": "s1", "sourceParserDigest": "parser", "sourceRowIndex": 1, "sourceSequence": 1, "sourceByteStart": 0, "sourceByteEnd": 1, "sourceKind": "user_message", "sourceRole": "user", "sourceClassification": "user_authored", "sourceFlags": {"synthetic": False, "meta": False, "privateReasoningOmitted": False, "redacted": False, "isError": False, "isSidechain": False}, "evidenceId": "evidence", "evidenceText": "evidence", "contextEvents": [{"eventId": "event", "kind": "user_message", "role": "user", "classification": "user_authored", "flags": {"synthetic": False, "meta": False, "privateReasoningOmitted": False, "redacted": False, "isError": False, "isSidechain": False}, "byteStart": 0, "byteEnd": 1, "text": "evidence", "truncated": False, "isSource": True}],
+        }]
         record["payload_sha256"] = mf.payload_sha256(record)
     p.write_text(json.dumps(body), encoding="utf-8")
     journal = _isolate_journal(tmp_path, monkeypatch)
@@ -1905,9 +1972,7 @@ def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
         "batch-stale-pool",
         "discovered",
         sessions=["s1"],
-        session_refs=[
-            {"session_id": "s1", "tool": "codex", "path_stem": "s1", "mtime": 1}
-        ],
+        source_refs=[journal_ref],
     )
     changed = {
         "new": {
@@ -1920,6 +1985,11 @@ def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
     monkeypatch.setattr(
         lt, "_multiwriter_context", lambda **_kwargs: (installation, changed)
     )
+    safepoints = []
+    monkeypatch.setattr(
+        lt, "_create_apply_safepoint",
+        lambda _manifest: safepoints.append(True) or tmp_path / "safepoint.json",
+    )
     batches = []
     monkeypatch.setattr(
         lt.morph_persistence,
@@ -1929,6 +1999,62 @@ def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
 
     assert lt.apply_from_manifest(p) == 2
     assert batches == []
+    assert safepoints == []
+
+
+def test_multiwriter_empty_accepted_set_safepoints_then_commits_without_crypt(
+        tmp_path, monkeypatch):
+    import cross_machine
+
+    installation = "08c7ef55-8f6b-4ef1-b234-22232b8ea832"
+    raw_source = "empty-source"
+    qualified_source = cross_machine.qualify_source_session(
+        installation, "codex", raw_source
+    )
+    body = {
+        "schema_version": "1.3.0",
+        "batch_id": "batch-empty-v13",
+        "created_at": "2026-07-13T00:00:00Z",
+        "generator": "test",
+        "installation_id": installation,
+        "canonical_pool_sha256": cross_machine.canonical_pool_sha256({}),
+        "source_session_ids": [qualified_source],
+        "source_refs": [{
+            "source_id": qualified_source, "tool": "codex", "host": "codex",
+            "path": "empty.jsonl", "mtime_ns": 1,
+            "source_sha256": "sha256:" + "a" * 64,
+        }],
+        "records": [],
+    }
+    path = tmp_path / "empty-v13.json"
+    path.write_text(json.dumps(body), encoding="utf-8")
+    journal = _isolate_journal(tmp_path, monkeypatch)
+    journal.record(
+        body["batch_id"], "discovered", sessions=[raw_source],
+        source_refs=[{**body["source_refs"][0], "source_id": raw_source}],
+    )
+    monkeypatch.setenv("MORPH_STATE_DIR", str(tmp_path / "runtime"))
+    monkeypatch.setattr(lt, "_multiwriter_context", lambda **_kwargs: (installation, {}))
+    events = []
+    monkeypatch.setattr(
+        lt, "_create_apply_safepoint",
+        lambda _manifest: events.append("safepoint") or tmp_path / "safepoint.json",
+    )
+    batches = []
+    monkeypatch.setattr(
+        lt.morph_persistence, "persist_manifest_batch",
+        lambda *args, **kwargs: batches.append((args, kwargs)),
+    )
+    crypt_calls = []
+    monkeypatch.setattr(lt, "_run_crypt", lambda args: crypt_calls.append(args) or True)
+
+    assert lt.apply_from_manifest(path) == 0
+    assert events == ["safepoint"]
+    assert batches == []
+    assert crypt_calls == []
+    state = json.loads((tmp_path / "runtime" / "taste-v2-state.json").read_text())
+    assert state["learned"][qualified_source] == "sha256:" + "a" * 64
+    assert journal.last_stage(body["batch_id"]) == "committed"
 
 
 def test_apply_from_manifest_writes_only_accepted(tmp_path, monkeypatch):

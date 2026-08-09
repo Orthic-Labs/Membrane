@@ -9,6 +9,9 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import cross_machine
+import rollback
+
 STATE_DIR = Path.home() / ".claude" / "morph"
 
 def state_dir() -> Path: return Path(os.environ.get("MORPH_STATE_DIR", STATE_DIR))
@@ -30,3 +33,54 @@ def run_crypt(args: list[str]) -> bool:
     try: return subprocess.run([binary, *command], capture_output=True, text=True, timeout=150).returncode == 0
     except (OSError, subprocess.TimeoutExpired): return False
 def scanner_available() -> bool: return bool(shutil.which("gitleaks") or shutil.which("detect-secrets"))
+
+
+def installation_file() -> Path:
+    """Return shared multiwriter installation identity location."""
+    override = os.environ.get("MORPH_INSTALLATION_FILE", "").strip()
+    if override:
+        return Path(override)
+    return Path(__file__).resolve().parents[1] / "tools/.cache/memory/installation.json"
+
+
+def multiwriter_context(*, manifest_body: dict, required: bool = False) -> tuple[str, dict] | None:
+    """Delegate identity & canonical-pool loading to established helpers."""
+    identity_path = installation_file()
+    if not identity_path.is_file():
+        if required:
+            raise cross_machine.CrossMachineMorphError(
+                "multiwriter manifest requires a local schema-v2 installation identity"
+            )
+        return None
+    installation_id = cross_machine.load_installation_id(identity_path)
+    db_path = rollback._discover_db_path(manifest_body)
+    if db_path is None:
+        raise cross_machine.CrossMachineMorphError("canonical Crypt DB is unavailable")
+    return installation_id, cross_machine.load_canonical_rules(db_path)
+
+
+def qualify_session_sources(session_refs: list[dict], installation_id: str) -> list[str]:
+    """Delegate source identity qualification to cross-machine contract."""
+    return [
+        ref["source_id"]
+        if str(ref.get("source_id", "")).startswith(f"install:{installation_id}:")
+        else cross_machine.qualify_source_session(
+            installation_id,
+            ref["tool"],
+            ref.get("source_key") or ref.get("session_id") or ref["source_id"],
+        )
+        for ref in session_refs
+    ]
+
+
+def validate_multiwriter_binding(
+    manifest_body: dict, *, installation_id: str, canonical_rules: dict
+) -> None:
+    cross_machine.validate_multiwriter_binding(
+        manifest_body,
+        installation_id=installation_id,
+        canonical_rules=canonical_rules,
+    )
+
+
+CrossMachineMorphError = cross_machine.CrossMachineMorphError

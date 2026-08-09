@@ -195,6 +195,20 @@ def validate_schema(path: Path) -> dict:
                 sid, digest = item.get("session_id"), str(item.get("sha256") or "").lower()
                 if sid not in hashes or hashes[sid] != digest:
                     raise ManifestError(f"manifest record {rec.get('id', '<unknown>')} source hash does not match source_refs")
+            for context in rec.get("evidenceContexts") or []:
+                source_events = [event for event in context["contextEvents"] if event["isSource"]]
+                if len(source_events) != 1:
+                    raise ManifestError(f"manifest record {rec.get('id', '<unknown>')} evidence context must contain exactly one source event")
+                source = source_events[0]
+                expected = {
+                    "eventId": context["sourceEventId"], "kind": context["sourceKind"],
+                    "role": context["sourceRole"], "classification": context["sourceClassification"],
+                    "flags": context["sourceFlags"], "byteStart": context["sourceByteStart"],
+                    "byteEnd": context["sourceByteEnd"], "text": context["evidenceText"],
+                }
+                for field, value in expected.items():
+                    if source[field] != value:
+                        raise ManifestError(f"manifest record {rec.get('id', '<unknown>')} evidence context source mismatch: {field}")
     frozen_authority = raw.get("authority_manifest")
     if frozen_authority:
         expected = frozen_authority["manifest_sha256"]

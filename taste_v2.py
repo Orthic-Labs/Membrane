@@ -62,6 +62,7 @@ Output schema: ``TasteCandidateV1`` (frozen dataclass). Carries:
 from __future__ import annotations
 
 import dataclasses
+import copy
 import hashlib
 import json
 import re
@@ -149,6 +150,10 @@ _DECISION_PATTERNS: tuple[re.Pattern[str], ...] = (
 # events with any of these flags set; doing otherwise lets a synthetic
 # or model-side narration create a durable rule.
 _REJECTED_FLAGS = frozenset({"synthetic", "meta", "privateReasoningOmitted", "redacted"})
+SOURCE_FLAG_NAMES: tuple[str, ...] = (
+    "synthetic", "meta", "privateReasoningOmitted", "redacted", "isError", "isSidechain",
+)
+_FAILURE_CLASSIFICATIONS = frozenset({"unresolved_failure", "failed_verification"})
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +278,18 @@ class TasteCandidateV1:
     sourceFlags: tuple[tuple[str, bool], ...] = ()
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "sourceFlags", tuple(sorted((str(k), bool(v)) for k, v in self.sourceFlags)))
+        flags = tuple(sorted((str(k), value) for k, value in self.sourceFlags))
+        if tuple(name for name, _ in flags) != tuple(sorted(SOURCE_FLAG_NAMES)) or any(
+            not isinstance(value, bool) for _, value in flags
+        ):
+            raise TasteV2Error("sourceFlags must contain exactly the six boolean parser flags")
+        object.__setattr__(self, "sourceFlags", flags)
+        if not all(str(value) for value in (
+            self.ruleId, self.rule, self.sourceEventId, self.sourceSessionId,
+            self.sourceTranscriptId, self.sourceParserDigest, self.sourceKind,
+            self.sourceRole, self.sourceClassification, self.evidenceId, self.evidenceText,
+        )):
+            raise TasteV2Error("candidate immutable identity fields must be non-empty")
         if self.lifecycleState not in VALID_LIFECYCLE_STATES:
             raise TasteV2Error(
                 f"lifecycleState must be one of {sorted(VALID_LIFECYCLE_STATES)!r}, "
@@ -297,6 +313,48 @@ class TasteCandidateV1:
             raise TasteV2Error(
                 "contextEvents and contextByteSpans must have the same length"
             )
+        for event, span in zip(self.contextEvents, self.contextByteSpans):
+            if not isinstance(event, dict) or not isinstance(span, tuple) or len(span) != 2:
+                raise TasteV2Error("context events and spans must have exact object/pair shapes")
+            start, end = span
+            if not isinstance(start, int) or not isinstance(end, int) or start < 0 or end < start:
+                raise TasteV2Error("context byte span is invalid")
+            required_context_fields = {
+                "eventId", "kind", "role", "classification", "flags", "byteStart", "byteEnd",
+                "text", "truncated", "isSource",
+            }
+            if set(event) != required_context_fields:
+                raise TasteV2Error("context event has an invalid envelope shape")
+            if not all(isinstance(event[field], str) for field in ("eventId", "kind", "classification", "text")):
+                raise TasteV2Error("context event identity/text fields must be strings")
+            if event["role"] is not None and not isinstance(event["role"], str):
+                raise TasteV2Error("context event role must be string or null")
+            if not isinstance(event["truncated"], bool) or not isinstance(event["isSource"], bool):
+                raise TasteV2Error("context event flags must be booleans")
+            if event["byteStart"] != start or event["byteEnd"] != end:
+                raise TasteV2Error("context event byte span does not match contextByteSpans")
+            event_flags = event["flags"]
+            if not isinstance(event_flags, dict) or set(event_flags) != set(SOURCE_FLAG_NAMES) or any(
+                not isinstance(value, bool) for value in event_flags.values()
+            ):
+                raise TasteV2Error("context event flags must be exact six booleans")
+        sources = [event for event in self.contextEvents if event.get("isSource") is True]
+        if len(sources) != 1:
+            raise TasteV2Error("contextEvents must contain exactly one source event")
+        source = sources[0]
+        required_context_fields = {
+            "eventId", "kind", "role", "classification", "flags", "byteStart", "byteEnd",
+            "text", "truncated", "isSource",
+        }
+        if set(source) != required_context_fields or source["truncated"] is not False:
+            raise TasteV2Error("source context must preserve the exact untruncated envelope")
+        expected_source = {
+            "eventId": self.sourceEventId, "kind": self.sourceKind, "role": self.sourceRole,
+            "classification": self.sourceClassification, "flags": dict(self.sourceFlags),
+            "byteStart": self.sourceByteStart, "byteEnd": self.sourceByteEnd, "text": self.evidenceText,
+        }
+        if any(source[field] != value for field, value in expected_source.items()):
+            raise TasteV2Error("source context must exactly match candidate provenance")
 
 
 # ---------------------------------------------------------------------------
@@ -397,8 +455,17 @@ def _assert_authoritative_provenance(event: dict[str, Any]) -> None:
     Anything else — assistant narration, tool output, repository prose,
     Insights findings — is refused BEFORE we even build a candidate.
     """
-    flags = event.get("flags") or {}
-    bad_flags = sorted(name for name in _REJECTED_FLAGS if flags.get(name))
+    if not isinstance(event, dict):
+        raise TasteV2Error("authoritative-provenance-rejected: source event must be an object")
+    event_id = event.get("eventId")
+    if not isinstance(event_id, str) or not event_id:
+        raise TasteV2Error("authoritative-provenance-rejected: source eventId is required")
+    flags = event.get("flags")
+    if not isinstance(flags, dict) or set(flags) != set(SOURCE_FLAG_NAMES) or any(
+        not isinstance(value, bool) for value in flags.values()
+    ):
+        raise TasteV2Error("authoritative-provenance-rejected: source flags must be exact six booleans")
+    bad_flags = sorted(name for name, value in flags.items() if value)
     if bad_flags:
         raise TasteV2Error(
             f"authoritative-provenance-rejected: flag set is "
@@ -412,17 +479,53 @@ def _assert_authoritative_provenance(event: dict[str, Any]) -> None:
             f"user_message; assistant narration, tool output, and repository "
             f"prose cannot establish rule authority"
         )
-    classification = str(event.get("classification") or event.get("class") or "")
-    if classification in {"unresolved_failure", "failed_verification"}:
+    if event.get("role") != "user":
+        raise TasteV2Error("authoritative-provenance-rejected: role must be 'user'")
+    classification = event.get("classification")
+    if not isinstance(classification, str) or not classification:
+        raise TasteV2Error("authoritative-provenance-rejected: source classification is required")
+    if classification in _FAILURE_CLASSIFICATIONS:
         raise TasteV2Error(
             f"authoritative-provenance-rejected: classification={classification!r} "
             f"is a tool-failure signal, not a user preference"
         )
 
-def _candidate_source_event(candidate: TasteCandidateV1) -> dict[str, Any]:
-    return {"kind": candidate.sourceKind, "role": candidate.sourceRole,
-            "classification": candidate.sourceClassification,
-            "flags": dict(candidate.sourceFlags), "eventId": candidate.sourceEventId}
+def _validated_candidate_source(candidate: TasteCandidateV1) -> dict[str, Any]:
+    """Return the sole source envelope after exact candidate/context equality checks."""
+    expected = {
+        "eventId": candidate.sourceEventId,
+        "kind": candidate.sourceKind,
+        "role": candidate.sourceRole,
+        "classification": candidate.sourceClassification,
+        "flags": dict(candidate.sourceFlags),
+        "byteStart": candidate.sourceByteStart,
+        "byteEnd": candidate.sourceByteEnd,
+        "text": candidate.evidenceText,
+    }
+    sources = [event for event in candidate.contextEvents if event.get("isSource") is True]
+    if len(sources) != 1:
+        raise TasteV2Error("candidate source context must contain exactly one source event")
+    source = sources[0]
+    if set(source) != {"eventId", "kind", "role", "classification", "flags", "byteStart", "byteEnd", "text", "truncated", "isSource"}:
+        raise TasteV2Error("candidate source context has an invalid envelope shape")
+    if source["truncated"] is not False:
+        raise TasteV2Error("candidate source context must preserve untruncated evidence text")
+    for field, value in expected.items():
+        if source[field] != value:
+            raise TasteV2Error(f"candidate source context mismatch: {field}")
+    source_index = candidate.contextEvents.index(source)
+    if tuple(candidate.contextByteSpans[source_index]) != (source["byteStart"], source["byteEnd"]):
+        raise TasteV2Error("candidate source context mismatch: span")
+    _assert_authoritative_provenance(source)
+    return source
+
+
+def _rejected_candidate(candidate: TasteCandidateV1, reason: str) -> TasteCandidateV1:
+    """Stamp a malformed post-construction candidate without re-validating it."""
+    rejected = copy.copy(candidate)
+    object.__setattr__(rejected, "lifecycleState", "rejected")
+    object.__setattr__(rejected, "admissionReason", reason)
+    return rejected
 
 
 def _bounded_context(
@@ -467,42 +570,22 @@ def _bounded_context(
         if total_chars >= max_chars and not is_source:
             continue
         remaining = max_chars - total_chars
-        if remaining == 0 and is_source:
-            # Source row has no display budget left; record the byte
-            # span with an empty text but the audit envelope stays valid.
-            clipped.append({
-                "eventId": ev.get("eventId", ""),
-                "kind": ev.get("kind", ""),
-                "byteStart": start,
-                "byteEnd": end,
-                "text": "",
-                "truncated": True,
-                "isSource": is_source,
-            })
-            spans.append((start, end))
-            continue
-        if len(text) > remaining:
-            clipped.append({
-                "eventId": ev.get("eventId", ""),
-                "kind": ev.get("kind", ""),
-                "byteStart": start,
-                "byteEnd": end,
-                "text": text[:remaining] + "…",
-                "truncated": True,
-                "isSource": is_source,
-            })
-            total_chars += remaining
-        else:
-            clipped.append({
-                "eventId": ev.get("eventId", ""),
-                "kind": ev.get("kind", ""),
-                "byteStart": start,
-                "byteEnd": end,
-                "text": text,
-                "truncated": False,
-                "isSource": is_source,
-            })
-            total_chars += len(text)
+        truncated = not is_source and len(text) > remaining
+        context_text = text[:remaining] + "…" if truncated else text
+        clipped.append({
+            "eventId": ev.get("eventId", ""),
+            "kind": ev.get("kind", ""),
+            "role": ev.get("role"),
+            "classification": ev.get("classification"),
+            "flags": {name: bool((ev.get("flags") or {}).get(name)) for name in SOURCE_FLAG_NAMES},
+            "byteStart": start,
+            "byteEnd": end,
+            "text": context_text,
+            "truncated": truncated,
+            "isSource": is_source,
+        })
+        if not is_source:
+            total_chars += min(len(text), remaining)
         spans.append((start, end))
     return clipped, spans
 
@@ -651,7 +734,7 @@ def extract_candidate(
         sourceKind=str(event.get("kind") or ""),
         sourceRole=str(event.get("role") or ""),
         sourceClassification=str(event.get("classification") or event.get("class") or ""),
-        sourceFlags=tuple((name, bool((event.get("flags") or {}).get(name))) for name in ("synthetic", "meta", "privateReasoningOmitted", "redacted", "is_error", "is_redacted")),
+        sourceFlags=tuple((name, bool((event.get("flags") or {}).get(name))) for name in SOURCE_FLAG_NAMES),
         contextEvents=context_events,
         contextByteSpans=context_spans,
         evidenceId=evidence_id,
@@ -719,9 +802,9 @@ def admit_candidate(
     # could carry the wrong origin / classification, and we want the
     # rule to refuse them at the gate, not silently propagate.
     try:
-        _assert_authoritative_provenance(_candidate_source_event(candidate))
+        _validated_candidate_source(candidate)
     except TasteV2Error as exc:
-        return dataclasses.replace(candidate, lifecycleState="rejected", admissionReason=str(exc))
+        return _rejected_candidate(candidate, str(exc))
 
     target = {
         "name": candidate.ruleId,
