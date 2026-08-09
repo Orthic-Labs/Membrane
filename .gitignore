@@ -25,3 +25,8 @@ __pycache__/
 # so tracking them keeps the freshness overlay permanently dirty.
 docs/architecture.md
 docs/product.md
+
+# The release cache bridge replaces src-tauri/target with a symlink, and the
+# `**/target/` rule above matches directories only — leaving the bridge
+# untracked, which right-release own clean-tree gate then rejects.
+**/target
