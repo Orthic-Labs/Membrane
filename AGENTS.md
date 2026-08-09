@@ -80,15 +80,18 @@ A question, a comparison, or a plan does not mutate state — answer or design d
 - Reach Hetzner as an agent with `ssh -F ~/.ssh/config.dd dd` from Windows & `ssh vendure-auto` from Mac.
 - Use `win "<command>"` from Mac & `ssh mac "<command>"` from Windows.
 - Read `docs/rules/github-access.md` before GitHub writes or pushes.
-- Read `docs/rules/cloudflare-access.md` before Cloudflare, R2, Worker, DNS, or Pages work.
-- Read `docs/rules/paid-compute.md` before metered compute.
+- Read `docs/rules/cloudflare-access.md` before Cloudflare, R2, Worker, DNS, or Pages work, & `docs/rules/paid-compute.md` before metered compute.
 - Never print or inspect credentials to discover configuration.
 
-## Right Suite releases
-- Use RightKit `right-release` from primary checkout with manifest-pinned pnpm.
-- Select explicit `patch` or `update`; keep build or seal separate from upload.
-- Read release, signing, distribution, & licensing runbooks before release work.
-- Publish only an exact build named by Adrian's current request; upload no test artifact.
+## Releases, signing & distribution — every product
+- Treat signing, notarization, & release publication as solved workspace capabilities; Apple & Azure are provisioned, so never gate a plan on setting them up.
+- Read `docs/rules/release-signing.md` before any release, signing, installer, updater, or publication work in any repository.
+- Use RightKit `right-release` from primary checkout with manifest-pinned pnpm; never build signing or installer machinery inside a product repository.
+- Keep signing credentials out of CI; `right-git` CI lanes are public-repo-only.
+- Select explicit `patch` or `update`; keep build or seal separate from upload; publish only an exact build named by Adrian's current request, & upload no test artifact.
+
+## Plans authored outside this workspace
+- Check every repo-scoped plan, roadmap, or dispatch runbook against existing workspace capabilities before executing its packets; rewrite any packet that would rebuild an owned capability into one that integrates it, & delete owner gates for anything already provisioned.
 
 ## Scope & completion
 - Read repository overlay before editing a nested repository.
