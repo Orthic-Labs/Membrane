@@ -111,7 +111,7 @@ def _mine(args: argparse.Namespace) -> int:
     journal.record(batch_id, "admitted", candidates=len(records),
                    quarantined=quarantine + extraction_quarantine)
     if args.manifest:
-        body = {"schema_version": preference_record.SCHEMA_VERSION, "batch_id": batch_id,
+        body = {"schema_version": preference_record.DIRECT_MANIFEST_SCHEMA_VERSION, "batch_id": batch_id,
                 "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
                 "generator": "morph.py --manifest direct-transcript-v2",
                 "authority_manifest": authority_manifest,

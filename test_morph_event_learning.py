@@ -14,12 +14,6 @@ import urllib.request
 from pathlib import Path
 import pytest
 
-# ObservableEventV1 is metadata-only under Taste v2; direct transcript tests
-# cover admission.  Retire the former transport-content contract.
-pytestmark = pytest.mark.skip(reason="event-transport-metadata-only: use direct transcripts")
-
-import pytest
-
 import event_ingestion
 import learning_outcomes
 import morph_event_learning as learning
@@ -50,59 +44,22 @@ def _event(
     }
 
 
-def test_only_hash_bound_user_events_can_enter_admission() -> None:
+def test_event_transport_admission_is_metadata_only() -> None:
     rule = "Always use JSONL for Morph pipeline logs."
-    admitted = learning.admit_user_event(
-        _event(rule), evidence_text=rule, scope="Volumes-D-claude", category="tooling"
-    )
-    assert admitted.rule_key.startswith("Volumes-D-claude/morph-tooling-")
-    assert admitted.record.lifecycle_state == "candidate"
-    assert not admitted.approved
-    assert admitted.record.source_ids == ("install:install-e2e:codex:event-e2e",)
-    with pytest.raises(learning.MorphLearningError, match="origin-not-user"):
+    with pytest.raises(learning.MorphLearningError, match="metadata-only"):
         learning.admit_user_event(
-            _event(rule, origin="assistant"),
+            _event(rule),
             evidence_text=rule,
             scope="Volumes-D-claude",
             category="tooling",
         )
-    with pytest.raises(learning.MorphLearningError, match="digest-mismatch"):
-        learning.admit_user_event(
-            _event(rule),
-            evidence_text="Always use YAML for Morph pipeline logs.",
-            scope="Volumes-D-claude",
-            category="tooling",
-        )
 
 
-def test_event_learning_requires_separate_user_approval_before_persistence() -> None:
+def test_event_transport_cannot_reach_approval_or_persistence() -> None:
     rule = "Always keep Morph learning proposals outside recall until approved."
-    proposal = learning.admit_user_event(
-        _event(rule), evidence_text=rule, scope="Volumes-D-claude", category="tooling"
-    )
-    with pytest.raises(learning.MorphLearningError, match="proposal-not-approved"):
-        learning.persist_learning(
-            proposal,
-            token_file=Path("/missing-token"),
-            base_url="http://127.0.0.1:1",
-            installation_id="install-e2e",
-        )
-    feedback = learning.approval_text(proposal)
-    approved = learning.approve_learning(
-        proposal,
-        feedback_event=_event(feedback, event_type="user_instruction", event_id="feedback-e2e"),
-        feedback_text=feedback,
-    )
-    assert approved.approved
-    assert approved.record.lifecycle_state == "active"
-    assert not approved.record.needs_review
-    assert approved.approval_event_id == "feedback-e2e"
-    with pytest.raises(learning.MorphLearningError, match="feedback-origin-not-user"):
-        learning.approve_learning(
-            proposal,
-            feedback_event=_event(feedback, origin="assistant", event_id="bad-feedback"),
-            feedback_text=feedback,
-        )
+    with pytest.raises(learning.MorphLearningError, match="metadata-only"):
+        learning.admit_user_event(_event(rule), evidence_text=rule,
+                                  scope="Volumes-D-claude", category="tooling")
 
 
 class _FakeTasteTransport:
@@ -125,7 +82,7 @@ class _FakeTasteTransport:
         }
 
 
-def test_ingestion_cycle_admits_and_persists_an_auditable_outcome(tmp_path: Path) -> None:
+def test_ingestion_cycle_refuses_metadata_only_transport(tmp_path: Path) -> None:
     rule = "Always run the ingestion cycle test before touching event learning."
     transport = _FakeTasteTransport()
     transport.rows.append(_event(rule, event_id="ev-propose"))
@@ -133,25 +90,15 @@ def test_ingestion_cycle_admits_and_persists_an_auditable_outcome(tmp_path: Path
     cursor_store = event_ingestion.CursorStore(tmp_path / "cursors.json")
     outcome_store = learning_outcomes.LearningOutcomeStore(tmp_path / "ledger.jsonl")
 
-    result = learning.run_taste_cycle(
-        transport,
-        installation_id="install-e2e",
-        scope="Volumes-D-claude",
-        category="tooling",
-        resolve_evidence=lambda event: text_by_id[event["event_id"]],
-        cursor_store=cursor_store,
-        outcome_store=outcome_store,
-    )
-    assert len(result["proposed"]) == 1
-    assert result["approved"] == []
-    assert outcome_store.latest_status("ev-propose") == "proposed"
-    ledger_row = outcome_store.for_event("ev-propose")[0]
-    assert ledger_row["evidence_sha256"] == result["proposed"][0].evidence_sha256
-    assert ledger_row["evidence_text"] == rule
-    assert "ts" in ledger_row
+    with pytest.raises(learning.MorphLearningError, match="metadata-only"):
+        learning.run_taste_cycle(transport, installation_id="install-e2e",
+                                scope="Volumes-D-claude", category="tooling",
+                                resolve_evidence=lambda event: text_by_id[event["event_id"]],
+                                cursor_store=cursor_store, outcome_store=outcome_store)
+    assert outcome_store.all() == []
 
 
-def test_ingestion_cycle_cannot_self_approve(tmp_path: Path) -> None:
+def test_ingestion_cycle_cannot_construct_direct_transcript_authority(tmp_path: Path) -> None:
     """The central C14/L2 acceptance criterion: nothing `run_taste_cycle` does
     on its own -- rerunning it, rescanning the durable ledger, repeating the
     pull -- can ever move a Morph-proposed rule to active. `run_taste_cycle`
@@ -180,44 +127,9 @@ def test_ingestion_cycle_cannot_self_approve(tmp_path: Path) -> None:
             outcome_store=outcome_store,
         )
 
-    first = cycle()
-    proposal = first["proposed"][0]
-    assert proposal.record.lifecycle_state == "candidate"
-    assert not proposal.approved
-
-    # Re-running the exact same ingestion cycle repeatedly must never approve
-    # the proposal Morph made of its own accord -- there is no store growth,
-    # no internal retry, and no code path here that can manufacture consent.
-    for _ in range(5):
-        again = cycle()
-        assert again["proposed"] == []
-        assert again["approved"] == []
-    assert outcome_store.latest_status("ev-propose") == "proposed"
-    assert len(outcome_store.pending_proposals()) == 1
-
-    # Only a genuinely separate event -- appended here to stand in for an
-    # actual user action recorded by Membrane, and merely *returned* by the
-    # read-only transport rather than constructed by Morph -- can approve it.
-    feedback_text = learning.approval_text(proposal)
-    transport.rows.append(
-        _event(feedback_text, event_type="user_instruction", event_id="ev-approve")
-    )
-    text_by_id["ev-approve"] = feedback_text
-
-    final = cycle()
-    assert final["proposed"] == []
-    assert len(final["approved"]) == 1
-    approved = final["approved"][0]
-    assert approved.approved
-    assert approved.record.lifecycle_state == "active"
-    assert approved.approval_event_id == "ev-approve"
-    assert outcome_store.latest_status("ev-propose") == "approved"
-    assert outcome_store.pending_proposals() == []
-
-    # And the approval is final: re-running again must not re-approve, re-add,
-    # or otherwise mutate an already-approved outcome.
-    steady = cycle()
-    assert steady["proposed"] == [] and steady["approved"] == []
+    with pytest.raises(learning.MorphLearningError, match="metadata-only"):
+        cycle()
+    assert outcome_store.all() == []
 
 
 def test_ingestion_cycle_rejects_non_user_origin_before_any_outcome_is_written(
@@ -234,7 +146,7 @@ def test_ingestion_cycle_rejects_non_user_origin_before_any_outcome_is_written(
     cursor_store = event_ingestion.CursorStore(tmp_path / "cursors.json")
     outcome_store = learning_outcomes.LearningOutcomeStore(tmp_path / "ledger.jsonl")
 
-    with pytest.raises(event_ingestion.EventIngestionError, match="non-user-origin"):
+    with pytest.raises(learning.MorphLearningError, match="metadata-only"):
         learning.run_taste_cycle(
             transport,
             installation_id="install-e2e",

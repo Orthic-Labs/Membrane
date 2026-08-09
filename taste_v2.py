@@ -393,7 +393,7 @@ def _assert_authoritative_provenance(event: dict[str, Any]) -> None:
     Insights findings — is refused BEFORE we even build a candidate.
     """
     flags = event.get("flags") or {}
-    bad_flags = sorted(flags.keys() & _REJECTED_FLAGS)
+    bad_flags = sorted(name for name in _REJECTED_FLAGS if flags.get(name))
     if bad_flags:
         raise TasteV2Error(
             f"authoritative-provenance-rejected: flag set is "
@@ -543,7 +543,7 @@ def iter_candidate_indices(events: list[dict[str, Any]]) -> Iterable[int]:
         if kind != "user_message":
             continue
         flags = event.get("flags") or {}
-        if flags.keys() & _REJECTED_FLAGS:
+        if any(flags.get(name) for name in _REJECTED_FLAGS):
             continue
         text = str(event.get("text") or "")
         if not text:
@@ -586,7 +586,7 @@ def extract_candidate(
     if str(event.get("kind") or "") != "user_message":
         return None
     flags = event.get("flags") or {}
-    if flags.keys() & _REJECTED_FLAGS:
+    if any(flags.get(name) for name in _REJECTED_FLAGS):
         return None
     text = str(event.get("text") or "")
     if not text:

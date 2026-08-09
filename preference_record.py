@@ -44,7 +44,10 @@ from workspace_runtime import workspace_root
 
 # ----- Gate 2 contract surface -----
 
+# Legacy record envelope version. Readers retain explicit 1.0–1.2 support.
 SCHEMA_VERSION = "1.2.0"
+# Canonical writer version for span-preserving direct-transcript manifests.
+DIRECT_MANIFEST_SCHEMA_VERSION = "1.3.0"
 KIND = "preference"
 PREFIX = "morph"
 HASH_LEN = 10

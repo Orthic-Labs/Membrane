@@ -250,6 +250,7 @@ def run_taste_cycle(
     invented this run), so an approval event arriving on a *later* call still
     resolves correctly, not just one arriving in the same page as its proposal.
     """
+    raise MorphLearningError("event-transport-metadata-only: use direct transcripts")
     cursor_store = cursor_store or event_ingestion.CursorStore()
     outcome_store = outcome_store or learning_outcomes.LearningOutcomeStore()
 
