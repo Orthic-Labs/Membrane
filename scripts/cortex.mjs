@@ -65,7 +65,7 @@ import {
   sealPhase2Artifacts,
 } from "../lib/incremental-phase2.mjs";
 import { CODE_EXTENSIONS } from "../graph/language-extractors.mjs";
-import { openStore, openStoreReadOnly, closeStore, saveGeneration, countRows, listFileMetadata, listSymbolMetadata, readManifestEnvelope } from "../graph/store-sqlite.mjs";
+import { openStore, openStoreReadOnly, closeStore, saveGeneration, countRows, listFileMetadata, listSymbolMetadata, readManifestEnvelope, searchGenerationSymbols } from "../graph/store-sqlite.mjs";
 import {
   readIndexedMeta,
   indexedQueryGeneration,
@@ -225,7 +225,7 @@ function pkgChannel() {
   return "source";
 }
 
-async function queryFreshnessBarrier(root, outDir, args = {}) {
+async function queryFreshnessBarrier(root, outDir, args = {}, { observeOnly = false } = {}) {
   const dbPath = join(resolve(root), outDir, "graph", "graph.db");
   if (!existsSync(dbPath)) throw graphReadError("graph_missing", "Graph store is missing; run cortex build");
   const probe = openStoreReadOnly(dbPath);
@@ -237,13 +237,20 @@ async function queryFreshnessBarrier(root, outDir, args = {}) {
     }
   } finally { closeStore(probe); }
   const readOnly = (statSync(dbPath).mode & 0o222) === 0;
-  if (args["expected-generation"] || readOnly) {
+  // observeOnly: query commands must never repair. The inline reconcile below
+  // is synchronous SQLite/filesystem work, and synchronous code never yields to
+  // the event loop — so the 2000 ms Promise.race timeout and the abort signal
+  // literally cannot fire while it runs. On a busy workspace that turned every
+  // graph query into minutes of journal replay behind a "2 second" barrier.
+  // Queries take the read-only verdict (fresh or stale, honestly labeled) and
+  // leave repair to the watcher, which owns writes by design.
+  if (args["expected-generation"] || readOnly || observeOnly) {
     const db = openStoreReadOnly(dbPath);
     try {
       const rows = db.prepare("SELECT key,value FROM watch_state").all();
       const watch = Object.fromEntries(rows.map((row) => [row.key, row.value]));
       const envelope = readManifestEnvelope(db);
-      const status = readOnly ? graphStatus(root, outDir) : null;
+      const status = (readOnly || observeOnly) ? graphStatus(root, outDir) : null;
       const caughtUp = args["expected-generation"]
         ? true
         : status?.state === "fresh" && watch.event_gap !== "1";
@@ -1402,15 +1409,26 @@ function evidenceCandidatePaths(root, outDir, config, taskTerms, readFirst, limi
 // task-term scoring over the actual tracked files, not a hardcoded layout.
 function semanticReadFirstPaths(root, outDir, config, taskTerms, limit = 0) {
   void config;
+  void limit;
+  // Indexed B-tree lookup instead of `readFreshGraph` + `queryGraph`. The old
+  // path materialized the ENTIRE generation into JS objects per invocation —
+  // on this workspace that is 151k symbols and 2.4M term rows (~1.6 GB), which
+  // turned a 12-result lookup into minutes of I/O and made every Membrane
+  // context packet miss its federation budget. `searchGenerationSymbols` walks
+  // the (generation_id, token, symbol_id) primary key and returns in
+  // milliseconds at the same scale; the freshness barrier already guards
+  // staleness upstream, so pinning to the manifest generation is sound here.
+  let db = null;
   try {
-    const generation = readFreshGraph(root, outDir);
-    const query = [...taskTerms].join(" ");
-    return [...new Set(queryGraph(generation, { query, limit: 12 })
-      .flatMap((result) => result.evidence ?? [])
-      .map((item) => item.path)
-      .filter(isImplementationPath))];
+    db = openStoreReadOnly(join(resolve(root, outDir), "graph", "graph.db"));
+    const generationId = readManifestEnvelope(db)?.generationId;
+    if (!generationId) return [];
+    const matched = searchGenerationSymbols(db, generationId, [...taskTerms], 24);
+    return [...new Set(matched.map((row) => row.path).filter(isImplementationPath))];
   } catch {
     return [];
+  } finally {
+    if (db) try { closeStore(db); } catch { /* read-only close */ }
   }
 }
 
@@ -2053,7 +2071,9 @@ async function runGraphCommand(root, outDir, subcommand, args) {
   const barrierCommands = new Set(["search", "neighbors", "path", "impact", "candidates", "architecture", "flows"]);
   let freshnessReceipt = null;
   if (barrierCommands.has(subcommand)) {
-    freshnessReceipt = await queryFreshnessBarrier(root, outDir, args);
+    // Observe, never repair: queries take the honest fresh/stale verdict in
+    // milliseconds; the watcher owns catch-up (see queryFreshnessBarrier).
+    freshnessReceipt = await queryFreshnessBarrier(root, outDir, args, { observeOnly: true });
     if (freshnessReceipt.barrierResult !== "caught_up" && !args["allow-stale"]) {
       console.error(JSON.stringify({ error: "stale_blocked", barrier: freshnessReceipt }, null, 2));
       return 3;
@@ -2439,7 +2459,7 @@ async function runReconcile(root, outDir, args) {
 }
 
 async function runNeighborhood(root, outDir, args) {
-  const freshnessReceipt = await queryFreshnessBarrier(root, outDir, args);
+  const freshnessReceipt = await queryFreshnessBarrier(root, outDir, args, { observeOnly: true });
   if (freshnessReceipt.barrierResult !== "caught_up" && !args["allow-stale"]) {
     console.error(JSON.stringify({ error: "stale_blocked", barrier: freshnessReceipt }, null, 2));
     return 3;
