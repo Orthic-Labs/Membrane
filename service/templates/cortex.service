@@ -1,5 +1,5 @@
 [Unit]
-Description=Orthic Cortex repository watcher
+Description=Cortex repository watcher
 After=default.target
 
 [Service]

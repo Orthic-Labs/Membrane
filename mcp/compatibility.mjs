@@ -1,6 +1,8 @@
 // D31: MCP client/SDK compatibility matrix and host config generation.
 // Generates host configs for Claude Code, Codex, Cursor, VS Code/Copilot,
-// Continue, Windsurf/OpenCode, and generic MCP.
+// Continue, Windsurf/OpenCode, and generic MCP. Every generated config
+// launches `cortex mcp serve`, implemented by the CX-B1 runtime adapter in
+// scripts/cortex-mcp.mjs (six tools, nine resources, six prompts).
 
 import { join } from "node:path";
 

@@ -68,3 +68,14 @@ jobs:
       - run: node --test tests/soak-contract.test.mjs tests/daemon-recovery.test.mjs tests/freshness-regressions.test.mjs
       - run: node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/cortex-soak.json
       - run: test ! -s /tmp/cortex-soak.json && exit 1 || node -e "const r=require('/tmp/cortex-soak.json'); if (r.summary.crashes>0) { console.error('soak crashes:', r.findings); process.exit(1);} console.log('soak summary:', JSON.stringify(r.summary));"
+  ax-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node evals/ax/run-conformance.mjs --root .

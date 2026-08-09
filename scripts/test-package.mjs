@@ -47,7 +47,9 @@ try {
   const tarball = join(temp, entry.filename);
   if (!existsSync(tarball)) fail(`tarball not produced: ${tarball}`);
   const extractDir = join(temp, "extract");
-  execFileSync("tar", ["-xzf", tarball, "-C", temp], { stdio: "ignore" });
+  // Reference the archive by relative basename with cwd set to the archive
+  // directory: MSYS GNU tar on Windows reads drive-letter paths as remote hosts.
+  execFileSync("tar", ["-xzf", entry.filename], { cwd: temp, stdio: "ignore" });
   const packageDir = join(temp, "package");
   if (!existsSync(packageDir)) fail("tarball did not extract a package/ dir");
 

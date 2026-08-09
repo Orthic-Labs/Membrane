@@ -149,9 +149,10 @@ test("errors preserve structured codes and set isError", async () => {
   try {
     await withServer(repo, async (client) => {
       // Schema-level validation errors surface as SDK errors (non-JSON).
-      const validation = await client.callTool({ name: "cortex_search", arguments: { query: "" } });
-      assert.equal(validation.isError, true);
-      assert.ok(validation.content?.[0]?.text.length > 0);
+      await assert.rejects(
+        client.callTool({ name: "cortex_search", arguments: { query: "" } }),
+        (error) => error?.code === -32602,
+      );
       // Service-level errors surface as JSON envelopes with stable codes.
       const missing = await client.callTool({ name: "cortex_expand", arguments: { anchor: "no-such-symbol-xyz", depth: 1 } });
       assert.equal(missing.isError, true);

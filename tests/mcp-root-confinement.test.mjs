@@ -24,13 +24,10 @@ test("tool inputs cannot select an arbitrary repoRoot", async () => {
   const client = new Client({ name: "cortex-test", version: "1.0.0" }, { capabilities: {} });
   try {
     await client.connect(transport);
-    // Passing repoRoot in arguments must be ignored (schema rejects it via zod unknown key) —
-    // the server stays confined to --root.
-    const response = await client.callTool({ name: "cortex_status", arguments: { repoRoot: elsewhere } });
-    assert.ok(!response.isError, `unexpected error: ${response.content?.[0]?.text ?? ""}`);
-    const parsed = JSON.parse(response.content.find((block) => block.type === "text")?.text);
-    // Confined to the enrolled root, not the arbitrary path.
-    assert.ok(parsed.repository);
+    await assert.rejects(
+      client.callTool({ name: "cortex_status", arguments: { repoRoot: elsewhere } }),
+      (error) => error?.code === -32602,
+    );
   } finally {
     await client.close().catch(() => {});
     rmSync(repo, { recursive: true, force: true });

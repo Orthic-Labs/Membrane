@@ -99,7 +99,7 @@ test("apply recovery restores a journaled last working app", () => {
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("local signed update fails closed without shipped trust root", () => {
+test("local signed update rejects a signer absent from shipped trust root", () => {
   const root = fixtureRoot();
   try {
     assert.equal(typeof manifestModule.treeDigest, "function");
@@ -112,7 +112,7 @@ test("local signed update fails closed without shipped trust root", () => {
     const manifestPath = join(root, "manifest.json"); writeFileSync(manifestPath, JSON.stringify(manifest));
     const cli = join(import.meta.dirname, "..", "scripts", "cortex.mjs");
     const apply = spawnSync(process.execPath, [cli, "update", "apply", "--manifest", manifestPath, "--artifact", artifact, "--artifact-name", "local", "--app-dir", join(root, "app"), "--prior-dir", join(root, "prior"), "--repo-root", root, "--json"], { encoding: "utf8" });
-    assert.notEqual(apply.status, 0, apply.stderr); assert.equal(JSON.parse(apply.stdout).reason, "update_trust_root_missing");
+    assert.notEqual(apply.status, 0, apply.stderr); assert.equal(JSON.parse(apply.stdout).reason, "untrusted_key_id");
     assert.equal(readFileSync(join(root, "app", "version.txt"), "utf8"), "v1");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

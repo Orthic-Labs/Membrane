@@ -34,6 +34,7 @@ on:
       AZURE_CLIENT_ID: { required: false }
       AZURE_TENANT_ID: { required: false }
       AZURE_SUBSCRIPTION_ID: { required: false }
+      UPDATE_SIGNING_KEY_PEM: { required: false }
 
 # D53: a release cannot bypass any required gate. This workflow is the
 # authoritative gate chain: tests, qualification (schema + security +
@@ -79,6 +80,9 @@ jobs:
       tarball: ${{ steps.tarball.outputs.path }}
       tarball_sha256: ${{ steps.tarball.outputs.sha256 }}
     runs-on: ubuntu-latest
+    environment: release
+    env:
+      UPDATE_SIGNING_KEY_PEM: ${{ secrets.UPDATE_SIGNING_KEY_PEM }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -97,6 +101,9 @@ jobs:
           test -f "$TARBALL"
           echo "path=$TARBALL" >> "$GITHUB_OUTPUT"
           echo "sha256=$(sha256sum "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Sign update manifest
+        if: ${{ env.UPDATE_SIGNING_KEY_PEM != '' }}
+        run: node scripts/release/sign-update-manifest.mjs --manifest release/candidates/ubuntu/update-manifest.json
       - uses: actions/upload-artifact@v4
         with:
           name: cortex-candidate
@@ -196,9 +203,29 @@ jobs:
     needs: [macos-sign-and-notarize, windows-sign]
     if: ${{ inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
-      - name: Require D17/D18 signed-native clean-host receipt
-        run: node -e "console.error('native_clean_host_owner_gate_missing_D17_D18_receipt'); process.exit(1)"
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Download rehearsal receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ inputs.rehearsal_run_id }}" --repo "$GITHUB_REPOSITORY" --name cortex-macos-clean-host-receipt --dir "$RUNNER_TEMP/rehearsal/macos"
+          gh run download "${{ inputs.rehearsal_run_id }}" --repo "$GITHUB_REPOSITORY" --name cortex-windows-clean-host-receipt --dir "$RUNNER_TEMP/rehearsal/windows"
+      - name: Verify signed-native receipts against catalog
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node scripts/release/verify-native-receipt.mjs --receipt "$RUNNER_TEMP/rehearsal/macos/receipt.json" --catalog release/catalog.json --version "${VERSION#v}"
+          node scripts/release/verify-native-receipt.mjs --receipt "$RUNNER_TEMP/rehearsal/windows/receipt.json" --catalog release/catalog.json --version "${VERSION#v}"
   sbom:
     needs: [package]
     runs-on: ubuntu-latest
@@ -300,7 +327,7 @@ jobs:
           name: cortex-clean-host-receipt
           path: ${{ runner.temp }}/receipt.json
   publish-npm:
-    needs: [clean-host-install, provenance]
+    needs: [package, clean-host-install, provenance]
     if: ${{ inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     environment: release

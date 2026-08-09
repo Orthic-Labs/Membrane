@@ -4,6 +4,7 @@
 
 import { createCortexApplicationService } from "../../lib/application/service.mjs";
 import { join } from "node:path";
+import { startCortexMcpServer } from "../cortex-mcp.mjs";
 import { EXIT, parseArgs } from "./args.mjs";
 import { machineError, printResult, renderArchitecture, renderDocTruth, renderExpand, renderImpact, renderSearch, renderStatus } from "./render.mjs";
 
@@ -229,10 +230,17 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       return EXIT.USAGE;
     }
     case "mcp":
-      // Facade surface is registered here; concrete implementation arrives in
-      // its owning packet (D31 mcp serve).
-      printResult(machineError("not_implemented", `cortex ${command} arrives in its owning packet`), args, { stderr: true });
-      return EXIT.USAGE;
+      // CX-B1: `cortex mcp serve --root <repo>` starts the stdio server from
+      // scripts/cortex-mcp.mjs in-process; the CLI process becomes the server.
+      {
+        const subcommand = String(args._[0] ?? args.subcommand ?? "");
+        if (subcommand === "serve") {
+          await startCortexMcpServer({ root: args.root ?? root });
+          return EXIT.OK;
+        }
+        printResult(machineError("usage", `cortex mcp ${subcommand} is not a known subcommand; use cortex mcp serve --root <repo>`), args, { stderr: true });
+        return EXIT.USAGE;
+      }
     default:
       return null;
   }
