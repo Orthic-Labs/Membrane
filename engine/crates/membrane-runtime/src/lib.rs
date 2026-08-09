@@ -28,6 +28,7 @@ pub mod feedback;
 pub mod fleet;
 pub mod freshness;
 pub mod hub;
+pub mod hub_inputs;
 pub mod installation_manifest;
 pub mod mcp_http;
 pub mod memory_provider;

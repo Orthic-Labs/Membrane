@@ -10,10 +10,21 @@
   "scripts": {
     "legal:verify": "node packaging/legal/verify.mjs",
     "test": "node --test mcp/*.test.mjs mcp/host/*.test.mjs scripts/*.test.mjs && pnpm run legal:verify",
+    "test:random": "node scripts/ci/test-random.mjs",
+    "test:all": "cargo test --manifest-path engine/Cargo.toml --workspace --locked && node scripts/ci/check-release-identity.mjs",
     "test:mcp": "node --test mcp/*.test.mjs mcp/host/*.test.mjs",
-    "test:fable": "node --test mcp/*.test.mjs mcp/host/*.test.mjs"
+    "test:fable": "node --test mcp/*.test.mjs mcp/host/*.test.mjs",
+    "rightkit:git:sync": "right-git sync .",
+    "rightkit:git:drift": "right-git drift .",
+    "rightkit:ax:plugin": "right-ax plugin validate .",
+    "rightkit:ax:static": "right-ax ax static .",
+    "rightkit:ax:conformance": "right-ax ax conformance ."
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0"
+  },
+  "devDependencies": {
+    "@rightkit/ax": "0.1.1",
+    "@rightkit/git": "0.2.0"
   }
 }

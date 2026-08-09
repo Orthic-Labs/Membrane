@@ -130,6 +130,10 @@ const invalidToolset = await rpc([{ jsonrpc: "2.0", id: 6, method: "tools/list",
 assert.deepEqual(invalidToolset[0].result.tools.map((tool) => tool.name), ["membrane_context"]);
 for (const tool of rows[1].result.tools) {
   assert.ok(tool.outputSchema, `${tool.name} declares an output schema`);
+  assert.equal(tool.inputSchema.additionalProperties, false, `${tool.name} rejects unknown inputs`);
+  assert.deepEqual(tool.annotations, { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, `${tool.name} declares its read-only effects`);
+  assert.match(tool.description, /use when/i);
+  assert.match(tool.description, /do not use/i);
   assert.equal(tool.inputSchema.properties.traceparent, undefined, `${tool.name} does not advertise traceparent as an argument`);
   assert.equal(tool.inputSchema.properties.tracestate, undefined, `${tool.name} does not advertise tracestate as an argument`);
   assert.equal(tool.inputSchema.properties.baggage, undefined, `${tool.name} does not advertise baggage as an argument`);

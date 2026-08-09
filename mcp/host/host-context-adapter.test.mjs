@@ -7,6 +7,7 @@ import path from 'node:path';
 
 const require = createRequire(import.meta.url);
 const adapter = require('./context-adapter.cjs');
+const observable = require('./observable-event.cjs');
 const fakeClient = fileURLToPath(new URL('./fixtures/membrane-client.mjs', import.meta.url));
 
 test('host adapter emits a typed client identity, never a gateway-derived alias', () => {
@@ -26,6 +27,16 @@ test('host adapter emits a typed client identity, never a gateway-derived alias'
   assert.equal(adapter.defaultClient({ MEMBRANE_CLIENT: 'ccx' }), 'other');
 });
 
+test('packet delivery char count is bounded, packet-only, and content-free', () => {
+  const event = observable.buildObservableEvent({
+    installationId: 'installation-1', clientId: 'codex', sessionId: 'session-1', taskId: 'task-1', turnId: 'turn-1', traceId: 'trace-1',
+    eventType: 'packet_delivered', origin: 'host', content: 'private content', charCount: 42,
+  });
+  assert.equal(event.char_count, 42);
+  assert.throws(() => observable.validateObservableEvent({ ...event, char_count: 30001 }), /char_count/);
+  assert.throws(() => observable.validateObservableEvent({ ...event, event_type: 'tool_receipt' }), /packet_delivered/);
+});
+
 test('host adapter emits bounded data-only delivery heartbeat for canonical request', { concurrency: false }, () => {
   const root = tmpdir();
   const request = adapter.buildRequest({ event: 'UserPromptSubmit', prompt: 'inspect current graph', session_id: 'session-1', turn_id: 'turn-1' }, root);
@@ -34,7 +45,7 @@ test('host adapter emits bounded data-only delivery heartbeat for canonical requ
   const result = adapter.runClient(request, root, { client: fakeClient });
   assert.equal(result.state, 'context_enforced');
   const rendered = adapter.render(result);
-  assert.match(rendered, /Membrane: context_enforced/);
+  assert.match(rendered, /Membrane: degraded/);
   assert.match(rendered, /packet_delivered/);
   assert.match(rendered, /dataOnly/);
 });
@@ -93,6 +104,34 @@ test('selected content is rendered into the prompt and accounted as finalized', 
   assert.equal(packet.providerAccounting.git.deliveredChars, packet.blocks[1].deliveredChars);
   // The data block ships metadata only; content must not be duplicated.
   const data = JSON.parse(/<membrane-context-data>(.*)<\/membrane-context-data>/s.exec(rendered)[1]);
+  assert.ok(data.packet.blocks.every((block) => block.text === undefined));
+});
+
+test('prepared delivery supplies one finalized count to rendering', () => {
+  const packet = { budget: { packetCharBudgetDefault: 30000, configuredPacketCharBudget: 30000 }, blocks: [{ id: 'kept', provider: 'rules', resolver: 'read', text: 'COUNT-MARKER' }] };
+  const result = { state: 'context_enforced', payload: { packet, providerStatus: 'ready', receipts: [] } };
+  const prepared = adapter.prepareDelivery(result);
+  assert.ok(prepared.delivery.deliveredChars > 0);
+  assert.match(adapter.render(result, prepared), new RegExp(`delivered: ${prepared.delivery.deliveredChars} chars`));
+});
+
+test('zero-delivery response retains bounded data-only receipt metadata', () => {
+  const packet = {
+    schema: 'orthic.context-packet.v1',
+    budget: { packetCharBudgetDefault: 30000, configuredPacketCharBudget: 30000 },
+    blocks: [{ id: 'empty', provider: 'rules', priority: 1, resolver: 'read empty', text: '' }],
+  };
+  const rendered = adapter.render({ state: 'context_enforced', payload: { packet, providerStatus: 'ready', receipts: [] } });
+
+  assert.match(rendered, /Membrane: degraded/);
+  assert.match(rendered, /\ndelivered: 0 chars\n/);
+  assert.match(rendered, /omissions: zero_delivery/);
+  assert.doesNotMatch(rendered, /<membrane-context instructionPolicy=/);
+  const match = /<membrane-context-data>(.*)<\/membrane-context-data>/s.exec(rendered);
+  assert.ok(match, 'zero-delivery response must retain data-only receipt metadata');
+  const data = JSON.parse(match[1]);
+  assert.equal(data.event, 'packet_delivered');
+  assert.equal(data.dataOnly, true);
   assert.ok(data.packet.blocks.every((block) => block.text === undefined));
 });
 

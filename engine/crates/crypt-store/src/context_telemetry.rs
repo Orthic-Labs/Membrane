@@ -400,8 +400,7 @@ pub struct ContextEventBatch {
 /// Language-neutral host lifecycle event owned by Membrane's SQLite event ledger. The richer
 /// ContextEvent remains the internal accounting form; this envelope is the frozen cross-host
 /// contract and carries only opaque refs/digests.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Serialize)]
 pub struct ObservableEventV1 {
     pub schema: String,
     pub installation_id: String,
@@ -422,6 +421,82 @@ pub struct ObservableEventV1 {
     /// numeric fields on `ContextEvent`. Absent for producers that don't measure a span.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<f64>,
+    /// Packet delivery character count. This optional, numeric-only field is
+    /// valid solely for `packet_delivered`; old packet records may omit it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub char_count: Option<i64>,
+    #[serde(skip)]
+    char_count_present: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ObservableEventV1Wire {
+    schema: String,
+    installation_id: String,
+    client_id: String,
+    session_id: String,
+    task_id: String,
+    turn_id: String,
+    trace_id: String,
+    event_id: String,
+    event_type: String,
+    origin: String,
+    content_ref_or_digest: String,
+    timestamp: String,
+    completeness: BTreeMap<String, bool>,
+    policy_snapshot_digest: String,
+    #[serde(default)]
+    duration_ms: Option<f64>,
+    #[serde(default)]
+    char_count: CharCountWire,
+}
+
+#[derive(Default)]
+struct CharCountWire {
+    present: bool,
+    value: Option<i64>,
+}
+
+impl<'de> Deserialize<'de> for CharCountWire {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        Ok(Self {
+            present: true,
+            value: Option::<i64>::deserialize(deserializer)?,
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for ObservableEventV1 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = ObservableEventV1Wire::deserialize(deserializer)?;
+        let char_count_present = wire.char_count.present;
+        Ok(Self {
+            schema: wire.schema,
+            installation_id: wire.installation_id,
+            client_id: wire.client_id,
+            session_id: wire.session_id,
+            task_id: wire.task_id,
+            turn_id: wire.turn_id,
+            trace_id: wire.trace_id,
+            event_id: wire.event_id,
+            event_type: wire.event_type,
+            origin: wire.origin,
+            content_ref_or_digest: wire.content_ref_or_digest,
+            timestamp: wire.timestamp,
+            completeness: wire.completeness,
+            policy_snapshot_digest: wire.policy_snapshot_digest,
+            duration_ms: wire.duration_ms,
+            char_count: wire.char_count.value,
+            char_count_present,
+        })
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -467,6 +542,19 @@ impl ObservableEventV1 {
         if let Some(duration_ms) = self.duration_ms {
             if !duration_ms.is_finite() || duration_ms < 0.0 || duration_ms > MAX_DURATION_MS {
                 return Err(invalid("duration_ms", "must be finite and within bounds"));
+            }
+        }
+        if self.event_type != "packet_delivered"
+            && (self.char_count_present || self.char_count.is_some())
+        {
+            return Err(invalid("char_count", "only valid for packet_delivered"));
+        }
+        if let Some(char_count) = self.char_count {
+            if !(0..=30_000).contains(&char_count) {
+                return Err(invalid(
+                    "char_count",
+                    "must be an integer between 0 and 30000",
+                ));
             }
         }
         Ok(())
@@ -2925,7 +3013,7 @@ impl MemDb {
                 duration_ms: event.duration_ms,
                 quantity: None,
                 token_count: None,
-                char_count: None,
+                char_count: event.char_count,
                 meta: Some(BTreeMap::from([
                     (
                         "complete".to_string(),
@@ -3650,6 +3738,8 @@ mod lifecycle_intent_tests {
                 "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
                     .to_string(),
             duration_ms: None,
+            char_count: None,
+            char_count_present: false,
         };
         event.validate().unwrap();
         let mut with_duration = event.clone();
@@ -3659,6 +3749,23 @@ mod lifecycle_intent_tests {
         assert!(with_duration.validate().is_err());
         with_duration.duration_ms = Some(f64::NAN);
         assert!(with_duration.validate().is_err());
+        let mut counted = event.clone();
+        counted.char_count = Some(30_000);
+        counted.validate().unwrap();
+        counted.char_count = Some(30_001);
+        assert!(counted.validate().is_err());
+        counted.char_count = Some(1);
+        counted.event_type = "tool_receipt".to_string();
+        assert!(counted.validate().is_err());
+        let mut non_packet_null = serde_json::to_value(&event).unwrap();
+        non_packet_null["event_type"] = serde_json::json!("tool_receipt");
+        non_packet_null["char_count"] = Value::Null;
+        let non_packet_null: ObservableEventV1 = serde_json::from_value(non_packet_null).unwrap();
+        assert!(non_packet_null.validate().is_err());
+        let mut packet_null = serde_json::to_value(&event).unwrap();
+        packet_null["char_count"] = Value::Null;
+        let packet_null: ObservableEventV1 = serde_json::from_value(packet_null).unwrap();
+        packet_null.validate().unwrap();
         let mut invalid = event.clone();
         invalid.origin = "model".to_string();
         assert!(invalid.validate().is_err());
@@ -3681,12 +3788,13 @@ mod lifecycle_intent_tests {
             "turn_id": "turn-a",
             "trace_id": "trace-a",
             "event_id": "event-a",
-            "event_type": "tool_receipt",
-            "origin": "tool",
+            "event_type": "packet_delivered",
+            "origin": "host",
             "content_ref_or_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "timestamp": "2026-08-01T00:00:00Z",
-            "completeness": {"receipt": true},
-            "policy_snapshot_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            "completeness": {"packet": true},
+            "policy_snapshot_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "char_count": 42
         });
         std::fs::write(
             &ingress,
@@ -3699,13 +3807,21 @@ mod lifecycle_intent_tests {
             .unwrap()
             .write_all(b"\n")
             .unwrap();
-        let result =
-            drain_prompt_telemetry_ingress_once(&MemDb::open_in_memory(), &lease(), &ingress)
-                .unwrap();
+        let db = MemDb::open_in_memory();
+        let result = drain_prompt_telemetry_ingress_once(&db, &lease(), &ingress).unwrap();
         assert_eq!(
             (result.records, result.inserted, result.rejected),
             (1, 1, 0)
         );
+        let char_count: i64 = db
+            .lock_events()
+            .query_row(
+                "SELECT char_count FROM context_event_log WHERE task_class = 'observable'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(char_count, 42);
     }
 
     fn observable_event(
@@ -3735,6 +3851,8 @@ mod lifecycle_intent_tests {
             completeness: BTreeMap::from([("packet".to_string(), true)]),
             policy_snapshot_digest: format!("sha256:{}", "b".repeat(64)),
             duration_ms: None,
+            char_count: None,
+            char_count_present: false,
         }
     }
 

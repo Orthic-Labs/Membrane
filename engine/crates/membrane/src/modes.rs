@@ -117,7 +117,13 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
             "hub.snapshot"
         };
         let facade = membrane_runtime::hub::HubFacadeV1::new(None);
-        let inputs = membrane_runtime::hub::HubInputsV1::unavailable("source_not_connected");
+        // MBR: read live state from the local crypt-service's /health endpoint
+        // instead of hardcoding "Offline" regardless of whether the service is
+        // up. Falls back to the honest unavailable facade on any failure.
+        let inputs = membrane_runtime::hub_inputs::live_inputs_from_local_service()
+            .unwrap_or_else(|| {
+                membrane_runtime::hub::HubInputsV1::unavailable("source_not_connected")
+            });
         return match facade
             .dispatch_json(operation, 0, inputs)
             .and_then(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))

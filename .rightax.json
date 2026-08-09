@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "surfaces": {
+    "mcp": {
+      "serve": "node mcp/rightax-conformance-server.mjs",
+      "tools": 1
+    }
+  },
+  "plugin": {
+    "name": "membrane",
+    "skills": [
+      "membrane"
+    ]
+  },
+  "ax": {
+    "conformanceExamples": {
+      "membrane_context": {
+        "task": "conformance-probe",
+        "repository": ".",
+        "caller": {
+          "root": ".",
+          "repositoryId": "conformance-probe",
+          "scopeId": "conformance-probe"
+        }
+      }
+    },
+    "gates": {
+      "static": "report-only",
+      "conformance": "report-only",
+      "behavioral": "report-only"
+    },
+    "claimBoundaryRequired": false
+  }
+}

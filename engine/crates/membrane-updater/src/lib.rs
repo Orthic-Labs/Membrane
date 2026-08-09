@@ -253,7 +253,7 @@ mod tests {
     }
 
     const ARTIFACT_SHA256: &str =
-        "sha256:0000000000000000000000000000000000000000000000000000000000ab";
+        "sha256:00000000000000000000000000000000000000000000000000000000000000ab";
     const TRUSTED_KEY: &str = "rightsuite-updater-key-2026";
 
     fn fully_trusting_verifier() -> MockVerifier {
@@ -280,6 +280,11 @@ mod tests {
                 signed_sha256: ARTIFACT_SHA256.to_string(),
             },
         }
+    }
+
+    #[test]
+    fn candidate_fixture_has_a_valid_evidence_identity() {
+        assert!(identity_valid(&candidate("0.1.5", "0.1.6")));
     }
 
     #[test]

@@ -11,6 +11,13 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.0.0
         version: 2.0.0
+    devDependencies:
+      '@rightkit/ax':
+        specifier: 0.1.1
+        version: 0.1.1
+      '@rightkit/git':
+        specifier: 0.2.0
+        version: 0.2.0
 
 packages:
 
@@ -21,6 +28,14 @@ packages:
   '@modelcontextprotocol/server@2.0.0':
     resolution: {integrity: sha512-YhHWdHfpFMQfd0prsEnxKeS3Qz3ytIGmsS0sth4KDjnacIT7hxk6hXHkJ9KysxlkvTM+WZAtQbbcUhdoP4Hvtw==}
     engines: {node: '>=20'}
+
+  '@rightkit/ax@0.1.1':
+    resolution: {integrity: sha512-Nh8EWczxyIEJ4TEpkCxp6TpBZUW9+4LxucBtImL6Xv5YO61lDI4dQVHWzrX4TR3pQdFZABynKKn0k9dOvDIZpQ==}
+    hasBin: true
+
+  '@rightkit/git@0.2.0':
+    resolution: {integrity: sha512-m+RK0EUKAYMuSp+wcoDOEWfMDAGHh5/O7pZB8yYHqCB9W5HOr73j7llBRoUGbNBi81Q8VZr+4JvF6q+b6B5GUQ==}
+    hasBin: true
 
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
@@ -35,5 +50,9 @@ snapshots:
     dependencies:
       '@modelcontextprotocol/core': 2.0.0
       zod: 4.4.3
+
+  '@rightkit/ax@0.1.1': {}
+
+  '@rightkit/git@0.2.0': {}
 
   zod@4.4.3: {}

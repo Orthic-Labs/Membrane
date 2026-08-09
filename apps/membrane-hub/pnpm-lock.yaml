@@ -8,21 +8,33 @@ importers:
 
   .:
     dependencies:
+      '@rightkit/platform-ui':
+        specifier: 0.1.0
+        version: 0.1.0(@tauri-apps/plugin-os@2.3.2)(react@19.2.8)
       '@tauri-apps/api':
         specifier: ^2.0.0
         version: 2.11.1
+      '@tauri-apps/plugin-os':
+        specifier: 2.3.2
+        version: 2.3.2
     devDependencies:
       '@rightkit/release':
-        specifier: 0.2.51
-        version: 0.2.51
+        specifier: 0.2.54
+        version: 0.2.54
       '@tauri-apps/cli':
         specifier: ^2.0.0
         version: 2.11.4
 
 packages:
 
-  '@rightkit/release@0.2.51':
-    resolution: {integrity: sha512-Ta/exJflFSJkHil48R+0tz5DhaJAkUVCdDI7efcIU95ey2lbmz7mhUT3YuANtGFF2l/ZuwcjyXqymdxhvgBRYQ==}
+  '@rightkit/platform-ui@0.1.0':
+    resolution: {integrity: sha512-kI5ukPTCCowVvWiQf2HgPEZkv9w97gdwTbQzBvZal7eEEziz+vENgXjVczeEemz50TxbG3slCH7BIuX3PPf8MA==}
+    peerDependencies:
+      '@tauri-apps/plugin-os': '>=2 <3'
+      react: '>=18 <20'
+
+  '@rightkit/release@0.2.54':
+    resolution: {integrity: sha512-xzd/LAHzceH7iS960nIyrtXyDWNl2xiFOefXBVDq3mMdqQy37zPBM9MF6GYcxJds+SUZmbQD62+yxKl2/bwVJQ==}
     hasBin: true
 
   '@tauri-apps/api@2.11.1':
@@ -104,9 +116,21 @@ packages:
     engines: {node: '>= 10'}
     hasBin: true
 
+  '@tauri-apps/plugin-os@2.3.2':
+    resolution: {integrity: sha512-n+nXWeuSeF9wcEsSPmRnBEGrRgOy6jjkSU+UVCOV8YUGKb2erhDOxis7IqRXiRVHhY8XMKks00BJ0OAdkpf6+A==}
+
+  react@19.2.8:
+    resolution: {integrity: sha512-PWaYA1L/q9u2u7xYQi+Y3L3Yfnie7XyLeaJICV1MGD6LprsBxcAqGjYyr0eY3p+QdsA+x/Irkt4Qif8D63+Sbw==}
+    engines: {node: '>=0.10.0'}
+
 snapshots:
 
-  '@rightkit/release@0.2.51': {}
+  '@rightkit/platform-ui@0.1.0(@tauri-apps/plugin-os@2.3.2)(react@19.2.8)':
+    dependencies:
+      '@tauri-apps/plugin-os': 2.3.2
+      react: 19.2.8
+
+  '@rightkit/release@0.2.54': {}
 
   '@tauri-apps/api@2.11.1': {}
 
@@ -156,3 +180,9 @@ snapshots:
       '@tauri-apps/cli-win32-arm64-msvc': 2.11.4
       '@tauri-apps/cli-win32-ia32-msvc': 2.11.4
       '@tauri-apps/cli-win32-x64-msvc': 2.11.4
+
+  '@tauri-apps/plugin-os@2.3.2':
+    dependencies:
+      '@tauri-apps/api': 2.11.1
+
+  react@19.2.8: {}
