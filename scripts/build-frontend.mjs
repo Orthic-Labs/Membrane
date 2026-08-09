@@ -1,5 +1,6 @@
-import { chmodSync, cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { engineReleaseIdentity } from "./release-identity.mjs";
 
 const output = new URL("../dist/", import.meta.url);
 rmSync(output, { recursive: true, force: true });
@@ -30,9 +31,22 @@ const cacheRoot = process.env.RIGHT_RELEASE_CACHE_ROOT;
 const engineTarget = cacheRoot
   ? new URL(`file://${cacheRoot}/dev-targets/membrane-engine/`)
   : new URL("engine/target/", repo);
-const result = spawnSync("cargo", ["build", "--manifest-path", engine.pathname, "--release", "--target", target, "-p", "crypt", "-p", "membrane", "--bin", "crypt-service", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CARGO_TARGET_DIR: engineTarget.pathname } });
+// Bake the release identity in. `release_identity.rs` reads these through
+// `option_env!`, so a build that omits them produces a binary permanently
+// reporting `sha256:unknown` — which the gateway treats as an unverifiable
+// release and answers with zero candidates. Every packet then ships empty
+// while the hook still reports enforcement.
+const identity = engineReleaseIdentity(new URL(repo).pathname.replace(/\/$/, ""));
+console.log(
+  `[membrane] release generation ${identity.releaseGeneration} `
+  + `(commit ${identity.commit.slice(0, 8)}${identity.dirty ? ", working tree" : ""}, ${identity.fileCount} files)`,
+);
+const result = spawnSync("cargo", ["build", "--manifest-path", engine.pathname, "--release", "--target", target, "-p", "crypt", "-p", "membrane", "--bin", "crypt-service", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CARGO_TARGET_DIR: engineTarget.pathname, CRYPT_SOURCE_COMMIT: identity.commit, CRYPT_SOURCE_TREE_SHA256: identity.sourceTreeSha256 } });
 if (result.error) throw result.error;
 if (result.status !== 0) throw new Error(`Membrane sidecar build failed with exit ${result.status}`);
+// The consumer of the baked value is the workspace release manifest; writing it
+// beside the binaries keeps expected and observed in one step instead of two.
+writeFileSync(new URL("../dist/release-identity.json", import.meta.url), `${JSON.stringify(identity, null, 2)}\n`);
 const binaries = new URL("../src-tauri/binaries/", import.meta.url);
 mkdirSync(binaries, { recursive: true });
 for (const name of ["crypt-service", "membrane"]) {
