@@ -15,8 +15,6 @@ import run_journal  # noqa: E402
 import taste_apply  # noqa: E402
 import taste_v2  # noqa: E402
 import taste_v2_pipeline as pipeline  # noqa: E402
-import core_compiler  # noqa: E402
-import morph_llm  # noqa: E402
 
 
 def _candidate_records(sources, refs, authority_manifest: dict) -> tuple[list[dict], list[dict]]:
@@ -115,7 +113,7 @@ def _mine(args: argparse.Namespace) -> int:
                 "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
                 "generator": "morph.py --manifest direct-transcript-v2",
                 "authority_manifest": authority_manifest,
-                "source_session_ids": [row["source_id"] for row in refs], "records": records}
+                "source_session_ids": [row["source_id"] for row in refs], "source_refs": refs, "records": records}
         args.manifest.parent.mkdir(parents=True, exist_ok=True)
         args.manifest.write_text(json.dumps(body, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"morph: wrote {args.manifest} ({len(records)} pending; {len(quarantine) + len(extraction_quarantine)} quarantined)")
@@ -148,6 +146,8 @@ def main() -> int:
     if args.apply_from_manifest:
         return taste_apply.apply_from_manifest(args.apply_from_manifest)
     if args.compile_core:
+        import core_compiler
+        import morph_llm
         host = sys.modules.get("morph")
         scanner = getattr(host, "ts", pipeline)
         if not scanner.scanner_available() or not morph_llm.lane_available(args.lane):

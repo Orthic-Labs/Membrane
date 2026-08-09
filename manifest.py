@@ -177,6 +177,24 @@ def validate_schema(path: Path) -> dict:
         missing = [rec.get("id", "<unknown>") for rec in raw.get("records", []) if not rec.get("evidenceContexts")]
         if missing:
             raise ManifestError(f"manifest schema check failed: v1.3.0 records missing evidenceContexts: {missing}")
+        refs = raw.get("source_refs") or []
+        ids = [ref["source_id"] for ref in refs]
+        if len(ids) != len(set(ids)):
+            raise ManifestError("manifest source_refs contains duplicate source_id")
+        if raw.get("source_session_ids") != ids:
+            raise ManifestError("manifest source_session_ids must exactly match source_refs order")
+        hashes = {ref["source_id"]: ref["source_sha256"].removeprefix("sha256:") for ref in refs}
+        for rec in raw.get("records", []):
+            rec_ids = rec.get("source_ids") or []
+            if len(rec_ids) != len(set(rec_ids)) or any(value not in hashes for value in rec_ids):
+                raise ManifestError(f"manifest record {rec.get('id', '<unknown>')} has unknown or duplicate source_ids")
+            file_hashes = rec.get("source_file_hashes") or []
+            if len({item.get("session_id") for item in file_hashes}) != len(file_hashes):
+                raise ManifestError(f"manifest record {rec.get('id', '<unknown>')} has duplicate source_file_hashes")
+            for item in file_hashes:
+                sid, digest = item.get("session_id"), str(item.get("sha256") or "").lower()
+                if sid not in hashes or hashes[sid] != digest:
+                    raise ManifestError(f"manifest record {rec.get('id', '<unknown>')} source hash does not match source_refs")
     frozen_authority = raw.get("authority_manifest")
     if frozen_authority:
         expected = frozen_authority["manifest_sha256"]

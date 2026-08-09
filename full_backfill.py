@@ -14,15 +14,6 @@ from pathlib import Path
 from typing import Sequence
 
 import taste_v2_pipeline
-import importlib
-
-legacy_sessions = importlib.import_module("morph" + "_sessions")
-
-
-def __getattr__(name: str):
-    if name == "morph" + "_sessions":
-        return legacy_sessions
-    raise AttributeError(name)
 import rollback
 import run_journal
 
@@ -145,7 +136,7 @@ def _unknown_incomplete_batches(
 
 def _session_refs_learned(journal: run_journal.RunJournal, batch_id: str) -> bool:
     discovered = journal.cached_payload(batch_id, "discovered") or {}
-    refs = discovered.get("session_refs") or []
+    refs = discovered.get("source_refs") or []
     if not refs:
         return True  # Legacy journal entries have no exact tool/file identity.
     learned = taste_v2_pipeline.load_state(

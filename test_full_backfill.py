@@ -64,20 +64,8 @@ def test_existing_run_uses_frozen_corpus_cutoff(tmp_path):
     assert fb._corpus_cutoff(run_dir) == 123.5
 
 
-def test_new_sessions_excludes_files_after_corpus_cutoff(tmp_path, monkeypatch):
-    session = tmp_path / "live.jsonl"
-    session.write_text("{}\n", encoding="utf-8")
-    monkeypatch.setattr(
-        fb.morph_sessions, "discover", lambda: [("codex", session)]
-    )
-    monkeypatch.setattr(
-        fb.morph_sessions,
-        "parse_codex_session",
-        lambda _path: pytest.fail("live session should not be parsed"),
-    )
-    assert fb.morph_sessions.new_sessions(
-        {"learned": {}}, before_mtime=session.stat().st_mtime - 1
-    ) == []
+def test_direct_pipeline_has_no_legacy_session_facade():
+    assert not hasattr(fb, "morph_sessions")
 
 
 def test_atomic_checkpoint_round_trip(tmp_path):

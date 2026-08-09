@@ -267,8 +267,13 @@ class TasteCandidateV1:
     transportNote: str = TRANSPORT_GAP_NOTE
     authorityEffect: str = "neutral"
     proposedAt: str = ""
+    sourceKind: str = ""
+    sourceRole: str = ""
+    sourceClassification: str = ""
+    sourceFlags: tuple[tuple[str, bool], ...] = ()
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "sourceFlags", tuple(sorted((str(k), bool(v)) for k, v in self.sourceFlags)))
         if self.lifecycleState not in VALID_LIFECYCLE_STATES:
             raise TasteV2Error(
                 f"lifecycleState must be one of {sorted(VALID_LIFECYCLE_STATES)!r}, "
@@ -413,6 +418,11 @@ def _assert_authoritative_provenance(event: dict[str, Any]) -> None:
             f"authoritative-provenance-rejected: classification={classification!r} "
             f"is a tool-failure signal, not a user preference"
         )
+
+def _candidate_source_event(candidate: TasteCandidateV1) -> dict[str, Any]:
+    return {"kind": candidate.sourceKind, "role": candidate.sourceRole,
+            "classification": candidate.sourceClassification,
+            "flags": dict(candidate.sourceFlags), "eventId": candidate.sourceEventId}
 
 
 def _bounded_context(
@@ -638,6 +648,10 @@ def extract_candidate(
         sourceSessionId=str(event.get("sessionId") or ""),
         sourceTranscriptId=str(event.get("transcriptId") or ""),
         sourceParserDigest=str(event.get("parserDigest") or ""),
+        sourceKind=str(event.get("kind") or ""),
+        sourceRole=str(event.get("role") or ""),
+        sourceClassification=str(event.get("classification") or event.get("class") or ""),
+        sourceFlags=tuple((name, bool((event.get("flags") or {}).get(name))) for name in ("synthetic", "meta", "privateReasoningOmitted", "redacted", "is_error", "is_redacted")),
         contextEvents=context_events,
         contextByteSpans=context_spans,
         evidenceId=evidence_id,
@@ -653,6 +667,7 @@ def extract_candidates(
     events: list[dict[str, Any]],
     *,
     scope: str = "workspace",
+    scope_for_event=None,
     max_blocks: int = MAX_CONTEXT_BLOCKS,
     max_chars: int = MAX_CONTEXT_CHARS,
 ) -> list[TasteCandidateV1]:
@@ -664,10 +679,11 @@ def extract_candidates(
     """
     candidates: list[TasteCandidateV1] = []
     for index in iter_candidate_indices(events):
+        event_scope = scope_for_event(events[index]) if scope_for_event else scope
         candidate = extract_candidate(
             events,
             index,
-            scope=scope,
+            scope=event_scope,
             max_blocks=max_blocks,
             max_chars=max_chars,
         )
@@ -703,25 +719,9 @@ def admit_candidate(
     # could carry the wrong origin / classification, and we want the
     # rule to refuse them at the gate, not silently propagate.
     try:
-        _assert_authoritative_provenance({
-            "flags": {"synthetic": False, "meta": False,
-                       "redacted": False, "privateReasoningOmitted": False},
-            "kind": "user_message",
-            "classification": "successful_readonly",
-        })
-    except TasteV2Error:
-        # Re-run with the actual source byte-span semantics. The point is
-        # we will never let a non-user_recorded candidate pass; the
-        # _assert_authoritative_provenance applied at extract_candidate
-        # time is the authoritative check, so we just re-enforce that
-        # the candidate carries a non-empty source event id and a
-        # user_message-classified event chain.
-        if not candidate.sourceEventId:
-            return dataclasses.replace(
-                candidate,
-                lifecycleState="rejected",
-                admissionReason="authoritative-provenance-rejected:no-event-id",
-            )
+        _assert_authoritative_provenance(_candidate_source_event(candidate))
+    except TasteV2Error as exc:
+        return dataclasses.replace(candidate, lifecycleState="rejected", admissionReason=str(exc))
 
     target = {
         "name": candidate.ruleId,

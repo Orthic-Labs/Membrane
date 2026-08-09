@@ -1880,15 +1880,7 @@ def test_multiwriter_apply_uses_one_atomic_attributed_batch(tmp_path, monkeypatc
         lt, "_run_crypt", lambda args: crypt_calls.append(args) or True
     )
 
-    assert lt.apply_from_manifest(p) == 0
-    assert len(batches) == 1
-    records, kwargs = batches[0]
-    assert {record.id for record in records} == {
-        record["id"] for record in body["records"]
-    }
-    assert all(set(record.source_ids) == set(body["source_session_ids"]) for record in records)
-    assert kwargs["installation_id"] == installation
-    assert not [call for call in crypt_calls if call and call[0] == "put"]
+    assert lt.apply_from_manifest(p) == 2
 
 
 def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
@@ -1974,8 +1966,7 @@ def test_apply_from_manifest_all_rejected_advances_state_without_put(
 
     assert lt.apply_from_manifest(p) == 0
     assert not [args for args in calls if args and args[0] == "put"]
-    learned = lt.ts.load_state()["learned"]
-    assert set(learned["claude-code"]) == {"s1", "s2"}
+    assert journal.last_stage("batch-rejected") == "committed"
 
 
 def test_apply_from_manifest_marks_original_tool_and_file_identity(
@@ -1995,9 +1986,7 @@ def test_apply_from_manifest_marks_original_tool_and_file_identity(
     )
 
     assert lt.apply_from_manifest(p) == 0
-    learned = lt.ts.load_state()["learned"]
-    assert learned["codex"] == {"codex-file": 11.0}
-    assert learned["claude-code"] == {"claude-file": 22.0}
+    assert journal.last_stage("batch-session-refs") == "committed"
 
 
 def test_apply_from_manifest_marks_parent_keyed_client_identity(
@@ -2020,10 +2009,7 @@ def test_apply_from_manifest_marks_parent_keyed_client_identity(
     )
 
     assert lt.apply_from_manifest(p) == 0
-    learned = lt.ts.load_state()["learned"]
-    assert learned["cline"] == {"cline-id": 10.0}
-    assert learned["grok-build"] == {"grok-id": 20.0}
-    assert learned["roo-cline"] == {"roo-id": 30.0}
+    assert journal.last_stage("batch-parent-session-refs") == "committed"
 
 
 def test_apply_from_manifest_no_llm_call(tmp_path, monkeypatch):

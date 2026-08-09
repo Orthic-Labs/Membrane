@@ -46,14 +46,15 @@ def save_state(path: Path, state: dict) -> None:
     path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
 
 def source_refs(sources: list[transcript_sources.TranscriptSource]) -> list[dict[str, Any]]:
-    return [{"source_id": source_id(s), "host": s.spec.host, "path": str(s.path),
-             "mtime": s.path.stat().st_mtime, "source_sha256": source_hash(s.path)} for s in sources]
+    return [{"source_id": source_id(s), "tool": s.spec.tool, "host": s.spec.host,
+             "path": str(s.path), "mtime_ns": s.path.stat().st_mtime_ns,
+             "source_sha256": source_hash(s.path)} for s in sources]
 
 def pending_sources(sources: list[transcript_sources.TranscriptSource], state: dict,
                     *, limit: int | None = None, before_mtime: float | None = None,
                     newest: bool = False) -> list[transcript_sources.TranscriptSource]:
     learned = state.get("learned", {})
-    eligible = [s for s in sources if s.spec.host in transcript_sources.SUPPORTED_HOSTS
+    eligible = [s for s in sources if s.spec.host in transcript_sources.SUPPORTED_HOSTS and not s.metadata.exclusion_reason
                 and (before_mtime is None or s.path.stat().st_mtime <= before_mtime)
                 and learned.get(source_id(s)) != source_hash(s.path)]
     eligible.sort(key=lambda s: s.path.stat().st_mtime, reverse=newest)
@@ -62,16 +63,31 @@ def pending_sources(sources: list[transcript_sources.TranscriptSource], state: d
     return sorted(eligible, key=lambda s: s.path.stat().st_mtime)
 
 def quarantine_sources(sources: list[transcript_sources.TranscriptSource]) -> list[dict[str, str]]:
-    return [{"source_id": source_id(s), "host": s.spec.host, "reason": "unsupported-host"}
-            for s in sources if s.spec.host not in transcript_sources.SUPPORTED_HOSTS]
+    return [{"source_id": source_id(s), "host": str(s.spec.host), "reason": s.metadata.exclusion_reason or "unsupported-host"}
+            for s in sources if s.spec.host not in transcript_sources.SUPPORTED_HOSTS or s.metadata.exclusion_reason]
 
 def extract_source(source: transcript_sources.TranscriptSource, *, scope: str = "workspace") -> list[taste_v2.TasteCandidateV1]:
-    if source.spec.host not in transcript_sources.SUPPORTED_HOSTS:
+    if source.spec.host not in transcript_sources.SUPPORTED_HOSTS or source.metadata.exclusion_reason:
         return []
     events = parse_source_events(source.path, host=source.spec.host)
-    candidates = taste_v2.extract_candidates(events, scope=scope)
+    candidates = taste_v2.extract_candidates(events, scope_for_event=lambda event: scope_for_event(source, event, scope))
     # Canonical record identity is preference identity, never a span-local alias.
     return [__import__('dataclasses').replace(c, ruleId=preference_record.derive_id(c.scope, c.category, c.rule)) for c in candidates]
+
+def scope_for_event(source: transcript_sources.TranscriptSource, event: dict[str, Any], fallback: str = "workspace") -> str:
+    """Map each event to a local cwd scope; never bake workspace names into production."""
+    row = int(event.get("rowIndex") or 0)
+    cwd = ""
+    for at, value in source.metadata.cwd_by_row:
+        if at <= row: cwd = value
+        else: break
+    if not cwd: return fallback
+    root = Path(cwd)
+    if not root.exists() or not root.is_dir(): return fallback
+    lowered = cwd.lower()
+    if any(token in lowered for token in ("health", "medical", "patient")): return fallback
+    slug = "".join(char.lower() if char.isalnum() else "-" for char in cwd).strip("-")
+    return slug or fallback
 
 def evidence_context(candidate: taste_v2.TasteCandidateV1) -> dict[str, Any]:
     return {
@@ -79,6 +95,9 @@ def evidence_context(candidate: taste_v2.TasteCandidateV1) -> dict[str, Any]:
         "sourceTranscriptId": candidate.sourceTranscriptId, "sourceParserDigest": candidate.sourceParserDigest,
         "sourceRowIndex": candidate.sourceRowIndex, "sourceSequence": candidate.sourceSequence,
         "sourceByteStart": candidate.sourceByteStart, "sourceByteEnd": candidate.sourceByteEnd,
+        "sourceKind": candidate.sourceKind, "sourceRole": candidate.sourceRole,
+        "sourceClassification": candidate.sourceClassification,
+        "sourceFlags": dict(candidate.sourceFlags),
         "contextEvents": candidate.contextEvents,
     }
 

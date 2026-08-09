@@ -661,6 +661,10 @@ def to_crypt_content(record: PreferenceRecord) -> str:
         f"{' (machine-only)' if record.machine_only else ''}\n"
         if record.machine else ""
     )
+    contexts_line = (
+        "**Evidence contexts:** " + json.dumps(list(record.evidence_contexts), sort_keys=True, ensure_ascii=False, separators=(",", ":")) + "\n"
+        if record.evidence_contexts else ""
+    )
     return (
         f"**[morph/{record.category}]** — {record.rule} "
         f"Confidence: {record.confidence:.2f} "
@@ -670,6 +674,7 @@ def to_crypt_content(record: PreferenceRecord) -> str:
         f"**Record:** type={record.record_type}, authority_effect={record.authority_effect}\n"
         f"{aliases}"
         f"{machine_line}"
+        f"{contexts_line}"
         f"**How to apply:** {application_guidance(record.record_type)}\n"
     )
 
