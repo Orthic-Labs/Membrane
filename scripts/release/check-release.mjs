@@ -9,6 +9,8 @@ import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { loadUpdateManifest } from "../../lib/update/manifest.mjs";
+
 export function verifyCandidate(candidateDir) {
   const dir = resolve(candidateDir);
   const problems = [];
@@ -16,7 +18,8 @@ export function verifyCandidate(candidateDir) {
   const checksumsPath = join(dir, "checksums.txt");
   const sbomPath = join(dir, "SBOM.spdx.json");
   const catalogPath = join(dir, "artifact-catalog.json");
-  for (const [name, path] of [["compatibility.json", compatibilityPath], ["checksums.txt", checksumsPath], ["SBOM.spdx.json", sbomPath], ["artifact-catalog.json", catalogPath]]) {
+  const updateManifestPath = join(dir, "update-manifest.json");
+  for (const [name, path] of [["compatibility.json", compatibilityPath], ["checksums.txt", checksumsPath], ["SBOM.spdx.json", sbomPath], ["artifact-catalog.json", catalogPath], ["update-manifest.json", updateManifestPath]]) {
     if (!existsSync(path) || !lstatSync(path).isFile()) problems.push(`missing ${name} or unsafe`);
   }
   if (problems.length) return { ok: false, problems };
@@ -48,24 +51,39 @@ export function verifyCandidate(candidateDir) {
   if (sbom.spdxVersion !== "SPDX-2.3") problems.push("SBOM is not SPDX-2.3");
   const catalog = JSON.parse(readFileSync(catalogPath, "utf8"));
   if (!Array.isArray(catalog.files) || new Set(catalog.files).size !== catalog.files.length || catalog.checksums !== "checksums.txt" || catalog.version !== compatibility.version || catalog.platform !== compatibility.platform || catalog.files.length !== names.length || catalog.files.some((name) => !names.includes(name))) problems.push("artifact catalog does not exactly inventory artifacts");
+  let updateManifest = null;
+  try {
+    updateManifest = loadUpdateManifest(updateManifestPath);
+  } catch (error) {
+    problems.push(`update-manifest.json is not a valid UpdateManifestV1: ${error.message}`);
+  }
+  if (updateManifest) {
+    if (updateManifest.version !== compatibility.version || updateManifest.commit !== compatibility.commit) problems.push("update manifest does not match candidate identity");
+    const manifestEntries = updateManifest.artifacts ?? [];
+    const manifestNames = manifestEntries.map((entry) => entry.name);
+    if (manifestNames.length !== names.length || new Set(manifestNames).size !== manifestNames.length || manifestNames.some((name) => !names.includes(name)) || names.some((name) => !manifestNames.includes(name))) problems.push("update manifest does not inventory the candidate artifacts");
+    if (manifestEntries.some((entry) => compatibility.artifacts.find((artifact) => artifact.name === entry.name)?.sha256 !== entry.sha256)) problems.push("update manifest artifact hash mismatch");
+  }
   const tarballs = names.filter((name) => name.endsWith(".tgz"));
   const expectedTarball = `${String(compatibility.packageName).replace(/^@/, "").replaceAll("/", "-")}-${compatibility.version}.tgz`;
   if (tarballs.length !== 1 || tarballs[0] !== expectedTarball) problems.push("candidate must contain exactly one package tarball");
   else {
     try {
-      const entries = execFileSync("tar", ["-tf", join(dir, tarballs[0])], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
-      const types = execFileSync("tar", ["-tvf", join(dir, tarballs[0])], { encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
+      // Reference the archive by relative basename with cwd set to the archive
+      // directory: MSYS GNU tar on Windows reads drive-letter paths as remote hosts.
+      const entries = execFileSync("tar", ["-tf", tarballs[0]], { cwd: dir, encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
+      const types = execFileSync("tar", ["-tvf", tarballs[0]], { cwd: dir, encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
       const safeEntry = (entry) => entry === "package/" || (entry.startsWith("package/") && !entry.includes("\\") && !entry.split("/").includes(".."));
       if (!entries.includes("package/package.json") || new Set(entries).size !== entries.length || entries.some((entry) => !safeEntry(entry)) || types.length !== entries.length || types.some((entry) => !/^[\-d]/.test(entry))) throw new Error("unsafe tar entries");
-      const packaged = JSON.parse(execFileSync("tar", ["-xOf", join(dir, tarballs[0]), "package/package.json"], { encoding: "utf8" }));
+      const packaged = JSON.parse(execFileSync("tar", ["-xOf", tarballs[0], "package/package.json"], { cwd: dir, encoding: "utf8" }));
       if (packaged.name !== compatibility.packageName || packaged.version !== compatibility.version) problems.push("tarball package identity mismatch");
     } catch { problems.push("tarball package metadata unreadable"); }
   }
   const disk = walkFiles(dir);
-  const expected = new Set(["compatibility.json", "checksums.txt", "artifact-catalog.json", ...names]);
+  const expected = new Set(["compatibility.json", "checksums.txt", "artifact-catalog.json", "update-manifest.json", ...names]);
   if (disk.some((name) => !expected.has(name)) || [...expected].some((name) => !disk.includes(name))) problems.push("candidate contains unlisted or missing files");
 
-  return { ok: problems.length === 0, problems, compatibility, catalog };
+  return { ok: problems.length === 0, problems, compatibility, catalog, updateManifest };
 }
 
 function walkFiles(root, dir = root) {

@@ -16,7 +16,7 @@ test("SARIF maps findings with stable rules and severities", () => {
     { ruleId: "r2", severity: "warning", message: "warn", fingerprint: "fp2", path: "src/b.ts" },
   ], "0.2.0");
   assert.equal(sarif.version, "2.1.0");
-  assert.equal(sarif.runs[0].tool.driver.name, "Orthic Cortex");
+  assert.equal(sarif.runs[0].tool.driver.name, "Cortex");
   assert.equal(sarif.runs[0].results.length, 2);
   assert.equal(sarif.runs[0].results[0].level, "error");
   assert.equal(sarif.runs[0].results[0].partialFingerprints.cortexFinding, "fp1");

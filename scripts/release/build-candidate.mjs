@@ -2,9 +2,11 @@
 // D13: build an unsigned release candidate. Emits source/package identity,
 // platform/arch, Node version, store/schema versions, grammar manifest
 // digest, files, SHA-256, and build commit into compatibility.json, plus
-// checksums.txt, an SPDX JSON SBOM, third-party notices, and a machine-
-// readable artifact catalog. Rejects dirty trees, mismatched versions,
-// missing notices, undeclared network downloads, and non-allowlisted files.
+// checksums.txt, an SPDX JSON SBOM, third-party notices, a machine-readable
+// artifact catalog, and an unsigned UpdateManifestV1 (update-manifest.json)
+// ready for the immutable-release signing step. Rejects dirty trees,
+// mismatched versions, missing notices, undeclared network downloads, and
+// non-allowlisted files.
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -35,8 +37,8 @@ function walk(dir) {
   return out;
 }
 
-function isDirty() {
-  const status = execFileSync("git", ["status", "--porcelain"], { cwd: ROOT, encoding: "utf8" });
+export function isDirty(cwd = ROOT) {
+  const status = execFileSync("git", ["status", "--porcelain"], { cwd, encoding: "utf8" });
   return status.trim().length > 0;
 }
 
@@ -51,8 +53,8 @@ function grammarManifestDigest() {
   return `sha256:${hasher.digest("hex")}`;
 }
 
-export function buildCandidate({ out = null, platform = null, version = null, allowDirty = false } = {}) {
-  if (!allowDirty && isDirty()) throw new Error("release candidate requires a clean working tree (or pass --allow-dirty for dispatch verification)");
+export function buildCandidate({ out = null, platform = null, version = null, allowDirty = false, gitRoot = ROOT } = {}) {
+  if (!allowDirty && isDirty(gitRoot)) throw new Error("release candidate requires a clean working tree (or pass --allow-dirty for dispatch verification)");
   if (version && version.replace(/^v/, "") !== pkg.version) throw new Error(`workflow version ${version} does not match package.json ${pkg.version}`);
   const targetPlatform = !platform || platform === "current" ? `${process.platform}-${process.arch}` : platform;
   const outDir = out ?? join(ROOT, "release", "candidates", targetPlatform);
@@ -65,7 +67,7 @@ export function buildCandidate({ out = null, platform = null, version = null, al
   if (existsSync(outDir) && readdirSync(outDir).length) throw new Error("release candidate requires an empty output directory");
   mkdirSync(outDir, { recursive: true });
 
-  const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" }).trim();
+  const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: gitRoot, encoding: "utf8" }).trim();
   const artifactFiles = walk(join(ROOT, "scripts")).concat(
     walk(join(ROOT, "lib")),
     walk(join(ROOT, "graph")),
@@ -93,6 +95,10 @@ export function buildCandidate({ out = null, platform = null, version = null, al
     });
   }
 
+  // npm pack output is handled by basename: the tarball is written to outDir
+  // via --pack-destination (npm is Node-based and tolerates absolute paths),
+  // then read back by its relative filename below — never handed to MSYS tar
+  // as a drive-letter path.
   execFileSync(process.execPath, npmCliArgs(["pack", "--ignore-scripts", "--pack-destination", outDir]), { cwd: ROOT, stdio: "ignore" });
   const expectedTarball = `${pkg.name.replace(/^@/, "").replaceAll("/", "-")}-${pkg.version}.tgz`;
   const tarballs = readdirSync(outDir).filter((name) => name.endsWith(".tgz"));
@@ -152,6 +158,26 @@ export function buildCandidate({ out = null, platform = null, version = null, al
     checksums: join("checksums.txt"),
   };
   writeFileSync(join(outDir, "artifact-catalog.json"), `${JSON.stringify(catalog, null, 2)}\n`);
+
+  // Unsigned UpdateManifestV1 for the immutable-release signing step. It
+  // mirrors the exact artifacts entries the update verifier consumes
+  // (verifyArtifactChecksum matches by name + sha256). keyId/signatureAlgorithm/
+  // signature carry schema-valid placeholders that sign-update-manifest.mjs
+  // overwrites in place; the file is deliberately NOT part of the checksum
+  // inventory, because in-place signing would otherwise invalidate
+  // checksums.txt and break every later check-release re-verification.
+  const updateManifest = {
+    schemaVersion: 1,
+    channel: "stable",
+    version: pkg.version,
+    commit,
+    publishedAt: new Date().toISOString(),
+    artifacts: artifacts.map(({ name, platform, arch, sha256, size, signed, sbom }) => ({ name, platform, arch, sha256, size, signed, sbom })),
+    signatureAlgorithm: "Ed25519",
+    keyId: "unsigned",
+    signature: "pending",
+  };
+  writeFileSync(join(outDir, "update-manifest.json"), `${JSON.stringify(updateManifest, null, 2)}\n`);
 
   return { outDir, compatibility, artifactCount: artifacts.length };
 }

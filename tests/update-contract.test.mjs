@@ -2,7 +2,7 @@
 // and offline/opt-out behavior.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { generateKeyPairSync, sign } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
@@ -11,11 +11,23 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 import { CHANNELS, detectInstallOwner, channelEnabled } from "../lib/update/channel.mjs";
-import { loadUpdateManifest, verifyArtifactChecksum, rejectDowngrade, rejectReplay } from "../lib/update/manifest.mjs";
+import { loadUpdateManifest, loadTrustedUpdateKeys, verifyArtifactChecksum, verifySignedManifest, rejectDowngrade, rejectReplay } from "../lib/update/manifest.mjs";
 import { backupStore } from "../lib/update/apply.mjs";
+import { signUpdateManifest } from "../scripts/release/sign-update-manifest.mjs";
+import { deriveUpdateKeyId } from "../scripts/release/generate-update-keys.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts", "cortex.mjs");
+
+// Minimal schema-valid UpdateManifestV1 body. signatureAlgorithm, keyId, and
+// signature are intentionally omitted: the frozen contract requires the
+// signer to write those fields before signing, so they must not be pre-seeded.
+function baseManifest() {
+  return {
+    schemaVersion: 1, channel: "stable", version: "0.3.0", commit: "a".repeat(40),
+    publishedAt: "2026-08-08T00:00:00Z", artifacts: [],
+  };
+}
 
 test("channels are stable, beta, nightly", () => {
   assert.deepEqual(CHANNELS, ["stable", "beta", "nightly"]);
@@ -131,6 +143,68 @@ test("trusted key root accepts only a unique strict key list", async () => {
     writeFileSync(path, JSON.stringify({ schemaVersion: 1, keys: [{ keyId: "release-1", algorithm: "Ed25519", publicKey: "one" }, { keyId: "release-1", algorithm: "Ed25519", publicKey: "two" }] }));
     assert.throws(() => loadTrustedUpdateKeys(path), /update_trust_root_corrupt/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("signer round trip: in-test key signs a manifest the pinned root verifies", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const manifest = baseManifest();
+  const signed = signUpdateManifest(manifest, { privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }) });
+  assert.equal(typeof signed.keyId, "string");
+  assert.ok(signed.keyId.length > 0);
+  assert.equal(signed.signatureAlgorithm, "Ed25519");
+  assert.match(signed.signature, /^[A-Za-z0-9+/]+={0,2}$/);
+  const trustedKeys = { [signed.keyId]: publicKey.export({ type: "spki", format: "pem" }) };
+  assert.equal(verifySignedManifest(signed, { trustedKeys }).ok, true);
+});
+
+test("mutating a signed manifest field invalidates the signature", () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const manifest = baseManifest();
+  signUpdateManifest(manifest, { privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }) });
+  const keyId = manifest.keyId;
+  manifest.version = "9.9.9";
+  const result = verifySignedManifest(manifest, { trustedKeys: { [keyId]: publicKey.export({ type: "spki", format: "pem" }) } });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "invalid_signature");
+});
+
+test("a manifest signed by key A is rejected by a root holding only key B", () => {
+  const keyA = generateKeyPairSync("ed25519");
+  const keyB = generateKeyPairSync("ed25519");
+  const manifest = baseManifest();
+  signUpdateManifest(manifest, { privateKeyPem: keyA.privateKey.export({ type: "pkcs8", format: "pem" }) });
+  const keyIdB = deriveUpdateKeyId(keyB.publicKey);
+  assert.notEqual(manifest.keyId, keyIdB);
+  const trustedKeys = { [keyIdB]: keyB.publicKey.export({ type: "spki", format: "pem" }) };
+  const result = verifySignedManifest(manifest, { trustedKeys });
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, "untrusted_key_id");
+});
+
+test("a root holding keys A and B verifies manifests signed by either", () => {
+  const keyA = generateKeyPairSync("ed25519");
+  const keyB = generateKeyPairSync("ed25519");
+  const manifestA = baseManifest();
+  signUpdateManifest(manifestA, { privateKeyPem: keyA.privateKey.export({ type: "pkcs8", format: "pem" }) });
+  const manifestB = baseManifest();
+  signUpdateManifest(manifestB, { privateKeyPem: keyB.privateKey.export({ type: "pkcs8", format: "pem" }) });
+  const trustedKeys = {
+    [manifestA.keyId]: keyA.publicKey.export({ type: "spki", format: "pem" }),
+    [manifestB.keyId]: keyB.publicKey.export({ type: "spki", format: "pem" }),
+  };
+  assert.equal(verifySignedManifest(manifestA, { trustedKeys }).ok, true);
+  assert.equal(verifySignedManifest(manifestB, { trustedKeys }).ok, true);
+});
+
+test("shipped trusted-update-keys.json is an empty schemaVersion 1 root that fails closed", () => {
+  const shippedPath = join(ROOT, "lib", "update", "trusted-update-keys.json");
+  assert.deepEqual(JSON.parse(readFileSync(shippedPath, "utf8")), { schemaVersion: 1, keys: [] });
+  const loaded = loadTrustedUpdateKeys(shippedPath);
+  assert.deepEqual(loaded, {});
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const manifest = baseManifest();
+  signUpdateManifest(manifest, { privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }) });
+  assert.equal(verifySignedManifest(manifest, { trustedKeys: loaded }).ok, false);
 });
 
 test("CLI rejects caller-provided update trust material", () => {

@@ -37,3 +37,24 @@ node --test tests/package-manager-manifests.test.mjs
 ruby -c release/homebrew/cortex.rb
 node -e "JSON.parse(require('fs').readFileSync('server.json','utf8'))"
 ```
+
+## WinGet submission
+
+`publish-package-managers.yml` runs a Windows `winget` job behind the
+`release` environment. It is fail-closed: without the
+`WINGET_CREATE_GITHUB_TOKEN` secret the job is skipped entirely.
+
+- `submit=false` (default): `wingetcreate update` runs output-only into a
+  temp directory and every generated `OrthicLabs.Cortex.*` manifest is
+  `wingetcreate validate`d. Nothing is pushed. Release-triggered runs
+  always take this path.
+- `submit=true` (workflow_dispatch only): the same update runs with
+  `--submit` and opens a PR against `microsoft/winget-pkgs`.
+- The package version and installer URL are derived from
+  `release/catalog.json` at run time, never hardcoded in the workflow.
+- The token is never written into the workflow; it reaches wingetcreate
+  only through the `WINGET_CREATE_GITHUB_TOKEN` environment variable.
+
+The submit path requires a classic PAT with the `public_repo` scope so the
+PR against `microsoft/winget-pkgs` can be opened. **Adrian must create
+it** and store it as the `WINGET_CREATE_GITHUB_TOKEN` repository secret.

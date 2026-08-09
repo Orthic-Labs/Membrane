@@ -12,6 +12,7 @@
     "receiptId",
     "allowedScopes",
     "omissions",
+    "claimBoundary",
     "nextAction"
   ],
   "properties": {
@@ -28,6 +29,33 @@
     "omissions": {
       "type": "array",
       "items": { "type": "object" }
+    },
+    "claimBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "cleanClaimAllowed",
+        "safeClaims",
+        "prohibitedClaims",
+        "gaps"
+      ],
+      "properties": {
+        "status": { "enum": ["clear", "restricted"] },
+        "cleanClaimAllowed": { "type": "boolean" },
+        "safeClaims": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "prohibitedClaims": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "gaps": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
     },
     "nextAction": { "type": ["string", "null"] },
     "evidence": { "type": ["object", "null"] },

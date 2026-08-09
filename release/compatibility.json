@@ -20,7 +20,7 @@
     "tier_a": ["javascript", "typescript", "tsx", "python", "rust", "go", "java", "kotlin", "csharp", "c", "cpp", "objective-c"],
     "tier_b": ["php", "ruby", "swift", "dart", "scala", "elixir", "lua", "ocaml", "elm", "rescript", "solidity", "zig"],
     "tier_c": ["bash", "elisp", "erb", "html", "css", "json", "ql", "systemrdl", "tlaplus", "toml", "vue", "yaml"],
-    "tierNote": "Tiers reflect grammar and fixture depth; compiler-backed exact references currently cover JS/TS plus imported SCIP indexes.",
+    "tierNote": "Tiers reflect grammar and fixture depth. Compiler-backed exact references currently cover JS/TS and Python (via committed SCIP indexes); other tier_a languages are AST-backed.",
     "fixtureBacked": true
   },
   "supportPolicy": {

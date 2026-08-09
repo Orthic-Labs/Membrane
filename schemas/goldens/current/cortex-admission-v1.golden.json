@@ -10,6 +10,15 @@
   },
   "allowedScopes": ["repo"],
   "omissions": [],
+  "claimBoundary": {
+    "status": "clear",
+    "cleanClaimAllowed": true,
+    "safeClaims": [
+      "Results reflect the current sealed generation."
+    ],
+    "prohibitedClaims": [],
+    "gaps": []
+  },
   "nextAction": null,
   "evidence": null,
   "evidencePath": null,

@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -155,4 +155,37 @@ test("init apply preserves corrupt state and its external key", async () => {
     assert.deepEqual(JSON.parse(readFileSync(path, "utf8")), corrupt);
     assert.doesNotThrow(() => integrity.verifyInstallState(root, sealed));
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+async function aliveAfter(command, args, ms) {
+  const child = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+  let exited = false;
+  let code = null;
+  child.on("exit", (c) => { exited = true; code = c; });
+  try {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    return { alive: !exited, code };
+  } finally {
+    if (!exited) {
+      child.kill();
+      child.removeAllListeners("exit");
+      child.unref();
+    }
+  }
+}
+
+test("init writes an MCP config that actually launches", async () => {
+  const root = makeRepo("generic");
+  try {
+    const plan = buildInitPlan({ root, host: "generic", scope: "project", mcp: "on", watch: "off", hooks: "none", build: false });
+    const applied = applyInitPlan({ root, plan, build: false });
+    assert.equal(applied.ok, true, applied.error ?? "");
+    const cfg = JSON.parse(readFileSync(join(root, ".mcp.json"), "utf8"));
+    const entry = cfg.mcpServers.cortex;
+    assert.ok(entry, ".mcp.json must record a cortex MCP server");
+    const { alive, code } = await aliveAfter(entry.command, entry.args, 1500);
+    assert.ok(alive, `MCP server exited early with code ${code}; args were ${JSON.stringify(entry.args)}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

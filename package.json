@@ -40,8 +40,10 @@
   "files": [
     "scripts/",
     "watchman/",
+    "grammars/",
     "graph/",
     "lib/",
+    "mcp/",
     "sources/",
     "schemas/",
     "sdk/",
