@@ -9,9 +9,9 @@
   },
   "scripts": {
     "legal:verify": "node packaging/legal/verify.mjs",
-    "test": "node --test mcp/*.test.mjs scripts/*.test.mjs && pnpm run legal:verify",
-    "test:mcp": "node --test mcp/*.test.mjs",
-    "test:fable": "node --test mcp/*.test.mjs"
+    "test": "node --test mcp/*.test.mjs mcp/host/*.test.mjs scripts/*.test.mjs && pnpm run legal:verify",
+    "test:mcp": "node --test mcp/*.test.mjs mcp/host/*.test.mjs",
+    "test:fable": "node --test mcp/*.test.mjs mcp/host/*.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0"

@@ -16,7 +16,7 @@ from . import canonical_repository_id, workspace_tools_path
 
 def produce(repo_root: Path, task: str) -> tuple[list[dict], str]:
     arch_provider_path = (
-        workspace_tools_path("skills", "architect", "decision_provider.py")
+        workspace_tools_path("lib", "decision_provider.py")
     )
     if not arch_provider_path.exists():
         raise FileNotFoundError(f"decision_provider.py missing at {arch_provider_path}")
