@@ -1,0 +1,82 @@
+name: CI
+
+# Membrane is a public repository, so GitHub-hosted runners are free here.
+# (The parent workspace repo is private and bills against the free-tier
+# minutes — do not mirror this workflow there without deciding that cost.)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  node:
+    name: Node suites
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
+  engine:
+    name: Engine (cargo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      - run: cargo test --manifest-path engine/Cargo.toml --workspace --locked
+
+  release-identity:
+    name: Release identity is bakeable
+    runs-on: ubuntu-latest
+    # Regression guard for the 2026-08-09 defect: the sidecar build did not
+    # export CRYPT_SOURCE_TREE_SHA256, so every shipped binary reported
+    # `sha256:unknown`. The federation gateway treats an unverifiable release
+    # generation as a hard stop and returns no candidates, so every context
+    # packet shipped empty while the hook still reported enforcement. Nothing
+    # failed loudly; it took a manual investigation to find. This job makes
+    # that silent condition a red build instead.
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the identity is computed from committed blob ids
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Compute the engine release identity
+        run: |
+          node --input-type=module -e '
+            import { engineReleaseIdentity } from "./apps/membrane-hub/scripts/release-identity.mjs";
+            const id = engineReleaseIdentity(process.cwd());
+            console.log(JSON.stringify(id, null, 2));
+            if (!/^sha256:[0-9a-f]{64}$/.test(id.releaseGeneration)) {
+              throw new Error(`release generation is not a valid digest: ${id.releaseGeneration}`);
+            }
+            if (id.releaseGeneration.includes("unknown")) {
+              throw new Error("release generation resolved to unknown; the gateway would blank every packet");
+            }
+            if (id.fileCount < 1) throw new Error("engine tree resolved to zero files");
+          '
+      - name: A checked-out commit must produce the committed-tree identity
+        run: |
+          node --input-type=module -e '
+            import { engineReleaseIdentity } from "./apps/membrane-hub/scripts/release-identity.mjs";
+            const id = engineReleaseIdentity(process.cwd());
+            if (id.dirty) throw new Error("a clean checkout reported a dirty tree; identity would not be reproducible");
+          '
