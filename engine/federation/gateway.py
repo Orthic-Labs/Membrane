@@ -85,7 +85,11 @@ def _resolve_release_manifest() -> Path:
 
 
 _RELEASE_MANIFEST = _resolve_release_manifest()
-_PRODUCTION_FANOUT_TIMEOUT_S = 0.35
+# 1.5 s: sized so the cortex lane's lean Node entrypoint (~0.9 s at
+# 150k-symbol scale) fits with headroom, while staying inside the resident
+# service's 2 s request budget. The previous 0.35 s was sized for a small
+# graph and silently zeroed the cortex lane on every production packet.
+_PRODUCTION_FANOUT_TIMEOUT_S = 1.5
 _REPLAY_FANOUT_TIMEOUT_S = 45.0
 
 

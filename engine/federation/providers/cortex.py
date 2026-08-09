@@ -27,10 +27,13 @@ CORTEX_SKILLS_CLI_DEFAULT = workspace_tools_path(
     "skills", "cortex", "scripts", "cortex.mjs"
 )
 CORTEX_CANDIDATE_CAP_DEFAULT = 64
-# Cortex runs inside the gateway's one absolute 350 ms fan-out deadline.
-# A shorter private cutoff discarded a valid graph result while time remained
-# in that same budget, then reported a false stale generation.
-CORTEX_TIMEOUT_S = 0.35
+# Cortex runs inside the gateway's absolute fan-out deadline (1.5 s, see
+# gateway._PRODUCTION_FANOUT_TIMEOUT_S). The lean candidates entrypoint
+# (cortex-candidates.mjs) answers in ~0.9 s at 150k-symbol scale; the previous
+# 0.35 s deadline was sized for the full CLI on a small graph and could never
+# be met at real workspace scale — every production packet lost its cortex
+# lane to a spawn timeout, silently.
+CORTEX_TIMEOUT_S = 1.2
 CORTEX_CACHE_TTL_S = 300.0
 CORTEX_CACHE_MAX_ENTRIES = 16
 
@@ -144,7 +147,22 @@ def _read_manifest(repo_root: Path) -> dict | None:
     ``cortex.mjs graph status --json`` (the Node CLI reads graph.db internally).
     Falls back to manifest.json files for older Cortex repos.
     """
-    # Try the CLI first (reads graph.db through Cortex's own reader).
+    # Manifest files first: microseconds, refreshed by every `cortex build`,
+    # and sufficient for the generation id this caller needs. The CLI probe
+    # below spawns the FULL cortex.mjs module graph (~2.6 s at workspace
+    # scale) against a 2 s deadline — inside the federation fan-out it timed
+    # out on every call and silently spent the entire provider budget before
+    # the candidates spawn even started.
+    for path in (repo_root / ".agent" / "graph" / "manifest.json", repo_root / ".agent" / "manifest.json"):
+        if path.exists():
+            try:
+                manifest = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(manifest, dict) and manifest.get("generationId"):
+                    return manifest
+            except (OSError, json.JSONDecodeError):
+                pass
+
+    # Fallback: the CLI (reads graph.db through Cortex's own reader).
     cli = _resolve_cortex_cli()
     node_bin = _resolve_node()
     if Path(cli).exists() and node_bin:
@@ -257,20 +275,41 @@ def _produce(
         warnings.append(_cortex_warning("cortex_cli_missing", f"cortex CLI missing at {cli}"))
         return [], "cortex-missing", warnings
     node_bin = _resolve_node()
-    manifest = _read_manifest(repo_root)
+    # The lean entrypoint reports generationId itself, so the separate manifest
+    # probe (which pays the full cortex.mjs module graph — ~2.6 s against a 2 s
+    # deadline — whenever manifest.json lacks a generationId) is skipped
+    # entirely on that path. The cache key is built after the run instead.
+    lean_cli = Path(cli).with_name("cortex-candidates.mjs")
+    manifest = None if lean_cli.exists() else _read_manifest(repo_root)
     generation_id = (manifest or {}).get("generationId") or ""
     cap = candidate_cap(max_tokens)
     cache_key = None
     if generation_id and (not expected_generation or generation_id == expected_generation):
         cache_key = _cache_key(repo_root, generation_id, task, cap)
-    cmd = [
-        node_bin,
-        cli,
-        "graph", "candidates",
-        "--task", task,
-        "--out", ".agent",
-        "--limit", str(cap),
-    ]
+        cached = _cached_candidates(cache_key)
+        if cached is not None:
+            return cached, generation_id, warnings
+    # Prefer the lean candidates entrypoint when the Cortex checkout ships it:
+    # same ContextCandidateSet v1 stdout contract, ~2s less module-graph cost,
+    # and strictly read-only (no barrier, no reconcile, no writes).
+    if lean_cli.exists():
+        cmd = [
+            node_bin,
+            str(lean_cli),
+            "--task", task,
+            "--root", str(repo_root),
+            "--out", ".agent",
+            "--limit", str(cap),
+        ]
+    else:
+        cmd = [
+            node_bin,
+            cli,
+            "graph", "candidates",
+            "--task", task,
+            "--out", ".agent",
+            "--limit", str(cap),
+        ]
     if expected_generation:
         cmd.extend(["--expected-generation", expected_generation])
     subprocess_started = time.monotonic()
@@ -386,6 +425,14 @@ def _produce(
             "resolver": entry.get("resolver") or f"cortex graph resolve --node {entry_id}",
             "text": entry.get("qualifiedName") or entry.get("name") or entry_id,
         })
+    # The lean entrypoint reports its own generation (no manifest probe ran);
+    # adopt it and build the cache key that the pre-spawn path could not.
+    if not generation_id and isinstance(payload, dict) and payload.get("generationId"):
+        generation_id = str(payload["generationId"])
+        if not expected_generation or generation_id == expected_generation:
+            cache_key = _cache_key(repo_root, generation_id, task, cap)
+    if cache_key is not None and candidates:
+        _cache_candidates(cache_key, candidates)
     generation_id = generation_id or "cortex-federation-stub"
     # Plan 3.3: when the graph is pinned (expected_generation matches) and the
     # CLI returned zero candidates, this is abstention — not a failure. The
