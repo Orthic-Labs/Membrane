@@ -8,7 +8,7 @@
     "build": "node scripts/build-frontend.mjs",
     "test": "node --test tests/*.mjs",
     "rightkit:package:mac": "node scripts/build-mac-release.mjs",
-    "rightkit:package:win": "pnpm exec tauri build --bundles nsis && node -e \"const f=require('node:fs'),p=require('./package.json'),d=(process.env.CARGO_TARGET_DIR||'src-tauri/target')+'/release/bundle/nsis/',o=d+'Membrane_'+p.version+'_x64-setup.exe';f.rmSync(o,{force:true});f.renameSync(d+'Membrane Hub_'+p.version+'_x64-setup.exe',o)\"",
+    "rightkit:package:win": "node scripts/build-windows-release.mjs",
     "release:doctor": "right-release doctor",
     "release:build:mac": "right-release build --platform mac",
     "release:build:win": "right-release build --platform win"

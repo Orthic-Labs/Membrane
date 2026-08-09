@@ -116,16 +116,14 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
         } else {
             "hub.snapshot"
         };
-        let facade = membrane_runtime::hub::HubFacadeV1::new(None);
         // MBR: read live state from the local crypt-service's /health endpoint
         // instead of hardcoding "Offline" regardless of whether the service is
         // up. Falls back to the honest unavailable facade on any failure.
-        let inputs = membrane_runtime::hub_inputs::live_inputs_from_local_service()
-            .unwrap_or_else(|| {
+        let inputs =
+            membrane_runtime::hub_inputs::live_inputs_from_local_service().unwrap_or_else(|| {
                 membrane_runtime::hub::HubInputsV1::unavailable("source_not_connected")
             });
-        return match facade
-            .dispatch_json(operation, 0, inputs)
+        return match dispatch_hub(operation, inputs)
             .and_then(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
         {
             Ok(json) => {
@@ -143,6 +141,13 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
         Ok(()) => DispatchOutcome::Ok,
         Err(error) => classify_runtime_error(error),
     }
+}
+
+fn dispatch_hub(
+    operation: &str,
+    inputs: membrane_runtime::hub::HubInputsV1,
+) -> Result<serde_json::Value, String> {
+    membrane_runtime::hub::HubFacadeV1::new(None).dispatch_json(operation, now_unix_ms(), inputs)
 }
 
 /// MBR-106: returns `true` when `cli doctor paths [--json]` was requested. Only
@@ -502,5 +507,18 @@ mod tests {
             plane_of(&MembraneMode::SupervisorChild),
             membrane_runtime::Plane::Control
         );
+    }
+
+    #[test]
+    fn hub_snapshot_stamps_current_observation_for_unavailable_inputs() {
+        let snapshot = dispatch_hub(
+            "hub.snapshot",
+            membrane_runtime::hub::HubInputsV1::unavailable("source_not_connected"),
+        )
+        .unwrap();
+        assert!(snapshot["observedAtUnixMs"].as_u64().unwrap() > 0);
+        for section in membrane_runtime::hub::HUB_RESOURCES {
+            assert_eq!(snapshot[section]["state"], "unavailable");
+        }
     }
 }
