@@ -112,6 +112,13 @@ export function openStoreReadOnly(dbPath) {
   // Readers rarely block under WAL, but they CAN hit SQLITE_BUSY during a checkpoint;
   // waiting briefly is always better than a spurious failure on a latency-budget path.
   db.exec("PRAGMA busy_timeout = 5000;");
+  // Read-path tuning for a graph that can reach GB scale (2026-08-09: 1.6 GB on
+  // the primary workspace). Defaults are 8 MB page cache and no mmap — every
+  // cold page is a syscall. mmap lets the OS page cache serve repeat reads and
+  // is shared across the N concurrent agent readers; the page cache bump is
+  // per-connection and freed on close. Both are no-ops on small graphs.
+  db.exec("PRAGMA mmap_size = 268435456;"); // 256 MB
+  db.exec("PRAGMA cache_size = -65536;");   // 64 MB (negative = KiB units)
   return db;
 }
 

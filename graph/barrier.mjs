@@ -27,7 +27,7 @@ function sleep(ms) { return new Promise((resolvePromise) => setTimeout(resolvePr
 function cancelled() { return Object.assign(new Error("request cancelled"), { code: "request_cancelled" }); }
 function throwIfAborted(signal) { if (signal?.aborted) throw cancelled(); }
 
-async function bounded(promise, timeoutMs, signal) {
+async function bounded(promise, timeoutMs, signal, onTimeout) {
   let timer;
   let abort;
   const work = Promise.resolve(promise);
@@ -39,7 +39,19 @@ async function bounded(promise, timeoutMs, signal) {
       new Promise((_, reject) => { abort = () => reject(cancelled()); signal?.addEventListener("abort", abort, { once: true }); }),
     ]);
   } catch (error) {
-    if (["barrier_timeout", "request_cancelled"].includes(error?.code)) await work.catch(() => {});
+    if (["barrier_timeout", "request_cancelled"].includes(error?.code)) {
+      // The drain below exists for DB-handle safety: the abandoned work still
+      // uses the caller's connection, and returning before it settles would let
+      // the caller's closeStore() yank the handle mid-write. But draining
+      // WITHOUT aborting made the timeout decorative — a reconcile triggered by
+      // any HEAD movement ran minutes of reindex while the "timed out" caller
+      // blocked on this await. That single line stalled every barrier command
+      // (candidates, search, impact) behind the watcher on busy workspaces.
+      // Abort first — reconcile checks its signal throughout — so the drain
+      // settles in milliseconds, then surface the timeout.
+      onTimeout?.();
+      await work.catch(() => {});
+    }
     throw error;
   } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); }
 }
@@ -55,7 +67,22 @@ export async function syncToCurrentSource(db, root, { timeoutMs = 2000, allowDeg
   const targetClock = Number(initial.source_clock ?? 0);
   let barrierResult = "caught_up";
   let error = null;
-  const runReconcile = () => bounded(reconcileFn(db, repoRoot, { outDir, signal }), Math.max(1, timeoutMs - (Date.now() - startedMs)), signal);
+  const runReconcile = async () => {
+    // Internal controller chained to the caller's signal: on timeout, bounded()
+    // aborts the reconcile through it so the safety drain returns promptly
+    // instead of waiting out a full reindex.
+    const controller = new AbortController();
+    const forward = () => controller.abort();
+    signal?.addEventListener("abort", forward, { once: true });
+    try {
+      return await bounded(
+        reconcileFn(db, repoRoot, { outDir, signal: controller.signal }),
+        Math.max(1, timeoutMs - (Date.now() - startedMs)),
+        signal,
+        () => controller.abort(),
+      );
+    } finally { signal?.removeEventListener("abort", forward); }
+  };
 
   try {
     if (initial.event_gap === "1") {

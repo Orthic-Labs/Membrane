@@ -1,6 +1,7 @@
-import { existsSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { diffLedgerAgainstTree } from "../graph/merkle-ledger.mjs";
+import { normalizeIgnoredPrefixes } from "../graph/ignored-prefixes.mjs";
 import { scanSourceMetadataPublic, scanSourcesPublic } from "../graph/static-provider.mjs";
 import { closeStore, openStore } from "../graph/store-sqlite.mjs";
 import { eventsSince, writeSnapshot } from "./adapter.mjs";
@@ -13,6 +14,19 @@ function sleep(ms, signal) { return new Promise((resolvePromise, reject) => {
   const timer = setTimeout(resolvePromise, ms);
   signal?.addEventListener("abort", () => { clearTimeout(timer); reject(cancelled()); }, { once: true });
 }); }
+
+// Same source of truth the build-time walk uses (.agent/config.json →
+// ignoredPrefixes, via graph/static-provider.mjs configuredIgnoredPrefixes);
+// duplicated read here because that helper is module-private and watch-side
+// code must not import the whole provider for one config lookup.
+function readConfiguredIgnoredPrefixes(root, outDir = ".agent") {
+  try {
+    const config = JSON.parse(readFileSync(join(resolve(root), outDir, "config.json"), "utf8"));
+    return normalizeIgnoredPrefixes(config?.ignoredPrefixes);
+  } catch {
+    return [];
+  }
+}
 
 function snapshotPath(root, outDir) { return join(resolve(root), outDir, "graph", "watch.snapshot"); }
 function canonicalRoot(value) { const root = resolve(value); try { return realpathSync(root); } catch { return root; } }
@@ -57,7 +71,17 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
     // fallback the same way it is to the native watch subscription — without
     // it, a full no-snapshot reconcile of a parent repo would re-walk and
     // re-adopt every file under a nested enrolled child as its own.
-    const ignoredPrefixes = ignore.map((rel) => `${rel}/`);
+    //
+    // The repo's own configured prefixes (.agent/config.json ignoredPrefixes)
+    // must ALWAYS apply, not only when a caller passes them. The freshness
+    // barrier invokes reconcile with no ignore list, so its scans diffed the
+    // full workspace against a generation built WITH the exclusions: every
+    // excluded file registered as "added", tens of thousands of phantom events
+    // filled the journal (34,798 observed on 2026-08-09, refilling within
+    // minutes of being cleared), and each barrier call then replayed them —
+    // permanent churn that stalled every graph query behind minutes of drain.
+    const configured = readConfiguredIgnoredPrefixes(root);
+    const ignoredPrefixes = [...new Set([...ignore.map((rel) => `${rel}/`), ...configured])];
     const snapshot = options.snapshotPath ?? snapshotPath(root, outDir);
     const hadSnapshot = existsSync(snapshot);
     const repairingGap = db.prepare("SELECT value FROM watch_state WHERE key='event_gap'").get()?.value === "1";
