@@ -10,6 +10,7 @@ const env = {
 };
 
 run("pnpm", ["exec", "tauri", "build", "--bundles", "app,dmg"], env);
+run("node", ["scripts/write-release-manifest.mjs", "--identity", "dist/release-identity.json"], env);
 if (!existsSync(dmg)) throw new Error(`missing signed DMG: ${dmg}`);
 run("xcrun", ["notarytool", "submit", dmg, ...notarytoolAuthArgs(), "--wait"], env);
 run("xcrun", ["stapler", "staple", dmg], env);

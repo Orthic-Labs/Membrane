@@ -1,3 +1,4 @@
+use membrane_protocol::{HubSnapshotV1, HubStateV1, HUB_SCHEMA_VERSION};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -6,11 +7,13 @@ use std::{
     process::{Child, Command, Stdio},
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder};
 use tauri::{Emitter, Manager, PhysicalPosition};
+#[cfg(target_os = "windows")]
+use window_vibrancy::apply_acrylic;
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
 
@@ -79,13 +82,6 @@ pub fn read_cache(path: &Path) -> Result<CachedSnapshot, String> {
     Err("snapshot_unavailable".into())
 }
 
-fn now_unix_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
-}
-
 fn parse_snapshot(bytes: &[u8]) -> Result<CachedSnapshot, String> {
     if bytes.len() as u64 > MAX_SNAPSHOT_BYTES {
         return Err("snapshot_too_large".into());
@@ -97,14 +93,20 @@ fn parse_snapshot(bytes: &[u8]) -> Result<CachedSnapshot, String> {
         .and_then(|result| result.get("data"))
         .cloned()
         .unwrap_or(envelope);
-    if payload.get("schemaVersion").and_then(|v| v.as_u64()) != Some(1) {
+    if payload
+        .get("schemaVersion")
+        .and_then(|value| value.as_u64())
+        != Some(HUB_SCHEMA_VERSION as u64)
+    {
         return Err("snapshot_schema_unsupported".into());
     }
-    let observed = payload
-        .get("observedAtUnixMs")
-        .and_then(|v| v.as_u64())
-        .filter(|v| *v > 0)
-        .unwrap_or_else(now_unix_ms);
+    let snapshot: HubSnapshotV1 =
+        serde_json::from_value(payload).map_err(|_| "snapshot_schema_invalid")?;
+    if snapshot.schema_version != HUB_SCHEMA_VERSION {
+        return Err("snapshot_schema_unsupported".into());
+    }
+    let observed = snapshot.observed_at_unix_ms;
+    let payload = serde_json::to_value(snapshot).map_err(|_| "snapshot_schema_invalid")?;
     Ok(CachedSnapshot {
         schema_version: SNAPSHOT_SCHEMA_VERSION,
         observed_at_unix_ms: observed,
@@ -224,40 +226,41 @@ pub enum TrayStatus {
     Offline,
 }
 
-fn section_state(value: &serde_json::Value) -> Option<&str> {
-    value
-        .as_str()
-        .or_else(|| value.get("state").and_then(serde_json::Value::as_str))
-}
-
-fn state_rank(state: &str) -> Option<u8> {
+fn state_rank(state: HubStateV1) -> u8 {
     match state {
-        "unavailable" => Some(0),
-        "degraded" => Some(1),
-        "available" => Some(2),
-        _ => None,
+        HubStateV1::Unavailable => 0,
+        HubStateV1::Degraded => 1,
+        HubStateV1::Available => 2,
     }
 }
 
-/// Mirrors the popover's aggregation: worst present state wins, and a payload
-/// with no explicit `overall` stays Offline rather than being promoted.
+/// Mirrors popover aggregation: all eight canonical sections must parse, then
+/// their worst state controls the tray.
 pub fn tray_status(snapshot: Option<&CachedSnapshot>) -> TrayStatus {
-    let Some(payload) = snapshot.map(|s| &s.payload).and_then(|p| p.as_object()) else {
+    let Some(snapshot) = snapshot.and_then(|snapshot| {
+        serde_json::from_value::<HubSnapshotV1>(snapshot.payload.clone()).ok()
+    }) else {
         return TrayStatus::Offline;
     };
-    if payload.get("overall").and_then(section_state).is_none() {
-        return TrayStatus::Offline;
-    }
-    match payload
-        .values()
-        .filter_map(section_state)
-        .filter_map(state_rank)
-        .min()
-    {
-        Some(0) => TrayStatus::Unavailable,
-        Some(1) => TrayStatus::Degraded,
-        Some(2) => TrayStatus::Available,
-        _ => TrayStatus::Offline,
+    let worst = [
+        snapshot.deliveries.state,
+        snapshot.providers.state,
+        snapshot.repositories.state,
+        snapshot.adapters.state,
+        snapshot.devices.state,
+        snapshot.memory.state,
+        snapshot.sentinel.state,
+        snapshot.alerts.state,
+    ]
+    .into_iter()
+    .map(state_rank)
+    .min()
+    .expect("canonical HubSnapshotV1 has eight sections");
+    match worst {
+        0 => TrayStatus::Unavailable,
+        1 => TrayStatus::Degraded,
+        2 => TrayStatus::Available,
+        _ => unreachable!("HubStateV1 has three variants"),
     }
 }
 
@@ -476,6 +479,8 @@ fn main() {
                     Some(18.0),
                 )
                 .map_err(|e| e.to_string())?;
+                #[cfg(target_os = "windows")]
+                apply_acrylic(&w, Some((18, 20, 25, 180))).map_err(|e| e.to_string())?;
                 let hidden = w.clone();
                 w.on_window_event(move |event| match event {
                     tauri::WindowEvent::CloseRequested { api, .. } => {
@@ -520,6 +525,42 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn canonical_payload(overrides: &[(&str, &str)]) -> serde_json::Value {
+        let mut payload = serde_json::json!({
+            "schemaVersion": 1,
+            "observedAtUnixMs": 1,
+        });
+        let sections = payload.as_object_mut().unwrap();
+        for name in [
+            "deliveries",
+            "providers",
+            "repositories",
+            "adapters",
+            "devices",
+            "memory",
+            "sentinel",
+            "alerts",
+        ] {
+            let state = overrides
+                .iter()
+                .find_map(|(key, state)| (*key == name).then_some(*state))
+                .unwrap_or("available");
+            sections.insert(
+                name.into(),
+                serde_json::json!({
+                    "state": state,
+                    "reason": format!("{name}_{state}"),
+                    "items": [],
+                    "resolver": null,
+                    "source": null,
+                    "evidence": null,
+                    "observedAtUnixMs": 1,
+                    "cacheAgeMs": 0,
+                }),
+            );
+        }
+        payload
+    }
     #[test]
     fn cache_round_trip_is_atomic_shape() {
         let dir = tempfile::tempdir().unwrap();
@@ -555,15 +596,16 @@ mod tests {
     fn polling_keeps_last_valid_then_accepts_service_restart() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("snapshot.json");
-        let first =
-            parse_snapshot(br#"{"schemaVersion":1,"observedAtUnixMs":7,"sections":{}}"#).unwrap();
+        let first = parse_snapshot(&serde_json::to_vec(&canonical_payload(&[])).unwrap()).unwrap();
         assert_eq!(apply_poll_result(&path, Ok(first.clone())).unwrap(), first);
         assert_eq!(
             apply_poll_result(&path, Err("hub_service_unavailable".into())).unwrap(),
             first
         );
-        let recovered =
-            parse_snapshot(br#"{"schemaVersion":1,"observedAtUnixMs":9,"sections":{}}"#).unwrap();
+        let recovered = parse_snapshot(
+            &serde_json::to_vec(&canonical_payload(&[("deliveries", "degraded")])).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             apply_poll_result(&path, Ok(recovered.clone())).unwrap(),
             recovered
@@ -601,17 +643,11 @@ mod tests {
 
     #[test]
     fn tray_status_takes_the_worst_present_state() {
-        let healthy = snapshot_with(
-            serde_json::json!({"overall":"available","deliveries":{"state":"available"}}),
-        );
+        let healthy = snapshot_with(canonical_payload(&[]));
         assert_eq!(tray_status(Some(&healthy)), TrayStatus::Available);
-        let mixed = snapshot_with(
-            serde_json::json!({"overall":"available","deliveries":{"state":"degraded"}}),
-        );
+        let mixed = snapshot_with(canonical_payload(&[("deliveries", "degraded")]));
         assert_eq!(tray_status(Some(&mixed)), TrayStatus::Degraded);
-        let broken = snapshot_with(
-            serde_json::json!({"overall":"degraded","sources":{"state":"unavailable"}}),
-        );
+        let broken = snapshot_with(canonical_payload(&[("providers", "unavailable")]));
         assert_eq!(tray_status(Some(&broken)), TrayStatus::Unavailable);
     }
 
@@ -667,7 +703,10 @@ mod tests {
                 (0..width).any(|x| at(x, height - 1) > 8),
                 "{status:?} pads the bottom"
             );
-            assert!((0..height).any(|y| at(0, y) > 8), "{status:?} pads the left");
+            assert!(
+                (0..height).any(|y| at(0, y) > 8),
+                "{status:?} pads the left"
+            );
             assert!(
                 (0..height).any(|y| at(width - 1, y) > 8),
                 "{status:?} pads the right"
@@ -703,10 +742,14 @@ mod tests {
     #[test]
     fn parser_accepts_hub_operation_envelope() {
         let snapshot = parse_snapshot(
-            br#"{"schemaVersion":1,"result":{"kind":"success","data":{"schemaVersion":1,"observedAtUnixMs":42,"deliveries":{"state":"available"}}}}"#,
+            &serde_json::to_vec(&serde_json::json!({
+                "schemaVersion": 1,
+                "result": { "kind": "success", "data": canonical_payload(&[]) }
+            }))
+            .unwrap(),
         )
         .unwrap();
-        assert_eq!(snapshot.observed_at_unix_ms, 42);
+        assert_eq!(snapshot.observed_at_unix_ms, 1);
         assert_eq!(snapshot.payload["deliveries"]["state"], "available");
     }
 }

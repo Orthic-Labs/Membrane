@@ -1,22 +1,21 @@
 export const STATUS_ORDER = ['unavailable', 'degraded', 'available'];
+export const SECTION_ORDER = ['deliveries', 'providers', 'repositories', 'adapters', 'devices', 'memory', 'sentinel', 'alerts'];
 const label = s => ({ unavailable: 'Unavailable', degraded: 'Degraded', available: 'Available' }[s] || 'Unknown');
 const severity = s => STATUS_ORDER.indexOf(s) >= 0 ? STATUS_ORDER.indexOf(s) : STATUS_ORDER.length;
+const state = section => typeof section === 'object' && section ? section.state : null;
+const worst = sections => {
+  const states = sections.map(state);
+  return states.every(value => STATUS_ORDER.includes(value)) ? states.reduce((worst, current) => severity(current) < severity(worst) ? current : worst) : null;
+};
 export function viewModel(snapshot) {
   const p = snapshot?.payload || {};
-  const sections = Object.values(p).filter(v => (v && typeof v === 'object' && STATUS_ORDER.includes(v.state)) || STATUS_ORDER.includes(v));
-  const status = v => typeof v === 'string' ? v : v?.state;
-  const overall = sections.reduce((best, v) => severity(status(v)) < severity(best) ? status(v) : best, 'available');
-  const explicitOverall = status(p.overall);
-  // Aggregate only states that are explicitly present; never turn missing data into healthy.
-  const overallState = explicitOverall ? overall : null;
-  const reason = p.reason || p.topReason || sections.find(v => status(v) === overallState)?.reason || 'No reason provided';
-  const delivery = p.lastDelivery || p.delivery || p.deliveries;
-  const sources = p.sources || p.sourceReadiness || p.source_readiness;
-  const fleet = p.fleet;
-  const stateText = v => label(status(v));
-  const observed = snapshot?.observed_at_unix_ms || p.observedAtUnixMs || null;
-  const stale = Boolean(p.stale || p.cached || Number(p.cacheAgeMs) > 0 || Number(snapshot?.cache_age_ms) > 0 || sections.some(v => v && typeof v === 'object' && (v.stale === true || v.cached === true || Number(v.cacheAgeMs) > 0)));
-  return { overall: overallState ? label(overallState) : 'Offline', reason: overallState ? String(reason) : 'No cached snapshot', delivery: stateText(delivery), sources: stateText(sources), fleet: stateText(fleet), traceId: typeof p.traceId === 'string' && p.traceId ? p.traceId : typeof p.trace_id === 'string' && p.trace_id ? p.trace_id : null, observed, stale };
+  const sections = SECTION_ORDER.map(key => p[key]);
+  const overallState = worst(sections);
+  const reason = overallState ? sections.find(section => state(section) === overallState)?.reason || 'No reason provided' : 'No cached snapshot';
+  const stateText = value => label(state(value));
+  const observed = snapshot?.observed_at_unix_ms ?? p.observedAtUnixMs ?? null;
+  const stale = Boolean(Number(snapshot?.cache_age_ms) > 0 || sections.some(section => Number(section?.cacheAgeMs) > 0));
+  return { overall: overallState ? label(overallState) : 'Offline', reason: String(reason), delivery: stateText(p.deliveries), sources: label(worst([p.providers, p.repositories])), fleet: label(worst([p.adapters, p.devices])), traceId: typeof p.traceId === 'string' && p.traceId ? p.traceId : null, observed, stale };
 }
 export function diagnostics(vm) { return JSON.stringify({ overall: vm.overall, delivery: vm.delivery, sources: vm.sources, fleet: vm.fleet, traceAvailable: Boolean(vm.traceId) }); }
 

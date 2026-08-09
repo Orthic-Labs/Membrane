@@ -17,6 +17,7 @@
     ]
   },
   "app": {
+    "macOSPrivateApi": true,
     "withGlobalTauri": false,
     "windows": [{
       "label": "hub", "url": "popover.html", "title": "Membrane", "width": 304, "height": 290,

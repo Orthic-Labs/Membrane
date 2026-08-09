@@ -1,67 +1,75 @@
-// Sync the workspace release manifest with the identity the engine was just
-// built against, so `expected` (manifest) and `observed` (baked into the binary)
-// agree and the gateway fans out instead of degrading.
-//
-// Scope is deliberately narrow: only the two top-level fields the federation
-// gateway validates (`release_generation`, `source_tree_sha256`, which it
-// requires to be internally consistent — see `_expected_release_generation`).
-// Per-asset hashes are a distribution seal covering binaries for every platform;
-// a local macOS build cannot honestly restamp the Windows entries, so this
-// leaves them alone and says so. Sealing a shippable manifest stays the job of
-// `right-release`.
-//
-// Usage: node scripts/write-release-manifest.mjs [--manifest <path>] [--check]
+// Usage: node scripts/write-release-manifest.mjs [--manifest <path>]
+//   [--identity <path>] [--check]
 
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 import { engineReleaseIdentity } from "./release-identity.mjs";
+const args = process.argv.slice(2);
+const options = { check: false };
+for (let index = 0; index < args.length; index += 1) {
+  const arg = args[index];
+  if (arg === "--check") {
+    if (options.check) throw new Error("--check may only be supplied once");
+    options.check = true;
+  } else if (arg === "--manifest" || arg === "--identity") {
+    if (options[arg.slice(2)]) throw new Error(`${arg} may only be supplied once`);
+    const value = args[++index];
+    if (!value || value.startsWith("--")) throw new Error(`${arg} requires a path`);
+    options[arg.slice(2)] = resolve(value);
+  } else {
+    throw new Error(`unknown argument: ${arg}`);
+  }
+}
 
-const argv = process.argv.slice(2);
-const checkOnly = argv.includes("--check");
-const manifestFlag = argv.indexOf("--manifest");
-const manifestPath = manifestFlag !== -1
-  ? argv[manifestFlag + 1]
-  : new URL("../../../../tools/lib/crypt-release.json", import.meta.url).pathname;
-
-// Prefer the identity recorded by the build over a fresh computation. The two
-// differ whenever the engine tree changed while cargo was running, and it is the
-// baked value — not today's tree — that the running binary reports back to the
-// gateway. Recomputing here would write a manifest that never matches.
-const recorded = new URL("../dist/release-identity.json", import.meta.url);
 const repoRoot = new URL("../../../", import.meta.url).pathname.replace(/\/$/, "");
-let identity;
-try {
-  identity = JSON.parse(readFileSync(recorded, "utf8"));
-} catch {
-  identity = engineReleaseIdentity(repoRoot);
-}
-
+const manifestPath = options.manifest
+  ?? new URL("../../../../tools/lib/crypt-release.json", import.meta.url).pathname;
+const identity = options.identity
+  ? validatedRecordedIdentity(options.identity, repoRoot)
+  : engineReleaseIdentity(repoRoot);
 const document = JSON.parse(readFileSync(manifestPath, "utf8"));
-const current = document.release_generation;
-const matches = current === identity.releaseGeneration;
-
-if (checkOnly) {
-  console.log(`manifest : ${current}`);
-  console.log(`engine   : ${identity.releaseGeneration}`);
-  console.log(matches ? "MATCHED" : "MISMATCH — run without --check to sync");
-  process.exit(matches ? 0 : 1);
-}
-
-if (matches) {
-  console.log(`[membrane] release manifest already at ${current}`);
+const fields = ["crypt_source_commit", "source_tree_path", "source_tree_sha256", "release_generation"];
+const expected = {
+  crypt_source_commit: identity.commit,
+  source_tree_path: identity.sourceTreePath,
+  source_tree_sha256: identity.sourceTreeSha256,
+  release_generation: identity.releaseGeneration,
+};
+const mismatched = fields.filter((field) => document[field] !== expected[field]);
+if (options.check) {
+  if (mismatched.length) {
+    throw new Error(`manifest identity mismatch: ${mismatched.join(", ")}`);
+  }
+  console.log(`[membrane] release manifest matches ${identity.releaseGeneration}`);
   process.exit(0);
 }
-
-document.crypt_source_commit = identity.commit;
-document.source_tree_path = identity.sourceTreePath;
-document.source_tree_sha256 = identity.sourceTreeSha256;
-document.release_generation = identity.releaseGeneration;
+if (!mismatched.length) {
+  console.log(`[membrane] release manifest already at ${identity.releaseGeneration}`);
+  process.exit(0);
+}
+Object.assign(document, expected);
 writeFileSync(manifestPath, `${JSON.stringify(document, null, 2)}\n`);
+console.log(`[membrane] release manifest updated: ${mismatched.join(", ")}`);
 
-const staleAssets = (document.assets ?? []).filter(
-  (asset) => asset.release_generation && asset.release_generation !== identity.releaseGeneration,
-);
-console.log(`[membrane] release manifest ${current} -> ${identity.releaseGeneration}`);
-if (staleAssets.length > 0) {
-  const names = staleAssets.map((asset) => `${asset.os}/${asset.name}`).join(", ");
-  console.log(`[membrane] asset seals NOT restamped (reseal via right-release): ${names}`);
+function validatedRecordedIdentity(path, root) {
+  const identity = JSON.parse(readFileSync(path, "utf8"));
+  const keys = ["commit", "dirty", "fileCount", "sourceTreePath", "sourceTreeSha256", "releaseGeneration"];
+  if (Object.keys(identity).length !== keys.length || keys.some((key) => !(key in identity))) {
+    throw new Error("recorded identity has an invalid shape");
+  }
+  const head = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  if (identity.commit !== head || !/^[0-9a-f]{40}$/i.test(identity.commit)) {
+    throw new Error("recorded identity commit is not current HEAD");
+  }
+  if (typeof identity.dirty !== "boolean" || !Number.isSafeInteger(identity.fileCount) || identity.fileCount < 0) {
+    throw new Error("recorded identity has invalid build metadata");
+  }
+  if (identity.sourceTreePath !== "engine" || !/^[0-9a-f]{64}$/i.test(identity.sourceTreeSha256)) {
+    throw new Error("recorded identity has invalid engine digest");
+  }
+  if (identity.releaseGeneration !== `sha256:${identity.sourceTreeSha256}`) {
+    throw new Error("recorded identity release generation does not match digest");
+  }
+  return identity;
 }
