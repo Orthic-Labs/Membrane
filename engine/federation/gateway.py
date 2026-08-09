@@ -560,6 +560,16 @@ def _gather_all_parallel(
         },
     }
     if release_generation_status != "matched":
+        # NOTE (2026-08-09): an unverifiable release generation is a
+        # supply-chain attestation failure, not evidence that the repository
+        # content is wrong, so returning nothing here makes `PortableTextOnly`
+        # a fallback with nothing to fall back to — every packet ships empty
+        # while the hook still reports enforcement. Removing this early return
+        # is NOT sufficient on its own: the full fan-out then exceeds the
+        # 2000 ms resident budget on a cold graph and trips the federate
+        # circuit breaker, which is worse. The lane-level fix needs a
+        # timeout-aware partial fan-out; until then the identity must simply
+        # match (see apps/membrane-hub/scripts/release-identity.mjs).
         freshness["stale"] = True
         return [], freshness
     provider_elapsed_ms: dict[str, float] = {}
