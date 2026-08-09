@@ -8,10 +8,13 @@ import {
   getGenerationEnvelope,
   loadFileState,
   recordArtifactState,
+  registerProviderRanks,
+  reindexNodeOrdinals,
   replaceSymbolSearchEntry,
 } from "./store-sqlite.mjs";
 import { incrementTelemetry } from "../lib/telemetry.mjs";
-import { STATIC_PROVIDER } from "./provider-identity.mjs";
+import { canonicalProviderId, STATIC_PROVIDER } from "./provider-identity.mjs";
+import { normalizeRepoPath } from "./path-order.mjs";
 
 export const STRUCTURAL_PROVIDER = Object.freeze({ id: "lexical", version: STATIC_PROVIDER.version });
 export const DOC_PROVIDER = Object.freeze({ id: "doctruth", version: "repo-local-doc-v1", freshnessDomain: "doc" });
@@ -19,7 +22,7 @@ export const MAX_HOPS = 2;
 export const MAX_DEPENDENT_FILES = 500;
 
 function normalizePath(value) {
-  return String(value).replaceAll("\\", "/").replace(/^\.\//, "");
+  return normalizeRepoPath(value);
 }
 
 function normalizeDigest(value) {
@@ -186,48 +189,55 @@ function fileNode(node, generationId, digest, provider, fileReport = null) {
 }
 
 function insertParsedFacts(db, parsed, generationId, sourceDigest, provider, fileReport = null, repoRoot = null) {
-  const insertFile = db.prepare(`INSERT INTO files(path, content_hash, language, provider, parse_status, error_node_count, generation_id, node_id, labels, name, qualified_name, confidence, evidence, extra)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  provider = { ...provider, id: canonicalProviderId(provider.id), version: String(provider.version ?? "unknown") };
+  const insertFile = db.prepare(`INSERT INTO files(path, content_hash, language, provider, parse_status, error_node_count, generation_id, node_id, labels, name, qualified_name, confidence, evidence, extra, node_ordinal)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(path) DO UPDATE SET content_hash=excluded.content_hash, language=excluded.language, provider=excluded.provider,
       parse_status=excluded.parse_status, error_node_count=excluded.error_node_count, generation_id=excluded.generation_id,
       node_id=excluded.node_id, labels=excluded.labels, name=excluded.name, qualified_name=excluded.qualified_name,
-      confidence=excluded.confidence, evidence=excluded.evidence, extra=excluded.extra`);
-  const insertSymbol = db.prepare(`INSERT INTO symbols(id, kind, labels, name, qualified_name, path, confidence, evidence, generation_id, extra)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      confidence=excluded.confidence, evidence=excluded.evidence, extra=excluded.extra, node_ordinal=excluded.node_ordinal`);
+  const hasSymbolOrdinal = db.prepare("PRAGMA table_info(symbols)").all().some((column) => column.name === "node_ordinal");
+  const insertSymbol = db.prepare(`INSERT INTO symbols(id, kind, labels, name, qualified_name, path, confidence, evidence, generation_id, extra${hasSymbolOrdinal ? ", node_ordinal" : ""})
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?${hasSymbolOrdinal ? ", ?" : ""})
     ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, labels=excluded.labels, name=excluded.name, qualified_name=excluded.qualified_name,
-      path=excluded.path, confidence=excluded.confidence, evidence=excluded.evidence, generation_id=excluded.generation_id, extra=excluded.extra`);
+       path=excluded.path, confidence=excluded.confidence, evidence=excluded.evidence, generation_id=excluded.generation_id, extra=excluded.extra${hasSymbolOrdinal ? ", node_ordinal=excluded.node_ordinal" : ""}`);
+  let insertAnnotation = null;
   const insertEdge = db.prepare(`INSERT INTO edges(id, kind, source, target, confidence, resolved, specifier, evidence, generation_id, confidence_tier, extra)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET kind=excluded.kind, source=excluded.source, target=excluded.target, confidence=excluded.confidence,
       resolved=excluded.resolved, specifier=excluded.specifier, evidence=excluded.evidence, generation_id=excluded.generation_id,
       confidence_tier=excluded.confidence_tier, extra=excluded.extra`);
   const insertOwner = db.prepare("INSERT OR REPLACE INTO fact_owner(fact_id, fact_kind, source_path, source_digest, provider_id, provider_version, freshness_domain, fact_kind_detail, generation_id, repo_root) VALUES (?, ?, ?, ?, ?, ?, 'structural', ?, ?, ?)");
-  const updateFileReport = db.prepare(`UPDATE files SET content_hash=?, language=?, provider=?, parse_status=?, error_node_count=?, generation_id=? WHERE path=?`);
   const nodes = parsed?.nodes ?? [];
-  for (const node of nodes) {
-    let ownsFact = true;
-    if (node.kind === "file") {
-      const row = fileNode(node, generationId, sourceDigest, provider, fileReport);
-      if (provider.id !== "lexical" && db.prepare("SELECT 1 FROM files WHERE path=?").get(row.path)) {
-        updateFileReport.run(row.contentHash, row.language, row.provider, row.parseStatus, row.errorNodeCount, row.generationId, row.path);
-        ownsFact = false;
-      } else {
-        insertFile.run(row.path, row.contentHash, row.language, row.provider, row.parseStatus, row.errorNodeCount, row.generationId, row.nodeId, row.labels, row.name, row.qualifiedName, row.confidence, row.evidence, row.extra);
-      }
+  for (const [nodeOrdinal, node] of nodes.entries()) {
+    const stored = node.path === undefined ? node : { ...node, path: normalizePath(node.path) };
+    if (db.prepare("SELECT 1 FROM node_provider WHERE node_id=?").get(stored.id)) continue;
+    const physical = db.prepare(`SELECT 1 FROM files WHERE node_id=? UNION ALL SELECT 1 FROM symbols WHERE id=? UNION ALL SELECT 1 FROM annotation_nodes WHERE id=? LIMIT 1`).get(stored.id, stored.id, stored.id);
+    if (physical) throw Object.assign(new Error(`duplicate_node_id:${stored.id}`), { code: "duplicate_node_id" });
+    let inserted = true;
+    if (stored.kind === "file") {
+      const row = fileNode(stored, generationId, sourceDigest, provider, fileReport);
+      if (db.prepare("SELECT 1 FROM files WHERE path=?").get(row.path)) inserted = false;
+      else insertFile.run(row.path, row.contentHash, row.language, row.provider, row.parseStatus, row.errorNodeCount, row.generationId, row.nodeId, row.labels, row.name, row.qualifiedName, row.confidence, row.evidence, row.extra, nodeOrdinal);
+    } else if (stored.kind === "comment") {
+      insertAnnotation ??= db.prepare("INSERT INTO annotation_nodes(id, node_ordinal, payload, generation_id) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET node_ordinal=excluded.node_ordinal, payload=excluded.payload, generation_id=excluded.generation_id");
+      insertAnnotation.run(stored.id, nodeOrdinal, JSON.stringify(stored), generationId);
     } else {
-      const exists = provider.id !== "lexical" && db.prepare("SELECT 1 FROM symbols WHERE id=?").get(node.id);
-      if (!exists) {
-        const extra = Object.fromEntries(Object.entries(node).filter(([key]) => !["id", "kind", "labels", "name", "qualifiedName", "path", "confidence", "evidence"].includes(key)));
-        insertSymbol.run(node.id, node.kind, JSON.stringify(node.labels ?? []), node.name ?? "", node.qualifiedName ?? node.name ?? "", node.path, node.confidence ?? 1, JSON.stringify(node.evidence ?? []), generationId, Object.keys(extra).length ? JSON.stringify(extra) : null);
-        replaceSymbolSearchEntry(db, { id: node.id, generationId, name: node.name, qualifiedName: node.qualifiedName, path: node.path });
-      } else ownsFact = false;
+      const extra = Object.fromEntries(Object.entries(stored).filter(([key]) => !["id", "kind", "labels", "name", "qualifiedName", "path", "confidence", "evidence"].includes(key)));
+      const values = [stored.id, stored.kind, JSON.stringify(stored.labels ?? []), stored.name ?? "", stored.qualifiedName ?? stored.name ?? "", stored.path, stored.confidence ?? 1, JSON.stringify(stored.evidence ?? []), generationId, Object.keys(extra).length ? JSON.stringify(extra) : null];
+      if (hasSymbolOrdinal) values.push(nodeOrdinal);
+      insertSymbol.run(...values);
     }
-    if (ownsFact) insertOwner.run(node.id, "node", node.path, sourceDigest, provider.id, provider.version, node.kind, generationId, repoRoot);
+    if (!inserted) continue;
+    registerProviderRanks(db, [provider.id]);
+    db.prepare("INSERT INTO node_provider(node_id,provider_id,source_path,provider_version) VALUES (?,?,?,?)").run(stored.id, provider.id, stored.path ?? "", provider.version);
+    insertOwner.run(stored.id, "node", stored.path, sourceDigest, provider.id, provider.version, stored.kind, generationId, repoRoot);
+    if (stored.kind !== "file" && stored.kind !== "comment") replaceSymbolSearchEntry(db, { id: stored.id, generationId, name: stored.name, qualifiedName: stored.qualifiedName, path: stored.path });
   }
   for (const edge of parsed?.edges ?? []) {
     const indexed = new Set(["id", "kind", "source", "target", "confidence", "confidenceTier", "evidence"]);
     const extra = Object.fromEntries(Object.entries(edge).filter(([key]) => !indexed.has(key)));
-    const exists = provider.id !== "lexical" && db.prepare("SELECT 1 FROM edges WHERE id=?").get(edge.id);
+    const exists = db.prepare("SELECT 1 FROM edges WHERE id=?").get(edge.id);
     if (!exists) insertEdge.run(edge.id, edge.kind, edge.source, edge.target ?? null, edge.confidence ?? 1, edge.resolved === false ? 0 : 1, edge.specifier ?? null, JSON.stringify(edge.evidence ?? []), generationId, edge.confidenceTier ?? null, Object.keys(extra).length ? JSON.stringify(extra) : null);
     const sourceNode = nodes.find((node) => node.id === edge.source);
     if (sourceNode && !exists) insertOwner.run(edge.id, "edge", sourceNode.path, sourceDigest, provider.id, provider.version, edge.kind, generationId, repoRoot);
@@ -251,26 +261,37 @@ function updateFileState(db, path, digest, sourceClock, fileIdentity = null, siz
 
 function refreshManifestCounts(manifest, db) {
   const counts = countRows(db);
-  return { ...manifest, counts: { ...manifest.counts, nodes: counts.files + counts.symbols, edges: counts.edges } };
+  return { ...manifest, counts: { ...manifest.counts, nodes: counts.files + counts.symbols + counts.annotations, edges: counts.edges } };
+}
+
+function requireOuterTransaction(db) {
+  if (db.isTransaction) return;
+  const error = new Error("delta_transaction_required");
+  error.code = "delta_transaction_required";
+  throw error;
 }
 
 export function applyFileDelta(db, delta, options = {}) {
   const path = normalizePath(delta.path);
   const eventKind = delta.eventKind ?? "modify";
-  const provider = delta.provider ?? (isDocPath(path) ? DOC_PROVIDER : STRUCTURAL_PROVIDER);
+  const rawProvider = delta.provider ?? (isDocPath(path) ? DOC_PROVIDER : STRUCTURAL_PROVIDER);
+  const provider = { ...rawProvider, id: canonicalProviderId(rawProvider.id) };
   const isDocumentDelta = delta.domain === "doc" || provider.id === DOC_PROVIDER.id || Boolean(delta.document) || isDocPath(path);
   const contentDigestValue = delta.contentDigest == null ? null : normalizeDigest(delta.contentDigest);
-  const prior = loadFileState(db, path);
-  ensureWatchState(db);
-  const previousApplied = clock(db, "applied_clock", 0);
-  const appliedClock = Number(delta.sourceClock ?? previousApplied + 1);
   const newPath = eventKind === "rename" ? normalizePath(delta.renameTo ?? delta.parsed?.nodes?.find((node) => node.kind === "file")?.path ?? path) : path;
-  const factBatches = Array.isArray(delta.factBatches) && delta.factBatches.length
+  const factBatches = (Array.isArray(delta.factBatches) && delta.factBatches.length
     ? delta.factBatches
-    : (delta.parsed ? [{ provider, parsed: delta.parsed, fileReport: delta.fileReport ?? null }] : []);
+    : (delta.parsed ? [{ provider, parsed: delta.parsed, fileReport: delta.fileReport ?? null }] : []))
+    .map((batch) => ({ ...batch, provider: { ...batch.provider, id: canonicalProviderId(batch.provider?.id ?? provider.id) } }));
   const ownsTransaction = options.inTransaction !== true;
   if (ownsTransaction) db.exec("BEGIN IMMEDIATE");
+  else requireOuterTransaction(db);
   try {
+    const prior = loadFileState(db, path);
+    ensureWatchState(db);
+    const previousApplied = clock(db, "applied_clock", 0);
+    const appliedClock = Number(delta.sourceClock ?? previousApplied + 1);
+    let orderWrites = 0;
     if (contentDigestValue && prior?.content_digest === contentDigestValue && !["delete", "rename", "repair"].includes(eventKind)) {
       const acknowledgedClock = Math.max(previousApplied, appliedClock);
       setClock(db, "applied_clock", acknowledgedClock);
@@ -287,6 +308,7 @@ export function applyFileDelta(db, delta, options = {}) {
         applied: true,
         path,
         appliedClock: acknowledgedClock,
+        orderWrites: 0,
         rootDigest: db.prepare("SELECT digest FROM generation_leaf WHERE path = '' AND kind = 'dir'").get()?.digest ?? null,
       };
     }
@@ -304,10 +326,14 @@ export function applyFileDelta(db, delta, options = {}) {
     }
     if (isDocumentDelta && eventKind !== "delete") {
       const docEnvelope = getGenerationEnvelope(db);
-      const generationId = docEnvelope?.manifest?.generationId;
-      const repoRoot = options.repoRoot ?? docEnvelope?.repoRoot ?? null;
+      const rootDigest = updateLeafChain(db, newPath, contentDigestValue);
+      const envelope = resealGenerationIdentityDelta(docEnvelope, rootDigest, appliedClock);
+      const generationId = envelope?.manifest?.generationId;
+      const repoRoot = options.repoRoot ?? envelope?.repoRoot ?? null;
+      for (const providerId of structuralProviders) deleteFactsByOwner(db, path, providerId);
+      const composedFileReport = factBatches.find((batch) => batch.fileReport)?.fileReport ?? null;
       for (const batch of factBatches) {
-        insertParsedFacts(db, batch.parsed, generationId, contentDigestValue, batch.provider, batch.fileReport ?? { provider: null }, repoRoot);
+        insertParsedFacts(db, batch.parsed, generationId, contentDigestValue, batch.provider, batch.fileReport ?? composedFileReport ?? { provider: null }, repoRoot);
       }
       db.prepare("DELETE FROM fact_owner WHERE source_path = ? AND provider_id = ?").run(newPath, provider.id);
       for (const claim of delta.document?.claims ?? []) {
@@ -315,8 +341,11 @@ export function applyFileDelta(db, delta, options = {}) {
           VALUES (?, 'node', ?, ?, ?, ?, 'doc', 'claim', ?, ?)`)
           .run(claim.id, newPath, contentDigestValue, provider.id, provider.version, generationId ?? null, repoRoot);
       }
-      updateLeafChain(db, newPath, contentDigestValue);
       updateFileState(db, newPath, contentDigestValue, appliedClock, delta.fileIdentity ?? null, delta.size ?? 0, delta.mtimeMs ?? null, delta.journalSeq ?? null);
+      orderWrites = reindexNodeOrdinals(db).orderWrites;
+      Object.assign(envelope.manifest, refreshManifestCounts(envelope.manifest, db));
+      envelope.manifest.manifestDigest = computeManifestDigest(envelope.manifest, envelope.sourceObservation);
+      db.prepare("UPDATE generation SET value=? WHERE key='manifest'").run(JSON.stringify(envelope.manifest));
     } else if (eventKind !== "delete" && eventKind !== "rename") {
       for (const providerId of structuralProviders) deleteFactsByOwner(db, path, providerId);
     }
@@ -327,10 +356,12 @@ export function applyFileDelta(db, delta, options = {}) {
       const envelope = resealGenerationIdentityDelta(rootBefore, rootDigest, appliedClock);
       const repoRoot = options.repoRoot ?? envelope.repoRoot ?? null;
       const dependencies = [];
+      const composedFileReport = factBatches.find((batch) => batch.fileReport)?.fileReport ?? null;
       for (const batch of factBatches) {
-        insertParsedFacts(db, batch.parsed, envelope.manifest.generationId, contentDigestValue, batch.provider, batch.fileReport ?? null, repoRoot);
-        dependencies.push(...(batch.parsed?.dependencies ?? []));
-      }
+          insertParsedFacts(db, batch.parsed, envelope.manifest.generationId, contentDigestValue, batch.provider, batch.fileReport ?? composedFileReport, repoRoot);
+          dependencies.push(...(batch.parsed?.dependencies ?? []));
+        }
+        orderWrites = reindexNodeOrdinals(db).orderWrites;
       const uniqueDependencies = [...new Map(dependencies.map((item) => [`${item.sourcePath}:${item.dependentPath}:${item.reason}`, item])).values()];
       refreshDependencies(db, newPath, uniqueDependencies);
       updateFileState(db, newPath, contentDigestValue, appliedClock, delta.fileIdentity ?? null, delta.size ?? factBatches[0]?.parsed?.size ?? 0, delta.mtimeMs ?? null, delta.journalSeq ?? null);
@@ -338,12 +369,22 @@ export function applyFileDelta(db, delta, options = {}) {
       envelope.manifest.manifestDigest = computeManifestDigest(envelope.manifest, envelope.sourceObservation);
       db.prepare("UPDATE generation SET value = ? WHERE key = 'manifest'").run(JSON.stringify(envelope.manifest));
     } else if (!isDocumentDelta) {
+      orderWrites = reindexNodeOrdinals(db).orderWrites;
       const envelope = getGenerationEnvelope(db);
       const rootDigest = updateLeafChain(db, path, null);
       const resealed = resealGenerationIdentityDelta(envelope, rootDigest, appliedClock);
       Object.assign(resealed.manifest, refreshManifestCounts(resealed.manifest, db));
       resealed.manifest.manifestDigest = computeManifestDigest(resealed.manifest, resealed.sourceObservation);
       db.prepare("UPDATE generation SET value = ? WHERE key = 'manifest'").run(JSON.stringify(resealed.manifest));
+    }
+    if (isDocumentDelta && eventKind === "delete") {
+      orderWrites = reindexNodeOrdinals(db).orderWrites;
+      const envelope = getGenerationEnvelope(db);
+      const rootDigest = db.prepare("SELECT digest FROM generation_leaf WHERE path='' AND kind='dir'").get()?.digest ?? null;
+      const resealed = resealGenerationIdentityDelta(envelope, rootDigest, appliedClock);
+      Object.assign(resealed.manifest, refreshManifestCounts(resealed.manifest, db));
+      resealed.manifest.manifestDigest = computeManifestDigest(resealed.manifest, resealed.sourceObservation);
+      db.prepare("UPDATE generation SET value=? WHERE key='manifest'").run(JSON.stringify(resealed.manifest));
     }
     if (isDocumentDelta) {
       const generationId = getGenerationEnvelope(db)?.manifest?.generationId;
@@ -357,7 +398,7 @@ export function applyFileDelta(db, delta, options = {}) {
     if (eventKind !== "repair") incrementTelemetry(db, "deltas_applied");
     options.beforeCommit?.(db);
     if (ownsTransaction) db.exec("COMMIT");
-    return { applied: true, path, appliedClock, rootDigest: db.prepare("SELECT digest FROM generation_leaf WHERE path = '' AND kind = 'dir'").get()?.digest ?? null };
+    return { applied: true, path, appliedClock, orderWrites, rootDigest: db.prepare("SELECT digest FROM generation_leaf WHERE path = '' AND kind = 'dir'").get()?.digest ?? null };
   } catch (error) {
     if (ownsTransaction) db.exec("ROLLBACK");
     throw error;

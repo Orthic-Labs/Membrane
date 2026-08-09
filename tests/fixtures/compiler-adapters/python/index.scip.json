@@ -1,0 +1,77 @@
+{
+  "metadata": {
+    "version": "0.6.6",
+    "indexer": "scip-python",
+    "toolInfo": {
+      "name": "scip-python",
+      "version": "0.6.6"
+    }
+  },
+  "documents": [
+    {
+      "relativePath": "pkg/models.py",
+      "occurrences": [
+        {
+          "symbol": "scip-python python cortex-python-adapter-fixture 1 pkg/models Item#",
+          "roles": ["definition"],
+          "range": [0, 6, 0, 10]
+        },
+        {
+          "symbol": "scip-python python cortex-python-adapter-fixture 1 pkg/models Item#__init__().",
+          "roles": ["definition"],
+          "range": [4, 4, 4, 13]
+        },
+        {
+          "symbol": "scip-python python cortex-python-adapter-fixture 1 pkg/models Item#total().",
+          "roles": ["definition"],
+          "range": [9, 4, 9, 9]
+        }
+      ]
+    },
+    {
+      "relativePath": "pkg/service.py",
+      "occurrences": [
+        {
+          "symbol": "scip-python python cortex-python-adapter-fixture 1 pkg/models Item#",
+          "roles": ["reference"],
+          "range": [0, 15, 0, 19]
+        },
+        {
+          "symbol": "scip-python python cortex-python-adapter-fixture 1 pkg/service line_total().",
+          "roles": ["definition"],
+          "range": [4, 0, 4, 10]
+        },
+        {
+          "symbol": "scip-python python cortex-python-adapter-fixture 1 pkg/service line_total().(item)",
+          "roles": ["definition"],
+          "range": [4, 11, 4, 15]
+        },
+        {
+          "symbol": "scip-python python cortex-python-adapter-fixture 1 pkg/models Item#total().",
+          "roles": ["reference"],
+          "range": [5, 11, 5, 16]
+        }
+      ]
+    },
+    {
+      "relativePath": "main.py",
+      "occurrences": [
+        {
+          "symbol": "scip-python python cortex-python-adapter-fixture 1 pkg/service",
+          "roles": ["reference"],
+          "range": [0, 7, 0, 18]
+        },
+        {
+          "symbol": "scip-python python cortex-python-adapter-fixture 1 pkg/service line_total().",
+          "roles": ["reference"],
+          "range": [4, 11, 4, 21]
+        },
+        {
+          "symbol": "scip-python python cortex-python-adapter-fixture 1 main main().",
+          "roles": ["definition"],
+          "range": [3, 0, 3, 4]
+        }
+      ]
+    }
+  ]
+}

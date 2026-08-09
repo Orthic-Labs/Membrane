@@ -1,0 +1,15 @@
+{
+  "version": "__VERSION__",
+  "description": "Local evidence-backed repository map (MCP server included).",
+  "homepage": "https://github.com/Orthic-Labs/Cortex#readme",
+  "license": "SEE LICENSE IN LICENSE",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/Orthic-Labs/Cortex/releases/download/v__VERSION__/cortex-windows-x64.zip",
+      "hash": "__WINDOWS_X64_SHA256__"
+    }
+  },
+  "bin": ["bin\\cortex.cmd", "bin\\cortex-mcp"],
+  "checkver": { "github": "https://github.com/Orthic-Labs/Cortex" },
+  "autoupdate": { "url": "https://github.com/Orthic-Labs/Cortex/releases/download/v$version/cortex-windows-x64.zip" }
+}

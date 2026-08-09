@@ -1,0 +1,17 @@
+version: 1
+rules:
+  - id: ui-must-not-import-db
+    from:
+      path: "src/ui/**"
+    disallow:
+      edgeKinds: [IMPORTS, CALLS]
+      to:
+        path: "src/db/**"
+      minConfidence: CROSS_FILE_HEURISTIC
+    severity: error
+    rationale: "UI reaches persistence through the application layer."
+    exceptions:
+      require:
+        owner: true
+        rationale: true
+        expires: true

@@ -1,9 +1,15 @@
 import ParcelWatcher from "@parcel/watcher";
-import { readdirSync, realpathSync, statSync } from "node:fs";
+import { readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { SCAN_EXCLUSIONS } from "../graph/static-provider.mjs";
 
 const EVENT_TYPES = new Set(["create", "update", "delete"]);
+const PROBE_PREFIX = "cortex-watch-probe-";
+const PROBE_DEADLINE_MS = 30_000;
+const PROBE_CADENCE_MS = 1_000;
+
+function cancelled() { return Object.assign(new Error("request cancelled"), { code: "request_cancelled" }); }
 
 function canonicalRoot(value) {
   const root = resolve(value);
@@ -21,6 +27,32 @@ function canonicalAbsolute(value) {
 
 function normalizePath(root, value) {
   return relative(root, canonicalAbsolute(resolve(root, String(value)))).replaceAll("\\", "/");
+}
+
+export async function waitForNativeProbe(readyPromise, timeoutMs = PROBE_CADENCE_MS, signal) {
+  let probeTimer;
+  let onAbort;
+  try {
+    await Promise.race([
+      readyPromise,
+      new Promise((_, reject) => {
+        probeTimer = setTimeout(() => {
+          const error = new Error("native watcher readiness probe timed out");
+          error.code = "watch_probe_timeout";
+          reject(error);
+        }, timeoutMs);
+        probeTimer.unref?.();
+      }),
+      new Promise((_, reject) => {
+        onAbort = () => reject(cancelled());
+        if (signal?.aborted) onAbort();
+        else signal?.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]);
+  } finally {
+    clearTimeout(probeTimer);
+    signal?.removeEventListener("abort", onAbort);
+  }
 }
 
 // @parcel/watcher's `ignore` option (typed GlobPattern in its own .d.ts) does NOT
@@ -69,8 +101,9 @@ function resolveExclusions(root, extra = []) {
   return [...new Set([...names, ...found])];
 }
 
-function normalizeEvents(root, events, observedMs = Date.now()) {
+function normalizeEvents(root, events, observedMs = Date.now(), transientPaths = []) {
   const normalizedRoot = canonicalRoot(root);
+  const transient = new Set(transientPaths.map((path) => normalizePath(normalizedRoot, path)));
   const candidates = events
     .filter((event) => EVENT_TYPES.has(event.type))
     .filter((event) => {
@@ -100,28 +133,78 @@ function normalizeEvents(root, events, observedMs = Date.now()) {
     deletion.renameTo = match.path;
   }
   const pairedCreates = new Set([...paired].map((index) => creates[index]));
-  return candidates.filter((event) => !pairedCreates.has(event));
+  return candidates
+    .filter((event) => !pairedCreates.has(event))
+    .filter((event) => !transient.has(event.path) && !transient.has(event.renameTo));
 }
 
 function options(root, ignore) {
   return { ignore: resolveExclusions(root, ignore) };
 }
 
-export async function startWatch(root, onEvents, onGap = () => {}, ignore = []) {
+export async function startWatch(root, onEvents, onGap = () => {}, ignore = [], runtime = {}) {
   const absoluteRoot = canonicalRoot(root);
+  const { signal, probeCadenceMs = PROBE_CADENCE_MS, probeDeadlineMs = PROBE_DEADLINE_MS, now = Date.now, subscribe = ParcelWatcher.subscribe, writeProbe = writeFileSync, unlinkProbe = unlinkSync } = runtime;
+  let probePath = null;
+  const transientPaths = new Set();
+  let resolveReady;
+  let rejectReady;
+  let reportedGap = false;
+  const reportGap = (error) => {
+    if (reportedGap || signal?.aborted || error?.code === "request_cancelled") return;
+    reportedGap = true;
+    onGap(error);
+  };
   const callback = (error, events = []) => {
     if (error) {
-      onGap(error);
+      const failure = signal?.aborted ? cancelled() : error;
+      reportGap(failure);
+      rejectReady?.(failure);
       return;
     }
-    try { onEvents(normalizeEvents(absoluteRoot, events)); }
-    catch (callbackError) { onGap(callbackError); }
+    if (probePath && events.some((event) => canonicalAbsolute(event.path) === canonicalAbsolute(probePath))) resolveReady?.();
+    try {
+      const normalized = normalizeEvents(absoluteRoot, events, Date.now(), [...transientPaths]);
+      if (normalized.length) onEvents(normalized);
+    } catch (callbackError) { reportGap(callbackError); }
   };
+  let subscription = null;
   try {
-    return await ParcelWatcher.subscribe(absoluteRoot, callback, options(absoluteRoot, ignore));
+    subscription = await subscribe(absoluteRoot, callback, options(absoluteRoot, ignore));
+    const deadline = now() + probeDeadlineMs;
+    let ready = false;
+    while (!ready && now() < deadline) {
+      if (signal?.aborted) throw cancelled();
+      probePath = join(absoluteRoot, `${PROBE_PREFIX}${randomUUID()}`);
+      transientPaths.add(probePath);
+      const readyProbe = new Promise((resolveReadyPromise, rejectReadyPromise) => { resolveReady = resolveReadyPromise; rejectReady = rejectReadyPromise; });
+      writeProbe(probePath, "");
+      try {
+        await waitForNativeProbe(readyProbe, Math.max(1, Math.min(probeCadenceMs, deadline - now())), signal);
+        ready = true;
+      } catch (error) {
+        if (signal?.aborted || error?.code === "request_cancelled") throw cancelled();
+        if (error?.code !== "watch_probe_timeout" || now() >= deadline) throw error;
+      } finally {
+        try { unlinkProbe(probePath); } catch {}
+        probePath = null;
+        resolveReady = null;
+        rejectReady = null;
+      }
+    }
+    if (!ready) throw Object.assign(new Error("native watcher readiness probe timed out"), { code: "watch_probe_timeout" });
+    return {
+      async unsubscribe() {
+        try { await subscription.unsubscribe(); }
+        finally { transientPaths.clear(); }
+      },
+    };
   } catch (error) {
-    onGap(error);
+    reportGap(error);
+    if (subscription) await subscription.unsubscribe();
     throw error;
+  } finally {
+    if (probePath) try { unlinkProbe(probePath); } catch {}
   }
 }
 

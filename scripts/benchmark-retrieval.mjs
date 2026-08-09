@@ -39,7 +39,8 @@ import { buildGraphGeneration, readGeneration, graphNeighbors, queryGraph } from
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");
 const CORPUS_PATH = join(REPO_ROOT, "evals", "retrieval-corpus", "corpus.v1.json");
-const REPORT_DIR = join(REPO_ROOT, "evals", "retrieval-corpus", "reports");
+export function resolveReportDir(value = process.env.CORTEX_RETRIEVAL_REPORT_DIR) { return resolve(value || join(REPO_ROOT, "evals", "retrieval-corpus", "reports")); }
+const REPORT_DIR = resolveReportDir();
 const FIXTURES_ROOT = join(REPO_ROOT, "evals", "fixture-repos");
 
 const STRATEGIES = ["lexical", "graph", "hybrid"];
@@ -431,7 +432,4 @@ function printHumanSummary(report) {
   console.log(`report: ${REPORT_DIR}/latest.json`);
 }
 
-run().catch((error) => {
-  console.error("benchmark failed:", error?.stack ?? error?.message ?? error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) run().catch((error) => { console.error("benchmark failed:", error?.stack ?? error?.message ?? error); process.exitCode = 1; });

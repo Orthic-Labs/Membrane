@@ -14,6 +14,9 @@ importers:
       '@parcel/watcher':
         specifier: 2.6.0
         version: 2.6.0
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
       hash-wasm:
         specifier: 4.12.0
         version: 4.12.0

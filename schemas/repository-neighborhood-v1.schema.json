@@ -11,12 +11,85 @@
     "repoRoot": { "type": ["string", "null"] },
     "generationId": { "type": ["string", "null"] },
     "receiptId": { "type": ["string", "null"] },
-    "anchors": { "type": "array", "items": { "type": "object", "required": ["path", "symbol", "protected"] } },
-    "neurons": { "type": "array", "items": { "type": "object", "required": ["id", "kind", "path", "span", "score"] } },
-    "synapses": { "type": "array", "items": { "type": "object", "required": ["id", "kind", "source", "target", "confidenceTier", "resolved"] } },
-    "circuits": { "type": "array", "items": { "type": "object", "required": ["name", "neuronIds"] } },
-    "bounds": { "type": "object", "required": ["budgetTokens", "usedTokens", "maxHops"] },
-    "omissions": { "type": "array", "items": { "type": "object", "required": ["reason", "count", "recovery"] } }
+    "anchors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "symbol", "protected"],
+        "properties": {
+          "path": { "type": "string" },
+          "symbol": { "type": ["string", "null"] },
+          "protected": { "type": "boolean" },
+          "exact": { "type": "boolean" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "neurons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "path", "span", "score"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string" },
+          "path": { "type": "string" },
+          "span": { "type": ["array", "object", "null"], "items": { "type": "integer" } },
+          "score": { "type": "number" },
+          "name": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "synapses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "source", "target", "confidenceTier", "resolved"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "type": "string" },
+          "source": { "type": "string" },
+          "target": { "type": ["string", "null"] },
+          "confidenceTier": { "type": "string" },
+          "resolved": { "type": "boolean" },
+          "provider": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "circuits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "neuronIds"],
+        "properties": {
+          "name": { "type": "string" },
+          "neuronIds": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "required": ["budgetTokens", "usedTokens", "maxHops"],
+      "properties": {
+        "budgetTokens": { "type": "integer", "minimum": 0 },
+        "usedTokens": { "type": "integer", "minimum": 0 },
+        "maxHops": { "type": "integer", "minimum": 0 },
+        "maxNodes": { "type": "integer", "minimum": 0 },
+        "maxEdges": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "omissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reason", "count", "recovery"],
+        "properties": {
+          "reason": { "type": "string" },
+          "count": { "type": "integer", "minimum": 0 },
+          "recovery": { "type": "string" }
+        }
+      }
+    }
   },
   "additionalProperties": true
 }

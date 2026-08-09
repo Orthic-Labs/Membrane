@@ -21,7 +21,11 @@ import {
   searchSimilar,
   searchGenerationSymbols,
   countVectors,
+  saveGeneration,
+  loadGeneration,
+  hydrateNodesByIds,
 } from "../graph/store-sqlite.mjs";
+import { computeGenerationId } from "../graph/generation-identity.mjs";
 
 function sampleGeneration() {
   return {
@@ -62,7 +66,7 @@ test("openStore creates schema and migrate() is idempotent", () => {
   try {
     assert.equal(getSchemaVersion(db), SCHEMA_VERSION);
     const before = countRows(db);
-    assert.deepEqual(before, { files: 0, symbols: 0, edges: 0 });
+    assert.deepEqual(before, { files: 0, symbols: 0, annotations: 0, edges: 0 });
     // Re-running migrate must not throw and must not change the version.
     const version = migrate(db);
     assert.equal(version, SCHEMA_VERSION);
@@ -70,6 +74,7 @@ test("openStore creates schema and migrate() is idempotent", () => {
     assert.match(search.sql, /VIRTUAL TABLE symbol_search USING fts5\(id UNINDEXED, generation_id UNINDEXED, name, qualified_name, path\)/);
     const terms = db.prepare("SELECT sql FROM sqlite_master WHERE name='symbol_terms'").get();
     assert.match(terms.sql, /CREATE TABLE symbol_terms/);
+    assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='node_provider'").get());
   } finally {
     closeStore(db);
   }
@@ -86,7 +91,7 @@ test("bulk insert in a transaction round-trips files/symbols/edges exactly", () 
     assert.equal(result.edgeCount, 4);
 
     const counts = countRows(db);
-    assert.deepEqual(counts, { files: 4, symbols: 2, edges: 4 });
+    assert.deepEqual(counts, { files: 4, symbols: 2, annotations: 0, edges: 4 });
 
     const fileRow = getFile(db, "a.ts");
     assert.equal(fileRow.content_hash, "h-a");
@@ -120,7 +125,92 @@ test("bulk insert in a transaction round-trips files/symbols/edges exactly", () 
   }
 });
 
-test("bulkInsertGeneration mode:'replace' (default) clears prior rows; mode:'append' does not", () => {
+test("annotation and dense-node migrations upgrade prior schemas", () => {
+  const db = openStore(":memory:", { upToVersion: SCHEMA_VERSION - 3 });
+  try {
+    assert.equal(getSchemaVersion(db), SCHEMA_VERSION - 3);
+    assert.equal(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='annotation_nodes'").get(), undefined);
+    assert.equal(migrate(db, { upToVersion: SCHEMA_VERSION - 2 }), SCHEMA_VERSION - 2);
+    assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='annotation_nodes'").get());
+    assert.equal(db.prepare("PRAGMA table_info(files)").all().some((column) => column.name === "node_ordinal"), false);
+    assert.equal(migrate(db), SCHEMA_VERSION);
+    assert.ok(db.prepare("PRAGMA table_info(files)").all().some((column) => column.name === "node_ordinal"));
+    assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='provider_ranks'").get());
+  } finally {
+    closeStore(db);
+  }
+});
+
+test("annotation nodes round-trip full payload in ordinal order outside symbols", () => {
+  const db = openStore(":memory:");
+  const annotations = [
+    { id: "comment:a.ts:1", kind: "comment", labels: ["Comment"], name: null, qualifiedName: null, path: "a.ts", confidence: 0.5, evidence: null, text: null, provider: null, factProvider: null },
+    { id: "comment:a.ts:2", kind: "comment", labels: ["Comment"], name: null, qualifiedName: null, path: "a.ts", confidence: 1, evidence: [{ path: "a.ts", startLine: 4, endLine: 4, contentHash: "h-a" }], text: "// retained", provider: { id: "cortex-treesitter" } },
+  ];
+  const generation = { ...sampleGeneration(), manifest: { generationId: "gen-comments" }, nodes: [...sampleGeneration().nodes, ...annotations] };
+  try {
+    const summary = saveGeneration(db, generation, { populateState: true });
+    assert.deepEqual({ files: summary.fileCount, symbols: summary.symbolCount, annotations: summary.annotationCount }, { files: 4, symbols: 2, annotations: 2 });
+    assert.deepEqual(countRows(db), { files: 4, symbols: 2, annotations: 2, edges: 4 });
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM symbols WHERE id LIKE 'comment:%'").get().n, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM fact_owner WHERE fact_id LIKE 'comment:%'").get().n, 2);
+    assert.equal(loadGeneration(db).manifest.generationId, "gen-comments");
+    assert.deepEqual(loadGeneration(db).nodes, generation.nodes);
+    assert.deepEqual(hydrateNodesByIds(db, annotations.map((node) => node.id).reverse()), annotations);
+    saveGeneration(db, { ...generation, nodes: sampleGeneration().nodes }, { populateState: true });
+    assert.equal(countRows(db).annotations, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM fact_owner WHERE fact_id LIKE 'comment:%'").get().n, 0);
+  } finally {
+    closeStore(db);
+  }
+});
+
+test("interleaved symbols and annotations retain node order and generation identity", () => {
+  const db = openStore(":memory:");
+  const first = symNode("a.ts", "first", ["Function"]);
+  const comment = { id: "comment:a.ts:1", kind: "comment", labels: ["Comment"], name: null, qualifiedName: null, path: "a.ts", confidence: 1, evidence: [], text: "// between" };
+  const second = symNode("a.ts", "second", ["Function"]);
+  const nodes = [fileNode("a.ts", "h-a"), first, comment, second];
+  const sourceHash = "source-order";
+  const generation = { manifest: { generationId: computeGenerationId(nodes, [], sourceHash) }, nodes, edges: [] };
+  try {
+    saveGeneration(db, generation);
+    const loaded = loadGeneration(db);
+    assert.deepEqual(loaded.nodes, nodes);
+    assert.deepEqual(hydrateNodesByIds(db, nodes.map((node) => node.id).reverse()), nodes);
+    assert.equal(computeGenerationId(loaded.nodes, loaded.edges, sourceHash), generation.manifest.generationId);
+  } finally {
+    closeStore(db);
+  }
+});
+
+test("save/load/hydrate preserve arbitrary dense interleave across every node table", () => {
+  const db = openStore(":memory:");
+  const a = { ...fileNode("a.ts", "h-a"), factProvider: { id: "lexical", version: "test" } };
+  const b = { ...fileNode("b.ts", "h-b"), factProvider: { id: "custom", version: "test" } };
+  const symbol = { ...symNode("a.ts", "alpha", ["Function"]), factProvider: { id: "lexical", version: "test" } };
+  const comment = { id: "comment:a.ts:1", kind: "comment", labels: ["Comment"], name: null, qualifiedName: null, path: "a.ts", confidence: 1, evidence: [], text: "// exact", factProvider: { id: "treesitter", version: "test" } };
+  const nodes = [comment, b, symbol, a];
+  try {
+    saveGeneration(db, { manifest: { generationId: "gen-dense-union" }, nodes, edges: [] });
+    assert.deepEqual(loadGeneration(db).nodes, nodes);
+    assert.deepEqual(hydrateNodesByIds(db, [...nodes].reverse().map((node) => node.id)), nodes);
+    assert.deepEqual(db.prepare("SELECT node_ordinal FROM files UNION ALL SELECT node_ordinal FROM symbols UNION ALL SELECT node_ordinal FROM annotation_nodes ORDER BY node_ordinal").all().map((row) => row.node_ordinal), [0, 1, 2, 3]);
+    assert.deepEqual(db.prepare("SELECT provider_id, rank FROM provider_ranks ORDER BY rank").all().map((row) => ({ ...row })), [{ provider_id: "lexical", rank: 0 }, { provider_id: "treesitter", rank: 1 }, { provider_id: "doctruth", rank: 2 }, { provider_id: "custom", rank: 3 }]);
+    assert.deepEqual(db.prepare("SELECT node_id, provider_id, source_path FROM node_provider ORDER BY node_id").all().map((row) => ({ ...row })), [
+      { node_id: "comment:a.ts:1", provider_id: "treesitter", source_path: "a.ts" },
+      { node_id: "file:a.ts", provider_id: "lexical", source_path: "a.ts" },
+      { node_id: "file:b.ts", provider_id: "custom", source_path: "b.ts" },
+      { node_id: "symbol:a.ts::alpha", provider_id: "lexical", source_path: "a.ts" },
+    ]);
+    saveGeneration(db, { manifest: { generationId: "gen-provider-removed" }, nodes: [a], edges: [] });
+    assert.deepEqual(db.prepare("SELECT provider_id, rank FROM provider_ranks ORDER BY rank").all().map((row) => ({ ...row })), [{ provider_id: "lexical", rank: 0 }, { provider_id: "treesitter", rank: 1 }, { provider_id: "doctruth", rank: 2 }]);
+  } finally {
+    closeStore(db);
+  }
+});
+
+test("bulkInsertGeneration rejects append before mutating the single-current store", () => {
   const db = openStore(":memory:");
   try {
     bulkInsertGeneration(db, sampleGeneration(), { generationId: "gen-1" });
@@ -133,13 +223,26 @@ test("bulkInsertGeneration mode:'replace' (default) clears prior rows; mode:'app
     assert.equal(counts.files, 4, "replace mode must not accumulate duplicate rows across generations");
     assert.equal(getFile(db, "a.ts").generation_id, "gen-2");
 
-    // append mode with disjoint ids DOES accumulate.
+    const before = db.prepare("SELECT path, generation_id FROM files ORDER BY path").all();
     const extra = { nodes: [fileNode("e.ts", "h-e")], edges: [], fileReports: [] };
-    bulkInsertGeneration(db, extra, { generationId: "gen-2", mode: "append" });
-    assert.equal(countRows(db).files, 5);
+    assert.throws(() => bulkInsertGeneration(db, extra, { generationId: "gen-2", mode: "append" }), (error) => error.code === "store_append_unsupported");
+    assert.deepEqual(db.prepare("SELECT path, generation_id FROM files ORDER BY path").all(), before);
   } finally {
     closeStore(db);
   }
+});
+
+test("saveGeneration rejects append and cross-table duplicate node IDs atomically", () => {
+  const db = openStore(":memory:");
+  try {
+    saveGeneration(db, sampleGeneration());
+    const before = JSON.stringify(loadGeneration(db));
+    assert.throws(() => saveGeneration(db, { nodes: [fileNode("z.ts", "z")], edges: [] }, { mode: "append" }), (error) => error.code === "store_append_unsupported");
+    const duplicate = { id: "same", kind: "comment", labels: [], name: null, qualifiedName: null, path: "a.ts", confidence: 1, evidence: [] };
+    assert.throws(() => saveGeneration(db, { manifest: { generationId: "bad" }, nodes: [{ ...fileNode("a.ts", "h"), id: "same" }, duplicate], edges: [] }), (error) => error.code === "duplicate_node_id");
+    assert.throws(() => saveGeneration(db, { manifest: { generationId: "bad-path" }, nodes: [fileNode("same.ts", "1"), { ...fileNode("same.ts", "2"), id: "file:other" }], edges: [] }), (error) => error.code === "path_normalization_collision");
+    assert.equal(JSON.stringify(loadGeneration(db)), before);
+  } finally { closeStore(db); }
 });
 
 test("indexes exist on edges(source), edges(target), edges(kind)", () => {
@@ -339,7 +442,7 @@ test("store is regenerable: a fresh openStore on a new file has zero rows until 
   const dbPath = join(dir, "graph.sqlite");
   try {
     const db = openStore(dbPath);
-    assert.deepEqual(countRows(db), { files: 0, symbols: 0, edges: 0 });
+    assert.deepEqual(countRows(db), { files: 0, symbols: 0, annotations: 0, edges: 0 });
     bulkInsertGeneration(db, sampleGeneration());
     assert.equal(countRows(db).files, 4);
     closeStore(db);

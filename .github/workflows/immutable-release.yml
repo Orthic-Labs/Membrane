@@ -1,0 +1,354 @@
+name: immutable-release
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (vX.Y.Z)'
+        required: true
+      dry_run:
+        description: 'Run all gates but do not publish or sign'
+        required: false
+        default: 'false'
+      rehearsal_run_id:
+        description: 'Successful immutable dry-run workflow run ID required for promotion'
+        required: false
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      dry_run:
+        required: false
+        default: 'false'
+        type: string
+      rehearsal_run_id:
+        required: false
+        type: string
+    secrets:
+      APPLE_TEAM_ID: { required: false }
+      APPLE_DEVELOPER_ID_APPLICATION: { required: false }
+      APPLE_DEVELOPER_ID_INSTALLER: { required: false }
+      APPLE_NOTARY_KEY_ID: { required: false }
+      APPLE_NOTARY_ISSUER_ID: { required: false }
+      APPLE_NOTARY_KEY_P8_BASE64: { required: false }
+      AZURE_CLIENT_ID: { required: false }
+      AZURE_TENANT_ID: { required: false }
+      AZURE_SUBSCRIPTION_ID: { required: false }
+      UPDATE_SIGNING_KEY_PEM: { required: false }
+
+# D53: a release cannot bypass any required gate. This workflow is the
+# authoritative gate chain: tests, qualification (schema + security +
+# hardening), package, signing (Apple + Azure), notarization, SBOM,
+# provenance (attest + OIDC), clean-host install→init→query→MCP→update→
+# rollback→uninstall, update + rollback contract, and uninstall proof.
+# The dry-run path runs every uncredentialed gate but does not sign, attest, or publish, so a
+# rehearsal can prove the chain end-to-end before a real release.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:all
+  qualification:
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node --test tests/contracts-v1.test.mjs
+      - run: node --test "tests/security/**/*.test.mjs" tests/mcp-root-confinement.test.mjs tests/plugin-boundary.test.mjs tests/support-bundle-redaction.test.mjs
+      - run: node --test tests/store-migrations.test.mjs tests/store-rollback.test.mjs tests/performance-envelopes.test.mjs tests/cross-platform-paths.test.mjs
+      - run: node --test tests/soak-contract.test.mjs tests/daemon-recovery.test.mjs tests/freshness-regressions.test.mjs
+      - run: node scripts/ci/check-network-boundary.mjs
+  package:
+    needs: [qualification]
+    outputs:
+      tarball: ${{ steps.tarball.outputs.path }}
+      tarball_sha256: ${{ steps.tarball.outputs.sha256 }}
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      UPDATE_SIGNING_KEY_PEM: ${{ secrets.UPDATE_SIGNING_KEY_PEM }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/test-package.mjs
+      - run: node scripts/release/build-candidate.mjs --version "${{ inputs.version }}" --platform current --out "release/candidates/ubuntu"
+      - run: node scripts/release/check-release.mjs release/candidates/ubuntu
+      - id: tarball
+        shell: bash
+        run: |
+          TARBALL="release/candidates/ubuntu/$(node -e 'const c=require("./release/candidates/ubuntu/compatibility.json");process.stdout.write(c.packageName.replace(/^@/, "").replace("/", "-")+"-"+c.version+".tgz")')"
+          test -f "$TARBALL"
+          echo "path=$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$TARBALL" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - name: Sign update manifest
+        if: ${{ env.UPDATE_SIGNING_KEY_PEM != '' }}
+        run: node scripts/release/sign-update-manifest.mjs --manifest release/candidates/ubuntu/update-manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cortex-candidate
+          path: release/candidates/ubuntu
+  verify-dry-run-receipt:
+    needs: [package]
+    if: ${{ inputs.dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Verify prior dry-run receipt is candidate-bound
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ inputs.rehearsal_run_id }}
+          VERSION: ${{ inputs.version }}
+          TARBALL_SHA256: ${{ needs.package.outputs.tarball_sha256 }}
+        run: |
+          case "$RUN" in ''|*[!0-9]*) echo 'missing_or_invalid_rehearsal_run_id'; exit 1;; esac
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN" > "$RUNNER_TEMP/run.json"
+          node -e 'const r=require(process.env.RUNNER_TEMP+"/run.json"); if(r.name!=="immutable-release"||r.conclusion!=="success"||r.head_sha!==process.env.GITHUB_SHA) process.exit(1)'
+          gh run download "$RUN" --repo "$GITHUB_REPOSITORY" --name cortex-clean-host-receipt --dir "$RUNNER_TEMP/rehearsal"
+          node -e 'const r=require(process.env.RUNNER_TEMP+"/rehearsal/receipt.json"); if(!r.dryRun||!r.rollbackPassed||r.commit!==process.env.GITHUB_SHA||r.version!==process.env.VERSION.replace(/^v/,"")||r.tarballSha256!==process.env.TARBALL_SHA256) process.exit(1)'
+  macos-sign-and-notarize:
+    needs: [package, verify-dry-run-receipt]
+    if: ${{ inputs.dry_run != 'true' }}
+    runs-on: macos-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/release/stage-runtime.mjs --out "${{ runner.temp }}/cortex-runtime"
+      - name: Sign and notarize
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_DEVELOPER_ID_INSTALLER: ${{ secrets.APPLE_DEVELOPER_ID_INSTALLER }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
+        run: |
+          cd release/macos
+          bash ../../scripts/release/macos/sign-and-package.sh "${{ runner.temp }}/cortex-runtime"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cortex-macos-signed
+          path: release/macos/Cortex-*.pkg
+  windows-sign:
+    needs: [package, verify-dry-run-receipt]
+    if: ${{ inputs.dry_run != 'true' }}
+    runs-on: windows-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/release/stage-runtime.mjs --out "${{ runner.temp }}/cortex-runtime"
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ runner.temp }}\cortex-runtime
+          files-folder-filter: exe,dll
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - run: pwsh -File scripts/release/windows/build-installer.ps1 -Staging "${{ runner.temp }}\cortex-runtime" -OutDir "${{ runner.temp }}"
+      - run: pwsh -File scripts/release/windows/verify-signatures.ps1 -Root "${{ runner.temp }}\cortex-runtime"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cortex-windows-signed
+          path: ${{ runner.temp }}\Cortex-*.exe
+  native-clean-host-owner-gate:
+    needs: [macos-sign-and-notarize, windows-sign]
+    if: ${{ inputs.dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Download rehearsal receipts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ inputs.rehearsal_run_id }}" --repo "$GITHUB_REPOSITORY" --name cortex-macos-clean-host-receipt --dir "$RUNNER_TEMP/rehearsal/macos"
+          gh run download "${{ inputs.rehearsal_run_id }}" --repo "$GITHUB_REPOSITORY" --name cortex-windows-clean-host-receipt --dir "$RUNNER_TEMP/rehearsal/windows"
+      - name: Verify signed-native receipts against catalog
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node scripts/release/verify-native-receipt.mjs --receipt "$RUNNER_TEMP/rehearsal/macos/receipt.json" --catalog release/catalog.json --version "${VERSION#v}"
+          node scripts/release/verify-native-receipt.mjs --receipt "$RUNNER_TEMP/rehearsal/windows/receipt.json" --catalog release/catalog.json --version "${VERSION#v}"
+  sbom:
+    needs: [package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: cortex-candidate
+          path: release/candidates/ubuntu
+      - run: node scripts/release/check-release.mjs release/candidates/ubuntu
+      - run: test "$(sha256sum "${{ needs.package.outputs.tarball }}" | cut -d' ' -f1)" = "${{ needs.package.outputs.tarball_sha256 }}"
+      - run: node scripts/release/sbom.mjs release/candidates/ubuntu > "$RUNNER_TEMP/SBOM.spdx.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cortex-sbom
+          path: ${{ runner.temp }}/SBOM.spdx.json
+  provenance:
+    needs: [package, macos-sign-and-notarize, windows-sign, sbom, native-clean-host-owner-gate]
+    if: ${{ inputs.dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: cortex-candidate
+          path: release/candidates/ubuntu
+      - uses: actions/download-artifact@v4
+        with:
+          name: cortex-sbom
+          path: ${{ runner.temp }}/cortex-sbom
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.dry_run != 'true' }}
+        with:
+          name: cortex-macos-signed
+          path: release/macos
+      - uses: actions/download-artifact@v4
+        if: ${{ inputs.dry_run != 'true' }}
+        with:
+          name: cortex-windows-signed
+          path: release/windows
+      - name: Reverify candidate binding
+        run: |
+          node scripts/release/check-release.mjs release/candidates/ubuntu
+          test "$(sha256sum "${{ needs.package.outputs.tarball }}" | cut -d' ' -f1)" = "${{ needs.package.outputs.tarball_sha256 }}"
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ needs.package.outputs.tarball }}
+          predicate-type: "https://slsa.dev/provenance/v1"
+      - name: Attest SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ runner.temp }}/cortex-sbom/SBOM.spdx.json
+          predicate-type: "https://slsa.dev/provenance/v1"
+  clean-host-install:
+    needs: [package, sbom]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: cortex-candidate
+          path: release/candidates/ubuntu
+      # Rehearsal: install → init → query → MCP → update → rollback → uninstall
+      # on a fresh VM. A dry-run rehearsal is required before any real
+      # release is tagged as immutable.
+      - run: node scripts/release/clean-host-smoke.mjs --candidate release/candidates/ubuntu > "$RUNNER_TEMP/clean-host-report.json"
+      - name: Bind clean-host receipt to candidate
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          TARBALL_SHA256: ${{ needs.package.outputs.tarball_sha256 }}
+        run: |
+          node -e 'const fs=require("fs"); const r=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/clean-host-report.json")); const c=require("./release/candidates/ubuntu/compatibility.json"); if(!r.ok||!r.stages.rollback) process.exit(1); fs.writeFileSync(process.env.RUNNER_TEMP+"/receipt.json",JSON.stringify({schemaVersion:1,dryRun:process.env.DRY_RUN==="true",rollbackPassed:true,version:c.version,commit:c.commit,tarballSha256:process.env.TARBALL_SHA256})+"\n")'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cortex-clean-host-receipt
+          path: ${{ runner.temp }}/receipt.json
+  publish-npm:
+    needs: [package, clean-host-install, provenance]
+    if: ${{ inputs.dry_run != 'true' }}
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: cortex-candidate
+          path: release/candidates/ubuntu
+      - name: Reverify candidate binding
+        run: |
+          node scripts/release/check-release.mjs release/candidates/ubuntu
+          test "$(sha256sum "${{ needs.package.outputs.tarball }}" | cut -d' ' -f1)" = "${{ needs.package.outputs.tarball_sha256 }}"
+      - run: npm publish "${{ needs.package.outputs.tarball }}" --provenance --access public

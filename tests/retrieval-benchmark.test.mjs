@@ -10,21 +10,28 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { resolveReportDir } from "../scripts/benchmark-retrieval.mjs";
 
 const HERE = join(import.meta.dirname, "..");
 const CORPUS = join(HERE, "evals/retrieval-corpus/corpus.v1.json");
 const SCRIPT = join(HERE, "scripts/benchmark-retrieval.mjs");
+const REPORT_DIR = mkdtempSync(join(tmpdir(), "cortex-retrieval-benchmark-"));
+
+test.after(() => rmSync(REPORT_DIR, { recursive: true, force: true }));
 
 function runBenchmark() {
-  const proc = execFileSync(process.execPath, [SCRIPT], { encoding: "utf8", timeout: 600000 });
-  const latestPath = join(HERE, "evals/retrieval-corpus/reports/latest.json");
+  const proc = execFileSync(process.execPath, [SCRIPT], { encoding: "utf8", timeout: 600000, env: { ...process.env, CORTEX_RETRIEVAL_REPORT_DIR: REPORT_DIR } });
+  const latestPath = join(REPORT_DIR, "latest.json");
   assert.ok(existsSync(latestPath), `expected ${latestPath} to be written`);
   const report = JSON.parse(readFileSync(latestPath, "utf8"));
   return { stdout: proc, report };
 }
+
+test("empty report directory resolves to default", () => assert.equal(resolveReportDir(""), join(HERE, "evals/retrieval-corpus/reports")));
 
 test("corpus is loaded, has at least 20 cases, and includes the no-gold class", () => {
   const corpus = JSON.parse(readFileSync(CORPUS, "utf8"));

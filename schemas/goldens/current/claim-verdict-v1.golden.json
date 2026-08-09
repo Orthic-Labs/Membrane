@@ -1,0 +1,19 @@
+{
+  "claimId": "claim-01",
+  "verdict": "verified",
+  "generationId": "xxh128:2fd5ec67fb43606ccc985aa3d1fcb1d7",
+  "documentFingerprint": "xxh128:84253d3cf9e40f522a8cd67f3",
+  "codeFingerprints": ["xxh128:6d86466e139dfe62e59d46506f35dc4c"],
+  "evidence": [
+    {
+      "path": "src/service.ts",
+      "startLine": 6,
+      "endLine": 9,
+      "contentHash": "xxh128:6d86466e139dfe62e59d46506f35dc4c"
+    }
+  ],
+  "confidence": 0.9,
+  "details": {},
+  "properties": {},
+  "extensions": {}
+}

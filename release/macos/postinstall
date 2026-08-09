@@ -1,0 +1,4 @@
+#!/bin/sh
+# D17: postinstall — the package install must NOT enroll repositories or
+# install host hooks without a later explicit `cortex init`.
+exit 0

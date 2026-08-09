@@ -23,7 +23,8 @@ test("doctor reports PR11 operational checks and ordinary deltas do not rebuild"
     const firstPayload = JSON.parse(first.stdout);
     assert.equal(firstPayload.telemetry.full_rebuilds, 1);
     assert.equal(firstPayload.telemetry.deltas_applied, 0);
-    assert.equal(firstPayload.operational.mcpHandshake.ready, true);
+    const { mcpHandshake } = firstPayload.operational;
+    assert.equal(mcpHandshake.ready, true, JSON.stringify({ timedOut: mcpHandshake.timedOut, exitCode: mcpHandshake.exitCode }));
     assert.equal(firstPayload.operational.receiptTable, true);
     assert.ok(firstPayload.reasons.some((reason) => reason.code === "snapshot_presence"));
     assert.ok(firstPayload.reasons.some((reason) => reason.code === "grant_key_presence"));

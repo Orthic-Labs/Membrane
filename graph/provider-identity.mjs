@@ -28,3 +28,17 @@ export const TREESITTER_PROVIDER = {
   license: "workspace-owned",
   precisionTier: PRECISION_TIERS.AST,
 };
+
+export const providerAliases = Object.freeze({
+  "cortex-static": "lexical",
+  lexical: "lexical",
+  "cortex-treesitter": "treesitter",
+  treesitter: "treesitter",
+  "cortex-scip": "scip",
+  scip: "scip",
+});
+
+export function canonicalProviderId(id) {
+  const value = String(id ?? "");
+  return providerAliases[value] ?? value;
+}

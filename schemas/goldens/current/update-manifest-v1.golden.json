@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "channel": "stable",
+  "version": "0.2.0",
+  "commit": "fe1c4cbecf7a7e20ba50d47f6b913c6fe23d19e4",
+  "publishedAt": "2026-08-05T10:10:02.050Z",
+  "artifacts": [
+    {
+      "name": "cortex-linux-x64.tar.gz",
+      "platform": "linux",
+      "arch": "x64",
+      "sha256": "deadbeef",
+      "size": 1024,
+      "signed": false,
+      "sbom": "SBOM.spdx.json"
+    }
+  ],
+  "signatureAlgorithm": "Ed25519",
+  "keyId": "release-1",
+  "signature": "sig-01",
+  "details": {},
+  "properties": {},
+  "extensions": {}
+}

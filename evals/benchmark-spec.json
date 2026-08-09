@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "metrics": ["exact_correctness", "partial_correctness", "no_answer_abstention", "precision_by_edge_kind", "recall_by_edge_kind", "mrr", "ndcg", "false_confidence", "stale_answer", "latency_ms", "rss_bytes", "db_size_bytes", "mcp_bytes", "mcp_tokens", "truncation_receipts", "setup_success"],
+  "repoClasses": ["small", "medium", "large", "very-large"],
+  "tasks": [
+    { "id": "search-symbol", "repoClass": "small", "kind": "search" },
+    { "id": "callers", "repoClass": "small", "kind": "callers" },
+    { "id": "dependency-path", "repoClass": "medium", "kind": "dependency_path" },
+    { "id": "impact-tests", "repoClass": "medium", "kind": "impact_tests" },
+    { "id": "route-path", "repoClass": "medium", "kind": "route_path" },
+    { "id": "doc-verification", "repoClass": "small", "kind": "doc_verification" },
+    { "id": "stale-docs", "repoClass": "small", "kind": "stale_docs" },
+    { "id": "architecture-violation", "repoClass": "large", "kind": "architecture_violation" },
+    { "id": "no-gold", "repoClass": "small", "kind": "no_gold" },
+    { "id": "dynamic-ambiguity", "repoClass": "medium", "kind": "dynamic_ambiguity" },
+    { "id": "dirty-overlay", "repoClass": "medium", "kind": "dirty_overlay" },
+    { "id": "federation", "repoClass": "large", "kind": "federation" }
+  ]
+}

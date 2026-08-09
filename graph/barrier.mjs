@@ -24,29 +24,38 @@ function watcherAlive(pid) {
 }
 
 function sleep(ms) { return new Promise((resolvePromise) => setTimeout(resolvePromise, ms)); }
+function cancelled() { return Object.assign(new Error("request cancelled"), { code: "request_cancelled" }); }
+function throwIfAborted(signal) { if (signal?.aborted) throw cancelled(); }
 
-async function bounded(promise, timeoutMs) {
+async function bounded(promise, timeoutMs, signal) {
   let timer;
+  let abort;
+  const work = Promise.resolve(promise);
   try {
+    throwIfAborted(signal);
     return await Promise.race([
-      promise,
+      work,
       new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error("barrier timeout"), { code: "barrier_timeout" })), timeoutMs); }),
+      new Promise((_, reject) => { abort = () => reject(cancelled()); signal?.addEventListener("abort", abort, { once: true }); }),
     ]);
-  } finally { clearTimeout(timer); }
+  } catch (error) {
+    if (["barrier_timeout", "request_cancelled"].includes(error?.code)) await work.catch(() => {});
+    throw error;
+  } finally { clearTimeout(timer); signal?.removeEventListener("abort", abort); }
 }
 
 /**
  * Bring structural graph state to the current source tree, then issue a
  * durable receipt. `db` must be a writable graph store connection.
  */
-export async function syncToCurrentSource(db, root, { timeoutMs = 2000, allowDegraded = false, outDir = ".agent" } = {}) {
+export async function syncToCurrentSource(db, root, { timeoutMs = 2000, allowDegraded = false, outDir = ".agent", signal, reconcileFn = reconcile } = {}) {
   const startedMs = Date.now();
   const repoRoot = canonicalRoot(root);
   const initial = state(db);
   const targetClock = Number(initial.source_clock ?? 0);
   let barrierResult = "caught_up";
   let error = null;
-  const runReconcile = () => bounded(reconcile(db, repoRoot, { outDir }), Math.max(1, timeoutMs - (Date.now() - startedMs)));
+  const runReconcile = () => bounded(reconcileFn(db, repoRoot, { outDir, signal }), Math.max(1, timeoutMs - (Date.now() - startedMs)), signal);
 
   try {
     if (initial.event_gap === "1") {
@@ -60,15 +69,17 @@ export async function syncToCurrentSource(db, root, { timeoutMs = 2000, allowDeg
       const current = state(db);
       if (Number(current.applied_clock ?? 0) >= targetClock && current.event_gap !== "1") break;
       if (Date.now() - startedMs >= timeoutMs) { barrierResult = "timeout"; break; }
-      await sleep(Math.min(POLL_MS, Math.max(1, timeoutMs - (Date.now() - startedMs))));
+      await bounded(sleep(Math.min(POLL_MS, Math.max(1, timeoutMs - (Date.now() - startedMs)))), Math.max(1, timeoutMs - (Date.now() - startedMs)), signal);
     }
   } catch (caught) {
     error = caught;
+    if (caught?.code === "request_cancelled") throw caught;
     if (caught?.code === "barrier_timeout") barrierResult = "timeout";
     else if (state(db).event_gap === "1") barrierResult = "gap_blocked";
     else barrierResult = "timeout";
   }
 
+  throwIfAborted(signal);
   const finalState = state(db);
   const envelope = getGenerationEnvelope(db);
   const receipt = {

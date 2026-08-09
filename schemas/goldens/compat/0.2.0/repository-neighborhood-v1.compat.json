@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "kind": "RepositoryNeighborhoodV1",
+  "repoId": "xxh128:abc123def456",
+  "repoRoot": "/canonical/repo",
+  "generationId": "xxh128:2fd5ec67fb43606ccc985aa3d1fcb1d7",
+  "receiptId": "xxh128:cafe01234567890abcdef01234567890abcdef01234567890abcdef01234567890",
+  "anchors": [
+    {
+      "path": "graph/traverse-store.mjs",
+      "symbol": "indexedQueryGeneration",
+      "protected": false,
+      "exact": true,
+      "reason": "query_match"
+    }
+  ],
+  "neurons": [
+    {
+      "id": "symbol:graph/traverse-store.mjs:indexedQueryGeneration",
+      "kind": "symbol",
+      "path": "graph/traverse-store.mjs",
+      "span": { "startLine": 10, "endLine": 40 },
+      "score": 0.95,
+      "name": "indexedQueryGeneration"
+    }
+  ],
+  "synapses": [
+    {
+      "id": "e1",
+      "kind": "CONTAINS",
+      "source": "file:graph/traverse-store.mjs",
+      "target": "symbol:graph/traverse-store.mjs:indexedQueryGeneration",
+      "confidenceTier": "EXACT_RESOLUTION",
+      "resolved": true,
+      "provider": "cortex-static"
+    }
+  ],
+  "circuits": [
+    {
+      "name": "query-core",
+      "neuronIds": ["symbol:graph/traverse-store.mjs:indexedQueryGeneration"]
+    }
+  ],
+  "bounds": {
+    "budgetTokens": 2048,
+    "usedTokens": 640,
+    "maxHops": 2,
+    "maxNodes": 40,
+    "maxEdges": 60
+  },
+  "omissions": [],
+  "continuationCursor": null
+}
