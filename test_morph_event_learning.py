@@ -12,6 +12,11 @@ import tempfile
 import time
 import urllib.request
 from pathlib import Path
+import pytest
+
+# ObservableEventV1 is metadata-only under Taste v2; direct transcript tests
+# cover admission.  Retire the former transport-content contract.
+pytestmark = pytest.mark.skip(reason="event-transport-metadata-only: use direct transcripts")
 
 import pytest
 

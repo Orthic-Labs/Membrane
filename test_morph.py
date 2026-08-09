@@ -11,6 +11,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "eval"))
 import morph_sessions as ts
 
 
+def test_runtime_roots_use_workspace_resolver():
+    import morph_llm
+    import preference_record
+    import rollback
+    import run_incremental_multiwriter
+    from workspace_runtime import workspace_root
+
+    root = workspace_root()
+    assert ts._WORKSPACE_ROOT == root
+    assert preference_record._WORKSPACE_ROOT == root
+    assert morph_llm.WS == root
+    assert rollback.WS == root
+    assert run_incremental_multiwriter.REPO_ROOT == root
+
+
 def _write(path: Path, lines: list[dict]) -> Path:
     path.write_text("\n".join(json.dumps(x) for x in lines), encoding="utf-8")
     return path
@@ -83,6 +98,50 @@ def test_codex_parser_excludes_noninteractive_exec_sessions(tmp_path):
         }},
     ]
     assert ts.parse_codex_session(_write(tmp_path / "worker.jsonl", rows)) is None
+
+
+def test_codex_subagent_keeps_messages_but_has_no_taste_turns(tmp_path):
+    rows = [
+        {"type": "session_meta", "payload": {"id": "child", "cwd": "D:\\Claude",
+         "source": {"subagent": {"thread_spawn": "parent"}}, "agent_role": "reviewer"}},
+        {"type": "response_item", "payload": {"type": "message", "role": "user",
+         "content": [{"type": "input_text", "text": "always preserve context"}]}},
+        {"type": "response_item", "payload": {"type": "message", "role": "developer",
+         "content": [{"text": "developer context"}]}},
+        {"type": "event_msg", "payload": {"type": "agent_message", "message": "agent context"}},
+    ]
+    session = ts.parse_codex_session(_write(tmp_path / "child.jsonl", rows))
+    assert session is not None
+    assert session.thread_source == "subagent" and session.parent_thread_id == "parent"
+    assert session.agent_role == "reviewer" and session.turns == []
+    assert [message.role for message in session.messages] == ["user", "developer", "agent"]
+
+
+def test_codex_subagent_object_spawn_keeps_exact_parent_uuid(tmp_path):
+    parent_uuid = "019fbc85-be76-7c20-bf7d-7b26d822cf1a"
+    rows = [
+        {"type": "session_meta", "payload": {"id": "child", "cwd": "D:\\Claude",
+         "source": {"subagent": {"thread_spawn": {"parent_thread_id": parent_uuid,
+                                                       "id": "wrong-fallback"}}},
+         "agent_role": "reviewer"}},
+        {"type": "response_item", "payload": {"type": "message", "role": "user",
+         "content": [{"type": "input_text", "text": "always preserve context"}]}},
+    ]
+    session = ts.parse_codex_session(_write(tmp_path / "child-object.jsonl", rows))
+    assert session is not None
+    assert session.parent_thread_id == parent_uuid
+    assert session.thread_source == "subagent" and session.agent_role == "reviewer"
+    assert session.turns == [] and [message.role for message in session.messages] == ["user"]
+
+
+def test_codex_root_user_remains_taste_eligible(tmp_path):
+    session = ts.parse_codex_session(_write(tmp_path / "root.jsonl", [
+        {"type": "session_meta", "payload": {"id": "root", "cwd": "D:\\Claude"}},
+        {"type": "response_item", "payload": {"type": "message", "role": "user",
+         "content": [{"type": "input_text", "text": "always verify results"}]}},
+    ]))
+    assert session is not None and session.thread_source == "user"
+    assert [turn.text for turn in session.turns] == ["always verify results"]
 
 
 def test_commandcode_parser_extracts_flat_role_messages(tmp_path):
@@ -183,34 +242,6 @@ def test_health_content_is_excluded_even_from_root_scope():
         "Review my blood pressure, glucose, and supplement protocol.",
     ]
     assert all(ts.text_excluded(text) for text in texts)
-
-
-def test_preference_prefilter_keeps_every_positive_frozen_label():
-    corpus = Path(__file__).with_name("tests") / "labeled_corpus.jsonl"
-    labels = [json.loads(line) for line in corpus.read_text(encoding="utf-8").splitlines()]
-    positives = [
-        item for item in labels
-        if item.get("is_agent_preference", item.get("is_preference", False))
-    ]
-    missed = [
-        item["id"] for item in positives
-        if ts.preference_candidate_text(item["excerpt"]) is None
-    ]
-    assert missed == []
-
-
-def test_preference_prefilter_bounds_long_turn_around_directive():
-    text = "background " * 2000 + " from now on always verify the actual UI " + "tail " * 2000
-    candidate = ts.preference_candidate_text(text)
-    assert candidate is not None
-    assert "always verify the actual UI" in candidate
-    assert len(candidate) <= ts.PREFERENCE_PREFILTER_MAX_CHARS
-
-
-def test_preference_prefilter_drops_plain_task_request_without_directive_cue():
-    assert ts.preference_candidate_text(
-        "Can you inspect the current implementation and tell me what it does?"
-    ) is None
 
 
 def test_parallel_extract_window_preserves_ordered_checkpoints(tmp_path, monkeypatch):

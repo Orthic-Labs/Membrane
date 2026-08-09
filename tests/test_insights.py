@@ -75,6 +75,7 @@ def _ev(**kw) -> dict:
         "class": kw.get("classification", "successful_readonly"),
         "projection": "default",
         "host": kw.get("host", "claude_code"),
+        "agentRole": kw.get("agentRole"),
         "sessionId": kw.get("sessionId", "s1"),
         "transcriptId": "t1",
         "parserDigest": "sha256:deadbeef",
@@ -155,6 +156,50 @@ def test_visible_frustration_fires_on_real_fixture():
 def test_visible_frustration_clean():
     cards = insights.detect_visible_frustration(
         [_ev(kind="user_message", text="thanks, that worked")]
+    )
+    assert cards == []
+
+
+# ---------------------------------------------------------------------------
+# 3b. user_swearing
+# ---------------------------------------------------------------------------
+
+def test_user_swearing_fires_with_context():
+    events = [
+        _ev(kind="user_message", text="please wire the parser into the CLI", sequence=1),
+        _ev(kind="assistant_message", text="Done — everything is verified.", sequence=2),
+        _ev(kind="user_message", text="it's still fucking broken, wtf", sequence=3),
+    ]
+    cards = insights.detect_user_swearing(events)
+    assert len(cards) == 1
+    card = cards[0]
+    assert card.detector == "user_swearing"
+    assert card.severity == "high"
+    assert "2x profanity" in card.observedFailure
+    assert "fucking" in card.observedFailure and "wtf" in card.observedFailure
+    # context: preceding assistant turn + the user's original ask
+    assert "assistant_message" in card.likelyMechanism
+    assert "verified" in card.likelyMechanism
+    assert "wire the parser" in card.userExpectation
+
+
+def test_user_swearing_counts_per_message():
+    events = [
+        _ev(kind="user_message", text="fuck. this is wrong", sequence=1),
+        _ev(kind="assistant_message", text="retrying", sequence=2),
+        _ev(kind="user_message", text="fucking hell, same damn error", sequence=3),
+    ]
+    cards = insights.detect_user_swearing(events)
+    assert len(cards) == 2  # session count = number of swearing messages
+
+
+def test_user_swearing_ignores_non_user_events():
+    cards = insights.detect_user_swearing(
+        [
+            _ev(kind="assistant_message", text="the log says 'fucking broken'"),
+            _ev(kind="tool_result", text="grep: fuck matched 3 lines"),
+            _ev(kind="user_message", text="thanks, that worked"),
+        ]
     )
     assert cards == []
 
@@ -472,12 +517,59 @@ def test_tests_that_cannot_fail_clean():
 
 def test_cross_agent_repeats_fires():
     events = [
-        _ev(kind="assistant_message", text="verified", sequence=1),
-        _ev(kind="assistant_message", text="verified", sequence=2),
-        _ev(kind="assistant_message", text="verified", sequence=3),
+        _ev(kind="assistant_message", text="verified", sequence=1, sessionId="s1", host="codex", agentRole="builder"),
+        _ev(kind="assistant_message", text="verified", sequence=2, sessionId="s2", host="claude", agentRole="reviewer"),
     ]
     cards = insights.detect_cross_agent_repeats(events)
     assert len(cards) >= 1
+
+
+def test_report_many_scores_known_sessions_without_overlap_double_count():
+    events = [
+        _ev(kind="assistant_message", text="failure", sequence=1, eventId="same"),
+        _ev(kind="assistant_message", text="failure", sequence=2, eventId="same"),
+    ]
+    cards = [insights._card("one", "high", 0.5, events=events, observed="x"),
+             insights._card("two", "critical", 0.5, events=events, observed="x")]
+    outcome = insights._outcome(events, cards)
+    assert outcome["score"] < 100
+    assert outcome["penalty"] == round(insights._PENALTY_BASES["critical"] * 0.5)
+
+
+def test_role_context_never_becomes_evidence(tmp_path=None):
+    import tempfile
+    path = (tmp_path or Path(tempfile.mkdtemp(prefix="insights-role-"))) / "roles.jsonl"
+    path.write_text("\n".join(json.dumps(row) for row in [
+        {"type": "session_meta", "payload": {"id": "s1", "cwd": "/repo"}},
+        {"type": "response_item", "payload": {"type": "message", "role": "developer", "content": [{"text": "All tests passed."}]}},
+        {"type": "event_msg", "payload": {"type": "agent_message", "message": "verified"}},
+    ]), encoding="utf-8")
+    rep = insights.report_many([path])
+    assert rep["sessionSummaries"][0]["contextEventCount"] == 2
+    assert rep["cards"] == []
+
+
+def test_report_many_uses_session_meta_roles_for_cross_agent_repeat(tmp_path=None):
+    import tempfile
+    root = tmp_path or Path(tempfile.mkdtemp(prefix="insights-meta-"))
+
+    def transcript(path, session_id, role, parent):
+        rows = [
+            {"type": "session_meta", "payload": {"id": session_id, "cwd": "/repo",
+             "agent_role": role, "source": {"subagent": {"thread_spawn": {"parent_thread_id": parent}}}}},
+            {"type": "response_item", "payload": {"type": "message", "role": "assistant",
+             "content": [{"type": "output_text", "text": "verified"}]}},
+        ]
+        path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+
+    first, second = root / "first.jsonl", root / "second.jsonl"
+    transcript(first, "subagent-one", "builder", "root-one")
+    transcript(second, "subagent-two", "reviewer", "root-two")
+    rep = insights.report_many([first, second])
+    assert rep["byDetectorCount"]["cross_agent_repeats"] == 1
+    assert [summary["agentRoles"] for summary in rep["sessionSummaries"]] == [["builder"], ["reviewer"]]
+    assert [summary["sessionIds"] for summary in rep["sessionSummaries"]] == [["subagent-one"], ["subagent-two"]]
+    assert [summary["parentThreadIds"] for summary in rep["sessionSummaries"]] == [["root-one"], ["root-two"]]
 
 
 def test_cross_agent_repeats_clean():

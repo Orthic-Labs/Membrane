@@ -13,7 +13,7 @@
   "properties": {
     "schema_version": {
       "type": "string",
-      "enum": ["1.0.0", "1.1.0", "1.2.0"]
+      "enum": ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]
     },
     "batch_id": {
       "type": "string",
@@ -181,6 +181,19 @@
               }
             },
             "description": "Stable evidence IDs so reviewers can cross-reference specific excerpts without ambiguity."
+          },
+          "evidenceContexts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["sourceEventId", "sourceSessionId", "sourceTranscriptId", "sourceParserDigest", "sourceRowIndex", "sourceSequence", "sourceByteStart", "sourceByteEnd", "contextEvents"],
+              "additionalProperties": false,
+              "properties": {
+                "sourceEventId": {"type": "string"}, "sourceSessionId": {"type": "string"}, "sourceTranscriptId": {"type": "string"}, "sourceParserDigest": {"type": "string"},
+                "sourceRowIndex": {"type": "integer"}, "sourceSequence": {"type": "integer"}, "sourceByteStart": {"type": "integer"}, "sourceByteEnd": {"type": "integer"},
+                "contextEvents": {"type": "array"}
+              }
+            }
           },
           "operation": {
             "type": "string",

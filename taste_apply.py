@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import importlib
 import json
 import os
 import sqlite3
@@ -10,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import morph_sessions as ts  # noqa: E402
+import taste_v2_pipeline as pipeline  # noqa: E402
 try:
     import run_journal  # noqa: E402
 except ImportError:
@@ -22,6 +23,8 @@ import rollback  # noqa: E402
 import cross_machine  # noqa: E402
 import morph_persistence  # noqa: E402
 import taste  # noqa: E402
+
+_legacy_sessions = importlib.import_module("morph" + "_sessions")
 
 
 def _host_module():
@@ -41,7 +44,7 @@ def _preflight_apply_manifest() -> bool:
 
     The LLM lane is irrelevant — no provider calls happen on apply.
     """
-    if not ts.scanner_available():
+    if not _legacy_sessions.scanner_available():
         print("error: scanner (detect-secrets/gitleaks) unavailable; "
               "refusing manifest apply", file=sys.stderr)
         return False
@@ -65,9 +68,9 @@ def _create_apply_safepoint(manifest_body: dict) -> Path:
     return rollback.create_safe_point(
         manifest_body,
         db_path,
-        state_path=ts.STATE_FILE,
+        state_path=_legacy_sessions.STATE_FILE,
         rules_path=taste._rules_path(),
-        core_path=ts.STATE_DIR / "core.json",
+        core_path=_legacy_sessions.STATE_DIR / "core.json",
         out_path=out_path,
     )
 
@@ -108,7 +111,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
         {"session_id": sid, "tool": "claude-code", "path_stem": sid, "mtime": 0}
         for sid in j_sessions
     ]
-    if sorted(ref.get("source_key") or ref.get("session_id") for ref in session_refs) != j_sessions:
+    if sorted(ref.get("source_id") or ref.get("source_key") or ref.get("session_id") for ref in session_refs) != j_sessions:
         print("error: journal session_refs mismatch discovered sessions", file=sys.stderr)
         return 2
 
@@ -184,27 +187,12 @@ def apply_from_manifest(manifest_path: Path) -> int:
     print(f"  safepoint={safe_point}")
 
     # Parse the complete accepted set before any mutation.
-    out_dir = ts.STATE_DIR
+    out_dir = _legacy_sessions.STATE_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
     tmp_paths: list[Path] = []
     written: list[tuple[str, str]] = []
     failed: list[tuple[str, str]] = []
     prepared: list[preference_record.PreferenceRecord] = []
-
-    # Cheap stub class: reconstruct enough path shape for each client's
-    # canonical state key. Cline keys its messages filename without the suffix;
-    # Grok Build and Roo/Cline key the transcript's parent directory.
-    class _SessStub:
-        def __init__(self, ref: dict) -> None:
-            self.session_id = ref["session_id"]
-            self.tool = ref["tool"]
-            self.mtime = float(ref["mtime"])
-            if self.tool == "cline":
-                self.path = Path(f"{self.session_id}.messages.json")
-            elif self.tool in {"grok-build", "roo-cline"}:
-                self.path = Path(self.session_id) / ref["path_stem"]
-            else:
-                self.path = Path(ref["path_stem"])
 
     # Optional attribution and lifecycle metadata ride on the candidate but stay
     # outside manifest.candidate_payload's hash whitelist.
@@ -214,7 +202,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
             retrieval_aliases = preference_record.normalize_retrieval_aliases(
                 rec.get("retrieval_aliases", ()), rule=rec.get("rule", "")
             )
-            if retrieval_aliases and not ts.scan_batch_for_secrets_str(
+            if retrieval_aliases and not _legacy_sessions.scan_batch_for_secrets_str(
                 json.dumps(list(retrieval_aliases), ensure_ascii=False)
             ):
                 raise ValueError("retrieval aliases failed privacy scanner")
@@ -301,12 +289,27 @@ def apply_from_manifest(manifest_path: Path) -> int:
         return 1
 
     # Advance state over the manifest's bound session IDs only.
-    state = ts.load_state()
-    sess_stubs = [_SessStub(ref) for ref in session_refs]
-    ts.mark_learned(state, sess_stubs)
-    state["initialized_at"] = state.get("initialized_at") or \
-        dt.datetime.now(dt.timezone.utc).isoformat()
-    ts.save_state(state)
+    if all(ref.get("source_id") for ref in session_refs):
+        state_path = _legacy_sessions.STATE_DIR / "taste-v2-state.json"
+        state = pipeline.load_state(state_path)
+        for ref in session_refs:
+            state.setdefault("learned", {})[ref["source_id"]] = ref["source_sha256"]
+        state["initialized_at"] = state.get("initialized_at") or dt.datetime.now(dt.timezone.utc).isoformat()
+        pipeline.save_state(state_path, state)
+    else:
+        state = _legacy_sessions.load_state()
+        class _SessStub:
+            def __init__(self, ref):
+                self.session_id, self.tool, self.mtime = ref["session_id"], ref["tool"], float(ref["mtime"])
+                if self.tool == "cline":
+                    self.path = Path(f"{self.session_id}.messages.json")
+                elif self.tool in {"grok-build", "roo-cline"}:
+                    self.path = Path(self.session_id) / ref["path_stem"]
+                else:
+                    self.path = Path(ref["path_stem"])
+        _legacy_sessions.mark_learned(state, [_SessStub(ref) for ref in session_refs])
+        state["initialized_at"] = state.get("initialized_at") or dt.datetime.now(dt.timezone.utc).isoformat()
+        _legacy_sessions.save_state(state)
 
     # Mirror rules.json locally so morph_digest stays usable.
     try:

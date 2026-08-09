@@ -14,7 +14,8 @@ against them, and emits one ``FailureCardV1`` per detected failure mode.
 There is no database, no apply path, no authority grant — detectors write
 to a dict, a caller can hand to a printer, a JSON file, or a CI log.
 
-Detectors implemented (all 18 named in the plan):
+Detectors implemented (the 18 named in the plan, plus one workspace
+addition):
 
     1.  claimed_verified_then_corrected
     2.  repeated_ask
@@ -34,6 +35,8 @@ Detectors implemented (all 18 named in the plan):
    16.  forge_opened_never_closed
    17.  guard_firings
    18.  user_asks_why_missed_or_postmortem
+   19.  user_swearing (workspace addition — explicit profanity is the
+        strongest deterministic frustration signal we have)
 
 Each detector is a pure function that takes the ordered event list and
 returns one or more ``FailureCardV1`` records. They are independent and
@@ -188,6 +191,15 @@ _RE_FRUSTRATION = re.compile(
     r"aren't|doesn't|don't)|ugh|argh|sigh|tired\s+of|wtf|again\??|"
     r"how\s+(?:many\s+times|long)|still\s+not)\b"
 )
+# Explicit profanity in a USER message. Deliberately narrow: only terms the
+# operator actually uses when frustrated. Matched only against
+# ``user_message`` events, so tool output / quoted logs cannot fire it.
+_RE_PROFANITY = re.compile(
+    r"(?im)\b(?:fuck(?:ing|ed|s)?|f\*+(?:ck|king)|wtf|ffs|"
+    r"bullshit|shit(?:ty)?|"
+    r"goddamn(?:it)?|damn(?:it)?|dammit|"
+    r"pissed(?:\s+off)?)\b"
+)
 _RE_NOT_FOUND = re.compile(
     r"(?im)\b(?:ENOENT|no\s+such\s+file|not\s+found|doesn'?t\s+exist|"
     r"could\s+not\s+(?:find|locate)|file\s+not\s+found|"
@@ -289,6 +301,8 @@ _RE_CLOSED = re.compile(
 
 def _evidence(event: dict[str, Any], excerpt_chars: int = 240) -> dict[str, Any]:
     """Build one byte-span evidence entry from a TranscriptEventV1 row."""
+    if event.get("evidenceEligible") is False:
+        return {}
     text = str(event.get("text") or "")
     if len(text) > excerpt_chars:
         text = text[:excerpt_chars] + "…"
@@ -521,6 +535,57 @@ def detect_visible_frustration(events: list[dict[str, Any]]) -> list[FailureCard
                 remediations=[
                     "candidate: ask what specifically the user wanted to see "
                     "before continuing",
+                ],
+                disposition="escalated",
+            )
+        )
+    return cards
+
+
+# ---------------------------------------------------------------------------
+# 3b. user_swearing
+# ---------------------------------------------------------------------------
+
+def detect_user_swearing(events: list[dict[str, Any]]) -> list[FailureCardV1]:
+    """Explicit profanity in a user message — one card per swearing message.
+
+    Count for the session = number of cards this detector returns; the
+    per-message hit count and matched terms are recorded in the card. Each
+    card also carries deterministic context: the nearest preceding user ask
+    (``userExpectation``) and an excerpt of the immediately preceding
+    assistant/tool event (in ``likelyMechanism``), because the swear is a
+    reaction to whatever came right before it.
+    """
+    cards: list[FailureCardV1] = []
+    for index, ev in enumerate(events):
+        if ev.get("kind") != "user_message":
+            continue
+        text = str(ev.get("text") or "")
+        hits = _RE_PROFANITY.findall(text)
+        if not hits:
+            continue
+        terms = sorted({h.lower() for h in hits})
+        preceding = ""
+        for j in range(index - 1, max(-1, index - 4) - 1, -1):
+            prev = events[j]
+            if prev.get("kind") != "user_message" and prev.get("text"):
+                role = str(prev.get("kind") or "event")
+                preceding = f"{role}: {str(prev['text']).strip()[:200]}"
+                break
+        cards.append(
+            _card(
+                "user_swearing",
+                "high",
+                0.9,
+                events=[ev],
+                observed=f"{len(hits)}x profanity ({', '.join(terms)}): "
+                         f"{text[:400]}",
+                user_expectation=_nearest_user_text(events, index),
+                mechanism="candidate: reaction to the immediately preceding "
+                          f"turn — {preceding or 'no preceding event in window'}",
+                remediations=[
+                    "candidate: treat the preceding turn's outcome as "
+                    "rejected; re-read the original ask before continuing",
                 ],
                 disposition="escalated",
             )
@@ -1091,17 +1156,20 @@ def detect_cross_agent_repeats(events: list[dict[str, Any]]) -> list[FailureCard
             seen[key] += 1
             related[key].append(ev)
     for claim, count in seen.items():
-        if count < 3:
+        occurrences = related[claim]
+        session_ids = {str(ev.get("sessionId") or "") for ev in occurrences}
+        identities = {str(ev.get("agentRole") or ev.get("host") or "") for ev in occurrences}
+        if count < 2 or len(session_ids - {""}) < 2 or len(identities - {""}) < 2:
             continue
         cards.append(
             _card(
                 "cross_agent_repeats",
                 "low",
                 0.5,
-                events=related[claim][:5],
+                events=occurrences[:5],
                 observed=(
                     f"the verification phrase '{claim}' was emitted "
-                    f"{count} times across the session"
+                    f"{count} times across {len(session_ids - {''})} sessions"
                 ),
                 mechanism=(
                     "candidate: the same verification phrase is being reused "
@@ -1237,6 +1305,7 @@ ALL_DETECTORS: tuple[tuple[str, Callable[[list[dict[str, Any]]], list[FailureCar
     ("claimed_verified_then_corrected", detect_claimed_verified_then_corrected),
     ("repeated_ask", detect_repeated_ask),
     ("visible_frustration", detect_visible_frustration),
+    ("user_swearing", detect_user_swearing),
     ("verification_claim_without_tool_evidence", detect_verification_claim_without_tool_evidence),
     ("ignored_tool_failure", detect_ignored_tool_failure),
     ("degraded_provider_treated_as_success", detect_degraded_provider_treated_as_success),
@@ -1298,35 +1367,167 @@ def report(
     frozen prefix-receipt path.
     """
     if isinstance(events_or_path, (str, Path)):
-        events = _parse_through_layer(events_or_path)
-    else:
-        events = list(events_or_path)
+        return report_many([events_or_path], detectors=detectors)
+    return _report_sessions([("events", list(events_or_path))], detectors=detectors)
 
-    by_detector = run_detectors(events, detectors=detectors)
-    flat: list[FailureCardV1] = []
-    for cards in by_detector.values():
-        flat.extend(cards)
 
-    # Severity sort + dedup-by-cardId (deterministic anyway).
-    flat.sort(key=lambda c: (SEVERITIES.index(c.severity), c.cardId))
+_PENALTY_BASES = {"info": 2, "low": 5, "medium": 12, "high": 25, "critical": 40}
 
-    counts: dict[str, int] = {
-        slug: len(cards) for slug, cards in by_detector.items()
-    }
-    return {
-        "schema": SCHEMA_VERSION,
-        "honestyLimit": (
-            "Insights detects only observable failure signals in transcripts. "
-            "Cards are heuristic; 'likelyMechanism' and 'suggestedRemediations' "
-            "are candidate inferences, not authoritative diagnoses."
-        ),
-        "eventCount": len(events),
-        "detectorCount": len(by_detector),
-        "cardCount": len(flat),
-        "byDetectorCount": counts,
-        "byDetector": {slug: [dataclasses.asdict(c) for c in cards] for slug, cards in by_detector.items()},
-        "cards": [dataclasses.asdict(c) for c in flat],
-    }
+
+def _terminal_verification(events: list[dict[str, Any]]) -> bool:
+    for index, event in enumerate(events):
+        if event.get("kind") != "assistant_message" or not _RE_VERIFICATION.search(str(event.get("text") or "")):
+            continue
+        session_id = event.get("sessionId")
+        receipt = any(
+            item.get("sessionId") == session_id and item.get("kind") == "tool_result"
+            and item.get("classification") != "unresolved_failure"
+            and not bool((item.get("flags") or {}).get("isError") or (item.get("flags") or {}).get("is_error"))
+            for item in events[max(0, index - 4):index]
+        )
+        if not receipt:
+            continue
+        if any(
+            item.get("sessionId") == session_id and (
+                item.get("classification") == "unresolved_failure" or
+                (item.get("kind") == "user_message" and _RE_CORRECTION.search(str(item.get("text") or "")))
+            ) for item in events[index + 1:]
+        ):
+            continue
+        return True
+    return False
+
+
+def _outcome(events: list[dict[str, Any]], cards: list[FailureCardV1]) -> dict[str, Any]:
+    penalties: dict[str, int] = {}
+    for card in cards:
+        penalty = round(_PENALTY_BASES[card.severity] * card.confidence)
+        for evidence in card.evidence:
+            event_id = str(evidence.get("eventId") or "")
+            if event_id:
+                penalties[event_id] = max(penalties.get(event_id, 0), penalty)
+    total = sum(penalties.values())
+    terminal = _terminal_verification(events)
+    score = max(0, 100 - total) if total > 0 or terminal else None
+    status = "unknown" if score is None else ("failed" if score < 50 else "degraded" if score < 85 else "supported_success" if terminal and not cards else "mixed")
+    return {"score": score, "status": status, "supportedTerminalVerification": terminal,
+            "penalty": total, "evidencePenalty": penalties}
+
+
+def _report_sessions(sessions: list[tuple[str, list[dict[str, Any]]]], *, detectors=None) -> dict[str, Any]:
+    selected = tuple(detectors or ALL_DETECTORS)
+    normal = tuple((slug, fn) for slug, fn in selected if slug != "cross_agent_repeats")
+    by_detector: dict[str, list[FailureCardV1]] = {slug: [] for slug, _ in selected}
+    summaries: list[dict[str, Any]] = []
+    all_events: list[dict[str, Any]] = []
+    for label, session_events in sessions:
+        evidence_events = [event for event in session_events if event.get("evidenceEligible") is not False]
+        result = run_detectors(evidence_events, detectors=normal)
+        cards = [card for items in result.values() for card in items]
+        for slug, items in result.items():
+            by_detector[slug].extend(items)
+        session_ids = sorted({str(event.get("sessionId") or "") for event in session_events if event.get("sessionId")})
+        agent_roles = sorted({str(event.get("agentRole") or "") for event in session_events if event.get("agentRole")})
+        thread_sources = sorted({str(event.get("threadSource") or "") for event in session_events if event.get("threadSource")})
+        parent_thread_ids = sorted({str(event.get("parentThreadId") or "") for event in session_events if event.get("parentThreadId")})
+        summaries.append({"path": label, "sessionIds": session_ids, "eventCount": len(session_events),
+                          "agentRoles": agent_roles, "threadSources": thread_sources,
+                          "parentThreadIds": parent_thread_ids,
+                          "contextEventCount": len(session_events) - len(evidence_events), **_outcome(evidence_events, cards)})
+        all_events.extend(evidence_events)
+    if "cross_agent_repeats" in by_detector:
+        by_detector["cross_agent_repeats"] = detect_cross_agent_repeats(all_events)
+    flat = [card for cards in by_detector.values() for card in cards]
+    flat.sort(key=lambda card: (SEVERITIES.index(card.severity), card.cardId))
+    known = [summary["score"] for summary in summaries if summary["score"] is not None]
+    return {"schema": SCHEMA_VERSION,
+            "honestyLimit": "Insights detects only observable failure signals in transcripts. Cards are heuristic; 'likelyMechanism' and 'suggestedRemediations' are candidate inferences, not authoritative diagnoses.",
+            "eventCount": sum(len(events) for _, events in sessions), "sessionCount": len(sessions),
+            "sessionSummaries": summaries, "outcomes": [dict(summary) for summary in summaries],
+            "aggregate": {"score": round(sum(known) / len(known)) if known else None,
+                          "knownSessionCount": len(known), "unknownSessionCount": len(summaries) - len(known)},
+            "detectorCount": len(by_detector), "cardCount": len(flat),
+            "byDetectorCount": {slug: len(cards) for slug, cards in by_detector.items()},
+            "byDetector": {slug: [dataclasses.asdict(card) for card in cards] for slug, cards in by_detector.items()},
+            "cards": [dataclasses.asdict(card) for card in flat]}
+
+
+def report_many(paths: Iterable[str | Path], *, detectors=None) -> dict[str, Any]:
+    """Report independent sessions, then run cross-agent repeats once combined."""
+    sessions = []
+    for path in paths:
+        provenance = _session_provenance(path)
+        events = _attach_session_provenance(_parse_through_layer(path), provenance)
+        sessions.append((str(path), events + _role_context_projection(path, provenance)))
+    return _report_sessions(sessions, detectors=detectors)
+
+
+def _session_provenance(path: str | Path) -> dict[str, str]:
+    """Read Codex session-meta attribution without changing transcript parsing."""
+    provenance: dict[str, str] = {}
+    try:
+        rows = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return provenance
+    for row in rows:
+        try:
+            obj = json.loads(row)
+        except json.JSONDecodeError:
+            continue
+        payload = obj.get("payload") if isinstance(obj, dict) else None
+        if obj.get("type") != "session_meta" or not isinstance(payload, dict):
+            continue
+        session_id = payload.get("id") or payload.get("session_id")
+        if isinstance(session_id, (str, int)) and not isinstance(session_id, bool):
+            provenance["sessionId"] = str(session_id)
+        role = payload.get("agent_role") or payload.get("role_name")
+        if isinstance(role, str) and role:
+            provenance["agentRole"] = role
+        source = payload.get("source") if isinstance(payload.get("source"), dict) else obj.get("source")
+        spawned = source.get("subagent", {}).get("thread_spawn") if isinstance(source, dict) and isinstance(source.get("subagent"), dict) else None
+        parent = spawned
+        if isinstance(spawned, dict):
+            parent = next((spawned.get(key) for key in ("parent_thread_id", "parentThreadId", "id")
+                           if isinstance(spawned.get(key), (str, int)) and not isinstance(spawned.get(key), bool)), None)
+        if parent:
+            provenance["threadSource"] = "subagent"
+            provenance["parentThreadId"] = str(parent)
+        break
+    return provenance
+
+
+def _attach_session_provenance(events: list[dict[str, Any]], provenance: dict[str, str]) -> list[dict[str, Any]]:
+    if not provenance:
+        return events
+    return [{**event, **provenance} for event in events]
+
+
+def _role_context_projection(path: str | Path, provenance: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    """Expose developer/agent context without making it byte-span evidence."""
+    projected: list[dict[str, Any]] = []
+    try:
+        rows = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return projected
+    for index, row in enumerate(rows):
+        try:
+            obj = json.loads(row)
+        except json.JSONDecodeError:
+            continue
+        payload = obj.get("payload") if isinstance(obj, dict) else None
+        if not isinstance(payload, dict):
+            continue
+        role = "agent" if obj.get("type") == "event_msg" and payload.get("type") == "agent_message" else payload.get("role")
+        if role not in {"developer", "agent"}:
+            continue
+        texts = [block["text"] for block in payload.get("content", []) if isinstance(block, dict) and isinstance(block.get("text"), str)]
+        if not texts and isinstance(payload.get("message"), str):
+            texts = [payload["message"]]
+        for text in texts:
+            projected.append({"eventId": f"morph-role-context-{index}", "kind": f"{role}_message", "role": role,
+                              "text": text, "timestamp": obj.get("timestamp"), "sessionId": payload.get("id") or payload.get("session_id") or "",
+                              "host": "codex", "agentRole": payload.get("agent_role"), "projection": "morph_role_context", "evidenceEligible": False})
+    return _attach_session_provenance(projected, provenance or {})
 
 
 def _parse_through_layer(path: str | Path) -> list[dict[str, Any]]:
@@ -1396,12 +1597,12 @@ def cli_insights(argv: list[str] | None = None) -> int:
     import argparse
 
     ap = argparse.ArgumentParser(prog="morph insights")
-    ap.add_argument("transcript", help="path to a Claude or Codex JSONL transcript")
+    ap.add_argument("transcript", nargs="+", help="one or more Claude or Codex JSONL transcripts")
     ap.add_argument("--out", default=None, help="write JSON report here (default: stdout)")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
 
-    rep = report(args.transcript)
+    rep = report_many(args.transcript)
     encoded = json.dumps(rep, indent=2, sort_keys=True, ensure_ascii=False, default=str)
     if args.out:
         Path(args.out).write_text(encoded, encoding="utf-8")

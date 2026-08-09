@@ -58,8 +58,9 @@ import sys
 from pathlib import Path
 
 import preference_record
+from workspace_runtime import workspace_root
 
-WS = Path(os.environ.get("WORKSPACE_ROOT", Path(__file__).resolve().parents[4]))
+WS = workspace_root()
 STATE_DIR = Path.home() / ".claude" / "morph"
 STATE_FILE = STATE_DIR / "state.json"
 RULES_FILE = STATE_DIR / "rules.json"

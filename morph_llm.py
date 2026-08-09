@@ -14,9 +14,9 @@ import re
 import urllib.request
 from pathlib import Path
 
-WS = Path(
-    os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[4]
-).expanduser().resolve()
+from workspace_runtime import workspace_root
+
+WS = workspace_root()
 
 MODEL = "MiniMax-M3"
 # The gateway routes by SUBSTRING match against its slot keys (proxy.py::route),

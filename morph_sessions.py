@@ -19,45 +19,19 @@ from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from workspace_runtime import workspace_root
+
 STATE_DIR = Path.home() / ".claude" / "morph"
 STATE_FILE = STATE_DIR / "state.json"
 # Same anchor as morph.WORKSPACE_ROOT / preference_record._WORKSPACE_ROOT:
 # .../tools/pipelines/memory/morph/<file> -> workspace root.
-_WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
+_WORKSPACE_ROOT = workspace_root()
 
 MIN_TURN_CHARS = 10
 MAX_TURN_CHARS = 4000
 MAX_TURNS_PER_SESSION = 400
+# Historical extraction-journal fingerprint only; v2 never prefilters/clips.
 PREFERENCE_PREFILTER_VERSION = 1
-PREFERENCE_PREFILTER_MAX_CHARS = 2000
-
-_PREFERENCE_CUE = re.compile(
-    r"(?i)\b(?:always|never|from now on|going forward|i\s+prefer|i\s+want|"
-    r"i\s+like|i\s+(?:do not|don't)\s+want|do not|don't|must|should|"
-    r"standard|use|keep|stop|verify|default\s+to|call\s+it|"
-    r"tell(?:ing)?\s+(?:you|the agent)|no\s+(?:business|retry)|no,)\b"
-)
-
-
-def preference_candidate_text(text: str) -> str | None:
-    """Recall-first selector; classification remains entirely model-owned."""
-    matches = list(_PREFERENCE_CUE.finditer(text))
-    if not matches:
-        return None
-    if len(text) <= PREFERENCE_PREFILTER_MAX_CHARS:
-        return text
-    windows: list[tuple[int, int]] = []
-    radius = PREFERENCE_PREFILTER_MAX_CHARS // 4
-    for match in matches:
-        start = max(0, match.start() - radius)
-        end = min(len(text), match.end() + radius)
-        if windows and start <= windows[-1][1]:
-            windows[-1] = (windows[-1][0], max(windows[-1][1], end))
-        else:
-            windows.append((start, end))
-    candidate = "\n[...]\n".join(text[start:end] for start, end in windows)
-    return candidate[:PREFERENCE_PREFILTER_MAX_CHARS]
-
 # Scopes never mined: health/medical transcripts are out of bounds (and are not
 # coding preferences). Expressed WORKSPACE-RELATIVE so they hold on every
 # machine. The literal Windows-form scopes that used to be listed here
@@ -296,6 +270,16 @@ class Turn:
 
 
 @dataclass
+class Message:
+    text: str
+    scope: str
+    role: str
+    observed_at: str | None = None
+    author: str | None = None
+    recipient: str | None = None
+
+
+@dataclass
 class ParseStats:
     kept_turns: int = 0
     dropped_turns: int = 0
@@ -313,6 +297,10 @@ class Session:
     mtime: float
     turns: list[Turn] = field(default_factory=list)
     stats: ParseStats = field(default_factory=ParseStats)
+    messages: list[Message] = field(default_factory=list)
+    agent_role: str | None = None
+    thread_source: str = "user"
+    parent_thread_id: str | None = None
 
     def file_sha256(self) -> str:
         """SHA-256 of the session file bytes (stable identifier for reviewers)."""
@@ -322,6 +310,10 @@ class Session:
             for chunk in iter(lambda: fh.read(1 << 20), b""):
                 h.update(chunk)
         return h.hexdigest()
+
+
+def _messages_for_turns(turns: list[Turn]) -> list[Message]:
+    return [Message(turn.text, turn.scope, "user", turn.observed_at) for turn in turns]
 
 
 def _keep_turn(text: str) -> bool:
@@ -394,15 +386,18 @@ def parse_claude_session(
                 break
     if not turns:
         return None
-    return Session("claude-code", sid, path, cwd, path.stat().st_mtime, turns, stats)
+    return Session("claude-code", sid, path, cwd, path.stat().st_mtime, turns, stats,
+                   messages=_messages_for_turns(turns))
 
 
 def parse_codex_session(
     path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
 ) -> Session | None:
     turns: list[Turn] = []
+    messages: list[Message] = []
     stats = ParseStats()
     cwd, sid = "", path.stem
+    thread_source, parent_thread_id, agent_role = "user", None, None
     with open(path, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             try:
@@ -412,22 +407,47 @@ def parse_codex_session(
             payload = obj.get("payload") or {}
             if not isinstance(payload, dict):
                 continue
+            source = payload.get("source") if isinstance(payload.get("source"), dict) else obj.get("source")
+            if isinstance(source, dict):
+                spawned = source.get("subagent", {}).get("thread_spawn") if isinstance(source.get("subagent"), dict) else None
+                parent = spawned
+                if isinstance(spawned, dict):
+                    parent = next(
+                        (spawned.get(key) for key in ("parent_thread_id", "parentThreadId", "id")
+                         if isinstance(spawned.get(key), (str, int)) and not isinstance(spawned.get(key), bool)),
+                        None,
+                    )
+                if parent:
+                    thread_source = "subagent"
+                    parent_thread_id = str(parent)
+                    turns.clear()
             if obj.get("type") == "session_meta":
                 if (payload.get("originator") == "codex_exec"
                         and payload.get("source") == "exec"):
                     return None
                 cwd = payload.get("cwd") or cwd
-                sid = payload.get("session_id") or sid
+                sid = payload.get("id") or payload.get("session_id") or sid
+                agent_role = payload.get("agent_role") or payload.get("role_name") or agent_role
                 continue
-            if (obj.get("type") != "response_item" or payload.get("type") != "message"
-                    or payload.get("role") != "user"):
+            role = payload.get("role")
+            agent_role = payload.get("agent_role") or payload.get("role_name") or agent_role
+            if obj.get("type") == "event_msg" and payload.get("type") == "agent_message":
+                role = "agent"
+            if obj.get("type") not in {"response_item", "event_msg"} or role not in {"user", "developer", "assistant", "agent"}:
                 if obj.get("type") not in ("response_item", "session_meta", "event_msg"):
                     stats.unknown_rows += 1
                 continue
-            for item in payload.get("content") or []:
-                if isinstance(item, dict) and item.get("type") == "input_text":
-                    text = (item.get("text") or "").strip()
-                    if _keep_turn(text):
+            blocks = payload.get("content") or []
+            if not blocks and isinstance(payload.get("message"), str):
+                blocks = [{"text": payload["message"]}]
+            for item in blocks:
+                if isinstance(item, dict) and isinstance(item.get("text"), str):
+                    text = item["text"].strip()
+                    if text:
+                        messages.append(Message(text, scope_for_cwd(cwd), str(role),
+                                                obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
+                                                payload.get("author"), payload.get("recipient")))
+                    if role == "user" and _keep_turn(text) and thread_source == "user":
                         cleaned = _clean(text, stats)
                         if cleaned is not None:
                             turns.append(Turn(
@@ -436,14 +456,15 @@ def parse_codex_session(
                                 obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
                             ))
                             stats.kept_turns += 1
-                    else:
+                    elif role == "user":
                         stats.dropped_turns += 1
             if max_turns is not None and len(turns) >= max_turns:
                 stats.dropped_turns += 1
                 break
-    if not turns:
+    if not messages:
         return None
-    return Session("codex", sid, path, cwd, path.stat().st_mtime, turns, stats)
+    return Session("codex", sid, path, cwd, path.stat().st_mtime, turns, stats,
+                   messages, agent_role, thread_source, parent_thread_id)
 
 
 def _text_blocks(content: object) -> list[str]:
@@ -527,7 +548,8 @@ def parse_command_code_session(
                 max_turns=max_turns,
             ):
                 break
-    return Session("command-code", sid, path, cwd, path.stat().st_mtime, turns, stats) if turns else None
+    return Session("command-code", sid, path, cwd, path.stat().st_mtime, turns, stats,
+                   _messages_for_turns(turns)) if turns else None
 
 
 # Compatibility for the original adapter API used by local callers and tests.
@@ -555,9 +577,8 @@ def parse_cline_session(
         if _append_user_texts(
             turns, stats, prompt, cwd, metadata.get("started_at"), max_turns=max_turns
         ):
-            return Session(
-                "cline", sid, path, cwd, path.stat().st_mtime, turns, stats
-            )
+            return Session("cline", sid, path, cwd, path.stat().st_mtime, turns, stats,
+                           _messages_for_turns(turns))
     for row in body["messages"]:
         if not isinstance(row, dict) or row.get("role") != "user":
             continue
@@ -565,7 +586,8 @@ def parse_cline_session(
             turns, stats, row.get("content"), cwd, row.get("ts"), max_turns=max_turns
         ):
             break
-    return Session("cline", sid, path, cwd, path.stat().st_mtime, turns, stats) if turns else None
+    return Session("cline", sid, path, cwd, path.stat().st_mtime, turns, stats,
+                   _messages_for_turns(turns)) if turns else None
 
 
 def parse_gemini_session(
@@ -604,7 +626,8 @@ def parse_gemini_session(
             max_turns=max_turns,
         ):
             break
-    return Session("gemini", sid, path, cwd, path.stat().st_mtime, turns, stats) if turns else None
+    return Session("gemini", sid, path, cwd, path.stat().st_mtime, turns, stats,
+                   _messages_for_turns(turns)) if turns else None
 
 
 def parse_grok_build_session(
@@ -631,7 +654,8 @@ def parse_grok_build_session(
                 max_turns=max_turns,
             ):
                 break
-    return Session("grok-build", sid, path, cwd, path.stat().st_mtime, turns, stats) if turns else None
+    return Session("grok-build", sid, path, cwd, path.stat().st_mtime, turns, stats,
+                   _messages_for_turns(turns)) if turns else None
 
 
 def parse_roo_cline_session(
@@ -651,7 +675,8 @@ def parse_roo_cline_session(
             turns, stats, row.get("content"), cwd, row.get("ts"), max_turns=max_turns
         ):
             break
-    return Session("roo-cline", sid, path, cwd, path.stat().st_mtime, turns, stats) if turns else None
+    return Session("roo-cline", sid, path, cwd, path.stat().st_mtime, turns, stats,
+                   _messages_for_turns(turns)) if turns else None
 
 
 PARSERS = {
@@ -787,7 +812,7 @@ def new_sessions(
     for mtime, tool, path in pending:
         key = state_key(tool, path)
         sess = parser_for(tool)(path)
-        if sess is None or scope_excluded(sess.cwd):
+        if sess is None or scope_excluded(sess.cwd) or (sess.thread_source != "user" and not sess.turns):
             learned.setdefault(tool, {})[key] = mtime
             continue
         out.append(sess)

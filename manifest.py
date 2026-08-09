@@ -52,6 +52,7 @@ IMMUTABLE_FIELDS = (
     "authority_effect",
     "authority_manifest_sha256",
     "retrieval_aliases",
+    "evidenceContexts",
 )
 
 
@@ -118,6 +119,8 @@ def candidate_payload(record: dict) -> dict:
             for value in (record.get("retrieval_aliases") or [])
             if str(value).strip()
         })
+    if "evidenceContexts" in record:
+        payload["evidenceContexts"] = record["evidenceContexts"]
     return payload
 
 
@@ -159,7 +162,7 @@ def validate_schema(path: Path) -> dict:
         )
     except jsonschema.ValidationError as exc:
         raise ManifestError(f"manifest schema check failed: {exc.message}") from exc
-    if raw.get("schema_version") == "1.1.0":
+    if raw.get("schema_version") in {"1.1.0", "1.3.0"}:
         for rec in raw.get("records", []):
             missing = [
                 field for field in ("record_type", "authority_effect")
@@ -170,6 +173,10 @@ def validate_schema(path: Path) -> dict:
                     "manifest schema check failed: v1.1.0 record "
                     f"{rec.get('id', '<unknown>')} missing {', '.join(missing)}"
                 )
+    if raw.get("schema_version") == "1.3.0":
+        missing = [rec.get("id", "<unknown>") for rec in raw.get("records", []) if not rec.get("evidenceContexts")]
+        if missing:
+            raise ManifestError(f"manifest schema check failed: v1.3.0 records missing evidenceContexts: {missing}")
     frozen_authority = raw.get("authority_manifest")
     if frozen_authority:
         expected = frozen_authority["manifest_sha256"]

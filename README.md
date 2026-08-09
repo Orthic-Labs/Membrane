@@ -70,6 +70,7 @@ python3 morph.py --smoke                            # dry-run the whole pipeline
 python3 morph.py --incremental --manifest pending.json
 python3 morph.py --apply-from-manifest resolved.json
 python3 morph.py --compile-core path/to/core.json
+python3 morph.py --insights session-one.jsonl session-two.jsonl
 
 python3 morph.py \
   --add-rule "Always run focused tests before reporting a broad build complete." \

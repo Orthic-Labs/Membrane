@@ -85,7 +85,7 @@ def admit_user_event(
     canonical_rules: rule_key.RuleIndex | dict | None = None,
     now: str | None = None,
 ) -> AdmittedLearning:
-    """Create a quarantined proposal from exact user-authored event content.
+    """Retired event-transport entrypoint.
 
     ``now`` is normally left as the default (current time). It exists so a
     resumed ingestion cycle can deterministically REPLAY an already-proposed
@@ -94,6 +94,7 @@ def admit_user_event(
     ``PreferenceRecord``/``digest`` instead of minting a new one every time the
     ledger is rescanned (see ``morph_event_learning.run_taste_cycle``).
     """
+    raise MorphLearningError("event-transport-metadata-only: use direct transcripts")
     observable_events._validate(event)
     if event["origin"] != "user":
         raise MorphLearningError(f"origin-not-user:{event['origin']}")

@@ -196,7 +196,7 @@ def test_pull_and_label_insights_routes_through_observable_events(tmp_path: Path
         cursor_store=ing.CursorStore(tmp_path / "cursors.json"),
     )
     assert result["coverage"]["event_count"] == 2
-    assert {c["event_id"] for c in result["taste_candidates"]} == {"e0"}
+    assert result["taste_candidates"] == []
 
 
 def test_pull_stream_rejects_unknown_stream(tmp_path: Path) -> None:

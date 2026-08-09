@@ -30,7 +30,11 @@ def _validate(event: dict) -> None:
 
 
 def consume_observable_events(events: Iterable[dict]) -> dict:
-    """Return deterministic lineage, user-only Taste candidates, and Insights labels."""
+    """Return metadata-only lineage & Insights labels.
+
+    Taste authority is sourced directly from transcripts; ObservableEventV1
+    deliberately contains no recoverable content and cannot mint candidates.
+    """
     materialized = list(events)
     for event in materialized:
         _validate(event)
@@ -38,8 +42,6 @@ def consume_observable_events(events: Iterable[dict]) -> dict:
     for index, event in enumerate(materialized):
         key = (event["installation_id"], event["session_id"], event["task_id"], event["turn_id"], event["trace_id"])
         lineage["|".join(key)].append({"index": index, "event_id": event["event_id"], "event_type": event["event_type"], "origin": event["origin"]})
-    user_events = [event for event in materialized if event["origin"] == "user"]
-    user_candidates = [{"event_id": event["event_id"], "trace_id": event["trace_id"], "source": "user"} for event in user_events]
     event_types = Counter(event["event_type"] for event in materialized)
     by_lineage = defaultdict(list)
     for event in materialized:
@@ -57,7 +59,7 @@ def consume_observable_events(events: Iterable[dict]) -> dict:
     return {
         "events": materialized,
         "lineage": dict(lineage),
-        "taste_candidates": user_candidates,
+        "taste_candidates": [],
         "insights": insights,
         "coverage": {"event_count": len(materialized), "origins": sorted({event["origin"] for event in materialized})},
     }

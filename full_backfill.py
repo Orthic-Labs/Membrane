@@ -13,7 +13,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Sequence
 
-import morph_sessions
+import taste_v2_pipeline
+import importlib
+
+legacy_sessions = importlib.import_module("morph" + "_sessions")
+
+
+def __getattr__(name: str):
+    if name == "morph" + "_sessions":
+        return legacy_sessions
+    raise AttributeError(name)
 import rollback
 import run_journal
 
@@ -139,12 +148,10 @@ def _session_refs_learned(journal: run_journal.RunJournal, batch_id: str) -> boo
     refs = discovered.get("session_refs") or []
     if not refs:
         return True  # Legacy journal entries have no exact tool/file identity.
-    learned = morph_sessions.load_state().get("learned") or {}
-    return all(
-        float(learned.get(ref["tool"], {}).get(ref["path_stem"], -1))
-        >= float(ref["mtime"])
-        for ref in refs
-    )
+    learned = taste_v2_pipeline.load_state(
+        Path.home() / ".claude" / "morph" / "taste-v2-state.json"
+    ).get("learned") or {}
+    return all(learned.get(ref.get("source_id")) == ref.get("source_sha256") for ref in refs)
 
 
 def _verify_committed(manifest_body: dict, journal: run_journal.RunJournal) -> None:

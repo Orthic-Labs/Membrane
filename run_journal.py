@@ -30,7 +30,7 @@ STATE_DIR = Path.home() / ".claude" / "morph"
 JOURNAL_FILE = STATE_DIR / "run_journal.jsonl"
 
 VALID_STAGES = (
-    "discovered", "extracted", "synthesized", "applied", "committed", "abandoned"
+    "discovered", "extracted", "admitted", "synthesized", "applied", "committed", "abandoned"
 )
 TERMINAL_STAGES = {"committed", "abandoned"}
 

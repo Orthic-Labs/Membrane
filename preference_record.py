@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Iterable
 
 import authority
+from workspace_runtime import workspace_root
 
 # ----- Gate 2 contract surface -----
 
@@ -59,7 +60,7 @@ MAX_ALIASES = 3
 # recorded this rule. Default behavior (workspace-wide recall) is unaffected;
 # `machine` is informational unless a caller explicitly narrows with
 # `machine_only=True`.
-_WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
+_WORKSPACE_ROOT = workspace_root()
 
 
 def _installation_identity_file() -> Path:
@@ -412,6 +413,7 @@ class PreferenceRecord:
     # every context (the historical behaviour of the whole pre-AD1 corpus).
     # Additive and unhashed — see the SCOPE_DIMENSION_KEYS block above.
     scope_dimensions: tuple[tuple[str, str], ...] = ()
+    evidence_contexts: tuple[dict, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_ids", tuple(self.source_ids))
@@ -428,6 +430,7 @@ class PreferenceRecord:
         object.__setattr__(
             self, "scope_dimensions", normalize_scope_dimensions(self.scope_dimensions)
         )
+        object.__setattr__(self, "evidence_contexts", tuple(self.evidence_contexts))
 
     def to_dict(self) -> dict:
         return {
@@ -456,6 +459,7 @@ class PreferenceRecord:
             # manifest.candidate_payload's whitelist projection, so it can
             # never perturb payload_sha256 on any record, old or new.
             "scope_dimensions": dict(self.scope_dimensions),
+            "evidence_contexts": list(self.evidence_contexts),
         }
 
     @classmethod
@@ -473,6 +477,7 @@ class PreferenceRecord:
         last_verified_at: str | None = None,
         verification_count: int | None = None,
         scope_dimensions=None,
+        evidence_contexts=None,
     ) -> "PreferenceRecord":
         """Wrap a synthesis action into a PreferenceRecord.
 
@@ -565,6 +570,10 @@ class PreferenceRecord:
                 scope_dimensions if scope_dimensions is not None
                 else (existing or {}).get("scope_dimensions", ())
             ),
+            evidence_contexts=tuple(
+                evidence_contexts if evidence_contexts is not None
+                else (existing or {}).get("evidence_contexts", ())
+            ),
         )
 
 
@@ -608,6 +617,7 @@ def from_manifest_candidate(
             "last_verified_at": record.get("last_verified_at", ""),
             "verification_count": record.get("verification_count", 0),
             "scope_dimensions": record.get("scope_dimensions", ()),
+            "evidence_contexts": record.get("evidenceContexts", ()),
         },
         machine=machine if machine is not None else record.get("machine"),
         machine_only=machine_only if machine_only is not None else record.get("machine_only"),
@@ -615,6 +625,7 @@ def from_manifest_candidate(
         last_verified_at=record.get("last_verified_at"),
         verification_count=record.get("verification_count"),
         scope_dimensions=record.get("scope_dimensions"),
+        evidence_contexts=record.get("evidenceContexts", ()),
     )
 
 
@@ -730,6 +741,7 @@ def to_manifest_candidate(record: PreferenceRecord,
         "last_verified_at": record.last_verified_at,
         "verification_count": record.verification_count,
         "scope_dimensions": dict(record.scope_dimensions),
+        "evidenceContexts": list(record.evidence_contexts),
     }
     return candidate
 

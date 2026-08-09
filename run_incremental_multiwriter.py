@@ -24,11 +24,13 @@ from typing import Any, Callable, Mapping, Sequence
 
 
 MORPH_DIR = Path(__file__).resolve().parent
-REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(MORPH_DIR) not in sys.path:
     sys.path.insert(0, str(MORPH_DIR))
 
+from workspace_runtime import workspace_root  # noqa: E402
 import multiwriter_conformance  # noqa: E402
+
+REPO_ROOT = workspace_root()
 
 
 class RunnerError(RuntimeError):

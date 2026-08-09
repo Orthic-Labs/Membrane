@@ -13,10 +13,10 @@ def event(event_id, event_type, origin="host", complete=True):
 
 
 class ObservableEventTests(unittest.TestCase):
-    def test_consumer_preserves_lineage_and_keeps_taste_user_only(self):
+    def test_consumer_preserves_lineage_and_remains_metadata_only(self):
         result = consume_observable_events([event("1", "packet_delivered"), event("2", "user_correction", "user"), event("3", "tool_receipt")])
         self.assertEqual([row["event_id"] for row in result["lineage"]["i|s|t|u|x"]], ["1", "2", "3"])
-        self.assertEqual(result["taste_candidates"], [{"event_id": "2", "trace_id": "x", "source": "user"}])
+        self.assertEqual(result["taste_candidates"], [])
         self.assertFalse(result["insights"])
 
 
