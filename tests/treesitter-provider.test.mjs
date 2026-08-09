@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   PROVIDER,
   SUPPORTED_EXTENSIONS,
   TIER1_LANGUAGE_IDS,
+  augmentGeneration,
+  buildIncrementalTreeSitterFacts,
   extractFile,
   buildTreeSitterGraph,
   graphCapabilities,
+  loadLanguageRecord,
+  loadLanguageTable,
+  validateGrammarCatalog,
   upgradeDylinkSection,
 } from "../graph/treesitter-provider.mjs";
 
@@ -367,4 +375,108 @@ test("adds numbers", () => {
   const testsEdge = graph.edges.find((e) => e.kind === "TESTS");
   assert.ok(testsEdge);
   assert.equal(testsEdge.target, "symbol:src/math.ts::add");
+});
+
+test("generic default preserves config-resource facts with canonical provenance", async () => {
+  const graph = await buildTreeSitterGraph([
+    { path: "src/config.ts", text: "export const orders = 'assets/orders.json';" },
+    { path: "assets/orders.json", text: "{}" },
+  ]);
+  const configured = graph.edges.find((edge) => edge.kind === "CONFIGURES");
+  assert.ok(configured, "generic default must retain CONFIGURES facts");
+  assert.equal(configured.target, "file:assets/orders.json");
+  const configNode = graph.nodes.find((node) => node.qualifiedName === "orders");
+  assert.equal(configNode.provider, PROVIDER.id);
+  assert.ok(configNode.grammarHash);
+  assert.equal(configNode.precisionTier, "AST");
+});
+
+test("generic routing derives Go and Ruby from the grammar catalog", async () => {
+  for (const file of [
+    { path: "pkg/main.go", text: "package pkg\nfunc Hello() {}\n" },
+    { path: "lib/hello.rb", text: "def hello\nend\n" },
+  ]) {
+    const result = await extractFile(file);
+    assert.equal(result.generic, true);
+    assert.equal(result.parseStatus, "ok");
+    assert.ok(result.nodes.some((node) => node.name === "Hello" || node.name === "hello"));
+  }
+});
+
+test("catalog table and grammar misses remain typed", async () => {
+  const table = await loadLanguageTable("not-a-catalog-language");
+  assert.equal(table.table, null);
+  assert.match(table.error, /^generic_catalog_missing:/);
+  const grammar = await loadLanguageRecord("not-a-catalog-language");
+  assert.match(grammar.error, /^no grammar registered/);
+});
+
+test("augmentation includes catalog-only Go and Ruby files", async () => {
+  const root = mkdtempSync(join(tmpdir(), "cortex-catalog-"));
+  try {
+    mkdirSync(join(root, "pkg"));
+    mkdirSync(join(root, "lib"));
+    writeFileSync(join(root, "pkg", "main.go"), "package pkg\nfunc Hello() {}\n");
+    writeFileSync(join(root, "lib", "hello.rb"), "def hello\nend\n");
+    const generation = { nodes: [
+      { id: "file:pkg/main.go", kind: "file", path: "pkg/main.go" },
+      { id: "file:lib/hello.rb", kind: "file", path: "lib/hello.rb" },
+    ], edges: [] };
+    const result = await augmentGeneration(generation, root);
+    assert.equal(result.summary.candidateFiles, 2);
+    assert.equal(result.summary.parsedFiles, 2);
+    assert.ok(result.generation.nodes.some((node) => node.qualifiedName === "Hello"));
+    assert.ok(result.generation.nodes.some((node) => node.qualifiedName === "hello"));
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("incremental facts preserve catalog Go symbols for resolution", async () => {
+  const facts = await buildIncrementalTreeSitterFacts(
+    { path: "pkg/main.go", text: "package pkg\nfunc Hello() {}\n" },
+    { symbols: [], filePaths: ["pkg/main.go"] },
+  );
+  assert.ok(facts.parsed.nodes.some((node) => node.qualifiedName === "Hello"));
+  assert.equal(facts.fileReport.parseStatus, "ok");
+});
+
+test("JSON catalog table emits canonical key declarations", async () => {
+  const result = await extractFile({ path: "config.json", text: "{\"target\": \"asset.json\"}" });
+  const key = result.nodes.find((node) => node.qualifiedName === "target");
+  assert.deepEqual(key?.labels, ["Key"]);
+  assert.equal(key?.evidence[0].path, "config.json");
+  assert.equal(key?.confidence, 1);
+});
+
+test("full assembly retains comment facts without treating comments as symbols", async () => {
+  const graph = await buildTreeSitterGraph([
+    { path: "pkg/commented.go", text: "// retained rationale\npackage pkg\nfunc greet() {}\n" },
+  ]);
+  assert.ok(graph.nodes.some((node) => node.kind === "comment" && node.text.includes("retained rationale")));
+  assert.ok(graph.nodes.some((node) => node.qualifiedName === "greet"));
+});
+
+test("nested same-name data declarations remain distinct in full and incremental facts", async () => {
+  for (const file of [{ path: "config.json", text: '{"outer":{"value":1},"other":{"value":2}}' }]) {
+    const full = await buildTreeSitterGraph([file]);
+    const incremental = await buildIncrementalTreeSitterFacts(file, { symbols: [], filePaths: [file.path] });
+    const fullDeclarations = full.nodes.filter((node) => node.labels?.includes("Key")).map((node) => node.qualifiedName).sort();
+    const incrementalDeclarations = incremental.parsed.nodes.filter((node) => node.labels?.includes("Key")).map((node) => node.qualifiedName).sort();
+    assert.deepEqual(fullDeclarations, ["other", "other.value", "outer", "outer.value"]);
+    assert.deepEqual(incrementalDeclarations, fullDeclarations);
+    assert.ok(full.edges.filter((edge) => edge.kind === "CONTAINS").every((edge) => !Array.isArray(edge.evidence?.[0])));
+  }
+});
+
+test("catalog validation rejects unsafe loader data before import or WASM paths", () => {
+  const manifest = { grammars: [{ file: "tree-sitter-safe.wasm" }] };
+  for (const catalog of [
+    { grammars: [{ language: "../escape", extensions: ["safe"], grammarFile: "tree-sitter-safe.wasm" }] },
+    { grammars: [{ language: "safe", extensions: ["../escape"], grammarFile: "tree-sitter-safe.wasm" }] },
+    { grammars: [{ language: "safe", extensions: ["safe"], grammarFile: "../escape.wasm" }] },
+    { grammars: [{ language: "safe", extensions: ["safe"], grammarFile: "tree-sitter-other.wasm" }] },
+  ]) {
+    const result = validateGrammarCatalog(catalog, manifest);
+    assert.equal(result.ok, false);
+    assert.match(result.error, /^generic_catalog_invalid:/);
+  }
 });

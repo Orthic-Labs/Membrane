@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "decidedAt": "2026-08-08",
+  "coreLicense": "Orthic Labs Source Use License v1.0 (retained verbatim; scope carve-out for LICENSES/-listed components; licensor Damned Ventures LLC; subject to counsel confirmation)",
+  "sdkSchemaLicense": "Apache-2.0 (sdk/**, schemas/**, examples/**)",
+  "trademarkPolicy": "Reserve 'Orthic Labs', 'Cortex', logos, and confusingly similar product names; permit factual compatibility references without implied endorsement (TRADEMARKS.md)",
+  "primaryExecutable": "cortex",
+  "collisionAlias": "orthic-cortex",
+  "npmScope": "@orthic-labs",
+  "mcpName": "io.github.Orthic-Labs/cortex"
+}

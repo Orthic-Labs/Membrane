@@ -15,6 +15,6 @@ export const PYTHON = candidates.find(supportsJsonschema);
 
 if (!PYTHON) {
   throw new Error(
-    "Cortex tests require Python 3.11+ with jsonschema==4.25.1; install requirements-test.txt or set CORTEX_TEST_PYTHON.",
+    "Cortex tests require Python 3.11+ with jsonschema==4.26.0; install requirements-test.txt or set CORTEX_TEST_PYTHON.",
   );
 }

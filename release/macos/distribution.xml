@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+  <title>Cortex</title>
+  <organization>io.orthic</organization>
+  <domains enable_localSystem="true" />
+  <options customize="never" require-scripts="true" rootVolumeOnly="true" />
+  <pkg-ref id="io.orthic.cortex" version="0.2.0" onConclusion="none">component.pkg</pkg-ref>
+  <choices-outline>
+    <line choice="default">
+      <line choice="io.orthic.cortex"/>
+    </line>
+  </choices-outline>
+  <choice id="default"/>
+  <choice id="io.orthic.cortex" visible="false">
+    <pkg-ref id="io.orthic.cortex"/>
+  </choice>
+</installer-gui-script>

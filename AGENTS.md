@@ -34,7 +34,7 @@
 
 ## Access
 - Read `docs/rules/README.md` plus matching runbook before remote, credentialed, or paid work.
-- Use `ssh vendure-auto` for agent access to Hetzner.
+- Reach Hetzner as an agent with `ssh -F ~/.ssh/config.dd dd` from Windows & `ssh vendure-auto` from Mac.
 - Use `win "<command>"` from Mac & `ssh mac "<command>"` from Windows.
 - Read `docs/rules/github-access.md` before GitHub writes or pushes.
 - Read `docs/rules/cloudflare-access.md` before Cloudflare, R2, Worker, DNS, or Pages work.

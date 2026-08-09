@@ -442,6 +442,7 @@ test("WAL readers observe old or new complete delta state, never a mixed generat
 
 test("restart drains journal row appended before process death exactly once", async () => {
   const repo = makeRepo("cortex-restart-drain-");
+  let actor;
   try {
     buildGraphGeneration(repo, { outDir: ".agent", persist: true });
     writeFileSync(join(repo, "src/service.ts"), "export const restartRecovered = true;\n");
@@ -454,7 +455,7 @@ test("restart drains journal row appended before process death exactly once", as
       process.exit(17);
     `], { encoding: "utf8" });
     assert.equal(child.status, 17, child.stderr);
-    const actor = new RepositoryActor({ root: repo });
+    actor = new RepositoryActor({ root: repo });
     assert.equal(await actor.flush(true), 1);
     assert.equal(await actor.flush(true), 0);
     const db = openStore(dbPath(repo));
@@ -462,7 +463,7 @@ test("restart drains journal row appended before process death exactly once", as
       assert.equal(db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=1").get().n, 1);
       assert.ok(db.prepare("SELECT 1 FROM symbols WHERE name='restartRecovered'").get());
     } finally { closeStore(db); }
-  } finally { rmSync(repo, { recursive: true, force: true }); }
+  } finally { await actor?.stop(); rmSync(repo, { recursive: true, force: true }); }
 });
 
 test("35k-file no-change reconcile stays below hard five-second ceiling", async () => {

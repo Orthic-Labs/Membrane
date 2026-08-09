@@ -1,15 +1,38 @@
 {
   "name": "@orthic-labs/cortex",
   "version": "0.2.0",
-  "description": "Cortex: local evidence-backed repository map — documents, claims, code graph (Neurons/Synapses/Circuits), and orientation admission library.",
+  "description": "Cortex: local evidence-backed repository map \u2014 documents, claims, code graph (Neurons/Synapses/Circuits), and orientation admission library.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "packageManager": "pnpm@11.18.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Orthic-Labs/Cortex.git"
+  },
+  "homepage": "https://github.com/Orthic-Labs/Cortex#readme",
+  "bugs": {
+    "url": "https://github.com/Orthic-Labs/Cortex/issues"
+  },
+  "keywords": [
+    "code-graph",
+    "repository-intelligence",
+    "mcp",
+    "developer-tools",
+    "static-analysis",
+    "architecture",
+    "code-search"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "mcpName": "io.github.Orthic-Labs/cortex",
   "engines": {
     "node": ">=22.13"
   },
   "bin": {
     "cortex": "./scripts/cortex.mjs",
+    "orthic-cortex": "./scripts/cortex.mjs",
     "cortex-watch": "./scripts/cortex-watch.mjs",
     "cortex-mcp": "./scripts/cortex-mcp.mjs",
     "cortex-install": "./scripts/cortex-install.mjs"
@@ -17,10 +40,14 @@
   "files": [
     "scripts/",
     "watchman/",
+    "grammars/",
     "graph/",
     "lib/",
+    "mcp/",
     "sources/",
     "schemas/",
+    "sdk/",
+    "service/",
     "evals/fixture-repos/",
     "references/",
     "SKILL.md",
@@ -33,18 +60,29 @@
     ".": "./lib/admission.mjs",
     "./admission": "./lib/admission.mjs",
     "./receipt-store": "./lib/receipt-store.mjs",
-    "./orientation-evidence": "./lib/orientation-evidence.mjs"
+    "./orientation-evidence": "./lib/orientation-evidence.mjs",
+    "./schemas": "./schemas/catalog.json",
+    "./contracts": "./lib/contracts/validate.mjs",
+    "./service": "./lib/application/service.mjs",
+    "./sdk": {
+      "types": "./sdk/types.d.ts",
+      "default": "./sdk/index.mjs"
+    }
   },
   "scripts": {
     "test": "node --test \"tests/*.test.mjs\"",
     "test:workspace": "node --test \"tests/workspace/**/*.test.mjs\"",
     "test:all": "node --test --test-concurrency=1 \"tests/**/*.test.mjs\"",
     "test:random": "node scripts/test-random.mjs",
-    "bench:retrieval": "node scripts/benchmark-retrieval.mjs"
+    "bench:retrieval": "node scripts/benchmark-retrieval.mjs",
+    "test:hardening": "node --test tests/store-migrations.test.mjs tests/store-rollback.test.mjs tests/performance-envelopes.test.mjs tests/cross-platform-paths.test.mjs",
+    "test:security": "node --test \"tests/security/**/*.test.mjs\" tests/mcp-root-confinement.test.mjs tests/plugin-boundary.test.mjs tests/support-bundle-redaction.test.mjs",
+    "soak": "node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/cortex-soak.json"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
     "@parcel/watcher": "2.6.0",
+    "ajv": "8.20.0",
     "hash-wasm": "4.12.0",
     "tree-sitter-wasms": "0.1.13",
     "web-tree-sitter": "0.26.11",

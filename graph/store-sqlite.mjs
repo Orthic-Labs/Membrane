@@ -8,9 +8,14 @@
 // explicitly given (or ':memory:'); it never resolves or writes outside that.
 
 import { DatabaseSync } from "node:sqlite";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { statSync } from "node:fs";
 import { computeFullLedger } from "./merkle-ledger.mjs";
+import { compareRepoPaths, normalizeRepoPath } from "./path-order.mjs";
+import { canonicalProviderId } from "./provider-identity.mjs";
+
+const FIXED_PROVIDER_RANKS = [["lexical", 0], ["treesitter", 1], ["doctruth", 2]];
 
 // Derived from MIGRATIONS below, never hardcoded: a literal here silently
 // desyncs the moment a migration is appended, and migrate() would then stop
@@ -23,7 +28,12 @@ import { computeFullLedger } from "./merkle-ledger.mjs";
 // Opens (creating if absent) the sqlite file at `dbPath`, or an in-memory
 // database when `dbPath` is ":memory:" or omitted. Always runs migrate()
 // before returning, so every caller gets a ready-to-use store.
-export function openStore(dbPath = ":memory:") {
+//
+// `options.upToVersion` caps how far migrations run — used ONLY to build the
+// N-2/N-1 fixture stores in fixtures/stores/ so tests can prove migrate() can
+// read and upgrade the previous two minor schema lines. Production always
+// passes no cap (full latest schema).
+export function openStore(dbPath = ":memory:", options = {}) {
   const db = new DatabaseSync(dbPath);
   db.exec("PRAGMA foreign_keys = ON;");
   if (dbPath !== ":memory:") {
@@ -38,8 +48,50 @@ export function openStore(dbPath = ":memory:") {
     // waits far longer rather than surfacing a spurious lock error.
     db.exec("PRAGMA busy_timeout = 30000;");
   }
-  migrate(db);
+  migrateDb(db, { dbPath, upToVersion: options.upToVersion });
   return db;
+}
+
+// Location for pre-migration safety copies. One per from-version, so an
+// interrupted upgrade can be rolled back to the exact schema it started from.
+export function migrationBackupPath(dbPath, fromVersion) {
+  const norm = String(dbPath).replaceAll("\\", "/").replace(/\/+$/, "");
+  const name = norm.slice(norm.lastIndexOf("/") + 1);
+  return join(dirname(norm), "backups", `graph.db.before-migrate-v${fromVersion}`);
+}
+
+export function migrationHasBackup(dbPath, fromVersion) {
+  return existsSync(migrationBackupPath(dbPath, fromVersion));
+}
+
+/**
+ * Restore the pre-migration backup made before an interrupted schema upgrade.
+ *
+ * migrateDb() writes a backup of the store file BEFORE applying any migration
+ * (when the store already has schema version >= 1). If a migration is killed
+ * mid-apply (process kill, disk error, crash), the store file can be left
+ * half-upgraded while the meta row still says the OLD version. Repairing means:
+ * restore the exact pre-migration bytes, then re-run migrate() from scratch on
+ * the next open. Returns { restored, reason } instead of throwing, so doctor
+ * repair plans can treat an absent backup as a typed finding, not a crash.
+ */
+export function repairInterruptedMigration(dbPath, fromVersion) {
+  const backupPath = migrationBackupPath(dbPath, fromVersion);
+  if (!existsSync(backupPath)) return { restored: false, reason: "no_backup" };
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const target = dbPath + suffix;
+    if (existsSync(target)) rmSync(target, { force: true });
+  }
+  mkdirSync(dirname(dbPath), { recursive: true });
+  copyFileSync(backupPath, dbPath);
+  const db = new DatabaseSync(dbPath);
+  try {
+    db.exec("PRAGMA journal_mode = WAL;");
+    migrateDb(db, { dbPath });
+    return { restored: true, fromVersion };
+  } finally {
+    db.close();
+  }
 }
 
 /**
@@ -495,7 +547,136 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_document_supersession_generation ON document_supersession(generation_id);
     `);
   },
-  // Migration 17 — immutable named, generation-bound review snapshots.
+  // Migration 15 — retain global node order across symbols and generic AST
+  // annotations, whose nullable names require separate storage.
+  (db) => {
+    db.exec(`
+      ALTER TABLE symbols ADD COLUMN node_ordinal INTEGER;
+      UPDATE symbols SET node_ordinal = rowid;
+      CREATE TABLE IF NOT EXISTS annotation_nodes (
+        id TEXT PRIMARY KEY,
+        node_ordinal INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        generation_id TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_annotation_nodes_generation_ordinal ON annotation_nodes(generation_id, node_ordinal);
+    `);
+  },
+  // Migration 16 — every node table joins one dense order; provider ranks make
+  // metadata-only delta reindexing deterministic without reading payloads.
+  (db) => {
+    db.exec(`
+      ALTER TABLE files ADD COLUMN node_ordinal INTEGER;
+      CREATE TABLE provider_ranks (provider_id TEXT PRIMARY KEY, rank INTEGER NOT NULL UNIQUE);
+      CREATE INDEX idx_files_node_ordinal ON files(node_ordinal);
+      CREATE INDEX IF NOT EXISTS idx_fact_owner_provider_path ON fact_owner(provider_id, source_path);
+    `);
+    const providerId = (id, payload, fallback = null) => {
+      const owners = db.prepare("SELECT DISTINCT provider_id FROM fact_owner WHERE fact_id=? AND fact_kind='node' ORDER BY provider_id").all(id);
+      if (owners.length > 1) throw typedStoreError("duplicate_provider_claim", id);
+      if (owners[0]) return owners[0].provider_id;
+      const value = payload ? JSON.parse(payload) : {};
+      return value.factProvider?.id ?? value.provider?.id ?? fallback;
+    };
+    const files = db.prepare("SELECT path, node_id, provider, extra FROM files").all().sort((a, b) => compareRepoPaths(a.path, b.path));
+    const nonFiles = [
+      ...db.prepare("SELECT id, node_ordinal, extra, NULL AS payload FROM symbols").all(),
+      ...db.prepare("SELECT id, node_ordinal, NULL AS extra, payload FROM annotation_nodes").all(),
+    ].sort((a, b) => a.node_ordinal - b.node_ordinal || compareRepoPaths(a.id, b.id));
+    const putRank = db.prepare("INSERT OR IGNORE INTO provider_ranks(provider_id, rank) VALUES (?, ?)");
+    const seenProviders = new Set();
+    let ordinal = 0, rank = 0;
+    for (const row of files) {
+      const provider = providerId(row.node_id, row.extra, row.provider);
+      if (!provider) throw typedStoreError("provider_rebuild_required", row.node_id);
+      if (!seenProviders.has(provider)) { putRank.run(provider, rank++); seenProviders.add(provider); }
+      db.prepare("UPDATE files SET node_ordinal=? WHERE path=?").run(ordinal++, row.path);
+    }
+    for (const row of nonFiles) {
+      const provider = providerId(row.id, row.payload ?? row.extra);
+      if (!provider) throw typedStoreError("provider_rebuild_required", row.id);
+      if (!seenProviders.has(provider)) { putRank.run(provider, rank++); seenProviders.add(provider); }
+      const table = row.payload === null ? "symbols" : "annotation_nodes";
+      db.prepare(`UPDATE ${table} SET node_ordinal=? WHERE id=?`).run(ordinal++, row.id);
+    }
+  },
+  // Migration 17 — physical-node provenance & deterministic legacy repair.
+  (db) => {
+    db.exec(`CREATE TABLE node_provider (node_id TEXT PRIMARY KEY, provider_id TEXT NOT NULL,
+      source_path TEXT NOT NULL, provider_version TEXT NOT NULL DEFAULT 'unknown');
+      CREATE INDEX idx_node_provider_provider_path ON node_provider(provider_id, source_path);`);
+    const parse = (value) => { try { return value ? JSON.parse(value) : {}; } catch { return {}; } };
+    const generation = parse(db.prepare("SELECT value FROM generation WHERE key='provider'").get()?.value);
+    const fallback = canonicalProviderId(typeof generation === "string" ? generation : generation?.id ?? "");
+    const oldRanks = new Map();
+    for (const row of db.prepare("SELECT provider_id, rank FROM provider_ranks ORDER BY rank, provider_id").all()) {
+      const id = canonicalProviderId(row.provider_id);
+      oldRanks.set(id, Math.min(oldRanks.get(id) ?? Number.MAX_SAFE_INTEGER, row.rank));
+    }
+    const structural = db.prepare("SELECT * FROM fact_owner WHERE freshness_domain='structural' ORDER BY rowid").all();
+    const ownerByFact = new Map();
+    for (const owner of structural) {
+      owner.provider_id = canonicalProviderId(owner.provider_id);
+      const list = ownerByFact.get(owner.fact_id) ?? [];
+      if (!list.some((item) => item.provider_id === owner.provider_id)) list.push(owner);
+      ownerByFact.set(owner.fact_id, list);
+    }
+    const rows = [
+      ...db.prepare("SELECT 'files' table_name, node_id id, path, node_ordinal, extra payload, provider file_provider, 'file' kind, content_hash FROM files").all(),
+      ...db.prepare("SELECT 'symbols' table_name, id, path, node_ordinal, extra payload, NULL file_provider, kind, NULL content_hash FROM symbols").all(),
+      ...db.prepare("SELECT 'annotation_nodes' table_name, id, '' path, node_ordinal, payload, NULL file_provider, 'comment' kind, NULL content_hash FROM annotation_nodes").all(),
+    ];
+    const seen = new Set();
+    const filePaths = new Map();
+    for (const row of rows) {
+      if (!row.id || seen.has(row.id)) throw typedStoreError("duplicate_node_id", row.id ?? "null");
+      seen.add(row.id);
+      const embedded = parse(row.payload);
+      row.path = normalizeRepoPath(row.path || embedded.path || ownerByFact.get(row.id)?.[0]?.source_path || "");
+      if (row.table_name === "files") {
+        const prior = filePaths.get(row.path);
+        if (prior && prior !== row.id) throw typedStoreError("path_normalization_collision", row.path);
+        filePaths.set(row.path, row.id);
+      }
+      const owners = ownerByFact.get(row.id) ?? [];
+      owners.sort((a, b) => (oldRanks.get(a.provider_id) ?? Number.MAX_SAFE_INTEGER) - (oldRanks.get(b.provider_id) ?? Number.MAX_SAFE_INTEGER) || compareRepoPaths(a.provider_id, b.provider_id));
+      const claim = embedded.factProvider ?? embedded.provider;
+      const claimedId = typeof claim === "string" ? claim : claim?.id;
+      row.provider_id = canonicalProviderId(owners[0]?.provider_id ?? claimedId ?? row.file_provider ?? fallback);
+      row.provider_version = String(owners[0]?.provider_version ?? (typeof claim === "object" ? claim?.version : null) ?? "unknown");
+      if (!row.provider_id) throw typedStoreError("provider_rebuild_required", row.id);
+      if (!oldRanks.has(row.provider_id)) oldRanks.set(row.provider_id, Number.MAX_SAFE_INTEGER);
+    }
+    const fixedIds = new Set(FIXED_PROVIDER_RANKS.map(([id]) => id));
+    const providers = [...FIXED_PROVIDER_RANKS.map(([id]) => id), ...[...oldRanks].filter(([id]) => !fixedIds.has(id)).sort((a, b) => a[1] - b[1] || compareRepoPaths(a[0], b[0])).map(([id]) => id)];
+    db.exec("DELETE FROM provider_ranks; DELETE FROM fact_owner WHERE freshness_domain='structural';");
+    const putRank = db.prepare("INSERT INTO provider_ranks(provider_id, rank) VALUES (?, ?)");
+    providers.forEach((id, rank) => putRank.run(id, rank));
+    const putOwner = db.prepare(`INSERT OR IGNORE INTO fact_owner(fact_id,fact_kind,source_path,source_digest,provider_id,provider_version,freshness_domain,fact_kind_detail,generation_id,repo_root) VALUES (?,?,?,?,?,?,?,?,?,?)`);
+    for (const owner of structural.filter((row) => row.fact_kind === "edge")) putOwner.run(owner.fact_id, owner.fact_kind, normalizeRepoPath(owner.source_path), owner.source_digest, owner.provider_id, owner.provider_version, owner.freshness_domain, owner.fact_kind_detail, owner.generation_id, owner.repo_root);
+    const counts = new Map();
+    for (const row of rows) if (Number.isInteger(row.node_ordinal) && row.node_ordinal >= 0) counts.set(row.node_ordinal, (counts.get(row.node_ordinal) ?? 0) + 1);
+    const corruptOrder = rows.some((row) => !Number.isInteger(row.node_ordinal) || row.node_ordinal < 0 || counts.get(row.node_ordinal) !== 1);
+    rows.sort((a, b) => corruptOrder
+      ? Number(b.table_name === "files") - Number(a.table_name === "files")
+        || providers.indexOf(a.provider_id) - providers.indexOf(b.provider_id)
+        || compareRepoPaths(a.path, b.path) || compareRepoPaths(a.table_name, b.table_name) || compareRepoPaths(a.id, b.id)
+      : a.node_ordinal - b.node_ordinal);
+    const updates = { files: db.prepare("UPDATE files SET node_ordinal=?, path=? WHERE node_id=?"), symbols: db.prepare("UPDATE symbols SET node_ordinal=?, path=? WHERE id=?"), annotation_nodes: db.prepare("UPDATE annotation_nodes SET node_ordinal=? WHERE id=?") };
+    const putProvider = db.prepare("INSERT INTO node_provider(node_id,provider_id,source_path,provider_version) VALUES (?,?,?,?)");
+    rows.forEach((row, ordinal) => {
+      if (row.table_name === "files") updates.files.run(ordinal, row.path, row.id);
+      else if (row.table_name === "symbols") updates.symbols.run(ordinal, row.path, row.id);
+      else updates.annotation_nodes.run(ordinal, row.id);
+      putProvider.run(row.id, row.provider_id, row.path, row.provider_version);
+    });
+    const fileDigest = new Map(rows.filter((row) => row.table_name === "files").map((row) => [row.path, normalizeContentDigest(row.content_hash ?? "unknown")]));
+    const generationId = parse(db.prepare("SELECT value FROM generation WHERE key='manifest'").get()?.value)?.generationId ?? null;
+    const repoRoot = parse(db.prepare("SELECT value FROM generation WHERE key='repoRoot'").get()?.value) || null;
+    for (const row of rows) putOwner.run(row.id, "node", row.path, fileDigest.get(row.path) ?? normalizeContentDigest("unknown"), row.provider_id, row.provider_version, "structural", row.kind, generationId, repoRoot);
+    if (db.prepare("SELECT COUNT(*) n FROM node_provider").get().n !== rows.length) throw typedStoreError("provider_rebuild_required", "cardinality");
+  },
+  // Migration 18 — immutable named, generation-bound review snapshots.
   (db) => {
     db.exec(`
       CREATE TABLE IF NOT EXISTS named_snapshot (
@@ -514,6 +695,12 @@ const MIGRATIONS = [
 /** Current schema version = number of migrations. Derived, so it cannot desync. */
 export const SCHEMA_VERSION = MIGRATIONS.length;
 
+function typedStoreError(code, detail) {
+  const error = new Error(`${code}:${detail}`);
+  error.code = code;
+  return error;
+}
+
 export function getSchemaVersion(db) {
   const row = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get();
   return row ? Number(row.value) : 0;
@@ -530,14 +717,49 @@ export function listArtifactState(db) {
   return db.prepare("SELECT artifact, generation_id AS generationId, fingerprint, updated_ms AS updatedMs FROM artifact_state ORDER BY artifact").all();
 }
 
-export function migrate(db) {
+/**
+ * Apply pending migrations up to SCHEMA_VERSION (or `upToVersion` for fixture
+ * stores). Before applying ANY upgrade to a non-empty store (schema version >=
+ * 1), copies the current store bytes to a backup path so an interrupted
+ * migration can be rolled back via repairInterruptedMigration(). Backups are
+ * deliberately created for from-version only — the restore target is the exact
+ * schema the store was on before the upgrade.
+ */
+export function migrate(db, options = {}) {
+  return migrateDb(db, { dbPath: options.dbPath, upToVersion: options.upToVersion });
+}
+
+export function migrateDb(db, { dbPath = null, upToVersion = null } = {}) {
   db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);");
   let version = getSchemaVersion(db);
   if (!Number.isInteger(version) || version < 0 || version > MIGRATIONS.length) {
     throw new Error(`invalid graph store schema version: ${version}`);
   }
   const initialVersion = version;
-  while (version < MIGRATIONS.length) {
+  const target = upToVersion === null || !Number.isInteger(upToVersion)
+    ? MIGRATIONS.length
+    : Math.max(0, Math.min(MIGRATIONS.length, upToVersion));
+  if (dbPath && dbPath !== ":memory:") {
+    // Pre-migration safety copy for EXISTING stores only. A brand-new store
+    // (version 0) has nothing to lose; backing it up would only paper over a
+    // broken migration that should fail loudly instead.
+    if (initialVersion > 0 && initialVersion < target && !migrationHasBackup(dbPath, initialVersion)) {
+      const backupPath = migrationBackupPath(dbPath, initialVersion);
+      try {
+        // Force any committed WAL contents into the main file first — copying
+        // only the main file while a -wal holds committed pages would freeze
+        // the store at a stale state.
+        db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        mkdirSync(dirname(backupPath), { recursive: true });
+        copyFileSync(dbPath, backupPath);
+      } catch (error) {
+        // A backup that cannot be written is a hard stop — migrating without a
+        // restore path turns an interrupted migration into data loss.
+        throw new Error(`cannot back up store before migration: ${error?.message ?? error}`);
+      }
+    }
+  }
+  while (version < target) {
     db.exec("BEGIN;");
     try {
       MIGRATIONS[version](db);
@@ -570,31 +792,46 @@ export function migrate(db) {
 // generation_id filtering).
 function insertGenerationRows(db, generation, options = {}) {
   const mode = options.mode ?? "replace";
+  if (mode === "append") throw typedStoreError("store_append_unsupported", "single_current_generation");
   const generationId = String(options.generationId ?? generation.manifest?.generationId ?? generation.generationId ?? "unknown");
   const nodes = generation.nodes ?? [];
   const edges = generation.edges ?? [];
   const fileReports = generation.fileReports ?? [];
   const fileReportByPath = new Map(fileReports.map((report) => [report.path, report]));
+  const hasFileOrdinal = db.prepare("PRAGMA table_info(files)").all().some((column) => column.name === "node_ordinal");
+  const hasSymbolOrdinal = db.prepare("PRAGMA table_info(symbols)").all().some((column) => column.name === "node_ordinal");
+  const hasNodeProvider = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='node_provider'").get() !== undefined;
+  const seenIds = new Set(), seenPaths = new Map();
+  for (const node of nodes) {
+    if (!node?.id || seenIds.has(node.id)) throw typedStoreError("duplicate_node_id", node?.id ?? "null");
+    seenIds.add(node.id);
+    if (node.kind === "file") {
+      const normalized = normalizeRepoPath(node.path), prior = seenPaths.get(normalized);
+      if (prior !== undefined) throw typedStoreError("path_normalization_collision", normalized);
+      seenPaths.set(normalized, String(node.path));
+    }
+  }
 
   const insertFile = db.prepare(`
     INSERT INTO files (path, content_hash, language, provider, parse_status, error_node_count, generation_id,
-                       node_id, labels, name, qualified_name, confidence, evidence, extra)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                       node_id, labels, name, qualified_name, confidence, evidence, extra${hasFileOrdinal ? ", node_ordinal" : ""})
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${hasFileOrdinal ? ", ?" : ""})
     ON CONFLICT(path) DO UPDATE SET
       content_hash = excluded.content_hash, language = excluded.language, provider = excluded.provider,
       parse_status = excluded.parse_status, error_node_count = excluded.error_node_count, generation_id = excluded.generation_id,
       node_id = excluded.node_id, labels = excluded.labels, name = excluded.name,
       qualified_name = excluded.qualified_name, confidence = excluded.confidence, evidence = excluded.evidence,
-      extra = excluded.extra
+      extra = excluded.extra${hasFileOrdinal ? ", node_ordinal = excluded.node_ordinal" : ""}
   `);
   const insertSymbol = db.prepare(`
-    INSERT INTO symbols (id, kind, labels, name, qualified_name, path, confidence, evidence, generation_id, extra)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO symbols (id, kind, labels, name, qualified_name, path, confidence, evidence, generation_id, extra${hasSymbolOrdinal ? ", node_ordinal" : ""})
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?${hasSymbolOrdinal ? ", ?" : ""})
     ON CONFLICT(id) DO UPDATE SET
       kind = excluded.kind, labels = excluded.labels, name = excluded.name, qualified_name = excluded.qualified_name,
       path = excluded.path, confidence = excluded.confidence, evidence = excluded.evidence,
-      generation_id = excluded.generation_id, extra = excluded.extra
+       generation_id = excluded.generation_id, extra = excluded.extra${hasSymbolOrdinal ? ", node_ordinal = excluded.node_ordinal" : ""}
   `);
+  let insertAnnotation = null;
   const insertEdge = db.prepare(`
     INSERT INTO edges (id, kind, source, target, confidence, resolved, specifier, evidence, generation_id,
                        confidence_tier, extra)
@@ -619,47 +856,62 @@ function insertGenerationRows(db, generation, options = {}) {
   };
 
   if (mode === "replace") {
-    db.exec("DELETE FROM files; DELETE FROM symbols; DELETE FROM edges; DELETE FROM vectors; DELETE FROM symbol_search; DELETE FROM symbol_terms; DELETE FROM claim_code_edges; DELETE FROM claims; DELETE FROM documents; DELETE FROM document_supersession;");
+    for (const table of ["files", "symbols", "annotation_nodes", "edges", "vectors", "symbol_search", "symbol_terms", "claim_code_edges", "claims", "documents", "document_supersession", "node_provider", "provider_ranks"]) {
+      if (db.prepare("SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?").get(table)) db.exec(`DELETE FROM ${table}`);
+    }
+    if (hasNodeProvider) ensureFixedProviderRanks(db);
   }
-  for (const node of nodes) {
-    if (node.kind === "file") {
-      const report = fileReportByPath.get(node.path);
+  for (const [nodeOrdinal, node] of nodes.entries()) {
+    const stored = node.path === undefined ? node : { ...node, path: normalizeRepoPath(node.path) };
+    const winner = providerForFact(stored, providerIdentity(generation));
+    if (stored.kind === "file") {
+      const report = fileReportByPath.get(node.path) ?? fileReportByPath.get(stored.path);
       insertFile.run(
-        node.path,
-        node.evidence?.[0]?.contentHash ?? null,
+        stored.path,
+        stored.evidence?.[0]?.contentHash ?? null,
         report?.language ?? null,
         report?.provider ?? null,
         report?.parseStatus ?? null,
         report?.errorNodeCount ?? null,
         generationId,
-        node.id,
-        JSON.stringify(node.labels ?? []),
-        node.name ?? null,
-        node.qualifiedName ?? null,
-        node.confidence ?? 1,
-        JSON.stringify(node.evidence ?? []),
-        extraOf(node, NODE_COLUMN_KEYS),
+        stored.id,
+        JSON.stringify(stored.labels ?? []),
+        stored.name ?? null,
+        stored.qualifiedName ?? null,
+        stored.confidence ?? 1,
+        JSON.stringify(stored.evidence ?? []),
+        extraOf(stored, NODE_COLUMN_KEYS),
+        ...(hasFileOrdinal ? [nodeOrdinal] : []),
       );
+    } else if (stored.kind === "comment") {
+      insertAnnotation ??= db.prepare("INSERT INTO annotation_nodes (id, node_ordinal, payload, generation_id) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET node_ordinal=excluded.node_ordinal, payload=excluded.payload, generation_id=excluded.generation_id");
+      insertAnnotation.run(stored.id, nodeOrdinal, JSON.stringify(stored), generationId);
     } else {
-      insertSymbol.run(
-        node.id,
-        node.kind,
-        JSON.stringify(node.labels ?? []),
-        node.name,
-        node.qualifiedName,
-        node.path,
-        node.confidence ?? 1,
-        JSON.stringify(node.evidence ?? []),
+      const values = [
+        stored.id,
+        stored.kind,
+        JSON.stringify(stored.labels ?? []),
+        stored.name,
+        stored.qualifiedName,
+        stored.path,
+        stored.confidence ?? 1,
+        JSON.stringify(stored.evidence ?? []),
         generationId,
-        extraOf(node, NODE_COLUMN_KEYS),
-      );
+        extraOf(stored, NODE_COLUMN_KEYS),
+      ];
+      if (hasSymbolOrdinal) values.push(nodeOrdinal);
+      insertSymbol.run(...values);
       replaceSymbolSearchEntry(db, {
-        id: node.id,
+        id: stored.id,
         generationId,
-        name: node.name,
-        qualifiedName: node.qualifiedName,
-        path: node.path,
+        name: stored.name,
+        qualifiedName: stored.qualifiedName,
+        path: stored.path,
       });
+    }
+    if (hasNodeProvider) {
+      registerProviderRanks(db, [winner.id]);
+      db.prepare("INSERT INTO node_provider(node_id,provider_id,source_path,provider_version) VALUES (?,?,?,?)").run(stored.id, winner.id, stored.path ?? "", winner.version);
     }
   }
   for (const edge of edges) {
@@ -690,7 +942,8 @@ function insertGenerationRows(db, generation, options = {}) {
   return {
     generationId,
     fileCount: nodes.filter((n) => n.kind === "file").length,
-    symbolCount: nodes.filter((n) => n.kind !== "file").length,
+    symbolCount: nodes.filter((n) => n.kind !== "file" && n.kind !== "comment").length,
+    annotationCount: nodes.filter((n) => n.kind === "comment").length,
     edgeCount: edges.length,
     claimCount: docTruth ? countDocTruthRows(docTruth) : { documents: 0, claims: 0, edges: 0, supersedes: 0 },
   };
@@ -982,6 +1235,7 @@ export function searchGenerationSymbols(db, generationId, tokens, limit = 20) {
 }
 
 export function bulkInsertGeneration(db, generation, options = {}) {
+  if (options.mode === "append") throw typedStoreError("store_append_unsupported", "single_current_generation");
   db.exec("BEGIN;");
   try {
     const summary = insertGenerationRows(db, generation, options);
@@ -1014,6 +1268,7 @@ const ENVELOPE_KEYS = ["schemaVersion", "provider", "manifest", "repoRoot", "aug
  * from an older schema).
  */
 export function saveGeneration(db, generation, options = {}) {
+  if (options.mode === "append") throw typedStoreError("store_append_unsupported", "single_current_generation");
   const envelopeKeysPresent = ENVELOPE_KEYS.filter((key) => generation[key] !== undefined);
   const put = db.prepare(
     "INSERT INTO generation (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -1021,6 +1276,7 @@ export function saveGeneration(db, generation, options = {}) {
   db.exec("BEGIN;");
   try {
     const summary = insertGenerationRows(db, generation, options);
+    assertDenseNodeOrdinals(db);
     if (options.populateState) populateGenerationState(db, generation);
     for (const key of envelopeKeysPresent) {
       put.run(key, JSON.stringify(generation[key]));
@@ -1049,19 +1305,97 @@ function providerIdentity(generation) {
   const id = typeof provider === "string" ? provider : provider.id ?? "lexical";
   const version = typeof provider === "string" ? "unknown" : provider.version ?? "unknown";
   return {
-    id: id.includes("treesitter") ? "treesitter" : id.includes("scip") ? "scip" : "lexical",
+    id: canonicalProviderId(id),
     version: String(version),
   };
 }
 
 function providerForFact(fact, generationProvider) {
-  const declared = fact?.factProvider;
+  const declared = fact?.factProvider ?? fact?.provider;
   if (!declared) return generationProvider;
-  const id = String(declared.id ?? generationProvider.id);
+  const id = canonicalProviderId(typeof declared === "string" ? declared : declared.id ?? generationProvider.id);
   return {
-    id: id.includes("treesitter") ? "treesitter" : id.includes("scip") ? "scip" : "lexical",
-    version: String(declared.version ?? generationProvider.version),
+    id,
+    version: String(typeof declared === "string" ? generationProvider.version : declared.version ?? generationProvider.version),
   };
+}
+
+function providerClaimId(node, fallback) {
+  const claim = node?.factProvider ?? node?.provider;
+  return (typeof claim === "string" ? claim : claim?.id) ?? fallback.id;
+}
+
+function recordProviderRanks(db, generation) {
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='provider_ranks'").get()) return;
+  const claims = new Map();
+  const fallback = providerIdentity(generation);
+  const providers = [];
+  for (const node of generation.nodes ?? []) {
+    const provider = providerClaimId(node, fallback);
+    if (claims.has(node.id) && claims.get(node.id) !== provider) throw typedStoreError("duplicate_provider_claim", node.id);
+    claims.set(node.id, provider);
+    providers.push(provider);
+  }
+  registerProviderRanks(db, providers);
+}
+
+export function registerProviderRanks(db, providerIds) {
+  ensureFixedProviderRanks(db);
+  const known = new Map(db.prepare("SELECT provider_id, rank FROM provider_ranks").all().map((row) => [row.provider_id, row.rank]));
+  let rank = known.size ? Math.max(...known.values()) + 1 : 0;
+  const put = db.prepare("INSERT INTO provider_ranks(provider_id, rank) VALUES (?, ?)");
+  for (const provider of providerIds.map(canonicalProviderId)) {
+    if (!known.has(provider)) { put.run(provider, rank); known.set(provider, rank++); }
+  }
+  return known;
+}
+
+function ensureFixedProviderRanks(db) {
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='provider_ranks'").get()) return;
+  const rows = db.prepare("SELECT provider_id,rank FROM provider_ranks ORDER BY rank,provider_id").all();
+  if (FIXED_PROVIDER_RANKS.every(([id, rank]) => rows.some((row) => row.provider_id === id && row.rank === rank))) return;
+  const fixed = new Set(FIXED_PROVIDER_RANKS.map(([id]) => id));
+  const custom = rows.filter((row) => !fixed.has(canonicalProviderId(row.provider_id))).sort((a, b) => a.rank - b.rank || compareRepoPaths(a.provider_id, b.provider_id));
+  db.exec("DELETE FROM provider_ranks");
+  const put = db.prepare("INSERT INTO provider_ranks(provider_id,rank) VALUES (?,?)");
+  for (const pair of [...FIXED_PROVIDER_RANKS, ...custom.map((row, index) => [canonicalProviderId(row.provider_id), index + FIXED_PROVIDER_RANKS.length])]) put.run(...pair);
+}
+
+export function assertDenseNodeOrdinals(db) {
+  if (!db.prepare("PRAGMA table_info(files)").all().some((column) => column.name === "node_ordinal")) return 0;
+  const ordinals = db.prepare("SELECT node_ordinal FROM files UNION ALL SELECT node_ordinal FROM symbols UNION ALL SELECT node_ordinal FROM annotation_nodes ORDER BY node_ordinal").all().map((row) => row.node_ordinal);
+  for (const [index, ordinal] of ordinals.entries()) {
+    if (!Number.isInteger(ordinal) || ordinal !== index) throw typedStoreError("node_ordinal_not_dense", `${index}:${ordinal}`);
+  }
+  return ordinals.length;
+}
+
+/** Rewrite only changed ordinal metadata; payload columns never enter this plan. */
+export function reindexNodeOrdinals(db) {
+  db.exec("UPDATE files SET node_id='file:' || path WHERE node_id IS NULL OR node_id=''");
+  const missing = db.prepare(`SELECT f.node_id id, f.path, COALESCE(f.provider,'lexical') provider FROM files f LEFT JOIN node_provider n ON n.node_id=f.node_id WHERE n.node_id IS NULL`).all();
+  for (const row of missing) {
+    const provider = canonicalProviderId(row.provider || "lexical");
+    registerProviderRanks(db, [provider]);
+    db.prepare("INSERT INTO node_provider(node_id,provider_id,source_path,provider_version) VALUES (?,?,?,'unknown')").run(row.id, provider, normalizeRepoPath(row.path));
+  }
+  const rows = db.prepare(`
+    SELECT 'files' AS table_name, f.node_id AS id, f.path, f.node_ordinal, r.rank AS provider_rank FROM files f JOIN node_provider n ON n.node_id=f.node_id JOIN provider_ranks r ON r.provider_id=n.provider_id
+    UNION ALL SELECT 'symbols', s.id, s.path, s.node_ordinal, r.rank FROM symbols s JOIN node_provider n ON n.node_id=s.id JOIN provider_ranks r ON r.provider_id=n.provider_id
+    UNION ALL SELECT 'annotation_nodes', a.id, n.source_path, a.node_ordinal, r.rank FROM annotation_nodes a JOIN node_provider n ON n.node_id=a.id JOIN provider_ranks r ON r.provider_id=n.provider_id
+  `).all().sort((left, right) => {
+    const leftFile = left.table_name === "files", rightFile = right.table_name === "files";
+    if (leftFile !== rightFile) return leftFile ? -1 : 1;
+    return (left.provider_rank - right.provider_rank) || compareRepoPaths(left.path, right.path) || (left.node_ordinal - right.node_ordinal) || compareRepoPaths(left.id, right.id);
+  });
+  const updates = new Map([["files", db.prepare("UPDATE files SET node_ordinal=? WHERE path=?")], ["symbols", db.prepare("UPDATE symbols SET node_ordinal=? WHERE id=?")], ["annotation_nodes", db.prepare("UPDATE annotation_nodes SET node_ordinal=? WHERE id=?")]]);
+  let orderWrites = 0;
+  for (const [ordinal, row] of rows.entries()) {
+    if (row.node_ordinal !== ordinal) { updates.get(row.table_name).run(ordinal, row.table_name === "files" ? row.path : row.id); orderWrites += 1; }
+  }
+  const totalNodes = assertDenseNodeOrdinals(db);
+  if (orderWrites > totalNodes) throw typedStoreError("node_ordinal_write_bound", `${orderWrites}:${totalNodes}`);
+  return { orderWrites, totalNodes };
 }
 
 function fileStateForNode(generation, node) {
@@ -1084,7 +1418,7 @@ function populateGenerationState(db, generation) {
   const provider = providerIdentity(generation);
   const generationId = generation.manifest?.generationId ?? null;
   const repoRoot = generation.repoRoot ?? null;
-  const files = (generation.nodes ?? []).filter((node) => node.kind === "file");
+  const files = (generation.nodes ?? []).filter((node) => node.kind === "file").map((node) => ({ ...node, path: normalizeRepoPath(node.path) }));
   const fileById = new Map(files.map((node) => [node.id, node.path]));
   db.exec("DELETE FROM file_state; DELETE FROM fact_owner; DELETE FROM dependency_index; DELETE FROM generation_leaf;");
   const insertFileState = db.prepare("INSERT INTO file_state(path, content_digest, size, mtime_ms, file_identity, last_event_seq, applied_clock) VALUES (?, ?, ?, ?, ?, NULL, 0)");
@@ -1094,20 +1428,20 @@ function populateGenerationState(db, generation) {
   }
   const insertOwner = db.prepare("INSERT OR REPLACE INTO fact_owner(fact_id, fact_kind, source_path, source_digest, provider_id, provider_version, freshness_domain, fact_kind_detail, generation_id, repo_root) VALUES (?, ?, ?, ?, ?, ?, 'structural', ?, ?, ?)");
   for (const node of generation.nodes ?? []) {
-    const path = node.path;
+    const path = normalizeRepoPath(node.path);
     if (!path) continue;
     const digest = normalizeContentDigest(files.find((file) => file.path === path)?.evidence?.[0]?.contentHash ?? "unknown");
     const owner = providerForFact(node, provider);
     insertOwner.run(node.id, "node", path, digest, owner.id, owner.version, node.kind, generationId, repoRoot);
   }
   for (const edge of generation.edges ?? []) {
-    const sourcePath = fileById.get(edge.source) ?? (generation.nodes ?? []).find((node) => node.id === edge.source)?.path;
+    const sourcePath = normalizeRepoPath(fileById.get(edge.source) ?? (generation.nodes ?? []).find((node) => node.id === edge.source)?.path);
     if (!sourcePath) continue;
     const digest = normalizeContentDigest(files.find((file) => file.path === sourcePath)?.evidence?.[0]?.contentHash ?? "unknown");
     const owner = providerForFact(edge, provider);
     insertOwner.run(edge.id, "edge", sourcePath, digest, owner.id, owner.version, edge.kind, generationId, repoRoot);
     if (edge.kind === "IMPORTS" && edge.target) {
-      const targetPath = fileById.get(edge.target);
+      const targetPath = normalizeRepoPath(fileById.get(edge.target));
       if (targetPath) db.prepare("INSERT OR IGNORE INTO dependency_index(source_path, dependent_path, reason) VALUES (?, ?, 'import')").run(targetPath, sourcePath);
     }
   }
@@ -1121,13 +1455,16 @@ export function deleteFactsByOwner(db, path, providerId = null) {
   const owners = db.prepare(`SELECT fact_id, fact_kind FROM fact_owner WHERE ${clauses.join(" AND ")}`).all(...params);
   db.prepare(`DELETE FROM fact_owner WHERE ${clauses.join(" AND ")}`).run(...params);
   for (const owner of owners) {
-    const retained = db.prepare("SELECT 1 FROM fact_owner WHERE fact_id=? AND fact_kind=? LIMIT 1").get(owner.fact_id, owner.fact_kind);
-    if (retained) continue;
-    if (owner.fact_kind === "edge") db.prepare("DELETE FROM edges WHERE id = ?").run(owner.fact_id);
-    else if (owner.fact_kind === "node") {
+    if (owner.fact_kind === "node") {
+      const provenance = db.prepare("SELECT provider_id FROM node_provider WHERE node_id=?").get(owner.fact_id);
+      if (providerId && provenance && provenance.provider_id !== canonicalProviderId(providerId)) continue;
+      db.prepare("DELETE FROM annotation_nodes WHERE id = ?").run(owner.fact_id);
       db.prepare("DELETE FROM symbols WHERE id = ?").run(owner.fact_id);
+      db.prepare("DELETE FROM files WHERE node_id = ?").run(owner.fact_id);
+      db.prepare("DELETE FROM node_provider WHERE node_id = ?").run(owner.fact_id);
       deleteSymbolSearchEntry(db, owner.fact_id);
-    }
+      db.prepare("DELETE FROM fact_owner WHERE fact_id=? AND fact_kind='node'").run(owner.fact_id);
+    } else if (!db.prepare("SELECT 1 FROM fact_owner WHERE fact_id=? AND fact_kind='edge' LIMIT 1").get(owner.fact_id)) db.prepare("DELETE FROM edges WHERE id = ?").run(owner.fact_id);
   }
   return owners;
 }
@@ -1380,19 +1717,19 @@ export function loadGeneration(db) {
   }
 
   const fileRows = db.prepare(
-    "SELECT node_id, path, labels, name, qualified_name, confidence, evidence, extra FROM files ORDER BY rowid",
+    "SELECT node_id, path, labels, name, qualified_name, confidence, evidence, extra, node_ordinal, rowid AS storage_ordinal FROM files",
   ).all();
   const symbolRows = db.prepare(
-    "SELECT id, kind, labels, name, qualified_name, path, confidence, evidence, extra FROM symbols ORDER BY rowid",
+    "SELECT id, kind, labels, name, qualified_name, path, confidence, evidence, extra, node_ordinal, rowid AS storage_ordinal FROM symbols",
+  ).all();
+  const annotationRows = db.prepare(
+    "SELECT payload, node_ordinal, rowid AS storage_ordinal FROM annotation_nodes",
   ).all();
   const edgeRows = db.prepare(
     "SELECT id, kind, source, target, confidence, evidence, confidence_tier, extra FROM edges ORDER BY rowid",
   ).all();
 
-  generation.nodes = [
-    ...fileRows.map(deserializeFileNodeRow),
-    ...symbolRows.map(deserializeSymbolNodeRow),
-  ];
+  generation.nodes = orderedNodes(fileRows, symbolRows, annotationRows).map((entry) => entry.node);
 
   // `resolved`, `specifier` and `reason` come back from `extra`, which records
   // exactly the keys the provider emitted — so an edge that never had
@@ -1517,6 +1854,18 @@ function deserializeSymbolNodeRow(row) {
   };
 }
 
+function deserializeAnnotationNodeRow(row) {
+  return JSON.parse(row.payload);
+}
+
+function orderedNodes(fileRows, symbolRows, annotationRows) {
+  return [
+    ...fileRows.map((row) => ({ node: deserializeFileNodeRow(row), ordinal: row.node_ordinal, storageOrdinal: row.storage_ordinal })),
+    ...symbolRows.map((row) => ({ node: deserializeSymbolNodeRow(row), ordinal: row.node_ordinal, storageOrdinal: row.storage_ordinal })),
+    ...annotationRows.map((row) => ({ node: deserializeAnnotationNodeRow(row), ordinal: row.node_ordinal, storageOrdinal: row.storage_ordinal })),
+  ].sort((left, right) => left.ordinal - right.ordinal || left.storageOrdinal - right.storageOrdinal);
+}
+
 function deserializeEdgeNodeRow(row) {
   return {
     id: row.id,
@@ -1637,14 +1986,15 @@ export function listEdgeCore(db, options = {}) {
   }));
 }
 
-/** Hydrate only requested nodes, preserving files-then-symbols and rowid order. */
+/** Hydrate only requested nodes in their sole dense global ordinal. */
 export function hydrateNodesByIds(db, nodeIds) {
   const ids = [...new Set((nodeIds ?? []).map(String))];
   if (!ids.length) return [];
   const json = JSON.stringify(ids);
-  const files = db.prepare("SELECT * FROM files WHERE node_id IN (SELECT value FROM json_each(?)) ORDER BY rowid").all(json);
-  const symbols = db.prepare("SELECT * FROM symbols WHERE id IN (SELECT value FROM json_each(?)) ORDER BY rowid").all(json);
-  return [...files.map(deserializeFileNodeRow), ...symbols.map(deserializeSymbolNodeRow)];
+  const files = db.prepare("SELECT *, rowid AS storage_ordinal FROM files WHERE node_id IN (SELECT value FROM json_each(?))").all(json);
+  const symbols = db.prepare("SELECT *, rowid AS storage_ordinal FROM symbols WHERE id IN (SELECT value FROM json_each(?))").all(json);
+  const annotations = db.prepare("SELECT payload, node_ordinal, rowid AS storage_ordinal FROM annotation_nodes WHERE id IN (SELECT value FROM json_each(?))").all(json);
+  return orderedNodes(files, symbols, annotations).map((entry) => entry.node);
 }
 
 /** Hydrate only requested edges, preserving edge rowid order. */
@@ -1669,6 +2019,7 @@ export function countRows(db) {
   return {
     files: db.prepare("SELECT COUNT(*) AS n FROM files").get().n,
     symbols: db.prepare("SELECT COUNT(*) AS n FROM symbols").get().n,
+    annotations: db.prepare("SELECT COUNT(*) AS n FROM annotation_nodes").get().n,
     edges: db.prepare("SELECT COUNT(*) AS n FROM edges").get().n,
   };
 }

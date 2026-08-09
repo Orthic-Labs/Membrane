@@ -1,0 +1,94 @@
+name: publish-package-managers
+on:
+  workflow_dispatch:
+    inputs:
+      submit:
+        description: 'Submit WinGet PR to microsoft/winget-pkgs (true) or validate/output-only (false)'
+        required: false
+        default: 'false'
+  release:
+    types: [published]
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node --test tests/package-manager-manifests.test.mjs
+      - run: ruby -c release/homebrew/cortex.rb
+      - run: node -e "JSON.parse(require('fs').readFileSync('server.json','utf8'))"
+      - name: Checkout Homebrew tap
+        uses: actions/checkout@v5
+        with:
+          repository: Orthic-Labs/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+      - run: |
+          mkdir -p homebrew-tap/Formula
+          cp release/homebrew/cortex.rb homebrew-tap/Formula/cortex.rb
+      # Downstream PRs only — never rewrites an existing release.
+      - name: Open Homebrew tap PR
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+          branch: cortex-${{ github.ref_name }}
+          title: "cortex ${{ github.ref_name }}"
+          delete-branch: true
+
+  # WinGet is fail-closed: no token, no job. The token is a classic PAT with
+  # public_repo scope and must be created by Adrian as
+  # WINGET_CREATE_GITHUB_TOKEN; it is passed to wingetcreate only via env.
+  winget-token:
+    runs-on: ubuntu-latest
+    environment: release
+    outputs:
+      available: ${{ steps.probe.outputs.available }}
+    steps:
+      - id: probe
+        env:
+          TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
+        run: echo "available=${TOKEN:+true}" >> "$GITHUB_OUTPUT"
+
+  winget:
+    needs: [winget-token]
+    runs-on: windows-latest
+    environment: release
+    if: ${{ needs.winget-token.outputs.available == 'true' }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install wingetcreate
+        run: dotnet tool install --global Microsoft.WingetCreate
+      - name: Validate WinGet manifests (output-only)
+        shell: pwsh
+        run: |
+          $catalog = Get-Content -Raw release/catalog.json | ConvertFrom-Json
+          $installer = $catalog.artifacts | Where-Object { $_.name -like 'Cortex-*-Setup.exe' } | Select-Object -First 1
+          if (-not $installer) { throw 'release/catalog.json missing Cortex-*-Setup.exe installer artifact' }
+          $version = [string]$catalog.version
+          if ($version -notmatch '^\d+\.\d+\.\d+') { throw "unresolved catalog version: $version" }
+          $url = "https://github.com/Orthic-Labs/Cortex/releases/download/v$version/$($installer.name)"
+          $out = "${{ runner.temp }}\winget"
+          wingetcreate update OrthicLabs.Cortex --version $version --urls $url --output $out
+          Get-ChildItem $out -Filter 'OrthicLabs.Cortex.*' | ForEach-Object { wingetcreate validate $_.FullName }
+      - name: Submit WinGet PR to microsoft/winget-pkgs
+        if: ${{ inputs.submit == 'true' }}
+        shell: pwsh
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
+        run: |
+          $catalog = Get-Content -Raw release/catalog.json | ConvertFrom-Json
+          $installer = $catalog.artifacts | Where-Object { $_.name -like 'Cortex-*-Setup.exe' } | Select-Object -First 1
+          if (-not $installer) { throw 'release/catalog.json missing Cortex-*-Setup.exe installer artifact' }
+          $version = [string]$catalog.version
+          if ($version -notmatch '^\d+\.\d+\.\d+') { throw "unresolved catalog version: $version" }
+          $url = "https://github.com/Orthic-Labs/Cortex/releases/download/v$version/$($installer.name)"
+          wingetcreate update OrthicLabs.Cortex --version $version --urls $url --submit --token $env:WINGET_CREATE_GITHUB_TOKEN

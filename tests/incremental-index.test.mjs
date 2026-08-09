@@ -40,6 +40,9 @@ import {
   diffFiles,
   nextCache,
 } from "../graph/parse-cache.mjs";
+import { applyFileDelta } from "../graph/delta-store.mjs";
+import { closeStore, countRows, getGenerationEnvelope, hydrateNodesByIds, loadGeneration, openStore, saveGeneration, searchGenerationSymbols } from "../graph/store-sqlite.mjs";
+import { computeGenerationId } from "../graph/generation-identity.mjs";
 
 function fileOf(path, text) {
   return {
@@ -274,4 +277,89 @@ test("incremental rebuild after a rename equals a cold rebuild (no ghost edge)",
     rmSync(incRoot, { recursive: true, force: true });
     rmSync(coldRoot, { recursive: true, force: true });
   }
+});
+
+test("incremental annotation facts persist then delete with their source", () => {
+  const db = openStore(":memory:");
+  const file = { id: "file:src/a.ts", kind: "file", labels: ["File"], name: "a.ts", qualifiedName: "src/a.ts", path: "src/a.ts", confidence: 1, evidence: [{ path: "src/a.ts", contentHash: "before" }] };
+  const annotation = { id: "comment:src/a.ts:1", kind: "comment", labels: ["Comment"], name: null, qualifiedName: null, path: "src/a.ts", confidence: 1, evidence: null, text: null, provider: null };
+  try {
+    saveGeneration(db, { manifest: { generationId: "gen-before", counts: { nodes: 1, edges: 0 } }, provider: { id: "lexical", version: "test" }, nodes: [file], edges: [] }, { populateState: true });
+    applyFileDelta(db, { eventKind: "modify", path: "src/a.ts", contentDigest: "after", sourceClock: 1, provider: { id: "lexical", version: "test" }, parsed: { nodes: [file, annotation], edges: [] } });
+    assert.equal(countRows(db).annotations, 1);
+    assert.deepEqual(hydrateNodesByIds(db, [annotation.id]), [annotation]);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM fact_owner WHERE fact_id=?").get(annotation.id).n, 1);
+    applyFileDelta(db, { eventKind: "delete", path: "src/a.ts", sourceClock: 2, provider: { id: "lexical", version: "test" } });
+    assert.equal(countRows(db).annotations, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM fact_owner WHERE fact_id=?").get(annotation.id).n, 0);
+  } finally {
+    closeStore(db);
+  }
+});
+
+test("delta node order matches a cold lexical plus Tree-sitter body", () => {
+  const db = openStore(":memory:"), coldDb = openStore(":memory:"), sourceHash = "ordered-delta";
+  const file = (path, hash) => ({ id: `file:${path}`, kind: "file", labels: ["File"], name: path, qualifiedName: path, path, confidence: 1, evidence: [{ path, contentHash: hash }], factProvider: { id: "lexical", version: "test" } });
+  const symbol = (path, name) => ({ id: `symbol:${path}::${name}`, kind: "symbol", labels: ["Function"], name, qualifiedName: name, path, confidence: 1, evidence: [], factProvider: { id: "lexical", version: "test" } });
+  const comment = (path, text) => ({ id: `comment:${path}:${text}`, kind: "comment", labels: ["Comment"], name: null, qualifiedName: null, path, confidence: 1, evidence: [], text, factProvider: { id: "treesitter", version: "test" } });
+  const a = file("src/a.ts", "before"), afterA = file("src/a.ts", "after"), b = file("src/b.ts", "same"), prior = symbol("src/a.ts", "prior"), next = symbol("src/a.ts", "next"), stable = symbol("src/b.ts", "stable"), priorComment = comment("src/a.ts", "prior"), nextComment = comment("src/a.ts", "next"), stableComment = comment("src/b.ts", "stable");
+  const initialNodes = [a, b, prior, stable, priorComment, stableComment];
+  const coldNodes = [afterA, b, next, stable, nextComment, stableComment];
+  try {
+    saveGeneration(db, { manifest: { generationId: computeGenerationId(initialNodes, [], sourceHash) }, provider: { id: "lexical", version: "test" }, nodes: initialNodes, edges: [] }, { populateState: true });
+    saveGeneration(coldDb, { manifest: { generationId: computeGenerationId(coldNodes, [], sourceHash) }, provider: { id: "lexical", version: "test" }, nodes: coldNodes, edges: [] });
+    applyFileDelta(db, {
+      eventKind: "modify", path: "src/a.ts", contentDigest: "after", sourceClock: 1,
+      factBatches: [
+        { provider: { id: "lexical", version: "test" }, parsed: { nodes: [afterA, next], edges: [] } },
+        { provider: { id: "treesitter", version: "test" }, parsed: { nodes: [afterA, { ...next, factProvider: { id: "treesitter", version: "test" } }, nextComment], edges: [] } },
+      ],
+    });
+    const incremental = loadGeneration(db), cold = loadGeneration(coldDb);
+    assert.deepEqual(incremental.nodes, cold.nodes);
+    assert.deepEqual(hydrateNodesByIds(db, coldNodes.map((node) => node.id).reverse()), cold.nodes);
+    assert.equal(computeGenerationId(incremental.nodes, incremental.edges, sourceHash), cold.manifest.generationId);
+  } finally {
+    closeStore(db);
+    closeStore(coldDb);
+  }
+});
+
+test("first physical winner owns provenance, FTS, and ranks while duplicate loser is inert", () => {
+  const db = openStore(":memory:");
+  const file = { id: "file:src/a.ts", kind: "file", labels: ["File"], name: "a.ts", qualifiedName: "src/a.ts", path: "src/a.ts", confidence: 1, evidence: [{ path: "src/a.ts", contentHash: "before" }] };
+  const lexical = { id: "shared", kind: "symbol", labels: ["Function"], name: "lexicalWinner", qualifiedName: "lexicalWinner", path: "src/a.ts", confidence: 1, evidence: [] };
+  const loser = { ...lexical, kind: "comment", name: null, qualifiedName: null, text: "loser" };
+  const unique = { ...lexical, id: "tree-unique", name: "treeUnique", qualifiedName: "treeUnique", factProvider: { id: "cortex-treesitter", version: "t1" } };
+  try {
+    saveGeneration(db, { manifest: { generationId: "before", counts: { nodes: 1, edges: 0 } }, provider: { id: "lexical", version: "l1" }, nodes: [file], edges: [] }, { populateState: true });
+    const beforeGeneration = getGenerationEnvelope(db).manifest.generationId;
+    applyFileDelta(db, { eventKind: "modify", path: "src/a.ts", contentDigest: "after", sourceClock: 1, factBatches: [
+      { provider: { id: "cortex-static", version: "l1" }, parsed: { nodes: [{ ...file, evidence: [{ path: "src/a.ts", contentHash: "after" }] }, lexical], edges: [] } },
+      { provider: { id: "cortex-treesitter", version: "t1" }, parsed: { nodes: [{ ...file, evidence: [{ path: "src/a.ts", contentHash: "after" }] }, loser, unique], edges: [] } },
+    ] });
+    assert.equal(db.prepare("SELECT kind FROM symbols WHERE id='shared'").get().kind, "symbol");
+    assert.equal(db.prepare("SELECT 1 FROM annotation_nodes WHERE id='shared'").get(), undefined);
+    assert.equal(db.prepare("SELECT provider_id FROM node_provider WHERE node_id='shared'").get().provider_id, "lexical");
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM fact_owner WHERE fact_id='shared'").get().n, 1);
+    assert.equal(db.prepare("SELECT content_hash FROM files WHERE path='src/a.ts'").get().content_hash, "after");
+    assert.notEqual(getGenerationEnvelope(db).manifest.generationId, beforeGeneration);
+    assert.equal(db.prepare("SELECT provider_id FROM node_provider WHERE node_id='file:src/a.ts'").get().provider_id, "lexical");
+    assert.deepEqual(db.prepare("SELECT provider_id FROM provider_ranks ORDER BY rank").all().map((row) => row.provider_id), ["lexical", "treesitter", "doctruth"]);
+    assert.equal(searchGenerationSymbols(db, getGenerationEnvelope(db).manifest.generationId, ["lexicalWinner"], 5)[0].id, "shared");
+  } finally { closeStore(db); }
+});
+
+test("caller-owned delta transaction rolls back provenance, ranks, search, envelope, and clocks", () => {
+  const db = openStore(":memory:");
+  const file = { id: "file:a.ts", kind: "file", labels: ["File"], name: "a.ts", qualifiedName: "a.ts", path: "a.ts", confidence: 1, evidence: [{ path: "a.ts", contentHash: "before" }] };
+  try {
+    saveGeneration(db, { manifest: { generationId: "before", counts: { nodes: 1, edges: 0 } }, provider: { id: "lexical", version: "1" }, nodes: [file], edges: [] }, { populateState: true });
+    const snapshot = () => JSON.stringify({ nodes: loadGeneration(db).nodes, providers: db.prepare("SELECT * FROM node_provider ORDER BY node_id").all(), ranks: db.prepare("SELECT * FROM provider_ranks ORDER BY rank").all(), search: db.prepare("SELECT * FROM symbol_terms ORDER BY token,symbol_id").all(), envelope: getGenerationEnvelope(db), clocks: db.prepare("SELECT * FROM watch_state ORDER BY key").all() });
+    const before = snapshot();
+    db.exec("BEGIN IMMEDIATE");
+    applyFileDelta(db, { eventKind: "modify", path: "a.ts", contentDigest: "after", sourceClock: 2, provider: { id: "custom", version: "1" }, parsed: { nodes: [{ ...file, evidence: [{ path: "a.ts", contentHash: "after" }] }], edges: [] } }, { inTransaction: true });
+    db.exec("ROLLBACK");
+    assert.equal(snapshot(), before);
+  } finally { closeStore(db); }
 });

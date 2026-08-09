@@ -1,0 +1,12 @@
+Cortex includes third-party components under their own licenses.
+
+Runtime dependencies (from package.json):
+- @modelcontextprotocol/sdk — MIT
+- @parcel/watcher — MIT
+- ajv — MIT
+- hash-wasm — MIT
+- tree-sitter-wasms — MIT
+- web-tree-sitter — MIT
+- zod — MIT
+
+See node_modules/*/LICENSE for the full license texts.

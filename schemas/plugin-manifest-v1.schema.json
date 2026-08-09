@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orthic.labs/schemas/plugin-manifest-v1.json",
+  "title": "PluginManifestV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "version", "protocolRange", "type", "capabilities", "permissions", "hash"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "protocolRange": { "type": "string", "minLength": 1 },
+    "type": { "enum": ["language-table", "compiler-provider", "framework-provider", "schema-iac-profile", "ranking-candidate", "rule-pack", "exporter", "provenance-provider"] },
+    "capabilities": { "type": "array", "items": { "type": "string" } },
+    "permissions": { "type": "object", "additionalProperties": true },
+    "hash": { "type": "string", "minLength": 1 },
+    "details": { "type": "object", "additionalProperties": true },
+    "extensions": { "type": "object", "additionalProperties": true }
+  }
+}

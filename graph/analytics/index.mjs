@@ -1,0 +1,94 @@
+// D40: reproducible graph analytics — deterministic views with algorithm/
+// version/input generation. Derived scores never become source truth.
+
+import { createHash } from "node:crypto";
+
+export const ANALYTICS_VERSION = "1.0.0";
+
+// Tarjan SCC — deterministic order with stable tie-breaking.
+export function findSccs(edges = []) {
+  const graph = new Map();
+  for (const edge of edges) {
+    if (!graph.has(edge.source)) graph.set(edge.source, []);
+    graph.get(edge.source).push(edge.target);
+    if (!graph.has(edge.target)) graph.set(edge.target, []);
+  }
+  for (const list of graph.values()) list.sort();
+  const index = new Map();
+  const lowlink = new Map();
+  const onStack = new Set();
+  const stack = [];
+  const sccs = [];
+  let counter = 0;
+  const strongconnect = (node) => {
+    index.set(node, counter);
+    lowlink.set(node, counter);
+    counter += 1;
+    stack.push(node);
+    onStack.add(node);
+    for (const neighbor of graph.get(node) ?? []) {
+      if (!index.has(neighbor)) {
+        strongconnect(neighbor);
+        lowlink.set(node, Math.min(lowlink.get(node), lowlink.get(neighbor)));
+      } else if (onStack.has(neighbor)) {
+        lowlink.set(node, Math.min(lowlink.get(node), index.get(neighbor)));
+      }
+    }
+    if (lowlink.get(node) === index.get(node)) {
+      const component = [];
+      let member;
+      do {
+        member = stack.pop();
+        onStack.delete(member);
+        component.push(member);
+      } while (member !== node);
+      component.sort();
+      sccs.push(component);
+    }
+  };
+  for (const node of [...graph.keys()].sort()) {
+    if (!index.has(node)) strongconnect(node);
+  }
+  return sccs;
+}
+
+// Cycle detection = SCCs of size > 1 (or self-loops).
+export function findCycles(edges = []) {
+  return findSccs(edges).filter((component) => component.length > 1 || (component.length === 1 && edges.some((e) => e.source === component[0] && e.target === component[0])));
+}
+
+// Dead-code candidates: nodes with no incoming edges (except roots), never
+// proven dead — candidates only.
+export function deadCodeCandidates({ nodes = [], edges = [] } = {}) {
+  const referenced = new Set(edges.map((e) => e.target));
+  return nodes.filter((node) => !referenced.has(node.id)).map((node) => ({ id: node.id, candidate: true, reason: "no_incoming_edges" }));
+}
+
+// Deterministic layer clustering: assign layers by longest path from roots,
+// stable tie-breaking by node id.
+export function assignLayers({ nodes = [], edges = [] } = {}) {
+  const incoming = new Map(nodes.map((node) => [node.id, []]));
+  for (const edge of edges) {
+    if (!incoming.has(edge.target)) continue;
+    incoming.get(edge.target).push(edge.source);
+  }
+  const layers = new Map();
+  const visit = (nodeId, depth) => {
+    const current = layers.get(nodeId) ?? 0;
+    layers.set(nodeId, Math.max(current, depth));
+    for (const [target, sources] of incoming) {
+      if (sources.includes(nodeId)) visit(target, depth + 1);
+    }
+  };
+  for (const node of [...nodes].sort((a, b) => a.id.localeCompare(b.id))) {
+    if ((incoming.get(node.id) ?? []).length === 0) visit(node.id, 0);
+  }
+  return nodes.map((node) => ({ id: node.id, layer: layers.get(node.id) ?? 0 }));
+}
+
+export function analyticsDigest({ algorithm, inputGenerationId, params }) {
+  return createHash("sha256")
+    .update(`${algorithm}:${inputGenerationId}:${JSON.stringify(params ?? {})}`)
+    .digest("hex")
+    .slice(0, 16);
+}

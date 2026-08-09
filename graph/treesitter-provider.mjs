@@ -88,7 +88,7 @@
 
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Parser, Language } from "web-tree-sitter";
 import { createXXHash128, xxhash128 } from "hash-wasm";
@@ -100,6 +100,55 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const requireFromHere = createRequire(import.meta.url);
 const GRAMMAR_PACKAGE_JSON = requireFromHere.resolve("tree-sitter-wasms/package.json");
 const WASM_DIR = join(dirname(GRAMMAR_PACKAGE_JSON), "out");
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+let grammarCatalog = null;
+let grammarManifest = null;
+
+export function validateGrammarCatalog(value, manifest) {
+  const invalid = (reason) => ({ ok: false, error: `generic_catalog_invalid:${reason}` });
+  if (!value || !Array.isArray(value.grammars) || !manifest || !Array.isArray(manifest.grammars)) return invalid("shape");
+  const manifestFiles = new Set(manifest.grammars.map((entry) => entry?.file));
+  const catalogFiles = new Set();
+  const languages = new Set();
+  const extensions = new Set();
+  for (const entry of value.grammars) {
+    if (!entry || !/^[a-z][a-z0-9_]*$/.test(entry.language ?? "")) return invalid("language");
+    if (!/^[a-z0-9][a-z0-9_+.-]*$/.test(entry.grammarFile ?? "") || !/^tree-sitter-[a-z0-9_+-]+\.wasm$/.test(entry.grammarFile)) return invalid("grammar_file");
+    if (!Array.isArray(entry.extensions) || entry.extensions.length === 0 || entry.extensions.some((extension) => !/^[a-z0-9][a-z0-9_+-]*$/.test(extension))) return invalid("extension");
+    if (languages.has(entry.language) || !manifestFiles.has(entry.grammarFile)) return invalid("manifest");
+    languages.add(entry.language);
+    catalogFiles.add(entry.grammarFile);
+    for (const extension of entry.extensions) {
+      if (extensions.has(extension)) return invalid("extension");
+      extensions.add(extension);
+    }
+  }
+  if (catalogFiles.size !== manifestFiles.size || [...manifestFiles].some((file) => !catalogFiles.has(file))) return invalid("manifest");
+  return { ok: true, error: null };
+}
+
+function manifest() {
+  if (!grammarManifest) grammarManifest = JSON.parse(readFileSync(join(REPO_ROOT, "grammars", "manifest.json"), "utf8"));
+  return grammarManifest;
+}
+
+function catalog() {
+  if (!grammarCatalog) {
+    const parsed = JSON.parse(readFileSync(join(REPO_ROOT, "grammars", "catalog.json"), "utf8"));
+    const validation = validateGrammarCatalog(parsed, manifest());
+    if (!validation.ok) throw new Error(validation.error);
+    grammarCatalog = parsed;
+  }
+  return grammarCatalog;
+}
+
+function catalogLanguage(language) {
+  return catalog().grammars.find((item) => item.language === language) ?? null;
+}
+
+function catalogExtension(extension) {
+  return catalog().grammars.find((item) => item.extensions.includes(extension)) ?? null;
+}
 
 // Identity lives in provider-identity.mjs so static-provider can read it for the
 // staleness check without importing this module (and with it web-tree-sitter).
@@ -123,7 +172,13 @@ const LANGUAGES = {
   rs: { id: "rust", grammarFile: "tree-sitter-rust.wasm", tier: 1, dialect: "rust" },
 };
 
-export const SUPPORTED_EXTENSIONS = Object.keys(LANGUAGES).sort();
+// Runtime bundles deliberately omit grammar payloads. Keep capability discovery
+// import-safe there; generic extraction still requires its catalog & reports a
+// typed failure when it is unavailable.
+export const SUPPORTED_EXTENSIONS = (() => {
+  try { return catalog().grammars.flatMap((item) => item.extensions).sort(); }
+  catch { return Object.keys(LANGUAGES).sort(); }
+})();
 export const TIER1_LANGUAGE_IDS = [...new Set(Object.values(LANGUAGES).filter((entry) => entry.tier === 1).map((entry) => entry.id))].sort();
 
 // ---------------------------------------------------------------------------
@@ -254,9 +309,15 @@ const GRAMMAR_PACKAGE = readGrammarPackageInfo();
 
 const languageCache = new Map(); // languageId -> { language, parser, grammar } | { error, grammar }
 
-async function loadLanguageRecord(languageId) {
+export async function loadLanguageRecord(languageId) {
   if (languageCache.has(languageId)) return languageCache.get(languageId);
-  const entry = Object.values(LANGUAGES).find((item) => item.id === languageId);
+  let entry = null;
+  try { entry = catalogLanguage(languageId); }
+  catch (error) {
+    const failed = { error: `generic_catalog_unavailable:${error?.message ?? error}`, grammar: null };
+    languageCache.set(languageId, failed);
+    return failed;
+  }
   if (!entry) {
     const missing = { error: `no grammar registered for language "${languageId}"`, grammar: null };
     languageCache.set(languageId, missing);
@@ -808,13 +869,80 @@ function countErrorNodes(rootNode) {
   return count;
 }
 
+export function genericEngineEnabled() {
+  return process.env.CORTEX_AST_ENGINE !== "legacy";
+}
+
+export async function loadLanguageTable(languageId) {
+  let grammar;
+  try {
+    grammar = catalogLanguage(languageId);
+  } catch (error) {
+    return { table: null, error: `generic_catalog_unavailable:${error?.message ?? error}` };
+  }
+  if (!grammar) return { table: null, error: `generic_catalog_missing:${languageId}` };
+  try {
+    const table = (await import(`./language-tables/${grammar.language}.mjs`)).default;
+    if (!table || table.id !== grammar.language || table.grammarFile !== grammar.grammarFile
+      || !Array.isArray(table.extensions) || !grammar.extensions.every((extension) => table.extensions.includes(extension))) {
+      return { table: null, error: `generic_table_invalid:${languageId}` };
+    }
+    return { table, error: null };
+  } catch (error) {
+    return { table: null, error: `generic_table_unavailable:${languageId}:${error?.message ?? error}` };
+  }
+}
+
 export async function extractFile(file) {
   const path = normalizePath(file.path);
-  const normalizedFile = { ...file, path };
+  const normalizedFile = { ...file, path, contentHash: file.contentHash ?? await xxhash128(Buffer.from(file.text ?? "", "utf8")) };
   const extension = path.includes(".") ? path.slice(path.lastIndexOf(".") + 1).toLowerCase() : "";
-  const entry = LANGUAGES[extension];
   const fileNode = buildFileNode(normalizedFile);
 
+  if (genericEngineEnabled()) {
+    let entry;
+    try { entry = catalogExtension(extension); } catch (error) {
+      return { path, language: null, provider: PROVIDER.id, grammar: null, parseStatus: "failed", errorNodeCount: 0, error: `generic_catalog_unavailable:${error?.message ?? error}`, nodes: [fileNode], edges: [], rawImports: [], rawCalls: [], configuresTargets: [], generic: true };
+    }
+    if (!entry) return { path, language: null, provider: PROVIDER.id, grammar: null, parseStatus: "unsupported", errorNodeCount: 0, nodes: [fileNode], edges: [], generic: true };
+    const tableResult = await loadLanguageTable(entry.language);
+    const record = await loadLanguageRecord(entry.language);
+    const failed = (error, grammar = record.grammar ?? null) => ({
+      path, language: entry.language, provider: PROVIDER.id, grammar,
+      parseStatus: "failed", errorNodeCount: 0, error, nodes: [fileNode], edges: [],
+      rawImports: [], rawCalls: [], configuresTargets: [],
+      reports: [{ kind: "parse_failed", path, message: error }], generic: true,
+    });
+    if (!tableResult.table) return failed(tableResult.error);
+    if (!record.language) return failed(`generic_grammar_unavailable:${record.error}`);
+    try {
+      const { walkTable } = await import("./generic-ast-walker.mjs");
+      const tree = record.parser.parse(normalizedFile.text ?? "");
+      const errorNodeCount = countErrorNodes(tree.rootNode);
+      const extracted = walkTable({ table: tableResult.table, tree, filePath: path, file: normalizedFile, providerId: PROVIDER.id, grammarHash: record.grammar?.hash ?? null, precisionTier: "AST" });
+      const parseStatus = errorNodeCount === 0 ? "ok" : extracted.nodes.length ? "partial" : "failed";
+      const symbolNodes = parseStatus === "failed" ? [] : extracted.nodes;
+      const containsEdges = parseStatus === "failed" ? [] : extracted.containsEdges;
+      const definesEdges = parseStatus === "failed" ? [] : extracted.definesEdges;
+      const rawImports = parseStatus === "failed" ? [] : extracted.rawImports;
+      const configuresTargets = parseStatus === "failed" ? [] : (extracted.configuresTargets ?? []);
+      const rawCalls = parseStatus === "failed" ? [] : extracted.rawCalls;
+      return {
+        path, language: entry.language, provider: PROVIDER.id, grammar: record.grammar,
+        parseStatus, errorNodeCount, configuresTargets,
+        nodes: [fileNode, ...symbolNodes],
+        edges: [
+          ...containsEdges.map((edge) => edgeRecord("CONTAINS", edge.source, edge.target, edge.evidence)),
+          ...definesEdges.map((edge) => edgeRecord("DEFINES", edge.source, edge.target, edge.evidence)),
+        ].map((edge) => ({ ...edge, provider: PROVIDER.id, grammarHash: record.grammar?.hash ?? null, precisionTier: "AST" })),
+        rawImports, rawCalls, reports: extracted.reports, generic: true,
+      };
+    } catch (error) {
+      return failed(`generic_walk_failed:${error?.message ?? error}`, record.grammar);
+    }
+  }
+
+  const entry = LANGUAGES[extension];
   if (!entry) {
     return {
       path, language: null, provider: PROVIDER.id, grammar: null,
@@ -864,8 +992,8 @@ export async function extractFile(file) {
   const configuresTargets = parseStatus === "failed" ? [] : (extracted.configuresTargets ?? []);
 
   const edges = [
-    ...containsEdges.map((e) => edgeRecord("CONTAINS", e.source, e.target, [e.evidence])),
-    ...definesEdges.map((e) => edgeRecord("DEFINES", e.source, e.target, [e.evidence])),
+    ...containsEdges.map((e) => edgeRecord("CONTAINS", e.source, e.target, e.evidence)),
+    ...definesEdges.map((e) => edgeRecord("DEFINES", e.source, e.target, e.evidence)),
   ];
 
   const rawCalls = [];
@@ -974,6 +1102,15 @@ function resolveImportSpecifier(sourcePath, imp, dialect, filePathSet) {
   return null;
 }
 
+async function catalogImportSemantics(path) {
+  const extension = path.includes(".") ? path.slice(path.lastIndexOf(".") + 1).toLowerCase() : "";
+  let entry;
+  try { entry = catalogExtension(extension); } catch { return null; }
+  if (!entry) return null;
+  const { table } = await loadLanguageTable(entry.language);
+  return table?.capabilities?.dialect ?? null;
+}
+
 function dedupeBy(items, keyFn) {
   const seen = new Set();
   return items.filter((item) => {
@@ -1011,6 +1148,7 @@ export async function buildTreeSitterGraph(files) {
       ...(report.error ? { error: report.error } : {}),
     });
     for (const node of report.nodes.slice(1)) {
+      if (typeof node.qualifiedName !== "string") continue;
       const shortName = node.qualifiedName.split(".").at(-1);
       const list = symbolsByShortName.get(shortName) ?? [];
       list.push(node);
@@ -1021,8 +1159,7 @@ export async function buildTreeSitterGraph(files) {
   const importedByFile = new Map();
   for (const file of normalizedFiles) {
     const report = perFile.get(file.path);
-    const entry = LANGUAGES[file.path.includes(".") ? file.path.slice(file.path.lastIndexOf(".") + 1).toLowerCase() : ""];
-    const dialect = entry?.dialect;
+    const dialect = await catalogImportSemantics(file.path);
     const sourceId = `file:${file.path}`;
     const resolvedSet = new Set();
     for (const imp of report.rawImports ?? []) {
@@ -1127,8 +1264,7 @@ export async function buildTreeSitterGraph(files) {
 export async function buildIncrementalTreeSitterFacts(file, context = {}) {
   const current = { ...file, path: normalizePath(file.path) };
   const report = await extractFile(current);
-  const extension = current.path.includes(".") ? current.path.slice(current.path.lastIndexOf(".") + 1).toLowerCase() : "";
-  const dialect = LANGUAGES[extension]?.dialect;
+  const dialect = await catalogImportSemantics(current.path);
   const filePathSet = new Set([...(context.filePaths ?? []), current.path].map(normalizePath));
   const nodes = [...report.nodes];
   const edges = [...report.edges];
@@ -1243,7 +1379,7 @@ export async function augmentGeneration(generation, repoRoot) {
     const path = node.path ?? node.name;
     if (!path) continue;
     const ext = path.includes(".") ? path.slice(path.lastIndexOf(".") + 1).toLowerCase() : "";
-    if (!LANGUAGES[ext]) continue;
+    if (!SUPPORTED_EXTENSIONS.includes(ext)) continue;
     try {
       candidates.push({ path, text: readFileSync(join(repoRoot, path), "utf8") });
     } catch {

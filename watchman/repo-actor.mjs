@@ -72,7 +72,8 @@ function descriptorFor(root, sourceFiles, path, renameTo = null, readStable = st
   return { descriptor, read, files: sourceFiles.filter((file) => ![normalized, target].includes(normalizePath(file.path))).concat(descriptor) };
 }
 
-async function deltaFor(db, root, event, readStable = stableRead) {
+async function deltaFor(db, root, event, readStable = stableRead, signal) {
+  throwIfAborted(signal);
   const sourceFiles = sourceFilesFromStore(db);
   const normalized = normalizePath(event.path);
   const target = normalizePath(event.renameTo ?? normalized);
@@ -90,6 +91,7 @@ async function deltaFor(db, root, event, readStable = stableRead) {
       filePaths: current.files.map((file) => file.path),
       symbols: listSymbolMetadata(db, "treesitter"),
     }));
+    throwIfAborted(signal);
   }
   return {
     eventKind: event.eventKind,
@@ -111,9 +113,11 @@ function writeRepairState(db, state) {
   else db.prepare("DELETE FROM watch_state WHERE key='repair_truncated'").run();
 }
 
-async function prepareRepairPaths(db, root, paths, readStable = stableRead) {
+function throwIfAborted(signal) { if (signal?.aborted) throw Object.assign(new Error("request cancelled"), { code: "request_cancelled" }); }
+
+async function prepareRepairPaths(db, root, paths, readStable = stableRead, signal) {
   const prepared = [];
-  for (const path of paths) prepared.push({ path, delta: await deltaFor(db, root, { eventKind: "repair", path }, readStable) });
+  for (const path of paths) { throwIfAborted(signal); prepared.push({ path, delta: await deltaFor(db, root, { eventKind: "repair", path }, readStable, signal) }); }
   return prepared;
 }
 
@@ -135,10 +139,12 @@ function applyRepairPaths(db, root, prepared, sourceClock, inOuterTransaction) {
   }
 }
 
-async function applyJournalEvent(db, root, row, maxDependentFiles = MAX_DEPENDENT_FILES, readStable = stableRead) {
+async function applyJournalEvent(db, root, row, maxDependentFiles = MAX_DEPENDENT_FILES, readStable = stableRead, signal) {
+  throwIfAborted(signal);
   const closure = collectDependents(db, row.path, { maxHops: MAX_HOPS, maxFiles: maxDependentFiles });
   const event = { eventKind: row.event_kind, path: row.path, renameTo: row.rename_to };
-  const baseDelta = await deltaFor(db, root, event, readStable);
+  const baseDelta = await deltaFor(db, root, event, readStable, signal);
+  throwIfAborted(signal);
   const base = applyFileDelta(db, { ...baseDelta, sourceClock: row.source_clock, journalSeq: row.seq }, { repoRoot: root, outDir: ".agent" });
   let repairDeltas = [];
   try {
@@ -146,7 +152,8 @@ async function applyJournalEvent(db, root, row, maxDependentFiles = MAX_DEPENDEN
     // all awaits outside write locks while ensuring repair deltas observe the
     // freshly-applied source facts, matching a cold build.
     if (base.applied && !base.noop && closure.paths.length) {
-      repairDeltas = await prepareRepairPaths(db, root, closure.paths, readStable);
+      repairDeltas = await prepareRepairPaths(db, root, closure.paths, readStable, signal);
+      throwIfAborted(signal);
       if (repairDeltas.length) applyRepairPaths(db, root, repairDeltas, row.source_clock, false);
     }
     db.exec("BEGIN IMMEDIATE");
@@ -172,12 +179,12 @@ function pendingRows(db, force = false) {
   return [...latest.values()].sort((left, right) => left.seq - right.seq);
 }
 
-export async function drainJournal(db, root, { force = true, maxDependentFiles = MAX_DEPENDENT_FILES, readStable = stableRead } = {}) {
+export async function drainJournal(db, root, { force = true, maxDependentFiles = MAX_DEPENDENT_FILES, readStable = stableRead, signal } = {}) {
   let applied = 0;
   for (let pass = 0; pass < MAX_DRAIN_PASSES; pass += 1) {
     const rows = pendingRows(db, force);
     if (!rows.length) break;
-    for (const row of rows) { await applyJournalEvent(db, root, row, maxDependentFiles, readStable); applied += 1; }
+    for (const row of rows) { await applyJournalEvent(db, root, row, maxDependentFiles, readStable, signal); applied += 1; }
     force = true;
   }
   return applied;
@@ -241,12 +248,18 @@ export class RepositoryActor extends EventEmitter {
     // signal that arrives mid-reconcile is remembered and re-run exactly once
     // after the in-flight one finishes, never spawned as a second concurrent
     // pass.
-    this.reconcileInFlight = false;
+    this.reconcileInFlight = null;
     this.reconcilePending = false;
     this.drainInFlight = null;
+    this.stopController = new AbortController();
+    this.epoch = 0;
+    this.stopGeneration = 0;
+    this.lifecycle = Promise.resolve();
+    this.run = null;
   }
 
   log(error) {
+    if (!existsSync(this.root)) return;
     const logPath = join(this.root, this.outDir, "graph", "watchman.log");
     mkdirSync(dirname(logPath), { recursive: true });
     appendFileSync(logPath, `${new Date().toISOString()} ${error?.stack ?? error}\n`);
@@ -258,26 +271,57 @@ export class RepositoryActor extends EventEmitter {
   }
 
   async initialize() {
-    const hadSnapshot = existsSync(this.snapshotPath);
-    if (hadSnapshot && !this.autoReconcileOnGap) {
-      const events = await this.adapter.eventsSince(this.root, this.snapshotPath, this.ignore);
-      if (events.length) { this.ingest(events); await this.flush(true); }
-    }
+    this.hadSnapshot = existsSync(this.snapshotPath);
     const db = this.openDbOnce();
     setState(db, "watcher_pid", process.pid);
     if (this.ownerId) setState(db, "watcher_owner", this.ownerId);
-    await this.reconcile(db, this.root, { outDir: this.outDir, snapshotPath: this.snapshotPath, maxDependentFiles: this.maxDependentFiles, ignore: this.ignore });
-    if (!existsSync(this.snapshotPath)) await this.adapter.writeSnapshot(this.root, this.snapshotPath, this.ignore);
     setState(db, "event_gap", 0);
     db.prepare("DELETE FROM watch_state WHERE key='last_error'").run();
     db.prepare("DELETE FROM watch_state WHERE key='event_gap_reason'").run();
   }
 
-  async start() {
-    if (this.running) return;
-    this.running = true;
+  beginRun() {
+    const run = { epoch: ++this.epoch, controller: new AbortController(), work: new Set() };
+    this.run = run;
+    this.stopController = run.controller;
+    return run;
+  }
+
+  current(run) { return this.run === run && !run.controller.signal.aborted; }
+
+  active(run) { return this.current(run) && this.running; }
+
+  track(run, work) {
+    const tracked = Promise.resolve(work);
+    run.work.add(tracked);
+    void tracked.then(
+      () => run.work.delete(tracked),
+      () => run.work.delete(tracked),
+    );
+    return tracked;
+  }
+
+  queueLifecycle(work) {
+    const queued = this.lifecycle.then(work, work);
+    this.lifecycle = queued.catch(() => {});
+    return queued;
+  }
+
+  start() {
+    const expectedEpoch = this.epoch;
+    return this.queueLifecycle(async () => {
+      if (this.running || this.epoch !== expectedEpoch) return;
+      const run = this.beginRun();
+      this.running = true;
+      return this.track(run, this.startRun(run));
+    });
+  }
+
+  async startRun(run) {
     try {
+      if (!existsSync(this.root)) throw new Error(`watch root is unavailable: ${this.root}`);
       await this.initialize();
+      if (!this.active(run)) return;
       // Both callbacks are invoked by the watcher outside any promise chain, so
       // anything they throw is an unhandled exception that takes down the whole
       // supervisor — every repo, not just this one. That is exactly what
@@ -286,16 +330,37 @@ export class RepositoryActor extends EventEmitter {
       // 19-repo cold sweep began again from the top and died around repo 10, so
       // the fleet sat permanently short of converging. A single repo failing to
       // record its own gap must degrade that repo, never the fleet.
-      this.subscription = await this.adapter.startWatch(
+      const subscription = await this.track(run, this.adapter.startWatch(
         this.root,
-        (events) => this.guardCallback(() => this.ingest(events)),
-        (error) => this.guardCallback(() => this.markGap(error, isOverflowError(error) ? "event_overflow" : "watch_subscription_error")),
+        (events) => this.guardCallback(run, () => this.ingest(events, run)),
+        (error) => this.guardCallback(run, () => this.markGap(error, isOverflowError(error) ? "event_overflow" : "watch_subscription_error", run)),
         this.ignore,
-      );
+        { signal: run.controller.signal },
+      ));
+      if (!this.active(run)) {
+        try { await subscription.unsubscribe(); } catch (error) { this.log(error); }
+        return;
+      }
+      this.subscription = subscription;
+      // startWatch resolves only after the native callback observes its probe.
+      // Reconcile the saved-snapshot gap only after that readiness barrier,
+      // then checkpoint this exact post-reconcile state for next startup.
+      if (this.hadSnapshot) {
+        const events = await this.track(run, this.adapter.eventsSince(this.root, this.snapshotPath, this.ignore));
+        if (!this.active(run)) return;
+        if (events.length) { this.ingest(events, run); await this.flush(true, run); }
+      }
+      if (!this.active(run)) return;
+      const startupReconcile = this.track(run, this.reconcile(this.openDbOnce(), this.root, { outDir: this.outDir, snapshotPath: this.snapshotPath, maxDependentFiles: this.maxDependentFiles, ignore: this.ignore, signal: run.controller.signal }));
+      this.reconcileInFlight = startupReconcile;
+      try { await startupReconcile; } finally { if (this.active(run) && this.reconcileInFlight === startupReconcile) this.reconcileInFlight = null; if (this.active(run) && this.reconcilePending) this.runPendingReconcile(run); }
+      if (!this.active(run)) return;
+      await this.track(run, this.adapter.writeSnapshot(this.root, this.snapshotPath, this.ignore));
       this.failures = 0;
     } catch (error) {
+      if (!this.current(run) || error?.code === "request_cancelled") return;
+      this.handleFailure(error, null, run);
       this.running = false;
-      this.handleFailure(error);
       throw error;
     }
   }
@@ -303,9 +368,10 @@ export class RepositoryActor extends EventEmitter {
   // Runs a watcher callback so that no failure inside it can escape into the
   // process's unhandled-exception path. The failure is still recorded against
   // this actor (log + failure count), so it stays visible rather than silent.
-  guardCallback(work) {
+  guardCallback(run, work) {
+    if (!this.active(run)) return undefined;
     try { return work(); } catch (error) {
-      try { this.handleFailure(error, "watch_callback_error"); } catch { this.log(error); }
+      try { this.handleFailure(error, "watch_callback_error", run); } catch { this.log(error); }
       return undefined;
     }
   }
@@ -314,7 +380,8 @@ export class RepositoryActor extends EventEmitter {
   // (coalesced — see the constructor comment). `reason` names the condition
   // (`event_overflow`, `watch_subscription_error`, or a caller-supplied value)
   // so status reads the typed condition instead of reason-sniffing free text.
-  markGap(error, reason = "watch_error") {
+  markGap(error, reason = "watch_error", run = null) {
+    if (run && !this.current(run)) return;
     const db = this.openDbOnce();
     setState(db, "event_gap", 1);
     setState(db, "event_gap_reason", reason);
@@ -323,72 +390,110 @@ export class RepositoryActor extends EventEmitter {
     this.emit("gap", error);
     if (!this.autoReconcileOnGap) return;
     this.reconcilePending = true;
-    this.runPendingReconcile();
+    this.runPendingReconcile(run ?? this.run);
   }
 
-  runPendingReconcile() {
-    if (this.reconcileInFlight) return;
-    this.reconcileInFlight = true;
-    Promise.resolve().then(async () => {
+  runPendingReconcile(run = this.run) {
+    if (run && !this.active(run)) return undefined;
+    if (this.reconcileInFlight) return this.reconcileInFlight;
+    const signal = run?.controller.signal ?? this.stopController.signal;
+    const work = Promise.resolve().then(async () => {
       try {
         while (this.reconcilePending) {
+          if (run && !this.active(run)) return;
           this.reconcilePending = false;
           const db = this.openDbOnce();
-          try { await this.reconcile(db, this.root, { outDir: this.outDir, snapshotPath: this.snapshotPath, maxDependentFiles: this.maxDependentFiles, ignore: this.ignore }); }
+          try { await this.reconcile(db, this.root, { outDir: this.outDir, snapshotPath: this.snapshotPath, maxDependentFiles: this.maxDependentFiles, ignore: this.ignore, signal }); }
           catch (reconcileError) { this.log(reconcileError); }
         }
-      } finally { this.reconcileInFlight = false; }
+      } finally { if (!run || this.active(run)) this.reconcileInFlight = null; }
     });
+    this.reconcileInFlight = run ? this.track(run, work) : work;
+    return this.reconcileInFlight;
   }
 
-  ingest(events) {
+  ingest(events, run = null) {
+    if (run && !this.active(run)) return [];
     if (!events?.length) return [];
     if (events.some((event) => event.eventKind === "overflow")) {
-      this.markGap(new Error("watcher overflow"), "event_overflow");
+      this.markGap(new Error("watcher overflow"), "event_overflow", run);
       return [];
     }
     const db = this.openDbOnce();
     const appended = appendWatchEvents(db, events);
-    this.scheduleFlush();
+    this.scheduleFlush(run);
     return appended;
   }
 
-  flush(force = false) {
+  flush(force = false, run = null) {
+    if (run && !this.active(run)) return Promise.resolve(0);
     if (this.drainInFlight) return this.drainInFlight;
     const db = this.openDbOnce();
-    const drain = drainJournal(db, this.root, { force, maxDependentFiles: this.maxDependentFiles, readStable: this.readStable });
+    const drain = drainJournal(db, this.root, { force, maxDependentFiles: this.maxDependentFiles, readStable: this.readStable, signal: run?.controller.signal ?? this.stopController.signal });
     const settledDrain = drain.finally(() => {
       if (this.drainInFlight === settledDrain) this.drainInFlight = null;
     });
     this.drainInFlight = settledDrain;
+    if (run) this.track(run, settledDrain);
     return settledDrain;
   }
 
-  scheduleFlush() {
+  scheduleFlush(run = null) {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => {
-      this.flush(false).catch((error) => this.handleFailure(error));
+      if (!run || this.active(run)) this.flush(false, run).catch((error) => this.handleFailure(error, null, run));
     }, DEBOUNCE_MS);
     this.timer.unref?.();
   }
 
-  handleFailure(error, reason = null) {
+  handleFailure(error, reason = null, run = null) {
+    if (run && !this.active(run)) return;
     this.failures += 1;
     this.log(error);
-    if (reason) this.markGap(error, reason);
-    else if (this.failures >= 5) this.markGap(error, isOverflowError(error) ? "event_overflow" : "watch_subscription_error");
+    if (reason) this.markGap(error, reason, run);
+    else if (this.failures >= 5) this.markGap(error, isOverflowError(error) ? "event_overflow" : "watch_subscription_error", run);
     const delay = this.failures >= 5 ? 60000 : Math.min(30000, 1000 * 2 ** (this.failures - 1));
     clearTimeout(this.retryTimer);
-    this.retryTimer = setTimeout(() => this.start().catch(() => {}), delay);
+    this.retryTimer = setTimeout(() => {
+      if (run && !this.current(run)) return;
+      const retryEpoch = this.epoch;
+      const stopGeneration = this.stopGeneration;
+      this.stop({ retry: true }).then(() => {
+        if (this.epoch !== retryEpoch + 1 || this.stopGeneration !== stopGeneration) return;
+        return this.start();
+      }).catch((retryError) => this.log(retryError));
+    }, delay);
     this.retryTimer.unref?.();
   }
 
-  async stop() {
+  stop({ retry = false } = {}) {
+    const run = this.run;
+    const subscription = this.subscription;
+    this.run = null;
+    this.epoch += 1;
+    if (!retry) this.stopGeneration += 1;
     this.running = false;
     clearTimeout(this.timer);
     clearTimeout(this.retryTimer);
-    if (this.subscription) await this.subscription.unsubscribe();
+    run?.controller.abort();
+    this.stopController.abort();
     this.subscription = null;
+    return this.queueLifecycle(() => this.finishStop(run, subscription));
+  }
+
+  async finishStop(run, subscription) {
+    let stopError;
+    if (subscription) {
+      try { await subscription.unsubscribe(); }
+      catch (error) { this.log(error); }
+    }
+    const work = run?.work ?? new Set([this.drainInFlight, this.reconcileInFlight].filter(Boolean));
+    while (work.size) {
+      const pendingWork = [...work];
+      const settled = await Promise.allSettled(pendingWork);
+      for (const result of settled) if (result.status === "rejected") stopError ??= result.reason;
+      for (const pending of pendingWork) work.delete(pending);
+    }
     if (this.db) {
       try {
         this.db.prepare("DELETE FROM watch_state WHERE key='watcher_pid'").run();
@@ -406,12 +511,17 @@ export class RepositoryActor extends EventEmitter {
         db.prepare("DELETE FROM watch_state WHERE key='watcher_owner'").run();
       } finally { closeStore(db); }
     }
+    if (stopError && stopError.code !== "request_cancelled") throw stopError;
   }
 }
 
 export class CortexRepositoryWorker {
   constructor(options) { this.actor = new RepositoryActor(options); }
   async ingest(path, eventKind = "modify", renameTo = null) {
+    try { return await this.#ingestOnce(path, eventKind, renameTo); }
+    finally { await this.actor.stop(); }
+  }
+  async #ingestOnce(path, eventKind = "modify", renameTo = null) {
     const event = { path, eventKind, renameTo, observedMs: Date.now() };
     if (eventKind === "overflow") {
       this.actor.markGap(new Error("watcher overflow"), "event_overflow");

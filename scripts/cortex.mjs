@@ -58,6 +58,7 @@ import { normalizeIgnoredPrefixes, pathMatchesIgnoredPrefix } from "../graph/ign
 import { leafDigestForFile } from "../graph/merkle-ledger.mjs";
 import { buildNeighborhood } from "../graph/neighborhood.mjs";
 import { generateDocs } from "../lib/generated-docs.mjs";
+import { dispatchFacade } from "./cli/commands.mjs";
 import {
   buildIncrementalPhase2Plan,
   isReconciliationDecisionCurrent,
@@ -195,7 +196,7 @@ const DEFAULT_CONFIG = {
 
 function usage() {
   const command = scriptCommand();
-  console.log(`Cortex (formerly Cortex) — repository truth and evidence map.
+  console.log(`Cortex — repository truth and evidence map.
 usage:
   ${command}
   ${command} "task to orient around"
@@ -218,6 +219,10 @@ usage:
 
 function scriptCommand() {
   return "cortex";
+}
+
+function pkgChannel() {
+  return "source";
 }
 
 async function queryFreshnessBarrier(root, outDir, args = {}) {
@@ -277,7 +282,7 @@ function parseArgs(argv) {
     const [key, inline] = arg.slice(2).split("=", 2);
     if (inline !== undefined) {
       args[key] = inline;
-    } else if (["check", "refresh", "complete", "json", "full", "offline", "no-readme-link", "allow-stale"].includes(key)) {
+    } else if (["check", "refresh", "complete", "json", "full", "offline", "no-readme-link", "allow-stale", "repair-plan", "apply-repair", "yes"].includes(key)) {
       args[key] = true;
     } else {
       args[key] = argv[++i];
@@ -331,6 +336,34 @@ function readJson(path, fallback) {
 function persistGenerationToStore(root, outDir, generation) {
   const dbPath = join(resolve(root, outDir), "graph", "graph.db");
   mkdirSync(dirname(dbPath), { recursive: true });
+  // D51: a corrupt store ahead of a build is a typed, recoverable condition.
+  // The store is the BUILD's output — a full rebuild replaces it wholesale, so
+  // a hostile/corrupt prior store must not crash the indexer; it is removed
+  // and recreated (the generation being persisted is complete and sealed, so
+  // nothing of the old bytes is preserved by design). An open failure that is
+  // NOT corruption still surfaces as a typed graph_error.
+  if (existsSync(dbPath)) {
+    try {
+      const probe = openStoreReadOnly(dbPath);
+      try {
+        // A corrupt SQLite file can OPEN read-only without error; only the
+        // first page read trips it. Probe with a trivial query.
+        probe.prepare("SELECT count(*) AS n FROM sqlite_master").get();
+      } finally {
+        closeStore(probe);
+      }
+    } catch (error) {
+      const message = String(error?.message ?? error);
+      if (/not a database|file is encrypted|malformed/i.test(message)) {
+        for (const suffix of ["", "-wal", "-shm"]) {
+          const sidecar = dbPath + suffix;
+          if (existsSync(sidecar)) rmSync(sidecar, { force: true });
+        }
+      } else {
+        throw new Error(`graph_publication_failed: ${message}`);
+      }
+    }
+  }
   const db = openStore(dbPath);
   let summary;
   let rows;
@@ -1756,7 +1789,7 @@ function mcpHandshake(root) {
       clientInfo: { name: "cortex-doctor", version: "1" },
     },
   })}\n`;
-  const result = spawnSync(process.execPath, [resolve(SCRIPT_DIR, "cortex-mcp.mjs")], {
+  const result = spawnSync(process.execPath, [resolve(SCRIPT_DIR, "cortex-mcp.mjs"), "--root", root], {
     cwd: root,
     input: request,
     encoding: "utf8",
@@ -2333,7 +2366,7 @@ function writeRepairState(db, value) {
   else db.prepare("DELETE FROM watch_state WHERE key='repair_truncated'").run();
 }
 
-async function applyRepairs(db, root, repairPaths, sourceClock, { batched, outDir = ".agent" }) {
+async function applyRepairs(db, root, repairPaths, sourceClock, { batched, inTransaction = false, outDir = ".agent" }) {
   const batches = batched ? [] : [repairPaths];
   if (batched) for (let index = 0; index < repairPaths.length; index += 50) batches.push(repairPaths.slice(index, index + 50));
   for (const batch of batches) {
@@ -2341,7 +2374,7 @@ async function applyRepairs(db, root, repairPaths, sourceClock, { batched, outDi
     try {
       for (const path of batch) {
         const input = await makeDeltaInput(root, db, path, "repair");
-        applyFileDelta(db, { ...input, sourceClock }, { inTransaction: !batched, repoRoot: root, outDir, writeJsonAtomic });
+        applyFileDelta(db, { ...input, sourceClock }, { inTransaction: batched || inTransaction, repoRoot: root, outDir, writeJsonAtomic });
       }
       if (batched) db.exec("COMMIT");
     } catch (error) {
@@ -2376,7 +2409,7 @@ async function runDelta(root, outDir, args) {
       if (sameOuter) db.exec("BEGIN IMMEDIATE");
       try {
         const base = applyFileDelta(db, await makeDeltaInput(root, db, path), { inTransaction: sameOuter, repoRoot: root, outDir, writeJsonAtomic });
-        if (base.applied && !base.noop && closure.paths.length) await applyRepairs(db, root, closure.paths, base.appliedClock, { batched: !sameOuter, outDir });
+        if (base.applied && !base.noop && closure.paths.length) await applyRepairs(db, root, closure.paths, base.appliedClock, { batched: !sameOuter, inTransaction: sameOuter, outDir });
         if (closure.truncated) writeRepairState(db, { path, remaining: closure.remaining });
         else writeRepairState(db, null);
         if (sameOuter) db.exec("COMMIT");
@@ -3019,7 +3052,7 @@ async function main() {
     usage();
     return 0;
   }
-  const knownCommands = new Set(["build", "brief", "doctor", "graph", "hygiene", "phase2", "orient", "delta", "reconcile", "hooks", "neighborhood", "grant", "candidates"]);
+  const knownCommands = new Set(["build", "brief", "doctor", "graph", "hygiene", "phase2", "orient", "delta", "reconcile", "hooks", "neighborhood", "grant", "candidates", "status", "search", "show", "expand", "impact", "docs", "rules", "mcp", "service", "languages", "update", "init", "uninstall", "support-bundle"]);
   if (!knownCommands.has(command)) {
     const args = parseArgs(argv);
     const task = String(args.task ?? args._.join(" ")).trim();
@@ -3033,8 +3066,11 @@ async function main() {
     return await runBriefAndPrint(root, outDir, args);
   }
   const args = parseArgs(rest);
-  const root = process.cwd();
+  const root = resolve(String(args.root ?? process.cwd()));
   const outDir = normalizePath(args.out ?? DEFAULT_OUT);
+  // D05 facade: route canonical read commands through the shared service.
+  const facadeResult = await dispatchFacade([command, ...rest], { root, outDir });
+  if (facadeResult) return facadeResult.exitCode;
   if (command === "graph") {
     const [subcommand, ...graphRest] = rest;
     const graphArgs = parseArgs(graphRest);
@@ -3082,7 +3118,56 @@ async function main() {
   if (command === "brief") {
     return await runBriefAndPrint(root, outDir, args);
   }
-  if (command === "doctor") return doctor(root, outDir, { json: Boolean(args.json), full: Boolean(args.full) });
+  if (command === "doctor") {
+    if (args["repair-plan"]) {
+      const { collectDoctorDiagnostics } = await import("../lib/operations/doctor.mjs");
+      const { buildRepairPlan } = await import("../lib/operations/repair.mjs");
+      const diagnostics = collectDoctorDiagnostics(root, outDir, { full: Boolean(args.full) });
+      const plan = buildRepairPlan({ root, outDir, graphState: diagnostics.state, reasons: diagnostics.reasons });
+      if (args["apply-repair"]) {
+        if (!args.yes && !args["yes"]) {
+          console.error(JSON.stringify({ schemaVersion: 1, error: { code: "confirmation_required", message: "cortex doctor --apply-repair requires --yes" } }, null, 2));
+          return 3;
+        }
+        const { execFileSync } = await import("node:child_process");
+        const applied = [];
+        for (const action of plan.actions) {
+          if (action.command) {
+            execFileSync(process.execPath, [fileURLToPath(import.meta.url), ...action.command.replace(/^cortex\s+/, "").split(/\s+/)], { cwd: root, stdio: "ignore" });
+            applied.push(action.id);
+          }
+        }
+        console.log(JSON.stringify({ schemaVersion: 1, applied, plan }, null, 2));
+        return 0;
+      }
+      console.log(JSON.stringify(plan, null, 2));
+      return 0;
+    }
+    return doctor(root, outDir, { json: Boolean(args.json), full: Boolean(args.full) });
+  }
+  if (command === "support-bundle") {
+    const { buildSupportBundle } = await import("../lib/operations/support-bundle.mjs");
+    const { collectDoctorDiagnostics } = await import("../lib/operations/doctor.mjs");
+    const { buildRepairPlan } = await import("../lib/operations/repair.mjs");
+    const destination = String(args._[0] ?? args.path ?? "").trim() || null;
+    const diagnostics = collectDoctorDiagnostics(root, outDir);
+    const plan = buildRepairPlan({ root, outDir, graphState: diagnostics.state, reasons: diagnostics.reasons });
+    const bundle = buildSupportBundle({
+      root,
+      outDir,
+      destination,
+      records: {
+        packageChannel: pkgChannel(),
+        installation: { scope: "project", root },
+        serviceStatus: { state: "unknown" },
+        repositoryStatus: { state: diagnostics.state, repoIds: [] },
+        doctor: diagnostics,
+        repairPlan: plan,
+      },
+    });
+    console.log(JSON.stringify(bundle, null, 2));
+    return 0;
+  }
   if (command === "orient") {
     const freshnessReceipt = await queryFreshnessBarrier(root, outDir, args);
     if (freshnessReceipt.barrierResult !== "caught_up" && !args["allow-stale"]) {
@@ -3107,7 +3192,14 @@ async function main() {
 
 export { extractDoc, isDoc, isImplementationPath, loadConfig, repoFiles };
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+function isDirectInvocation() {
+  if (!process.argv[1]) return false;
+  const candidate = existsSync(process.argv[1]) ? realpathSync(process.argv[1]) : resolve(process.argv[1]);
+  const self = realpathSync(fileURLToPath(import.meta.url));
+  return candidate === self;
+}
+
+if (isDirectInvocation()) {
   try {
     process.on("uncaughtException", e => { console.error("STACK:", e.stack); process.exit(1); });
     process.exitCode = await main();
@@ -3115,7 +3207,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     if (error?.code?.startsWith("graph_")) {
       console.error(JSON.stringify({ schemaVersion: 1, error: { code: error.code, message: error.message, ...error.details } }));
     } else {
-      console.error(`maprepo: ${error.message}`);
+      console.error(`cortex: ${error.message}`);
     }
     process.exitCode = 1;
   }

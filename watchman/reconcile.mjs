@@ -6,6 +6,14 @@ import { closeStore, openStore } from "../graph/store-sqlite.mjs";
 import { eventsSince, writeSnapshot } from "./adapter.mjs";
 import { appendWatchEvents, drainJournal } from "./repo-actor.mjs";
 
+function cancelled() { return Object.assign(new Error("request cancelled"), { code: "request_cancelled" }); }
+function throwIfAborted(signal) { if (signal?.aborted) throw cancelled(); }
+function sleep(ms, signal) { return new Promise((resolvePromise, reject) => {
+  if (signal?.aborted) return reject(cancelled());
+  const timer = setTimeout(resolvePromise, ms);
+  signal?.addEventListener("abort", () => { clearTimeout(timer); reject(cancelled()); }, { once: true });
+}); }
+
 function snapshotPath(root, outDir) { return join(resolve(root), outDir, "graph", "watch.snapshot"); }
 function canonicalRoot(value) { const root = resolve(value); try { return realpathSync(root); } catch { return root; } }
 
@@ -39,6 +47,8 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
   const outDir = options.outDir ?? ".agent";
   const close = typeof dbOrRoot === "string";
   try {
+    const { signal } = options;
+    throwIfAborted(signal);
     const adapter = options.adapter ?? { eventsSince, writeSnapshot };
     const ignore = options.ignore ?? [];
     // Reuses the existing repo-relative prefix-exclusion mechanism that
@@ -55,6 +65,7 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
     let diff = { changed: [], added: [], removed: [] };
     if (hadSnapshot) {
       const fastEvents = await adapter.eventsSince(root, snapshot, ignore);
+      throwIfAborted(signal);
       pending.push(...coalesceRenameEvents([
         ...fastEvents,
         ...metadataEvents(db, root, options.scanSourceMetadata ?? scanSourceMetadataPublic, { ignoredPrefixes }),
@@ -79,7 +90,7 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
     const unique = new Map();
     for (const event of pending) unique.set(`${event.path}:${event.renameTo ?? ""}`, event);
     if (unique.size) appendWatchEvents(db, [...unique.values()]);
-    const applied = await drainJournal(db, root, { force: true, maxDependentFiles: options.maxDependentFiles });
+    const applied = await drainJournal(db, root, { force: true, maxDependentFiles: options.maxDependentFiles, signal });
     if ((hadSnapshot && unique.size > 0) || (!hadSnapshot && repairingGap)) {
       // A real (non-glob) ignore list makes @parcel/watcher's writeSnapshot
       // walk skip every ignored directory instead of the whole tree, so it
@@ -90,9 +101,10 @@ export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
       // Empirically confirmed 2026-08-03 — this settle is the fix, not a
       // cosmetic wait; removing it reintroduces a genuinely flaky (not just
       // occasional) false "changed" report on the very next reconcile.
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await sleep(50, signal);
       await adapter.writeSnapshot(root, snapshot, ignore);
     }
+    throwIfAborted(signal);
     db.exec("BEGIN;");
     try {
       db.prepare("INSERT INTO watch_state(key,value) VALUES ('event_gap','0') ON CONFLICT(key) DO UPDATE SET value='0'").run();

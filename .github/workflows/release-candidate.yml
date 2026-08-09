@@ -1,0 +1,36 @@
+name: release-candidate
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  candidate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.13.1
+          cache: pnpm
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: node --test tests/release-candidate.test.mjs
+      - run: node scripts/release/build-candidate.mjs --platform current --out "${{ runner.temp }}/cortex-rc"
+      - run: node scripts/release/check-release.mjs "${{ runner.temp }}/cortex-rc"
+      - run: node --test tests/runtime-bundle.test.mjs
+      - run: node scripts/release/stage-runtime.mjs --out "${{ runner.temp }}/cortex-runtime"
+      - run: node scripts/release/build-runtime-bundle.mjs --out "${{ runner.temp }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cortex-rc-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/cortex-rc/**
+            ${{ runner.temp }}/cortex-*.tar.gz
+            ${{ runner.temp }}/cortex-*.zip
+            ${{ runner.temp }}/cortex-*.sha256

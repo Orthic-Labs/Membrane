@@ -9,12 +9,15 @@ const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/cortex.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
-test("Cortex alias exposes orient contract and branded help", () => {
+test("Cortex CLI exposes the orient contract and branded help", () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
   assert.equal(pkg.bin.cortex, "./scripts/cortex.mjs");
+  assert.equal(pkg.bin["cortex-watch"], "./scripts/cortex-watch.mjs");
+  assert.equal(pkg.bin["cortex-mcp"], "./scripts/cortex-mcp.mjs");
+  assert.equal(pkg.bin["cortex-install"], "./scripts/cortex-install.mjs");
   const help = spawnSync(process.execPath, [CLI, "--help"], { encoding: "utf8" });
   assert.equal(help.status, 0);
-  assert.match(help.stdout, /Cortex/);
+  assert.match(help.stdout, /Cortex — repository truth and evidence map/);
 
   const repo = mkdtempSync(join(tmpdir(), "cortex-alias-"));
   cpSync(FIXTURE, repo, { recursive: true });
