@@ -53,13 +53,14 @@ function remember(state, path) {
   state.files[path] = { exists: bytes !== null, content: bytes?.toString("utf8") ?? null, bytes: bytes?.toString("base64") ?? null };
 }
 function confined(root, path) {
-  const canonicalRoot = realpathSync(root), target = resolve(path), rel = relative(canonicalRoot, target);
-  if (!isAbsolute(path) || !rel || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return false;
+  const canonicalRoot = realpathSync(root), target = resolve(path);
+  if (!isAbsolute(path)) return false;
   let ancestor = target;
   while (!existsSync(ancestor)) { const parent = dirname(ancestor); if (parent === ancestor) return false; ancestor = parent; }
   if (lstatSync(ancestor).isSymbolicLink()) return false;
-  const under = relative(canonicalRoot, realpathSync(ancestor));
-  return !under || (under !== ".." && !under.startsWith(`..${sep}`) && !isAbsolute(under));
+  const physicalTarget = resolve(realpathSync(ancestor), relative(ancestor, target));
+  const under = relative(canonicalRoot, physicalTarget);
+  return !!under && under !== ".." && !under.startsWith(`..${sep}`) && !isAbsolute(under);
 }
 export function validateInstallState(root, state) {
   if (!state || typeof state !== "object" || state.version !== 1 || !state.files || typeof state.files !== "object" || Array.isArray(state.files)) throw new Error("state_invalid");
