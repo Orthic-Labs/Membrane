@@ -6,25 +6,66 @@ Technical overview of components, interfaces, classified flow inventory, and cap
 The deterministic Phase-1 graph supplies the evidence substrate; Phase-2 understanding supplies
 the human component names and operational flow. Raw file and symbol nodes are intentionally omitted.
 
+Cortex is a local-first repository comprehension system with a Node.js CLI and MCP surface over a generation-transactional SQLite graph, plus a loopback Explorer and a native Tauri tray shell.
+
 ## System workflow
 
-_No synthesized component workflow yet; run Cortex Phase 2 synthesis._
+```mermaid
+flowchart LR
+  %% component workflow from .agent/understanding.json
+  c0["Repository files"]
+  c1["Deterministic providers"]
+  c2["SQLite graph generation"]
+  c3["CLI / MCP / Explorer"]
+  c4["Filesystem events"]
+  c5["Watch supervisor"]
+  c6["Delta application"]
+  c7["Fresh graph generation"]
+  c8["Tray source"]
+  c9["RightRelease build"]
+  c10["Signed sealed artifacts"]
+  c11["Explicit patch or update upload"]
+  c0 --> c1
+  c1 --> c2
+  c2 --> c3
+  c4 --> c5
+  c5 --> c6
+  c6 --> c7
+  c8 --> c9
+  c9 --> c10
+  c10 --> c11
+```
+
+_(source: .agent/understanding.json:architecture.dataFlow)_
 
 ## Components
 
-- _No synthesized components yet; run Cortex Phase 2 synthesis._
+- **CLI** — Builds, queries, watches, repairs, and diagnoses repository graphs. _(source: scripts/cortex.mjs)_
+- **Graph engine** — Extracts deterministic file, claim, symbol, relation, and flow evidence. _(source: graph/static-provider.mjs)_
+- **SQLite store** — Publishes complete graph generations transactionally. _(source: graph/store-sqlite.mjs)_
+- **Application service** — Shares query, admission, orientation, and graph operations across interfaces. _(source: lib/application/service.mjs)_
+- **MCP server** — Exposes graph tools through the model context protocol. _(source: scripts/cortex-mcp.mjs)_
+- **Explorer** — Serves a token-protected loopback UI over the canonical graph. _(source: lib/explorer/index.mjs)_
+- **Watch service** — Applies filesystem deltas and exposes read-only status. _(source: watchman/supervisor.mjs)_
+- **Desktop tray** — Controls repository enrollment, service lifecycle, and Explorer launch. _(source: apps/cortex-tray/src-tauri/src/main.rs)_
+- **Release integration** — Delegates signing, sealing, and publication to RightRelease and CI to RightGit. _(source: apps/cortex-tray/right-release.config.mjs)_
 
 ## Flow inventory
 
-_No classified product flows yet; run Cortex Phase 2 synthesis._
+| Flow | Status | Evidence | Impact |
+|---|---|---|---|
+| build and query | complete | tests/graph-cli.test.mjs | core comprehension path |
+| watch and refresh | complete | tests/freshness-regressions.test.mjs | long-running freshness |
+| Explorer access | complete | tests/explorer.test.mjs | human inspection |
+| desktop release | implemented-unpublished | apps/cortex-tray/right-release.config.mjs | distribution |
 
 ## Capability coverage
 
-| Capability | Status | Evidence |
-|---|---|---|
-| document/ADR/plan claims | covered | _source: .agent/map.json:claims_ |
-| code symbols and relationships | partial until Phase 2 classifies provider coverage | _source: .agent/graph/graph.db_ |
-| contradiction/staleness arbitration | covered | _source: .agent/stale.json_ |
+| Capability | Status | Evidence | Provider |
+|---|---|---|---|
+| deterministic repository graph | covered | graph/static-provider.mjs | built-in |
+| semantic reconciliation | partial | SKILL.md:251 | Phase 2 |
+| desktop operation | implemented-unpublished | docs/product/tray.md | Tauri |
 
 ## Health & Security (loud-partial when graph is missing)
 
