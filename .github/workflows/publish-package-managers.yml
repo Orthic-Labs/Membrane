@@ -59,7 +59,7 @@ jobs:
           cp generated/cortex.rb homebrew-tap/Formula/cortex.rb
       # Downstream PRs only — never rewrites an existing release.
       - name: Open Homebrew tap PR
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
@@ -76,7 +76,7 @@ jobs:
           mkdir -p scoop-bucket/bucket
           cp generated/cortex.json scoop-bucket/bucket/cortex.json
       - name: Open Scoop bucket PR
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: scoop-bucket
