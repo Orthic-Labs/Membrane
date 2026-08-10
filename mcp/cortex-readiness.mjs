@@ -1,4 +1,4 @@
-// MBR-009 — Consume authoritative Cortex supervisor readiness.
+// MBR-009 + X-3 — Consume authoritative Cortex supervisor readiness via published API.
 //
 // Membrane must NOT re-derive watcher liveness from a bare pid-alive probe the
 // way a naive reader would. The Cortex watchman supervisor
@@ -18,32 +18,29 @@
 //                    `event_gap` non-zero → "degraded"; pending unapplied events
 //                    → "stale".
 //
-// The defect this replaces: the catalog only ran `process.kill(pid, 0)`. After
-// a supervisor restart the persisted pid is the predecessor's, which is dead,
-// so the catalog reported "degraded" for repos the NEW supervisor was already
-// (re)watching — a supervisor restart marked live repositories dead. Worse, the
-// old code could not tell a recycled OS pid (now owned by an unrelated process)
-// from a genuine live watcher, reporting "current" for a repo nobody watched.
-//
-// This module consumes the authoritative contract: it trusts the persisted
-// owner stamp exactly as the supervisor itself does for an out-of-process
-// reader (which has no `live.instanceId` of its own). A pid that is alive but
-// carries a stale owner stamp is reported `watcher_owner_stale`, never
-// "current" — and the freshness is `unwatched` (a stale actor), NOT
-// `degraded` (stale data). That is the separation the acceptance demands.
-//
-// The module is self-contained and sibling-independent by construction (see
-// MBR-015): it reads only the repo's own `.agent/graph/graph.db` `watch_state`
-// table, the same store Cortex's supervisor reads. It never imports a sibling
-// source tree.
+// X-3: this module now consumes Cortex's published API (FRESHNESS + store) via
+// guarded dynamic import with MEMBRANE_CORTEX_SUPERVISOR / MEMBRANE_CORTEX_STORE
+// overrides. When Cortex is absent (installed runtime) it degrades to the local
+// DatabaseSync fallback and local enum, so no sibling source tree is required.
+// This keeps behavior identical while sourcing truth from Cortex when present.
 
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
-// The four freshness values the catalog surfaces. These match
-// repository-catalog.mjs's WATCHER_STATES exactly and Cortex's FRESHNESS enum.
-export const READINESS_STATES = Object.freeze(["current", "degraded", "stale", "unwatched"]);
+const CORTEX_SUPERVISOR_URL = (() => { const o = process.env.MEMBRANE_CORTEX_SUPERVISOR?.trim(); if (o) return pathToFileURL(resolve(o)).href; return pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "cortex", "watchman", "supervisor.mjs")).href; })();
+const CORTEX_STORE_URL = (() => { const o = process.env.MEMBRANE_CORTEX_STORE?.trim(); if (o) return pathToFileURL(resolve(o)).href; return pathToFileURL(resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "cortex", "graph", "store-sqlite.mjs")).href; })();
+
+let _cortexFreshness = null;
+let _cortexOpen = null;
+let _cortexClose = null;
+try { const m = await import(CORTEX_SUPERVISOR_URL); if (m?.FRESHNESS) _cortexFreshness = m.FRESHNESS; } catch {}
+try { const m = await import(CORTEX_STORE_URL); if (m?.openStoreReadOnly && m?.closeStore) { _cortexOpen = m.openStoreReadOnly; _cortexClose = m.closeStore; } } catch {}
+
+export const READINESS_STATES = _cortexFreshness
+  ? Object.freeze([_cortexFreshness.CURRENT, _cortexFreshness.DEGRADED, _cortexFreshness.STALE, _cortexFreshness.UNWATCHED])
+  : Object.freeze(["current", "degraded", "stale", "unwatched"]);
 
 const NO_GRAPH = Object.freeze({
   freshness: "unwatched",
@@ -74,11 +71,24 @@ export function isPidAlive(pid) {
  * Returns a plain object keyed by the state key, or `null` when the graph is
  * unbuilt or unreadable. Reads are isolated: one corrupt store never blanks the
  * caller's view of another repo (each call opens its own read-only handle and
- * swallows per-repo errors).
+ * swallows per-repo errors). Prefers Cortex's published store API when present.
  */
 function readWatchState(absoluteRoot) {
   const graphDbPath = join(absoluteRoot, ".agent", "graph", "graph.db");
   if (!existsSync(graphDbPath)) return null;
+  if (_cortexOpen && _cortexClose) {
+    let db;
+    try {
+      db = _cortexOpen(graphDbPath);
+      const rows = db.prepare("SELECT key, value FROM watch_state").all();
+      if (!rows || rows.length === 0) return {};
+      return Object.fromEntries(rows.map((row) => [row.key, row.value]));
+    } catch {
+      return null;
+    } finally {
+      if (db) { try { _cortexClose(db); } catch {} }
+    }
+  }
   let db;
   try {
     db = new DatabaseSync(graphDbPath, { open: true, readOnly: true });
@@ -86,7 +96,6 @@ function readWatchState(absoluteRoot) {
     if (!rows || rows.length === 0) return {};
     return Object.fromEntries(rows.map((row) => [row.key, row.value]));
   } catch {
-    // graph.db unreadable or missing watch_state table → treat as no graph.
     return null;
   } finally {
     if (db) { try { db.close(); } catch {} }
@@ -96,6 +105,18 @@ function readWatchState(absoluteRoot) {
 function countPendingEvents(absoluteRoot) {
   const graphDbPath = join(absoluteRoot, ".agent", "graph", "graph.db");
   if (!existsSync(graphDbPath)) return 0;
+  if (_cortexOpen && _cortexClose) {
+    let db;
+    try {
+      db = _cortexOpen(graphDbPath);
+      const row = db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=0").get();
+      return Number(row?.n ?? 0);
+    } catch {
+      return 0;
+    } finally {
+      if (db) { try { _cortexClose(db); } catch {} }
+    }
+  }
   let db;
   try {
     db = new DatabaseSync(graphDbPath, { open: true, readOnly: true });
@@ -117,11 +138,6 @@ function countPendingEvents(absoluteRoot) {
  *   2. No persisted pid                      → unwatched, `watcher_never_started`
  *   3. pid present but dead                  → unwatched, `watcher_process_dead`
  *   4. pid alive but owner stamp is foreign  → unwatched, `watcher_owner_stale`
- *        (a supervisor restart leaves a stale predecessor stamp; this is a
- *         stale ACTOR, never "current". The caller may supply its own current
- *         supervisor instanceId via options.ownInstanceId to detect this; if
- *         the caller has no instance of its own it trusts the bare pid, exactly
- *         as the supervisor does for a bare status reader.)
  *   5. pid alive and owned (or trusted)      → actor is alive; then decide on
  *        data staleness: event_gap → degraded; pending events → stale; else
  *        current.
@@ -154,10 +170,7 @@ export function readCortexReadiness(absoluteRoot, options = {}) {
   }
 
   const pidAlive = isPidAlive(pid);
-  // Stale ACTOR: the recorded watcher process is gone. This is the case that a
-  // supervisor restart exposes — the predecessor's dead pid is still stamped.
-  // We MUST NOT report "degraded" here: degraded means a live watcher is behind
-  // on data, not that no watcher is alive at all.
+  // Stale ACTOR: the recorded watcher process is gone.
   if (!pidAlive) {
     return {
       freshness: "unwatched", reason: "watcher_process_dead",
@@ -165,10 +178,7 @@ export function readCortexReadiness(absoluteRoot, options = {}) {
     };
   }
 
-  // The pid is alive. If the caller is itself a supervisor instance and the
-  // persisted owner names a DIFFERENT instance, the stamp is from a superseded
-  // predecessor — distrust it. (A bare reader with no ownInstanceId trusts the
-  // bare pid, exactly as Cortex's supervisor does for a bare status reader.)
+  // The pid is alive. If persisted owner names a DIFFERENT instance, distrust it.
   const ownInstanceId = options.ownInstanceId ?? null;
   if (ownInstanceId && owner && owner !== ownInstanceId) {
     return {
