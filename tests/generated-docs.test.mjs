@@ -49,6 +49,7 @@ function makeFixture(name = null) {
     join(root, "AGENTS.md"),
     "# Agents\n\n- The product handles transcription.\n- Local-first is implemented.\n",
   );
+  writeFileSync(join(root, "package.json"), '{"name":"@example/cortex-fixture"}\n');
   writeFileSync(join(root, "src/index.ts"), "// hello\nexport const x = 1;\n");
   return root;
 }
@@ -80,8 +81,8 @@ it("B6.5.4 fixture build emits both docs with generation headers + provenance", 
 });
 
 it("generated doc identity is stable across LF and CRLF checkouts", async () => {
-  const lfRoot = makeFixture("cortex");
-  const crlfRoot = makeFixture("Cortex");
+  const lfRoot = makeFixture("lf-checkout");
+  const crlfRoot = makeFixture("crlf-checkout");
   try {
     for (const name of ["README.md", "AGENTS.md"]) {
       const target = join(crlfRoot, name);
