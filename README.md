@@ -124,5 +124,3 @@ Trademarks: see [TRADEMARKS.md](TRADEMARKS.md).
 - [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
 - [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
 <!-- cortex:docs:end -->
-
-
