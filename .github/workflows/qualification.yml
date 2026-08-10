@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: 22.22.3
           package-manager-cache: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
       - uses: pnpm/action-setup@v4
