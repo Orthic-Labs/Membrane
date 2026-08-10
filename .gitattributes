@@ -1,1 +1,2 @@
 evidence/**/*.json -text
+engine/crates/membrane/src/generated_cli_subcommands.rs text eol=lf
