@@ -309,8 +309,22 @@ const GRAMMAR_PACKAGE = readGrammarPackageInfo();
 
 const languageCache = new Map(); // languageId -> { language, parser, grammar } | { error, grammar }
 
+export function grammarRuntimeBlockReason(languageId, { platform = process.platform, nodeVersion = process.versions.node } = {}) {
+  const nodeMajor = Number(String(nodeVersion).split(".")[0]);
+  if (languageId === "swift" && platform === "linux" && nodeMajor === 24) {
+    return "grammar_runtime_incompatible:swift:linux:node24";
+  }
+  return null;
+}
+
 export async function loadLanguageRecord(languageId) {
   if (languageCache.has(languageId)) return languageCache.get(languageId);
+  const runtimeBlock = grammarRuntimeBlockReason(languageId);
+  if (runtimeBlock) {
+    const failed = { error: runtimeBlock, grammar: null };
+    languageCache.set(languageId, failed);
+    return failed;
+  }
   let entry = null;
   try { entry = catalogLanguage(languageId); }
   catch (error) {
