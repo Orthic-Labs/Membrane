@@ -36,7 +36,7 @@ async function until(predicate) {
 function abortableRelease(releases, signal) {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const release = (value) => {
+    const settleMockFreshness = (value) => {
       if (settled) return;
       settled = true;
       signal?.removeEventListener("abort", abort);
@@ -49,7 +49,7 @@ function abortableRelease(releases, signal) {
     };
     if (signal?.aborted) return abort();
     signal?.addEventListener("abort", abort, { once: true });
-    releases.push(release);
+    releases.push(settleMockFreshness);
   });
 }
 
