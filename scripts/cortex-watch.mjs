@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync, openSync, closeSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { spawn } from "node:child_process";
@@ -13,6 +13,33 @@ const command = process.argv[2] ?? "status";
 const args = process.argv.slice(3);
 
 function json(value) { console.log(JSON.stringify(value, null, 2)); }
+
+function pidAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+function claimPidfile() {
+  try {
+    const fd = openSync(pidPath, "wx");
+    writeSync(fd, String(process.pid));
+    closeSync(fd);
+    return true;
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    const existingPid = Number(readFileSync(pidPath, "utf8"));
+    if (pidAlive(existingPid)) return false;
+    try { unlinkSync(pidPath); } catch {}
+    try {
+      const fd = openSync(pidPath, "wx");
+      writeSync(fd, String(process.pid));
+      closeSync(fd);
+      return true;
+    } catch (retryError) {
+      if (retryError.code === "EEXIST") return false;
+      throw retryError;
+    }
+  }
+}
 
 function enroll(root) {
   const absolute = resolve(root ?? process.cwd());
@@ -34,11 +61,16 @@ async function start() {
   if (args.includes("--daemon")) {
     const child = spawn(process.execPath, [new URL(import.meta.url).pathname, "start"], { detached: true, stdio: "ignore" });
     child.unref();
-    writeFileSync(pidPath, String(child.pid));
-    json({ started: true, daemon: true, pid: child.pid });
+    // The child claims the pidfile itself and may decline as already_running,
+    // so this process only knows it spawned — reporting "started" would be a
+    // claim the parent cannot verify.
+    json({ spawned: true, daemon: true, pid: child.pid });
     return;
   }
-  writeFileSync(pidPath, String(process.pid));
+  if (!claimPidfile()) {
+    json({ started: false, reason: "already_running" });
+    return;
+  }
   const supervisor = new WatchSupervisor({ configPath });
   await supervisor.start();
   const stop = async () => { await supervisor.stop(); try { unlinkSync(pidPath); } catch {} process.exit(0); };
