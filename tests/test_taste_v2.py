@@ -299,7 +299,7 @@ class AuthoritativeProvenanceTests(unittest.TestCase):
         events = _correction_session()
         c = taste_v2.extract_candidates(events, scope="workspace")[0]
         self.assertEqual(c.transportNote, taste_v2.TRANSPORT_GAP_NOTE)
-        self.assertIn("event-content lookup", c.transportNote)
+        self.assertIn("cannot mint Taste candidates", c.transportNote)
 
     def test_malicious_nested_provenance_matrix_rejects_before_admission(self):
         candidate = taste_v2.extract_candidates(_correction_session(), scope="workspace")[0]
@@ -525,9 +525,9 @@ class SummaryTests(unittest.TestCase):
 
 class TransportGapTests(unittest.TestCase):
     def test_transport_gap_note_states_the_limit(self):
-        # The note is an in-product honesty statement and must travel
-        # with every candidate. Plan 5.3 / defect 24.
-        self.assertIn("event-content lookup", taste_v2.TRANSPORT_GAP_NOTE)
+        # The note preserves the permanent semantic/metadata boundary.
+        self.assertIn("canonical semantic source", taste_v2.TRANSPORT_GAP_NOTE)
+        self.assertIn("permanently metadata-only", taste_v2.TRANSPORT_GAP_NOTE)
         self.assertIn("observable_events.py", taste_v2.TRANSPORT_GAP_NOTE)
 
     def test_candidate_carries_transport_note(self):

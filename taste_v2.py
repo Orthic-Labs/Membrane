@@ -157,19 +157,16 @@ _FAILURE_CLASSIFICATIONS = frozenset({"unresolved_failure", "failed_verification
 
 
 # ---------------------------------------------------------------------------
-# Honest in-product note about the transport gap (plan defect 24).
+# In-product statement of the permanent transport boundary (plan defect 24).
 # ---------------------------------------------------------------------------
 
 TRANSPORT_GAP_NOTE: str = (
     "Taste candidates carry the source event's exact byte spans and bounded "
-    "surrounding context. The Membrane->Morph transport layer "
-    "(morph/observable_events.py:42, plan defect 24) emits taste candidates "
-    "with only event_id/trace_id/source and no content, and the Rust query "
-    "service has no event-content lookup route. This module therefore "
-    "consumes the TranscriptEventV1 layer directly (tools/lib/orthic_transcripts) "
-    "where text is preserved. When the transport is upgraded, the same "
-    "TasteCandidateV1 shape can be produced from the transport feed by "
-    "resolving content via the new lookup route."
+    "surrounding context. Direct TranscriptEventV1 input "
+    "(tools/lib/orthic_transcripts) is the canonical semantic source. "
+    "ObservableEventV1 transport (morph/observable_events.py) is permanently "
+    "metadata-only for lineage and Insights; it never carries or resolves "
+    "Taste text and cannot mint Taste candidates."
 )
 
 
