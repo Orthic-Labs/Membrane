@@ -86,39 +86,39 @@ fn multiple_clients_reuse_one_endpoint() {
 /// Acceptance test #2 — duplicate watchers cannot run simultaneously.
 ///
 /// Two supervisors racing on the same user MUST both decide `Adopt` for the watcher if
-/// the watcher is alive — never `SpawnFresh`. The supervisor's lock prevents the second
+/// the watcher is alive — never a spawn (D-S09). The supervisor's lock prevents the second
 /// supervisor from doing useful work, but the decision function itself returns `Adopt`
 /// every time, so the type-level invariant is the duplicate-impossible property.
 #[test]
 fn duplicate_watchers_cannot_run_simultaneously() {
     // Build two WatcherCoordinators over the SAME pidfile. Each one asks: "what do I do?"
-    // The answer must be the same, and must be one of {Adopt, SpawnFresh, Unavailable}.
-    // Critically, two supervisors cannot both SpawnFresh because the second one sees the
+    // The answer must be the same, and must be one of {Adopt, Unavailable} — never a spawn (D-S09).
+    // Critically, two supervisors both observe the same state and agree; neither ever spawns
     // first one's pidfile write.
     let temp = tempfile::tempdir().unwrap();
     let pidfile = temp.path().join("watchman.pid");
     let script = temp.path().join("cortex-watch.mjs");
 
-    // Round 1: pidfile missing, script present. Both coordinators decide SpawnFresh.
+    // Round 1: pidfile missing, script present. Both coordinators decide Unavailable (D-S09).
     std::fs::write(&script, b"#!/usr/bin/env node\n").unwrap();
     let coordinator_a = WatcherCoordinator::new(pidfile.clone(), Some(script.clone()));
     let coordinator_b = WatcherCoordinator::new(pidfile.clone(), Some(script.clone()));
     let action_a = coordinator_a.decide();
     let action_b = coordinator_b.decide();
     assert!(
-        matches!(action_a, WatcherAction::SpawnFresh),
-        "expected SpawnFresh, got {:?}",
+        matches!(action_a, WatcherAction::Unavailable),
+        "expected Unavailable, got {:?}",
         action_a
     );
     assert!(
-        matches!(action_b, WatcherAction::SpawnFresh),
-        "expected SpawnFresh, got {:?}",
+        matches!(action_b, WatcherAction::Unavailable),
+        "expected Unavailable, got {:?}",
         action_b
     );
 
     // Round 2: simulate that one of them wrote its PID and forked the watcher. The
     // recorded PID is overwhelmingly unlikely to be alive in the test runner, so we
-    // expect SpawnFresh. The point of the test is the SAME-action invariant: both
+    // expect Unavailable (dead pid yields Unavailable, never a spawn). The point
     // supervisors observe the same state and decide the same action.
     let recorded_pid: u32 = 7_777_777;
     std::fs::write(&pidfile, format!("{recorded_pid}\n")).unwrap();

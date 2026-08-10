@@ -47,20 +47,24 @@ impl Default for RestartPolicy {
     }
 }
 
-/// Watcher coordination policy. The supervisor either owns the watcher (spawning it on
-/// startup) or runs alongside an externally-managed one. Either way, duplicate watchers
-/// are impossible because the coordinator adopts only a live, recorded PID.
+/// Watcher coordination policy. The supervisor never spawns or owns the watcher;
+/// it only observes the pidfile to learn whether a live watcher exists (purely
+/// informational, never influencing what Membrane spawns). Duplicate watchers are
+/// impossible because Membrane never spawns — it only adopts a live pid as a
+/// read-only liveness probe, per D-S09.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WatcherPolicy {
-    /// Spawn and manage the watcher if absent. If `false`, the supervisor only adopts an
-    /// externally-managed watcher and refuses to spawn one itself.
+    /// Reserved flag; the supervisor never spawns regardless of this value.
+    /// `true`/`false` both mean "observe only" — the supervisor only adopts a
+    /// live pid as a read-only liveness probe and never spawns, per D-S09.
     pub managed: bool,
     /// PID file the watcher is required to publish. The supervisor reads this on every
     /// decision cycle and refuses to spawn a duplicate.
     pub pid_file: PathBuf,
     /// Optional path to the watcher script. When `None`, the coordinator reports
-    /// `Unavailable` instead of `SpawnFresh`.
+    /// `Unavailable`. Retained for `Adopt`'s script-presence check to distinguish
+    /// "cortex not installed" from a dead pid — not used to spawn, per D-S09.
     pub script: Option<PathBuf>,
 }
 

@@ -1,7 +1,8 @@
-//! Watcher dedup coordinator. The supervisor is responsible for ensuring that at most one
-//! `cortex-watch.mjs` watcher runs at a time. The existing runtime already records the
-//! watcher pidfile at `$HOME/.cortex/watchman.pid`; the supervisor reads it, decides an
-//! action, and either adopts the live watcher or spawns a fresh one.
+//! Watcher dedup coordinator. The supervisor is responsible for observing the
+//! cortex watcher. The existing runtime records the watcher pidfile at
+//! `$HOME/.cortex/watchman.pid`; the supervisor reads it and either adopts the
+//! live watcher (purely informational, never influencing what Membrane spawns)
+//! or reports `Unavailable`. Membrane observes, never claims, per D-S09.
 //!
 //! The decision is a pure function of two facts: whether the watcher script is present
 //! and whether the recorded PID is alive. Both facts surface in the typed
@@ -19,13 +20,13 @@ use std::path::Path;
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum WatcherAction {
     /// Adopt the already-running watcher (a live PID was recorded). The supervisor MUST NOT
-    /// spawn a duplicate. Multiple clients reuse the adopted watcher.
+    /// spawn a duplicate. Multiple clients reuse the adopted watcher. This is a read-only
+    /// liveness observation, not an ownership claim — D-S09.
     Adopt { pid: u32 },
-    /// Spawn a fresh watcher. Either no watcher script is available, or the recorded PID is
-    /// a stale actor (gone, unparseable, or owned by a process we cannot signal).
-    SpawnFresh,
-    /// The watcher script is missing. The supervisor reports `Unavailable` so callers know
-    /// the watcher will never run, instead of spawning something else by accident.
+    /// The watcher is unavailable. This covers: missing script (cortex not installed),
+    /// missing pidfile, dead pid, or foreign-owned pid. The supervisor reports
+    /// `Unavailable` so callers know the watcher will never run, and never attempts to
+    /// spawn anything.
     Unavailable,
 }
 
@@ -34,7 +35,6 @@ impl WatcherAction {
     pub fn label(&self) -> &'static str {
         match self {
             WatcherAction::Adopt { .. } => "adopt",
-            WatcherAction::SpawnFresh => "spawn-fresh",
             WatcherAction::Unavailable => "unavailable",
         }
     }
@@ -43,7 +43,8 @@ impl WatcherAction {
 /// Decide what the supervisor should do about the watcher. The decision is a pure function
 /// of the script presence and the recorded PID's liveness so it can be unit-tested without
 /// touching process state. A stale PID is never adopted; that is the core of the
-/// duplicate-impossible invariant.
+/// duplicate-impossible invariant. A dead or missing pid now yields `Unavailable`, never a
+/// spawn attempt — Membrane observes, never claims, per D-S09.
 pub fn decide_action(
     script_available: bool,
     recorded_pid: Option<u32>,
@@ -56,7 +57,7 @@ pub fn decide_action(
     }
     match recorded_pid {
         Some(pid) if recorded_pid_alive => WatcherAction::Adopt { pid },
-        _ => WatcherAction::SpawnFresh,
+        _ => WatcherAction::Unavailable,
     }
 }
 
@@ -71,9 +72,9 @@ pub fn read_watcher_pidfile(pidfile: &Path) -> (Option<u32>, bool) {
     (pid, alive)
 }
 
-/// A supervisor-owned spawn plan. The supervisor (not this module) decides whether to
-/// invoke it; the only thing this module guarantees is that at most one decision per cycle
-/// comes back as `Adopt` or `SpawnFresh` — never both.
+/// A supervisor-owned observation plan. The supervisor (not this module) decides how to
+/// report it; the only thing this module guarantees is that each decision comes back as
+/// `Adopt` or `Unavailable` — never a spawn instruction.
 #[derive(Debug)]
 pub struct WatcherCoordinator {
     pid_file: std::path::PathBuf,
@@ -103,9 +104,8 @@ impl WatcherCoordinator {
         decide_action(script_available, recorded_pid, recorded_pid_alive)
     }
 
-    /// Decide and validate that we are not double-spawning. Two `SpawnFresh` decisions in a
-    /// row without a recorded PID in between are an invalid sequence: the first spawn MUST
-    /// have written the pidfile before deciding the second time.
+    /// Decide and validate. Rejects an impossible `Adopt` with pid 0; all other
+    /// decisions (`Adopt` with a live pid, or `Unavailable`) are valid.
     pub fn decide_with_invariant(&self) -> Result<WatcherAction> {
         let action = self.decide();
         match &action {
@@ -117,41 +117,21 @@ impl WatcherCoordinator {
                 }
                 Ok(action)
             }
-            WatcherAction::SpawnFresh | WatcherAction::Unavailable => Ok(action),
+            WatcherAction::Unavailable => Ok(action),
         }
     }
 }
 
-/// Two-decision dedup witness. `DecideAndRecord` lets the test layer simulate a full
-/// spawn-then-decide cycle so the no-double-spawn invariant is exercised end-to-end.
+/// Two-decision observation witness. Lets the test layer simulate two consecutive
+/// decisions. Since the supervisor never spawns, any sequence of `Adopt`/`Unavailable`
+/// is valid — the witness simply confirms the observer invariant holds.
 pub fn two_decisions_agree(
     first: &WatcherAction,
-    first_wrote_pid: bool,
-    second: &WatcherAction,
+    _first_wrote_pid: bool,
+    _second: &WatcherAction,
 ) -> Result<()> {
     match first {
         WatcherAction::Adopt { .. } | WatcherAction::Unavailable => Ok(()),
-        WatcherAction::SpawnFresh => {
-            if !first_wrote_pid {
-                // The supervisor is allowed to spawn-fresh without yet writing the pidfile
-                // (the spawn happens after decide). We accept this; the invariant that
-                // matters is enforced by the OS service model: only one supervisor owns the
-                // lock, so only one SpawnFresh can be racing at a time.
-                Ok(())
-            } else {
-                // After a SpawnFresh that wrote a pid, the next decision MUST observe that
-                // pid as Adopt — never SpawnFresh again. Enforce here for tests.
-                match second {
-                    WatcherAction::Adopt { .. } => Ok(()),
-                    WatcherAction::SpawnFresh => Err(SupervisorError::WatcherDecision {
-                        reason:
-                            "supervisor spawned a watcher without the first pidfile being observed as alive on the next decision — duplicate possible"
-                                .to_string(),
-                    }),
-                    WatcherAction::Unavailable => Ok(()),
-                }
-            }
-        }
     }
 }
 
@@ -173,15 +153,15 @@ mod tests {
     }
 
     #[test]
-    fn decide_action_spawns_when_script_but_no_pid() {
-        assert_eq!(decide_action(true, None, false), WatcherAction::SpawnFresh);
+    fn decide_action_unavailable_when_script_but_no_pid() {
+        assert_eq!(decide_action(true, None, false), WatcherAction::Unavailable);
     }
 
     #[test]
-    fn decide_action_spawns_when_recorded_pid_is_dead() {
+    fn decide_action_unavailable_when_recorded_pid_is_dead() {
         assert_eq!(
             decide_action(true, Some(4242), false),
-            WatcherAction::SpawnFresh
+            WatcherAction::Unavailable
         );
     }
 
@@ -198,8 +178,7 @@ mod tests {
         // Two supervisors racing on the same pidfile: both ask for "what now?" once the
         // other has written. Whoever sees the live pid, adopts. The other one, still seeing
         // the live pid on its next turn, ALSO adopts — neither spawns. Duplicate spawns
-        // are impossible because the supervisor cannot SpawnFresh while a live PID is
-        // recorded in the pidfile the supervisor itself wrote.
+        // are impossible because the supervisor never spawns; it only observes.
         let pid = std::process::id();
         let action_a = decide_action(true, Some(pid), true);
         let action_b = decide_action(true, Some(pid), true);
@@ -225,12 +204,18 @@ mod tests {
     }
 
     #[test]
-    fn two_decisions_agree_flags_duplicate_spawn_after_pidfile_write() {
-        let first = WatcherAction::SpawnFresh;
-        let second = WatcherAction::SpawnFresh;
-        assert!(two_decisions_agree(&first, true, &second).is_err());
-
-        let second = WatcherAction::Adopt { pid: 4242 };
+    fn two_decisions_agree_always_ok_for_observer() {
+        let first = WatcherAction::Unavailable;
+        let second = WatcherAction::Unavailable;
         assert!(two_decisions_agree(&first, true, &second).is_ok());
+
+        let first = WatcherAction::Adopt { pid: 4242 };
+        let second = WatcherAction::Unavailable;
+        assert!(two_decisions_agree(&first, true, &second).is_ok());
+
+        let first = WatcherAction::Unavailable;
+        let second = WatcherAction::Adopt { pid: 4242 };
+        assert!(two_decisions_agree(&first, false, &second).is_ok());
     }
+
 }

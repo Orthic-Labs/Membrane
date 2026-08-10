@@ -201,8 +201,9 @@ impl Supervisor {
     }
 
     /// Decide what to do about the watcher this cycle. The supervisor's caller routes on
-    /// the outcome: `Adopt` is a no-op, `SpawnFresh` triggers the spawn path,
-    /// `Unavailable` is reported and skipped.
+    /// the outcome: `Adopt` is a read-only liveness observation (purely informational,
+    /// never influencing what Membrane spawns), `Unavailable` is reported and skipped.
+    /// The supervisor never spawns a watcher — Membrane observes, never claims, per D-S09.
     pub fn reconcile_watcher(&self) -> Result<WatcherAction> {
         let action = self.coordinator.decide_with_invariant()?;
         Ok(action)
