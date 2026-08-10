@@ -7,7 +7,7 @@
 // text JSON; every failure returns isError with the stable typed envelope
 // (code/message/details/retryable/remediation), redacted and stack-free.
 
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -301,7 +301,7 @@ export async function startCortexMcpServer({ root, repoId } = {}) {
   return server;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+if (process.argv[1] && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url))) {
   const { root, repoId, envRoots } = parseRootConfig();
   const server = createCortexMcpServer({ root, repoId, envRoots });
   await server.connect(new StdioServerTransport());
