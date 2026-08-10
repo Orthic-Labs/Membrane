@@ -1369,6 +1369,8 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ("POST", "/memory-candidates", HttpWorkClass::Model),
     ("POST", "/federate", HttpWorkClass::General),
     ("POST", "/delivery/trace", HttpWorkClass::General),
+    ("GET", "/hub/capabilities", HttpWorkClass::General),
+    ("GET", "/hub/snapshot", HttpWorkClass::General),
     ("POST", "/verify-memory", HttpWorkClass::General),
     ("POST", "/compress", HttpWorkClass::Model),
     ("POST", "/scope_grants", HttpWorkClass::General),
@@ -2595,6 +2597,28 @@ fn route_with_context_ingest_lease(
     }
     if method == "POST" && path == "/federate" {
         return federate_route_response(body);
+    }
+    if method == "GET" && path == "/hub/capabilities" {
+        let body = serde_json::json!({
+            "capabilities": ["snapshot", "deliveries", "providers", "repositories", "adapters", "memory", "sentinel"],
+            "devices": "not_instrumented",
+            "alerts": "not_instrumented",
+            "delivery_trace": crate::delivery_trace_view::project_delivery_trace(&serde_json::json!({})),
+        }).to_string();
+        return (200, body);
+    }
+    if method == "GET" && path == "/hub/snapshot" {
+        let snap = serde_json::json!({
+            "hub": "snapshot",
+            "sections": {
+                "capabilities": "ok",
+                "snapshot": "ok",
+                "delivery": crate::delivery_trace_view::project_delivery_trace(&serde_json::json!({})),
+                "devices": "not_instrumented",
+                "alerts": "not_instrumented"
+            }
+        }).to_string();
+        return (200, snap);
     }
     if method == "POST" && path == "/delivery/trace" {
         return delivery_trace_response(body);
