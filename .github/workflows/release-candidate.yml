@@ -26,7 +26,7 @@ jobs:
       - run: node --test tests/runtime-bundle.test.mjs
       - run: node scripts/release/stage-runtime.mjs --out "${{ runner.temp }}/cortex-runtime"
       - run: node scripts/release/build-runtime-bundle.mjs --out "${{ runner.temp }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cortex-rc-${{ matrix.os }}
           path: |
