@@ -20,7 +20,8 @@ import sqlite3
 import time
 from pathlib import Path
 
-from crypt_service_launchd import (  # noqa: F401 - re-exported for callers of this module
+# removed per D-S04: launchd auto-registration deleted
+# from crypt_service_launchd import (  # noqa: F401 - re-exported for callers of this module
     DEFAULT_CRYPT_DAILY_LABEL,
     DEFAULT_CRYPT_REPLICATION_LABEL,
     DEFAULT_CRYPT_SERVE_LABEL,
@@ -28,7 +29,8 @@ from crypt_service_launchd import (  # noqa: F401 - re-exported for callers of t
     render_crypt_launchd_plist,
     render_crypt_replication_launchd_plist,
 )
-from crypt_service_registrars import (  # noqa: F401 - re-exported for callers of this module
+# removed per D-S04
+# from crypt_service_registrars import (  # noqa: F401 - re-exported for callers of this module
     bootstrap_launch_agent,
     migrate_macos_label,
     setup_crypt_serve_autostart as _orig_setup_crypt_serve_autostart,
