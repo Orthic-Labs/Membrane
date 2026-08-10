@@ -1,20 +1,10 @@
-import { spawnSync } from "node:child_process";
+import Ajv2020 from "ajv/dist/2020.js";
 
-const candidates = [
-  ...(process.env.CORTEX_TEST_PYTHON ? [[process.env.CORTEX_TEST_PYTHON]] : []),
-  ...(process.platform === "win32" ? [["py", "-3.11"]] : [["python3"], ["/usr/bin/python3"]]),
-];
-
-function supportsJsonschema(command) {
-  return spawnSync(command[0], [...command.slice(1), "-c", "import jsonschema"], {
-    stdio: "ignore",
-  }).status === 0;
-}
-
-export const PYTHON = candidates.find(supportsJsonschema);
-
-if (!PYTHON) {
-  throw new Error(
-    "Cortex tests require Python 3.11+ with jsonschema==4.26.0; install requirements-test.txt or set CORTEX_TEST_PYTHON.",
-  );
+export function validateJsonSchema(schema, payload, ref = null) {
+  const validator = new Ajv2020({ allErrors: true, strict: false, validateFormats: false });
+  const target = ref
+    ? { $schema: schema.$schema, $ref: ref, $defs: schema.$defs }
+    : schema;
+  const valid = validator.validate(target, payload);
+  return { valid, errors: validator.errors ?? [] };
 }

@@ -92,7 +92,7 @@ function run() {
     const batches = [];
     let batch = [];
     for (const path of relativePaths) {
-      if (ISOLATED_TESTS.has(basename(path))) {
+      if (ISOLATED_TESTS.has(basename(path)) || basename(path).startsWith("language-batch-")) {
         if (batch.length > 0) batches.push(batch);
         batches.push([path]);
         batch = [];
