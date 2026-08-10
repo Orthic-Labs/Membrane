@@ -113,7 +113,7 @@ test("freshness work aborts with request_cancelled", async () => {
       db.prepare("DELETE FROM event_journal").run();
     } finally { closeStore(db); }
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 10);
+    controller.abort();
     const service = createCortexApplicationService();
     await expectCortexError(service.search({ repoRoot: repo, query: "placeOrder", timeoutMs: 100 }, { signal: controller.signal }), "request_cancelled");
   } finally {
