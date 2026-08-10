@@ -1,4 +1,4 @@
-// D24: batch B1 — bounded so Node 24 releases WASM grammars before B2.
+// D24: batch B3 — separate worker bounds retained WASM grammar memory.
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -9,13 +9,13 @@ import { loadLanguageRecord } from "../graph/treesitter-provider.mjs";
 import { walkTable } from "../graph/generic-ast-walker.mjs";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "languages");
-const LANGUAGES = ["php", "ruby", "swift"];
+const LANGUAGES = ["dart", "scala", "elixir"];
 
-test("batch B1 languages route through catalog with code profile", async () => {
+test("batch B3 languages route through catalog with code profile", async () => {
   const { languageCapabilityRecords } = await import("../graph/language-registry.mjs");
   const records = languageCapabilityRecords();
   for (const lang of LANGUAGES) {
-    const record = records.find((r) => r.language === lang);
+    const record = records.find((candidate) => candidate.language === lang);
     assert.ok(record, `missing catalog entry ${lang}`);
     assert.equal(record.factProfile, "code");
   }
@@ -25,13 +25,11 @@ for (const lang of LANGUAGES) {
   test(`${lang} fixture parses with evidence-bearing nodes`, async () => {
     const table = (await import(`../graph/language-tables/${lang}.mjs`)).default;
     const record = await loadLanguageRecord(table.id);
-    // ABI-incompatible grammars degrade honestly (typed error), never fabricate.
     if (!record.parser) {
       assert.ok(record.error, `${lang} must carry a typed degradation reason`);
       return;
     }
-    const ext = lang === "ruby" ? "rb" : lang;
-    const fixture = join(FIXTURES, lang, `basic.${ext}`);
+    const fixture = join(FIXTURES, lang, `basic.${lang}`);
     const tree = record.parser.parse(readFileSync(fixture, "utf8"));
     const result = walkTable({ table, tree, filePath: `basic.${lang}`, providerId: "cortex-treesitter", precisionTier: "AST" });
     for (const node of result.nodes) {
@@ -39,14 +37,3 @@ for (const lang of LANGUAGES) {
     }
   });
 }
-
-test("dynamic-language ambiguous calls stay unresolved", async () => {
-  const table = (await import("../graph/language-tables/ruby.mjs")).default;
-  const record = await loadLanguageRecord(table.id);
-  const tree = record.parser.parse(readFileSync(join(FIXTURES, "ruby", "basic.rb"), "utf8"));
-  const result = walkTable({ table, tree, filePath: "basic.rb", providerId: "cortex-treesitter", precisionTier: "AST" });
-  // Ruby dynamic dispatch never fabricates a resolved CALLS target.
-  for (const edge of result.edges.filter((e) => e.kind === "CALLS")) {
-    assert.equal(edge.confidenceTier, "UNRESOLVED");
-  }
-});
