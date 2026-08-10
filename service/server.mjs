@@ -5,7 +5,7 @@
 
 import { connect, createServer } from "node:net";
 import { randomUUID } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createCortexApplicationService } from "../lib/application/service.mjs";
 import { RootRegistry } from "../lib/application/root-registry.mjs";
@@ -52,7 +52,7 @@ function cleanupNewUnixLock(path, token) {
     const owner = JSON.parse(readFileSync(join(path, "owner.json"), "utf8"));
     if (owner?.token === token && owner.pid === process.pid) rmSync(path, { recursive: true, force: true });
   } catch {
-    try { rmSync(path, { recursive: false, force: true }); } catch {}
+    try { rmdirSync(path); } catch {}
   }
 }
 
@@ -295,7 +295,7 @@ export function createDaemonServer({ service = null, endpoint = null, registryEn
         socketPending.clear();
         rootQueues.clear();
         if (server.listening) await new Promise((resolve) => server.close(resolve));
-        if (!isWindows) {
+        if (!isWindows && unixLock) {
           rmSync(socketPath, { force: true });
           releaseUnixLock(unixLock);
           unixLock = null;

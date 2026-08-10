@@ -12,16 +12,20 @@ import { temporaryDaemonEndpoint } from "../service/paths.mjs";
 test("daemon restart re-binds the endpoint", async () => {
   const endpoint = temporaryDaemonEndpoint("cortex-restart");
   const first = createDaemonServer({ endpoint });
-  await first.listen();
-  if (process.platform !== "win32") {
-    const rival = createDaemonServer({ endpoint });
-    try {
-      await assert.rejects(rival.listen(), { code: "endpoint_in_use" });
-    } finally {
-      await rival.close().catch(() => {});
+  try {
+    await first.listen();
+    if (process.platform !== "win32") {
+      const rival = createDaemonServer({ endpoint });
+      try {
+        await assert.rejects(rival.listen(), { code: "endpoint_locked" });
+      } finally {
+        await rival.close().catch(() => {});
+      }
+      assert.ok(existsSync(endpoint), "failed rival cannot unlink the live endpoint");
     }
+  } finally {
+    await first.close().catch(() => {});
   }
-  await first.close();
   if (process.platform !== "win32") assert.ok(!existsSync(endpoint), "endpoint cleaned up after close");
   const second = createDaemonServer({ endpoint });
   try {
