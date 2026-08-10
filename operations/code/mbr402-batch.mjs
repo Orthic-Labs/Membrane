@@ -1,5 +1,6 @@
 // MBR-402: fail-closed, one-provider-call code-operation batches.
-export const BATCH_LIMITS = Object.freeze({ items: 50, bytes: 1024 * 1024, tokens: 50_000, deadlineMs: 5_000 });
+import { CODE_BATCH_MAX_ITEMS, CODE_BATCH_MAX_BYTES, CODE_BATCH_MAX_TOKENS, CODE_BATCH_MAX_DEADLINE_MS } from "./code-batch-limits.mjs";
+export const BATCH_LIMITS = Object.freeze({ items: CODE_BATCH_MAX_ITEMS, bytes: CODE_BATCH_MAX_BYTES, tokens: CODE_BATCH_MAX_TOKENS, deadlineMs: CODE_BATCH_MAX_DEADLINE_MS });
 
 const terminal = (id, code, detail = undefined) => ({ id, status: "terminal", code, ...(detail ? { detail } : {}) });
 const bytes = (value) => Buffer.byteLength(JSON.stringify(value), "utf8");
