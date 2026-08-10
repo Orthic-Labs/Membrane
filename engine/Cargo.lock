@@ -1975,6 +1975,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "membrane-core"
+version = "0.1.0"
+dependencies = [
+ "membrane-protocol",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "membrane-mcp"
 version = "0.1.0"
 dependencies = [
