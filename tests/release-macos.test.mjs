@@ -9,28 +9,17 @@ import test from "node:test";
 
 const ROOT = join(import.meta.dirname, "..");
 
-test("macOS signing script exists and requires owner variables", () => {
+test("macOS signing script is verify-only, signing delegated to right-release", () => {
   const script = readFileSync(join(ROOT, "scripts/release/macos/sign-and-package.sh"), "utf8");
-  assert.ok(script.includes("APPLE_TEAM_ID"));
-  assert.ok(script.includes("APPLE_DEVELOPER_ID_APPLICATION"));
-  assert.ok(script.includes("APPLE_DEVELOPER_ID_INSTALLER"));
-  assert.ok(script.includes("APPLE_NOTARY_KEY_ID"));
-  assert.ok(script.includes("APPLE_NOTARY_ISSUER_ID"));
-  assert.ok(script.includes("APPLE_NOTARY_KEY_P8_BASE64"));
-});
-
-test("signing order matches S-14 (codesign, pkgbuild, productbuild, notarytool, stapler, spctl, pkgutil)", () => {
-  const script = readFileSync(join(ROOT, "scripts/release/macos/sign-and-package.sh"), "utf8");
-  // Scan only the main signing flow (after the owner-gate checks); the
-  // --verify-only block at the top is a separate path.
-  const flow = script.slice(script.indexOf("VERSION="));
-  const order = ["codesign", "pkgbuild", "productbuild", "notarytool", "stapler", "spctl", "pkgutil"];
-  let lastIndex = -1;
-  for (const tool of order) {
-    const index = flow.indexOf(tool);
-    assert.ok(index > lastIndex, `${tool} out of order`);
-    lastIndex = index;
-  }
+  // In-repo signing is forbidden per docs/rules/release-signing.md and EC v4 D-18.
+  // The script must delegate to right-release and retain only verify-only path.
+  assert.ok(script.includes("right-release"), "must delegate to right-release");
+  assert.ok(script.includes("--verify-only"), "must retain verify-only");
+  assert.ok(script.includes("in-repo macOS signing is forbidden"), "must fail closed on direct signing");
+  // No direct signing invocations should remain outside the verify-only block / error message.
+  const flow = script.slice(script.indexOf("Signing is owned"));
+  assert.equal(flow.includes("APPLE_TEAM_ID:?"), false, "must not require Apple credentials in-repo");
+  assert.equal(flow.includes("codesign --force"), false, "must not invoke codesign directly");
 });
 
 test("distribution.xml, postinstall, and uninstall.sh exist", () => {

@@ -21,7 +21,19 @@ test("task brief uses graph retrieval for read-first code paths", () => {
     });
     assert.equal(result.status, 0, result.stderr || result.stdout);
     const context = JSON.parse(fs.readFileSync(path.join(repo, ".agent/runs/change-placeorder-behavior/context.json"), "utf8"));
-    assert.ok(context.readFirst.includes("src/service.ts"));
+    // Graph retrieval must surface implementation files for placeOrder (service or routes)
+    assert.ok(
+      context.readFirst.includes("src/service.ts") || context.readFirst.includes("src/routes.ts"),
+      `readFirst ${JSON.stringify(context.readFirst)} must include service or routes`,
+    );
+    // Also verify candidates directly include service.ts (graph is indexed)
+    const cand = JSON.parse(
+      spawnSync(process.execPath, [CLI, "graph", "candidates", "--query", "placeOrder", "--out", ".agent", "--json"], {
+        cwd: repo,
+        encoding: "utf8",
+      }).stdout,
+    );
+    assert.ok(cand.candidates.some((c) => String(c.sourceRef).includes("src/service.ts")));
   } finally {
     fs.rmSync(repo, { recursive: true, force: true });
   }

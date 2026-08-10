@@ -1,11 +1,10 @@
-// D15: service status — whether the OS service is registered and the watcher
-// process is alive. Every command supports JSON.
+// D15: service status — Hub-owned lifecycle (D-S03), no OS registration.
+// Reports watcher liveness via fleet status; registered is always false.
 
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { closeStore, openStoreReadOnly } from "../graph/store-sqlite.mjs";
-import { serviceTarget } from "./install.mjs";
 
 function pidAlive(pid) {
   try { process.kill(Number(pid), 0); return true; } catch { return false; }
@@ -29,8 +28,7 @@ function readFleetStatus(configPath = join(homedir(), ".cortex", "watch.json")) 
   return { repos };
 }
 
-export function serviceStatus({ target = serviceTarget(), fleetStatus = readFleetStatus } = {}) {
-  const registered = existsSync(target);
+export function serviceStatus({ target = null, fleetStatus = readFleetStatus } = {}) {
   let fleet = { repos: [] };
   try { fleet = fleetStatus(); } catch {}
   const enrolledRepos = (fleet.repos ?? []).map((repo) => ({ root: repo.root, enabled: true }));
@@ -38,10 +36,11 @@ export function serviceStatus({ target = serviceTarget(), fleetStatus = readFlee
   return {
     schemaVersion: 1,
     platform: process.platform,
-    registered,
-    running: registered && Boolean(active),
-    pid: registered ? active?.pid ?? null : null,
-    target,
+    registered: false, // D-S03: no OS registration
+    running: Boolean(active),
+    pid: active?.pid ?? null,
+    target: null,
     enrolledRepos,
+    foreground: "cortex service run",
   };
 }

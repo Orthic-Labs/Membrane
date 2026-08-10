@@ -47,3 +47,4 @@ jobs:
       - run: pnpm run test:all
       - run: node scripts/ci/check-generated.mjs
       - run: node scripts/ci/check-network-boundary.mjs
+      - run: node scripts/ci/check-seam-conformance.mjs

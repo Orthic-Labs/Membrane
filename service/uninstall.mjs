@@ -1,29 +1,19 @@
-// D15: uninstall the resident watcher service. Preserves repository graph
-// data unless --purge-data is explicit.
+// D15: uninstall — Hub-owned lifecycle (D-S03), no OS registration.
+// Preserves repository graph data unless --purge-data is explicit; does not touch OS service managers.
 
-import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { serviceTarget } from "./install.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
 export function uninstallService({ purgeData = false, dataDir = null } = {}) {
-  const target = serviceTarget();
-  if (process.platform === "darwin") {
-    try { execFileSync("launchctl", ["unload", target]); } catch {}
-  } else if (process.platform === "linux") {
-    try { execFileSync("systemctl", ["--user", "disable", "--now", "cortex.service"]); } catch {}
-  } else {
-    try { execFileSync("schtasks", ["/Delete", "/F", "/TN", "OrthicCortex"]); } catch {}
-  }
-  rmSync(target, { force: true });
+  const target = null; // D-S03: no OS target
   const purged = [];
   if (purgeData) {
     const dir = dataDir ?? join(SCRIPT_DIR, "..", ".agent");
     rmSync(dir, { recursive: true, force: true });
     purged.push(dir);
   }
-  return { uninstalled: true, target, purged };
+  return { uninstalled: true, target, purged, note: "OS service registration never existed per D-S03" };
 }
