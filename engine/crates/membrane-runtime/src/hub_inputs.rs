@@ -192,11 +192,34 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
     HubInputsV1 {
         deliveries,
         providers,
+        // `sources_explorer::project` (src/sources_explorer.rs) is a real,
+        // structurally complete projector, but nothing in this repository
+        // assembles the `payload` JSON it expects — no producer exists.
+        // `not_instrumented` is the truthful state; do not fabricate
+        // availability. Wiring a producer is separate, scoped future work.
         repositories: not_instrumented(),
+        // `agent_adapter_view::project` (src/agent_adapter_view.rs) is a
+        // real projector (including client<declared capability degradation),
+        // but no producer assembles the `report` JSON it expects. Truthful
+        // state is `not_instrumented`; wiring a producer is separate future
+        // work.
         adapters: not_instrumented(),
+        // No struct, no producer, no defined concept in Membrane beyond an
+        // unrelated `device: String` field on `AgentAdapter`. Not yet a real
+        // concept — do not invent one; `not_instrumented` is truthful.
         devices: not_instrumented(),
         memory,
+        // `memory_sentinel_view::project` (src/memory_sentinel_view.rs,
+        // mirrored in apps/membrane-hub/src/memory-sentinel.mjs) is real but
+        // has no producer. `startup_sentinel_masked` in main.rs is an
+        // unrelated boolean, not backed by this view. Truthful state is
+        // `not_instrumented`; wiring a producer is separate future work.
         sentinel: not_instrumented(),
+        // No general alert subsystem exists. Only narrow unrelated signals
+        // exist (notifications.rs evidence-alert tracking, an unrelated
+        // `alert: Option<String>` field); `dailyAnalysis.alert` is already
+        // folded into `providers`. Not yet a real concept — do not invent
+        // one; `not_instrumented` is truthful.
         alerts: not_instrumented(),
     }
 }

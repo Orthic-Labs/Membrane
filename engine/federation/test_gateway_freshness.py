@@ -18,9 +18,30 @@ def test_freshness_uses_workspace_default_token_file(monkeypatch, tmp_path: Path
     monkeypatch.delenv("CRYPT_API_TOKEN_FILE", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
 
+    # The route validates a source-barrier receipt, so the payload must carry an
+    # overlay identity bound to this worktree and the anonymous session the
+    # gateway sends when no session id is supplied.
+    cortex_generation = "sha256:" + "e" * 64
+    overlay_digest = "sha256:" + "b" * 64
+    payload = {
+        "schemaVersion": 1,
+        "graphState": "fresh",
+        "cortexGeneration": cortex_generation,
+        "overlayDigest": overlay_digest,
+        "sourceBarrierReceipt": {
+            "overlay_identity": {
+                "session_id": "anonymous",
+                "worktree_path": str(workspace.resolve()),
+                "generation_id": gateway._contract_digest(cortex_generation),
+                "overlay_digest": gateway._contract_digest(overlay_digest),
+            },
+            "dirty_overlay_digest": gateway._contract_digest(overlay_digest),
+        },
+    }
+
     class Response:
         def read(self):
-            return json.dumps({"schemaVersion": 1, "graphState": "fresh"}).encode()
+            return json.dumps(payload).encode()
 
     @contextmanager
     def urlopen(request, timeout):
@@ -29,10 +50,7 @@ def test_freshness_uses_workspace_default_token_file(monkeypatch, tmp_path: Path
         yield Response()
 
     monkeypatch.setattr(gateway.urllib.request, "urlopen", urlopen)
-    assert gateway._fetch_freshness_verdict(workspace) == {
-        "schemaVersion": 1,
-        "graphState": "fresh",
-    }
+    assert gateway._fetch_freshness_verdict(workspace) == payload
 
 
 @pytest.fixture(autouse=True)
@@ -94,7 +112,7 @@ def _stub_non_cortex_providers(monkeypatch) -> None:
 
 
 def test_stale_cortex_is_lane_local_and_other_providers_fan_out(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: _verdict("stale_snapshot"), raising=False)
+    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: _verdict("stale_snapshot"), raising=False)
     monkeypatch.setattr(
         gateway.cortex,
         "produce",
@@ -135,7 +153,7 @@ def test_stale_cortex_is_lane_local_and_other_providers_fan_out(monkeypatch, tmp
 
 def test_dirty_worktree_delivers_overlay_and_non_cortex_lanes(monkeypatch, tmp_path: Path):
     verdict = _verdict()
-    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: verdict, raising=False)
+    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
     monkeypatch.setattr(
         gateway.cortex,
         "produce",
@@ -169,7 +187,7 @@ def test_dirty_worktree_delivers_overlay_and_non_cortex_lanes(monkeypatch, tmp_p
 
 
 def test_unavailable_freshness_service_degrades_before_fanout(monkeypatch, tmp_path: Path):
-    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: None, raising=False)
+    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: None, raising=False)
     monkeypatch.setattr(
         gateway.crypt,
         "produce",
@@ -194,7 +212,7 @@ def test_unavailable_freshness_service_degrades_before_fanout(monkeypatch, tmp_p
 def test_release_generation_mismatch_degrades_before_fanout(monkeypatch, tmp_path: Path):
     verdict = _verdict()
     verdict["releaseGeneration"] = "sha256:" + "8" * 64
-    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: verdict, raising=False)
+    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
     monkeypatch.setattr(
         gateway.crypt,
         "produce_with_observability",
@@ -219,7 +237,7 @@ def test_release_generation_mismatch_degrades_before_fanout(monkeypatch, tmp_pat
 def test_invalid_release_manifest_degrades_before_fanout(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(gateway, "_expected_release_generation", lambda: None, raising=False)
     monkeypatch.setattr(
-        gateway, "_fetch_freshness_verdict", lambda _repo: _verdict(), raising=False
+        gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: _verdict(), raising=False
     )
     monkeypatch.setattr(
         gateway.crypt,
@@ -242,7 +260,7 @@ def test_invalid_release_manifest_degrades_before_fanout(monkeypatch, tmp_path: 
 def test_unusable_skills_lane_is_skipped_without_disabling_other_providers(monkeypatch, tmp_path: Path):
     verdict = _verdict()
     verdict["providers"]["skills"] = {"freshnessClass": "unknown", "usable": False}
-    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: verdict, raising=False)
+    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
     _stub_non_cortex_providers(monkeypatch)
     monkeypatch.setattr(
         gateway.skills,
@@ -267,7 +285,7 @@ def test_unusable_skills_lane_is_skipped_without_disabling_other_providers(monke
 
 def test_cortex_generation_change_after_verdict_omits_lane(monkeypatch, tmp_path: Path):
     verdict = _verdict(cortex_usable=True)
-    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: verdict, raising=False)
+    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
     _stub_non_cortex_providers(monkeypatch)
     monkeypatch.setattr(
         gateway.cortex,
@@ -298,7 +316,7 @@ def test_cortex_generation_change_after_verdict_omits_lane(monkeypatch, tmp_path
 def test_gateway_passes_freshness_generation_into_cortex_provider(monkeypatch, tmp_path: Path):
     verdict = _verdict(cortex_usable=True)
     observed = {}
-    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: verdict, raising=False)
+    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
     _stub_non_cortex_providers(monkeypatch)
 
     def produce(_repo, _task, _max_tokens, *, expected_generation=None):
@@ -320,7 +338,7 @@ def test_gateway_passes_freshness_generation_into_cortex_provider(monkeypatch, t
 
 def test_filesystem_skills_generation_cannot_pass_unchanged_db_verdict(monkeypatch, tmp_path: Path):
     before = _verdict()
-    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: before, raising=False)
+    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: before, raising=False)
     _stub_non_cortex_providers(monkeypatch)
     monkeypatch.setattr(
         gateway.skills,
@@ -398,7 +416,7 @@ def test_merge_candidates_stamps_provider_and_freshness_provenance(tmp_path: Pat
 
 def test_crypt_stage_timing_is_nested_and_content_free(monkeypatch, tmp_path: Path):
     verdict = _verdict()
-    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: verdict, raising=False)
+    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
     _stub_non_cortex_providers(monkeypatch)
     monkeypatch.setattr(
         gateway.crypt,
@@ -446,7 +464,7 @@ def test_cortex_stage_timing_uses_tuple4_observability_and_is_sanitized(
     monkeypatch, tmp_path: Path
 ):
     verdict = _verdict(cortex_usable=True)
-    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: verdict, raising=False)
+    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
     _stub_non_cortex_providers(monkeypatch)
     monkeypatch.setattr(
         gateway.cortex,

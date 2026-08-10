@@ -28,6 +28,7 @@ import hashlib
 import json
 import os
 import queue
+import subprocess
 import sys
 import threading
 import time
@@ -100,23 +101,126 @@ def _valid_release_generation(value: Any) -> bool:
     return len(digest) == 64 and all(char in "0123456789abcdefABCDEF" for char in digest)
 
 
+# Subtree the release generation is computed over — mirrors
+# apps/membrane-hub/scripts/release-identity.mjs::SUBTREE exactly, so the
+# baked-in binary identity and this fallback never disagree.
+_SOURCE_IDENTITY_SUBTREE = "engine"
+
+
+def _resolve_source_repo_root() -> Path | None:
+    """Locate the repo root whose `engine/` subtree this script mirrors.
+
+    `_THIS_DIR` is `<repo_root>/engine/federation`, so `parents[1]` is the
+    candidate repo root. Verify the `engine/` directory actually exists
+    there rather than assuming a fixed depth — fails closed (returns None)
+    on any future layout change instead of hashing the wrong tree.
+    """
+    candidate = _THIS_DIR.parents[1]
+    if (candidate / _SOURCE_IDENTITY_SUBTREE).is_dir():
+        return candidate
+    return None
+
+
+def _git_source_identity(repo_root: Path, args: list[str]) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), *args],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=True,
+    )
+    return result.stdout
+
+
+def _committed_tree_digest(repo_root: Path, commit: str) -> str:
+    output = _git_source_identity(
+        repo_root, ["ls-tree", "-r", commit, "--", _SOURCE_IDENTITY_SUBTREE]
+    )
+    rows: list[tuple[str, str]] = []
+    for line in output.split("\n"):
+        if not line:
+            continue
+        metadata, _, path = line.partition("\t")
+        blob = metadata.strip().split()[2]
+        rows.append((path.replace("\\", "/"), blob))
+    rows.sort(key=lambda row: row[0])
+    digest = hashlib.sha256()
+    for path, blob in rows:
+        digest.update(f"{path}\0{blob}\n".encode("utf-8"))
+    return digest.hexdigest()
+
+
+def _working_tree_digest(repo_root: Path) -> str:
+    output = _git_source_identity(
+        repo_root,
+        ["ls-files", "--cached", "--others", "--exclude-standard", "--", _SOURCE_IDENTITY_SUBTREE],
+    )
+    paths = sorted({line.replace("\\", "/") for line in output.split("\n") if line})
+    digest = hashlib.sha256()
+    for path in paths:
+        try:
+            content = (repo_root / path).read_bytes()
+        except OSError:
+            # Deleted-but-tracked: absent from the compiled bytes.
+            continue
+        blob = hashlib.sha256(content).hexdigest()
+        digest.update(f"{path}\0{blob}\n".encode("utf-8"))
+    return digest.hexdigest()
+
+
+def _expected_release_generation_from_source(repo_root: Path) -> str | None:
+    """Recompute the expected release generation directly from the local
+    git working tree, mirroring
+    apps/membrane-hub/scripts/release-identity.mjs::engineReleaseIdentity.
+    Used only when the fleet manifest is absent or invalid (e.g. local Mac
+    development). Fails closed (returns None) on any git or I/O error.
+    """
+    try:
+        commit = _git_source_identity(repo_root, ["rev-parse", "HEAD"]).strip()
+        dirty = bool(
+            _git_source_identity(
+                repo_root,
+                ["status", "--porcelain", "--untracked-files=all", "--", _SOURCE_IDENTITY_SUBTREE],
+            ).strip()
+        )
+        digest = (
+            _working_tree_digest(repo_root)
+            if dirty
+            else _committed_tree_digest(repo_root, commit)
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    generation = f"sha256:{digest}"
+    if not _valid_release_generation(generation):
+        return None
+    return generation
+
+
 def _expected_release_generation() -> str | None:
-    """Read one internally consistent release generation from the source manifest."""
+    """Read one internally consistent release generation from the source manifest.
+
+    Falls back to recomputing it directly from the local git working tree
+    (see `_expected_release_generation_from_source`) when the fleet manifest
+    is absent or invalid — e.g. local Mac development where
+    `tools/lib/crypt-release.json` was never written.
+    """
     try:
         document = json.loads(_RELEASE_MANIFEST.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
+        document = None
+    if isinstance(document, dict):
+        generation = document.get("release_generation")
+        tree_digest = document.get("source_tree_sha256")
+        if (
+            _valid_release_generation(generation)
+            and isinstance(tree_digest, str)
+            and generation == f"sha256:{tree_digest}"
+        ):
+            return generation
+    repo_root = _resolve_source_repo_root()
+    if repo_root is None:
         return None
-    if not isinstance(document, dict):
-        return None
-    generation = document.get("release_generation")
-    tree_digest = document.get("source_tree_sha256")
-    if (
-        not _valid_release_generation(generation)
-        or not isinstance(tree_digest, str)
-        or generation != f"sha256:{tree_digest}"
-    ):
-        return None
-    return generation
+    return _expected_release_generation_from_source(repo_root)
 
 
 def _release_generation_state(expected: Any, observed: Any) -> str:

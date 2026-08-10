@@ -152,10 +152,10 @@ def test_python_planner_conforms_to_shared_matrix():
 
 def test_python_public_planner_drives_the_shared_matrix(monkeypatch, capsys):
     expected = FIXTURE["expected"]
-    monkeypatch.setenv("RIGHTCONTEXT_MODE", "on")
-    monkeypatch.setenv("RIGHTCONTEXT_COHORTS", "on")
-    monkeypatch.setenv("RIGHTCONTEXT_POLICY_ENV_OVERRIDE", "1")
-    monkeypatch.setenv("RIGHTCONTEXT_POLICY_TEST", "1")
+    monkeypatch.setenv("MEMBRANE_MODE", "on")
+    monkeypatch.setenv("MEMBRANE_COHORTS", "on")
+    monkeypatch.setenv("MEMBRANE_POLICY_ENV_OVERRIDE", "1")
+    monkeypatch.setenv("MEMBRANE_POLICY_TEST", "1")
     monkeypatch.setenv("CRYPT_CLIENT", "claude")
     monkeypatch.setattr(rp, "_heartbeat", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(rp, "_delivery_record", lambda *_args, **_kwargs: None)

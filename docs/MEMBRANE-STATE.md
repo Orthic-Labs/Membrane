@@ -541,7 +541,7 @@ flowchart TB
 | # | Feature | State | Key files | ADR + measurements |
 |---|---|---|---|---|
 | 1 | **Feedback rail** — per-candidate recall self-learning; `get`→used, delete/supersede→contradicted; verified `contradicted` = veto-until-superseded (sha-aware); shared `recall_scored` and live `/recall` both apply it; persisted `context_feedback` (schema v7); `metrics.feedback`. MCP `membrane_feedback` now persists through the engine/CLI feedback path with `LifecycleReceiptV1` readback; unavailable-engine paths remain explicit `accepted_advisory` + `durable:false`. | LIVE (engine + receipt-bound MCP path); fallback explicit | `crypt-core/effectiveness.rs`, `crypt/feedback.rs`, `store.rs`, `serve.rs` (`/feedback`), `main.rs` (`feedback` verb), `mcp/server.mjs` (`membrane_feedback`) | [plan](plans/2026-07-15-rightcontext-feedback-rail.md) |
-| 2 | **Skills = 9th provider** — workspace skill catalog served cross-repo; discover from any repo; `crypt skill-read <name>` loads bodies; provenance-sealed delivery (bodyHash + Git) | LIVE | `federation/providers/skills.py`, `skills-catalog/{ingest,provider}.py`, `main.rs` (`skill-read`), `recall_planner.py` carve-out, `lib/skill_frontmatter.py` | [plan](plans/2026-07-15-skills-as-rightcontext-provider.md) |
+| 2 | **Skills = 9th provider** — workspace skill catalog served cross-repo; discover from any repo; `crypt skill-read <name>` loads bodies; provenance-sealed delivery (bodyHash + Git) | LIVE | `federation/providers/skills.py`, `tools/skills/skills-catalog/{ingest,provider}.py`, `main.rs` (`skill-read`), `recall_planner.py` carve-out, `lib/skill_frontmatter.py` | [plan](plans/2026-07-15-skills-as-rightcontext-provider.md) |
 | 3 | **Memory-content delivery** — federation memory provider fixed from stub → real `recall_scored` + content previews; UTF-8 subprocess; planner `structural` key | LIVE | `federation.rs` (`memory_candidates_payload`), `federation/providers/crypt.py`, `recall_planner.py` memory carve-out | [plan](plans/2026-07-15-rightcontext-memory-delivery.md) |
 | 4 | **Admission reserved lanes + memory DB-provenance seal** — two-pass admission (memory 800 / skill 300 tok lanes, then global fill) fixes overlay-flood starvation; memory delivery verified against a real DB row (read-only, fail-closed) | LIVE | `crypt-core/planner.rs`, `recall_planner.py` (`_verify_memory_row`) | [plan](plans/2026-07-15-rightcontext-admission-lanes-memory-seal.md) |
 | 5 | **Link-graph recall** — `links(src,dst)` table (schema v8) from `[[wikilinks]]`; extract-on-write + backfill; shared one-hop recall at a discounted tier, depth 1, at most 20%/8 hits. The old federation merge is removed. | LIVE (333 edges at validation) | `memdb.rs` (links table), `store.rs` (`linked_neighbors`, `backfill_links`, `recall_scored_detailed`) | [plan](plans/2026-07-15-rightcontext-link-graph-recall.md) |
@@ -1528,3 +1528,12 @@ conflict-safe state note with the genuine hashes and validation result. It did n
 `tools/lib/crypt-release.json`, install either binary, alter policy/cohorts, or start/resume
 replay. Windows subsequently completed the paired comparison, four-asset manifest, coordinated
 install, installed freshness smoke, and fresh replay start recorded above.
+
+This Hub-health-truthfulness contract (EC-1: doc-commenting the five `not_instrumented` Hub
+input fields in `hub_inputs.rs`, plus a Mac-local git-derived fallback for
+`_expected_release_generation()` in `engine/federation/gateway.py` when the fleet manifest is
+absent or invalid) is anchored at commit bef1cafc (current HEAD at contract time)
+(clarified-by-inference, not user-confirmed — no repository evidence ties a
+"measurement/comparison boundary" concept to this commit; confirm if a different meaning, e.g.
+a specific git reset target, was intended). No git operation was performed as part of this
+note.

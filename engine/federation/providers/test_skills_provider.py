@@ -28,7 +28,6 @@ def test_skills_provider_ranks_only_the_engine_snapshot_and_returns_its_generati
         },
         raising=False,
     )
-    monkeypatch.setattr(skills, "_WORKSPACE_ROOT", tmp_path)
 
     candidates, generation, warnings = skills.produce(tmp_path, "use demo", None)
 

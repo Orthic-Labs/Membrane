@@ -141,7 +141,7 @@ def test_completion_permutations_keep_precedence_receipts_and_packet_hash_stable
         },
     }
     monkeypatch.setattr(gateway, "_expected_release_generation", lambda: RELEASE_GENERATION)
-    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo: verdict)
+    monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict)
     monkeypatch.setattr(gateway.cf, "ThreadPoolExecutor", _ImmediateExecutor)
     monkeypatch.setattr(
         gateway.audit,

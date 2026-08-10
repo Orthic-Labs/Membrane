@@ -38,8 +38,11 @@ def test_empty_client_defaults_to_content_mode(tmp_path: Path):
     content = "some workspace rules content\n"
     _write_agents_md(tmp_path, content)
 
-    candidates_no_client = rules.produce(tmp_path, "test")
-    candidates_empty_client = rules.produce(tmp_path, "test", client="")
+    # Distinct sessions: both calls are headless first-deliveries. Sharing one
+    # session key made the second call a ledger "reference" re-delivery
+    # (text=""), which tested delivery dedup rather than client defaulting.
+    candidates_no_client = rules.produce(tmp_path, "test", session="s-none")
+    candidates_empty_client = rules.produce(tmp_path, "test", client="", session="s-empty")
 
     assert candidates_no_client[0]["text"] == content
     assert candidates_empty_client[0]["text"] == content

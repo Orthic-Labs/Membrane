@@ -7,9 +7,21 @@ from federation.providers import cortex
 from federation.providers.cortex import candidate_cap
 
 
+@pytest.fixture(autouse=True)
+def _isolate_candidate_cache():
+    """The candidate cache is module-global; leave it empty for every test so
+    one test's warm entry cannot silently satisfy another's produce call."""
+    cortex._candidate_cache.clear()
+    yield
+    cortex._candidate_cache.clear()
+
+
 def test_cli_resolution_prefers_cortex_and_retains_legacy_fallback(monkeypatch, tmp_path):
+    # Distinct paths: the point of the test is that the preferred CLI wins while
+    # the legacy one stays reachable as a fallback. Pointing both at one path
+    # made the fallback assertion vacuous.
     cortex_cli = tmp_path / "cortex" / "cortex.mjs"
-    legacy_cli = tmp_path / "cortex" / "cortex.mjs"
+    legacy_cli = tmp_path / "cortex-skills" / "cortex-skills.mjs"
     cortex_cli.parent.mkdir()
     legacy_cli.parent.mkdir()
     cortex_cli.touch()
@@ -55,7 +67,10 @@ def test_observability_splits_subprocess_and_repo_scan_without_changing_produce(
             }
         ],
     }
-    monotonic_values = iter((100.0, 100.04, 200.0, 200.04))
+    # One produce consumes four clock reads, in order: candidate-cache lookup,
+    # spawn start, spawn end, cache store. The second (legacy) produce hits the
+    # warm cache and only reads the clock once for its lookup.
+    monotonic_values = iter((99.0, 100.0, 100.04, 100.05, 200.0))
     monkeypatch.setattr(cortex, "_resolve_cortex_cli", lambda: str(cli))
     monkeypatch.setattr(cortex, "_resolve_node", lambda: "node")
     monkeypatch.setattr(
@@ -100,7 +115,8 @@ def test_observability_preserves_positive_submillisecond_stage_timing(monkeypatc
         "_membrane": {"stageElapsedMs": {"repo_code_scan": 0.0002}},
         "candidates": [],
     }
-    monotonic_values = iter((100.0, 100.0000004))
+    # Four reads per produce: cache lookup, spawn start, spawn end, cache store.
+    monotonic_values = iter((99.0, 100.0, 100.0000004, 100.001))
     monkeypatch.setattr(cortex, "_resolve_cortex_cli", lambda: str(cli))
     monkeypatch.setattr(cortex, "_resolve_node", lambda: "node")
     monkeypatch.setattr(
