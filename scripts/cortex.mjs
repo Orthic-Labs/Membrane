@@ -58,7 +58,7 @@ import {
 import { normalizeIgnoredPrefixes, pathMatchesIgnoredPrefix } from "../graph/ignored-prefixes.mjs";
 import { leafDigestForFile } from "../graph/merkle-ledger.mjs";
 import { buildNeighborhood } from "../graph/neighborhood.mjs";
-import { generateDocs } from "../lib/generated-docs.mjs";
+import { generateDocs, generatedDocsGenerationId } from "../lib/generated-docs.mjs";
 import { dispatchFacade } from "./cli/commands.mjs";
 import {
   buildIncrementalPhase2Plan,
@@ -1731,8 +1731,15 @@ function fullCompletionStatus(root, outDir, graph) {
   const product = generatedDoc(join(root, "docs/product.md"), join(root, outDir, "docs/product.md"));
   const architecture = generatedDoc(join(root, "docs/architecture.md"), join(root, outDir, "docs/architecture.md"));
   const docsPresent = Boolean(product && architecture);
-  const expectedDocGeneration = graphGenerationId
-    ? `gen:${graphGenerationId.replace(/^(?:sha256|xxh128):/, "")}`
+  const docMap = optionalJson(join(root, outDir, "map.json")).value;
+  const docIndex = optionalJson(join(root, outDir, "index.json")).value;
+  const expectedDocGeneration = docMap && docIndex
+    ? `gen:${generatedDocsGenerationId({
+        repo: docMap.repo,
+        files: docIndex.files ?? [],
+        stats: docMap.stats,
+        sourceSignature: docIndex.sourceSignature,
+      })}`
     : null;
   const docsCurrent = docsPresent
     && expectedDocGeneration
@@ -1743,7 +1750,7 @@ function fullCompletionStatus(root, outDir, graph) {
   if (!docsPresent) {
     reasons.push({ code: "missing_human_docs", severity: "blocker", message: "current generated docs/product.md and docs/architecture.md are required." });
   } else if (!docsCurrent) {
-    reasons.push({ code: "stale_human_docs", severity: "blocker", message: "generated human docs do not match the current graph generation; regenerate them after Phase 2." });
+    reasons.push({ code: "stale_human_docs", severity: "blocker", message: "generated human docs do not match the current portable source identity; regenerate them after Phase 2." });
   } else if (!workflowPresent) {
     reasons.push({ code: "missing_workflow_diagram", severity: "blocker", message: "docs/architecture.md lacks the synthesized component Mermaid; regenerate after Phase 2." });
   }
