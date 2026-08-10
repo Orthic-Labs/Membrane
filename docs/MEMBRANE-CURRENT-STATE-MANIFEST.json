@@ -4,7 +4,7 @@
   "dated": "2026-07-26",
   "source": {
     "repository": "membrane",
-    "sourceCommit": "de27a487ec90bb24f85271040ab33cde87ed1ca9",
+    "sourceCommit": "c8590c4d78dbc2cb2a45ad83d86b8e0712ca7684",
     "installedGeneration": "documented in docs/MEMBRANE-STATE.md; this checkout has no installed host",
     "analyzerVersion": "parent workspace tools/pipelines/memory/context-value-daily.py",
     "blueprintGeneration": "xxh128:acdac0dcf6ea03033ecfbd08895ba973"
