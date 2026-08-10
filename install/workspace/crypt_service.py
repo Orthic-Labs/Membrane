@@ -31,10 +31,44 @@ from crypt_service_launchd import (  # noqa: F401 - re-exported for callers of t
 from crypt_service_registrars import (  # noqa: F401 - re-exported for callers of this module
     bootstrap_launch_agent,
     migrate_macos_label,
-    setup_crypt_serve_autostart,
+    setup_crypt_serve_autostart as _orig_setup_crypt_serve_autostart,
     setup_daily_sync,
     setup_replication_schedule,
 )
+
+
+def setup_crypt_serve_autostart(  # noqa: F401 - wrapper adds orthic manifest
+    repo: Path,
+    home: Path,
+    port: int,
+    *,
+    win: bool,
+    mac: bool,
+    enable_daily: bool = True,
+    migrate_from_label: str | None = None,
+    label: str = DEFAULT_CRYPT_SERVE_LABEL,
+    installer_ps1: Path | None = None,
+    runner=None,
+) -> None:
+    _orig_setup_crypt_serve_autostart(
+        repo,
+        home,
+        port,
+        win=win,
+        mac=mac,
+        enable_daily=enable_daily,
+        migrate_from_label=migrate_from_label,
+        label=label,
+        installer_ps1=installer_ps1,
+        runner=runner,
+    )
+    try:
+        from orthic_manifest import read_product_version, write_orthic_manifest
+
+        write_orthic_manifest(repo, home, port, read_product_version(repo), win=win)
+        log("orthic manifest: wrote ~/.orthic/hub/products.d/membrane.json")
+    except Exception as exc:  # pragma: no cover - best-effort, never fail install
+        log(f"orthic manifest: skipped — {exc}")
 
 
 def log(msg: str) -> None:
