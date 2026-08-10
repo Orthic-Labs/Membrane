@@ -915,9 +915,10 @@ export async function extractFile(file) {
     });
     if (!tableResult.table) return failed(tableResult.error);
     if (!record.language) return failed(`generic_grammar_unavailable:${record.error}`);
+    let tree;
     try {
       const { walkTable } = await import("./generic-ast-walker.mjs");
-      const tree = record.parser.parse(normalizedFile.text ?? "");
+      tree = record.parser.parse(normalizedFile.text ?? "");
       const errorNodeCount = countErrorNodes(tree.rootNode);
       const extracted = walkTable({ table: tableResult.table, tree, filePath: path, file: normalizedFile, providerId: PROVIDER.id, grammarHash: record.grammar?.hash ?? null, precisionTier: "AST" });
       const parseStatus = errorNodeCount === 0 ? "ok" : extracted.nodes.length ? "partial" : "failed";
@@ -939,6 +940,8 @@ export async function extractFile(file) {
       };
     } catch (error) {
       return failed(`generic_walk_failed:${error?.message ?? error}`, record.grammar);
+    } finally {
+      tree?.delete();
     }
   }
 
@@ -971,6 +974,7 @@ export async function extractFile(file) {
     };
   }
 
+  try {
   const errorNodeCount = countErrorNodes(tree.rootNode);
   // Two-pass: extract once (confidence irrelevant yet) to see whether ANY
   // symbol node is recoverable, then decide parseStatus, then re-tag
@@ -1015,6 +1019,9 @@ export async function extractFile(file) {
     rawImports,
     rawCalls,
   };
+  } finally {
+    tree.delete();
+  }
 }
 
 function runDialectExtractor(file, tree, entry, confidence) {
