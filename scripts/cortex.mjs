@@ -582,6 +582,13 @@ function isDoc(path) {
   return path.endsWith(".md") || ["AGENTS.md", "CLAUDE.md", "README.md"].includes(path);
 }
 
+function repositoryDisplayName(root) {
+  const packageName = readJson(join(root, "package.json"), {}).name;
+  return typeof packageName === "string" && packageName.trim()
+    ? packageName.split("/").at(-1)
+    : basename(root);
+}
+
 function isImplementationPath(path) {
   if (isDoc(path)) return false;
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
@@ -795,7 +802,7 @@ async function build(root, outDir, options = {}) {
   const generatedAt = `gen:${signature.slice(0, 16)}`;
   const map = {
     schemaVersion: SCHEMA_VERSION,
-    repo: basename(root),
+    repo: repositoryDisplayName(root),
     generatedAt,
     entrypoint: ".agent/manifest.json",
     precedence: ["code", "adr", "current-audit", "architecture", "plan", "archive"],
