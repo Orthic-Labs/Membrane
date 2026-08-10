@@ -118,6 +118,8 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
 
     let catalog_ok = health["catalog"]["status"].as_str() == Some("ok");
     let database_ok = health["database"]["status"].as_str() == Some("ok");
+    let database_status = health["database"]["status"].as_str().unwrap_or("unknown");
+    let memory_count = health["database"]["memoryCount"].as_i64();
     let daily_analysis_status = health["dailyAnalysis"]["status"].as_str().unwrap_or("unknown");
     let daily_analysis_alert = health["dailyAnalysis"]["alert"].as_bool();
     let daily_analysis_ok = matches!(daily_analysis_status, "fresh" | "ok")
@@ -128,15 +130,25 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
             items: vec![serde_json::json!({
                 "catalog": health["catalog"]["status"],
                 "database": health["database"]["status"],
+                "memoryCount": health["database"]["memoryCount"],
             })],
             metadata: metadata(),
         }
     } else {
+        // c191b240: empty corpus (database.status == "empty") must surface as non-healthy with memoryCount
+        // preserved — degraded, not ok, and evidence includes count so empty is not silent.
+        let reason = if database_status == "empty" {
+            "database_empty".to_string()
+        } else {
+            "catalog_or_database_unhealthy".to_string()
+        };
         HubReadV1::Degraded {
-            reason: "catalog_or_database_unhealthy".into(),
+            reason,
             items: vec![serde_json::json!({
                 "catalog": health["catalog"]["status"],
                 "database": health["database"]["status"],
+                "memoryCount": health["database"]["memoryCount"],
+                "databaseStatus": database_status,
             })],
             metadata: metadata(),
         }
@@ -453,6 +465,51 @@ mod tests {
             inputs.memory,
             HubReadV1::Degraded { ref reason, .. } if reason == "catalog_or_database_unhealthy"
         ));
+    }
+
+    #[test]
+    fn empty_corpus_marks_memory_degraded_with_memory_count() {
+        // c191b240: empty corpus must surface as degraded with memoryCount preserved
+        let health: serde_json::Value = serde_json::from_str(
+            r#"{
+                "ok": false,
+                "catalog": {"status": "ok"},
+                "database": {"status": "empty", "memoryCount": 0},
+                "dailyAnalysis": {"status": "ok"}
+            }"#,
+        )
+        .unwrap();
+        let inputs = inputs_from_health(&health, None);
+        match inputs.memory {
+            HubReadV1::Degraded { reason, items, .. } => {
+                assert_eq!(reason, "database_empty");
+                assert!(items[0].get("memoryCount").is_some(), "memoryCount must be present");
+                assert_eq!(items[0]["memoryCount"], 0);
+                assert_eq!(items[0]["database"]["status"], "empty");
+            }
+            other => panic!("expected Degraded for empty corpus, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn populated_corpus_memory_available_includes_memory_count() {
+        let health: serde_json::Value = serde_json::from_str(
+            r#"{
+                "ok": true,
+                "catalog": {"status": "ok"},
+                "database": {"status": "ok", "memoryCount": 42},
+                "dailyAnalysis": {"status": "ok"}
+            }"#,
+        )
+        .unwrap();
+        let inputs = inputs_from_health(&health, None);
+        match inputs.memory {
+            HubReadV1::Available { items, .. } => {
+                assert!(items[0].get("memoryCount").is_some());
+                assert_eq!(items[0]["memoryCount"], 42);
+            }
+            other => panic!("expected Available, got {:?}", other),
+        }
     }
 
     #[test]

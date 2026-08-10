@@ -37,25 +37,40 @@ so a change to one (a new field, a changed default, a different cap) will
 not propagate to the other automatically. Keep them in sync manually when
 either changes.
 
-## Current honest status: no producer
+## Current status: producer wired in source, not yet in the running Hub
 
-The projector and its JS mirror are real and exercised by unit tests, but
-**nothing in this repository currently calls `project` with a real report**.
-`engine/crates/membrane-runtime/src/hub_inputs.rs` wires the Hub's
-`sentinel` input to `not_instrumented()` explicitly, with this note at the
-call site:
+A producer now exists. `engine/crates/membrane-runtime/src/memory_sentinel_producer.rs`
+(commit `a639ec44`) builds the report from the live Crypt database —
+`memories.lifecycle_state`, `memory_quarantine`, `transform_opportunity_log`,
+and `context_feedback` — and `hub_inputs.rs` now wires the Hub's `sentinel`
+input to it:
 
-> `memory_sentinel_view::project` ... is real but has no producer.
-> `startup_sentinel_masked` in main.rs is an unrelated boolean, not backed
-> by this view. Truthful state is `not_instrumented`; wiring a producer is
-> separate future work.
+```rust
+match build_sentinel_report() {
+    Some(report) => /* Available */,
+    None         => Unavailable { reason: "missing_input" },
+}
+```
 
-So today, the Hub's sentinel resource reports `not_instrumented`, not the
-lifecycle/evidence/gate data above — the schema exists and is tested, the
-data path to populate it does not yet exist. Wiring a real producer is
-in-progress, separate work (tracked as Lane B in this session); this
-document describes the shape the producer will need to fill, not a
-currently-live feature.
+It fails closed: a missing database, missing table, or unreadable row yields
+`Unavailable{reason:"missing_input"}`, never a healthy-looking empty result.
+Note `missing_input` is a distinct reason from `not_instrumented` — the first
+means "the source could not be read", the second means "this was never built".
+
+Two honest caveats:
+
+1. **Not live yet.** The deployed Hub binary predates `a639ec44`, so the
+   running service does not serve this data. Source-fixed is not runtime-fixed;
+   it takes a rebuild and install.
+2. **Partial coverage.** `scratchpad`, `working`, and `taskCriteria` are always
+   absent — an instrumentation gap, *not* zero activity. Reporting them as empty
+   would read as "nothing pending", which would be false. `demoted` maps to the
+   quarantine count and `proposals` to pending transform recommendations, not to
+   literal same-named columns.
+
+Prior revisions of this document said Sentinel had no producer. That was true
+when written and is now false; it is corrected here per the rule that fresh code
+evidence outranks stale documents.
 
 ## Not the same thing: `startup_sentinel_masked`
 
@@ -69,8 +84,8 @@ surfacing that snapshot, until the gate is later closed with
 during the connection grace window. But it is a simple boolean startup gate
 over Hub's own snapshot polling, not backed by `memory_sentinel_view` and
 not the same as the `gate: GateState` field above (which belongs to the
-lifecycle projection and, per the "no producer" status, is not currently
-populated either). The shared word "sentinel" names two unconnected
+lifecycle projection and is still not populated by the producer described
+above). The shared word "sentinel" names two unconnected
 mechanisms; do not assume a code change to one affects the other.
 
 ## Contract
