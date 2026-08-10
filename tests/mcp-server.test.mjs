@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -14,6 +14,28 @@ const SERVER = join(ROOT, "scripts/cortex-mcp.mjs");
 const AUDIT_DIR = join(ROOT, ".audit", "cx-b1");
 const PROMPT_NAMES = [...new Set(PROMPTS.map((prompt) => prompt.name))].sort();
 const FIXTURE = join(ROOT, "evals", "fixture-repos", "typescript-commerce");
+
+test("MCP direct entry survives a symlinked script path", async () => {
+  ensureAuditDir();
+  const temp = mkdtempSync(join(AUDIT_DIR, "symlink-entry-"));
+  const linkedRoot = join(temp, "linked-root");
+  let client;
+  try {
+    symlinkSync(ROOT, linkedRoot, process.platform === "win32" ? "junction" : "dir");
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [join(linkedRoot, "scripts", "cortex-mcp.mjs"), "--root", FIXTURE],
+      cwd: FIXTURE,
+      stderr: "pipe",
+    });
+    client = new Client({ name: "cortex-symlink-entry", version: "1.0.0" }, { capabilities: {} });
+    await client.connect(transport);
+    assert.equal((await client.listTools()).tools.length, 6);
+  } finally {
+    if (client) await client.close().catch(() => {});
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
 
 function ensureAuditDir() {
   mkdirSync(AUDIT_DIR, { recursive: true });
