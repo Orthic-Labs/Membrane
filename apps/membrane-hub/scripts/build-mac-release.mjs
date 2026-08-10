@@ -1,6 +1,15 @@
 // build-mac-release.mjs — never assembles/writes the release manifest.
 // Bracket: writer pre-check -> tauri build -> release-assets check-built ->
-// release-assets check-packaged -> writer pre-check -> notarytool/stapler/validate/spctl.
+// release-assets finalize -> release-assets check-packaged -> writer pre-check ->
+// notarytool/stapler/validate/spctl.
+// `finalize` must run here: it is the only thing that writes this platform's
+// assets.json, and check-packaged (the very next step) hard-requires that
+// receipt to already exist ("missing finalized receipt"). Unlike `prepare`
+// (a snapshot of the pre-build sidecars, deliberately taken before this
+// script starts so check-built can prove the rebuild was reproducible),
+// finalize captures the packaged, signed .app that only exists once `tauri
+// build` above has completed — there is no external point before or after
+// this synchronous script where a human/CI step could inject it instead.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -16,6 +25,7 @@ const env = {
 run("node", ["scripts/write-release-manifest.mjs", "check", "--require-committed"], env);
 run("pnpm", ["exec", "tauri", "build", "--bundles", "app,dmg"], env);
 run("node", ["scripts/release-assets.mjs", "check-built", "--platform", "mac"], env);
+run("node", ["scripts/release-assets.mjs", "finalize", "--platform", "mac"], env);
 run("node", ["scripts/release-assets.mjs", "check-packaged", "--platform", "mac"], env);
 if (!existsSync(dmg)) throw new Error(`missing signed DMG: ${dmg}`);
 run("node", ["scripts/write-release-manifest.mjs", "check", "--require-committed"], env);
