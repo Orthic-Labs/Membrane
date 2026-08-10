@@ -1,7 +1,7 @@
 // D06: canonical root registry enrollment and resolution.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -13,7 +13,7 @@ function makeRepo(name = "repo-a") {
   const root = mkdtempSync(join(tmpdir(), `cortex-registry-${name}-`));
   mkdirSync(join(root, ".git"), { recursive: true });
   writeFileSync(join(root, "README.md"), `# ${name}\n`);
-  return root;
+  return realpathSync.native(root);
 }
 
 test("registry enrolls entries with canonical roots", () => {
@@ -148,7 +148,7 @@ test("symlink escape is not enrolled", () => {
 
 test("nested repositories are distinct enrollments", () => {
   const outer = makeRepo("outer");
-  const inner = mkdtempSync(join(outer, "inner-"));
+  const inner = realpathSync.native(mkdtempSync(join(outer, "inner-")));
   mkdirSync(join(inner, ".git"), { recursive: true });
   writeFileSync(join(inner, "README.md"), "# inner\n");
   try {
@@ -166,7 +166,7 @@ test("nested repositories are distinct enrollments", () => {
 
 test("different worktrees of one repo are separate entries", () => {
   const main = makeRepo("main");
-  const wt = mkdtempSync(join(tmpdir(), "cortex-wt-"));
+  const wt = realpathSync.native(mkdtempSync(join(tmpdir(), "cortex-wt-")));
   mkdirSync(join(wt, ".git"), { recursive: true });
   writeFileSync(join(wt, "README.md"), "# wt\n");
   try {
