@@ -31,6 +31,14 @@ if (build.status !== 0) {
 const drifted = GENERATED.filter((path) => readFileSync(join(ROOT, path), "utf8") !== before.get(path));
 if (drifted.length) {
   console.error(`check-generated: generated docs drifted after rebuild: ${drifted.join(", ")}`);
+  for (const path of drifted) {
+    const beforeLines = before.get(path).split(/\r?\n/);
+    const afterLines = readFileSync(join(ROOT, path), "utf8").split(/\r?\n/);
+    const firstDifference = beforeLines.findIndex((line, index) => line !== afterLines[index]);
+    const lineIndex = firstDifference < 0 ? Math.min(beforeLines.length, afterLines.length) : firstDifference;
+    console.error(`${path}:${lineIndex + 1}: expected ${JSON.stringify(beforeLines[lineIndex] ?? "")}`);
+    console.error(`${path}:${lineIndex + 1}: rebuilt  ${JSON.stringify(afterLines[lineIndex] ?? "")}`);
+  }
   console.error("Regenerate and commit them, or fix the generator.");
   process.exit(1);
 }
