@@ -29,10 +29,6 @@ importers:
       zod:
         specifier: 4.4.3
         version: 4.4.3
-    devDependencies:
-      '@rightkit/release':
-        specifier: 0.2.51
-        version: 0.2.51
 
 packages:
 
@@ -133,10 +129,6 @@ packages:
   '@parcel/watcher@2.6.0':
     resolution: {integrity: sha512-7FNeNl8NCE7aINx7WXiKQrPYZWC/hvrTsmk6zmxbI7LTXE7hVek/n8AfVgpe2y82zl3w0HvCHN0bVKMBoJcC0w==}
     engines: {node: '>= 10.0.0'}
-
-  '@rightkit/release@0.2.51':
-    resolution: {integrity: sha512-Ta/exJflFSJkHil48R+0tz5DhaJAkUVCdDI7efcIU95ey2lbmz7mhUT3YuANtGFF2l/ZuwcjyXqymdxhvgBRYQ==}
-    hasBin: true
 
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
@@ -603,8 +595,6 @@ snapshots:
       '@parcel/watcher-linux-x64-musl': 2.6.0
       '@parcel/watcher-win32-arm64': 2.6.0
       '@parcel/watcher-win32-x64': 2.6.0
-
-  '@rightkit/release@0.2.51': {}
 
   accepts@2.0.0:
     dependencies:
