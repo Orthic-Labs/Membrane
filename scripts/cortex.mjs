@@ -593,7 +593,7 @@ function sourceSignature(root, config, limit = 0) {
   const docHashes = files
     .filter(isDoc)
     .map((path) => {
-      let text = readFileSync(join(root, path), "utf8");
+      let text = readFileSync(join(root, path), "utf8").replace(/\r\n?/g, "\n");
       // Cortex's own generated docs are build OUTPUTS, not source truth, and
       // they embed the generationId — hashing them makes every build stale the
       // moment it finishes. Same rule the README pointer block below already
