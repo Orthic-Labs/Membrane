@@ -1,12 +1,13 @@
 {
   "schemaVersion": 1,
+  "publishable": false,
   "product": "Cortex",
   "version": "0.2.0",
   "commit": "FULL_GIT_SHA",
   "sourceDateEpoch": 0,
-  "contracts": { "public": 1, "store": 17, "ipc": 1 },
+  "contracts": { "public": 1, "store": 18, "ipc": 1 },
   "storeMigration": {
-    "currentSchemaVersion": 17,
+    "currentSchemaVersion": 18,
     "minImportableSchemaVersion": 12,
     "backupBeforeMigration": true,
     "repairPath": "repairInterruptedMigration(dbPath, fromVersion)"

@@ -1,5 +1,6 @@
 {
   "schemaVersion": 1,
+  "publishable": false,
   "product": "Cortex",
   "version": "__VERSION__",
   "commit": "__COMMIT__",

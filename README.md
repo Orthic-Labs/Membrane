@@ -94,7 +94,7 @@ Bins: `cortex`, `cortex-watch`, `cortex-mcp` (MCP server), `cortex-install`.
 
 ## Current limits
 
-Parser depth varies by language (lexical fallback is broader than AST coverage). Dynamic runtime registration can stay unresolved without executable or compiler evidence. SCIP precision requires a repository-supplied export. Embeddings and semantic vector search are not active. No interactive visual graph explorer ships. Raw graph data is not copied into durable memory.
+Parser depth varies by language (lexical fallback is broader than AST coverage). Dynamic runtime registration can stay unresolved without executable or compiler evidence. SCIP precision requires a repository-supplied export. Embeddings and semantic vector search are not active. Explorer, tray, and desktop onboarding are implemented but not yet published. Raw graph data is not copied into durable memory.
 
 ## Repository truth docs
 - [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
@@ -102,11 +102,17 @@ Parser depth varies by language (lexical fallback is broader than AST coverage).
 
 ## License
 
-Cortex is **source-available**, not open source: the repository is covered by the
-[Orthic Labs Source Use License v1.0](LICENSE), which permits internal and
-evaluation use. The SDK (`sdk/`), schemas (`schemas/`), and examples
-(`examples/`) are licensed under [Apache-2.0](LICENSES/README.md) for
-integration use. Trademarks: see [TRADEMARKS.md](TRADEMARKS.md).
+Cortex is **source-available**, not open source. Its proprietary core is covered
+by the [Orthic Labs Source Use License v1.0](LICENSE), which permits internal and
+evaluation use. Damned Ventures LLC may publish Cortex through owner-authorized
+channels, including npm, GitHub Releases, its Homebrew tap and Scoop bucket, and
+WinGet. That publication does not grant licensees a general right to redistribute,
+mirror, modify, or repackage proprietary core.
+
+The SDK (`sdk/`), schemas (`schemas/`), and examples (`examples/`) are licensed
+under [Apache-2.0](LICENSES/README.md), so integrations and independently authored
+plugins may build against those surfaces without relicensing proprietary core.
+Trademarks: see [TRADEMARKS.md](TRADEMARKS.md).
 
 ---
 

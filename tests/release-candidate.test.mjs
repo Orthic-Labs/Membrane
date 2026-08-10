@@ -16,7 +16,7 @@ import { verifyNativeReceipt } from "../scripts/release/verify-native-receipt.mj
 import { loadUpdateManifest, verifyArtifactChecksum, verifySignedManifest } from "../lib/update/manifest.mjs";
 import { signUpdateManifest } from "../scripts/release/sign-update-manifest.mjs";
 
-const compatibilityFiles = ["compatibility.json", "compatibility.template.json"];
+const compatibilityFiles = ["compatibility.template.json"];
 
 const STAGES = ["install", "init", "query", "mcp", "update", "rollback", "uninstall"];
 

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "lanes": [
+    "ci",
+    "publish-npm"
+  ],
+  "matrix": {
+    "os": [
+      "ubuntu-latest",
+      "macos-latest",
+      "windows-latest"
+    ],
+    "node": [
+      "22.13",
+      "24"
+    ]
+  },
+  "packageManager": "pnpm@11.18.0",
+  "templateVersion": "1.0.0",
+  "publish": {
+    "npm": {
+      "oidc": true,
+      "provenance": true
+    }
+  }
+}

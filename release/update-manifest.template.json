@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "publishable": false,
+  "version": "__VERSION__",
+  "platform": "__PLATFORM__",
+  "artifact": "__ARTIFACT__",
+  "sha256": "__SHA256__",
+  "signature": "__SIGNATURE__"
+}

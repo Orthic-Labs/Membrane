@@ -101,11 +101,8 @@ const IGNORED = new Set([
   "out",
   "vendor",
   ".serverless",
-  // Defect 17 — fixture leak: eval/fixture repositories used by the
-  // qualification suite. Walking these on a real repo overflows the graph
-  // with hand-built test fixtures and pollutes evidence fingerprints.
-  // Excluded at every nesting depth.
-  "evals",
+  // Defect 17 — fixture repositories used by qualification are excluded at
+  // every nesting depth without hiding legitimate evaluation harness code.
   "fixture-repos",
 ]);
 export const SCAN_EXCLUSIONS = Object.freeze([...IGNORED].sort());

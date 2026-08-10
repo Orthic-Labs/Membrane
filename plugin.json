@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "cortex",
+  "version": "0.2.0",
+  "description": "Cortex: local evidence-backed repository map — documents, claims, code graph (Neurons/Synapses/Circuits), and orientation admission library.",
+  "homepage": "https://github.com/Orthic-Labs/Cortex#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Orthic-Labs/Cortex.git"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "keywords": [
+    "code-graph",
+    "repository-intelligence",
+    "mcp",
+    "developer-tools",
+    "static-analysis",
+    "architecture",
+    "code-search"
+  ]
+}

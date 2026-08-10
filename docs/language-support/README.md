@@ -4,7 +4,7 @@ Cortex routes supported languages through the grammar catalog
 (`grammars/catalog.json`): every entry carries an extension list, a fact
 profile, and a base precision tier. Base precision is **AST** for parsed
 languages (tree-sitter WASM grammars) and **LEXICAL** for unknown
-extensions. Tier placement (`release/compatibility.json` `languageDepth`)
+extensions. Tier placement (`release/compatibility.template.json` `languageDepth`)
 reflects grammar and fixture depth, not compiler backing.
 
 Compiler-backed exact definitions, references, and types are available only

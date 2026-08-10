@@ -62,7 +62,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
   const catalogPath = valueOf(argv, "--catalog");
   const version = valueOf(argv, "--version");
   if (!receiptPath || !catalogPath || !version) {
-    console.error("usage: verify-native-receipt.mjs --receipt <path> --catalog release/catalog.json --version <v>");
+    console.error("usage: verify-native-receipt.mjs --receipt <path> --catalog <sealed-catalog.json> --version <v>");
     process.exit(2);
   }
   const result = verifyNativeReceipt({ receiptPath, catalogPath, version });

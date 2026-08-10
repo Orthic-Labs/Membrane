@@ -1,6 +1,6 @@
 # Support policy
 
-Ground truth: `release/compatibility.json` `supportPolicy`.
+Ground truth: `release/compatibility.template.json` `supportPolicy`; final compatibility data exists only in sealed release output.
 
 | Field | Value |
 |---|---|

@@ -50,6 +50,9 @@
     "service/",
     "evals/fixture-repos/",
     "references/",
+    "plugin.json",
+    "mcp.json",
+    "skills/",
     "SKILL.md",
     "README.md",
     "LICENSE",
@@ -77,7 +80,15 @@
     "bench:retrieval": "node scripts/benchmark-retrieval.mjs",
     "test:hardening": "node --test tests/store-migrations.test.mjs tests/store-rollback.test.mjs tests/performance-envelopes.test.mjs tests/cross-platform-paths.test.mjs",
     "test:security": "node --test \"tests/security/**/*.test.mjs\" tests/mcp-root-confinement.test.mjs tests/plugin-boundary.test.mjs tests/support-bundle-redaction.test.mjs",
-    "soak": "node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/cortex-soak.json"
+    "soak": "node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/cortex-soak.json",
+    "tray:test": "pnpm --dir apps/cortex-tray test",
+    "tray:build": "pnpm --dir apps/cortex-tray build",
+    "release:doctor": "right-release doctor",
+    "release:build:mac": "right-release build --platform mac",
+    "release:build:win": "right-release build --platform win"
+  },
+  "devDependencies": {
+    "@rightkit/release": "0.2.51"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

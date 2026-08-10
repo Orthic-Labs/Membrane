@@ -4,7 +4,7 @@
 // structurally correct.
 
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -17,15 +17,10 @@ test("Inno Setup installer targets per-user install and user PATH", () => {
   assert.ok(iss.includes("RegWriteExpandStringValue(HKCU, 'Environment', 'Path'"));
 });
 
-test("Azure artifact signing values are referenced from secrets/vars", () => {
-  const immutable = readFileSync(join(ROOT, ".github/workflows/immutable-release.yml"), "utf8");
-  const legacy = readFileSync(join(ROOT, ".github/workflows/release.yml"), "utf8");
-  assert.ok(immutable.includes("azure/login@v3"));
-  assert.ok(immutable.includes("azure/artifact-signing-action@v2"));
-  assert.ok(immutable.includes("AZURE_CLIENT_ID"));
-  assert.ok(immutable.includes("AZURE_ARTIFACT_SIGNING_ENDPOINT"));
-  assert.match(legacy, /jobs:\s*\n\s+immutable:\s*\n\s+uses: \.\/\.github\/workflows\/immutable-release\.yml/);
-  assert.doesNotMatch(legacy, /\b(?:pnpm|npm) publish\b|NPM_TOKEN/);
+test("GitHub Actions contains no Windows signing implementation", () => {
+  const workflows = join(ROOT, ".github", "workflows");
+  const source = readdirSync(workflows).filter((file) => file.endsWith(".yml")).map((file) => readFileSync(join(workflows, file), "utf8")).join("\n");
+  assert.doesNotMatch(source, /azure\/login|azure\/artifact-signing-action|AZURE_/i);
 });
 
 test("Windows build/verify scripts exist", () => {
