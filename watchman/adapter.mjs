@@ -41,7 +41,6 @@ export async function waitForNativeProbe(readyPromise, timeoutMs = PROBE_CADENCE
           error.code = "watch_probe_timeout";
           reject(error);
         }, timeoutMs);
-        probeTimer.unref?.();
       }),
       new Promise((_, reject) => {
         onAbort = () => reject(cancelled());

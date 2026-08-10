@@ -23,6 +23,12 @@ function run(repo, args) {
   return spawnSync(process.execPath, [CLI, ...args], { cwd: repo, encoding: "utf8" });
 }
 
+function parseJsonStderr(result) {
+  const stderr = String(result.stderr).trim();
+  const start = stderr.lastIndexOf("\n{");
+  return JSON.parse(start >= 0 ? stderr.slice(start + 1) : stderr);
+}
+
 test("read-only query barrier detects an edit without repairing it", () => {
   const repo = makeRepo();
   try {
@@ -30,11 +36,11 @@ test("read-only query barrier detects an edit without repairing it", () => {
     writeFileSync(path, `${readFileSync(path, "utf8")}\nexport const barrierProbe = true;\n`);
     const result = run(repo, ["graph", "search", "--query", "barrierProbe", "--json"]);
     assert.equal(result.status, 3);
-    const payload = JSON.parse(result.stderr);
+    const payload = parseJsonStderr(result);
     assert.equal(payload.barrier.barrierResult, "timeout");
     const candidates = run(repo, ["graph", "candidates", "--query", "barrierProbe", "--json"]);
     assert.equal(candidates.status, 3);
-    assert.equal(JSON.parse(candidates.stderr).barrier.barrierResult, "timeout");
+    assert.equal(parseJsonStderr(candidates).barrier.barrierResult, "timeout");
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
@@ -49,7 +55,7 @@ test("corrupt clocks timeout by default and serve only with explicit allow-stale
     } finally { closeStore(db); }
     const blocked = run(repo, ["graph", "search", "--query", "placeOrder", "--timeout-ms", "80", "--json"]);
     assert.equal(blocked.status, 3);
-    assert.equal(JSON.parse(blocked.stderr).error, "stale_blocked");
+    assert.equal(parseJsonStderr(blocked).error, "stale_blocked");
     const allowed = run(repo, ["graph", "search", "--query", "placeOrder", "--timeout-ms", "80", "--allow-stale", "--json"]);
     assert.equal(allowed.status, 0, allowed.stderr);
     const payload = JSON.parse(allowed.stdout);
@@ -66,7 +72,7 @@ test("event gap blocks read-only queries until explicit reconciliation", async (
     finally { closeStore(db); }
     const result = run(repo, ["graph", "search", "--query", "placeOrder", "--json"]);
     assert.equal(result.status, 3);
-    assert.equal(JSON.parse(result.stderr).barrier.barrierResult, "timeout");
+    assert.equal(parseJsonStderr(result).barrier.barrierResult, "timeout");
     const warmDb = openStore(join(repo, ".agent/graph/graph.db"));
     try {
       const repaired = await syncToCurrentSource(warmDb, repo, { timeoutMs: 2000 });

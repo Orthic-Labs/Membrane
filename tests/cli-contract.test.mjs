@@ -27,6 +27,12 @@ function run(repo, args) {
   return spawnSync(process.execPath, [CLI, ...args], { cwd: repo, encoding: "utf8" });
 }
 
+function parseJsonStderr(result) {
+  const stderr = String(result.stderr).trim();
+  const start = stderr.lastIndexOf("\n{");
+  return JSON.parse(start >= 0 ? stderr.slice(start + 1) : stderr);
+}
+
 test("help prints branded Cortex usage and exits 0", () => {
   const result = run(process.cwd(), ["--help"]);
   assert.equal(result.status, 0);
@@ -136,7 +142,7 @@ test("stable exit codes: usage error returns USAGE", () => {
   try {
     const result = run(repo, ["search", "--json"]);
     assert.equal(result.status, EXIT.USAGE);
-    const payload = JSON.parse(result.stderr);
+    const payload = parseJsonStderr(result);
     assert.equal(payload.error.code, "query_required");
   } finally {
     rmSync(repo, { recursive: true, force: true });
