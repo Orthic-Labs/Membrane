@@ -37,6 +37,24 @@ test("MCP direct entry survives a symlinked script path", async () => {
   }
 });
 
+test("cortex_status output schema accepts first-use missing-graph state", async () => {
+  ensureAuditDir();
+  const repo = mkdtempSync(join(AUDIT_DIR, "missing-graph-"));
+  const { client, transport } = await startServer({ repo });
+  try {
+    const status = await client.callTool({ name: "cortex_status", arguments: {} });
+    assert.notEqual(status.isError, true);
+    assert.equal(status.structuredContent.state, "missing");
+    assert.equal(status.structuredContent.manifest, undefined);
+    const schema = (await client.listTools()).tools.find((tool) => tool.name === "cortex_status").outputSchema;
+    assert.deepEqual(schema.required.sort(), ["claimBoundary", "manifestPath", "repository", "schemaVersion", "state"].sort());
+  } finally {
+    await client.close().catch(() => {});
+    await transport.close().catch(() => {});
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 function ensureAuditDir() {
   mkdirSync(AUDIT_DIR, { recursive: true });
 }

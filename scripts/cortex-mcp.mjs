@@ -110,6 +110,7 @@ const TOOL_DEFINITIONS = Object.freeze([
     description: "Return freshness, coverage, service health, and repair actions.",
     strict: z.strictObject({ ...COMMON_FIELDS }),
     outputKeys: ["schemaVersion", "repository", "state", "manifestPath", "manifest", "providerMismatch", "manifestDigestValid", "ledger", "pendingPaths", "scanTruncated", "truncationReasons", "clocks", "capabilities", "claimBoundary"],
+    optionalOutputKeys: ["manifest", "providerMismatch", "manifestDigestValid", "ledger", "pendingPaths", "scanTruncated", "truncationReasons", "clocks", "capabilities"],
     call: (service) => async (input) => {
       // service.status never opens a freshness session, so the adapter pins
       // the requested generation itself (CX-B1 common input contract).
@@ -127,7 +128,7 @@ const TOOL_DEFINITIONS = Object.freeze([
 
 // outputSchema advertises the live top-level shape of each operation response.
 // All observed fields are required; claimBoundary is adapter-enriched.
-function outputSchema(keys, schemaVersion = 1) {
+function outputSchema(keys, schemaVersion = 1, optionalKeys = []) {
   const arrays = new Set(["results", "omissions", "nodes", "edges", "impacted", "claims", "pendingPaths", "truncationReasons"]);
   const booleans = new Set(["truncated", "providerMismatch", "manifestDigestValid", "scanTruncated", "ledger"]);
   const objects = new Set(["candidateSet", "freshnessReceipt", "counts", "target", "repository", "manifest", "clocks", "capabilities"]);
@@ -143,6 +144,7 @@ function outputSchema(keys, schemaVersion = 1) {
       status: z.enum(["clear", "restricted"]), cleanClaimAllowed: z.boolean(),
       safeClaims: z.array(z.string()), prohibitedClaims: z.array(z.string()), gaps: z.array(z.string()),
     }).strict();
+    if (optionalKeys.includes(key)) schema = schema.optional();
     return [key, schema];
   }))).loose();
 }
@@ -239,7 +241,7 @@ export function createCortexMcpServer(options = {}) {
     server.registerTool(tool.name, {
       description: tool.description,
       inputSchema: tool.strict,
-      outputSchema: outputSchema(tool.outputKeys, tool.schemaVersion),
+      outputSchema: outputSchema(tool.outputKeys, tool.schemaVersion, tool.optionalOutputKeys),
       annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
       _meta: { effects: TOOL_EFFECTS[tool.name] },
     }, async (input) => {
