@@ -31,7 +31,7 @@ fn config_path(path: Option<PathBuf>, home: Option<PathBuf>) -> Result<PathBuf, 
     let path = match explicit {
         Some(path) => path,
         None => home
-            .map(|home| home.join(".config/membrane/workspace.json"))
+            .map(|home| home.join(".config/orthic/workspace.json"))
             .ok_or_else(|| "workspace_config_missing".to_string())?,
     };
     (path.is_absolute() && path.is_file())
@@ -51,10 +51,17 @@ fn from_config(config: Config) -> Result<Workspace, String> {
 /// on Windows it is `USERPROFILE`. We do not gather both -- mixing them
 /// lets a stale shell var override the real user profile on one OS.
 pub fn resolve() -> Result<Workspace, String> {
+    // Orthic rebrand: read ORTHIC_ first, keep MEMBRANE_ as compat fallback.
+    let primary = std::env::var_os("ORTHIC_WORKSPACE_ROOT")
+        .or_else(|| std::env::var_os("MEMBRANE_WORKSPACE_ROOT"))
+        .map(PathBuf::from);
+    let config = std::env::var_os("ORTHIC_WORKSPACE_CONFIG")
+        .or_else(|| std::env::var_os("MEMBRANE_WORKSPACE_CONFIG"))
+        .map(PathBuf::from);
     resolve_from(
-        std::env::var_os("MEMBRANE_WORKSPACE_ROOT").map(PathBuf::from),
+        primary,
         std::env::var_os("WORKSPACE_ROOT").map(PathBuf::from),
-        std::env::var_os("MEMBRANE_WORKSPACE_CONFIG").map(PathBuf::from),
+        config,
         home_for_host_os(),
     )
 }

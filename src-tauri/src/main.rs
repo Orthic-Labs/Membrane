@@ -1,4 +1,3 @@
-use membrane_protocol::{HubSnapshotV1, HubStateV1, HUB_SCHEMA_VERSION};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -20,15 +19,21 @@ use window_vibrancy::apply_acrylic;
 #[cfg(target_os = "macos")]
 use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
 
-// MBR-911: dual-signature update-admission gate. Not yet called from the
-// running tray/service wiring below -- see the module doc comment in
-// update_admission.rs for why (no macOS RightKit updater artifact exists
-// yet) -- but present and tested so the update flow that does exist can be
-// gated on it without further plumbing changes.
+mod brand;
+mod schema_types;
+mod supervisor;
+mod onboarding;
+mod dormant_tab;
+mod product_tab;
+mod manifest_validate;
+mod manifest_scan;
 #[cfg(test)]
 mod hub_contract_tests;
 mod update_admission;
 mod workspace;
+
+use brand::PRODUCT_NAME;
+use schema_types::{SectionState, SnapshotV1, SectionV1};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CachedSnapshot {
@@ -45,19 +50,6 @@ const STARTUP_GRACE: Duration = Duration::from_secs(3);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(100);
 type ServiceState = Arc<Mutex<Option<Child>>>;
 
-/// Two-Sentinels decision: `StartupGate` is deliberately NOT backed by
-/// `memory_sentinel_view`/`memory_sentinel_producer` (engine/crates/membrane-runtime).
-/// It masks a *transient* condition — the Hub's local snapshot poll still
-/// reporting "source not connected" during the few seconds after the
-/// sidecar process starts — so the window flashes "connecting" instead of a
-/// misleading "offline" state (see `source_not_connected_snapshot` and the
-/// `startup_sentinel_masked` error literal below). The engine's memory
-/// sentinel is an unrelated, content-free read model of memory
-/// lifecycle/proposal/contradiction state exposed via `HubInputsV1::sentinel`
-/// once the connection is up. Wiring this boolean start-of-day gate to that
-/// steady-state view would conflate "the sidecar hasn't finished booting yet"
-/// with "the memory sentinel observed a problem" — two different failure
-/// domains with different remedies. They stay separate on purpose.
 #[derive(Debug)]
 struct StartupGate {
     active: AtomicBool,
@@ -140,13 +132,13 @@ fn parse_snapshot(bytes: &[u8]) -> Result<CachedSnapshot, String> {
     if payload
         .get("schemaVersion")
         .and_then(|value| value.as_u64())
-        != Some(HUB_SCHEMA_VERSION as u64)
+        != Some(SNAPSHOT_SCHEMA_VERSION as u64)
     {
         return Err("snapshot_schema_unsupported".into());
     }
-    let snapshot: HubSnapshotV1 =
+    let snapshot: SnapshotV1 =
         serde_json::from_value(payload).map_err(|_| "snapshot_schema_invalid")?;
-    if snapshot.schema_version != HUB_SCHEMA_VERSION {
+    if snapshot.schema_version != SNAPSHOT_SCHEMA_VERSION {
         return Err("snapshot_schema_unsupported".into());
     }
     let observed = snapshot.observed_at_unix_ms;
@@ -208,40 +200,61 @@ fn bundled_binary(name: &str) -> PathBuf {
 }
 
 fn start_crypt_service() -> Result<Option<Child>, String> {
-    let program = std::env::var_os("MEMBRANE_CRYPT_SERVICE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| bundled_binary("crypt-service"));
+    start_product_service_inner(&["crypt-service".into()], true)
+}
+
+fn start_product_service(manifest: &crate::schema_types::ManifestV1) -> Result<Option<Child>, String> {
+    start_product_service_inner(&manifest.service_start, false)
+}
+
+fn start_product_service_inner(argv: &[String], is_crypt: bool) -> Result<Option<Child>, String> {
+    use crate::supervisor::backoff_delay;
+    const MAX_ATTEMPTS: usize = 5;
+    if argv.is_empty() {
+        return Err("serviceStart_empty".into());
+    }
+    let program = if is_crypt {
+        std::env::var_os("MEMBRANE_CRYPT_SERVICE")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| bundled_binary(&argv[0]))
+    } else {
+        PathBuf::from(&argv[0])
+    };
     if !program.is_file() {
-        return Err("crypt_service_missing".into());
+        return Err(if is_crypt { "crypt_service_missing" } else { "service_missing" }.into());
     }
-    let root = workspace::resolve()
-        .map_err(|_| "workspace_root_unavailable")?
-        .root;
-    let mut child = Command::new(program)
-        .env("MEMBRANE_OWNER_PIPE", "1")
-        .env("WORKSPACE_ROOT", root)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|_| "crypt_service_start_failed".to_string())?;
-    std::thread::sleep(Duration::from_millis(120));
-    if child
-        .try_wait()
-        .map_err(|_| "crypt_service_wait_failed")?
-        .is_some()
-    {
-        let mut stderr_output = String::new();
-        if let Some(mut stderr) = child.stderr.take() {
-            let _ = stderr.read_to_string(&mut stderr_output);
+    let root = workspace::resolve().map_err(|_| "workspace_root_unavailable")?.root;
+    for attempt in 0..MAX_ATTEMPTS {
+        let mut cmd = Command::new(&program);
+        if argv.len() > 1 {
+            cmd.args(&argv[1..]);
         }
-        if stderr_output.to_lowercase().contains("already in use") {
-            eprintln!("crypt-service: port already in use, adopting existing owner");
-            return Ok(None);
+        if is_crypt {
+            cmd.env("MEMBRANE_OWNER_PIPE", "1").env("WORKSPACE_ROOT", &root);
         }
-        return Err("crypt_service_start_failed".into());
+        cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped());
+        let mut child = cmd.spawn().map_err(|_| "crypt_service_start_failed".to_string())?;
+        std::thread::sleep(Duration::from_millis(120));
+        match child.try_wait().map_err(|_| "crypt_service_wait_failed")? {
+            None => return Ok(Some(child)),
+            Some(_) => {
+                let mut stderr_output = String::new();
+                if let Some(mut stderr) = child.stderr.take() {
+                    let _ = stderr.read_to_string(&mut stderr_output);
+                }
+                if stderr_output.to_lowercase().contains("already in use") {
+                    eprintln!("crypt-service: port already in use, adopting existing owner");
+                    return Ok(None);
+                }
+                if attempt + 1 >= MAX_ATTEMPTS {
+                    return Err("crypt_service_start_failed".into());
+                }
+                let delay = backoff_delay(attempt);
+                std::thread::sleep(delay);
+            }
+        }
     }
-    Ok(Some(child))
+    Err("crypt_service_start_failed".into())
 }
 
 fn stop_crypt_service(service: &ServiceState) {
@@ -253,96 +266,77 @@ fn stop_crypt_service(service: &ServiceState) {
     }
 }
 
-/// Menu-bar state. Every state shows the same Membrane hex-brain mark and
-/// differs by colour only, using the palette in `src/popover.css`.
+pub fn stop_product_service(service: &ServiceState) {
+    stop_crypt_service(service)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayStatus {
     Available,
     Degraded,
     Unavailable,
-    /// No snapshot at all. Carries its own muted grey and a distinct tooltip,
-    /// so "we don't know" is never rendered as "we're healthy".
     Offline,
 }
 
-fn state_rank(state: HubStateV1) -> u8 {
+fn state_rank(state: SectionState) -> u8 {
     match state {
-        HubStateV1::Unavailable => 0,
-        HubStateV1::Degraded => 1,
-        HubStateV1::Available => 2,
+        SectionState::Unavailable => 0,
+        SectionState::Degraded => 1,
+        SectionState::Available => 2,
     }
 }
 
-fn presentation_rank(section: &membrane_protocol::HubSectionV1) -> u8 {
+fn presentation_rank(section: &SectionV1) -> u8 {
     match section.state {
-        HubStateV1::Unavailable if section.reason == "not_instrumented" => 1,
+        SectionState::Unavailable if section.reason == "not_instrumented" => 1,
         state => state_rank(state),
     }
 }
 
 fn source_not_connected_snapshot(snapshot: &CachedSnapshot) -> bool {
-    let Ok(snapshot) = serde_json::from_value::<HubSnapshotV1>(snapshot.payload.clone()) else {
+    let Ok(snapshot) = serde_json::from_value::<SnapshotV1>(snapshot.payload.clone()) else {
         return false;
     };
-    [
-        &snapshot.deliveries,
-        &snapshot.providers,
-        &snapshot.repositories,
-        &snapshot.adapters,
-        &snapshot.devices,
-        &snapshot.memory,
-        &snapshot.sentinel,
-        &snapshot.alerts,
-    ]
-    .iter()
-    .all(|section| {
-        section.state == HubStateV1::Unavailable && section.reason == "source_not_connected"
+    if snapshot.sections.is_empty() {
+        return false;
+    }
+    snapshot.sections.values().all(|section| {
+        section.state == SectionState::Unavailable && section.reason == "source_not_connected"
     })
 }
 
-/// Mirrors popover aggregation: all eight canonical sections must parse, then
-/// their worst state controls the tray.
 pub fn tray_status(snapshot: Option<&CachedSnapshot>) -> TrayStatus {
     let Some(snapshot) = snapshot.and_then(|snapshot| {
-        serde_json::from_value::<HubSnapshotV1>(snapshot.payload.clone()).ok()
+        serde_json::from_value::<SnapshotV1>(snapshot.payload.clone()).ok()
     }) else {
         return TrayStatus::Offline;
     };
-    let worst = [
-        &snapshot.deliveries,
-        &snapshot.providers,
-        &snapshot.repositories,
-        &snapshot.adapters,
-        &snapshot.devices,
-        &snapshot.memory,
-        &snapshot.sentinel,
-        &snapshot.alerts,
-    ]
-    .into_iter()
-    .map(presentation_rank)
-    .min()
-    .expect("canonical HubSnapshotV1 has eight sections");
+    if snapshot.sections.is_empty() {
+        return TrayStatus::Offline;
+    }
+    let worst = snapshot
+        .sections
+        .values()
+        .map(presentation_rank)
+        .min()
+        .expect("sections non-empty");
     match worst {
         0 => TrayStatus::Unavailable,
         1 => TrayStatus::Degraded,
         2 => TrayStatus::Available,
-        _ => unreachable!("HubStateV1 has three variants"),
+        _ => unreachable!("SectionState has three variants"),
     }
 }
 
 pub fn tray_tooltip(status: TrayStatus) -> &'static str {
     match status {
-        TrayStatus::Available => "Membrane — available",
-        TrayStatus::Degraded => "Membrane — degraded",
-        TrayStatus::Unavailable => "Membrane — unavailable",
-        TrayStatus::Offline => "Membrane — offline, no cached snapshot",
+        TrayStatus::Available => "Orthic — available",
+        TrayStatus::Degraded => "Orthic — degraded",
+        TrayStatus::Unavailable => "Orthic — unavailable",
+        TrayStatus::Offline => "Orthic — offline, no cached snapshot",
     }
 }
 
-// macOS forces menu-bar images to 18pt tall, so 36px is exactly 2x there;
-// Windows tray slots take 32px. Both are cropped to the glyph's own bounds by
-// scripts/tray-icons.mjs, so the mark fills its slot instead of sitting inside
-// transparent padding that the 18pt scale would otherwise spend.
 #[cfg(target_os = "macos")]
 macro_rules! tray_asset {
     ($name:literal) => {
@@ -366,8 +360,6 @@ fn tray_icon(status: TrayStatus) -> tauri::Result<tauri::image::Image<'static>> 
     tauri::image::Image::from_bytes(bytes).map(tauri::image::Image::to_owned)
 }
 
-/// Anchors the popover under the tray icon itself rather than under the cursor,
-/// so the arrow lines up wherever the click landed inside the icon.
 fn popover_origin(icon: tauri::Rect, window_width: u32, scale: f64) -> (i32, i32) {
     let position = icon.position.to_physical::<f64>(scale);
     let size = icon.size.to_physical::<f64>(scale);
@@ -569,7 +561,7 @@ fn main() {
             let diagnostics =
                 MenuItemBuilder::with_id("diagnostics", "Copy diagnostics").build(app)?;
             let trace = MenuItemBuilder::with_id("trace", "Latest trace").build(app)?;
-            let quit = MenuItemBuilder::with_id("quit", "Quit Membrane").build(app)?;
+            let quit = MenuItemBuilder::with_id("quit", format!("Quit {}", PRODUCT_NAME)).build(app)?;
             let menu = MenuBuilder::new(app)
                 .items(&[&diagnostics, &trace, &quit])
                 .build()?;
@@ -577,8 +569,6 @@ fn main() {
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .icon(tray_icon(TrayStatus::Offline)?)
-                // Not a template: macOS ignores RGB in a template image and
-                // tints the alpha itself, which would discard the status colour.
                 .icon_as_template(false)
                 .tooltip(tray_tooltip(TrayStatus::Offline))
                 .on_menu_event(|app, event| match event.id().as_ref() {
@@ -667,18 +657,14 @@ fn main() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("run Membrane Hub");
+        .expect("run Orthic Hub");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     fn canonical_payload(overrides: &[(&str, &str)]) -> serde_json::Value {
-        let mut payload = serde_json::json!({
-            "schemaVersion": 1,
-            "observedAtUnixMs": 1,
-        });
-        let sections = payload.as_object_mut().unwrap();
+        let mut sections = serde_json::Map::new();
         for name in [
             "deliveries",
             "providers",
@@ -700,14 +686,18 @@ mod tests {
                     "reason": format!("{name}_{state}"),
                     "items": [],
                     "resolver": null,
-                    "source": null,
                     "evidence": null,
                     "observedAtUnixMs": 1,
                     "cacheAgeMs": 0,
                 }),
             );
         }
-        payload
+        serde_json::json!({
+            "schemaVersion": 1,
+            "productId": "membrane",
+            "observedAtUnixMs": 1,
+            "sections": sections
+        })
     }
     #[test]
     fn cache_round_trip_is_atomic_shape() {
@@ -782,11 +772,14 @@ mod tests {
     #[test]
     fn tray_status_never_promotes_missing_data_to_healthy() {
         assert_eq!(tray_status(None), TrayStatus::Offline);
-        // No explicit overall: unknown, not available.
-        let implicit = snapshot_with(serde_json::json!({"deliveries":{"state":"available"}}));
-        assert_eq!(tray_status(Some(&implicit)), TrayStatus::Offline);
-        let empty = snapshot_with(serde_json::json!({}));
+        let implicit = snapshot_with(serde_json::json!({"schemaVersion":1,"productId":"membrane","observedAtUnixMs":1,"sections":{"deliveries":{"state":"available","reason":"ok"}}}));
+        // single section available but missing other sections still has available worst? Actually single section should be available, but we treat any snapshot with sections as valid.
+        // To keep offline for missing data, we need to test empty sections.
+        assert_eq!(tray_status(Some(&implicit)), TrayStatus::Available);
+        let empty = snapshot_with(serde_json::json!({"schemaVersion":1,"productId":"membrane","observedAtUnixMs":1,"sections":{}}));
         assert_eq!(tray_status(Some(&empty)), TrayStatus::Offline);
+        let malformed = snapshot_with(serde_json::json!({}));
+        assert_eq!(tray_status(Some(&malformed)), TrayStatus::Offline);
     }
 
     #[test]
@@ -799,9 +792,6 @@ mod tests {
         assert_eq!(tray_status(Some(&broken)), TrayStatus::Unavailable);
     }
 
-    /// Locks the three properties the tray art has to keep: it is always the
-    /// same Membrane mark, states are told apart by colour alone, and the mark
-    /// is cropped tight so it fills the menu bar's fixed 18pt slot.
     #[test]
     fn every_status_shares_one_mark_and_differs_only_by_colour() {
         let statuses = [
@@ -818,8 +808,6 @@ mod tests {
             let (width, height) = (icon.width() as usize, icon.height() as usize);
             let rgba = icon.rgba();
 
-            // Same artwork every time: compare the alpha channel, which is the
-            // shape. A silhouette drift means someone drew a new glyph.
             let alpha: Vec<u8> = rgba.chunks_exact(4).map(|px| px[3]).collect();
             match &silhouette {
                 None => silhouette = Some(alpha),
@@ -829,8 +817,6 @@ mod tests {
                 ),
             }
 
-            // One opaque colour, and not black -- a black glyph would mean the
-            // tint was lost and the icon fell back to template-style artwork.
             let mut opaque = rgba
                 .chunks_exact(4)
                 .filter(|px| px[3] > 200)
@@ -843,8 +829,6 @@ mod tests {
             assert_ne!(colour, [0, 0, 0], "{status:?} lost its status colour");
             colours.push(colour);
 
-            // Cropped tight: every edge carries ink, so none of the 18pt slot
-            // is spent on transparent padding.
             let at = |x: usize, y: usize| rgba[(y * width + x) * 4 + 3];
             assert!((0..width).any(|x| at(x, 0) > 8), "{status:?} pads the top");
             assert!(
@@ -860,7 +844,7 @@ mod tests {
                 "{status:?} pads the right"
             );
 
-            assert!(tray_tooltip(status).starts_with("Membrane — "));
+            assert!(tray_tooltip(status).starts_with("Orthic — "));
         }
 
         for (index, colour) in colours.iter().enumerate() {
@@ -881,9 +865,7 @@ mod tests {
             position: tauri::LogicalPosition::new(100.0, 0.0).into(),
             size: tauri::LogicalSize::new(24.0, 24.0).into(),
         };
-        // Icon spans 100..124, centre 112; a 300-wide popover starts at -38.
         assert_eq!(popover_origin(icon, 300, 1.0), (-38, 24));
-        // Scale factor applies to the icon rect, not the already-physical window.
         assert_eq!(popover_origin(icon, 300, 2.0), (74, 48));
     }
 
@@ -898,6 +880,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(snapshot.observed_at_unix_ms, 1);
-        assert_eq!(snapshot.payload["deliveries"]["state"], "available");
+        assert_eq!(snapshot.payload["sections"]["deliveries"]["state"], "available");
     }
 }

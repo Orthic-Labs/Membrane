@@ -1,19 +1,27 @@
 [package]
-name = "membrane-hub"
+name = "orthic"
 version = "0.1.10"
 edition = "2021"
+
+[lib]
+name = "orthic"
+path = "src/lib.rs"
+
+[[bin]]
+name = "orthic"
+path = "src/main.rs"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
 tauri-plugin-single-instance = "2"
 window-vibrancy = "0.6"
-# MBR-911: pure dual-signature update-admission contract (engine/crates/membrane-updater).
-# Path dependency into the engine workspace's member crate, reused as-is; no new
-# external crate and no cryptography added here or in that crate.
-membrane-updater = { path = "../../../engine/crates/membrane-updater" }
-membrane-protocol = { path = "../../../engine/crates/membrane-protocol" }
+hub-updater = { path = "crates/hub-updater" }
+
 [dev-dependencies]
 tempfile = "3"
+trybuild = "1"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

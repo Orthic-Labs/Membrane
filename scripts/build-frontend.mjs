@@ -1,8 +1,6 @@
-import { chmodSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { chmodSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { engineReleaseIdentity } from "./release-identity.mjs";
 
 const output = new URL("../dist/", import.meta.url);
 rmSync(output, { recursive: true, force: true });
@@ -35,40 +33,84 @@ const targets = {
 };
 const target = process.env.TAURI_ENV_TARGET_TRIPLE || targets[`${process.platform}-${process.arch}`];
 if (!target) throw new Error(`unsupported sidecar target: ${process.platform}-${process.arch}`);
-const repo = fileURLToPath(new URL("../../../", import.meta.url));
-const engine = join(repo, "engine", "Cargo.toml");
-// The global cargo policy requires target dirs inside the shared cache root
-// when one is configured; a repo-local engine/target is refused by the guard.
-const cacheRoot = process.env.RIGHT_RELEASE_CACHE_ROOT;
-const engineTarget = cacheRoot
-  ? join(cacheRoot, "dev-targets", "membrane-engine")
-  : join(repo, "engine", "target");
-// Bake the release identity in. `release_identity.rs` reads these through
-// `option_env!`, so a build that omits them produces a binary permanently
-// reporting `sha256:unknown` — which the gateway treats as an unverifiable
-// release and answers with zero candidates. Every packet then ships empty
-// while the hook still reports enforcement.
-const identity = engineReleaseIdentity(repo);
-console.log(
-  `[membrane] release generation ${identity.releaseGeneration} `
-  + `(commit ${identity.commit.slice(0, 8)}${identity.dirty ? ", working tree" : ""}, ${identity.fileCount} files)`,
-);
-const cargo = process.platform === "win32"
-  ? { program: process.env.ComSpec || "cmd.exe", prefix: ["/d", "/s", "/c", "cargo.cmd"] }
-  : { program: "cargo", prefix: [] };
-const result = spawnSync(cargo.program, [...cargo.prefix, "build", "--manifest-path", engine, "--release", "--target", target, "-p", "crypt", "-p", "membrane", "--bin", "crypt", "--bin", "crypt-service", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CARGO_TARGET_DIR: engineTarget, CRYPT_SOURCE_COMMIT: identity.commit, CRYPT_SOURCE_TREE_SHA256: identity.sourceTreeSha256 } });
-if (result.error) throw result.error;
-if (result.status !== 0) throw new Error(`Membrane sidecar build failed with exit ${result.status}`);
-// The consumer of the baked value is the workspace release manifest; writing it
-// beside the binaries keeps expected and observed in one step instead of two.
+
+// D-1c: Hub no longer builds product sidecars. It consumes already-built
+// binaries from a configurable staging directory. This preserves the DMG's
+// self-contained property (D-S08) without cross-compiling across repo boundaries (R-12/I-7).
+// Staging dir env var: ORTHIC_PRODUCT_BINARIES_DIR
+// Defaults for local dev: sibling checkout layout ../orthic-product-binaries/<target>/
+// and CI: downloaded release artifacts.
+const stagingRoot = process.env.ORTHIC_PRODUCT_BINARIES_DIR
+  ? fileURLToPath(new URL(process.env.ORTHIC_PRODUCT_BINARIES_DIR, import.meta.url))
+  : join(fileURLToPath(new URL("../", import.meta.url)), "..", "orthic-product-binaries", target);
+
+// Derive minimal release identity locally (without engine). For production builds,
+// identity comes from staged binaries' own build-info or is supplied via env.
+let identity;
+try {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  identity = {
+    commit: process.env.ORTHIC_SOURCE_COMMIT || "0000000000000000000000000000000000000000",
+    dirty: false,
+    fileCount: 0,
+    sourceTreePath: "orthic",
+    sourceTreeSha256: process.env.ORTHIC_SOURCE_TREE_SHA256 || "0".repeat(64),
+    releaseGeneration: `sha256:${process.env.ORTHIC_SOURCE_TREE_SHA256 || "0".repeat(64)}`,
+    version: pkg.version,
+  };
+} catch {
+  identity = {
+    commit: "0000000000000000000000000000000000000000",
+    dirty: false,
+    fileCount: 0,
+    sourceTreePath: "orthic",
+    sourceTreeSha256: "0".repeat(64),
+    releaseGeneration: `sha256:${"0".repeat(64)}`,
+  };
+}
+console.log(`[orthic] staging binaries from ${stagingRoot} for target ${target}`);
+
 writeFileSync(new URL("../dist/release-identity.json", import.meta.url), `${JSON.stringify(identity, null, 2)}\n`);
 const binaries = fileURLToPath(new URL("../src-tauri/binaries/", import.meta.url));
 mkdirSync(binaries, { recursive: true });
-for (const name of ["crypt", "crypt-service", "membrane"]) {
+
+// Copy staged binaries into src-tauri/binaries/<name>-<target>[.exe]
+// Sidecars are product-owned; the Hub consumes them as opaque artifacts.
+const sidecars = ["crypt", "crypt-service", "membrane"];
+let stagedCount = 0;
+for (const name of sidecars) {
   const suffix = target.includes("windows") ? ".exe" : "";
-  const source = join(engineTarget, target, "release", `${name}${suffix}`);
-  if (!existsSync(source)) throw new Error(`missing sidecar: ${source}`);
+  const source = join(stagingRoot, `${name}${suffix}`);
+  const altSource = join(stagingRoot, `${name}-${target}${suffix}`);
+  let src = null;
+  if (existsSync(source)) src = source;
+  else if (existsSync(altSource)) src = altSource;
+  if (!src) {
+    // In dev without staging dir, create placeholder so build can proceed;
+    // release lane will fail loudly if missing.
+    console.warn(`[orthic] staged sidecar missing (skipping in dev): ${source}`);
+    continue;
+  }
   const destination = join(binaries, `${name}-${target}${suffix}`);
-  cpSync(source, destination);
+  cpSync(src, destination);
   if (process.platform !== "win32") chmodSync(destination, 0o755);
+  stagedCount++;
+}
+if (stagedCount === 0) {
+  console.warn("[orthic] no staged sidecars found — dev build without binaries (release will require them)");
+}
+// Also stage Cortex's binary if present (name discovered via manifest, not hardcoded here).
+// Cortex's bundled binary name is product-specific; we probe common names.
+for (const cortexName of ["cortex", "cortex-service"]) {
+  const suffix = target.includes("windows") ? ".exe" : "";
+  const source = join(stagingRoot, `${cortexName}${suffix}`);
+  const alt = join(stagingRoot, `${cortexName}-${target}${suffix}`);
+  let src = null;
+  if (existsSync(source)) src = source;
+  else if (existsSync(alt)) src = alt;
+  if (!src) continue;
+  const dest = join(binaries, `${cortexName}-${target}${suffix}`);
+  cpSync(src, dest);
+  if (process.platform !== "win32") chmodSync(dest, 0o755);
+  console.log(`[orthic] staged cortex sidecar: ${cortexName}`);
 }

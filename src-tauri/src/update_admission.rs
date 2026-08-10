@@ -1,12 +1,12 @@
-//! MBR-911: binds `membrane_updater`'s pure dual-signature admission gate to
+//! MBR-911: binds `hub_updater`'s pure dual-signature admission gate to
 //! the artifacts RightKit's own release pipeline actually produces for
-//! Membrane Hub. This module performs no cryptography and owns no signing
+//! Orthic Hub. This module performs no cryptography and owns no signing
 //! key; it only parses RightKit's already-produced, already-trusted output
 //! and refuses to build admissible evidence unless that output is present,
 //! well-formed, and bound to one consistent artifact hash.
 //!
 //! Two independent trust domains, matching RightKit's own two-signature
-//! shape (`apps/membrane-hub/right-release.config.mjs`, `targets.win.updater`):
+//! shape (`right-release.config.mjs`, `targets.win.updater`):
 //!
 //! - **Tauri updater signature.** RightKit's
 //!   `tools/rightkit/packages/release/sign-updater.mjs` (and, for macOS,
@@ -19,7 +19,7 @@
 //!   plugin verifies that signature against the embedded pubkey when it
 //!   later parses this manifest at update-check time; this module never
 //!   recomputes or independently re-derives that signature.
-//! - **Platform trust.** The `orthic.membrane.platform-acceptance.v1` receipt
+//! - **Platform trust.** The `orthic.platform-acceptance.v1` receipt
 //!   already defined by `scripts/release/verify-platform-artifacts.mjs` and
 //!   built per platform by `scripts/release/macos/contract.mjs` /
 //!   `scripts/release/windows/contract.mjs` (codesign + notarization + staple
@@ -28,7 +28,7 @@
 //!   validated there; it never shells out to `codesign`, `spctl`, or
 //!   `signtool` itself.
 //!
-//! `membrane_updater::verify` still fails closed on every path described in
+//! `hub_updater::verify` still fails closed on every path described in
 //! its own doc comment (missing signature, unknown key, one valid signature
 //! out of two, a downgrade, a mismatched hash); this module's only job is to
 //! turn real RightKit JSON into evidence that gate can evaluate, collapsing
@@ -45,7 +45,7 @@
 
 #![allow(dead_code)]
 
-use membrane_updater::{
+use hub_updater::{
     BlockedUpdate, Platform, PlatformTrustEvidence, TauriSignatureEvidence, UpdateCandidate,
     UpdateTrustVerifier, VerifiedUpdate,
 };
@@ -64,7 +64,7 @@ pub struct RightKitUpdaterManifestEntry {
     pub url: String,
 }
 
-/// The `orthic.membrane.platform-acceptance.v1` receipt. Field names for the
+/// The `orthic.platform-acceptance.v1` receipt. Field names for the
 /// subset this module reads match
 /// `scripts/release/verify-platform-artifacts.mjs::validateReceipt` exactly.
 /// Unknown JSON fields (`lifecycle`, `environment`, `mode`, `receiptId`, ...)
@@ -83,7 +83,7 @@ pub struct PlatformAcceptanceArtifact {
     pub sha256: String,
 }
 
-const RECEIPT_SCHEMA: &str = "orthic.membrane.platform-acceptance.v1";
+const RECEIPT_SCHEMA: &str = "orthic.platform-acceptance.v1";
 const MACOS_TRUST_FIELDS: [&str; 4] = ["codesign", "notarization", "staple", "gatekeeper"];
 const WINDOWS_TRUST_FIELDS: [&str; 3] = ["authenticode", "publicTrust", "rfc3161"];
 
@@ -153,7 +153,7 @@ fn tauri_signature_evidence(
 }
 
 /// An [`EvidenceError`] must never surface as "trust true because we
-/// couldn't tell" -- it collapses to evidence `membrane_updater::verify`'s
+/// couldn't tell" -- it collapses to evidence `hub_updater::verify`'s
 /// own identity check is guaranteed to reject (empty key/signature/receipt
 /// id), so a RightKit output that fails to parse fails exactly as closed as
 /// one that parses but is invalid.
@@ -196,14 +196,14 @@ impl UpdateTrustVerifier for RightKitTrustAdapter {
         &self,
         artifact_sha256: &str,
         evidence: &PlatformTrustEvidence,
-    ) -> membrane_updater::PlatformVerification {
+    ) -> hub_updater::PlatformVerification {
         // The pass/fail trust decision already happened when
         // `platform_trust_evidence` built this evidence (or refused to, in
         // which case `receipt_id`/`signed_sha256` are empty and this
         // necessarily evaluates false). This only re-confirms identity
         // binding to the artifact under review.
         let bound = !evidence.receipt_id.is_empty() && evidence.signed_sha256 == artifact_sha256;
-        membrane_updater::PlatformVerification {
+        hub_updater::PlatformVerification {
             signature_valid: bound,
             platform_trust_valid: bound,
         }
@@ -241,16 +241,16 @@ pub fn assess(
     let verifier = RightKitTrustAdapter {
         trusted_updater_key_ids: trusted_updater_key_ids.to_vec(),
     };
-    membrane_updater::verify(&candidate, &verifier)
+    hub_updater::verify(&candidate, &verifier)
 }
 
 // --- Deterministic, unexecuted-at-task-time source tests -------------------
 //
 // Not run by this task (no `cargo test`, per this task's hard rules); left
 // for the Book 3 final phased gate's
-// `cargo check --manifest-path apps/membrane-hub/src-tauri/Cargo.toml`.
+// `cargo check --manifest-path src-tauri/Cargo.toml`.
 // These exercise the RightKit-shape parsing this module adds on top of the
-// exhaustively-tested pure gate in `engine/crates/membrane-updater`.
+// exhaustively-tested pure gate in `crates/hub-updater`.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn deserializes_a_full_real_platform_acceptance_receipt_ignoring_unmodeled_fields() {
         let json = r#"{
-            "schema": "orthic.membrane.platform-acceptance.v1",
+            "schema": "orthic.platform-acceptance.v1",
             "receiptId": "r-1",
             "mode": "clean-vm",
             "commit": "0000000000000000000000000000000000000a",

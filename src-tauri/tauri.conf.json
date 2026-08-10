@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Membrane Hub",
+  "productName": "Orthic",
   "version": "0.1.10",
-  "identifier": "com.membrane.hub",
+  "identifier": "com.orthic.hub",
   "build": { "beforeBuildCommand": "pnpm build", "frontendDist": "../dist" },
   "bundle": {
     "externalBin": ["binaries/crypt", "binaries/crypt-service", "binaries/membrane"],
@@ -20,7 +20,7 @@
     "macOSPrivateApi": true,
     "withGlobalTauri": false,
     "windows": [{
-      "label": "hub", "url": "popover.html", "title": "Membrane", "width": 304, "height": 290,
+      "label": "hub", "url": "popover.html", "title": "Orthic", "width": 304, "height": 290,
       "resizable": false, "visible": false, "decorations": false, "transparent": true, "shadow": false,
       "alwaysOnTop": true, "skipTaskbar": true
     }]

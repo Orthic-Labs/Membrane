@@ -17,7 +17,7 @@ fn resolve_from_is_env_free_first_nonempty_and_strict() {
     std::fs::write(&python, b"x").unwrap();
     let explicit_config_path = dir.path().join("workspace.json");
     std::fs::write(&explicit_config_path, config(dir.path(), &python)).unwrap();
-    let home_config_path = dir.path().join(".config/membrane/workspace.json");
+    let home_config_path = dir.path().join(".config/orthic/workspace.json");
     std::fs::create_dir_all(home_config_path.parent().unwrap()).unwrap();
     std::fs::write(&home_config_path, config(dir.path(), &python)).unwrap();
     let first = resolve_from(Some(dir.path().into()), Some(PathBuf::new()), None, None).unwrap();
@@ -31,7 +31,7 @@ fn resolve_from_is_env_free_first_nonempty_and_strict() {
         std::fs::canonicalize(&python).unwrap()
     );
 
-    // Empty config override falls through to <home>/.config/membrane/...
+    // Empty config override falls through to <home>/.config/orthic/...
     let from_home =
         resolve_from(None, None, Some(PathBuf::new()), Some(dir.path().into())).unwrap();
     assert_eq!(
@@ -57,7 +57,7 @@ fn resolve_from_is_env_free_first_nonempty_and_strict() {
     // Config file missing when only home is present.
     assert_eq!(
         config_path(None, Some(dir.path().into())).unwrap(),
-        dir.path().join(".config/membrane/workspace.json")
+        dir.path().join(".config/orthic/workspace.json")
     );
 }
 #[test]

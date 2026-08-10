@@ -22,7 +22,7 @@ import { bundleRoot, parentWorkspaceRoot, repoRootFromCwd, sidecarSourcePath, si
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 const directory = `${process.env.CARGO_TARGET_DIR || "src-tauri/target"}/release/bundle/nsis/`;
-const source = `${directory}Membrane Hub_${version}_x64-setup.exe`;
+const source = `${directory}Orthic_${version}_x64-setup.exe`;
 const destination = `${directory}Membrane_${version}_x64-setup.exe`;
 
 run("node", ["scripts/write-release-manifest.mjs", "check", "--require-committed"]);

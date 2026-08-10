@@ -3,4 +3,7 @@ node_modules/
 target/
 src-tauri/target/
 src-tauri/gen/
+src-tauri/binaries/
+.audit/
+orthic-product-binaries/
 .DS_Store

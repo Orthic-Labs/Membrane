@@ -1,0 +1,12 @@
+[package]
+name = "hub-updater"
+version = "0.1.0"
+edition = "2021"
+description = "Content-free dual-signature admission contract for Membrane updates"
+
+[lib]
+name = "hub_updater"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }

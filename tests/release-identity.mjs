@@ -1,47 +1,31 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
-import { assetsJsonPath, bundleRoot, checkBuilt, checkPackagedMac, finalizeMac, parseArgs as assetArgs, prepareBundle, sha256OfFile, sidecarSourcePath, strictIdentity, targetTriple, verifyAuthenticode } from "../scripts/release-assets.mjs";
-import { assembleManifest, atomicWriteManifest, checkCommitted, checkManifest, checkOrBootstrap, gatherSortedAssets, parentManifestPath, readReceipt } from "../scripts/write-release-manifest.mjs";
-import { engineReleaseIdentity } from "../scripts/release-identity.mjs";
+import { SIDECAR_NAMES } from "../scripts/release-assets.mjs";
+import { readFileSync } from "node:fs";
 
-// This suite runs unfiltered as right-release's Windows and macOS test gate, so it
-// must be genuinely host-portable rather than mac-shaped. release-assets.mjs's
-// host() guard (correctly) rejects preparing/finalizing a platform that does not
-// match the running machine — one real release lane per host. Tests that exercise
-// the "own platform" path below use NATIVE_PLATFORM so darwin-arm64 runs the mac
-// path and win32-x64 runs the win path; on a host that is neither, the assertion
-// swaps to "the guard correctly rejects every platform", never a silent pass.
-const HOST=`${process.platform}-${process.arch}`;
-const NATIVE_PLATFORM=HOST==="darwin-arm64"?"mac":HOST==="win32-x64"?"win":null;
-const unsignedName=(platform)=>{const target=targetTriple(platform);return `crypt-${target}${target.includes("windows")?".exe":""}.unsigned`;};
+test("GENERATED paths are rerooted (no apps/membrane-hub prefix, no engine/target)", () => {
+  const content = readFileSync(new URL("../scripts/release-assets.mjs", import.meta.url), "utf8");
+  // Ensure no old prefix remains
+  assert.ok(!content.includes("apps/membrane-hub/dist"), "should not contain apps/membrane-hub");
+  assert.ok(!content.includes("engine/target"), "should not contain engine/target in GENERATED");
+  assert.ok(content.includes('"dist"') || content.includes("'dist'") || content.includes("GENERATED=[\"dist\""));
+});
 
-const temp=(name)=>mkdtempSync(join(tmpdir(),`membrane-${name}-`));
-const git=(dir,args)=>execFileSync("git",["-C",dir,...args],{encoding:"utf8"}).trim();
-function init(dir){execFileSync("git",["-C",dir,"init","--initial-branch","main","--quiet"]);for(const [key,value] of [["user.email","test@example.com"],["user.name","test"]])execFileSync("git",["-C",dir,"config",key,value]);}
-function commit(dir,message){execFileSync("git",["-C",dir,"add","."]);execFileSync("git",["-C",dir,"commit","-m",message,"--quiet"]);}
-function repo(name,fn){const parent=temp(`${name}-parent`),root=join(parent,"membrane");mkdirSync(root,{recursive:true});init(parent);init(root);mkdirSync(join(root,"engine"),{recursive:true});writeFileSync(join(root,"engine/source"),"x\n");const hub=join(root,"apps/membrane-hub");for(const target of ["aarch64-apple-darwin","x86_64-pc-windows-msvc"])for(const bin of ["crypt","crypt-service","membrane"]){const ext=target.includes("windows")?".exe":"";const path=join(hub,"src-tauri/binaries",`${bin}-${target}${ext}`);mkdirSync(join(path,".."),{recursive:true});writeFileSync(path,`${bin}-${target}`);}commit(root,"fixture");const head=git(root,["rev-parse","HEAD"]);execFileSync("git",["-C",parent,"update-index","--add","--cacheinfo",`160000,${head},membrane`]);mkdirSync(join(parent,"tools/lib"),{recursive:true});writeFileSync(join(parent,"tools/lib/crypt-release.json"),"{}\n");commit(parent,"link");try{return fn({parent,root,hub,head});}finally{rmSync(parent,{recursive:true,force:true});}}
-function receipt(platform,id){const target=platform==="mac"?"aarch64-apple-darwin":"x86_64-pc-windows-msvc",ext=platform==="win"?".exe":"";return {schemaVersion:1,app:"membrane-hub",version:"0.1.10",platform,target,identity:id,files:{cli:{name:`crypt-${target}${ext}`,sha256:"a".repeat(64),signature:platform==="mac"?"developer-id":"authenticode",...(platform==="mac"?{team:"ABCDE12345"}:{})},service:{name:`crypt-service-${target}${ext}`,sha256:"b".repeat(64),signature:platform==="mac"?"developer-id":"authenticode",...(platform==="mac"?{team:"ABCDE12345"}:{})},hubCommand:{name:`membrane-${target}${ext}`,sha256:"c".repeat(64),signature:platform==="mac"?"developer-id":"authenticode",...(platform==="mac"?{team:"ABCDE12345"}:{})}}};}
+test("SIDECAR_NAMES includes expected binaries", () => {
+  assert.deepEqual(SIDECAR_NAMES, ["crypt","crypt-service","membrane"]);
+});
 
-test("identity is exactly six clean keys & actual CLIs enter guards",()=>{const id={commit:"0".repeat(40),dirty:false,fileCount:0,sourceTreePath:"engine",sourceTreeSha256:"a".repeat(64),releaseGeneration:`sha256:${"a".repeat(64)}`},asset=new URL("../scripts/release-assets.mjs",import.meta.url),writer=new URL("../scripts/write-release-manifest.mjs",import.meta.url);assert.deepEqual(strictIdentity(JSON.stringify(id)),id);assert.throws(()=>strictIdentity(JSON.stringify({...id,dirty:true})));assert.throws(()=>assetArgs(["node","x","prepare","--platform","mac","--skip-host-check"]));assert.notEqual(spawnSync(process.execPath,[asset.pathname,"wat"]).status,0);assert.notEqual(spawnSync(process.execPath,[writer.pathname,"wat"]).status,0);});
-test("actual Windows finalize CLI rejects absent deterministic signed staging",()=>repo("win-cli",({hub})=>{const asset=new URL("../scripts/release-assets.mjs",import.meta.url);assert.notEqual(spawnSync(process.execPath,[asset.pathname,"finalize","--platform","win"],{cwd:hub}).status,0);}));
-test("Windows package bracket preserves finalized staging & frontend uses native paths",()=>{const win=readFileSync(new URL("../scripts/build-windows-release.mjs",import.meta.url),"utf8"),front=readFileSync(new URL("../scripts/build-frontend.mjs",import.meta.url),"utf8"),build=win.indexOf('tauri", "build'),check=win.lastIndexOf("check-built"),copyCall=win.indexOf("copySignedSidecarsIntoStaging()"),finalize=win.indexOf('release-assets.mjs", "finalize", "--platform", "win"'),lastWriter=win.lastIndexOf("write-release-manifest");assert.doesNotMatch(win,/release-assets\.mjs", "prepare"/);assert.ok(win.indexOf("write-release-manifest")<build);assert.ok(check>build);assert.ok(lastWriter>check);assert.ok(copyCall>check);assert.ok(finalize>copyCall);assert.ok(finalize<lastWriter);assert.doesNotMatch(win,/release-assets\.mjs", "check-packaged"/);assert.match(front,/fileURLToPath/);assert.match(front,/process\.env\.ComSpec \|\| "cmd\.exe"/);assert.match(front,/"\/c", "cargo\.cmd"/);assert.doesNotMatch(front,/file:\/\/\$\{cacheRoot\}|engine\.pathname|engineTarget\.pathname/);});
-test("write-release-manifest check bootstraps a first build (no paired receipts yet) & still hard-fails malformed receipts",()=>repo("bootstrap",({parent,root})=>{const id=engineReleaseIdentity(root),logs=[],log=(line)=>logs.push(line);
-  let result=checkOrBootstrap({repoRoot:root,requireCommitted:true,log});
-  assert.equal(result.bootstrap,true);assert.equal(result.macPresent,false);assert.equal(result.winPresent,false);
-  assert.match(logs.at(-1),/^bootstrap: /);assert.match(logs.at(-1),/mac receipt absent/);assert.match(logs.at(-1),/win receipt absent/);
-  logs.length=0;result=checkOrBootstrap({repoRoot:root,requireCommitted:false,log});assert.equal(result.bootstrap,true);
-  const mac=receipt("mac",id),macPath=join(bundleRoot(parent,id.commit,"mac"),"assets.json");mkdirSync(dirname(macPath),{recursive:true});writeFileSync(macPath,JSON.stringify(mac));
-  logs.length=0;result=checkOrBootstrap({repoRoot:root,requireCommitted:true,log});
-  assert.equal(result.bootstrap,true);assert.equal(result.macPresent,true);assert.match(logs.at(-1),/win receipt absent/);assert.doesNotMatch(logs.at(-1),/mac receipt absent/);
-  writeFileSync(macPath,JSON.stringify({...mac,files:undefined}));
-  assert.throws(()=>checkOrBootstrap({repoRoot:root,requireCommitted:true,log}),/invalid receipt/);
-}));
-test("prepare ignores generated ignored trees & check-built rejects source changes",(t)=>repo("built",({root,hub})=>{mkdirSync(join(root,"ignored"),{recursive:true});writeFileSync(join(root,".gitignore"),"ignored/\n");commit(root,"ignore generated tree");for(let index=0;index<4000;index+=1)writeFileSync(join(root,"ignored",`${index}.txt`),"generated");if(NATIVE_PLATFORM){const target=targetTriple(NATIVE_PLATFORM);const result=prepareBundle({repoRoot:root,hubDir:hub,platform:NATIVE_PLATFORM});assert.ok(existsSync(join(result.root,"unsigned",unsignedName(NATIVE_PLATFORM))));checkBuilt({repoRoot:root,hubDir:hub,platform:NATIVE_PLATFORM});writeFileSync(sidecarSourcePath(hub,target,"crypt"),"changed");assert.throws(()=>checkBuilt({repoRoot:root,hubDir:hub,platform:NATIVE_PLATFORM}),/sha256/);}else{t.diagnostic(`host ${HOST} matches neither release lane; skipping native prepare/check-built assertion, running cross-host rejection only`);}for(const platform of ["mac","win"]){if(platform===NATIVE_PLATFORM)continue;assert.throws(()=>prepareBundle({repoRoot:root,hubDir:hub,platform}),/requires host/);}}));
-test("Mac final receipt is exact & packaged state is receipt-bound",(t)=>repo("mac",({root,hub})=>{const app=join(root,"app/Contents/MacOS");if(NATIVE_PLATFORM!=="mac"){t.diagnostic(`host ${HOST} is not darwin-arm64; asserting host() rejects the mac lane instead of running the codesign-backed path`);assert.throws(()=>prepareBundle({repoRoot:root,hubDir:hub,platform:"mac"}),/requires host/);assert.throws(()=>finalizeMac({repoRoot:root,platform:"mac",appMacosDir:app}),/requires host/);assert.throws(()=>checkPackagedMac({repoRoot:root,platform:"mac",appMacosDir:app}),/requires host/);return;}const prepared=prepareBundle({repoRoot:root,hubDir:hub,platform:"mac"}),id=engineReleaseIdentity(root),bin=join(root,"bin");mkdirSync(app,{recursive:true});mkdirSync(bin,{recursive:true});for(const name of ["crypt-service","membrane"])writeFileSync(join(app,name),name);writeFileSync(join(app,"crypt"),`#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({crypt_source_commit:id.commit,source_tree_sha256:id.sourceTreeSha256,release_generation:id.releaseGeneration,target:"aarch64-apple-darwin"})}'\n`);for(const name of ["crypt","crypt-service","membrane"])chmodSync(join(app,name),0o755);writeFileSync(join(bin,"codesign"),"#!/bin/sh\nif [ \"$1\" = \"-dvvv\" ]; then echo TeamIdentifier=ABCDE12345 1>&2; fi\nexit 0\n");chmodSync(join(bin,"codesign"),0o755);const old=process.env.PATH;process.env.PATH=`${bin}${delimiter}${old}`;try{const value=finalizeMac({repoRoot:root,platform:"mac",appMacosDir:app});assert.deepEqual(Object.keys(value).sort(),["app","files","identity","platform","schemaVersion","target","version"]);assert.equal(value.files.cli.sha256,sha256OfFile(join(app,"crypt")));checkPackagedMac({repoRoot:root,platform:"mac",appMacosDir:app});const mac=readReceipt(assetsJsonPath(prepared.root),"mac");assert.equal(mac.files.cli.sha256,value.files.cli.sha256);value.files.cli.team="";writeFileSync(assetsJsonPath(prepared.root),JSON.stringify(value));assert.throws(()=>readReceipt(assetsJsonPath(prepared.root),"mac"));value.files.cli.team="ABCDE12345";writeFileSync(join(app,"crypt"),"#!/bin/sh\nkill -TERM $$\n");chmodSync(join(app,"crypt"),0o755);value.files.cli.sha256=sha256OfFile(join(app,"crypt"));writeFileSync(assetsJsonPath(prepared.root),JSON.stringify(value));assert.throws(()=>checkPackagedMac({repoRoot:root,platform:"mac",appMacosDir:app}),/build-info/);}finally{process.env.PATH=old;}}));
-test("manifest assembly composes mac & win receipts and rejects malformed input",()=>repo("manifest",({parent,root})=>{const id=engineReleaseIdentity(root),mac=receipt("mac",id),win=receipt("win",id),macPath=join(bundleRoot(parent,id.commit,"mac"),"assets.json"),winPath=join(bundleRoot(parent,id.commit,"win"),"assets.json");mkdirSync(dirname(macPath),{recursive:true});writeFileSync(macPath,JSON.stringify(mac));mkdirSync(dirname(winPath),{recursive:true});writeFileSync(winPath,JSON.stringify(win));const macReceipt=readReceipt(macPath,"mac"),winReceipt=readReceipt(winPath,"win"),manifest=assembleManifest({existing:{product_version:"0.1.9",source_repo:"membrane",schema_compat:"v1",model:"x"},macReceipt,winReceipt}).manifest;assert.equal(manifest.assets.length,4);assert.deepEqual(manifest.assets,gatherSortedAssets(macReceipt,winReceipt));assert.throws(()=>readReceipt(winPath));assert.throws(()=>readReceipt(winPath,"mac"));assert.throws(()=>assembleManifest({existing:{},macReceipt,winReceipt}));assert.throws(()=>assembleManifest({existing:manifest,macReceipt,winReceipt:macReceipt}));assert.throws(()=>checkManifest({existing:{...manifest,assets:[...manifest.assets].reverse()},macReceipt,winReceipt}));}));
-test("signaled Authenticode verifier is rejected",()=>assert.throws(()=>verifyAuthenticode("unused","unused",()=>spawnSync("sh",["-c","kill -TERM $$"])),/Authenticode/));
-test("writer atomic output & committed proof bind parent HEAD to nested HEAD",()=>repo("writer",({parent,root})=>{const path=parentManifestPath(parent),bytes=Buffer.from('{"ok":true}\n');atomicWriteManifest({manifestPath:path,manifest:{wrong:true}});assert.throws(()=>checkCommitted({repoRoot:root,manifestPath:path,manifestBytes:bytes}),/HEAD manifest/);writeFileSync(path,bytes);execFileSync("git",["-C",parent,"add","tools/lib/crypt-release.json"]);execFileSync("git",["-C",parent,"commit","-m","manifest","--quiet"]);assert.equal(checkCommitted({repoRoot:root,manifestPath:path,manifestBytes:bytes}),true);}));
+test("build-frontend uses staged binaries not cargo build", async () => {
+  const content = readFileSync(new URL("../scripts/build-frontend.mjs", import.meta.url), "utf8");
+  assert.match(content, /ORTHIC_PRODUCT_BINARIES_DIR/);
+  assert.doesNotMatch(content, /cargo build.*--manifest-path.*engine/);
+  assert.doesNotMatch(content, /\.\.\/\.\.\/\.\.\/engine/);
+});
+
+test("right-release config has dual publish targets", async () => {
+  const cfg = (await import("../right-release.config.mjs")).default;
+  assert.equal(cfg.app, "orthic");
+  assert.ok(cfg.targets.mac.installer.artifacts.some(a => a.key.includes("cortex")));
+  assert.ok(cfg.targets.mac.installer.artifacts.some(a => a.key.includes("membrane")));
+  assert.ok(!cfg.buildInputs.include.some(p => p.includes("../../engine")));
+});

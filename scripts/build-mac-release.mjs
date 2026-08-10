@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { notarytoolAuthArgs } from "@rightkit/release/notary-auth.mjs";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
-const dmg = `src-tauri/target/release/bundle/dmg/Membrane Hub_${version}_aarch64.dmg`;
+const dmg = `src-tauri/target/release/bundle/dmg/Orthic_${version}_aarch64.dmg`;
 const env = {
   ...process.env,
   APPLE_SIGNING_IDENTITY: process.env.APPLE_SIGNING_IDENTITY || "Developer ID Application: Adrian D'souza (6KLGD3LLKF)",

@@ -1,0 +1,22 @@
+name: conformance
+on: [push, pull_request]
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 11.18.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: pnpm }
+      - run: pnpm install
+      - run: pnpm test
+      - uses: actions-rs/toolchain@v1
+        with: { toolchain: stable, override: true }
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: grep-gate brand
+        run: |
+          ! grep -R "Membrane Hub" --include="*.rs" --include="*.mjs" --include="*.json" src/ src-tauri/ || (echo "brand leak" && exit 1)
+          ! grep -R "RESOURCES\|DIMENSIONS\|SECTION_ORDER" --include="*.rs" --include="*.mjs" src/ src-tauri/src/main.rs src/overview.mjs src/popover.mjs || (echo "hardcoded sections leak" && exit 1)
+      - name: manifest adversarial
+        run: cargo test --manifest-path src-tauri/Cargo.toml manifest_adversarial -- --nocapture

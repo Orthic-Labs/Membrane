@@ -1,5 +1,3 @@
-export const RESOURCES = ["deliveries", "providers", "repositories", "adapters", "devices", "memory", "sentinel", "alerts"];
-export const DIMENSIONS = ["installation", "adapter", "delivery"];
 const SEVERITY = { critical: 0, error: 1, warning: 2, info: 3, unknown: 4 };
 
 const esc = value => String(value ?? "unknown").replace(/[&<>\"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c]));
@@ -12,7 +10,12 @@ export function operationEnvelope(snapshot) {
     }
     return { kind: "success", data: snapshot.result.data };
   }
-  if (snapshot.payload && typeof snapshot.payload === "object") return { kind: "success", data: snapshot.payload };
+  if (snapshot.payload && typeof snapshot.payload === "object") {
+    // New snapshot shape has `sections` map; older envelope carries payload directly.
+    // Normalize both: if payload has sections, use it; otherwise fall through.
+    return { kind: "success", data: snapshot.payload };
+  }
+  // Generic case: snapshot may be SnapshotV1 directly (with sections) or a plain map.
   return { kind: "success", data: snapshot };
 }
 export function normalizeSnapshot(snapshot) {
@@ -20,7 +23,12 @@ export function normalizeSnapshot(snapshot) {
   if (envelope.kind === "error") return { envelope, data: null, stale: false };
   const data = { ...(envelope.data || {}) };
   if (data.observedAtUnixMs == null && snapshot?.observed_at_unix_ms != null) data.observedAtUnixMs = snapshot.observed_at_unix_ms;
-  const stale = snapshot?.stale === true || snapshot?.cached === true || snapshot?.source === "cache" || data.stale === true || data.cached === true || Number(data.cacheAgeMs ?? snapshot?.cache_age_ms ?? 0) > 0 || RESOURCES.some(name => Number(data[name]?.cacheAgeMs || 0) > 0);
+  // Staleness: check top-level cacheAgeMs/stale and per-section cacheAgeMs generically.
+  const sections = data.sections || data;
+  const hasStaleSection = sections && typeof sections === "object"
+    ? Object.values(sections).some(s => s && typeof s === "object" && Number(s.cacheAgeMs || 0) > 0)
+    : false;
+  const stale = snapshot?.stale === true || snapshot?.cached === true || snapshot?.source === "cache" || data.stale === true || data.cached === true || Number(data.cacheAgeMs ?? snapshot?.cache_age_ms ?? 0) > 0 || hasStaleSection;
   return { envelope, data, stale };
 }
 function meta(section, data) {
@@ -53,12 +61,19 @@ export function renderOverview(snapshot, root) {
     root.innerHTML = `<section class="error-state" role="status"><h2>Hub unavailable</h2><p>${esc(envelope.message || envelope.code || "unknown error")}</p><small>source operation: <code>hub.snapshot</code> · observed: unknown · schema: unknown</small></section>`;
     return;
   }
-  const cards = RESOURCES.map(resource => card(resource, data[resource], data, stale)).join("");
-  const dimensionCards = DIMENSIONS.map(dimension => {
-    const value = data[dimension] || { state: "unknown", reason: "unknown — no evidence" };
-    return card(`${dimension} status`, value, data, stale);
-  }).join("");
-  const alerts = sortedAlerts(data.alerts?.items || []);
+  // Generic: iterate over whatever sections the snapshot declares (open map).
+  const sections = data.sections || {};
+  // If snapshot uses legacy flat shape (no sections key), treat data itself as sections map excluding meta keys.
+  const metaKeys = new Set(["schemaVersion","observedAtUnixMs","productId","stale","cacheAgeMs","operation","schema"]);
+  let sectionEntries = Object.entries(sections);
+  if (sectionEntries.length === 0 && !data.sections) {
+    sectionEntries = Object.entries(data).filter(([k,v]) => !metaKeys.has(k) && v && typeof v === "object" && "state" in v);
+  }
+  const cards = sectionEntries.map(([name, section]) => card(name, section, data, stale)).join("");
+
+  // Dimensions are now just sections; no hardcoded grid.
+  // Keep alerts separate if present.
+  const alerts = sortedAlerts(data.alerts?.items || sections.alerts?.items || []);
   const alertHtml = alerts.length ? alerts.map(a => `<li class="alert severity-${esc(String(a.severity || "unknown").toLowerCase())}"><strong>${esc(a.severity || "unknown")}</strong> ${esc(a.reason || "unknown")} · evidence: ${esc(a.evidence || "unknown")} · resolver: ${esc(a.resolver || "unknown")}</li>`).join("") : `<li class="unknown">unknown — no alert evidence</li>`;
-  root.innerHTML = `<div class="snapshot-head" role="status"><strong>${stale ? "Cached snapshot — stale" : "Read-only Hub snapshot"}</strong><span>observed: ${esc(data.observedAtUnixMs || "unknown")} · schema: ${esc(data.schemaVersion || "unknown")} · source operation: <code>hub.snapshot</code></span></div><section class="grid" aria-label="Hub resources">${cards}</section><section class="dimensions" aria-label="Installation adapter delivery status"><h2>Multidimensional status</h2><div class="grid">${dimensionCards}</div></section><section class="alerts" aria-label="Alerts"><h2>Alerts</h2><ol>${alertHtml}</ol></section>`;
+  root.innerHTML = `<div class="snapshot-head" role="status"><strong>${stale ? "Cached snapshot — stale" : "Read-only Hub snapshot"}</strong><span>observed: ${esc(data.observedAtUnixMs || "unknown")} · schema: ${esc(data.schemaVersion || "unknown")} · source operation: <code>hub.snapshot</code></span></div><section class="grid" aria-label="Hub resources">${cards || '<p class="empty">No sections reported</p>'}</section><section class="alerts" aria-label="Alerts"><h2>Alerts</h2><ol>${alertHtml}</ol></section>`;
 }

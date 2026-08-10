@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deliveryTraceViewModel, renderDeliveryTrace } from '../src/delivery-trace.mjs';
-
-test('missing receipt digest stays unavailable', () => { const vm = deliveryTraceViewModel({ traceId: 't-1', packet: { digest: 'x' } }); assert.equal(vm.state, 'unavailable'); assert.match(vm.reason, /missing/); });
-test('mismatched receipts are degraded, never successful', () => { const vm = deliveryTraceViewModel({ traceId: 't-1', packet: { digest: 'x' }, hostDelivery: { digest: 'x' }, eventStore: { digest: 'y' }, outcome: { digest: 'x' } }); assert.equal(vm.state, 'degraded'); assert.match(vm.reason, /mismatch/); });
-test('reconciled trace renders every required phase without inferring phase success', () => { const d = { digest: 'x' }; const vm = deliveryTraceViewModel({ traceId: 't-2', packet: d, hostDelivery: d, eventStore: d, outcome: d }); assert.equal(vm.state, 'available'); assert.equal(vm.phases[0].state, 'unknown'); assert.deepEqual(vm.phases.map(p => p.name), ['task','providers','candidates','admission','render','hostDelivery','evidence','outcome','feedback']); const root = { innerHTML: '' }; renderDeliveryTrace({ traceId: 't-2', packet: d, hostDelivery: d, eventStore: d, outcome: d }, root); assert.match(root.innerHTML, /Delivery trace/); assert.match(root.innerHTML, /feedback/); assert.deepEqual(Object.keys(root), ['innerHTML']); });
+import { existsSync } from 'node:fs';
+test('membrane-specific renderer deleted per D-2', () => {
+  // These 7 renderers migrated to membrane repo; hub no longer owns them.
+  // Verify they are deleted.
+  const deleted = ["actions.mjs","agents-adapters.mjs","delivery-trace.mjs","fleet.mjs","memory-sentinel.mjs","release-channel.mjs","sources.mjs"];
+  for (const f of deleted) {
+    assert.equal(existsSync(new URL(`../src/${f}`, import.meta.url).pathname), false, `${f} should be deleted`);
+  }
+});

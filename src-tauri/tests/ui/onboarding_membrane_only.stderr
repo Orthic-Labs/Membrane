@@ -1,0 +1,11 @@
+error[E0599]: no variant, associated function, or constant named `MembraneOnly` found for enum `OnboardingChoice` in the current scope
+ --> tests/ui/onboarding_membrane_only.rs:3:31
+  |
+3 |     let _ = OnboardingChoice::MembraneOnly;
+  |                               ^^^^^^^^^^^^ variant, associated function, or constant not found in `OnboardingChoice`
+  |
+help: there is a variant with a similar name
+  |
+3 -     let _ = OnboardingChoice::MembraneOnly;
+3 +     let _ = OnboardingChoice::Membrane;
+  |
