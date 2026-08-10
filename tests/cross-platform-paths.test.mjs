@@ -8,7 +8,7 @@
 // machine.
 
 import assert from "node:assert/strict";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -78,10 +78,10 @@ test("root registry confines an explicit repoRoot to enrolled roots", () => {
   const elsewhere = mkdtempSync(join(tmpdir(), "cortex-elsewhere-"));
   try {
     const registry = new RootRegistry([{ root: repo }]);
-    assert.equal(registry.resolve({ repoRoot: repo }), resolve(repo));
+    assert.equal(registry.resolve({ repoRoot: repo }), realpathSync(repo));
     assert.throws(() => registry.resolve({ repoRoot: elsewhere }), /No enrolled Cortex repository/);
     // A trailing separator variant must not change the identity.
-    assert.equal(registry.resolve({ repoRoot: `${resolve(repo)}${sep}` }), resolve(repo));
+    assert.equal(registry.resolve({ repoRoot: `${resolve(repo)}${sep}` }), realpathSync(repo));
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(elsewhere, { recursive: true, force: true });
