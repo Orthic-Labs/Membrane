@@ -43,6 +43,6 @@ test("uninstall preserves enrollment that existed before onboarding", () => {
     const plan = buildInitPlan({ root, host: "generic", mcp: "off", watch: "on" });
     assert.equal(applyInitPlan({ root, plan, build: false, watchConfigPath: watch }).ok, true);
     assert.equal(uninstallInit({ root, watchConfigPath: watch }).ok, true);
-    assert.deepEqual(readWatchConfig(watch).repos.map((repo) => repo.root), [realpathSync.native(root)]);
+    assert.deepEqual(readWatchConfig(watch).repos.map((repo) => repo.root), [root]);
   } finally { rmSync(root, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true }); }
 });
