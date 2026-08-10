@@ -189,32 +189,78 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
         reason: "not_instrumented".into(),
     };
 
+    let producer_metadata = |resolver: &str, source: &str, evidence: &str| HubMetadataV1 {
+        resolver: Some(resolver.into()),
+        source: Some(source.into()),
+        evidence: Some(evidence.into()),
+        observed_at_unix_ms: now_unix_ms(),
+        cache_age_ms: 0,
+    };
+
+    let repositories = match crate::sources_producer::build_sources_payload() {
+        Some(payload) => HubReadV1::Available {
+            items: vec![crate::sources_explorer::project_sources_explorer_json(&payload)],
+            metadata: producer_metadata(
+                "hub_inputs::live_inputs_from_local_service",
+                "doc_artifacts",
+                "sqlite read of crypt-engine.db doc_artifacts",
+            ),
+        },
+        None => HubReadV1::Unavailable {
+            reason: "missing_input".into(),
+        },
+    };
+
+    let adapters = match crate::agent_adapter_producer::build_adapters_report() {
+        Some(report) => {
+            let projected = crate::agent_adapter_view::project(&report);
+            HubReadV1::Available {
+                items: vec![serde_json::to_value(projected).unwrap_or(serde_json::Value::Null)],
+                metadata: producer_metadata(
+                    "hub_inputs::live_inputs_from_local_service",
+                    "memory_identity",
+                    "sqlite read of crypt-engine.db memory_identity/memory_event_log",
+                ),
+            }
+        }
+        None => HubReadV1::Unavailable {
+            reason: "missing_input".into(),
+        },
+    };
+
     HubInputsV1 {
         deliveries,
         providers,
-        // `sources_explorer::project` (src/sources_explorer.rs) is a real,
-        // structurally complete projector, but nothing in this repository
-        // assembles the `payload` JSON it expects — no producer exists.
-        // `not_instrumented` is the truthful state; do not fabricate
-        // availability. Wiring a producer is separate, scoped future work.
-        repositories: not_instrumented(),
-        // `agent_adapter_view::project` (src/agent_adapter_view.rs) is a
-        // real projector (including client<declared capability degradation),
-        // but no producer assembles the `report` JSON it expects. Truthful
-        // state is `not_instrumented`; wiring a producer is separate future
-        // work.
-        adapters: not_instrumented(),
+        repositories,
+        adapters,
         // No struct, no producer, no defined concept in Membrane beyond an
         // unrelated `device: String` field on `AgentAdapter`. Not yet a real
         // concept — do not invent one; `not_instrumented` is truthful.
         devices: not_instrumented(),
         memory,
         // `memory_sentinel_view::project` (src/memory_sentinel_view.rs,
-        // mirrored in apps/membrane-hub/src/memory-sentinel.mjs) is real but
-        // has no producer. `startup_sentinel_masked` in main.rs is an
-        // unrelated boolean, not backed by this view. Truthful state is
-        // `not_instrumented`; wiring a producer is separate future work.
-        sentinel: not_instrumented(),
+        // mirrored in apps/membrane-hub/src/memory-sentinel.mjs) is now
+        // backed by `memory_sentinel_producer`, a content-free (IDs/counts
+        // only) sqlite read. `startup_sentinel_masked` in
+        // apps/membrane-hub/src-tauri/src/main.rs is an unrelated boolean
+        // startup gate — see the comment at that call site for why it stays
+        // separate.
+        sentinel: match crate::memory_sentinel_producer::build_sentinel_report() {
+            Some(report) => {
+                let projected = crate::memory_sentinel_view::project(&report);
+                HubReadV1::Available {
+                    items: vec![serde_json::to_value(projected).unwrap_or(serde_json::Value::Null)],
+                    metadata: producer_metadata(
+                        "hub_inputs::live_inputs_from_local_service",
+                        "memories",
+                        "sqlite read of crypt-engine.db memories/memory_quarantine/context_feedback/transform_opportunity_log",
+                    ),
+                }
+            }
+            None => HubReadV1::Unavailable {
+                reason: "missing_input".into(),
+            },
+        },
         // No general alert subsystem exists. Only narrow unrelated signals
         // exist (notifications.rs evidence-alert tracking, an unrelated
         // `alert: Option<String>` field); `dailyAnalysis.alert` is already
@@ -227,6 +273,34 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    /// Every test in this module can implicitly read the process-global
+    /// `CRYPT_DB_PATH` / `WORKSPACE_ROOT` env vars through the sources,
+    /// adapters, and sentinel producers. Tests that need a deterministic
+    /// "no database" result hold this lock and point `CRYPT_DB_PATH` at a
+    /// guaranteed-missing path so they never race a real workspace database.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_env() -> MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn with_missing_db<R>(f: impl FnOnce() -> R) -> R {
+        let _guard = lock_env();
+        let prior = std::env::var_os("CRYPT_DB_PATH");
+        unsafe {
+            std::env::set_var("CRYPT_DB_PATH", "/nonexistent/hub_inputs_test/crypt-engine.db");
+        }
+        let result = f();
+        unsafe {
+            match prior {
+                Some(v) => std::env::set_var("CRYPT_DB_PATH", v),
+                None => std::env::remove_var("CRYPT_DB_PATH"),
+            }
+        }
+        result
+    }
 
     #[test]
     fn default_port_is_named_and_invalid_explicit_values_fail_closed() {
@@ -264,14 +338,25 @@ mod tests {
             }"#,
         )
         .unwrap();
-        let inputs = inputs_from_health(&health, None);
+        let inputs = with_missing_db(|| inputs_from_health(&health, None));
         assert!(matches!(inputs.memory, HubReadV1::Available { .. }));
         assert!(matches!(inputs.providers, HubReadV1::Available { .. }));
         assert!(matches!(
             inputs.deliveries,
             HubReadV1::Unavailable { ref reason } if reason == "delivery_health_missing"
         ));
-        assert!(matches!(inputs.repositories, HubReadV1::Unavailable { .. }));
+        assert!(matches!(
+            inputs.repositories,
+            HubReadV1::Unavailable { ref reason } if reason == "missing_input"
+        ));
+        assert!(matches!(
+            inputs.adapters,
+            HubReadV1::Unavailable { ref reason } if reason == "missing_input"
+        ));
+        assert!(matches!(
+            inputs.sentinel,
+            HubReadV1::Unavailable { ref reason } if reason == "missing_input"
+        ));
     }
 
     #[test]
@@ -368,5 +453,86 @@ mod tests {
             inputs.memory,
             HubReadV1::Degraded { ref reason, .. } if reason == "catalog_or_database_unhealthy"
         ));
+    }
+
+    #[test]
+    fn populated_database_wires_repositories_adapters_and_sentinel_to_available() {
+        let _guard = lock_env();
+        let dir = std::env::temp_dir().join(format!(
+            "hub_inputs_test_{}_{}",
+            std::process::id(),
+            now_unix_ms()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("crypt-engine.db");
+        {
+            let conn = rusqlite::Connection::open(&db_path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE doc_artifacts (
+                    doc_id TEXT NOT NULL, repository_root TEXT NOT NULL, repository_id TEXT NOT NULL,
+                    revision TEXT NOT NULL, path TEXT NOT NULL, content_hash TEXT NOT NULL,
+                    parser_version TEXT NOT NULL, document_class TEXT NOT NULL,
+                    lifecycle_state TEXT NOT NULL DEFAULT 'active', trust_label TEXT NOT NULL,
+                    influence_class TEXT NOT NULL, sensitivity TEXT NOT NULL, generated INTEGER NOT NULL DEFAULT 0,
+                    index_generation INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL,
+                    title TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT '',
+                    keywords_json TEXT NOT NULL DEFAULT '[]', superseded_by TEXT
+                );
+                INSERT INTO doc_artifacts (doc_id, repository_root, repository_id, revision, path,
+                    content_hash, parser_version, document_class, lifecycle_state, trust_label,
+                    influence_class, sensitivity, index_generation, updated_at_ms, title, summary)
+                VALUES ('d1','/repo','repo-id','rev1','README.md','h1','v1','doc','active','trusted',
+                    'reference','public',3,1000,'Readme','A readme summary');
+
+                CREATE TABLE memory_identity (
+                    memory_id TEXT PRIMARY KEY, artifact_id TEXT, origin_event_uid TEXT,
+                    installation_id TEXT, client TEXT NOT NULL, session_id TEXT, turn_id TEXT,
+                    trace_id TEXT, identity_status TEXT, created_at TEXT NOT NULL
+                );
+                INSERT INTO memory_identity (memory_id, client, created_at) VALUES ('m1','codex','2026-08-01T00:00:00Z');
+                CREATE TABLE memory_event_log (
+                    event_id INTEGER PRIMARY KEY, ts TEXT NOT NULL, event_kind TEXT NOT NULL,
+                    memory_id TEXT, surface TEXT NOT NULL DEFAULT 'unknown', session_id TEXT,
+                    trace_id TEXT, scope_id TEXT, quantity INTEGER NOT NULL DEFAULT 1,
+                    meta TEXT NOT NULL DEFAULT '{}', client TEXT
+                );
+
+                CREATE TABLE memories (
+                    id TEXT PRIMARY KEY, lifecycle_state TEXT NOT NULL DEFAULT 'active',
+                    effective_until_ms INTEGER, expires_at_ms INTEGER
+                );
+                INSERT INTO memories (id, lifecycle_state) VALUES ('m1','active');
+                CREATE TABLE memory_quarantine (id TEXT PRIMARY KEY);
+                CREATE TABLE transform_opportunity_log (
+                    opportunity_uid TEXT PRIMARY KEY, ts TEXT NOT NULL, outcome TEXT NOT NULL
+                );
+                CREATE TABLE context_feedback (
+                    trace_id TEXT NOT NULL, candidate_id TEXT NOT NULL, outcome TEXT NOT NULL,
+                    verified INTEGER NOT NULL, ts TEXT NOT NULL,
+                    PRIMARY KEY (trace_id, candidate_id)
+                );",
+            )
+            .unwrap();
+        }
+        let prior = std::env::var_os("CRYPT_DB_PATH");
+        unsafe {
+            std::env::set_var("CRYPT_DB_PATH", &db_path);
+        }
+        let health: serde_json::Value = serde_json::from_str(
+            r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
+        )
+        .unwrap();
+        let inputs = inputs_from_health(&health, None);
+        unsafe {
+            match prior {
+                Some(v) => std::env::set_var("CRYPT_DB_PATH", v),
+                None => std::env::remove_var("CRYPT_DB_PATH"),
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert!(matches!(inputs.repositories, HubReadV1::Available { .. }));
+        assert!(matches!(inputs.adapters, HubReadV1::Available { .. }));
+        assert!(matches!(inputs.sentinel, HubReadV1::Available { .. }));
     }
 }

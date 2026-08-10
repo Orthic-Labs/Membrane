@@ -6,6 +6,7 @@
 extern crate self as crypt;
 
 pub mod admission_policy;
+pub mod agent_adapter_producer;
 pub mod agent_adapter_view;
 pub mod cache_prefix;
 pub mod catalog;
@@ -29,9 +30,11 @@ pub mod fleet;
 pub mod freshness;
 pub mod hub;
 pub mod hub_inputs;
+pub mod hub_readonly_db;
 pub mod installation_manifest;
 pub mod mcp_http;
 pub mod memory_provider;
+pub mod memory_sentinel_producer;
 pub mod memory_sentinel_view;
 pub mod notifications;
 pub mod outline;
@@ -50,6 +53,7 @@ pub mod service;
 pub mod skel;
 pub mod source_resolution;
 pub mod sources_explorer;
+pub mod sources_producer;
 pub mod store;
 pub mod team_policy;
 pub use crypt_store::db::{record_observable_event, StoreError};
