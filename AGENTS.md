@@ -33,9 +33,9 @@ The tiers, in routing order:
 
 1. **Answer.** A question, comparison, or plan mutates nothing — answer or design directly. Never open machinery to answer a question.
 2. **Ambient (the default for mutations).** Adrian's explicit, reversible, in-scope request IS the authorization (workspace rule 1). Legion fixes it directly with verification proportional to blast radius — focused tests, not an audit. A small change that takes twenty minutes of process is a system failure, not rigor.
-3. **Sage.** Route to Sage only when the work *contains an undecided engineering decision*: architecture, interface design, non-obvious root cause, invariants, or compiling a bounded contract for dispatch. A mechanical fix with an obvious cause carries no such decision — tier 2.
+3. **Sage.** Route to Sage only when the work *contains an undecided engineering decision*: architecture, interface design, non-obvious root cause, invariants, or compiling a bounded contract for dispatch. A mechanical fix with an obvious cause carries no such decision — tier 2. State-dependent decisions on locked or high-blast surfaces start with a scoped Seer audit, cited as contract evidence.
 4. **Contract chain.** The three cases in the rule above, and only those. Arcane enforces this same line mechanically (uncontracted effects outside locked domains are observed, not denied), so doctrine and machine agree.
-5. **Seer.** Independent audit when certification is claimed, a locked domain was touched, or blast radius warrants it — never as a default tax on small changes.
+5. **Seer.** Independent audit when certification is claimed, a locked domain was touched, or blast radius warrants it — never as a default tax on small changes. Full-repo `/audit` is Adrian-invoked only.
 
 **Commit and push are tier 2.** When work is done and tests are green, "commit" or "push" is mechanical execution: run the repo's gates once, fix gate failures mechanically, push, report the receipt. It never reopens review of the diff, never expands scope, and never asks for re-approval of work already approved.
 
