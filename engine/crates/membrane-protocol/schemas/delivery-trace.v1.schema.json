@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/delivery-trace.v1.schema.json",
+  "title": "DeliveryTraceV1",
+  "description": "Read-only, content-free projection for the Hub delivery trace explorer. Reports available only when packet, host, event-store, and outcome digests are present and byte-identical; missing is unavailable, mismatch is degraded. No phase success is inferred from process state.",
+  "type": "object",
+  "required": ["schemaVersion", "traceId", "state", "reason", "phases", "digests"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "traceId": { "type": "string", "minLength": 1 },
+    "state": { "type": "string", "enum": ["available", "degraded", "unavailable"] },
+    "reason": { "type": "string", "minLength": 1 },
+    "phases": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": {
+        "type": "object",
+        "required": ["name", "state", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "enum": ["task","providers","candidates","admission","render","hostDelivery","evidence","outcome","feedback"] },
+          "state": { "type": "string" },
+          "evidence": { "type": "string" }
+        }
+      }
+    },
+    "digests": {
+      "type": "object",
+      "required": ["state", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "packetDigest": { "type": ["string", "null"] },
+        "hostDigest": { "type": ["string", "null"] },
+        "eventStoreDigest": { "type": ["string", "null"] },
+        "outcomeDigest": { "type": ["string", "null"] },
+        "state": { "type": "string", "enum": ["available", "degraded", "unavailable"] },
+        "reason": { "type": "string" }
+      }
+    }
+  }
+}

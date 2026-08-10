@@ -129,7 +129,7 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
         HubReadV1::Available {
             items: vec![serde_json::json!({
                 "catalog": health["catalog"]["status"],
-                "database": health["database"]["status"],
+                "database": health["database"],
                 "memoryCount": health["database"]["memoryCount"],
             })],
             metadata: metadata(),
@@ -146,7 +146,7 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
             reason,
             items: vec![serde_json::json!({
                 "catalog": health["catalog"]["status"],
-                "database": health["database"]["status"],
+                "database": health["database"],
                 "memoryCount": health["database"]["memoryCount"],
                 "databaseStatus": database_status,
             })],

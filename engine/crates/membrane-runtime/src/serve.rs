@@ -393,6 +393,18 @@ fn expand_anchor_response(body: &str, anchor_directory: &std::path::Path) -> (u1
     )
 }
 
+fn delivery_trace_response(body: &str) -> (u16, String) {
+    let report: Value = match serde_json::from_str(body) {
+        Ok(value) => value,
+        Err(_) => return (400, json!({"error":"invalid_json"}).to_string()),
+    };
+    let view = crate::delivery_trace_view::project_delivery_trace(&report);
+    match serde_json::to_string(&view) {
+        Ok(serialized) => (200, serialized),
+        Err(_) => (500, json!({"error":"serialization_failed"}).to_string()),
+    }
+}
+
 #[derive(Clone)]
 struct AppState {
     store: Arc<MemoryStore>,
@@ -1341,6 +1353,7 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ("POST", "/context/close-unknown", HttpWorkClass::General),
     ("POST", "/memory-candidates", HttpWorkClass::Model),
     ("POST", "/federate", HttpWorkClass::General),
+    ("POST", "/delivery/trace", HttpWorkClass::General),
     ("POST", "/verify-memory", HttpWorkClass::General),
     ("POST", "/compress", HttpWorkClass::Model),
     ("POST", "/scope_grants", HttpWorkClass::General),
@@ -2567,6 +2580,9 @@ fn route_with_context_ingest_lease(
     }
     if method == "POST" && path == "/federate" {
         return federate_route_response(body);
+    }
+    if method == "POST" && path == "/delivery/trace" {
+        return delivery_trace_response(body);
     }
     if method == "POST" && path == "/freshness" {
         let v = match json_body(body) {

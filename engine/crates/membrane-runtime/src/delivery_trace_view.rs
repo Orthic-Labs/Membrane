@@ -132,3 +132,49 @@ pub fn project_delivery_trace(report: &Value) -> DeliveryTraceView {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn dig(v: &str) -> Value {
+        json!({"digest": v})
+    }
+
+    #[test]
+    fn missing_digest_is_unavailable() {
+        let report = json!({"traceId":"t-1","packet":dig("x")});
+        let view = project_delivery_trace(&report);
+        assert_eq!(view.state, "unavailable");
+        assert!(view.reason.contains("missing"));
+    }
+
+    #[test]
+    fn mismatched_digests_are_degraded() {
+        let report = json!({"traceId":"t-1","packet":dig("x"),"hostDelivery":dig("x"),"eventStore":dig("y"),"outcome":dig("x")});
+        let view = project_delivery_trace(&report);
+        assert_eq!(view.state, "degraded");
+        assert!(view.reason.contains("mismatch"));
+    }
+
+    #[test]
+    fn reconciled_digests_are_available() {
+        let d = dig("same");
+        let report = json!({"traceId":"t-2","packet":d.clone(),"hostDelivery":d.clone(),"eventStore":d.clone(),"outcome":d});
+        let view = project_delivery_trace(&report);
+        assert_eq!(view.state, "available");
+        assert_eq!(view.phases.len(), 9);
+        assert_eq!(view.phases[0].name, "task");
+        assert_eq!(view.phases[8].name, "feedback");
+    }
+
+    #[test]
+    fn delivery_trace_view_has_nine_phases_in_contract_order() {
+        let d = dig("x");
+        let report = json!({"traceId":"t","packet":d.clone(),"hostDelivery":d.clone(),"eventStore":d.clone(),"outcome":d});
+        let view = project_delivery_trace(&report);
+        let names: Vec<_> = view.phases.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["task","providers","candidates","admission","render","hostDelivery","evidence","outcome","feedback"]);
+    }
+}
