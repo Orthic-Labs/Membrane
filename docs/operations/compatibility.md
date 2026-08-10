@@ -1,7 +1,8 @@
 # Compatibility
 
-Ground truth: `release/compatibility.json` (shipped per release) and
-`release/compatibility.template.json` (the forward-looking 1.0 shape).
+Tracked ground truth is `release/compatibility.template.json`. Final
+artifact-bound `compatibility.json` is generated from sealed bytes under
+ignored `.right-release/` output and published as a release asset.
 
 ## Store schema and migration
 
@@ -35,7 +36,7 @@ precision; it is a claim of grammar/fixture coverage.
 
 - Security policy: `SECURITY.md`.
 - Threat model and control-to-gate mapping: `docs/reference/threat-model.md`.
-- `release/compatibility.json` `security` block links both, plus the
+- Generated `compatibility.json` security block links both, plus the
   qualification gate (`qualification.yml`) that enforces them on every
   release.
 

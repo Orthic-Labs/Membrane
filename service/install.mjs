@@ -45,6 +45,28 @@ export function serviceTarget() {
   return join(homedir(), "AppData", "Local", "Orthic", "Cortex", "cortex-task.xml");
 }
 
+export function serviceControlPlan(action, { platform = process.platform, target = serviceTarget() } = {}) {
+  if (!new Set(["start", "stop", "restart"]).has(action)) throw new Error("service_action_invalid");
+  if (platform === "darwin") {
+    const start = { command: "launchctl", args: ["load", target] };
+    const stop = { command: "launchctl", args: ["unload", target] };
+    return action === "restart" ? [stop, start] : [action === "start" ? start : stop];
+  }
+  if (platform === "linux") {
+    const verb = action === "restart" ? "restart" : action;
+    return [{ command: "systemctl", args: ["--user", verb, "cortex.service"] }];
+  }
+  const start = { command: "schtasks", args: ["/Run", "/TN", "OrthicCortex"] };
+  const stop = { command: "schtasks", args: ["/End", "/TN", "OrthicCortex"] };
+  return action === "restart" ? [stop, start] : [action === "start" ? start : stop];
+}
+
+export function controlService(action, { execute = execFileSync } = {}) {
+  const plan = serviceControlPlan(action);
+  for (const step of plan) execute(step.command, step.args, { stdio: "ignore" });
+  return { schemaVersion: 1, platform: process.platform, subcommand: action, ok: true };
+}
+
 function templateName() {
   if (process.platform === "darwin") return "io.orthic.cortex.plist";
   if (process.platform === "linux") return "cortex.service";

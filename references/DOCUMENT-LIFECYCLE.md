@@ -1,4 +1,4 @@
-# Blueprint — Document Lifecycle
+# Cortex — Document Lifecycle
 
 Supersession markers, structured lifecycle frontmatter, archive globs, and authority resolution.
 Extracted from `SKILL.md` to keep the operational contract readable. **This is normative**, not
@@ -24,7 +24,7 @@ the repo; absolute paths, `../` escapes, symlink/junction escapes, directories, 
 do not retire the document and are emitted in `stale.json.invalidSupersessionMarkers`.
 When a recognized top-level supersession first line has a missing or malformed required historical
 note, the document likewise stays current and emits `historical-note-invalid` in that list.
-Blueprint records `doc.lifecycle`, retains a `supersedes` relationship when the canonical source is
+Cortex records `doc.lifecycle`, retains a `supersedes` relationship when the canonical source is
 inside the repo, and excludes superseded content from live claims, stale-reference findings, Phase-2
 queues, generated current docs, and task briefs. Paths matching `archiveGlobs` (defaults:
 `docs/archive/`, `docs/history/`) receive the same live-input exclusion with `status: archived`.
@@ -36,7 +36,7 @@ surfaces in `stale.json.invalidSupersessionMarkers`. Where a document declares i
 read it from frontmatter and render the banner for humans:
 
 ```yaml
-blueprint:
+cortex:
   document_id: adr-auth-004
   type: decision          # decision | plan | reference | runbook | historical
   status: accepted        # draft | accepted | superseded | rejected
@@ -67,6 +67,6 @@ Chronology alone never settles a divergence.
 Use a whole-document banner only when the entire document is historical. If one row, section, or
 claim is stale, update that claim or add an inline canonical-source pointer; an inline
 `Superseded by` note never retires the whole document. A deployed site whose source moved to another
-repository is outside this repository's Blueprint scope; map that owning repo separately, run
+repository is outside this repository's Cortex scope; map that owning repo separately, run
 `/seo audit <url>` for deployed crawl/index/content/schema/CWV evidence, and run `/audit-visual <url>`
 for rendered UI/UX evidence. Neither live-URL pass replaces the owning repository's `/audit`.

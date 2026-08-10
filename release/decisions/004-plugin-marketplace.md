@@ -34,6 +34,13 @@ community plugins.
 - The MCP plugin-shape extension (no language-table plugins yet).
 - A threat-model entry for plugin trust.
 
+## Licensing boundary
+
+Independent plugins may use and redistribute code their authors create against
+the Apache-2.0 SDK, schemas, and examples. They must not copy, vendor, modify, or
+redistribute proprietary Cortex core; users obtain core through owner-authorized
+channels.
+
 ## Reversal conditions
 
 - A review process is in place for the marketplace, including code

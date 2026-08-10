@@ -126,11 +126,13 @@ test("bulk insert in a transaction round-trips files/symbols/edges exactly", () 
 });
 
 test("annotation and dense-node migrations upgrade prior schemas", () => {
-  const db = openStore(":memory:", { upToVersion: SCHEMA_VERSION - 3 });
+  const beforeAnnotations = 14;
+  const annotationsVersion = 15;
+  const db = openStore(":memory:", { upToVersion: beforeAnnotations });
   try {
-    assert.equal(getSchemaVersion(db), SCHEMA_VERSION - 3);
+    assert.equal(getSchemaVersion(db), beforeAnnotations);
     assert.equal(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='annotation_nodes'").get(), undefined);
-    assert.equal(migrate(db, { upToVersion: SCHEMA_VERSION - 2 }), SCHEMA_VERSION - 2);
+    assert.equal(migrate(db, { upToVersion: annotationsVersion }), annotationsVersion);
     assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='annotation_nodes'").get());
     assert.equal(db.prepare("PRAGMA table_info(files)").all().some((column) => column.name === "node_ordinal"), false);
     assert.equal(migrate(db), SCHEMA_VERSION);

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "schema": "cortex-retrieval-report-v1",
-  "runAt": "2026-08-05T23:09:42.924Z",
-  "corpusPath": "/Volumes/D/claude/cortex/evals/retrieval-corpus/corpus.v1.json",
+  "runAt": "2026-08-09T23:57:57.163Z",
+  "corpusPath": "D:\\Claude\\cortex\\evals\\retrieval-corpus\\corpus.v1.json",
   "corpusSize": 30,
   "corpusClassCounts": {
     "specific-symbol": 12,
@@ -24,7 +24,7 @@
       "abstainedCorrectly": 7,
       "junkOnNoGold": 0,
       "abstainedOnPositiveGold": 3,
-      "avgLatencyMs": 0.03457909999999582,
+      "avgLatencyMs": 0.13786999999999808,
       "avgRetrievedPerQuery": 3.4,
       "avgUsedPerQuery": 3.4,
       "freshnessFailures": 0,
@@ -36,7 +36,7 @@
       "abstainedCorrectly": 7,
       "junkOnNoGold": 0,
       "abstainedOnPositiveGold": 3,
-      "avgLatencyMs": 0.8000069666666689,
+      "avgLatencyMs": 21.07655666666665,
       "avgRetrievedPerQuery": 3.7,
       "avgUsedPerQuery": 3.7,
       "freshnessFailures": 0,
@@ -48,7 +48,7 @@
       "abstainedCorrectly": 7,
       "junkOnNoGold": 0,
       "abstainedOnPositiveGold": 3,
-      "avgLatencyMs": 0.1669818999999985,
+      "avgLatencyMs": 0.891006666666711,
       "avgRetrievedPerQuery": 3.2333333333333334,
       "avgUsedPerQuery": 3.2333333333333334,
       "freshnessFailures": 0,
@@ -169,9 +169,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.3979169999999925,
-        "graph": 1.5326250000000101,
-        "hybrid": 0.6032919999999962
+        "lexical": 1.0994999999999209,
+        "graph": 7.710900000000038,
+        "hybrid": 2.703000000000088
       },
       "tokenCounts": {
         "lexical": {
@@ -455,9 +455,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.04274999999999807,
-        "graph": 0.9493329999999958,
-        "hybrid": 0.2846660000000014
+        "lexical": 0.15689999999995052,
+        "graph": 19.85469999999998,
+        "hybrid": 2.9886000000000195
       },
       "tokenCounts": {
         "lexical": {
@@ -725,9 +725,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.03745800000000088,
-        "graph": 0.7668329999999912,
-        "hybrid": 0.2168750000000017
+        "lexical": 0.19610000000000127,
+        "graph": 91.41200000000003,
+        "hybrid": 1.7315000000000964
       },
       "tokenCounts": {
         "lexical": {
@@ -882,9 +882,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.029666000000005965,
-        "graph": 0.7622080000000011,
-        "hybrid": 0.2168750000000017
+        "lexical": 0.22670000000016444,
+        "graph": 39.16129999999998,
+        "hybrid": 1.4296999999999116
       },
       "tokenCounts": {
         "lexical": {
@@ -1048,9 +1048,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.041791000000003464,
-        "graph": 0.7475000000000023,
-        "hybrid": 0.2582919999999973
+        "lexical": 0.15350000000012187,
+        "graph": 26.47750000000019,
+        "hybrid": 1.6467000000000098
       },
       "tokenCounts": {
         "lexical": {
@@ -1267,9 +1267,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.038584000000000174,
-        "graph": 0.8722080000000005,
-        "hybrid": 0.2923749999999927
+        "lexical": 0.13259999999991123,
+        "graph": 26.158500000000004,
+        "hybrid": 1.9125000000001364
       },
       "tokenCounts": {
         "lexical": {
@@ -1537,9 +1537,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.031582999999997696,
-        "graph": 0.7339580000000012,
-        "hybrid": 0.24962500000000887
+        "lexical": 0.1893000000000029,
+        "graph": 21.456500000000005,
+        "hybrid": 1.0274999999999181
       },
       "tokenCounts": {
         "lexical": {
@@ -1807,9 +1807,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.03870899999998301,
-        "graph": 0.7231250000000102,
-        "hybrid": 0.28112500000000296
+        "lexical": 0.11910000000011678,
+        "graph": 20.25610000000006,
+        "hybrid": 1.3141000000000531
       },
       "tokenCounts": {
         "lexical": {
@@ -2070,9 +2070,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.04250000000001819,
-        "graph": 0.7596249999999998,
-        "hybrid": 0.21145899999999074
+        "lexical": 0.09190000000012333,
+        "graph": 18.015199999999822,
+        "hybrid": 0.7342000000001008
       },
       "tokenCounts": {
         "lexical": {
@@ -2224,9 +2224,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.02045799999999076,
-        "graph": 0.015666000000010172,
-        "hybrid": 0.01587499999999409
+        "lexical": 0.08009999999990214,
+        "graph": 0.038000000000010914,
+        "hybrid": 0.027399999999943248
       },
       "tokenCounts": {
         "lexical": {
@@ -2308,9 +2308,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.02045799999999076,
-        "graph": 0.013709000000005744,
-        "hybrid": 0.010374999999982037
+        "lexical": 0.07999999999992724,
+        "graph": 0.03289999999992688,
+        "hybrid": 0.02549999999996544
       },
       "tokenCounts": {
         "lexical": {
@@ -2392,9 +2392,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.017750000000006594,
-        "graph": 0.01095900000001393,
-        "hybrid": 0.009457999999995081
+        "lexical": 0.07210000000009131,
+        "graph": 0.03260000000000218,
+        "hybrid": 0.022800000000188447
       },
       "tokenCounts": {
         "lexical": {
@@ -2479,9 +2479,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.01783299999999599,
-        "graph": 0.009500000000002728,
-        "hybrid": 0.0049579999999878055
+        "lexical": 0.06179999999994834,
+        "graph": 0.01700000000005275,
+        "hybrid": 0.011900000000196087
       },
       "tokenCounts": {
         "lexical": {
@@ -2566,9 +2566,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.008541999999977179,
-        "graph": 0.006207999999986669,
-        "hybrid": 0.0035839999999893735
+        "lexical": 0.038399999999910506,
+        "graph": 0.00909999999998945,
+        "hybrid": 0.006499999999959982
       },
       "tokenCounts": {
         "lexical": {
@@ -2653,9 +2653,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.016124999999988177,
-        "graph": 0.7270000000000039,
-        "hybrid": 0.17941700000000083
+        "lexical": 0.06949999999983447,
+        "graph": 18.595100000000002,
+        "hybrid": 0.5186000000001059
       },
       "tokenCounts": {
         "lexical": {
@@ -2748,9 +2748,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.01649999999997931,
-        "graph": 3.0102090000000032,
-        "hybrid": 0.2240409999999997
+        "lexical": 0.044700000000148066,
+        "graph": 24.426200000000108,
+        "hybrid": 0.8840999999999894
       },
       "tokenCounts": {
         "lexical": {
@@ -2875,9 +2875,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.011874999999974989,
-        "graph": 5.478249999999974,
-        "hybrid": 0.15937499999998295
+        "lexical": 0.050700000000006185,
+        "graph": 26.59179999999992,
+        "hybrid": 0.7417000000000371
       },
       "tokenCounts": {
         "lexical": {
@@ -2967,9 +2967,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.012040999999982205,
-        "graph": 0.00462500000000432,
-        "hybrid": 0.003457999999994854
+        "lexical": 0.05759999999986576,
+        "graph": 0.01869999999985339,
+        "hybrid": 0.013999999999896318
       },
       "tokenCounts": {
         "lexical": {
@@ -3054,9 +3054,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.012790999999992891,
-        "graph": 0.005541999999991276,
-        "hybrid": 0.003833000000014408
+        "lexical": 0.04349999999999454,
+        "graph": 0.01209999999991851,
+        "hybrid": 0.009000000000014552
       },
       "tokenCounts": {
         "lexical": {
@@ -3141,9 +3141,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.018709000000001197,
-        "graph": 0.8974589999999978,
-        "hybrid": 0.21179200000000264
+        "lexical": 0.06970000000001164,
+        "graph": 31.243399999999838,
+        "hybrid": 0.8978000000001884
       },
       "tokenCounts": {
         "lexical": {
@@ -3351,9 +3351,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.01362499999999045,
-        "graph": 0.9968340000000069,
-        "hybrid": 0.2246669999999824
+        "lexical": 0.04870000000005348,
+        "graph": 55.45569999999998,
+        "hybrid": 2.5736000000001695
       },
       "tokenCounts": {
         "lexical": {
@@ -3486,9 +3486,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.021917000000001963,
-        "graph": 0.8715410000000077,
-        "hybrid": 0.23075000000000045
+        "lexical": 0.06219999999984793,
+        "graph": 77.3877,
+        "hybrid": 0.6264000000001033
       },
       "tokenCounts": {
         "lexical": {
@@ -3693,9 +3693,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.012540999999998803,
-        "graph": 0.006791000000021086,
-        "hybrid": 0.005583000000001448
+        "lexical": 0.036800000000084765,
+        "graph": 0.014800000000150249,
+        "hybrid": 0.010600000000067666
       },
       "tokenCounts": {
         "lexical": {
@@ -3780,9 +3780,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.011959000000018705,
-        "graph": 0.5622500000000059,
-        "hybrid": 0.16208299999999554
+        "lexical": 0.04729999999995016,
+        "graph": 2.4971999999997934,
+        "hybrid": 1.1733000000001539
       },
       "tokenCounts": {
         "lexical": {
@@ -3883,9 +3883,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.01504099999999653,
-        "graph": 0.8549589999999796,
-        "hybrid": 0.24645799999998985
+        "lexical": 0.08159999999998035,
+        "graph": 63.36779999999999,
+        "hybrid": 0.6830999999999676
       },
       "tokenCounts": {
         "lexical": {
@@ -4094,9 +4094,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.009624999999999773,
-        "graph": 0.7156659999999988,
-        "hybrid": 0.1509590000000003
+        "lexical": 0.03669999999988249,
+        "graph": 19.24239999999986,
+        "hybrid": 0.54950000000008
       },
       "tokenCounts": {
         "lexical": {
@@ -4194,9 +4194,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.008499999999997954,
-        "graph": 0.004417000000017879,
-        "hybrid": 0.003833000000014408
+        "lexical": 0.03710000000000946,
+        "graph": 0.010800000000017462,
+        "hybrid": 0.008199999999987995
       },
       "tokenCounts": {
         "lexical": {
@@ -4281,9 +4281,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.0227079999999944,
-        "graph": 0.8909590000000094,
-        "hybrid": 0.27683300000001054
+        "lexical": 0.15440000000012333,
+        "graph": 24.069799999999987,
+        "hybrid": 1.7621000000001459
       },
       "tokenCounts": {
         "lexical": {
@@ -4547,9 +4547,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.01954200000000128,
-        "graph": 1.0586250000000064,
-        "hybrid": 0.25770800000000804
+        "lexical": 0.08109999999987849,
+        "graph": 18.694799999999987,
+        "hybrid": 0.6796999999999116
       },
       "tokenCounts": {
         "lexical": {
@@ -4754,9 +4754,9 @@
         }
       },
       "latenciesMs": {
-        "lexical": 0.027874999999994543,
-        "graph": 0.011625000000009322,
-        "hybrid": 0.009833000000014636
+        "lexical": 0.5165000000001783,
+        "graph": 0.036100000000033106,
+        "hybrid": 0.016599999999925785
       },
       "tokenCounts": {
         "lexical": {

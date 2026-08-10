@@ -208,6 +208,7 @@ usage:
   ${command} graph build|status|schema|search|neighbors|path|impact|resolve|architecture|flows|doc-truth|mermaid|planner-status|candidates [--out .agent] [--limit N] [--budget TOKENS] [--json]
   ${command} candidates --repo-id <id> [--query TEXT] [--json]
   ${command} orient [--out .agent] [--query TEXT] [--json]
+  ${command} explore [--out .agent] [--no-open] [--duration-ms N] [--json]
   ${command} reconcile [--out .agent] [--json]
   ${command} hooks install-git [--out .agent]
   ${command} neighborhood <anchor...> [--budget-tokens N] [--json]
@@ -251,16 +252,19 @@ async function queryFreshnessBarrier(root, outDir, args = {}, { observeOnly = fa
       const watch = Object.fromEntries(rows.map((row) => [row.key, row.value]));
       const envelope = readManifestEnvelope(db);
       const status = (readOnly || observeOnly) ? graphStatus(root, outDir) : null;
+      const sourceClock = Number(watch.source_clock ?? 0);
+      const appliedClock = Number(watch.applied_clock ?? 0);
+      const pendingEvents = db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=0").get().n;
       const caughtUp = args["expected-generation"]
         ? true
-        : status?.state === "fresh" && watch.event_gap !== "1";
+        : status?.state === "fresh" && watch.event_gap !== "1" && appliedClock >= sourceClock && pendingEvents === 0;
       return {
         receiptId: `generation-readonly-${envelope?.manifest?.generationId ?? "missing"}`,
         createdMs: Date.now(),
         repoRoot: resolve(root),
         generationId: envelope?.manifest?.generationId ?? null,
-        sourceClock: Number(watch.source_clock ?? 0),
-        appliedClock: Number(watch.applied_clock ?? 0),
+        sourceClock,
+        appliedClock,
         eventGap: watch.event_gap === "1",
         domainsPending: String(watch.domains_pending ?? "").split(",").map((item) => item.trim()).filter(Boolean).sort(),
         barrierResult: caughtUp ? "caught_up" : "timeout",
@@ -289,7 +293,7 @@ function parseArgs(argv) {
     const [key, inline] = arg.slice(2).split("=", 2);
     if (inline !== undefined) {
       args[key] = inline;
-    } else if (["check", "refresh", "complete", "json", "full", "offline", "no-readme-link", "allow-stale", "repair-plan", "apply-repair", "yes"].includes(key)) {
+    } else if (["check", "refresh", "complete", "json", "full", "offline", "no-open", "no-readme-link", "allow-stale", "repair-plan", "apply-repair", "yes"].includes(key)) {
       args[key] = true;
     } else {
       args[key] = argv[++i];
@@ -2548,7 +2552,6 @@ function cryptBinCandidates() {
     process.env.CRYPT_BIN,
     join(homedir(), "bin", "crypt.exe"),
     join(homedir(), "bin", "crypt"),
-    "D:/Claude/tools/bin/crypt.exe",
     join(homedir(), "claude", "tools", "bin", "crypt"),
     "crypt",
   ].filter(Boolean);
@@ -3072,7 +3075,7 @@ async function main() {
     usage();
     return 0;
   }
-  const knownCommands = new Set(["build", "brief", "doctor", "graph", "hygiene", "phase2", "orient", "delta", "reconcile", "hooks", "neighborhood", "grant", "candidates", "status", "search", "show", "expand", "impact", "docs", "rules", "mcp", "service", "languages", "update", "init", "uninstall", "support-bundle"]);
+  const knownCommands = new Set(["build", "brief", "doctor", "graph", "hygiene", "phase2", "orient", "delta", "reconcile", "hooks", "neighborhood", "grant", "candidates", "status", "search", "show", "expand", "impact", "docs", "explore", "rules", "mcp", "service", "languages", "update", "init", "uninstall", "support-bundle"]);
   if (!knownCommands.has(command)) {
     const args = parseArgs(argv);
     const task = String(args.task ?? args._.join(" ")).trim();

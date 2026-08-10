@@ -23,20 +23,18 @@ function run(repo, args) {
   return spawnSync(process.execPath, [CLI, ...args], { cwd: repo, encoding: "utf8" });
 }
 
-test("query barrier catches an edit without a daemon and candidate output carries receipt", () => {
+test("read-only query barrier detects an edit without repairing it", () => {
   const repo = makeRepo();
   try {
     const path = join(repo, "src/service.ts");
     writeFileSync(path, `${readFileSync(path, "utf8")}\nexport const barrierProbe = true;\n`);
     const result = run(repo, ["graph", "search", "--query", "barrierProbe", "--json"]);
-    assert.equal(result.status, 0, result.stderr);
-    const payload = JSON.parse(result.stdout);
-    assert.equal(payload.freshnessReceipt.barrierResult, "caught_up");
-    assert.ok(payload.freshnessReceipt.receiptId);
-    assert.ok(payload.results.some((item) => item.id.includes("barrierProbe")));
+    assert.equal(result.status, 3);
+    const payload = JSON.parse(result.stderr);
+    assert.equal(payload.barrier.barrierResult, "timeout");
     const candidates = run(repo, ["graph", "candidates", "--query", "barrierProbe", "--json"]);
-    assert.equal(candidates.status, 0, candidates.stderr);
-    assert.equal(JSON.parse(candidates.stdout).freshnessReceipt.barrierResult, "caught_up");
+    assert.equal(candidates.status, 3);
+    assert.equal(JSON.parse(candidates.stderr).barrier.barrierResult, "timeout");
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
@@ -60,17 +58,19 @@ test("corrupt clocks timeout by default and serve only with explicit allow-stale
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
-test("event gap reconciles before serving and warm no-op stays under CI budget", async () => {
+test("event gap blocks read-only queries until explicit reconciliation", async () => {
   const repo = makeRepo();
   try {
     const db = openStore(join(repo, ".agent/graph/graph.db"));
     try { db.prepare("INSERT INTO watch_state(key,value) VALUES ('event_gap','1') ON CONFLICT(key) DO UPDATE SET value='1'").run(); }
     finally { closeStore(db); }
     const result = run(repo, ["graph", "search", "--query", "placeOrder", "--json"]);
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(JSON.parse(result.stdout).freshnessReceipt.barrierResult, "caught_up");
+    assert.equal(result.status, 3);
+    assert.equal(JSON.parse(result.stderr).barrier.barrierResult, "timeout");
     const warmDb = openStore(join(repo, ".agent/graph/graph.db"));
     try {
+      const repaired = await syncToCurrentSource(warmDb, repo, { timeoutMs: 2000 });
+      assert.equal(repaired.barrierResult, "caught_up");
       const started = performance.now();
       const receipt = await syncToCurrentSource(warmDb, repo, { timeoutMs: 2000 });
       const elapsed = performance.now() - started;

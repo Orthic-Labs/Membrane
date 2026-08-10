@@ -1,12 +1,11 @@
 # Roadmap
 
-Cortex 1.0 ships the local evidence-backed repository index, plus the
-qualification, hardening, security, and release-policy gates that make a
-real release safe to ship. What follows is the explicit measured roadmap
-**after** 1.0: deferred surfaces, support policy, and the milestones each
-would need to clear to re-open.
+Cortex 0.2.x implements the local evidence-backed repository index and its
+qualification, hardening, security, and release-policy gates. No 1.0 release
+is evidenced. Explorer, tray, desktop onboarding, final qualification, and
+multi-channel publication remain in progress.
 
-## 1.0 — shipped
+## Implemented, not yet published as 1.0
 
 | Capability | Packet | Status |
 |---|---|---|
@@ -16,8 +15,8 @@ would need to clear to re-open.
 | Hostile-repository security suite | D51 | ✅ |
 | Plugin trust boundary (no escalation) | D51 | ✅ |
 | Deterministic soak + fault injection | D52 | ✅ |
-| Immutable release gate chain (all tests, qualification, package, signing, SBOM, provenance, clean-host) | D53 | ✅ |
-| OIDC trusted publishing (no long-lived NPM_TOKEN) | D53 | ✅ |
+| Candidate, SBOM, checksum, provenance-input, and clean-host contracts | D53 | Implemented; final signed release pending |
+| OIDC trusted publishing (no long-lived NPM_TOKEN) | D53 | Configured; publication pending |
 
 ## Deferred — measured, with reversal conditions
 
@@ -31,12 +30,12 @@ would need to clear to re-open.
 ## Support policy
 
 - **Current line:** 0.2.x (LTS) — security fixes only.
-- **Next line:** 1.0.0 — feature additions, qualification-gated, immutable
-  releases only.
+- **Next public line:** owner-selected at release time after qualification;
+  no version is claimed before publication.
 - **Backports to 0.1.x:** None. Customers on 0.1.x must upgrade to a
   supported line.
 - **Compatibility window:** the schema version of every public store is
-  recorded in `release/compatibility.json`; consumers can pin and detect.
+  rendered from `release/compatibility.template.json` into sealed output; consumers can pin and detect.
 
 ## What does NOT change in 1.x
 
@@ -46,7 +45,7 @@ would need to clear to re-open.
 - **The MCP six-tool surface.** D07 binds the server root at startup;
   adding a new tool is a typed proposal, not a silent widening.
 - **The language depth matrix.** Tier A/B/C labels (see
-  `release/compatibility.json` `languageDepth`) are the public claim, not
+  `release/compatibility.template.json` `languageDepth`) are the public claim, not
   the raw grammar count.
 - **The do-not-absorb list.** "Do not turn Cortex into general user memory
   or final cross-layer context admission" (Membrane/Crypt boundary) and the

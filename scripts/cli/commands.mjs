@@ -74,6 +74,24 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       else console.log(renderDocTruth(payload));
       return EXIT.OK;
     }
+    case "explore": {
+      const { startLocalExplorer } = await import("../../lib/explorer/index.mjs");
+      const explorer = await startLocalExplorer({ root, outDir, service });
+      const payload = { schemaVersion: 1, state: "listening", url: explorer.url };
+      if (args.json || args["no-open"]) printResult(payload, args);
+      else console.log(`Open Cortex Explorer: ${explorer.url}`);
+      const durationMs = Number(args["duration-ms"] ?? 0);
+      if (durationMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, durationMs));
+      } else {
+        await new Promise((resolve) => {
+          process.once("SIGINT", resolve);
+          process.once("SIGTERM", resolve);
+        });
+      }
+      await explorer.close();
+      return EXIT.OK;
+    }
     case "init": {
       const { buildInitPlan } = await import("../../lib/init/plan.mjs");
       const { applyInitPlan } = await import("../../lib/init/apply.mjs");
@@ -119,13 +137,14 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         return EXIT.OK;
       }
       if (subcommand === "start" || subcommand === "stop" || subcommand === "restart") {
-        // The OS service manager owns lifecycle on macOS/Linux/Windows; these
-        // subcommands map to the manager's verbs.
-        const { spawnSync } = await import("node:child_process");
-        const managerVerb = subcommand === "start" ? ["--user", "start"] : subcommand === "stop" ? ["--user", "stop"] : ["--user", "restart"];
-        const result = spawnSync("systemctl", [...managerVerb, "cortex.service"], { encoding: "utf8" });
-        printResult({ subcommand, exitCode: result.status, stderr: result.stderr?.slice(0, 200) }, args);
-        return result.status === 0 ? EXIT.OK : EXIT.INTERNAL;
+        const { controlService } = await import("../../service/install.mjs");
+        try {
+          printResult(controlService(subcommand), args);
+          return EXIT.OK;
+        } catch (error) {
+          printResult(machineError("service_control_failed", String(error.message ?? error)), args, { stderr: true });
+          return EXIT.INTERNAL;
+        }
       }
       if (subcommand === "logs") {
         const { homedir } = await import("node:os");
@@ -252,7 +271,7 @@ export async function dispatchFacade(argv, { root, outDir }) {
   if (!command) return null;
   try { (await import("../../lib/update/apply.mjs")).recoverPendingUpdate(root); }
   catch (error) { printResult(machineError("update_recovery_failed", String(error.message ?? error)), args, { stderr: true }); return { handled: true, exitCode: EXIT.INTERNAL }; }
-  const facade = ["status", "search", "show", "expand", "impact", "docs", "rules", "mcp", "service", "languages", "update", "init", "uninstall"];
+  const facade = ["status", "search", "show", "expand", "impact", "docs", "explore", "rules", "mcp", "service", "languages", "update", "init", "uninstall"];
   if (!facade.includes(command)) return null;
   const exitCode = await runFacadeCommand(command, args, { root, outDir });
   if (exitCode === null) return null;

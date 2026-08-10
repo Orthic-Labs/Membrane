@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash, generateKeyPairSync } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,78 +14,27 @@ import { deriveUpdateKeyId } from "../scripts/release/generate-update-keys.mjs";
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const SMOKE = fileURLToPath(new URL("../scripts/release/clean-host-smoke.mjs", import.meta.url));
 
-function job(workflow, name) {
-  const start = workflow.indexOf(`\n  ${name}:\n`);
-  assert.notEqual(start, -1, `missing ${name} job`);
-  const end = workflow.slice(start + 1).search(/\n  [a-z][\w-]*:\n/);
-  return workflow.slice(start, end < 0 ? undefined : start + 1 + end);
-}
-
 test("clean-host harness is present as a release executable", () => {
   assert.ok(existsSync(SMOKE), "missing scripts/release/clean-host-smoke.mjs");
 });
 
-test("immutable release transfers candidate & keeps dry-run rehearsal reachable", () => {
-  const immutable = readFileSync(join(ROOT, ".github", "workflows", "immutable-release.yml"), "utf8").replaceAll("\r\n", "\n");
-  const legacy = readFileSync(join(ROOT, ".github", "workflows", "release.yml"), "utf8").replaceAll("\r\n", "\n");
-  const pkg = job(immutable, "package");
-  const qualification = job(immutable, "qualification");
-  const macos = job(immutable, "macos-sign-and-notarize");
-  const windows = job(immutable, "windows-sign");
-  const nativeGate = job(immutable, "native-clean-host-owner-gate");
-  const sbom = job(immutable, "sbom");
-  const rehearsal = job(immutable, "verify-dry-run-receipt");
-  const provenance = job(immutable, "provenance");
-  const smoke = job(immutable, "clean-host-install");
-  const publish = job(immutable, "publish-npm");
-  const header = immutable.slice(0, immutable.indexOf("\njobs:"));
-  assert.match(header, /permissions:\n  contents: read\n/);
-  assert.doesNotMatch(header, /id-token|attestations|artifact-metadata/);
-  assert.match(qualification, /needs:\s*\[test\]/);
-  assert.match(pkg, /needs:\s*\[qualification\]/);
-  assert.match(pkg, /build-candidate\.mjs --version "\$\{\{ inputs\.version \}\}" --platform current/);
-  assert.match(pkg, /actions\/upload-artifact@v4[\s\S]*cortex-candidate/);
-  assert.match(sbom, /actions\/download-artifact@v4[\s\S]*cortex-candidate/);
-  assert.match(sbom, /node scripts\/release\/check-release\.mjs release\/candidates\/ubuntu/);
-  assert.match(sbom, /sha256sum "\$\{\{ needs\.package\.outputs\.tarball \}\}"/);
-  assert.match(sbom, /node scripts\/release\/sbom\.mjs release\/candidates\/ubuntu > "\$RUNNER_TEMP\/SBOM\.spdx\.json"/);
-  assert.match(provenance, /name: cortex-sbom[\s\S]*path: \$\{\{ runner\.temp \}\}\/cortex-sbom/);
-  assert.match(smoke, /needs:\s*\[package, sbom\]/);
-  assert.match(smoke, /cortex-clean-host-receipt/);
-  assert.match(rehearsal, /needs:\s*\[package\]/);
-  assert.match(rehearsal, /if: \$\{\{ inputs\.dry_run != 'true' \}\}/);
-  assert.match(rehearsal, /actions: read/);
-  assert.match(rehearsal, /gh api "repos\/\$GITHUB_REPOSITORY\/actions\/runs\/\$RUN"/);
-  assert.match(macos, /needs:\s*\[package, verify-dry-run-receipt\]/);
-  assert.match(windows, /needs:\s*\[package, verify-dry-run-receipt\]/);
-  assert.match(nativeGate, /needs:\s*\[macos-sign-and-notarize, windows-sign\]/);
-  assert.doesNotMatch(nativeGate, /native_clean_host_owner_gate_missing_D17_D18_receipt/);
-  assert.match(nativeGate, /cortex-macos-clean-host-receipt/);
-  assert.match(nativeGate, /cortex-windows-clean-host-receipt/);
-  assert.match(nativeGate, /verify-native-receipt\.mjs[\s\S]*macos\/receipt\.json/);
-  assert.match(nativeGate, /verify-native-receipt\.mjs[\s\S]*windows\/receipt\.json/);
-  assert.match(smoke, /actions\/download-artifact@v4[\s\S]*cortex-candidate/);
-  assert.doesNotMatch(smoke, /macos-sign-and-notarize|windows-sign/);
-  assert.match(macos, /if: \$\{\{ inputs\.dry_run != 'true' \}\}/);
-  assert.match(windows, /if: \$\{\{ inputs\.dry_run != 'true' \}\}/);
-  assert.match(provenance, /needs:\s*\[package, macos-sign-and-notarize, windows-sign, sbom, native-clean-host-owner-gate\]/);
-  assert.match(provenance, /if: \$\{\{ inputs\.dry_run != 'true' \}\}/);
-  assert.match(provenance, /subject-path: \$\{\{ needs\.package\.outputs\.tarball \}\}/);
-  assert.match(provenance, /node scripts\/release\/check-release\.mjs release\/candidates\/ubuntu/);
-  assert.match(provenance, /sha256sum "\$\{\{ needs\.package\.outputs\.tarball \}\}"/);
-  assert.match(provenance, /subject-path: \$\{\{ runner\.temp \}\}\/cortex-sbom\/SBOM\.spdx\.json/);
-  assert.match(publish, /needs:\s*\[package, clean-host-install, provenance\]/);
-  assert.match(publish, /if: \$\{\{ inputs\.dry_run != 'true' \}\}/);
-  assert.match(publish, /npm publish "\$\{\{ needs\.package\.outputs\.tarball \}\}" --provenance --access public/);
-  assert.match(publish, /node scripts\/release\/check-release\.mjs release\/candidates\/ubuntu/);
-  assert.match(publish, /sha256sum "\$\{\{ needs\.package\.outputs\.tarball \}\}"/);
-  assert.match(macos, /permissions:[\s\S]*id-token: write/);
-  assert.match(windows, /permissions:[\s\S]*id-token: write/);
-  assert.doesNotMatch(immutable, /NPM_TOKEN/);
-  assert.match(legacy, /uses: \.\/\.github\/workflows\/immutable-release\.yml/);
-  assert.doesNotMatch(legacy, /secrets: inherit/);
-  assert.match(legacy, /APPLE_TEAM_ID: \$\{\{ secrets\.APPLE_TEAM_ID \}\}/);
-  assert.doesNotMatch(legacy, /pnpm publish|npm publish|NPM_TOKEN/);
+test("RightGit owns CI publication while signing remains local", () => {
+  const workflows = join(ROOT, ".github", "workflows");
+  const rightGit = JSON.parse(readFileSync(join(ROOT, ".rightgit.json"), "utf8"));
+  assert.deepEqual(rightGit.lanes, ["ci", "publish-npm"]);
+  assert.equal(rightGit.publish.npm.oidc, true);
+  assert.equal(rightGit.publish.npm.provenance, true);
+  assert.equal(existsSync(join(workflows, "immutable-release.yml")), false);
+  assert.equal(existsSync(join(workflows, "release.yml")), false);
+  const publish = readFileSync(join(workflows, "publish-npm.yml"), "utf8").replaceAll("\r\n", "\n");
+  assert.match(publish, /^# Managed by right-git/m);
+  assert.match(publish, /release:\n    types: \[published\]/);
+  assert.match(publish, /id-token: write/);
+  assert.match(publish, /build-candidate\.mjs/);
+  assert.match(publish, /check-release\.mjs/);
+  assert.match(publish, /npm publish .*--provenance --access public/);
+  const allWorkflows = readdirSync(workflows).filter((file) => file.endsWith(".yml")).map((file) => readFileSync(join(workflows, file), "utf8")).join("\n");
+  assert.doesNotMatch(allWorkflows, /APPLE_|AZURE_|UPDATE_SIGNING_KEY|NPM_TOKEN|artifact-signing-action|notarytool/i);
 });
 
 test("query evidence rejects an empty result set", async () => {

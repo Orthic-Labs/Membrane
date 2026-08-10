@@ -25,6 +25,20 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CORTEX = path.resolve(HERE, "..");
 const REPO = path.join(CORTEX, "evals/fixture-repos/typescript-commerce");
 
+test("source scan includes evaluation code but excludes nested fixture repositories", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-evals-scan-"));
+  try {
+    fs.mkdirSync(path.join(root, "evals", "fixture-repos", "sample"), { recursive: true });
+    fs.writeFileSync(path.join(root, "evals", "run.mjs"), "export const run = true;\n");
+    fs.writeFileSync(path.join(root, "evals", "fixture-repos", "sample", "fake.mjs"), "export const fake = true;\n");
+    const scanned = scanSourcesPublic(root);
+    assert.ok(scanned.files.some((file) => file.path === "evals/run.mjs"));
+    assert.ok(!scanned.files.some((file) => file.path.includes("fixture-repos")));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("static graph substrate builds a complete generation with exact evidence", () => {
   const generation = buildGraphGeneration(REPO);
 
