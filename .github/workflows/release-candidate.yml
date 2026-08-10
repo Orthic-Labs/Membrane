@@ -18,7 +18,9 @@ jobs:
         with:
           node-version: 22.13.1
           package-manager-cache: false
-      - run: corepack enable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
       - run: pnpm install --frozen-lockfile
       - run: node --test tests/release-candidate.test.mjs
       - run: node scripts/release/build-candidate.mjs --platform current --out "${{ runner.temp }}/cortex-rc"

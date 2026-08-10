@@ -24,7 +24,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: corepack enable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
       - run: pnpm install --frozen-lockfile
       - run: python -m pip install -r requirements-test.txt
       - run: node scripts/benchmark-retrieval.mjs --check-contract
@@ -37,7 +39,9 @@ jobs:
         with:
           node-version: 22.13.1
           package-manager-cache: false
-      - run: corepack enable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
       - run: pnpm install --frozen-lockfile
       - run: node --test tests/contracts-v1.test.mjs
       - run: node scripts/grammars/inventory.mjs --check || true
@@ -49,7 +53,9 @@ jobs:
         with:
           node-version: 22.13.1
           package-manager-cache: false
-      - run: corepack enable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
       - run: pnpm install --frozen-lockfile
       - run: node scripts/ci/check-network-boundary.mjs
       - name: Hostile-repository and secret-egress suite
@@ -62,7 +68,9 @@ jobs:
         with:
           node-version: 22.13.1
           package-manager-cache: false
-      - run: corepack enable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
       - run: pnpm install --frozen-lockfile
       - run: node --test tests/store-migrations.test.mjs tests/store-rollback.test.mjs tests/performance-envelopes.test.mjs tests/cross-platform-paths.test.mjs
       - run: node --test tests/soak-contract.test.mjs tests/daemon-recovery.test.mjs tests/freshness-regressions.test.mjs
@@ -76,6 +84,8 @@ jobs:
         with:
           node-version: 22.13.1
           package-manager-cache: false
-      - run: corepack enable
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
       - run: pnpm install --frozen-lockfile
       - run: node evals/ax/run-conformance.mjs --root .
