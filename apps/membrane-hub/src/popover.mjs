@@ -1,21 +1,20 @@
 export const STATUS_ORDER = ['unavailable', 'degraded', 'available'];
 export const SECTION_ORDER = ['deliveries', 'providers', 'repositories', 'adapters', 'devices', 'memory', 'sentinel', 'alerts'];
-const label = s => ({ unavailable: 'Unavailable', degraded: 'Degraded', available: 'Available' }[s] || 'Unknown');
-const severity = s => STATUS_ORDER.indexOf(s) >= 0 ? STATUS_ORDER.indexOf(s) : STATUS_ORDER.length;
+const label = s => ({ unavailable: 'Unavailable', degraded: 'Degraded', available: 'Available', offline: 'Offline' }[s] || 'Unknown');
 const state = section => typeof section === 'object' && section ? section.state : null;
-const worst = sections => {
-  const states = sections.map(state);
-  return states.every(value => STATUS_ORDER.includes(value)) ? states.reduce((worst, current) => severity(current) < severity(worst) ? current : worst) : null;
-};
+const PRESENTATION_ORDER = ['offline', 'unavailable', 'degraded', 'available'];
+const presentationStatus = section => { const s = state(section); if (!STATUS_ORDER.includes(s)) return 'offline'; if (s === 'unavailable' && section.reason === 'not_instrumented') return 'degraded'; return s; };
+const pSeverity = s => { const i = PRESENTATION_ORDER.indexOf(s); return i >= 0 ? i : PRESENTATION_ORDER.length; };
+const worstPresentation = sections => { let worst = 'available'; for (const section of sections) { const ps = presentationStatus(section); if (pSeverity(ps) < pSeverity(worst)) worst = ps; } return worst; };
+const worstReason = sections => { const worst = worstPresentation(sections); if (worst === 'offline') return 'No cached snapshot'; return sections.find(section => presentationStatus(section) === worst)?.reason || 'No reason provided'; };
 export function viewModel(snapshot) {
   const p = snapshot?.payload || {};
   const sections = SECTION_ORDER.map(key => p[key]);
-  const overallState = worst(sections);
-  const reason = overallState ? sections.find(section => state(section) === overallState)?.reason || 'No reason provided' : 'No cached snapshot';
-  const stateText = value => label(state(value));
+  const overallPS = worstPresentation(sections);
+  const reason = worstReason(sections);
   const observed = snapshot?.observed_at_unix_ms ?? p.observedAtUnixMs ?? null;
   const stale = Boolean(Number(snapshot?.cache_age_ms) > 0 || sections.some(section => Number(section?.cacheAgeMs) > 0));
-  return { overall: overallState ? label(overallState) : 'Offline', reason: String(reason), delivery: stateText(p.deliveries), sources: label(worst([p.providers, p.repositories])), fleet: label(worst([p.adapters, p.devices])), traceId: typeof p.traceId === 'string' && p.traceId ? p.traceId : null, observed, stale };
+  return { overall: label(overallPS), reason: String(reason), delivery: label(worstPresentation([p.deliveries])), sources: label(worstPresentation([p.providers, p.repositories])), fleet: label(worstPresentation([p.adapters, p.devices])), traceId: typeof p.traceId === 'string' && p.traceId ? p.traceId : null, observed, stale };
 }
 export function diagnostics(vm) { return JSON.stringify({ overall: vm.overall, delivery: vm.delivery, sources: vm.sources, fleet: vm.fleet, traceAvailable: Boolean(vm.traceId) }); }
 

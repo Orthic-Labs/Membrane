@@ -5,7 +5,10 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
     time::Duration,
 };
@@ -22,7 +25,10 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectStat
 // update_admission.rs for why (no macOS RightKit updater artifact exists
 // yet) -- but present and tested so the update flow that does exist can be
 // gated on it without further plumbing changes.
+#[cfg(test)]
+mod hub_contract_tests;
 mod update_admission;
+mod workspace;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CachedSnapshot {
@@ -35,7 +41,32 @@ const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 const MAX_SNAPSHOT_BYTES: u64 = 1024 * 1024;
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const POLL_TIMEOUT: Duration = Duration::from_secs(2);
+const STARTUP_GRACE: Duration = Duration::from_secs(3);
+const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(100);
 type ServiceState = Arc<Mutex<Option<Child>>>;
+
+#[derive(Debug)]
+struct StartupGate {
+    active: AtomicBool,
+}
+
+impl StartupGate {
+    fn new() -> Self {
+        Self {
+            active: AtomicBool::new(true),
+        }
+    }
+
+    fn masks(&self, snapshot: Option<&CachedSnapshot>) -> bool {
+        self.active.load(Ordering::Acquire) && snapshot.is_some_and(source_not_connected_snapshot)
+    }
+    fn active(&self) -> bool {
+        self.active.load(Ordering::Acquire)
+    }
+    fn finish(&self) {
+        self.active.store(false, Ordering::Release);
+    }
+}
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     fs::create_dir_all(path.parent().ok_or("cache_parent_missing")?).map_err(|e| e.to_string())?;
@@ -114,7 +145,7 @@ fn parse_snapshot(bytes: &[u8]) -> Result<CachedSnapshot, String> {
     })
 }
 
-fn fetch_snapshot(program: &Path) -> Result<CachedSnapshot, String> {
+fn fetch_snapshot(program: &Path, timeout: Duration) -> Result<CachedSnapshot, String> {
     let mut child = Command::new(program)
         .args(["cli", "hub-snapshot"])
         .stdin(Stdio::null())
@@ -135,7 +166,7 @@ fn fetch_snapshot(program: &Path) -> Result<CachedSnapshot, String> {
         if let Some(status) = child.try_wait().map_err(|_| "hub_snapshot_wait_failed")? {
             break status;
         }
-        if started.elapsed() >= POLL_TIMEOUT {
+        if started.elapsed() >= timeout {
             let _ = child.kill();
             let _ = child.wait();
             return Err("hub_snapshot_timeout".into());
@@ -150,21 +181,6 @@ fn fetch_snapshot(program: &Path) -> Result<CachedSnapshot, String> {
         return Err("hub_service_unavailable".into());
     }
     parse_snapshot(&bytes)
-}
-
-fn workspace_root() -> Option<PathBuf> {
-    std::env::var_os("MEMBRANE_WORKSPACE_ROOT")
-        .or_else(|| std::env::var_os("WORKSPACE_ROOT"))
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute() && path.is_dir())
-        .or_else(|| {
-            [
-                PathBuf::from("/Volumes/D/claude"),
-                PathBuf::from(r"D:\Claude"),
-            ]
-            .into_iter()
-            .find(|path| path.is_dir())
-        })
 }
 
 fn bundled_binary(name: &str) -> PathBuf {
@@ -185,7 +201,9 @@ fn start_crypt_service() -> Result<Child, String> {
     if !program.is_file() {
         return Err("crypt_service_missing".into());
     }
-    let root = workspace_root().ok_or("workspace_root_unavailable")?;
+    let root = workspace::resolve()
+        .map_err(|_| "workspace_root_unavailable")?
+        .root;
     let mut child = Command::new(program)
         .env("MEMBRANE_OWNER_PIPE", "1")
         .env("WORKSPACE_ROOT", root)
@@ -234,6 +252,33 @@ fn state_rank(state: HubStateV1) -> u8 {
     }
 }
 
+fn presentation_rank(section: &membrane_protocol::HubSectionV1) -> u8 {
+    match section.state {
+        HubStateV1::Unavailable if section.reason == "not_instrumented" => 1,
+        state => state_rank(state),
+    }
+}
+
+fn source_not_connected_snapshot(snapshot: &CachedSnapshot) -> bool {
+    let Ok(snapshot) = serde_json::from_value::<HubSnapshotV1>(snapshot.payload.clone()) else {
+        return false;
+    };
+    [
+        &snapshot.deliveries,
+        &snapshot.providers,
+        &snapshot.repositories,
+        &snapshot.adapters,
+        &snapshot.devices,
+        &snapshot.memory,
+        &snapshot.sentinel,
+        &snapshot.alerts,
+    ]
+    .iter()
+    .all(|section| {
+        section.state == HubStateV1::Unavailable && section.reason == "source_not_connected"
+    })
+}
+
 /// Mirrors popover aggregation: all eight canonical sections must parse, then
 /// their worst state controls the tray.
 pub fn tray_status(snapshot: Option<&CachedSnapshot>) -> TrayStatus {
@@ -243,17 +288,17 @@ pub fn tray_status(snapshot: Option<&CachedSnapshot>) -> TrayStatus {
         return TrayStatus::Offline;
     };
     let worst = [
-        snapshot.deliveries.state,
-        snapshot.providers.state,
-        snapshot.repositories.state,
-        snapshot.adapters.state,
-        snapshot.devices.state,
-        snapshot.memory.state,
-        snapshot.sentinel.state,
-        snapshot.alerts.state,
+        &snapshot.deliveries,
+        &snapshot.providers,
+        &snapshot.repositories,
+        &snapshot.adapters,
+        &snapshot.devices,
+        &snapshot.memory,
+        &snapshot.sentinel,
+        &snapshot.alerts,
     ]
     .into_iter()
-    .map(state_rank)
+    .map(presentation_rank)
     .min()
     .expect("canonical HubSnapshotV1 has eight sections");
     match worst {
@@ -347,9 +392,83 @@ fn apply_poll_result(
     }
 }
 
+fn poll_snapshot(
+    path: &Path,
+    result: Result<CachedSnapshot, String>,
+    gate: &StartupGate,
+) -> Result<CachedSnapshot, String> {
+    match result {
+        Ok(snapshot) if gate.masks(Some(&snapshot)) => Err("startup_sentinel_masked".into()),
+        Ok(snapshot) => apply_poll_result(path, Ok(snapshot)),
+        Err(error) => {
+            let cached = read_cache(path);
+            if gate.masks(cached.as_ref().ok()) {
+                Err("startup_sentinel_masked".into())
+            } else {
+                cached.map_err(|_| error)
+            }
+        }
+    }
+}
+fn startup_step(
+    path: &Path,
+    result: Result<CachedSnapshot, String>,
+    expired: bool,
+    latest: &mut Option<CachedSnapshot>,
+) -> Option<Result<CachedSnapshot, String>> {
+    match result {
+        Ok(snapshot) if source_not_connected_snapshot(&snapshot) => {
+            *latest = Some(snapshot);
+            expired.then(|| apply_poll_result(path, Ok(latest.take().unwrap())))
+        }
+        Ok(snapshot) => Some(apply_poll_result(path, Ok(snapshot))),
+        Err(error) if expired => Some(apply_poll_result(
+            path,
+            latest.take().map(Ok).unwrap_or(Err(error)),
+        )),
+        Err(_) => None,
+    }
+}
+fn initial_poll(path: &Path, program: &Path, gate: &StartupGate) -> Result<CachedSnapshot, String> {
+    let deadline = std::time::Instant::now() + STARTUP_GRACE;
+    let mut latest = None;
+    loop {
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            let output = startup_step(
+                path,
+                Err("hub_service_unavailable".into()),
+                true,
+                &mut latest,
+            )
+            .unwrap();
+            gate.finish();
+            return output;
+        }
+        let result = fetch_snapshot(program, POLL_TIMEOUT.min(remaining));
+        let expired = deadline
+            .saturating_duration_since(std::time::Instant::now())
+            .is_zero();
+        if let Some(output) = startup_step(path, result, expired, &mut latest) {
+            gate.finish();
+            return output;
+        }
+        thread::sleep(
+            STARTUP_POLL_INTERVAL
+                .min(deadline.saturating_duration_since(std::time::Instant::now())),
+        );
+    }
+}
+
 #[tauri::command]
-fn snapshot(cache: tauri::State<'_, Arc<Mutex<PathBuf>>>) -> Result<CachedSnapshot, String> {
-    read_cache(&cache.lock().map_err(|_| "cache lock poisoned")?)
+fn snapshot(
+    cache: tauri::State<'_, Arc<Mutex<PathBuf>>>,
+    gate: tauri::State<'_, Arc<StartupGate>>,
+) -> Result<CachedSnapshot, String> {
+    let snapshot = read_cache(&cache.lock().map_err(|_| "cache lock poisoned")?)?;
+    (!gate.masks(Some(&snapshot)))
+        .then_some(snapshot)
+        .ok_or_else(|| "snapshot_unavailable".into())
 }
 
 #[tauri::command]
@@ -401,6 +520,7 @@ fn main() {
     tauri::Builder::default()
         .manage(Arc::new(Mutex::new(PathBuf::from("snapshot.json"))))
         .manage(Arc::new(Mutex::new(None::<Child>)))
+        .manage(Arc::new(StartupGate::new()))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("hub") {
                 let _ = w.show();
@@ -494,26 +614,33 @@ fn main() {
                 });
                 w.hide()?;
             }
-            if let Some(root) = workspace_root() {
-                std::env::set_var("WORKSPACE_ROOT", root);
+            if let Ok(workspace) = workspace::resolve() {
+                std::env::set_var("WORKSPACE_ROOT", workspace.root);
             }
             let child = start_crypt_service().map_err(std::io::Error::other)?;
             *app.state::<ServiceState>()
                 .lock()
                 .map_err(|_| std::io::Error::other("service_state_unavailable"))? = Some(child);
             let handle = app.handle().clone();
+            let gate = app.state::<Arc<StartupGate>>().inner().clone();
             let program = std::env::var_os("MEMBRANE_COMMAND")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| bundled_binary("membrane"));
             std::thread::spawn(move || loop {
-                let current = apply_poll_result(&cache, fetch_snapshot(&program));
+                let current = if gate.active() {
+                    initial_poll(&cache, &program, &gate)
+                } else {
+                    poll_snapshot(&cache, fetch_snapshot(&program, POLL_TIMEOUT), &gate)
+                };
                 let status = tray_status(current.as_ref().ok());
                 if let Ok(icon) = tray_icon(status) {
                     let _ = tray.set_icon(Some(icon));
                     let _ = tray.set_icon_as_template(false);
                 }
                 let _ = tray.set_tooltip(Some(tray_tooltip(status)));
-                let _ = handle.emit("hub-snapshot-tick", ());
+                if current.is_ok() {
+                    let _ = handle.emit("hub-snapshot-tick", ());
+                }
                 std::thread::sleep(POLL_INTERVAL);
             });
             Ok(())

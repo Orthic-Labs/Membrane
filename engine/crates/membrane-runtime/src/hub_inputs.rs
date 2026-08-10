@@ -17,25 +17,40 @@ use crate::hub::{HubInputsV1, HubMetadataV1, HubReadV1};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const IO_TIMEOUT: Duration = Duration::from_millis(300);
+pub const DEFAULT_LOCAL_SERVICE_PORT: u16 = 47851;
 
 /// Best-effort live read of the local crypt-service's `/health` endpoint,
 /// mapped into `HubInputsV1`. Returns `None` on any connection, I/O, or
 /// parse failure so the caller can fall back to the honest "unavailable"
 /// facade rather than show a fabricated state.
 pub fn live_inputs_from_local_service() -> Option<HubInputsV1> {
-    let port = local_service_port();
+    let port = local_service_port()?;
     let health = fetch_health_json(port)?;
     let workspace_root = configured_workspace_root();
     let delivery = read_delivery_health_json(&workspace_root);
     Some(inputs_from_health(&health, delivery.as_ref()))
 }
 
-fn local_service_port() -> u16 {
-    std::env::var("CRYPT_PORT")
-        .ok()
-        .or_else(|| std::env::var("WORKSPACE_MEMORY_PORT").ok())
-        .and_then(|value| value.trim().parse::<u16>().ok())
-        .unwrap_or(47851)
+fn local_service_port() -> Option<u16> {
+    local_service_port_from(
+        std::env::var_os("CRYPT_PORT").as_deref(),
+        std::env::var_os("WORKSPACE_MEMORY_PORT").as_deref(),
+    )
+}
+
+fn local_service_port_from(
+    canonical: Option<&std::ffi::OsStr>,
+    compatibility: Option<&std::ffi::OsStr>,
+) -> Option<u16> {
+    match canonical.or(compatibility) {
+        None => Some(DEFAULT_LOCAL_SERVICE_PORT),
+        Some(value) => value
+            .to_str()?
+            .trim()
+            .parse::<u16>()
+            .ok()
+            .filter(|port| *port > 0),
+    }
 }
 
 /// Mirrors `serve.rs::configured_workspace_root()` (private to that module),
@@ -189,6 +204,28 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_port_is_named_and_invalid_explicit_values_fail_closed() {
+        assert_eq!(local_service_port_from(None, None), Some(47851));
+        assert_eq!(
+            local_service_port_from(Some("47852".as_ref()), Some("47853".as_ref())),
+            Some(47852)
+        );
+        assert_eq!(
+            local_service_port_from(Some("0".as_ref()), Some("47853".as_ref())),
+            None
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            let non_unicode = std::ffi::OsString::from_vec(vec![0xff]);
+            assert_eq!(
+                local_service_port_from(Some(&non_unicode), Some("47853".as_ref())),
+                None
+            );
+        }
+    }
 
     #[test]
     fn fresh_service_maps_to_available_memory_and_providers() {
