@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  grammarRuntimeBlockReason,
   PROVIDER,
   SUPPORTED_EXTENSIONS,
   TIER1_LANGUAGE_IDS,
@@ -368,6 +369,13 @@ test("buildTreeSitterGraph resolves TESTS edges from a test-labeled node to the 
 
 test("adds numbers", () => {
   add(1, 2);
+});
+
+test("Swift degrades only on its proven-crashing Node 24 Linux runtime", () => {
+  assert.equal(grammarRuntimeBlockReason("swift", { platform: "linux", nodeVersion: "24.18.0" }), "grammar_runtime_incompatible:swift:linux:node24");
+  assert.equal(grammarRuntimeBlockReason("swift", { platform: "linux", nodeVersion: "22.22.3" }), null);
+  assert.equal(grammarRuntimeBlockReason("swift", { platform: "win32", nodeVersion: "24.18.0" }), null);
+  assert.equal(grammarRuntimeBlockReason("ruby", { platform: "linux", nodeVersion: "24.18.0" }), null);
 });
 `,
   };
