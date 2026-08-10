@@ -83,12 +83,9 @@
     "soak": "node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/cortex-soak.json",
     "tray:test": "pnpm --dir apps/cortex-tray test",
     "tray:build": "pnpm --dir apps/cortex-tray build",
-    "release:doctor": "right-release doctor",
-    "release:build:mac": "right-release build --platform mac",
-    "release:build:win": "right-release build --platform win"
-  },
-  "devDependencies": {
-    "@rightkit/release": "0.2.51"
+    "release:doctor": "pnpm --dir apps/cortex-tray release:doctor",
+    "release:build:mac": "pnpm --dir apps/cortex-tray release:build:mac",
+    "release:build:win": "pnpm --dir apps/cortex-tray release:build:win"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
