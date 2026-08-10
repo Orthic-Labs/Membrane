@@ -6,7 +6,7 @@
 
 ![license](https://img.shields.io/badge/license-source--available-5362d8?style=flat-square&labelColor=111318)
 ![storage](https://img.shields.io/badge/graph-node%3Asqlite%2C%20zero%20server-5362d8?style=flat-square&labelColor=111318)
-![node](https://img.shields.io/badge/node-%E2%89%A522.13-5362d8?style=flat-square&labelColor=111318)
+![node](https://img.shields.io/badge/node-%E2%89%A522.22.3-5362d8?style=flat-square&labelColor=111318)
 
 ## Two phases
 
@@ -79,7 +79,7 @@ From a source checkout:
 
 ```sh
 pnpm install
-pnpm test                       # requires Node >= 22.13
+pnpm test                       # requires Node >= 22.22.3
 python3 -m pip install -r requirements-test.txt   # for the full workspace suite
 pnpm run test:all
 ```

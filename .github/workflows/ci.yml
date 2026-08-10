@@ -30,7 +30,7 @@ jobs:
       fail-fast: false
       matrix:
         os: ["ubuntu-latest", "macos-latest", "windows-latest"]
-        node: ["22.13", "24"]
+        node: ["22.22.3", "24"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5

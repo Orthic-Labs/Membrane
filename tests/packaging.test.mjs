@@ -14,7 +14,7 @@ test("package.json exposes standalone version, bin, engines, and files", () => {
   assert.match(String(pkg.version), /^\d+\.\d+\.\d+/);
   assert.equal(pkg.type, "module");
   assert.ok(pkg.engines?.node);
-  assert.match(pkg.engines.node, />=22\.13/);
+  assert.match(pkg.engines.node, />=22\.22\.3/);
   assert.ok(existsSync(join(ROOT, "scripts/cortex.mjs")));
   assert.ok(Array.isArray(pkg.files));
   for (const required of ["scripts/", "graph/", "lib/", "sources/", "schemas/"]) {

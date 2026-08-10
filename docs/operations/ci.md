@@ -4,7 +4,7 @@ Cortex runs three workflows on pull requests and pushes to `main`:
 
 ## `ci` — cross-platform tests
 
-Matrix: Ubuntu, macOS, Windows × Node 22.13.1, 24.x. Runs:
+Matrix: Ubuntu, macOS, Windows × Node 22.22.3, 24.x. Runs:
 
 1. `pnpm test` (fast Node suite)
 2. `pnpm test:random` (randomized test order)
@@ -30,11 +30,11 @@ handshake outside the monorepo.
 
 Gate `main` on the exact job names:
 
-- `ci / test (ubuntu-latest, 22.13.1)`
+- `ci / test (ubuntu-latest, 22.22.3)`
 - `ci / test (ubuntu-latest, 24.x)`
-- `ci / test (macos-latest, 22.13.1)`
+- `ci / test (macos-latest, 22.22.3)`
 - `ci / test (macos-latest, 24.x)`
-- `ci / test (windows-latest, 22.13.1)`
+- `ci / test (windows-latest, 22.22.3)`
 - `ci / test (windows-latest, 24.x)`
 - `qualification / qualification`
 - `qualification / schema`

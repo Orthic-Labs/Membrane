@@ -28,7 +28,7 @@
   },
   "mcpName": "io.github.Orthic-Labs/cortex",
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.22.3"
   },
   "bin": {
     "cortex": "./scripts/cortex.mjs",
