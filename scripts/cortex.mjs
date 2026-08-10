@@ -48,6 +48,7 @@ import {
   graphPath,
   graphStatus,
   parseFileFacts,
+  SCAN_EXCLUSIONS,
   scanSourcesPublic,
   readGeneration,
   repositoryIdentity,
@@ -524,8 +525,10 @@ function repoFiles(root, config, limit = 0) {
     files = walk(root).map((path) => relative(root, path));
   }
   const ignored = normalizeIgnoredPrefixes(config.ignoredPrefixes);
+  const substrateExclusions = new Set(SCAN_EXCLUSIONS);
   const filtered = files
     .map(normalizePath)
+    .filter((path) => !path.split("/").some((segment) => substrateExclusions.has(segment)))
     .filter((path) => !pathMatchesIgnoredPrefix(path, ignored))
     .filter((path) => existsSync(join(root, path)))
     .sort();

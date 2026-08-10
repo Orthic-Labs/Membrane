@@ -3,6 +3,9 @@
 // Graph subcommands remain as aliases.
 
 import { createCortexApplicationService } from "../../lib/application/service.mjs";
+import { applyInitPlan, uninstallInit } from "../../lib/init/apply.mjs";
+import { buildInitPlan } from "../../lib/init/plan.mjs";
+import { recoverPendingUpdate } from "../../lib/update/apply.mjs";
 import { join } from "node:path";
 import { startCortexMcpServer } from "../cortex-mcp.mjs";
 import { EXIT, parseArgs } from "./args.mjs";
@@ -93,8 +96,6 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       return EXIT.OK;
     }
     case "init": {
-      const { buildInitPlan } = await import("../../lib/init/plan.mjs");
-      const { applyInitPlan } = await import("../../lib/init/apply.mjs");
       const plan = buildInitPlan({
         root,
         host: args.host ?? "auto",
@@ -113,7 +114,6 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       return result.ok ? EXIT.OK : EXIT.INTERNAL;
     }
     case "uninstall": {
-      const { uninstallInit } = await import("../../lib/init/apply.mjs");
       const result = uninstallInit({ root });
       printResult(result, args);
       return result.ok ? EXIT.OK : EXIT.INTERNAL;
@@ -269,7 +269,7 @@ export async function dispatchFacade(argv, { root, outDir }) {
   const { command, rest } = { command: argv[0], rest: argv.slice(1) };
   const args = parseArgs(rest);
   if (!command) return null;
-  try { (await import("../../lib/update/apply.mjs")).recoverPendingUpdate(root); }
+  try { recoverPendingUpdate(root); }
   catch (error) { printResult(machineError("update_recovery_failed", String(error.message ?? error)), args, { stderr: true }); return { handled: true, exitCode: EXIT.INTERNAL }; }
   const facade = ["status", "search", "show", "expand", "impact", "docs", "explore", "rules", "mcp", "service", "languages", "update", "init", "uninstall"];
   if (!facade.includes(command)) return null;

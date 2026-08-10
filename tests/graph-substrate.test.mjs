@@ -39,6 +39,26 @@ test("source scan includes evaluation code but excludes nested fixture repositor
   }
 });
 
+test("document map excludes nested fixture repositories", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-map-fixtures-"));
+  try {
+    fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+    fs.mkdirSync(path.join(root, "evals", "fixture-repos", "sample"), { recursive: true });
+    fs.writeFileSync(path.join(root, "docs", "current.md"), "# Current\n\nImplemented now.\n");
+    fs.writeFileSync(path.join(root, "evals", "fixture-repos", "sample", "fixture.md"), "# Fixture\n\nImplemented only in fixture.\n");
+    const result = spawnSync(process.execPath, [path.join(CORTEX, "scripts", "cortex.mjs"), "build", "--out", ".agent"], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const map = JSON.parse(fs.readFileSync(path.join(root, ".agent", "map.json"), "utf8"));
+    assert.ok(map.nodes.some((node) => node.path === "docs/current.md"));
+    assert.ok(!map.nodes.some((node) => node.path?.includes("fixture-repos")));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("static graph substrate builds a complete generation with exact evidence", () => {
   const generation = buildGraphGeneration(REPO);
 
