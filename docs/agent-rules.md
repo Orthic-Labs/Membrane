@@ -11,7 +11,7 @@ It never retrains models or stores private chain-of-thought.
 
 ## Commands
 - Run `python3 morph.py --smoke` for a dry-run pipeline smoke.
-- Run `python3 -m pytest -q` for repository tests.
+- Run repository tests with the workspace tools venv (`.venv-tools`, provisioned by `tools/setup-workspace.py`), never a bare interpreter; it is the only environment pinning `scipy`/`numpy`.
 - Run `python3 morph.py doctor issue --out <receipt>` to issue conformance evidence.
 - Run `python3 morph.py doctor validate --receipt <receipt>` to validate it.
 
