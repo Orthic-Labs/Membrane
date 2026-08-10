@@ -53,7 +53,8 @@ console.log(
   `[membrane] release generation ${identity.releaseGeneration} `
   + `(commit ${identity.commit.slice(0, 8)}${identity.dirty ? ", working tree" : ""}, ${identity.fileCount} files)`,
 );
-const result = spawnSync("cargo", ["build", "--manifest-path", engine, "--release", "--target", target, "-p", "crypt", "-p", "membrane", "--bin", "crypt", "--bin", "crypt-service", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CARGO_TARGET_DIR: engineTarget, CRYPT_SOURCE_COMMIT: identity.commit, CRYPT_SOURCE_TREE_SHA256: identity.sourceTreeSha256 } });
+const cargo = process.platform === "win32" ? "cargo.cmd" : "cargo";
+const result = spawnSync(cargo, ["build", "--manifest-path", engine, "--release", "--target", target, "-p", "crypt", "-p", "membrane", "--bin", "crypt", "--bin", "crypt-service", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CARGO_TARGET_DIR: engineTarget, CRYPT_SOURCE_COMMIT: identity.commit, CRYPT_SOURCE_TREE_SHA256: identity.sourceTreeSha256 } });
 if (result.error) throw result.error;
 if (result.status !== 0) throw new Error(`Membrane sidecar build failed with exit ${result.status}`);
 // The consumer of the baked value is the workspace release manifest; writing it
