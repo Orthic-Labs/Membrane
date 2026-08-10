@@ -1,6 +1,6 @@
 # Cortex MCP reference
 
-Cortex MCP serves over stdio via `cortex mcp serve --root <repo>` or `node scripts/cortex-mcp.mjs --root <repo>` on Node ≥22.13 with SDK 1.x. Root binds at process start; every tool is read-only & every result is redacted.
+Cortex MCP serves over stdio via `cortex mcp serve --root <repo>` or `node scripts/cortex-mcp.mjs --root <repo>` on Node ≥22.22.3 with SDK 1.x. Root binds at process start; every tool is read-only & every result is redacted.
 
 ## Contract
 

@@ -45,6 +45,6 @@ test("publish config is public and sideEffects false", () => {
   assert.equal(pkg.sideEffects, false);
 });
 
-test("engines match the branded >=22.13 requirement", () => {
-  assert.equal(pkg.engines.node, ">=22.13");
+test("engines match the branded >=22.22.3 requirement", () => {
+  assert.equal(pkg.engines.node, ">=22.22.3");
 });
