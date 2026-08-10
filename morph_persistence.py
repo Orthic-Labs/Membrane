@@ -12,13 +12,20 @@ from pathlib import Path
 from typing import Sequence
 
 
-WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
-# Prefer the workspace_runtime contract when available (top-level submodule layout).
+# `workspace_root()` resolves both the top-level submodule layout and the
+# historical nested one. A bare ``parents[4]`` assumes the nested depth: it
+# raises IndexError on a shallow checkout (``D:\claude\morph``) before the
+# fallback below can run, and silently resolves to the filesystem root on a
+# deeper one. Never index a fixed number of parents to find the workspace.
 try:
     import workspace_runtime  # noqa: E402
     WORKSPACE_ROOT = workspace_runtime.workspace_root()
 except Exception:
-    pass
+    _HERE = Path(__file__).resolve()
+    WORKSPACE_ROOT = next(
+        (p for p in _HERE.parents if (p / "tools" / "lib").is_dir()),
+        _HERE.parent.parent,
+    )
 TOOLS_LIB = WORKSPACE_ROOT / "tools" / "lib"
 if str(TOOLS_LIB) not in sys.path:
     sys.path.insert(0, str(TOOLS_LIB))
