@@ -16,13 +16,41 @@ import { RootRegistry } from "../lib/application/root-registry.mjs";
 
 function controlledFreshnessService({ onFreshness = () => {}, onStatus = () => {} } = {}) {
   return {
-    async openFreshnessSession(input) {
-      return await onFreshness(input) ?? { root: input.repoRoot, close() {} };
+    async openFreshnessSession(input, options) {
+      return await onFreshness(input, options) ?? { root: input.repoRoot, close() {} };
     },
     async status(input, options) {
       return onStatus(input, options);
     },
   };
+}
+
+async function until(predicate) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.fail("timed out waiting for daemon scheduling");
+}
+
+function abortableRelease(releases, signal) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const release = (value) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener("abort", abort);
+      resolve(value);
+    };
+    const abort = () => {
+      if (settled) return;
+      settled = true;
+      reject(Object.assign(new Error("request cancelled"), { code: "request_cancelled" }));
+    };
+    if (signal?.aborted) return abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    releases.push(release);
+  });
 }
 
 test("concurrent clients get consistent responses", async () => {
@@ -87,9 +115,9 @@ test("injected real application service serializes same-root freshness without d
   const releases = [];
   const service = {
     ...realService,
-    async openFreshnessSession(input) {
+    async openFreshnessSession(input, { signal } = {}) {
       started.push(input.repoRoot);
-      return new Promise((resolve) => releases.push(resolve));
+      return abortableRelease(releases, signal);
     },
   };
   const daemon = createDaemonServer({ service, endpoint });
@@ -100,10 +128,10 @@ test("injected real application service serializes same-root freshness without d
     const first = client.request({ method: "status", repoId: "repo" });
     const second = client.request({ method: "status", repoId: "repo" });
     requests.push(first, second);
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await until(() => started.length === 1);
     assert.deepEqual(started, [repo]);
     releases.shift()({ close() {} });
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await until(() => started.length === 2);
     assert.deepEqual(started, [repo, repo]);
     for (const release of releases.splice(0)) release({ close() {} });
     await Promise.all([first, second]);
@@ -123,9 +151,9 @@ test("daemon serializes freshness sessions for one canonical root while another 
   const started = [];
   const releases = [];
   const service = controlledFreshnessService({
-    onFreshness(input) {
+    onFreshness(input, { signal } = {}) {
       started.push(input.repoRoot);
-      return new Promise((resolve) => releases.push(resolve));
+      return abortableRelease(releases, signal);
     },
     onStatus: async () => ({ generationId: "g" }),
   });
@@ -143,10 +171,10 @@ test("daemon serializes freshness sessions for one canonical root while another 
     const first = client.request({ method: "status", repoId: "first" });
     const sameRoot = client.request({ method: "status", repoId: "first" });
     const otherRoot = client.request({ method: "status", repoId: "second" });
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await until(() => started.length === 2);
     assert.deepEqual(started.sort(), [firstRoot, secondRoot].sort());
     releases.shift()({ root: firstRoot, close() {} });
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await until(() => started.filter((root) => root === firstRoot).length === 2);
     assert.equal(started.filter((root) => root === firstRoot).length, 2);
     for (const release of releases.splice(0)) release({ root: secondRoot, close() {} });
     await Promise.all([first, sameRoot, otherRoot]);
@@ -163,9 +191,9 @@ test("daemon allows same-root traversal work after its freshness sessions open",
   const started = [];
   const releases = [];
   const service = controlledFreshnessService({
-    onStatus(_input, { session }) {
+    onStatus(_input, { session, signal }) {
       started.push(session.root);
-      return new Promise((resolve) => releases.push(resolve));
+      return abortableRelease(releases, signal);
     },
   });
   const daemon = createDaemonServer({ endpoint, service, registryEntries: [{ root, repoId: "repo" }] });
@@ -174,7 +202,7 @@ test("daemon allows same-root traversal work after its freshness sessions open",
     const client = new DaemonClient({ endpoint });
     const first = client.request({ method: "status", repoId: "repo", deadlineMs: 30000 });
     const second = client.request({ method: "status", repoId: "repo", deadlineMs: 30000 });
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await until(() => started.length === 2);
     assert.deepEqual(started, [root, root]);
     for (const release of releases.splice(0)) release({ generationId: "g" });
     await Promise.all([first, second]);
@@ -191,9 +219,9 @@ test("daemon queues repository aliases on their shared canonical root", async ()
   const started = [];
   const releases = [];
   const service = controlledFreshnessService({
-    onFreshness(input) {
+    onFreshness(input, { signal } = {}) {
       started.push(input.repoRoot);
-      return new Promise((resolve) => releases.push(resolve));
+      return abortableRelease(releases, signal);
     },
     onStatus: async () => ({ generationId: "g" }),
   });
@@ -207,10 +235,10 @@ test("daemon queues repository aliases on their shared canonical root", async ()
     const client = new DaemonClient({ endpoint });
     const primary = client.request({ method: "status", repoId: "primary" });
     const alias = client.request({ method: "status", repoId: "alias" });
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await until(() => started.length === 1);
     assert.deepEqual(started, [root]);
     releases.shift()({ root, close() {} });
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await until(() => started.length === 2);
     assert.deepEqual(started, [root, root]);
     for (const release of releases.splice(0)) release({ root, close() {} });
     await Promise.all([primary, alias]);
