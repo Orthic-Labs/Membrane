@@ -5784,6 +5784,62 @@ mod tests {
         assert_eq!(payload["database"]["status"], "error");
     }
 
+    #[tokio::test]
+    async fn detailed_health_reports_empty_corpus_as_degraded_not_ok() {
+        use axum::body::{to_bytes, Body};
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        let db = MemDb::open_in_memory();
+        let store = MemoryStore::open(db);
+        let app = build_router(store, None, None, 8765, None, Duration::from_secs(1), 1);
+        let health = app
+            .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        // A reachable-but-empty database is a structural success with zero rows: the top-level
+        // probe still reports "ok" (unrelated fixtures/tests rely on this), but the database
+        // block must truthfully say the corpus is empty rather than reading as fully healthy.
+        assert_eq!(health.status(), StatusCode::OK);
+        let payload: Value =
+            serde_json::from_slice(&to_bytes(health.into_body(), MAX_BODY_BYTES).await.unwrap())
+                .unwrap();
+        assert_eq!(payload["database"]["status"], "empty");
+        assert_eq!(payload["database"]["memoryCount"], 0);
+    }
+
+    #[tokio::test]
+    async fn detailed_health_reports_populated_corpus_as_ok_with_count() {
+        use axum::body::{to_bytes, Body};
+        use axum::http::{Request, StatusCode};
+        use tower::ServiceExt;
+
+        let db = MemDb::open_in_memory();
+        let store = MemoryStore::open(db);
+        store
+            .try_put(
+                "health-corpus-test",
+                "a memory that proves the corpus is non-empty",
+                "global",
+                crypt_core::MemoryTier::Semantic,
+            )
+            .unwrap();
+        let app = build_router(store, None, None, 8765, None, Duration::from_secs(1), 1);
+        let health = app
+            .oneshot(Request::get("/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(health.status(), StatusCode::OK);
+        let payload: Value =
+            serde_json::from_slice(&to_bytes(health.into_body(), MAX_BODY_BYTES).await.unwrap())
+                .unwrap();
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["database"]["status"], "ok");
+        assert_eq!(payload["database"]["memoryCount"], 1);
+    }
+
     #[test]
     fn detailed_health_does_not_share_tokios_blocking_pool() {
         use axum::body::Body;

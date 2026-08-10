@@ -5676,8 +5676,25 @@ impl MemoryStore {
     pub(crate) fn detailed_health_json(&self) -> serde_json::Value {
         let mut health = self.health_json();
         let database = self.db.health_probe();
+        // A structurally reachable database can still be semantically empty (e.g. the service
+        // opened the wrong file, or the corpus was lost). Zero rows in a database that exists is
+        // degraded, not ok — surface the count and a non-"ok" status so an empty corpus cannot
+        // read as healthy, without overloading the probe's busy/error taxonomy.
+        let memory_count: Option<i64> = if database == crate::memdb::MemDbProbe::Ok {
+            self.db
+                .lock()
+                .query_row("SELECT COUNT(*) FROM memories", [], |row| row.get(0))
+                .ok()
+        } else {
+            None
+        };
+        let database_status = match (database, memory_count) {
+            (crate::memdb::MemDbProbe::Ok, Some(0)) => "empty",
+            _ => database.status(),
+        };
         health["database"] = serde_json::json!({
-            "status": database.status(),
+            "status": database_status,
+            "memoryCount": memory_count,
         });
         if database != crate::memdb::MemDbProbe::Ok {
             health["ok"] = serde_json::Value::Bool(false);
