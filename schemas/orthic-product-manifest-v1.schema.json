@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OrthicProductManifestV1",
+  "type": "object",
+  "required": ["schemaVersion", "productId", "displayName", "version", "installRoot", "serviceStart", "serviceStop", "statusEndpoint", "icon"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "enum": [1] },
+    "productId": { "type": "string", "enum": ["cortex"] },
+    "displayName": { "type": "string" },
+    "version": { "type": "string" },
+    "installRoot": { "type": "string" },
+    "serviceStart": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "serviceStop": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "statusEndpoint": {
+      "type": "object",
+      "required": ["host", "port"],
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer" },
+        "tokenEnv": { "type": "string" }
+      }
+    },
+    "icon": { "type": "string" }
+  },
+  "additionalProperties": false
+}

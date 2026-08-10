@@ -61,11 +61,11 @@ try {
   const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
   console.log(JSON.stringify({
     ...candidateSet,
-    // The caller (Membrane's cortex provider) needs the generation id for its
+    // The caller (peer's cortex provider) needs the generation id for its
     // cache key and return contract. Reporting it here removes the separate
     // `graph status` probe, which paid the full CLI module graph per packet.
     generationId,
-    _membrane: { stageElapsedMs: { repo_code_scan: elapsedMs } },
+    _diagnostics: { stageElapsedMs: { repo_code_scan: elapsedMs } },
   }));
 } finally {
   closeStore(db);

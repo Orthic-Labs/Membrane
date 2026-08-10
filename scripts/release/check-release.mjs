@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadUpdateManifest } from "../../lib/update/manifest.mjs";
@@ -98,6 +98,19 @@ function walkFiles(root, dir = root) {
   return out;
 }
 
+// U60: wire Hub installer pin-check (byte-identical, no rebuild)
+// The catalog template must carry the Hub version + checksum placeholders
+// that release-candidate.yml verifies via verify-hub-installer.mjs.
+export function verifyCatalogTemplate() {
+  const templatePath = join(resolve(dirname(fileURLToPath(import.meta.url)), "../.."), "release", "catalog.template.json");
+  if (!existsSync(templatePath)) return { ok: false, problems: ["catalog.template.json missing"] };
+  const template = JSON.parse(readFileSync(templatePath, "utf8"));
+  const problems = [];
+  if (!("hubAppVersion" in template)) problems.push("catalog.template.json missing hubAppVersion (U60)");
+  if (!("hubInstallerChecksum" in template)) problems.push("catalog.template.json missing hubInstallerChecksum (U60)");
+  return { ok: problems.length === 0, problems, template };
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
   const dir = process.argv[2];
   if (!dir) { console.error("usage: check-release.mjs <candidate-dir>"); process.exit(1); }
@@ -108,4 +121,12 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     process.exit(1);
   }
   console.log(`check-release OK: ${result.compatibility.artifacts.length} artifacts verified against checksums and SBOM`);
+  // U60 pin-check: fail if catalog template is missing the Hub fields (even when candidate itself is OK)
+  const pin = verifyCatalogTemplate();
+  if (!pin.ok) {
+    console.error("check-release FAILED (U60 pin):");
+    for (const p of pin.problems) console.error(`  ${p}`);
+    process.exit(1);
+  }
+  console.log(`check-release OK (U60 pin): catalog.template.json carries hubAppVersion + hubInstallerChecksum`);
 }

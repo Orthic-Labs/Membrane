@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "baselineCommit": "fe1c4cbecf7a7e20ba50d47f6b913c6fe23d19e4",
-  "observedCommit": "b8477bbab20deb25427f8cb12419bdb5584d193e",
+  "baselineCommit": "fc04e73b1a894b0e30d7ff0abc497e674993ed03",
+  "observedCommit": "fc04e73b1a894b0e30d7ff0abc497e674993ed03",
   "startedAt": "2026-08-06T00:00:00.000Z",
   "platform": "win32-x64",
   "runtime": {
@@ -387,7 +387,7 @@
       "packet": "D53",
       "gate": "immutable-release-gate-chain",
       "state": "pass",
-      "evidence": ".github/workflows/immutable-release.yml: jobs test -> qualification -> package -> {macos-sign-and-notarize, windows-sign, sbom} -> {provenance, clean-host-install} -> publish-npm. OIDC trusted publishing \u2014 no NPM_TOKEN fallback. Dry-run input skips signing and publish. Requires: pnpm test:all, contracts, security suite, hardening suite, network-boundary, test-package, build-candidate, check-release, sbom, attest@v4, clean-host-smoke (install->init->query->MCP->update->rollback->uninstall)."
+      "evidence": "release seal via .github/workflows/release-candidate.yml orchestrating CU-13 (SBOM/checksums/provenance) + CU-17/CU-18 (right-release signing from primary checkout) + clean-host install verification; no in-repo signing workflow per EC v4 D-18. Requires: pnpm test:all, contracts, security suite, hardening suite, network-boundary, test-package, build-candidate, check-release, sbom, attest@v4, clean-host-smoke, seam-conformance."
     },
     {
       "packet": "D53",

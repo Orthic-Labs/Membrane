@@ -1265,7 +1265,7 @@ async function brief(root, outDir, options) {
     }
   }
   const maxReadFirst = contextBudget
-    ? Math.max(2, Math.min(config.budgets.maxReadFirstFiles, Math.floor(contextBudget.cortex_chars / 200)))
+    ? Math.max(3, Math.min(config.budgets.maxReadFirstFiles, Math.floor(contextBudget.cortex_chars / 200)))
     : config.budgets.maxReadFirstFiles;
   const docReadLimit = Math.max(1, Math.min(2, Math.ceil(maxReadFirst * 0.35)));
   const canonicalDocPaths = (config.canonicalDocs ?? [])
@@ -1301,7 +1301,7 @@ async function brief(root, outDir, options) {
   const codeFirst = [...codeRefs.keys()].slice(0, Math.max(0, maxReadFirst - docsFirst.length));
   const semanticCodeFirst = semanticReadFirstPaths(root, outDir, config, taskTerms, Number(options.limit ?? 0));
   const readFirstItems = codeFirst.length
-    ? [...docsFirst, ...codeFirst, ...semanticCodeFirst]
+    ? [...docsFirst, ...semanticCodeFirst, ...codeFirst]
     : [...selectedDocs.keys()].slice(0, maxReadFirst);
   let readFirst = [...new Set(readFirstItems)].slice(0, maxReadFirst);
   const truths = diverseClaims
@@ -2174,7 +2174,7 @@ async function runGraphCommand(root, outDir, subcommand, args) {
         receiptId: freshnessReceipt?.receiptId ?? null,
       });
       const repoCodeScanMs = Number(process.hrtime.bigint() - repoCodeScanStarted) / 1_000_000;
-      result._membrane = { stageElapsedMs: { repo_code_scan: Math.max(0, repoCodeScanMs) } };
+      result._diagnostics = { stageElapsedMs: { repo_code_scan: Math.max(0, repoCodeScanMs) } };
       return attach(result);
     });
     console.log(JSON.stringify(candidateSet, null, 2));
@@ -2206,7 +2206,7 @@ async function runGraphCommand(root, outDir, subcommand, args) {
   // exists for the cases the old graph.json was genuinely useful for — piping to
   // jq, handing a generation to an external tool, eyeballing a diff — without
   // keeping a second copy of the graph permanently in the repo.
-  // DOWNSTREAM CONTRACT (membrane's freshness evaluator and any other consumer
+  // DOWNSTREAM CONTRACT (peer's freshness evaluator and any other consumer
   // on a latency budget). Emits the generation envelope ONLY — no nodes, no
   // edges, no docTruth — so it stays a few milliseconds and is safe to call from
   // a prompt-path hook. Opens the store READ-ONLY and never migrates it.
@@ -2561,17 +2561,36 @@ function orientPayload(root, outDir, args = {}) {
   };
 }
 
-// Candidate Crypt executables, in order. execFileSync does not resolve a
-// PATH shim on Windows (extensionless), so we also try the canonical binary and
-// the ~/bin shim location. CRYPT_BIN overrides everything.
-function cryptBinCandidates() {
+// Peer binary candidates — vendor-neutral, config-driven (D-14, SEAM D-S11).
+// CRYPT_BIN env override is preserved for backwards compat.
+// New: CORTEX_PEER_BIN_<NAME> (e.g. CORTEX_PEER_BIN_CRYPT), cortex.config.toml [peers] table,
+// and generic homedir shims. No hardcoded product name survives outside config-default context.
+function peerBinCandidates(peer = "crypt") {
+  const envPeer = process.env[`CORTEX_PEER_BIN_${peer.toUpperCase()}`];
+  const envGeneric = process.env.CORTEX_PEER_BIN;
+  // Optional TOML config: cortex.config.toml [peers] peer = "/path/to/bin"
+  let configPeer = null;
+  try {
+    const cfgPath = join(process.cwd(), "cortex.config.toml");
+    if (existsSync(cfgPath)) {
+      const raw = readFileSync(cfgPath, "utf8");
+      const match = raw.match(new RegExp(`\\[peers\\][^\\[]*\\b${peer}\\s*=\\s*\"([^\"]+)\"`, "i"));
+      if (match) configPeer = match[1];
+    }
+  } catch {}
   return [
-    process.env.CRYPT_BIN,
-    join(homedir(), "bin", "crypt.exe"),
-    join(homedir(), "bin", "crypt"),
-    join(homedir(), "claude", "tools", "bin", "crypt"),
-    "crypt",
+    process.env.CRYPT_BIN, // legacy compat — CRYPT_BIN keeps working unchanged
+    envPeer,
+    envGeneric,
+    configPeer,
+    join(homedir(), "bin", `${peer}.exe`),
+    join(homedir(), "bin", peer),
+    join(homedir(), "claude", "tools", "bin", peer),
+    peer,
   ].filter(Boolean);
+}
+function cryptBinCandidates(peer = "crypt") {
+  return peerBinCandidates(peer);
 }
 
 // A minimal, schema-valid ContextCandidateSet v1 — enough to make plan-context do

@@ -137,14 +137,24 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         return EXIT.OK;
       }
       if (subcommand === "start" || subcommand === "stop" || subcommand === "restart") {
-        const { controlService } = await import("../../service/install.mjs");
-        try {
-          printResult(controlService(subcommand), args);
-          return EXIT.OK;
-        } catch (error) {
-          printResult(machineError("service_control_failed", String(error.message ?? error)), args, { stderr: true });
-          return EXIT.INTERNAL;
-        }
+        printResult(machineError("os_registration_forbidden", "OS service control forbidden per D-S03 — use cortex service run; Hub owns lifecycle"), args, { stderr: true });
+        return EXIT.INTERNAL;
+      }
+      if (subcommand === "run") {
+        // D-S04 headless carve-out — foreground mode, Hub spawns as child (D-S03)
+        const payload = { schemaVersion: 1, state: "running", mode: "foreground", pid: process.pid, serviceStart: ["node", "scripts/cortex.mjs", "service", "run"] };
+        console.log(JSON.stringify(payload));
+        // Keep event loop alive — signal listeners alone don't ref the loop, so Node would exit with 13 (unsettled top-level await)
+        const keepAlive = setInterval(() => {}, 1000);
+        await new Promise((resolve) => {
+          const shutdown = () => {
+            clearInterval(keepAlive);
+            resolve();
+          };
+          process.once("SIGTERM", shutdown);
+          process.once("SIGINT", shutdown);
+        });
+        return EXIT.OK;
       }
       if (subcommand === "logs") {
         const { homedir } = await import("node:os");

@@ -1,9 +1,9 @@
-// Tree-sitter AST code provider — standalone, NOT wired into the live graph
-// build yet (see graph/static-provider.mjs, which remains the deterministic
-// lexical provider actually driving `cortex build`). This module exists so
-// a future wiring step can swap providers without redesigning the schema: the
-// node/edge shapes below intentionally mirror static-provider.mjs's output
-// exactly (see "OUTPUT SHAPE" below), extended only with additive fields.
+// Tree-sitter AST code provider — AST precision layer wired into the live graph
+// build via graph/static-provider.mjs#augmentGenerationWithTreeSitter (opt-out
+// with CORTEX_TREESITTER=0). Selected provider (manifest.provider =
+// "cortex-treesitter") for 10 extensions; lexical layer remains fallback for
+// the other ~26 extensions. Node/edge shapes mirror static-provider.mjs's
+// output exactly (see "OUTPUT SHAPE" below), extended only with additive fields.
 //
 // Runtime: `web-tree-sitter` (WASM) + prebuilt grammars from `tree-sitter-wasms`.
 // Both are workspace devDependencies already installed under tools/node_modules;

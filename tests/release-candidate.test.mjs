@@ -314,3 +314,36 @@ test("candidate CLI accepts omitted optional version", () => {
     assert.equal(verifyCandidate(out).ok, true);
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
+
+test("U60: hub installer checksum verification rejects mismatched artifact", async () => {
+  const { verifyChecksum } = await import("../scripts/release/verify-hub-installer.mjs");
+  const tmp = mkdtempSync(join(tmpdir(), "hub-check-"));
+  try {
+    const goodFile = join(tmp, "good.bin");
+    writeFileSync(goodFile, "hub-installer-content-v1");
+    const goodChecksum = createHash("sha256").update(readFileSync(goodFile)).digest("hex");
+    assert.equal(verifyChecksum(goodFile, goodChecksum), true);
+    // Mismatched checksum should throw
+    assert.throws(() => verifyChecksum(goodFile, "0".repeat(64)), /checksum mismatch/);
+    // Also test downloadHubInstaller with mocked fetcher
+    const { downloadHubInstaller } = await import("../scripts/release/verify-hub-installer.mjs");
+    const outDir = join(tmp, "out");
+    // Mocked fetcher creates a file with known content and correct checksum should pass
+    const mockContent = "mock-hub-installer";
+    const mockChecksum = createHash("sha256").update(mockContent).digest("hex");
+    const dest = downloadHubInstaller({
+      hubVersion: "0.1.0-test",
+      checksum: mockChecksum,
+      outDir,
+      fetcher: (p) => writeFileSync(p, mockContent),
+    });
+    assert.ok(existsSync(dest));
+    // Mismatched should throw
+    assert.throws(() => downloadHubInstaller({
+      hubVersion: "0.1.0-test2",
+      checksum: "f".repeat(64),
+      outDir: join(tmp, "out2"),
+      fetcher: (p) => writeFileSync(p, mockContent),
+    }), /checksum mismatch/);
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
+});

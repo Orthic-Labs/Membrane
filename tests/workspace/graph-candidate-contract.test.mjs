@@ -33,11 +33,11 @@ test("graph candidates CLI validates as ContextCandidateSet v1", { skip: workspa
     const generatedPayload = JSON.parse(generated.stdout);
     assert.equal(generatedPayload.candidates.length > 0, true);
     assert.equal(
-      Number.isFinite(generatedPayload?._membrane?.stageElapsedMs?.repo_code_scan),
+      Number.isFinite(generatedPayload?._diagnostics?.stageElapsedMs?.repo_code_scan),
       true,
       "candidate CLI must emit a content-free repo scan duration",
     );
-    assert.equal(generatedPayload._membrane.stageElapsedMs.repo_code_scan >= 0, true);
+    assert.equal(generatedPayload._diagnostics.stageElapsedMs.repo_code_scan >= 0, true);
     const result = validateJsonSchema(JSON.parse(fs.readFileSync(SCHEMA, "utf8")), generatedPayload, "#/$defs/ContextCandidateSet");
     assert.equal(result.valid, true, JSON.stringify(result.errors));
   } finally {
