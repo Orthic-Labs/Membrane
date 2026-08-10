@@ -20,7 +20,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
       - uses: actions/setup-node@v5
@@ -52,7 +52,7 @@ jobs:
           node -e "JSON.parse(require('fs').readFileSync('generated/cortex.json','utf8'))"
       - run: node -e "JSON.parse(require('fs').readFileSync('server.json','utf8'))"
       - name: Checkout Homebrew tap
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: Orthic-Labs/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
@@ -70,7 +70,7 @@ jobs:
           title: "cortex ${{ steps.release.outputs.version }}"
           delete-branch: true
       - name: Checkout Scoop bucket
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: Orthic-Labs/scoop-bucket
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
