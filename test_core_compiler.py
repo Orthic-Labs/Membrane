@@ -5,7 +5,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "lib"))
+
+import workspace_runtime  # noqa: E402
+
+sys.path.insert(0, str(workspace_runtime.workspace_root() / "tools" / "lib"))
 
 import core_compiler
 import morph as morph_cli

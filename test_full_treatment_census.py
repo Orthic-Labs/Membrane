@@ -11,7 +11,12 @@ import pytest
 # Same portability contract as test_delivery_parity.py: the census reads the
 # machine-local frozen evidence pack under .cache/ — skip with a named reason
 # on checkouts without it instead of failing.
-_FROZEN_TREATMENT = Path(__file__).resolve().parents[4] / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import workspace_runtime  # noqa: E402
+
+_FROZEN_TREATMENT = workspace_runtime.workspace_root() / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
 requires_frozen_treatment = pytest.mark.skipif(
     not _FROZEN_TREATMENT.exists(),
     reason="machine-local frozen delivery-parity treatment absent (.cache/morph-delivery-parity/full/frozen)",

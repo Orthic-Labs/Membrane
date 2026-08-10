@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Sequence
 
 import taste_v2_pipeline
+import workspace_runtime
 import rollback
 import run_journal
 
@@ -62,7 +63,7 @@ def run_command(command: Sequence[str], log_path: Path) -> CommandResult:
         child_env["PYTHONUNBUFFERED"] = "1"
         process = subprocess.Popen(
             list(command),
-            cwd=ROOT.parents[3],
+            cwd=workspace_runtime.workspace_root(),
             env=child_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

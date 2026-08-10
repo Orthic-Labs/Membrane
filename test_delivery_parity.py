@@ -24,7 +24,9 @@ import pytest
 # with a named reason instead of failing — same portability contract as the
 # scanner-dependent extraction test. Evidence pack:
 # docs/baselines/morph-taste-parity-2026-07-14/README.md
-_WS = MORPH_DIR.parents[3]
+import workspace_runtime  # noqa: E402
+
+_WS = workspace_runtime.workspace_root()
 _FROZEN_VALUE_INPUTS = _WS / ".cache/morph-commandcode-delta-m3-seeded-sanitized-split1-v1/results-rescoped.json"
 _FROZEN_TREATMENT = _WS / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
 requires_frozen_inputs = pytest.mark.skipif(
@@ -221,7 +223,7 @@ def test_weighted_kappa_is_one_for_identical_scores():
 @requires_frozen_treatment
 def test_budgeted_core_is_the_13_inherited_rules_and_fits_800_tokens():
     module = _load(BUDGETED, "run_budgeted_delivery_hybrid_test")
-    treatment = json.loads((MORPH_DIR.parents[3] /
+    treatment = json.loads((_WS /
                             ".cache/morph-delivery-parity/full/frozen/morph-treatment.json")
                            .read_text(encoding="utf-8"))
     core, block, tokens = module.core_treatment(treatment)

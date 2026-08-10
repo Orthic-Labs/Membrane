@@ -19,8 +19,11 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 MORPH_DIR = Path(__file__).resolve().parent.parent
-REPO_ROOT = Path(__file__).resolve().parents[5]
 sys.path.insert(0, str(MORPH_DIR))
+
+import workspace_runtime  # noqa: E402
+
+REPO_ROOT = workspace_runtime.workspace_root()
 
 import morph_llm  # noqa: E402
 import morph_sessions  # noqa: E402
