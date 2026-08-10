@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -27,7 +27,7 @@ test("onboarding enrolls only after explicit watch selection and uninstalls reve
     const plan = buildInitPlan({ root, host: "generic", mcp: "on", watch: "on" });
     const applied = applyInitPlan({ root, plan, build: false, watchConfigPath: watch });
     assert.equal(applied.ok, true, applied.error);
-    assert.deepEqual(readWatchConfig(watch).repos.map((repo) => repo.root), [root]);
+    assert.deepEqual(readWatchConfig(watch).repos.map((repo) => repo.root), [realpathSync.native(root)]);
     const removed = uninstallInit({ root, watchConfigPath: watch });
     assert.equal(removed.ok, true, removed.error);
     assert.deepEqual(readWatchConfig(watch).repos, []);
@@ -43,6 +43,6 @@ test("uninstall preserves enrollment that existed before onboarding", () => {
     const plan = buildInitPlan({ root, host: "generic", mcp: "off", watch: "on" });
     assert.equal(applyInitPlan({ root, plan, build: false, watchConfigPath: watch }).ok, true);
     assert.equal(uninstallInit({ root, watchConfigPath: watch }).ok, true);
-    assert.deepEqual(readWatchConfig(watch).repos.map((repo) => repo.root), [root]);
+    assert.deepEqual(readWatchConfig(watch).repos.map((repo) => repo.root), [realpathSync.native(root)]);
   } finally { rmSync(root, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true }); }
 });

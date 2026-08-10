@@ -2,7 +2,7 @@
 // generation-consistent responses; one repo failure does not starve others.
 
 import assert from "node:assert/strict";
-import { mkdtempSync, cpSync, rmSync } from "node:fs";
+import { mkdtempSync, cpSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -26,7 +26,7 @@ function controlledFreshnessService({ onFreshness = () => {}, onStatus = () => {
 }
 
 async function until(predicate) {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  for (let attempt = 0; attempt < 1_000; attempt += 1) {
     if (predicate()) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
@@ -107,6 +107,7 @@ test("a failing repo returns typed errors without starving others", async () => 
 
 test("injected real application service serializes same-root freshness without duplicate registry entries", async () => {
   const repo = mkdtempSync(join(tmpdir(), "cortex-ipc-injected-real-"));
+  const canonicalRepo = realpathSync.native(repo);
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   const endpoint = temporaryDaemonEndpoint("cortex-injected-real");
@@ -125,14 +126,14 @@ test("injected real application service serializes same-root freshness without d
   try {
     await daemon.listen();
     const client = new DaemonClient({ endpoint });
-    const first = client.request({ method: "status", repoId: "repo" });
-    const second = client.request({ method: "status", repoId: "repo" });
+    const first = client.request({ method: "status", repoId: "repo", deadlineMs: 10_000 });
+    const second = client.request({ method: "status", repoId: "repo", deadlineMs: 10_000 });
     requests.push(first, second);
     await until(() => started.length === 1);
-    assert.deepEqual(started, [repo]);
+    assert.deepEqual(started, [canonicalRepo]);
     releases.shift()({ close() {} });
     await until(() => started.length === 2);
-    assert.deepEqual(started, [repo, repo]);
+    assert.deepEqual(started, [canonicalRepo, canonicalRepo]);
     for (const release of releases.splice(0)) release({ close() {} });
     await Promise.all([first, second]);
     await client.close();

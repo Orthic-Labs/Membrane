@@ -11,7 +11,7 @@ const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/cortex.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 const SCHEMA = join(ROOT, "schemas/repository-neighborhood-v1.schema.json");
-import { PYTHON } from "./python-test-runtime.mjs";
+import { validateJsonSchema } from "./python-test-runtime.mjs";
 
 function handFixture() {
   return {
@@ -72,16 +72,8 @@ test("neighborhood CLI emits a barrier receipt and schema-valid output", () => {
     assert.equal(payload.repoRoot, realpathSync(repo).replaceAll("\\", "/"));
     assert.equal(payload.generationId, readGeneration(repo, ".agent").manifest.generationId);
     assert.ok(payload.anchors.some((anchor) => anchor.path === "src/service.ts"));
-    const validation = spawnSync(PYTHON[0], [...PYTHON.slice(1), "-c", [
-      "import json, sys",
-      "from jsonschema import Draft202012Validator",
-      "schema = json.load(open(sys.argv[1], encoding='utf-8'))",
-      "payload = json.load(sys.stdin)",
-      "errors = sorted(Draft202012Validator(schema).iter_errors(payload), key=lambda error: list(error.path))",
-      "print('\\n'.join(error.message for error in errors))",
-      "raise SystemExit(1 if errors else 0)",
-    ].join(";"), SCHEMA], { input: JSON.stringify(payload), encoding: "utf8" });
-    assert.equal(validation.status, 0, validation.stderr || validation.stdout);
+    const validation = validateJsonSchema(JSON.parse(readFileSync(SCHEMA, "utf8")), payload);
+    assert.equal(validation.valid, true, JSON.stringify(validation.errors));
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 

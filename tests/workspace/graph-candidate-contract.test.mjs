@@ -13,7 +13,7 @@ const CORTEX = path.resolve(HERE, "../..");
 const CLI = path.join(CORTEX, "scripts/cortex.mjs");
 const FIXTURE = path.join(CORTEX, "evals/fixture-repos/typescript-commerce");
 const SCHEMA = ROOT ? path.join(ROOT, "tools/lib/context-contracts.schema.json") : null;
-import { PYTHON } from "../python-test-runtime.mjs";
+import { validateJsonSchema } from "../python-test-runtime.mjs";
 const workspaceSkip = ROOT ? false : "requires parent monorepo context contracts";
 
 test("graph candidates CLI validates as ContextCandidateSet v1", { skip: workspaceSkip }, () => {
@@ -38,20 +38,8 @@ test("graph candidates CLI validates as ContextCandidateSet v1", { skip: workspa
       "candidate CLI must emit a content-free repo scan duration",
     );
     assert.equal(generatedPayload._membrane.stageElapsedMs.repo_code_scan >= 0, true);
-    const validator = String.raw`
-import json, sys
-from jsonschema import Draft202012Validator
-schema = json.load(open(sys.argv[1], encoding="utf-8"))
-wrapper = {"$schema": schema["$schema"], "$ref": "#/$defs/ContextCandidateSet", "$defs": schema["$defs"]}
-errors = list(Draft202012Validator(wrapper).iter_errors(json.load(sys.stdin)))
-print(json.dumps([e.message for e in errors]))
-sys.exit(1 if errors else 0)
-`;
-    const result = spawnSync(PYTHON[0], [...PYTHON.slice(1), "-c", validator, SCHEMA], {
-      input: generated.stdout,
-      encoding: "utf8",
-    });
-    assert.equal(result.status, 0, result.stdout || result.stderr);
+    const result = validateJsonSchema(JSON.parse(fs.readFileSync(SCHEMA, "utf8")), generatedPayload, "#/$defs/ContextCandidateSet");
+    assert.equal(result.valid, true, JSON.stringify(result.errors));
   } finally {
     fs.rmSync(repo, { recursive: true, force: true });
   }

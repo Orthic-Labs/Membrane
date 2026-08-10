@@ -13,7 +13,7 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = findWorkspaceRoot(HERE, { required: false });
 const SCHEMA_PATH = ROOT ? path.join(ROOT, "tools/lib/context-contracts.schema.json") : null;
 const FIXTURES = ROOT ? path.join(ROOT, "tools/tests/context_contracts/fixtures") : null;
-import { PYTHON } from "../python-test-runtime.mjs";
+import { validateJsonSchema } from "../python-test-runtime.mjs";
 const CONTRACT_FIXTURES = [
   ["ContextCandidateSet", "context-candidate-set-v1.json"],
   ["ContextPacket", "context-packet-v1.json"],
@@ -30,20 +30,11 @@ function readJson(file) {
 
 
 function validate(name, payload) {
-  const script = String.raw`
-import json, sys
-from jsonschema import Draft202012Validator
-schema = json.load(open(sys.argv[1], encoding="utf-8"))
-wrapper = {"$schema": schema["$schema"], "$ref": f"#/$defs/{sys.argv[2]}", "$defs": schema["$defs"]}
-errors = sorted(Draft202012Validator(wrapper).iter_errors(json.load(sys.stdin)), key=lambda e: list(e.absolute_path))
-print(json.dumps([{"pointer": "/" + "/".join(map(str, e.absolute_path)), "message": e.message} for e in errors]))
-sys.exit(1 if errors else 0)
-`;
-  const result = spawnSync(PYTHON[0], [...PYTHON.slice(1), "-c", script, SCHEMA_PATH, name], {
-    input: JSON.stringify(payload),
-    encoding: "utf8",
-  });
-  return { ...result, errors: result.stdout ? JSON.parse(result.stdout) : [] };
+  const result = validateJsonSchema(readJson(SCHEMA_PATH), payload, `#/$defs/${name}`);
+  return {
+    status: result.valid ? 0 : 1,
+    errors: result.errors.map((error) => ({ pointer: error.instancePath, message: error.message })),
+  };
 }
 
 

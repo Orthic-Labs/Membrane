@@ -26,23 +26,11 @@ const ROOT = findWorkspaceRoot(HERE, { required: false });
 const CORTEX = path.resolve(HERE, "../..");
 const SCHEMA = ROOT ? path.join(ROOT, "tools/lib/context-contracts.schema.json") : null;
 const workspaceSkip = ROOT ? false : "requires parent monorepo context contracts";
-import { PYTHON } from "../python-test-runtime.mjs";
+import { validateJsonSchema } from "../python-test-runtime.mjs";
 
 function validateCandidate(candidate) {
-  const script = String.raw`
-import json, sys
-from jsonschema import Draft202012Validator
-schema = json.load(open(sys.argv[1], encoding="utf-8"))
-wrapper = {"$schema": schema["$schema"], "$ref": "#/$defs/Candidate", "$defs": schema["$defs"]}
-errors = list(Draft202012Validator(wrapper).iter_errors(json.load(sys.stdin)))
-print(json.dumps([{"pointer": "/" + "/".join(map(str, e.absolute_path)), "message": e.message} for e in errors]))
-sys.exit(1 if errors else 0)
-`;
-  const result = spawnSync(PYTHON[0], [...PYTHON.slice(1), "-c", script, SCHEMA], {
-    input: JSON.stringify(candidate),
-    encoding: "utf8",
-  });
-  return { ...result, errors: result.stdout ? JSON.parse(result.stdout) : [] };
+  const result = validateJsonSchema(JSON.parse(readFileSync(SCHEMA, "utf8")), candidate, "#/$defs/Candidate");
+  return { status: result.valid ? 0 : 1, errors: result.errors };
 }
 
 function validateCandidates(candidates) {
