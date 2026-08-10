@@ -318,8 +318,8 @@ export function disposeTreeSitterProvider() {
 
 export function grammarRuntimeBlockReason(languageId, { platform = process.platform, nodeVersion = process.versions.node } = {}) {
   const nodeMajor = Number(String(nodeVersion).split(".")[0]);
-  if (languageId === "swift" && platform === "linux" && nodeMajor === 24) {
-    return "grammar_runtime_incompatible:swift:linux:node24";
+  if (languageId === "swift" && ["darwin", "linux"].includes(platform) && nodeMajor === 24) {
+    return `grammar_runtime_incompatible:swift:${platform}:node24`;
   }
   return null;
 }
