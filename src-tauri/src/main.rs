@@ -45,6 +45,19 @@ const STARTUP_GRACE: Duration = Duration::from_secs(3);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(100);
 type ServiceState = Arc<Mutex<Option<Child>>>;
 
+/// Two-Sentinels decision: `StartupGate` is deliberately NOT backed by
+/// `memory_sentinel_view`/`memory_sentinel_producer` (engine/crates/membrane-runtime).
+/// It masks a *transient* condition — the Hub's local snapshot poll still
+/// reporting "source not connected" during the few seconds after the
+/// sidecar process starts — so the window flashes "connecting" instead of a
+/// misleading "offline" state (see `source_not_connected_snapshot` and the
+/// `startup_sentinel_masked` error literal below). The engine's memory
+/// sentinel is an unrelated, content-free read model of memory
+/// lifecycle/proposal/contradiction state exposed via `HubInputsV1::sentinel`
+/// once the connection is up. Wiring this boolean start-of-day gate to that
+/// steady-state view would conflate "the sidecar hasn't finished booting yet"
+/// with "the memory sentinel observed a problem" — two different failure
+/// domains with different remedies. They stay separate on purpose.
 #[derive(Debug)]
 struct StartupGate {
     active: AtomicBool,
