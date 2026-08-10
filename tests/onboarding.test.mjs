@@ -27,7 +27,7 @@ test("onboarding enrolls only after explicit watch selection and uninstalls reve
     const plan = buildInitPlan({ root, host: "generic", mcp: "on", watch: "on" });
     const applied = applyInitPlan({ root, plan, build: false, watchConfigPath: watch });
     assert.equal(applied.ok, true, applied.error);
-    assert.deepEqual(readWatchConfig(watch).repos.map((repo) => repo.root), [realpathSync.native(root)]);
+    assert.deepEqual(readWatchConfig(watch).repos.map((repo) => repo.root), [realpathSync(root)]);
     const removed = uninstallInit({ root, watchConfigPath: watch });
     assert.equal(removed.ok, true, removed.error);
     assert.deepEqual(readWatchConfig(watch).repos, []);
