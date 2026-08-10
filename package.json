@@ -73,7 +73,7 @@
     }
   },
   "scripts": {
-    "test": "node --test \"tests/*.test.mjs\"",
+    "test": "node --test --test-concurrency=2 \"tests/*.test.mjs\"",
     "test:workspace": "node --test \"tests/workspace/**/*.test.mjs\"",
     "test:all": "node --test --test-concurrency=1 \"tests/**/*.test.mjs\"",
     "test:random": "node scripts/test-random.mjs",
