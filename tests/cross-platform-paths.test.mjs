@@ -78,10 +78,10 @@ test("root registry confines an explicit repoRoot to enrolled roots", () => {
   const elsewhere = mkdtempSync(join(tmpdir(), "cortex-elsewhere-"));
   try {
     const registry = new RootRegistry([{ root: repo }]);
-    assert.equal(registry.resolve({ repoRoot: repo }), realpathSync(repo));
+    assert.equal(registry.resolve({ repoRoot: repo }), realpathSync.native(repo));
     assert.throws(() => registry.resolve({ repoRoot: elsewhere }), /No enrolled Cortex repository/);
     // A trailing separator variant must not change the identity.
-    assert.equal(registry.resolve({ repoRoot: `${resolve(repo)}${sep}` }), realpathSync(repo));
+    assert.equal(registry.resolve({ repoRoot: `${resolve(repo)}${sep}` }), realpathSync.native(repo));
   } finally {
     rmSync(repo, { recursive: true, force: true });
     rmSync(elsewhere, { recursive: true, force: true });
