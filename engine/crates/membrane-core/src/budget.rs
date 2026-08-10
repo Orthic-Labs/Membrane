@@ -32,10 +32,19 @@ pub struct CrossProviderBudget {
 impl CrossProviderBudget {
     /// Build a budget with the global ceiling and one zero-default allocation
     /// per lane. `max_tokens` is the cross-provider total; the per-lane caps
-    /// are derived from `default_lane_share` (defaulting to a quarter of the
-    /// ceiling) but may be re-capped individually with [`set_lane_cap`].
+    /// are derived from `default_lane_share` (defaulting to the full ceiling
+    /// for the single consuming lane) but may be re-capped individually with
+    /// [`set_lane_cap`].
     pub fn new(max_tokens: u32) -> Self {
-        let default_lane_share = max_tokens / (BUDGET_LANE_KINDS.len() as u32).max(1);
+        let consuming = BUDGET_LANE_KINDS
+            .iter()
+            .filter(|lane| lane.consumes_tokens())
+            .count() as u32;
+        let default_lane_share = if consuming > 0 {
+            max_tokens / consuming
+        } else {
+            0
+        };
         let mut lanes = BTreeMap::new();
         for lane in BUDGET_LANE_KINDS {
             let max_for_lane = if lane.consumes_tokens() {
@@ -70,6 +79,14 @@ impl CrossProviderBudget {
     /// the lane and the cross-provider total only when the lane has capacity
     /// and the global ceiling is not exceeded.
     pub fn try_select(&mut self, lane: BudgetLaneKind, tokens: u32) -> bool {
+        // Non-consuming lanes do not count toward the global token ceiling.
+        if !lane.consumes_tokens() {
+            let entry = self
+                .lanes
+                .entry(lane.as_str().to_string())
+                .or_insert_with(|| LaneAllocation::new(lane, 0));
+            return entry.try_select(tokens);
+        }
         if tokens > self.max_tokens.saturating_sub(self.selected_tokens) {
             return false;
         }

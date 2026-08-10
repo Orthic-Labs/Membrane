@@ -249,6 +249,7 @@ mod tests {
                 expected_release_generation: None,
                 observed_release_generation: None,
                 release_generation_status: None,
+                overlay_identity: None,
             },
             provider_ceiling: ProviderCeilingV1 {
                 max_candidates: 8,
