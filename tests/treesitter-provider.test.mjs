@@ -378,7 +378,7 @@ test("Swift degrades only on its proven-crashing Node 24 Linux runtime", () => {
   assert.equal(grammarRuntimeBlockReason("swift", { platform: "linux", nodeVersion: "24.18.0" }), "grammar_runtime_incompatible:swift:linux:node24");
   assert.equal(grammarRuntimeBlockReason("swift", { platform: "darwin", nodeVersion: "24.18.0" }), "grammar_runtime_incompatible:swift:darwin:node24");
   assert.equal(grammarRuntimeBlockReason("swift", { platform: "linux", nodeVersion: "22.22.3" }), null);
-  assert.equal(grammarRuntimeBlockReason("swift", { platform: "win32", nodeVersion: "24.18.0" }), null);
+  assert.equal(grammarRuntimeBlockReason("swift", { platform: "win32", nodeVersion: "24.18.0" }), "grammar_runtime_incompatible:swift:win32:node24");
   assert.equal(grammarRuntimeBlockReason("ruby", { platform: "linux", nodeVersion: "24.18.0" }), null);
 });
 `,
