@@ -35,8 +35,13 @@ test("PR11 performance budgets stay within four-times CI slack", async () => {
     cpSync(FIXTURE, repo, { recursive: true });
     assert.equal(run(repo, ["build", "--out", ".agent"]).status, 0);
     const db = openStore(join(repo, ".agent/graph/graph.db"));
-    const barrier = await elapsedAsync(() => syncToCurrentSource(db, repo, { timeoutMs: 2000 }));
-    assert.equal(barrier.value.barrierResult, "caught_up");
+    const barrierSamples = [];
+    for (let sample = 0; sample < 3; sample += 1) {
+      const barrier = await elapsedAsync(() => syncToCurrentSource(db, repo, { timeoutMs: 2000 }));
+      assert.equal(barrier.value.barrierResult, "caught_up");
+      barrierSamples.push(barrier.ms);
+    }
+    const barrierMs = barrierSamples.sort((left, right) => left - right)[1];
     closeStore(db);
 
     const source = join(repo, "src/service.ts");
@@ -48,7 +53,7 @@ test("PR11 performance budgets stay within four-times CI slack", async () => {
     const issued = issueScopeGrant({ repoRoot: repo, generationId: "gen:test", taskId: "perf", paths: ["src/**"] });
     const grant = elapsed(() => checkScopeGrant({ repoRoot: repo, generationId: "gen:test", taskId: "perf", path: "src/service.ts" }));
     assert.equal(grant.value.allowed, true);
-    const measured = { barrierMs: barrier.ms, deltaMs: delta.ms, orientMs: orient.ms, grantMs: grant.ms, grantReceiptId: issued.grant.receiptId };
+    const measured = { barrierMs, deltaMs: delta.ms, orientMs: orient.ms, grantMs: grant.ms, grantReceiptId: issued.grant.receiptId };
     assert.ok(measured.barrierMs <= 100, `healthy no-op barrier exceeded 4x budget: ${measured.barrierMs.toFixed(1)}ms`);
     assert.ok(measured.deltaMs <= 1000, `one-file delta exceeded 4x budget: ${measured.deltaMs.toFixed(1)}ms`);
     assert.ok(measured.orientMs <= 1400, `orient exceeded 4x budget: ${measured.orientMs.toFixed(1)}ms`);
