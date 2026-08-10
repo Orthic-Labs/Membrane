@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { engineReleaseIdentity } from "./release-identity.mjs";
 
-const APP="membrane-hub",VERSION="0.1.9",NAMES=["crypt","crypt-service","membrane"];
+const APP="membrane-hub",VERSION="0.1.10",NAMES=["crypt","crypt-service","membrane"];
 const ROLE={crypt:"cli","crypt-service":"service",membrane:"hubCommand"};
 const TARGET={mac:"aarch64-apple-darwin",win:"x86_64-pc-windows-msvc"},HOST={mac:"darwin-arm64",win:"win32-x64"};
 const KEYS=["commit","dirty","fileCount","sourceTreePath","sourceTreeSha256","releaseGeneration"];
