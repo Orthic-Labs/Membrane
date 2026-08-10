@@ -10,6 +10,7 @@ crypt-store = { path = "../crypt-store" }
 crypt-core = { package = "crypt-core", path = "../crypt-core" }
 crypt-format = { package = "crypt-format", path = "../crypt-format" }
 membrane-protocol = { path = "../membrane-protocol" }
+membrane-core = { path = "../membrane-core" }
 membrane-mcp = { path = "../membrane-mcp" }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 serde = { workspace = true }
