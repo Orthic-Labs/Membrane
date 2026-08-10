@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { npmCliArgs } from "./release/npm-cli.mjs";
+import { verifyMcpInitialize } from "./release/mcp-client-smoke.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
@@ -63,10 +64,10 @@ try {
   if (help.status !== 0) fail(`help failed: ${help.stderr}`);
   if (!/Cortex — repository truth and evidence map/.test(help.stdout)) fail("help is not branded Cortex");
 
-  const request = `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test-package", version: "1" } } })}\n`;
-  const mcp = spawnSync(process.execPath, [join(packageDir, "scripts", "cortex-mcp.mjs"), "--root", packageDir], { cwd: packageDir, input: request, encoding: "utf8", timeout: 10000 });
-  if (!/"result"\s*:/.test(String(mcp.stdout ?? "")) || !/serverInfo/.test(String(mcp.stdout ?? ""))) {
-    fail(`MCP handshake failed: ${mcp.stderr || mcp.stdout}`);
+  try {
+    await verifyMcpInitialize({ script: join(packageDir, "scripts", "cortex-mcp.mjs"), root: packageDir });
+  } catch (error) {
+    fail(`MCP handshake failed: ${error.message}`);
   }
 
   console.log(`test-package OK: ${entry.filename} (${entry.files.length} files), prod install + help + MCP handshake clean`);

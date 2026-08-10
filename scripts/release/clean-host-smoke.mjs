@@ -12,6 +12,7 @@ import { deriveUpdateKeyId } from "./generate-update-keys.mjs";
 import { npmCliArgs } from "./npm-cli.mjs";
 import { signUpdateManifest } from "./sign-update-manifest.mjs";
 import { loadTrustedUpdateKeys } from "../../lib/update/manifest.mjs";
+import { verifyMcpInitialize } from "./mcp-client-smoke.mjs";
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: "utf8", timeout: 120000, ...options });
@@ -29,14 +30,6 @@ export function validateQueryEvidence(payload, needle = "releaseProof") {
   const refs = results.map((result) => result?.id).filter((id) => id === file || id === symbol);
   if (!refs.includes(file) || !refs.includes(symbol)) throw new Error(`query returned no exact evidence for ${needle}`);
   return { matchCount: refs.length, refs };
-}
-
-export function parseInitializeResponse(output) {
-  let responses;
-  try { responses = String(output).split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)); } catch { throw new Error("invalid MCP initialize response"); }
-  const response = responses.find((entry) => entry?.jsonrpc === "2.0" && entry.id === 1 && entry.result?.serverInfo);
-  if (!response) throw new Error("MCP initialize response missing JSON-RPC 2.0 id 1 serverInfo");
-  return response.result;
 }
 
 // CX-B4: a shipped trust root must never be weakened by the smoke lifecycle.
@@ -145,8 +138,7 @@ export async function runCleanHostSmoke({ candidate } = {}) {
     const query = JSON.parse(runNode(cortex, ["search", "--query", "release", "--json"], { cwd: repo }));
     const queryEvidence = validateQueryEvidence(query);
     stages.query = true;
-    const request = `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "clean-host", version: "1" } } })}\n`;
-    parseInitializeResponse(runNode(mcp, ["--root", repo], { cwd: repo, input: request }));
+    await verifyMcpInitialize({ script: mcp, root: repo });
     stages.mcp = true;
     JSON.parse(runNode(cortex, ["update", "check", "--offline", "--json"], { cwd: repo }));
     stages.updateCheck = true;

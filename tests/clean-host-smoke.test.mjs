@@ -40,15 +40,10 @@ test("RightGit owns CI publication while signing remains local", () => {
 test("query evidence rejects an empty result set", async () => {
   const smoke = await import("../scripts/release/clean-host-smoke.mjs");
   assert.equal(typeof smoke.validateQueryEvidence, "function");
-  assert.equal(typeof smoke.parseInitializeResponse, "function");
   assert.equal(typeof smoke.resolveShippedSigningKey, "function");
   if (typeof smoke.validateQueryEvidence === "function") {
     assert.throws(() => smoke.validateQueryEvidence({ results: [] }), /releaseProof/);
     assert.throws(() => smoke.validateQueryEvidence({ results: [{ id: "releaseProof", payload: {} }] }), /releaseProof/);
-  }
-  if (typeof smoke.parseInitializeResponse === "function") {
-    assert.deepEqual(smoke.parseInitializeResponse('{"jsonrpc":"2.0","id":1,"result":{"serverInfo":{"name":"cortex"}}}\n').serverInfo.name, "cortex");
-    assert.throws(() => smoke.parseInitializeResponse('{"jsonrpc":"2.0","id":2,"result":{"serverInfo":{}}}\n'), /initialize/);
   }
 });
 
