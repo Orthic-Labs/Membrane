@@ -73,10 +73,10 @@
     }
   },
   "scripts": {
-    "test": "node --test --test-concurrency=1 \"tests/*.test.mjs\"",
+    "test": "node scripts/test-random.mjs --ordered --root-only --batch-size=32",
     "test:workspace": "node --test \"tests/workspace/**/*.test.mjs\"",
-    "test:all": "node --test --test-concurrency=1 \"tests/**/*.test.mjs\"",
-    "test:random": "node scripts/test-random.mjs",
+    "test:all": "node scripts/test-random.mjs --ordered --batch-size=32",
+    "test:random": "node scripts/test-random.mjs --batch-size=32",
     "bench:retrieval": "node scripts/benchmark-retrieval.mjs",
     "test:hardening": "node --test tests/store-migrations.test.mjs tests/store-rollback.test.mjs tests/performance-envelopes.test.mjs tests/cross-platform-paths.test.mjs",
     "test:security": "node --test \"tests/security/**/*.test.mjs\" tests/mcp-root-confinement.test.mjs tests/plugin-boundary.test.mjs tests/support-bundle-redaction.test.mjs",

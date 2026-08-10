@@ -9,11 +9,12 @@
 // failures (shared-tempdir collisions, leaked handles, port reuse) without
 // throwing away the determinism that makes the serial suite trustworthy.
 //
-// Usage:  node scripts/test-random.mjs [--seed=N] [--runs=N]
+// Usage:  node scripts/test-random.mjs [--seed=N] [--runs=N] [--batch-size=N]
+//         node scripts/test-random.mjs --ordered [--root-only]
 //         pnpm test:random           # one randomized run, default seed
 //
-// This script does NOT replace `test:all`. It runs ALONGSIDE it; pass the
-// random variant in CI as a separate job and gate on it.
+// Ordered mode powers the deterministic suites. Random mode remains a
+// separate CI gate for order-dependent failures.
 
 import { readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -25,21 +26,26 @@ const ROOT = join(__dirname, "..");
 const TESTS = join(ROOT, "tests");
 
 function parseArgs(argv) {
-  const args = { seed: null, runs: 1 };
+  const args = { seed: null, runs: 1, batchSize: 32, ordered: false, rootOnly: false };
   for (const arg of argv.slice(2)) {
     if (arg.startsWith("--seed=")) args.seed = Number(arg.slice("--seed=".length));
     else if (arg.startsWith("--runs=")) args.runs = Number(arg.slice("--runs=".length));
+    else if (arg.startsWith("--batch-size=")) args.batchSize = Number(arg.slice("--batch-size=".length));
+    else if (arg === "--ordered") args.ordered = true;
+    else if (arg === "--root-only") args.rootOnly = true;
   }
+  if (!Number.isInteger(args.runs) || args.runs < 1) throw new Error("--runs must be a positive integer");
+  if (!Number.isInteger(args.batchSize) || args.batchSize < 1) throw new Error("--batch-size must be a positive integer");
   return args;
 }
 
-function collectTests(dir) {
+function collectTests(dir, recursive = true) {
   const entries = readdirSync(dir, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
     const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...collectTests(full));
+    if (entry.isDirectory() && recursive) {
+      files.push(...collectTests(full, true));
     } else if (entry.isFile() && entry.name.endsWith(".test.mjs")) {
       files.push(full);
     }
@@ -69,23 +75,33 @@ function fisherYates(arr, rng) {
 
 function run() {
   const args = parseArgs(process.argv);
-  const allFiles = collectTests(TESTS);
+  const allFiles = collectTests(TESTS, !args.rootOnly);
   let totalFail = 0;
   for (let runIndex = 0; runIndex < args.runs; runIndex += 1) {
     const seed = args.seed ?? (Math.floor(Math.random() * 0xffffffff) || 1);
-    const rng = makeRng(seed);
-    const order = fisherYates([...allFiles], rng);
+    const order = args.ordered
+      ? [...allFiles].sort((left, right) => left.localeCompare(right))
+      : fisherYates([...allFiles], makeRng(seed));
     const relativePaths = order.map((full) => relative(ROOT, full));
-    process.stdout.write(`[test-random] run ${runIndex + 1}/${args.runs} seed=${seed} files=${relativePaths.length}\n`);
+    const batches = [];
+    for (let index = 0; index < relativePaths.length; index += args.batchSize) {
+      batches.push(relativePaths.slice(index, index + args.batchSize));
+    }
+    process.stdout.write(`[test-random] run ${runIndex + 1}/${args.runs} seed=${seed} files=${relativePaths.length} batches=${batches.length}\n`);
     process.stdout.write(`[test-random] order: ${relativePaths.join(" ")}\n`);
-    const result = spawnSync(process.execPath, ["--test", "--test-concurrency=1", ...relativePaths], {
-      cwd: ROOT,
-      stdio: "inherit",
-      encoding: "utf8",
-    });
-    if (result.status !== 0) {
-      process.stderr.write(`[test-random] run ${runIndex + 1} failed with status=${result.status}\n`);
-      totalFail += 1;
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+      const batch = batches[batchIndex];
+      process.stdout.write(`[test-random] batch ${batchIndex + 1}/${batches.length} files=${batch.length}\n`);
+      const result = spawnSync(process.execPath, ["--test", "--test-concurrency=1", ...batch], {
+        cwd: ROOT,
+        stdio: "inherit",
+        encoding: "utf8",
+      });
+      if (result.status !== 0) {
+        process.stderr.write(`[test-random] run ${runIndex + 1} batch ${batchIndex + 1} failed with status=${result.status}\n`);
+        totalFail += 1;
+        break;
+      }
     }
   }
   if (totalFail > 0) {
