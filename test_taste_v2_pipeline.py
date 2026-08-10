@@ -17,6 +17,17 @@ import transcript_sources
 from tools.lib.orthic_transcripts import parse_source_events
 
 
+def _isolate_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
+    """Redirect ``Path.home()`` on every platform.
+
+    ``Path.home()`` reads HOME on POSIX but USERPROFILE on Windows, so setting
+    HOME alone leaves discovery pointed at the real user profile — the test
+    then scans the operator's actual transcripts instead of the fixture.
+    """
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+
 def _write_correction(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
@@ -45,7 +56,7 @@ def test_cli_manifest_writer_is_v13_with_hashed_evidence_contexts(
     home = tmp_path / "home"
     _write_correction(home / ".claude" / "projects" / "project" / "session.jsonl")
     output = tmp_path / "manifest.json"
-    monkeypatch.setenv("HOME", str(home))
+    _isolate_home(monkeypatch, home)
     monkeypatch.setattr(run_journal, "JOURNAL_FILE", tmp_path / "journal.jsonl")
     monkeypatch.setattr(sys, "argv", ["morph.py", "--incremental", "--manifest", str(output)])
     assert cli.main() == 0
@@ -79,7 +90,7 @@ def test_cli_manifest_validation_failure_abandons_journal_without_artifact(
     home = tmp_path / "home"
     _write_correction(home / ".claude" / "projects" / "project" / "session.jsonl")
     output = tmp_path / "manifest.json"
-    monkeypatch.setenv("HOME", str(home))
+    _isolate_home(monkeypatch, home)
     monkeypatch.setattr(run_journal, "JOURNAL_FILE", tmp_path / "journal.jsonl")
     monkeypatch.setattr(
         cli.taste_runtime, "multiwriter_context", lambda **_kwargs: ("08c7ef55-8f6b-4ef1-b234-22232b8ea832", {}),
@@ -144,7 +155,7 @@ def test_cli_manifest_writer_quarantines_unsupported_via_select_sources(
     unsupported.parent.mkdir(parents=True, exist_ok=True)
     unsupported.write_text(json.dumps({"payload": {"session_id": "noise"}}) + "\n", encoding="utf-8")
     output = tmp_path / "manifest.json"
-    monkeypatch.setenv("HOME", str(home))
+    _isolate_home(monkeypatch, home)
     monkeypatch.setattr(run_journal, "JOURNAL_FILE", tmp_path / "journal.jsonl")
     monkeypatch.setattr(sys, "argv", ["morph.py", "--incremental", "--manifest", str(output)])
     assert cli.main() == 0
