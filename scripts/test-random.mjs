@@ -111,9 +111,10 @@ function run() {
         cwd: ROOT,
         stdio: "inherit",
         encoding: "utf8",
+        timeout: 300_000,
       });
       if (result.status !== 0) {
-        process.stderr.write(`[test-random] run ${runIndex + 1} batch ${batchIndex + 1} failed with status=${result.status}\n`);
+        process.stderr.write(`[test-random] run ${runIndex + 1} batch ${batchIndex + 1} failed with status=${result.status} error=${result.error?.code ?? "none"}\n`);
         totalFail += 1;
         break;
       }
