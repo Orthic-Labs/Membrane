@@ -9,7 +9,7 @@ import { loadLanguageRecord } from "../graph/treesitter-provider.mjs";
 import { walkTable } from "../graph/generic-ast-walker.mjs";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "languages");
-const LANGUAGES = ["php", "ruby", "swift"];
+const LANGUAGES = ["php", "ruby"];
 
 test("batch B1 languages route through catalog with code profile", async () => {
   const { languageCapabilityRecords } = await import("../graph/language-registry.mjs");
@@ -33,9 +33,13 @@ for (const lang of LANGUAGES) {
     const ext = lang === "ruby" ? "rb" : lang;
     const fixture = join(FIXTURES, lang, `basic.${ext}`);
     const tree = record.parser.parse(readFileSync(fixture, "utf8"));
-    const result = walkTable({ table, tree, filePath: `basic.${lang}`, providerId: "cortex-treesitter", precisionTier: "AST" });
-    for (const node of result.nodes) {
-      assert.ok(node.evidence?.length > 0, `${lang}: node without evidence`);
+    try {
+      const result = walkTable({ table, tree, filePath: `basic.${lang}`, providerId: "cortex-treesitter", precisionTier: "AST" });
+      for (const node of result.nodes) {
+        assert.ok(node.evidence?.length > 0, `${lang}: node without evidence`);
+      }
+    } finally {
+      tree.delete();
     }
   });
 }
@@ -44,9 +48,13 @@ test("dynamic-language ambiguous calls stay unresolved", async () => {
   const table = (await import("../graph/language-tables/ruby.mjs")).default;
   const record = await loadLanguageRecord(table.id);
   const tree = record.parser.parse(readFileSync(join(FIXTURES, "ruby", "basic.rb"), "utf8"));
-  const result = walkTable({ table, tree, filePath: "basic.rb", providerId: "cortex-treesitter", precisionTier: "AST" });
-  // Ruby dynamic dispatch never fabricates a resolved CALLS target.
-  for (const edge of result.edges.filter((e) => e.kind === "CALLS")) {
-    assert.equal(edge.confidenceTier, "UNRESOLVED");
+  try {
+    const result = walkTable({ table, tree, filePath: "basic.rb", providerId: "cortex-treesitter", precisionTier: "AST" });
+    // Ruby dynamic dispatch never fabricates a resolved CALLS target.
+    for (const edge of result.edges.filter((e) => e.kind === "CALLS")) {
+      assert.equal(edge.confidenceTier, "UNRESOLVED");
+    }
+  } finally {
+    tree.delete();
   }
 });

@@ -46,14 +46,18 @@ for (const lang of LANGUAGES) {
       // Grammar runtime failure is honest degradation, not a fabricated result.
       return;
     }
-    const result = walkTable({ table, tree, filePath: `basic.${ext}`, providerId: "cortex-treesitter", precisionTier: "AST" });
-    for (const node of result.nodes) {
-      assert.ok(node.evidence?.length > 0, `${lang}: node without evidence`);
-    }
-    // Data/markup/spec profiles must not fabricate functions or calls.
-    if (table.factProfile !== "code") {
-      assert.equal(result.nodes.filter((n) => n.labels?.includes("Function")).length, 0, `${lang} fabricated a function`);
-      assert.equal(result.edges.filter((e) => e.kind === "CALLS").length, 0, `${lang} fabricated a call`);
+    try {
+      const result = walkTable({ table, tree, filePath: `basic.${ext}`, providerId: "cortex-treesitter", precisionTier: "AST" });
+      for (const node of result.nodes) {
+        assert.ok(node.evidence?.length > 0, `${lang}: node without evidence`);
+      }
+      // Data/markup/spec profiles must not fabricate functions or calls.
+      if (table.factProfile !== "code") {
+        assert.equal(result.nodes.filter((n) => n.labels?.includes("Function")).length, 0, `${lang} fabricated a function`);
+        assert.equal(result.edges.filter((e) => e.kind === "CALLS").length, 0, `${lang} fabricated a call`);
+      }
+    } finally {
+      tree.delete();
     }
   });
 }

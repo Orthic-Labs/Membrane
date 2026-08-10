@@ -31,9 +31,13 @@ for (const lang of LANGUAGES) {
     }
     const fixture = join(FIXTURES, lang, `basic.${lang}`);
     const tree = record.parser.parse(readFileSync(fixture, "utf8"));
-    const result = walkTable({ table, tree, filePath: `basic.${lang}`, providerId: "cortex-treesitter", precisionTier: "AST" });
-    for (const node of result.nodes) {
-      assert.ok(node.evidence?.length > 0, `${lang}: node without evidence`);
+    try {
+      const result = walkTable({ table, tree, filePath: `basic.${lang}`, providerId: "cortex-treesitter", precisionTier: "AST" });
+      for (const node of result.nodes) {
+        assert.ok(node.evidence?.length > 0, `${lang}: node without evidence`);
+      }
+    } finally {
+      tree.delete();
     }
   });
 }
