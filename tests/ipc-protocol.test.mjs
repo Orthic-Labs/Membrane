@@ -64,6 +64,23 @@ test("METHODS covers the six-tool surface plus read verbs", () => {
   }
 });
 
+test("client close destroys its socket without waiting for peer EOF", async () => {
+  let peer;
+  const server = createServer({ allowHalfOpen: true }, (socket) => { peer = socket; socket.on("error", () => {}); });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const client = new DaemonClient({ endpoint: address.port });
+  try {
+    await client.connect();
+    const socket = client.socket;
+    await client.close();
+    assert.equal(socket.destroyed, true);
+  } finally {
+    peer?.destroy();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
 test("daemon serves a search over the shared service", async () => {
   const repo = mkdtempSync(join(tmpdir(), "cortex-daemon-"));
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
