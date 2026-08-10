@@ -6,9 +6,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 
-import { extractFile, genericEngineEnabled } from "../graph/treesitter-provider.mjs";
+import { disposeTreeSitterProvider, extractFile, genericEngineEnabled } from "../graph/treesitter-provider.mjs";
 import javascriptTable from "../graph/language-tables/javascript.mjs";
 import typescriptTable from "../graph/language-tables/typescript.mjs";
 import tsxTable from "../graph/language-tables/tsx.mjs";
@@ -16,6 +16,8 @@ import pythonTable from "../graph/language-tables/python.mjs";
 import rustTable from "../graph/language-tables/rust.mjs";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "languages");
+
+after(() => disposeTreeSitterProvider());
 
 function canonicalize(result) {
   const canonical = (value) => JSON.parse(JSON.stringify(value));

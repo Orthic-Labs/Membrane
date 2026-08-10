@@ -84,7 +84,7 @@ import { workingTreeSummary } from "../sources/dirty-files.mjs";
 import { stableRead } from "../graph/stable-read.mjs";
 import { applyFileDelta, clearDomainPending, DOC_PROVIDER, MAX_DEPENDENT_FILES, MAX_HOPS } from "../graph/delta-store.mjs";
 import { collectDependents } from "../graph/store-sqlite.mjs";
-import { buildIncrementalTreeSitterFacts, SUPPORTED_EXTENSIONS } from "../graph/treesitter-provider.mjs";
+import { buildIncrementalTreeSitterFacts, disposeTreeSitterProvider, SUPPORTED_EXTENSIONS } from "../graph/treesitter-provider.mjs";
 import { reconcile as reconcileGraph } from "../watchman/reconcile.mjs";
 import { syncToCurrentSource } from "../graph/barrier.mjs";
 import { checkScopeGrant, issueScopeGrant } from "../lib/receipt-store.mjs";
@@ -3250,5 +3250,7 @@ if (isDirectInvocation()) {
       console.error(`cortex: ${error.message}`);
     }
     process.exitCode = 1;
+  } finally {
+    disposeTreeSitterProvider();
   }
 }
