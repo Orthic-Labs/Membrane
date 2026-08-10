@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
+ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 DEFAULT_TASTE = (
     ROOT / "docs/evidence/commandcode-taste-bakeoff-2026-07-13/"
     "minimax-m3/root-taste.md"

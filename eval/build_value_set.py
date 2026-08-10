@@ -30,7 +30,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
+WS = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 MORPH_DIR = WS / "tools" / "pipelines" / "memory" / "morph"
 SCHEMA_PATH = MORPH_DIR / "eval" / "value_set_schema.json"
 BASELINE_DIR = WS / "docs" / "baselines" / "morph"

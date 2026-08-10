@@ -17,9 +17,9 @@ from typing import Callable, Sequence
 
 
 WS = Path(
-    os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
+    os.environ.get("WORKSPACE_ROOT") or next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())
 ).expanduser().resolve()
-MORPH_DIR = WS / "tools/pipelines/memory/morph"
+MORPH_DIR = Path(__file__).resolve().parent.parent  # morph/ — this file lives in morph/eval/
 JURY_DIR = WS / "tools/review"
 SYSTEM = """You are a conservative adjudicator for coding-agent preference memory.
 Return only a JSON array with exactly one object per input item.

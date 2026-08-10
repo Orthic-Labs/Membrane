@@ -41,8 +41,8 @@ from collections import defaultdict
 from pathlib import Path
 
 
-WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
-sys.path.insert(0, str(WS / "tools/pipelines/memory/morph"))
+WS = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import admission  # noqa: E402
 import preference_record as pr_mod  # noqa: E402
 

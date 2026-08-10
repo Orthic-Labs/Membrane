@@ -32,7 +32,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-WS = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:/Claude broke non-Windows checkouts
+WS = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 MORPH_STATE = Path.home() / ".claude" / "morph"
 AUDIT = MORPH_STATE / "audit.jsonl"
 JOURNAL = MORPH_STATE / "run_journal.jsonl"

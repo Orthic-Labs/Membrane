@@ -127,7 +127,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--workspace-root",
         type=Path,
         default=Path(
-            os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
+            os.environ.get("WORKSPACE_ROOT") or next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())
         ).expanduser().resolve(),
     )
     parser.add_argument("--out", type=Path, required=True)

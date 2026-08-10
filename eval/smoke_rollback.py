@@ -12,9 +12,9 @@ from pathlib import Path
 
 
 ROOT = Path(
-    os.environ.get("WORKSPACE_ROOT") or Path(__file__).resolve().parents[5]
+    os.environ.get("WORKSPACE_ROOT") or next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())
 ).expanduser().resolve()
-MORPH = ROOT / "tools/pipelines/memory/morph"
+MORPH = Path(__file__).resolve().parent.parent  # morph/ — this file lives in morph/eval/
 sys.path.insert(0, str(MORPH))
 
 import morph as morph_pipeline

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parents[5]  # workspace root — hardcoded D:\Claude broke non-Windows checkouts
+ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 HERE = Path(__file__).resolve().parent
 PRIMARY = ROOT / ".cache/morph-delivery-parity/full"
 DEFAULT_ALIAS_DB = ROOT / ".cache/morph-delivery-parity/evidence-alias/alias.db"
