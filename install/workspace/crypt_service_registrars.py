@@ -12,6 +12,7 @@ then the new plist takes its place.
 from __future__ import annotations
 
 import shutil
+import socket
 import subprocess
 import time
 from pathlib import Path
@@ -73,6 +74,13 @@ def migrate_macos_label(
     return result
 
 
+def _port_in_use(host: str, port: int, *, timeout_seconds: float = 0.2) -> bool:
+    """One-shot probe (same connect_ex idiom as crypt_service.wait_for_tcp_port_*)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(timeout_seconds)
+        return probe.connect_ex((host, port)) == 0
+
+
 def _win_ps1_dispatch(repo: Path, installer_ps1: Path | None, extra_args: list[str], runner) -> subprocess.CompletedProcess | None:
     installer = installer_ps1 or (repo / "membrane/install/workspace/install-windows-tasks.ps1")
     shell = shutil.which("pwsh") or shutil.which("powershell")
@@ -93,6 +101,14 @@ def setup_crypt_serve_autostart(
     """Keep the local Crypt browse/recall service warm after login. Idempotent."""
     runner = runner or subprocess.run
     if win:
+        # Foreign-supervisor case (mirrors the mac owns_new/owns_old asymmetry below): a Hub
+        # already spawning crypt-service.exe as its own child owns the port. Registering the
+        # standalone Task Scheduler entry on top of that is unnecessary double ownership, so
+        # probe first and log-and-skip rather than dispatching unconditionally.
+        if _port_in_use("127.0.0.1", port):
+            print(f"[membrane-workspace] crypt-serve: another supervisor already owns :{port} — "
+                  "skipping standalone Task Scheduler registration (leaving it alone)")
+            return
         result = _win_ps1_dispatch(repo, installer_ps1, ["-EnableDaily"] if enable_daily else [], runner)
         if result is None:
             print("[membrane-workspace] crypt-serve: PowerShell not found — skipped")

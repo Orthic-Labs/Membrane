@@ -1,11 +1,16 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const APP="membrane-hub",VERSION="0.1.9",TARGET={mac:"aarch64-apple-darwin",win:"x86_64-pc-windows-msvc"};
 const OS={mac:"macos",win:"windows"},ARCH={mac:"aarch64",win:"x86_64"},PRESERVED=["product_version","source_repo","schema_compat","model"],IDENTITY=["crypt_source_commit","source_tree_path","source_tree_sha256","release_generation"],ASSET=["os","arch","name","role","sha256","release_generation"];
 const REL=join("tools","lib","crypt-release.json");
+// Git tree paths (`<rev>:<path>` revision specs, ls-tree, cat-file) are always
+// POSIX-separated regardless of host OS. REL is built with node:path `join` for
+// filesystem use (correct native separators there); this converts it for the
+// git-boundary use in checkCommitted so `git show HEAD:<path>` resolves on Windows too.
+const toGitPath=(path)=>path.split(sep).join("/");
 const git=(root,args,encoding="utf8")=>execFileSync("git",["-C",root,...args],{encoding}).trim();
 export function parseArgs(argv){const [subcommand,...args]=argv.slice(2);if(!["assemble","check"].includes(subcommand)||args.some((x)=>x!=="--require-committed")||args.length>1||(args.length&&subcommand!=="check"))throw Error("usage: write-release-manifest.mjs <assemble|check> [--require-committed]");return {subcommand,requireCommitted:args.length===1};}
 export const repoRootFromCwd=(cwd)=>git(cwd,["rev-parse","--show-toplevel"]);
@@ -22,7 +27,7 @@ export function assembleManifest({existing,macReceipt,winReceipt}){if(macReceipt
 function exactKeys(value,keys){return value&&JSON.stringify(Object.keys(value).sort())===JSON.stringify([...keys].sort());}
 export function checkManifest({existing,macReceipt,winReceipt}){const {manifest}=assembleManifest({existing,macReceipt,winReceipt});if(!exactKeys(existing,[...PRESERVED,...IDENTITY,"assets"])||!Array.isArray(existing.assets)||existing.assets.length!==4)throw Error("manifest shape mismatch");if(JSON.stringify(existing)!==JSON.stringify(manifest))throw Error("manifest mismatch");return manifest;}
 export function gatherGitlinkMembrane(parent){const row=git(parent,["ls-tree","HEAD","membrane"]).split(/\s+/);if(row[0]!=="160000"||row[1]!=="commit"||!/^[0-9a-f]{40}$/i.test(row[2]))throw Error("invalid membrane gitlink");return row[2];}
-export function checkCommitted({repoRoot,manifestPath,manifestBytes}){const parent=parentWorkspaceRoot(repoRoot),head=execFileSync("git",["-C",parent,"show",`HEAD:${REL}`],{encoding:"buffer"});if(!head.equals(manifestBytes)||!readFileSync(manifestPath).equals(manifestBytes))throw Error("parent HEAD manifest bytes != worktree");if(gatherGitlinkMembrane(parent)!==git(repoRoot,["rev-parse","HEAD"]))throw Error("parent gitlink != nested HEAD");if(git(repoRoot,["status","--porcelain","--untracked-files=all"]))throw Error("nested source is not clean");return true;}
+export function checkCommitted({repoRoot,manifestPath,manifestBytes}){const parent=parentWorkspaceRoot(repoRoot),head=execFileSync("git",["-C",parent,"show",`HEAD:${toGitPath(REL)}`],{encoding:"buffer"});if(!head.equals(manifestBytes)||!readFileSync(manifestPath).equals(manifestBytes))throw Error("parent HEAD manifest bytes != worktree");if(gatherGitlinkMembrane(parent)!==git(repoRoot,["rev-parse","HEAD"]))throw Error("parent gitlink != nested HEAD");if(git(repoRoot,["status","--porcelain","--untracked-files=all"]))throw Error("nested source is not clean");return true;}
 export function atomicWriteManifest({manifestPath,manifest}){const staged=join(dirname(manifestPath),`.${basename(manifestPath)}.staged`);mkdirSync(dirname(manifestPath),{recursive:true});writeFileSync(staged,`${JSON.stringify(manifest,null,2)}\n`);if(!readFileSync(staged).equals(Buffer.from(`${JSON.stringify(manifest,null,2)}\n`)))throw Error("manifest staging mismatch");renameSync(staged,manifestPath);return manifest;}
 export function main(argv){const {subcommand,requireCommitted}=parseArgs(argv),root=repoRootFromCwd(process.cwd()),parent=parentWorkspaceRoot(root),commit=git(root,["rev-parse","HEAD"]),mac=readReceipt(assetsJsonPathFor(parent,commit,"mac"),"mac"),win=readReceipt(assetsJsonPathFor(parent,commit,"win"),"win"),path=parentManifestPath(parent),existing=JSON.parse(readFileSync(path,"utf8"));if(subcommand==="assemble")return atomicWriteManifest({manifestPath:path,manifest:assembleManifest({existing,macReceipt:mac,winReceipt:win}).manifest});const manifest=checkManifest({existing,macReceipt:mac,winReceipt:win});if(requireCommitted)checkCommitted({repoRoot:root,manifestPath:path,manifestBytes:Buffer.from(`${JSON.stringify(manifest,null,2)}\n`)});return manifest;}
 if(fileURLToPath(import.meta.url)===resolve(process.argv[1]||""))main(process.argv);

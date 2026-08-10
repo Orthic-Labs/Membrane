@@ -3,6 +3,7 @@ param(
     [string]$TaskFolder = "\Membrane\Workspace\",
     [string]$ServeTaskName = "crypt-serve",
     [string]$DailyTaskName = "crypt-daily",
+    [int]$ServePort = 47851,
     [switch]$EnableDaily,
     [switch]$InstallCryptAliases
 )
@@ -71,6 +72,13 @@ $serveSettings = New-ScheduledTaskSettingsSet `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries
 
+# Probe before writing/starting: if a foreign owner (e.g. Membrane Hub, spawning
+# crypt-service.exe as its own child) already holds the port, the task must still be
+# written for idempotent wiring, but must NOT be started — starting it here would fight
+# the Hub for the same port. This mirrors the macOS "plist written, not bootstrapped"
+# outcome (crypt_service_registrars.py::setup_crypt_serve_autostart, mac branch).
+$portHeldByForeignOwner = [bool](Test-NetConnection -ComputerName 127.0.0.1 -Port $ServePort -InformationLevel Quiet -WarningAction SilentlyContinue)
+
 Register-ScheduledTask `
     -TaskName $ServeTaskName `
     -TaskPath $TaskFolder `
@@ -81,9 +89,12 @@ Register-ScheduledTask `
     -Description "Resident loopback Crypt recall service" `
     -Force | Out-Null
 
-# Register-ScheduledTask -Force can terminate an existing long-running instance. Setup is an
-# idempotent wiring operation, so it must also restore the resident daemon before returning.
-if ((Get-ScheduledTask -TaskName $ServeTaskName -TaskPath $TaskFolder).State -ne "Running") {
+if ($portHeldByForeignOwner) {
+    Write-Host "[install-windows-tasks] crypt-serve: port $ServePort already held by another supervisor - task written, not started (leaving the running service alone)"
+} elseif ((Get-ScheduledTask -TaskName $ServeTaskName -TaskPath $TaskFolder).State -ne "Running") {
+    # Register-ScheduledTask -Force can terminate an existing long-running instance. Setup is
+    # an idempotent wiring operation, so it must also restore the resident daemon before
+    # returning, but only when nothing else already owns the port.
     Start-ScheduledTask -TaskName $ServeTaskName -TaskPath $TaskFolder
 }
 
@@ -124,6 +135,25 @@ if ($InstallCryptAliases) {
 $legacyVbs = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\crypt-serve.vbs"
 if (Test-Path -LiteralPath $legacyVbs) {
     Remove-Item -LiteralPath $legacyVbs -Force
+}
+
+# Once a Hub-spawned crypt-service.exe is confirmed to own the port, the standalone
+# crypt-serve/crypt-daily tasks are redundant. Disable them (never delete - they remain the
+# documented fallback), but ONLY when the port's owner is actually parented by the Hub,
+# never unconditionally.
+try {
+    $owningPid = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort $ServePort -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty OwningProcess
+    if ($owningPid) {
+        $owningProc = Get-CimInstance Win32_Process -Filter "ProcessId = $owningPid" -ErrorAction SilentlyContinue
+        $parentProc = if ($owningProc) { Get-CimInstance Win32_Process -Filter "ProcessId = $($owningProc.ParentProcessId)" -ErrorAction SilentlyContinue } else { $null }
+        if ($parentProc -and $parentProc.Name -like "Membrane Hub*") {
+            Disable-ScheduledTask -TaskName $ServeTaskName, $DailyTaskName -TaskPath $TaskFolder -ErrorAction SilentlyContinue | Out-Null
+            Write-Host "[install-windows-tasks] crypt-serve/crypt-daily: Hub-owned service detected on port $ServePort - standalone tasks disabled (kept as fallback)"
+        }
+    }
+} catch {
+    Write-Host "[install-windows-tasks] crypt-serve: Hub-ownership probe failed - $($_.Exception.Message)"
 }
 
 Get-ScheduledTask -TaskName $ServeTaskName, $DailyTaskName -TaskPath $TaskFolder |

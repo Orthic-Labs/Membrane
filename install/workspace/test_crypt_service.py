@@ -5,6 +5,7 @@ Never invokes real launchctl — every subprocess.run call is a fixture.
 """
 from __future__ import annotations
 
+import socket
 import sqlite3
 import subprocess
 
@@ -147,3 +148,43 @@ def test_setup_crypt_serve_autostart_tolerates_foreign_port_owner(tmp_path):
     plist = home / "Library/LaunchAgents/com.membrane.workspace.crypt-serve.plist"
     assert plist.exists()
     assert "com.membrane.workspace.crypt-serve" in plist.read_text(encoding="utf-8")
+
+
+def test_setup_crypt_serve_autostart_win_skips_dispatch_when_port_owned(tmp_path):
+    """Windows asymmetry mirroring the mac owns_new/owns_old case: a foreign supervisor
+    (e.g. Membrane Hub) already holds the port, so the PS1 installer must never be invoked —
+    no PowerShell process, no Task Scheduler mutation."""
+    repo = tmp_path / "workspace"
+    home = tmp_path / "home"
+    runner = _fake_runner(returncode=0)
+
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    try:
+        port = listener.getsockname()[1]
+        cs.setup_crypt_serve_autostart(repo, home, port, win=True, mac=False, runner=runner)
+    finally:
+        listener.close()
+
+    assert runner.calls == []
+
+
+def test_setup_crypt_serve_autostart_win_dispatches_when_port_free(tmp_path, monkeypatch):
+    """Free port: the PS1 installer is dispatched (through whatever PowerShell shutil.which
+    resolves in the test host's environment) rather than skipped."""
+    import crypt_service_registrars as csr
+
+    repo = tmp_path / "workspace"
+    home = tmp_path / "home"
+    runner = _fake_runner(returncode=0)
+    monkeypatch.setattr(csr.shutil, "which", lambda _name: "/usr/bin/true")
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        free_port = probe.getsockname()[1]
+
+    cs.setup_crypt_serve_autostart(repo, home, free_port, win=True, mac=False, runner=runner)
+
+    assert len(runner.calls) == 1
+    assert runner.calls[0][0] == "/usr/bin/true"
