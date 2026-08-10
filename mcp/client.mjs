@@ -179,6 +179,8 @@ function loadInput({ inputArg, maxTokens }) {
     scopeDescriptor: parsed.scopeDescriptor,
     taskEnvelope: parsed.taskEnvelope,
     turnEnvelope: parsed.turnEnvelope,
+    clientEnvelope: parsed.clientEnvelope,
+    overlay: parsed.overlay,
     ...boundedTrace(parsed),
   };
 }
@@ -357,6 +359,8 @@ async function main() {
       // MBR-007 / R06: preserve the exact versioned envelopes end to end.
       ...(payload.taskEnvelope ? { taskEnvelope: payload.taskEnvelope } : {}),
       ...(payload.turnEnvelope ? { turnEnvelope: payload.turnEnvelope } : {}),
+      ...(payload.clientEnvelope ? { clientEnvelope: payload.clientEnvelope } : {}),
+      ...(payload.overlay ? { overlay: payload.overlay } : {}),
     };
     process.stdout.write(JSON.stringify(fallback) + "\n");
     return 2;

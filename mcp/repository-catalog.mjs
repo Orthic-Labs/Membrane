@@ -227,11 +227,15 @@ function aliasesFor(relativeRoot) {
  * the Cortex watchman supervisor (supervisor.mjs:73-112) are `watcher_pid`,
  * `event_gap`, `event_gap_reason`, `last_error`, `source_clock`, `applied_clock`.
  *
- * Mapping to exactly four values (no others):
+ * Mapping to exactly four values (no others) — delegated to
+ * Cortex's authoritative readiness (MBR-009):
  *   - no graph.db or no row → "unwatched"
- *   - event_gap non-zero    → "stale"
- *   - watcher_pid present and alive → "current"
- *   - watcher_pid present but dead  → "degraded"
+ *   - watcher_pid missing    → "unwatched" (watcher_never_started)
+ *   - watcher_pid dead       → "unwatched" (watcher_process_dead)
+ *   - watcher_pid alive but owner stale → "unwatched" (watcher_owner_stale)
+ *   - watcher alive + event_gap → "degraded"
+ *   - watcher alive + pending events → "stale"
+ *   - watcher alive + no gap → "current"
  *
  * @param {string} absoluteRoot absolute path to the repo root
  * @returns {"current"|"degraded"|"stale"|"unwatched"}

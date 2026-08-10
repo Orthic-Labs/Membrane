@@ -322,7 +322,7 @@ async function runBoundedOrdered(items, limit, fn, signal) {
   return out;
 }
 
-async function currentFreshness(binding, install, sessionId) {
+async function currentFreshness(binding, install, sessionId, worktreePath) {
   try {
     let token = "";
     for (const tokenPath of [install.tokenPath, join(install.workspaceRoot, "tools", ".cache", "memory", "api-token")]) {
@@ -337,7 +337,7 @@ async function currentFreshness(binding, install, sessionId) {
     const response = await fetch(`${install.endpoint}/freshness`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify({ repoRoot: binding.root, repositoryId: binding.repository_id, sessionId }),
+      body: JSON.stringify({ repoRoot: binding.root, repositoryId: binding.repository_id, sessionId, worktreePath: worktreePath || binding.root }),
       signal: AbortSignal.timeout(SCOPE_GRANT_FRESHNESS_TIMEOUT_MS),
     });
     if (!response.ok) return null;
@@ -679,7 +679,7 @@ async function callTool(name, args, trace = {}, lifecycle) {
     const packet = text(out.stdout.trim() || { status: "unavailable", error: out.stderr.slice(0, 240) });
     if (!packet || typeof packet !== "object" || Array.isArray(packet)) return packet;
     if (args.session && args.taskId && packet.ok === true && packet.packet && typeof packet.packet === "object") {
-      const freshness = await currentFreshness(binding, install, args.session);
+      const freshness = await currentFreshness(binding, install, args.session, singleEnvelope.overlay.worktreePath);
       const scopeGrant = mintScopeGrantV1({ binding, args, packet: packet.packet, freshness });
       if (scopeGrant) packet.scopeGrant = scopeGrant;
     }

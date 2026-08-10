@@ -196,6 +196,21 @@ try {
   assert.equal(requests[12].headers["x-membrane-trace"], generated.parsed.traceId);
   assert.equal(requests[12].headers["x-rightcontext-trace"], generated.parsed.traceId);
 
+  // CU-10 / MBR-007 envelope continuity: clientEnvelope + overlay survive the client round-trip
+  const clientEnv = { schema: "orthic.client-envelope.v1", clientId: "test-client", adapterVersion: "9.9.9" };
+  const overlayId = { schema: "orthic.overlay-identity.v1", sessionId: "session-fallback", worktreePath: process.cwd() };
+  const envelopeFull = await runClient({
+    task: "envelope continuity", repo: process.cwd(), session: "session-fallback",
+    taskEnvelope, turnEnvelope, clientEnvelope: clientEnv, overlay: overlayId,
+  });
+  assert.equal(envelopeFull.code, 0, envelopeFull.stderr);
+  // The client POSTs all four envelopes to the planner: verify they arrived byte-for-byte
+  const lastIdx = requests.length - 1;
+  assert.deepEqual(requests[lastIdx].body.taskEnvelope, taskEnvelope);
+  assert.deepEqual(requests[lastIdx].body.turnEnvelope, turnEnvelope);
+  assert.deepEqual(requests[lastIdx].body.clientEnvelope, clientEnv);
+  assert.deepEqual(requests[lastIdx].body.overlay, overlayId);
+
   assert.equal(absent.parsed.packet.blocks[0].text.length, largeText.length);
 } finally {
   await new Promise((resolve) => server.close(resolve));
