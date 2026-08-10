@@ -13,6 +13,12 @@ use crate::doc_shadow::{
 
 pub const DOC_CANDIDATE_PROVIDER_NAME: &str = "doc_spine";
 
+/// Opt-in flag: document candidates are shadow-only unless explicitly enabled.
+/// Default OFF — no behavior change for existing installs until `MEMBRANE_DOC_PROVIDER_ENABLED=1`.
+pub fn is_doc_provider_enabled() -> bool {
+    std::env::var("MEMBRANE_DOC_PROVIDER_ENABLED").map(|v| v == "1" || v.to_lowercase() == "true").unwrap_or(false)
+}
+
 /// Input owned by the document provider; it never joins the planner candidate set.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct DocCandidateProviderRequestV1 {
@@ -74,6 +80,18 @@ pub struct PlannerDocShadowObservationV1 {
 pub struct PlannerWithDocShadowV1 {
     pub planner: PlannerOutput,
     pub doc_shadow: PlannerDocShadowObservationV1,
+}
+
+/// Opt-in live candidate path: when enabled, document candidates are surfaced in the reviewed-learning queue.
+/// Disabled by default (is_doc_provider_enabled() == false → identical output to pre-unit state).
+pub fn maybe_admit_doc_candidates(request: &DocCandidateProviderRequestV1, selection: &DocCandidateShadowSelectionV1) -> Option<Vec<DocCandidateProviderCandidateV1>> {
+    if !is_doc_provider_enabled() {
+        return None;
+    }
+    if selection.candidates.is_empty() {
+        return None;
+    }
+    Some(selection.candidates.clone())
 }
 
 /// Run normal planning, then attach a packet-neutral Doc Spine shadow observation.
