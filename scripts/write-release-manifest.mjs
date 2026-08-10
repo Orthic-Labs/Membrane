@@ -1,75 +1,28 @@
-// Usage: node scripts/write-release-manifest.mjs [--manifest <path>]
-//   [--identity <path>] [--check]
-
-import { readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
-import { engineReleaseIdentity } from "./release-identity.mjs";
-const args = process.argv.slice(2);
-const options = { check: false };
-for (let index = 0; index < args.length; index += 1) {
-  const arg = args[index];
-  if (arg === "--check") {
-    if (options.check) throw new Error("--check may only be supplied once");
-    options.check = true;
-  } else if (arg === "--manifest" || arg === "--identity") {
-    if (options[arg.slice(2)]) throw new Error(`${arg} may only be supplied once`);
-    const value = args[++index];
-    if (!value || value.startsWith("--")) throw new Error(`${arg} requires a path`);
-    options[arg.slice(2)] = resolve(value);
-  } else {
-    throw new Error(`unknown argument: ${arg}`);
-  }
-}
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = new URL("../../../", import.meta.url).pathname.replace(/\/$/, "");
-const manifestPath = options.manifest
-  ?? new URL("../../../../tools/lib/crypt-release.json", import.meta.url).pathname;
-const identity = options.identity
-  ? validatedRecordedIdentity(options.identity, repoRoot)
-  : engineReleaseIdentity(repoRoot);
-const document = JSON.parse(readFileSync(manifestPath, "utf8"));
-const fields = ["crypt_source_commit", "source_tree_path", "source_tree_sha256", "release_generation"];
-const expected = {
-  crypt_source_commit: identity.commit,
-  source_tree_path: identity.sourceTreePath,
-  source_tree_sha256: identity.sourceTreeSha256,
-  release_generation: identity.releaseGeneration,
-};
-const mismatched = fields.filter((field) => document[field] !== expected[field]);
-if (options.check) {
-  if (mismatched.length) {
-    throw new Error(`manifest identity mismatch: ${mismatched.join(", ")}`);
-  }
-  console.log(`[membrane] release manifest matches ${identity.releaseGeneration}`);
-  process.exit(0);
-}
-if (!mismatched.length) {
-  console.log(`[membrane] release manifest already at ${identity.releaseGeneration}`);
-  process.exit(0);
-}
-Object.assign(document, expected);
-writeFileSync(manifestPath, `${JSON.stringify(document, null, 2)}\n`);
-console.log(`[membrane] release manifest updated: ${mismatched.join(", ")}`);
-
-function validatedRecordedIdentity(path, root) {
-  const identity = JSON.parse(readFileSync(path, "utf8"));
-  const keys = ["commit", "dirty", "fileCount", "sourceTreePath", "sourceTreeSha256", "releaseGeneration"];
-  if (Object.keys(identity).length !== keys.length || keys.some((key) => !(key in identity))) {
-    throw new Error("recorded identity has an invalid shape");
-  }
-  const head = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
-  if (identity.commit !== head || !/^[0-9a-f]{40}$/i.test(identity.commit)) {
-    throw new Error("recorded identity commit is not current HEAD");
-  }
-  if (typeof identity.dirty !== "boolean" || !Number.isSafeInteger(identity.fileCount) || identity.fileCount < 0) {
-    throw new Error("recorded identity has invalid build metadata");
-  }
-  if (identity.sourceTreePath !== "engine" || !/^[0-9a-f]{64}$/i.test(identity.sourceTreeSha256)) {
-    throw new Error("recorded identity has invalid engine digest");
-  }
-  if (identity.releaseGeneration !== `sha256:${identity.sourceTreeSha256}`) {
-    throw new Error("recorded identity release generation does not match digest");
-  }
-  return identity;
-}
+const APP="membrane-hub",VERSION="0.1.9",TARGET={mac:"aarch64-apple-darwin",win:"x86_64-pc-windows-msvc"};
+const OS={mac:"macos",win:"windows"},ARCH={mac:"aarch64",win:"x86_64"},PRESERVED=["product_version","source_repo","schema_compat","model"],IDENTITY=["crypt_source_commit","source_tree_path","source_tree_sha256","release_generation"],ASSET=["os","arch","name","role","sha256","release_generation"];
+const REL=join("tools","lib","crypt-release.json");
+const git=(root,args,encoding="utf8")=>execFileSync("git",["-C",root,...args],{encoding}).trim();
+export function parseArgs(argv){const [subcommand,...args]=argv.slice(2);if(!["assemble","check"].includes(subcommand)||args.some((x)=>x!=="--require-committed")||args.length>1||(args.length&&subcommand!=="check"))throw Error("usage: write-release-manifest.mjs <assemble|check> [--require-committed]");return {subcommand,requireCommitted:args.length===1};}
+export const repoRootFromCwd=(cwd)=>git(cwd,["rev-parse","--show-toplevel"]);
+export function parentWorkspaceRoot(root){const parent=dirname(root),row=git(parent,["ls-files","--stage",basename(root)]);if(!existsSync(join(parent,".git"))||!row.startsWith("160000 "))throw Error("parent lacks membrane gitlink");return parent;}
+export const parentManifestPath=(root)=>join(root,REL);
+export const bundleRoot=(parent,commit,platform)=>join(parent,"tools",".cache","releases",APP,VERSION,commit,TARGET[platform]);
+export const assetsJsonPathFor=(parent,commit,platform)=>join(bundleRoot(parent,commit,platform),"assets.json");
+function identity(value){const keys=["commit","dirty","fileCount","sourceTreePath","sourceTreeSha256","releaseGeneration"];if(JSON.stringify(Object.keys(value||{}).sort())!==JSON.stringify([...keys].sort())||value.dirty!==false||!Number.isSafeInteger(value.fileCount)||value.fileCount<0||!/^[0-9a-f]{40}$/i.test(value.commit)||!/^[0-9a-f]{64}$/i.test(value.sourceTreeSha256)||value.sourceTreePath!=="engine"||value.releaseGeneration!==`sha256:${value.sourceTreeSha256}`)throw Error("invalid receipt identity");return value;}
+export function readReceipt(path,expectedPlatform){const value=JSON.parse(readFileSync(path,"utf8")),platform=value.platform,target=TARGET[platform],ext=platform==="win"?".exe":"",shape=platform==="mac"?["name","sha256","signature","team"]:["name","sha256","signature"];if(!TARGET[expectedPlatform]||JSON.stringify(Object.keys(value).sort())!==JSON.stringify(["app","files","identity","platform","schemaVersion","target","version"])||platform!==expectedPlatform||value.schemaVersion!==1||value.app!==APP||value.version!==VERSION||!target||value.target!==target||JSON.stringify(Object.keys(value.files||{}).sort())!==JSON.stringify(["cli","hubCommand","service"]))throw Error("invalid receipt");for(const [role,name] of [["cli",`crypt-${target}${ext}`],["service",`crypt-service-${target}${ext}`],["hubCommand",`membrane-${target}${ext}`]]){const file=value.files[role];if(JSON.stringify(Object.keys(file||{}).sort())!==JSON.stringify(shape)||file.name!==name||!/^[0-9a-f]{64}$/.test(file.sha256)||file.signature!==(platform==="mac"?"developer-id":"authenticode")||platform==="mac"&&!/^[A-Z0-9]+$/.test(file.team))throw Error("invalid receipt file");}value.identity=identity(value.identity);return value;}
+export function strictEqualIdentities(mac,win){for(const key of ["commit","dirty","fileCount","sourceTreePath","sourceTreeSha256","releaseGeneration"])if(mac.identity[key]!==win.identity[key])throw Error(`receipts disagree on identity.${key}`);return mac.identity;}
+function* files(receipt,platform){for(const role of ["cli","service"]){const value=receipt.files?.[role];if(!value||!/^[0-9a-f]{64}$/.test(value.sha256))throw Error(`receipt missing ${role}`);const ext=platform==="win"?".exe":"";yield {os:OS[platform],arch:ARCH[platform],name:role==="cli"?`crypt${ext}`:`crypt-service${ext}`,role,sha256:value.sha256,release_generation:receipt.identity.releaseGeneration};}}
+export function gatherSortedAssets(mac,win){strictEqualIdentities(mac,win);return [...files(mac,"mac"),...files(win,"win")].sort((a,b)=>a.name.localeCompare(b.name));}
+export function assembleManifest({existing,macReceipt,winReceipt}){if(macReceipt.platform!=="mac"||winReceipt.platform!=="win"||!PRESERVED.every((key)=>key in existing))throw Error("invalid manifest inputs");const id=strictEqualIdentities(macReceipt,winReceipt),out={};for(const key of PRESERVED)out[key]=existing[key];return {manifest:{...out,crypt_source_commit:id.commit,source_tree_path:id.sourceTreePath,source_tree_sha256:id.sourceTreeSha256,release_generation:id.releaseGeneration,assets:gatherSortedAssets(macReceipt,winReceipt)}};}
+function exactKeys(value,keys){return value&&JSON.stringify(Object.keys(value).sort())===JSON.stringify([...keys].sort());}
+export function checkManifest({existing,macReceipt,winReceipt}){const {manifest}=assembleManifest({existing,macReceipt,winReceipt});if(!exactKeys(existing,[...PRESERVED,...IDENTITY,"assets"])||!Array.isArray(existing.assets)||existing.assets.length!==4)throw Error("manifest shape mismatch");if(JSON.stringify(existing)!==JSON.stringify(manifest))throw Error("manifest mismatch");return manifest;}
+export function gatherGitlinkMembrane(parent){const row=git(parent,["ls-tree","HEAD","membrane"]).split(/\s+/);if(row[0]!=="160000"||row[1]!=="commit"||!/^[0-9a-f]{40}$/i.test(row[2]))throw Error("invalid membrane gitlink");return row[2];}
+export function checkCommitted({repoRoot,manifestPath,manifestBytes}){const parent=parentWorkspaceRoot(repoRoot),head=execFileSync("git",["-C",parent,"show",`HEAD:${REL}`],{encoding:"buffer"});if(!head.equals(manifestBytes)||!readFileSync(manifestPath).equals(manifestBytes))throw Error("parent HEAD manifest bytes != worktree");if(gatherGitlinkMembrane(parent)!==git(repoRoot,["rev-parse","HEAD"]))throw Error("parent gitlink != nested HEAD");if(git(repoRoot,["status","--porcelain","--untracked-files=all"]))throw Error("nested source is not clean");return true;}
+export function atomicWriteManifest({manifestPath,manifest}){const staged=join(dirname(manifestPath),`.${basename(manifestPath)}.staged`);mkdirSync(dirname(manifestPath),{recursive:true});writeFileSync(staged,`${JSON.stringify(manifest,null,2)}\n`);if(!readFileSync(staged).equals(Buffer.from(`${JSON.stringify(manifest,null,2)}\n`)))throw Error("manifest staging mismatch");renameSync(staged,manifestPath);return manifest;}
+export function main(argv){const {subcommand,requireCommitted}=parseArgs(argv),root=repoRootFromCwd(process.cwd()),parent=parentWorkspaceRoot(root),commit=git(root,["rev-parse","HEAD"]),mac=readReceipt(assetsJsonPathFor(parent,commit,"mac"),"mac"),win=readReceipt(assetsJsonPathFor(parent,commit,"win"),"win"),path=parentManifestPath(parent),existing=JSON.parse(readFileSync(path,"utf8"));if(subcommand==="assemble")return atomicWriteManifest({manifestPath:path,manifest:assembleManifest({existing,macReceipt:mac,winReceipt:win}).manifest});const manifest=checkManifest({existing,macReceipt:mac,winReceipt:win});if(requireCommitted)checkCommitted({repoRoot:root,manifestPath:path,manifestBytes:Buffer.from(`${JSON.stringify(manifest,null,2)}\n`)});return manifest;}
+if(fileURLToPath(import.meta.url)===resolve(process.argv[1]||""))main(process.argv);

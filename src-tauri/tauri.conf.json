@@ -5,7 +5,7 @@
   "identifier": "com.membrane.hub",
   "build": { "beforeBuildCommand": "pnpm build", "frontendDist": "../dist" },
   "bundle": {
-    "externalBin": ["binaries/crypt-service", "binaries/membrane"],
+    "externalBin": ["binaries/crypt", "binaries/crypt-service", "binaries/membrane"],
     "windows": { "nsis": { "template": "windows/installer.nsi" } },
     "macOS": { "signingIdentity": "Developer ID Application: Adrian D'souza (6KLGD3LLKF)" },
     "icon": [

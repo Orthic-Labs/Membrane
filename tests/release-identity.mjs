@@ -1,81 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
+import { assetsJsonPath, bundleRoot, checkBuilt, checkPackagedMac, finalizeMac, parseArgs as assetArgs, prepareBundle, sha256OfFile, sidecarSourcePath, strictIdentity, verifyAuthenticode } from "../scripts/release-assets.mjs";
+import { assembleManifest, atomicWriteManifest, checkCommitted, checkManifest, gatherSortedAssets, parentManifestPath, readReceipt } from "../scripts/write-release-manifest.mjs";
 import { engineReleaseIdentity } from "../scripts/release-identity.mjs";
-const hub = new URL("..", import.meta.url).pathname;
-const repo = new URL("../../..", import.meta.url).pathname.replace(/\/$/, "");
-const writer = join(hub, "scripts/write-release-manifest.mjs");
-const distIdentity = join(hub, "dist/release-identity.json");
-const originalDist = existsSync(distIdentity) ? readFileSync(distIdentity) : null;
-function manifest(identity) {
-  return { keep: { asset: "sealed" }, crypt_source_commit: "old", source_tree_path: "old", source_tree_sha256: "old", release_generation: "old", assets: [{ sha256: "unchanged" }] };
-}
-function run(args) {
-  const result = execFileSync(process.execPath, [writer, ...args], { cwd: hub, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  return result;
-}
-function rejected(args) {
-  assert.throws(() => execFileSync(process.execPath, [writer, ...args], { cwd: hub, stdio: "pipe" }));
-}
-test.after(() => {
-  if (originalDist) writeFileSync(distIdentity, originalDist);
-  else rmSync(distIdentity, { force: true });
-});
-test("default ignores stale dist identity & uses current HEAD", () => {
-  const dir = mkdtempSync(join(tmpdir(), "membrane-release-"));
-  const path = join(dir, "manifest.json");
-  const identity = engineReleaseIdentity(repo);
-  mkdirSync(join(hub, "dist"), { recursive: true });
-  writeFileSync(distIdentity, JSON.stringify({ ...identity, commit: "0".repeat(40) }));
-  writeFileSync(path, JSON.stringify(manifest(identity)));
-  run(["--manifest", path]);
-  const output = JSON.parse(readFileSync(path, "utf8"));
-  assert.deepEqual(Object.fromEntries(Object.entries(output).filter(([key]) => key !== "keep" && key !== "assets")), {
-    crypt_source_commit: identity.commit, source_tree_path: "engine", source_tree_sha256: identity.sourceTreeSha256, release_generation: identity.releaseGeneration,
-  });
-  assert.deepEqual(output.assets, [{ sha256: "unchanged" }]);
-  rmSync(dir, { recursive: true, force: true });
-});
-test("stale or malformed explicit identity rejects without writing", () => {
-  const dir = mkdtempSync(join(tmpdir(), "membrane-release-"));
-  const path = join(dir, "manifest.json");
-  const identityPath = join(dir, "identity.json");
-  const identity = engineReleaseIdentity(repo);
-  const original = JSON.stringify(manifest(identity));
-  writeFileSync(path, original);
-  writeFileSync(identityPath, JSON.stringify({ ...identity, commit: "0".repeat(40) }));
-  rejected(["--manifest", path, "--identity", identityPath]);
-  writeFileSync(identityPath, JSON.stringify({ commit: identity.commit }));
-  rejected(["--manifest", path, "--identity", identityPath]);
-  assert.equal(readFileSync(path, "utf8"), original);
-  rmSync(dir, { recursive: true, force: true });
-});
-test("fresh recorded identity updates exactly four manifest fields & check validates all", () => {
-  const dir = mkdtempSync(join(tmpdir(), "membrane-release-"));
-  const path = join(dir, "manifest.json");
-  const identityPath = join(dir, "identity.json");
-  const identity = engineReleaseIdentity(repo);
-  const before = manifest(identity);
-  writeFileSync(path, JSON.stringify(before));
-  writeFileSync(identityPath, JSON.stringify(identity));
-  run(["--manifest", path, "--identity", identityPath]);
-  const after = JSON.parse(readFileSync(path, "utf8"));
-  assert.deepEqual(after.keep, before.keep); assert.deepEqual(after.assets, before.assets);
-  assert.equal(Object.keys(after).filter((key) => JSON.stringify(after[key]) !== JSON.stringify(before[key])).length, 4);
-  run(["--manifest", path, "--identity", identityPath, "--check"]);
-  after.release_generation = "sha256:bad"; writeFileSync(path, JSON.stringify(after));
-  rejected(["--manifest", path, "--identity", identityPath, "--check"]);
-  rmSync(dir, { recursive: true, force: true });
-});
-test("package scripts build, record identity, then return to RightKit", () => {
-  const pkg = JSON.parse(readFileSync(join(hub, "package.json"), "utf8"));
-  assert.equal(pkg.scripts["rightkit:package:mac"], "node scripts/build-mac-release.mjs");
-  assert.equal(pkg.scripts["rightkit:package:win"], "node scripts/build-windows-release.mjs");
-  for (const name of ["build-mac-release.mjs", "build-windows-release.mjs"]) {
-    const source = readFileSync(join(hub, "scripts", name), "utf8");
-    assert.ok(source.indexOf('tauri", "build') < source.indexOf('write-release-manifest.mjs'));
-  }
-});
+
+const temp=(name)=>mkdtempSync(join(tmpdir(),`membrane-${name}-`));
+const git=(dir,args)=>execFileSync("git",["-C",dir,...args],{encoding:"utf8"}).trim();
+function init(dir){execFileSync("git",["-C",dir,"init","--initial-branch","main","--quiet"]);for(const [key,value] of [["user.email","test@example.com"],["user.name","test"]])execFileSync("git",["-C",dir,"config",key,value]);}
+function commit(dir,message){execFileSync("git",["-C",dir,"add","."]);execFileSync("git",["-C",dir,"commit","-m",message,"--quiet"]);}
+function repo(name,fn){const parent=temp(`${name}-parent`),root=join(parent,"membrane");mkdirSync(root,{recursive:true});init(parent);init(root);mkdirSync(join(root,"engine"),{recursive:true});writeFileSync(join(root,"engine/source"),"x\n");const hub=join(root,"apps/membrane-hub");for(const target of ["aarch64-apple-darwin","x86_64-pc-windows-msvc"])for(const bin of ["crypt","crypt-service","membrane"]){const ext=target.includes("windows")?".exe":"";const path=join(hub,"src-tauri/binaries",`${bin}-${target}${ext}`);mkdirSync(join(path,".."),{recursive:true});writeFileSync(path,`${bin}-${target}`);}commit(root,"fixture");const head=git(root,["rev-parse","HEAD"]);execFileSync("git",["-C",parent,"update-index","--add","--cacheinfo",`160000,${head},membrane`]);mkdirSync(join(parent,"tools/lib"),{recursive:true});writeFileSync(join(parent,"tools/lib/crypt-release.json"),"{}\n");commit(parent,"link");try{return fn({parent,root,hub,head});}finally{rmSync(parent,{recursive:true,force:true});}}
+function receipt(platform,id){const target=platform==="mac"?"aarch64-apple-darwin":"x86_64-pc-windows-msvc",ext=platform==="win"?".exe":"";return {schemaVersion:1,app:"membrane-hub",version:"0.1.9",platform,target,identity:id,files:{cli:{name:`crypt-${target}${ext}`,sha256:"a".repeat(64),signature:platform==="mac"?"developer-id":"authenticode",...(platform==="mac"?{team:"ABCDE12345"}:{})},service:{name:`crypt-service-${target}${ext}`,sha256:"b".repeat(64),signature:platform==="mac"?"developer-id":"authenticode",...(platform==="mac"?{team:"ABCDE12345"}:{})},hubCommand:{name:`membrane-${target}${ext}`,sha256:"c".repeat(64),signature:platform==="mac"?"developer-id":"authenticode",...(platform==="mac"?{team:"ABCDE12345"}:{})}}};}
+
+test("identity is exactly six clean keys & actual CLIs enter guards",()=>{const id={commit:"0".repeat(40),dirty:false,fileCount:0,sourceTreePath:"engine",sourceTreeSha256:"a".repeat(64),releaseGeneration:`sha256:${"a".repeat(64)}`},asset=new URL("../scripts/release-assets.mjs",import.meta.url),writer=new URL("../scripts/write-release-manifest.mjs",import.meta.url);assert.deepEqual(strictIdentity(JSON.stringify(id)),id);assert.throws(()=>strictIdentity(JSON.stringify({...id,dirty:true})));assert.throws(()=>assetArgs(["node","x","prepare","--platform","mac","--skip-host-check"]));assert.notEqual(spawnSync(process.execPath,[asset.pathname,"wat"]).status,0);assert.notEqual(spawnSync(process.execPath,[writer.pathname,"wat"]).status,0);});
+test("actual Windows finalize CLI rejects absent deterministic signed staging",()=>repo("win-cli",({hub})=>{const asset=new URL("../scripts/release-assets.mjs",import.meta.url);assert.notEqual(spawnSync(process.execPath,[asset.pathname,"finalize","--platform","win"],{cwd:hub}).status,0);}));
+test("Windows package bracket preserves finalized staging & frontend uses native paths",()=>{const win=readFileSync(new URL("../scripts/build-windows-release.mjs",import.meta.url),"utf8"),front=readFileSync(new URL("../scripts/build-frontend.mjs",import.meta.url),"utf8"),build=win.indexOf('tauri", "build'),check=win.lastIndexOf("check-built");assert.doesNotMatch(win,/release-assets\.mjs", "prepare"/);assert.ok(win.indexOf("write-release-manifest")<build);assert.ok(check>build);assert.ok(win.lastIndexOf("write-release-manifest")>check);assert.match(front,/fileURLToPath/);assert.doesNotMatch(front,/file:\/\/\$\{cacheRoot\}|engine\.pathname|engineTarget\.pathname/);});
+test("prepare copies deterministic unsigned sidecars & check-built rejects changes",()=>repo("built",({root,hub})=>{const result=prepareBundle({repoRoot:root,hubDir:hub,platform:"mac"});assert.ok(existsSync(join(result.root,"unsigned","crypt-aarch64-apple-darwin.unsigned")));checkBuilt({repoRoot:root,hubDir:hub,platform:"mac"});writeFileSync(sidecarSourcePath(hub,"aarch64-apple-darwin","crypt"),"changed");assert.throws(()=>checkBuilt({repoRoot:root,hubDir:hub,platform:"mac"}),/sha256/);}));
+test("Mac final receipt is exact & packaged state is receipt-bound",()=>repo("mac",({parent,root,hub})=>{const prepared=prepareBundle({repoRoot:root,hubDir:hub,platform:"mac"}),id=engineReleaseIdentity(root),app=join(root,"app/Contents/MacOS"),bin=join(root,"bin");mkdirSync(app,{recursive:true});mkdirSync(bin,{recursive:true});for(const name of ["crypt-service","membrane"])writeFileSync(join(app,name),name);writeFileSync(join(app,"crypt"),`#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({crypt_source_commit:id.commit,source_tree_sha256:id.sourceTreeSha256,release_generation:id.releaseGeneration,target:"aarch64-apple-darwin"})}'\n`);for(const name of ["crypt","crypt-service","membrane"])chmodSync(join(app,name),0o755);writeFileSync(join(bin,"codesign"),"#!/bin/sh\nif [ \"$1\" = \"-dvvv\" ]; then echo TeamIdentifier=ABCDE12345 1>&2; fi\nexit 0\n");chmodSync(join(bin,"codesign"),0o755);const old=process.env.PATH;process.env.PATH=`${bin}${delimiter}${old}`;try{const value=finalizeMac({repoRoot:root,platform:"mac",appMacosDir:app});assert.deepEqual(Object.keys(value).sort(),["app","files","identity","platform","schemaVersion","target","version"]);assert.equal(value.files.cli.sha256,sha256OfFile(join(app,"crypt")));checkPackagedMac({repoRoot:root,platform:"mac",appMacosDir:app});const win=receipt("win",id),winPath=join(bundleRoot(parent,id.commit,"win"),"assets.json");mkdirSync(join(winPath,".."),{recursive:true});writeFileSync(winPath,JSON.stringify(win));const mac=readReceipt(assetsJsonPath(prepared.root),"mac"),manifest=assembleManifest({existing:{product_version:"0.1.9",source_repo:"membrane",schema_compat:"v1",model:"x"},macReceipt:mac,winReceipt:readReceipt(winPath,"win")}).manifest;assert.equal(manifest.assets.length,4);assert.deepEqual(manifest.assets,gatherSortedAssets(mac,win));assert.throws(()=>readReceipt(winPath));assert.throws(()=>readReceipt(winPath,"mac"));assert.throws(()=>assembleManifest({existing:{},macReceipt:mac,winReceipt:readReceipt(winPath,"win")}));assert.throws(()=>assembleManifest({existing:manifest,macReceipt:mac,winReceipt:mac}));assert.throws(()=>checkManifest({existing:{...manifest,assets:[...manifest.assets].reverse()},macReceipt:mac,winReceipt:readReceipt(winPath,"win")}));value.files.cli.team="";writeFileSync(assetsJsonPath(prepared.root),JSON.stringify(value));assert.throws(()=>readReceipt(assetsJsonPath(prepared.root),"mac"));value.files.cli.team="ABCDE12345";writeFileSync(join(app,"crypt"),"#!/bin/sh\nkill -TERM $$\n");chmodSync(join(app,"crypt"),0o755);value.files.cli.sha256=sha256OfFile(join(app,"crypt"));writeFileSync(assetsJsonPath(prepared.root),JSON.stringify(value));assert.throws(()=>checkPackagedMac({repoRoot:root,platform:"mac",appMacosDir:app}),/build-info/);}finally{process.env.PATH=old;}}));
+test("signaled Authenticode verifier is rejected",()=>assert.throws(()=>verifyAuthenticode("unused","unused",()=>spawnSync("sh",["-c","kill -TERM $$"])),/Authenticode/));
+test("writer atomic output & committed proof bind parent HEAD to nested HEAD",()=>repo("writer",({parent,root})=>{const path=parentManifestPath(parent),bytes=Buffer.from('{"ok":true}\n');atomicWriteManifest({manifestPath:path,manifest:{wrong:true}});assert.throws(()=>checkCommitted({repoRoot:root,manifestPath:path,manifestBytes:bytes}),/HEAD manifest/);writeFileSync(path,bytes);execFileSync("git",["-C",parent,"add","tools/lib/crypt-release.json"]);execFileSync("git",["-C",parent,"commit","-m","manifest","--quiet"]);assert.equal(checkCommitted({repoRoot:root,manifestPath:path,manifestBytes:bytes}),true);}));
