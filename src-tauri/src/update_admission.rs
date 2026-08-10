@@ -268,7 +268,9 @@ mod tests {
         }
     }
 
-    fn real_windows_platform_receipt(trust_overrides: &[(&str, &str)]) -> PlatformAcceptanceReceipt {
+    fn real_windows_platform_receipt(
+        trust_overrides: &[(&str, &str)],
+    ) -> PlatformAcceptanceReceipt {
         let mut trust = Map::new();
         for field in WINDOWS_TRUST_FIELDS {
             trust.insert(field.to_string(), Value::String("pass".to_string()));
@@ -341,7 +343,10 @@ mod tests {
             &real_windows_manifest_entry(),
             &real_windows_platform_receipt(&[]),
         );
-        assert!(outcome.is_err(), "an unrecognized signing key must fail closed");
+        assert!(
+            outcome.is_err(),
+            "an unrecognized signing key must fail closed"
+        );
     }
 
     #[test]
@@ -357,7 +362,10 @@ mod tests {
             &real_windows_manifest_entry(),
             &receipt,
         );
-        assert!(outcome.is_err(), "one failed trust field out of several must fail closed");
+        assert!(
+            outcome.is_err(),
+            "one failed trust field out of several must fail closed"
+        );
     }
 
     #[test]
@@ -374,7 +382,10 @@ mod tests {
             &real_windows_manifest_entry(),
             &receipt,
         );
-        assert!(outcome.is_err(), "a receipt for the wrong platform must fail closed");
+        assert!(
+            outcome.is_err(),
+            "a receipt for the wrong platform must fail closed"
+        );
     }
 
     #[test]
@@ -389,7 +400,10 @@ mod tests {
             &real_windows_manifest_entry(),
             &real_windows_platform_receipt(&[]),
         );
-        assert!(outcome.is_err(), "a downgrade must fail closed even with two valid signatures");
+        assert!(
+            outcome.is_err(),
+            "a downgrade must fail closed even with two valid signatures"
+        );
     }
 
     #[test]
@@ -406,7 +420,10 @@ mod tests {
             &entry,
             &real_windows_platform_receipt(&[]),
         );
-        assert!(outcome.is_err(), "an empty Tauri updater signature must fail closed");
+        assert!(
+            outcome.is_err(),
+            "an empty Tauri updater signature must fail closed"
+        );
     }
 
     #[test]
@@ -425,6 +442,9 @@ mod tests {
             &real_windows_manifest_entry(),
             &receipt,
         );
-        assert!(outcome.is_err(), "evidence bound to two different artifacts must fail closed");
+        assert!(
+            outcome.is_err(),
+            "evidence bound to two different artifacts must fail closed"
+        );
     }
 }
