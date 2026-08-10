@@ -17,13 +17,19 @@
 // separate CI gate for order-dependent failures.
 
 import { readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
 const TESTS = join(ROOT, "tests");
+const ISOLATED_TESTS = new Set([
+  "treesitter-parity.test.mjs",
+  "treesitter-provider.test.mjs",
+  "watch-supervisor.test.mjs",
+  "watchman.test.mjs",
+]);
 
 function parseArgs(argv) {
   const args = { seed: null, runs: 1, batchSize: 32, ordered: false, rootOnly: false };
@@ -84,9 +90,18 @@ function run() {
       : fisherYates([...allFiles], makeRng(seed));
     const relativePaths = order.map((full) => relative(ROOT, full));
     const batches = [];
-    for (let index = 0; index < relativePaths.length; index += args.batchSize) {
-      batches.push(relativePaths.slice(index, index + args.batchSize));
+    let batch = [];
+    for (const path of relativePaths) {
+      if (ISOLATED_TESTS.has(basename(path))) {
+        if (batch.length > 0) batches.push(batch);
+        batches.push([path]);
+        batch = [];
+      } else {
+        batch.push(path);
+        if (batch.length === args.batchSize) { batches.push(batch); batch = []; }
+      }
     }
+    if (batch.length > 0) batches.push(batch);
     process.stdout.write(`[test-random] run ${runIndex + 1}/${args.runs} seed=${seed} files=${relativePaths.length} batches=${batches.length}\n`);
     process.stdout.write(`[test-random] order: ${relativePaths.join(" ")}\n`);
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
