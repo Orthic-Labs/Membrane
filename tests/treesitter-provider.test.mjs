@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import {
+  disposeTreeSitterProvider,
   grammarRuntimeBlockReason,
   PROVIDER,
   SUPPORTED_EXTENSIONS,
@@ -18,6 +19,8 @@ import {
   validateGrammarCatalog,
   upgradeDylinkSection,
 } from "../graph/treesitter-provider.mjs";
+
+after(() => disposeTreeSitterProvider());
 
 function findNode(nodes, qualifiedName) {
   return nodes.find((node) => node.qualifiedName === qualifiedName);

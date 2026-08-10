@@ -309,6 +309,13 @@ const GRAMMAR_PACKAGE = readGrammarPackageInfo();
 
 const languageCache = new Map(); // languageId -> { language, parser, grammar } | { error, grammar }
 
+export function disposeTreeSitterProvider() {
+  for (const record of languageCache.values()) {
+    record.parser?.delete();
+  }
+  languageCache.clear();
+}
+
 export function grammarRuntimeBlockReason(languageId, { platform = process.platform, nodeVersion = process.versions.node } = {}) {
   const nodeMajor = Number(String(nodeVersion).split(".")[0]);
   if (languageId === "swift" && platform === "linux" && nodeMajor === 24) {
