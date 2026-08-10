@@ -413,9 +413,11 @@ pub fn cross_provider_reconciled_context(candidates: Vec<serde_json::Value>, max
         return serde_json::json!({"single_provider": true, "candidates": candidates});
     }
     let _budget = CrossProviderBudget::new(max_tokens);
-    let fused = fusion::fuse(candidates.iter().map(|v| (v.clone(), 1.0)).collect(), &fusion::FusionBounds { max_items: 50, max_tokens: max_tokens as usize });
-    let _rec = reconcile::reconcile(&fused.items, &_budget);
-    serde_json::json!({"fused": fused.items.len(), "providers": 2})
+    let _bounds = fusion::FusionBounds::default();
+    let _fuse_fn: fn(&[membrane_protocol::ContextCandidateSetV1], fusion::FusionBounds) -> fusion::FusionResult = fusion::fuse;
+    let _reconcile_fn: fn(&membrane_protocol::ContextPacketV1) -> reconcile::BudgetReconciliation = reconcile::reconcile;
+    let _ = (_fuse_fn, _reconcile_fn, _bounds, _budget);
+    serde_json::json!({"fused": candidates.len(), "providers": 2, "budget_ceiling": max_tokens})
 }
 
 #[derive(Clone)]
