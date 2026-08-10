@@ -37,6 +37,7 @@ jobs:
         with:
           node-version: "22.13"
           registry-url: https://registry.npmjs.org
+          package-manager-cache: false
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
       - run: node scripts/release/build-candidate.mjs --version "${{ github.event.release.tag_name }}" --platform current --out "release/candidates/publish"
