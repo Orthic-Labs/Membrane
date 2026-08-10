@@ -194,7 +194,7 @@ fn bundled_binary(name: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(format!("{name}{suffix}")))
 }
 
-fn start_crypt_service() -> Result<Child, String> {
+fn start_crypt_service() -> Result<Option<Child>, String> {
     let program = std::env::var_os("MEMBRANE_CRYPT_SERVICE")
         .map(PathBuf::from)
         .unwrap_or_else(|| bundled_binary("crypt-service"));
@@ -209,7 +209,7 @@ fn start_crypt_service() -> Result<Child, String> {
         .env("WORKSPACE_ROOT", root)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|_| "crypt_service_start_failed".to_string())?;
     std::thread::sleep(Duration::from_millis(120));
@@ -218,9 +218,17 @@ fn start_crypt_service() -> Result<Child, String> {
         .map_err(|_| "crypt_service_wait_failed")?
         .is_some()
     {
+        let mut stderr_output = String::new();
+        if let Some(mut stderr) = child.stderr.take() {
+            let _ = stderr.read_to_string(&mut stderr_output);
+        }
+        if stderr_output.to_lowercase().contains("already in use") {
+            eprintln!("crypt-service: port already in use, adopting existing owner");
+            return Ok(None);
+        }
         return Err("crypt_service_start_failed".into());
     }
-    Ok(child)
+    Ok(Some(child))
 }
 
 fn stop_crypt_service(service: &ServiceState) {
@@ -620,7 +628,7 @@ fn main() {
             let child = start_crypt_service().map_err(std::io::Error::other)?;
             *app.state::<ServiceState>()
                 .lock()
-                .map_err(|_| std::io::Error::other("service_state_unavailable"))? = Some(child);
+                .map_err(|_| std::io::Error::other("service_state_unavailable"))? = child;
             let handle = app.handle().clone();
             let gate = app.state::<Arc<StartupGate>>().inner().clone();
             let program = std::env::var_os("MEMBRANE_COMMAND")
