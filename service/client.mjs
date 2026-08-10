@@ -124,7 +124,9 @@ export class DaemonClient {
       if (!this.socket) return resolve();
       const socket = this.socket;
       this.socket = null;
-      socket.end(resolve);
+      if (socket.destroyed) return resolve();
+      socket.once("close", resolve);
+      socket.destroy();
     });
   }
 }
