@@ -36,11 +36,9 @@ import {
 // Use a self-contained CLI invocation so we exercise the real build path.
 const SCRIPT = fileURLToPath(new URL("../scripts/cortex.mjs", import.meta.url));
 
-function makeFixture() {
-  const root = join(
-    tmpdir(),
-    `cortex-b65-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-  );
+function makeFixture(name = null) {
+  const unique = `cortex-b65-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const root = name ? join(tmpdir(), unique, name) : join(tmpdir(), unique);
   mkdirSync(root, { recursive: true });
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(
@@ -78,6 +76,30 @@ it("B6.5.4 fixture build emits both docs with generation headers + provenance", 
     assert.ok(arch.includes("source: "), "architecture.md missing provenance markers");
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("generated doc identity is stable across LF and CRLF checkouts", async () => {
+  const lfRoot = makeFixture("cortex");
+  const crlfRoot = makeFixture("Cortex");
+  try {
+    for (const name of ["README.md", "AGENTS.md"]) {
+      const target = join(crlfRoot, name);
+      writeFileSync(target, readFileSync(target, "utf8").replace(/\n/g, "\r\n"));
+    }
+    const { execFileSync } = await import("node:child_process");
+    for (const root of [lfRoot, crlfRoot]) {
+      execFileSync("node", [SCRIPT, "build", "--out", ".agent"], {
+        cwd: root,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    }
+    const readProductHeader = (root) => readFileSync(join(root, DOC_PATHS.product), "utf8").split(/\r?\n/, 1)[0];
+    assert.equal(readProductHeader(crlfRoot), readProductHeader(lfRoot));
+  } finally {
+    rmSync(lfRoot, { recursive: true, force: true });
+    rmSync(crlfRoot, { recursive: true, force: true });
   }
 });
 
