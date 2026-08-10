@@ -12,8 +12,7 @@ const PROBE_CADENCE_MS = 1_000;
 function cancelled() { return Object.assign(new Error("request cancelled"), { code: "request_cancelled" }); }
 
 function canonicalRoot(value) {
-  const root = resolve(value);
-  try { return realpathSync(root); } catch { return root; }
+  return canonicalAbsolute(resolve(value));
 }
 
 function canonicalAbsolute(value) {
