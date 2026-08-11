@@ -937,7 +937,7 @@ function insertGenerationRows(db, generation, options = {}) {
       ];
       if (hasSymbolOrdinal) values.push(nodeOrdinal);
       insertSymbol.run(...values);
-      replaceSymbolSearchEntry(db, {
+      insertSymbolSearchEntry(db, {
         id: stored.id,
         generationId,
         name: stored.name,
@@ -1194,9 +1194,18 @@ export function replaceSymbolSearchEntry(db, row) {
   const generationId = String(row?.generationId ?? "");
   if (!symbolId || !generationId) return;
   db.prepare("DELETE FROM symbol_search WHERE id = ?").run(symbolId);
+  db.prepare("DELETE FROM symbol_terms WHERE symbol_id = ?").run(symbolId);
+  insertSymbolSearchEntry(db, row);
+}
+
+/** Insert into an already-cleared store without an O(n²) FTS/term delete scan. */
+export function insertSymbolSearchEntry(db, row) {
+  const symbolId = String(row?.id ?? "");
+  const generationId = String(row?.generationId ?? "");
+  if (!symbolId || !generationId) return;
   db.prepare("INSERT INTO symbol_search(id, generation_id, name, qualified_name, path) VALUES (?, ?, ?, ?, ?)")
     .run(symbolId, generationId, searchableSymbolText(row.name), searchableSymbolText(row.qualifiedName), searchableSymbolText(row.path));
-  replaceSymbolTermsEntry(db, row);
+  insertSymbolTermsEntry(db, row);
 }
 
 function replaceSymbolTermsEntry(db, row) {
@@ -1204,6 +1213,13 @@ function replaceSymbolTermsEntry(db, row) {
   const generationId = String(row?.generationId ?? "");
   if (!symbolId || !generationId) return;
   db.prepare("DELETE FROM symbol_terms WHERE symbol_id = ?").run(symbolId);
+  insertSymbolTermsEntry(db, row);
+}
+
+function insertSymbolTermsEntry(db, row) {
+  const symbolId = String(row?.id ?? "");
+  const generationId = String(row?.generationId ?? "");
+  if (!symbolId || !generationId) return;
   const insertTerm = db.prepare("INSERT OR IGNORE INTO symbol_terms(generation_id, token, symbol_id) VALUES (?, ?, ?)");
   for (const token of symbolTermTokens([row.name, row.qualifiedName, row.path])) {
     insertTerm.run(generationId, token, symbolId);

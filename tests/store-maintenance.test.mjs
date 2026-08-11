@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { closeStore, maintainStore, openStore, resetWatchStateAfterRebuild } from "../graph/store-sqlite.mjs";
+import { constants as sqliteConstants } from "node:sqlite";
+import { buildGraphGeneration } from "../graph/static-provider.mjs";
+import { adoptRebuiltGeneration, closeStore, maintainStore, openStore, resetWatchStateAfterRebuild } from "../graph/store-sqlite.mjs";
 
 test("store maintenance checkpoints WAL and bounds applied watcher history", () => {
   const db = openStore(join(mkdtempSync(join(tmpdir(), "cortex-store-maintenance-")), "graph.db"));
@@ -25,5 +27,21 @@ test("rebuild adoption removes stale watcher journal and state atomically", () =
     resetWatchStateAfterRebuild(db);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM event_journal").get().n, 0);
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM watch_state").get().n, 0);
+  } finally { closeStore(db); }
+});
+
+test("fresh generation bulk-load clears FTS once instead of once per symbol", () => {
+  const root = mkdtempSync(join(tmpdir(), "cortex-store-bulk-search-"));
+  writeFileSync(join(root, "many.mjs"), Array.from({ length: 200 }, (_, index) => `export function symbol${index}() { return ${index}; }`).join("\n"));
+  const db = openStore(join(root, "graph.db"));
+  let searchDeletes = 0;
+  db.setAuthorizer((action, table) => {
+    if (action === sqliteConstants.SQLITE_DELETE && table === "symbol_search") searchDeletes += 1;
+    return sqliteConstants.SQLITE_OK;
+  });
+  try {
+    adoptRebuiltGeneration(db, buildGraphGeneration(root), { populateState: true });
+    assert.equal(searchDeletes, 1);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM symbol_search").get().n, 200);
   } finally { closeStore(db); }
 });
