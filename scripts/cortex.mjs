@@ -8,7 +8,7 @@ import { requireRuntime } from "../lib/runtime-capabilities.mjs";
 requireRuntime();
 
 // XXH3-128 everywhere in cortex: these are content/identity digests for
-// regenerable artifacts, never tamper-evidence. (Morph's payload_sha256 is the
+// regenerable artifacts, never tamper-evidence. (Adapt's payload_sha256 is the
 // opposite case and deliberately stays cryptographic.)
 const xxhasher = await createXXHash128();
 
