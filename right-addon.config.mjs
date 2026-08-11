@@ -2,7 +2,7 @@ export default {
   schema: 1,
   kind: "headless-addon",
   addon: "membrane",
-  version: "0.1.0",
+  version: "0.1.1",
   packageManager: "pnpm",
   distribution: { provider: "github-releases", repository: "Orthic-Labs/Membrane" },
   checks: ["test", "test:all"],
