@@ -49,7 +49,8 @@ def migrate_legacy_crypt_database(cache_dir: Path) -> Path:
     dual_names = canonical.exists()
 
     cache.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(legacy, timeout=30) as connection:
+    connection = sqlite3.connect(legacy, timeout=30)
+    try:
         checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
         if checkpoint and checkpoint[0] != 0:
             # A busy checkpoint means a live Crypt still holds the legacy database.
@@ -71,8 +72,13 @@ def migrate_legacy_crypt_database(cache_dir: Path) -> Path:
         backup_dir.mkdir(parents=True, exist_ok=False)
         backup = backup_dir / legacy.name
         if not dual_names:
-            with sqlite3.connect(backup) as destination:
+            destination = sqlite3.connect(backup)
+            try:
                 connection.backup(destination)
+            finally:
+                destination.close()
+    finally:
+        connection.close()
 
     if dual_names:
         os.replace(legacy, backup)

@@ -85,7 +85,8 @@ def test_render_crypt_shim_posix_format_on_posix_host_omits_runc_shell():
 def test_launchd_contract_owns_crypt_service_without_hook_commands(tmp_path):
     body = cs.render_crypt_launchd_plist(tmp_path / "repo", tmp_path / "home", 47851)
     assert cs.DEFAULT_CRYPT_SERVE_LABEL == "com.adrian.crypt-serve"
-    assert f"<string>{tmp_path / 'repo/tools/bin/membrane'}</string><string>supervisor-child</string>" in body
+    membrane = (tmp_path / "repo/tools/bin/membrane").as_posix()
+    assert f"<string>{membrane}</string><string>supervisor-child</string>" in body
     assert "tools/bin/crypt-service" not in body
     assert "RunAtLoad" in body and "KeepAlive" in body
     assert "launchctl" not in body
