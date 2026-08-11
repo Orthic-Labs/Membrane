@@ -48,6 +48,7 @@
     "schemas/",
     "sdk/",
     "service/",
+    "assets/",
     "evals/fixture-repos/",
     "references/",
     "plugin.json",

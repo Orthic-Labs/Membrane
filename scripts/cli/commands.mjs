@@ -142,14 +142,27 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       }
       if (subcommand === "run") {
         // D-S04 headless carve-out — foreground mode, Hub spawns as child (D-S03)
-        const payload = { schemaVersion: 1, state: "running", mode: "foreground", pid: process.pid, serviceStart: ["node", "scripts/cortex.mjs", "service", "run"] };
+        const { readFileSync } = await import("node:fs");
+        const { buildProductManifest, manifestPath } = await import("../../lib/init/manifest.mjs");
+        const { startSnapshotServer } = await import("../../lib/orthic-snapshot.mjs");
+        let endpoint;
+        try {
+          let manifest;
+          try { manifest = JSON.parse(readFileSync(manifestPath(), "utf8")); }
+          catch (error) { if (error.code !== "ENOENT") throw error; manifest = buildProductManifest({ installRoot: root }); }
+          endpoint = await startSnapshotServer({ root, port: manifest.statusEndpoint.port, authHeader: manifest.statusEndpoint.authHeader, authToken: manifest.statusEndpoint.authToken });
+        } catch (error) {
+          printResult(machineError("snapshot_server_failed", String(error?.message ?? error)), args, { stderr: true });
+          return EXIT.INTERNAL;
+        }
+        const payload = { schemaVersion: 1, state: "running", mode: "foreground", pid: process.pid, serviceStart: [process.execPath, "scripts/cortex.mjs", "service", "run"], statusEndpoint: { host: endpoint.host, port: endpoint.port, authHeader: endpoint.authHeader } };
         console.log(JSON.stringify(payload));
         // Keep event loop alive — signal listeners alone don't ref the loop, so Node would exit with 13 (unsettled top-level await)
         const keepAlive = setInterval(() => {}, 1000);
         await new Promise((resolve) => {
           const shutdown = () => {
             clearInterval(keepAlive);
-            resolve();
+            endpoint.close().finally(resolve);
           };
           process.once("SIGTERM", shutdown);
           process.once("SIGINT", shutdown);

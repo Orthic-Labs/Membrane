@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import http from "node:http";
 
-import { buildSnapshot, validateSnapshot } from "../lib/orthic-snapshot.mjs";
+import { buildSnapshot, startSnapshotServer, validateSnapshot } from "../lib/orthic-snapshot.mjs";
 
 test("snapshot builds with required fields", () => {
   const snap = buildSnapshot({ root: process.cwd(), outDir: ".agent" });
   assert.equal(snap.schemaVersion, 1);
   assert.equal(snap.productId, "cortex");
-  assert.ok(snap.timestamp);
+  assert.ok(snap.observedAtUnixMs);
   assert.ok(snap.sections);
-  assert.ok(snap.sections.freshness);
+  assert.ok(snap.sections.watcher);
   assert.ok(snap.sections.graph);
+  for (const section of Object.values(snap.sections)) assert.ok(section.reason);
 });
 
 test("payload validates against schema", async () => {
@@ -26,38 +26,37 @@ test("payload validates against schema", async () => {
 
 test("missing-input section reports unavailable with reason, not fabricated zero", () => {
   const snap = buildSnapshot({ root: "/nonexistent/path/that/does/not/exist" });
-  // freshness should be unavailable with reason when graph missing
-  assert.equal(snap.sections.freshness.state, "unavailable");
-  assert.ok(snap.sections.freshness.reason);
-  assert.equal(typeof snap.sections.freshness.reason, "string");
+  assert.equal(snap.sections.graph.state, "unavailable");
+  assert.ok(snap.sections.graph.reason);
+  assert.equal(typeof snap.sections.graph.reason, "string");
 });
 
-test("request without Authorization gets 401 (via http-server pattern)", async () => {
-  // Minimal server that reuses lib/http-server.mjs pattern — test auth gate
-  const { randomBytes } = await import("node:crypto");
-  const token = randomBytes(16).toString("base64url");
-  const server = http.createServer((req, res) => {
-    const auth = req.headers.authorization?.replace(/^Bearer\s+/, "");
-    if (auth !== token) {
-      res.writeHead(401, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: { code: "unauthorized" } }));
-      return;
-    }
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify(buildSnapshot({})));
-  });
-  await new Promise((r) => server.listen(0, "127.0.0.1", r));
-  const port = server.address().port;
+test("production snapshot server authenticates loopback requests", async () => {
+  const server = await startSnapshotServer({ root: "/nonexistent/path/that/does/not/exist", port: 0, authToken: "test-token" });
+  const url = `http://127.0.0.1:${server.port}/snapshot`;
   try {
-    const noAuth = await fetch(`http://127.0.0.1:${port}/snapshot`);
+    const noAuth = await fetch(url);
     assert.equal(noAuth.status, 401);
-    const withAuth = await fetch(`http://127.0.0.1:${port}/snapshot`, { headers: { Authorization: `Bearer ${token}` } });
+    const withAuth = await fetch(url, { headers: { Authorization: "Bearer test-token" } });
     assert.equal(withAuth.status, 200);
     const body = await withAuth.json();
     assert.equal(body.schemaVersion, 1);
+    assert.equal(body.productId, "cortex");
+    assert.ok(Number.isInteger(body.observedAtUnixMs));
   } finally {
-    await new Promise((r) => server.close(r));
+    await server.close();
   }
+});
+
+test("snapshot validates against Orthic authoritative schema", async () => {
+  const { existsSync, readFileSync } = await import("node:fs");
+  const { resolve } = await import("node:path");
+  const canonical = resolve(process.cwd(), "../orthic/schema/snapshot.v1.schema.json");
+  if (!existsSync(canonical)) return;
+  const { default: Ajv } = await import("ajv");
+  const validate = new Ajv().compile(JSON.parse(readFileSync(canonical, "utf8")));
+  const snapshot = buildSnapshot({ root: "/nonexistent/path/that/does/not/exist" });
+  assert.equal(validate(snapshot), true, JSON.stringify(validate.errors));
 });
 
 test("dogfood check: no productId branching", async () => {

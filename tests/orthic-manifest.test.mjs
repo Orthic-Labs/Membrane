@@ -11,11 +11,16 @@ test("manifest builds with required SEAM §4.1 fields", () => {
   assert.equal(manifest.schemaVersion, 1);
   assert.equal(manifest.productId, "cortex");
   assert.ok(manifest.displayName);
-  assert.ok(manifest.version);
+  assert.ok(manifest.productVersion);
+  assert.ok(manifest.hubCompatRange);
   assert.ok(manifest.installRoot);
   assert.ok(Array.isArray(manifest.serviceStart));
   assert.ok(Array.isArray(manifest.serviceStop));
   assert.ok(manifest.statusEndpoint);
+  assert.equal(manifest.statusEndpoint.host, "127.0.0.1");
+  assert.ok(manifest.statusEndpoint.port > 0);
+  assert.equal(manifest.statusEndpoint.authHeader, "Authorization");
+  assert.ok(manifest.statusEndpoint.authToken);
   assert.ok(manifest.icon);
   assert.ok(manifest.icon.includes("assets/icon/cortex-tab.png"));
   assert.ok(manifest.icon.startsWith(manifest.installRoot));
@@ -27,6 +32,17 @@ test("manifest validates against schema", async () => {
   const { default: Ajv } = await import("ajv");
   const ajv = new Ajv();
   const validate = ajv.compile(schema);
+  assert.equal(validate(manifest), true, JSON.stringify(validate.errors));
+});
+
+test("manifest validates against Orthic authoritative schema", async () => {
+  const { existsSync, readFileSync } = await import("node:fs");
+  const { resolve } = await import("node:path");
+  const canonical = resolve(process.cwd(), "../orthic/schema/manifest.v1.schema.json");
+  if (!existsSync(canonical)) return;
+  const { default: Ajv } = await import("ajv");
+  const validate = new Ajv().compile(JSON.parse(readFileSync(canonical, "utf8")));
+  const manifest = buildProductManifest({ installRoot: process.cwd() });
   assert.equal(validate(manifest), true, JSON.stringify(validate.errors));
 });
 

@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { removeInstallStateKey, sealInstallState, verifyInstallState } from "../lib/init/state-integrity.mjs";
+import { writeProductManifest } from "../lib/init/manifest.mjs";
 import { isConfinedPath, resolvePhysicalPath } from "../lib/path-confinement.mjs";
 
 const START = "<!-- cortex:start -->";
@@ -210,24 +211,8 @@ function install(root, host, args) {
   if (host === "claude-code" && args.scope !== "global") installMcpEntry(state, root);
   if (args.redirect) installRedirect(state, root, { grants: args.redirect === "grants" });
   if (args.scope !== "global") installGitHooks(state, root, hookPaths);
-  // v4-U56: wire product manifest into Hub discovery (sync)
-  try {
-    const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-    const manifest = {
-      schemaVersion: 1,
-      productId: "cortex",
-      displayName: "Cortex",
-      version: pkg.version ?? "0.2.0",
-      installRoot: resolve(root),
-      serviceStart: [process.execPath, join(resolve(root), "scripts", "cortex.mjs"), "service", "run"],
-      serviceStop: [process.execPath, join(resolve(root), "scripts", "cortex.mjs"), "service", "stop"],
-      statusEndpoint: { host: "127.0.0.1", port: 0, tokenEnv: "CORTEX_SNAPSHOT_TOKEN" },
-      icon: join(resolve(root), "assets", "icon", "cortex-tab.png"),
-    };
-    const manifestPath = join(homedir(), ".orthic", "hub", "products.d", "cortex.json");
-    mkdirSync(dirname(manifestPath), { recursive: true });
-    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
-  } catch {}
+  // U56: use the sole manifest producer so install and package flows cannot drift.
+  try { writeProductManifest({ installRoot: root }); } catch {}
   saveState(root, state);
   const output = { action: "installed", host, scope: args.scope, root, instruction, redirect: Boolean(args.redirect) };
   if (host === "claude-code" && args.scope === "global") output.advice = `claude mcp add cortex -- ${shellQuote(process.execPath)} ${shellQuote(SERVER_SCRIPT)}`;
