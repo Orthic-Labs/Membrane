@@ -1,24 +1,30 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "OrthicProductSnapshotV1",
+  "title": "SnapshotV1",
   "type": "object",
-  "required": ["schemaVersion", "productId", "timestamp", "sections"],
+  "required": ["schemaVersion", "productId", "observedAtUnixMs", "sections"],
+  "additionalProperties": false,
   "properties": {
-    "schemaVersion": { "type": "integer", "enum": [1] },
-    "productId": { "type": "string", "enum": ["cortex"] },
-    "timestamp": { "type": "string" },
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "productId": { "type": "string", "enum": ["cortex", "membrane"] },
+    "observedAtUnixMs": { "type": "integer", "minimum": 0 },
     "sections": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["state"],
+        "required": ["state", "reason"],
+        "additionalProperties": false,
         "properties": {
-          "state": { "type": "string", "enum": ["ok", "degraded", "unavailable"] },
-          "reason": { "type": "string" }
-        },
-        "additionalProperties": true
+          "state": { "type": "string", "enum": ["available", "degraded", "unavailable"] },
+          "reason": { "type": "string" },
+          "items": { "type": "array", "items": {} },
+          "evidence": { "type": "string" },
+          "resolver": { "type": "string" },
+          "observedAtUnixMs": { "type": "integer", "minimum": 0 }
+        }
       }
-    }
-  },
-  "additionalProperties": false
+    },
+    "stale": { "type": "boolean" },
+    "cacheAgeMs": { "type": "integer", "minimum": 0 }
+  }
 }

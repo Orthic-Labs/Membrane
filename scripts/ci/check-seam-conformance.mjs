@@ -4,6 +4,9 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import Ajv from "ajv";
+import { buildProductManifest, validateProductManifest } from "../../lib/init/manifest.mjs";
+import { buildSnapshot, validateSnapshot } from "../../lib/orthic-snapshot.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -53,17 +56,26 @@ check("grep-gate: no hardcoded crypt outside config-default in scripts/cortex.mj
 });
 
 check("manifest shape validates", () => {
-  const manifestPath = join(ROOT, "schemas/orthic-product-manifest-v1.schema.json");
-  if (!existsSync(manifestPath)) throw new Error("manifest schema missing");
-  const schema = JSON.parse(readFileSync(manifestPath, "utf8"));
-  const { buildProductManifest } = awaitImportSync();
-  const manifest = buildProductManifest();
-  // minimal validation: required fields
-  for (const field of schema.required ?? []) {
-    if (!(field in manifest)) throw new Error(`manifest missing ${field}`);
-  }
-  if (manifest.productId !== "cortex") throw new Error("productId");
-  if (!manifest.icon.includes("assets/icon/cortex-tab.png")) throw new Error("icon");
+  const localSchemaPath = join(ROOT, "schemas/orthic-product-manifest-v1.schema.json");
+  const canonicalPath = resolve(ROOT, "../orthic/schema/manifest.v1.schema.json");
+  const schemaPath = existsSync(canonicalPath) ? canonicalPath : localSchemaPath;
+  if (!existsSync(schemaPath)) throw new Error("manifest schema missing");
+  const manifest = buildProductManifest({ installRoot: ROOT });
+  const validate = new Ajv().compile(JSON.parse(readFileSync(schemaPath, "utf8")));
+  if (!validate(manifest)) throw new Error(`manifest schema: ${JSON.stringify(validate.errors)}`);
+  const local = validateProductManifest(manifest);
+  if (!local.ok) throw new Error(`manifest security: ${local.errors.join(", ")}`);
+});
+
+check("snapshot shape validates", () => {
+  const localSchemaPath = join(ROOT, "schemas/orthic-product-snapshot-v1.schema.json");
+  const canonicalPath = resolve(ROOT, "../orthic/schema/snapshot.v1.schema.json");
+  const schemaPath = existsSync(canonicalPath) ? canonicalPath : localSchemaPath;
+  const snapshot = buildSnapshot({ root: ROOT });
+  const validate = new Ajv().compile(JSON.parse(readFileSync(schemaPath, "utf8")));
+  if (!validate(snapshot)) throw new Error(`snapshot schema: ${JSON.stringify(validate.errors)}`);
+  const local = validateSnapshot(snapshot);
+  if (!local.ok) throw new Error(`snapshot shape: ${local.errors.join(", ")}`);
 });
 
 const MEM_WORD = "mem" + "brane";
@@ -92,25 +104,6 @@ check("cortex graph manifest --json shape (if graph exists)", () => {
     throw e;
   }
 });
-
-function awaitImportSync() {
-  // sync helper — import manifest builder without top-level await
-  try {
-    const { buildProductManifest } = awaitImportSync._cache ??= (() => {
-      // use dynamic import sync via readFile? fallback to simple
-      return { buildProductManifest: () => {
-        const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
-        return {
-          schemaVersion: 1, productId: "cortex", displayName: "Cortex", version: pkg.version,
-          installRoot: ROOT, serviceStart: [process.execPath, join(ROOT, "scripts/cortex.mjs"), "service", "run"],
-          serviceStop: [process.execPath, join(ROOT, "scripts/cortex.mjs"), "service", "stop"],
-          statusEndpoint: { host: "127.0.0.1", port: 0 }, icon: join(ROOT, "assets/icon/cortex-tab.png"),
-        };
-      }};
-    })();
-    return { buildProductManifest };
-  } catch { return { buildProductManifest: () => ({}) }; }
-}
 
 if (failed) { console.error("check-seam-conformance FAILED"); process.exit(1); }
 console.log(JSON.stringify({ ok: true }));

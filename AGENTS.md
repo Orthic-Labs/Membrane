@@ -95,9 +95,9 @@ The tiers, in routing order:
 ## Releases, signing & distribution — every product
 - Treat signing, notarization, & release publication as solved workspace capabilities; Apple & Azure are provisioned, so never gate a plan on setting them up.
 - Read `docs/rules/release-signing.md` before any release, signing, installer, updater, or publication work in any repository.
-- Build & sign each target only on its native host; for both targets use `win` from Mac or `ssh mac` from Windows, never initiate authentication, cross-compile, or move signing into CI; `right-git` CI lanes stay public-repo-only; follow `docs/rules/release-signing.md`.
+- Build & sign each target only on its native host; for both targets use `win` from Mac or `ssh mac` from Windows, never initiate browser/Azure authentication, cross-compile, or move signing into CI; publish finished signed artifacts through GitHub Releases; follow `docs/rules/release-signing.md`.
 - Use RightKit `right-release` from primary checkout with manifest-pinned pnpm; never build signing or installer machinery inside a product repository.
-- Select explicit `patch` or `update`; keep build or seal separate from upload; publish only an exact build named by Adrian's current request, & upload no test artifact.
+- Select explicit `patch` or `update`; keep build or seal separate from upload; publish only an exact build named by Adrian's current request to GitHub Releases, & upload no test artifact.
 
 ## Plans authored outside this workspace
 - Check every repo-scoped plan, roadmap, or dispatch runbook against existing workspace capabilities before executing its packets; rewrite any packet that would rebuild an owned capability into one that integrates it, & delete owner gates for anything already provisioned.

@@ -2,10 +2,13 @@
 
 import assert from "node:assert/strict";
 import { spawnSync, spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { WatchSupervisor } from "../watchman/supervisor.mjs";
+import { writeProductManifest } from "../lib/init/manifest.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts", "cortex.mjs");
@@ -28,19 +31,45 @@ test("cortex service install --dry-run does not register OS service", () => {
 });
 
 test("cortex service run starts in foreground and responds to SIGTERM", async () => {
-  const child = spawn(process.execPath, [CLI, "service", "run", "--json"], { stdio: ["ignore", "pipe", "pipe"] });
-  let stdout = "";
-  child.stdout.on("data", (d) => (stdout += d.toString()));
-  // Wait for running state
-  await new Promise((r) => setTimeout(r, 800));
-  assert.ok(stdout.includes("running") || stdout.includes("foreground"), "service run must print running state");
-  const exited = new Promise((resolve) => child.on("exit", (code) => resolve(code)));
-  child.kill("SIGTERM");
-  const code = await Promise.race([exited, new Promise((r) => setTimeout(() => r("timeout"), 3000))]);
-  assert.notEqual(code, "timeout", "service run must exit on SIGTERM");
-  // Clean exit (0) expected after graceful shutdown
-  assert.ok(code === 0 || code === null, `exit code ${code}`);
-  try { child.kill("SIGKILL"); } catch {}
+  const home = mkdtempSync(join(tmpdir(), "cortex-service-home-"));
+  try {
+    const manifestPath = join(home, ".orthic", "hub", "products.d", "cortex.json");
+    const { manifest } = writeProductManifest({ installRoot: ROOT, outPath: manifestPath });
+    const child = spawn(process.execPath, [CLI, "service", "run", "--json"], { cwd: ROOT, env: { ...process.env, HOME: home }, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    child.stdout.on("data", (d) => (stdout += d.toString()));
+    await new Promise((resolve, reject) => {
+      let timer;
+      let poll;
+      const onError = (error) => finish(error);
+      function finish(error = null) {
+        clearTimeout(timer);
+        clearInterval(poll);
+        child.off("error", onError);
+        if (error) reject(error); else resolve();
+      }
+      timer = setTimeout(finish, 5000);
+      poll = setInterval(() => {
+        if (stdout.includes("running") || stdout.includes("foreground")) finish();
+      }, 25);
+      child.once("error", onError);
+    });
+    assert.ok(stdout.includes("running") || stdout.includes("foreground"), "service run must print running state");
+    const payload = JSON.parse(stdout.trim().split(/\r?\n/)[0]);
+    const response = await fetch(`http://${payload.statusEndpoint.host}:${payload.statusEndpoint.port}/snapshot`, { headers: { [manifest.statusEndpoint.authHeader]: manifest.statusEndpoint.authToken } });
+    assert.equal(response.status, 200);
+    const snapshot = await response.json();
+    assert.equal(snapshot.productId, "cortex");
+    assert.ok(Number.isInteger(snapshot.observedAtUnixMs));
+    const exited = new Promise((resolve) => child.on("exit", (code) => resolve(code)));
+    child.kill("SIGTERM");
+    const code = await Promise.race([exited, new Promise((r) => setTimeout(() => r("timeout"), 3000))]);
+    assert.notEqual(code, "timeout", "service run must exit on SIGTERM");
+    assert.ok(code === 0 || code === null, `exit code ${code}`);
+    try { child.kill("SIGKILL"); } catch {}
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("cortex service start/stop are forbidden per D-S03", () => {
