@@ -28,7 +28,12 @@ export function stageMembrane(options = {}) {
   if (!existsSync(lock)) {
     throw new Error(`missing published Membrane add-on lock: ${lock}`);
   }
-  const result = spawnSync(process.platform === "win32" ? "pnpm.cmd" : "pnpm", adoptionArgs({ ...options, lock }), {
+  const args = adoptionArgs({ ...options, lock });
+  const windows = process.platform === "win32";
+  if (windows && !args.every((value) => /^[A-Za-z0-9._:\\/@+=-]+$/.test(value))) {
+    throw new Error("unsafe Windows add-on adoption argument");
+  }
+  const result = spawnSync(windows ? (process.env.ComSpec || process.env.COMSPEC || "cmd.exe") : "pnpm", windows ? ["/d", "/s", "/c", ["pnpm", ...args].join(" ")] : args, {
     cwd: repoRoot,
     env: process.env,
     stdio: "inherit",
