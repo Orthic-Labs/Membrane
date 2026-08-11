@@ -6,5 +6,6 @@ pub mod onboarding;
 pub mod dormant_tab;
 pub mod product_tab;
 pub mod supervisor;
+pub mod hub_runtime;
 pub mod workspace;
 pub mod update_admission;

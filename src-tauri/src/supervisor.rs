@@ -58,6 +58,19 @@ impl Supervisor {
         }
     }
 
+    /// Restarts a child that exited since its previous liveness check.
+    pub fn supervise_product(&self, manifest: &ManifestV1) -> Result<ProductStatus, String> {
+        let needs_restart = {
+            let mut children = self.children.lock().map_err(|_| "lock_poisoned")?;
+            match children.get_mut(&manifest.product_id) {
+                Some(Some(child)) => child.try_wait().map_err(|_| "service_wait_failed")?.is_some(),
+                Some(None) => false, // Existing port owner: never kill or restart it.
+                None => false, // Hub setup owns initial launch; polling only restarts tracked exits.
+            }
+        };
+        if needs_restart { self.start_product(manifest) } else { Ok(ProductStatus::Running) }
+    }
+
     fn try_spawn(manifest: &ManifestV1) -> Result<Option<Child>, String> {
         if manifest.service_start.is_empty() {
             return Err("serviceStart_empty".into());

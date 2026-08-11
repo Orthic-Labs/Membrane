@@ -85,6 +85,9 @@ fn case7_wrong_types_rejected() {
     let mut v = valid_base(&install);
     v["schemaVersion"] = serde_json::json!("one");
     assert_eq!(validate_manifest_value(v).unwrap_err(), "manifest_schema_invalid");
+    let mut extra = valid_base(&install);
+    extra["untrustedExtension"] = serde_json::json!(true);
+    assert_eq!(validate_manifest_value(extra).unwrap_err(), "manifest_schema_invalid");
 }
 
 #[test]

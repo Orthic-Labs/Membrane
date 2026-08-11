@@ -13,7 +13,7 @@ const SECTIONS: [&str; 8] = [
 fn snapshot(state: &str, reason: &str) -> CachedSnapshot {
     let mut sections = serde_json::Map::new();
     for key in SECTIONS {
-        sections.insert(key.to_string(), serde_json::json!({"state":state,"reason":reason,"items":[],"resolver":null,"evidence":null,"observedAtUnixMs":1,"cacheAgeMs":0}));
+        sections.insert(key.to_string(), serde_json::json!({"state":state,"reason":reason,"items":[],"resolver":null,"evidence":null,"observedAtUnixMs":1}));
     }
     let value = serde_json::json!({"schemaVersion":1,"productId":"membrane","observedAtUnixMs":1,"sections":sections});
     CachedSnapshot {

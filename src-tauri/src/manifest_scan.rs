@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::{collections::BTreeMap, path::{Path, PathBuf}};
 use crate::manifest_validate::validate_manifest_file;
 use crate::schema_types::ManifestV1;
 
@@ -23,23 +23,29 @@ fn dirs_fallback() -> PathBuf {
 }
 
 pub fn scan_products_dir(dir: &Path) -> Vec<ManifestV1> {
-    let mut out = Vec::new();
+    let mut out = BTreeMap::new();
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return out;
+        return Vec::new();
     };
-    for entry in entries.flatten() {
+    let mut entries: Vec<_> = entries.flatten().collect();
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("json") {
             continue;
         }
         match validate_manifest_file(&path) {
-            Ok(m) => out.push(m),
+            Ok(m) => {
+                if out.insert(m.product_id.clone(), m).is_some() {
+                    eprintln!("manifest rejected {}: duplicate productId", path.display());
+                }
+            }
             Err(e) => {
                 eprintln!("manifest rejected {}: {}", path.display(), e);
             }
         }
     }
-    out
+    out.into_values().collect()
 }
 
 pub fn discover_manifests() -> Vec<ManifestV1> {

@@ -1,6 +1,23 @@
 <!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Orthic</title><link rel="stylesheet" href="./src/overview.css"><script type="importmap">{"imports":{"@tauri-apps/api/core":"./vendor/@tauri-apps/api/core.js","@tauri-apps/api/event":"./vendor/@tauri-apps/api/event.js","@tauri-apps/api/window":"./vendor/@tauri-apps/api/window.js"}}</script><main id="app" tabindex="0" aria-live="polite"><section class="error-state" role="status"><h2>Offline — no snapshot cached</h2><p>Waiting for read-only Hub snapshot</p><p>Launch at login: managed outside read-only Hub</p></section></main><script type="module">
 import { renderOverview } from './src/overview.mjs';
 const app = document.querySelector('#app');
-async function refresh(){try{const {invoke}=await import('@tauri-apps/api/core');renderOverview(await invoke('snapshot'),app);}catch(error){renderOverview({result:{kind:'error',code:'snapshot_unavailable',message:error?.message||'No snapshot cached'}},app);}}
+let selectedProductId;
+function renderHub(state) {
+  const products = Array.isArray(state?.products) ? state.products : [];
+  if (!products.length) { renderOverview({result:{kind:'error',code:'snapshot_unavailable',message:'No valid product manifests discovered'}},app); return; }
+  if (!products.some(product => product.productId === selectedProductId)) selectedProductId = products[0].productId;
+  const selected = products.find(product => product.productId === selectedProductId);
+  app.innerHTML = '<nav class="product-tabs" aria-label="Products"></nav><section class="product-content"></section>';
+  const tabs = app.querySelector('.product-tabs');
+  for (const product of products) {
+    const button = document.createElement('button'); button.type = 'button'; button.textContent = product.displayName;
+    button.className = product.productId === selectedProductId ? 'selected' : '';
+    button.setAttribute('aria-pressed', String(product.productId === selectedProductId));
+    button.onclick = () => { selectedProductId = product.productId; renderHub(state); };
+    tabs.append(button);
+  }
+  renderOverview({payload:selected.snapshot}, app.querySelector('.product-content'));
+}
+async function refresh(){try{const {invoke}=await import('@tauri-apps/api/core');renderHub(await invoke('snapshot'));}catch(error){renderOverview({result:{kind:'error',code:'snapshot_unavailable',message:error?.message||'No snapshot cached'}},app);}}
 try { const {listen}=await import('@tauri-apps/api/event'); const {getCurrentWindow}=await import('@tauri-apps/api/window'); const current=getCurrentWindow(); window.addEventListener('keydown',e=>{if(e.key==='Escape')current.hide();}); await current.onFocusChanged(({payload})=>{if(payload)app.focus();}); await refresh(); await listen('hub-snapshot-tick',refresh); } catch {} // startup_setting remains native-owned; no mutation control here
 </script>

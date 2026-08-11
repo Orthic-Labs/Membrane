@@ -1,10 +1,17 @@
 use std::path::{Path, PathBuf};
-use crate::schema_types::{ManifestV1, StatusEndpoint};
+use crate::schema_types::ManifestV1;
 
 const MAX_MANIFEST_BYTES: u64 = 1024 * 1024;
 
 fn is_loopback(host: &str) -> bool {
     host == "127.0.0.1" || host == "::1" || host == "localhost"
+}
+
+fn is_http_header_name(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte))
 }
 
 fn resolve_inside(install_root: &Path, target: &str) -> Result<PathBuf, String> {
@@ -117,6 +124,12 @@ pub fn validate_manifest_value(value: serde_json::Value) -> Result<ManifestV1, S
     // statusEndpoint host loopback check
     if !is_loopback(&manifest.status_endpoint.host) {
         return Err("statusEndpoint_not_loopback".into());
+    }
+    if manifest.status_endpoint.port == 0
+        || !is_http_header_name(&manifest.status_endpoint.auth_header)
+        || manifest.status_endpoint.auth_token.contains(['\r', '\n'])
+    {
+        return Err("manifest_schema_invalid".into());
     }
 
     Ok(manifest)

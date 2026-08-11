@@ -27,12 +27,14 @@ mod dormant_tab;
 mod product_tab;
 mod manifest_validate;
 mod manifest_scan;
+mod hub_runtime;
 #[cfg(test)]
 mod hub_contract_tests;
 mod update_admission;
 mod workspace;
 
 use brand::PRODUCT_NAME;
+use hub_runtime::{HubRuntime, HubSnapshot};
 use schema_types::{SectionState, SnapshotV1, SectionV1};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -328,6 +330,20 @@ pub fn tray_status(snapshot: Option<&CachedSnapshot>) -> TrayStatus {
     }
 }
 
+fn tray_status_for_products(snapshot: &HubSnapshot) -> TrayStatus {
+    let mut worst = None;
+    for section in snapshot.products.iter().flat_map(|product| product.snapshot.sections.values()) {
+        let rank = presentation_rank(section);
+        worst = Some(worst.map_or(rank, |current: u8| current.min(rank)));
+    }
+    match worst {
+        Some(0) => TrayStatus::Unavailable,
+        Some(1) => TrayStatus::Degraded,
+        Some(2) => TrayStatus::Available,
+        _ => TrayStatus::Offline,
+    }
+}
+
 pub fn tray_tooltip(status: TrayStatus) -> &'static str {
     match status {
         TrayStatus::Available => "Orthic — available",
@@ -474,14 +490,8 @@ fn initial_poll(path: &Path, program: &Path, gate: &StartupGate) -> Result<Cache
 }
 
 #[tauri::command]
-fn snapshot(
-    cache: tauri::State<'_, Arc<Mutex<PathBuf>>>,
-    gate: tauri::State<'_, Arc<StartupGate>>,
-) -> Result<CachedSnapshot, String> {
-    let snapshot = read_cache(&cache.lock().map_err(|_| "cache lock poisoned")?)?;
-    (!gate.masks(Some(&snapshot)))
-        .then_some(snapshot)
-        .ok_or_else(|| "snapshot_unavailable".into())
+fn snapshot(runtime: tauri::State<'_, Arc<HubRuntime>>) -> HubSnapshot {
+    runtime.snapshot()
 }
 
 #[tauri::command]
@@ -516,8 +526,8 @@ fn startup_setting(app: tauri::AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn quit_app(app: tauri::AppHandle, service: tauri::State<'_, ServiceState>) {
-    stop_crypt_service(&service);
+fn quit_app(app: tauri::AppHandle, runtime: tauri::State<'_, Arc<HubRuntime>>) {
+    runtime.stop_all();
     app.exit(0);
 }
 
@@ -530,10 +540,9 @@ fn hide_popover(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 fn main() {
+    let runtime = Arc::new(HubRuntime::discover());
     tauri::Builder::default()
-        .manage(Arc::new(Mutex::new(PathBuf::from("snapshot.json"))))
-        .manage(Arc::new(Mutex::new(None::<Child>)))
-        .manage(Arc::new(StartupGate::new()))
+        .manage(runtime)
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("hub") {
                 let _ = w.show();
@@ -551,13 +560,6 @@ fn main() {
             #[cfg(target_os = "macos")]
             app.handle()
                 .set_activation_policy(tauri::ActivationPolicy::Accessory)?;
-            let cache = app
-                .path()
-                .app_data_dir()
-                .map_err(|e| e.to_string())?
-                .join("snapshot.json");
-            fs::create_dir_all(cache.parent().unwrap())?;
-            *app.state::<Arc<Mutex<PathBuf>>>().lock().unwrap() = cache.clone();
             let diagnostics =
                 MenuItemBuilder::with_id("diagnostics", "Copy diagnostics").build(app)?;
             let trace = MenuItemBuilder::with_id("trace", "Latest trace").build(app)?;
@@ -586,7 +588,10 @@ fn main() {
                             let _ = app.emit("popover-trace", ());
                         }
                     }
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        app.state::<Arc<HubRuntime>>().stop_all();
+                        app.exit(0);
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -628,30 +633,18 @@ fn main() {
             if let Ok(workspace) = workspace::resolve() {
                 std::env::set_var("WORKSPACE_ROOT", workspace.root);
             }
-            let child = start_crypt_service().map_err(std::io::Error::other)?;
-            *app.state::<ServiceState>()
-                .lock()
-                .map_err(|_| std::io::Error::other("service_state_unavailable"))? = child;
+            let runtime = app.state::<Arc<HubRuntime>>().inner().clone();
+            runtime.start_all();
             let handle = app.handle().clone();
-            let gate = app.state::<Arc<StartupGate>>().inner().clone();
-            let program = std::env::var_os("MEMBRANE_COMMAND")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| bundled_binary("membrane"));
             std::thread::spawn(move || loop {
-                let current = if gate.active() {
-                    initial_poll(&cache, &program, &gate)
-                } else {
-                    poll_snapshot(&cache, fetch_snapshot(&program, POLL_TIMEOUT), &gate)
-                };
-                let status = tray_status(current.as_ref().ok());
+                let current = runtime.poll_all();
+                let status = tray_status_for_products(&current);
                 if let Ok(icon) = tray_icon(status) {
                     let _ = tray.set_icon(Some(icon));
                     let _ = tray.set_icon_as_template(false);
                 }
                 let _ = tray.set_tooltip(Some(tray_tooltip(status)));
-                if current.is_ok() {
-                    let _ = handle.emit("hub-snapshot-tick", ());
-                }
+                let _ = handle.emit("hub-snapshot-tick", ());
                 std::thread::sleep(POLL_INTERVAL);
             });
             Ok(())
@@ -688,7 +681,6 @@ mod tests {
                     "resolver": null,
                     "evidence": null,
                     "observedAtUnixMs": 1,
-                    "cacheAgeMs": 0,
                 }),
             );
         }

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 /// Mirrors `schema/manifest.v1.ts` and `schema/manifest.v1.schema.json`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ManifestV1 {
     pub schema_version: u32,
     pub product_id: String,
@@ -18,7 +18,7 @@ pub struct ManifestV1 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StatusEndpoint {
     pub host: String,
     pub port: u16,
@@ -35,7 +35,7 @@ pub enum SectionState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SectionV1 {
     pub state: SectionState,
     pub reason: String,
@@ -46,7 +46,7 @@ pub struct SectionV1 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SnapshotV1 {
     pub schema_version: u32,
     pub product_id: String,
