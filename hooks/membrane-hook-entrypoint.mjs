@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Installed product hook entrypoint. HookHost owns normalization/order/deadlines.
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { dispatchMembraneHookEvent } from "./membrane-hook-runtime.mjs";
 import { createWorkspaceMemoryOperations } from "./membrane-workspace-operations.mjs";
 
@@ -28,4 +30,4 @@ export async function main({ read = () => readFileSync(0, "utf8"), write = (valu
   write(`${JSON.stringify(await runHook(payload, options))}\n`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) main();

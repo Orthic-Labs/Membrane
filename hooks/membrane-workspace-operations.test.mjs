@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { dispatchMembraneHookEvent } from "./membrane-hook-runtime.mjs";
 import { createWorkspaceMemoryOperations, durableWorkspaceFile } from "./membrane-workspace-operations.mjs";
@@ -39,6 +41,16 @@ test("production entrypoint dispatches Membrane-owned memory operations", async 
   assert.ok(calls.includes("checkpoint save"));
   assert.ok(calls.some((value) => value.startsWith("put note --scope global --file")));
   assert.ok(calls.some((value) => value.includes("--producer membrane_hook --record-type markdown_memory --authority A0 --influence-class data_only")));
+});
+
+test("production entrypoint executes as a cross-platform Node script", () => {
+  const entrypoint = new URL("./membrane-hook-entrypoint.mjs", import.meta.url);
+  const child = spawnSync(process.execPath, [fileURLToPath(entrypoint)], {
+    encoding: "utf8",
+    input: JSON.stringify({ hook_event_name: "Unknown", cwd: process.cwd() }),
+  });
+  assert.equal(child.status, 0, child.stderr);
+  assert.equal(JSON.parse(child.stdout).hookSpecificOutput.hookEventName, "Unknown");
 });
 
 test("ingest accepts only durable memory & Cortex artifacts, including host memory", () => {
