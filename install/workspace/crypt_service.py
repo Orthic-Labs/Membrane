@@ -6,11 +6,6 @@ artifact is derived from an explicit ``repo``/``home``/``port`` argument the cal
 supplies (from WORKSPACE_ROOT / MEMBRANE_WORKSPACE_ROOT or its own config) — never a
 hardcoded machine path or username.
 
-The macOS launchd plist renderers (``crypt_service_launchd``) and autostart registrars
-(``crypt_service_registrars``) live in sibling modules and are re-exported here so
-``import crypt_service`` remains the single stable entry point; they were split into
-separate files purely to keep each module under its reviewable-size ceiling — no
-behavior moved out of Membrane.
 """
 from __future__ import annotations
 
@@ -19,59 +14,6 @@ import socket
 import sqlite3
 import time
 from pathlib import Path
-
-# removed per D-S04: launchd auto-registration deleted
-# from crypt_service_launchd import (  # noqa: F401 - re-exported for callers of this module
-    DEFAULT_CRYPT_DAILY_LABEL,
-    DEFAULT_CRYPT_REPLICATION_LABEL,
-    DEFAULT_CRYPT_SERVE_LABEL,
-    render_crypt_daily_launchd_plist,
-    render_crypt_launchd_plist,
-    render_crypt_replication_launchd_plist,
-)
-# removed per D-S04
-# from crypt_service_registrars import (  # noqa: F401 - re-exported for callers of this module
-    bootstrap_launch_agent,
-    migrate_macos_label,
-    setup_crypt_serve_autostart as _orig_setup_crypt_serve_autostart,
-    setup_daily_sync,
-    setup_replication_schedule,
-)
-
-
-def setup_crypt_serve_autostart(  # noqa: F401 - wrapper adds orthic manifest
-    repo: Path,
-    home: Path,
-    port: int,
-    *,
-    win: bool,
-    mac: bool,
-    enable_daily: bool = True,
-    migrate_from_label: str | None = None,
-    label: str = DEFAULT_CRYPT_SERVE_LABEL,
-    installer_ps1: Path | None = None,
-    runner=None,
-) -> None:
-    _orig_setup_crypt_serve_autostart(
-        repo,
-        home,
-        port,
-        win=win,
-        mac=mac,
-        enable_daily=enable_daily,
-        migrate_from_label=migrate_from_label,
-        label=label,
-        installer_ps1=installer_ps1,
-        runner=runner,
-    )
-    try:
-        from orthic_manifest import read_product_version, write_orthic_manifest
-
-        write_orthic_manifest(repo, home, port, read_product_version(repo), win=win)
-        log("orthic manifest: wrote ~/.orthic/hub/products.d/membrane.json")
-    except Exception as exc:  # pragma: no cover - best-effort, never fail install
-        log(f"orthic manifest: skipped — {exc}")
-
 
 def log(msg: str) -> None:
     print(f"[membrane-workspace] {msg}")

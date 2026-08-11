@@ -1,26 +1,12 @@
 """Tests for the Membrane-owned Crypt workspace-installation primitives.
 
 Runs with the workspace's tools venv: `.venv-tools/bin/pytest membrane/install/workspace/`.
-Never invokes real launchctl — every subprocess.run call is a fixture.
 """
 from __future__ import annotations
 
-import socket
 import sqlite3
-import subprocess
 
 import crypt_service as cs
-
-
-def _fake_runner(returncode: int = 0):
-    calls = []
-
-    def run(args, **_kwargs):
-        calls.append(args)
-        return subprocess.CompletedProcess(args, returncode, "501\n", "")
-
-    run.calls = calls
-    return run
 
 
 def test_migrate_legacy_crypt_database_does_not_move_canonical_when_no_legacy(tmp_path):
@@ -54,59 +40,6 @@ def test_migrate_legacy_crypt_database_moves_legacy_to_canonical(tmp_path):
         assert connection.execute("SELECT value FROM marker").fetchone() == ("kept",)
 
 
-def test_migrate_macos_label_writes_new_plist_and_bootstraps(tmp_path):
-    home = tmp_path / "home"
-    (home / "Library/LaunchAgents").mkdir(parents=True)
-    new_plist = home / "Library/LaunchAgents/com.membrane.workspace.crypt-serve.plist"
-    runner = _fake_runner()
-
-    cs.migrate_macos_label(
-        "com.example.legacy-crypt-serve", "com.membrane.workspace.crypt-serve",
-        new_plist, "<plist>new</plist>", home=home, uid="501", runner=runner,
-    )
-
-    assert new_plist.read_text(encoding="utf-8") == "<plist>new</plist>"
-    assert ["launchctl", "bootout", "gui/501/com.example.legacy-crypt-serve"] in runner.calls
-    assert ["launchctl", "bootstrap", "gui/501", str(new_plist)] in runner.calls
-
-
-def test_migrate_macos_label_deletes_old_plist_file(tmp_path):
-    """A stale plist on disk after bootout is the double-ownership bug this exists to kill."""
-    home = tmp_path / "home"
-    agents = home / "Library/LaunchAgents"
-    agents.mkdir(parents=True)
-    old_plist = agents / "com.example.legacy-crypt-serve.plist"
-    old_plist.write_text("<plist>old</plist>", encoding="utf-8")
-    new_plist = agents / "com.membrane.workspace.crypt-serve.plist"
-
-    cs.migrate_macos_label(
-        "com.example.legacy-crypt-serve", "com.membrane.workspace.crypt-serve",
-        new_plist, "<plist>new</plist>", home=home, uid="501", runner=_fake_runner(),
-    )
-
-    assert not old_plist.exists()
-    assert new_plist.exists()
-
-
-def test_migrate_macos_label_is_idempotent_once_old_label_is_gone(tmp_path):
-    """Second run with the old label already absent must be a clean no-op, not an error."""
-    home = tmp_path / "home"
-    (home / "Library/LaunchAgents").mkdir(parents=True)
-    new_plist = home / "Library/LaunchAgents/com.membrane.workspace.crypt-serve.plist"
-    runner = _fake_runner()
-
-    cs.migrate_macos_label(
-        "com.example.legacy-crypt-serve", "com.membrane.workspace.crypt-serve",
-        new_plist, "<plist>v1</plist>", home=home, uid="501", runner=runner,
-    )
-    cs.migrate_macos_label(
-        "com.example.legacy-crypt-serve", "com.membrane.workspace.crypt-serve",
-        new_plist, "<plist>v2</plist>", home=home, uid="501", runner=runner,
-    )
-
-    assert new_plist.read_text(encoding="utf-8") == "<plist>v2</plist>"
-
-
 def test_render_crypt_shim_windows_cmd_format():
     body = cs.render_crypt_shim(
         "C:/tools/crypt.exe", "C:/db/crypt-engine.db", "C:/ort.dll", "C:/hf", "runc",
@@ -133,58 +66,3 @@ def test_render_crypt_shim_posix_format_on_posix_host_omits_runc_shell():
         compat_prefix=None, crypt_port=47851, cmd_format=False, win=False,
     )
     assert "CRYPT_RUNC_SHELL" not in body
-
-
-def test_setup_crypt_serve_autostart_tolerates_foreign_port_owner(tmp_path):
-    """Neither label owned by launchd (e.g. Membrane Hub holds the port): write the plist,
-    skip the socket wait + bootstrap, never touch real launchctl."""
-    repo = tmp_path / "workspace"
-    home = tmp_path / "home"
-    runner = _fake_runner(returncode=1)  # bootout fails: launchd doesn't own either label
-
-    cs.setup_crypt_serve_autostart(repo, home, 47851, win=False, mac=True, runner=runner)
-
-    assert all(call[:2] != ["launchctl", "bootstrap"] for call in runner.calls)
-    plist = home / "Library/LaunchAgents/com.membrane.workspace.crypt-serve.plist"
-    assert plist.exists()
-    assert "com.membrane.workspace.crypt-serve" in plist.read_text(encoding="utf-8")
-
-
-def test_setup_crypt_serve_autostart_win_skips_dispatch_when_port_owned(tmp_path):
-    """Windows asymmetry mirroring the mac owns_new/owns_old case: a foreign supervisor
-    (e.g. Membrane Hub) already holds the port, so the PS1 installer must never be invoked —
-    no PowerShell process, no Task Scheduler mutation."""
-    repo = tmp_path / "workspace"
-    home = tmp_path / "home"
-    runner = _fake_runner(returncode=0)
-
-    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    listener.bind(("127.0.0.1", 0))
-    listener.listen(1)
-    try:
-        port = listener.getsockname()[1]
-        cs.setup_crypt_serve_autostart(repo, home, port, win=True, mac=False, runner=runner)
-    finally:
-        listener.close()
-
-    assert runner.calls == []
-
-
-def test_setup_crypt_serve_autostart_win_dispatches_when_port_free(tmp_path, monkeypatch):
-    """Free port: the PS1 installer is dispatched (through whatever PowerShell shutil.which
-    resolves in the test host's environment) rather than skipped."""
-    import crypt_service_registrars as csr
-
-    repo = tmp_path / "workspace"
-    home = tmp_path / "home"
-    runner = _fake_runner(returncode=0)
-    monkeypatch.setattr(csr.shutil, "which", lambda _name: "/usr/bin/true")
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.bind(("127.0.0.1", 0))
-        free_port = probe.getsockname()[1]
-
-    cs.setup_crypt_serve_autostart(repo, home, free_port, win=True, mac=False, runner=runner)
-
-    assert len(runner.calls) == 1
-    assert runner.calls[0][0] == "/usr/bin/true"
