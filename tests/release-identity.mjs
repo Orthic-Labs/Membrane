@@ -18,6 +18,11 @@ test("adoption is lock-based & stages only into src-tauri/addons", () => {
     "--source", "/tmp/sealed",
   ]);
   assert.equal(platformFor("win32"), "win");
+  const lock = JSON.parse(readFileSync(new URL("../product-addons/membrane.lock.json", import.meta.url), "utf8"));
+  assert.equal(lock.version, "0.1.0");
+  for (const platform of ["mac", "win"]) {
+    assert.match(lock.targets[platform].manifestUrl, new RegExp(`^https://github\\.com/Orthic-Labs/Membrane/releases/download/addon-membrane-v0\\.1\\.0-${platform}-sha256-${lock.targets[platform].manifestSha256}/addon-manifest\\.json$`));
+  }
 });
 
 test("frontend build has no product checkout or binary staging dependency", () => {

@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "addon": "membrane",
+  "version": "0.1.0",
+  "targets": {
+    "mac": {
+      "manifestUrl": "https://github.com/Orthic-Labs/Membrane/releases/download/addon-membrane-v0.1.0-mac-sha256-6db18138fa5cde654c7557acbc8d8b176dd1c65f58b63bc6b2846857fd727dea/addon-manifest.json",
+      "manifestSha256": "6db18138fa5cde654c7557acbc8d8b176dd1c65f58b63bc6b2846857fd727dea"
+    },
+    "win": {
+      "manifestUrl": "https://github.com/Orthic-Labs/Membrane/releases/download/addon-membrane-v0.1.0-win-sha256-8ca52d173efbf98bf6e777383306fba2688040163ef8e31c36f0e6eea520bb76/addon-manifest.json",
+      "manifestSha256": "8ca52d173efbf98bf6e777383306fba2688040163ef8e31c36f0e6eea520bb76"
+    }
+  }
+}

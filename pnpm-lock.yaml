@@ -19,8 +19,8 @@ importers:
         version: 2.3.2
     devDependencies:
       '@rightkit/release':
-        specifier: 0.2.54
-        version: 0.2.54
+        specifier: 0.2.60
+        version: 0.2.60
       '@tauri-apps/cli':
         specifier: ^2.0.0
         version: 2.11.4
@@ -33,8 +33,8 @@ packages:
       '@tauri-apps/plugin-os': '>=2 <3'
       react: '>=18 <20'
 
-  '@rightkit/release@0.2.54':
-    resolution: {integrity: sha512-xzd/LAHzceH7iS960nIyrtXyDWNl2xiFOefXBVDq3mMdqQy37zPBM9MF6GYcxJds+SUZmbQD62+yxKl2/bwVJQ==}
+  '@rightkit/release@0.2.60':
+    resolution: {integrity: sha512-2iVutnmd7FjTbcJvTj7i6fODQW2S58jfx0WMVQPZG5gd13FMHjRafKpVfnSEUe2PwQCW2ZFx9cZ4YIwFM2lVfw==}
     hasBin: true
 
   '@tauri-apps/api@2.11.1':
@@ -130,7 +130,7 @@ snapshots:
       '@tauri-apps/plugin-os': 2.3.2
       react: 19.2.8
 
-  '@rightkit/release@0.2.54': {}
+  '@rightkit/release@0.2.60': {}
 
   '@tauri-apps/api@2.11.1': {}
 
