@@ -30,7 +30,6 @@ use crypt_core::planner::{
     plan as plan_context, ContextCandidateSetV1, PlannerError, PlannerInput,
 };
 use serde_json::{json, Value};
-use membrane_core::{budget::CrossProviderBudget, fusion, reconcile};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -404,20 +403,6 @@ fn delivery_trace_response(body: &str) -> (u16, String) {
         Ok(serialized) => (200, serialized),
         Err(_) => (500, json!({"error":"serialization_failed"}).to_string()),
     }
-}
-
-/// S-5: cross-provider RRF fusion and budget reconciliation for multi-provider assembly.
-/// Proves `membrane_core::fusion`/`budget`/`reconcile` are live in `serve.rs` (not shadow).
-pub fn cross_provider_reconciled_context(candidates: Vec<serde_json::Value>, max_tokens: u32) -> serde_json::Value {
-    if candidates.len() <= 1 {
-        return serde_json::json!({"single_provider": true, "candidates": candidates});
-    }
-    let _budget = CrossProviderBudget::new(max_tokens);
-    let _bounds = fusion::FusionBounds::default();
-    let _fuse_fn: fn(&[membrane_protocol::ContextCandidateSetV1], fusion::FusionBounds) -> fusion::FusionResult = fusion::fuse;
-    let _reconcile_fn: fn(&membrane_protocol::ContextPacketV1) -> reconcile::BudgetReconciliation = reconcile::reconcile;
-    let _ = (_fuse_fn, _reconcile_fn, _bounds, _budget);
-    serde_json::json!({"fused": candidates.len(), "providers": 2, "budget_ceiling": max_tokens})
 }
 
 #[derive(Clone)]
