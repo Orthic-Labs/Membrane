@@ -11,6 +11,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.0.0
         version: 2.0.0
+      '@rightkit/hooks':
+        specifier: 0.1.0
+        version: 0.1.0
     devDependencies:
       '@rightkit/ax':
         specifier: 0.1.1
@@ -37,6 +40,10 @@ packages:
     resolution: {integrity: sha512-m+RK0EUKAYMuSp+wcoDOEWfMDAGHh5/O7pZB8yYHqCB9W5HOr73j7llBRoUGbNBi81Q8VZr+4JvF6q+b6B5GUQ==}
     hasBin: true
 
+  '@rightkit/hooks@0.1.0':
+    resolution: {integrity: sha512-6+SjBp5YABYqxMH6l2BC0ZTrIdDmTBSzvpuHyHvw3mT8Sf5FSgCYo1zVo28AQ+BsHfWkJN+S4JlirIrhTIc0mg==}
+    hasBin: true
+
   zod@4.4.3:
     resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
 
@@ -54,5 +61,7 @@ snapshots:
   '@rightkit/ax@0.1.1': {}
 
   '@rightkit/git@0.2.0': {}
+
+  '@rightkit/hooks@0.1.0': {}
 
   zod@4.4.3: {}

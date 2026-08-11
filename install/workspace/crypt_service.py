@@ -15,8 +15,23 @@ import sqlite3
 import time
 from pathlib import Path
 
+from crypt_service_launchd import DEFAULT_CRYPT_SERVE_LABEL, render_crypt_launchd_plist  # noqa: F401
+from crypt_service_registrars import setup_crypt_serve_autostart  # noqa: F401
+
 def log(msg: str) -> None:
     print(f"[membrane-workspace] {msg}")
+
+
+def install_workspace_crypt_service(
+    repo: Path, home: Path, port: int, *, mac: bool, win: bool = False,
+    registrar=setup_crypt_serve_autostart,
+) -> dict[str, str]:
+    """Mac workspace installer entrypoint: launchd adopts Crypt singleton ownership."""
+    if win or not mac:
+        raise ValueError("Crypt workspace service installation is macOS-only")
+    migrate_legacy_crypt_database(repo / "tools/.cache/memory")
+    registrar(repo, home, port, mac=True, win=False)
+    return {"lifecycle": "launchd", "label": DEFAULT_CRYPT_SERVE_LABEL}
 
 
 def migrate_legacy_crypt_database(cache_dir: Path) -> Path:

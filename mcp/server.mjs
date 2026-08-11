@@ -22,6 +22,7 @@ import { createDeadline, deadlineSignal, mapConcurrent, terminalReason, timeoutR
 import { boundedLifecycleId, createLifecycle, withCancellationGrace } from "./lifecycle.mjs";
 import { toolsetNames } from "./toolsets.mjs";
 import { executeCodeBatch } from "../operations/code/mbr402-batch.mjs";
+import { requestCortex } from "./cortex-readiness.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -494,13 +495,9 @@ export async function cortexBatchCapability(binding, args, signal) {
       if (!cortexHash(item.sourceHash)) return { ok: false, code: "invalid_source_hash" };
       return { ok: true, repositoryRoot: targetBinding.root, authority: callerLevel(targetBinding), generationId: item.generationId, sourceHash: item.sourceHash };
     },
-    provider: async (admitted, abort) => {
-      const cli = process.env.CORTEX_CLI || resolve(HERE, "..", "..", "cortex", "scripts", "cortex.mjs");
-      const safeItems = admitted.map(({ id, operation, node, limit, budget, depth, repositoryRoot, authority, generationId, sourceHash }) => ({ id, operation, ...(node ? { node } : {}), ...(limit ? { limit } : {}), ...(budget ? { budget } : {}), ...(depth ? { depth } : {}), repositoryRoot, authority, generationId, sourceHash }));
-      const out = await run(process.execPath, [cli, "graph", "batch", "--json"], JSON.stringify({ items: safeItems }), { ...process.env, WORKSPACE_ROOT: binding.root }, abort);
-      if (out.code !== 0) return [];
-      try { const parsed = JSON.parse(out.stdout); return Array.isArray(parsed) ? parsed : parsed.items; } catch { return []; }
-    },
+    // Cortex's IPC protocol has no batch method. Returning no provider rows is
+    // a safe typed fallback: Membrane never substitutes a CLI child process.
+    provider: async () => [],
   });
 }
 function cortexFreshness(value) {
@@ -566,18 +563,25 @@ export function sanitizeCortexPayload(payload, operation) {
   }).filter((item) => item.id && item.sourceHash && item.freshness && item.resolver);
   return { operation, sourceGeneration: freshness?.generationId || null, freshness, items };
 }
-export async function cortexCapability(binding, args, signal) {
-  const cli = process.env.CORTEX_CLI || resolve(HERE, "..", "..", "cortex", "scripts", "cortex.mjs");
-  const { operation, command } = cortexCommand(args);
-  let out;
-  try {
-    out = await run(process.execPath, [cli, "graph", ...command], "", { ...process.env, WORKSPACE_ROOT: binding.root }, signal);
-  } catch {
-    throw new Error("cortex_unavailable");
-  }
-  if (out.code !== 0) throw new Error("cortex_unavailable");
+function cortexIpcRequest(operation, args, binding, signal, request = requestCortex) {
+  const deadlineMs = args.deadlineMs ?? 2000;
+  const input = { repoRoot: binding.root };
+  if (operation === "architecture") Object.assign(input, { budget: args.budget ?? 2000 });
+  else if (operation === "symbol") Object.assign(input, { nodeId: args.node });
+  else if (operation === "reference" || operation === "references") Object.assign(input, { anchor: args.node, direction: "both", depth: args.depth ?? 1, budget: args.budget ?? 2000 });
+  else if (operation === "impact") Object.assign(input, { anchor: args.node, depth: args.depth ?? 3, budget: args.budget ?? 2000 });
+  else throw new Error("cortex_unavailable");
+  const method = operation === "symbol" ? "resolve"
+    : operation === "reference" || operation === "references" ? "expand"
+      : operation;
+  return request(method, input, { deadlineMs, signal });
+}
+
+export async function cortexCapability(binding, args, signal, { request = requestCortex } = {}) {
+  const { operation } = cortexCommand(args);
   let payload;
-  try { payload = JSON.parse(out.stdout); } catch { throw new Error("cortex_unavailable"); }
+  try { payload = await cortexIpcRequest(operation, args, binding, signal, request); }
+  catch { throw new Error("cortex_unavailable"); }
   try { return sanitizeCortexPayload(payload, operation); }
   catch { throw new Error("cortex_unavailable"); }
 }

@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import { TOOLS, cortexCapability, cortexCommand, sanitizeCortexPayload } from "./server.mjs";
 const auth = { repository: "repo", caller: { root: "/repo", repositoryId: "repo", scopeId: "scope" } };
 
@@ -35,25 +33,15 @@ test("Cortex payload is content-free and hash-bound", () => {
   for (const invalid of [{ generationId: "gen-1" }, { generationId: "gen-1", manifestDigest: `sha256:${"b".repeat(64)}`, sourceObservation: { commit: "not-a-hash", clean: true } }, { generationId: "gen-1", manifestDigest: `sha256:${"b".repeat(64)}`, sourceObservation: { commit: "a".repeat(40), clean: true } }]) assert.throws(() => sanitizeCortexPayload(invalid, "changes"), /cortex_unavailable/);
 });
 
-test("Cortex failures never echo CLI stderr", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "cortex-failure-"));
-  const cli = join(dir, "cli.mjs");
-  writeFileSync(cli, "console.error('SECRET_RAW_STDERR'); process.exit(9);\n");
-  const previous = process.env.CORTEX_CLI;
-  process.env.CORTEX_CLI = cli;
-  try {
-    await assert.rejects(
-      cortexCapability({ root: dir }, { ...auth, operation: "architecture" }),
-      (error) => error.message === "cortex_unavailable" && !error.message.includes("SECRET_RAW_STDERR"),
-    );
-    for (const invalid of ["null", "[]", "42"]) {
-      writeFileSync(cli, `console.log('${invalid}');\n`);
-      await assert.rejects(cortexCapability({ root: dir }, { ...auth, operation: "architecture" }), (error) => error.message === "cortex_unavailable");
-    }
-  } finally {
-    if (previous === undefined) delete process.env.CORTEX_CLI;
-    else process.env.CORTEX_CLI = previous;
-  }
+test("Cortex capability uses IPC only & returns typed unavailable results", async () => {
+  await assert.rejects(
+    cortexCapability({ root: "/repo" }, { ...auth, operation: "architecture" }, undefined, { request: async () => { throw new Error("SECRET_RAW_STDERR"); } }),
+    (error) => error.message === "cortex_unavailable" && !error.message.includes("SECRET_RAW_STDERR"),
+  );
+  await assert.rejects(cortexCapability({ root: "/repo" }, { ...auth, operation: "changes" }, undefined, { request: async () => ({}) }), /cortex_unavailable/);
+  const source = await readFile(new URL("./server.mjs", import.meta.url), "utf8");
+  const cortexSection = source.slice(source.indexOf("export async function cortexBatchCapability"), source.indexOf("async function callTool"));
+  assert.doesNotMatch(cortexSection, /CORTEX_CLI|graph", "batch|process\.execPath/);
 });
 
 test("snapshot payloads are identity-only and bounded", () => {

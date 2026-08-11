@@ -2,28 +2,9 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
-import { pathToFileURL, fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+import { join, relative, resolve } from "node:path";
 import { defaultRegistryPath, enroll } from "./project-registry.mjs";
 import { readCortexReadiness } from "./cortex-readiness.mjs";
-
-// Resolved once: the absolute URL to Cortex's exported static-provider reader.
-// Membrane never re-parses graph.db — it calls the exported readGeneration,
-// which is the only contract for reading a persisted generation.
-//
-// MBR-015: this is OPTIONAL and sibling-independent. The default points at a
-// sibling source checkout, but the import is a guarded dynamic import (it
-// degrades to a null generation when absent), so the installed runtime needs
-// no sibling source tree. `MEMBRANE_CORTEX_STATIC_PROVIDER` overrides the path
-// for installed layouts that ship the reader at a different location.
-const CORTEX_STATIC_PROVIDER_URL = (() => {
-  const override = process.env.MEMBRANE_CORTEX_STATIC_PROVIDER?.trim();
-  if (override) return pathToFileURL(resolve(override)).href;
-  const here = dirname(fileURLToPath(import.meta.url));
-  // membrane/mcp/repository-catalog.mjs -> membrane/mcp -> membrane -> workspace -> cortex/graph/static-provider.mjs
-  return pathToFileURL(resolve(here, "..", "..", "cortex", "graph", "static-provider.mjs")).href;
-})();
 
 const SUBMODULE_PATH = /^\s*path\s*=\s*(.+?)\s*$/gm;
 
@@ -148,35 +129,6 @@ function readGitHead(root) {
 }
 
 /**
- * Probe the repo's .agent/graph/graph.db for the current Cortex generation.
- * Returns { generationId, manifestDigest } or { generationId: null,
- * manifestDigest: null } when the graph is unbuilt or Cortex cannot be
- * reached. The store is read via Cortex's own exported reader
- * (cortex/graph/static-provider.mjs) — Membrane never re-parses graph.db.
- *
- * @param {string} root absolute path to the repo root
- * @returns {Promise<{generationId: string|null, manifestDigest: string|null}>}
- */
-async function readCortexGeneration(root) {
-  let mod;
-  try {
-    mod = await import(CORTEX_STATIC_PROVIDER_URL);
-  } catch {
-    return { generationId: null, manifestDigest: null };
-  }
-  try {
-    const gen = mod?.readGeneration?.(root, ".agent");
-    const manifest = gen?.manifest ?? null;
-    return {
-      generationId: manifest?.generationId ?? null,
-      manifestDigest: manifest?.manifestDigest ?? null,
-    };
-  } catch {
-    return { generationId: null, manifestDigest: null };
-  }
-}
-
-/**
  * Capabilities a repo advertises through the catalog. The list is honest: it
  * enumerates what the catalog can resolve for this repo today, not a wish list.
  * "graph" requires a built graph.db; "git" requires a working tree; the
@@ -220,59 +172,27 @@ function aliasesFor(relativeRoot) {
   return [...aliases].sort();
 }
 
-/**
- * Determine watcher state by reading the repo's `watch_state` table in graph.db.
- *
- * Plan 2.7a: replaces the hardcoded "unwatched" stub. The keys written by
- * the Cortex watchman supervisor (supervisor.mjs:73-112) are `watcher_pid`,
- * `event_gap`, `event_gap_reason`, `last_error`, `source_clock`, `applied_clock`.
- *
- * Mapping to exactly four values (no others) — delegated to
- * Cortex's authoritative readiness (MBR-009):
- *   - no graph.db or no row → "unwatched"
- *   - watcher_pid missing    → "unwatched" (watcher_never_started)
- *   - watcher_pid dead       → "unwatched" (watcher_process_dead)
- *   - watcher_pid alive but owner stale → "unwatched" (watcher_owner_stale)
- *   - watcher alive + event_gap → "degraded"
- *   - watcher alive + pending events → "stale"
- *   - watcher alive + no gap → "current"
- *
- * @param {string} absoluteRoot absolute path to the repo root
- * @returns {"current"|"degraded"|"stale"|"unwatched"}
- */
-function readWatcherState(absoluteRoot) {
-  // MBR-009: delegate to Cortex's authoritative readiness contract. Stale
-  // actors (never started / process dead / owner superseded) are unwatched;
-  // stale data (event gap / pending events) is degraded/stale. A supervisor
-  // restart no longer marks live repos dead.
-  return readCortexReadiness(absoluteRoot).freshness;
-}
-
 export async function buildRepositoryCatalog(workspaceRoot, options = {}) {
   const root = await realpath(resolve(workspaceRoot));
   const discovered = await discoverRepositoryRoots(root);
   const workspaceId = options.workspaceId || repositoryId(".");
-  // Read each repo's generation through Cortex's exported reader. We do this
-  // up-front so a slow/missing graph.db does not delay catalog construction
-  // by serializing the entry mapping; an async per-entry probe would have the
-  // same shape but worse latency because cortex/graph/import cost is paid on
-  // the first call regardless.
-  const generationByAbsolute = new Map();
-  for (const { absoluteRoot } of discovered) {
-    generationByAbsolute.set(absoluteRoot, await readCortexGeneration(absoluteRoot));
-  }
-  const repositories = discovered.map(({ relativeRoot, absoluteRoot }) => {
+  // Status is read through Cortex's published IPC seam concurrently. A missing
+  // daemon is a typed degradation, never a graph.db read or a spawned fallback.
+  const readinessByAbsolute = new Map(await Promise.all(discovered.map(async ({ absoluteRoot }) => [
+    absoluteRoot, await readCortexReadiness(absoluteRoot),
+  ])));
+  const repositories = await Promise.all(discovered.map(async ({ relativeRoot, absoluteRoot }) => {
     const repository_id = repositoryId(relativeRoot);
     const isWorkspaceRoot = relativeRoot === ".";
     const graphRel = `${relativeRoot === "." ? "" : `${relativeRoot}/`}.agent/graph/graph.db`;
-    const graphAbs = join(absoluteRoot, ".agent", "graph", "graph.db");
-    const hasGraphDb = existsSync(graphAbs);
-    const { generationId: cortexGenerationId, manifestDigest } = generationByAbsolute.get(absoluteRoot) ?? { generationId: null, manifestDigest: null };
+    const readiness = readinessByAbsolute.get(absoluteRoot);
+    const { generationId: cortexGenerationId, manifestDigest } = readiness ?? { generationId: null, manifestDigest: null };
+    const hasGraphDb = Boolean(cortexGenerationId);
     const origin = readGitOrigin(absoluteRoot);
     const sourceCommit = readGitHead(absoluteRoot);
     const rootBinding = absoluteRoot;
     const aliases = aliasesFor(relativeRoot);
-    const watcherState = readWatcherState(absoluteRoot);
+    const watcherState = readiness?.freshness ?? "unwatched";
     const capabilities = capabilitiesFor({ relativeRoot, hasGraphDb, isWorkspaceRoot });
     // grantPolicy mirrors the existing enrollment shape so callers do not need
     // to special-case the new field. The workspace-root gets an empty
@@ -312,7 +232,7 @@ export async function buildRepositoryCatalog(workspaceRoot, options = {}) {
       cortex_graph: graphRel,
       grants: [],
     };
-  });
+  }));
   const body = { schema: "orthic.repository-catalog.v1", workspace_id: workspaceId, repositories };
   return { ...body, catalog_digest: digest(body) };
 }

@@ -2,6 +2,9 @@
   "name": "membrane",
   "private": true,
   "type": "module",
+  "bin": {
+    "membrane-workspace-hook": "hooks/membrane-hook-entrypoint.mjs"
+  },
   "packageManager": "pnpm@11.18.0",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
@@ -21,7 +24,8 @@
     "rightkit:ax:conformance": "right-ax ax conformance ."
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "2.0.0"
+    "@modelcontextprotocol/server": "2.0.0",
+    "@rightkit/hooks": "0.1.0"
   },
   "devDependencies": {
     "@rightkit/ax": "0.1.1",
