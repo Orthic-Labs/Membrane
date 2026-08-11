@@ -8,7 +8,7 @@ import { buildGraphGeneration } from "../graph/static-provider.mjs";
 import { CortexRepositoryWorker, RepositoryActor } from "../graph/watchman.mjs";
 import { closeStore, openStore } from "../graph/store-sqlite.mjs";
 import { MAX_SOURCE_FILE_BYTES, stableRead } from "../graph/stable-read.mjs";
-import { normalizeEvents, startWatch, waitForNativeProbe } from "../watchman/adapter.mjs";
+import { isEligibleWatchPath, normalizeEvents, startWatch, waitForNativeProbe } from "../watchman/adapter.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
@@ -76,7 +76,7 @@ test("worker closes its store after an ingest error", async () => {
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });
 
-test("burst coalesces to one applied delta and marks superseded rows", async () => {
+test("burst coalesces before persistence to one journal row and one applied delta", async () => {
   const repo = mkdtempSync(join(tmpdir(), "cortex-watchman-burst-"));
   let actor;
   cpSync(FIXTURE, repo, { recursive: true });
@@ -92,9 +92,21 @@ test("burst coalesces to one applied delta and marks superseded rows", async () 
     const db = openStore(join(repo, ".agent/graph/graph.db"));
     try {
       assert.equal(db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=1").get().n, 1);
-      assert.equal(db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=2").get().n, 19);
+      assert.equal(db.prepare("SELECT COUNT(*) AS n FROM event_journal").get().n, 1);
     } finally { closeStore(db); }
   } finally { await actor?.stop(); rmSync(repo, { recursive: true, force: true }); }
+});
+
+test("event eligibility rejects files below directories created after subscription", () => {
+  assert.equal(isEligibleWatchPath("src/node_modules/created-later/noise.js"), false);
+  assert.equal(isEligibleWatchPath("nested/.agent-test-run/graph.db"), false);
+  assert.equal(isEligibleWatchPath("nested/child-repo/new-file.ts", ["nested/child-repo"]), false);
+  assert.equal(isEligibleWatchPath("src/keep.ts"), true);
+  const root = mkdtempSync(join(tmpdir(), "cortex-watchman-dynamic-exclusion-"));
+  try {
+    const events = normalizeEvents(root, [{ type: "create", path: join(root, "src", "node_modules", "created-later", "noise.js") }]);
+    assert.deepEqual(events, []);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("two files arriving during one drain are both applied", async () => {

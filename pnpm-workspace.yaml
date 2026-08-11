@@ -1,2 +1,4 @@
 allowBuilds:
   '@parcel/watcher': true
+minimumReleaseAgeExclude:
+  - '@rightkit/hooks@0.1.0'

@@ -66,7 +66,7 @@ import {
   sealPhase2Artifacts,
 } from "../lib/incremental-phase2.mjs";
 import { CODE_EXTENSIONS } from "../graph/language-extractors.mjs";
-import { openStore, openStoreReadOnly, closeStore, saveGeneration, countRows, listFileMetadata, listSymbolMetadata, readManifestEnvelope, searchGenerationSymbols } from "../graph/store-sqlite.mjs";
+import { adoptRebuiltGeneration, openStore, openStoreReadOnly, closeStore, countRows, listFileMetadata, listSymbolMetadata, readManifestEnvelope, searchGenerationSymbols } from "../graph/store-sqlite.mjs";
 import {
   readIndexedMeta,
   indexedQueryGeneration,
@@ -380,7 +380,7 @@ function persistGenerationToStore(root, outDir, generation) {
   let summary;
   let rows;
   try {
-    summary = saveGeneration(db, generation, { populateState: true });
+    summary = adoptRebuiltGeneration(db, generation, { populateState: true });
     incrementTelemetry(db, "full_rebuilds");
     rows = countRows(db);
     if (rows.files !== summary.fileCount || rows.edges !== summary.edgeCount) {

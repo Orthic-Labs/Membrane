@@ -16,6 +16,7 @@ import { compareRepoPaths, normalizeRepoPath } from "./path-order.mjs";
 import { canonicalProviderId } from "./provider-identity.mjs";
 
 const FIXED_PROVIDER_RANKS = [["lexical", 0], ["treesitter", 1], ["doctruth", 2]];
+const RETAINED_APPLIED_JOURNAL_ROWS = 4096;
 
 // Derived from MIGRATIONS below, never hardcoded: a literal here silently
 // desyncs the moment a migration is appended, and migrate() would then stop
@@ -129,6 +130,29 @@ export function openStoreReadOnly(dbPath) {
 
 export function closeStore(db) {
   db.close();
+}
+
+// Run only after a committed batch. PASSIVE avoids blocking readers; pruning
+// retains recent diagnostics without unbounded applied-event history.
+export function maintainStore(db, { retainedJournalRows = RETAINED_APPLIED_JOURNAL_ROWS } = {}) {
+  if (!Number.isInteger(retainedJournalRows) || retainedJournalRows < 0) throw new TypeError("retainedJournalRows must be a non-negative integer");
+  db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+  const newest = db.prepare("SELECT MAX(seq) AS seq FROM event_journal WHERE applied!=0").get()?.seq;
+  if (!newest) return Object.freeze({ checkpoint: "passive", pruned: 0 });
+  const result = db.prepare("DELETE FROM event_journal WHERE applied!=0 AND seq<=?").run(Number(newest) - retainedJournalRows);
+  return Object.freeze({ checkpoint: "passive", pruned: Number(result.changes ?? 0) });
+}
+
+export function resetWatchStateAfterRebuild(db) {
+  db.exec("BEGIN IMMEDIATE;");
+  try {
+    db.exec("DELETE FROM event_journal; DELETE FROM watch_state;");
+    db.exec("COMMIT;");
+  } catch (error) {
+    db.exec("ROLLBACK;");
+    throw error;
+  }
+  return maintainStore(db);
 }
 
 /**
@@ -1305,6 +1329,13 @@ export function saveGeneration(db, generation, options = {}) {
     db.exec("ROLLBACK;");
     throw error;
   }
+}
+
+// Readers see prior sealed generation or complete rebuilt generation, never
+// a row-by-row replacement; maintenance starts only after adoption commits.
+export function adoptRebuiltGeneration(db, generation, options = {}) {
+  const summary = saveGeneration(db, generation, options);
+  return Object.freeze({ ...summary, maintenance: resetWatchStateAfterRebuild(db) });
 }
 
 function normalizeContentDigest(value) {
