@@ -12,6 +12,7 @@ import { typedStatus } from "./membrane-hook-runtime.mjs";
 
 const require = createRequire(import.meta.url);
 const DEFAULT_CONTEXT_ADAPTER = require("../mcp/host/context-adapter.cjs");
+const SERVICE_LIFECYCLE = process.platform === "win32" ? "scheduled-task" : "launchd";
 
 function workspaceRoot(event, env = process.env) {
   const requested = env.WORKSPACE_ROOT || event.payload.cwd || event.payload.working_directory || process.cwd();
@@ -232,7 +233,7 @@ export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTE
   return Object.freeze({
     async status(event) {
       const healthy = await probeStatus(rootFor(event));
-      return typedStatus(healthy ? "available" : "unavailable", healthy ? "crypt_healthy" : "crypt_unavailable", { lifecycle: "launchd" });
+      return typedStatus(healthy ? "available" : "unavailable", healthy ? "crypt_healthy" : "crypt_unavailable", { lifecycle: SERVICE_LIFECYCLE });
     },
     async rearm(event) {
       if (event.payload.source !== "compact" || !event.sessionId) return typedStatus("skipped", "rearm_not_applicable");
