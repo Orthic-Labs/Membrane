@@ -28,6 +28,10 @@ function normalizePath(root, value) {
   return relative(root, canonicalAbsolute(resolve(root, String(value)))).replaceAll("\\", "/");
 }
 
+function normalizedRelative(value) {
+  return String(value ?? "").replaceAll("\\", "/").replace(/^\.\//, "").replace(/^\/+|\/+$/g, "");
+}
+
 export async function waitForNativeProbe(readyPromise, timeoutMs = PROBE_CADENCE_MS, signal) {
   let probeTimer;
   let onAbort;
@@ -99,7 +103,18 @@ function resolveExclusions(root, extra = []) {
   return [...new Set([...names, ...found])];
 }
 
-function normalizeEvents(root, events, observedMs = Date.now(), transientPaths = []) {
+// Subscription ignores only cover directories present at start. Every event
+// passes this canonical predicate, including paths beneath later-created dirs.
+export function isEligibleWatchPath(path, ignore = []) {
+  const relativePath = normalizedRelative(path);
+  if (!relativePath || relativePath === "." || relativePath.startsWith("../")) return false;
+  const segments = relativePath.split("/");
+  if (segments.some((segment) => EXCLUDED_NAMES.includes(segment) || /^\.agent(?:-|$)/.test(segment))) return false;
+  const prefixes = ignore.map(normalizedRelative).filter(Boolean);
+  return !prefixes.some((prefix) => relativePath === prefix || relativePath.startsWith(`${prefix}/`));
+}
+
+function normalizeEvents(root, events, observedMs = Date.now(), transientPaths = [], ignore = []) {
   const normalizedRoot = canonicalRoot(root);
   const transient = new Set(transientPaths.map((path) => normalizePath(normalizedRoot, path)));
   const candidates = events
@@ -115,7 +130,7 @@ function normalizeEvents(root, events, observedMs = Date.now(), transientPaths =
       renameTo: null,
       observedMs,
     }))
-    .filter((event) => event.path && event.path !== ".");
+    .filter((event) => isEligibleWatchPath(event.path, ignore));
   const deletes = candidates.filter((event) => event.eventKind === "delete");
   const creates = candidates.filter((event) => event.eventKind === "create");
   const paired = new Set();
@@ -162,7 +177,7 @@ export async function startWatch(root, onEvents, onGap = () => {}, ignore = [], 
     }
     if (probePath && events.some((event) => canonicalAbsolute(event.path) === canonicalAbsolute(probePath))) resolveReady?.();
     try {
-      const normalized = normalizeEvents(absoluteRoot, events, Date.now(), [...transientPaths]);
+      const normalized = normalizeEvents(absoluteRoot, events, Date.now(), [...transientPaths], ignore);
       if (normalized.length) onEvents(normalized);
     } catch (callbackError) { reportGap(callbackError); }
   };
@@ -213,7 +228,7 @@ export async function writeSnapshot(root, snapshotPath, ignore = []) {
 export async function eventsSince(root, snapshotPath, ignore = []) {
   const normalizedRoot = canonicalRoot(root);
   const events = await ParcelWatcher.getEventsSince(normalizedRoot, resolve(snapshotPath), options(normalizedRoot, ignore));
-  return normalizeEvents(normalizedRoot, events);
+  return normalizeEvents(normalizedRoot, events, Date.now(), [], ignore);
 }
 
 export { normalizeEvents };

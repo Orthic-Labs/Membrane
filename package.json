@@ -84,6 +84,7 @@
     "soak": "node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/cortex-soak.json"
   },
   "dependencies": {
+    "@rightkit/hooks": "0.1.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@parcel/watcher": "2.6.0",
     "ajv": "8.20.0",

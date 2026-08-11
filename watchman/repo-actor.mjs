@@ -6,7 +6,7 @@ import { parseFileFacts } from "../graph/static-provider.mjs";
 import { buildIncrementalTreeSitterFacts, SUPPORTED_EXTENSIONS } from "../graph/treesitter-provider.mjs";
 import { extractDoc, isDoc, loadConfig } from "../scripts/cortex.mjs";
 import { MAX_SOURCE_FILE_BYTES, stableRead } from "../graph/stable-read.mjs";
-import { collectDependents, closeStore, listFileMetadata, listSymbolMetadata, openStore, openStoreReadOnly } from "../graph/store-sqlite.mjs";
+import { collectDependents, closeStore, listFileMetadata, listSymbolMetadata, maintainStore, openStore, openStoreReadOnly } from "../graph/store-sqlite.mjs";
 import { eventsSince, startWatch, writeSnapshot } from "./adapter.mjs";
 
 const REPAIR_BATCH = 50;
@@ -26,13 +26,19 @@ function sourceFilesFromStore(db) {
   }));
 }
 
+export function coalesceWatchEvents(events) {
+  const latest = new Map();
+  for (const event of events ?? []) if (event?.path) latest.set(normalizePath(event.path), event);
+  return [...latest.values()];
+}
+
 export function appendWatchEvents(db, events) {
   let clock = Number(stateValue(db, "source_clock", 0));
   const insert = db.prepare("INSERT INTO event_journal(observed_ms,event_kind,path,rename_to,source_clock) VALUES (?,?,?,?,?)");
   const result = [];
   db.exec("BEGIN IMMEDIATE");
   try {
-    for (const event of events) {
+    for (const event of coalesceWatchEvents(events)) {
       clock += 1;
       const info = insert.run(Number(event.observedMs ?? Date.now()), event.eventKind, normalizePath(event.path), event.renameTo ? normalizePath(event.renameTo) : null, clock);
       result.push({ seq: Number(info.lastInsertRowid), sourceClock: clock });
@@ -187,6 +193,12 @@ export async function drainJournal(db, root, { force = true, maxDependentFiles =
     for (const row of rows) { await applyJournalEvent(db, root, row, maxDependentFiles, readStable, signal); applied += 1; }
     force = true;
   }
+  const pending = db.prepare("SELECT COUNT(*) AS n FROM event_journal WHERE applied=0").get().n;
+  if (pending > 0) {
+    setState(db, "event_gap", 1);
+    setState(db, "event_gap_reason", "journal_overflow");
+    setState(db, "last_error", `watcher journal exceeded ${MAX_DRAIN_PASSES} drain passes (${pending} pending)`);
+  } else maintainStore(db);
   return applied;
 }
 
@@ -251,6 +263,10 @@ export class RepositoryActor extends EventEmitter {
     this.reconcileInFlight = null;
     this.reconcilePending = false;
     this.drainInFlight = null;
+    // Native callbacks can arrive faster than SQLite writes. Buffering through
+    // debounce coalesces before journal persistence instead of recording rows
+    // that will immediately become superseded.
+    this.eventBuffer = [];
     this.stopController = new AbortController();
     this.epoch = 0;
     this.stopGeneration = 0;
@@ -419,18 +435,32 @@ export class RepositoryActor extends EventEmitter {
       this.markGap(new Error("watcher overflow"), "event_overflow", run);
       return [];
     }
-    const db = this.openDbOnce();
-    const appended = appendWatchEvents(db, events);
+    this.eventBuffer.push(...events);
     this.scheduleFlush(run);
-    return appended;
+    return events;
   }
 
   flush(force = false, run = null) {
     if (run && !this.active(run)) return Promise.resolve(0);
     if (this.drainInFlight) return this.drainInFlight;
     const db = this.openDbOnce();
-    const drain = drainJournal(db, this.root, { force, maxDependentFiles: this.maxDependentFiles, readStable: this.readStable, signal: run?.controller.signal ?? this.stopController.signal });
-    const settledDrain = drain.finally(() => {
+    const signal = run?.controller.signal ?? this.stopController.signal;
+    const drain = (async () => {
+      let applied = 0;
+      // Events can arrive while parsing yields. Repeat until both the buffer
+      // and journal are caught up, bounded inside drainJournal itself.
+      do {
+        const batch = this.eventBuffer.splice(0);
+        if (batch.length) appendWatchEvents(db, batch);
+        applied += await drainJournal(db, this.root, { force, maxDependentFiles: this.maxDependentFiles, readStable: this.readStable, signal });
+        force = true;
+      } while (this.eventBuffer.length);
+      return applied;
+    })();
+    const settledDrain = drain.then((applied) => {
+      if (Number(stateValue(db, "event_gap", 0)) === 1 && stateValue(db, "event_gap_reason") === "journal_overflow") this.markGap(new Error("watcher journal overflow"), "journal_overflow", run);
+      return applied;
+    }).finally(() => {
       if (this.drainInFlight === settledDrain) this.drainInFlight = null;
     });
     this.drainInFlight = settledDrain;
@@ -527,14 +557,14 @@ export class CortexRepositoryWorker {
       this.actor.markGap(new Error("watcher overflow"), "event_overflow");
       return { eventGap: true, reconciled: false };
     }
-    const appended = this.actor.ingest([event]);
+    this.actor.ingest([event]);
     const appliedCount = await this.actor.flush(true);
     // Read-only lookback at a row this call itself just wrote — no mutation,
     // so this must never be the writable opener (D3).
     const db = openStoreReadOnly(this.actor.dbPath);
     try {
-      const row = db.prepare("SELECT * FROM event_journal WHERE seq=?").get(appended[0].seq);
-      return { ...appended[0], applied: appliedCount > 0, journalSeq: appended[0].seq, appliedClock: row.applied_clock, eventGap: false };
+      const row = db.prepare("SELECT * FROM event_journal WHERE path=? ORDER BY seq DESC LIMIT 1").get(normalizePath(path));
+      return { sourceClock: Number(row.source_clock), applied: appliedCount > 0, journalSeq: Number(row.seq), appliedClock: row.applied_clock, eventGap: false };
     } finally { closeStore(db); }
   }
 }

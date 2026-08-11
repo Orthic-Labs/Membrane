@@ -14,6 +14,9 @@ importers:
       '@parcel/watcher':
         specifier: 2.6.0
         version: 2.6.0
+      '@rightkit/hooks':
+        specifier: 0.1.0
+        version: 0.1.0
       ajv:
         specifier: 8.20.0
         version: 8.20.0
@@ -129,6 +132,10 @@ packages:
   '@parcel/watcher@2.6.0':
     resolution: {integrity: sha512-7FNeNl8NCE7aINx7WXiKQrPYZWC/hvrTsmk6zmxbI7LTXE7hVek/n8AfVgpe2y82zl3w0HvCHN0bVKMBoJcC0w==}
     engines: {node: '>= 10.0.0'}
+
+  '@rightkit/hooks@0.1.0':
+    resolution: {integrity: sha512-6+SjBp5YABYqxMH6l2BC0ZTrIdDmTBSzvpuHyHvw3mT8Sf5FSgCYo1zVo28AQ+BsHfWkJN+S4JlirIrhTIc0mg==}
+    hasBin: true
 
   accepts@2.0.0:
     resolution: {integrity: sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==}
@@ -595,6 +602,8 @@ snapshots:
       '@parcel/watcher-linux-x64-musl': 2.6.0
       '@parcel/watcher-win32-arm64': 2.6.0
       '@parcel/watcher-win32-x64': 2.6.0
+
+  '@rightkit/hooks@0.1.0': {}
 
   accepts@2.0.0:
     dependencies:
