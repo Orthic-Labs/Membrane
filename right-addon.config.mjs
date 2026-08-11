@@ -60,8 +60,8 @@ export default {
         { role: "third-party-notices", name: "THIRD-PARTY-NOTICES.txt", source: "THIRD-PARTY-NOTICES.txt" },
       ],
       build: {
-        cmd: "cargo",
-        args: ["build", "--manifest-path", "engine/Cargo.toml", "--workspace", "--locked", "--release", "--target", "x86_64-pc-windows-msvc", "-p", "membrane", "--bin", "membrane", "-p", "crypt", "--bin", "crypt-service"],
+        cmd: "rustup",
+        args: ["run", "stable", "cargo", "build", "--manifest-path", "engine/Cargo.toml", "--workspace", "--locked", "--release", "--target", "x86_64-pc-windows-msvc", "-p", "membrane", "--bin", "membrane", "-p", "crypt", "--bin", "crypt-service"],
       },
       signing: { contract: "azure-artifact-signing-v1" },
     },
