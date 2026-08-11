@@ -81,7 +81,7 @@ promoted; installed evidence is kept separate from source-only claims for later 
 | Context budget | JSONL metrics existed | Accounted, but joins are only as strong as the emitting lifecycle trace; canonical ledger is the target authority |
 | Pre/post compaction | Pre/post rows existed; malformed rows were possible | Content-free phase accounting remains; malformed rows are reported, not erased |
 | Feedback/value/outcome | Context feedback table existed but was empty in the audit | Schema is present; zero feedback is reported as zero observed feedback, not proof of value |
-| Morph transcript mining | Per-client discovery/parse/skip census and accepted/rejected rules | Transcript identity is client-qualified; Mac handback completed separately through origin sequence 1760 |
+| Adapt transcript mining | Per-client discovery/parse/skip census and accepted/rejected rules | Transcript identity is client-qualified; Mac handback completed separately through origin sequence 1760 |
 | Daily reconciliation | Aggregates only; missing sources could appear as zero-success | Persists exact client, `client:session`, and decision maps; raw-log verifier recomputes all three; missing or synthetic-only sources are `unavailable` and non-reconciling |
 | Release/installed-state proof | Source, candidate, and resident state could be conflated | Installed truth and guard-install evidence live in `RIGHTCONTEXT-STATE.md` and the dc7780f2 release evidence tree |
 | PATH shims/setup | Live `runc` shim could drift from canonical setup | Canonical setup passes flags correctly, has a regression test, and the resident shims were refreshed through guarded promotion/setup |

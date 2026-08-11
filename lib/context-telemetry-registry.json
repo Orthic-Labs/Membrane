@@ -20,7 +20,7 @@
     },
     "artifact_families": [
       "memory",
-      "morph",
+      "adapt",
       "blueprint",
       "skill_output",
       "rule",

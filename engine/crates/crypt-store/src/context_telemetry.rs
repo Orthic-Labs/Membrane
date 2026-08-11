@@ -3166,7 +3166,7 @@ impl MemDb {
         Ok(receipt)
     }
 
-    /// USER-ORIGIN evidence only. This is the sole read path Morph Taste may use: there is no
+    /// USER-ORIGIN evidence only. This is the sole read path Adapt Taste may use: there is no
     /// parameter on `ObservableEventQuery` that can widen it, because origin scope is selected by
     /// which function is called, never by caller-supplied data.
     pub fn query_observable_events_for_taste(
@@ -3176,7 +3176,7 @@ impl MemDb {
         self.query_observable_events(filter, ObservableOriginScope::TasteUserOnly)
     }
 
-    /// Full authorized observable-event stream (every frozen origin), for Morph Insights.
+    /// Full authorized observable-event stream (every frozen origin), for Adapt Insights.
     pub fn query_observable_events_for_insights(
         &self,
         filter: &ObservableEventQuery,
@@ -3351,9 +3351,9 @@ impl MemDb {
 /// `query_observable_events_for_insights`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ObservableOriginScope {
-    /// Morph Taste: user-origin evidence only, per the L1 isolation mandate.
+    /// Adapt Taste: user-origin evidence only, per the L1 isolation mandate.
     TasteUserOnly,
-    /// Morph Insights: the full authorized stream, every frozen origin value.
+    /// Adapt Insights: the full authorized stream, every frozen origin value.
     InsightsFullStream,
     /// Forge time-accounting: tool-origin evidence only (tool_receipt/tool_receipt_failed
     /// events carrying duration_ms), never user/assistant content.

@@ -20,7 +20,7 @@ const sha = (value) => createHash("sha256").update(value).digest("hex");
 // every case is a literal transcription of the fixture's own `failure` column — the documented
 // pre-fix input — not bytes read from an actual checkout of a historical commit. Reproducing the
 // real historical behavior would require checking out an old commit of 5 different
-// language runtimes (Rust engine, JS membrane/cortex, Python forge/morph) and rebuilding each,
+// language runtimes (Rust engine, JS membrane/cortex, Python forge/adapt) and rebuilding each,
 // which this workspace's primary-checkout-only / no-worktree-without-approval rule forbids doing
 // in place, and which a temporary worktree could only do with Adrian's explicit sign-off. So
 // `baseline_red` here proves "the documented failure input fails the current validator", not
@@ -61,12 +61,12 @@ const probes = {
     current: { command: "cargo test", expected_command: "cargo test", matched: true },
     valid: (value) => value.matched && value.command === value.expected_command,
   },
-  "morph-update-as-add": {
+  "adapt-update-as-add": {
     baseline: { existing_id: "rule-1", resulting_ids: ["rule-1", "rule-2"] },
     current: { existing_id: "rule-1", resulting_ids: ["rule-1"] },
     valid: (value) => value.resulting_ids.length === 1 && value.resulting_ids[0] === value.existing_id,
   },
-  "morph-field-loss": {
+  "adapt-field-loss": {
     baseline: { before: { authority: "A1", source_refs: ["source-1"] }, after: { authority: "A1" } },
     current: { before: { authority: "A1", source_refs: ["source-1"] }, after: { authority: "A1", source_refs: ["source-1"] } },
     valid: (value) => JSON.stringify(value.before) === JSON.stringify(value.after),
@@ -97,7 +97,7 @@ const suites = {
     join(workspaceRoot, "tools/skills/legion/packages/arcane/tests/s04-host-event.test.mjs"),
     join(workspaceRoot, "tools/skills/legion/packages/arcane/tests/s01-bridge.test.mjs"),
   ], workspaceRoot],
-  morph: [join(workspaceRoot, ".venv-tools/bin/python"), ["-m", "pytest", join(workspaceRoot, "morph/tests")], workspaceRoot],
+  adapt: [join(workspaceRoot, ".venv-tools/bin/python"), ["-m", "pytest", join(workspaceRoot, "adapt/tests")], workspaceRoot],
 };
 
 function runSuite(owner) {

@@ -254,7 +254,7 @@ clock. Timestamp-only legacy events/cursors remain readable. Active workspace cl
 intervals, not a permanent machine list, determine which installations owe peer-apply evidence.
 
 Replication is logically separate from daily maintenance. The lightweight plane only pulls,
-validates, applies/re-embeds, exports local mutations/cursors, and pushes; Morph mining, curation,
+validates, applies/re-embeds, exports local mutations/cursors, and pushes; Adapt mining, curation,
 derived exports, and hosted-metrics refresh belong to the maintenance plane. They are still bundled
 by the legacy `daily-sync.sh` wrapper; the proposed generic `daily_sync.py` runner is not implemented
 and is explicitly deferred until after paired P3/P4 acceptance. Recurring convergence therefore
@@ -263,7 +263,7 @@ After paired P3/P4 acceptance, a separately named, configurable replication sche
 freshness improvement; enabling it must not enable `crypt-daily` or hardcode any installation.
 
 The Context Value Ledger records expected, started, terminal, admitted, delivered, and downstream
-used/ignored/contradicted/unknown states for memory, Morph, Blueprint, skill output, rules,
+used/ignored/contradicted/unknown states for memory, Adapt, Blueprint, skill output, rules,
 transforms, replication, and namespaced future families. Reconciliation reports every missing hook,
 missing terminal, failed read/write/sync, should-have-used-but-did-not opportunity, and value join by
 installation, service instance, OS/arch metadata, client (Claude/Codex/other), provider, session,
@@ -308,7 +308,7 @@ both installation reports; P4 separately validates the combined fleet evidence a
 preconditions. No host's proof substitutes for another's, and P3 never implies P4.
 
 The only valid remaining order is: push source → Mac `git pull --ff-only` to that exact commit →
-ordinary setup with the daily job disabled → explicit Mac Morph one-shot batches until
+ordinary setup with the daily job disabled → explicit Mac Adapt one-shot batches until
 `no_new_sessions` → guarded same-commit install on Mac and Windows → bidirectional sync/convergence
 → per-installation census/reconciliation/snapshots → P3 on both + aggregate P4 → explicit
 policy/cohort activation → wholly fresh replay. `crypt-daily` stays disabled at every boundary.
@@ -605,7 +605,7 @@ source. Disposition (full table:
   live `quarantined: 0`); binding code-linked memories to Blueprint generations for automatic
   staleness demotion; Ed25519 signing of mirror events; a dead-man's switch on the daily lane
   (aligned with the pending fail-loud release above); a state-doc lint recomputing this ledger's
-  live values. Packet ordering policy, an Morph surprisingness gate, per-client cohort
+  live values. Packet ordering policy, an Adapt surprisingness gate, per-client cohort
   stratification, and promoting `prep:missing` into a staleness counter are additionally parked,
   receipt-gated, and not admitted.
 
@@ -1134,7 +1134,7 @@ Re-ordered 2026-07-16 (second pass) after BOTH audits — Fable session + Sol's 
 1. **Legacy-vs-on canary with paired non-inferiority evidence.** Claude + Codex, both budgets, clean + dirty graphs; measure hook invocation, delivered sources, fallback rate, lane occupancy, latency, context precision, task success. "Never worse than legacy" is currently an emergency fallback, not evidence.
 2. **Historical backlog item — complete: put the feedback veto into the shared recall path.** The former bypass claim is superseded by the completed cutover disposition above; restart/get/delete/supersede coverage now governs.
 3. **Freeze the memory-recall eval, then evaluate one-hop BEFORE promoting.** Extend the locked holdout with useful links, dangling links, hubs, stale/conflicting memories, irrelevant neighbours; MRR/nDCG or Recall@k + task outcome + budget displacement. When promoting the merge into `recall_scored`, REMOVE the federation merge (avoid double augmentation).
-4. **Governance now (raised above multi-hop).** Write-provenance/poisoning regression tests for `crypt put`/morph intake; temporal update/abstention cases; **quarantine/restore phase before destructive curation** — `dream.rs` permanently prunes `score<0.2 && access_count==0`, which conflicts with fetch-after-inject being a confounded lower bound. ([GhostWriter](https://arxiv.org/abs/2607.06595), [Sleeper Memory Poisoning](https://arxiv.org/abs/2605.15338) — preprints, figures cautious, risk credible.)
+4. **Governance now (raised above multi-hop).** Write-provenance/poisoning regression tests for `crypt put`/adapt intake; temporal update/abstention cases; **quarantine/restore phase before destructive curation** — `dream.rs` permanently prunes `score<0.2 && access_count==0`, which conflicts with fetch-after-inject being a confounded lower bound. ([GhostWriter](https://arxiv.org/abs/2607.06595), [Sleeper Memory Poisoning](https://arxiv.org/abs/2605.15338) — preprints, figures cautious, risk credible.)
 5. **Contextual enrichment at write time** — 1–2 sentence "what/when" header before embedding (Anthropic contextual retrieval); eval-gated on #3's frozen set.
 6. **SPEC-vs-code scoring drift — decide deliberately** — SPEC claims `cos + 0.06·decay + 0.06·eff + 0.04·pin` DONE; no `decay` in the crates. Fix the SPEC row or deliberately add recency-decay (temporal blindness is a documented failure mode; staleness is the workspace's most-burned lesson). Eval-gated. Note [calibrated-similarity](https://arxiv.org/abs/2601.16907): raw cosine is a ranking signal, not a cross-provider relevance probability.
 7. **Feedback-rail polish** — dashboard; **bandit caution:** get-based `used` is conservative for the veto, biased as bandit reward (preview-sufficient reads as noise) — needs correction before wiring.

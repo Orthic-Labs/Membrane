@@ -452,7 +452,7 @@ fn checked_in_registry_matches_canonical_parent_workspace_registry() {
     let local_sha = format!("{:x}", sha2::Sha256::digest(&local_normalized));
     assert_eq!(
         local_sha,
-        "7cccb665f8ffe8e1a06091f1f814cc272213fe4528461acc8ffc6a17e1315496"
+        "5905654bd1db4cfab4e48582ad3db5e3deed4665400500474d1bc760a8758df3"
     );
 
     let parent_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -1201,9 +1201,9 @@ fn memory_batch_dual_write_preserves_each_items_family_producer_and_session() {
             producer: "architect".into(),
             record_type: "architect_concept".into(),
             client: "claude".into(),
-            session_id: "morph-job-7".into(),
-            turn_id: "morph-turn-7".into(),
-            trace_id: "morph-trace-7".into(),
+            session_id: "adapt-job-7".into(),
+            turn_id: "adapt-turn-7".into(),
+            trace_id: "adapt-trace-7".into(),
             source_ids: vec!["source-event-1".into()],
             lifecycle: crypt::store::MemoryLifecycleInputV1::default(),
         }],
@@ -1216,14 +1216,14 @@ fn memory_batch_dual_write_preserves_each_items_family_producer_and_session() {
             "D--Claude",
             crypt_core::MemoryTier::Semantic,
             &crypt::store::MemoryEventContext::new("claude")
-                .with_session("morph-job-7")
-                .with_trace("morph-trace-7"),
+                .with_session("adapt-job-7")
+                .with_trace("adapt-trace-7"),
         )
         .unwrap();
 
     let context = crypt::store::MemoryEventContext::new("claude")
-        .with_session("morph-job-7")
-        .with_trace("morph-trace-7");
+        .with_session("adapt-job-7")
+        .with_trace("adapt-trace-7");
     store
         .get_full_observed("D--Claude/batch-memory", &context)
         .unwrap();
@@ -1254,9 +1254,9 @@ fn memory_batch_dual_write_preserves_each_items_family_producer_and_session() {
     assert_eq!(&row.1, "architect");
     assert_eq!(&row.2, "claude");
     assert!(row.3.starts_with("session-") && row.3.len() == 40);
-    assert_ne!(&row.3, "morph-job-7");
+    assert_ne!(&row.3, "adapt-job-7");
     assert!(row.4.starts_with("trace-") && row.4.len() == 38);
-    assert_ne!(&row.4, "morph-trace-7");
+    assert_ne!(&row.4, "adapt-trace-7");
     assert_eq!(&row.5, "write");
     assert!(row.6.starts_with("memory."));
     assert!(!row.6.contains('/'));

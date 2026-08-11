@@ -5596,7 +5596,7 @@ impl MemoryStore {
         }
         let authorized = actor == "human"
             || actor == "admin"
-            || (actor == "morph_manifest" && matches!(authority, "A1" | "A2"));
+            || (actor == "adapt_manifest" && matches!(authority, "A1" | "A2"));
         if !authorized {
             return Err(MemoryPriorityError::Unauthorized(
                 actor.into(),
@@ -8042,7 +8042,7 @@ mod tests {
         store.embedder = Arc::new(ControlledEmbedder);
         let target_id = store
             .try_put(
-                "morph-target",
+                "adapt-target",
                 "retain one package artifact per platform",
                 "qa-scope",
                 MemoryTier::Semantic,

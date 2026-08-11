@@ -113,7 +113,7 @@ This normalizes two provider read paths only. IR-41 remains open for canonical i
 
 This stops one source of new plan shards. It does not implement IR-20's typed authority, provenance, lifecycle, TTL/quarantine, migration, or existing-row treatment.
 
-*Correction to the original N5 entry:* it said "reuse Morph's existing `admission.py` gate". **That was wrong** — `admission.py` admits *mined preference rules* against a taxonomy (workflow, safety, tooling…); it has no bearing on document ingestion. The suggestion came from repeating a reviewer's permutation without checking its premise.
+*Correction to the original N5 entry:* it said "reuse Adapt's existing `admission.py` gate". **That was wrong** — `admission.py` admits *mined preference rules* against a taxonomy (workflow, safety, tooling…); it has no bearing on document ingestion. The suggestion came from repeating a reviewer's permutation without checking its premise.
 
 *Rationale for opt-in:* `docs/plans/` is where thinking happens — drafts, reviews, status, superseded plans. Durability is a property of a document, not of its folder, and only the author knows it. §10 applies: the mechanism was producing 1,033 rows at 98% zero-access, so the smaller mechanism wins. A genuinely durable ADR adds one frontmatter line; anything else can still be filed deliberately with `crypt put`.
 
@@ -192,7 +192,7 @@ Each was proposed by at least one review and each is false. Kept only so they do
 | `~/.claude/skills` is a plain directory of synced copies | It is a junction → `D:\Claude\tools\skills` (`os.path.islink` returns False for Windows junctions — that's the trap). `~/.codex/skills` too. |
 | Live `/recall` bypasses the feedback veto | `serve.rs:807` calls `recall_scored_detailed`. **The state doc is what's wrong** — see N1. |
 | Availability is 13.5% / 21.9% | Both divide by unfiltered denominators including shadow/off rows. On-mode + real = 36.6%. |
-| The skills catalog has 29 rows with a duplicate `morph` | 28, no duplicates. |
+| The skills catalog has 29 rows with a duplicate `adapt` | 28, no duplicates. |
 | `blueprint` hardcodes model tiers | It is the **compliant exemplar** — `blueprint/SKILL.md:192`: *"Never put client-specific model names into a tool call on a client that does not support them."* |
 | Count a rendered preview as `Used` | Rendering is exposure. Labelling it use manufactures positive labels for ignored context and corrupts evaluation. |
 | Mine transcripts to auto-generate `Used` labels | Same defect: presence proves exposure, not usefulness. |

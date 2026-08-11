@@ -190,13 +190,13 @@ fn identical_retry_is_noop_and_conflicting_batch_id_is_atomic_409() {
 fn generic_put_persists_validated_write_attribution_and_rejects_family_typos() {
     let store = MemoryStore::open(MemDb::open_in_memory());
     let body = json!({
-        "name": "morph-rule",
+        "name": "adapt-rule",
         "content": "Prefer deterministic context accounting.",
         "scope": "D--Claude",
         "tier": "Semantic",
         "client": "codex",
-        "artifactFamily": "morph",
-        "producer": "morph",
+        "artifactFamily": "adapt",
+        "producer": "adapt",
         "recordType": "preference"
     })
     .to_string();
@@ -204,13 +204,13 @@ fn generic_put_persists_validated_write_attribution_and_rejects_family_typos() {
     assert_eq!(status, 200, "{payload}");
 
     let dimensions: (String, String, String) = store.db().lock().query_row(
-        "SELECT artifact_family, producer, record_type FROM memories WHERE id='D--Claude/morph-rule'",
+        "SELECT artifact_family, producer, record_type FROM memories WHERE id='D--Claude/adapt-rule'",
         [],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     ).unwrap();
     assert_eq!(
         dimensions,
-        ("morph".into(), "morph".into(), "preference".into())
+        ("adapt".into(), "adapt".into(), "preference".into())
     );
 
     let event_dimensions: (String, String) = store.db().lock().query_row(
@@ -218,14 +218,14 @@ fn generic_put_persists_validated_write_attribution_and_rejects_family_typos() {
         [],
         |row| Ok((row.get(0)?, row.get(1)?)),
     ).unwrap();
-    assert_eq!(event_dimensions, ("morph".into(), "morph".into()));
+    assert_eq!(event_dimensions, ("adapt".into(), "adapt".into()));
 
     let typo = json!({
         "name": "bad-rule",
         "content": "Must not persist.",
         "scope": "D--Claude",
         "artifactFamily": "adpat",
-        "producer": "morph",
+        "producer": "adapt",
         "recordType": "preference"
     })
     .to_string();

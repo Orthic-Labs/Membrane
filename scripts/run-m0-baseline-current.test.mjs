@@ -35,7 +35,7 @@ test("F13 runM0 discloses every case as baseline-undrivable rather than silently
 });
 
 // Slow, unmocked integration proof: actually spawn the real crypt/membrane-host/membrane/cortex/
-// forge/morph suites at current HEAD, on this machine, exactly as the CLI entrypoint does.
+// forge/adapt suites at current HEAD, on this machine, exactly as the CLI entrypoint does.
 // This is the test that makes "current_green" a live claim instead of a mocked one. It is slower
 // than the rest of this file (cross-repo pnpm/pytest runs) — that cost buys real evidence.
 test("F13 runM0 end-to-end: real cross-repo suites at current HEAD (slow, unmocked)", { timeout: 9 * 60_000 }, () => {

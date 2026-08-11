@@ -79,12 +79,12 @@ fn candidate_shape_matches_v1_contract() {
 }
 
 #[test]
-fn candidate_json_preserves_morph_memory_and_skill_output_dimensions() {
+fn candidate_json_preserves_adapt_memory_and_skill_output_dimensions() {
     let db = MemDb::open_in_memory();
     {
         let conn = db.lock();
         for (name, family, producer) in [
-            ("morph-note", "morph", "morph"),
+            ("adapt-note", "adapt", "adapt"),
             ("memory-note", "memory", "manual"),
             ("skill-note", "skill_output", "architect"),
         ] {
@@ -119,7 +119,7 @@ fn candidate_json_preserves_morph_memory_and_skill_output_dimensions() {
     assert_eq!(
         dimensions,
         [
-            ("morph", "morph"),
+            ("adapt", "adapt"),
             ("memory", "manual"),
             ("skill_output", "architect"),
         ]
