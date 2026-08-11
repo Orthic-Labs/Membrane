@@ -2501,6 +2501,27 @@ fn federate_route_response(body: &str) -> (u16, String) {
     }
 }
 
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// `HubFacadeV1::new`'s stream fallback: `Some` when the caller's own
+/// `hub_inputs::live_inputs_from_local_service()` probe (taken once per
+/// request, not re-probed here) returned data, `None` when it did not —
+/// mirrors the existing `HubFacadeV1::new(Some(HubStreamV1{...}))`
+/// construction pattern exercised by `hub.rs`'s own
+/// `facade_preserves_observed_truth_without_inferred_liveness` test.
+fn hub_stream_from_live_probe(reachable: bool) -> Option<membrane_protocol::HubStreamV1> {
+    reachable.then(|| membrane_protocol::HubStreamV1 {
+        state: membrane_protocol::HubStateV1::Available,
+        reason: "observed".into(),
+        resolver: Some("hub_inputs::live_inputs_from_local_service".into()),
+    })
+}
+
 fn route_with_context_ingest_lease(
     store: &MemoryStore,
     context_ingest_lease: Option<&crate::context_telemetry::ContextIngestLease>,
@@ -2584,26 +2605,21 @@ fn route_with_context_ingest_lease(
         return federate_route_response(body);
     }
     if method == "GET" && path == "/hub/capabilities" {
-        let body = serde_json::json!({
-            "capabilities": ["snapshot", "deliveries", "providers", "repositories", "adapters", "memory", "sentinel"],
-            "devices": "not_instrumented",
-            "alerts": "not_instrumented",
-            "delivery_trace": crate::delivery_trace_view::project_delivery_trace(&serde_json::json!({})),
-        }).to_string();
-        return (200, body);
+        let live = crate::hub_inputs::live_inputs_from_local_service();
+        let facade = crate::hub::HubFacadeV1::new(hub_stream_from_live_probe(live.is_some()));
+        return match facade.dispatch_json("hub.capabilities", now_unix_ms(), crate::hub::HubInputsV1::unavailable("source_not_connected")) {
+            Ok(value) => (200, value.to_string()),
+            Err(error) => (500, serde_json::json!({"error": error}).to_string()),
+        };
     }
     if method == "GET" && path == "/hub/snapshot" {
-        let snap = serde_json::json!({
-            "hub": "snapshot",
-            "sections": {
-                "capabilities": "ok",
-                "snapshot": "ok",
-                "delivery": crate::delivery_trace_view::project_delivery_trace(&serde_json::json!({})),
-                "devices": "not_instrumented",
-                "alerts": "not_instrumented"
-            }
-        }).to_string();
-        return (200, snap);
+        let live = crate::hub_inputs::live_inputs_from_local_service();
+        let facade = crate::hub::HubFacadeV1::new(hub_stream_from_live_probe(live.is_some()));
+        let inputs = live.unwrap_or_else(|| crate::hub::HubInputsV1::unavailable("source_not_connected"));
+        return match facade.dispatch_json("hub.snapshot", now_unix_ms(), inputs) {
+            Ok(value) => (200, value.to_string()),
+            Err(error) => (500, serde_json::json!({"error": error}).to_string()),
+        };
     }
     if method == "POST" && path == "/delivery/trace" {
         return delivery_trace_response(body);
@@ -5106,6 +5122,89 @@ mod tests {
         assert_eq!(payload["generation"], expected);
         assert_eq!(payload["skills"], serde_json::json!([]));
         assert!(payload.get("body").is_none());
+    }
+
+    /// Serializes access to the process-global `CRYPT_PORT`/`WORKSPACE_MEMORY_PORT`
+    /// env vars that `hub_inputs::live_inputs_from_local_service` reads, the same
+    /// pattern `hub_inputs.rs`'s own test module uses for its env-touching tests.
+    static HUB_ROUTE_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Binds a background TCP listener that answers exactly one `GET /health`
+    /// with the given JSON body, mimicking the local crypt-service well enough
+    /// for `hub_inputs::live_inputs_from_local_service` to parse it as healthy.
+    /// Returns the bound port; the listener thread exits after serving one request.
+    fn spawn_mock_health_server(health_json: &'static str) -> u16 {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock health server");
+        let port = listener.local_addr().expect("local_addr").port();
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let body = health_json;
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn hub_capabilities_route_differs_between_healthy_and_unreachable_local_service() {
+        let _guard = HUB_ROUTE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let store = MemoryStore::new();
+
+        // Unreachable: pick a port nothing is listening on.
+        unsafe { std::env::set_var("CRYPT_PORT", "1"); }
+        let (code_down, body_down) = route_for_tests(&store, "GET", "/hub/capabilities", "");
+        assert_eq!(code_down, 200, "body: {body_down}");
+        let payload_down: serde_json::Value = serde_json::from_str(&body_down).unwrap();
+        assert!(payload_down.get("stream").is_none(), "body: {body_down}");
+
+        // Healthy: a real listener answering /health.
+        let port = spawn_mock_health_server(
+            r#"{"ok":true,"catalog":{"status":"ok"},"database":{"status":"ok"},"dailyAnalysis":{"status":"fresh","alert":false}}"#,
+        );
+        unsafe { std::env::set_var("CRYPT_PORT", port.to_string()); }
+        let (code_up, body_up) = route_for_tests(&store, "GET", "/hub/capabilities", "");
+        unsafe { std::env::remove_var("CRYPT_PORT"); }
+        assert_eq!(code_up, 200, "body: {body_up}");
+        let payload_up: serde_json::Value = serde_json::from_str(&body_up).unwrap();
+        assert_eq!(payload_up["stream"]["state"], "available", "body: {body_up}");
+
+        assert_ne!(payload_down, payload_up, "capabilities response must differ by backend health");
+    }
+
+    #[test]
+    fn hub_snapshot_route_differs_between_healthy_and_unreachable_local_service() {
+        let _guard = HUB_ROUTE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let store = MemoryStore::new();
+
+        unsafe { std::env::set_var("CRYPT_PORT", "1"); }
+        let (code_down, body_down) = route_for_tests(&store, "GET", "/hub/snapshot", "");
+        assert_eq!(code_down, 200, "body: {body_down}");
+        let payload_down: serde_json::Value = serde_json::from_str(&body_down).unwrap();
+        assert_eq!(payload_down["providers"]["state"], "unavailable", "body: {body_down}");
+
+        let port = spawn_mock_health_server(
+            r#"{"ok":true,"catalog":{"status":"ok"},"database":{"status":"ok"},"dailyAnalysis":{"status":"fresh","alert":false}}"#,
+        );
+        unsafe { std::env::set_var("CRYPT_PORT", port.to_string()); }
+        let (code_up, body_up) = route_for_tests(&store, "GET", "/hub/snapshot", "");
+        unsafe { std::env::remove_var("CRYPT_PORT"); }
+        assert_eq!(code_up, 200, "body: {body_up}");
+        let payload_up: serde_json::Value = serde_json::from_str(&body_up).unwrap();
+
+        assert_ne!(
+            payload_down["providers"], payload_up["providers"],
+            "snapshot providers section must differ by backend health: down={payload_down} up={payload_up}"
+        );
     }
 
     #[tokio::test]
