@@ -91,7 +91,12 @@ const suites = {
   // "current_green" for that fixture was gated on a suite that never actually exercised the fix.
   membrane: [process.execPath, ["--test", join(membraneRoot, "mcp/project-registry.test.mjs"), join(membraneRoot, "mcp/repository-catalog.test.mjs")], workspaceRoot],
   cortex: ["pnpm", ["--dir", join(workspaceRoot, "cortex"), "test:all"], workspaceRoot],
-  forge: ["pnpm", ["--dir", join(workspaceRoot, "forge"), "test"], workspaceRoot],
+  // Forge was retired into Arcane (workspace Phase H-10). These focused successor
+  // suites cover its two remaining F13 cases: declared-check correlation + closed output schemas.
+  forge: [process.execPath, ["--test",
+    join(workspaceRoot, "tools/skills/legion/packages/arcane/tests/s04-host-event.test.mjs"),
+    join(workspaceRoot, "tools/skills/legion/packages/arcane/tests/s01-bridge.test.mjs"),
+  ], workspaceRoot],
   morph: [join(workspaceRoot, ".venv-tools/bin/python"), ["-m", "pytest", join(workspaceRoot, "morph/tests")], workspaceRoot],
 };
 

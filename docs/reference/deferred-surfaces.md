@@ -22,8 +22,16 @@ Both functions existed only to make a grep-based dead-surface gate pass: `regist
 
 Both functions were unreachable in both directions: `plan_with_doc_shadow` (the only caller of `maybe_admit_doc_candidates`) itself had no production caller, and its only prior caller was a test (`engine/crates/crypt/tests/doc_candidate_provider.rs`) exercising the dead function directly rather than any real request path — that test was removed alongside the functions. The shadow-selection seam (`DocCandidateProvider::select_shadow`, `RegisteredDocCandidateProvider`, `is_doc_provider_enabled()`) remains; only the planner-admission wrapper and opt-in admission function were removed (D-2). Deciding what task classes get doc candidates admitted to the planner, and at what trust tier, is a product decision for a future contract — not something this repair invents.
 
+## S-11: release-channel compatibility state (`apps/membrane-hub/src/release-channel.mjs`)
+
+The retained migration-source UI can evaluate release-channel compatibility, but `HubSnapshotV1` has no section or Rust producer for that state. Adding one requires Orthic to decide whether compatibility belongs in Hub snapshot data or remains client-local update policy. Membrane does not invent that product contract.
+
+## S-12: Hub actions (`apps/membrane-hub/src/actions.mjs`)
+
+The retained migration-source UI can construct action requests, but `HubSnapshotV1` is read-only and has no actions section or facade producer. Adding action transport would change the Hub's authority boundary, so it remains an Orthic product decision rather than a Membrane repair.
+
 ## Summary
 
 - **Wired in this contract:** S-1 (CU-11), S-2+S-6 (CU-17), S-5 (CU-18), S-3 (CU-19)
-- **Deferred with reason here:** S-4, S-7, S-8, S-9, S-10
-- **No silent deletions:** every S-1..S-10 has exactly one disposition row in §2 and, for deferred items, one paragraph here.
+- **Deferred with reason here:** S-4, S-7, S-8, S-9, S-10, S-11, S-12
+- **No silent deletions:** every S-1..S-12 has one explicit disposition and, for deferred items, one paragraph here.
