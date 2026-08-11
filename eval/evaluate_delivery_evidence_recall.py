@@ -1,4 +1,4 @@
-"""Exhaustively test whether Morph records recall from their own source evidence."""
+"""Exhaustively test whether Adapt records recall from their own source evidence."""
 from __future__ import annotations
 
 import argparse
@@ -11,9 +11,9 @@ from pathlib import Path
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 HERE = Path(__file__).resolve().parent
-DEFAULT_TREATMENT = ROOT / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
-DEFAULT_DB = ROOT / ".cache/morph-delivery-parity/full/B.db"
-DEFAULT_OUT = ROOT / ".cache/morph-delivery-parity/full/evidence-recall"
+DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
+DEFAULT_DB = ROOT / ".cache/adapt-delivery-parity/full/B.db"
+DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/full/evidence-recall"
 
 
 def _load(path: Path, name: str):
@@ -107,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
               **score_cases(cases, ranked)}
     runner.write_json(args.out / "results.json", result)
     m = result["metrics"]
-    lines = ["# Exhaustive Morph source-evidence recall", "",
+    lines = ["# Exhaustive Adapt source-evidence recall", "",
              f"- selected records: {len(records)}", f"- variant: {treatment.get('variant', 'raw')}",
              f"- total queries: {len(cases)}", "",
              "| Query kind | Cases | Hit@1 | Hit@5 | Hit@5 % | MRR@5 |",

@@ -11,8 +11,8 @@ from pathlib import Path
 import pytest
 
 
-MORPH_DIR = Path(__file__).resolve().parent
-MODULE_PATH = MORPH_DIR / "eval" / "freeze_commandcode_corpus.py"
+ADAPT_DIR = Path(__file__).resolve().parent
+MODULE_PATH = ADAPT_DIR / "eval" / "freeze_commandcode_corpus.py"
 
 
 def _module():

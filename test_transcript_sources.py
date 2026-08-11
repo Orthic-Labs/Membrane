@@ -58,7 +58,7 @@ def test_codex_exec_root_and_active_precedes_open(monkeypatch: pytest.MonkeyPatc
     metadata = sources.inspect_metadata(_spec("codex"), path)
     assert (metadata.thread_source, metadata.exclusion_reason) == ("root", "codex-exec")
     descriptor = sources.discover(tmp_path)[0]
-    monkeypatch.setenv("MORPH_ACTIVE_CODEX_THREAD_IDS", "other-thread,active-thread")
+    monkeypatch.setenv("ADAPT_ACTIVE_CODEX_THREAD_IDS", "other-thread,active-thread")
     original_open = Path.open
     monkeypatch.setattr(Path, "open", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("opened active source")))
     selected, quarantined = sources.select_sources([descriptor])

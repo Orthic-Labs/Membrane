@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run one receipt-gated, manifest-only incremental Morph batch.
+"""Run one receipt-gated, manifest-only incremental Adapt batch.
 
 The runner creates a unique work directory, generates a pending manifest,
 adjudicates only when pending candidates exist, validates conformance again,
@@ -23,9 +23,9 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 
-MORPH_DIR = Path(__file__).resolve().parent
-if str(MORPH_DIR) not in sys.path:
-    sys.path.insert(0, str(MORPH_DIR))
+ADAPT_DIR = Path(__file__).resolve().parent
+if str(ADAPT_DIR) not in sys.path:
+    sys.path.insert(0, str(ADAPT_DIR))
 
 from workspace_runtime import workspace_root  # noqa: E402
 import multiwriter_conformance  # noqa: E402
@@ -34,7 +34,7 @@ REPO_ROOT = workspace_root()
 
 
 class RunnerError(RuntimeError):
-    """Raised when a gated Morph pipeline phase fails closed."""
+    """Raised when a gated Adapt pipeline phase fails closed."""
 
 
 def _sha(value: bytes) -> str:
@@ -71,7 +71,7 @@ def create_workdir(work_root: Path) -> Path:
     root = Path(work_root)
     root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return Path(tempfile.mkdtemp(prefix=f"morph-{stamp}-", dir=root))
+    return Path(tempfile.mkdtemp(prefix=f"adapt-{stamp}-", dir=root))
 
 
 def _phase_receipt(phase: str, result: Any) -> dict[str, Any]:
@@ -87,9 +87,9 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise RunnerError("Morph manifest is missing or invalid") from exc
+        raise RunnerError("Adapt manifest is missing or invalid") from exc
     if not isinstance(value, dict) or not isinstance(value.get("records"), list):
-        raise RunnerError("Morph manifest is missing or invalid")
+        raise RunnerError("Adapt manifest is missing or invalid")
     return value
 
 
@@ -98,7 +98,7 @@ def _candidate_counts(manifest: Mapping[str, Any]) -> dict[str, int]:
     for record in manifest.get("records", []):
         status = record.get("status") if isinstance(record, Mapping) else None
         if status not in {"accepted", "pending", "rejected"}:
-            raise RunnerError("Morph manifest contains an invalid candidate status")
+            raise RunnerError("Adapt manifest contains an invalid candidate status")
         counts[status] += 1
         counts["total"] += 1
     return counts
@@ -133,7 +133,7 @@ def _client_accounting(
     failed: bool = False,
 ) -> list[dict[str, Any]]:
     if persistence_outcome not in {None, "success", "failed"}:
-        raise RunnerError("Morph persistence accounting is invalid")
+        raise RunnerError("Adapt persistence accounting is invalid")
     rows: dict[str, dict[str, Any]] = {}
 
     def row(client: str) -> dict[str, Any]:
@@ -148,7 +148,7 @@ def _client_accounting(
             for field in CLIENT_ACCOUNTING_FIELDS[:6]:
                 value = values.get(field, 0)
                 if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                    raise RunnerError("Morph client discovery accounting is invalid")
+                    raise RunnerError("Adapt client discovery accounting is invalid")
                 target[field] = value
     if manifest is None:
         if failed:
@@ -158,7 +158,7 @@ def _client_accounting(
 
     session_ids = manifest.get("source_session_ids", [])
     if not isinstance(session_ids, list):
-        raise RunnerError("Morph manifest source sessions are invalid")
+        raise RunnerError("Adapt manifest source sessions are invalid")
     for source_id in session_ids:
         target = row(_source_client(source_id, source_clients))
         target["processed"] += 1
@@ -167,13 +167,13 @@ def _client_accounting(
 
     for record in manifest.get("records", []):
         if not isinstance(record, Mapping):
-            raise RunnerError("Morph manifest contains an invalid candidate")
+            raise RunnerError("Adapt manifest contains an invalid candidate")
         status = record.get("status")
         if status not in {"accepted", "rejected"}:
             continue
         record_sources = record.get("source_ids") or session_ids
         if not isinstance(record_sources, list):
-            raise RunnerError("Morph manifest candidate sources are invalid")
+            raise RunnerError("Adapt manifest candidate sources are invalid")
         clients = sorted({_source_client(source_id, source_clients) for source_id in record_sources})
         owner = clients[0] if len(clients) == 1 else ("mixed" if clients else "unknown")
         target = row(owner)
@@ -222,7 +222,6 @@ def run_incremental(
     limit: int | None = None,
     resume: bool = False,
     restart_stale: bool = False,
-    extract_workers: int = 5,
     lane: str = "local",
     allow_external_lane: bool = False,
     command_runner: Callable[..., Any] = run_command,
@@ -231,16 +230,10 @@ def run_incremental(
 ) -> dict[str, Any]:
     if limit is not None and (isinstance(limit, bool) or limit <= 0):
         raise RunnerError("limit must be a positive integer")
-    if (
-        isinstance(extract_workers, bool)
-        or not isinstance(extract_workers, int)
-        or not 1 <= extract_workers <= 5
-    ):
-        raise RunnerError("extract_workers must be in [1, 5]")
     if lane not in {"local", "minimax"}:
-        raise RunnerError("unsupported Morph lane")
+        raise RunnerError("unsupported Adapt lane")
     if lane != "local" and not allow_external_lane:
-        raise RunnerError("external Morph lane requires explicit allowance")
+        raise RunnerError("external Adapt lane requires explicit allowance")
     root = Path(repo_root)
     receipt = Path(receipt_path)
     validator = receipt_validator or (
@@ -271,15 +264,15 @@ def run_incremental(
     discovery = inventory.get("discovery")
     source_clients = inventory.get("source_clients")
     if not isinstance(discovery, Mapping) or not isinstance(source_clients, Mapping):
-        raise RunnerError("Morph client inventory is invalid")
+        raise RunnerError("Adapt client inventory is invalid")
     workdir = create_workdir(work_root)
     pending_path = workdir / "pending.json"
     resolved_path = workdir / "resolved.json"
     audit_path = workdir / "adjudication-audit.json"
     calls_dir = workdir / "calls"
     phase_receipts: list[dict[str, Any]] = []
-    morph_path = MORPH_DIR / "morph.py"
-    adjudicate_path = MORPH_DIR / "adjudicate_manifest.py"
+    adapt_path = ADAPT_DIR / "adapt.py"
+    adjudicate_path = ADAPT_DIR / "adjudicate_manifest.py"
 
     def record_failure(
         failed_phase: str,
@@ -311,12 +304,10 @@ def run_incremental(
 
     manifest_argv = [
         sys.executable,
-        str(morph_path),
+        str(adapt_path),
         "--incremental",
         "--manifest",
         str(pending_path),
-        "--extract-workers",
-        str(extract_workers),
     ]
     if limit is not None:
         manifest_argv.extend(["--limit", str(limit)])
@@ -397,7 +388,7 @@ def run_incremental(
     resolved = _load_manifest(resolved_path)
     counts = _candidate_counts(resolved)
     if counts["pending"]:
-        raise RunnerError("resolved Morph manifest still contains pending candidates")
+        raise RunnerError("resolved Adapt manifest still contains pending candidates")
 
     # Re-check every receipt binding after model work and immediately before mutation.
     try:
@@ -415,7 +406,7 @@ def run_incremental(
             "manifest apply",
             [
                 sys.executable,
-                str(morph_path),
+                str(adapt_path),
                 "--apply-from-manifest",
                 str(resolved_path),
             ],
@@ -452,13 +443,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--work-root",
         type=Path,
-        default=REPO_ROOT / "tools/.cache/memory/morph-multiwriter-runs",
+        default=REPO_ROOT / "tools/.cache/memory/adapt-multiwriter-runs",
     )
     parser.add_argument("--repo-root", type=Path, default=REPO_ROOT)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--restart-stale", action="store_true")
-    parser.add_argument("--extract-workers", type=int, choices=range(1, 6), default=5)
     parser.add_argument("--lane", choices=("local", "minimax"), default="local")
     parser.add_argument("--allow-external-lane", action="store_true")
     args = parser.parse_args(argv)
@@ -470,7 +460,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             limit=args.limit,
             resume=args.resume,
             restart_stale=args.restart_stale,
-            extract_workers=args.extract_workers,
             lane=args.lane,
             allow_external_lane=args.allow_external_lane,
         )

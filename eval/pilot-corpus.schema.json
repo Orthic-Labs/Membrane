@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Morph frozen pilot corpus manifest",
+  "title": "Adapt frozen pilot corpus manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -9,7 +9,7 @@
   ],
   "properties": {
     "schema_version": { "const": "1.0.0" },
-    "pilot_id": { "type": "string", "pattern": "^morph-pilot-[a-f0-9]{12}$" },
+    "pilot_id": { "type": "string", "pattern": "^adapt-pilot-[a-f0-9]{12}$" },
     "content_sha256": { "$ref": "#/definitions/sha256" },
     "manifest_sha256": { "$ref": "#/definitions/sha256" },
     "privacy": {
@@ -146,7 +146,15 @@
         "dropped_turns": { "type": "integer", "minimum": 0 },
         "truncated_turns": { "type": "integer", "minimum": 0 },
         "scanner_drops": { "type": "integer", "minimum": 0 },
-        "unknown_rows": { "type": "integer", "minimum": 0 }
+        "unknown_rows": { "type": "integer", "minimum": 0 },
+        "raw_rows": { "type": "integer", "minimum": 0 },
+        "canonical_messages": { "type": "integer", "minimum": 0 },
+        "eligible_user_turns": { "type": "integer", "minimum": 0 },
+        "deduplicated_count": { "type": "integer", "minimum": 0 },
+        "dropped_reasons": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
       }
     },
     "session": {

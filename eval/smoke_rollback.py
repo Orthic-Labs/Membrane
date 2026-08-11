@@ -14,11 +14,11 @@ from pathlib import Path
 ROOT = Path(
     os.environ.get("WORKSPACE_ROOT") or next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())
 ).expanduser().resolve()
-MORPH = Path(__file__).resolve().parent.parent  # morph/ — this file lives in morph/eval/
-sys.path.insert(0, str(MORPH))
+ADAPT = Path(__file__).resolve().parent.parent  # adapt/ — this file lives in adapt/eval/
+sys.path.insert(0, str(ADAPT))
 
-import morph as morph_pipeline
-import morph_sessions
+import adapt as adapt_pipeline
+import adapt_sessions
 import manifest as manifest_contract
 import preference_record
 import rollback
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", type=Path,
                         help="resolved production manifest to apply/retrieve/revert")
     parser.add_argument("--out", type=Path,
-                        default=ROOT / ".cache/morph-delivery-parity/rollback-smoke")
+                        default=ROOT / ".cache/adapt-delivery-parity/rollback-smoke")
     args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
 
@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
             "batch_id": batch_id,
             "source_session_ids": source_ids,
             "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "generator": "morph-rollback-exact-smoke",
+            "generator": "adapt-rollback-exact-smoke",
             "records": records,
         }
         manifest_path = args.out / "manifest.json"
@@ -126,20 +126,20 @@ def main(argv: list[str] | None = None) -> int:
     env_keys = {
         "CRYPT_PORT": str(port),
         "WORKSPACE_MEMORY_PORT": str(port),
-        "MORPH_SAFEPOINT_DB_OVERRIDE": str(copied_db),
-        "MORPH_SAFEPOINT_DIR_OVERRIDE": str(args.out / "safepoints"),
-        "MORPH_AUDIT_FILE_OVERRIDE": str(args.out / "audit.jsonl"),
+        "ADAPT_SAFEPOINT_DB_OVERRIDE": str(copied_db),
+        "ADAPT_SAFEPOINT_DIR_OVERRIDE": str(args.out / "safepoints"),
+        "ADAPT_AUDIT_FILE_OVERRIDE": str(args.out / "audit.jsonl"),
     }
     old_env = {key: os.environ.get(key) for key in env_keys}
     try:
         runner._wait_ready(port)
         os.environ.update(env_keys)
-        morph_sessions.STATE_DIR = state_dir
-        morph_sessions.STATE_FILE = state
+        adapt_sessions.STATE_DIR = state_dir
+        adapt_sessions.STATE_FILE = state
         run_journal.JOURNAL_FILE = journal_path
         journal = run_journal.RunJournal(journal_path)
         journal.record(batch_id, "discovered", sessions=source_ids)
-        apply_rc = morph_pipeline.apply_from_manifest(manifest_path)
+        apply_rc = adapt_pipeline.apply_from_manifest(manifest_path)
         if apply_rc != 0:
             raise RuntimeError(f"production apply_from_manifest returned {apply_rc}")
         if not expected_ids.issubset(_memory_ids(copied_db)):

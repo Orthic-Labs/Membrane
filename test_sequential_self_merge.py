@@ -98,7 +98,7 @@ def test_load_commandcode_groups_preserves_frozen_batch_boundaries(tmp_path):
     groups, loaded = runner.load_commandcode_groups(tmp_path, workspace_scope="D--Claude")
 
     assert loaded["prompt_count"] == 3
-    assert loaded["morph_sanitization"] == {"excluded_rows": 0, "redacted_rows": 0, "kept_rows": 3}
+    assert loaded["adapt_sanitization"] == {"excluded_rows": 0, "redacted_rows": 0, "kept_rows": 3}
     assert [[row["session_id"] for row in group] for group in groups] == [["s1", "s1"], ["s2"]]
     assert all(row["scope"] == "D--Claude" for group in groups for row in group)
 

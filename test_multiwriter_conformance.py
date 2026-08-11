@@ -31,8 +31,8 @@ def _sha(value: bytes = b"x") -> str:
 
 def _evidence() -> dict:
     implementation_files = [
-        {"path": "morph/cross_machine.py", "sha256": _sha(b"cross")},
-        {"path": "morph/morph.py", "sha256": _sha(b"morph")},
+        {"path": "adapt/adapt.py", "sha256": _sha(b"adapt")},
+        {"path": "adapt/cross_machine.py", "sha256": _sha(b"cross")},
     ]
     aggregate = _sha(json.dumps(
         implementation_files,
@@ -84,8 +84,8 @@ def _evidence() -> dict:
             "passed_count": 17,
             "output_sha256": _sha(b"17 passed"),
             "files": [
-                {"path": "morph/test_multiwriter_conformance.py", "sha256": _sha(b"t1")},
-                {"path": "morph/test_run_incremental_multiwriter.py", "sha256": _sha(b"t2")},
+                {"path": "adapt/test_multiwriter_conformance.py", "sha256": _sha(b"t1")},
+                {"path": "adapt/test_run_incremental_multiwriter.py", "sha256": _sha(b"t2")},
             ],
         },
     }
@@ -98,7 +98,7 @@ def test_receipt_is_content_free_canonical_and_fresh():
     receipt = conformance.issue_receipt(evidence, now=NOW, ttl_seconds=900)
 
     assert receipt["schema_version"] == 1
-    assert receipt["kind"] == "morph_multiwriter_conformance"
+    assert receipt["kind"] == "adapt_multiwriter_conformance"
     assert receipt["issued_at"] == "2026-07-20T08:00:00Z"
     assert receipt["expires_at"] == "2026-07-20T08:15:00Z"
     assert receipt["receipt_sha256"] == conformance.receipt_sha256(receipt)
@@ -110,7 +110,7 @@ def test_receipt_is_content_free_canonical_and_fresh():
     )
 
 
-def test_discovery_counts_use_collision_safe_morpher_state_keys(tmp_path: Path):
+def test_discovery_counts_use_collision_safe_adapter_state_keys(tmp_path: Path):
     conformance = _module()
     first = tmp_path / "one" / "chat_history.jsonl"
     second = tmp_path / "two" / "chat_history.jsonl"
@@ -233,7 +233,7 @@ def test_nested_unknown_field_cannot_put_content_in_receipt():
     evidence = _evidence()
     evidence["canonical_pool"]["transcript"] = "private prompt text"
 
-    with pytest.raises(conformance.ConformanceError, match="canonical Morph pool fields"):
+    with pytest.raises(conformance.ConformanceError, match="canonical Adapt pool fields"):
         conformance.issue_receipt(evidence, now=NOW, ttl_seconds=900)
 
 

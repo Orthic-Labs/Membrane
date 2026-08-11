@@ -15,7 +15,7 @@ def _module():
     return module
 
 
-def test_loaders_filter_morph_and_parse_taste(tmp_path):
+def test_loaders_filter_adapt_and_parse_taste(tmp_path):
     module = _module()
     results = tmp_path / "results.json"
     results.write_text(json.dumps({"rules": [
@@ -25,7 +25,7 @@ def test_loaders_filter_morph_and_parse_taste(tmp_path):
     taste = tmp_path / "taste.md"
     taste.write_text("# workflow\n- Keep me. Confidence: 0.85\n", encoding="utf-8")
 
-    assert module.load_morph_rules(results, status="candidate") == ["Keep me."]
+    assert module.load_adapt_rules(results, status="candidate") == ["Keep me."]
     assert module.parse_taste_rules(taste) == ["Keep me."]
 
 

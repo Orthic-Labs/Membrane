@@ -1,4 +1,4 @@
-"""Paged, resumable Membrane -> Morph event ingestion boundary (plan C14 / L2).
+"""Paged, resumable Membrane -> Adapt event ingestion boundary (plan C14 / L2).
 
 The resident Crypt service exposes the two query routes used here. ``HttpEventTransport``
 adapts those routes to the transport protocol, while ``query_by_id`` retrieves the
@@ -24,7 +24,7 @@ TOKEN_PATH = WORKSPACE_ROOT / "tools" / ".cache" / "memory" / "api-token"
 
 DEFAULT_PAGE_LIMIT = 200
 MAX_PAGE_LIMIT = 1000
-CURSOR_STATE_DIR = Path.home() / ".claude" / "morph"
+CURSOR_STATE_DIR = Path.home() / ".claude" / "adapt"
 CURSOR_STATE_FILE = CURSOR_STATE_DIR / "event_cursors.json"
 
 STREAMS = ("taste", "insights")
@@ -177,7 +177,7 @@ def _assert_taste_origin(rows: list[dict[str, Any]]) -> None:
 
     The Rust ``query_observable_events_for_taste`` path is what actually enforces
     user-origin-only — Taste has no origin parameter by design. This is a second,
-    independent check on the Morph side: if a row somehow arrives on the taste
+    independent check on the Adapt side: if a row somehow arrives on the taste
     stream with a non-"user" origin (broken transport, future refactor, bug), it
     must never reach admission silently. Raise loud instead of filtering quietly.
     """

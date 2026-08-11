@@ -1,4 +1,4 @@
-"""Build/validate the Morph value-set (paired prompts for the Gate 0 A/B).
+"""Build/validate the Adapt value-set (paired prompts for the Gate 0 A/B).
 
 The value-set is the operator-labeled dataset the Gate 0 evaluator grades against.
 Each row must include a stable `id`, the raw prompt, an arm (preference_relevant
@@ -11,12 +11,12 @@ This script:
   4. Verifies that arm proportions look like a real labeler (some relevance,
     some controls) — does NOT enforce a hard ratio
   5. Resolves each `expected_applicable_rule_ids` entry against the current
-    Morph pool so rules named before deletion are caught at build time
-  6. Emits a frozen COPY to docs/baselines/morph/value_set_<date>.jsonl on
+    Adapt pool so rules named before deletion are caught at build time
+  6. Emits a frozen COPY to docs/baselines/adapt/value_set_<date>.jsonl on
     successful validation, so the harness grades against an immutable record
 
 Run from workspace root:
-  py -3.11 tools/pipelines/memory/morph/eval/build_value_set.py <value_set.json>
+  py -3.11 tools/pipelines/memory/adapt/eval/build_value_set.py <value_set.json>
 """
 from __future__ import annotations
 
@@ -31,9 +31,9 @@ from collections import Counter
 from pathlib import Path
 
 WS = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
-MORPH_DIR = WS / "tools" / "pipelines" / "memory" / "morph"
-SCHEMA_PATH = MORPH_DIR / "eval" / "value_set_schema.json"
-BASELINE_DIR = WS / "docs" / "baselines" / "morph"
+ADAPT_DIR = WS / "tools" / "pipelines" / "memory" / "adapt"
+SCHEMA_PATH = ADAPT_DIR / "eval" / "value_set_schema.json"
+BASELINE_DIR = WS / "docs" / "baselines" / "adapt"
 
 
 def _load_schema() -> dict:
@@ -41,7 +41,7 @@ def _load_schema() -> dict:
 
 
 def _fetch_current_rule_ids() -> set[str]:
-    """Read live Crypt rows of the form D--Claude/morph-<slug>."""
+    """Read live Crypt rows of the form D--Claude/adapt-<slug>."""
     try:
         out = subprocess.check_output(
             [str(WS / "tools" / "bin" / "crypt.exe"), "list"],
@@ -52,7 +52,7 @@ def _fetch_current_rule_ids() -> set[str]:
                          f"skipping rule-id existence checks\n")
         return set()
     return {line.split()[-1].split("/")[-1] for line in out.splitlines()
-            if "/morph-" in line}
+            if "/adapt-" in line}
 
 
 def _hash_prompt(s: str) -> str:

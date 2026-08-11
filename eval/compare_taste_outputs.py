@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare Morph compiler rules with captured CommandCode taste digests."""
+"""Compare Adapt compiler rules with captured CommandCode taste digests."""
 from __future__ import annotations
 
 import argparse
@@ -32,12 +32,12 @@ def parse_taste_rules(path: Path) -> list[str]:
     return rules
 
 
-def load_morph_rules(path: Path, *, status: str | None = None,
+def load_adapt_rules(path: Path, *, status: str | None = None,
                      record_type: str | None = None) -> list[str]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     rules = payload.get("rules")
     if not isinstance(rules, list):
-        raise ValueError("Morph results must contain a rules list")
+        raise ValueError("Adapt results must contain a rules list")
     return [
         item["rule"] for item in rules
         if isinstance(item, dict)
@@ -103,48 +103,48 @@ def internal_pairs(rules: Sequence[str], embedder, *, threshold: float = 0.7) ->
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--morph-results", type=Path, required=True)
+    parser.add_argument("--adapt-results", type=Path, required=True)
     parser.add_argument("--m3-taste", type=Path, required=True)
     parser.add_argument("--glm-taste", type=Path, required=True)
     parser.add_argument("--baseline-taste", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 
-    morph_all = load_morph_rules(args.morph_results)
-    morph_candidate = load_morph_rules(args.morph_results, status="candidate")
-    morph_standing = load_morph_rules(
-        args.morph_results, status="candidate", record_type="standing_preference"
+    adapt_all = load_adapt_rules(args.adapt_results)
+    adapt_candidate = load_adapt_rules(args.adapt_results, status="candidate")
+    adapt_standing = load_adapt_rules(
+        args.adapt_results, status="candidate", record_type="standing_preference"
     )
     m3 = parse_taste_rules(args.m3_taste)
     glm = parse_taste_rules(args.glm_taste)
     embedder = ExactEmbeddingGemma()
     comparisons = {
-        "morph_all_vs_m3": compare_vectors(morph_all, m3, embedder),
-        "morph_candidate_vs_m3": compare_vectors(morph_candidate, m3, embedder),
-        "morph_standing_candidate_vs_m3": compare_vectors(morph_standing, m3, embedder),
-        "morph_all_vs_glm": compare_vectors(morph_all, glm, embedder),
+        "adapt_all_vs_m3": compare_vectors(adapt_all, m3, embedder),
+        "adapt_candidate_vs_m3": compare_vectors(adapt_candidate, m3, embedder),
+        "adapt_standing_candidate_vs_m3": compare_vectors(adapt_standing, m3, embedder),
+        "adapt_all_vs_glm": compare_vectors(adapt_all, glm, embedder),
         "m3_vs_glm": compare_vectors(m3, glm, embedder),
     }
     if args.baseline_taste:
         baseline = parse_taste_rules(args.baseline_taste)
-        morph_new = without_exact(morph_all, baseline)
-        morph_candidate_new = without_exact(morph_candidate, baseline)
+        adapt_new = without_exact(adapt_all, baseline)
+        adapt_candidate_new = without_exact(adapt_candidate, baseline)
         m3_new = without_exact(m3, baseline)
         glm_new = without_exact(glm, baseline)
         comparisons.update({
-            "morph_new_vs_m3_new": compare_vectors(morph_new, m3_new, embedder),
-            "morph_candidate_new_vs_m3_new": compare_vectors(
-                morph_candidate_new, m3_new, embedder
+            "adapt_new_vs_m3_new": compare_vectors(adapt_new, m3_new, embedder),
+            "adapt_candidate_new_vs_m3_new": compare_vectors(
+                adapt_candidate_new, m3_new, embedder
             ),
-            "morph_new_vs_glm_new": compare_vectors(morph_new, glm_new, embedder),
+            "adapt_new_vs_glm_new": compare_vectors(adapt_new, glm_new, embedder),
             "m3_new_vs_glm_new": compare_vectors(m3_new, glm_new, embedder),
         })
     report = {
         "model": embedder.pipeline_key,
         "baseline_rule_count": len(baseline) if args.baseline_taste else None,
         "coherence": {
-            "morph_all_pairs_ge_0.7": internal_pairs(morph_all, embedder),
-            "morph_candidate_pairs_ge_0.7": internal_pairs(morph_candidate, embedder),
+            "adapt_all_pairs_ge_0.7": internal_pairs(adapt_all, embedder),
+            "adapt_candidate_pairs_ge_0.7": internal_pairs(adapt_candidate, embedder),
         },
         "comparisons": comparisons,
     }

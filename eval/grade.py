@@ -25,7 +25,7 @@ matrix are persisted in ``graded.json`` so downstream reports can quote them.
 
 Usage::
 
-    py -3.11 tools/pipelines/memory/morph/eval/grade.py \\
+    py -3.11 tools/pipelines/memory/adapt/eval/grade.py \\
         --results /path/to/results.json \\
         --out /path/to/graded/
 

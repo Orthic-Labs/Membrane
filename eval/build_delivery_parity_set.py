@@ -1,8 +1,8 @@
-"""Freeze the CommandCode Taste versus Morph delivery-parity experiment.
+"""Freeze the CommandCode Taste versus Adapt delivery-parity experiment.
 
 The set is derived from the two compiler artifacts, not hand labels. It contains
-shared, Taste-only, Morph-only, and near-miss control cases. The builder also
-emits an audited Morph treatment manifest; source artifacts are never modified.
+shared, Taste-only, Adapt-only, and near-miss control cases. The builder also
+emits an audited Adapt treatment manifest; source artifacts are never modified.
 """
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ DEFAULT_TASTE = (
     ROOT / "docs/evidence/commandcode-taste-bakeoff-2026-07-13/"
     "minimax-m3/root-taste.md"
 )
-DEFAULT_MORPH = (
-    ROOT / ".cache/morph-commandcode-delta-m3-seeded-sanitized-split1-v1/"
+DEFAULT_ADAPT = (
+    ROOT / ".cache/adapt-commandcode-delta-m3-seeded-sanitized-split1-v1/"
     "results-rescoped.json"
 )
-DEFAULT_OUT = ROOT / ".cache/morph-delivery-parity/frozen"
+DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/frozen"
 
 
 EXCLUSIONS = {
@@ -33,7 +33,7 @@ EXCLUSIONS = {
     "taste-tooling-722004f4d3": "Playwright sandbox workaround conflicts with the current QA/tool contract",
     "taste-tooling-12050d1654": "unsupported cmd-shim claim and conflicts with another candidate",
     "taste-tooling-be749f16ee": "cited evidence says the cmd path failed, so the rule is unsupported",
-    "taste-model-routing-37fbe22444": "self-referential Morph release rule unsupported by its cited evidence",
+    "taste-model-routing-37fbe22444": "self-referential Adapt release rule unsupported by its cited evidence",
 }
 
 
@@ -109,7 +109,7 @@ TASTE_ONLY = [
 ]
 
 
-MORPH_ONLY = [
+ADAPT_ONLY = [
     ("cancel-prior-build", "taste-workflow-af3b148e41", [
         "I am starting another build while a previous cargo or esbuild process may still be active. What comes first?",
         "The machine is overloaded by overlapping builds. What workflow prevents that on the next cycle?",
@@ -183,13 +183,13 @@ def parse_taste(path: Path) -> list[dict]:
     return rules
 
 
-def build_morph_treatment(path: Path) -> dict:
+def build_adapt_treatment(path: Path) -> dict:
     source = json.loads(path.read_text(encoding="utf-8"))
     source_rules = source.get("rules", [])
     by_name = {r["name"]: r for r in source_rules}
     missing = sorted(set(EXCLUSIONS) - set(by_name))
     if missing:
-        raise ValueError(f"exclusion ids missing from Morph artifact: {missing}")
+        raise ValueError(f"exclusion ids missing from Adapt artifact: {missing}")
     records = []
     for item in source_rules:
         if item.get("status") not in {"baseline", "candidate"}:
@@ -200,7 +200,7 @@ def build_morph_treatment(path: Path) -> dict:
         record["status"] = "accepted"
         records.append(record)
     if len(records) != 57:
-        raise ValueError(f"expected 57 raw usable Morph records, found {len(records)}")
+        raise ValueError(f"expected 57 raw usable Adapt records, found {len(records)}")
     curated_records = [r for r in records if r["id"] not in EXCLUSIONS]
     if len(curated_records) != 49:
         raise ValueError(f"expected 49 secondary curated records, found {len(curated_records)}")
@@ -235,20 +235,20 @@ def _case(case_id: str, cohort: str, concept: str, prompt: str, variant: int,
     }
 
 
-def build_value_set(taste_path: Path, morph_path: Path) -> tuple[dict, dict]:
+def build_value_set(taste_path: Path, adapt_path: Path) -> tuple[dict, dict]:
     taste = parse_taste(taste_path)
     if len(taste) != 52:
         raise ValueError(f"expected 52 CommandCode root rules, found {len(taste)}")
     taste_by_index = {r["index"]: r for r in taste}
-    treatment = build_morph_treatment(morph_path)
-    morph_by_id = {r["id"]: r for r in treatment["records"]}
+    treatment = build_adapt_treatment(adapt_path)
+    adapt_by_id = {r["id"]: r for r in treatment["records"]}
     rows: list[dict] = []
 
-    for concept, index, morph_id, prompts in SHARED:
-        tr, ar = taste_by_index[index], morph_by_id[morph_id]
+    for concept, index, adapt_id, prompts in SHARED:
+        tr, ar = taste_by_index[index], adapt_by_id[adapt_id]
         expected = {
             "taste_rule_index": index, "taste_rule": tr["rule"],
-            "morph_id": morph_id, "morph_rule": ar["rule"],
+            "adapt_id": adapt_id, "adapt_rule": ar["rule"],
         }
         for variant, prompt in enumerate(prompts, 1):
             rows.append(_case(f"shared-{concept}-{variant}", "shared", concept,
@@ -261,11 +261,11 @@ def build_value_set(taste_path: Path, morph_path: Path) -> tuple[dict, dict]:
             rows.append(_case(f"taste-{concept}-{variant}", "taste_only", concept,
                               prompt, variant, expected))
 
-    for concept, morph_id, prompts in MORPH_ONLY:
-        ar = morph_by_id[morph_id]
-        expected = {"morph_id": morph_id, "morph_rule": ar["rule"]}
+    for concept, adapt_id, prompts in ADAPT_ONLY:
+        ar = adapt_by_id[adapt_id]
+        expected = {"adapt_id": adapt_id, "adapt_rule": ar["rule"]}
         for variant, prompt in enumerate(prompts, 1):
-            rows.append(_case(f"morph-{concept}-{variant}", "morph_only", concept,
+            rows.append(_case(f"adapt-{concept}-{variant}", "adapt_only", concept,
                               prompt, variant, expected, ar.get("scope", "D--Claude")))
 
     for concept, prompt, forbidden in CONTROLS:
@@ -277,7 +277,7 @@ def build_value_set(taste_path: Path, morph_path: Path) -> tuple[dict, dict]:
     lowered_prompts = "\n".join(r["prompt"].casefold() for r in rows)
     for row in rows:
         expected = row.get("expected") or {}
-        for key in ("taste_rule", "morph_rule"):
+        for key in ("taste_rule", "adapt_rule"):
             rule = expected.get(key, "").casefold()
             if rule and rule in lowered_prompts:
                 raise ValueError(f"expected-rule leakage in prompt set: {row['case_id']}")
@@ -287,10 +287,10 @@ def build_value_set(taste_path: Path, morph_path: Path) -> tuple[dict, dict]:
         "design": "five-arm-delivery-parity-v1",
         "sources": {
             "taste_path": str(taste_path), "taste_sha256": _sha256(taste_path),
-            "morph_path": str(morph_path), "morph_sha256": _sha256(morph_path),
+            "adapt_path": str(adapt_path), "adapt_sha256": _sha256(adapt_path),
         },
         "counts": {"total": 60, "shared": 16, "taste_only": 16,
-                   "morph_only": 16, "control": 12},
+                   "adapt_only": 16, "control": 12},
         "taste_rules": taste,
         "cases": rows,
     }
@@ -302,19 +302,19 @@ def build_value_set(taste_path: Path, morph_path: Path) -> tuple[dict, dict]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--taste", type=Path, default=DEFAULT_TASTE)
-    parser.add_argument("--morph", type=Path, default=DEFAULT_MORPH)
+    parser.add_argument("--adapt", type=Path, default=DEFAULT_ADAPT)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args(argv)
-    value_set, treatment = build_value_set(args.taste, args.morph)
+    value_set, treatment = build_value_set(args.taste, args.adapt)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "value-set.json").write_text(
         json.dumps(value_set, indent=2, ensure_ascii=False), encoding="utf-8")
-    (args.out / "morph-treatment.json").write_text(
+    (args.out / "adapt-treatment.json").write_text(
         json.dumps(treatment, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"frozen: {len(value_set['cases'])} cases")
     print(f"taste: {len(value_set['taste_rules'])} rules")
-    print(f"morph primary: {len(treatment['records'])} raw usable records")
-    print(f"morph secondary: {len(treatment['curated_records'])} curated records; "
+    print(f"adapt primary: {len(treatment['records'])} raw usable records")
+    print(f"adapt secondary: {len(treatment['curated_records'])} curated records; "
           f"flagged={len(treatment['exclusions'])}")
     print(args.out / "value-set.json")
     return 0

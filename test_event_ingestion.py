@@ -150,7 +150,7 @@ def test_pull_stream_rejects_truncated_result_missing_next_cursor(tmp_path: Path
 
 
 def test_pull_stream_taste_defends_against_non_user_origin_rows(tmp_path: Path) -> None:
-    """Store-level origin isolation is Membrane's job; this is the Morph-side
+    """Store-level origin isolation is Membrane's job; this is the Adapt-side
     defence in depth required by C14/L2 item 5 — even if a row somehow arrives
     on the taste stream with a non-user origin, it must never reach admission."""
 

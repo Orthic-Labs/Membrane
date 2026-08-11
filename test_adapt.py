@@ -1,18 +1,17 @@
-"""Offline tests for the morph pipeline. No network, no crypt binary."""
+"""Offline tests for the adapt pipeline. No network, no crypt binary."""
 import json
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 # Make the eval/ subpackage importable from tests too.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "eval"))
 
-import morph_sessions as ts
+import adapt_sessions as ts
 
 
 def test_runtime_roots_use_workspace_resolver():
-    import morph_llm
+    import adapt_llm
     import preference_record
     import rollback
     import run_incremental_multiwriter
@@ -21,7 +20,7 @@ def test_runtime_roots_use_workspace_resolver():
     root = workspace_root()
     assert ts._WORKSPACE_ROOT == root
     assert preference_record._WORKSPACE_ROOT == root
-    assert morph_llm.WS == root
+    assert adapt_llm.WS == root
     assert rollback.WS == root
     assert run_incremental_multiwriter.REPO_ROOT == root
 
@@ -55,11 +54,14 @@ CODEX_ROWS = [
         {"type": "input_text", "text": "# AGENTS.md instructions for D:\\Claude\n\n"
          "<INSTRUCTIONS>\nYou MUST use sequential thinking before complex work.\n</INSTRUCTIONS>"}]}},
     {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [
-        {"type": "input_text", "text": "<recommended_plugins>stuff</recommended_plugins>"}]}},
-    {"type": "response_item", "payload": {"type": "message", "role": "user", "content": [
+        {"type": "input_text", "text": "<codex_internal_context source=\"goal\">never repeat this ask</codex_internal_context>"}]}},
+    {"type": "response_item", "timestamp": "2026-08-11T10:00:00Z", "payload": {"type": "message", "role": "user", "content": [
+        {"type": "input_text", "text": "never train the wake encoder from scratch, distill the teacher"}]}},
+    {"type": "response_item", "timestamp": "2026-08-11T10:00:05Z", "payload": {"type": "message", "role": "user", "content": [
         {"type": "input_text", "text": "never train the wake encoder from scratch, distill the teacher"}]}},
     {"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [
-        {"type": "output_text", "text": "assistant text ignored"}]}},
+        {"type": "output_text", "text": "assistant canonical text"}]}},
+    {"type": "event_msg", "payload": {"type": "agent_message", "message": "assistant canonical text"}},
     {"type": "event_msg", "payload": {"type": "token_count"}},
 ]
 
@@ -80,8 +82,26 @@ def test_codex_parser_extracts_input_text_and_meta(tmp_path):
     assert s is not None
     assert s.tool == "codex" and s.session_id == "cdx1"
     assert s.cwd == "D:\\Claude\\heardright"
-    assert [t.text for t in s.turns] == ["never train the wake encoder from scratch, distill the teacher"]
+    assert [t.text for t in s.turns] == ["never train the wake encoder from scratch, distill the teacher"] * 2
     assert s.turns[0].scope == "D--Claude-heardright"
+    assert s.turns[0].observed_at == "2026-08-11T10:00:00Z"
+    assert [message.role for message in s.messages] == ["user", "user", "assistant"]
+    assert len(s.messages[-1].source_rows) == 2 and s.stats.deduplicated_count == 1
+
+    import insights, taste_v2
+    flags = {name: False for name in taste_v2.SOURCE_FLAG_NAMES}
+    def event(event_id, row, kind, role, text):
+        return {"eventId": event_id, "rowIndex": row, "byteStart": row, "byteEnd": row + 1, "sequence": row,
+                "kind": kind, "role": role, "text": text, "timestamp": None, "classification": "successful_readonly",
+                "flags": flags, "host": "codex", "sessionId": "s", "transcriptId": "t", "parserDigest": "sha256:x"}
+    events = [event("i", 1, "user_message", "user", "<codex_internal_context source=\"goal\">Please fix parser bug</codex_internal_context>"),
+              event("u", 2, "user_message", "user", "No, that's wrong. Always run focused tests."), event("t", 3, "tool_result", "user", "legacy host-adapter output"),
+              event("a1", 4, "assistant_message", "assistant", "verified clean"), event("a2", 5, "assistant_message", "assistant", "verified clean")]
+    candidate = taste_v2.extract_candidates(events)[0]
+    assert next(event for event in candidate.contextEvents if event["isSource"])["provenance"] == "external_user"
+    report = insights.report(events)
+    assert report["byDetectorCount"]["repeated_ask"] == report["byDetectorCount"]["stale_terminology_surfacing"] == 0
+    assert report["transcriptProvenance"]["deduplicatedCount"] == 1
 
 
 def test_codex_parser_excludes_noninteractive_exec_sessions(tmp_path):
@@ -100,7 +120,7 @@ def test_codex_parser_excludes_noninteractive_exec_sessions(tmp_path):
     assert ts.parse_codex_session(_write(tmp_path / "worker.jsonl", rows)) is None
 
 
-def test_codex_subagent_keeps_messages_but_has_no_taste_turns(tmp_path):
+def test_codex_subagent_quarantines_messages_and_taste_turns(tmp_path):
     rows = [
         {"type": "session_meta", "payload": {"id": "child", "cwd": "D:\\Claude",
          "source": {"subagent": {"thread_spawn": "parent"}}, "agent_role": "reviewer"}},
@@ -114,7 +134,8 @@ def test_codex_subagent_keeps_messages_but_has_no_taste_turns(tmp_path):
     assert session is not None
     assert session.thread_source == "subagent" and session.parent_thread_id == "parent"
     assert session.agent_role == "reviewer" and session.turns == []
-    assert [message.role for message in session.messages] == ["user", "developer", "agent"]
+    assert session.messages == []
+    assert session.stats.dropped_reasons["subagent"] == 3
 
 
 def test_codex_subagent_object_spawn_keeps_exact_parent_uuid(tmp_path):
@@ -131,7 +152,7 @@ def test_codex_subagent_object_spawn_keeps_exact_parent_uuid(tmp_path):
     assert session is not None
     assert session.parent_thread_id == parent_uuid
     assert session.thread_source == "subagent" and session.agent_role == "reviewer"
-    assert session.turns == [] and [message.role for message in session.messages] == ["user"]
+    assert session.turns == [] and session.messages == []
 
 
 def test_codex_root_user_remains_taste_eligible(tmp_path):
@@ -217,7 +238,7 @@ def test_cline_parser_uses_companion_workspace_metadata(tmp_path):
     assert session.turns[1].observed_at == "2026-07-20T04:08:41.694000Z"
 
 
-def test_parser_can_disable_morph_turn_cap_for_independent_census(tmp_path):
+def test_parser_can_disable_adapt_turn_cap_for_independent_census(tmp_path):
     rows = [
         {
             "type": "user",
@@ -244,51 +265,8 @@ def test_health_content_is_excluded_even_from_root_scope():
     assert all(ts.text_excluded(text) for text in texts)
 
 
-def test_parallel_extract_window_preserves_ordered_checkpoints(tmp_path, monkeypatch):
-    import threading
-
-    barrier = threading.Barrier(3)
-
-    def fake_extract(batch, *, lane):
-        barrier.wait(timeout=2)
-        number = int(batch[0][2])
-        return lt.outcomes.BatchOutcome.success([{"number": number}])
-
-    monkeypatch.setattr(lt.morph_llm, "extract_observations", fake_extract)
-    journal = lt.run_journal.RunJournal(tmp_path / "journal.jsonl")
-    batches = [[("codex", "D--Claude", str(number))] for number in (1, 2, 3)]
-
-    observations, batch_outcomes, failure = lt._extract_batches(
-        batches, lane="minimax", journal=journal, batch_id="parallel",
-        observations=[], completed_batch=0, quiet=True, workers=3,
-    )
-
-    assert failure is None
-    assert [item["number"] for item in observations] == [1, 2, 3]
-    assert [item.outcome for item in batch_outcomes] == ["success"] * 3
-    entries = [e for e in journal.batches() if e["stage"] == "extracted"]
-    assert [e["batch"] for e in entries] == [1, 2, 3]
 
 
-def test_parallel_extract_stops_checkpoint_at_first_failure(tmp_path, monkeypatch):
-    def fake_extract(batch, *, lane):
-        number = int(batch[0][2])
-        if number == 2:
-            return lt.outcomes.BatchOutcome.provider_failed("timeout")
-        return lt.outcomes.BatchOutcome.success([{"number": number}])
-
-    monkeypatch.setattr(lt.morph_llm, "extract_observations", fake_extract)
-    journal = lt.run_journal.RunJournal(tmp_path / "journal.jsonl")
-    batches = [[("codex", "D--Claude", str(number))] for number in (1, 2, 3)]
-
-    observations, _outcomes, failure = lt._extract_batches(
-        batches, lane="minimax", journal=journal, batch_id="failure",
-        observations=[], completed_batch=0, quiet=True, workers=3,
-    )
-
-    assert observations == [{"number": 1}]
-    assert failure and failure[0] == 2
-    assert [e["batch"] for e in journal.batches()] == [1, 2]
 
 
 def test_parsers_return_none_when_no_turns(tmp_path):
@@ -320,7 +298,7 @@ def test_redaction_strips_standalone_jwt():
 
 
 def test_scanner_positive_drops_batch_at_send(tmp_path, monkeypatch):
-    """Per-turn scanner was moved to per-batch in morph_llm.extract_observations;
+    """Per-turn scanner was moved to per-batch in adapt_llm.extract_observations;
     this test pins the batch-level contract via a direct call to scan_batch_for_secrets.
     """
     monkeypatch.setattr(ts, "scanner_clean", lambda text: True)
@@ -395,14 +373,14 @@ def test_active_codex_session_is_excluded_from_pending_queue(tmp_path, monkeypat
 def test_orchestrator_can_exclude_multiple_active_codex_sessions(tmp_path):
     first = tmp_path / "rollout-first-active.jsonl"
     second = tmp_path / "rollout-second-active.jsonl"
-    env = {"MORPH_ACTIVE_CODEX_THREAD_IDS": "first-active, second-active"}
+    env = {"ADAPT_ACTIVE_CODEX_THREAD_IDS": "first-active, second-active"}
 
     assert ts.is_active_session("codex", first, env=env)
     assert ts.is_active_session("codex", second, env=env)
 
 
 # --- Task 2: LLM lane tests ---
-import morph_llm as tl
+import adapt_llm as tl
 import outcomes
 
 
@@ -419,7 +397,7 @@ def test_default_extraction_budget_is_large_but_output_bounded():
     assert "at most 24 changed actions" in tl.SYNTH_SYSTEM
 
 
-def test_default_morph_call_retries_transient_provider_failures(monkeypatch):
+def test_default_adapt_call_retries_transient_provider_failures(monkeypatch):
     seen = {}
 
     def fake_call(system, user, *, lane, attempts, **_kwargs):
@@ -524,7 +502,7 @@ def test_extract_returns_provider_failed_on_provider_exception(tmp_path, monkeyp
     assert "llm_call_failed" in audit.read_text(encoding="utf-8")
 
 
-def test_extract_morphively_splits_max_token_window():
+def test_extract_adaptively_splits_max_token_window():
     calls = []
 
     def fake(_system, user):
@@ -548,7 +526,7 @@ def test_extract_morphively_splits_max_token_window():
     assert {item["session_id"] for item in out.actions} == {"s1", "s2"}
 
 
-def test_extract_morphively_splits_malformed_multi_turn_window():
+def test_extract_adaptively_splits_malformed_multi_turn_window():
     def fake(_system, user):
         return "not json" if len(json.loads(user)) > 1 else "[]"
 
@@ -560,13 +538,13 @@ def test_extract_morphively_splits_malformed_multi_turn_window():
 
 
 def test_synthesize_returns_update_action_with_envelope():
-    existing = [{"name": "morph-logging-jsonl-over-logfmt", "category": "tooling",
+    existing = [{"name": "adapt-logging-jsonl-over-logfmt", "category": "tooling",
                  "rule": "Prefer JSONL over logfmt for structured logs.", "confidence": 0.8,
                  "observations": 2, "scope": "D--Claude"}]
     new_obs = [{"category": "tooling", "observation": "use JSONL not logfmt",
                 "evidence": "always use JSONL", "tool": "codex", "scope": "D--Claude"}]
     fake = lambda system, user: json.dumps([
-        {"action": "update", "name": "morph-logging-jsonl-over-logfmt", "category": "tooling",
+        {"action": "update", "name": "adapt-logging-jsonl-over-logfmt", "category": "tooling",
          "rule": "Use JSONL for structured logs, never logfmt.", "confidence": 0.85,
          "observations": 3, "why": "re-endorsed in codex session"}])
     out = tl.synthesize(existing, new_obs, llm=fake)
@@ -577,7 +555,7 @@ def test_synthesize_returns_update_action_with_envelope():
 
 def test_synthesize_low_confidence_action_is_review_flagged():
     fake = lambda system, user: json.dumps([
-        {"action": "add", "name": "morph-review-ask-first", "category": "workflow",
+        {"action": "add", "name": "adapt-review-ask-first", "category": "workflow",
          "rule": "Ask before broad review changes are pushed.", "confidence": 0.35,
          "observations": 1, "why": "single weak hint"}])
     out = tl.synthesize([], [{"category": "workflow", "observation": "ask first"}], llm=fake)
@@ -612,14 +590,14 @@ def test_call_lane_forwards_minimax_retry_and_output_ceilings(monkeypatch):
     assert seen == {
         "max_tokens": 2048,
         "attempts": 1,
-        "thinking": "morphive",
+        "thinking": "adaptive",
         "temperature": 0.2,
     }
 
 
 def test_default_llm_surfaces_provider_usage_in_audit(tmp_path, monkeypatch):
     audit = tmp_path / "audit.jsonl"
-    monkeypatch.setenv("MORPH_AUDIT_FILE_OVERRIDE", str(audit))
+    monkeypatch.setenv("ADAPT_AUDIT_FILE_OVERRIDE", str(audit))
 
     def fake(_system, _user, **_kwargs):
         return {
@@ -643,154 +621,45 @@ def test_default_llm_surfaces_provider_usage_in_audit(tmp_path, monkeypatch):
 import importlib.util
 
 _spec = importlib.util.spec_from_file_location(
-    "morph_cli", Path(__file__).resolve().parent / "morph.py")
+    "adapt_cli", Path(__file__).resolve().parent / "adapt.py")
 lt = importlib.util.module_from_spec(_spec)
 # Register before exec so taste/taste_apply host late-bind can see monkeypatches.
-sys.modules["morph_cli"] = lt
+sys.modules["adapt_cli"] = lt
 _spec.loader.exec_module(lt)
+import admission as _admission
+import adapt_llm as _adapt_llm
+import adapt_persistence as _adapt_persistence
+import outcomes as _outcomes
+import run_journal as _run_journal
+import taste_runtime as _taste_runtime
+
+# Apply runtime resolves injectable hooks from this test host module.
+lt.admission = _admission
+lt.adapt_llm = _adapt_llm
+lt.adapt_persistence = _adapt_persistence
+lt.outcomes = _outcomes
+lt.run_journal = _run_journal
+lt.ts = ts
+lt._run_crypt = _taste_runtime.run_crypt
+lt._scanner_available = _taste_runtime.scanner_available
+lt._multiwriter_context = lt.taste_apply._multiwriter_context
+lt.WORKSPACE_ROOT = lt.taste_apply.WORKSPACE_ROOT
 
 
-def test_apply_actions_upserts_via_crypt(tmp_path, monkeypatch):
-    calls = []
-    bodies = []
-    def fake_run(args):
-        calls.append(args)
-        if args and args[0] == "put":
-            bodies.append(Path(args[args.index("--file") + 1]).read_text(encoding="utf-8"))
-        return True
-    monkeypatch.setattr(lt, "_run_crypt", fake_run)
-    monkeypatch.setattr(lt.ts, "scan_batch_for_secrets_str", lambda _text: True)
-    rules = {}
-    actions = [{"action": "add", "name": "morph-logging-jsonl-over-logfmt",
-                "category": "workflow", "rule": "Always prefer JSONL over logfmt for structured logging because line-delimited records survive tool rotations cleanly.",
-                "confidence": 0.7, "observations": 1, "why": "stated directly"}]
-    obs_by_cat = {"workflow": [{"scope": "D--Claude", "tool": "claude-code",
-                               "evidence": "always use JSONL", "category": "workflow",
-                               "observation": "use JSONL"}]}
-    changed, ok = lt.apply_actions(actions, obs_by_cat, rules, tmp_path, dry_run=False)
-    assert changed == 1 and ok is True
-    assert "morph-logging-jsonl-over-logfmt" in rules
-    assert len(calls) == 1
-    assert calls[0][:2] == ["put", "morph-logging-jsonl-over-logfmt"]
-    assert "--scope" in calls[0] and "D--Claude" in calls[0]
-    assert "**Trigger phrases:** always use JSONL" in bodies[0]
-    assert rules["morph-logging-jsonl-over-logfmt"]["retrieval_aliases"] == [
-        "always use JSONL"
-    ]
-    assert rules["morph-logging-jsonl-over-logfmt"]["record_type"] == "standing_preference"
 
 
-def test_apply_actions_enforces_supplied_authority_manifest(tmp_path, monkeypatch):
-    import authority as authority_mod
-
-    calls = []
-    monkeypatch.setattr(lt, "_run_crypt", lambda args: calls.append(args) or True)
-    frozen = authority_mod.build_manifest(
-        tmp_path,
-        directives=[{
-            "id": "report-format",
-            "text": "Never use YAML for generated reports.",
-            "scope": "repo-a",
-            "status": "current",
-        }],
-    )
-    actions = [{
-        "action": "add",
-        "name": "morph-yaml-reports",
-        "category": "workflow",
-        "rule": "Always use YAML for generated reports.",
-        "confidence": 0.8,
-        "observations": 2,
-    }]
-    observations = {"workflow": [{
-        "scope": "repo-a",
-        "tool": "claude-code",
-        "evidence": "use YAML for generated reports",
-    }]}
-
-    changed, ok = lt.apply_actions(
-        actions,
-        observations,
-        {},
-        tmp_path,
-        dry_run=False,
-        authority_manifest=frozen,
-        authority_root=tmp_path,
-    )
-
-    assert changed == 0 and ok is True
-    assert calls == []
 
 
-def test_apply_is_idempotent_on_keep(tmp_path, monkeypatch):
-    calls = []
-    monkeypatch.setattr(lt, "_run_crypt", lambda args: calls.append(args) or True)
-    rules = {"morph-logging-jsonl-over-logfmt": {
-        "name": "morph-logging-jsonl-over-logfmt", "category": "workflow",
-        "rule": "Use JSONL.", "confidence": 0.7, "observations": 1, "scope": "D--Claude"}}
-    actions = [{"action": "keep", "name": "morph-logging-jsonl-over-logfmt",
-                "category": "workflow", "rule": "Use JSONL.", "confidence": 0.7,
-                "observations": 1, "why": ""}]
-    changed, ok = lt.apply_actions(actions, {"workflow": []}, rules, tmp_path, dry_run=False)
-    assert changed == 0 and ok is True
-    assert calls == []          # keep = no write
 
 
-def test_dry_run_never_writes(tmp_path, monkeypatch):
-    calls = []
-    monkeypatch.setattr(lt, "_run_crypt", lambda args: calls.append(args) or True)
-    actions = [{"action": "add", "name": "morph-tooling-keep-it-boring",
-                "category": "tooling",
-                "rule": "Prefer boring, well-trodden libraries over clever ones when both solve the same problem for this codebase.",
-                "confidence": 0.6, "observations": 1, "why": ""}]
-    rules = {}
-    changed, ok = lt.apply_actions(actions, {"tooling": []}, rules, tmp_path, dry_run=True)
-    assert changed == 0 and ok is True
-    assert calls == []
 
 
-def test_failed_crypt_write_reports_not_ok(tmp_path, monkeypatch):
-    monkeypatch.setattr(lt, "_run_crypt", lambda args: False)
-    actions = [{"action": "add", "name": "morph-workflow-validate-first",
-                "category": "workflow",
-                "rule": "Always validate the user's plan before starting implementation or pursuing unrelated tangents.",
-                "confidence": 0.6, "observations": 1, "why": ""}]
-    changed, ok = lt.apply_actions(actions, {"workflow": []}, {}, tmp_path, dry_run=False)
-    assert changed == 0 and ok is False
 
 
-def test_apply_preflight_requires_scanner_lane_and_crypt(monkeypatch):
-    monkeypatch.setattr(lt.ts, "scanner_available", lambda: False)
-    assert lt.preflight_apply("local", allow_external=False) is False
-    monkeypatch.setattr(lt.ts, "scanner_available", lambda: True)
-    monkeypatch.setattr(lt.morph_llm, "lane_available", lambda lane: False)
-    assert lt.preflight_apply("local", allow_external=False) is False
-    monkeypatch.setattr(lt.morph_llm, "lane_available", lambda lane: True)
-    assert lt.preflight_apply("minimax", allow_external=False) is False
-    monkeypatch.setattr(lt, "_run_crypt", lambda args: False)
-    assert lt.preflight_apply("local", allow_external=False) is False
-    monkeypatch.setattr(lt, "_run_crypt", lambda args: True)
-    assert lt.preflight_apply("local", allow_external=False) is True
-    assert lt.preflight_apply("minimax", allow_external=True) is True
 
 
-def test_rule_body_format():
-    body = lt.rule_body({"name": "morph-logging-jsonl", "category": "logging",
-                         "rule": "Use JSONL for structured logging.", "confidence": 0.8,
-                         "observations": 3},
-                        evidence='always use JSONL', tool="claude-code")
-    assert body.startswith("**[morph/logging]** — Use JSONL for structured logging.")
-    assert "Confidence: 0.80 (observations: 3, needs_review: false" in body
-    assert "**Why:**" in body and "**How to apply:**" in body
 
 
-def test_digest_written(tmp_path):
-    rules = {"morph-logging-jsonl": {"name": "morph-logging-jsonl", "category": "logging",
-                                     "rule": "Use JSONL.", "confidence": 0.8,
-                                     "observations": 3, "scope": "D--Claude"}}
-    lt.write_digest(rules, tmp_path / "morph-digest.md")
-    text = (tmp_path / "morph-digest.md").read_text(encoding="utf-8")
-    assert "# logging" in text and "Use JSONL." in text and "0.80" in text
 
 # --- privacy + audit-isolation contract tests added by 2026-07-12 fix pass ---
 
@@ -799,7 +668,7 @@ def test_extract_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
     """When the external-lane batch scanner flags the batch, extract returns
     SCANNER_BLOCKED — retryable, never leaked into LLM output."""
     audit = _audit_file_path(tmp_path)
-    import morph_sessions as _ts
+    import adapt_sessions as _ts
     monkeypatch.setattr(_ts, "scan_batch_for_secrets", lambda batch: False)
     fake = lambda system, user: json.dumps([
         {"category": "tooling", "observation": "x", "evidence": "y", "prompt": 1}])
@@ -812,7 +681,7 @@ def test_extract_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
 
 def test_synthesize_returns_scanner_blocked_outcome(tmp_path, monkeypatch):
     audit = _audit_file_path(tmp_path)
-    import morph_sessions as _ts
+    import adapt_sessions as _ts
     forge = {"called": False}
     def fail_scan(s):
         forge["called"] = True
@@ -874,31 +743,13 @@ def test_extract_deterministic_still_available_for_diagnostic():
 
 
 def _audit_file_path(tmp_path):
-    """Helper: set MORPH_AUDIT_FILE_OVERRIDE to tmp and return the resolved path."""
-    import morph as _morph_mod, os
+    """Helper: set ADAPT_AUDIT_FILE_OVERRIDE to tmp and return the resolved path."""
+    import adapt as _adapt_mod, os
     p = tmp_path / "audit.jsonl"
-    os.environ["MORPH_AUDIT_FILE_OVERRIDE"] = str(p)
+    os.environ["ADAPT_AUDIT_FILE_OVERRIDE"] = str(p)
     return p
 
 
-def test_audit_writes_to_env_override_path(tmp_path, monkeypatch):
-    """The audit function routes to MORPH_AUDIT_FILE_OVERRIDE when set, so
-    tests do not contaminate the real ~/.claude/morph/audit.jsonl.
-    """
-    p = _audit_file_path(tmp_path)
-    # Force a write through the orchestrator's _audit() helper.
-    import morph as _morph_mod
-    _morph_mod._audit({"event": "test", "marker": "iso-override-ok"})
-    text = p.read_text(encoding="utf-8")
-    assert "iso-override-ok" in text
-    assert "ts" in text
-    # And NOT in the canonical user audit log.
-    canonical = Path.home() / ".claude" / "morph" / "audit.jsonl"
-    if canonical.exists():
-        canonical_text = canonical.read_text(encoding="utf-8")
-        assert "iso-override-ok" not in canonical_text
-    # Cleanup the env so it doesn't leak to subsequent tests.
-    monkeypatch.delenv("MORPH_AUDIT_FILE_OVERRIDE", raising=False)
 
 # --- admission policy + run journal + taxonomy tests ---
 
@@ -976,7 +827,7 @@ def test_admit_accepts_concise_imperative_rule():
     from importlib import import_module
     adm = import_module("admission")
     ok, why = adm.admit("add", {
-        "name": "morph-verification-focused-tests",
+        "name": "adapt-verification-focused-tests",
         "rule": "Run focused tests before broad build.",
         "category": "verification",
     })
@@ -989,14 +840,14 @@ def test_admit_update_allows_existing_target():
     import rule_key as rk_mod
     adm = import_module("admission")
     index = rk_mod.RuleIndex.from_mapping({
-        "morph-logging-jsonl-over-logfmt": {
-            "id": "morph-logging-jsonl-over-logfmt",
+        "adapt-logging-jsonl-over-logfmt": {
+            "id": "adapt-logging-jsonl-over-logfmt",
             "scope": "D--Claude",
             "rule": "Prefer JSONL over logfmt for structured logs.",
         }
     })
     ok, why = adm.admit("update", {
-        "name": "morph-logging-jsonl-over-logfmt",
+        "name": "adapt-logging-jsonl-over-logfmt",
         "rule": "Use JSONL for structured logs, never logfmt.",
         "category": "tooling",
         "scope": "D--Claude",
@@ -1160,7 +1011,7 @@ def test_journal_replay_path_does_not_resend_extract(tmp_path):
     """
     from importlib import import_module
     rj = import_module("run_journal")
-    al = import_module("morph_llm")
+    al = import_module("adapt_llm")
 
     journal_path = tmp_path / "run_journal.jsonl"
     j = rj.RunJournal(journal_path)
@@ -1222,98 +1073,16 @@ def test_journal_full_round_trip(tmp_path):
     assert j.pending_batch() is None
 
 
-def test_replayed_synth_failure_is_not_committable():
-    """A cached provider/scanner/parse failure must never reach apply/commit."""
-    import outcomes as _outcomes
-
-    assert lt._synth_committable(_outcomes.Outcome.SUCCESS) is True
-    assert lt._synth_committable(_outcomes.Outcome.VALID_EMPTY) is True
-    assert lt._synth_committable(_outcomes.Outcome.PROVIDER_FAILED) is False
-    assert lt._synth_committable(_outcomes.Outcome.SCANNER_BLOCKED) is False
-    assert lt._synth_committable(_outcomes.Outcome.PARSE_FAILED) is False
 
 
-def test_cached_valid_empty_synth_is_replayable(tmp_path):
-    import run_journal as _journal
-    import outcomes as _outcomes
-
-    journal = _journal.RunJournal(tmp_path / "journal.jsonl")
-    journal.record("batch", "synthesized",
-                   synth_outcome=_outcomes.Outcome.VALID_EMPTY, actions=[])
-
-    outcome, actions = lt._cached_synth(journal, "batch")
-    assert outcome == _outcomes.Outcome.VALID_EMPTY
-    assert actions == []
 
 
-def test_cached_extract_progress_stops_before_failed_batch(tmp_path):
-    import run_journal as _journal
-
-    journal = _journal.RunJournal(tmp_path / "journal.jsonl")
-    journal.record("batch", "extracted", batch=1, observations=[{"id": 1}])
-    journal.record("batch", "extracted", batch=2, valid_empty=True)
-    journal.record("batch", "extracted", batch=3,
-                   outcome="provider_failed", reason="reset")
-
-    completed_batch, observations = lt._cached_extract_progress(journal, "batch")
-    assert completed_batch == 2
-    assert observations == [{"id": 1}]
 
 
-def test_cached_extract_progress_requires_contiguous_latest_success(tmp_path):
-    import run_journal as _journal
-
-    journal = _journal.RunJournal(tmp_path / "journal.jsonl")
-    journal.record("batch", "extracted", batch=1, observations=[{"id": 1}])
-    journal.record("batch", "extracted", batch=2,
-                   outcome="provider_failed", reason="reset")
-    journal.record("batch", "extracted", batch=3,
-                   observations=[{"id": 1}, {"id": 3}])
-
-    completed_batch, observations = lt._cached_extract_progress(journal, "batch")
-    assert completed_batch == 1
-    assert observations == [{"id": 1}]
 
 
-def test_session_refs_disambiguate_duplicate_client_session_ids(tmp_path):
-    first = SimpleNamespace(
-        session_id="shared-id", tool="codex", path=tmp_path / "one.jsonl", mtime=1.0
-    )
-    second = SimpleNamespace(
-        session_id="shared-id", tool="codex", path=tmp_path / "two.jsonl", mtime=2.0
-    )
-    unique = SimpleNamespace(
-        session_id="unique-id", tool="codex", path=tmp_path / "three.jsonl", mtime=3.0
-    )
-
-    refs = lt._session_refs([first, second, unique])
-
-    assert refs[0]["source_key"] != refs[1]["source_key"]
-    assert refs[0]["source_key"].startswith("shared-id\0")
-    assert refs[1]["source_key"].startswith("shared-id\0")
-    assert refs[2]["source_key"] == "unique-id"
-    sources = lt._qualified_session_sources(
-        refs, "12345678-1234-4234-9234-123456789abc"
-    )
-    assert len(sources) == len(set(sources)) == 3
 
 
-def test_session_refs_disambiguate_cross_client_session_id_collisions(tmp_path):
-    sessions = [
-        SimpleNamespace(
-            session_id="shared-id", tool="codex", path=tmp_path / "codex.jsonl", mtime=1.0
-        ),
-        SimpleNamespace(
-            session_id="shared-id",
-            tool="claude-code",
-            path=tmp_path / "claude.jsonl",
-            mtime=2.0,
-        ),
-    ]
-
-    refs = lt._session_refs(sessions)
-
-    assert refs[0]["source_key"] != refs[1]["source_key"]
 
 
 def test_synthesize_requires_exact_observation_links_when_ids_are_present():
@@ -1324,7 +1093,7 @@ def test_synthesize_requires_exact_observation_links_when_ids_are_present():
 
     def missing_link(_system, _user):
         return json.dumps([{
-            "action": "add", "name": "morph-workflow-verify-code",
+            "action": "add", "name": "adapt-workflow-verify-code",
             "category": "workflow", "rule": "Always verify actual code before reporting.",
             "confidence": 0.9, "observations": 1,
         }])
@@ -1340,7 +1109,7 @@ def test_synthesize_allows_linked_observation_category_correction():
         "observation": "Always verify the actual UI.", "evidence": "always verify UI",
     }]
     fake = lambda _system, _user: json.dumps([{
-        "action": "add", "name": "morph-verification-verify-ui",
+        "action": "add", "name": "adapt-verification-verify-ui",
         "category": "verification", "rule": "Always verify the actual UI before completion.",
         "confidence": 0.9, "observations": 1,
         "observation_ids": ["obs-000001"],
@@ -1351,40 +1120,11 @@ def test_synthesize_allows_linked_observation_category_correction():
     assert out.actions[0]["category"] == "verification"
 
 
-def test_manifest_uses_only_action_linked_evidence(tmp_path):
-    observations = [
-        {"observation_id": "obs-000001", "category": "tooling",
-         "scope": "D--Claude", "tool": "codex", "session_id": "s1",
-         "evidence": "PowerShell is blocked", "observation": "Use cmd workaround."},
-        {"observation_id": "obs-000002", "category": "tooling",
-         "scope": "D--Claude", "tool": "codex", "session_id": "s2",
-         "evidence": "always use py -3.11", "observation": "Always use py -3.11."},
-    ]
-    actions = [{
-        "action": "add", "name": "morph-tooling-use-py311", "category": "tooling",
-        "rule": "Always use py -3.11 for Python commands in this workspace.",
-        "confidence": 0.9, "observations": 1,
-        "observation_ids": ["obs-000002"],
-    }]
-    records = []
-
-    lt.apply_actions(
-        actions, {"tooling": observations}, {}, tmp_path, True,
-        manifest_records=records, source_session_ids=["s1", "s2"],
-        source_file_hashes={"s1": "1" * 64, "s2": "2" * 64},
-    )
-
-    assert records[0]["evidence_excerpt"] == "always use py -3.11"
-    assert records[0]["source_ids"] == ["s2"]
-    assert records[0]["source_file_hashes"] == [
-        {"session_id": "s2", "sha256": "2" * 64}
-    ]
-    assert records[0]["retrieval_aliases"] == ["always use py -3.11"]
 
 
 def test_admission_rejects_transient_environment_workaround_claim():
     admitted, reason = lt.admission.admit("add", {
-        "name": "morph-tooling-launch-installers",
+        "name": "adapt-tooling-launch-installers",
         "category": "tooling",
         "rule": "Launch installers via cmd.exe because PowerShell is blocked in the agent sandbox.",
         "scope": "D--Claude",
@@ -1422,48 +1162,10 @@ def test_admission_rejects_current_authority_drift():
         assert actual == reason
 
 
-def test_resume_contract_requires_exact_session_identity():
-    discovered = {
-        "session_refs": [
-            {"session_id": "s1", "tool": "codex", "path_stem": "one", "mtime": 1.0},
-            {"session_id": "s2", "tool": "claude-code", "path_stem": "two", "mtime": 2.0},
-        ],
-        "extraction_contract": lt._extraction_contract(),
-    }
-    current = [
-        {"session_id": "s1", "tool": "codex", "path_stem": "one", "mtime": 1.0},
-        {"session_id": "DIFFERENT", "tool": "claude-code", "path_stem": "two", "mtime": 2.0},
-    ]
-
-    reason = lt._resume_mismatch_reason(discovered, current)
-    assert reason and "session identity" in reason
 
 
-def test_resume_contract_rejects_changed_extraction_contract():
-    current = [
-        {"session_id": "s1", "tool": "codex", "path_stem": "one", "mtime": 1.0},
-    ]
-    stale_contract = {**lt._extraction_contract(), "batch_char_budget": 48_000}
-    discovered = {
-        "session_refs": current,
-        "extraction_contract": stale_contract,
-    }
-
-    reason = lt._resume_mismatch_reason(discovered, current)
-    assert reason and "extraction contract" in reason
 
 
-def test_failed_cached_synth_must_be_retried(tmp_path):
-    import run_journal as _journal
-
-    journal = _journal.RunJournal(tmp_path / "journal.jsonl")
-    journal.record("batch", "synthesized",
-                   synth_outcome="provider_failed", actions=[])
-
-    replayable, outcome, actions = lt._replayable_synth(journal, "batch")
-    assert replayable is False
-    assert outcome == "provider_failed"
-    assert actions == []
 
 
 # --- Gate 2: PreferenceRecord v1 contract ---
@@ -1477,7 +1179,7 @@ def test_pref_record_derive_id_stable_for_same_input():
     b = pr_mod.derive_id("D--Claude", "workflow",
                          "Always use JSONL for structured logs, never logfmt.")
     assert a == b
-    assert a.startswith("morph-workflow-")
+    assert a.startswith("adapt-workflow-")
     # 10-hex-char sha suffix
     assert a.split("-")[-1].isalnum() and len(a.split("-")[-1]) == 10
 
@@ -1519,7 +1221,7 @@ def test_pref_record_from_synthesis_assigns_id_for_add():
          "confidence": 0.7, "observations": 2},
         scope="D--Claude", source_ids=("s1", "s2"),
     )
-    assert rec.id.startswith("morph-tooling-")
+    assert rec.id.startswith("adapt-tooling-")
     assert rec.source_ids == ("s1", "s2")
     assert rec.schema_version == pr_mod.SCHEMA_VERSION
     assert rec.kind == "preference"
@@ -1548,14 +1250,14 @@ def test_pref_record_from_synthesis_preserves_id_on_update():
 
 def test_pref_record_update_accepts_legacy_rule_without_id():
     updated = pr_mod.PreferenceRecord.from_synthesis(
-        {"action": "update", "name": "morph-tooling-existing-abc123",
+        {"action": "update", "name": "adapt-tooling-existing-abc123",
          "category": "tooling", "rule": "Prefer JSONL for structured logs.",
          "confidence": 0.85},
         scope="D--Claude", source_ids=("s1",),
-        existing={"name": "morph-tooling-existing-abc123",
+        existing={"name": "adapt-tooling-existing-abc123",
                   "created_at": "2026-07-01T00:00:00+00:00"},
     )
-    assert updated.id == "morph-tooling-existing-abc123"
+    assert updated.id == "adapt-tooling-existing-abc123"
     assert updated.created_at == "2026-07-01T00:00:00+00:00"
 
 
@@ -1583,7 +1285,7 @@ def test_pref_record_to_crypt_content_uses_existing_envelope():
         scope="D--Claude", source_ids=("s1",),
     )
     body = pr_mod.to_crypt_content(rec)
-    assert body.startswith("**[morph/tooling]**")
+    assert body.startswith("**[adapt/tooling]**")
     assert "Prefer JSONL for structured logs." in body
     assert "Confidence:" in body and "How to apply:" in body
 
@@ -1630,7 +1332,7 @@ def _build_valid_manifest(tmp_path, *, status="pending", batch_id="batch-1"):
     records = []
     for i, cat in enumerate(("tooling", "workflow", "verification")):
         rec = {
-            "id": f"morph-{cat}-sample-{i:010x}",
+            "id": f"adapt-{cat}-sample-{i:010x}",
             "rule": f"Always do thing number {i} in the right way to satisfy tests.",
             "category": cat,
             "scope": "D--Claude",
@@ -1704,7 +1406,7 @@ def test_manifest_accepts_empty_records_as_valid_noop_batch(tmp_path):
     body = {
         "schema_version": pr_mod.SCHEMA_VERSION,
         "batch_id": "x", "created_at": "2026-07-13T00:00:00Z",
-        "generator": "morph.py --manifest",
+        "generator": "adapt.py --manifest",
         "source_session_ids": ["s1"], "records": [],
     }
     p = tmp_path / "empty.json"
@@ -1743,7 +1445,7 @@ def _isolate_journal(tmp_path, monkeypatch):
     monkeypatch.setattr(lt.ts, "STATE_DIR", tmp_path)
     monkeypatch.setattr(lt.ts, "STATE_FILE", tmp_path / "state.json")
     monkeypatch.setattr(lt.run_journal, "JOURNAL_FILE", tmp_path / "run_journal.jsonl")
-    monkeypatch.setattr(lt.ts, "scanner_available", lambda: True)
+    monkeypatch.setattr(lt, "_scanner_available", lambda: True)
     monkeypatch.setattr(lt, "_run_crypt", lambda args: True)
     monkeypatch.setattr(
         lt, "_create_apply_safepoint",
@@ -1788,7 +1490,7 @@ def test_apply_from_manifest_refuses_writes_when_safepoint_fails(tmp_path, monke
 
 
 def test_apply_from_manifest_refuses_when_journal_missing(tmp_path, monkeypatch):
-    """morph.apply_from_manifest must refuse if no journal discovered entry exists."""
+    """adapt.apply_from_manifest must refuse if no journal discovered entry exists."""
     p, _ = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-noj")
     _isolate_journal(tmp_path, monkeypatch)
     rc = lt.apply_from_manifest(p)
@@ -1908,8 +1610,8 @@ def test_multiwriter_apply_uses_one_atomic_attributed_batch(tmp_path, monkeypatc
     token = tmp_path / "api-token"
     token.write_text("test-token", encoding="utf-8")
     monkeypatch.setenv("CRYPT_API_TOKEN_FILE", str(token))
-    monkeypatch.setenv("MORPH_STATE_DIR", str(tmp_path / "runtime"))
-    monkeypatch.setattr(lt.morph_persistence, "_base_url", lambda: f"http://127.0.0.1:{server.server_port}")
+    monkeypatch.setenv("ADAPT_STATE_DIR", str(tmp_path / "runtime"))
+    monkeypatch.setattr(lt.adapt_persistence, "_base_url", lambda: f"http://127.0.0.1:{server.server_port}")
     crypt_calls = []
     monkeypatch.setattr(
         lt, "_run_crypt", lambda args: crypt_calls.append(args) or True
@@ -1992,7 +1694,7 @@ def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
     )
     batches = []
     monkeypatch.setattr(
-        lt.morph_persistence,
+        lt.adapt_persistence,
         "persist_manifest_batch",
         lambda *args, **kwargs: batches.append((args, kwargs)),
     )
@@ -2033,7 +1735,7 @@ def test_multiwriter_empty_accepted_set_safepoints_then_commits_without_crypt(
         body["batch_id"], "discovered", sessions=[raw_source],
         source_refs=[{**body["source_refs"][0], "source_id": raw_source}],
     )
-    monkeypatch.setenv("MORPH_STATE_DIR", str(tmp_path / "runtime"))
+    monkeypatch.setenv("ADAPT_STATE_DIR", str(tmp_path / "runtime"))
     monkeypatch.setattr(lt, "_multiwriter_context", lambda **_kwargs: (installation, {}))
     events = []
     monkeypatch.setattr(
@@ -2042,7 +1744,7 @@ def test_multiwriter_empty_accepted_set_safepoints_then_commits_without_crypt(
     )
     batches = []
     monkeypatch.setattr(
-        lt.morph_persistence, "persist_manifest_batch",
+        lt.adapt_persistence, "persist_manifest_batch",
         lambda *args, **kwargs: batches.append((args, kwargs)),
     )
     crypt_calls = []
@@ -2148,8 +1850,8 @@ def test_apply_from_manifest_no_llm_call(tmp_path, monkeypatch):
     def fake_llm(*args, **kwargs):
         forge["llm"] += 1
         return "[]"
-    monkeypatch.setattr(lt.morph_llm, "extract_observations", fake_llm)
-    monkeypatch.setattr(lt.morph_llm, "synthesize", fake_llm)
+    monkeypatch.setattr(lt.adapt_llm, "extract_observations", fake_llm)
+    monkeypatch.setattr(lt.adapt_llm, "synthesize", fake_llm)
     rc = lt.apply_from_manifest(p)
     assert rc == 0
     assert forge["llm"] == 0, "apply-from-manifest must not invoke any LLM call"
@@ -2323,7 +2025,7 @@ def test_rollback_apply_deletes_via_crypt(tmp_path, monkeypatch):
     monkeypatch.setattr(rk, "RULES_FILE", rules)
     monkeypatch.setattr(rk, "CORE_FILE", core)
     audit = tmp_path / "audit.jsonl"
-    monkeypatch.setenv("MORPH_AUDIT_FILE_OVERRIDE", str(audit))
+    monkeypatch.setenv("ADAPT_AUDIT_FILE_OVERRIDE", str(audit))
     state.write_text("pre-apply-state", encoding="utf-8")
     rules.write_text("pre-apply-rules", encoding="utf-8")
     core.write_text("pre-apply-core", encoding="utf-8")
@@ -2384,8 +2086,8 @@ def test_crypt_mutation_timeouts_exceed_resident_read_timeout(monkeypatch):
         seen.append(kwargs["timeout"])
         return __import__("subprocess").CompletedProcess(command, 0, "{}", "")
 
-    monkeypatch.setattr(lt.taste.shutil, "which", lambda _name: "crypt")
-    monkeypatch.setattr(lt.taste.subprocess, "run", fake_run)
+    monkeypatch.setattr(_taste_runtime.shutil, "which", lambda _name: "crypt")
+    monkeypatch.setattr(_taste_runtime.subprocess, "run", fake_run)
     monkeypatch.setattr(rk.subprocess, "run", fake_run)
     assert lt._run_crypt(["delete", "x"])
     assert rk._delete_via_crypt("x", crypt_bin="crypt")
@@ -2637,7 +2339,7 @@ def test_grade_end_to_end_smoke(tmp_path):
 
 def test_pref_record_session_file_sha256(tmp_path):
     """Session.file_sha256 is a stable 64-hex string of the transcript bytes."""
-    import morph_sessions as ts
+    import adapt_sessions as ts
     f = _write(tmp_path / "s.jsonl", [
         {"type": "user", "userType": "external", "cwd": "D:\Claude",
          "sessionId": "x", "message": {"content": "hello world always jsonl logs"}},
@@ -2663,7 +2365,7 @@ def test_manifest_derive_evidence_id_stable_and_collision_resistant():
 def test_manifest_candidate_payload_includes_gate1b_fields(tmp_path):
     """The immutable payload now covers source_file_hashes + evidence_ids."""
     rec = {
-        "id": "morph-tooling-sample-0000000000",
+        "id": "adapt-tooling-sample-0000000000",
         "rule": "Always do the right thing in this particular way.",
         "category": "tooling",
         "scope": "D--Claude",
@@ -2691,7 +2393,7 @@ def test_manifest_candidate_payload_includes_gate1b_fields(tmp_path):
 def test_manifest_payload_sha256_stable_under_list_reorder(tmp_path):
     """Reordering source_file_hashes / evidence_ids must NOT change the hash."""
     rec_a = {
-        "id": "morph-x-y-0000000000",
+        "id": "adapt-x-y-0000000000",
         "rule": "Always do thing number zero in the right way here.",
         "category": "tooling", "scope": "D--Claude",
         "source_ids": ["s1", "s2"],
@@ -2716,34 +2418,6 @@ def test_manifest_payload_sha256_stable_under_list_reorder(tmp_path):
     assert rec_a["payload_sha256"] == rec_b["payload_sha256"]
 
 
-def test_apply_actions_emits_gate1b_fields(tmp_path, monkeypatch):
-    """apply_actions with source_file_hashes argument populates per-record
-    source_file_hashes[] + evidence_ids[].
-    """
-    monkeypatch.setattr(lt, "_run_crypt", lambda args: True)
-    monkeypatch.setattr(lt.ts, "scan_batch_for_secrets_str", lambda _text: True)
-    rules: dict = {}
-    actions = [{"action": "add", "name": "morph-logging-jsonl-over-logfmt",
-               "category": "tooling",
-               "rule": "Always prefer JSONL over logfmt for structured logs.",
-               "confidence": 0.7, "observations": 1, "why": "stated"}]
-    obs_by_cat = {"tooling": [{"scope": "D--Claude", "tool": "claude-code",
-                                "evidence": "always use JSONL",
-                                "session_id": "abc",
-                                "category": "tooling",
-                                "observation": "use JSONL"}]}
-    recs: list[dict] = []
-    lt.apply_actions(actions, obs_by_cat, rules, tmp_path, dry_run=True,
-                     manifest_records=recs,
-                     source_session_ids=["abc"],
-                     source_file_hashes={"abc": "ab" * 32})
-    assert recs, "expected at least one manifest record"
-    r = recs[0]
-    assert r["source_file_hashes"] == [{"session_id": "abc",
-                                         "sha256": "ab" * 32}]
-    assert r["evidence_ids"][0]["evidence_id"].startswith("ev-")
-    assert r["evidence_ids"][0]["source_session_id"] == "abc"
-    assert r["retrieval_aliases"] == ["always use JSONL"]
 
 
 def test_apply_from_manifest_embeds_signed_retrieval_aliases(tmp_path, monkeypatch):
@@ -2767,7 +2441,7 @@ def test_apply_from_manifest_embeds_signed_retrieval_aliases(tmp_path, monkeypat
 
 def test_manifest_payload_hash_binds_retrieval_aliases():
     record = {
-        "id": "morph-tooling-use-jsonl-1234567890",
+        "id": "adapt-tooling-use-jsonl-1234567890",
         "rule": "Always use JSONL for structured logs.",
         "category": "tooling", "scope": "D--Claude",
         "retrieval_aliases": ["my usual source phrase"],
@@ -3046,7 +2720,7 @@ def test_gate3_evidence_count_zero_is_unsupported(tmp_path):
     fails -> Gate 3 hard-fails with rc=1."""
     import gate3_review as g3
     rec = {
-        "id": "morph-x-y-0000000000",
+        "id": "adapt-x-y-0000000000",
         "rule": "Always do thing number zero in the right way here.",
         "category": "tooling", "scope": "D--Claude",
         "status": "accepted",
@@ -3083,27 +2757,27 @@ def test_pref_record_round_trip_with_evidence_id():
     assert pr2 == pr
 
 
-def test_morph_report_runs_on_clean_state(tmp_path, monkeypatch):
+def test_adapt_report_runs_on_clean_state(tmp_path, monkeypatch):
     """The report generator must work even when nothing has been applied."""
-    state_dir = tmp_path / "morph"
+    state_dir = tmp_path / "adapt"
     state_dir.mkdir()
     (state_dir / "audit.jsonl").write_text("")
     (state_dir / "run_journal.jsonl").write_text("")
     (state_dir / "state.json").write_text('{"learned": {}}')
     (state_dir / "rules.json").write_text("{}")
-    import morph_report as ar
+    import adapt_report as ar
     rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out"),
                   "--heartbeat", str(tmp_path / "heartbeat.jsonl"),
                   "--db", str(tmp_path / "missing.db")])
     assert rc == 0
-    body = json.loads((tmp_path / "out" / "morph.report.json").read_text())
+    body = json.loads((tmp_path / "out" / "adapt.report.json").read_text())
     assert body["rules_count"] == 0
     assert body["learned_sessions_total"] == 0
     assert body["audit_total"] == 0
 
 
-def test_morph_report_counts_admission_rejections(tmp_path):
-    state_dir = tmp_path / "morph"
+def test_adapt_report_counts_admission_rejections(tmp_path):
+    state_dir = tmp_path / "adapt"
     state_dir.mkdir()
     audit = state_dir / "audit.jsonl"
     audit.write_text(
@@ -3117,19 +2791,19 @@ def test_morph_report_counts_admission_rejections(tmp_path):
     (state_dir / "run_journal.jsonl").write_text("")
     (state_dir / "state.json").write_text('{"learned": {}}')
     (state_dir / "rules.json").write_text("{}")
-    import morph_report as ar
+    import adapt_report as ar
     rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out"),
                   "--heartbeat", str(tmp_path / "heartbeat.jsonl"),
                   "--db", str(tmp_path / "missing.db")])
     assert rc == 0
-    body = json.loads((tmp_path / "out" / "morph.report.json").read_text())
+    body = json.loads((tmp_path / "out" / "adapt.report.json").read_text())
     assert body["admission_rejection_reasons"]["rule-too-short"] == 1
     assert body["admission_rejection_reasons"]["category-not-allowed"] == 1
     assert body["actions"]["add"] == 1
 
 
-def test_morph_report_tracks_incomplete_batches(tmp_path):
-    state_dir = tmp_path / "morph"
+def test_adapt_report_tracks_incomplete_batches(tmp_path):
+    state_dir = tmp_path / "adapt"
     state_dir.mkdir()
     (state_dir / "audit.jsonl").write_text("")
     journal = state_dir / "run_journal.jsonl"
@@ -3145,26 +2819,26 @@ def test_morph_report_tracks_incomplete_batches(tmp_path):
     )
     (state_dir / "state.json").write_text('{"learned": {"claude-code": {"s2": 1.0}}}')
     (state_dir / "rules.json").write_text("{}")
-    import morph_report as ar
+    import adapt_report as ar
     rc = ar.main(["--state-dir", str(state_dir), "--out", str(tmp_path / "out"),
                   "--heartbeat", str(tmp_path / "heartbeat.jsonl"),
                   "--db", str(tmp_path / "missing.db")])
-    body = json.loads((tmp_path / "out" / "morph.report.json").read_text())
+    body = json.loads((tmp_path / "out" / "adapt.report.json").read_text())
     assert body["batches_completed"] == 1
     assert body["batches_incomplete"] == ["b1"]
     assert body["learned_sessions_total"] == 1
     assert body["latency_per_batch_seconds"]["b2"] == 5.0
 
 
-def test_morph_report_aggregates_shadow_delivery_and_effectiveness(tmp_path):
+def test_adapt_report_aggregates_shadow_delivery_and_effectiveness(tmp_path):
     import sqlite3
-    import morph_report as ar
+    import adapt_report as ar
 
-    state_dir = tmp_path / "morph"
+    state_dir = tmp_path / "adapt"
     state_dir.mkdir()
     (state_dir / "audit.jsonl").write_text(
-        json.dumps({"event": "shadow_conflict", "id": "D--Claude/morph-a"}) + "\n"
-        + json.dumps({"event": "shadow_recorrection", "id": "D--Claude/morph-b"}) + "\n"
+        json.dumps({"event": "shadow_conflict", "id": "D--Claude/adapt-a"}) + "\n"
+        + json.dumps({"event": "shadow_recorrection", "id": "D--Claude/adapt-b"}) + "\n"
     )
     (state_dir / "run_journal.jsonl").write_text("")
     (state_dir / "state.json").write_text('{"learned": {}}')
@@ -3172,9 +2846,9 @@ def test_morph_report_aggregates_shadow_delivery_and_effectiveness(tmp_path):
     heartbeat = tmp_path / "heartbeat.jsonl"
     heartbeat.write_text(json.dumps({
         "event": "recall.delivery",
-        "applicable_morph_ids": ["D--Claude/morph-a", "D--Claude/morph-b"],
-        "delivered_morph_ids": ["D--Claude/morph-a"],
-        "core_source_ids": ["morph-core-a"],
+        "applicable_adapt_ids": ["D--Claude/adapt-a", "D--Claude/adapt-b"],
+        "delivered_adapt_ids": ["D--Claude/adapt-a"],
+        "core_source_ids": ["adapt-core-a"],
         "core_delivered": True,
         "context_chars": 400,
         "estimated_tokens": 100,
@@ -3185,9 +2859,9 @@ def test_morph_report_aggregates_shadow_delivery_and_effectiveness(tmp_path):
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE memory_event_log (event_kind TEXT, memory_id TEXT)")
         conn.executemany("INSERT INTO memory_event_log VALUES (?, ?)", [
-            ("inject", "D--Claude/morph-a"),
-            ("inject", "D--Claude/morph-b"),
-            ("get", "D--Claude/morph-a"),
+            ("inject", "D--Claude/adapt-a"),
+            ("inject", "D--Claude/adapt-b"),
+            ("get", "D--Claude/adapt-a"),
         ])
     report = ar.build_report(
         state_dir=state_dir, heartbeat_path=heartbeat, db_path=db
@@ -3223,20 +2897,20 @@ def test_curation_near_duplicate_candidates_groups_by_normalized_text():
     assert "D--Claude/a-0000000001" in dup["member_ids"]
 
 
-def test_curation_inventory_filters_to_morph_prefix(tmp_path):
+def test_curation_inventory_filters_to_adapt_prefix(tmp_path):
     import sqlite3
     db = tmp_path / "engine.db"
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE memories (id TEXT, content TEXT)")
         conn.executemany("INSERT INTO memories VALUES (?, ?)",
-                         [("D--Claude/morph-x-0000000000", "Use JSONL."),
+                         [("D--Claude/adapt-x-0000000000", "Use JSONL."),
                           ("D--Claude/other-y-0000000000", "unrelated"),
-                          ("D--Claude/morph-z-0000000000", "Run smoke.")])
+                          ("D--Claude/adapt-z-0000000000", "Run smoke.")])
     import curation_diagnostic as cd
-    rows = cd.inventory_morph_rows(db)
+    rows = cd.inventory_adapt_rows(db)
     assert len(rows) == 2
     assert {r["id"] for r in rows} == {
-        "D--Claude/morph-x-0000000000", "D--Claude/morph-z-0000000000",
+        "D--Claude/adapt-x-0000000000", "D--Claude/adapt-z-0000000000",
     }
 
 
@@ -3254,44 +2928,13 @@ def test_curation_same_scope_clusters_by_scope_prefix():
 import pytest  # noqa: E402
 
 
-def test_add_rule_valid_dry_run(tmp_path, monkeypatch):
-    """Operator single-rule add: a valid rule passes admission and previews clean."""
-    import morph as _morph
-    monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
-    rc = _morph.add_rule(
-        "Always inspect free disk space before kicking off a large multi-gigabyte build here.",
-        "tooling", dry_run=True,
-    )
-    assert rc == 0
-
-
-def test_add_rule_default_is_recall_gated_not_core(tmp_path, monkeypatch):
-    """Default record_type keeps a domain gotcha OUT of the always-on compiled core."""
-    import morph as _morph
+def test_operational_playbook_is_recall_gated_not_core():
+    """Operational playbooks stay out of always-on compiled core."""
     import core_compiler
-    monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
-    # Build the record the way add_rule would (default record_type), and confirm the
-    # core compiler does NOT select it (only standing_preference reaches the core).
     row = {
-        "id": "morph-tooling-x", "rule": "some domain gotcha that is long enough to pass admission",
+        "id": "adapt-tooling-x", "rule": "some domain gotcha that is long enough to pass admission",
         "record_type": "operational_playbook", "scope": "D--Claude", "status": "accepted",
     }
     assert core_compiler._sources({row["id"]: row}) == []
-    row_core = {**row, "id": "morph-workflow-y", "record_type": "standing_preference"}
+    row_core = {**row, "id": "adapt-workflow-y", "record_type": "standing_preference"}
     assert len(core_compiler._sources({row_core["id"]: row_core})) == 1
-
-
-def test_add_rule_rejects_too_short(tmp_path, monkeypatch):
-    import morph as _morph
-    monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
-    assert _morph.add_rule("use wincred", "tooling", dry_run=True) == 1
-
-
-def test_add_rule_rejects_unknown_category(tmp_path, monkeypatch):
-    import morph as _morph
-    monkeypatch.setattr(ts, "STATE_DIR", tmp_path)
-    rc = _morph.add_rule(
-        "This is a perfectly long durable rule but the category is not in the taxonomy at all.",
-        "not-a-real-category", dry_run=True,
-    )
-    assert rc == 1

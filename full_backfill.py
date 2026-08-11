@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drain all parked Morph sessions through the production manifest path."""
+"""Drain all parked Adapt sessions through the production manifest path."""
 from __future__ import annotations
 
 import argparse
@@ -20,9 +20,9 @@ import run_journal
 
 
 ROOT = Path(__file__).resolve().parent
-MORPH_SCRIPT = ROOT / "morph.py"
+ADAPT_SCRIPT = ROOT / "adapt.py"
 ADJUDICATE_SCRIPT = ROOT / "adjudicate_manifest.py"
-DEFAULT_ROOT = Path.home() / ".claude" / "morph" / "full-backfill"
+DEFAULT_ROOT = Path.home() / ".claude" / "adapt" / "full-backfill"
 PRIMARY_MODEL = "minimax-m3-direct"
 MIN_PRECISION = 0.90
 MIN_RECALL = 0.60
@@ -141,7 +141,7 @@ def _session_refs_learned(journal: run_journal.RunJournal, batch_id: str) -> boo
     if not refs:
         return True  # Legacy journal entries have no exact tool/file identity.
     learned = taste_v2_pipeline.load_state(
-        Path.home() / ".claude" / "morph" / "taste-v2-state.json"
+        Path.home() / ".claude" / "adapt" / "taste-v2-state.json"
     ).get("learned") or {}
     return all(learned.get(ref.get("source_id")) == ref.get("source_sha256") for ref in refs)
 
@@ -180,7 +180,7 @@ def _run_with_retries(
             return result
         if attempt < max_retries:
             wait = min(30, 2 ** attempt)
-            print(f"morph full-backfill: retrying in {wait}s", flush=True)
+            print(f"adapt full-backfill: retrying in {wait}s", flush=True)
             time.sleep(wait)
     return result
 
@@ -252,12 +252,11 @@ def run_backfill(args: argparse.Namespace) -> int:
                     journal, set(checkpoint["known_batch_ids"])
                 )
                 mining = [
-                    sys.executable, str(MORPH_SCRIPT), "--backfill",
+                    sys.executable, str(ADAPT_SCRIPT), "--backfill",
                     "--manifest", str(pending_path),
                     "--limit", str(args.chunk_sessions),
                     "--before-mtime", str(corpus_cutoff),
                     "--lane", "minimax", "--allow-external-lane",
-                    "--extract-workers", str(args.extract_workers),
                 ]
                 result = _run_with_retries(
                     mining, command_log, max_retries=args.max_retries,
@@ -283,7 +282,7 @@ def run_backfill(args: argparse.Namespace) -> int:
                         "chunks": index - 1,
                         "corpus_cutoff_mtime": corpus_cutoff,
                     })
-                    print("morph full-backfill: corpus drained", flush=True)
+                    print("adapt full-backfill: corpus drained", flush=True)
                     return 0
                 checkpoint["phase"] = "mined"
                 write_json_atomic(checkpoint_path, checkpoint)
@@ -331,7 +330,7 @@ def run_backfill(args: argparse.Namespace) -> int:
                     write_json_atomic(checkpoint_path, checkpoint)
 
                 apply_result = run_command(
-                    [sys.executable, str(MORPH_SCRIPT),
+                    [sys.executable, str(ADAPT_SCRIPT),
                      "--apply-from-manifest", str(apply_path)],
                     command_log,
                 )
@@ -351,7 +350,7 @@ def run_backfill(args: argparse.Namespace) -> int:
             })
             write_json_atomic(checkpoint_path, checkpoint)
             print(
-                f"morph full-backfill: chunk={index} sessions={checkpoint['sessions']} "
+                f"adapt full-backfill: chunk={index} sessions={checkpoint['sessions']} "
                 f"accepted={checkpoint['accepted']} rejected={checkpoint['rejected']} committed",
                 flush=True,
             )
@@ -375,7 +374,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--chunk-sessions", type=int, default=30)
     parser.add_argument("--max-chunks", type=int)
     parser.add_argument("--max-retries", type=int, default=10)
-    parser.add_argument("--extract-workers", type=int, default=5)
     parser.add_argument("--adjudicate-workers", type=int, default=5)
     parser.add_argument("--run-dir", type=Path)
     args = parser.parse_args(argv)
@@ -385,8 +383,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error("--max-chunks must be positive")
     if not 0 <= args.max_retries <= 10:
         parser.error("--max-retries must be in [0, 10]")
-    if not 1 <= args.extract_workers <= 5:
-        parser.error("--extract-workers must be in [1, 5]")
     if not 1 <= args.adjudicate_workers <= 5:
         parser.error("--adjudicate-workers must be in [1, 5]")
     if args.run_dir is None:
@@ -399,7 +395,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return run_backfill(parse_args(argv))
     except (BackfillError, OSError, ValueError, json.JSONDecodeError) as exc:
-        print(f"morph full-backfill: STOPPED: {exc}", file=sys.stderr)
+        print(f"adapt full-backfill: STOPPED: {exc}", file=sys.stderr)
         return 2
 
 

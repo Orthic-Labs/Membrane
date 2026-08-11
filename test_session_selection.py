@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import morph_sessions as sessions
+import adapt_sessions as sessions
 
 
 def test_new_sessions_applies_limit_after_chronological_sort(tmp_path, monkeypatch):

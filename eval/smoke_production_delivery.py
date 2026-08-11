@@ -1,4 +1,4 @@
-"""Five-record copied-DB smoke for Morph's production alias/core delivery path."""
+"""Five-record copied-DB smoke for Adapt's production alias/core delivery path."""
 from __future__ import annotations
 
 import argparse
@@ -13,22 +13,22 @@ ROOT = Path(
     os.environ.get("WORKSPACE_ROOT") or next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())
 ).expanduser().resolve()
 HERE = Path(__file__).resolve().parent
-MORPH_DIR = HERE.parent
+ADAPT_DIR = HERE.parent
 TOOLS_LIB = ROOT / "tools/lib"
-for path in (MORPH_DIR, TOOLS_LIB):
+for path in (ADAPT_DIR, TOOLS_LIB):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-import morph_sessions
+import adapt_sessions
 import preference_record
-from memory import morph_core
+from memory import adapt_core
 
 
-DEFAULT_TREATMENT = ROOT / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
-DEFAULT_CORE = ROOT / "docs/evidence/morph-taste-parity-2026-07-14/compiled-core.json"
+DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
+DEFAULT_CORE = ROOT / "docs/evidence/adapt-taste-parity-2026-07-14/compiled-core.json"
 DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/crypt-engine.db"
 DEFAULT_CRYPT = ROOT / "tools/bin/crypt.exe"
-DEFAULT_OUT = ROOT / ".cache/morph-delivery-parity/production-smoke"
+DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/production-smoke"
 
 
 def _load(path: Path, name: str):
@@ -96,7 +96,7 @@ def build_production_alias_db(crypt: Path, live_db: Path, db: Path,
         [alias for row in records for alias in row["retrieval_aliases"]],
         ensure_ascii=False,
     )
-    if not morph_sessions.scan_batch_for_secrets_str(alias_payload):
+    if not adapt_sessions.scan_batch_for_secrets_str(alias_payload):
         raise RuntimeError("secret scanner blocked production alias payload")
     runner.value_ab.snapshot_live_db(live_db, db)
     port = runner.value_ab._free_port()
@@ -186,9 +186,9 @@ def main(argv: list[str] | None = None) -> int:
     alias_payload = json.dumps(
         [alias for row in records for alias in row["retrieval_aliases"]], ensure_ascii=False
     )
-    if not morph_sessions.scan_batch_for_secrets_str(alias_payload):
+    if not adapt_sessions.scan_batch_for_secrets_str(alias_payload):
         raise RuntimeError("secret scanner blocked smoke aliases")
-    core = morph_core.load_core(args.core)
+    core = adapt_core.load_core(args.core)
     if core is None:
         raise RuntimeError("compiled core failed production validation")
     pre_ok, pre_count, pre_msg = runner.value_ab.integrity_check(args.live_db)

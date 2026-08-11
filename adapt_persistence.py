@@ -1,4 +1,4 @@
-"""Atomic, attributed persistence for multi-installation Morph manifests."""
+"""Atomic, attributed persistence for multi-installation Adapt manifests."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from typing import Sequence
 
 # `workspace_root()` resolves both the top-level submodule layout and the
 # historical nested one. A bare ``parents[4]`` assumes the nested depth: it
-# raises IndexError on a shallow checkout (``D:\claude\morph``) before the
+# raises IndexError on a shallow checkout (``D:\claude\adapt``) before the
 # fallback below can run, and silently resolves to the filesystem root on a
 # deeper one. Never index a fixed number of parents to find the workspace.
 try:
@@ -34,8 +34,8 @@ import workspace_runtime  # noqa: E402
 import preference_record  # noqa: E402
 
 
-class MorphPersistenceError(RuntimeError):
-    """Raised when a reviewed Morph batch was not durably committed as one unit."""
+class AdaptPersistenceError(RuntimeError):
+    """Raised when a reviewed Adapt batch was not durably committed as one unit."""
 
 
 def _token_file() -> Path:
@@ -78,9 +78,9 @@ def _request_body(
     installation_id: str,
 ) -> dict:
     batch_digest = hashlib.sha256(manifest_batch_id.encode("utf-8")).hexdigest()
-    batch_id = f"morph-{installation_id}-{batch_digest[:32]}"
-    session_id = f"morph-{installation_id}-{batch_digest[:24]}"
-    trace_id = f"morph-trace-{installation_id}-{batch_digest[:24]}"
+    batch_id = f"adapt-{installation_id}-{batch_digest[:32]}"
+    session_id = f"adapt-{installation_id}-{batch_digest[:24]}"
+    trace_id = f"adapt-trace-{installation_id}-{batch_digest[:24]}"
     items = []
     for ordinal, record in enumerate(records):
         content = preference_record.to_crypt_content(record)
@@ -97,13 +97,13 @@ def _request_body(
         )
         item_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         items.append({
-            "item_id": f"morph-{ordinal:04d}-{item_digest[:24]}",
+            "item_id": f"adapt-{ordinal:04d}-{item_digest[:24]}",
             "name": record.id,
             "content": content,
             "scope": record.scope,
             "tier": "Semantic",
-            "artifact_family": "morph",
-            "producer": "morph",
+            "artifact_family": "adapt",
+            "producer": "adapt",
             "record_type": record.record_type,
             "client": _source_client(record.source_ids),
             "session_id": session_id,
@@ -125,7 +125,7 @@ def persist_manifest_batch(
     """Commit all accepted records with one inference batch and one DB transaction."""
     if not records:
         return {
-            "batch_id": f"morph-empty-{manifest_batch_id}",
+            "batch_id": f"adapt-empty-{manifest_batch_id}",
             "inserted": 0,
             "duplicates": 0,
             "complete": True,
@@ -140,9 +140,9 @@ def persist_manifest_batch(
     try:
         token = path.read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise MorphPersistenceError("Crypt API token is unavailable") from exc
+        raise AdaptPersistenceError("Crypt API token is unavailable") from exc
     if not token:
-        raise MorphPersistenceError("Crypt API token is empty")
+        raise AdaptPersistenceError("Crypt API token is empty")
     request = urllib.request.Request(
         f"{(base_url or _base_url()).rstrip('/')}/v1/memories:batch",
         data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
@@ -157,11 +157,11 @@ def persist_manifest_batch(
             status = response.status
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        raise MorphPersistenceError(f"Crypt batch rejected with HTTP {exc.code}") from exc
+        raise AdaptPersistenceError(f"Crypt batch rejected with HTTP {exc.code}") from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise MorphPersistenceError("Crypt batch service is unavailable") from exc
+        raise AdaptPersistenceError("Crypt batch service is unavailable") from exc
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise MorphPersistenceError("Crypt batch receipt is not valid JSON") from exc
+        raise AdaptPersistenceError("Crypt batch receipt is not valid JSON") from exc
 
     receipts = payload.get("receipts")
     expected_item_ids = {item["item_id"] for item in body["items"]}
@@ -185,5 +185,5 @@ def persist_manifest_batch(
             for row in receipts
         )
     ):
-        raise MorphPersistenceError("Crypt batch receipt is incomplete or inconsistent")
+        raise AdaptPersistenceError("Crypt batch receipt is incomplete or inconsistent")
     return payload

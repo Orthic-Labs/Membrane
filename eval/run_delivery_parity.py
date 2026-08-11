@@ -1,11 +1,11 @@
-"""Run the five-arm CommandCode Taste versus Morph delivery experiment.
+"""Run the five-arm CommandCode Taste versus Adapt delivery experiment.
 
 Arms:
   A  current Crypt retrieval only
   T  A + the real 52-rule CommandCode Taste file always loaded
-  B  copied Crypt + all 57 raw usable Morph records, retrieved normally
-  C  A + the complete 57-record Morph digest always loaded
-  D  B + the complete 57-record Morph digest always loaded
+  B  copied Crypt + all 57 raw usable Adapt records, retrieved normally
+  C  A + the complete 57-record Adapt digest always loaded
+  D  B + the complete 57-record Adapt digest always loaded
 
 Only copied SQLite databases are modified. Provider stages are content-hash
 cached so ``--resume`` never repeats a completed actor or grader batch.
@@ -28,8 +28,8 @@ from pathlib import Path
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 HERE = Path(__file__).resolve().parent
-MORPH_DIR = HERE.parent
-DEFAULT_OUT = ROOT / ".cache/morph-delivery-parity/full"
+ADAPT_DIR = HERE.parent
+DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/full"
 DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/crypt-engine.db"
 DEFAULT_CRYPT = ROOT / "tools/bin/crypt.exe"
 API_WORKER = ROOT / "tools/lib/coder-api-worker/api-worker.py"
@@ -53,8 +53,8 @@ def _load_module(path: Path, name: str):
 
 builder = _load_module(HERE / "build_delivery_parity_set.py", "delivery_parity_builder")
 value_ab = _load_module(HERE / "run_value_ab.py", "delivery_parity_value_ab")
-morph_llm = _load_module(MORPH_DIR / "morph_llm.py", "delivery_parity_morph_llm")
-morph_sessions = _load_module(MORPH_DIR / "morph_sessions.py", "delivery_parity_sessions")
+adapt_llm = _load_module(ADAPT_DIR / "adapt_llm.py", "delivery_parity_adapt_llm")
+adapt_sessions = _load_module(ADAPT_DIR / "adapt_sessions.py", "delivery_parity_sessions")
 control_audit = _load_module(HERE / "audit_delivery_controls.py", "delivery_control_audit")
 
 _run_via_port = value_ab._run_via_port
@@ -80,7 +80,7 @@ def select_cases(cases: list[dict], smoke: bool) -> list[dict]:
     if not smoke:
         return list(cases)
     selected = []
-    for cohort in ("shared", "taste_only", "morph_only"):
+    for cohort in ("shared", "taste_only", "adapt_only"):
         selected.append(next(row for row in cases if row["cohort"] == cohort))
     selected.extend(row for row in cases if row["cohort"] == "control")
     return selected[:5]
@@ -135,7 +135,7 @@ def _run_replay_db(crypt: Path, live_db: Path, db: Path, cases: list[dict],
         for record in records or []:
             value_ab.put_pref_record(
                 crypt, db, port, record["id"], record.get("scope", "D--Claude"),
-                value_ab.morph_record_envelope(record),
+                value_ab.adapt_record_envelope(record),
             )
         ranked = replay_all(crypt, db, port, cases, input_path)
     finally:
@@ -151,7 +151,7 @@ def run_retrieval(value_set: dict, treatment: dict, cases: list[dict], out: Path
     path = out / "retrieval.json"
     input_hash = sha_json({"value": value_set["content_sha256"],
                            "cases": [row["case_id"] for row in cases],
-                           "morph_records": treatment["records_sha256"]})
+                           "adapt_records": treatment["records_sha256"]})
     if resume and path.exists():
         cached = read_json(path)
         if cached.get("input_sha256") == input_hash:
@@ -186,21 +186,21 @@ def taste_block(value_set: dict) -> str:
     )
 
 
-def morph_block(treatment: dict) -> str:
+def adapt_block(treatment: dict) -> str:
     return "\n".join(
-        f"[morph/{row['record_type']}/{row['category']}/{row['scope']}] {row['rule']}"
+        f"[adapt/{row['record_type']}/{row['category']}/{row['scope']}] {row['rule']}"
         for row in treatment["records"]
     )
 
 
-def select_morph_treatment(source: dict, variant: str) -> dict:
+def select_adapt_treatment(source: dict, variant: str) -> dict:
     selected = dict(source)
     if variant == "raw":
         records = list(source["records"])
     elif variant == "curated":
         records = list(source["curated_records"])
     else:
-        raise ValueError(f"unknown Morph treatment variant: {variant}")
+        raise ValueError(f"unknown Adapt treatment variant: {variant}")
     selected["variant"] = variant
     selected["records"] = records
     selected["records_sha256"] = sha_json(records)
@@ -215,7 +215,7 @@ def _safe_context(retrieved: dict) -> list[str]:
         scope_l = scope.casefold()
         if "health" in scope_l or "medical" in scope_l:
             continue
-        cleaned = morph_sessions.redact(text).strip()
+        cleaned = adapt_sessions.redact(text).strip()
         if cleaned:
             contexts.append(cleaned[:1800])
         if len(contexts) == ACTOR_CONTEXT_K:
@@ -265,8 +265,8 @@ def run_actor(value_set: dict, treatment: dict, cases: list[dict], retrieval: di
         "A": {"policy": "", "source": "A"},
         "T": {"policy": taste_block(value_set), "source": "A"},
         "B": {"policy": "", "source": "B"},
-        "C": {"policy": morph_block(treatment), "source": "A"},
-        "D": {"policy": morph_block(treatment), "source": "B"},
+        "C": {"policy": adapt_block(treatment), "source": "A"},
+        "D": {"policy": adapt_block(treatment), "source": "B"},
     }
     specs = arm_specs or {arm: defaults[arm] for arm in ARMS}
     blocks = {arm: spec["policy"] for arm, spec in specs.items()}
@@ -276,7 +276,7 @@ def run_actor(value_set: dict, treatment: dict, cases: list[dict], retrieval: di
     def process_batch(arm: str, batch: list[dict], label: str) -> list[dict]:
         request = {"standing_policy": blocks[arm] or "(none)", "cases": batch}
         request_text = json.dumps(request, ensure_ascii=False)
-        if not morph_sessions.scan_batch_for_secrets_str(request_text):
+        if not adapt_sessions.scan_batch_for_secrets_str(request_text):
             raise RuntimeError(f"secret scanner blocked actor arm {arm} batch {label}")
         input_hash = sha_json({"system": ACTOR_SYSTEM, "request": request})
         cache = actor_dir / f"{arm}-{label}.json"
@@ -284,7 +284,7 @@ def run_actor(value_set: dict, treatment: dict, cases: list[dict], retrieval: di
         if isinstance(cached, dict) and cached.get("input_sha256") == input_hash:
             return cached["answers"]
 
-        response = morph_llm.call_lane_response(
+        response = adapt_llm.call_lane_response(
             ACTOR_SYSTEM, request_text, lane="minimax", max_tokens=8000,
             attempts=2, thinking="adaptive", temperature=0.1)
         repair_response = None
@@ -300,10 +300,10 @@ def run_actor(value_set: dict, treatment: dict, cases: list[dict], retrieval: di
                 "expected_case_ids": [row["case_id"] for row in batch],
                 "malformed_output": response["text"],
             }, ensure_ascii=False)
-            if not morph_sessions.scan_batch_for_secrets_str(repair_request):
+            if not adapt_sessions.scan_batch_for_secrets_str(repair_request):
                 raise RuntimeError(f"secret scanner blocked actor JSON repair arm {arm}")
             try:
-                repair_response = morph_llm.call_lane_response(
+                repair_response = adapt_llm.call_lane_response(
                     JSON_REPAIR_SYSTEM, repair_request, lane="minimax", max_tokens=8000,
                     attempts=1, thinking="adaptive", temperature=0.0)
                 parsed = _extract_json_array(repair_response["text"])
@@ -371,7 +371,7 @@ task_correct 0|1|2, and set intrusion true|false."""
 
 def _expected_rule(case: dict) -> str | None:
     expected = case.get("expected") or {}
-    rules = [expected.get("taste_rule"), expected.get("morph_rule")]
+    rules = [expected.get("taste_rule"), expected.get("adapt_rule")]
     return "\nEquivalent durable rules:\n- " + "\n- ".join(r for r in rules if r) if any(rules) else None
 
 
@@ -412,7 +412,7 @@ def run_grader(value_set: dict, cases: list[dict], actor: dict, out: Path,
     def process_batch(batch: list[dict], label: str,
                       system: str = GRADER_SYSTEM) -> list[dict]:
         request_text = json.dumps({"answers": batch}, ensure_ascii=False)
-        if not morph_sessions.scan_batch_for_secrets_str(request_text):
+        if not adapt_sessions.scan_batch_for_secrets_str(request_text):
             raise RuntimeError(f"secret scanner blocked grader batch {label}")
         input_hash = sha_json({"system": system, "request": batch,
                                "grader_model": grader_model})
@@ -539,7 +539,7 @@ def analyze(value_set: dict, cases: list[dict], retrieval: dict, actor: dict,
         positives = [row for row in rows if case_by_id[row["case_id"]]["cohort"] != "control"]
         controls = [row for row in rows if case_by_id[row["case_id"]]["cohort"] == "control"]
         by_cohort = {}
-        for cohort in ("shared", "taste_only", "morph_only"):
+        for cohort in ("shared", "taste_only", "adapt_only"):
             subset = [row for row in positives if case_by_id[row["case_id"]]["cohort"] == cohort]
             by_cohort[cohort] = round(100 * _mean([row["adherence"] / 2 for row in subset]), 1)
         source = retrieval["B"] if arm in {"B", "D"} else retrieval["A"]
@@ -557,17 +557,17 @@ def analyze(value_set: dict, cases: list[dict], retrieval: dict, actor: dict,
             "by_cohort_adherence_pct": by_cohort,
             "mean_retrieved_context_chars": round(_mean(context_chars), 1),
             "loaded_policy_chars": len(taste_block(value_set)) if arm == "T" else
-                                   len(morph_block(read_json(out / "frozen/morph-treatment.json")))
+                                   len(adapt_block(read_json(out / "frozen/adapt-treatment.json")))
                                    if arm in {"C", "D"} else 0,
         }
     baseline = metrics["A"]
     for arm in ARMS:
         metrics[arm]["adherence_delta_vs_A_pp"] = round(
             metrics[arm]["adherence_pct"] - baseline["adherence_pct"], 1)
-    best_morph = max(("B", "C", "D"), key=lambda arm: (
+    best_adapt = max(("B", "C", "D"), key=lambda arm: (
         metrics[arm]["adherence_pct"], -metrics[arm]["control_intrusion_pct"]))
     taste = metrics["T"]
-    best = metrics[best_morph]
+    best = metrics[best_adapt]
     parity_gap = round(best["adherence_pct"] - taste["adherence_pct"], 1)
     parity = parity_gap >= -5 and best["control_intrusion_pct"] <= taste["control_intrusion_pct"] + 5
     useful = (best["adherence_delta_vs_A_pp"] >= 15 and
@@ -575,11 +575,11 @@ def analyze(value_set: dict, cases: list[dict], retrieval: dict, actor: dict,
     result = {
         "design": "five-arm-delivery-parity-v1", "case_count": len(cases),
         "control_intrusion_method": audited_controls["method"],
-        "morph_treatment": read_json(out / "frozen/morph-treatment.json").get("variant", "raw"),
-        "metrics": metrics, "best_morph_arm": best_morph,
-        "best_morph_minus_taste_pp": parity_gap,
+        "adapt_treatment": read_json(out / "frozen/adapt-treatment.json").get("variant", "raw"),
+        "metrics": metrics, "best_adapt_arm": best_adapt,
+        "best_adapt_minus_taste_pp": parity_gap,
         "taste_parity_within_5pp_and_no_material_intrusion": parity,
-        "morph_value_gate_15pp_and_no_material_intrusion": useful,
+        "adapt_value_gate_15pp_and_no_material_intrusion": useful,
         "paired_comparisons": {
             f"{left}_vs_{right}": paired_arm_stats(grader["grades"], cases, left, right)
             for left, right in (("A", "T"), ("A", "D"), ("T", "D"),
@@ -592,12 +592,12 @@ def analyze(value_set: dict, cases: list[dict], retrieval: dict, actor: dict,
         ],
     }
     write_json(out / "analysis.json", result)
-    lines = ["# Taste vs Morph delivery parity", "",
-             f"- cases: {len(cases)}", f"- best Morph arm: **{best_morph}**",
-             f"- best Morph minus Taste: **{parity_gap:+.1f} pp**",
+    lines = ["# Taste vs Adapt delivery parity", "",
+             f"- cases: {len(cases)}", f"- best Adapt arm: **{best_adapt}**",
+             f"- best Adapt minus Taste: **{parity_gap:+.1f} pp**",
              f"- Taste parity: **{'PASS' if parity else 'FAIL'}**",
-             f"- Morph value gate: **{'PASS' if useful else 'FAIL'}**", "",
-             "| Arm | Adherence | Full | Correct | Intrusion | Shared | Taste-only | Morph-only | Loaded chars | Retrieved chars |",
+             f"- Adapt value gate: **{'PASS' if useful else 'FAIL'}**", "",
+             "| Arm | Adherence | Full | Correct | Intrusion | Shared | Taste-only | Adapt-only | Loaded chars | Retrieved chars |",
              "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|"]
     for arm in ARMS:
         m = metrics[arm]
@@ -605,7 +605,7 @@ def analyze(value_set: dict, cases: list[dict], retrieval: dict, actor: dict,
                      f"{m['task_correct_pct']:.1f}% | {m['control_intrusion_pct']:.1f}% | "
                      f"{m['by_cohort_adherence_pct']['shared']:.1f}% | "
                      f"{m['by_cohort_adherence_pct']['taste_only']:.1f}% | "
-                     f"{m['by_cohort_adherence_pct']['morph_only']:.1f}% | "
+                     f"{m['by_cohort_adherence_pct']['adapt_only']:.1f}% | "
                      f"{m['loaded_policy_chars']} | {m['mean_retrieved_context_chars']:.0f} |")
     lines += ["", "## Paired comparisons", "",
               "| Comparison | Delta | Bootstrap 95% CI | Full-only discordance | McNemar p |",
@@ -617,21 +617,21 @@ def analyze(value_set: dict, cases: list[dict], retrieval: dict, actor: dict,
                      f"[{ci[0]:+.1f}, {ci[1]:+.1f}] | "
                      f"{disc['left_only']} left / {disc['right_only']} right | "
                      f"{disc['mcnemar_exact_p']:.6f} |")
-    lines += ["", "A=Crypt; T=A+CommandCode Taste; B=Morph retrieved; "
-              "C=Morph digest loaded; D=Morph digest+retrieval.", "",
+    lines += ["", "A=Crypt; T=A+CommandCode Taste; B=Adapt retrieved; "
+              "C=Adapt digest loaded; D=Adapt digest+retrieval.", "",
               "Raw retrieval, actor responses, blind grades, hashes, and provider metadata are beside this report."]
     (out / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     return result
 
 
-def _freeze(out: Path, taste: Path, morph: Path,
+def _freeze(out: Path, taste: Path, adapt: Path,
             variant: str = "raw") -> tuple[dict, dict]:
-    value_set, source_treatment = builder.build_value_set(taste, morph)
-    treatment = select_morph_treatment(source_treatment, variant)
+    value_set, source_treatment = builder.build_value_set(taste, adapt)
+    treatment = select_adapt_treatment(source_treatment, variant)
     frozen = out / "frozen"
     write_json(frozen / "value-set.json", value_set)
-    write_json(frozen / "morph-treatment-source.json", source_treatment)
-    write_json(frozen / "morph-treatment.json", treatment)
+    write_json(frozen / "adapt-treatment-source.json", source_treatment)
+    write_json(frozen / "adapt-treatment.json", treatment)
     return value_set, treatment
 
 
@@ -642,17 +642,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--taste", type=Path, default=builder.DEFAULT_TASTE)
-    parser.add_argument("--morph", type=Path, default=builder.DEFAULT_MORPH)
-    parser.add_argument("--morph-variant", choices=("raw", "curated"), default="raw")
+    parser.add_argument("--adapt", type=Path, default=builder.DEFAULT_ADAPT)
+    parser.add_argument("--adapt-variant", choices=("raw", "curated"), default="raw")
     parser.add_argument("--grader-model", default=DEFAULT_GRADER_MODEL)
     parser.add_argument("--live-db", type=Path, default=DEFAULT_LIVE_DB)
     parser.add_argument("--crypt-bin", type=Path, default=DEFAULT_CRYPT)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
-    out = args.out or (ROOT / ".cache/morph-delivery-parity" /
+    out = args.out or (ROOT / ".cache/adapt-delivery-parity" /
                        ("smoke" if args.smoke else "full"))
     out.mkdir(parents=True, exist_ok=True)
-    value_set, treatment = _freeze(out, args.taste, args.morph, args.morph_variant)
+    value_set, treatment = _freeze(out, args.taste, args.adapt, args.adapt_variant)
     cases = select_cases(value_set["cases"], args.smoke)
     write_json(out / "selected-cases.json", {"smoke": args.smoke, "cases": cases})
 

@@ -1,6 +1,6 @@
 schema_version: "1.0.0"
 profile: engine
-description: Universal Morph admission safety patterns.
+description: Universal Adapt admission safety patterns.
 
 regex_bans:
   - id: transient-environment-claim

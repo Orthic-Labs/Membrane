@@ -1,7 +1,7 @@
-# Morph Rules
+# Adapt Rules
 
 ## Purpose
-Morph mines durable user-authored corrections from local sessions and proposes scoped preference records.
+Adapt mines durable user-authored corrections from local sessions and proposes scoped preference records.
 It never retrains models or stores private chain-of-thought.
 
 ## Canonical sources
@@ -10,10 +10,10 @@ It never retrains models or stores private chain-of-thought.
 - Treat reviewed manifests and Crypt records as runtime authority.
 
 ## Commands
-- Run `python3 morph.py --smoke` for a dry-run pipeline smoke.
+- Run `python3 adapt.py --smoke` for a dry-run pipeline smoke.
 - Run repository tests with the workspace tools venv (`.venv-tools`, provisioned by `tools/setup-workspace.py`), never a bare interpreter; it is the only environment pinning `scipy`/`numpy`.
-- Run `python3 morph.py doctor issue --out <receipt>` to issue conformance evidence.
-- Run `python3 morph.py doctor validate --receipt <receipt>` to validate it.
+- Run `python3 adapt.py doctor issue --out <receipt>` to issue conformance evidence.
+- Run `python3 adapt.py doctor validate --receipt <receipt>` to validate it.
 
 ## Locked invariants
 - Admit durable authority only from authenticated user-origin evidence.

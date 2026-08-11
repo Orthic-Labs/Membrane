@@ -1,4 +1,4 @@
-"""Tests for morph.insights (Phase 5.5 — plan 5.5).
+"""Tests for adapt.insights (Phase 5.5 — plan 5.5).
 
 Strategy: each of the 18 detectors gets a focused synthetic fixture (a
 hand-built list of TranscriptEventV1-shaped dicts) so a failing detector
@@ -24,7 +24,7 @@ from pathlib import Path
 try:  # pragma: no cover - environment dependent
     import pytest
 except ModuleNotFoundError:  # pragma: no cover - this Python 3.14 has no pytest
-    # The repo's own convention (see morph/AGENTS.md) is `python3 -m pytest`, but
+    # The repo's own convention (see adapt/AGENTS.md) is `python3 -m pytest`, but
     # pytest is not installed on this interpreter. Only `@pytest.mark.skipif` is
     # used here, so a shim that preserves the skip semantics keeps the file
     # runnable under plain unittest without weakening a single assertion.
@@ -41,7 +41,7 @@ except ModuleNotFoundError:  # pragma: no cover - this Python 3.14 has no pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import insights  # noqa: E402
 
-MORPH = Path(__file__).resolve().parent.parent
+ADAPT = Path(__file__).resolve().parent.parent
 REAL_SESSION = Path(
     "/Users/adrdsouza/ClaudeProfiles/claudecodex-profile/claude-config/"
     "projects/-Volumes-D-claude/25aa1534-d163-4f09-a3eb-d0ff1d20dba5.jsonl"
@@ -810,7 +810,7 @@ def test_run_detectors_returns_every_slug():
 def test_report_serializes_to_json():
     rep = insights.report([])
     encoded = json.dumps(rep, default=str)
-    assert "morph.failure-card.v1" in encoded
+    assert "adapt.failure-card.v1" in encoded
     assert "observable failure signals" in encoded
 
 
@@ -850,7 +850,7 @@ def test_report_via_file_path(tmp_path=None):
     assert by >= 1
 
 
-# pytest is the repo convention (morph/AGENTS.md) but is absent on this
+# pytest is the repo convention (adapt/AGENTS.md) but is absent on this
 # interpreter, so these 47 module-level `test_*` functions had no runner and
 # silently executed nothing. This entrypoint runs them directly and exits
 # non-zero on any failure, so a green report means the assertions actually ran.

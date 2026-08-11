@@ -1,4 +1,4 @@
-"""Exhaustive copied-DB delivery census for full Taste and Morph treatments."""
+"""Exhaustive copied-DB delivery census for full Taste and Adapt treatments."""
 from __future__ import annotations
 
 import argparse
@@ -12,10 +12,10 @@ from pathlib import Path
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 HERE = Path(__file__).resolve().parent
 DEFAULT_TASTE = ROOT / "docs/evidence/commandcode-taste-bakeoff-2026-07-13/minimax-m3/root-taste.md"
-DEFAULT_TREATMENT = ROOT / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
-DEFAULT_PRODUCTION_DB = ROOT / ".cache/morph-delivery-parity/production-g-deepseek/production-alias.db"
+DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
+DEFAULT_PRODUCTION_DB = ROOT / ".cache/adapt-delivery-parity/production-g-deepseek/production-alias.db"
 DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/crypt-engine.db"
-DEFAULT_OUT = ROOT / ".cache/morph-delivery-parity/full-treatment-census"
+DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/full-treatment-census"
 
 
 def _load(path: Path, name: str):
@@ -37,7 +37,7 @@ def load_sources(taste_path: Path, treatment_path: Path):
     treatment = json.loads(treatment_path.read_text(encoding="utf-8"))
     records = treatment["records"]
     if len(taste) != 52 or len(records) != 57:
-        raise ValueError(f"unexpected treatment sizes: taste={len(taste)} morph={len(records)}")
+        raise ValueError(f"unexpected treatment sizes: taste={len(taste)} adapt={len(records)}")
     return taste, records
 
 
@@ -79,7 +79,7 @@ def _run_existing(crypt: Path, source_db: Path, db: Path, cases, out: Path):
     service = runner.value_ab._start_service(crypt, db, port)
     try:
         runner.value_ab._wait_ready(port)
-        return runner.replay_all(crypt, db, port, cases, out / "morph-queries.jsonl")
+        return runner.replay_all(crypt, db, port, cases, out / "adapt-queries.jsonl")
     finally:
         runner.value_ab._stop_service(service)
 
@@ -116,14 +116,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args(argv)
-    taste, morph = load_sources(args.taste, args.treatment)
+    taste, adapt = load_sources(args.taste, args.treatment)
     taste_facts = load_taste_artifact_facts(args.taste)
     if args.limit is not None:
         if not 2 <= args.limit <= 5:
             raise ValueError("smoke limit must be 2-5")
-        taste, morph = taste[:args.limit], morph[:args.limit]
+        taste, adapt = taste[:args.limit], adapt[:args.limit]
     taste_cases = build_taste_cases(taste)
-    morph_cases = evidence.build_cases(morph)
+    adapt_cases = evidence.build_cases(adapt)
     args.out.mkdir(parents=True, exist_ok=True)
     pre_ok, pre_count, pre_msg = runner.value_ab.integrity_check(args.live_db)
     if not pre_ok:
@@ -131,24 +131,24 @@ def main(argv: list[str] | None = None) -> int:
     taste_ranked = _run_taste(
         args.crypt_bin, args.live_db, args.out / "taste.db", taste, taste_cases, args.out
     )
-    morph_ranked = _run_existing(
-        args.crypt_bin, args.production_db, args.out / "morph.db", morph_cases, args.out
+    adapt_ranked = _run_existing(
+        args.crypt_bin, args.production_db, args.out / "adapt.db", adapt_cases, args.out
     )
     post_ok, post_count, post_msg = runner.value_ab.integrity_check(args.live_db)
     if not post_ok or post_count != pre_count:
         raise RuntimeError(f"live DB changed during census: {post_msg}")
-    morph_score = evidence.score_cases(morph_cases, morph_ranked)
+    adapt_score = evidence.score_cases(adapt_cases, adapt_ranked)
     result = {
         "taste": {**score_taste(taste_cases, taste_ranked), **taste_facts},
-        "morph": {"records": len(morph), "queries": len(morph_cases),
-                  "metrics": morph_score["metrics"],
-                  "misses": [row["case_id"] for row in morph_score["rows"] if not row["hit"]]},
+        "adapt": {"records": len(adapt), "queries": len(adapt_cases),
+                  "metrics": adapt_score["metrics"],
+                  "misses": [row["case_id"] for row in adapt_score["rows"] if not row["hit"]]},
         "live_db": {"rows_before": pre_count, "rows_after": post_count, "unchanged": True},
     }
     runner.write_json(args.out / "results.json", result)
     print(json.dumps({
         "taste": {k: result["taste"][k] for k in ("rules", "categories", "hit_at_1", "hit_at_5", "hit_at_5_pct", "misses")},
-        "morph": result["morph"], "live_db": result["live_db"],
+        "adapt": result["adapt"], "live_db": result["live_db"],
     }, indent=2))
     return 0
 

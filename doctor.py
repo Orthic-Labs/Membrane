@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Orthic Morph Doctor — expose multiwriter conformance with honest scope.
+"""Orthic Adapt Doctor — expose multiwriter conformance with honest scope.
 
-Doctor today wraps the existing Morph multi-installation conformance receipt
+Doctor today wraps the existing Adapt multi-installation conformance receipt
 surface (``multiwriter_conformance``): installation identity, canonical pool,
 implementation/test hashes, Crypt service probe, transcript discovery
 counts, and the append-only mirror boundary.
@@ -25,7 +25,7 @@ import multiwriter_conformance  # noqa: E402
 
 
 SCOPE = {
-    "product": "Orthic Morph Doctor",
+    "product": "Orthic Adapt Doctor",
     "implemented": [
         "multiwriter_conformance issue",
         "multiwriter_conformance validate",
@@ -41,7 +41,7 @@ SCOPE = {
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Orthic Morph Doctor — multiwriter conformance only. "
+            "Orthic Adapt Doctor — multiwriter conformance only. "
             "Cortex/Forge checks are not-yet."
         )
     )
@@ -65,9 +65,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not forwarded:
         print(json.dumps(SCOPE, indent=2, sort_keys=True))
         print(
-            "usage: morph doctor issue --out RECEIPT.json\n"
-            "       morph doctor validate --receipt RECEIPT.json\n"
-            "       morph doctor --scope",
+            "usage: adapt doctor issue --out RECEIPT.json\n"
+            "       adapt doctor validate --receipt RECEIPT.json\n"
+            "       adapt doctor --scope",
             file=sys.stderr,
         )
         return 2

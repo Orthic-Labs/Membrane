@@ -1,4 +1,4 @@
-"""Admission policy + controlled taxonomy for morph.
+"""Admission policy + controlled taxonomy for adapt.
 
 A rule becomes a Crypt row only if it passes `admit()`. The synthetic
 classifier is asked to output a category; anything outside the taxonomy is

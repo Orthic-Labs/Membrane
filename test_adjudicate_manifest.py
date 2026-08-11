@@ -45,7 +45,7 @@ def _manifest(records: list[dict]) -> dict:
 
 
 def test_historical_v12_payload_projection_omits_v13_provenance() -> None:
-    record = _record("morph-verification-focused-tests-0123456789")
+    record = _record("adapt-verification-focused-tests-0123456789")
     projection = manifest.candidate_payload(record)
     assert set(projection) == {
         "id", "rule", "category", "scope", "source_ids", "source_file_hashes",
@@ -55,7 +55,7 @@ def test_historical_v12_payload_projection_omits_v13_provenance() -> None:
 
 def test_build_cases_blinds_manifest_status_and_uses_bound_evidence():
     runner = _module()
-    record = _record("morph-verification-focused-tests-0123456789")
+    record = _record("adapt-verification-focused-tests-0123456789")
     controls = [{
         "id": "ex01", "excerpt": "Always verify tests.",
         "is_agent_preference": True,
@@ -78,8 +78,8 @@ def test_build_cases_blinds_manifest_status_and_uses_bound_evidence():
 
 def test_resolve_manifest_accepts_only_two_calibrated_admits():
     runner = _module()
-    accepted = _record("morph-verification-focused-tests-0123456789")
-    disputed = _record("morph-workflow-disputed-rule-abcdef0123")
+    accepted = _record("adapt-verification-focused-tests-0123456789")
+    disputed = _record("adapt-workflow-disputed-rule-abcdef0123")
     manifest = _manifest([accepted, disputed])
     panel = {
         "decision_policy": "dual-consensus",
@@ -144,7 +144,7 @@ def test_calibrated_primary_accepts_admit_and_fails_closed_without_calibration()
 
 def test_missing_or_failed_panel_decision_rejects_closed():
     runner = _module()
-    record = _record("morph-verification-focused-tests-0123456789")
+    record = _record("adapt-verification-focused-tests-0123456789")
     resolved, audit = runner.resolve_manifest(
         _manifest([record]),
         {"models": {}, "eligible_models": [], "candidates": {}},
@@ -157,7 +157,7 @@ def test_missing_or_failed_panel_decision_rejects_closed():
 
 def test_write_outputs_is_atomic_and_preserves_input(tmp_path):
     runner = _module()
-    pending = _manifest([_record("morph-verification-focused-tests-0123456789")])
+    pending = _manifest([_record("adapt-verification-focused-tests-0123456789")])
     input_path = tmp_path / "pending.json"
     input_path.write_text(json.dumps(pending), encoding="utf-8")
     original = input_path.read_bytes()
@@ -165,7 +165,7 @@ def test_write_outputs_is_atomic_and_preserves_input(tmp_path):
     audit_path = tmp_path / "adjudication.json"
 
     resolved = _manifest([_record(
-        "morph-verification-focused-tests-0123456789", status="accepted"
+        "adapt-verification-focused-tests-0123456789", status="accepted"
     )])
     runner.write_outputs(output_path, audit_path, resolved, {"counts": {}})
 

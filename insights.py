@@ -1,4 +1,4 @@
-"""Phase 5.5 — Morph Insights (greenfield, report-only).
+"""Phase 5.5 — Adapt Insights (greenfield, report-only).
 
 Honest scope, stated in-product (plan 5.5, line 103):
 
@@ -57,12 +57,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+import transcript_sources
+
 
 # ---------------------------------------------------------------------------
 # FailureCardV1 schema
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = "morph.failure-card.v1"
+SCHEMA_VERSION = "adapt.failure-card.v1"
 
 # Severity scale — qualitative, used for sort + filtering.
 SEVERITIES = ("info", "low", "medium", "high", "critical")
@@ -468,7 +470,8 @@ def detect_claimed_verified_then_corrected(
 
 def detect_repeated_ask(events: list[dict[str, Any]]) -> list[FailureCardV1]:
     """User asks the same thing more than once without an intermediate fix."""
-    user_texts = [ev for ev in events if ev.get("kind") == "user_message"]
+    user_texts = [ev for ev in events if ev.get("kind") == "user_message"
+                  and transcript_sources.event_provenance(ev) == "external_user"]
     cards: list[FailureCardV1] = []
     seen_keys: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for ev in user_texts:
@@ -955,6 +958,8 @@ def detect_wrong_repo_or_subsystem(events: list[dict[str, Any]]) -> list[Failure
 def detect_stale_terminology_surfacing(events: list[dict[str, Any]]) -> list[FailureCardV1]:
     cards: list[FailureCardV1] = []
     for ev in events:
+        if transcript_sources.event_provenance(ev) != "assistant":
+            continue
         text = str(ev.get("text") or "")
         matches = _RE_STALE_TERMS.findall(text)
         if not matches:
@@ -1420,7 +1425,11 @@ def _report_sessions(sessions: list[tuple[str, list[dict[str, Any]]]], *, detect
     by_detector: dict[str, list[FailureCardV1]] = {slug: [] for slug, _ in selected}
     summaries: list[dict[str, Any]] = []
     all_events: list[dict[str, Any]] = []
+    provenance_reports: list[dict[str, Any]] = []
     for label, session_events in sessions:
+        session_events, provenance_stats = transcript_sources.canonicalize_events(session_events)
+        provenance_report = provenance_stats.as_dict()
+        provenance_reports.append(provenance_report)
         evidence_events = [event for event in session_events if event.get("evidenceEligible") is not False]
         result = run_detectors(evidence_events, detectors=normal)
         cards = [card for items in result.values() for card in items]
@@ -1432,17 +1441,27 @@ def _report_sessions(sessions: list[tuple[str, list[dict[str, Any]]]], *, detect
         parent_thread_ids = sorted({str(event.get("parentThreadId") or "") for event in session_events if event.get("parentThreadId")})
         summaries.append({"path": label, "sessionIds": session_ids, "eventCount": len(session_events),
                           "agentRoles": agent_roles, "threadSources": thread_sources,
-                          "parentThreadIds": parent_thread_ids,
-                          "contextEventCount": len(session_events) - len(evidence_events), **_outcome(evidence_events, cards)})
+                           "parentThreadIds": parent_thread_ids,
+                           "contextEventCount": len(session_events) - len(evidence_events),
+                           "transcriptProvenance": provenance_report, **_outcome(evidence_events, cards)})
         all_events.extend(evidence_events)
     if "cross_agent_repeats" in by_detector:
         by_detector["cross_agent_repeats"] = detect_cross_agent_repeats(all_events)
     flat = [card for cards in by_detector.values() for card in cards]
     flat.sort(key=lambda card: (SEVERITIES.index(card.severity), card.cardId))
     known = [summary["score"] for summary in summaries if summary["score"] is not None]
+    dropped, authority_ineligible = Counter(), Counter()
+    for report in provenance_reports:
+        dropped.update(report["droppedReasons"])
+        authority_ineligible.update(report["authorityIneligibleReasons"])
+    provenance_total = {key: sum(report[key] for report in provenance_reports) for key in (
+        "rawRows", "canonicalMessages", "eligibleUserTurns", "deduplicatedCount")}
+    provenance_total.update(droppedReasons=dict(sorted(dropped.items())),
+                            authorityIneligibleReasons=dict(sorted(authority_ineligible.items())))
     return {"schema": SCHEMA_VERSION,
             "honestyLimit": "Insights detects only observable failure signals in transcripts. Cards are heuristic; 'likelyMechanism' and 'suggestedRemediations' are candidate inferences, not authoritative diagnoses.",
-            "eventCount": sum(len(events) for _, events in sessions), "sessionCount": len(sessions),
+            "eventCount": sum(summary["eventCount"] for summary in summaries), "sessionCount": len(sessions),
+            "transcriptProvenance": provenance_total,
             "sessionSummaries": summaries, "outcomes": [dict(summary) for summary in summaries],
             "aggregate": {"score": round(sum(known) / len(known)) if known else None,
                           "knownSessionCount": len(known), "unknownSessionCount": len(summaries) - len(known)},
@@ -1458,17 +1477,20 @@ def report_many(paths: Iterable[str | Path], *, detectors=None) -> dict[str, Any
     for path in paths:
         provenance = _session_provenance(path)
         events = _attach_session_provenance(_parse_through_layer(path), provenance)
-        sessions.append((str(path), events + _role_context_projection(path, provenance)))
+        combined = events + _role_context_projection(path, provenance)
+        combined.sort(key=lambda event: (int(event.get("rowIndex") or 0), int(event.get("blockIndex") or 0)))
+        sessions.append((str(path), combined))
     return _report_sessions(sessions, detectors=detectors)
 
 
-def _session_provenance(path: str | Path) -> dict[str, str]:
+def _session_provenance(path: str | Path) -> dict[str, Any]:
     """Read Codex session-meta attribution without changing transcript parsing."""
-    provenance: dict[str, str] = {}
+    provenance: dict[str, Any] = {}
     try:
         rows = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return provenance
+    provenance["rawRowCount"] = len(rows)
     for row in rows:
         try:
             obj = json.loads(row)
@@ -1496,13 +1518,13 @@ def _session_provenance(path: str | Path) -> dict[str, str]:
     return provenance
 
 
-def _attach_session_provenance(events: list[dict[str, Any]], provenance: dict[str, str]) -> list[dict[str, Any]]:
+def _attach_session_provenance(events: list[dict[str, Any]], provenance: dict[str, Any]) -> list[dict[str, Any]]:
     if not provenance:
         return events
     return [{**event, **provenance} for event in events]
 
 
-def _role_context_projection(path: str | Path, provenance: dict[str, str] | None = None) -> list[dict[str, Any]]:
+def _role_context_projection(path: str | Path, provenance: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Expose developer/agent context without making it byte-span evidence."""
     projected: list[dict[str, Any]] = []
     try:
@@ -1524,9 +1546,11 @@ def _role_context_projection(path: str | Path, provenance: dict[str, str] | None
         if not texts and isinstance(payload.get("message"), str):
             texts = [payload["message"]]
         for text in texts:
-            projected.append({"eventId": f"morph-role-context-{index}", "kind": f"{role}_message", "role": role,
+            projected.append({"eventId": f"adapt-role-context-{index}", "rowIndex": index + 1,
+                              "blockIndex": 0, "kind": f"{role}_message", "role": role,
                               "text": text, "timestamp": obj.get("timestamp"), "sessionId": payload.get("id") or payload.get("session_id") or "",
-                              "host": "codex", "agentRole": payload.get("agent_role"), "projection": "morph_role_context", "evidenceEligible": False})
+                              "host": "codex", "agentRole": payload.get("agent_role"), "projection": "adapt_role_context",
+                              "evidenceEligible": False})
     return _attach_session_provenance(projected, provenance or {})
 
 
@@ -1540,7 +1564,7 @@ def _parse_through_layer(path: str | Path) -> list[dict[str, Any]]:
 
     Discovery is robust: we walk up from this file until we find a
     sibling directory ``tools/lib/orthic_transcripts`` that contains
-    ``__init__.py``. That works from both the morph repo and any test
+    ``__init__.py``. That works from both the adapt repo and any test
     harness that imports this module by file path.
     """
     import importlib.util
@@ -1556,7 +1580,7 @@ def _parse_through_layer(path: str | Path) -> list[dict[str, Any]]:
             break
     if not candidates:
         # Fall back to the canonical workspace root (two parents up from
-        # the package directory inside /morph).
+        # the package directory inside /adapt).
         candidates.append(here.parents[2] / "tools" / "lib" / "orthic_transcripts")
     layer = candidates[0]
     init_py = layer / "__init__.py"
@@ -1585,18 +1609,18 @@ def _parse_through_layer(path: str | Path) -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# CLI subcommand — `morph insights`
+# CLI subcommand — `adapt insights`
 # ---------------------------------------------------------------------------
 
 def cli_insights(argv: list[str] | None = None) -> int:
-    """Minimal ``morph insights`` subcommand.
+    """Minimal ``adapt insights`` subcommand.
 
     Prints the JSON report to stdout. Never writes to disk, never touches
     Membrane, never touches Taste. Plan 5.5 hard constraint.
     """
     import argparse
 
-    ap = argparse.ArgumentParser(prog="morph insights")
+    ap = argparse.ArgumentParser(prog="adapt insights")
     ap.add_argument("transcript", nargs="+", help="one or more Claude or Codex JSONL transcripts")
     ap.add_argument("--out", default=None, help="write JSON report here (default: stdout)")
     ap.add_argument("--quiet", action="store_true")
@@ -1607,7 +1631,7 @@ def cli_insights(argv: list[str] | None = None) -> int:
     if args.out:
         Path(args.out).write_text(encoded, encoding="utf-8")
         if not args.quiet:
-            print(f"morph insights: wrote report -> {args.out}", file=__import__("sys").stderr)
+            print(f"adapt insights: wrote report -> {args.out}", file=__import__("sys").stderr)
     else:
         print(encoded)
     return 0

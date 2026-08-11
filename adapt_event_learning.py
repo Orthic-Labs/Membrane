@@ -1,4 +1,4 @@
-"""Hash-bound Membrane event to durable Morph preference learning."""
+"""Hash-bound Membrane event to durable Adapt preference learning."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable
 
-import morph_persistence
+import adapt_persistence
 import admission
 import event_ingestion
 import learning_outcomes
@@ -21,7 +21,7 @@ import rule_key
 LEARNABLE_EVENT_TYPES = frozenset({"user_correction", "user_preference", "user_instruction"})
 
 
-class MorphLearningError(RuntimeError):
+class AdaptLearningError(RuntimeError):
     """Raised when event provenance, admission, persistence, or delivery fails."""
 
 
@@ -73,7 +73,7 @@ class AdmittedLearning:
 
 def approval_text(learning: AdmittedLearning) -> str:
     """Exact user feedback required to promote one event-derived proposal."""
-    return f"approve morph proposal {learning.digest}"
+    return f"approve adapt proposal {learning.digest}"
 
 
 def admit_user_event(
@@ -92,17 +92,17 @@ def admit_user_event(
     event from ``learning_outcomes.LearningOutcomeStore`` — passing back the
     original record timestamp reproduces a byte-identical
     ``PreferenceRecord``/``digest`` instead of minting a new one every time the
-    ledger is rescanned (see ``morph_event_learning.run_taste_cycle``).
+    ledger is rescanned (see ``adapt_event_learning.run_taste_cycle``).
     """
-    raise MorphLearningError("event-transport-metadata-only: use direct transcripts")
+    raise AdaptLearningError("event-transport-metadata-only: use direct transcripts")
     observable_events._validate(event)
     if event["origin"] != "user":
-        raise MorphLearningError(f"origin-not-user:{event['origin']}")
+        raise AdaptLearningError(f"origin-not-user:{event['origin']}")
     if event["event_type"] not in LEARNABLE_EVENT_TYPES:
-        raise MorphLearningError(f"event-not-learnable:{event['event_type']}")
+        raise AdaptLearningError(f"event-not-learnable:{event['event_type']}")
     evidence_sha256 = _sha256_text(evidence_text)
     if event["content_ref_or_digest"] != evidence_sha256:
-        raise MorphLearningError("event-content-digest-mismatch")
+        raise AdaptLearningError("event-content-digest-mismatch")
     normalized_category = admission.normalize_category(category)
     record_id = preference_record.derive_id(scope, normalized_category, evidence_text)
     target = {
@@ -119,7 +119,7 @@ def admit_user_event(
         "add", target, canonical_rules=canonical_rules or rule_key.RuleIndex.from_mapping({})
     )
     if not admitted:
-        raise MorphLearningError(f"admission-rejected:{reason}")
+        raise AdaptLearningError(f"admission-rejected:{reason}")
     source_id = (
         f"install:{event['installation_id']}:{event['client_id']}:{event['event_id']}"
     )
@@ -155,22 +155,22 @@ def approve_learning(
 ) -> AdmittedLearning:
     """Bind separate user feedback before an event proposal can enter recall."""
     if learning.approved:
-        raise MorphLearningError("learning-already-approved")
+        raise AdaptLearningError("learning-already-approved")
     observable_events._validate(feedback_event)
     if feedback_event["origin"] != "user":
-        raise MorphLearningError(f"feedback-origin-not-user:{feedback_event['origin']}")
+        raise AdaptLearningError(f"feedback-origin-not-user:{feedback_event['origin']}")
     if feedback_event["event_type"] not in LEARNABLE_EVENT_TYPES:
-        raise MorphLearningError(f"feedback-event-not-learnable:{feedback_event['event_type']}")
+        raise AdaptLearningError(f"feedback-event-not-learnable:{feedback_event['event_type']}")
     installation_id = learning.source_id.split(":", 3)[1]
     if (
         feedback_event["installation_id"] != installation_id
         or feedback_event["trace_id"] != learning.trace_id
     ):
-        raise MorphLearningError("feedback-lineage-mismatch")
+        raise AdaptLearningError("feedback-lineage-mismatch")
     if feedback_text != approval_text(learning):
-        raise MorphLearningError("feedback-approval-text-mismatch")
+        raise AdaptLearningError("feedback-approval-text-mismatch")
     if feedback_event["content_ref_or_digest"] != _sha256_text(feedback_text):
-        raise MorphLearningError("feedback-content-digest-mismatch")
+        raise AdaptLearningError("feedback-content-digest-mismatch")
     feedback_source = (
         f"install:{feedback_event['installation_id']}:"
         f"{feedback_event['client_id']}:{feedback_event['event_id']}"
@@ -197,16 +197,16 @@ def persist_learning(
 ) -> dict:
     """Persist only an explicitly approved event-learning proposal."""
     if not learning.approved:
-        raise MorphLearningError("proposal-not-approved")
-    receipt = morph_persistence.persist_manifest_batch(
+        raise AdaptLearningError("proposal-not-approved")
+    receipt = adapt_persistence.persist_manifest_batch(
         (learning.record,),
-        manifest_batch_id=f"morph-event-{learning.event_id}-{learning.digest}",
+        manifest_batch_id=f"adapt-event-{learning.event_id}-{learning.digest}",
         installation_id=installation_id,
         token_file=token_file,
         base_url=base_url,
     )
     if receipt.get("complete") is not True:
-        raise MorphLearningError("persistence-incomplete")
+        raise AdaptLearningError("persistence-incomplete")
     return {
         **receipt,
         "learning": {
@@ -243,14 +243,14 @@ def run_taste_cycle(
     match only fires for a *different*, later event whose exact text equals
     ``approval_text(proposal)``, and that event can only come from the
     read-only transport this function does not control (see
-    ``test_morph_event_learning.py::test_ingestion_cycle_cannot_self_approve``).
+    ``test_adapt_event_learning.py::test_ingestion_cycle_cannot_self_approve``).
 
     Rebuilds any still-pending proposals from ``outcome_store`` first (via a
-    deterministic replay of ``admit_user_event`` — never from anything Morph
+    deterministic replay of ``admit_user_event`` — never from anything Adapt
     invented this run), so an approval event arriving on a *later* call still
     resolves correctly, not just one arriving in the same page as its proposal.
     """
-    raise MorphLearningError("event-transport-metadata-only: use direct transcripts")
+    raise AdaptLearningError("event-transport-metadata-only: use direct transcripts")
     cursor_store = cursor_store or event_ingestion.CursorStore()
     outcome_store = outcome_store or learning_outcomes.LearningOutcomeStore()
 
@@ -265,7 +265,7 @@ def run_taste_cycle(
                 canonical_rules=canonical_rules,
                 now=row.get("record_now") or None,
             )
-        except MorphLearningError:
+        except AdaptLearningError:
             continue
         pending[approval_text(replay)] = replay
 
@@ -284,7 +284,7 @@ def run_taste_cycle(
                     result = approve_learning(
                         approval_match, feedback_event=event, feedback_text=evidence_text,
                     )
-                except MorphLearningError as exc:
+                except AdaptLearningError as exc:
                     outcome_store.record(
                         event_id=approval_match.event_id,
                         trace_id=approval_match.trace_id,
@@ -325,7 +325,7 @@ def run_taste_cycle(
                     canonical_rules=canonical_rules,
                     now=now_value,
                 )
-            except MorphLearningError as exc:
+            except AdaptLearningError as exc:
                 outcome_store.record(
                     event_id=event["event_id"],
                     trace_id=event.get("trace_id", ""),
@@ -370,13 +370,13 @@ def verify_next_use(
 ) -> dict:
     """Use independent read paths to prove approved storage plus next-task delivery."""
     if not learning.approved:
-        raise MorphLearningError("proposal-not-approved")
+        raise AdaptLearningError("proposal-not-approved")
     body = get_memory(learning.rule_key)
     if learning.record.rule not in body:
-        raise MorphLearningError("independent-readback-mismatch")
+        raise AdaptLearningError("independent-readback-mismatch")
     delivered = recall(learning.record.rule, learning.record.scope)
     if learning.rule_key not in delivered and learning.record.id not in delivered:
-        raise MorphLearningError("next-use-delivery-missing")
+        raise AdaptLearningError("next-use-delivery-missing")
     return {
         "event_id": learning.event_id,
         "trace_id": learning.trace_id,

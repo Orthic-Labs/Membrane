@@ -10,9 +10,9 @@ from pathlib import Path
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 HERE = Path(__file__).resolve().parent
-DEFAULT_TREATMENT = ROOT / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
-DEFAULT_BASELINE = ROOT / ".cache/morph-delivery-parity/full/evidence-recall/results.json"
-DEFAULT_OUT = ROOT / ".cache/morph-delivery-parity/evidence-alias"
+DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
+DEFAULT_BASELINE = ROOT / ".cache/adapt-delivery-parity/full/evidence-recall/results.json"
+DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/evidence-alias"
 MAX_ALIAS_CHARS = 320
 
 

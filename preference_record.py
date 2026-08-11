@@ -2,8 +2,8 @@
 
 Implements the load-bearing contract from the v2 plan's Gate 2:
 
-  - Morph (NOT the model) assigns a stable ID at admission time.
-  - ID = ``morph-{category}-{slug}-{sha256(scope + NUL + category + NUL + normalized_rule)[:10]}``
+  - Adapt (NOT the model) assigns a stable ID at admission time.
+  - ID = ``adapt-{category}-{slug}-{sha256(scope + NUL + category + NUL + normalized_rule)[:10]}``
   - Same input → same ID; distinct rule → distinct ID.
   - Updates keep the existing primary ID (in-place), matching Dream's rule.
   - Serialized into the existing Crypt content envelope; no schema column added.
@@ -24,7 +24,7 @@ Exposed helpers:
     — wraps a synthesis action into a PreferenceRecord, preserving the prior
     primary ID when ``existing`` is provided (update path).
   - ``to_crypt_content(record)`` — formats into the existing
-    ``**[morph/{cat}]** — {rule} ...`` envelope without touching the engine
+    ``**[adapt/{cat}]** — {rule} ...`` envelope without touching the engine
     schema.
 """
 from __future__ import annotations
@@ -49,7 +49,7 @@ SCHEMA_VERSION = "1.2.0"
 # Canonical writer version for span-preserving direct-transcript manifests.
 DIRECT_MANIFEST_SCHEMA_VERSION = "1.3.0"
 KIND = "preference"
-PREFIX = "morph"
+PREFIX = "adapt"
 HASH_LEN = 10
 NUL = "\x00"
 MAX_ALIAS_CHARS = 320
@@ -67,14 +67,14 @@ _WORKSPACE_ROOT = workspace_root()
 
 
 def _installation_identity_file() -> Path:
-    """Same path/override contract as ``morph._installation_file()``.
+    """Same path/override contract as ``adapt._installation_file()``.
 
     Reuses the existing cross-machine installation identity
     (``tools/.cache/memory/installation.json``, schema v2, already loaded by
     ``cross_machine.load_installation_id``) instead of inventing a second
     identity file.
     """
-    override = os.environ.get("MORPH_INSTALLATION_FILE", "").strip()
+    override = os.environ.get("ADAPT_INSTALLATION_FILE", "").strip()
     if override:
         return Path(override)
     return _WORKSPACE_ROOT / "tools/.cache/memory/installation.json"
@@ -84,10 +84,10 @@ def default_machine_id(*, installation_file: Path | None = None) -> str:
     """Best-effort, stable machine label for attributing a mined preference.
 
     Resolution order:
-      1. ``MORPH_MACHINE_ID`` env override (explicit control / tests).
+      1. ``ADAPT_MACHINE_ID`` env override (explicit control / tests).
       2. The existing installation identity file's ``legacy_labels[0]``
          (human-readable, e.g. ``"adrian-mac"``) — reused from the
-         cross-machine Morph pipeline rather than a new parallel identifier.
+         cross-machine Adapt pipeline rather than a new parallel identifier.
       3. That same file's ``installation_id`` (stable UUID) if no label.
       4. ``{platform.system()}-{platform.node()}`` (hostname) as a last
          resort when no installation identity has been set up yet.
@@ -96,7 +96,7 @@ def default_machine_id(*, installation_file: Path | None = None) -> str:
     next step, since machine attribution is best-effort metadata, not a
     safety-gated contract field.
     """
-    override = os.environ.get("MORPH_MACHINE_ID", "").strip()
+    override = os.environ.get("ADAPT_MACHINE_ID", "").strip()
     if override:
         return override
     path = installation_file if installation_file is not None else _installation_identity_file()
@@ -268,7 +268,7 @@ def slug_from_rule(rule: str, max_words: int = 4) -> str:
 
 
 def derive_id(scope: str, category: str, rule: str) -> str:
-    """``morph-{category}-{slug}-{sha256(scope + NUL + category + NUL + normalized_rule)[:10]}``.
+    """``adapt-{category}-{slug}-{sha256(scope + NUL + category + NUL + normalized_rule)[:10]}``.
 
     ``NUL`` separator prevents the classic ambiguity where
     ``("ab", "cd")`` and ``("a", "bcd")`` would otherwise hash identically.
@@ -488,8 +488,8 @@ class PreferenceRecord:
         primary id so updates keep identity.
 
         `machine`/`machine_only` are attribution metadata assigned by the
-        caller (Morph), never sourced from `action` (the LLM/operator
-        payload) — mirrors the "Morph, not the model, assigns identity"
+        caller (Adapt), never sourced from `action` (the LLM/operator
+        payload) — mirrors the "Adapt, not the model, assigns identity"
         contract already used for `id`. Omitting `machine` (None) preserves
         whatever `existing` already recorded, defaulting to "" (unknown) for
         a brand-new record. Omitting `machine_only` (None) preserves
@@ -645,10 +645,10 @@ def application_guidance(record_type: str) -> str:
     return "use as supporting context only; this is not a standing instruction."
 
 def to_crypt_content(record: PreferenceRecord) -> str:
-    """Format into the existing ``**[morph/{cat}]** — ...`` body.
+    """Format into the existing ``**[adapt/{cat}]** — ...`` body.
 
     The engine-facing body is what Crypt stores. The category prefix and
-    confidence line mirror what `morph.rule_body` already produced so prior
+    confidence line mirror what `adapt.rule_body` already produced so prior
     rows read identically.
     """
     today = dt.date.today().isoformat()
@@ -666,7 +666,7 @@ def to_crypt_content(record: PreferenceRecord) -> str:
         if record.evidence_contexts else ""
     )
     return (
-        f"**[morph/{record.category}]** — {record.rule} "
+        f"**[adapt/{record.category}]** — {record.rule} "
         f"Confidence: {record.confidence:.2f} "
         f"(observations: {record.evidence_count}, needs_review: "
         f"{str(record.needs_review).lower()}, updated {today})\n"

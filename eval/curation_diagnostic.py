@@ -9,8 +9,8 @@ Implements v2 plan Gate 5 step 1 + step 2:
           compression occurred.
 
   Step 2. Build a read-only near-duplicate candidate report from same-scope
-          ``morph-*`` rows. Deterministic similarity finds candidates; an
-          Morph manifest will adjudicate merge/update/deprecate. Dream remains
+          ``adapt-*`` rows. Deterministic similarity finds candidates; an
+          Adapt manifest will adjudicate merge/update/deprecate. Dream remains
           provider-free and performs only accepted deterministic mutations.
 
 This script is fully standalone and safe-by-construction: it copies the live
@@ -26,7 +26,7 @@ Outputs::
 
 Usage::
 
-    py -3.11 tools/pipelines/memory/morph/eval/curation_diagnostic.py \\
+    py -3.11 tools/pipelines/memory/adapt/eval/curation_diagnostic.py \\
         --live-db D:/Claude/tools/.cache/memory/crypt-engine.db \\
         --crypt-bin D:/Claude/tools/bin/crypt.exe \\
         --out /tmp/curation
@@ -49,10 +49,10 @@ from pathlib import Path
 WS = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 DEFAULT_LIVE = WS / "tools/.cache/memory/crypt-engine.db"
 DEFAULT_CRYPT = WS / "tools/bin/crypt.exe"
-DEFAULT_OUT = WS / ".cache/morph-curation"
+DEFAULT_OUT = WS / ".cache/adapt-curation"
 SERVICE_READY_TIMEOUT = 20.0
 
-MORPH_PREFIX = "morph-"
+ADAPT_PREFIX = "adapt-"
 
 
 # ----- DB plumbing (port from run_value_ab.py) -----
@@ -123,18 +123,18 @@ def _run(crypt: Path, db: Path, port: int, cmd: list[str],
 
 # ----- Inventory + same-scope near-duplicate report -----
 
-def inventory_morph_rows(db: Path) -> list[dict]:
-    """Read every morph-prefixed row from the snapshot.
+def inventory_adapt_rows(db: Path) -> list[dict]:
+    """Read every adapt-prefixed row from the snapshot.
 
     Matches both:
-      - unscoped ids starting with `morph-` (Crypt legacy layout)
-      - scope/morph-* ids (``D--Claude/morph-x-...``)
+      - unscoped ids starting with `adapt-` (Crypt legacy layout)
+      - scope/adapt-* ids (``D--Claude/adapt-x-...``)
     """
     with sqlite3.connect(db) as conn:
         rows = conn.execute(
             "SELECT id, content FROM memories "
             "WHERE id LIKE ? OR id LIKE '%/' || ?",
-            (f"{MORPH_PREFIX}%", f"{MORPH_PREFIX}%"),
+            (f"{ADAPT_PREFIX}%", f"{ADAPT_PREFIX}%"),
         ).fetchall()
     return [{"id": rid, "content": content} for rid, content in rows]
 
@@ -194,7 +194,7 @@ def diagnose(live_db: Path, crypt: Path, out: Path) -> int:
     out.mkdir(parents=True, exist_ok=True)
     snap = out / "snapshot.db"
     pre_count = snapshot_live(live_db, snap)
-    pre_rows = inventory_morph_rows(snap)
+    pre_rows = inventory_adapt_rows(snap)
     pre_id_count = len(pre_rows)
     pre_clusters = near_duplicate_candidates(pre_rows)
 
@@ -224,7 +224,7 @@ def diagnose(live_db: Path, crypt: Path, out: Path) -> int:
     else:
         post_count = sqlite3.connect(snap).execute(
             "SELECT COUNT(*) FROM memories").fetchone()[0]
-        post_rows = inventory_morph_rows(snap)
+        post_rows = inventory_adapt_rows(snap)
     post_id_count = len(post_rows)
     post_clusters = near_duplicate_candidates(post_rows)
 
@@ -251,13 +251,13 @@ def diagnose(live_db: Path, crypt: Path, out: Path) -> int:
         "curate_status": {"ok": curate_ok, "error": curate_error},
         "pre_curate": {
             "snapshot_rows": pre_count,
-            "morph_row_count": pre_id_count,
+            "adapt_row_count": pre_id_count,
             "cluster_count": len(pre_clusters),
             "max_cluster_size": max((c["size"] for c in pre_clusters), default=0),
         },
         "post_curate": {
             "snapshot_rows": post_count,
-            "morph_row_count": post_id_count,
+            "adapt_row_count": post_id_count,
             "cluster_count": len(post_clusters),
             "max_cluster_size": max((c["size"] for c in post_clusters), default=0),
         },
@@ -276,13 +276,13 @@ def diagnose(live_db: Path, crypt: Path, out: Path) -> int:
         "",
         "## Pre-Dream",
         f"- rows in snapshot: {pre_count}",
-        f"- morph-* rows:     {pre_id_count}",
+        f"- adapt-* rows:     {pre_id_count}",
         f"- exact clusters:   {len(pre_clusters)}",
         f"- max cluster size: {max((c['size'] for c in pre_clusters), default=0)}",
         "",
         "## Post-Dream",
         f"- rows in snapshot: {post_count}",
-        f"- morph-* rows:     {post_id_count}",
+        f"- adapt-* rows:     {post_id_count}",
         f"- exact clusters:   {len(post_clusters)}",
         f"- max cluster size: {max((c['size'] for c in post_clusters), default=0)}",
         "",
@@ -303,7 +303,7 @@ def diagnose(live_db: Path, crypt: Path, out: Path) -> int:
     (out / "curation.diagnostic.md").write_text("\n".join(md_lines) + "\n",
                                                   encoding="utf-8")
     print(f"diagnostic: {out / 'curation.diagnostic.md'}")
-    print(f"  morph rows pre/post: {pre_id_count} -> {post_id_count}; "
+    print(f"  adapt rows pre/post: {pre_id_count} -> {post_id_count}; "
           f"clusters pre/post: {len(pre_clusters)} -> {len(post_clusters)}; "
           f"curate ok={curate_ok}")
     return 0

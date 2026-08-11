@@ -1,4 +1,4 @@
-"""Read-only Morph consumer for Membrane ObservableEventV1 streams.
+"""Read-only Adapt consumer for Membrane ObservableEventV1 streams.
 
 This module never promotes assistant/tool events into Taste. It keeps event order and lineage
 opaque, then emits deterministic Insights labels for operator review.

@@ -1,4 +1,4 @@
-"""Evaluate an 800-token Morph core digest plus scoped Crypt retrieval (arm E)."""
+"""Evaluate an 800-token Adapt core digest plus scoped Crypt retrieval (arm E)."""
 from __future__ import annotations
 
 import argparse
@@ -11,8 +11,8 @@ from pathlib import Path
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 HERE = Path(__file__).resolve().parent
-PRIMARY = ROOT / ".cache/morph-delivery-parity/full"
-DEFAULT_OUT = ROOT / ".cache/morph-delivery-parity/budgeted-deepseek"
+PRIMARY = ROOT / ".cache/adapt-delivery-parity/full"
+DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/budgeted-deepseek"
 
 
 def _load(path: Path, name: str):
@@ -33,7 +33,7 @@ def core_treatment(treatment: dict) -> tuple[dict, str, int]:
     if len(records) != 13:
         raise RuntimeError(f"expected 13 inherited core rules, found {len(records)}")
     core = {**treatment, "variant": "baseline-core-13", "records": records}
-    block = runner.morph_block(core)
+    block = runner.adapt_block(core)
     tokens = math.ceil(len(block) / 4)
     if tokens > 800:
         raise RuntimeError(f"core digest exceeds 800-token estimate: {tokens}")
@@ -98,7 +98,7 @@ def analyze(cases: list[dict], actor: dict, grades: dict, core_chars: int,
             comparisons[f"A_vs_{target_arm}"]["full_adherence_discordance"]["discordant"] < 30),
     }
     runner.write_json(out / "analysis.json", result)
-    lines = ["# Budgeted Morph hybrid", "",
+    lines = ["# Budgeted Adapt hybrid", "",
              f"- grader: {grades['grader']}",
              f"- core: {core_records} rules, {core_chars} chars, ~{core_tokens} tokens", "",
              "| Arm | Adherence | Full | Correct | Intrusion |",
@@ -124,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     value_set = runner.read_json(PRIMARY / "frozen/value-set.json")
-    treatment = runner.read_json(PRIMARY / "frozen/morph-treatment.json")
+    treatment = runner.read_json(PRIMARY / "frozen/adapt-treatment.json")
     retrieval = runner.read_json(PRIMARY / "retrieval.json")
     primary_actor = runner.read_json(PRIMARY / "actor-results.json")
     cases = value_set["cases"]

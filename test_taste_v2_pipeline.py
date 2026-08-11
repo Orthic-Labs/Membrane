@@ -9,6 +9,7 @@ import pytest
 
 import cli
 import manifest
+import outcomes
 import preference_record
 import run_journal
 import taste_v2
@@ -32,7 +33,7 @@ def _write_correction(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
         "type": "user", "uuid": "u1", "sessionId": "s1",
-        "cwd": "/Volumes/D/claude/morph", "timestamp": "2026-01-01T00:00:00Z",
+        "cwd": "/Volumes/D/claude/adapt", "timestamp": "2026-01-01T00:00:00Z",
         "message": {"role": "user", "content":
                     "No, that's wrong. Always run focused tests before reporting completion."},
     }) + "\n", encoding="utf-8")
@@ -58,7 +59,8 @@ def test_cli_manifest_writer_is_v13_with_hashed_evidence_contexts(
     output = tmp_path / "manifest.json"
     _isolate_home(monkeypatch, home)
     monkeypatch.setattr(run_journal, "JOURNAL_FILE", tmp_path / "journal.jsonl")
-    monkeypatch.setattr(sys, "argv", ["morph.py", "--incremental", "--manifest", str(output)])
+    monkeypatch.setattr(sys, "argv", ["adapt.py", "--incremental", "--deterministic-only",
+                                      "--manifest", str(output)])
     assert cli.main() == 0
     body = json.loads(output.read_text(encoding="utf-8"))
     assert body["schema_version"] == "1.3.0"
@@ -99,7 +101,8 @@ def test_cli_manifest_validation_failure_abandons_journal_without_artifact(
         cli.manifest, "validate_schema",
         lambda _path: (_ for _ in ()).throw(manifest.ManifestError("invalid test manifest")),
     )
-    monkeypatch.setattr(sys, "argv", ["morph.py", "--incremental", "--manifest", str(output)])
+    monkeypatch.setattr(sys, "argv", ["adapt.py", "--incremental", "--deterministic-only",
+                                      "--manifest", str(output)])
     assert cli.main() == 2
     assert not output.exists()
     entries = [json.loads(line) for line in (tmp_path / "journal.jsonl").read_text().splitlines()]
@@ -157,7 +160,8 @@ def test_cli_manifest_writer_quarantines_unsupported_via_select_sources(
     output = tmp_path / "manifest.json"
     _isolate_home(monkeypatch, home)
     monkeypatch.setattr(run_journal, "JOURNAL_FILE", tmp_path / "journal.jsonl")
-    monkeypatch.setattr(sys, "argv", ["morph.py", "--incremental", "--manifest", str(output)])
+    monkeypatch.setattr(sys, "argv", ["adapt.py", "--incremental", "--deterministic-only",
+                                      "--manifest", str(output)])
     assert cli.main() == 0
     journal_path = tmp_path / "journal.jsonl"
     entries = [json.loads(line) for line in journal_path.read_text(encoding="utf-8").splitlines()]
@@ -165,3 +169,88 @@ def test_cli_manifest_writer_quarantines_unsupported_via_select_sources(
     admitted = next(row for row in entries if row.get("stage") == "admitted")
     assert any(row["reason"] == "unsupported-host" for row in discovered.get("quarantined_sources", [])), discovered
     assert admitted.get("candidates") == 1
+
+
+def test_llm_proposer_recovers_implicit_preference_with_exact_user_provenance(
+    tmp_path: Path,
+) -> None:
+    transcript = tmp_path / ".claude" / "projects" / "project" / "session.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({
+        "type": "user", "uuid": "u1", "sessionId": "s1",
+        "cwd": str(tmp_path), "timestamp": "2026-01-01T00:00:00Z",
+        "message": {"role": "user", "content":
+                    "Concise status updates work best for me across future tasks."},
+    }) + "\n", encoding="utf-8")
+    source = transcript_sources.select_sources(
+        transcript_sources.discover(tmp_path), active_ids=set(),
+    )[0][0]
+
+    def fake_llm(_system: str, _payload: str) -> str:
+        return json.dumps([{
+            "category": "workflow", "observation": "Keep status updates concise.",
+            "evidence": "Concise status updates", "prompt": 1,
+            "record_type": "agent_preference", "durability": "cross_task_explicit",
+            "subject": "agent_behavior",
+        }])
+
+    receipt: dict = {}
+    candidates = taste_v2_pipeline.extract_source(
+        source, llm_lane="local", llm=fake_llm, provenance_receipt=receipt,
+    )
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate.rule == "Keep status updates concise."
+    assert candidate.recordType == "standing_preference"
+    assert candidate.evidenceText.startswith("Concise status updates")
+    assert next(event for event in candidate.contextEvents if event["isSource"])["provenance"] == "external_user"
+    assert taste_v2.admit_candidate(candidate).lifecycleState == "active"
+    assert receipt["llm_proposer"]["failures"] == []
+
+
+def test_llm_proposer_refuses_unbound_prompt(tmp_path: Path) -> None:
+    transcript = tmp_path / ".claude" / "projects" / "project" / "session.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({
+        "type": "user", "uuid": "u1", "sessionId": "s1", "cwd": str(tmp_path),
+        "message": {"role": "user", "content": "Short updates suit my workflow."},
+    }) + "\n", encoding="utf-8")
+    source = transcript_sources.select_sources(
+        transcript_sources.discover(tmp_path), active_ids=set(),
+    )[0][0]
+    fake = lambda _system, _payload: json.dumps([{
+        "category": "workflow", "observation": "Keep updates short.", "evidence": "Short updates",
+        "prompt": 99, "record_type": "agent_preference", "durability": "cross_task_explicit",
+        "subject": "agent_behavior",
+    }])
+    receipt: dict = {}
+    assert taste_v2_pipeline.extract_source(
+        source, llm_lane="local", llm=fake, provenance_receipt=receipt,
+    ) == []
+    assert receipt["llm_proposer"]["failures"] == ["llm-invalid-prompt-binding"]
+
+
+def test_cli_llm_failure_abandons_without_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    transcript = home / ".claude" / "projects" / "project" / "session.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(json.dumps({
+        "type": "user", "uuid": "u1", "sessionId": "s1", "cwd": str(tmp_path),
+        "message": {"role": "user", "content": "Short status updates suit my workflow."},
+    }) + "\n", encoding="utf-8")
+    output = tmp_path / "pending.json"
+    _isolate_home(monkeypatch, home)
+    monkeypatch.setattr(run_journal, "JOURNAL_FILE", tmp_path / "journal.jsonl")
+    monkeypatch.setattr(cli.adapt_llm, "lane_available", lambda _lane: True)
+    monkeypatch.setattr(
+        taste_v2_pipeline.adapt_llm, "extract_observations",
+        lambda *_args, **_kwargs: outcomes.BatchOutcome.provider_failed("offline"),
+    )
+    monkeypatch.setattr(sys, "argv", ["adapt.py", "--incremental", "--manifest", str(output)])
+    assert cli.main() == 2
+    assert not output.exists()
+    entries = [json.loads(line) for line in (tmp_path / "journal.jsonl").read_text().splitlines()]
+    assert entries[-1]["stage"] == "abandoned"
+    assert entries[-1]["reason"] == "llm_proposer_failed"

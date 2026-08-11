@@ -4,8 +4,7 @@ Mission (plan 5.3, line 101):
     corrections + locked decisions become durable scoped rules with
     exact-span provenance -> Crypt -> surfaced via membrane_context.
 
-This module is the Phase 5.3 path. It replaces the legacy Taste mining
-pipeline (``taste.py`` / ``taste_mine.py``) by consuming the shared
+This module is the Phase 5.3 path. It replaces retired session mining by consuming shared
 TranscriptEventV1 substrate at ``tools/lib/orthic_transcripts`` and
 preserving the bounded surrounding context of every correction — the
 plan-named defect that the previous path dropped.
@@ -20,8 +19,7 @@ Kept strengths (existing invariants, regressing any is a failure):
     - synthetic / meta filters: events with ``flags.synthetic`` or
       ``flags.meta`` are rejected at intake.
     - health-domain exclusion: explicitly named health terms
-      (``HEALTH_DOMAINS``) are filtered out, mirroring the legacy
-      quarantine.
+      (``HEALTH_DOMAINS``) are filtered out before extraction.
     - lifecycle states: candidate records carry a ``lifecycle_state``
       field aligned with ``preference_record.normalize_lifecycle_state``.
 
@@ -34,7 +32,7 @@ Fixed defect (plan 5.3):
     provenance and the surrounding ask is auditable.
 
 Transport gap (plan defect 24, discovered by the Phase 5.4 agent):
-    ``morph/observable_events.py:42`` emits taste candidates as
+    ``adapt/observable_events.py:42`` emits taste candidates as
     ``{event_id, trace_id, source}`` with NO content, and the Rust
     service has no event-content lookup route — only metadata + digest.
     So the transport-side candidates cannot carry the text needed for
@@ -78,12 +76,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import admission  # noqa: E402
 import authority  # noqa: E402
 import preference_record  # noqa: E402
+import transcript_sources  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Public schema + constants
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = "morph.taste-candidate.v1"
+SCHEMA_VERSION = "adapt.taste-candidate.v1"
 
 # Bounded surrounding context (defect fix). Each candidate carries up to
 # MAX_CONTEXT_BLOCKS events on each side of the source event. This is the
@@ -164,7 +163,7 @@ TRANSPORT_GAP_NOTE: str = (
     "Taste candidates carry the source event's exact byte spans and bounded "
     "surrounding context. Direct TranscriptEventV1 input "
     "(tools/lib/orthic_transcripts) is the canonical semantic source. "
-    "ObservableEventV1 transport (morph/observable_events.py) is permanently "
+    "ObservableEventV1 transport (adapt/observable_events.py) is permanently "
     "metadata-only for lineage and Insights; it never carries or resolves "
     "Taste text and cannot mint Taste candidates."
 )
@@ -318,7 +317,7 @@ class TasteCandidateV1:
                 raise TasteV2Error("context byte span is invalid")
             required_context_fields = {
                 "eventId", "kind", "role", "classification", "flags", "byteStart", "byteEnd",
-                "text", "truncated", "isSource",
+                "text", "truncated", "isSource", "provenance", "sourceRows", "authorityEligible",
             }
             if set(event) != required_context_fields:
                 raise TasteV2Error("context event has an invalid envelope shape")
@@ -328,6 +327,12 @@ class TasteCandidateV1:
                 raise TasteV2Error("context event role must be string or null")
             if not isinstance(event["truncated"], bool) or not isinstance(event["isSource"], bool):
                 raise TasteV2Error("context event flags must be booleans")
+            if event["provenance"] not in transcript_sources.PROVENANCE_KINDS:
+                raise TasteV2Error("context event provenance is invalid")
+            if not isinstance(event["sourceRows"], list) or not event["sourceRows"]:
+                raise TasteV2Error("context event sourceRows must be non-empty")
+            if not isinstance(event["authorityEligible"], bool):
+                raise TasteV2Error("context event authorityEligible must be boolean")
             if event["byteStart"] != start or event["byteEnd"] != end:
                 raise TasteV2Error("context event byte span does not match contextByteSpans")
             event_flags = event["flags"]
@@ -341,7 +346,7 @@ class TasteCandidateV1:
         source = sources[0]
         required_context_fields = {
             "eventId", "kind", "role", "classification", "flags", "byteStart", "byteEnd",
-            "text", "truncated", "isSource",
+            "text", "truncated", "isSource", "provenance", "sourceRows", "authorityEligible",
         }
         if set(source) != required_context_fields or source["truncated"] is not False:
             raise TasteV2Error("source context must preserve the exact untruncated envelope")
@@ -478,6 +483,8 @@ def _assert_authoritative_provenance(event: dict[str, Any]) -> None:
         )
     if event.get("role") != "user":
         raise TasteV2Error("authoritative-provenance-rejected: role must be 'user'")
+    if transcript_sources.event_provenance(event) != "external_user":
+        raise TasteV2Error("authoritative-provenance-rejected: provenance must be external_user")
     classification = event.get("classification")
     if not isinstance(classification, str) or not classification:
         raise TasteV2Error("authoritative-provenance-rejected: source classification is required")
@@ -503,7 +510,7 @@ def _validated_candidate_source(candidate: TasteCandidateV1) -> dict[str, Any]:
     if len(sources) != 1:
         raise TasteV2Error("candidate source context must contain exactly one source event")
     source = sources[0]
-    if set(source) != {"eventId", "kind", "role", "classification", "flags", "byteStart", "byteEnd", "text", "truncated", "isSource"}:
+    if set(source) != {"eventId", "kind", "role", "classification", "flags", "byteStart", "byteEnd", "text", "truncated", "isSource", "provenance", "sourceRows", "authorityEligible"}:
         raise TasteV2Error("candidate source context has an invalid envelope shape")
     if source["truncated"] is not False:
         raise TasteV2Error("candidate source context must preserve untruncated evidence text")
@@ -580,6 +587,12 @@ def _bounded_context(
             "text": context_text,
             "truncated": truncated,
             "isSource": is_source,
+            "provenance": transcript_sources.event_provenance(ev),
+            "sourceRows": list(ev.get("sourceRows") or [{
+                "eventId": str(ev.get("eventId") or ""), "rowIndex": int(ev.get("rowIndex") or 0),
+                "byteStart": start, "byteEnd": end, "projection": str(ev.get("projection") or "default"),
+            }]),
+            "authorityEligible": transcript_sources.event_provenance(ev) == "external_user",
         })
         if not is_source:
             total_chars += min(len(text), remaining)
@@ -615,6 +628,62 @@ def _now_iso() -> str:
     return _dt.datetime.now(_dt.timezone.utc).isoformat()
 
 
+def _build_candidate(
+    events: list[dict[str, Any]],
+    index: int,
+    rule_text: str,
+    *,
+    scope: str,
+    category: str | None = None,
+    record_type: str | None = None,
+    max_blocks: int = MAX_CONTEXT_BLOCKS,
+    max_chars: int = MAX_CONTEXT_CHARS,
+) -> TasteCandidateV1 | None:
+    """Bind one proposed rule to one exact authoritative source event."""
+    event = events[index]
+    _assert_authoritative_provenance(event)
+    context_events, context_spans = _bounded_context(
+        events, index, max_blocks=max_blocks, max_chars=max_chars,
+    )
+    if not context_events:
+        return None
+    resolved_scope = scope or "workspace"
+    resolved_category = admission.normalize_category(category or _infer_category(rule_text))
+    byte_start = int(event.get("byteStart") or 0)
+    byte_end = int(event.get("byteEnd") or 0)
+    lifecycle_state = preference_record.normalize_lifecycle_state("candidate")
+    if lifecycle_state not in VALID_LIFECYCLE_STATES:
+        lifecycle_state = "candidate"
+    return TasteCandidateV1(
+        ruleId=_rule_id(resolved_scope, rule_text, byte_start, byte_end),
+        rule=rule_text,
+        scope=resolved_scope,
+        category=resolved_category,
+        recordType=record_type or _infer_record_type(rule_text),
+        sourceEventId=str(event.get("eventId") or ""),
+        sourceByteStart=byte_start,
+        sourceByteEnd=byte_end,
+        sourceRowIndex=int(event.get("rowIndex") or 0),
+        sourceSequence=int(event.get("sequence") or 0),
+        sourceHost=str(event.get("host") or ""),
+        sourceSessionId=str(event.get("sessionId") or ""),
+        sourceTranscriptId=str(event.get("transcriptId") or ""),
+        sourceParserDigest=str(event.get("parserDigest") or ""),
+        sourceKind=str(event.get("kind") or ""),
+        sourceRole=str(event.get("role") or ""),
+        sourceClassification=str(event.get("classification") or event.get("class") or ""),
+        sourceFlags=tuple((name, bool((event.get("flags") or {}).get(name))) for name in SOURCE_FLAG_NAMES),
+        contextEvents=context_events,
+        contextByteSpans=context_spans,
+        evidenceId=_evidence_id(resolved_scope, rule_text),
+        evidenceText=str(event.get("text") or ""),
+        lifecycleState=lifecycle_state,
+        admissionReason="",
+        authorityEffect=authority.classify_authority_effect(rule_text),
+        proposedAt=_now_iso(),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -632,6 +701,8 @@ def iter_candidate_indices(events: list[dict[str, Any]]) -> Iterable[int]:
         kind = str(event.get("kind") or "")
         if kind != "user_message":
             continue
+        if transcript_sources.event_provenance(event) != "external_user":
+            continue
         flags = event.get("flags") or {}
         if any(flags.get(name) for name in _REJECTED_FLAGS):
             continue
@@ -641,6 +712,22 @@ def iter_candidate_indices(events: list[dict[str, Any]]) -> Iterable[int]:
         if _block_intended_health(text):
             continue
         if not (_is_correction(text) or _is_decision(text)):
+            continue
+        yield index
+
+
+def iter_proposer_indices(events: list[dict[str, Any]]) -> Iterable[int]:
+    """Yield safe external-user turns that deterministic extraction missed."""
+    deterministic = set(iter_candidate_indices(events))
+    for index, event in enumerate(events):
+        if index in deterministic or not isinstance(event, dict):
+            continue
+        text = str(event.get("text") or "")
+        if not text or _block_intended_health(text):
+            continue
+        try:
+            _assert_authoritative_provenance(event)
+        except TasteV2Error:
             continue
         yield index
 
@@ -686,60 +773,41 @@ def extract_candidate(
     if not (_is_correction(text) or _is_decision(text)):
         return None
 
-    _assert_authoritative_provenance(event)
-
     rule_text = _normalise_rule_from_correction(text)
     if not rule_text:
         return None
-
-    context_events, context_spans = _bounded_context(
-        events, index, max_blocks=max_blocks, max_chars=max_chars,
+    return _build_candidate(
+        events, index, rule_text, scope=scope,
+        max_blocks=max_blocks, max_chars=max_chars,
     )
-    if not context_events:
+
+
+def propose_candidate(
+    events: list[dict[str, Any]],
+    index: int,
+    rule: str,
+    *,
+    category: str = "",
+    scope: str = "workspace",
+    record_type: str = "standing_preference",
+    max_blocks: int = MAX_CONTEXT_BLOCKS,
+    max_chars: int = MAX_CONTEXT_CHARS,
+) -> TasteCandidateV1 | None:
+    """Bind an LLM proposal to one canonical external-user event.
+
+    LLM output supplies rule wording only. Original event supplies authority,
+    evidence, span, context, session identity, flags, & parser binding.
+    """
+    if not events or not (0 <= index < len(events)):
         return None
-
-    category = _infer_category(rule_text)
-    record_type = _infer_record_type(rule_text)
-    lifecycle_state = preference_record.normalize_lifecycle_state("candidate")
-    if lifecycle_state not in VALID_LIFECYCLE_STATES:
-        lifecycle_state = "candidate"
-
-    byte_start = int(event.get("byteStart") or 0)
-    byte_end = int(event.get("byteEnd") or 0)
-    source_event_id = str(event.get("eventId") or "")
-    if not source_event_id:
-        raise TasteV2Error("source event has no eventId")
-
-    evidence_id = _evidence_id(scope or "workspace", rule_text)
-    rule_id = _rule_id(scope or "workspace", rule_text, byte_start, byte_end)
-
-    return TasteCandidateV1(
-        ruleId=rule_id,
-        rule=rule_text,
-        scope=scope or "workspace",
-        category=category,
-        recordType=record_type,
-        sourceEventId=source_event_id,
-        sourceByteStart=byte_start,
-        sourceByteEnd=byte_end,
-        sourceRowIndex=int(event.get("rowIndex") or 0),
-        sourceSequence=int(event.get("sequence") or 0),
-        sourceHost=str(event.get("host") or ""),
-        sourceSessionId=str(event.get("sessionId") or ""),
-        sourceTranscriptId=str(event.get("transcriptId") or ""),
-        sourceParserDigest=str(event.get("parserDigest") or ""),
-        sourceKind=str(event.get("kind") or ""),
-        sourceRole=str(event.get("role") or ""),
-        sourceClassification=str(event.get("classification") or event.get("class") or ""),
-        sourceFlags=tuple((name, bool((event.get("flags") or {}).get(name))) for name in SOURCE_FLAG_NAMES),
-        contextEvents=context_events,
-        contextByteSpans=context_spans,
-        evidenceId=evidence_id,
-        evidenceText=text,
-        lifecycleState=lifecycle_state,
-        admissionReason="",
-        authorityEffect=authority.classify_authority_effect(rule_text),
-        proposedAt=_now_iso(),
+    event = events[index]
+    text = str(event.get("text") or "") if isinstance(event, dict) else ""
+    rule_text = " ".join(str(rule or "").split()).strip()
+    if not text or not rule_text or _block_intended_health(text):
+        return None
+    return _build_candidate(
+        events, index, rule_text, scope=scope, category=category, record_type=record_type,
+        max_blocks=max_blocks, max_chars=max_chars,
     )
 
 
@@ -754,14 +822,16 @@ def extract_candidates(
     """Run the detector over a transcript event list and return every valid candidate.
 
     Consumes TranscriptEventV1 rows directly. The transport-side path
-    (morph/observable_events.py:42) cannot carry the text needed for
+    (adapt/observable_events.py:42) cannot carry the text needed for
     admission — see TRANSPORT_GAP_NOTE.
     """
+    canonical, _receipt = transcript_sources.canonicalize_events(events)
+    canonical = [event for event in canonical if event.get("evidenceEligible") is not False]
     candidates: list[TasteCandidateV1] = []
-    for index in iter_candidate_indices(events):
-        event_scope = scope_for_event(events[index]) if scope_for_event else scope
+    for index in iter_candidate_indices(canonical):
+        event_scope = scope_for_event(canonical[index]) if scope_for_event else scope
         candidate = extract_candidate(
-            events,
+            canonical,
             index,
             scope=event_scope,
             max_blocks=max_blocks,

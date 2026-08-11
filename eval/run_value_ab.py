@@ -1,7 +1,7 @@
 """Gate 0 — 4-arm retrieval + behavior A/B harness (v2 plan, Gate 0 step 3).
 
-Pinned: 2026-07-13. Morphed from the sealed CommandCode A/B at
-``.cache/morph-taste-ab/evaluate.py``; this script keeps the isolated-service
+Pinned: 2026-07-13. Adapted from the sealed CommandCode A/B at
+``.cache/adapt-taste-ab/evaluate.py``; this script keeps the isolated-service
 machinery and replaces the 2-arm comparison with the v2 plan's 4 arms:
 
   A: current Crypt recall only (baseline).
@@ -9,8 +9,8 @@ machinery and replaces the 2-arm comparison with the v2 plan's 4 arms:
      retrieved normally (proves retrieval value alone).
   C: copied Crypt + the same 16 CommandCode rules as an ALWAYS-INJECTED
      static policy block (proves the value comes from retrieval vs always-on).
-  D: copied Crypt + accepted 10-session Morph candidates, retrieved
-     normally (proves the Morph pipeline produces a useful candidate set
+  D: copied Crypt + accepted 10-session Adapt candidates, retrieved
+     normally (proves the Adapt pipeline produces a useful candidate set
      when fed real session evidence).
 
 All four arms receive the SAME query set: 32 targeted prompts (16 rules ×
@@ -23,12 +23,12 @@ stays focused on the live-DB isolation contract. The grader consumes
 
 Usage::
 
-    py -3.11 tools/pipelines/memory/morph/eval/run_value_ab.py \\
+    py -3.11 tools/pipelines/memory/adapt/eval/run_value_ab.py \\
         --live-db D:/Claude/tools/.cache/memory/crypt-engine.db \\
         --crypt-bin D:/Claude/tools/bin/crypt.exe \\
         --taste-md D:/Claude/.commandcode/taste/taste.md \\
-        --morph-manifest D:/Claude/.cache/morph/review/10session.manifest.json \\
-        --out D:/Claude/.cache/morph-value-ab/
+        --adapt-manifest D:/Claude/.cache/adapt/review/10session.manifest.json \\
+        --out D:/Claude/.cache/adapt-value-ab/
 
 Add ``--smoke`` to use only 4 prompts for fast iteration.
 
@@ -37,7 +37,7 @@ Outputs::
     <out>/A.db                  baseline snapshot
     <out>/B.db                  + 16 CommandCode rules
     <out>/C.db                  + 16 rules (recall only; arm C prepends at prompt)
-    <out>/D.db                  + accepted Morph candidates
+    <out>/D.db                  + accepted Adapt candidates
     <out>/results.json          per-arm retrieval rows + ids + static-block
     <out>/report.md             human-readable summary
     <out>/integrity.json        pre/post DB integrity + row-count checks
@@ -74,7 +74,7 @@ ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib")
 DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/crypt-engine.db"
 DEFAULT_CRYPT = ROOT / "tools/bin/crypt.exe"
 DEFAULT_TASTE_MD = ROOT / ".commandcode/taste/taste.md"
-DEFAULT_OUT = ROOT / ".cache/morph-value-ab"
+DEFAULT_OUT = ROOT / ".cache/adapt-value-ab"
 SCOPE = "D--Claude"
 K = 10                              # recall@K
 SERVICE_READY_TIMEOUT = 20.0        # seconds to wait for service bind
@@ -267,7 +267,7 @@ def put_rule(crypt: Path, db: Path, port: int, rule: TasteRule) -> None:
 
 def put_pref_record(crypt: Path, db: Path, port: int,
                     pref_id: str, scope: str, body: str) -> None:
-    """Insert an Morph candidate preference record into the arm-D snapshot."""
+    """Insert an Adapt candidate preference record into the arm-D snapshot."""
     _run_via_port(crypt, db, port,
                   ["put", pref_id, "--scope", scope, "--tier", "Semantic"],
                   input_text=body)
@@ -330,25 +330,25 @@ def memory_contents(db: Path) -> dict[str, str]:
         return dict(conn.execute("SELECT id, content FROM memories"))
 
 
-# ----- morph candidates -----
+# ----- adapt candidates -----
 
-def load_morph_manifest_records(path: Path | None) -> list[dict]:
-    """Load accepted records from a reviewed Morph manifest, if any."""
+def load_adapt_manifest_records(path: Path | None) -> list[dict]:
+    """Load accepted records from a reviewed Adapt manifest, if any."""
     if path is None or not path.exists():
         return []
     body = json.loads(path.read_text(encoding="utf-8"))
     return [r for r in body.get("records", []) if r.get("status") == "accepted"]
 
 
-def morph_record_envelope(rec: dict) -> str:
-    """Mirror the engine envelope used by morph.to_crypt_content."""
+def adapt_record_envelope(rec: dict) -> str:
+    """Mirror the engine envelope used by adapt.to_crypt_content."""
     cat = rec.get("category", "tooling")
     rule = rec.get("rule", "")
     conf = rec.get("confidence", 0.6)
     return (
-        f"**[morph/{cat}]** — {rule} "
+        f"**[adapt/{cat}]** — {rule} "
         f"Confidence: {conf:.2f} "
-        f"(morph preference, source_ids={rec.get('source_ids', [])})."
+        f"(adapt preference, source_ids={rec.get('source_ids', [])})."
     )
 
 
@@ -434,8 +434,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--live-db", type=Path, default=DEFAULT_LIVE_DB)
     ap.add_argument("--crypt-bin", type=Path, default=DEFAULT_CRYPT)
     ap.add_argument("--taste-md", type=Path, default=DEFAULT_TASTE_MD)
-    ap.add_argument("--morph-manifest", type=Path, default=None,
-                    help="Reviewed 10-session Morph manifest; populates arm D")
+    ap.add_argument("--adapt-manifest", type=Path, default=None,
+                    help="Reviewed 10-session Adapt manifest; populates arm D")
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--smoke", action="store_true",
                     help="use 2 rules × 2 paraphrases + 2 controls for fast iteration")
@@ -497,15 +497,15 @@ def main(argv: list[str] | None = None) -> int:
                         "Crypt DB is identical to arm A")
     arms.append(arms_c)
 
-    # ----- Arm D: + accepted Morph candidates -----
-    morph_records = load_morph_manifest_records(args.morph_manifest)
-    print(f"arm D: +{len(morph_records)} accepted Morph candidates "
-          f"(manifest={args.morph_manifest})")
+    # ----- Arm D: + accepted Adapt candidates -----
+    adapt_records = load_adapt_manifest_records(args.adapt_manifest)
+    print(f"arm D: +{len(adapt_records)} accepted Adapt candidates "
+          f"(manifest={args.adapt_manifest})")
 
     def _inject_d(crypt, db, port):
-        for rec in morph_records:
+        for rec in adapt_records:
             put_pref_record(crypt, db, port, rec["id"], rec.get("scope", SCOPE),
-                            morph_record_envelope(rec))
+                            adapt_record_envelope(rec))
     arms.append(run_arm_with_inject(args.crypt_bin, args.out / "D.db",
                                     rows, tmp, "D", _inject_d))
 

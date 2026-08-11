@@ -20,13 +20,13 @@ def test_build_smoke_items_uses_exactly_five_non_quarantined_supported_records(t
     module = _load()
     treatment = {
         "records": [
-            {"id": f"morph-workflow-rule-{i:010x}", "category": "workflow",
+            {"id": f"adapt-workflow-rule-{i:010x}", "category": "workflow",
              "rule": f"Apply durable workflow rule number {i} when relevant.",
              "scope": "D--Claude", "record_type": "standing_preference",
              "confidence": 0.8, "support": [{"evidence": f"my source phrase {i}"}]}
             for i in range(6)
         ],
-        "exclusions": [{"id": "morph-workflow-rule-0000000000"}],
+        "exclusions": [{"id": "adapt-workflow-rule-0000000000"}],
     }
     records, cases = module.build_smoke_items(treatment, limit=5)
     assert len(records) == len(cases) == 5
@@ -38,14 +38,14 @@ def test_enrich_delivery_records_keeps_full_primary_treatment():
     module = _load()
     treatment = {
         "records": [
-            {"id": f"morph-workflow-rule-{i:010x}", "category": "workflow",
+            {"id": f"adapt-workflow-rule-{i:010x}", "category": "workflow",
              "rule": f"Apply durable workflow rule number {i} when relevant.",
              "scope": "D--Claude", "record_type": "standing_preference",
              "confidence": 0.8,
              "support": [] if i == 0 else [{"evidence": f"my source phrase {i}"}]}
             for i in range(6)
         ],
-        "exclusions": [{"id": "morph-workflow-rule-0000000001"}],
+        "exclusions": [{"id": "adapt-workflow-rule-0000000001"}],
     }
     records = module.enrich_delivery_records(treatment)
     assert len(records) == 6

@@ -16,7 +16,7 @@ import pytest
 
 import event_ingestion
 import learning_outcomes
-import morph_event_learning as learning
+import adapt_event_learning as learning
 
 
 def _event(
@@ -45,8 +45,8 @@ def _event(
 
 
 def test_event_transport_admission_is_metadata_only() -> None:
-    rule = "Always use JSONL for Morph pipeline logs."
-    with pytest.raises(learning.MorphLearningError, match="metadata-only"):
+    rule = "Always use JSONL for Adapt pipeline logs."
+    with pytest.raises(learning.AdaptLearningError, match="metadata-only"):
         learning.admit_user_event(
             _event(rule),
             evidence_text=rule,
@@ -56,8 +56,8 @@ def test_event_transport_admission_is_metadata_only() -> None:
 
 
 def test_event_transport_cannot_reach_approval_or_persistence() -> None:
-    rule = "Always keep Morph learning proposals outside recall until approved."
-    with pytest.raises(learning.MorphLearningError, match="metadata-only"):
+    rule = "Always keep Adapt learning proposals outside recall until approved."
+    with pytest.raises(learning.AdaptLearningError, match="metadata-only"):
         learning.admit_user_event(_event(rule), evidence_text=rule,
                                   scope="Volumes-D-claude", category="tooling")
 
@@ -90,7 +90,7 @@ def test_ingestion_cycle_refuses_metadata_only_transport(tmp_path: Path) -> None
     cursor_store = event_ingestion.CursorStore(tmp_path / "cursors.json")
     outcome_store = learning_outcomes.LearningOutcomeStore(tmp_path / "ledger.jsonl")
 
-    with pytest.raises(learning.MorphLearningError, match="metadata-only"):
+    with pytest.raises(learning.AdaptLearningError, match="metadata-only"):
         learning.run_taste_cycle(transport, installation_id="install-e2e",
                                 scope="Volumes-D-claude", category="tooling",
                                 resolve_evidence=lambda event: text_by_id[event["event_id"]],
@@ -101,11 +101,11 @@ def test_ingestion_cycle_refuses_metadata_only_transport(tmp_path: Path) -> None
 def test_ingestion_cycle_cannot_construct_direct_transcript_authority(tmp_path: Path) -> None:
     """The central C14/L2 acceptance criterion: nothing `run_taste_cycle` does
     on its own -- rerunning it, rescanning the durable ledger, repeating the
-    pull -- can ever move a Morph-proposed rule to active. `run_taste_cycle`
+    pull -- can ever move a Adapt-proposed rule to active. `run_taste_cycle`
     has no code path that constructs a feedback event; the only way a
     proposal advances is a *distinct* event this test appends to the fake
     store, standing in for a real user action Membrane would have recorded
-    independently of Morph."""
+    independently of Adapt."""
     rule = "Always keep event-learned rules quarantined until a distinct approval lands."
     transport = _FakeTasteTransport()
     transport.rows.append(_event(rule, event_id="ev-propose"))
@@ -127,7 +127,7 @@ def test_ingestion_cycle_cannot_construct_direct_transcript_authority(tmp_path: 
             outcome_store=outcome_store,
         )
 
-    with pytest.raises(learning.MorphLearningError, match="metadata-only"):
+    with pytest.raises(learning.AdaptLearningError, match="metadata-only"):
         cycle()
     assert outcome_store.all() == []
 
@@ -140,13 +140,13 @@ def test_ingestion_cycle_rejects_non_user_origin_before_any_outcome_is_written(
     the taste stream a non-user-origin row, `run_taste_cycle` must never admit
     it or write an outcome for it. The store-level guarantee is Membrane's job
     (query_observable_events_for_taste has no origin parameter); this proves the
-    Morph-side check backing it actually fires end-to-end."""
+    Adapt-side check backing it actually fires end-to-end."""
     transport = _FakeTasteTransport()
     transport.rows.append(_event("Never trust an unlabelled origin.", origin="assistant"))
     cursor_store = event_ingestion.CursorStore(tmp_path / "cursors.json")
     outcome_store = learning_outcomes.LearningOutcomeStore(tmp_path / "ledger.jsonl")
 
-    with pytest.raises(learning.MorphLearningError, match="metadata-only"):
+    with pytest.raises(learning.AdaptLearningError, match="metadata-only"):
         learning.run_taste_cycle(
             transport,
             installation_id="install-e2e",
@@ -188,7 +188,7 @@ def _recall(port: int, token: str, query: str, scope: str) -> str:
             "query": query,
             "k": 6,
             "scope": scope,
-            "client": "morph-e2e",
+            "client": "adapt-e2e",
             "session": "next-task-e2e",
         }).encode("utf-8"),
         headers={
@@ -230,15 +230,15 @@ def _stop_service(service: subprocess.Popen) -> None:
         service.wait(timeout=5)
 
 
-@pytest.mark.skipif(os.environ.get("MORPH_E2E") != "1", reason="run by C14 qualifier")
+@pytest.mark.skipif(os.environ.get("ADAPT_E2E") != "1", reason="run by C14 qualifier")
 def test_real_persistence_readback_and_next_use(
     tmp_path: Path, monkeypatch, request: pytest.FixtureRequest
 ) -> None:
     if sys.platform == "darwin":
-        tmp_path = Path(tempfile.mkdtemp(prefix="morph-e2e-", dir=Path.home()))
+        tmp_path = Path(tempfile.mkdtemp(prefix="adapt-e2e-", dir=Path.home()))
         request.addfinalizer(lambda: shutil.rmtree(tmp_path, ignore_errors=True))
     binary = Path(os.environ["CRYPT_BIN"]).resolve()
-    db = tmp_path / "morph.db"
+    db = tmp_path / "adapt.db"
     live_db = Path(
         os.environ.get(
             "CRYPT_LIVE_DB",
@@ -249,7 +249,7 @@ def test_real_persistence_readback_and_next_use(
         with sqlite3.connect(db) as destination:
             source.backup(destination)
     token_file = tmp_path / "api-token"
-    token = "morph-e2e-token-0123456789abcdef"
+    token = "adapt-e2e-token-0123456789abcdef"
     token_file.write_text(token, encoding="utf-8")
     port = _free_port()
     workspace_root = Path(__file__).resolve().parent.parent
@@ -268,7 +268,7 @@ def test_real_persistence_readback_and_next_use(
     }
     service = _start_service(binary, db, port, env)
     try:
-        rule = "Always use JSONL for Morph parity event-e2e logs."
+        rule = "Always use JSONL for Adapt parity event-e2e logs."
         proposal = learning.admit_user_event(
             _event(rule), evidence_text=rule, scope="Volumes-D-claude", category="tooling"
         )

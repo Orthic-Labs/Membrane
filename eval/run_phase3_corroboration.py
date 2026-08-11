@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Blind semantic corroboration panel for frozen Phase 2 Morph candidates."""
+"""Blind semantic corroboration panel for frozen Phase 2 Adapt candidates."""
 from __future__ import annotations
 
 import argparse
@@ -19,7 +19,7 @@ from typing import Callable, Sequence
 WS = Path(
     os.environ.get("WORKSPACE_ROOT") or next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())
 ).expanduser().resolve()
-MORPH_DIR = Path(__file__).resolve().parent.parent  # morph/ — this file lives in morph/eval/
+ADAPT_DIR = Path(__file__).resolve().parent.parent  # adapt/ — this file lives in adapt/eval/
 JURY_DIR = WS / "tools/review"
 SYSTEM = """You are a conservative adjudicator for coding-agent preference memory.
 Return only a JSON array with exactly one object per input item.
@@ -432,9 +432,9 @@ _PROVIDERS_LOCK = threading.Lock()
 def _call_model(model_id: str, system: str, user: str, max_tokens: int) -> str:
     provider_name, model = MODEL_SPECS[model_id]
     if provider_name == "minimax":
-        sys.path.insert(0, str(MORPH_DIR))
-        import morph_llm
-        response = morph_llm.call_lane_response(
+        sys.path.insert(0, str(ADAPT_DIR))
+        import adapt_llm
+        response = adapt_llm.call_lane_response(
             system, user, lane="minimax", max_tokens=max_tokens,
             attempts=3, thinking="disabled", temperature=0.0,
         )
@@ -530,14 +530,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     })
     _write_json_atomic(args.out / "preflight.json", preflight)
 
-    sys.path.insert(0, str(MORPH_DIR))
-    import morph_sessions
+    sys.path.insert(0, str(ADAPT_DIR))
+    import adapt_sessions
     panel = run_panel(
         cases=cases,
         model_ids=args.models,
         output_dir=args.out,
         call_fn=_call_model,
-        scanner=morph_sessions.scan_batch_for_secrets_str,
+        scanner=adapt_sessions.scan_batch_for_secrets_str,
         chunk_size=args.chunk_size,
         max_provider_calls=args.max_provider_calls,
         max_tokens=args.max_tokens,

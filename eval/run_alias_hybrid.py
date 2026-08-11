@@ -1,4 +1,4 @@
-"""Evaluate compiled Morph core plus source-alias Crypt retrieval (arm G)."""
+"""Evaluate compiled Adapt core plus source-alias Crypt retrieval (arm G)."""
 from __future__ import annotations
 
 import argparse
@@ -10,9 +10,9 @@ from pathlib import Path
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 HERE = Path(__file__).resolve().parent
-PRIMARY = ROOT / ".cache/morph-delivery-parity/full"
-DEFAULT_ALIAS_DB = ROOT / ".cache/morph-delivery-parity/evidence-alias/alias.db"
-DEFAULT_CORE = ROOT / ".cache/morph-delivery-parity/compiled-core/core.json"
+PRIMARY = ROOT / ".cache/adapt-delivery-parity/full"
+DEFAULT_ALIAS_DB = ROOT / ".cache/adapt-delivery-parity/evidence-alias/alias.db"
+DEFAULT_CORE = ROOT / ".cache/adapt-delivery-parity/compiled-core/core.json"
 
 
 def _load(path: Path, name: str):
@@ -81,11 +81,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--grader-model", default=runner.DEFAULT_GRADER_MODEL)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
-    out = args.out or ROOT / ".cache/morph-delivery-parity" / (
+    out = args.out or ROOT / ".cache/adapt-delivery-parity" / (
         "alias-hybrid-smoke" if args.smoke else "alias-hybrid-deepseek")
     out.mkdir(parents=True, exist_ok=True)
     value_set = runner.read_json(PRIMARY / "frozen/value-set.json")
-    treatment = runner.read_json(PRIMARY / "frozen/morph-treatment.json")
+    treatment = runner.read_json(PRIMARY / "frozen/adapt-treatment.json")
     primary_actor = runner.read_json(PRIMARY / "actor-results.json")
     compiled = runner.read_json(args.core_file)
     cases = runner.select_cases(value_set["cases"], args.smoke)

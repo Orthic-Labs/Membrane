@@ -1,4 +1,4 @@
-"""Morph rollback — safe-point capture + revert (Gate 4).
+"""Adapt rollback — safe-point capture + revert (Gate 4).
 
 A safe-point is a small JSON file captured BEFORE any live apply. It records
 the minimal information needed to reverse that exact apply if anything goes
@@ -9,28 +9,28 @@ The captured shape is::
 
     {
       "batch_id":       "<journal batch id>",
-      "accepted_ids":   ["D--Claude/morph-workflow-...", ...],
+      "accepted_ids":   ["D--Claude/adapt-workflow-...", ...],
       "manifest_digest": "<sha256 over the immutable manifest payload>",
       "db_path":        "<absolute path to the live Crypt DB>",
       "db_checksum":    "<sha256 of the live DB at capture time>",
       "db_backup_path": "<consistent SQLite backup>",
       "db_backup_checksum": "<sha256 of backup>",
-      "state_snapshot": "<verbatim text of ~/.claude/morph/state.json>",
-      "rules_snapshot": "<verbatim text of ~/.claude/morph/rules.json>",
-      "core_snapshot":  "<verbatim text of ~/.claude/morph/core.json>",
+      "state_snapshot": "<verbatim text of ~/.claude/adapt/state.json>",
+      "rules_snapshot": "<verbatim text of ~/.claude/adapt/rules.json>",
+      "core_snapshot":  "<verbatim text of ~/.claude/adapt/core.json>",
       "core_digest":    "<sha256 of core.json>",
       "created_at":     "<iso8601>"
     }
 
 Usage::
 
-    python tools/pipelines/memory/morph/rollback.py create \
+    python tools/pipelines/memory/adapt/rollback.py create \
         --manifest path/to/manifest.json --db /path/to/crypt-engine.db
 
-    py -3.11 tools/pipelines/memory/morph/rollback.py revert path/to/safepoint.json
+    py -3.11 tools/pipelines/memory/adapt/rollback.py revert path/to/safepoint.json
                                       # default: DRY RUN
 
-    py -3.11 tools/pipelines/memory/morph/rollback.py revert \
+    py -3.11 tools/pipelines/memory/adapt/rollback.py revert \
         path/to/safepoint.json --apply
 
 The revert phase:
@@ -38,7 +38,7 @@ The revert phase:
   - prints the plan (which IDs would be deleted),
   - on ``--apply``: verifies the bound backup, deletes ONLY the recorded IDs
     via the resident crypt service (never raw SQL on the live DB), restores
-    Morph's state/rules/core snapshots, and verifies ``PRAGMA integrity_check``.
+    Adapt's state/rules/core snapshots, and verifies ``PRAGMA integrity_check``.
 
 This module is intentionally conservative — it does NOT have a ``--force``
 flag. If the integrity check fails, the operator is told and the partial
@@ -61,7 +61,7 @@ import preference_record
 from workspace_runtime import workspace_root
 
 WS = workspace_root()
-STATE_DIR = Path.home() / ".claude" / "morph"
+STATE_DIR = Path.home() / ".claude" / "adapt"
 STATE_FILE = STATE_DIR / "state.json"
 RULES_FILE = STATE_DIR / "rules.json"
 CORE_FILE = STATE_DIR / "core.json"
@@ -91,7 +91,7 @@ def _record_rollback(batch_id: str, deleted_count: int, integrity: str,
                      safe_point_path: Path) -> None:
     """Append a content-free rollback event without weakening rollback success."""
     audit_path = Path(os.environ.get(
-        "MORPH_AUDIT_FILE_OVERRIDE", str(STATE_DIR / "audit.jsonl")
+        "ADAPT_AUDIT_FILE_OVERRIDE", str(STATE_DIR / "audit.jsonl")
     ))
     event = {
         "ts": _now_iso(),
@@ -181,7 +181,7 @@ def create_safe_point(manifest: dict, db_path: Path,
       - ``db_checksum``: SHA-256 of the live DB at this instant,
       - ``state_snapshot``: verbatim text of state.json (or "" if absent).
 
-    The safe-point file path defaults to ``~/.claude/morph/safepoints/<batch_id>.json``.
+    The safe-point file path defaults to ``~/.claude/adapt/safepoints/<batch_id>.json``.
     """
     state_path = state_path or STATE_FILE
     rules_path = rules_path or RULES_FILE
@@ -361,7 +361,7 @@ def revert(safe_point_path: Path, apply: bool = False,
     """Revert a previously-applied manifest.
 
     Default: dry-run prints the plan. ``apply=True`` deletes the recorded
-    IDs, restores the captured Morph state/rules/core files, and verifies
+    IDs, restores the captured Adapt state/rules/core files, and verifies
     integrity. The DB backup is retained as an emergency artifact; it is not
     copied over a running live database.
     """
@@ -395,7 +395,7 @@ def revert(safe_point_path: Path, apply: bool = False,
             print(f"  - {n}", file=sys.stderr)
         return 1
 
-    # 2. Restore Morph-owned file snapshots atomically.
+    # 2. Restore Adapt-owned file snapshots atomically.
     state_path = state_path or STATE_FILE
     rules_path = rules_path or RULES_FILE
     core_path = core_path or CORE_FILE
@@ -405,7 +405,7 @@ def revert(safe_point_path: Path, apply: bool = False,
                       sp.get("rules_snapshot", ""))
     _restore_snapshot(core_path, sp.get("core_existed", False),
                       sp.get("core_snapshot", ""))
-    print(f"  Morph state/rules/core snapshots restored")
+    print(f"  Adapt state/rules/core snapshots restored")
 
     # 3. Verify integrity.
     db_path = Path(sp.get("db_path", ""))
@@ -441,7 +441,7 @@ def main(argv: list[str] | None = None) -> int:
                           help="explicit live DB path (defaults to runtime.json or canonical cache)")
     p_create.add_argument("--out", type=Path, default=None,
                           help="explicit safe-point output path (defaults to "
-                               "~/.claude/morph/safepoints/<batch_id>.json)")
+                               "~/.claude/adapt/safepoints/<batch_id>.json)")
     p_create.set_defaults(func=cmd_create)
 
     p_revert = sub.add_parser("revert", help="revert a previously-applied batch")

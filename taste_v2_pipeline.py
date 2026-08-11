@@ -19,6 +19,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.lib.orthic_transcripts import parse_source_events
 import preference_record
+import adapt_llm
 import taste_v2
 import transcript_sources
 
@@ -97,13 +98,89 @@ def quarantine_sources(sources: list[transcript_sources.TranscriptSource],
         rows.append({"source_id": source_id(source, installation_id), "host": str(host), "reason": reason or "unsupported-host"})
     return rows
 
-def extract_source(source: transcript_sources.TranscriptSource, *, scope: str = "workspace") -> list[taste_v2.TasteCandidateV1]:
+def _llm_proposals(
+    events: list[dict[str, Any]],
+    source: transcript_sources.TranscriptSource,
+    *,
+    scope: str,
+    lane: str,
+    llm=None,
+) -> tuple[list[taste_v2.TasteCandidateV1], list[dict[str, Any]], list[str]]:
+    """Run LLM as proposer; bind every output back to its exact user event."""
+    turns = [
+        (source.spec.tool, scope_for_event(source, events[index], scope),
+         str(events[index]["text"]), str(events[index]["sessionId"]), index)
+        for index in taste_v2.iter_proposer_indices(events)
+    ]
+    candidates: list[taste_v2.TasteCandidateV1] = []
+    receipts: list[dict[str, Any]] = []
+    failures: list[str] = []
+    for batch_number, batch in enumerate(adapt_llm.build_batches(turns), 1):
+        outcome = adapt_llm.extract_observations(batch, llm=llm, lane=lane)
+        receipt = {"batch": batch_number, "outcome": outcome.outcome,
+                   "proposals": len(outcome.actions), **outcome.provider_receipt()}
+        if outcome.reason:
+            receipt["reason"] = outcome.reason
+        receipts.append(receipt)
+        if not outcome.committable:
+            failures.append(f"llm-{outcome.outcome}:{outcome.reason or 'no detail'}")
+            continue
+        for proposal in outcome.actions:
+            prompt = proposal.get("prompt")
+            if not isinstance(prompt, int) or not (1 <= prompt <= len(batch)):
+                failures.append("llm-invalid-prompt-binding")
+                continue
+            turn = batch[prompt - 1]
+            try:
+                candidate = taste_v2.propose_candidate(
+                    events, int(turn[4]), str(proposal.get("observation") or ""),
+                    category=str(proposal.get("category") or ""), scope=str(turn[1]),
+                    record_type=("operational_playbook"
+                                 if proposal.get("durability") == "cross_task_correction"
+                                 else "standing_preference"),
+                )
+            except taste_v2.TasteV2Error as exc:
+                failures.append(f"llm-provenance-rejected:{exc}")
+                continue
+            if candidate is not None:
+                candidates.append(candidate)
+    return candidates, receipts, failures
+
+
+def extract_source(source: transcript_sources.TranscriptSource, *, scope: str = "workspace",
+                   provenance_receipt: dict[str, Any] | None = None,
+                   llm_lane: str | None = None, llm=None) -> list[taste_v2.TasteCandidateV1]:
     if source.spec.host not in transcript_sources.SUPPORTED_HOSTS or source.metadata.exclusion_reason:
         return []
-    events = parse_source_events(source.path, host=source.spec.host)
-    candidates = taste_v2.extract_candidates(events, scope_for_event=lambda event: scope_for_event(source, event, scope))
+    raw_events = parse_source_events(source.path, host=source.spec.host)
+    events, receipt = transcript_sources.canonicalize_events(
+        ({**event, "threadSource": source.metadata.thread_source} for event in raw_events)
+    )
+    if provenance_receipt is not None:
+        provenance_receipt.update(receipt.as_dict())
+    candidates = []
+    for index in taste_v2.iter_candidate_indices(events):
+        candidate = taste_v2.extract_candidate(
+            events, index, scope=scope_for_event(source, events[index], scope),
+        )
+        if candidate is not None:
+            candidates.append(candidate)
+    if llm_lane:
+        proposed, llm_receipts, llm_failures = _llm_proposals(
+            events, source, scope=scope, lane=llm_lane, llm=llm,
+        )
+        candidates.extend(proposed)
+        if provenance_receipt is not None:
+            provenance_receipt["llm_proposer"] = {
+                "lane": llm_lane, "batches": llm_receipts, "failures": llm_failures,
+            }
     # Canonical record identity is preference identity, never a span-local alias.
-    return [__import__('dataclasses').replace(c, ruleId=preference_record.derive_id(c.scope, c.category, c.rule)) for c in candidates]
+    deduplicated = {}
+    for candidate in candidates:
+        identity = preference_record.derive_id(candidate.scope, candidate.category, candidate.rule)
+        key = (identity, candidate.sourceEventId)
+        deduplicated[key] = __import__('dataclasses').replace(candidate, ruleId=identity)
+    return list(deduplicated.values())
 
 def scope_for_event(source: transcript_sources.TranscriptSource, event: dict[str, Any], fallback: str = "workspace") -> str:
     """Map each event to a local cwd scope; never bake workspace names into production."""
@@ -153,9 +230,13 @@ def canonical_manifest_candidates(sources, *, scope: str = "workspace") -> list[
 def extraction_contract() -> dict[str, str]:
     parser_source = inspect.getsource(parse_source_events).encode("utf-8")
     extractor_source = inspect.getsource(taste_v2.extract_candidates).encode("utf-8")
+    provenance_source = inspect.getsource(transcript_sources.canonicalize_events).encode("utf-8")
+    proposer_source = (inspect.getsource(_llm_proposals) + adapt_llm.EXTRACT_SYSTEM).encode("utf-8")
     return {"name": EXTRACTION_CONTRACT,
             "parser_sha256": hashlib.sha256(parser_source).hexdigest(),
-            "extractor_sha256": hashlib.sha256(extractor_source).hexdigest()}
+            "extractor_sha256": hashlib.sha256(extractor_source).hexdigest(),
+            "provenance_sha256": hashlib.sha256(provenance_source).hexdigest(),
+            "proposer_sha256": hashlib.sha256(proposer_source).hexdigest()}
 
 def resume_mismatch_reason(discovered: dict, refs: list[dict[str, Any]]) -> str | None:
     if discovered.get("extraction_contract") != extraction_contract():
@@ -171,7 +252,7 @@ def scan_text(text: str) -> bool:
     """Fail closed if exact evidence aliases cannot pass local secret scanning."""
     if not scanner_available():
         return False
-    with tempfile.TemporaryDirectory(prefix="morph-v2-scan-") as directory:
+    with tempfile.TemporaryDirectory(prefix="adapt-v2-scan-") as directory:
         path = Path(directory) / "payload.txt"
         path.write_text(text, encoding="utf-8")
         if shutil.which("gitleaks"):

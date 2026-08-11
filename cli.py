@@ -1,4 +1,4 @@
-"""Morph CLI — direct transcript Taste v2 mining & reviewed-manifest apply."""
+"""Adapt CLI — direct transcript Taste v2 mining & reviewed-manifest apply."""
 from __future__ import annotations
 
 import argparse
@@ -11,7 +11,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import authority  # noqa: E402
+import core_compiler  # noqa: E402
 import manifest  # noqa: E402
+import adapt_llm  # noqa: E402
 import preference_record  # noqa: E402
 import run_journal  # noqa: E402
 import taste_apply  # noqa: E402
@@ -22,18 +24,29 @@ import transcript_sources  # noqa: E402
 
 
 def _candidate_records(sources, refs, authority_manifest: dict,
-                       installation_id: str) -> tuple[list[dict], list[dict]]:
+                       installation_id: str, *, llm_lane: str | None = None,
+                       llm=None) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     """Build immutable pending/rejected records from span-preserving candidates."""
     by_rule: dict[str, list] = {}
     quarantined: list[dict] = []
+    provenance_receipts: list[dict] = []
+    llm_failures: list[dict] = []
     ref_by_path = {row["path"]: row for row in refs}
     for source in sources:
         try:
-            candidates = pipeline.extract_source(source)
+            provenance_receipt = {"source_id": pipeline.source_id(source, installation_id)}
+            candidates = pipeline.extract_source(
+                source, provenance_receipt=provenance_receipt,
+                llm_lane=llm_lane, llm=llm,
+            )
+            provenance_receipts.append(provenance_receipt)
         except Exception as exc:
             quarantined.append({"source_id": pipeline.source_id(source, installation_id),
                                 "reason": f"parse-failed:{type(exc).__name__}"})
             continue
+        for reason in (provenance_receipt.get("llm_proposer") or {}).get("failures", []):
+            llm_failures.append({"source_id": pipeline.source_id(source, installation_id),
+                                 "reason": reason})
         for candidate in candidates:
             admitted = taste_v2.admit_candidate(candidate)
             if admitted.lifecycleState != "active":
@@ -70,7 +83,7 @@ def _candidate_records(sources, refs, authority_manifest: dict,
         candidate["authority_manifest_sha256"] = authority_manifest["manifest_sha256"]
         candidate["payload_sha256"] = manifest.payload_sha256(candidate)
         records.append(candidate)
-    return records, quarantined
+    return records, quarantined, provenance_receipts, llm_failures
 
 
 def _mine(args: argparse.Namespace) -> int:
@@ -81,10 +94,10 @@ def _mine(args: argparse.Namespace) -> int:
         installation_id, canonical_rules = taste_runtime.multiwriter_context(
             manifest_body={}, required=True,
         )
-    except taste_runtime.CrossMachineMorphError as exc:
+    except taste_runtime.CrossMachineAdaptError as exc:
         print(f"error: mining requires multiwriter binding: {exc}", file=sys.stderr)
         return 2
-    state_path = Path.home() / ".claude" / "morph" / "taste-v2-state.json"
+    state_path = Path.home() / ".claude" / "adapt" / "taste-v2-state.json"
     state = pipeline.load_state(state_path)
     discovered = pipeline.discover()
     learn_cap = 3 if args.smoke else args.limit
@@ -97,8 +110,15 @@ def _mine(args: argparse.Namespace) -> int:
                                        installation_id=installation_id)
     quarantine = pipeline.quarantine_sources(typed_quarantine, installation_id)
     if not sources:
-        print("morph: no new direct transcript sources")
+        print("adapt: no new direct transcript sources")
         return 0
+    llm_lane = None if args.deterministic_only else args.lane
+    if llm_lane and llm_lane != "local" and not args.allow_external_lane:
+        print("error: external LLM lane requires --allow-external-lane", file=sys.stderr)
+        return 2
+    if llm_lane and not adapt_llm.lane_available(llm_lane):
+        print(f"error: LLM proposer lane unavailable: {llm_lane}", file=sys.stderr)
+        return 2
     refs = pipeline.source_refs(sources, installation_id)
     journal = run_journal.RunJournal()
     batch_id = run_journal.new_batch_id()
@@ -119,19 +139,25 @@ def _mine(args: argparse.Namespace) -> int:
                        source_refs=refs, extraction_contract=pipeline.extraction_contract(),
                        quarantined_sources=quarantine)
     authority_manifest = authority.build_manifest(Path(__file__).resolve().parents[1])
-    records, extraction_quarantine = _candidate_records(
-        sources, refs, authority_manifest, installation_id,
+    records, extraction_quarantine, provenance_receipts, llm_failures = _candidate_records(
+        sources, refs, authority_manifest, installation_id, llm_lane=llm_lane,
     )
     journal.record(batch_id, "extracted", source_parser_digests=sorted({
         context["sourceParserDigest"] for record in records
         for context in record["evidenceContexts"]
-    }))
+    }), transcript_provenance=provenance_receipts)
+    if llm_failures:
+        journal.record(batch_id, "abandoned", reason="llm_proposer_failed",
+                       failures=llm_failures)
+        print(f"error: LLM proposer failed for {len(llm_failures)} source batch(es)",
+              file=sys.stderr)
+        return 2
     journal.record(batch_id, "admitted", candidates=len(records),
                    quarantined=quarantine + extraction_quarantine)
     if args.manifest:
         body = {"schema_version": preference_record.DIRECT_MANIFEST_SCHEMA_VERSION, "batch_id": batch_id,
                 "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
-                "generator": "morph.py --manifest direct-transcript-v2",
+                "generator": "adapt.py --manifest direct-transcript-v2",
                 "installation_id": installation_id,
                 "canonical_pool_sha256": taste_runtime.cross_machine.canonical_pool_sha256(canonical_rules),
                 "authority_manifest": authority_manifest,
@@ -154,9 +180,9 @@ def _mine(args: argparse.Namespace) -> int:
             journal.record(batch_id, "abandoned", reason="manifest_validation_failed")
             print(f"error: manifest validation failed: {exc}", file=sys.stderr)
             return 2
-        print(f"morph: wrote {args.manifest} ({len(records)} pending; {len(quarantine) + len(extraction_quarantine)} quarantined)")
+        print(f"adapt: wrote {args.manifest} ({len(records)} pending; {len(quarantine) + len(extraction_quarantine)} quarantined)")
         return 0
-    print(f"morph: direct transcript dry run ({len(sources)} sources; {len(records)} pending; {len(quarantine) + len(extraction_quarantine)} quarantined)")
+    print(f"adapt: direct transcript dry run ({len(sources)} sources; {len(records)} pending; {len(quarantine) + len(extraction_quarantine)} quarantined)")
     return 0
 
 
@@ -177,23 +203,20 @@ def main() -> int:
     ap.add_argument("--restart-stale", action="store_true")
     ap.add_argument("--manifest", type=Path)
     ap.add_argument("--quiet", action="store_true")
-    ap.add_argument("--extract-workers", type=int, default=1)
     ap.add_argument("--lane", default="local")
     ap.add_argument("--allow-external-lane", action="store_true")
+    ap.add_argument("--deterministic-only", action="store_true",
+                    help="skip optional LLM recall proposer")
     args = ap.parse_args()
     if args.apply_from_manifest:
         return taste_apply.apply_from_manifest(args.apply_from_manifest)
     if args.compile_core:
-        import core_compiler
-        import morph_llm
-        host = sys.modules.get("morph")
-        scanner = getattr(host, "ts", pipeline)
-        if not scanner.scanner_available() or not morph_llm.lane_available(args.lane):
+        if not pipeline.scanner_available() or not adapt_llm.lane_available(args.lane):
             print("error: core compilation preflight failed", file=sys.stderr)
             return 2
-        records = getattr(host, "load_rules", lambda: {})()
+        records = taste_runtime.load_json(taste_runtime.rules_path())
         result = core_compiler.compile_and_write(records, args.compile_core, lane=args.lane)
-        print(f"morph: compiled {len(result['rules'])} core rules ({result['estimated_tokens']} estimated tokens) -> {args.compile_core}")
+        print(f"adapt: compiled {len(result['rules'])} core rules ({result['estimated_tokens']} estimated tokens) -> {args.compile_core}")
         return 0
     if args.insights:
         from insights import cli_insights
@@ -202,10 +225,10 @@ def main() -> int:
 
 
 def _dispatch(argv: list[str] | None = None) -> int:
-    import doctor as morph_doctor
+    import doctor as adapt_doctor
     args = list(sys.argv[1:] if argv is None else argv)
     if args and args[0] in {"doctor", "doc"}:
-        return morph_doctor.main(args[1:])
+        return adapt_doctor.main(args[1:])
     if argv is None:
         return main()
     old = sys.argv

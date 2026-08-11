@@ -1,6 +1,6 @@
-"""Durable, auditable outcome ledger for Membrane-event-derived Morph rules.
+"""Durable, auditable outcome ledger for Membrane-event-derived Adapt rules.
 
-``morph_event_learning.AdmittedLearning`` is an in-memory value: build it, approve
+``adapt_event_learning.AdmittedLearning`` is an in-memory value: build it, approve
 it, persist it, and it is gone once the process exits. Plan item C14 / L2 requires
 that each learned rule leave an audit trail — what evidence produced it, when, and
 what happened — that survives a restart and lets a resumed ingestion cycle tell
@@ -9,7 +9,7 @@ without re-admitting it.
 
 One append-only JSONL row per lifecycle transition, keyed by ``event_id``. Mirrors
 the existing ``run_journal.RunJournal`` shape/conventions (append-only, JSONL,
-``~/.claude/morph``) rather than inventing a second persistence style.
+``~/.claude/adapt``) rather than inventing a second persistence style.
 """
 
 from __future__ import annotations
@@ -19,14 +19,14 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
-STATE_DIR = Path.home() / ".claude" / "morph"
+STATE_DIR = Path.home() / ".claude" / "adapt"
 OUTCOME_FILE = STATE_DIR / "event_learning_outcomes.jsonl"
 
 # proposed        — admitted as a quarantined candidate (lifecycle_state=candidate)
 # rejected        — admission or approval raised; not eligible for recall
 # approved        — a separate, later user-origin event supplied the exact
 #                    approval text; lifecycle_state=active, not yet in Crypt
-# persisted       — approved AND durably written through morph_persistence
+# persisted       — approved AND durably written through adapt_persistence
 # persist_failed  — approved but the Crypt write did not complete
 VALID_STATUSES = frozenset(
     {"proposed", "rejected", "approved", "persisted", "persist_failed"}
@@ -70,7 +70,7 @@ class LearningOutcomeStore:
         ``status="proposed"`` — they are exactly what a later run needs to
         deterministically replay ``admit_user_event`` (including its original
         record timestamp, via ``record_now``) and reconstruct the pending
-        proposal byte-for-byte, without Morph ever having to remember it in
+        proposal byte-for-byte, without Adapt ever having to remember it in
         memory across restarts.
         """
         if status not in VALID_STATUSES:

@@ -23,7 +23,7 @@ def _module():
 
 def test_build_cases_blinds_arm_and_attaches_grounded_evidence():
     runner = _module()
-    results = {"arms": {"current_morph": {"candidates": [{
+    results = {"arms": {"current_adapt": {"candidates": [{
         "id": "candidate-1",
         "rule": "Always rerun audit until clean.",
         "category": "workflow",
@@ -51,7 +51,7 @@ def test_build_cases_blinds_arm_and_attaches_grounded_evidence():
         "source_session_count": 1,
     }
     assert "arm" not in candidate
-    assert ownership == {"candidate-1": "current_morph"}
+    assert ownership == {"candidate-1": "current_adapt"}
     assert expected == {"control-ex01": True}
 
 
@@ -167,7 +167,7 @@ def test_aggregate_requires_two_calibrated_votes_and_hard_flags_quarantine():
         votes=votes,
         expected_controls=expected,
         candidate_ids={"safe", "risky"},
-        ownership={"safe": "current_morph", "risky": "bounded_full_set"},
+        ownership={"safe": "current_adapt", "risky": "bounded_full_set"},
     )
 
     assert report["models"]["m1"]["eligible"] is True
@@ -250,7 +250,7 @@ def test_panel_blinds_case_identity_and_remaps_votes(tmp_path):
             "source_session_count": 1,
         },
         {
-            "id": "morph-workflow-focused-tests-0123456789", "kind": "candidate",
+            "id": "adapt-workflow-focused-tests-0123456789", "kind": "candidate",
             "rule": "Always run focused tests.", "category": "verification",
             "evidence": ["from now on run focused tests"], "source_session_count": 1,
         },
@@ -262,7 +262,7 @@ def test_panel_blinds_case_identity_and_remaps_votes(tmp_path):
         assert all("kind" not in item for item in payload)
         assert all(item["id"].startswith("item-") for item in payload)
         assert "control-ex49" not in user
-        assert "morph-workflow-focused-tests" not in user
+        assert "adapt-workflow-focused-tests" not in user
         return json.dumps([
             {"id": item["id"], "verdict": "admit", "flags": [], "reason": "durable"}
             for item in payload
@@ -275,7 +275,7 @@ def test_panel_blinds_case_identity_and_remaps_votes(tmp_path):
     )
 
     assert set(result["votes"]["m1"]) == {
-        "control-ex49", "morph-workflow-focused-tests-0123456789",
+        "control-ex49", "adapt-workflow-focused-tests-0123456789",
     }
 
 
@@ -310,7 +310,7 @@ def test_cli_dry_run_reports_bounded_calls_without_writing(tmp_path, capsys):
     phase2 = tmp_path / "phase2"
     phase2.mkdir()
     (phase2 / "results.json").write_text(json.dumps({
-        "arms": {"current_morph": {"candidates": []}}
+        "arms": {"current_adapt": {"candidates": []}}
     }), encoding="utf-8")
     (phase2 / "observations.json").write_text(
         json.dumps({"observations": []}), encoding="utf-8"

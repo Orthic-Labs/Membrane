@@ -1,4 +1,4 @@
-"""Gate 3 — review driver for a 10-session Morph candidate manifest.
+"""Gate 3 — review driver for a 10-session Adapt candidate manifest.
 
 The v2 plan's Gate 3 requires that every accepted candidate passes deterministic
 checks before any live apply, and that unsupported rules (no source excerpt
@@ -230,7 +230,7 @@ def _format_report(review: dict) -> str:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--manifest", type=Path, required=True,
-                    help="the reviewed Morph candidate manifest to gate")
+                    help="the reviewed Adapt candidate manifest to gate")
     ap.add_argument("--out", type=Path, required=True,
                     help="where to write gate3.report.json + gate3.report.md")
     args = ap.parse_args(argv)

@@ -1,4 +1,4 @@
-"""Compile accepted root preferences into Morph's bounded delivery core."""
+"""Compile accepted root preferences into Adapt's bounded delivery core."""
 from __future__ import annotations
 
 import json
@@ -12,14 +12,14 @@ try:
     import workspace_runtime
     TOOLS_LIB = workspace_runtime.workspace_root() / "tools" / "lib"
 except Exception:
-    # Nested historical layout: tools/pipelines/memory/morph → parents[2] == tools
+    # Nested historical layout: tools/pipelines/memory/adapt → parents[2] == tools
     TOOLS_LIB = HERE.parents[2] / "lib"
 if str(TOOLS_LIB) not in sys.path:
     sys.path.insert(0, str(TOOLS_LIB))
 
-import morph_llm
-import morph_sessions
-from memory import morph_core
+import adapt_llm
+import adapt_sessions
+from memory import adapt_core
 
 
 SYSTEM = """Compile durable agent preferences into a compact always-loaded core.
@@ -37,14 +37,14 @@ def _sources(records) -> list[dict]:
     for row in rows:
         source_id = row.get("id") or row.get("name")
         record_type = row.get("record_type")
-        legacy_morph_preference = (
+        legacy_adapt_preference = (
             record_type == "unclassified"
             and isinstance(source_id, str)
-            and source_id.startswith("morph-")
+            and source_id.startswith("adapt-")
         )
         if (
             source_id
-            and (record_type == "standing_preference" or legacy_morph_preference)
+            and (record_type == "standing_preference" or legacy_adapt_preference)
             and row.get("scope") == "D--Claude"
             and row.get("status", "accepted") == "accepted"
         ):
@@ -62,21 +62,21 @@ def _parse_response(text: str) -> dict:
 
 def compile_and_write(records, out: Path, *, lane: str = "minimax", call=None) -> dict:
     sources = _sources(records)
-    if len(sources) < morph_core.MIN_RULES:
+    if len(sources) < adapt_core.MIN_RULES:
         raise ValueError("not enough accepted root standing preferences to compile a core")
     request = json.dumps({"preferences": sources}, ensure_ascii=False)
-    if not morph_sessions.scan_batch_for_secrets_str(request):
+    if not adapt_sessions.scan_batch_for_secrets_str(request):
         raise RuntimeError("secret scanner blocked core compiler input")
-    caller = call or morph_llm.call_lane_response
+    caller = call or adapt_llm.call_lane_response
     response = caller(
         SYSTEM, request, lane=lane, max_tokens=3000, attempts=2,
-        thinking="morphive", temperature=0.1,
+        thinking="adaptive", temperature=0.1,
     )
     raw = response.get("text", "") if isinstance(response, dict) else str(response or "")
-    if not morph_sessions.scan_batch_for_secrets_str(raw):
+    if not adapt_sessions.scan_batch_for_secrets_str(raw):
         raise RuntimeError("secret scanner blocked core compiler output")
     parsed = _parse_response(raw)
-    result = morph_core.seal_rules(
+    result = adapt_core.seal_rules(
         parsed.get("rules"), {row["source_id"] for row in sources}
     )
     result["input_source_count"] = len(sources)

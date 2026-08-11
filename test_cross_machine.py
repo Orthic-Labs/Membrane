@@ -24,11 +24,11 @@ def _db(path: Path) -> Path:
     conn.execute(
         "INSERT INTO memories VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
-            "D--Claude/morph-tooling-jsonl-1111111111",
+            "D--Claude/adapt-tooling-jsonl-1111111111",
             "D--Claude",
-            "**[morph/tooling]** — Always use JSONL for structured logs in shared pipelines. "
+            "**[adapt/tooling]** — Always use JSONL for structured logs in shared pipelines. "
             "Confidence: 0.80 (observations: 3, needs_review: false, updated 2026-07-20)\n"
-            "**Why:** preference record; id=morph-tooling-jsonl-1111111111, evidence_count=3\n"
+            "**Why:** preference record; id=adapt-tooling-jsonl-1111111111, evidence_count=3\n"
             "**Record:** type=standing_preference, authority_effect=neutral\n",
             json.dumps(["install:old:codex:source"]),
             "2026-07-13T00:00:00Z",
@@ -41,7 +41,7 @@ def _db(path: Path) -> Path:
         (
             "D--Claude/unrelated-memory",
             "D--Claude",
-            "not an Morph preference",
+            "not an Adapt preference",
             "[]",
             "2026-07-13T00:00:00Z",
             "2026-07-20T00:00:00Z",
@@ -64,11 +64,11 @@ def _legacy_db(path: Path) -> Path:
     conn.execute(
         "INSERT INTO memories VALUES (?, ?, ?, ?, ?, ?)",
         (
-            "D--Claude/morph-tooling-jsonl-legacy",
+            "D--Claude/adapt-tooling-jsonl-legacy",
             "D--Claude",
-            "**[morph/tooling]** — Keep structured logs in JSONL. "
+            "**[adapt/tooling]** — Keep structured logs in JSONL. "
             "Confidence: 0.80 (observations: 2, needs_review: false, updated 2026-07-20)\n"
-            "**Why:** preference record; id=morph-tooling-jsonl-legacy, evidence_count=2\n"
+            "**Why:** preference record; id=adapt-tooling-jsonl-legacy, evidence_count=2\n"
             "**Record:** type=standing_preference, authority_effect=neutral\n",
             "[]",
             "2026-07-13T00:00:00Z",
@@ -103,8 +103,8 @@ def test_canonical_rule_pool_is_rebuilt_from_engine_not_local_cache(tmp_path: Pa
 
     # Keys are scope-qualified: one rule name can legitimately exist under two
     # scope spellings for the same workspace across machines.
-    assert set(rules) == {"D--Claude/morph-tooling-jsonl-1111111111"}
-    rule = rules["D--Claude/morph-tooling-jsonl-1111111111"]
+    assert set(rules) == {"D--Claude/adapt-tooling-jsonl-1111111111"}
+    rule = rules["D--Claude/adapt-tooling-jsonl-1111111111"]
     assert rule["scope"] == "D--Claude"
     assert rule["category"] == "tooling"
     assert rule["rule"] == "Always use JSONL for structured logs in shared pipelines."
@@ -117,10 +117,10 @@ def test_canonical_rule_pool_is_rebuilt_from_engine_not_local_cache(tmp_path: Pa
 def test_canonical_rule_pool_supports_live_schema_without_record_type(tmp_path: Path) -> None:
     rules = cm.load_canonical_rules(_legacy_db(tmp_path / "legacy-engine.db"))
 
-    assert rules["D--Claude/morph-tooling-jsonl-legacy"]["record_type"] == "standing_preference"
+    assert rules["D--Claude/adapt-tooling-jsonl-legacy"]["record_type"] == "standing_preference"
 
 
-def test_canonical_rule_pool_excludes_legacy_plain_morph_row(tmp_path: Path) -> None:
+def test_canonical_rule_pool_excludes_legacy_plain_adapt_row(tmp_path: Path) -> None:
     path = tmp_path / "plain-engine.db"
     conn = sqlite3.connect(path)
     conn.execute(
@@ -130,7 +130,7 @@ def test_canonical_rule_pool_excludes_legacy_plain_morph_row(tmp_path: Path) -> 
     conn.execute(
         "INSERT INTO memories VALUES (?, ?, ?, ?, ?, ?)",
         (
-            "global/morph-review-external-explicit-opt-in",
+            "global/adapt-review-external-explicit-opt-in",
             "global",
             "External review is explicit opt-in.",
             "[]",
@@ -173,11 +173,11 @@ def test_multiwriter_apply_refuses_wrong_installation_or_stale_pool() -> None:
     cm.validate_multiwriter_binding(
         manifest, installation_id=INSTALLATION, canonical_rules=rules
     )
-    with pytest.raises(cm.CrossMachineMorphError, match="installation"):
+    with pytest.raises(cm.CrossMachineAdaptError, match="installation"):
         cm.validate_multiwriter_binding(
             manifest, installation_id=OTHER_INSTALLATION, canonical_rules=rules
         )
-    with pytest.raises(cm.CrossMachineMorphError, match="pool changed"):
+    with pytest.raises(cm.CrossMachineAdaptError, match="pool changed"):
         cm.validate_multiwriter_binding(
             manifest,
             installation_id=INSTALLATION,
@@ -194,7 +194,7 @@ def test_same_rule_under_two_machine_scopes_is_not_a_duplicate(tmp_path: Path) -
     with sqlite3.connect(path) as conn:
         row = conn.execute(
             "SELECT id, scope_id, content, source_ids, created_at, updated_at, record_type "
-            "FROM memories WHERE id LIKE '%morph-tooling-jsonl-1111111111'"
+            "FROM memories WHERE id LIKE '%adapt-tooling-jsonl-1111111111'"
         ).fetchone()
         mac = ("Volumes-D-claude/" + row[0].split("/", 1)[1], "Volumes-D-claude") + tuple(row[2:])
         conn.execute(
@@ -204,8 +204,8 @@ def test_same_rule_under_two_machine_scopes_is_not_a_duplicate(tmp_path: Path) -
 
     rules = cm.load_canonical_rules(path)
     assert set(rules) == {
-        "D--Claude/morph-tooling-jsonl-1111111111",
-        "Volumes-D-claude/morph-tooling-jsonl-1111111111",
+        "D--Claude/adapt-tooling-jsonl-1111111111",
+        "Volumes-D-claude/adapt-tooling-jsonl-1111111111",
     }
 
     # A real duplicate -- same name in the SAME scope -- must still raise, even
@@ -217,7 +217,7 @@ def test_same_rule_under_two_machine_scopes_is_not_a_duplicate(tmp_path: Path) -
         conn.execute(
             "INSERT INTO memories (id, scope_id, content, source_ids, created_at, "
             "updated_at, record_type) VALUES (?,?,?,?,?,?,?)",
-            ("morph-tooling-jsonl-1111111111", "D--Claude") + tuple(row[2:]),
+            ("adapt-tooling-jsonl-1111111111", "D--Claude") + tuple(row[2:]),
         )
-    with pytest.raises(cm.CrossMachineMorphError, match="duplicate canonical Morph identity"):
+    with pytest.raises(cm.CrossMachineAdaptError, match="duplicate canonical Adapt identity"):
         cm.load_canonical_rules(path)

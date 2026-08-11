@@ -7,9 +7,9 @@ from pathlib import Path
 
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
-DEFAULT_A = ROOT / ".cache/morph-delivery-parity/full/grader-results.json"
-DEFAULT_B = ROOT / ".cache/morph-delivery-parity/full-nemotron/grader-results.json"
-DEFAULT_OUT = ROOT / ".cache/morph-delivery-parity/grader-agreement.json"
+DEFAULT_A = ROOT / ".cache/adapt-delivery-parity/full/grader-results.json"
+DEFAULT_B = ROOT / ".cache/adapt-delivery-parity/full-nemotron/grader-results.json"
+DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/grader-agreement.json"
 
 
 def weighted_kappa(left: list[int], right: list[int]) -> float:

@@ -12,9 +12,9 @@ from pathlib import Path
 import cross_machine
 import rollback
 
-STATE_DIR = Path.home() / ".claude" / "morph"
+STATE_DIR = Path.home() / ".claude" / "adapt"
 
-def state_dir() -> Path: return Path(os.environ.get("MORPH_STATE_DIR", STATE_DIR))
+def state_dir() -> Path: return Path(os.environ.get("ADAPT_STATE_DIR", STATE_DIR))
 def state_path() -> Path: return state_dir() / "taste-v2-state.json"
 def rules_path() -> Path: return state_dir() / "rules.json"
 def load_json(path: Path, default: dict | None = None) -> dict:
@@ -29,7 +29,7 @@ def run_crypt(args: list[str]) -> bool:
     binary = shutil.which("crypt")
     if not binary: return False
     command = list(args)
-    if command and command[0] == "put": command.extend(["--artifact-family", "morph", "--producer", "morph", "--record-type", "preference"])
+    if command and command[0] == "put": command.extend(["--artifact-family", "adapt", "--producer", "adapt", "--record-type", "preference"])
     try: return subprocess.run([binary, *command], capture_output=True, text=True, timeout=150).returncode == 0
     except (OSError, subprocess.TimeoutExpired): return False
 def scanner_available() -> bool: return bool(shutil.which("gitleaks") or shutil.which("detect-secrets"))
@@ -37,7 +37,7 @@ def scanner_available() -> bool: return bool(shutil.which("gitleaks") or shutil.
 
 def installation_file() -> Path:
     """Return shared multiwriter installation identity location."""
-    override = os.environ.get("MORPH_INSTALLATION_FILE", "").strip()
+    override = os.environ.get("ADAPT_INSTALLATION_FILE", "").strip()
     if override:
         return Path(override)
     return Path(__file__).resolve().parents[1] / "tools/.cache/memory/installation.json"
@@ -48,14 +48,14 @@ def multiwriter_context(*, manifest_body: dict, required: bool = False) -> tuple
     identity_path = installation_file()
     if not identity_path.is_file():
         if required:
-            raise cross_machine.CrossMachineMorphError(
+            raise cross_machine.CrossMachineAdaptError(
                 "multiwriter manifest requires a local schema-v2 installation identity"
             )
         return None
     installation_id = cross_machine.load_installation_id(identity_path)
     db_path = rollback._discover_db_path(manifest_body)
     if db_path is None:
-        raise cross_machine.CrossMachineMorphError("canonical Crypt DB is unavailable")
+        raise cross_machine.CrossMachineAdaptError("canonical Crypt DB is unavailable")
     return installation_id, cross_machine.load_canonical_rules(db_path)
 
 
@@ -83,4 +83,4 @@ def validate_multiwriter_binding(
     )
 
 
-CrossMachineMorphError = cross_machine.CrossMachineMorphError
+CrossMachineAdaptError = cross_machine.CrossMachineAdaptError

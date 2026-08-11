@@ -4,13 +4,20 @@ from __future__ import annotations
 import json
 import os
 import hashlib
+import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
 SUPPORTED_HOSTS = frozenset({"claude_code", "codex"})
 _MAX_CWD_TRANSITIONS = 50
 _MAX_METADATA_ROWS = 50
+PROVENANCE_KINDS = frozenset({"external_user", "assistant", "developer", "internal_context",
+                              "tool_result", "subagent"})
+_INTERNAL_PREFIXES = ("<codex_internal_context", "<recommended_plugins", "<system-reminder",
+                      "<command-name", "<environment_context", "<permissions", "<app-context",
+                      "<skills_instructions", "# agents.md instructions for ")
 
 
 @dataclass(frozen=True)
@@ -62,6 +69,118 @@ class TranscriptSource:
         return metadata.cwd_by_row[-1][1] if metadata and metadata.cwd_by_row else ""
 
 
+@dataclass(frozen=True)
+class CanonicalizationStats:
+    raw_rows: int
+    canonical_messages: int
+    eligible_user_turns: int
+    dropped_reasons: dict[str, int]
+    authority_ineligible_reasons: dict[str, int]
+    deduplicated_count: int
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"rawRows": self.raw_rows, "canonicalMessages": self.canonical_messages,
+                "eligibleUserTurns": self.eligible_user_turns,
+                "droppedReasons": dict(sorted(self.dropped_reasons.items())),
+                "authorityIneligibleReasons": dict(sorted(self.authority_ineligible_reasons.items())),
+                "deduplicatedCount": self.deduplicated_count}
+
+
+def _internal_context(text: str) -> bool:
+    return text.strip().casefold().startswith(_INTERNAL_PREFIXES)
+
+
+def event_provenance(event: dict[str, Any]) -> str:
+    """Classify one consumer-side event without changing frozen Orthic code."""
+    thread_source = str(event.get("threadSource") or event.get("thread_source") or "").casefold()
+    flags = event.get("flags") if isinstance(event.get("flags"), dict) else {}
+    if thread_source in {"subagent", "sidechain"} or flags.get("isSidechain"):
+        return "subagent"
+    existing = event.get("provenance")
+    if existing in PROVENANCE_KINDS:
+        return str(existing)
+    kind = str(event.get("kind") or "").casefold()
+    role = str(event.get("role") or "").casefold()
+    text = str(event.get("text") or "")
+    if role == "developer" or kind == "developer_message": return "developer"
+    if kind in {"tool_call", "tool_result"}: return "tool_result"
+    if _internal_context(text) or flags.get("meta") or event.get("meta"): return "internal_context"
+    if kind == "user_message" and role in {"", "user"}: return "external_user"
+    if kind in {"assistant_message", "agent_message"} or role in {"assistant", "agent"}: return "assistant"
+    return "internal_context"
+
+
+def _row_refs(event: dict[str, Any]) -> list[dict[str, Any]]:
+    existing = event.get("sourceRows")
+    if isinstance(existing, list) and all(isinstance(row, dict) for row in existing):
+        return [dict(row) for row in existing]
+    return [{"eventId": str(event.get("eventId") or ""), "rowIndex": int(event.get("rowIndex") or 0),
+             "byteStart": int(event.get("byteStart") or 0), "byteEnd": int(event.get("byteEnd") or 0),
+             "projection": str(event.get("projection") or "default")}]
+
+
+def _time_value(value: Any) -> float | None:
+    if not isinstance(value, str) or not value: return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def _adjacent_mirror(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    provenance = event_provenance(right)
+    if provenance not in {"assistant", "developer", "internal_context", "subagent"}: return False
+    if event_provenance(left) != provenance: return False
+    left_row, right_row = int(left.get("rowIndex") or 0), int(right.get("rowIndex") or 0)
+    if left_row > 0 and right_row > 0 and right_row - left_row not in {0, 1}: return False
+    left_text = re.sub(r"\s+", " ", str(left.get("text") or "").strip()).casefold()
+    right_text = re.sub(r"\s+", " ", str(right.get("text") or "").strip()).casefold()
+    if not left_text or hashlib.sha256(left_text.encode()).digest() != hashlib.sha256(right_text.encode()).digest(): return False
+    left_time, right_time = _time_value(left.get("timestamp")), _time_value(right.get("timestamp"))
+    return (left_time is None and right_time is None) or (left_time is not None and right_time is not None
+                                                          and abs(right_time - left_time) <= 2)
+
+
+def canonicalize_events(events: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any]], CanonicalizationStats]:
+    """Attach provenance, quarantine non-evidence, & collapse mirrored projections."""
+    raw = [dict(event) for event in events if isinstance(event, dict)]
+    explicit_raw = max((int(event.get("rawRowCount") or 0) for event in raw), default=0)
+    row_indexes = {int(event.get("rowIndex") or 0) for event in raw if int(event.get("rowIndex") or 0) > 0}
+    raw_rows = explicit_raw or len(row_indexes) or len(raw)
+    canonical: list[dict[str, Any]] = []
+    by_stable_id: dict[str, int] = {}
+    dropped: dict[str, int] = {}
+    authority_ineligible: dict[str, int] = {}
+    deduplicated = 0
+    for event in raw:
+        provenance = event_provenance(event)
+        event["provenance"] = provenance
+        event["authorityEligible"] = provenance == "external_user"
+        event["evidenceEligible"] = event.get("evidenceEligible") is not False and (
+            provenance not in {"developer", "internal_context", "subagent"}
+            or (provenance == "subagent" and event.get("kind") in {"assistant_message", "agent_message"})
+        )
+        event["sourceRows"] = _row_refs(event)
+        if not event["evidenceEligible"]: dropped[provenance] = dropped.get(provenance, 0) + 1
+        if not event["authorityEligible"]: authority_ineligible[provenance] = authority_ineligible.get(provenance, 0) + 1
+        event_id = str(event.get("eventId") or "")
+        duplicate_index = by_stable_id.get(event_id) if event_id else None
+        if duplicate_index is not None:
+            prior = canonical[duplicate_index]
+            if event_provenance(prior) == provenance and str(prior.get("text") or "") == str(event.get("text") or ""):
+                prior["sourceRows"].extend(row for row in event["sourceRows"] if row not in prior["sourceRows"])
+                deduplicated += 1
+                continue
+        if canonical and _adjacent_mirror(canonical[-1], event):
+            canonical[-1]["sourceRows"].extend(row for row in event["sourceRows"] if row not in canonical[-1]["sourceRows"])
+            deduplicated += 1
+            continue
+        by_stable_id[event_id] = len(canonical)
+        canonical.append(event)
+    messages = sum(1 for event in canonical if str(event.get("kind") or "").endswith("_message"))
+    eligible = sum(1 for event in canonical if event.get("authorityEligible") is True)
+    return canonical, CanonicalizationStats(raw_rows, messages, eligible, dropped, authority_ineligible, deduplicated)
+
 def _home(home: Path | None) -> Path:
     return (home or Path.home()).resolve()
 
@@ -72,8 +191,8 @@ def _bounded(value: int | None, default: int) -> int:
 
 def _active_codex_ids() -> set[str]:
     names = {
-        "CODEX_THREAD_ID", "MORPH_ACTIVE_CODEX_THREAD_IDS",
-        "MORPH_ACTIVE_CODEX_THREAD_ID", "MORPH_ACTIVE_CODEX_THREADS",
+        "CODEX_THREAD_ID", "ADAPT_ACTIVE_CODEX_THREAD_IDS",
+        "ADAPT_ACTIVE_CODEX_THREAD_ID", "ADAPT_ACTIVE_CODEX_THREADS",
     }
     return {
         item

@@ -1,4 +1,4 @@
-"""Registry-ready transcript discovery and user-turn extraction for Morph.
+"""Registry-ready transcript discovery and user-turn extraction for Adapt.
 
 Only bounded, known harness transcript roots are searched. Ordinary workspace
 files are never considered transcripts. Only user-authored text blocks are
@@ -20,11 +20,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from workspace_runtime import workspace_root
+import transcript_sources
 
-STATE_DIR = Path.home() / ".claude" / "morph"
+STATE_DIR = Path.home() / ".claude" / "adapt"
 STATE_FILE = STATE_DIR / "state.json"
-# Same anchor as morph.WORKSPACE_ROOT / preference_record._WORKSPACE_ROOT:
-# .../tools/pipelines/memory/morph/<file> -> workspace root.
+# Same anchor as adapt.WORKSPACE_ROOT / preference_record._WORKSPACE_ROOT:
+# .../tools/pipelines/memory/adapt/<file> -> workspace root.
 _WORKSPACE_ROOT = workspace_root()
 
 MIN_TURN_CHARS = 10
@@ -97,7 +98,7 @@ def scanner_clean(text: str) -> bool:
         return False
     if text in _SCANNER_CACHE:
         return _SCANNER_CACHE[text]
-    with tempfile.TemporaryDirectory(prefix="morph-scan-") as d:
+    with tempfile.TemporaryDirectory(prefix="adapt-scan-") as d:
         p = Path(d) / "turn.txt"
         p.write_text(text, encoding="utf-8")
         if shutil.which("gitleaks"):
@@ -150,7 +151,7 @@ def scan_text(text: str) -> bool:
     """
     if not scanner_available():
         return False
-    with tempfile.TemporaryDirectory(prefix="morph-scan-") as d:
+    with tempfile.TemporaryDirectory(prefix="adapt-scan-") as d:
         p = Path(d) / "payload.txt"
         p.write_text(text, encoding="utf-8")
         if shutil.which("gitleaks"):
@@ -277,6 +278,9 @@ class Message:
     observed_at: str | None = None
     author: str | None = None
     recipient: str | None = None
+    provenance: str = "internal_context"
+    evidence_eligible: bool = False
+    source_rows: list[dict[str, object]] = field(default_factory=list)
 
 
 @dataclass
@@ -286,6 +290,11 @@ class ParseStats:
     truncated_turns: int = 0
     scanner_drops: int = 0
     unknown_rows: int = 0
+    raw_rows: int = 0
+    canonical_messages: int = 0
+    eligible_user_turns: int = 0
+    deduplicated_count: int = 0
+    dropped_reasons: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -313,7 +322,10 @@ class Session:
 
 
 def _messages_for_turns(turns: list[Turn]) -> list[Message]:
-    return [Message(turn.text, turn.scope, "user", turn.observed_at) for turn in turns]
+    return [Message(
+        turn.text, turn.scope, "user", turn.observed_at,
+        provenance="external_user", evidence_eligible=True,
+    ) for turn in turns]
 
 
 def _keep_turn(text: str) -> bool:
@@ -393,13 +405,13 @@ def parse_claude_session(
 def parse_codex_session(
     path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
 ) -> Session | None:
-    turns: list[Turn] = []
-    messages: list[Message] = []
+    raw_events: list[dict[str, object]] = []
     stats = ParseStats()
     cwd, sid = "", path.stem
     thread_source, parent_thread_id, agent_role = "user", None, None
     with open(path, encoding="utf-8", errors="replace") as fh:
-        for line in fh:
+        for row_index, line in enumerate(fh, 1):
+            stats.raw_rows += 1
             try:
                 obj = json.loads(line)
             except json.JSONDecodeError:
@@ -420,7 +432,6 @@ def parse_codex_session(
                 if parent:
                     thread_source = "subagent"
                     parent_thread_id = str(parent)
-                    turns.clear()
             if obj.get("type") == "session_meta":
                 if (payload.get("originator") == "codex_exec"
                         and payload.get("source") == "exec"):
@@ -433,35 +444,65 @@ def parse_codex_session(
             agent_role = payload.get("agent_role") or payload.get("role_name") or agent_role
             if obj.get("type") == "event_msg" and payload.get("type") == "agent_message":
                 role = "agent"
-            if obj.get("type") not in {"response_item", "event_msg"} or role not in {"user", "developer", "assistant", "agent"}:
+            payload_type = str(payload.get("type") or "")
+            kind = f"{role}_message" if role in {"user", "developer", "assistant", "agent"} else ""
+            if payload_type in {"function_call_output", "custom_tool_call_output"}:
+                kind, role = "tool_result", "user"
+            elif payload_type in {"function_call", "custom_tool_call"}:
+                kind, role = "tool_call", "assistant"
+            if obj.get("type") not in {"response_item", "event_msg"} or not kind:
                 if obj.get("type") not in ("response_item", "session_meta", "event_msg"):
                     stats.unknown_rows += 1
                 continue
             blocks = payload.get("content") or []
             if not blocks and isinstance(payload.get("message"), str):
                 blocks = [{"text": payload["message"]}]
-            for item in blocks:
+            if not blocks and kind in {"tool_call", "tool_result"}:
+                blocks = [{"text": str(payload.get("output", payload.get("arguments", "")))}]
+            identifiers = (payload.get(key) for key in (
+                "event_id", "eventId", "message_id", "messageId", "item_id", "itemId"))
+            event_identifier = next((str(value) for value in (*identifiers, obj.get("event_id"), obj.get("eventId"))
+                                     if isinstance(value, (str, int)) and not isinstance(value, bool) and str(value)), "")
+            for block_index, item in enumerate(blocks):
                 if isinstance(item, dict) and isinstance(item.get("text"), str):
                     text = item["text"].strip()
                     if text:
-                        messages.append(Message(text, scope_for_cwd(cwd), str(role),
-                                                obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
-                                                payload.get("author"), payload.get("recipient")))
-                    if role == "user" and _keep_turn(text) and thread_source == "user":
-                        cleaned = _clean(text, stats)
-                        if cleaned is not None:
-                            turns.append(Turn(
-                                cleaned,
-                                scope_for_cwd(cwd),
-                                obj.get("timestamp") if isinstance(obj.get("timestamp"), str) else None,
-                            ))
-                            stats.kept_turns += 1
-                    elif role == "user":
-                        stats.dropped_turns += 1
-            if max_turns is not None and len(turns) >= max_turns:
-                stats.dropped_turns += 1
-                break
-    if not messages:
+                        raw_events.append({"eventId": f"{event_identifier}:{block_index}" if event_identifier else "",
+                            "rowIndex": row_index, "blockIndex": block_index, "kind": kind, "role": role, "text": text,
+                            "timestamp": obj.get("timestamp"), "projection": obj.get("type"),
+                            "scope": scope_for_cwd(cwd), "author": payload.get("author"),
+                            "recipient": payload.get("recipient")})
+    for event in raw_events:
+        event["threadSource"] = "subagent" if thread_source == "subagent" else "root"
+    canonical, receipt = transcript_sources.canonicalize_events(raw_events)
+    messages = [Message(
+        str(event.get("text") or ""), str(event.get("scope") or scope_for_cwd(cwd)),
+        "user" if event.get("provenance") == "external_user" else "assistant",
+        str(event["timestamp"]) if isinstance(event.get("timestamp"), str) else None,
+        str(event["author"]) if isinstance(event.get("author"), str) else None,
+        str(event["recipient"]) if isinstance(event.get("recipient"), str) else None,
+        str(event.get("provenance")), bool(event.get("evidenceEligible")),
+        list(event.get("sourceRows") or []),
+    ) for event in canonical if event.get("provenance") in {"external_user", "assistant"}]
+    turns: list[Turn] = []
+    for event in canonical:
+        if event.get("provenance") != "external_user":
+            continue
+        text = str(event.get("text") or "")
+        if not _keep_turn(text) or (max_turns is not None and len(turns) >= max_turns):
+            stats.dropped_turns += 1
+            stats.dropped_reasons["user_filter"] = stats.dropped_reasons.get("user_filter", 0) + 1
+            continue
+        turns.append(Turn(_clean(text, stats), str(event.get("scope") or scope_for_cwd(cwd)),
+                          str(event["timestamp"]) if isinstance(event.get("timestamp"), str) else None))
+        stats.kept_turns += 1
+    stats.raw_rows = max(stats.raw_rows, receipt.raw_rows)
+    stats.canonical_messages = receipt.canonical_messages
+    stats.eligible_user_turns = len(turns)
+    stats.deduplicated_count = receipt.deduplicated_count
+    for reason, count in receipt.authority_ineligible_reasons.items():
+        stats.dropped_reasons[reason] = stats.dropped_reasons.get(reason, 0) + count
+    if not messages and thread_source != "subagent":
         return None
     return Session("codex", sid, path, cwd, path.stat().st_mtime, turns, stats,
                    messages, agent_role, thread_source, parent_thread_id)
@@ -779,7 +820,7 @@ def is_active_session(
         value.strip()
         for value in (
             env.get("CODEX_THREAD_ID", ""),
-            *env.get("MORPH_ACTIVE_CODEX_THREAD_IDS", "").split(","),
+            *env.get("ADAPT_ACTIVE_CODEX_THREAD_IDS", "").split(","),
         )
         if value.strip()
     }

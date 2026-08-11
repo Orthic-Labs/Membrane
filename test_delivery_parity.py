@@ -6,16 +6,16 @@ import sqlite3
 from pathlib import Path
 
 
-MORPH_DIR = Path(__file__).resolve().parent
-BUILDER = MORPH_DIR / "eval" / "build_delivery_parity_set.py"
-RUNNER = MORPH_DIR / "eval" / "run_delivery_parity.py"
-EVIDENCE_RECALL = MORPH_DIR / "eval" / "evaluate_delivery_evidence_recall.py"
-GRADER_COMPARE = MORPH_DIR / "eval" / "compare_delivery_graders.py"
-BUDGETED = MORPH_DIR / "eval" / "run_budgeted_delivery_hybrid.py"
-CORE_BUILDER = MORPH_DIR / "eval" / "build_budgeted_core_digest.py"
-CONTROL_AUDIT = MORPH_DIR / "eval" / "audit_delivery_controls.py"
-ALIAS_RETRIEVAL = MORPH_DIR / "eval" / "run_evidence_alias_retrieval.py"
-ALIAS_HYBRID = MORPH_DIR / "eval" / "run_alias_hybrid.py"
+ADAPT_DIR = Path(__file__).resolve().parent
+BUILDER = ADAPT_DIR / "eval" / "build_delivery_parity_set.py"
+RUNNER = ADAPT_DIR / "eval" / "run_delivery_parity.py"
+EVIDENCE_RECALL = ADAPT_DIR / "eval" / "evaluate_delivery_evidence_recall.py"
+GRADER_COMPARE = ADAPT_DIR / "eval" / "compare_delivery_graders.py"
+BUDGETED = ADAPT_DIR / "eval" / "run_budgeted_delivery_hybrid.py"
+CORE_BUILDER = ADAPT_DIR / "eval" / "build_budgeted_core_digest.py"
+CONTROL_AUDIT = ADAPT_DIR / "eval" / "audit_delivery_controls.py"
+ALIAS_RETRIEVAL = ADAPT_DIR / "eval" / "run_evidence_alias_retrieval.py"
+ALIAS_HYBRID = ADAPT_DIR / "eval" / "run_alias_hybrid.py"
 
 import pytest
 
@@ -23,19 +23,19 @@ import pytest
 # .cache/ (never committed). On a checkout without the pack these tests skip
 # with a named reason instead of failing — same portability contract as the
 # scanner-dependent extraction test. Evidence pack:
-# docs/baselines/morph-taste-parity-2026-07-14/README.md
+# docs/baselines/adapt-taste-parity-2026-07-14/README.md
 import workspace_runtime  # noqa: E402
 
 _WS = workspace_runtime.workspace_root()
-_FROZEN_VALUE_INPUTS = _WS / ".cache/morph-commandcode-delta-m3-seeded-sanitized-split1-v1/results-rescoped.json"
-_FROZEN_TREATMENT = _WS / ".cache/morph-delivery-parity/full/frozen/morph-treatment.json"
+_FROZEN_VALUE_INPUTS = _WS / ".cache/adapt-commandcode-delta-m3-seeded-sanitized-split1-v1/results-rescoped.json"
+_FROZEN_TREATMENT = _WS / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
 requires_frozen_inputs = pytest.mark.skipif(
     not _FROZEN_VALUE_INPUTS.exists(),
-    reason="machine-local frozen evidence pack absent (.cache/morph-commandcode-delta-m3-seeded-sanitized-split1-v1)",
+    reason="machine-local frozen evidence pack absent (.cache/adapt-commandcode-delta-m3-seeded-sanitized-split1-v1)",
 )
 requires_frozen_treatment = pytest.mark.skipif(
     not _FROZEN_TREATMENT.exists(),
-    reason="machine-local frozen delivery-parity treatment absent (.cache/morph-delivery-parity/full/frozen)",
+    reason="machine-local frozen delivery-parity treatment absent (.cache/adapt-delivery-parity/full/frozen)",
 )
 
 
@@ -50,11 +50,11 @@ def _load(path: Path, name: str):
 @requires_frozen_inputs
 def test_real_value_set_is_balanced_frozen_and_has_no_rule_leakage():
     module = _load(BUILDER, "build_delivery_parity_set")
-    value_set, treatment = module.build_value_set(module.DEFAULT_TASTE, module.DEFAULT_MORPH)
+    value_set, treatment = module.build_value_set(module.DEFAULT_TASTE, module.DEFAULT_ADAPT)
 
     assert value_set["counts"] == {
         "total": 60, "shared": 16, "taste_only": 16,
-        "morph_only": 16, "control": 12,
+        "adapt_only": 16, "control": 12,
     }
     assert len(value_set["taste_rules"]) == 52
     assert len(treatment["records"]) == 57
@@ -63,7 +63,7 @@ def test_real_value_set_is_balanced_frozen_and_has_no_rule_leakage():
     assert len({row["case_id"] for row in value_set["cases"]}) == 60
     for row in value_set["cases"]:
         expected = row.get("expected") or {}
-        for key in ("taste_rule", "morph_rule"):
+        for key in ("taste_rule", "adapt_rule"):
             rule = expected.get(key)
             assert not rule or rule.casefold() not in row["prompt"].casefold()
 
@@ -71,7 +71,7 @@ def test_real_value_set_is_balanced_frozen_and_has_no_rule_leakage():
 @requires_frozen_inputs
 def test_treatment_uses_raw_output_and_keeps_curation_as_secondary_audit():
     module = _load(BUILDER, "build_delivery_parity_set")
-    _, treatment = module.build_value_set(module.DEFAULT_TASTE, module.DEFAULT_MORPH)
+    _, treatment = module.build_value_set(module.DEFAULT_TASTE, module.DEFAULT_ADAPT)
     accepted = {row["id"] for row in treatment["records"]}
     curated = {row["id"] for row in treatment["curated_records"]}
     excluded = {row["id"] for row in treatment["exclusions"]}
@@ -116,12 +116,12 @@ def test_batched_replay_uses_one_replay_and_direct_sqlite_lookup(tmp_path, monke
 def test_smoke_selector_covers_every_positive_cohort_and_controls():
     runner = _load(RUNNER, "run_delivery_parity")
     builder = _load(BUILDER, "build_delivery_parity_set_for_smoke")
-    value_set, _ = builder.build_value_set(builder.DEFAULT_TASTE, builder.DEFAULT_MORPH)
+    value_set, _ = builder.build_value_set(builder.DEFAULT_TASTE, builder.DEFAULT_ADAPT)
     smoke = runner.select_cases(value_set["cases"], smoke=True)
 
     assert len(smoke) == 5
     assert {row["cohort"] for row in smoke} == {
-        "shared", "taste_only", "morph_only", "control",
+        "shared", "taste_only", "adapt_only", "control",
     }
 
 
@@ -138,7 +138,7 @@ def test_actor_splits_a_truncated_batch_and_preserves_exact_coverage(tmp_path, m
     treatment = {"records": []}
 
     monkeypatch.setattr(runner, "ARMS", ("A",))
-    monkeypatch.setattr(runner.morph_sessions, "scan_batch_for_secrets_str", lambda _x: True)
+    monkeypatch.setattr(runner.adapt_sessions, "scan_batch_for_secrets_str", lambda _x: True)
 
     def fake_call(system, user, **_kwargs):
         if system == runner.JSON_REPAIR_SYSTEM:
@@ -149,7 +149,7 @@ def test_actor_splits_a_truncated_batch_and_preserves_exact_coverage(tmp_path, m
         return {"text": json.dumps([{"case_id": cid, "answer": "ok"} for cid in ids]),
                 "model": "fake"}
 
-    monkeypatch.setattr(runner.morph_llm, "call_lane_response", fake_call)
+    monkeypatch.setattr(runner.adapt_llm, "call_lane_response", fake_call)
     result = runner.run_actor(value_set, treatment, cases, retrieval, tmp_path,
                               resume=False, batch_size=6)
 
@@ -170,7 +170,7 @@ def test_grade_validator_rejects_nulls_and_accepts_complete_control_score():
 def test_paired_stats_reports_direction_and_exact_discordance():
     runner = _load(RUNNER, "run_delivery_parity_paired")
     cases = [{"case_id": "x", "cohort": "shared"},
-             {"case_id": "y", "cohort": "morph_only"}]
+             {"case_id": "y", "cohort": "adapt_only"}]
     grades = [
         {"arm": "A", "case_id": "x", "adherence": 0},
         {"arm": "D", "case_id": "x", "adherence": 2},
@@ -185,13 +185,13 @@ def test_paired_stats_reports_direction_and_exact_discordance():
 
 
 @requires_frozen_inputs
-def test_morph_treatment_variants_are_explicit_and_hashed():
+def test_adapt_treatment_variants_are_explicit_and_hashed():
     runner = _load(RUNNER, "run_delivery_parity_variants")
     builder = _load(BUILDER, "build_delivery_parity_variants")
-    _, source = builder.build_value_set(builder.DEFAULT_TASTE, builder.DEFAULT_MORPH)
+    _, source = builder.build_value_set(builder.DEFAULT_TASTE, builder.DEFAULT_ADAPT)
 
-    raw = runner.select_morph_treatment(source, "raw")
-    curated = runner.select_morph_treatment(source, "curated")
+    raw = runner.select_adapt_treatment(source, "raw")
+    curated = runner.select_adapt_treatment(source, "curated")
 
     assert raw["selected_record_count"] == 57
     assert curated["selected_record_count"] == 49
@@ -224,7 +224,7 @@ def test_weighted_kappa_is_one_for_identical_scores():
 def test_budgeted_core_is_the_13_inherited_rules_and_fits_800_tokens():
     module = _load(BUDGETED, "run_budgeted_delivery_hybrid_test")
     treatment = json.loads((_WS /
-                            ".cache/morph-delivery-parity/full/frozen/morph-treatment.json")
+                            ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json")
                            .read_text(encoding="utf-8"))
     core, block, tokens = module.core_treatment(treatment)
 

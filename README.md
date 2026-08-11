@@ -1,8 +1,8 @@
-<img src=".github/banner.svg" alt="Morph — Corrections that stick across sessions." width="100%">
+<img src=".github/banner.svg" alt="Adapt — Corrections that stick across sessions." width="100%">
 
-**AI assistants repeat the same mistakes because useful corrections disappear when the session ends. Morph mines local Codex and Claude transcripts for repeated, durable guidance and promotes it — through hard safety gates — into a small, scoped, reversible preference layer that future agents actually recall.**
+**AI assistants repeat the same mistakes because useful corrections disappear when the session ends. Adapt mines local Codex and Claude transcripts for repeated, durable guidance and promotes it — through hard safety gates — into a small, scoped, reversible preference layer that future agents actually recall.**
 
-<sub>Package & CLI id: <code>morph</code>.</sub>
+<sub>Package & CLI id: <code>adapt</code>.</sub>
 
 ![license](https://img.shields.io/badge/license-source--available-df6428?style=flat-square&labelColor=111318)
 ![writes](https://img.shields.io/badge/writes-opt--in%2C%20manifest--gated-df6428?style=flat-square&labelColor=111318)
@@ -14,8 +14,8 @@ It does not retrain the model, and it does not save private chain-of-thought. It
 
 ```mermaid
 flowchart LR
-    T[local Codex + Claude<br/>transcripts] --> E[parse · redact ·<br/>prefilter · extract]
-    E --> S[dedupe ·<br/>synthesize]
+    T[local Codex + Claude<br/>transcripts] --> E[parse · canonicalize ·<br/>provenance filter]
+    E --> S[deterministic extraction +<br/>LLM recall proposals]
     S --> A[authority checks<br/>origin quarantine]
     A --> M[immutable review manifest<br/>accepted / rejected / pending]
     M --> G[conformance gate] --> W[transactional<br/>Crypt apply]
@@ -66,21 +66,17 @@ And it's reversible: a run journal checkpoints every stage; safe resume reuses c
 ## Using it
 
 ```sh
-python3 morph.py --smoke                            # dry-run the whole pipeline
-python3 morph.py --incremental --manifest pending.json
-python3 morph.py --apply-from-manifest resolved.json
-python3 morph.py --compile-core path/to/core.json
-python3 morph.py --insights session-one.jsonl session-two.jsonl
+python3 adapt.py --smoke                            # dry-run the whole pipeline
+python3 adapt.py --incremental --manifest pending.json
+python3 adapt.py --apply-from-manifest resolved.json
+python3 adapt.py --compile-core path/to/core.json
+python3 adapt.py --insights session-one.jsonl session-two.jsonl
 
-python3 morph.py \
-  --add-rule "Always run focused tests before reporting a broad build complete." \
-  --category verification
-
-python3 morph.py doctor issue --out receipt.json
-python3 morph.py doctor validate --receipt receipt.json
+python3 adapt.py doctor issue --out receipt.json
+python3 adapt.py doctor validate --receipt receipt.json
 ```
 
-Writes are opt-in (`--apply`); smoke and manifest generation stay dry-run. Extraction/synthesis lanes are `local` (default) or `minimax`; extraction can parallelize up to 5 workers while synthesis stays ordered. Tests: `python3 -m pytest -q`.
+Writes are opt-in (`--apply`); smoke & manifest generation stay dry-run. LLM proposal lanes are `local` (default) or `minimax`; every proposal is rebound to an exact canonical external-user event, then passes deterministic admission. `--deterministic-only` disables LLM recall explicitly. Tests: `python3 -m pytest -q`.
 
 ## Recent
 
@@ -95,4 +91,4 @@ A standalone checkout depends on parent-workspace memory/session modules and an 
 ---
 
 <sub><b><a href="https://orthic-labs.github.io">Orthic Labs</a></b> — local-first infrastructure for AI-assisted development.<br>
-<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Cortex">Cortex</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/Morph">Morph</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
+<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Cortex">Cortex</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/Adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>

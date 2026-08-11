@@ -65,7 +65,7 @@ def test_existing_run_uses_frozen_corpus_cutoff(tmp_path):
 
 
 def test_direct_pipeline_has_no_legacy_session_facade():
-    assert not hasattr(fb, "morph_sessions")
+    assert not hasattr(fb, "adapt_sessions")
 
 
 def test_atomic_checkpoint_round_trip(tmp_path):
@@ -129,7 +129,7 @@ def test_deterministic_scanner_block_is_not_retried(tmp_path, monkeypatch):
 
     monkeypatch.setattr(fb, "run_command", blocked)
     result = fb._run_with_retries(
-        ["morph"], tmp_path / "commands.log", max_retries=3
+        ["adapt"], tmp_path / "commands.log", max_retries=3
     )
     assert result.returncode == 2
     assert len(calls) == 1
@@ -138,15 +138,9 @@ def test_deterministic_scanner_block_is_not_retried(tmp_path, monkeypatch):
 def test_unattended_default_retry_budget_handles_large_chunks():
     args = fb.parse_args(["--run-dir", "run"])
     assert args.max_retries == 10
-    assert args.extract_workers == 5
     assert args.adjudicate_workers == 5
 
 
-def test_unattended_worker_cap_is_five():
-    assert fb.parse_args([
-        "--run-dir", "run", "--extract-workers", "5"
-    ]).extract_workers == 5
-    with pytest.raises(SystemExit):
-        fb.parse_args(["--run-dir", "run", "--extract-workers", "6"])
+def test_unattended_adjudication_worker_cap_is_five():
     with pytest.raises(SystemExit):
         fb.parse_args(["--run-dir", "run", "--adjudicate-workers", "6"])

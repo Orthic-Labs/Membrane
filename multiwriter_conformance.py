@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Issue and validate content-free Morph multi-installation conformance receipts.
+"""Issue and validate content-free Adapt multi-installation conformance receipts.
 
-The receipt binds one schema-v2 installation to the current canonical Morph
+The receipt binds one schema-v2 installation to the current canonical Adapt
 pool, exact implementation and test files, the installed resident binary and
 its authenticated atomic-batch route, local transcript discovery counts, the
 append-only Git mirror boundary, and a disabled ``crypt-daily`` scheduler.
@@ -28,13 +28,13 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 
-MORPH_DIR = Path(__file__).resolve().parent
+ADAPT_DIR = Path(__file__).resolve().parent
 import workspace_runtime  # noqa: E402
 
 REPO_ROOT = workspace_runtime.workspace_root()
 TOOLS_LIB = REPO_ROOT / "tools" / "lib"
 MEMORY_DIR = REPO_ROOT / "tools" / "pipelines" / "memory"
-for directory in (REPO_ROOT, MORPH_DIR, TOOLS_LIB, MEMORY_DIR):
+for directory in (REPO_ROOT, ADAPT_DIR, TOOLS_LIB, MEMORY_DIR):
     if str(directory) not in sys.path:
         sys.path.insert(0, str(directory))
 
@@ -48,7 +48,7 @@ crypt_port = workspace_runtime.crypt_port
 
 
 SCHEMA_VERSION = 1
-KIND = "morph_multiwriter_conformance"
+KIND = "adapt_multiwriter_conformance"
 MAX_RECEIPT_TTL_SECONDS = 3600
 DEFAULT_TTL_SECONDS = 900
 SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -61,25 +61,25 @@ DISCOVERY_FIELDS = ("discovered", *DISCOVERY_OUTCOMES, "pending")
 DEFAULT_IMPLEMENTATION_FILES = (
     "tools/pipelines/memory/context_session_adapters.py",
     "tools/pipelines/memory/context_session_inventory.py",
-    "morph/taste_apply.py",
-    "morph/taste_runtime.py",
-    "morph/taste_v2_pipeline.py",
-    "morph/transcript_sources.py",
-    "morph/morph_persistence.py",
-    "morph/cross_machine.py",
-    "morph/adjudicate_manifest.py",
-    "morph/manifest.py",
-    "morph/preference_record.py",
-    "morph/preference-manifest.schema.json",
-    "morph/multiwriter_conformance.py",
-    "morph/run_incremental_multiwriter.py",
-    "morph/morph_event_learning.py",
+    "adapt/taste_apply.py",
+    "adapt/taste_runtime.py",
+    "adapt/taste_v2_pipeline.py",
+    "adapt/transcript_sources.py",
+    "adapt/adapt_persistence.py",
+    "adapt/cross_machine.py",
+    "adapt/adjudicate_manifest.py",
+    "adapt/manifest.py",
+    "adapt/preference_record.py",
+    "adapt/preference-manifest.schema.json",
+    "adapt/multiwriter_conformance.py",
+    "adapt/run_incremental_multiwriter.py",
+    "adapt/adapt_event_learning.py",
 )
 DEFAULT_TEST_FILES = (
     "tools/pipelines/memory/test_context_session_harnesses.py",
-    "morph/test_multiwriter_conformance.py",
-    "morph/test_run_incremental_multiwriter.py",
-    "morph/test_morph_event_learning.py",
+    "adapt/test_multiwriter_conformance.py",
+    "adapt/test_run_incremental_multiwriter.py",
+    "adapt/test_adapt_event_learning.py",
 )
 EVIDENCE_KEYS = {
     "installation_id",
@@ -102,7 +102,7 @@ RECEIPT_KEYS = EVIDENCE_KEYS | {
 
 
 class ConformanceError(RuntimeError):
-    """Raised when an installation cannot safely run multiwriter Morph."""
+    """Raised when an installation cannot safely run multiwriter Adapt."""
 
 
 def _canonical(value: object) -> bytes:
@@ -198,7 +198,7 @@ def discovery_counts(
 ) -> dict[str, dict[str, int]]:
     clients = {str(client) for client in registered_clients}
     if any(not CLIENT_RE.fullmatch(client) for client in clients):
-        raise ConformanceError("session morpher registered an invalid client")
+        raise ConformanceError("session adapter registered an invalid client")
     counts = {
         client: {field: 0 for field in DISCOVERY_FIELDS}
         for client in sorted(clients)
@@ -206,14 +206,14 @@ def discovery_counts(
     learned = state.get("learned", {}) if isinstance(state, Mapping) else {}
     for item in discovered:
         if not isinstance(item, Mapping):
-            raise ConformanceError("session morpher emitted invalid accounting")
+            raise ConformanceError("session adapter emitted invalid accounting")
         client = str(item.get("client") or "")
         tool = str(item.get("tool") or "")
         outcome = str(item.get("outcome") or "")
         if not CLIENT_RE.fullmatch(client) or not CLIENT_RE.fullmatch(tool):
-            raise ConformanceError("session morpher emitted invalid accounting")
+            raise ConformanceError("session adapter emitted invalid accounting")
         if outcome not in DISCOVERY_OUTCOMES:
-            raise ConformanceError("session morpher emitted invalid accounting")
+            raise ConformanceError("session adapter emitted invalid accounting")
         path = Path(item.get("path"))
         counts.setdefault(client, {field: 0 for field in DISCOVERY_FIELDS})
         try:
@@ -305,7 +305,7 @@ def _normalized_os() -> str:
         return "windows"
     if value == "Darwin":
         return "macos"
-    raise ConformanceError(f"unsupported Morph conformance platform: {value}")
+    raise ConformanceError(f"unsupported Adapt conformance platform: {value}")
 
 
 def _normalized_arch() -> str:
@@ -314,7 +314,7 @@ def _normalized_arch() -> str:
         return "x86_64"
     if value in {"arm64", "aarch64"}:
         return "aarch64"
-    raise ConformanceError(f"unsupported Morph conformance architecture: {value}")
+    raise ConformanceError(f"unsupported Adapt conformance architecture: {value}")
 
 
 def service_evidence(
@@ -480,7 +480,7 @@ def scheduler_evidence(
         disabled = result.returncode != 0
         state = "unloaded" if disabled else "loaded"
     else:
-        raise ConformanceError(f"unsupported Morph scheduler platform: {current}")
+        raise ConformanceError(f"unsupported Adapt scheduler platform: {current}")
     if not disabled:
         raise ConformanceError("crypt-daily must remain disabled")
     return {"name": "crypt-daily", "disabled": True, "state": state}
@@ -518,7 +518,7 @@ def mirror_evidence(
             owner_cursor=f"{origin}.json",
             owner_installation_id=installation_id,
         )
-    except (cross_machine.CrossMachineMorphError, mirror_append_only.AppendOnlyViolation) as exc:
+    except (cross_machine.CrossMachineAdaptError, mirror_append_only.AppendOnlyViolation) as exc:
         raise ConformanceError("memory mirror append-only check failed") from exc
     head = _git(repo, "rev-parse", "HEAD")
     tree_oid = _git(repo, "rev-parse", f"HEAD:{mirror_relative.as_posix()}")
@@ -691,12 +691,12 @@ def _validate_evidence(evidence: Mapping[str, Any]) -> None:
     _uuid4(evidence.get("installation_id"))
     pool = evidence.get("canonical_pool")
     if not isinstance(pool, Mapping) or set(pool) != {"sha256", "rules"}:
-        raise ConformanceError("canonical Morph pool fields are invalid")
+        raise ConformanceError("canonical Adapt pool fields are invalid")
     if not isinstance(pool, Mapping):
-        raise ConformanceError("canonical Morph pool evidence is invalid")
-    _require_hash(pool.get("sha256"), "canonical Morph pool hash")
+        raise ConformanceError("canonical Adapt pool evidence is invalid")
+    _require_hash(pool.get("sha256"), "canonical Adapt pool hash")
     if isinstance(pool.get("rules"), bool) or not isinstance(pool.get("rules"), int) or pool["rules"] < 0:
-        raise ConformanceError("canonical Morph pool rule count is invalid")
+        raise ConformanceError("canonical Adapt pool rule count is invalid")
     implementation = evidence.get("implementation")
     if (
         not isinstance(implementation, Mapping)
@@ -976,7 +976,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             validate_receipt_file(args.receipt, **common)
             receipt = json.loads(args.receipt.read_text(encoding="utf-8"))
-    except (ConformanceError, cross_machine.CrossMachineMorphError) as exc:
+    except (ConformanceError, cross_machine.CrossMachineAdaptError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, sort_keys=True))
         return 1
     print(json.dumps({

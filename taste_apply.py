@@ -20,7 +20,7 @@ import preference_record  # noqa: E402
 import manifest  # noqa: E402
 import authority  # noqa: E402
 import rollback  # noqa: E402
-import morph_persistence  # noqa: E402
+import adapt_persistence  # noqa: E402
 WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 
 # Kept as a module hook for test/runtime injection; implementation stays in the
@@ -28,8 +28,8 @@ WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
 _multiwriter_context = runtime.multiwriter_context
 
 def _runtime_hook(name: str, default):
-    host = sys.modules.get("morph_cli") or sys.modules.get("morph")
-    # Do not invoke Morph facade's lazy legacy imports while applying Taste v2.
+    host = sys.modules.get("adapt_cli") or sys.modules.get("adapt")
+    # Do not invoke Adapt facade's lazy legacy imports while applying Taste v2.
     return host.__dict__.get(name, default) if host else default
 
 def _preflight_apply_manifest() -> bool:
@@ -50,11 +50,11 @@ def _preflight_apply_manifest() -> bool:
 
 def _create_apply_safepoint(manifest_body: dict) -> Path:
     """Create the mandatory pre-write Gate 4 safe-point."""
-    db_override = os.environ.get("MORPH_SAFEPOINT_DB_OVERRIDE")
+    db_override = os.environ.get("ADAPT_SAFEPOINT_DB_OVERRIDE")
     db_path = Path(db_override) if db_override else rollback._discover_db_path(manifest_body)
     if not db_path or not db_path.exists():
         raise RuntimeError(f"Crypt DB unavailable for safe-point: {db_path}")
-    out_override = os.environ.get("MORPH_SAFEPOINT_DIR_OVERRIDE")
+    out_override = os.environ.get("ADAPT_SAFEPOINT_DIR_OVERRIDE")
     out_path = None
     if out_override:
         out_path = Path(out_override) / f"{manifest_body['batch_id']}.json"
@@ -108,7 +108,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
                 installation_id=installation_id,
                 canonical_rules=canonical_rules,
             )
-        except runtime.CrossMachineMorphError as exc:
+        except runtime.CrossMachineAdaptError as exc:
             print(f"error: refusing multiwriter manifest apply: {exc}", file=sys.stderr)
             return 2
 
@@ -128,7 +128,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
     if is_multiwriter:
         try:
             j_sessions = runtime.qualify_session_sources(session_refs, installation_id)
-        except (KeyError, ValueError, runtime.CrossMachineMorphError) as exc:
+        except (KeyError, ValueError, runtime.CrossMachineAdaptError) as exc:
             print(f"error: journal source_refs cannot be qualified: {exc}", file=sys.stderr)
             return 2
         qualified_refs = [
@@ -169,7 +169,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
     if not is_multiwriter and not _preflight_apply_manifest():
         return 2
 
-    print(f"morph: applying manifest {manifest_path}")
+    print(f"adapt: applying manifest {manifest_path}")
     print(f"  batch_id={batch_id}, sessions={len(j_sessions)}, "
           f"accepted={len(accepted)}, rejected={len(rejected)}")
 
@@ -208,16 +208,16 @@ def apply_from_manifest(manifest_path: Path) -> int:
             print(f"  safepoint={safe_point}")
             if prepared:
                 batch_receipt = _runtime_hook(
-                    "persist_manifest_batch", morph_persistence.persist_manifest_batch
+                    "persist_manifest_batch", adapt_persistence.persist_manifest_batch
                 )(
                     prepared,
                     manifest_batch_id=batch_id,
                     installation_id=installation_id,
                 )
                 if batch_receipt.get("complete") is not True:
-                    raise morph_persistence.MorphPersistenceError("Crypt batch receipt is incomplete")
+                    raise adapt_persistence.AdaptPersistenceError("Crypt batch receipt is incomplete")
         except (OSError, RuntimeError, ValueError, sqlite3.Error,
-                morph_persistence.MorphPersistenceError) as exc:
+                adapt_persistence.AdaptPersistenceError) as exc:
             failed.append(("batch", str(exc)))
     elif not failed and not is_multiwriter:
         try:
@@ -273,7 +273,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
     state["initialized_at"] = state.get("initialized_at") or dt.datetime.now(dt.timezone.utc).isoformat()
     runtime.write_json_atomic(runtime.state_path(), state)
 
-    # Mirror rules.json locally so morph_digest stays usable.
+    # Mirror rules.json locally so adapt_digest stays usable.
     try:
         rules_obj: dict = {}
         rp = runtime.rules_path()
@@ -317,6 +317,6 @@ def apply_from_manifest(manifest_path: Path) -> int:
     jrn.record(batch_id, "applied", **applied_payload)
     jrn.record(batch_id, "committed", applied=len(accepted),
                sessions=j_sessions)
-    print(f"morph: applied {len(accepted)} manifest records; "
+    print(f"adapt: applied {len(accepted)} manifest records; "
           f"sessions learned: {len(j_sessions)}")
     return 0

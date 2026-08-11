@@ -1,8 +1,8 @@
-"""Tests for morph.taste_v2 (Phase 5.3 — plan 5.3).
+"""Tests for adapt.taste_v2 (Phase 5.3 — plan 5.3).
 
 This test file follows the plain unittest/manual-harness pattern
 used by ``test_observable_events.py`` (the only test file in the
-morph repo that runs without pytest installed; the prompt explicitly
+adapt repo that runs without pytest installed; the prompt explicitly
 says pytest is unavailable on the Python 3.14 box, and the plan
 file's pattern is to follow whatever already runs).
 
@@ -22,8 +22,8 @@ import copy
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
-MORPH = TESTS_DIR.parent
-sys.path.insert(0, str(MORPH))
+ADAPT = TESTS_DIR.parent
+sys.path.insert(0, str(ADAPT))
 
 import taste_v2  # noqa: E402
 

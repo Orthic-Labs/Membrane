@@ -1,15 +1,15 @@
-"""Parent-workspace interface for Orthic Morph / Morph.
+"""Parent-workspace interface for Orthic Adapt / Adapt.
 
-Morph lives under ``morph/`` but still needs a few parent-workspace services.
+Adapt lives under ``adapt/`` but still needs a few parent-workspace services.
 This module is the **only** import boundary for those deps. Do not vendor the
-parent tree into morph/; wire through this adapter (or optional stubs).
+parent tree into adapt/; wire through this adapter (or optional stubs).
 
 Required parent capabilities
 ----------------------------
 1. Crypt runtime config
    - symbol: ``crypt_port(env=None) -> int``
    - source: ``tools/lib/memory/runtime_config.py``
-   - used by: ``morph_persistence``, ``multiwriter_conformance``
+   - used by: ``adapt_persistence``, ``multiwriter_conformance``
 
 2. Session inventory / adapters
    - symbols: ``context_session_inventory``, ``context_session_adapters``
@@ -23,7 +23,7 @@ Required parent capabilities
 
 Optional stubs
 --------------
-Set ``MORPH_WORKSPACE_STUBS=1`` (or ``MORPH_WORKSPACE_STUBS=1``) to load the
+Set ``ADAPT_WORKSPACE_STUBS=1`` (or ``ADAPT_WORKSPACE_STUBS=1``) to load the
 in-tree stub implementations instead of parent modules. Stubs are for unit
 tests / standalone dry imports only — they must not be used for live apply.
 
@@ -39,7 +39,7 @@ from types import ModuleType
 from typing import Any, Callable
 
 
-MORPH_DIR = Path(__file__).resolve().parent
+ADAPT_DIR = Path(__file__).resolve().parent
 
 
 class WorkspaceRuntimeUnavailable(RuntimeError):
@@ -47,8 +47,8 @@ class WorkspaceRuntimeUnavailable(RuntimeError):
 
 
 def _stubs_enabled() -> bool:
-    return os.environ.get("MORPH_WORKSPACE_STUBS", "").strip() in {"1", "true", "yes"} or (
-        os.environ.get("MORPH_WORKSPACE_STUBS", "").strip() in {"1", "true", "yes"}
+    return os.environ.get("ADAPT_WORKSPACE_STUBS", "").strip() in {"1", "true", "yes"} or (
+        os.environ.get("ADAPT_WORKSPACE_STUBS", "").strip() in {"1", "true", "yes"}
     )
 
 
@@ -56,19 +56,19 @@ def workspace_root() -> Path:
     """Resolve the Damned Designs workspace that owns ``tools/``.
 
     Supports both layouts:
-      - top-level submodule: ``<workspace>/morph``
-      - nested historical path: ``<workspace>/tools/pipelines/memory/morph``
+      - top-level submodule: ``<workspace>/adapt``
+      - nested historical path: ``<workspace>/tools/pipelines/memory/adapt``
     """
     if os.environ.get("WORKSPACE_ROOT"):
         return Path(os.environ["WORKSPACE_ROOT"]).resolve()
-    candidates: list[Path] = [MORPH_DIR.parent]
-    # Nested under tools/pipelines/memory/morph → parents[4] == workspace
-    if len(MORPH_DIR.parents) >= 5:
-        candidates.append(MORPH_DIR.parents[4])
+    candidates: list[Path] = [ADAPT_DIR.parent]
+    # Nested under tools/pipelines/memory/adapt → parents[4] == workspace
+    if len(ADAPT_DIR.parents) >= 5:
+        candidates.append(ADAPT_DIR.parents[4])
     for candidate in candidates:
         if (candidate / "tools" / "lib").is_dir():
             return candidate
-    return MORPH_DIR.parent
+    return ADAPT_DIR.parent
 
 
 def _ensure_parent_paths(root: Path) -> None:
@@ -92,7 +92,7 @@ def _load_module(name: str, stub_factory: Callable[[], ModuleType]) -> ModuleTyp
     except ImportError as exc:
         raise WorkspaceRuntimeUnavailable(
             f"parent module {name!r} unavailable from {root}; "
-            "set MORPH_WORKSPACE_STUBS=1 for offline stubs"
+            "set ADAPT_WORKSPACE_STUBS=1 for offline stubs"
         ) from exc
 
 
