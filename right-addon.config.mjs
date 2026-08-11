@@ -4,6 +4,7 @@ export default {
   addon: "membrane",
   version: "0.1.0",
   packageManager: "pnpm",
+  distribution: { provider: "github-releases", repository: "Orthic-Labs/Membrane" },
   checks: ["test", "test:all"],
   buildInputs: {
     include: [
