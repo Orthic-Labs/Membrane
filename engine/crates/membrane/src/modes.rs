@@ -518,7 +518,7 @@ mod tests {
         .unwrap();
         assert!(snapshot["observedAtUnixMs"].as_u64().unwrap() > 0);
         for section in membrane_runtime::hub::HUB_RESOURCES {
-            assert_eq!(snapshot[section]["state"], "unavailable");
+            assert_eq!(snapshot["sections"][section]["state"], "unavailable");
         }
     }
 }

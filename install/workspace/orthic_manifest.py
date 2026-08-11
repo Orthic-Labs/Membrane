@@ -31,6 +31,8 @@ def read_product_version(root:Path)->str:
 def build_manifest_dict(root:Path,port:int,product_version:str,*,win:bool|None=None)->dict:
     root=Path(root)
     if not root.is_absolute(): raise ValueError(f"installRoot must be absolute: {root}")
+    if not str(product_version).strip(): raise ValueError("productVersion must be nonempty")
+    if not 1<=int(port)<=65535: raise ValueError("statusEndpoint.port must be within 1..=65535")
     svc=_svc_bin(root,win=win); icon=root/ICON_REL; token=root/TOKEN_REL
     if not svc.is_file(): raise FileNotFoundError(f"crypt-service binary not found: {svc}")
     if not icon.is_file(): raise FileNotFoundError(f"icon not found: {icon}")

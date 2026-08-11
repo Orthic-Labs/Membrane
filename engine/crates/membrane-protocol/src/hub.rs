@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 pub const HUB_SCHEMA_VERSION: u32 = 1;
 
@@ -16,12 +17,14 @@ pub enum HubStateV1 {
 pub struct HubSectionV1 {
     pub state: HubStateV1,
     pub reason: String,
-    pub items: Vec<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub items: Option<Vec<Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub resolver: Option<String>,
-    pub source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub evidence: Option<String>,
-    pub observed_at_unix_ms: u64,
-    pub cache_age_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observed_at_unix_ms: Option<u64>,
 }
 
 impl HubSectionV1 {
@@ -34,12 +37,10 @@ impl HubSectionV1 {
             } else {
                 reason
             },
-            items: Vec::new(),
+            items: None,
             resolver: None,
-            source: None,
             evidence: None,
-            observed_at_unix_ms: 0,
-            cache_age_ms: 0,
+            observed_at_unix_ms: None,
         }
     }
 }
@@ -72,13 +73,7 @@ pub struct HubCapabilitiesV1 {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HubSnapshotV1 {
     pub schema_version: u32,
+    pub product_id: String,
     pub observed_at_unix_ms: u64,
-    pub deliveries: HubSectionV1,
-    pub providers: HubSectionV1,
-    pub repositories: HubSectionV1,
-    pub adapters: HubSectionV1,
-    pub devices: HubSectionV1,
-    pub memory: HubSectionV1,
-    pub sentinel: HubSectionV1,
-    pub alerts: HubSectionV1,
+    pub sections: BTreeMap<String, HubSectionV1>,
 }

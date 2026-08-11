@@ -80,6 +80,17 @@ def test_missing_or_empty_token_refuses_and_leaves_no_partial(tmp_path):
     else: assert False,"expected ValueError"
     assert not (home/".orthic/hub/products.d/membrane.json").exists()
 
+def test_orthic_schema_rejects_empty_product_version_and_invalid_port(tmp_path):
+    root=_setup_root(tmp_path); home=tmp_path/"home"
+    for port in (0, 65536):
+        try: om.write_orthic_manifest(root,home,port,"0.1.0",win=False)
+        except ValueError as error: assert "statusEndpoint.port" in str(error)
+        else: assert False,"expected ValueError"
+    try: om.write_orthic_manifest(root,home,47851,"",win=False)
+    except ValueError as error: assert "productVersion" in str(error)
+    else: assert False,"expected ValueError"
+    assert not (home/".orthic/hub/products.d/membrane.json").exists()
+
 def test_atomic_write_no_tmp_leak(tmp_path):
     root=_setup_root(tmp_path); home=tmp_path/"home"
     dest=om.write_orthic_manifest(root,home,47851,"0.1.0",win=False)

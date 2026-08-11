@@ -3,6 +3,7 @@ use membrane_protocol::{
     ProviderReadinessStateV1, ProviderReadinessV1, HUB_SCHEMA_VERSION,
 };
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 pub const HUB_RESOURCES: [&str; 8] = [
     "deliveries",
@@ -140,12 +141,11 @@ impl HubReadV1 {
                 HubSectionV1 {
                     state: HubStateV1::Available,
                     reason: "observed".into(),
-                    items,
+                    items: Some(items),
                     resolver: metadata.resolver,
-                    source: metadata.source,
                     evidence: metadata.evidence,
-                    observed_at_unix_ms: metadata.observed_at_unix_ms,
-                    cache_age_ms: metadata.cache_age_ms,
+                    observed_at_unix_ms: (metadata.observed_at_unix_ms > 0)
+                        .then_some(metadata.observed_at_unix_ms),
                 }
             }
             Self::Degraded {
@@ -161,12 +161,11 @@ impl HubReadV1 {
                     } else {
                         reason
                     },
-                    items,
+                    items: Some(items),
                     resolver: metadata.resolver,
-                    source: metadata.source,
                     evidence: metadata.evidence,
-                    observed_at_unix_ms: metadata.observed_at_unix_ms,
-                    cache_age_ms: metadata.cache_age_ms,
+                    observed_at_unix_ms: (metadata.observed_at_unix_ms > 0)
+                        .then_some(metadata.observed_at_unix_ms),
                 }
             }
             Self::Unavailable { reason } => HubSectionV1::unavailable(reason),
@@ -256,15 +255,18 @@ impl HubFacadeV1 {
     pub fn snapshot(&self, observed_at_unix_ms: u64, inputs: HubInputsV1) -> HubSnapshotV1 {
         HubSnapshotV1 {
             schema_version: HUB_SCHEMA_VERSION,
+            product_id: "membrane".into(),
             observed_at_unix_ms,
-            deliveries: inputs.deliveries.section(),
-            providers: inputs.providers.section(),
-            repositories: inputs.repositories.section(),
-            adapters: inputs.adapters.section(),
-            devices: inputs.devices.section(),
-            memory: inputs.memory.section(),
-            sentinel: inputs.sentinel.section(),
-            alerts: inputs.alerts.section(),
+            sections: BTreeMap::from([
+                ("deliveries".into(), inputs.deliveries.section()),
+                ("providers".into(), inputs.providers.section()),
+                ("repositories".into(), inputs.repositories.section()),
+                ("adapters".into(), inputs.adapters.section()),
+                ("devices".into(), inputs.devices.section()),
+                ("memory".into(), inputs.memory.section()),
+                ("sentinel".into(), inputs.sentinel.section()),
+                ("alerts".into(), inputs.alerts.section()),
+            ]),
         }
     }
 }
@@ -369,10 +371,10 @@ mod tests {
             metadata: HubMetadataV1::default(),
         };
         let snapshot = facade.snapshot(42, inputs);
-        assert_eq!(snapshot.deliveries.state, HubStateV1::Available);
-        assert_eq!(snapshot.providers.state, HubStateV1::Degraded);
-        assert_eq!(snapshot.adapters.state, HubStateV1::Unavailable);
-        assert!(snapshot.adapters.items.is_empty());
+        assert_eq!(snapshot.sections["deliveries"].state, HubStateV1::Available);
+        assert_eq!(snapshot.sections["providers"].state, HubStateV1::Degraded);
+        assert_eq!(snapshot.sections["adapters"].state, HubStateV1::Unavailable);
+        assert!(snapshot.sections["adapters"].items.is_none());
         let capabilities = facade.capabilities();
         assert!(capabilities.read_only);
         assert_eq!(capabilities.resources, HUB_RESOURCES);
@@ -380,10 +382,16 @@ mod tests {
         assert_eq!(stream.state, HubStateV1::Unavailable);
         assert!(stream.resolver.is_none());
         let encoded = serde_json::to_value(snapshot).unwrap();
-        assert!(encoded["deliveries"]["resolver"].is_null());
-        assert!(encoded["deliveries"]["source"].is_null());
-        assert!(encoded["deliveries"]["evidence"].is_null());
+        assert_eq!(encoded["productId"], "membrane");
+        assert!(encoded["sections"]["deliveries"].get("resolver").is_none());
+        assert!(encoded["sections"]["deliveries"].get("source").is_none());
+        assert!(encoded["sections"]["deliveries"].get("evidence").is_none());
         assert_eq!(encoded["schemaVersion"], 1);
+        let snapshot_fields = encoded.as_object().unwrap();
+        assert_eq!(snapshot_fields.len(), 4);
+        for field in ["schemaVersion", "productId", "observedAtUnixMs", "sections"] {
+            assert!(snapshot_fields.contains_key(field));
+        }
     }
     #[test]
     fn scratchpad_hub_is_content_free_and_validates_scope() {

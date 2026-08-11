@@ -5190,7 +5190,16 @@ mod tests {
         let (code_down, body_down) = route_for_tests(&store, "GET", "/hub/snapshot", "");
         assert_eq!(code_down, 200, "body: {body_down}");
         let payload_down: serde_json::Value = serde_json::from_str(&body_down).unwrap();
-        assert_eq!(payload_down["providers"]["state"], "unavailable", "body: {body_down}");
+        assert_eq!(payload_down["productId"], "membrane", "body: {body_down}");
+        assert_eq!(
+            payload_down["sections"]["providers"]["state"], "unavailable",
+            "body: {body_down}"
+        );
+        let snapshot_fields = payload_down.as_object().unwrap();
+        assert_eq!(snapshot_fields.len(), 4, "body: {body_down}");
+        for field in ["schemaVersion", "productId", "observedAtUnixMs", "sections"] {
+            assert!(snapshot_fields.contains_key(field), "body: {body_down}");
+        }
 
         let port = spawn_mock_health_server(
             r#"{"ok":true,"catalog":{"status":"ok"},"database":{"status":"ok"},"dailyAnalysis":{"status":"fresh","alert":false}}"#,
@@ -5202,7 +5211,7 @@ mod tests {
         let payload_up: serde_json::Value = serde_json::from_str(&body_up).unwrap();
 
         assert_ne!(
-            payload_down["providers"], payload_up["providers"],
+            payload_down["sections"]["providers"], payload_up["sections"]["providers"],
             "snapshot providers section must differ by backend health: down={payload_down} up={payload_up}"
         );
     }
