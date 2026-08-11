@@ -109,6 +109,21 @@ test("event eligibility rejects files below directories created after subscripti
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+test("actor rejects excluded ingress before journal persistence", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "cortex-watchman-actor-exclusion-"));
+  let actor;
+  cpSync(FIXTURE, repo, { recursive: true });
+  try {
+    buildGraphGeneration(repo, { outDir: ".agent", persist: true });
+    actor = new RepositoryActor({ root: repo });
+    assert.deepEqual(actor.ingest([{ eventKind: "modify", path: "src/node_modules/later/noise.js", observedMs: Date.now() }]), []);
+    assert.equal(await actor.flush(true), 0);
+    const db = openStore(join(repo, ".agent/graph/graph.db"));
+    try { assert.equal(db.prepare("SELECT COUNT(*) AS n FROM event_journal").get().n, 0); }
+    finally { closeStore(db); }
+  } finally { await actor?.stop(); rmSync(repo, { recursive: true, force: true }); }
+});
+
 test("two files arriving during one drain are both applied", async () => {
   const repo = mkdtempSync(join(tmpdir(), "cortex-watchman-drain-"));
   let actor;

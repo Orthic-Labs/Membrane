@@ -7,7 +7,7 @@ import { buildIncrementalTreeSitterFacts, SUPPORTED_EXTENSIONS } from "../graph/
 import { extractDoc, isDoc, loadConfig } from "../scripts/cortex.mjs";
 import { MAX_SOURCE_FILE_BYTES, stableRead } from "../graph/stable-read.mjs";
 import { collectDependents, closeStore, listFileMetadata, listSymbolMetadata, maintainStore, openStore, openStoreReadOnly } from "../graph/store-sqlite.mjs";
-import { eventsSince, startWatch, writeSnapshot } from "./adapter.mjs";
+import { eventsSince, isEligibleWatchPath, startWatch, writeSnapshot } from "./adapter.mjs";
 
 const REPAIR_BATCH = 50;
 const DEBOUNCE_MS = 1000;
@@ -435,9 +435,12 @@ export class RepositoryActor extends EventEmitter {
       this.markGap(new Error("watcher overflow"), "event_overflow", run);
       return [];
     }
-    this.eventBuffer.push(...events);
+    const eligible = events.filter((event) => isEligibleWatchPath(event.path, this.ignore)
+      && (!event.renameTo || isEligibleWatchPath(event.renameTo, this.ignore)));
+    if (!eligible.length) return [];
+    this.eventBuffer.push(...eligible);
     this.scheduleFlush(run);
-    return events;
+    return eligible;
   }
 
   flush(force = false, run = null) {
