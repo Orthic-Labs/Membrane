@@ -28,7 +28,7 @@ export function stageMembrane(options = {}) {
   if (!existsSync(lock)) {
     throw new Error(`missing published Membrane add-on lock: ${lock}`);
   }
-  const result = spawnSync("pnpm", adoptionArgs({ ...options, lock }), {
+  const result = spawnSync(process.platform === "win32" ? "pnpm.cmd" : "pnpm", adoptionArgs({ ...options, lock }), {
     cwd: repoRoot,
     env: process.env,
     stdio: "inherit",

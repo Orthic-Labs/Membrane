@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 function countValid(dir) {
   let c = 0;
@@ -16,16 +17,16 @@ function countValid(dir) {
 }
 
 test('only Cortex installed ⇒ exactly one tab', () => {
-  assert.equal(countValid(new URL('./fixtures/one-tab', import.meta.url).pathname), 1);
+  assert.equal(countValid(fileURLToPath(new URL('./fixtures/one-tab', import.meta.url))), 1);
 });
 
 test('both installed ⇒ two tabs', () => {
-  assert.equal(countValid(new URL('./fixtures/two-tab', import.meta.url).pathname), 2);
+  assert.equal(countValid(fileURLToPath(new URL('./fixtures/two-tab', import.meta.url))), 2);
 });
 
 test('empty dir ⇒ zero tabs', () => {
   // No fixtures at all
-  const empty = new URL('./fixtures/empty', import.meta.url).pathname;
+  const empty = fileURLToPath(new URL('./fixtures/empty', import.meta.url));
   // If dir missing, treat as 0
   let count = 0;
   try { count = countValid(empty); } catch { count = 0; }

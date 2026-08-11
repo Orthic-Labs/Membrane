@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { adoptionArgs, platformFor } from "../scripts/stage-binaries.mjs";
 
 test("adoption is lock-based & stages only into src-tauri/addons", () => {
@@ -15,7 +16,7 @@ test("adoption is lock-based & stages only into src-tauri/addons", () => {
     "--lock", "/tmp/membrane.lock.json",
     "--platform", "mac",
     "--output", "/tmp/orthic/src-tauri/addons",
-    "--source", "/tmp/sealed",
+    "--source", resolve("/tmp/sealed"),
   ]);
   assert.equal(platformFor("win32"), "win");
   const lock = JSON.parse(readFileSync(new URL("../product-addons/membrane.lock.json", import.meta.url), "utf8"));
