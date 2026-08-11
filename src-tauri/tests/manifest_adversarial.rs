@@ -2,6 +2,11 @@ use std::fs;
 use std::path::Path;
 use orthic::manifest_validate::{validate_manifest_bytes, validate_manifest_value};
 
+#[cfg(unix)]
+use std::os::unix::fs::symlink as symlink_file;
+#[cfg(windows)]
+use std::os::windows::fs::symlink_file;
+
 fn valid_base(dir: &Path) -> serde_json::Value {
     serde_json::json!({
         "schemaVersion":1,"productId":"membrane","displayName":"Membrane","productVersion":"1.0.0","hubCompatRange":">=0.1.0","installRoot": dir.to_string_lossy(),"serviceStart":[format!("{}/bin", dir.to_string_lossy())],"serviceStop":[],"statusEndpoint":{"host":"127.0.0.1","port":8080,"authHeader":"X-Token","authToken":"secret"},"icon": format!("{}/icon.png", dir.to_string_lossy())
@@ -28,7 +33,7 @@ fn case2_symlink_escape_rejected() {
     let real = outside.join("bin");
     fs::write(&real, b"x").unwrap();
     let link = install.join("linkbin");
-    std::os::unix::fs::symlink(&real, &link).unwrap();
+    symlink_file(&real, &link).unwrap();
     let mut v = valid_base(&install);
     v["serviceStart"] = serde_json::json!([link.to_string_lossy()]);
     assert_eq!(validate_manifest_value(v).unwrap_err(), "serviceStart[0] resolves outside installRoot");

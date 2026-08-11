@@ -1,12 +1,12 @@
 use super::*;
 
 fn config(root: &std::path::Path, python: &std::path::Path) -> Vec<u8> {
-    format!(
-        r#"{{"schemaVersion":2,"workspaceRoot":"{}","pythonExecutable":"{}"}}"#,
-        root.display(),
-        python.display()
-    )
-    .into_bytes()
+    serde_json::to_vec(&serde_json::json!({
+        "schemaVersion": 2,
+        "workspaceRoot": root,
+        "pythonExecutable": python,
+    }))
+    .unwrap()
 }
 /// Full env-free matrix. Every case constructs the inputs by hand and never
 /// touches the process environment.

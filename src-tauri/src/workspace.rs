@@ -105,11 +105,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let python = root.path().join("python");
         std::fs::write(&python, b"x").unwrap();
-        let parsed = serde_json::from_str(&format!(
-            r#"{{"schemaVersion":2,"workspaceRoot":"{}","pythonExecutable":"{}"}}"#,
-            root.path().display(),
-            python.display()
-        ))
+        let parsed: Config = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 2,
+            "workspaceRoot": root.path(),
+            "pythonExecutable": python,
+        }))
         .unwrap();
         let workspace = from_config(parsed).unwrap();
         assert_eq!(workspace.root, std::fs::canonicalize(root.path()).unwrap());
