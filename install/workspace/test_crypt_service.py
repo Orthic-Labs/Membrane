@@ -42,9 +42,13 @@ def test_migrate_legacy_crypt_database_does_not_move_canonical_when_no_legacy(tm
 
 def test_migrate_legacy_crypt_database_moves_legacy_to_canonical(tmp_path):
     legacy = tmp_path / "memright-engine.db"
-    with sqlite3.connect(legacy) as connection:
+    connection = sqlite3.connect(legacy)
+    try:
         connection.execute("CREATE TABLE marker (value TEXT)")
         connection.execute("INSERT INTO marker VALUES ('kept')")
+        connection.commit()
+    finally:
+        connection.close()
 
     canonical = cs.migrate_legacy_crypt_database(tmp_path)
 
