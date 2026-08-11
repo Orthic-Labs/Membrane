@@ -22,16 +22,17 @@ from pathlib import Path
 from typing import Iterable
 
 ADAPT_DIR = Path(__file__).resolve().parent.parent
+PACKAGE_DIR = ADAPT_DIR / "src" / "adapt"
 SCHEMA_PATH = Path(__file__).resolve().parent / "pilot-corpus.schema.json"
 sys.path.insert(0, str(ADAPT_DIR))
 
-import workspace_runtime  # noqa: E402
+from adapt import workspace_runtime  # noqa: E402
 
 REPO_ROOT = workspace_runtime.workspace_root()
 
-import adapt_llm  # noqa: E402
-import adapt_sessions  # noqa: E402
-import authority  # noqa: E402
+from adapt import adapt_llm  # noqa: E402
+from adapt import adapt_sessions  # noqa: E402
+from adapt import authority  # noqa: E402
 
 SCHEMA_VERSION = "1.0.0"
 SELECTION_STRATEGY = "balanced-tool-round-robin(scope,recency,size)-v1"
@@ -256,10 +257,10 @@ def _git_value(args: list[str]) -> str:
 
 def _version_record(out_dir: Path) -> dict:
     files = [
-        ADAPT_DIR / "adapt_sessions.py",
-        ADAPT_DIR / "adapt_llm.py",
-        ADAPT_DIR / "admission.py",
-        ADAPT_DIR / "outcomes.py",
+        PACKAGE_DIR / "adapt_sessions.py",
+        PACKAGE_DIR / "adapt_llm.py",
+        PACKAGE_DIR / "admission.py",
+        PACKAGE_DIR / "outcomes.py",
         Path(__file__).resolve(),
         SCHEMA_PATH,
     ]

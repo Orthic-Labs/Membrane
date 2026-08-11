@@ -21,16 +21,16 @@ from typing import Callable, Iterable
 ADAPT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ADAPT_DIR))
 
-import workspace_runtime  # noqa: E402
+from adapt import workspace_runtime  # noqa: E402
 
 REPO_ROOT = workspace_runtime.workspace_root()
 
-import adapt_llm  # noqa: E402
-import adapt_sessions  # noqa: E402
-import admission  # noqa: E402
+from adapt import adapt_llm  # noqa: E402
+from adapt import adapt_sessions  # noqa: E402
+from adapt import admission  # noqa: E402
 import freeze_pilot  # noqa: E402
-import outcomes  # noqa: E402
-import preference_record  # noqa: E402
+from adapt import outcomes  # noqa: E402
+from adapt import preference_record  # noqa: E402
 
 SCHEMA_VERSION = "1.0.0"
 BATCH_CHECKPOINT_CONTRACT = "typed-agent-preference-v1"

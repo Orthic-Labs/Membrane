@@ -29,6 +29,7 @@ from pathlib import Path
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 HERE = Path(__file__).resolve().parent
 ADAPT_DIR = HERE.parent
+PACKAGE_DIR = ADAPT_DIR / "src" / "adapt"
 DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/full"
 DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/crypt-engine.db"
 DEFAULT_CRYPT = ROOT / "tools/bin/crypt.exe"
@@ -53,8 +54,8 @@ def _load_module(path: Path, name: str):
 
 builder = _load_module(HERE / "build_delivery_parity_set.py", "delivery_parity_builder")
 value_ab = _load_module(HERE / "run_value_ab.py", "delivery_parity_value_ab")
-adapt_llm = _load_module(ADAPT_DIR / "adapt_llm.py", "delivery_parity_adapt_llm")
-adapt_sessions = _load_module(ADAPT_DIR / "adapt_sessions.py", "delivery_parity_sessions")
+adapt_llm = _load_module(PACKAGE_DIR / "adapt_llm.py", "delivery_parity_adapt_llm")
+adapt_sessions = _load_module(PACKAGE_DIR / "adapt_sessions.py", "delivery_parity_sessions")
 control_audit = _load_module(HERE / "audit_delivery_controls.py", "delivery_control_audit")
 
 _run_via_port = value_ab._run_via_port

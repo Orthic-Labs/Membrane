@@ -18,11 +18,11 @@ ADAPT = Path(__file__).resolve().parent.parent  # adapt/ — this file lives in 
 sys.path.insert(0, str(ADAPT))
 
 import adapt as adapt_pipeline
-import adapt_sessions
-import manifest as manifest_contract
-import preference_record
-import rollback
-import run_journal
+from adapt import adapt_sessions
+from adapt import manifest as manifest_contract
+from adapt import preference_record
+from adapt import rollback
+from adapt import run_journal
 
 
 def _load_runner():

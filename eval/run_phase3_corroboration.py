@@ -433,7 +433,7 @@ def _call_model(model_id: str, system: str, user: str, max_tokens: int) -> str:
     provider_name, model = MODEL_SPECS[model_id]
     if provider_name == "minimax":
         sys.path.insert(0, str(ADAPT_DIR))
-        import adapt_llm
+        from adapt import adapt_llm
         response = adapt_llm.call_lane_response(
             system, user, lane="minimax", max_tokens=max_tokens,
             attempts=3, thinking="disabled", temperature=0.0,
@@ -531,7 +531,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _write_json_atomic(args.out / "preflight.json", preflight)
 
     sys.path.insert(0, str(ADAPT_DIR))
-    import adapt_sessions
+    from adapt import adapt_sessions
     panel = run_panel(
         cases=cases,
         model_ids=args.models,

@@ -39,7 +39,7 @@ except ModuleNotFoundError:  # pragma: no cover - this Python 3.14 has no pytest
     pytest = _PytestShim()
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import insights  # noqa: E402
+from adapt import insights  # noqa: E402
 
 ADAPT = Path(__file__).resolve().parent.parent
 REAL_SESSION = Path(

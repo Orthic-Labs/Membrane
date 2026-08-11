@@ -54,10 +54,10 @@ from collections import defaultdict
 WS = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import preference_record as pr_mod  # noqa: E402
-import manifest  # noqa: E402
+from adapt import preference_record as pr_mod  # noqa: E402
+from adapt import manifest  # noqa: E402
 import adapt  # noqa: E402
-import authority  # noqa: E402
+from adapt import authority  # noqa: E402
 
 
 def _default_fixture() -> dict:
@@ -122,7 +122,7 @@ def _emit_from_fixture(fx: dict, out_path: Path) -> dict:
     # Wrap synthesis actions through PreferenceRecord to derive ids + apply
     # admission. admission.admit() refuses rules outside the controlled
     # categories and rules shorter than 8 words.
-    import admission  # local import
+    from adapt import admission  # local import
     canonical_rules: set[str] = set()
     rules: dict[str, dict] = {}
     manifest_records: list[dict] = []

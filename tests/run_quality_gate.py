@@ -21,9 +21,9 @@ from typing import Callable
 WS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(WS))
 
-import adapt_llm as al  # noqa: E402
-import admission  # noqa: E402
-import outcomes  # noqa: E402
+from adapt import adapt_llm as al  # noqa: E402
+from adapt import admission  # noqa: E402
+from adapt import outcomes  # noqa: E402
 
 
 def _write_json(path: Path, value: dict) -> None:

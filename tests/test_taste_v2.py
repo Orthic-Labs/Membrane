@@ -25,7 +25,7 @@ TESTS_DIR = Path(__file__).resolve().parent
 ADAPT = TESTS_DIR.parent
 sys.path.insert(0, str(ADAPT))
 
-import taste_v2  # noqa: E402
+from adapt import taste_v2  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

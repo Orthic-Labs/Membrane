@@ -43,8 +43,8 @@ from pathlib import Path
 
 WS = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import admission  # noqa: E402
-import preference_record as pr_mod  # noqa: E402
+from adapt import admission  # noqa: E402
+from adapt import preference_record as pr_mod  # noqa: E402
 
 # Heuristic: imperative verbs that imply a real directive.
 _IMPERATIVE_VERBS = {

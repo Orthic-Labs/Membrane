@@ -21,9 +21,9 @@ ADAPT_DIR = Path(__file__).resolve().parent.parent  # adapt/ — this file lives
 EVAL_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ADAPT_DIR))
 sys.path.insert(0, str(EVAL_DIR))
-import admission
-import authority
-import preference_record
+from adapt import admission
+from adapt import authority
+from adapt import preference_record
 
 
 DEFAULT_BATCH_CHAR_BUDGET = 100_000
@@ -682,7 +682,7 @@ def load_commandcode_groups(
     root: Path, *, workspace_scope: str
 ) -> tuple[list[list[dict]], dict]:
     import freeze_commandcode_corpus
-    import adapt_sessions
+    from adapt import adapt_sessions
 
     manifest = freeze_commandcode_corpus.validate_manifest(root / "manifest.json")
     prompt_path = root / manifest["prompts"]["path"]
@@ -900,7 +900,7 @@ def run_compiler(
 
 
 def _call_minimax(system: str, user: str, max_tokens: int) -> dict:
-    import adapt_llm
+    from adapt import adapt_llm
     return adapt_llm.call_lane_response(
         system, user, lane="minimax", max_tokens=max_tokens,
         attempts=1, thinking="disabled", temperature=0.2,
@@ -1014,7 +1014,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     _write_json(args.out / "preflight.json", preflight)
 
-    import adapt_sessions
+    from adapt import adapt_sessions
     result = run_compiler(
         groups=groups,
         output_dir=args.out,

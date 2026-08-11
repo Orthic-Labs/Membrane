@@ -19,8 +19,8 @@ for path in (ADAPT_DIR, TOOLS_LIB):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-import adapt_sessions
-import preference_record
+from adapt import adapt_sessions
+from adapt import preference_record
 from memory import adapt_core
 
 

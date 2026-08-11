@@ -1,4 +1,4 @@
-<img src=".github/banner.svg" alt="Adapt — Corrections that stick across sessions." width="100%">
+<img src=".github/adapt-banner.svg" alt="Adapt — Corrections that stick across sessions." width="100%">
 
 **AI assistants repeat the same mistakes because useful corrections disappear when the session ends. Adapt mines local Codex and Claude transcripts for repeated, durable guidance and promotes it — through hard safety gates — into a small, scoped, reversible preference layer that future agents actually recall.**
 
@@ -77,6 +77,17 @@ python3 adapt.py doctor validate --receipt receipt.json
 ```
 
 Writes are opt-in (`--apply`); smoke & manifest generation stay dry-run. LLM proposal lanes are `local` (default) or `minimax`; every proposal is rebound to an exact canonical external-user event, then passes deterministic admission. `--deterministic-only` disables LLM recall explicitly. Tests: `python3 -m pytest -q`.
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `src/adapt/` | runtime package, policies & manifest schema |
+| `tests/` | unit, contract & regression tests |
+| `eval/` | offline evaluation and delivery-parity tooling |
+| `docs/` | architecture, operations & historical plans |
+
+`adapt.py` is the intentionally small source-checkout entrypoint; implementation stays under `src/adapt/`.
 
 ## Recent
 
