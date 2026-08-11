@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { buildOciRelease, writeOciRelease, readReleaseGeneration } from "../../scripts/release/oci/generate-oci-release.mjs";
-import { releaseId } from "../../scripts/release/pipeline/multi-platform-release.mjs";
+import { releaseId } from "../../scripts/release/identity.mjs";
 
 const COMMIT = "a".repeat(40);
 const TREE = "b".repeat(40);

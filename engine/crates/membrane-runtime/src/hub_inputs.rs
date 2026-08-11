@@ -250,13 +250,10 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
         // concept — do not invent one; `not_instrumented` is truthful.
         devices: not_instrumented(),
         memory,
-        // `memory_sentinel_view::project` (src/memory_sentinel_view.rs,
-        // mirrored in apps/membrane-hub/src/memory-sentinel.mjs) is now
-        // backed by `memory_sentinel_producer`, a content-free (IDs/counts
-        // only) sqlite read. `startup_sentinel_masked` in
-        // apps/membrane-hub/src-tauri/src/main.rs is an unrelated boolean
-        // startup gate — see the comment at that call site for why it stays
-        // separate.
+        // `memory_sentinel_view::project` is backed by
+        // `memory_sentinel_producer`, a content-free (IDs/counts only)
+        // sqlite read. Startup masking remains separate from this runtime
+        // data projection.
         sentinel: match crate::memory_sentinel_producer::build_sentinel_report() {
             Some(report) => {
                 let projected = crate::memory_sentinel_view::project(&report);

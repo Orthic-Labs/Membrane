@@ -1,17 +1,5 @@
-// MBR-903: pure release-identity primitives for the multi-platform pipeline.
-//
-// This module never builds, signs, or publishes anything. It only (a)
-// canonically hashes a release identity so the same inputs always produce
-// the same "release generation" digest, byte for byte, and (b) reads the
-// current source commit/tree with read-only `git` calls (no mutation).
-//
-// "Reproducible" for MBR-903 means: given the same product, vector-dispatch
-// marker, commit, tree, version, and target set, computeReleaseGeneration
-// returns the identical digest every time, on either machine. Any drift in
-// any one of those inputs -- e.g. a Windows checkout that has not pulled the
-// commit the macOS build sealed -- changes the digest, and callers
-// (multi-platform-release.mjs) fail closed on that mismatch instead of
-// silently accepting mismatched platform artifacts as "the same release."
+// Pure release-identity primitives shared by preserved OCI/npm consumers.
+// This module never builds, signs, uploads, or writes release evidence.
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
@@ -23,10 +11,6 @@ export const TAG = /^v\d+\.\d+\.\d+$/;
 
 const fail = (message) => { throw new Error(`FAIL CLOSED: ${message}`); };
 
-// Deterministic canonical JSON: recursively sorts object keys so the same
-// logical value always serializes to the same bytes, regardless of
-// construction order. Arrays keep their given order (order is meaningful
-// for `targets`).
 export function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value && typeof value === "object") {
@@ -37,18 +21,8 @@ export function canonicalize(value) {
   return value;
 }
 
-export function canonicalJson(value) {
-  return JSON.stringify(canonicalize(value));
-}
+export function canonicalJson(value) { return JSON.stringify(canonicalize(value)); }
 
-/**
- * Binds product + vector-dispatch marker + source commit/tree + version +
- * the exact ordered target set into one sha256 digest: the "release
- * generation." Two calls with identical inputs always return the identical
- * digest (reproducibility). Changing any one input -- most importantly
- * `tree`, which is what actually diverges when a machine has not pulled the
- * intended commit -- changes the digest (drift is observable, not hidden).
- */
 export function computeReleaseGeneration({ product, vectorDispatch, commit, tree, version, targets }) {
   if (typeof product !== "string" || !product) fail("product is required");
   if (vectorDispatch !== VECTOR_DISPATCH) fail(`vectorDispatch must be ${VECTOR_DISPATCH}`);
@@ -57,8 +31,14 @@ export function computeReleaseGeneration({ product, vectorDispatch, commit, tree
   if (!SEMVER.test(version ?? "")) fail("version must be semver X.Y.Z");
   if (!Array.isArray(targets) || targets.length === 0) fail("targets must be a non-empty array");
   for (const target of targets) if (typeof target !== "string" || !target) fail("every target must be a non-empty string");
-  const payload = canonicalJson({ product, vectorDispatch, commit, tree, version, targets });
-  return createHash("sha256").update(payload).digest("hex");
+  return createHash("sha256").update(canonicalJson({ product, vectorDispatch, commit, tree, version, targets })).digest("hex");
+}
+
+export function releaseId({ app, version, commit }) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(app ?? "")) fail("app must be a safe release-id component");
+  if (!SEMVER.test(version ?? "")) fail("version must be semver X.Y.Z");
+  if (!HEX40.test(commit ?? "")) fail("commit must be a 40-character git SHA");
+  return `${app}-${version}-${commit.slice(0, 8)}`;
 }
 
 function git(cwd, args) {
@@ -67,12 +47,6 @@ function git(cwd, args) {
   return result.stdout.trim();
 }
 
-/**
- * Read-only source identity for the current worktree: HEAD commit, the tree
- * that commit records, and whether the worktree is clean. Every `git`
- * subcommand here is informational (rev-parse, status --porcelain); none
- * mutate history, refs, the index, or the working tree.
- */
 export function resolveGitSourceIdentity({ cwd = process.cwd() } = {}) {
   const commit = git(cwd, ["rev-parse", "HEAD"]);
   const tree = git(cwd, ["rev-parse", "HEAD^{tree}"]);

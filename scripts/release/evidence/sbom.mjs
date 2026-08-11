@@ -1,25 +1,15 @@
 #!/usr/bin/env node
 // MBR-807: a real software bill of materials, derived only from lockfiles
-// already committed to this repository (apps/membrane-hub/pnpm-lock.yaml,
-// apps/membrane-hub/src-tauri/Cargo.lock). It never fabricates a component,
+// already committed to this repository (pnpm-lock.yaml, engine/Cargo.lock).
+// It never fabricates a component,
 // version, source, or checksum: every entry is parsed straight out of an
 // existing lockfile line, and anything this parser cannot resolve a real
 // checksum for is reported in `gaps`, never guessed at or filled with a
 // plausible-looking placeholder.
 //
-// Why these two lockfiles and not others in the repo (root pnpm-lock.yaml,
-// engine/Cargo.lock, the vector-bakeoff/tests fixture Cargo.locks): they are
-// the exact dependency graphs that end up inside the shipped membrane-hub
-// release artifact -- apps/membrane-hub/pnpm-lock.yaml is the Tauri app's
-// own JS/TS build dependencies, and apps/membrane-hub/src-tauri/Cargo.lock
-// is the full resolved Rust graph `tauri build` compiles, which already
-// includes engine/crates/membrane-updater as a path dependency (confirmed:
-// membrane-updater's own Cargo.lock entry here depends only on `serde`,
-// already present in this same lockfile -- nothing from engine/Cargo.lock's
-// separate, larger crate graph is compiled into membrane-hub). Root
-// pnpm-lock.yaml and engine/Cargo.lock describe the separate MCP
-// server/engine artifact tracked by other Wave 3/4 tasks (MBR-906 etc.),
-// not this release target.
+// These are the exact resolved dependency graphs for the portable Membrane
+// add-on: root JS checks plus its locked engine workspace. Fixture lockfiles
+// do not participate in a shipped add-on.
 //
 // This module never runs cargo, pnpm, or any other command: it only reads
 // and parses text files already on disk.
@@ -33,8 +23,8 @@ export const SCHEMA = "orthic.membrane.sbom.v1";
 const fail = (message) => { throw new Error(`FAIL CLOSED: ${message}`); };
 
 export const DEFAULT_LOCKFILES = [
-  { ecosystem: "npm", path: "apps/membrane-hub/pnpm-lock.yaml" },
-  { ecosystem: "cargo", path: "apps/membrane-hub/src-tauri/Cargo.lock" },
+  { ecosystem: "npm", path: "pnpm-lock.yaml" },
+  { ecosystem: "cargo", path: "engine/Cargo.lock" },
 ];
 
 function splitNameVersion(rawKey) {
@@ -188,7 +178,7 @@ function usage() {
   console.log(
     "usage: sbom.mjs [--repo-root PATH] [--out FILE]\n\n" +
     "Prints (or, with --out, also writes) the real SBOM derived from\n" +
-    "apps/membrane-hub/pnpm-lock.yaml and apps/membrane-hub/src-tauri/Cargo.lock.\n" +
+    "pnpm-lock.yaml and engine/Cargo.lock.\n" +
     "Never runs cargo, pnpm, or any other command; reads committed lockfiles only.",
   );
 }

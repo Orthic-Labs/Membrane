@@ -1,10 +1,16 @@
 # Hub handoff (CU-H01)
 
-Migration verified: `git ls-remote https://github.com/Orthic-Labs/orthic HEAD` → `05174f95833ccacf925ba5e8cc77d308c2f867d9` (already-landed extraction target per hub-strip contract §1). The chassis that lived at `apps/membrane-hub/**` (224 files / 3,178 LOC) now lives at `github.com/Orthic-Labs/orthic` with history preserved per seam D-S13. This repo's local copy is retained until the next window to keep `cargo test -p membrane-runtime` (422) and `pnpm tauri build` replacement checks green; deletion is `git rm -r apps/membrane-hub` in the next dispatch, gated on the same pre-flight.
+Orthic owns its desktop installer. Membrane produces a signed portable add-on
+containing only `membrane`, `crypt-service`, icon, legal files, and its sealed
+manifest. Existing Hub sources remain until RightKit publication, both
+platform uploads, and remote Orthic adoption have receipts.
 
 ## Crypt-service start-up after handoff
 
-- **Hub-spawn via manifest (while Hub runs):** Orthic Hub spawns crypt-service via the manifest's `serviceStart` argv (`install/workspace/orthic_manifest.py` product `~/.orthic/hub/products.d/membrane.json`, CU-H02). The Hub reads `serviceStart` and launches crypt-service as its child per `engine/crates/membrane/src/main.rs:210-227`.
+- **Hub-spawn via manifest (while Hub runs):** Orthic Hub reads the atomic
+  v1 manifest at `~/.orthic/hub/products.d/membrane.json`, verifies its
+  compatible Hub range, then launches the declared `crypt-service` argv with
+  its inline authentication token.
 
 - **Headless/standalone:** `membrane service run` (existing CLI entry point `engine/crates/membrane/src/cli.rs`) starts crypt-service headless/standalone for servers/CI/SSH-only hosts without a Hub.
 

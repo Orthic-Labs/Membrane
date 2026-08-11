@@ -101,9 +101,8 @@ def _valid_release_generation(value: Any) -> bool:
     return len(digest) == 64 and all(char in "0123456789abcdefABCDEF" for char in digest)
 
 
-# Subtree the release generation is computed over — mirrors
-# apps/membrane-hub/scripts/release-identity.mjs::SUBTREE exactly, so the
-# baked-in binary identity and this fallback never disagree.
+# Subtree the release generation is computed over. It is shared by the
+# add-on producer and this fallback, so their binary identity agrees.
 _SOURCE_IDENTITY_SUBTREE = "engine"
 
 
@@ -170,8 +169,7 @@ def _working_tree_digest(repo_root: Path) -> str:
 
 def _expected_release_generation_from_source(repo_root: Path) -> str | None:
     """Recompute the expected release generation directly from the local
-    git working tree, mirroring
-    apps/membrane-hub/scripts/release-identity.mjs::engineReleaseIdentity.
+    git working tree, matching the add-on producer's engine identity.
     Used only when the fleet manifest is absent or invalid (e.g. local Mac
     development). Fails closed (returns None) on any git or I/O error.
     """
@@ -677,7 +675,7 @@ def _gather_all_parallel(
         # 2000 ms resident budget on a cold graph and trips the federate
         # circuit breaker, which is worse. The lane-level fix needs a
         # timeout-aware partial fan-out; until then the identity must simply
-        # match (see apps/membrane-hub/scripts/release-identity.mjs).
+        # match the add-on's engine identity.
         freshness["stale"] = True
         return [], freshness
     provider_elapsed_ms: dict[str, float] = {}

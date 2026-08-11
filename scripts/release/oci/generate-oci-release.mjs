@@ -8,8 +8,7 @@
 //
 // The binding it proves: the OCI contract's `identity` (tag, commit,
 // release_generation) is read verbatim from MBR-903's own immutable
-// evidence/releases/<releaseId>/release-generation.json (scripts/release/pipeline/
-// multi-platform-release.mjs#writeImmutableReleaseGeneration) -- never
+// evidence/releases/<releaseId>/release-generation.json -- never
 // hand-typed here -- and every evidence artifact (SBOM, Ed25519 signature,
 // cosign receipt, rootless-health receipt, secret-scan receipt) and the Linux
 // binary baked into the image must already exist on disk with a real,
@@ -27,8 +26,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { HEX40, HEX64, TAG } from "../pipeline/identity.mjs";
-import { releaseId as computeReleaseId } from "../pipeline/multi-platform-release.mjs";
+import { HEX40, HEX64, TAG, releaseId as computeReleaseId } from "../identity.mjs";
 import { verifyOciRelease } from "../verify-oci-release.mjs";
 
 const RELEASE_GENERATION_SCHEMA = "orthic.membrane.release-generation.v1";
@@ -48,7 +46,7 @@ function sha256OfFile(path) {
  * cross-pasted record instead of trusting it verbatim.
  */
 export function readReleaseGeneration(path) {
-  if (!existsSync(path)) fail(`release-generation record not found: ${path} (run scripts/release/pipeline/multi-platform-release.mjs --write first)`);
+  if (!existsSync(path)) fail(`release-generation record not found: ${path}`);
   let doc;
   try { doc = JSON.parse(readFileSync(path, "utf8")); }
   catch (error) { fail(`release-generation record is not valid JSON: ${path}: ${error.message}`); }

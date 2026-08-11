@@ -12,13 +12,11 @@
 // release/contracts/platforms.v1.json has no linux entry) -- is a declared,
 // named gap, never a fabricated artifact. It is the resolution layer the
 // npm bootstrapper (npm/bin/membrane.mjs, npm/index.mjs) and the per-platform
-// package scaffolds under npm/platforms/** depend on to learn what MBR-903's
-// pipeline identified, without re-deriving or duplicating that pipeline's
-// own logic (imported read-only from scripts/release/pipeline/, which is
-// outside this task's allowlist and is not modified here).
+// package scaffolds under npm/platforms/** use it without re-deriving a
+// release identity or mutating release state.
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { releaseId as computeReleaseId } from "../pipeline/multi-platform-release.mjs";
+import { releaseId as computeReleaseId } from "../identity.mjs";
 
 // npm platform key (npm/index.mjs's PLATFORM_PACKAGES) -> the pipeline
 // target enum release/contracts/platforms.v1.json and
@@ -74,7 +72,7 @@ export function resolveNpmPlatformArtifact({ repoRoot, releaseId, npmPlatformKey
   const generation = readReleaseGeneration({ repoRoot, releaseId });
   if (!generation) {
     throw new ArtifactNotVerifiedError(
-      `declared gap: no release-generation recorded for ${releaseId} yet (run scripts/release/pipeline/multi-platform-release.mjs --write after sealing a build); nothing to resolve`,
+      `declared gap: no sealed release-generation record for ${releaseId}; nothing to resolve`,
     );
   }
 

@@ -2,9 +2,9 @@
 
 Per consolidated contract D-C09 and dead-surface disposition §2, the following surfaces are **explicitly deferred**, not silently dropped. They are recorded here so a future contract can promote them without rediscovery.
 
-## S-4: `fleet.rs` + `apps/membrane-hub/src/fleet.mjs`
+## S-4: `fleet.rs` + legacy fleet renderer
 
-Both halves' only consumer was `apps/membrane-hub`, which CU-H01 removes. `fleet.rs` stays orphaned-but-compiling in the membrane engine. Whether "fleet" (installation/replication projection) becomes an `orthic-hub` tab is a product decision for `Orthic-Labs/orthic-hub`'s own contract, not membrane's to make unilaterally post-migration. No `fleet` logic is wired in CU-20; the facade's `devices`/`alerts` sections remain `not_instrumented`. Revisit when `orthic-hub` defines its fleet tab contract.
+Both halves' only consumer was the legacy Hub, which M-2 removes after external gates. `fleet.rs` stays orphaned-but-compiling in the membrane engine. Whether "fleet" (installation/replication projection) becomes an `orthic-hub` tab is a product decision for `Orthic-Labs/orthic-hub`'s own contract, not membrane's to make unilaterally post-migration. No `fleet` logic is wired in CU-20; the facade's `devices`/`alerts` sections remain `not_instrumented`. Revisit when `orthic-hub` defines its fleet tab contract.
 
 ## S-7: `mcp_http.rs`
 
@@ -22,11 +22,11 @@ Both functions existed only to make a grep-based dead-surface gate pass: `regist
 
 Both functions were unreachable in both directions: `plan_with_doc_shadow` (the only caller of `maybe_admit_doc_candidates`) itself had no production caller, and its only prior caller was a test (`engine/crates/crypt/tests/doc_candidate_provider.rs`) exercising the dead function directly rather than any real request path — that test was removed alongside the functions. The shadow-selection seam (`DocCandidateProvider::select_shadow`, `RegisteredDocCandidateProvider`, `is_doc_provider_enabled()`) remains; only the planner-admission wrapper and opt-in admission function were removed (D-2). Deciding what task classes get doc candidates admitted to the planner, and at what trust tier, is a product decision for a future contract — not something this repair invents.
 
-## S-11: release-channel compatibility state (`apps/membrane-hub/src/release-channel.mjs`)
+## S-11: release-channel compatibility state
 
 The retained migration-source UI can evaluate release-channel compatibility, but `HubSnapshotV1` has no section or Rust producer for that state. Adding one requires Orthic to decide whether compatibility belongs in Hub snapshot data or remains client-local update policy. Membrane does not invent that product contract.
 
-## S-12: Hub actions (`apps/membrane-hub/src/actions.mjs`)
+## S-12: Hub actions
 
 The retained migration-source UI can construct action requests, but `HubSnapshotV1` is read-only and has no actions section or facade producer. Adding action transport would change the Hub's authority boundary, so it remains an Orthic product decision rather than a Membrane repair.
 

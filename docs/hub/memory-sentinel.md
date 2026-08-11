@@ -29,7 +29,7 @@ data-plane state. Fields:
 - `gate` — `GateState { state, reason, authoritative }`, defaulting the
   same way, plus `authoritative: false`.
 
-`apps/membrane-hub/src/memory-sentinel.mjs` is a hand-maintained JS mirror
+The legacy Hub renderer was a hand-maintained JS mirror
 of the same projection (`memorySentinelViewModel` / `renderMemorySentinel`)
 used by the Hub UI. It duplicates the Rust struct's field names, defaults,
 and the 64-item cap by hand — there is no shared codegen between the two,
@@ -74,7 +74,7 @@ evidence outranks stale documents.
 
 ## Not the same thing: `startup_sentinel_masked`
 
-`apps/membrane-hub/src-tauri/src/main.rs` has its own, unrelated
+The legacy desktop startup path had its own, unrelated
 `StartupGate` (`active: AtomicBool`) that can mask Hub startup: while
 `gate.active()` is true and the polled/cached snapshot looks like
 "source not connected" (`source_not_connected_snapshot`), `poll_snapshot`

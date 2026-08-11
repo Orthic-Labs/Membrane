@@ -5,7 +5,8 @@ from pathlib import Path
 SCHEMA_VERSION=1
 PRODUCT_ID="membrane"
 DISPLAY_NAME="Membrane"
-ALLOWED_FIELDS={"schemaVersion","productId","displayName","productVersion","installRoot","serviceStart","serviceStop","statusEndpoint","icon"}
+ALLOWED_FIELDS={"schemaVersion","productId","displayName","productVersion","hubCompatRange","installRoot","serviceStart","serviceStop","statusEndpoint","icon"}
+HUB_COMPAT_RANGE=">=0.1.11 <0.2.0"
 ICON_REL=Path("install/assets/membrane-tab-icon.png")
 SVC_REL=Path("tools/bin/crypt-service")
 SVC_REL_WIN=Path("tools/bin/crypt-service.exe")
@@ -35,7 +36,11 @@ def build_manifest_dict(root:Path,port:int,product_version:str,*,win:bool|None=N
     if not icon.is_file(): raise FileNotFoundError(f"icon not found: {icon}")
     if not _is_inside(root,svc): raise ValueError(f"serviceStart outside installRoot: {svc}")
     if not _is_inside(root,icon): raise ValueError(f"icon outside installRoot: {icon}")
-    m={"schemaVersion":SCHEMA_VERSION,"productId":PRODUCT_ID,"displayName":DISPLAY_NAME,"productVersion":str(product_version),"installRoot":str(root),"serviceStart":[str(svc)],"serviceStop":["SIGTERM"],"statusEndpoint":{"host":"127.0.0.1","port":int(port),"path":"/hub/snapshot","authHeader":"Authorization","tokenPath":str(token)},"icon":str(icon)}
+    if not _is_inside(root,token): raise ValueError(f"token outside installRoot: {token}")
+    try: auth_token=token.read_text(encoding="utf-8").strip()
+    except FileNotFoundError: raise FileNotFoundError(f"auth token not found: {token}") from None
+    if not auth_token: raise ValueError(f"auth token is empty: {token}")
+    m={"schemaVersion":SCHEMA_VERSION,"productId":PRODUCT_ID,"displayName":DISPLAY_NAME,"productVersion":str(product_version),"hubCompatRange":HUB_COMPAT_RANGE,"installRoot":str(root),"serviceStart":[str(svc)],"serviceStop":["SIGTERM"],"statusEndpoint":{"host":"127.0.0.1","port":int(port),"authHeader":"Authorization","authToken":auth_token},"icon":str(icon)}
     if set(m.keys())!=ALLOWED_FIELDS: raise ValueError(f"fields mismatch: {sorted(m.keys())}")
     return m
 def write_orthic_manifest(root:Path,home:Path,port:int,product_version:str,*,manifest_path:Path|None=None,win:bool|None=None)->Path:
@@ -48,7 +53,7 @@ def write_orthic_manifest(root:Path,home:Path,port:int,product_version:str,*,man
     tmp=None
     try:
         with tempfile.NamedTemporaryFile(mode="w",encoding="utf-8",delete=False,dir=str(dest.parent),suffix=".tmp") as f:
-            tmp=Path(f.name); json.dump(m,f,indent=2,sort_keys=True); f.write("\n")
+            tmp=Path(f.name); os.chmod(tmp,0o600); json.dump(m,f,indent=2,sort_keys=True); f.write("\n")
         os.replace(tmp,dest)
     finally:
         if tmp is not None and tmp.exists():

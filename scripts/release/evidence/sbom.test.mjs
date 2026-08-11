@@ -8,13 +8,13 @@ import { DEFAULT_LOCKFILES, generateSbom, parseCargoLock, parsePnpmLock, SCHEMA 
 
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../../../..");
 
-test("generateSbom against this repo's real membrane-hub lockfiles produces only resolved, hash-bound components and no gaps", () => {
+test("generateSbom against this repo's real add-on lockfiles produces only resolved, hash-bound components and no gaps", () => {
   const sbom = generateSbom({ repoRoot: REPO_ROOT });
   assert.equal(sbom.schema, SCHEMA);
   assert.equal(sbom.generatedFrom.length, DEFAULT_LOCKFILES.length);
-  assert.ok(sbom.componentCount > 400, `expected >400 real components from the hub's lockfiles, got ${sbom.componentCount}`);
+  assert.ok(sbom.componentCount > 100, `expected >100 real components from the add-on lockfiles, got ${sbom.componentCount}`);
   assert.equal(sbom.components.length, sbom.componentCount);
-  assert.deepEqual(sbom.gaps, [], "every real membrane-hub lockfile entry today has a full resolution/checksum; a non-empty gaps array here means a real entry lost its checksum");
+  assert.deepEqual(sbom.gaps, [], "every real add-on lockfile entry today has a full resolution/checksum; a non-empty gaps array here means a real entry lost its checksum");
   for (const component of sbom.components) {
     assert.match(component.name, /\S/);
     assert.match(component.version, /\S/);
@@ -26,11 +26,11 @@ test("generateSbom against this repo's real membrane-hub lockfiles produces only
       assert.ok(component.checksum && typeof component.checksum.value === "string" && component.checksum.value.length > 0);
     }
   }
-  // membrane-updater is the real path dependency this SBOM must surface as
+  // membrane is a real path dependency this SBOM must surface as
   // local, not silently drop or fabricate a registry checksum for.
-  const updater = sbom.components.find((c) => c.name === "membrane-updater");
-  assert.ok(updater, "membrane-updater path dependency must appear in the cargo component list");
-  assert.equal(updater.local, true);
+  const membrane = sbom.components.find((c) => c.name === "membrane");
+  assert.ok(membrane, "membrane path dependency must appear in the cargo component list");
+  assert.equal(membrane.local, true);
 });
 
 test("generateSbom is deterministic and hash-binds the exact lockfile bytes it read", () => {

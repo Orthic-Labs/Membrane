@@ -21,7 +21,7 @@ import {
   NoPipelineTargetError,
   ArtifactNotVerifiedError,
 } from "./resolve-platform-artifacts.mjs";
-import { releaseId as computeReleaseId } from "../pipeline/multi-platform-release.mjs";
+import { releaseId as computeReleaseId } from "../identity.mjs";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const REAL_REPO_ROOT = resolve(HERE, "../../..");
