@@ -4,6 +4,8 @@ target/
 src-tauri/target/
 src-tauri/gen/
 src-tauri/binaries/
+src-tauri/addons/
 .audit/
+.right-release/
 orthic-product-binaries/
 .DS_Store

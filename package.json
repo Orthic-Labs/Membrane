@@ -1,6 +1,6 @@
 {
   "name": "orthic",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.18.0",
@@ -8,6 +8,7 @@
     "build": "node scripts/build-frontend.mjs",
     "test": "node --test tests/*.mjs",
     "rightkit:package:mac": "node scripts/build-mac-release.mjs",
+    "rightkit:prepackage:win": "node scripts/stage-binaries.mjs && pnpm exec tauri build --no-bundle",
     "rightkit:package:win": "node scripts/build-windows-release.mjs",
     "release:doctor": "right-release doctor",
     "release:build:mac": "right-release build --platform mac",

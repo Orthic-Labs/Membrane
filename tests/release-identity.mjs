@@ -1,31 +1,52 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SIDECAR_NAMES } from "../scripts/release-assets.mjs";
 import { readFileSync } from "node:fs";
+import { adoptionArgs, platformFor } from "../scripts/stage-binaries.mjs";
 
-test("GENERATED paths are rerooted (no apps/membrane-hub prefix, no engine/target)", () => {
-  const content = readFileSync(new URL("../scripts/release-assets.mjs", import.meta.url), "utf8");
-  // Ensure no old prefix remains
-  assert.ok(!content.includes("apps/membrane-hub/dist"), "should not contain apps/membrane-hub");
-  assert.ok(!content.includes("engine/target"), "should not contain engine/target in GENERATED");
-  assert.ok(content.includes('"dist"') || content.includes("'dist'") || content.includes("GENERATED=[\"dist\""));
+test("adoption is lock-based & stages only into src-tauri/addons", () => {
+  const args = adoptionArgs({
+    platform: "mac",
+    lock: "/tmp/membrane.lock.json",
+    output: "/tmp/orthic/src-tauri/addons",
+    source: "/tmp/sealed",
+  });
+  assert.deepEqual(args, [
+    "exec", "right-release", "addon", "adopt",
+    "--lock", "/tmp/membrane.lock.json",
+    "--platform", "mac",
+    "--output", "/tmp/orthic/src-tauri/addons",
+    "--source", "/tmp/sealed",
+  ]);
+  assert.equal(platformFor("win32"), "win");
 });
 
-test("SIDECAR_NAMES includes expected binaries", () => {
-  assert.deepEqual(SIDECAR_NAMES, ["crypt","crypt-service","membrane"]);
-});
-
-test("build-frontend uses staged binaries not cargo build", async () => {
+test("frontend build has no product checkout or binary staging dependency", () => {
   const content = readFileSync(new URL("../scripts/build-frontend.mjs", import.meta.url), "utf8");
-  assert.match(content, /ORTHIC_PRODUCT_BINARIES_DIR/);
-  assert.doesNotMatch(content, /cargo build.*--manifest-path.*engine/);
-  assert.doesNotMatch(content, /\.\.\/\.\.\/\.\.\/engine/);
+  assert.doesNotMatch(content, /ORTHIC_PRODUCT_BINARIES_DIR|orthic-product-binaries|apps\/membrane-hub|engine\/target/);
 });
 
-test("right-release config has dual publish targets", async () => {
-  const cfg = (await import("../right-release.config.mjs")).default;
+test("release config preserves dual installer routes & excludes crypt", async () => {
+  const cfg = (await import(`../right-release.config.mjs?test=${Date.now()}`)).default;
   assert.equal(cfg.app, "orthic");
-  assert.ok(cfg.targets.mac.installer.artifacts.some(a => a.key.includes("cortex")));
-  assert.ok(cfg.targets.mac.installer.artifacts.some(a => a.key.includes("membrane")));
-  assert.ok(!cfg.buildInputs.include.some(p => p.includes("../../engine")));
+  assert.equal(cfg.version, "0.1.11");
+  assert.equal(cfg.targets.win.signingContract, "windows-raw-exe-authenticode-before-nsis-v1");
+  assert.deepEqual(cfg.targets.win.nsisUpgradeContract, {});
+  for (const target of [cfg.targets.mac, cfg.targets.win]) {
+    assert.ok(target.installer.artifacts.some(({ key }) => key.includes("cortex")));
+    assert.ok(target.installer.artifacts.some(({ key }) => key.includes("membrane")));
+  }
+  const tauri = JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
+  assert.deepEqual(tauri.bundle.externalBin, [
+    "addons/membrane/bin/crypt-service",
+    "addons/membrane/bin/membrane",
+  ]);
+});
+
+test("release prep contains no parent workspace or gitlink access", () => {
+  for (const file of ["stage-binaries.mjs", "build-mac-release.mjs", "build-windows-release.mjs"]) {
+    const content = readFileSync(new URL(`../scripts/${file}`, import.meta.url), "utf8");
+    assert.doesNotMatch(content, /parentWorkspace|gitlink|release-cache|\.\.\/\.\.\/membrane/);
+  }
+  const adoption = readFileSync(new URL("../scripts/stage-binaries.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(adoption, /copyFile|renameSync/, "Orthic must not materialize Membrane executable aliases");
 });

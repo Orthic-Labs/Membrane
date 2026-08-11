@@ -3,5 +3,5 @@
   "identifier": "com.orthic.hub",
   "bundleIdentifier": "com.orthic.hub",
   "dmgNameTemplate": "Orthic_${version}_aarch64.dmg",
-  "version": "0.1.10"
+  "version": "0.1.11"
 }

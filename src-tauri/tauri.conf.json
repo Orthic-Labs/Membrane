@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Orthic",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "identifier": "com.orthic.hub",
   "build": { "beforeBuildCommand": "pnpm build", "frontendDist": "../dist" },
   "bundle": {
-    "externalBin": ["binaries/crypt", "binaries/crypt-service", "binaries/membrane"],
+    "externalBin": ["addons/membrane/bin/crypt-service", "addons/membrane/bin/membrane"],
+    "resources": ["addons/membrane/resources/**/*", "addons/membrane/addon-manifest.json"],
     "windows": { "nsis": { "template": "windows/installer.nsi" } },
     "macOS": { "signingIdentity": "Developer ID Application: Adrian D'souza (6KLGD3LLKF)" },
     "icon": [

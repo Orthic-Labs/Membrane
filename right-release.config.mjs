@@ -4,7 +4,8 @@ const packageJson = JSON.parse(readFileSync(new URL("./package.json", import.met
 const version = packageJson.version;
 const buildInputs = {
   include: [
-    "index.html", "popover.html", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "scripts/**", "src/**", "assets/**",
+    "index.html", "popover.html", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "right-release.config.mjs",
+    "product-addons/**", "scripts/**", "src/**", "assets/**",
     "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs", "src-tauri/tauri.conf.json", "src-tauri/src/**",
     "brand.json",
     "schema/**",
@@ -31,10 +32,16 @@ export default {
     },
     win: {
       signed: true,
+      signingContract: "windows-raw-exe-authenticode-before-nsis-v1",
+      prePackage: { cmd: "pnpm", args: ["run", "rightkit:prepackage:win"] },
       package: { cmd: "pnpm", args: ["run", "rightkit:package:win"] },
-      artifacts: ["src-tauri/target/release/bundle/nsis"],
-      sign: { files: [windowsInstaller] },
+      artifacts: [windowsInstaller],
+      sign: {
+        prePackageFiles: ["src-tauri/target/release/orthic.exe"],
+        files: [windowsInstaller],
+      },
       hardening: ["src-tauri/target/release/bundle/nsis"],
+      nsisUpgradeContract: {},
       installer: { artifacts: [{ file: windowsInstaller, key: "membrane/installers/windows/current/Membrane_x64-setup.exe" }, { file: windowsInstaller, key: "cortex/installers/windows/current/Orthic_x64-setup.exe" }] },
       updater: { artifacts: [{ file: windowsInstaller, signature: `${windowsInstaller}.sig`, platform: "windows-x86_64", key: "membrane/updates/windows/current/Membrane_x64-setup.exe" }, { file: windowsInstaller, signature: `${windowsInstaller}.sig`, platform: "windows-x86_64", key: "cortex/updates/windows/current/Orthic_x64-setup.exe" }] },
     },
