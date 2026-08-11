@@ -83,7 +83,7 @@ const EXCLUDED_NAMES = Object.freeze([".git", "node_modules", ".agent", ...SCAN_
 // tracked tree costs, and shrinks as more is excluded.
 function resolveExclusions(root, extra = []) {
   const names = new Set(EXCLUDED_NAMES);
-  const literal = new Set(extra.map((value) => String(value).replaceAll("\\", "/")));
+  const literal = new Set(extra.map(normalizedRelative).filter(Boolean));
   const found = new Set(literal);
   const walk = (absolute, rel) => {
     let entries;

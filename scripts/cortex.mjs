@@ -90,6 +90,7 @@ import { syncToCurrentSource } from "../graph/barrier.mjs";
 import { checkScopeGrant, issueScopeGrant } from "../lib/receipt-store.mjs";
 import { incrementTelemetry, readTelemetry } from "../lib/telemetry.mjs";
 import { createSnapshot, getSnapshot, listSnapshots, changesSince } from "../graph/snapshots.mjs";
+import { adoptFileAtomically } from "../graph/atomic-store-adoption.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -348,35 +349,30 @@ function readJson(path, fallback) {
 function persistGenerationToStore(root, outDir, generation) {
   const dbPath = join(resolve(root, outDir), "graph", "graph.db");
   mkdirSync(dirname(dbPath), { recursive: true });
-  // D51: a corrupt store ahead of a build is a typed, recoverable condition.
-  // The store is the BUILD's output — a full rebuild replaces it wholesale, so
-  // a hostile/corrupt prior store must not crash the indexer; it is removed
-  // and recreated (the generation being persisted is complete and sealed, so
-  // nothing of the old bytes is preserved by design). An open failure that is
-  // NOT corruption still surfaces as a typed graph_error.
+  const freshPath = `${dbPath}.rebuild-${process.pid}-${Date.now()}`;
+  for (const suffix of ["", "-wal", "-shm"]) rmSync(freshPath + suffix, { force: true });
+
+  // A live writer makes sidecar replacement unsafe. Corrupt prior bytes remain
+  // recoverable until the validated fresh inode has been adopted.
   if (existsSync(dbPath)) {
+    let probe;
     try {
-      const probe = openStoreReadOnly(dbPath);
-      try {
-        // A corrupt SQLite file can OPEN read-only without error; only the
-        // first page read trips it. Probe with a trivial query.
-        probe.prepare("SELECT count(*) AS n FROM sqlite_master").get();
-      } finally {
-        closeStore(probe);
+      probe = openStore(dbPath);
+      probe.prepare("SELECT count(*) AS n FROM sqlite_master").get();
+      const checkpoint = probe.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+      if (Number(Object.values(checkpoint ?? {})[0] ?? 0) !== 0) {
+        throw new Error("graph store has a live writer");
       }
     } catch (error) {
       const message = String(error?.message ?? error);
-      if (/not a database|file is encrypted|malformed/i.test(message)) {
-        for (const suffix of ["", "-wal", "-shm"]) {
-          const sidecar = dbPath + suffix;
-          if (existsSync(sidecar)) rmSync(sidecar, { force: true });
-        }
-      } else {
-        throw new Error(`graph_publication_failed: ${message}`);
-      }
+      if (!/not a database|file is encrypted|malformed/i.test(message)) throw new Error(`graph_publication_failed: ${message}`);
+    } finally {
+      if (probe) closeStore(probe);
     }
+    for (const suffix of ["-wal", "-shm"]) rmSync(dbPath + suffix, { force: true });
   }
-  const db = openStore(dbPath);
+
+  const db = openStore(freshPath);
   let summary;
   let rows;
   try {
@@ -386,18 +382,36 @@ function persistGenerationToStore(root, outDir, generation) {
     if (rows.files !== summary.fileCount || rows.edges !== summary.edgeCount) {
       throw new Error(`graph publication readback row mismatch: files=${rows.files}/${summary.fileCount} edges=${rows.edges}/${summary.edgeCount}`);
     }
+    const integrity = db.prepare("PRAGMA integrity_check").get();
+    if (Object.values(integrity ?? {})[0] !== "ok") throw new Error("graph publication integrity check failed");
+    const checkpoint = db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get();
+    if (Number(Object.values(checkpoint ?? {})[0] ?? 0) !== 0) throw new Error("fresh graph checkpoint remained busy");
   } finally {
     closeStore(db);
   }
-  const readback = readGeneration(root, outDir);
   const expectedId = generation.manifest?.generationId ?? null;
-  const actualId = readback?.manifest?.generationId ?? null;
   const expectedDigest = generation.manifest?.manifestDigest ?? null;
-  const actualDigest = readback?.manifest?.manifestDigest ?? null;
-  if (!readback || actualId !== expectedId || actualDigest !== expectedDigest) {
-    throw new Error(`graph publication readback identity mismatch: generation=${actualId}/${expectedId} manifest=${actualDigest}/${expectedDigest}`);
+  const validate = (path) => {
+    const readbackDb = openStoreReadOnly(path);
+    try {
+      const integrity = readbackDb.prepare("PRAGMA integrity_check").get();
+      if (Object.values(integrity ?? {})[0] !== "ok") throw new Error("adopted graph integrity check failed");
+      const envelope = readManifestEnvelope(readbackDb);
+      const actualId = envelope?.generationId ?? null;
+      const actualDigest = envelope?.manifestDigest ?? null;
+      if (actualId !== expectedId || actualDigest !== expectedDigest) {
+        throw new Error(`graph publication readback identity mismatch: generation=${actualId}/${expectedId} manifest=${actualDigest}/${expectedDigest}`);
+      }
+    } finally {
+      closeStore(readbackDb);
+    }
+  };
+  try {
+    adoptFileAtomically(freshPath, dbPath, validate);
+  } finally {
+    for (const suffix of ["", "-wal", "-shm"]) rmSync(freshPath + suffix, { force: true });
   }
-  return { ok: true, path: dbPath, rows, summary, readback: { generationId: actualId, manifestDigest: actualDigest } };
+  return { ok: true, path: dbPath, rows, summary, readback: { generationId: expectedId, manifestDigest: expectedDigest } };
 }
 
 async function finalizeAndPersistGraphGeneration(root, outDir, generation, options = {}) {

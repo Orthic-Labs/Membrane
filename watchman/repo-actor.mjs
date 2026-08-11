@@ -8,6 +8,7 @@ import { extractDoc, isDoc, loadConfig } from "../scripts/cortex.mjs";
 import { MAX_SOURCE_FILE_BYTES, stableRead } from "../graph/stable-read.mjs";
 import { collectDependents, closeStore, listFileMetadata, listSymbolMetadata, maintainStore, openStore, openStoreReadOnly } from "../graph/store-sqlite.mjs";
 import { eventsSince, isEligibleWatchPath, startWatch, writeSnapshot } from "./adapter.mjs";
+import { normalizeIgnoredPrefixes } from "../graph/ignored-prefixes.mjs";
 
 const REPAIR_BATCH = 50;
 const DEBOUNCE_MS = 1000;
@@ -241,7 +242,8 @@ export class RepositoryActor extends EventEmitter {
     // actor's own subscription: today, an enrolled sibling repo nested under
     // this actor's root. Own `.agent` output is already excluded by the base
     // ignore set in adapter.mjs, at every actor, not just this one.
-    this.ignore = ignore;
+    const configuredIgnore = normalizeIgnoredPrefixes(loadConfig(this.root, outDir)?.ignoredPrefixes);
+    this.ignore = [...new Set([...ignore, ...configuredIgnore])];
     this.subscription = null;
     this.timer = null;
     this.running = false;
