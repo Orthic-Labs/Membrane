@@ -44,8 +44,7 @@ enum Command {
         #[arg(long)]
         config: PathBuf,
     },
-    /// Run the supervisor's outer loop. Manually invoked; on real installs the OS service
-    /// manager (launchd / Task Scheduler / systemd) does this.
+    /// Run the supervisor's outer loop. The Hub invokes this as a child process.
     Run {
         /// Path to the JSON config file.
         #[arg(long)]

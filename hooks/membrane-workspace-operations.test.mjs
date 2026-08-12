@@ -83,7 +83,7 @@ test("SessionStart performs health only & never starts or kicks Crypt", async ()
   const { root } = fixture(); const calls = [];
   const result = await runHook({ hook_event_name: "SessionStart", cwd: root }, { operations: operations(root, calls) });
   assert.deepEqual(calls, ["status"]);
-  assert.equal(result.membraneHook.results[0].output.detail.lifecycle, process.platform === "win32" ? "scheduled-task" : "launchd");
+  assert.equal(result.membraneHook.results[0].output.detail.lifecycle, "hub-child");
   assert.equal(result.membraneHook.results[1].output.reason, "event_not_applicable");
   const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(manifest.bin["membrane-workspace-hook"], "hooks/membrane-hook-entrypoint.mjs");

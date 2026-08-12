@@ -8,6 +8,7 @@ DISPLAY_NAME="Membrane"
 ALLOWED_FIELDS={"schemaVersion","productId","displayName","productVersion","hubCompatRange","installRoot","serviceStart","serviceStop","statusEndpoint","icon"}
 HUB_COMPAT_RANGE=">=0.1.11 <0.2.0"
 ICON_REL=Path("install/assets/membrane-tab-icon.png")
+WORKSPACE_ICON_REL=Path("membrane/install/assets/membrane-tab-icon.png")
 SVC_REL=Path("tools/bin/crypt-service")
 SVC_REL_WIN=Path("tools/bin/crypt-service.exe")
 TOKEN_REL=Path("tools/.cache/memory/api-token")
@@ -17,9 +18,14 @@ def _is_inside(root:Path,target:Path)->bool:
 def _svc_bin(root:Path,win:bool|None=None)->Path:
     if win is None: win=os.name=="nt"
     return root/(SVC_REL_WIN if win else SVC_REL)
+def _icon(root:Path)->Path:
+    for relative in (ICON_REL,WORKSPACE_ICON_REL):
+        candidate=root/relative
+        if candidate.is_file(): return candidate
+    return root/ICON_REL
 def read_product_version(root:Path)->str:
-    c=root/"engine/crates/membrane/Cargo.toml"
-    if c.is_file():
+    for c in (root/"engine/crates/membrane/Cargo.toml",root/"membrane/engine/crates/membrane/Cargo.toml"):
+      if c.is_file():
         for l in c.read_text(encoding="utf-8").splitlines():
             s=l.strip()
             if s.startswith("version"):
@@ -33,7 +39,7 @@ def build_manifest_dict(root:Path,port:int,product_version:str,*,win:bool|None=N
     if not root.is_absolute(): raise ValueError(f"installRoot must be absolute: {root}")
     if not str(product_version).strip(): raise ValueError("productVersion must be nonempty")
     if not 1<=int(port)<=65535: raise ValueError("statusEndpoint.port must be within 1..=65535")
-    svc=_svc_bin(root,win=win); icon=root/ICON_REL; token=root/TOKEN_REL
+    svc=_svc_bin(root,win=win); icon=_icon(root); token=root/TOKEN_REL
     if not svc.is_file(): raise FileNotFoundError(f"crypt-service binary not found: {svc}")
     if not icon.is_file(): raise FileNotFoundError(f"icon not found: {icon}")
     if not _is_inside(root,svc): raise ValueError(f"serviceStart outside installRoot: {svc}")

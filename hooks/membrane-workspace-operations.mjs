@@ -12,7 +12,7 @@ import { typedStatus } from "./membrane-hook-runtime.mjs";
 
 const require = createRequire(import.meta.url);
 const DEFAULT_CONTEXT_ADAPTER = require("../mcp/host/context-adapter.cjs");
-const SERVICE_LIFECYCLE = process.platform === "win32" ? "scheduled-task" : "launchd";
+const SERVICE_LIFECYCLE = "hub-child";
 
 function workspaceRoot(event, env = process.env) {
   const requested = env.WORKSPACE_ROOT || event.payload.cwd || event.payload.working_directory || process.cwd();

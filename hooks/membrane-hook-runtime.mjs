@@ -26,7 +26,7 @@ function requireOperation(operations, name) {
 /**
  * Membrane owns memory-hook policy; HookHost owns event normalization, ordering,
  * deadlines, and result envelopes. Lifecycle management is intentionally absent:
- * launchd is the sole Mac owner of Crypt start, restart, shutdown, and singleton
+ * the Hub is the sole owner of Crypt start, restart, shutdown, and singleton
  * ownership.
  */
 export function createMembraneHookModules(operations) {

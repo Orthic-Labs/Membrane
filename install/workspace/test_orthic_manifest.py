@@ -1,4 +1,4 @@
-"""Tests for Orthic manifest producer — pure stdlib, no launchd/IPC."""
+"""Tests for Orthic manifest producer — pure stdlib, no persistent-service IPC."""
 from __future__ import annotations
 import json, stat
 from pathlib import Path
@@ -58,6 +58,17 @@ def test_serviceStart_and_icon_inside_installRoot(tmp_path):
         assert not om._is_inside(root,link)
     finally:
         if link.is_symlink(): link.unlink()
+
+def test_workspace_layout_uses_nested_membrane_icon(tmp_path):
+    root=tmp_path/"workspace"; root.mkdir()
+    (root/"tools/bin").mkdir(parents=True)
+    (root/"tools/bin/crypt-service").write_text("#!bin",encoding="utf-8")
+    (root/"tools/.cache/memory").mkdir(parents=True)
+    (root/"tools/.cache/memory/api-token").write_text("token",encoding="utf-8")
+    (root/"membrane/install/assets").mkdir(parents=True)
+    (root/"membrane/install/assets/membrane-tab-icon.png").write_bytes(b"icon")
+    manifest=om.build_manifest_dict(root,47851,"0.1.0",win=False)
+    assert manifest["icon"]==str(root/"membrane/install/assets/membrane-tab-icon.png")
 
 def test_missing_binary_refuses_and_leaves_no_partial(tmp_path):
     root=_setup_root(tmp_path,with_binary=False); home=tmp_path/"home"

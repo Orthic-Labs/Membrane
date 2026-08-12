@@ -1,5 +1,5 @@
 //! Typed supervisor errors. Every public surface uses these so the supervisor binary's stderr
-//! can route the cause to launchd / Task Scheduler / systemd without parsing free-form text.
+//! can route the cause to Hub lifecycle reporting without parsing free-form text.
 //!
 //! MBR-201: build a per-user Membrane supervisor.
 

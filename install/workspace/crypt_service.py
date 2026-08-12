@@ -10,28 +10,13 @@ hardcoded machine path or username.
 from __future__ import annotations
 
 import os
-import socket
 import sqlite3
 import time
 from pathlib import Path
 
-from crypt_service_launchd import DEFAULT_CRYPT_SERVE_LABEL, render_crypt_launchd_plist  # noqa: F401
-from crypt_service_registrars import setup_crypt_serve_autostart  # noqa: F401
 
 def log(msg: str) -> None:
     print(f"[membrane-workspace] {msg}")
-
-
-def install_workspace_crypt_service(
-    repo: Path, home: Path, port: int, *, mac: bool, win: bool = False,
-    registrar=setup_crypt_serve_autostart,
-) -> dict[str, str]:
-    """Mac workspace installer entrypoint: launchd adopts Crypt singleton ownership."""
-    if win or not mac:
-        raise ValueError("Crypt workspace service installation is macOS-only")
-    migrate_legacy_crypt_database(repo / "tools/.cache/memory")
-    registrar(repo, home, port, mac=True, win=False)
-    return {"lifecycle": "launchd", "label": DEFAULT_CRYPT_SERVE_LABEL}
 
 
 def migrate_legacy_crypt_database(cache_dir: Path) -> Path:
@@ -98,32 +83,6 @@ def migrate_legacy_crypt_database(cache_dir: Path) -> Path:
     return canonical
 
 
-def wait_for_tcp_port_closed(host: str, port: int, *, timeout_seconds: float = 5.0) -> None:
-    """Wait for launchd's prior service process to release its listening port."""
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-            probe.settimeout(0.2)
-            if probe.connect_ex((host, port)) != 0:
-                return
-        if time.monotonic() >= deadline:
-            raise RuntimeError(f"Crypt port {host}:{port} remained in use after launchd bootout")
-        time.sleep(0.1)
-
-
-def wait_for_tcp_port_open(host: str, port: int, *, timeout_seconds: float = 60.0) -> None:
-    """Wait until the newly bootstrapped resident service owns its socket."""
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-            probe.settimeout(0.2)
-            if probe.connect_ex((host, port)) == 0:
-                return
-        if time.monotonic() >= deadline:
-            raise RuntimeError(f"Crypt port {host}:{port} did not open after launchd bootstrap")
-        time.sleep(0.1)
-
-
 def render_crypt_shim(
     exe: str, db: str, ort: str, hf: str, verb: str, *, compat_prefix: str | None,
     crypt_port: int, cmd_format: bool, win: bool = False,
@@ -137,11 +96,12 @@ def render_crypt_shim(
     """
     token = str(Path(db).parent / "api-token")
     if cmd_format:
+        is_runc = verb.split()[-1:] == ["runc"]
         runc_env = (
             'if not defined CRYPT_RUNC_SHELL set "CRYPT_RUNC_SHELL=C:\\Progra~1\\Git\\bin\\bash.exe -c"\r\n'
-            if verb == "runc" else ""
+            if is_runc else ""
         )
-        pre = 'runc --spill-dir "%CD%\\.cache\\runc" ' if verb == "runc" else f"{verb} " if verb else ""
+        pre = f'{verb} --spill-dir "%CD%\\.cache\\runc" ' if is_runc else f"{verb} " if verb else ""
         lines = ["@echo off\r\n"]
         if compat_prefix:
             lines.extend([
@@ -161,11 +121,12 @@ def render_crypt_shim(
         ])
         return "".join(lines)
 
+    is_runc = verb.split()[-1:] == ["runc"]
     runc_env = (
         'export CRYPT_RUNC_SHELL="${CRYPT_RUNC_SHELL:-C:/Progra~1/Git/bin/bash.exe -c}"\n'
-        if verb == "runc" and win else ""
+        if is_runc and win else ""
     )
-    pre = 'runc --spill-dir "$PWD/.cache/runc" ' if verb == "runc" else f"{verb} " if verb else ""
+    pre = f'{verb} --spill-dir "$PWD/.cache/runc" ' if is_runc else f"{verb} " if verb else ""
     db_value = f'${{CRYPT_DB:-${{{compat_prefix}_DB:-{db}}}}}' if compat_prefix else f'${{CRYPT_DB:-{db}}}'
     port_value = (
         f'${{CRYPT_PORT:-${{{compat_prefix}_PORT:-{crypt_port}}}}}' if compat_prefix
