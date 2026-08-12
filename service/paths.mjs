@@ -8,6 +8,7 @@ import { join } from "node:path";
 let temporaryEndpointCounter = 0;
 
 export function daemonEndpoint({ platform = process.platform, identity = homedir() } = {}) {
+  if (process.env.CORTEX_DAEMON_ENDPOINT) return process.env.CORTEX_DAEMON_ENDPOINT;
   if (platform === "win32") {
     const userHash = createHash("sha256").update(String(identity)).digest("hex").slice(0, 16);
     return `\\\\.\\pipe\\orthic-cortex-${userHash}`;

@@ -81,7 +81,7 @@ export class DaemonClient {
   }
 
   async request({ method, input = {}, repoId = null, generation = null, deadlineMs = 2000 }) {
-    const validatedDeadlineMs = validateDeadlineMs(deadlineMs);
+    const validatedDeadlineMs = validateDeadlineMs(deadlineMs, method);
     if (!this.socket || this.socket.destroyed) {
       this.terminal(typedSocketError("socket_closed", "daemon socket is not connected"));
       await this.connect();

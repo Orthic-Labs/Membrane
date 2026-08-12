@@ -6,6 +6,7 @@ export const PROTOCOL_VERSION = 1;
 export const DEFAULT_DEADLINE_MS = 2000;
 export const MIN_DEADLINE_MS = 10;
 export const MAX_DEADLINE_MS = 30000;
+export const MAX_BUILD_DEADLINE_MS = 120000;
 
 export function validateProtocolVersion(value) {
   if (value !== PROTOCOL_VERSION) {
@@ -14,15 +15,16 @@ export function validateProtocolVersion(value) {
   return value;
 }
 
-export function validateDeadlineMs(value = DEFAULT_DEADLINE_MS) {
-  if (!Number.isInteger(value) || value < MIN_DEADLINE_MS || value > MAX_DEADLINE_MS) {
-    throw Object.assign(new Error("deadlineMs must be an integer from 10 to 30000"), { code: "deadline_invalid" });
+export function validateDeadlineMs(value = DEFAULT_DEADLINE_MS, method = null) {
+  const maximum = method === "build" ? MAX_BUILD_DEADLINE_MS : MAX_DEADLINE_MS;
+  if (!Number.isInteger(value) || value < MIN_DEADLINE_MS || value > maximum) {
+    throw Object.assign(new Error(`deadlineMs must be an integer from 10 to ${maximum}`), { code: "deadline_invalid" });
   }
   return value;
 }
 
 export function encodeRequest({ requestId, repoId, generation, method, deadlineMs = DEFAULT_DEADLINE_MS, input = {} }) {
-  validateDeadlineMs(deadlineMs);
+  validateDeadlineMs(deadlineMs, method);
   return `${JSON.stringify({ protocolVersion: PROTOCOL_VERSION, requestId, repoId, generation, method, deadlineMs, input })}\n`;
 }
 
@@ -44,5 +46,5 @@ export function decodeLine(line) {
 }
 
 export const METHODS = Object.freeze([
-  "status", "search", "resolve", "orient", "expand", "impact", "architecture", "documentTruth",
+  "status", "search", "resolve", "orient", "expand", "impact", "architecture", "documentTruth", "build",
 ]);

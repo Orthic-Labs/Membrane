@@ -9,6 +9,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, rmd
 import { dirname, join } from "node:path";
 import { createCortexApplicationService } from "../lib/application/service.mjs";
 import { RootRegistry } from "../lib/application/root-registry.mjs";
+import { createBuildSingleflight } from "./build-singleflight.mjs";
 import { PROTOCOL_VERSION, decodeLine, encodeResponse, METHODS, validateDeadlineMs, validateProtocolVersion } from "./protocol.mjs";
 import { daemonEndpoint } from "./paths.mjs";
 
@@ -103,10 +104,11 @@ function releaseUnixLock(lock) {
   }
 }
 
-export function createDaemonServer({ service = null, endpoint = null, registryEntries = [], rootRegistry = null } = {}) {
+export function createDaemonServer({ service = null, endpoint = null, registryEntries = [], rootRegistry = null, buildSingleflight = null } = {}) {
   const registry = rootRegistry ?? (service || registryEntries.length === 0 ? null : new RootRegistry(registryEntries));
   const queueRegistry = rootRegistry ?? (registryEntries.length > 0 ? new RootRegistry(registryEntries) : null);
   const appService = service ?? createCortexApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
+  const builds = buildSingleflight ?? createBuildSingleflight();
   const socketPath = endpoint ?? daemonEndpoint();
   const isWindows = process.platform === "win32";
   const pending = new Map(); // requestId -> work retained until its promise exits
@@ -204,7 +206,7 @@ export function createDaemonServer({ service = null, endpoint = null, registryEn
       return;
     }
     let deadlineMs;
-    try { deadlineMs = validateDeadlineMs(message.deadlineMs); } catch (error) {
+    try { deadlineMs = validateDeadlineMs(message.deadlineMs, message.method); } catch (error) {
       socket.write(encodeResponse({ requestId, ok: false, generation: null, result: null, error: { code: error.code, message: error.message } }));
       return;
     }
@@ -230,22 +232,26 @@ export function createDaemonServer({ service = null, endpoint = null, registryEn
     if (!socketPending.has(socket)) socketPending.set(socket, new Set());
     socketPending.get(socket).add(entry);
     try {
-      const method = appService[message.method];
       const mergedInput = { ...(message.input ?? {}) };
       if (message.repoId) mergedInput.repoId = message.repoId;
       if (message.generation) mergedInput.generation = message.generation;
       const root = canonicalRoot(message);
       if (root) mergedInput.repoRoot = root;
-      entry.work = (async () => {
-        const session = typeof appService.openFreshnessSession === "function"
-          ? await queueFreshness(root, () => appService.openFreshnessSession(mergedInput, { signal: controller.signal }))
-          : null;
-        try {
-          return await method(mergedInput, { signal: controller.signal, session });
-        } finally {
-          session?.close?.();
-        }
-      })();
+      if (message.method === "build") {
+        entry.work = builds.build({ root, outDir: mergedInput.outDir, options: mergedInput.options ?? mergedInput }, { signal: controller.signal });
+      } else {
+        const method = appService[message.method];
+        entry.work = (async () => {
+          const session = typeof appService.openFreshnessSession === "function"
+            ? await queueFreshness(root, () => appService.openFreshnessSession(mergedInput, { signal: controller.signal }))
+            : null;
+          try {
+            return await method(mergedInput, { signal: controller.signal, session });
+          } finally {
+            session?.close?.();
+          }
+        })();
+      }
       const result = await entry.work;
       settle(entry, { requestId, ok: true, generation: result?.generationId ?? null, result, error: null });
     } catch (error) {
@@ -291,6 +297,7 @@ export function createDaemonServer({ service = null, endpoint = null, registryEn
         for (const socket of activeSockets) socket.destroy();
         activeSockets.clear();
         await Promise.allSettled(work.map((entry) => entry.work));
+        await builds.waitForIdle();
         pending.clear();
         socketPending.clear();
         rootQueues.clear();
