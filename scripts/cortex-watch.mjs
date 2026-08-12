@@ -76,6 +76,11 @@ async function start() {
   const stop = async () => { await supervisor.stop(); try { unlinkSync(pidPath); } catch {} process.exit(0); };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+  if (process.env.CORTEX_SERVICE_CHILD === "1") {
+    process.stdin.resume();
+    process.stdin.once("end", stop);
+    process.stdin.once("error", stop);
+  }
   json(supervisor.status());
 }
 

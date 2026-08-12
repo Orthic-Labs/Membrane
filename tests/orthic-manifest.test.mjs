@@ -24,6 +24,9 @@ test("manifest builds with required SEAM §4.1 fields", () => {
   assert.ok(manifest.icon);
   assert.ok(manifest.icon.includes("assets/icon/cortex-tab.png"));
   assert.ok(manifest.icon.startsWith(manifest.installRoot));
+  assert.ok(manifest.serviceStart[0].startsWith(manifest.installRoot));
+  assert.equal(existsSync(manifest.serviceStart[0]), true);
+  assert.equal(manifest.serviceStart[0].endsWith(process.platform === "win32" ? "cortex.cmd" : "cortex.mjs"), true);
 });
 
 test("manifest validates against schema", async () => {
