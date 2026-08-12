@@ -11,7 +11,7 @@
 //! planner mode, provider status, last fallback reason/time, receipt-schema error count, and
 //! recent p50/p95 latency without repository content.
 
-use crate::catalog::{self, default_catalog_path, ContextCatalog, CATALOG_SCHEMA_VERSION};
+use crate::catalog::{self, ContextCatalog, CATALOG_SCHEMA_VERSION};
 use crate::memdb::MemDb;
 use crate::scope::{normalize_scope, scope_chain};
 use crate::store::{
@@ -4040,6 +4040,8 @@ fn health_response_with_workers(
     payload["dailyAnalysis"] = analysis_watchdog_snapshot(&configured_analysis_directory());
     payload["serviceGeneration"] = json!(crate::release_identity::service_generation());
     payload["releaseGeneration"] = json!(crate::release_identity::release_generation());
+    payload["runtimeReceipt"] =
+        crate::runtime_receipt::current_snapshot().map_or(Value::Null, |receipt| json!(receipt));
     let status = if store_healthy && catalog_healthy {
         StatusCode::OK.as_u16()
     } else {
@@ -4483,6 +4485,35 @@ pub fn run(
     identity: &crate::installation_identity::InstallationIdentity,
     claim: &crate::installation_identity::StartupClaim,
 ) -> Result<(), String> {
+    let db_path = std::path::Path::new(db_path);
+    if !db_path.is_absolute() {
+        return Err(format!("CRYPT_DB must be absolute: {}", db_path.display()));
+    }
+    let catalog_path = crate::catalog::resolve_catalog_path_from(
+        std::env::var_os("RIGHTCONTEXT_CATALOG"),
+        std::env::var_os("CONTEXT_HOME"),
+        Some(db_path.as_os_str().to_os_string()),
+        std::env::var_os("WORKSPACE_ROOT"),
+    )
+    .map_err(|error| error.to_string())?;
+    let workspace_root =
+        crate::runtime_receipt::resolve_workspace_root(std::env::var_os("WORKSPACE_ROOT"), db_path)
+            .map_err(|error| error.to_string())?;
+    let telemetry_outbox = crate::runtime_receipt::resolve_telemetry_outbox_path_from(
+        std::env::var_os("CRYPT_TELEMETRY_OUTBOX"),
+        std::env::var_os("MEMBRANE_TELEMETRY_OUTBOX"),
+        db_path,
+    )
+    .map_err(|error| error.to_string())?;
+    let runtime_receipt = crate::runtime_receipt::RuntimeReceiptV1::new(
+        &workspace_root,
+        db_path,
+        &catalog_path,
+        &telemetry_outbox,
+        identity,
+        claim,
+    )
+    .map_err(|error| error.to_string())?;
     #[cfg(feature = "fastembed")]
     {
         let ort_path = std::env::var_os("ORT_DYLIB_PATH")
@@ -4498,7 +4529,7 @@ pub fn run(
     let prompt_telemetry_db = store.db().clone();
     let prompt_telemetry_lease = context_ingest_lease.clone();
     let prompt_telemetry_ingress =
-        crate::context_telemetry::default_prompt_telemetry_ingress(std::path::Path::new(db_path));
+        crate::context_telemetry::default_prompt_telemetry_ingress(db_path);
     std::thread::Builder::new()
         .name("crypt-prompt-telemetry".to_string())
         .spawn(move || {
@@ -4526,14 +4557,19 @@ pub fn run(
             }
         })
         .map_err(|error| format!("start prompt telemetry drain: {error}"))?;
-    let catalog_path = default_catalog_path().map_err(|error| error.to_string())?;
     let catalog = ContextCatalog::open(&catalog_path)
         .map_err(|e| format!("open catalog {}: {e}", catalog_path.display()))?;
+    let runtime_receipt_path = runtime_receipt
+        .persist()
+        .map_err(|error| error.to_string())?;
+    std::env::set_var("CRYPT_RUNTIME_RECEIPT", &runtime_receipt_path);
+    crate::runtime_receipt::publish_current(runtime_receipt);
     eprintln!(
-        "crypt serve on 127.0.0.1:{port} db={db_path} catalog={}",
+        "crypt serve on 127.0.0.1:{port} db={} catalog={}",
+        db_path.display(),
         catalog_path.display()
     );
-    let api_token = Some(configured_api_token(std::path::Path::new(db_path))?);
+    let api_token = Some(configured_api_token(db_path)?);
 
     let app = build_router(
         store,
@@ -4967,6 +5003,7 @@ mod tests {
             )
         );
         assert_ne!(payload["serviceGeneration"], payload["releaseGeneration"]);
+        assert!(payload.get("runtimeReceipt").is_some());
     }
 
     #[test]
