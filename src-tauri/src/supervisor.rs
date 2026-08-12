@@ -23,7 +23,27 @@ pub enum ProductStatus {
 }
 
 pub struct Supervisor {
-    children: Arc<Mutex<HashMap<String, Option<Child>>>>,
+    children: Arc<Mutex<HashMap<String, ManagedChild>>>,
+}
+
+/// A child owned by this Hub or a product unavailable under Hub ownership.
+enum ManagedChild {
+    Running(Child),
+    Unavailable,
+}
+
+fn stop_owned_child(mut child: Child) {
+    // Closing Hub-owned stdin is the portable graceful-stop contract for both
+    // Membrane and Cortex. Kill is only a bounded fallback.
+    drop(child.stdin.take());
+    for _ in 0..20 {
+        if child.try_wait().ok().flatten().is_some() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 impl Supervisor {
@@ -35,19 +55,14 @@ impl Supervisor {
         let mut attempts = 0usize;
         loop {
             match Self::try_spawn(manifest) {
-                Ok(Some(child)) => {
-                    self.children.lock().map_err(|_| "lock_poisoned")?.insert(manifest.product_id.clone(), Some(child));
-                    return Ok(ProductStatus::Running);
-                }
-                Ok(None) => {
-                    // Port already in use — adopted existing owner
-                    self.children.lock().map_err(|_| "lock_poisoned")?.insert(manifest.product_id.clone(), None);
+                Ok(child) => {
+                    self.children.lock().map_err(|_| "lock_poisoned")?.insert(manifest.product_id.clone(), ManagedChild::Running(child));
                     return Ok(ProductStatus::Running);
                 }
                 Err(e) => {
                     attempts += 1;
                     if attempts >= MAX_ATTEMPTS {
-                        self.children.lock().map_err(|_| "lock_poisoned")?.insert(manifest.product_id.clone(), None);
+                        self.children.lock().map_err(|_| "lock_poisoned")?.insert(manifest.product_id.clone(), ManagedChild::Unavailable);
                         return Ok(ProductStatus::Unavailable);
                     }
                     let delay = backoff_delay(attempts - 1);
@@ -60,18 +75,26 @@ impl Supervisor {
 
     /// Restarts a child that exited since its previous liveness check.
     pub fn supervise_product(&self, manifest: &ManifestV1) -> Result<ProductStatus, String> {
-        let needs_restart = {
+        let state = {
             let mut children = self.children.lock().map_err(|_| "lock_poisoned")?;
             match children.get_mut(&manifest.product_id) {
-                Some(Some(child)) => child.try_wait().map_err(|_| "service_wait_failed")?.is_some(),
-                Some(None) => false, // Existing port owner: never kill or restart it.
-                None => false, // Hub setup owns initial launch; polling only restarts tracked exits.
+                Some(ManagedChild::Running(child)) => {
+                    if child.try_wait().map_err(|_| "service_wait_failed")?.is_some() {
+                        None
+                    } else {
+                        Some(ProductStatus::Running)
+                    }
+                }
+                Some(ManagedChild::Unavailable) | None => Some(ProductStatus::Unavailable),
             }
         };
-        if needs_restart { self.start_product(manifest) } else { Ok(ProductStatus::Running) }
+        match state {
+            Some(status) => Ok(status),
+            None => self.start_product(manifest),
+        }
     }
 
-    fn try_spawn(manifest: &ManifestV1) -> Result<Option<Child>, String> {
+    fn try_spawn(manifest: &ManifestV1) -> Result<Child, String> {
         if manifest.service_start.is_empty() {
             return Err("serviceStart_empty".into());
         }
@@ -83,30 +106,29 @@ impl Supervisor {
         if manifest.service_start.len() > 1 {
             cmd.args(&manifest.service_start[1..]);
         }
+        cmd.env("ORTHIC_HUB_CHILD", "1");
+        // Membrane also requires its existing owner-pipe marker.
+        if manifest.product_id == "membrane" {
+            cmd.env("MEMBRANE_OWNER_PIPE", "1");
+            if let Ok(root) = crate::workspace::resolve() {
+                cmd.env("WORKSPACE_ROOT", root.root);
+            }
+        }
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::null())
-            .stderr(Stdio::piped());
+            .stderr(Stdio::null());
         let mut child = cmd.spawn().map_err(|_| "service_start_failed".to_string())?;
         std::thread::sleep(Duration::from_millis(120));
         if child.try_wait().map_err(|_| "service_wait_failed")?.is_some() {
-            let mut stderr = String::new();
-            if let Some(mut s) = child.stderr.take() {
-                use std::io::Read;
-                let _ = s.read_to_string(&mut stderr);
-            }
-            if stderr.to_lowercase().contains("already in use") {
-                return Ok(None);
-            }
             return Err("service_start_failed".into());
         }
-        Ok(Some(child))
+        Ok(child)
     }
 
     pub fn stop_product(&self, product_id: &str) {
         if let Ok(mut map) = self.children.lock() {
-            if let Some(Some(mut child)) = map.remove(product_id) {
-                let _ = child.kill();
-                let _ = child.wait();
+            if let Some(ManagedChild::Running(child)) = map.remove(product_id) {
+                stop_owned_child(child);
             } else {
                 map.remove(product_id);
             }
@@ -116,9 +138,8 @@ impl Supervisor {
     pub fn stop_all(&self) {
         if let Ok(mut map) = self.children.lock() {
             for (_, child) in map.drain() {
-                if let Some(mut c) = child {
-                    let _ = c.kill();
-                    let _ = c.wait();
+                if let ManagedChild::Running(c) = child {
+                    stop_owned_child(c);
                 }
             }
         }
@@ -127,7 +148,7 @@ impl Supervisor {
     pub fn is_unavailable(&self, product_id: &str) -> bool {
         // Check if marked unavailable (None without running process but we treat absence as unavailable after max attempts)
         // For now, if not in map, unavailable.
-        self.children.lock().map(|m| m.get(product_id).is_none()).unwrap_or(true)
+        self.children.lock().map(|m| matches!(m.get(product_id), Some(ManagedChild::Unavailable) | None)).unwrap_or(true)
     }
 }
 

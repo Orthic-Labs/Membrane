@@ -1,6 +1,5 @@
 use orthic::supervisor::{backoff_delay, Supervisor};
 use orthic::schema_types::{ManifestV1, StatusEndpoint};
-use std::path::Path;
 
 #[test]
 fn backoff_increases_then_caps() {

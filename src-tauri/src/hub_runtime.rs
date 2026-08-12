@@ -145,10 +145,8 @@ mod tests {
             let body = r#"{"schemaVersion":1,"productId":"sample","observedAtUnixMs":1,"sections":{"health":{"state":"available","reason":"ready"}}}"#;
             write!(socket, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
         });
-        let runtime = HubRuntime::from_manifests(vec![manifest(port, "expected")]);
-        let state = runtime.poll_all();
-        assert_eq!(state.products.len(), 1);
-        assert_eq!(state.products[0].snapshot.sections["health"].state, SectionState::Available);
+        let snapshot = fetch_snapshot(&manifest(port, "expected")).unwrap();
+        assert_eq!(snapshot.sections["health"].state, SectionState::Available);
         server.join().unwrap();
     }
 
@@ -157,6 +155,6 @@ mod tests {
         let runtime = HubRuntime::from_manifests(vec![manifest(9, "expected")]);
         let state = runtime.poll_all();
         assert_eq!(state.products[0].snapshot.sections["hub"].state, SectionState::Unavailable);
-        assert_eq!(state.products[0].snapshot.sections["hub"].reason, "snapshot_connect_failed");
+        assert_eq!(state.products[0].snapshot.sections["hub"].reason, "service_unavailable");
     }
 }

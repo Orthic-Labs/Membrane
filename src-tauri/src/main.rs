@@ -3,10 +3,10 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     thread,
     time::Duration,
@@ -50,8 +50,6 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const POLL_TIMEOUT: Duration = Duration::from_secs(2);
 const STARTUP_GRACE: Duration = Duration::from_secs(3);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(100);
-type ServiceState = Arc<Mutex<Option<Child>>>;
-
 #[derive(Debug)]
 struct StartupGate {
     active: AtomicBool,
@@ -188,88 +186,6 @@ fn fetch_snapshot(program: &Path, timeout: Duration) -> Result<CachedSnapshot, S
         return Err("hub_service_unavailable".into());
     }
     parse_snapshot(&bytes)
-}
-
-fn bundled_binary(name: &str) -> PathBuf {
-    let suffix = if cfg!(windows) { ".exe" } else { "" };
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| {
-            path.parent()
-                .map(|parent| parent.join(format!("{name}{suffix}")))
-        })
-        .unwrap_or_else(|| PathBuf::from(format!("{name}{suffix}")))
-}
-
-fn start_crypt_service() -> Result<Option<Child>, String> {
-    start_product_service_inner(&["crypt-service".into()], true)
-}
-
-fn start_product_service(manifest: &crate::schema_types::ManifestV1) -> Result<Option<Child>, String> {
-    start_product_service_inner(&manifest.service_start, false)
-}
-
-fn start_product_service_inner(argv: &[String], is_crypt: bool) -> Result<Option<Child>, String> {
-    use crate::supervisor::backoff_delay;
-    const MAX_ATTEMPTS: usize = 5;
-    if argv.is_empty() {
-        return Err("serviceStart_empty".into());
-    }
-    let program = if is_crypt {
-        std::env::var_os("MEMBRANE_CRYPT_SERVICE")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| bundled_binary(&argv[0]))
-    } else {
-        PathBuf::from(&argv[0])
-    };
-    if !program.is_file() {
-        return Err(if is_crypt { "crypt_service_missing" } else { "service_missing" }.into());
-    }
-    let root = workspace::resolve().map_err(|_| "workspace_root_unavailable")?.root;
-    for attempt in 0..MAX_ATTEMPTS {
-        let mut cmd = Command::new(&program);
-        if argv.len() > 1 {
-            cmd.args(&argv[1..]);
-        }
-        if is_crypt {
-            cmd.env("MEMBRANE_OWNER_PIPE", "1").env("WORKSPACE_ROOT", &root);
-        }
-        cmd.stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped());
-        let mut child = cmd.spawn().map_err(|_| "crypt_service_start_failed".to_string())?;
-        std::thread::sleep(Duration::from_millis(120));
-        match child.try_wait().map_err(|_| "crypt_service_wait_failed")? {
-            None => return Ok(Some(child)),
-            Some(_) => {
-                let mut stderr_output = String::new();
-                if let Some(mut stderr) = child.stderr.take() {
-                    let _ = stderr.read_to_string(&mut stderr_output);
-                }
-                if stderr_output.to_lowercase().contains("already in use") {
-                    eprintln!("crypt-service: port already in use, adopting existing owner");
-                    return Ok(None);
-                }
-                if attempt + 1 >= MAX_ATTEMPTS {
-                    return Err("crypt_service_start_failed".into());
-                }
-                let delay = backoff_delay(attempt);
-                std::thread::sleep(delay);
-            }
-        }
-    }
-    Err("crypt_service_start_failed".into())
-}
-
-fn stop_crypt_service(service: &ServiceState) {
-    if let Ok(mut guard) = service.lock() {
-        if let Some(mut child) = guard.take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    }
-}
-
-pub fn stop_product_service(service: &ServiceState) {
-    stop_crypt_service(service)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -495,35 +411,72 @@ fn snapshot(runtime: tauri::State<'_, Arc<HubRuntime>>) -> HubSnapshot {
 }
 
 #[tauri::command]
-fn set_startup(enabled: bool, app: tauri::AppHandle) -> Result<(), String> {
-    let path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("startup.json");
-    fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    write_cache(
-        &path,
-        &CachedSnapshot {
-            schema_version: 1,
-            observed_at_unix_ms: 0,
-            payload: serde_json::json!({"launchAtLogin": enabled}),
-        },
-    )
+fn set_startup(enabled: bool, _app: tauri::AppHandle) -> Result<(), String> {
+    configure_hub_login_startup(enabled)
 }
 
 #[tauri::command]
-fn startup_setting(app: tauri::AppHandle) -> Result<bool, String> {
-    let path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("startup.json");
-    Ok(read_cache(&path)
-        .ok()
-        .and_then(|v| v.payload.get("launchAtLogin").and_then(|v| v.as_bool()))
-        .unwrap_or(false))
+fn startup_setting(_app: tauri::AppHandle) -> Result<bool, String> {
+    hub_login_startup_enabled()
 }
+
+#[cfg(target_os = "macos")]
+fn hub_login_startup_path() -> Result<PathBuf, String> {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|home| home.join("Library/LaunchAgents/com.orthic.hub.plist"))
+        .ok_or_else(|| "home_unavailable".into())
+}
+
+#[cfg(target_os = "macos")]
+fn configure_hub_login_startup(enabled: bool) -> Result<(), String> {
+    let path = hub_login_startup_path()?;
+    if enabled {
+        let executable = std::env::current_exe().map_err(|_| "hub_executable_unavailable")?;
+        let escaped = executable.display().to_string().replace('&', "&amp;").replace('<', "&lt;");
+        let body = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>Label</key><string>com.orthic.hub</string><key>ProgramArguments</key><array><string>{escaped}</string></array><key>RunAtLoad</key><true/></dict></plist>");
+        fs::create_dir_all(path.parent().ok_or("startup_parent_missing")?).map_err(|e| e.to_string())?;
+        fs::write(&path, body).map_err(|e| e.to_string())?;
+        let status = Command::new("launchctl").args(["load", "-w", path.to_string_lossy().as_ref()]).status().map_err(|_| "launchctl_unavailable")?;
+        if !status.success() { return Err("hub_login_startup_failed".into()); }
+    } else if path.exists() {
+        let _ = Command::new("launchctl").args(["unload", "-w", path.to_string_lossy().as_ref()]).status();
+        fs::remove_file(path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn hub_login_startup_enabled() -> Result<bool, String> { Ok(hub_login_startup_path()?.exists()) }
+
+fn windows_startup_value(executable: &Path) -> String {
+    format!("\"{}\"", executable.display())
+}
+
+#[cfg(target_os = "windows")]
+fn configure_hub_login_startup(enabled: bool) -> Result<(), String> {
+    let key = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+    let status = if enabled {
+        let executable = std::env::current_exe().map_err(|_| "hub_executable_unavailable")?;
+        let value = windows_startup_value(&executable);
+        Command::new("reg").args(["add", key, "/v", "Orthic", "/t", "REG_SZ", "/d", &value, "/f"]).status()
+    } else {
+        Command::new("reg").args(["delete", key, "/v", "Orthic", "/f"]).status()
+    }.map_err(|_| "hub_login_startup_failed")?;
+    if enabled && !status.success() { return Err("hub_login_startup_failed".into()); }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn hub_login_startup_enabled() -> Result<bool, String> {
+    Ok(Command::new("reg").args(["query", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "Orthic"]).status().map(|status| status.success()).unwrap_or(false))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn configure_hub_login_startup(_enabled: bool) -> Result<(), String> { Err("hub_login_startup_unsupported".into()) }
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn hub_login_startup_enabled() -> Result<bool, String> { Ok(false) }
 
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle, runtime: tauri::State<'_, Arc<HubRuntime>>) {
@@ -721,6 +674,13 @@ mod tests {
     fn startup_setting_shape_is_explicit() {
         let setting = serde_json::json!({"launchAtLogin":true});
         assert_eq!(setting["launchAtLogin"], true);
+    }
+    #[test]
+    fn windows_startup_value_quotes_paths_with_spaces() {
+        assert_eq!(
+            windows_startup_value(Path::new(r"C:\Program Files\Orthic\orthic.exe")),
+            r#""C:\Program Files\Orthic\orthic.exe""#,
+        );
     }
     #[test]
     fn polling_keeps_last_valid_then_accepts_service_restart() {
