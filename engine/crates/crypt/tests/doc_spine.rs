@@ -191,6 +191,102 @@ fn sync_never_admits_document_content_as_durable_memory() {
 }
 
 #[test]
+fn unchanged_sync_reports_reused_artifact_without_reparsing() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("runbook.md"), "# Runbook\n").unwrap();
+    let db = MemDb::open_in_memory();
+
+    let first = doc_spine::sync(&db, temp.path()).unwrap();
+    let second = doc_spine::sync(&db, temp.path()).unwrap();
+
+    assert_eq!(
+        (first.scanned, first.hashed, first.parsed, first.skipped),
+        (1, 1, 1, 0)
+    );
+    assert_eq!(
+        (second.scanned, second.hashed, second.parsed, second.skipped),
+        (1, 1, 0, 1)
+    );
+    assert_eq!((second.deleted, second.invalidated), (0, 0));
+}
+
+#[test]
+fn changed_parser_upgrade_deleted_and_duplicate_paths_keep_incremental_state_sound() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("runbook.md");
+    std::fs::write(&path, "first").unwrap();
+    let db = MemDb::open_in_memory();
+    doc_spine::sync(&db, temp.path()).unwrap();
+
+    std::fs::write(&path, "second").unwrap();
+    let changed = doc_spine::sync(&db, temp.path()).unwrap();
+    assert_eq!(
+        (
+            changed.scanned,
+            changed.hashed,
+            changed.parsed,
+            changed.skipped
+        ),
+        (1, 1, 1, 0)
+    );
+
+    db.lock()
+        .execute(
+            "UPDATE doc_artifacts SET parser_version='older-parser' WHERE path='runbook.md'",
+            [],
+        )
+        .unwrap();
+    let upgraded = doc_spine::sync(&db, temp.path()).unwrap();
+    assert_eq!(
+        (upgraded.parsed, upgraded.skipped, upgraded.invalidated),
+        (1, 0, 1)
+    );
+    let rows: i64 = db
+        .lock()
+        .query_row(
+            "SELECT COUNT(*) FROM doc_artifacts WHERE path='runbook.md'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 1, "canonical path remains unique across refreshes");
+
+    std::fs::remove_file(path).unwrap();
+    let deleted = doc_spine::sync(&db, temp.path()).unwrap();
+    assert_eq!(
+        (deleted.scanned, deleted.deleted, deleted.tombstoned),
+        (0, 1, 1)
+    );
+}
+
+#[test]
+fn failed_incremental_sync_rolls_back_generation_updates() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("first.md"), "stable").unwrap();
+    let db = MemDb::open_in_memory();
+    let first = doc_spine::sync(&db, temp.path()).unwrap();
+    db.lock()
+        .execute_batch(
+            "CREATE TRIGGER reject_bad BEFORE INSERT ON doc_artifacts \
+             WHEN NEW.path='bad.md' BEGIN SELECT RAISE(ABORT, 'fixture rejection'); END;",
+        )
+        .unwrap();
+    std::fs::write(temp.path().join("bad.md"), "new").unwrap();
+
+    assert!(doc_spine::sync(&db, temp.path()).is_err());
+
+    let generation: i64 = db
+        .lock()
+        .query_row(
+            "SELECT index_generation FROM doc_artifacts WHERE path='first.md'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(generation, first.index_generation);
+}
+
+#[test]
 fn sync_persists_machine_local_lexical_projection_with_current_provenance() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(

@@ -166,7 +166,15 @@ pub struct DocSyncReport {
     pub tombstoned: usize,
     pub excluded_health: usize,
     pub index_generation: i64,
+    pub scanned: usize,
+    pub hashed: usize,
+    pub parsed: usize,
+    pub skipped: usize,
+    pub deleted: usize,
+    pub invalidated: usize,
 }
+
+const DOC_PARSER_VERSION: &str = "comrak-0.54.0";
 
 fn digest(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
@@ -519,21 +527,95 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
     }
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     let generation: i64 = tx.query_row("SELECT COALESCE(MAX(index_generation),0)+1 FROM doc_artifacts WHERE repository_root=?1", [&root_s], |r| r.get(0)).map_err(|e| e.to_string())?;
+    let projections_available: bool = tx
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='doc_projections')",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
     let now = crate::time::now_millis() as i64;
     let mut registered = 0;
+    let scanned = files.len();
+    let mut hashed = 0;
+    let mut parsed = 0;
+    let mut skipped = 0;
+    let mut invalidated = 0;
     let mut projection_inputs = Vec::new();
     let mut supersessions = Vec::new();
     for file in files {
         let bytes = std::fs::read(&file).map_err(|e| e.to_string())?;
+        hashed += 1;
         let relative = file
             .strip_prefix(&root)
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");
+        let hash = digest(&bytes);
+        let existing = match tx.query_row(
+            "SELECT doc_id, content_hash, parser_version, superseded_by, \
+                        EXISTS(SELECT 1 FROM doc_artifacts child \
+                               WHERE child.repository_root=doc_artifacts.repository_root \
+                                 AND child.superseded_by=doc_artifacts.doc_id) \
+                 FROM doc_artifacts \
+                 WHERE repository_root=?1 AND path=?2",
+            rusqlite::params![root_s, relative],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, bool>(4)?,
+                ))
+            },
+        ) {
+            Ok(existing) => Some(existing),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(error) => return Err(error.to_string()),
+        };
+        if let Some((id, old_hash, parser_version, superseded_by, supersedes)) = &existing {
+            let has_projection = projections_available
+                && tx
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM doc_projections \
+                         WHERE parent_doc_id=?1 AND source_content_hash=?2)",
+                        rusqlite::params![id, old_hash],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| e.to_string())?;
+            if old_hash == &hash
+                && parser_version == DOC_PARSER_VERSION
+                && superseded_by.is_none()
+                && !supersedes
+                && has_projection
+            {
+                tx.execute(
+                    "UPDATE doc_artifacts \
+                     SET revision=?1, index_generation=?2, updated_at_ms=?3 \
+                     WHERE repository_root=?4 AND path=?5",
+                    rusqlite::params![revision, generation, now, root_s, relative],
+                )
+                .map_err(|e| e.to_string())?;
+                tx.execute(
+                    "UPDATE doc_projections \
+                     SET source_revision=?1, index_generation=?2 \
+                     WHERE parent_doc_id=?3 AND source_content_hash=?4",
+                    rusqlite::params![revision, generation, id, hash],
+                )
+                .map_err(|e| e.to_string())?;
+                registered += 1;
+                skipped += 1;
+                continue;
+            }
+            if parser_version != DOC_PARSER_VERSION {
+                invalidated += 1;
+            }
+        }
         let markdown = String::from_utf8_lossy(&bytes).into_owned();
+        parsed += 1;
         let frontmatter = parse_frontmatter(&markdown)?;
         let (class, influence, sensitivity, generated) = classify(&relative);
-        let hash = digest(&bytes);
         let default_id = format!(
             "doc:{}:{}",
             digest(root_s.as_bytes())[..16].to_string(),
@@ -550,9 +632,9 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
         let keywords_json =
             serde_json::to_string(&frontmatter.keywords).map_err(|e| e.to_string())?;
         tx.execute("INSERT INTO doc_artifacts (doc_id, repository_root, repository_id, revision, path, content_hash, parser_version, document_class, lifecycle_state, title, summary, keywords_json, superseded_by, trust_label, influence_class, sensitivity, generated, index_generation, updated_at_ms)
-          VALUES (?1,?2,?2,?3,?4,?5,'comrak-0.54.0',?6,?7,?8,?9,?10,NULL,'catalogued',?11,?12,?13,?14,?15)
+          VALUES (?1,?2,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,NULL,'catalogued',?12,?13,?14,?15,?16)
           ON CONFLICT(repository_root,path) DO UPDATE SET revision=excluded.revision, content_hash=excluded.content_hash, parser_version=excluded.parser_version, document_class=excluded.document_class, lifecycle_state=excluded.lifecycle_state, title=excluded.title, summary=excluded.summary, keywords_json=excluded.keywords_json, superseded_by=NULL, trust_label=excluded.trust_label, influence_class=excluded.influence_class, sensitivity=excluded.sensitivity, generated=excluded.generated, index_generation=excluded.index_generation, updated_at_ms=excluded.updated_at_ms",
-          rusqlite::params![id, root_s, revision, relative, hash, class, lifecycle, frontmatter.title.clone().unwrap_or_default(), frontmatter.summary.clone().unwrap_or_default(), keywords_json, influence, sensitivity, generated as i64, generation, now]).map_err(|e| e.to_string())?;
+          rusqlite::params![id, root_s, revision, relative, hash, DOC_PARSER_VERSION, class, lifecycle, frontmatter.title.clone().unwrap_or_default(), frontmatter.summary.clone().unwrap_or_default(), keywords_json, influence, sensitivity, generated as i64, generation, now]).map_err(|e| e.to_string())?;
         if let Some(target) = &frontmatter.supersedes {
             supersessions.push((id.clone(), relative.clone(), target.clone()));
         }
@@ -608,5 +690,11 @@ pub fn sync(db: &MemDb, root: &Path) -> Result<DocSyncReport, String> {
         tombstoned,
         excluded_health,
         index_generation: generation,
+        scanned,
+        hashed,
+        parsed,
+        skipped,
+        deleted: tombstoned,
+        invalidated,
     })
 }
