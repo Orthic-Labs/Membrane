@@ -10,17 +10,17 @@ cpSync(new URL("../assets/tray", import.meta.url), new URL("assets/tray", output
 cpSync(
   new URL("../node_modules/@tauri-apps/api", import.meta.url),
   new URL("vendor/@tauri-apps/api", output),
-  { recursive: true },
+  { recursive: true, dereference: true },
 );
 cpSync(
   new URL("../node_modules/@tauri-apps/plugin-os/dist-js", import.meta.url),
   new URL("vendor/@tauri-apps/plugin-os", output),
-  { recursive: true },
+  { recursive: true, dereference: true },
 );
 cpSync(
   new URL("../node_modules/@rightkit/platform-ui/dist", import.meta.url),
   new URL("vendor/@rightkit/platform-ui", output),
-  { recursive: true },
+  { recursive: true, dereference: true },
 );
 
 let identity;
