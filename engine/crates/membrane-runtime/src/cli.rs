@@ -7,6 +7,11 @@ use crypt::{CheckpointV1, MemDb, MemoryStore};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::process::{Command, Stdio};
+#[cfg(unix)]
+use std::time::Instant;
+use std::time::{Duration, UNIX_EPOCH};
 
 const MAX_SAFE_PACKET_CHAR_BUDGET: u64 = 9_007_199_254_740_991;
 const SMOKE_ISOLATION_EXPECTED: usize = 355;
@@ -382,6 +387,8 @@ enum CheckpointCmd {
 
 #[derive(Subcommand)]
 enum HygieneCmd {
+    /// Inventory configured SQLite storage without opening it for write or creating it.
+    Storage,
     /// Audit memory, context, provenance, link, embedding, and feedback hygiene.
     Audit,
     /// Emit a reversible cleanup plan. This command never mutates storage.
@@ -824,6 +831,401 @@ fn table_exists(conn: &rusqlite::Connection, table: &str) -> Result<bool, String
         |row| row.get(0),
     )
     .map_err(|error| error.to_string())
+}
+
+fn storage_file_record(
+    path: &Path,
+    kind: &str,
+    classification: Option<&str>,
+    reason: &str,
+) -> serde_json::Value {
+    if let Some(error) = storage_path_safety(path) {
+        return serde_json::json!({
+            "kind": kind,
+            "path": path,
+            "exists": null,
+            "status": "unavailable",
+            "classification": null,
+            "reason": "path safety could not be established",
+            "confidence": "high",
+            "error": error,
+        });
+    }
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_file() => {
+            let modified_ms = metadata
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as u64);
+            #[cfg(unix)]
+            let identity = {
+                use std::os::unix::fs::MetadataExt;
+                serde_json::json!({"device":metadata.dev(),"inode":metadata.ino()})
+            };
+            #[cfg(not(unix))]
+            let identity = serde_json::Value::Null;
+            serde_json::json!({"kind":kind,"path":path,"exists":true,"bytes":metadata.len(),"modified_unix_ms":modified_ms,"file_identity":identity,"classification":classification,"reason":reason,"confidence":"low"})
+        }
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            serde_json::json!({"kind":kind,"path":path,"exists":true,"status":"unavailable","classification":null,"reason":"symlink inspection is refused","confidence":"high","error":{"code":"symlink_refused"}})
+        }
+        Ok(_) => {
+            serde_json::json!({"kind":kind,"path":path,"exists":true,"status":"unavailable","classification":null,"reason":"path exists but is not a regular file","confidence":"high","error":{"code":"non_regular_path"}})
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            serde_json::json!({"kind":kind,"path":path,"exists":false,"classification":"stale","reason":"file is absent","confidence":"high"})
+        }
+        Err(error) => {
+            serde_json::json!({"kind":kind,"path":path,"exists":null,"classification":null,"reason":"metadata unavailable","confidence":"low","error":{"code":"metadata_unavailable","message":error.to_string()}})
+        }
+    }
+}
+
+fn storage_regular_file(path: &Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|metadata| metadata.is_file())
+        .unwrap_or(false)
+}
+
+fn storage_safe_regular_file(path: &Path) -> bool {
+    storage_path_safety(path).is_none() && storage_regular_file(path)
+}
+
+fn storage_path_safety(path: &Path) -> Option<serde_json::Value> {
+    for component in path.ancestors().collect::<Vec<_>>().into_iter().rev() {
+        let Ok(metadata) = std::fs::symlink_metadata(component) else {
+            continue;
+        };
+        if metadata.file_type().is_symlink() {
+            return Some(
+                serde_json::json!({"status":"unavailable","code":"symlink_component_refused","path":component}),
+            );
+        }
+        #[cfg(windows)]
+        if {
+            use std::os::windows::fs::MetadataExt;
+            metadata.file_attributes() & 0x400 != 0
+        } {
+            return Some(
+                serde_json::json!({"status":"unavailable","code":"reparse_component_refused","path":component}),
+            );
+        }
+    }
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.is_file() => {
+            Some(serde_json::json!({"status":"unavailable","code":"non_regular_path","path":path}))
+        }
+        _ => None,
+    }
+}
+
+fn sqlite_readonly_uri(path: &Path) -> String {
+    // SQLite URI paths use percent escapes for URI delimiters. Existing files are required before
+    // this is used, so no inspection path can create a database.
+    let raw = path.to_string_lossy().replace('\\', "/");
+    let encoded = raw
+        .replace('%', "%25")
+        .replace('#', "%23")
+        .replace('?', "%3F")
+        .replace(' ', "%20");
+    let prefix = if encoded.as_bytes().get(1) == Some(&b':') {
+        "file:/"
+    } else {
+        "file:"
+    };
+    format!("{prefix}{encoded}?mode=ro")
+}
+
+fn storage_key_digest(
+    conn: &rusqlite::Connection,
+    table: &str,
+    key_columns: &[&str],
+) -> Result<serde_json::Value, String> {
+    let count: i64 = conn
+        .query_row(&format!("SELECT COUNT(*) FROM \"{table}\""), [], |row| {
+            row.get(0)
+        })
+        .map_err(|e| e.to_string())?;
+    let quoted = key_columns
+        .iter()
+        .map(|column| format!("\"{column}\""))
+        .collect::<Vec<_>>()
+        .join(",");
+    let mut statement = conn
+        .prepare(&format!(
+            "SELECT {quoted} FROM \"{table}\" ORDER BY {quoted}"
+        ))
+        .map_err(|e| e.to_string())?;
+    let mut digest = sha2::Sha256::new();
+    use sha2::Digest;
+    let mut rows = statement.query([]).map_err(|e| e.to_string())?;
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        for index in 0..key_columns.len() {
+            use rusqlite::types::ValueRef;
+            match row.get_ref(index).map_err(|e| e.to_string())? {
+                ValueRef::Null => digest.update([0]),
+                ValueRef::Integer(value) => {
+                    digest.update([1]);
+                    digest.update(value.to_le_bytes());
+                }
+                ValueRef::Real(value) => {
+                    digest.update([2]);
+                    digest.update(value.to_bits().to_le_bytes());
+                }
+                ValueRef::Text(value) => {
+                    digest.update([3]);
+                    digest.update((value.len() as u64).to_le_bytes());
+                    digest.update(value);
+                }
+                ValueRef::Blob(value) => {
+                    digest.update([4]);
+                    digest.update((value.len() as u64).to_le_bytes());
+                    digest.update(value);
+                }
+            }
+        }
+        digest.update([255]);
+    }
+    Ok(
+        serde_json::json!({"table":table,"row_count":count,"key_set_sha256":format!("sha256:{:x}", digest.finalize())}),
+    )
+}
+
+fn storage_hygiene_report(db_path: &str) -> Result<serde_json::Value, String> {
+    let main = PathBuf::from(db_path);
+    if !main.is_absolute() {
+        return Err(
+            serde_json::json!({"status":"error","code":"absolute_path_required"}).to_string(),
+        );
+    }
+    let wal = PathBuf::from(format!("{}-wal", main.display()));
+    let shm = PathBuf::from(format!("{}-shm", main.display()));
+    let main_exists = storage_safe_regular_file(&main);
+    let wal_exists = storage_safe_regular_file(&wal);
+    let shm_exists = storage_safe_regular_file(&shm);
+    let process_paths = [&main, &wal, &shm]
+        .into_iter()
+        .filter(|path| storage_safe_regular_file(path))
+        .cloned()
+        .collect::<Vec<_>>();
+    let process_evidence =
+        storage_process_open_handle_evidence(&process_paths, None, Duration::from_secs(2));
+    let wal_is_open = storage_process_observes_path(&process_evidence, &wal);
+    let shm_is_open = storage_process_observes_path(&process_evidence, &shm);
+    let mut files = vec![storage_file_record(
+        &main,
+        "main",
+        if main_exists {
+            Some("active")
+        } else {
+            Some("stale")
+        },
+        if main_exists {
+            "configured CLI database binding identifies this main file; process ownership is not inferred"
+        } else {
+            "configured main database is absent"
+        },
+    )];
+    files.push(storage_file_record(
+        &wal,
+        "wal",
+        if !main_exists && wal_exists {
+            Some("orphan_candidate")
+        } else if wal_exists && wal_is_open {
+            Some("active")
+        } else if wal_exists {
+            Some("recoverable")
+        } else {
+            Some("stale")
+        },
+        if !main_exists && wal_exists {
+            "WAL exists without matching main database"
+        } else if wal_exists && wal_is_open {
+            "WAL has a directly observed open handle; process ownership is not inferred"
+        } else if wal_exists {
+            "WAL may contain recoverable committed frames; liveness is not inferred"
+        } else {
+            "WAL is absent"
+        },
+    ));
+    files.push(storage_file_record(
+        &shm,
+        "shm",
+        if !main_exists && shm_exists {
+            Some("orphan_candidate")
+        } else if shm_exists && shm_is_open {
+            Some("active")
+        } else if shm_exists {
+            Some("stale")
+        } else {
+            Some("stale")
+        },
+        if !main_exists && shm_exists {
+            "SHM exists without matching main database"
+        } else if shm_exists && shm_is_open {
+            "SHM has a directly observed open handle; process ownership is not inferred"
+        } else if shm_exists {
+            "shared-memory sidecar exists but liveness is unproven"
+        } else {
+            "SHM is absent"
+        },
+    ));
+    let mut probe = serde_json::json!({"status":"unavailable","code":"main_database_absent"});
+    if let Some(error) = storage_path_safety(&main) {
+        probe = error;
+    } else if main_exists {
+        let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+            | rusqlite::OpenFlags::SQLITE_OPEN_URI
+            | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
+        probe = match rusqlite::Connection::open_with_flags(sqlite_readonly_uri(&main), flags) {
+            Ok(conn) => {
+                let snapshot_error = conn.execute_batch("BEGIN").err();
+                let user_version: Result<i64, _> =
+                    conn.query_row("PRAGMA user_version", [], |row| row.get(0));
+                let schema_version: Result<i64, _> =
+                    conn.query_row("PRAGMA schema_version", [], |row| row.get(0));
+                let journal_mode: Result<String, _> =
+                    conn.query_row("PRAGMA journal_mode", [], |row| row.get(0));
+                let integrity: Result<String, _> =
+                    conn.query_row("PRAGMA integrity_check", [], |row| row.get(0));
+                let mut probe_errors = Vec::new();
+                if let Some(error) = snapshot_error {
+                    probe_errors.push(serde_json::json!({"field":"snapshot","code":"sqlite_snapshot_failed","message":error.to_string()}));
+                }
+                if let Err(error) = &user_version {
+                    probe_errors.push(serde_json::json!({"field":"user_version","code":"sqlite_probe_failed","message":error.to_string()}));
+                }
+                if let Err(error) = &schema_version {
+                    probe_errors.push(serde_json::json!({"field":"schema_version","code":"sqlite_probe_failed","message":error.to_string()}));
+                }
+                if let Err(error) = &journal_mode {
+                    probe_errors.push(serde_json::json!({"field":"journal_mode","code":"sqlite_probe_failed","message":error.to_string()}));
+                }
+                if let Err(error) = &integrity {
+                    probe_errors.push(serde_json::json!({"field":"integrity_check","code":"sqlite_probe_failed","message":error.to_string()}));
+                }
+                let mut tables = Vec::new();
+                for (table, key) in [
+                    ("memories", &["id"][..]),
+                    ("links", &["src_id", "dst_slug"][..]),
+                    ("context_feedback", &["trace_id", "candidate_id"][..]),
+                    ("memory_event_log", &["event_id"][..]),
+                ] {
+                    match table_exists(&conn, table) {
+                        Ok(true) => match storage_key_digest(&conn, table, key) { Ok(value) => tables.push(value), Err(error) => tables.push(serde_json::json!({"table":table,"status":"unavailable","error":{"code":"table_probe_failed","message":error}})) },
+                        Ok(false) => tables.push(serde_json::json!({"table":table,"status":"unavailable","code":"table_absent"})),
+                        Err(error) => tables.push(serde_json::json!({"table":table,"status":"unavailable","error":{"code":"table_lookup_failed","message":error}})),
+                    }
+                }
+                if let Err(error) = conn.execute_batch("COMMIT") {
+                    probe_errors.push(serde_json::json!({"field":"snapshot","code":"sqlite_snapshot_close_failed","message":error.to_string()}));
+                }
+                serde_json::json!({"status":if probe_errors.is_empty() { "ok" } else { "error" },"snapshot":if probe_errors.iter().any(|error| error["field"] == "snapshot") { serde_json::Value::Null } else { serde_json::json!("read_transaction") },"user_version":user_version.ok(),"schema_version":schema_version.ok(),"journal_mode":journal_mode.ok(),"integrity_check":integrity.ok(),"known_tables":tables,"errors":probe_errors})
+            }
+            Err(error) => {
+                serde_json::json!({"status":"error","error":{"code":"sqlite_readonly_open_failed","message":error.to_string()}})
+            }
+        };
+    }
+    Ok(
+        serde_json::json!({"schema":"crypt.hygiene-storage.v1","configured_path":main,"configured_binding_evidence":"explicit --db, CRYPT_DB, or deployed runtime binding","classification_enum":["active","recoverable","stale","orphan_candidate","quarantined"],"classification_availability":{"quarantined":{"status":"unavailable","code":"quarantine_receipt_unavailable"}},"read_only":true,"files":files,"sqlite":probe,"process_open_handle_evidence":process_evidence}),
+    )
+}
+
+fn storage_process_observes_path(evidence: &serde_json::Value, path: &Path) -> bool {
+    let expected = path.to_string_lossy();
+    evidence["observations"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|observation| observation["path"].as_str() == Some(expected.as_ref()))
+}
+
+fn parse_lsof_observations(raw: &str) -> Vec<serde_json::Value> {
+    let mut pid = None;
+    let mut command = None;
+    let mut fd = None;
+    let mut observations = Vec::new();
+    for record in raw.split('\n').filter(|record| !record.is_empty()) {
+        let (tag, value) = record.split_at(1);
+        match tag {
+            "p" => pid = value.parse::<u32>().ok(),
+            "c" => command = Some(value.to_owned()),
+            "f" => fd = Some(value.to_owned()),
+            "n" => {
+                if let (Some(pid), Some(command), Some(fd)) = (pid, command.as_ref(), fd.as_ref()) {
+                    observations.push(
+                        serde_json::json!({"pid":pid,"command":command,"fd":fd,"path":value}),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+    observations.sort_by_key(|value| value.to_string());
+    observations.dedup_by(|left, right| left == right);
+    observations
+}
+
+fn storage_process_open_handle_evidence(
+    paths: &[PathBuf],
+    fixture: Option<&str>,
+    timeout: Duration,
+) -> serde_json::Value {
+    if let Some(fixture) = fixture {
+        return serde_json::from_str(fixture).unwrap_or_else(|error| serde_json::json!({"status":"error","code":"process_probe_fixture_invalid","message":error.to_string(),"ownership_inferred":false}));
+    }
+    if paths.is_empty() {
+        return serde_json::json!({"status":"unavailable","code":"no_existing_safe_paths","ownership_inferred":false});
+    }
+    // `lsof` is optional & its result establishes only an observed open handle, never owner
+    // authority. It is intentionally not required for a storage inspection to succeed.
+    #[cfg(not(unix))]
+    {
+        let _ = (paths, timeout);
+        return serde_json::json!({"status":"unavailable","code":"process_probe_unsupported_platform","ownership_inferred":false});
+    }
+    #[cfg(unix)]
+    {
+        let mut child = match Command::new("lsof")
+            .args(["-Fpcn", "--"])
+            .args(paths)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(error) => {
+                return serde_json::json!({"status":"unavailable","code":"process_probe_unavailable","message":error.to_string(),"ownership_inferred":false})
+            }
+        };
+        let started = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => match child.wait_with_output() {
+                    Ok(output) if output.status.success() => {
+                        return serde_json::json!({"status":"observed","code":"lsof","observations":parse_lsof_observations(&String::from_utf8_lossy(&output.stdout)),"ownership_inferred":false})
+                    }
+                    Ok(output) => {
+                        return serde_json::json!({"status":"unavailable","code":"lsof_no_open_handle_or_unavailable","exit_code":output.status.code(),"ownership_inferred":false})
+                    }
+                    Err(error) => {
+                        return serde_json::json!({"status":"unavailable","code":"process_probe_read_failed","message":error.to_string(),"ownership_inferred":false})
+                    }
+                },
+                Ok(None) if started.elapsed() >= timeout => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return serde_json::json!({"status":"unavailable","code":"process_probe_timeout","timeout_ms":timeout.as_millis(),"ownership_inferred":false});
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+                Err(error) => {
+                    return serde_json::json!({"status":"unavailable","code":"process_probe_wait_failed","message":error.to_string(),"ownership_inferred":false})
+                }
+            }
+        }
+    }
 }
 
 fn hygiene_report(db_path: &str) -> Result<serde_json::Value, String> {
@@ -2837,17 +3239,17 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 }
             }
         }
-        Cmd::Hygiene { command } => {
-            let report = hygiene_report(&db)?;
-            match command {
-                HygieneCmd::Audit => println!("{report}"),
-                HygieneCmd::Clean { plan } => {
-                    if !plan {
-                        return Err(
-                            "hygiene clean requires --plan; no implicit mutation is allowed".into(),
-                        );
-                    }
-                    let actions = report["findings"]
+        Cmd::Hygiene { command } => match command {
+            HygieneCmd::Storage => println!("{}", storage_hygiene_report(&db)?),
+            HygieneCmd::Audit => println!("{}", hygiene_report(&db)?),
+            HygieneCmd::Clean { plan } => {
+                let report = hygiene_report(&db)?;
+                if !plan {
+                    return Err(
+                        "hygiene clean requires --plan; no implicit mutation is allowed".into(),
+                    );
+                }
+                let actions = report["findings"]
                         .as_array()
                         .into_iter()
                         .flatten()
@@ -2858,19 +3260,18 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                             "action": "review_then_apply_separately"
                         }))
                         .collect::<Vec<_>>();
-                    println!(
-                        "{}",
-                        serde_json::json!({
-                            "schema":"orthic.hygiene-clean-plan.v1",
-                            "applied":false,
-                            "reversible":true,
-                            "audit":report,
-                            "actions":actions
-                        })
-                    );
-                }
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "schema":"orthic.hygiene-clean-plan.v1",
+                        "applied":false,
+                        "reversible":true,
+                        "audit":report,
+                        "actions":actions
+                    })
+                );
             }
-        }
+        },
         Cmd::Explain { id } => println!("{}", explain_memory(&db, &id)?),
         Cmd::BackoutSchemaV11 => {
             let restored = crypt::memdb::backout_v11_to_v10(&db).map_err(|e| e.to_string())?;
@@ -3952,7 +4353,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use clap::Parser;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     const MAX_SAFE_PACKET_CHAR_BUDGET: &str = "9007199254740991";
     const UNSAFE_PACKET_CHAR_BUDGET: &str = "9007199254740992";
@@ -4024,6 +4425,153 @@ mod tests {
                 command: super::HygieneCmd::Clean { plan: false }
             }
         ));
+    }
+
+    #[test]
+    fn hygiene_storage_cli_parses() {
+        let parsed = super::Cli::try_parse_from(["crypt", "hygiene", "storage"])
+            .expect("hygiene storage parses");
+        assert!(matches!(
+            parsed.cmd,
+            super::Cmd::Hygiene {
+                command: super::HygieneCmd::Storage
+            }
+        ));
+    }
+
+    #[test]
+    fn hygiene_storage_absent_path_never_creates_database() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent = temp.path().join("missing").join("parent");
+        let path = parent.join("absent.db");
+        let report = super::storage_hygiene_report(path.to_str().unwrap()).unwrap();
+        assert!(!path.exists());
+        assert!(!PathBuf::from(format!("{}-wal", path.display())).exists());
+        assert!(!PathBuf::from(format!("{}-shm", path.display())).exists());
+        assert!(!parent.exists());
+        assert_eq!(report["sqlite"]["code"], "main_database_absent");
+        assert_eq!(report["files"][0]["classification"], "stale");
+    }
+
+    #[test]
+    fn hygiene_storage_reports_valid_database_without_mutation() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("valid.db");
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch("CREATE TABLE memories(id TEXT PRIMARY KEY); INSERT INTO memories VALUES ('b'),('a'); PRAGMA user_version=7;").unwrap();
+        drop(conn);
+        let before = std::fs::read(&path).unwrap();
+        let report = super::storage_hygiene_report(path.to_str().unwrap()).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert!(!PathBuf::from(format!("{}-wal", path.display())).exists());
+        assert!(!PathBuf::from(format!("{}-shm", path.display())).exists());
+        assert_eq!(report["sqlite"]["status"], "ok");
+        assert_eq!(report["sqlite"]["user_version"], 7);
+        assert!(report["sqlite"]["schema_version"].as_i64().is_some());
+        assert_eq!(report["sqlite"]["known_tables"][0]["row_count"], 2);
+        assert_eq!(report["files"][0]["classification"], "active");
+    }
+
+    #[test]
+    fn hygiene_storage_marks_sidecars_without_main_as_orphan_candidates() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("missing.db");
+        std::fs::write(format!("{}-wal", path.display()), b"fixture").unwrap();
+        std::fs::write(format!("{}-shm", path.display()), b"fixture").unwrap();
+        let report = super::storage_hygiene_report(path.to_str().unwrap()).unwrap();
+        assert_eq!(report["files"][1]["classification"], "orphan_candidate");
+        assert_eq!(report["files"][2]["classification"], "orphan_candidate");
+    }
+
+    #[test]
+    fn hygiene_storage_marks_wal_with_main_as_recoverable() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("main.db");
+        rusqlite::Connection::open(&path).unwrap();
+        std::fs::write(format!("{}-wal", path.display()), b"fixture").unwrap();
+        let report = super::storage_hygiene_report(path.to_str().unwrap()).unwrap();
+        assert_eq!(report["files"][1]["classification"], "recoverable");
+    }
+
+    #[test]
+    fn hygiene_storage_non_regular_main_is_unavailable() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("directory.db");
+        std::fs::create_dir(&path).unwrap();
+        let report = super::storage_hygiene_report(path.to_str().unwrap()).unwrap();
+        assert_eq!(
+            report["files"][0]["classification"],
+            serde_json::Value::Null
+        );
+        assert_eq!(report["sqlite"]["code"], "non_regular_path");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn hygiene_storage_refuses_final_and_ancestor_symlinks() {
+        use std::os::unix::fs::symlink;
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("target.db");
+        rusqlite::Connection::open(&target).unwrap();
+        let final_link = temp.path().join("final.db");
+        symlink(&target, &final_link).unwrap();
+        let final_report = super::storage_hygiene_report(final_link.to_str().unwrap()).unwrap();
+        assert_eq!(final_report["sqlite"]["code"], "symlink_component_refused");
+        let directory = temp.path().join("directory");
+        std::fs::create_dir(&directory).unwrap();
+        let ancestor = temp.path().join("ancestor");
+        symlink(&directory, &ancestor).unwrap();
+        let ancestor_report =
+            super::storage_hygiene_report(ancestor.join("main.db").to_str().unwrap()).unwrap();
+        assert_eq!(
+            ancestor_report["sqlite"]["code"],
+            "symlink_component_refused"
+        );
+    }
+
+    #[test]
+    fn hygiene_storage_process_probe_accepts_fixture_evidence() {
+        let evidence = super::storage_process_open_handle_evidence(
+            &[PathBuf::from("/fixture.db")],
+            Some(
+                r#"{"status":"observed","code":"fixture","evidence":[{"pid":7}],"ownership_inferred":false}"#,
+            ),
+            std::time::Duration::from_millis(1),
+        );
+        assert_eq!(evidence["code"], "fixture");
+        assert_eq!(evidence["evidence"][0]["pid"], 7);
+    }
+
+    #[test]
+    fn hygiene_storage_uri_is_platform_correct_and_escaped() {
+        assert_eq!(
+            super::sqlite_readonly_uri(Path::new("/tmp/a b#c?.db")),
+            "file:/tmp/a%20b%23c%3F.db?mode=ro"
+        );
+        assert_eq!(
+            super::sqlite_readonly_uri(Path::new(r"C:\data\a b.db")),
+            "file:/C:/data/a%20b.db?mode=ro"
+        );
+    }
+
+    #[test]
+    fn hygiene_storage_lsof_parser_is_structured_sorted_and_deduplicated() {
+        let observations = super::parse_lsof_observations(
+            "p2\ncworker\nf3\nn/b.db\np1\ncagent\nf4\nn/a.db\np2\ncworker\nf3\nn/b.db\n",
+        );
+        assert_eq!(observations.len(), 2);
+        assert_eq!(observations[0]["path"], "/a.db");
+        assert_eq!(observations[1]["pid"], 2);
+    }
+
+    #[test]
+    fn hygiene_storage_reports_corruption_as_typed_readonly_error() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("corrupt.db");
+        std::fs::write(&path, b"not sqlite").unwrap();
+        let report = super::storage_hygiene_report(path.to_str().unwrap()).unwrap();
+        assert_eq!(report["sqlite"]["status"], "error");
+        assert_eq!(report["sqlite"]["errors"][0]["code"], "sqlite_probe_failed");
     }
 
     #[test]
