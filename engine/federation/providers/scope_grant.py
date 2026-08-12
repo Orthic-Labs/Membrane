@@ -64,7 +64,7 @@ def lookup(repo_root: Path, grant_id: str) -> dict | None:
         return None
     conn = None
     try:
-        conn = sqlite3.connect(str(path))
+        conn = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
         row = conn.execute(
             "SELECT id, client, status, expires_at_unix, repository_ids, "
             "task_id, session_id, manifest_digest, nonce "

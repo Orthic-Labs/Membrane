@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 
 import pytest
 
@@ -54,3 +55,28 @@ def test_catalog_path_rejects_relative_and_unbound_before_io(
     bind(monkeypatch)
     with pytest.raises(scope_grant.CatalogPathError, match="catalog path is unbound"):
         scope_grant._catalog_path()
+
+
+def test_lookup_is_read_only_and_never_creates_missing_catalog(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    missing = tmp_path / "missing" / "catalog.db"
+    bind(monkeypatch, RIGHTCONTEXT_CATALOG=str(missing))
+    assert scope_grant.lookup(tmp_path, "sg-missing") is None
+    assert not missing.exists()
+    assert not missing.parent.exists()
+
+    catalog = tmp_path / "catalog.db"
+    with sqlite3.connect(catalog) as conn:
+        conn.execute(
+            "CREATE TABLE scope_grants ("
+            "id TEXT PRIMARY KEY, client TEXT, status TEXT, expires_at_unix INTEGER, "
+            "repository_ids TEXT, task_id TEXT, session_id TEXT, "
+            "manifest_digest TEXT, nonce TEXT)"
+        )
+    before = catalog.read_bytes()
+    bind(monkeypatch, RIGHTCONTEXT_CATALOG=str(catalog))
+    assert scope_grant.lookup(tmp_path, "sg-missing") is None
+    assert catalog.read_bytes() == before
+    assert not Path(str(catalog) + "-wal").exists()
+    assert not Path(str(catalog) + "-shm").exists()
