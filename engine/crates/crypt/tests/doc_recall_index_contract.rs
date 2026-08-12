@@ -1,6 +1,8 @@
 use crypt::{doc_spine, MemDb};
 use rusqlite::Transaction;
 use sha2::{Digest, Sha256};
+use std::path::Path;
+use std::process::Command;
 use std::time::Instant;
 
 fn digest(content: &str) -> String {
@@ -24,9 +26,13 @@ fn create_schema(db: &MemDb) {
                 parent_doc_id TEXT NOT NULL,
                 kind TEXT NOT NULL,
                 content TEXT NOT NULL,
+                token_count INTEGER NOT NULL,
+                anchor_id TEXT NOT NULL,
+                collapsed_to_parent TEXT,
                 source_content_hash TEXT NOT NULL,
                 source_revision TEXT NOT NULL,
-                index_generation INTEGER NOT NULL
+                index_generation INTEGER NOT NULL,
+                PRIMARY KEY(parent_doc_id, kind, anchor_id)
             );",
         )
         .unwrap();
@@ -51,17 +57,56 @@ fn insert_projection(
     .unwrap();
     tx.execute(
         "INSERT INTO doc_projections
-         (parent_doc_id, kind, content, source_content_hash, source_revision, index_generation)
-         VALUES (?1, 'lexical', ?2, ?3, 'rev-1', 1)",
+         (parent_doc_id, kind, content, token_count, anchor_id, collapsed_to_parent,
+          source_content_hash, source_revision, index_generation)
+         VALUES (?1, 'lexical', ?2, 0, 'document', NULL, ?3, 'rev-1', 1)",
         rusqlite::params![doc_id, markdown, hash],
     )
     .unwrap();
 }
 
-fn seed(corpus_size: usize) -> (tempfile::TempDir, MemDb) {
+fn background_content(index: usize) -> String {
+    const WORDS: [&str; 24] = [
+        "adapter",
+        "anchor",
+        "artifact",
+        "bounded",
+        "cache",
+        "catalog",
+        "checkpoint",
+        "context",
+        "deadline",
+        "document",
+        "fallback",
+        "federation",
+        "generation",
+        "identity",
+        "latency",
+        "memory",
+        "packet",
+        "projection",
+        "provider",
+        "receipt",
+        "repository",
+        "retrieval",
+        "revision",
+        "runtime",
+    ];
+    let body = (0..48)
+        .map(|offset| WORDS[(index * 7 + offset * 11) % WORDS.len()])
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("# Background {index}\n{body}\nrecord {index:05} remains deterministic\n")
+}
+
+fn seed_with_storage(corpus_size: usize, on_disk: bool) -> (tempfile::TempDir, MemDb) {
     let root = tempfile::tempdir().unwrap();
     let root_text = root.path().to_string_lossy().into_owned();
-    let db = MemDb::open_in_memory();
+    let db = if on_disk {
+        MemDb::open(root.path().join("benchmark.db")).unwrap()
+    } else {
+        MemDb::open_in_memory()
+    };
     create_schema(&db);
     {
         let mut conn = db.lock();
@@ -69,10 +114,7 @@ fn seed(corpus_size: usize) -> (tempfile::TempDir, MemDb) {
         for index in 0..corpus_size {
             let doc_id = format!("background-{index:05}");
             let path = format!("background/{index:05}.md");
-            let content = format!(
-                "# Background {index}\nordinary filler context {}\n",
-                "x".repeat(384)
-            );
+            let content = background_content(index);
             insert_projection(
                 &tx, &root_text, &doc_id, &path, &content, "active", "normal",
             );
@@ -171,6 +213,10 @@ fn seed(corpus_size: usize) -> (tempfile::TempDir, MemDb) {
     (root, db)
 }
 
+fn seed(corpus_size: usize) -> (tempfile::TempDir, MemDb) {
+    seed_with_storage(corpus_size, false)
+}
+
 fn ids(db: &MemDb, query: &str, k: usize) -> Vec<String> {
     doc_spine::recall(db, query, k)
         .unwrap()
@@ -179,16 +225,167 @@ fn ids(db: &MemDb, query: &str, k: usize) -> Vec<String> {
         .collect()
 }
 
+fn create_fts_index(db: &MemDb) {
+    db.lock()
+        .execute_batch(
+            "CREATE VIRTUAL TABLE doc_projection_fts
+                 USING fts5(content, content='', tokenize='trigram');
+             CREATE TRIGGER doc_projection_fts_insert
+                 AFTER INSERT ON doc_projections WHEN new.kind='lexical' BEGIN
+                   INSERT INTO doc_projection_fts(rowid, content) VALUES (new.rowid, new.content);
+                 END;
+             CREATE TRIGGER doc_projection_fts_delete
+                 AFTER DELETE ON doc_projections WHEN old.kind='lexical' BEGIN
+                   INSERT INTO doc_projection_fts(doc_projection_fts, rowid, content)
+                     VALUES ('delete', old.rowid, old.content);
+                 END;
+             INSERT INTO doc_projection_fts(rowid, content)
+                 SELECT rowid, content FROM doc_projections WHERE kind='lexical';
+             INSERT INTO doc_projection_fts(doc_projection_fts) VALUES('optimize');",
+        )
+        .unwrap();
+}
+
+fn corpus_results(db: &MemDb) -> Vec<Vec<String>> {
+    [
+        "quest",
+        "REQUESTED",
+        "alpha beta",
+        "id",
+        "tie",
+        "---",
+        "secret retired mismatch",
+    ]
+    .iter()
+    .map(|query| ids(db, query, 5))
+    .collect()
+}
+
+fn checkpoint(db: &MemDb) {
+    db.lock()
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
+        .unwrap();
+}
+
+fn db_bytes(db: &MemDb) -> u64 {
+    let conn = db.lock();
+    let pages: i64 = conn
+        .query_row("PRAGMA page_count", [], |row| row.get(0))
+        .unwrap();
+    let page_size: i64 = conn
+        .query_row("PRAGMA page_size", [], |row| row.get(0))
+        .unwrap();
+    (pages * page_size) as u64
+}
+
+fn lexical_bytes(db: &MemDb) -> u64 {
+    let bytes: i64 = db
+        .lock()
+        .query_row(
+            "SELECT COALESCE(SUM(length(CAST(content AS BLOB))), 0)
+             FROM doc_projections WHERE kind='lexical'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    bytes as u64
+}
+
+fn fts_bytes(db: &MemDb) -> u64 {
+    let bytes: i64 = db
+        .lock()
+        .query_row(
+            "SELECT COALESCE(SUM(pgsize), 0) FROM dbstat
+             WHERE name GLOB 'doc_projection_fts*'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    bytes as u64
+}
+
+fn wal_bytes(path: &Path) -> u64 {
+    std::fs::metadata(format!("{}-wal", path.display()))
+        .map(|metadata| metadata.len())
+        .unwrap_or(0)
+}
+
+fn replace_benchmark_projection(db: &MemDb) {
+    let markdown = "# Benchmark\nbenchmarkneedle\n";
+    let hash = digest(markdown);
+    let mut conn = db.lock();
+    let tx = conn.transaction().unwrap();
+    tx.execute(
+        "DELETE FROM doc_projections WHERE parent_doc_id='doc-benchmark'",
+        [],
+    )
+    .unwrap();
+    tx.execute(
+        "INSERT INTO doc_projections
+         (parent_doc_id, kind, content, token_count, anchor_id, collapsed_to_parent,
+          source_content_hash, source_revision, index_generation)
+         VALUES ('doc-benchmark', 'lexical', ?1, 0, 'document', NULL, ?2, 'rev-1', 1)",
+        rusqlite::params![markdown, hash],
+    )
+    .unwrap();
+    tx.commit().unwrap();
+}
+
+#[cfg(unix)]
+fn rss_bytes() -> u64 {
+    let output = Command::new("ps")
+        .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+        .output()
+        .unwrap();
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .trim()
+        .parse::<u64>()
+        .unwrap()
+        * 1024
+}
+
+#[cfg(windows)]
+fn rss_bytes() -> u64 {
+    let script = format!("(Get-Process -Id {}).WorkingSet64", std::process::id());
+    let output = Command::new("powershell.exe")
+        .args(["-NoProfile", "-Command", &script])
+        .output()
+        .unwrap();
+    String::from_utf8(output.stdout)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap()
+}
+
 #[test]
 fn lexical_recall_contract_freezes_substrings_short_terms_ranking_and_filters() {
     let (_root, db) = seed(32);
-    assert_eq!(ids(&db, "quest", 5), ["doc-a"]);
-    assert_eq!(ids(&db, "REQUESTED", 5), ["doc-a"]);
-    assert_eq!(ids(&db, "alpha beta", 5), ["doc-b", "doc-a"]);
-    assert_eq!(ids(&db, "id", 5), ["doc-c"]);
-    assert_eq!(ids(&db, "tie", 5), ["doc-d", "doc-e"]);
-    assert!(ids(&db, "---", 5).is_empty());
-    assert!(ids(&db, "secret retired mismatch", 5).is_empty());
+    let corpus = [
+        ("quest", vec!["doc-a"]),
+        ("REQUESTED", vec!["doc-a"]),
+        ("alpha beta", vec!["doc-b", "doc-a"]),
+        ("id", vec!["doc-c"]),
+        ("tie", vec!["doc-d", "doc-e"]),
+        ("---", vec![]),
+        ("secret retired mismatch", vec![]),
+    ];
+    for (query, expected) in &corpus {
+        assert_eq!(ids(&db, query, 5), *expected, "fallback query: {query}");
+    }
+
+    assert_eq!(
+        corpus_results(&db),
+        corpus
+            .iter()
+            .map(|(_, ids)| ids.iter().map(|id| (*id).to_owned()).collect::<Vec<_>>())
+            .collect::<Vec<_>>()
+    );
+    create_fts_index(&db);
+    for (query, expected) in &corpus {
+        assert_eq!(ids(&db, query, 5), *expected, "indexed query: {query}");
+    }
 
     let hit = doc_spine::recall(&db, "quest", 1).unwrap().remove(0);
     assert_eq!(hit.source_ref, "doc://repo/worktree/docs/a.md");
@@ -202,27 +399,107 @@ fn lexical_recall_contract_freezes_substrings_short_terms_ranking_and_filters() 
 #[test]
 #[ignore = "manual before/after lexical index measurement"]
 fn measure_warm_lexical_recall_over_twelve_thousand_projections() {
-    let (_root, db) = seed(12_000);
-    let query = "benchmarkneedle";
-    assert_eq!(ids(&db, query, 1), ["doc-benchmark"]);
+    const MAX_INDEX_TO_LEXICAL_RATIO: f64 = 0.50;
+    const MAX_WRITE_AMPLIFICATION: f64 = 6.0;
+    const MAX_RSS_INCREASE_BYTES: u64 = 32 * 1024 * 1024;
+    const MAX_REBUILD_US: u64 = 5_000_000;
+    const MIN_P95_SPEEDUP: f64 = 3.0;
 
-    let mut micros = Vec::new();
+    let (root, db) = seed_with_storage(12_000, true);
+    let db_path = root.path().join("benchmark.db");
+    let query = "benchmarkneedle";
+    let fallback_started = Instant::now();
+    assert_eq!(ids(&db, query, 1), ["doc-benchmark"]);
+    let fallback_cold_us = fallback_started.elapsed().as_micros() as u64;
+    let fallback_ordered = corpus_results(&db);
+
+    let mut fallback_micros = Vec::new();
+    for _ in 0..9 {
+        let started = Instant::now();
+        std::hint::black_box(ids(&db, std::hint::black_box(query), 1));
+        fallback_micros.push(started.elapsed().as_micros() as u64);
+    }
+    fallback_micros.sort_unstable();
+
+    checkpoint(&db);
+    let base_db_bytes = db_bytes(&db);
+    let payload_bytes = lexical_bytes(&db);
+    let base_rss_bytes = rss_bytes();
+    replace_benchmark_projection(&db);
+    let fallback_sync_wal_bytes = wal_bytes(&db_path);
+    checkpoint(&db);
+
+    let rebuild_started = Instant::now();
+    create_fts_index(&db);
+    let rebuild_us = rebuild_started.elapsed().as_micros() as u64;
+    assert_eq!(corpus_results(&db), fallback_ordered);
+    let cold_started = Instant::now();
+    assert_eq!(ids(&db, query, 1), ["doc-benchmark"]);
+    let indexed_cold_us = cold_started.elapsed().as_micros() as u64;
+
+    let mut indexed_micros = Vec::new();
     for _ in 0..9 {
         let started = Instant::now();
         let result = ids(&db, std::hint::black_box(query), 1);
         std::hint::black_box(result);
-        micros.push(started.elapsed().as_micros() as u64);
+        indexed_micros.push(started.elapsed().as_micros() as u64);
     }
-    micros.sort_unstable();
+    indexed_micros.sort_unstable();
+
+    checkpoint(&db);
+    let indexed_db_bytes = db_bytes(&db);
+    let index_bytes = fts_bytes(&db);
+    let indexed_rss_bytes = rss_bytes();
+    replace_benchmark_projection(&db);
+    let indexed_sync_wal_bytes = wal_bytes(&db_path);
+
+    let fallback_p95_us = fallback_micros[fallback_micros.len() - 1];
+    let indexed_p95_us = indexed_micros[indexed_micros.len() - 1];
+    let p95_speedup = fallback_p95_us as f64 / indexed_p95_us as f64;
+    let index_to_lexical_ratio = index_bytes as f64 / payload_bytes as f64;
+    let write_amplification = indexed_sync_wal_bytes as f64 / fallback_sync_wal_bytes as f64;
+    let rss_increase_bytes = indexed_rss_bytes.saturating_sub(base_rss_bytes);
+    let budget_pass = p95_speedup >= MIN_P95_SPEEDUP
+        && index_to_lexical_ratio <= MAX_INDEX_TO_LEXICAL_RATIO
+        && write_amplification <= MAX_WRITE_AMPLIFICATION
+        && rss_increase_bytes <= MAX_RSS_INCREASE_BYTES
+        && rebuild_us <= MAX_REBUILD_US;
     println!(
         "{}",
         serde_json::json!({
             "schema_version": 1,
             "corpus_projections": 12_009,
             "query": query,
-            "samples": micros.len(),
-            "p50_us": micros[micros.len() / 2],
-            "p95_us": micros[micros.len() - 1],
+            "samples_per_lane": indexed_micros.len(),
+            "ordered_result_parity": true,
+            "unavailable_fts_fallback": "doc_projection_fts absent -> deterministic full scan",
+            "fallback_cold_us": fallback_cold_us,
+            "fallback_p50_us": fallback_micros[fallback_micros.len() / 2],
+            "fallback_p95_us": fallback_p95_us,
+            "indexed_cold_us": indexed_cold_us,
+            "indexed_p50_us": indexed_micros[indexed_micros.len() / 2],
+            "indexed_p95_us": indexed_p95_us,
+            "p95_speedup": p95_speedup,
+            "base_db_bytes": base_db_bytes,
+            "indexed_db_bytes": indexed_db_bytes,
+            "lexical_payload_bytes": payload_bytes,
+            "fts_index_bytes": index_bytes,
+            "index_to_lexical_ratio": index_to_lexical_ratio,
+            "rebuild_us": rebuild_us,
+            "fallback_sync_wal_bytes": fallback_sync_wal_bytes,
+            "indexed_sync_wal_bytes": indexed_sync_wal_bytes,
+            "write_amplification": write_amplification,
+            "base_rss_bytes": base_rss_bytes,
+            "indexed_rss_bytes": indexed_rss_bytes,
+            "rss_increase_bytes": rss_increase_bytes,
+            "budget": {
+                "min_p95_speedup": MIN_P95_SPEEDUP,
+                "max_index_to_lexical_ratio": MAX_INDEX_TO_LEXICAL_RATIO,
+                "max_write_amplification": MAX_WRITE_AMPLIFICATION,
+                "max_rss_increase_bytes": MAX_RSS_INCREASE_BYTES,
+                "max_rebuild_us": MAX_REBUILD_US,
+            },
+            "budget_pass": budget_pass,
             "result_ids": ["doc-benchmark"],
         })
     );
