@@ -1298,13 +1298,15 @@ function buildGenerationFromSources(root, source, options = {}) {
     ? buildDocCodeJoins(candidateGeneration, { docMap })
     : { schemaVersion: 1, provider: PROVIDER.id, joins: [], supersedes: [], truncated: false, sourceDocMap: { docs: 0, claims: 0, generatedAt: null, docPaths: [], claimPaths: [] } };
   const cleanEdges = dedupeBy(rawEdges, (item) => `${item.kind}:${item.source}:${item.target ?? item.specifier ?? ""}:${item.evidence?.[0]?.path ?? ""}`);
+  const sourceFingerprint = sourceHash(source.files);
+  const generationId = computeGenerationId(cleanNodes, cleanEdges, sourceFingerprint);
   const manifest = {
     schemaVersion: 1,
     provider: PROVIDER,
     // Stable generation stamp derived from the generation id, so byte-identity
     // on unchanged rebuilds is preserved.
-    generatedAt: `gen:${computeGenerationId(cleanNodes, cleanEdges, sourceHash(source.files)).replace(/^xxh128:/, "").slice(0, 16)}`,
-    generationId: computeGenerationId(cleanNodes, cleanEdges, sourceHash(source.files)),
+    generatedAt: `gen:${generationId.replace(/^xxh128:/, "").slice(0, 16)}`,
+    generationId,
     complete: true,
     // The fileLimit the build was run with (0 = unlimited). graphStatus and
     // downstream consumers use this to scope their re-scan so a huge real
@@ -1314,7 +1316,7 @@ function buildGenerationFromSources(root, source, options = {}) {
     truncationReasons: source.truncationReasons,
     repo: {
       rootName: root.split(/[\\/]/).at(-1),
-      sourceHash: sourceHash(source.files),
+      sourceHash: sourceFingerprint,
       fileCount: source.files.length,
     },
     counts: {
