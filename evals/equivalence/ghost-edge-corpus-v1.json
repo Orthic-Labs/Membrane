@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "description": "Canonical lexical-resolver transitions. Edge arrays are observable ordered projections, never sets.",
+  "cases": [
+    {
+      "id": "symbol-add",
+      "initial": {
+        "caller.ts": "export function caller() { return added(); }\n",
+        "missing.ts": "import { absent } from './not-here';\nexport const missing = absent;\n"
+      },
+      "mutation": { "write": { "added.ts": "export function added() { return 1; }\n" } },
+      "expectedInitialEdges": [
+        { "id": "edge:IMPORTS:file:missing.ts->unresolved:./not-here", "kind": "IMPORTS", "source": "file:missing.ts", "target": null, "resolved": false, "specifier": "./not-here", "reason": null, "confidence": 0, "confidenceTier": "UNRESOLVED" }
+      ],
+      "expectedEdges": [
+        { "id": "edge:IMPORTS:file:missing.ts->unresolved:./not-here", "kind": "IMPORTS", "source": "file:missing.ts", "target": null, "resolved": false, "specifier": "./not-here", "reason": null, "confidence": 0, "confidenceTier": "UNRESOLVED" },
+        { "id": "edge:CALLS:symbol:caller.ts::caller->symbol:added.ts::added", "kind": "CALLS", "source": "symbol:caller.ts::caller", "target": "symbol:added.ts::added", "resolved": true, "specifier": null, "reason": null, "confidence": 0.5, "confidenceTier": "CROSS_FILE_HEURISTIC" }
+      ]
+    },
+    {
+      "id": "symbol-delete",
+      "initial": {
+        "caller.ts": "export function caller() { return removed(); }\n",
+        "removed.ts": "export function removed() { return 1; }\n"
+      },
+      "mutation": { "delete": ["removed.ts"] },
+      "expectedInitialEdges": [
+        { "id": "edge:CALLS:symbol:caller.ts::caller->symbol:removed.ts::removed", "kind": "CALLS", "source": "symbol:caller.ts::caller", "target": "symbol:removed.ts::removed", "resolved": true, "specifier": null, "reason": null, "confidence": 0.5, "confidenceTier": "CROSS_FILE_HEURISTIC" }
+      ],
+      "expectedEdges": []
+    },
+    {
+      "id": "symbol-move",
+      "initial": {
+        "caller.ts": "export function caller() { return moved(); }\n",
+        "old.ts": "export function moved() { return 1; }\n"
+      },
+      "mutation": {
+        "delete": ["old.ts"],
+        "write": { "new.ts": "export function moved() { return 1; }\n" }
+      },
+      "expectedInitialEdges": [
+        { "id": "edge:CALLS:symbol:caller.ts::caller->symbol:old.ts::moved", "kind": "CALLS", "source": "symbol:caller.ts::caller", "target": "symbol:old.ts::moved", "resolved": true, "specifier": null, "reason": null, "confidence": 0.5, "confidenceTier": "CROSS_FILE_HEURISTIC" }
+      ],
+      "expectedEdges": [
+        { "id": "edge:CALLS:symbol:caller.ts::caller->symbol:new.ts::moved", "kind": "CALLS", "source": "symbol:caller.ts::caller", "target": "symbol:new.ts::moved", "resolved": true, "specifier": null, "reason": null, "confidence": 0.5, "confidenceTier": "CROSS_FILE_HEURISTIC" }
+      ]
+    },
+    {
+      "id": "symbol-rename",
+      "initial": {
+        "caller.ts": "export function caller() { return renamed(); }\n",
+        "target.ts": "export function renamed() { return 1; }\n"
+      },
+      "mutation": { "write": { "target.ts": "export function replacement() { return 1; }\n" } },
+      "expectedInitialEdges": [
+        { "id": "edge:CALLS:symbol:caller.ts::caller->symbol:target.ts::renamed", "kind": "CALLS", "source": "symbol:caller.ts::caller", "target": "symbol:target.ts::renamed", "resolved": true, "specifier": null, "reason": null, "confidence": 0.5, "confidenceTier": "CROSS_FILE_HEURISTIC" }
+      ],
+      "expectedEdges": []
+    },
+    {
+      "id": "ambiguity-change",
+      "initial": {
+        "caller.ts": "export function caller() { return shared(); }\n",
+        "one.ts": "export function shared() { return 1; }\n",
+        "missing.ts": "import { absent } from './not-here';\nexport const missing = absent;\n"
+      },
+      "mutation": { "write": { "two.ts": "export function shared() { return 2; }\n" } },
+      "expectedInitialEdges": [
+        { "id": "edge:IMPORTS:file:missing.ts->unresolved:./not-here", "kind": "IMPORTS", "source": "file:missing.ts", "target": null, "resolved": false, "specifier": "./not-here", "reason": null, "confidence": 0, "confidenceTier": "UNRESOLVED" },
+        { "id": "edge:CALLS:symbol:caller.ts::caller->symbol:one.ts::shared", "kind": "CALLS", "source": "symbol:caller.ts::caller", "target": "symbol:one.ts::shared", "resolved": true, "specifier": null, "reason": null, "confidence": 0.5, "confidenceTier": "CROSS_FILE_HEURISTIC" }
+      ],
+      "expectedEdges": [
+        { "id": "edge:IMPORTS:file:missing.ts->unresolved:./not-here", "kind": "IMPORTS", "source": "file:missing.ts", "target": null, "resolved": false, "specifier": "./not-here", "reason": null, "confidence": 0, "confidenceTier": "UNRESOLVED" },
+        { "id": "edge:CALLS:symbol:caller.ts::caller->unresolved:shared", "kind": "CALLS", "source": "symbol:caller.ts::caller", "target": null, "resolved": false, "specifier": "shared", "reason": "2 candidate symbol(s) named \"shared\" exist repo-wide; none is in the same file or an imported file", "confidence": 0, "confidenceTier": "UNRESOLVED" }
+      ]
+    }
+  ]
+}
