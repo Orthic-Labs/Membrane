@@ -1,0 +1,336 @@
+{
+  "schema": "cortex-canonical-core-benchmark-report-v1",
+  "command": "node scripts/benchmark-canonical-core.mjs --samples 1 --report <path>",
+  "source": {
+    "head": "0f518ab4f6a0c81f411e55f72f59a293287898c9",
+    "root": "/Volumes/D/claude/cortex",
+    "worktree": {
+      "state": "dirty",
+      "statusSha256": "f0f577acf57822f3e0bc75d6b7d60847ebb266749a96201225d7286ac1dc7491",
+      "changedEntries": 33
+    }
+  },
+  "inventory": {
+    "selection": "git ls-files --cached -z; explicit core exclusions",
+    "selectedFiles": 557,
+    "trackedFiles": 584,
+    "excludedFiles": 27,
+    "selectionSha256": "f8aa48e8281bd2e5a0667e1954d6e19aa196bc098fe50cf8f46f57e36b6e339e",
+    "trackedContentSha256": "32a2bdbda4f2b5810c5188ba29ca01a0fca38ac556004f992e287f2202296581",
+    "exclusions": [
+      ".agent/",
+      "vendor-research/",
+      "evals/fixture-repos/",
+      "evals/performance-fixtures/",
+      "evals/performance-baselines/",
+      "coverage/",
+      "dist/",
+      "out/",
+      ".cache/"
+    ]
+  },
+  "isolation": {
+    "temporarySnapshot": true,
+    "snapshotMethod": "copy HEAD-selected tracked files + explicit measurement overlay + temporary git index + node_modules symlink",
+    "snapshotPreparationMs": 7149.397166,
+    "overlayPaths": [
+      "graph/static-provider.mjs",
+      "graph/publication.mjs",
+      "scripts/benchmark-canonical-core.mjs"
+    ],
+    "measuredContentSha256": "519c94e4ecb09884d912192588b8003a77727df7089522b2c1f35e328801f8d4",
+    "liveAgentMutated": false
+  },
+  "commands": {
+    "inventory": "git ls-files --cached -z",
+    "snapshot": "git init -q; git add -- .; git -c user.name=Cortex\\ benchmark -c user.email=benchmark@localhost commit -qm canonical-core-snapshot",
+    "smoke": "/Users/adrdsouza/.nvm/versions/node/v26.5.0/bin/node scripts/cortex.mjs build --out .agent --limit 25",
+    "coldBuild": [
+      "/Users/adrdsouza/.nvm/versions/node/v26.5.0/bin/node scripts/cortex.mjs build --out .agent"
+    ],
+    "noChangeBuild": [
+      "/Users/adrdsouza/.nvm/versions/node/v26.5.0/bin/node scripts/cortex.mjs build --out .agent"
+    ]
+  },
+  "host": {
+    "hostname": "Adrians-MacBook-Air.local",
+    "platform": "darwin",
+    "arch": "arm64",
+    "release": "25.5.0",
+    "node": "v26.5.0",
+    "git": "git version 2.50.1 (Apple Git-155)",
+    "pnpm": "11.18.0"
+  },
+  "samples": 1,
+  "metrics": {
+    "smoke": {
+      "limit": 25,
+      "samples": [
+        {
+          "elapsedMs": 491.2718339999992,
+          "peakRssBytes": 150192128,
+          "stdout": "built .agent/map.json docs=9 claims=81 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_cortex=incomplete next=phase2",
+          "stderr": "",
+          "command": "/Users/adrdsouza/.nvm/versions/node/v26.5.0/bin/node scripts/cortex.mjs build --out .agent --limit 25",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)",
+          "stageTimings": {
+            "state": "measured",
+            "records": [
+              {
+                "stage": "source_scan",
+                "elapsedMs": 25.410249999999962
+              },
+              {
+                "stage": "parse_cache_extraction",
+                "elapsedMs": 0.10229100000003655
+              },
+              {
+                "stage": "indexed_global_resolution",
+                "elapsedMs": 0.475166999999999
+              },
+              {
+                "stage": "identity",
+                "elapsedMs": 1.6997090000000412
+              },
+              {
+                "stage": "parse_cache_persistence",
+                "elapsedMs": 0.5176670000000172
+              },
+              {
+                "stage": "treesitter_augmentation",
+                "elapsedMs": 23.84445800000003
+              }
+            ],
+            "unobservedStages": [
+              {
+                "stage": "graph_persistence",
+                "reason": "CLI owns SQLite publication outside static-provider boundary"
+              }
+            ]
+          }
+        }
+      ],
+      "p95Ms": 491.2718339999992,
+      "peakRssBytes": 150192128
+    },
+    "coldBuild": {
+      "samples": [
+        {
+          "elapsedMs": 7367.750250000001,
+          "peakRssBytes": 1125793792,
+          "stdout": "built .agent/map.json docs=53 claims=218 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_cortex=incomplete next=phase2",
+          "stderr": "",
+          "command": "/Users/adrdsouza/.nvm/versions/node/v26.5.0/bin/node scripts/cortex.mjs build --out .agent",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)",
+          "stageTimings": {
+            "state": "measured",
+            "records": [
+              {
+                "stage": "source_scan",
+                "elapsedMs": 58.168165999999985
+              },
+              {
+                "stage": "parse_cache_extraction",
+                "elapsedMs": 44.51054199999999
+              },
+              {
+                "stage": "indexed_global_resolution",
+                "elapsedMs": 72.72595899999999
+              },
+              {
+                "stage": "identity",
+                "elapsedMs": 77.992167
+              },
+              {
+                "stage": "parse_cache_persistence",
+                "elapsedMs": 21.839582999999948
+              },
+              {
+                "stage": "treesitter_augmentation",
+                "elapsedMs": 1645.46975
+              }
+            ],
+            "unobservedStages": [
+              {
+                "stage": "graph_persistence",
+                "reason": "CLI owns SQLite publication outside static-provider boundary"
+              }
+            ]
+          }
+        }
+      ],
+      "p95Ms": 7367.750250000001,
+      "peakRssBytes": 1125793792
+    },
+    "noChangeBuild": {
+      "samples": [
+        {
+          "elapsedMs": 6631.8895840000005,
+          "peakRssBytes": 1155547136,
+          "stdout": "built .agent/map.json docs=53 claims=218 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_cortex=incomplete next=phase2",
+          "stderr": "",
+          "command": "/Users/adrdsouza/.nvm/versions/node/v26.5.0/bin/node scripts/cortex.mjs build --out .agent",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)",
+          "stageTimings": {
+            "state": "measured",
+            "records": [
+              {
+                "stage": "source_scan",
+                "elapsedMs": 59.50220899999999
+              },
+              {
+                "stage": "parse_cache_extraction",
+                "elapsedMs": 0.7133329999999773
+              },
+              {
+                "stage": "indexed_global_resolution",
+                "elapsedMs": 73.94033400000001
+              },
+              {
+                "stage": "identity",
+                "elapsedMs": 91.4905
+              },
+              {
+                "stage": "parse_cache_persistence",
+                "elapsedMs": 19.80366600000002
+              },
+              {
+                "stage": "treesitter_augmentation",
+                "elapsedMs": 1684.9323330000002
+              }
+            ],
+            "unobservedStages": [
+              {
+                "stage": "graph_persistence",
+                "reason": "CLI owns SQLite publication outside static-provider boundary"
+              }
+            ]
+          }
+        }
+      ],
+      "p95Ms": 6631.8895840000005,
+      "peakRssBytes": 1155547136
+    },
+    "stageTimings": {
+      "stableStages": [
+        "source_scan",
+        "parse_cache_extraction",
+        "indexed_global_resolution",
+        "identity",
+        "parse_cache_persistence",
+        "treesitter_augmentation",
+        "graph_persistence"
+      ],
+      "smoke": {
+        "state": "measured",
+        "records": [
+          {
+            "stage": "source_scan",
+            "elapsedMs": 25.410249999999962
+          },
+          {
+            "stage": "parse_cache_extraction",
+            "elapsedMs": 0.10229100000003655
+          },
+          {
+            "stage": "indexed_global_resolution",
+            "elapsedMs": 0.475166999999999
+          },
+          {
+            "stage": "identity",
+            "elapsedMs": 1.6997090000000412
+          },
+          {
+            "stage": "parse_cache_persistence",
+            "elapsedMs": 0.5176670000000172
+          },
+          {
+            "stage": "treesitter_augmentation",
+            "elapsedMs": 23.84445800000003
+          }
+        ],
+        "unobservedStages": [
+          {
+            "stage": "graph_persistence",
+            "reason": "CLI owns SQLite publication outside static-provider boundary"
+          }
+        ]
+      },
+      "coldBuild": [
+        {
+          "state": "measured",
+          "records": [
+            {
+              "stage": "source_scan",
+              "elapsedMs": 58.168165999999985
+            },
+            {
+              "stage": "parse_cache_extraction",
+              "elapsedMs": 44.51054199999999
+            },
+            {
+              "stage": "indexed_global_resolution",
+              "elapsedMs": 72.72595899999999
+            },
+            {
+              "stage": "identity",
+              "elapsedMs": 77.992167
+            },
+            {
+              "stage": "parse_cache_persistence",
+              "elapsedMs": 21.839582999999948
+            },
+            {
+              "stage": "treesitter_augmentation",
+              "elapsedMs": 1645.46975
+            }
+          ],
+          "unobservedStages": [
+            {
+              "stage": "graph_persistence",
+              "reason": "CLI owns SQLite publication outside static-provider boundary"
+            }
+          ]
+        }
+      ],
+      "noChangeBuild": [
+        {
+          "state": "measured",
+          "records": [
+            {
+              "stage": "source_scan",
+              "elapsedMs": 59.50220899999999
+            },
+            {
+              "stage": "parse_cache_extraction",
+              "elapsedMs": 0.7133329999999773
+            },
+            {
+              "stage": "indexed_global_resolution",
+              "elapsedMs": 73.94033400000001
+            },
+            {
+              "stage": "identity",
+              "elapsedMs": 91.4905
+            },
+            {
+              "stage": "parse_cache_persistence",
+              "elapsedMs": 19.80366600000002
+            },
+            {
+              "stage": "treesitter_augmentation",
+              "elapsedMs": 1684.9323330000002
+            }
+          ],
+          "unobservedStages": [
+            {
+              "stage": "graph_persistence",
+              "reason": "CLI owns SQLite publication outside static-provider boundary"
+            }
+          ]
+        }
+      ],
+      "snapshotPreparationMs": 7149.397166
+    }
+  }
+}

@@ -33,7 +33,7 @@ export function fixtureIdentity(files) {
     hash.update("\0");
   }
   return Object.freeze({
-    id: `cortex-storage-${files}-v${FIXTURE_VERSION}`,
+    id: `synthetic-cortex-storage-${files}-v${FIXTURE_VERSION}`,
     fixtureVersion: FIXTURE_VERSION,
     seed: FIXTURE_SEED,
     files,
