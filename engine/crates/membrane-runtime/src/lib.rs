@@ -31,6 +31,7 @@ pub mod freshness;
 pub mod hub;
 pub mod hub_inputs;
 pub mod hub_readonly_db;
+pub mod identifier;
 pub mod installation_manifest;
 pub mod mcp_http;
 pub mod memory_provider;

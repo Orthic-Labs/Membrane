@@ -2594,12 +2594,15 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 expected_hash,
                 continuation_cursor,
             } => {
-                let Some(relative) = source_ref.strip_prefix("doc://repo/worktree/") else {
-                    println!(
-                        "{}",
-                        serde_json::json!({"error":crypt::outline::DocReadError::Deny.as_str()})
-                    );
-                    return Ok(());
+                let relative = match crypt::identifier::WorktreeDocRef::parse(source_ref) {
+                    Ok(reference) => reference.relative_path(),
+                    Err(_) => {
+                        println!(
+                            "{}",
+                            serde_json::json!({"error":crypt::outline::DocReadError::Deny.as_str()})
+                        );
+                        return Ok(());
+                    }
                 };
                 let root = std::env::var_os("WORKSPACE_ROOT")
                     .map(PathBuf::from)
@@ -3909,12 +3912,16 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             std::process::exit(res.exit_code);
         }
         Cmd::Expand { anchor, spill_dir } => {
-            let Some(digest) = anchor.strip_prefix("mr://anchor/") else {
-                return Err("invalid anchor: expected mr://anchor/<sha256>".into());
-            };
-            if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                return Err("invalid anchor digest".into());
-            }
+            let digest = crypt::identifier::AnchorRef::parse(&anchor)
+                .map_err(|error| match error {
+                    crypt::identifier::AnchorRefError::PrefixMismatch
+                    | crypt::identifier::AnchorRefError::CrossNamespace => {
+                        "invalid anchor: expected mr://anchor/<sha256>"
+                    }
+                    crypt::identifier::AnchorRefError::InvalidDigest
+                    | crypt::identifier::AnchorRefError::AliasCollision => "invalid anchor digest",
+                })?
+                .digest();
             let root = spill_dir
                 .canonicalize()
                 .map_err(|error| format!("anchor store unavailable: {error}"))?;

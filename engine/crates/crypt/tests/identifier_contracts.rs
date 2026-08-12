@@ -131,3 +131,90 @@ fn anchor_identifier_compatibility_corpus() {
     assert!(!missing.status.success());
     assert_eq!(terminal_error(missing), "anchor not found");
 }
+
+#[test]
+fn worktree_document_rejections_are_typed_before_io() {
+    use crypt::identifier::{WorktreeDocRef, WorktreeDocRefError};
+
+    for (source_ref, expected) in [
+        ("doc://repo/worktree/", WorktreeDocRefError::EmptyPath),
+        (
+            "doc://repo/worktree/docs//guide.md",
+            WorktreeDocRefError::AliasCollision,
+        ),
+        (
+            "doc://repo/worktree/docs/%2e%2e/guide.md",
+            WorktreeDocRefError::AliasCollision,
+        ),
+        (
+            "doc://repo/worktree/C:/repo/guide.md",
+            WorktreeDocRefError::WindowsPath,
+        ),
+        (
+            "doc://repo/worktree/docs\\guide.md",
+            WorktreeDocRefError::WindowsPath,
+        ),
+        (
+            "doc://repo/worktree/docs/∕guide.md",
+            WorktreeDocRefError::UnicodeAmbiguity,
+        ),
+    ] {
+        assert_eq!(WorktreeDocRef::parse(source_ref).unwrap_err(), expected);
+    }
+
+    assert_eq!(
+        WorktreeDocRef::parse("doc://other/worktree/docs/guide.md").unwrap_err(),
+        WorktreeDocRefError::CrossRepository
+    );
+    assert_eq!(
+        WorktreeDocRef::parse("Doc://repo/worktree/docs/guide.md").unwrap_err(),
+        WorktreeDocRefError::PrefixMismatch
+    );
+}
+
+#[test]
+fn cli_anchor_rejection_precedes_anchor_store_access() {
+    let root = tempfile::tempdir().unwrap();
+    let database = root.path().join("unused.db");
+    let unavailable_spill = root.path().join("missing-spill");
+    let invalid = run_expand(
+        &database,
+        &unavailable_spill,
+        &format!("MR://anchor/{}", "0".repeat(64)),
+    );
+    assert!(!invalid.status.success());
+    assert_eq!(
+        terminal_error(invalid),
+        "invalid anchor: expected mr://anchor/<sha256>"
+    );
+
+    let valid = run_expand(
+        &database,
+        &unavailable_spill,
+        &format!("mr://anchor/{}", "0".repeat(64)),
+    );
+    assert!(!valid.status.success());
+    assert!(terminal_error(valid).starts_with("anchor store unavailable:"));
+}
+
+#[test]
+fn anchor_rejections_are_typed_before_io() {
+    use crypt::identifier::{AnchorRef, AnchorRefError};
+
+    assert_eq!(
+        AnchorRef::parse(&format!("mr://anchor/{}", "A".repeat(64))).unwrap_err(),
+        AnchorRefError::AliasCollision
+    );
+    assert_eq!(
+        AnchorRef::parse(&format!("mr://anchor/{}", "g".repeat(64))).unwrap_err(),
+        AnchorRefError::InvalidDigest
+    );
+    assert_eq!(
+        AnchorRef::parse(&format!("mr://other/{}", "0".repeat(64))).unwrap_err(),
+        AnchorRefError::CrossNamespace
+    );
+    assert_eq!(
+        AnchorRef::parse(&format!("MR://anchor/{}", "0".repeat(64))).unwrap_err(),
+        AnchorRefError::PrefixMismatch
+    );
+}

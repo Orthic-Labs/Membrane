@@ -66,16 +66,10 @@ fn resolve_source_ref(
     reference: &CheckpointSourceRefV1,
     workspace_root: &std::path::Path,
 ) -> String {
-    let Some(relative) = reference.source_ref.strip_prefix("doc://repo/worktree/") else {
+    let Ok(source_ref) = crate::identifier::WorktreeDocRef::parse(&reference.source_ref) else {
         return "deny".into();
     };
-    let relative = std::path::Path::new(relative);
-    if relative
-        .components()
-        .any(|component| !matches!(component, std::path::Component::Normal(_)))
-    {
-        return "deny".into();
-    }
+    let relative = std::path::Path::new(source_ref.relative_path());
     let Ok(root) = workspace_root.canonicalize() else {
         return "deny".into();
     };

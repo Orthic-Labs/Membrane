@@ -356,12 +356,10 @@ fn expand_anchor_response(body: &str, anchor_directory: &std::path::Path) -> (u1
     let Some(anchor) = value.get("anchor").and_then(Value::as_str) else {
         return (400, json!({"error":"anchor required"}).to_string());
     };
-    let Some(digest) = anchor.strip_prefix("mr://anchor/") else {
-        return (400, json!({"error":"invalid anchor"}).to_string());
+    let digest = match crate::identifier::AnchorRef::parse(anchor) {
+        Ok(reference) => reference.digest(),
+        Err(_) => return (400, json!({"error":"invalid anchor"}).to_string()),
     };
-    if digest.len() != 64 || !digest.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return (400, json!({"error":"invalid anchor"}).to_string());
-    }
     let root = match anchor_directory.canonicalize() {
         Ok(root) => root,
         Err(_) => return (503, json!({"error":"anchor store unavailable"}).to_string()),
@@ -5634,6 +5632,18 @@ mod tests {
             root.path(),
         );
         assert_eq!(status, 410);
+
+        let unavailable = root.path().join("missing-anchor-store");
+        let (status, _) = expand_anchor_response(
+            &json!({"anchor": format!("MR://anchor/{}", "0".repeat(64))}).to_string(),
+            &unavailable,
+        );
+        assert_eq!(status, 400);
+        let (status, _) = expand_anchor_response(
+            &json!({"anchor": format!("mr://anchor/{}", "0".repeat(64))}).to_string(),
+            &unavailable,
+        );
+        assert_eq!(status, 503);
     }
 
     #[tokio::test]
