@@ -7764,6 +7764,70 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "manual before/after query-cache eviction measurement"]
+    fn measure_hot_query_retention_across_two_cache_turnovers() {
+        const HOT_QUERIES: usize = 32;
+        struct SlowCountingEmbedder {
+            query_calls: Arc<AtomicU64>,
+        }
+
+        impl Embedder for SlowCountingEmbedder {
+            fn embed(&self, _text: &str) -> Vec<f32> {
+                vec![1.0, 0.0]
+            }
+
+            fn embed_query(&self, _text: &str) -> Vec<f32> {
+                self.query_calls.fetch_add(1, Ordering::SeqCst);
+                std::thread::sleep(std::time::Duration::from_millis(1));
+                vec![1.0, 0.0]
+            }
+
+            fn dim(&self) -> usize {
+                2
+            }
+
+            fn model_id(&self) -> &'static str {
+                "slow-counting-lru-measurement"
+            }
+        }
+
+        let mut store = MemoryStore::new();
+        let query_calls = Arc::new(AtomicU64::new(0));
+        store.embedder = Arc::new(SlowCountingEmbedder {
+            query_calls: Arc::clone(&query_calls),
+        });
+        let started = Instant::now();
+        for index in 0..HOT_QUERIES {
+            let _ = store.search(&format!("hot query {index}"), 1);
+        }
+        for index in 0..QUERY_EMBEDDING_CACHE_CAPACITY * 2 {
+            let _ = store.search(&format!("cold query {index}"), 1);
+            for hot_index in 0..HOT_QUERIES {
+                let _ = store.search(&format!("hot query {hot_index}"), 1);
+            }
+        }
+        let elapsed_us = started.elapsed().as_micros() as u64;
+        let stats = store.health_json()["query_embedding_cache"].clone();
+        println!(
+            "{}",
+            serde_json::json!({
+                "schema_version": 1,
+                "capacity": QUERY_EMBEDDING_CACHE_CAPACITY,
+                "cold_queries": QUERY_EMBEDDING_CACHE_CAPACITY * 2,
+                "hot_working_set": HOT_QUERIES,
+                "hot_reuses": QUERY_EMBEDDING_CACHE_CAPACITY * 2 * HOT_QUERIES,
+                "provider_calls": query_calls.load(Ordering::SeqCst),
+                "ideal_lru_provider_calls": QUERY_EMBEDDING_CACHE_CAPACITY * 2 + HOT_QUERIES,
+                "elapsed_us": elapsed_us,
+                "cache": stats,
+                "cache_key": "embedding_pipeline_digest:query:sha256(query_text)",
+                "invalidation_key": "embedding_pipeline_digest",
+                "reused_work": "query embedding provider inference",
+            })
+        );
+    }
+
+    #[test]
     fn search_uses_the_asymmetric_query_embedding_for_ranking() {
         struct AsymmetricEmbedder;
 
