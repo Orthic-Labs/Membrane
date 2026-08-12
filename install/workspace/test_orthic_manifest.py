@@ -1,6 +1,6 @@
 """Tests for Orthic manifest producer — pure stdlib, no persistent-service IPC."""
 from __future__ import annotations
-import json, stat
+import getpass, json, os, stat, subprocess
 from pathlib import Path
 import orthic_manifest as om
 
@@ -23,7 +23,12 @@ def test_manifest_has_exact_field_set(tmp_path):
     root=_setup_root(tmp_path); home=tmp_path/"home"
     dest=om.write_orthic_manifest(root,home,47851,"0.1.0",win=False)
     data=json.loads(dest.read_text(encoding="utf-8"))
-    assert stat.S_IMODE(dest.stat().st_mode)==0o600
+    if os.name=="nt":
+        acl=subprocess.run(["icacls",str(dest)],capture_output=True,text=True,check=True).stdout
+        assert getpass.getuser().lower() in acl.lower()
+        assert "(F)" in acl
+    else:
+        assert stat.S_IMODE(dest.stat().st_mode)==0o600
     assert set(data.keys())==om.ALLOWED_FIELDS
     assert data["schemaVersion"]==1
     assert data["productId"]=="membrane"

@@ -1,6 +1,6 @@
 """Orthic Hub product manifest producer — pure stdlib, explicit paths only."""
 from __future__ import annotations
-import json, os, tempfile
+import getpass, json, os, subprocess, tempfile
 from pathlib import Path
 SCHEMA_VERSION=1
 PRODUCT_ID="membrane"
@@ -23,6 +23,14 @@ def _icon(root:Path)->Path:
         candidate=root/relative
         if candidate.is_file(): return candidate
     return root/ICON_REL
+def _secure_file(path:Path)->None:
+    os.chmod(path,0o600)
+    if os.name=="nt":
+        result=subprocess.run(
+            ["icacls",str(path),"/inheritance:r","/grant:r",f"{getpass.getuser()}:(F)"],
+            capture_output=True,text=True,
+        )
+        if result.returncode!=0: raise OSError(f"unable to secure manifest ACL: {result.stderr.strip()}")
 def read_product_version(root:Path)->str:
     for c in (root/"engine/crates/membrane/Cargo.toml",root/"membrane/engine/crates/membrane/Cargo.toml"):
       if c.is_file():
@@ -61,7 +69,7 @@ def write_orthic_manifest(root:Path,home:Path,port:int,product_version:str,*,man
     tmp=None
     try:
         with tempfile.NamedTemporaryFile(mode="w",encoding="utf-8",delete=False,dir=str(dest.parent),suffix=".tmp") as f:
-            tmp=Path(f.name); os.chmod(tmp,0o600); json.dump(m,f,indent=2,sort_keys=True); f.write("\n")
+            tmp=Path(f.name); _secure_file(tmp); json.dump(m,f,indent=2,sort_keys=True); f.write("\n")
         os.replace(tmp,dest)
     finally:
         if tmp is not None and tmp.exists():
