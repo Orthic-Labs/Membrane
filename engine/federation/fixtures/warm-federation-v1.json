@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "repetitions": 3,
+  "receiptKeys": [
+    "schemaVersion",
+    "corpus",
+    "providerMix",
+    "providerOrder",
+    "timeoutSeconds",
+    "host",
+    "toolchains",
+    "sourceCommit",
+    "releaseGeneration",
+    "stageElapsedMs",
+    "providerElapsedMs",
+    "wallElapsedMs",
+    "peakRss",
+    "semanticDigest",
+    "warningCount",
+    "omissionCount",
+    "exitCode",
+    "repetition"
+  ],
+  "corpus": "equivalence-net-v1",
+  "providerMix": "all",
+  "timeoutSeconds": 1.5
+}

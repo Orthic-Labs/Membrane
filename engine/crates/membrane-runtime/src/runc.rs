@@ -280,7 +280,7 @@ mod tests {
         }
     }
 
-    /// Non-truncated output: no spill file should be written.
+    /// Non-truncated output currently retains full recovery metadata.
     #[test]
     fn run_capped_spills_full_output_even_when_output_fits() {
         let _guard = lock_env();
@@ -299,6 +299,47 @@ mod tests {
         // `echo hi` emits "hi\n" on every shell. We trim because the truncated
         // output is what's printed (not the spilled raw output).
         assert_eq!(r.capped.trim_end(), "hi");
+
+        unsafe {
+            match prior {
+                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
+                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
+            }
+        }
+    }
+
+    #[test]
+    fn run_capped_freezes_stream_order_lossy_utf8_head_tail_and_exit_status() {
+        let _guard = lock_env();
+        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
+        unsafe {
+            std::env::remove_var("CRYPT_RUNC_SHELL");
+        }
+        let dir = tempfile::tempdir().unwrap();
+
+        let ordered = run_capped("printf out; printf err >&2; exit 7", 100, 100, dir.path())
+            .expect("ordered command");
+        assert_eq!(ordered.exit_code, 7);
+        assert_eq!(ordered.capped, "outerr");
+        assert_eq!(
+            std::fs::read_to_string(ordered.spill_path.unwrap()).unwrap(),
+            "outerr"
+        );
+
+        let invalid = run_capped("printf '\\377'", 100, 100, dir.path()).expect("invalid utf8");
+        assert_eq!(invalid.capped, "\u{fffd}");
+
+        let truncated = run_capped(
+            "i=1; while [ $i -le 5 ]; do echo l$i; i=$((i+1)); done",
+            2,
+            2,
+            dir.path(),
+        )
+        .expect("truncated command");
+        assert_eq!(
+            truncated.capped.lines().collect::<Vec<_>>(),
+            ["l1", "l2", "… 1 lines elided …", "l4", "l5"]
+        );
 
         unsafe {
             match prior {

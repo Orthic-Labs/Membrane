@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "candidateSetKeys": [
+    "schemaVersion",
+    "traceId",
+    "task",
+    "mode",
+    "provider",
+    "freshness",
+    "providerCeiling",
+    "candidates",
+    "omissions",
+    "_rightcontext"
+  ],
+  "providerOrder": [
+    "cortex",
+    "audit",
+    "architect",
+    "crypt",
+    "git",
+    "live",
+    "rules",
+    "anchors",
+    "skills"
+  ],
+  "warningKinds": {
+    "provider_timeout": "timeout",
+    "provider_crash": "crash",
+    "provider_unavailable": "unavailable",
+    "authentication_failed": "authentication",
+    "invalid_output": "invalid_output",
+    "stale_snapshot": "stale_snapshot",
+    "cortex_generation_changed": "generation_mismatch",
+    "budget_drop": "cancellation_budget_drop",
+    "circuit_open": "circuit_open"
+  },
+  "freshnessKeys": [
+    "revision",
+    "indexedAt",
+    "stale",
+    "graphState",
+    "generationId",
+    "snapshotId",
+    "baseCommit",
+    "overlayDigest",
+    "overlayIdentity",
+    "expectedReleaseGeneration",
+    "observedReleaseGeneration",
+    "releaseGenerationStatus",
+    "cacheAgeMs",
+    "refreshInFlight"
+  ]
+}

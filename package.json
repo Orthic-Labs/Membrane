@@ -15,6 +15,7 @@
     "test": "node --test mcp/*.test.mjs mcp/host/*.test.mjs scripts/*.test.mjs tests/compat/code-batch-limits-parity.test.mjs && pnpm run legal:verify",
     "test:random": "node scripts/ci/test-random.mjs",
     "test:all": "cargo test --manifest-path engine/Cargo.toml --workspace --locked && node scripts/ci/check-release-identity.mjs",
+    "test:equivalence": "node scripts/ci/run-equivalence.mjs",
     "test:mcp": "node --test mcp/*.test.mjs mcp/host/*.test.mjs",
     "test:fable": "node --test mcp/*.test.mjs mcp/host/*.test.mjs",
     "rightkit:git:sync": "right-git sync .",
