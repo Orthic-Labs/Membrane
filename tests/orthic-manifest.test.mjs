@@ -22,7 +22,7 @@ test("manifest builds with required SEAM §4.1 fields", () => {
   assert.equal(manifest.statusEndpoint.authHeader, "Authorization");
   assert.ok(manifest.statusEndpoint.authToken);
   assert.ok(manifest.icon);
-  assert.ok(manifest.icon.includes("assets/icon/cortex-tab.png"));
+  assert.ok(manifest.icon.replaceAll("\\", "/").includes("assets/icon/cortex-tab.png"));
   assert.ok(manifest.icon.startsWith(manifest.installRoot));
   assert.ok(manifest.serviceStart[0].startsWith(manifest.installRoot));
   assert.equal(existsSync(manifest.serviceStart[0]), true);

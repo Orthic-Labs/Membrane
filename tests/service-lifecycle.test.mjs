@@ -34,7 +34,7 @@ test("cortex service install writes only its Orthic product manifest", () => {
   const home = mkdtempSync(join(tmpdir(), "cortex-install-home-"));
   try {
     const result = spawnSync(process.execPath, [CLI, "service", "install", "--root", ROOT, "--json"], {
-      encoding: "utf8", env: { ...process.env, HOME: home },
+      encoding: "utf8", env: { ...process.env, HOME: home, USERPROFILE: home },
     });
     assert.equal(result.status, 0, result.stderr);
     const payload = JSON.parse(result.stdout);
@@ -51,7 +51,7 @@ test("cortex service run starts in foreground and exits when Hub owner pipe clos
   try {
     const manifestPath = join(home, ".orthic", "hub", "products.d", "cortex.json");
     const { manifest } = writeProductManifest({ installRoot: ROOT, outPath: manifestPath });
-    const child = spawn(process.execPath, [CLI, "service", "run", "--json"], { cwd: ROOT, env: { ...process.env, HOME: home, ORTHIC_HUB_CHILD: "1" }, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [CLI, "service", "run", "--json"], { cwd: ROOT, env: { ...process.env, HOME: home, USERPROFILE: home, ORTHIC_HUB_CHILD: "1" }, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     child.stdout.on("data", (d) => (stdout += d.toString()));
     await new Promise((resolve, reject) => {
