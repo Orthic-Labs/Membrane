@@ -15,14 +15,40 @@ import sqlite3
 from pathlib import Path
 
 
+class CatalogPathError(ValueError):
+    """Typed pre-I/O rejection for ambiguous catalog bindings."""
+
+
+def _absolute(binding: str, value: str | None) -> Path | None:
+    if not value:
+        return None
+    path = Path(value)
+    if not path.is_absolute():
+        raise CatalogPathError(
+            f"catalog path binding {binding} must be absolute: {value}"
+        )
+    return path
+
+
 def _catalog_path() -> Path:
-    home = (
-        Path(os.environ.get("USERPROFILE") or os.environ.get("HOME") or "~")
-        / ".claude"
-        / "rightcontext"
-        / "catalog.db"
+    explicit = _absolute(
+        "RIGHTCONTEXT_CATALOG", os.environ.get("RIGHTCONTEXT_CATALOG")
     )
-    return Path(os.environ.get("RIGHTCONTEXT_CATALOG", str(home)))
+    if explicit:
+        return explicit
+    context_home = _absolute("CONTEXT_HOME", os.environ.get("CONTEXT_HOME"))
+    if context_home:
+        return context_home / "catalog.db"
+    crypt_db = _absolute("CRYPT_DB", os.environ.get("CRYPT_DB"))
+    if crypt_db:
+        return crypt_db.parent / "catalog.db"
+    workspace = _absolute("WORKSPACE_ROOT", os.environ.get("WORKSPACE_ROOT"))
+    if workspace:
+        return workspace / "tools" / ".cache" / "memory" / "catalog.db"
+    raise CatalogPathError(
+        "catalog path is unbound: set RIGHTCONTEXT_CATALOG, CONTEXT_HOME, "
+        "CRYPT_DB, or WORKSPACE_ROOT"
+    )
 
 
 def lookup(repo_root: Path, grant_id: str) -> dict | None:

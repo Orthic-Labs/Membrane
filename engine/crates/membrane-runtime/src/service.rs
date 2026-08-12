@@ -183,6 +183,8 @@ pub fn run_service() -> Result<(), String> {
             .nth(4)
             .ok_or_else(|| "resolve workspace root from database path".to_string())?,
     );
+    let catalog_path = crate::catalog::default_catalog_path().map_err(|error| error.to_string())?;
+    std::env::set_var("RIGHTCONTEXT_CATALOG", catalog_path);
     let (identity, claim) = prepare_runtime_identity(&runtime)?;
     let workspace_root = runtime
         .db

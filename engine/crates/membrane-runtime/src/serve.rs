@@ -4526,7 +4526,7 @@ pub fn run(
             }
         })
         .map_err(|error| format!("start prompt telemetry drain: {error}"))?;
-    let catalog_path = default_catalog_path();
+    let catalog_path = default_catalog_path().map_err(|error| error.to_string())?;
     let catalog = ContextCatalog::open(&catalog_path)
         .map_err(|e| format!("open catalog {}: {e}", catalog_path.display()))?;
     eprintln!(

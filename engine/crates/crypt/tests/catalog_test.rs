@@ -11,7 +11,8 @@
 //!   - frozen-fixture p95 service overhead <= 50 ms above in-process admission
 
 use crypt::catalog::{
-    default_catalog_path, record_receipt, ContextCatalog, GrantStatus, CATALOG_SCHEMA_VERSION,
+    record_receipt, resolve_catalog_path_from, CatalogPathError, ContextCatalog, GrantStatus,
+    CATALOG_SCHEMA_VERSION,
 };
 use crypt::memdb::MemDb;
 use crypt::planner_metrics::{LastFallback, PlannerLatency};
@@ -157,13 +158,50 @@ fn catalog_opens_at_separate_path_and_does_not_touch_crypt_db() {
 }
 
 #[test]
-fn default_catalog_path_avoids_crypt_db_directory() {
-    let resolved = default_catalog_path();
-    let file_name = resolved
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or_default();
-    assert_eq!(file_name, "catalog.db");
+fn catalog_path_resolver_has_one_absolute_precedence_contract() {
+    let root = std::env::current_dir().unwrap();
+    let path = |value: &std::path::Path| Some(value.as_os_str().to_owned());
+    let explicit = root.join("explicit/catalog.db");
+    let context = root.join("context");
+    let memory = root.join("memory/crypt-engine.db");
+    let workspace = root.join("workspace");
+    assert_eq!(
+        resolve_catalog_path_from(
+            path(&explicit),
+            path(&context),
+            path(&memory),
+            path(&workspace),
+        )
+        .unwrap(),
+        explicit
+    );
+    assert_eq!(
+        resolve_catalog_path_from(None, path(&context), None, None).unwrap(),
+        context.join("catalog.db")
+    );
+    assert_eq!(
+        resolve_catalog_path_from(None, None, path(&memory), None).unwrap(),
+        root.join("memory/catalog.db")
+    );
+    assert_eq!(
+        resolve_catalog_path_from(None, None, None, path(&workspace)).unwrap(),
+        workspace.join("tools/.cache/memory/catalog.db")
+    );
+}
+
+#[test]
+fn catalog_path_resolver_rejects_relative_and_unbound_paths_before_io() {
+    assert!(matches!(
+        resolve_catalog_path_from(Some("catalog.db".into()), None, None, None),
+        Err(CatalogPathError::Relative {
+            binding: "RIGHTCONTEXT_CATALOG",
+            ..
+        })
+    ));
+    assert_eq!(
+        resolve_catalog_path_from(None, None, None, None),
+        Err(CatalogPathError::MissingBinding)
+    );
 }
 
 // ---- 2. Scope grants: issuance/lookup/expiry/revocation ------------------

@@ -33,24 +33,69 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// persisted column.
 pub const CATALOG_SCHEMA_VERSION: i64 = 1;
 
-/// Default home for the catalog when no env override is supplied. Matches the
-/// dispatch spec: `<context-home>/catalog.db`.
-pub fn default_catalog_path() -> PathBuf {
-    if let Some(root) = std::env::var_os("CONTEXT_HOME") {
-        let root = PathBuf::from(root);
-        return root.join("catalog.db");
+/// Typed resolver for one absolute catalog identity shared with provider shims.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum CatalogPathError {
+    #[error("catalog path binding {binding} must be absolute: {value}")]
+    Relative {
+        binding: &'static str,
+        value: String,
+    },
+    #[error(
+        "catalog path is unbound: set RIGHTCONTEXT_CATALOG, CONTEXT_HOME, CRYPT_DB, or WORKSPACE_ROOT"
+    )]
+    MissingBinding,
+}
+
+fn absolute_binding(
+    binding: &'static str,
+    value: Option<std::ffi::OsString>,
+) -> Result<Option<PathBuf>, CatalogPathError> {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let path = PathBuf::from(&value);
+    if !path.is_absolute() {
+        return Err(CatalogPathError::Relative {
+            binding,
+            value: path.to_string_lossy().into_owned(),
+        });
     }
-    let base = std::env::var_os("CRYPT_DB")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("USERPROFILE")
-                .or_else(|| std::env::var_os("HOME"))
-                .map(PathBuf::from)
-        })
-        .unwrap_or_else(|| PathBuf::from("."));
-    base.parent()
-        .map(|p| p.join("catalog.db"))
-        .unwrap_or_else(|| base.join("catalog.db"))
+    Ok(Some(path))
+}
+
+pub fn resolve_catalog_path_from(
+    rightcontext_catalog: Option<std::ffi::OsString>,
+    context_home: Option<std::ffi::OsString>,
+    crypt_db: Option<std::ffi::OsString>,
+    workspace_root: Option<std::ffi::OsString>,
+) -> Result<PathBuf, CatalogPathError> {
+    if let Some(path) = absolute_binding("RIGHTCONTEXT_CATALOG", rightcontext_catalog)? {
+        return Ok(path);
+    }
+    if let Some(path) = absolute_binding("CONTEXT_HOME", context_home)? {
+        return Ok(path.join("catalog.db"));
+    }
+    if let Some(path) = absolute_binding("CRYPT_DB", crypt_db)? {
+        return Ok(path
+            .parent()
+            .expect("absolute database path has a parent")
+            .join("catalog.db"));
+    }
+    if let Some(path) = absolute_binding("WORKSPACE_ROOT", workspace_root)? {
+        return Ok(path.join("tools/.cache/memory/catalog.db"));
+    }
+    Err(CatalogPathError::MissingBinding)
+}
+
+/// Resolve one canonical catalog path without current-directory fallback.
+pub fn default_catalog_path() -> Result<PathBuf, CatalogPathError> {
+    resolve_catalog_path_from(
+        std::env::var_os("RIGHTCONTEXT_CATALOG"),
+        std::env::var_os("CONTEXT_HOME"),
+        std::env::var_os("CRYPT_DB"),
+        std::env::var_os("WORKSPACE_ROOT"),
+    )
 }
 
 /// Handle to the central context catalog. Cheap to clone (Arc-shared); all
