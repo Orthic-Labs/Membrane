@@ -30,20 +30,18 @@ test("rebuild adoption removes stale watcher journal and state atomically", () =
   } finally { closeStore(db); }
 });
 
-test("fresh generation bulk-load preserves legacy FTS without writing it", () => {
+test("fresh generation bulk-load clears FTS once instead of once per symbol", () => {
   const root = mkdtempSync(join(tmpdir(), "cortex-store-bulk-search-"));
   writeFileSync(join(root, "many.mjs"), Array.from({ length: 200 }, (_, index) => `export function symbol${index}() { return ${index}; }`).join("\n"));
   const db = openStore(join(root, "graph.db"));
-  db.prepare("INSERT INTO symbol_search(id, generation_id, name, qualified_name, path) VALUES ('legacy', 'legacy-gen', 'legacy', 'legacy', 'legacy.mjs')").run();
-  const searchWrites = [];
+  let searchDeletes = 0;
   db.setAuthorizer((action, table) => {
-    if ([sqliteConstants.SQLITE_INSERT, sqliteConstants.SQLITE_UPDATE, sqliteConstants.SQLITE_DELETE].includes(action) && String(table).startsWith("symbol_search")) searchWrites.push({ action, table });
+    if (action === sqliteConstants.SQLITE_DELETE && table === "symbol_search") searchDeletes += 1;
     return sqliteConstants.SQLITE_OK;
   });
   try {
     adoptRebuiltGeneration(db, buildGraphGeneration(root), { populateState: true });
-    assert.deepEqual(searchWrites, []);
-    assert.deepEqual(db.prepare("SELECT id, generation_id FROM symbol_search").all().map((row) => ({ ...row })), [{ id: "legacy", generation_id: "legacy-gen" }]);
-    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM symbol_terms").get().n > 200, true);
+    assert.equal(searchDeletes, 1);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM symbol_search").get().n, 200);
   } finally { closeStore(db); }
 });

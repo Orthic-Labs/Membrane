@@ -892,7 +892,7 @@ function insertGenerationRows(db, generation, options = {}) {
   };
 
   if (mode === "replace") {
-    for (const table of ["files", "symbols", "annotation_nodes", "edges", "vectors", "symbol_terms", "claim_code_edges", "claims", "documents", "document_supersession", "node_provider", "provider_ranks"]) {
+    for (const table of ["files", "symbols", "annotation_nodes", "edges", "vectors", "symbol_search", "symbol_terms", "claim_code_edges", "claims", "documents", "document_supersession", "node_provider", "provider_ranks"]) {
       if (db.prepare("SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?").get(table)) db.exec(`DELETE FROM ${table}`);
     }
     if (hasNodeProvider) ensureFixedProviderRanks(db);
@@ -1188,20 +1188,23 @@ function countDocTruthRows(docTruth) {
   };
 }
 
-/** Replace one symbol's generation-bound portable search terms atomically. */
+/** Replace one symbol's generation-bound search terms atomically with its row. */
 export function replaceSymbolSearchEntry(db, row) {
   const symbolId = String(row?.id ?? "");
   const generationId = String(row?.generationId ?? "");
   if (!symbolId || !generationId) return;
+  db.prepare("DELETE FROM symbol_search WHERE id = ?").run(symbolId);
   db.prepare("DELETE FROM symbol_terms WHERE symbol_id = ?").run(symbolId);
   insertSymbolSearchEntry(db, row);
 }
 
-/** Preserve the legacy API while maintaining only the portable term index. */
+/** Insert into an already-cleared store without an O(n²) FTS/term delete scan. */
 export function insertSymbolSearchEntry(db, row) {
   const symbolId = String(row?.id ?? "");
   const generationId = String(row?.generationId ?? "");
   if (!symbolId || !generationId) return;
+  db.prepare("INSERT INTO symbol_search(id, generation_id, name, qualified_name, path) VALUES (?, ?, ?, ?, ?)")
+    .run(symbolId, generationId, searchableSymbolText(row.name), searchableSymbolText(row.qualifiedName), searchableSymbolText(row.path));
   insertSymbolTermsEntry(db, row);
 }
 
@@ -1230,8 +1233,21 @@ function rebuildSymbolTerms(db) {
   }
 }
 
+function searchableSymbolText(value) {
+  return String(value ?? "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replaceAll("_", " ")
+    .replaceAll("-", " ");
+}
+
 export function deleteSymbolSearchEntry(db, symbolId) {
+  db.prepare("DELETE FROM symbol_search WHERE id = ?").run(String(symbolId));
   db.prepare("DELETE FROM symbol_terms WHERE symbol_id = ?").run(String(symbolId));
+}
+
+function symbolSearchIsFts(db) {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE name='symbol_search'").get();
+  return /VIRTUAL TABLE[\s\S]*fts5/i.test(String(row?.sql ?? ""));
 }
 
 export function symbolTermTokens(values) {
