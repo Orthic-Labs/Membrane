@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createXXHash128 } from "hash-wasm";
 import { spawnSync } from "node:child_process";
+import { performance } from "node:perf_hooks";
 import {
   existsSync,
   mkdirSync,
@@ -53,6 +54,33 @@ export { PRECISION_TIERS, PRECISION_TIER_ORDER };
 export { augmentGenerationWithScip } from "./scip-provider.mjs";
 
 const PROVIDER = STATIC_PROVIDER;
+const BENCHMARK_TIMING_PATH = process.env.CORTEX_BENCHMARK_TIMINGS_PATH ?? null;
+let environmentTimingSink = null;
+
+// Opt-in only: normal graph construction allocates no timing state or output.
+// The benchmark process receives these records on exit, after all graph work.
+function timingSink(options = {}) {
+  if (options.timingSink && typeof options.timingSink.record === "function") return options.timingSink;
+  if (!BENCHMARK_TIMING_PATH) return null;
+  if (!environmentTimingSink) {
+    const records = [];
+    environmentTimingSink = { record: (stage, elapsedMs) => records.push({ stage, elapsedMs }) };
+    process.once("exit", () => {
+      try { writeFileSync(BENCHMARK_TIMING_PATH, `${JSON.stringify({ schema: "cortex-build-stage-timings-v1", records })}\n`); } catch { /* benchmark evidence must not alter build outcome */ }
+    });
+  }
+  return environmentTimingSink;
+}
+function measureStage(sink, stage, work) {
+  if (!sink) return work();
+  const started = performance.now();
+  try { return work(); } finally { sink.record(stage, performance.now() - started); }
+}
+async function measureStageAsync(sink, stage, work) {
+  if (!sink) return await work();
+  const started = performance.now();
+  try { return await work(); } finally { sink.record(stage, performance.now() - started); }
+}
 
 // Cortex writes its own graph into `--out`, and tests point that at suffixed
 // directories (`.agent-test73`, `.agent-test-graph`). Naming only `.agent` let a
@@ -170,18 +198,19 @@ export function sourceHashPublic(files) {
 export function buildGraphGeneration(repoRoot, options = {}) {
   const root = canonicalRoot(repoRoot);
   const outDir = options.outDir ? resolve(root, options.outDir) : null;
-  const source = scanSources(root, options.fileLimit || 0, options);
+  const sink = timingSink(options);
+  const source = measureStage(sink, "source_scan", () => scanSources(root, options.fileLimit || 0, options));
   // B2 incremental: reuse per-file symbol extraction for byte-identical files.
   // Resolution (imports/calls/config) still runs globally over the union, so a
   // rename in a changed file correctly drops a stale edge from an unchanged one.
   const parseCache = outDir ? loadParseCache(outDir) : emptyCache();
-  const { generation, parseCache: nextParseCache } = buildGenerationFromSources(root, source, { ...options, parseCache });
+  const { generation, parseCache: nextParseCache } = buildGenerationFromSources(root, source, { ...options, parseCache, timingSink: sink });
   if (outDir) {
-    writeParseCache(outDir, nextParseCache);
+    measureStage(sink, "parse_cache_persistence", () => writeParseCache(outDir, nextParseCache));
     if (options.persist) {
       inheritSourceObservation(outDir, generation);
       finalizeGenerationIdentity(generation);
-      writeGeneration(outDir, generation);
+      measureStage(sink, "graph_persistence", () => writeGeneration(outDir, generation));
     }
   }
   return generation;
@@ -227,10 +256,11 @@ export async function augmentGenerationWithTreeSitter(generation, repoRoot, opti
     return { state: "disabled" };
   }
   const root = canonicalRoot(repoRoot);
+  const sink = timingSink(options);
   try {
     const tsModule = await import("./treesitter-provider.mjs");
     const { augmentGeneration, PROVIDER: TS_PROVIDER, SUPPORTED_EXTENSIONS: TS_EXTENSIONS } = tsModule;
-    const { summary } = await augmentGeneration(generation, root);
+    const { summary } = await measureStageAsync(sink, "treesitter_augmentation", () => augmentGeneration(generation, root));
     // PROVIDER SELECTION. Tree-sitter cleared every qualification gate the
     // lexical incumbent has (12/12 tasks, 6/6 gates on darwin AND win32), so it
     // is the SELECTED provider — `manifest.provider` names it, and every
@@ -1212,6 +1242,7 @@ function writeGeneration(outDir, generation) {
 }
 
 function buildGenerationFromSources(root, source, options = {}) {
+  const sink = timingSink(options);
   const nodes = [];
   const edges = [];
   const fileNodes = new Map();
@@ -1243,24 +1274,27 @@ function buildGenerationFromSources(root, source, options = {}) {
   }
   const parseCache = options.parseCache ?? emptyCache();
   const nextRecords = [];
-  for (const file of source.files.filter(isCodeFile)) {
-    const cached = parseCache.records.get(file.path);
-    if (cached && cached.contentHash === file.contentHash) {
-      // Byte-identical file: reuse its already-extracted symbol nodes verbatim.
-      for (const symbol of cached.symbols) nodes.push(symbol);
-      nextRecords.push({ path: file.path, record: cached });
-    } else {
-      const collected = [];
-      extractSymbols(file, (node) => {
-        const normalized = addNode(node);
-        collected.push(normalized);
-        return normalized;
-      });
-      nextRecords.push({ path: file.path, record: { contentHash: file.contentHash, symbols: collected } });
+  measureStage(sink, "parse_cache_extraction", () => {
+    for (const file of source.files.filter(isCodeFile)) {
+      const cached = parseCache.records.get(file.path);
+      if (cached && cached.contentHash === file.contentHash) {
+        // Byte-identical file: reuse its already-extracted symbol nodes verbatim.
+        for (const symbol of cached.symbols) nodes.push(symbol);
+        nextRecords.push({ path: file.path, record: cached });
+      } else {
+        const collected = [];
+        extractSymbols(file, (node) => {
+          const normalized = addNode(node);
+          collected.push(normalized);
+          return normalized;
+        });
+        nextRecords.push({ path: file.path, record: { contentHash: file.contentHash, symbols: collected } });
+      }
     }
-  }
-  const resolutionIndexes = createResolutionIndexes(source.files, nodes);
-  for (const file of source.files.filter(isCodeFile)) {
+  });
+  measureStage(sink, "indexed_global_resolution", () => {
+    const resolutionIndexes = createResolutionIndexes(source.files, nodes);
+    for (const file of source.files.filter(isCodeFile)) {
     const sourceNode = fileNodes.get(file.path);
     if (!sourceNode) continue;
     for (const imported of extractImports(file, source.files)) {
@@ -1279,28 +1313,31 @@ function buildGenerationFromSources(root, source, options = {}) {
     for (const specifier of extractUnresolvedImportSpecifiers(file, source.files)) {
       edges.push(importEdgeRecord(sourceNode, null, specifier, false, [fileEvidence(file, 1, 1)]));
     }
-  }
-  // Symbols are complete only after extraction/cache reuse. Build resolver
-  // indexes once over that complete universe, then share them across all
-  // resolution passes so incremental rebuilds retain global re-resolution.
-  populateSymbolResolutionIndexes(resolutionIndexes, nodes);
-  resolutionIndexes.schemaNodes = nodes.filter((node) => node.labels?.some((label) => label.startsWith("GraphQL") || label.startsWith("Sql")));
-  addSchemaReferenceEdges(source.files, nodes, edges, resolutionIndexes);
-  addCallEdges(source.files, nodes, edges, { resolverIndexes: resolutionIndexes, work: options.resolverWork });
-  addConfigEdges(source.files, nodes, edges, resolutionIndexes);
+    }
+    // Symbols are complete only after extraction/cache reuse. Build resolver
+    // indexes once over that complete universe, then share them across all
+    // resolution passes so incremental rebuilds retain global re-resolution.
+    populateSymbolResolutionIndexes(resolutionIndexes, nodes);
+    resolutionIndexes.schemaNodes = nodes.filter((node) => node.labels?.some((label) => label.startsWith("GraphQL") || label.startsWith("Sql")));
+    addSchemaReferenceEdges(source.files, nodes, edges, resolutionIndexes);
+    addCallEdges(source.files, nodes, edges, { resolverIndexes: resolutionIndexes, work: options.resolverWork });
+    addConfigEdges(source.files, nodes, edges, resolutionIndexes);
+  });
   const factProvider = { id: "lexical", version: PROVIDER.version };
   const cleanNodes = dedupeBy(nodes, (node) => node.id).map((node) => ({ ...node, factProvider }));
   const rawEdges = dedupeBy(edges, (item) => `${item.kind}:${item.source}:${item.target ?? item.specifier ?? ""}:${item.evidence?.[0]?.path ?? ""}`)
     .map((edge) => ({ ...edge, factProvider }));
-  const candidateGeneration = { schemaVersion: 1, provider: PROVIDER, manifest: null, nodes: cleanNodes, edges: rawEdges, repoRoot: root };
-  const docMap = readDocMap(root, null);
-  const docTruth = docMap
-    ? buildDocCodeJoins(candidateGeneration, { docMap })
-    : { schemaVersion: 1, provider: PROVIDER.id, joins: [], supersedes: [], truncated: false, sourceDocMap: { docs: 0, claims: 0, generatedAt: null, docPaths: [], claimPaths: [] } };
-  const cleanEdges = dedupeBy(rawEdges, (item) => `${item.kind}:${item.source}:${item.target ?? item.specifier ?? ""}:${item.evidence?.[0]?.path ?? ""}`);
-  const sourceFingerprint = sourceHash(source.files);
-  const generationId = computeGenerationId(cleanNodes, cleanEdges, sourceFingerprint);
-  const manifest = {
+  let generation;
+  measureStage(sink, "identity", () => {
+    const candidateGeneration = { schemaVersion: 1, provider: PROVIDER, manifest: null, nodes: cleanNodes, edges: rawEdges, repoRoot: root };
+    const docMap = readDocMap(root, null);
+    const docTruth = docMap
+      ? buildDocCodeJoins(candidateGeneration, { docMap })
+      : { schemaVersion: 1, provider: PROVIDER.id, joins: [], supersedes: [], truncated: false, sourceDocMap: { docs: 0, claims: 0, generatedAt: null, docPaths: [], claimPaths: [] } };
+    const cleanEdges = dedupeBy(rawEdges, (item) => `${item.kind}:${item.source}:${item.target ?? item.specifier ?? ""}:${item.evidence?.[0]?.path ?? ""}`);
+    const sourceFingerprint = sourceHash(source.files);
+    const generationId = computeGenerationId(cleanNodes, cleanEdges, sourceFingerprint);
+    const manifest = {
     schemaVersion: 1,
     provider: PROVIDER,
     // Stable generation stamp derived from the generation id, so byte-identity
@@ -1325,8 +1362,9 @@ function buildGenerationFromSources(root, source, options = {}) {
       joins: docTruth.joins.length,
       supersedes: docTruth.supersedes.length,
     },
-  };
-  const generation = { schemaVersion: 1, provider: PROVIDER, manifest, nodes: cleanNodes, edges: cleanEdges, docTruth, repoRoot: root };
+    };
+    generation = { schemaVersion: 1, provider: PROVIDER, manifest, nodes: cleanNodes, edges: cleanEdges, docTruth, repoRoot: root };
+  });
   return { generation, parseCache: nextCache(nextRecords) };
 }
 

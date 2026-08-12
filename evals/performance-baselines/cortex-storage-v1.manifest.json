@@ -10,17 +10,17 @@
   "rawReportSchema": "evals/performance-baselines/cortex-storage-v1.report.schema.json",
   "runs": [
     {
-      "id": "canonical-550",
+      "id": "synthetic-550",
       "command": "node scripts/benchmark-storage.mjs --fixture-files 550 --samples 5 --report <path>",
-      "fixture": "cortex-storage-550-v1",
+      "fixture": "synthetic-cortex-storage-550-v1",
       "status": "measured",
       "baselineReport": "evals/performance-baselines/cortex-storage-v1.mac-baseline.json",
       "resolverReport": "evals/performance-baselines/cortex-storage-v1.mac-resolver.json"
     },
     {
-      "id": "large-5000-file-gate",
+      "id": "synthetic-5000-file-gate",
       "command": "node scripts/benchmark-storage.mjs --fixture-files 5000 --samples 5 --report <path>",
-      "fixture": "cortex-storage-5000-v1",
+      "fixture": "synthetic-cortex-storage-5000-v1",
       "limits": { "coldBuildP95Ms": 60000, "coldBuildPeakRssBytes": 1073741824 },
       "status": "passed",
       "resolverReport": "evals/performance-baselines/cortex-storage-v1.mac-5000-resolver.json"

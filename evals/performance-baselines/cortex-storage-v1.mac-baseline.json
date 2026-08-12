@@ -7,7 +7,7 @@
     "worktree": "dirty"
   },
   "fixture": {
-    "id": "cortex-storage-550-v1",
+    "id": "synthetic-cortex-storage-550-v1",
     "fixtureVersion": 1,
     "seed": "cortex-storage-v1",
     "files": 550,

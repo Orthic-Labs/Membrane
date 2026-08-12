@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cortex-canonical-core-benchmark-report-v1",
+  "type": "object",
+  "required": ["schema", "command", "commands", "source", "inventory", "isolation", "host", "samples", "metrics"],
+  "properties": {
+    "schema": { "const": "cortex-canonical-core-benchmark-report-v1" },
+    "source": { "type": "object", "required": ["head", "root", "worktree"] },
+    "inventory": { "type": "object", "required": ["selectedFiles", "selectionSha256", "trackedContentSha256", "exclusions"] },
+    "isolation": { "type": "object", "required": ["temporarySnapshot", "snapshotMethod", "measuredContentSha256", "liveAgentMutated"] },
+    "host": { "type": "object", "required": ["platform", "arch", "node"] },
+    "metrics": { "type": "object", "required": ["smoke", "coldBuild", "noChangeBuild", "stageTimings"] }
+  }
+}
