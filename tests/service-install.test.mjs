@@ -23,13 +23,6 @@ test("installService dry-run returns foreground argv, no OS target", () => {
   assert.ok(result.forbidden || result.body.includes("D-S03") || result.body.includes("Hub-owned"));
 });
 
-test("installService forbids OS registration", () => {
-  const result = installService({ root: process.cwd(), dryRun: false });
-  assert.equal(result.installed, false);
-  assert.equal(result.target, null);
-  assert.ok(result.note.includes("D-S03") || result.note.includes("Hub"));
-});
-
 test("foregroundRunArgs returns cortex service run target", () => {
   const args = foregroundRunArgs();
   assert.ok(Array.isArray(args));

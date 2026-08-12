@@ -143,29 +143,50 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       if (subcommand === "run") {
         // D-S04 headless carve-out — foreground mode, Hub spawns as child (D-S03)
         const { readFileSync } = await import("node:fs");
+        const { spawn } = await import("node:child_process");
+        const { resolve } = await import("node:path");
         const { buildProductManifest, manifestPath } = await import("../../lib/init/manifest.mjs");
         const { startSnapshotServer } = await import("../../lib/orthic-snapshot.mjs");
         let endpoint;
+        let watcher;
         try {
           let manifest;
           try { manifest = JSON.parse(readFileSync(manifestPath(), "utf8")); }
           catch (error) { if (error.code !== "ENOENT") throw error; manifest = buildProductManifest({ installRoot: root }); }
           endpoint = await startSnapshotServer({ root, port: manifest.statusEndpoint.port, authHeader: manifest.statusEndpoint.authHeader, authToken: manifest.statusEndpoint.authToken });
+          // Cortex, not any peer, owns its watcher. Keep it attached to this
+          // foreground service so Hub termination also stops the watcher.
+          watcher = spawn(process.execPath, [resolve(root, "scripts", "cortex-watch.mjs"), "start"], {
+            cwd: root,
+            env: { ...process.env, CORTEX_SERVICE_CHILD: "1" },
+            stdio: ["pipe", "ignore", "pipe"],
+          });
+          watcher.once("error", () => {});
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          if (watcher.exitCode !== null) throw new Error("cortex_watcher_unavailable");
         } catch (error) {
+          watcher?.kill("SIGTERM");
+          await endpoint?.close().catch(() => {});
           printResult(machineError("snapshot_server_failed", String(error?.message ?? error)), args, { stderr: true });
           return EXIT.INTERNAL;
         }
-        const payload = { schemaVersion: 1, state: "running", mode: "foreground", pid: process.pid, serviceStart: [process.execPath, "scripts/cortex.mjs", "service", "run"], statusEndpoint: { host: endpoint.host, port: endpoint.port, authHeader: endpoint.authHeader } };
+        const payload = { schemaVersion: 1, state: "running", mode: "foreground", pid: process.pid, watcherPid: watcher.pid, serviceStart: [process.execPath, "scripts/cortex.mjs", "service", "run"], statusEndpoint: { host: endpoint.host, port: endpoint.port, authHeader: endpoint.authHeader } };
         console.log(JSON.stringify(payload));
         // Keep event loop alive — signal listeners alone don't ref the loop, so Node would exit with 13 (unsettled top-level await)
         const keepAlive = setInterval(() => {}, 1000);
         await new Promise((resolve) => {
           const shutdown = () => {
             clearInterval(keepAlive);
+            watcher?.kill("SIGTERM");
             endpoint.close().finally(resolve);
           };
           process.once("SIGTERM", shutdown);
           process.once("SIGINT", shutdown);
+          if (process.env.ORTHIC_HUB_CHILD === "1") {
+            process.stdin.resume();
+            process.stdin.once("end", shutdown);
+            process.stdin.once("error", shutdown);
+          }
         });
         return EXIT.OK;
       }
