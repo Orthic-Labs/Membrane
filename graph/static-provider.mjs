@@ -1259,6 +1259,7 @@ function buildGenerationFromSources(root, source, options = {}) {
       nextRecords.push({ path: file.path, record: { contentHash: file.contentHash, symbols: collected } });
     }
   }
+  const resolutionIndexes = createResolutionIndexes(source.files, nodes);
   for (const file of source.files.filter(isCodeFile)) {
     const sourceNode = fileNodes.get(file.path);
     if (!sourceNode) continue;
@@ -1268,6 +1269,9 @@ function buildGenerationFromSources(root, source, options = {}) {
       // most certain tier we have (cortex B3).
       if (targetNode) {
         edges.push(importEdgeRecord(sourceNode, targetNode, imported, true, [fileEvidence(file, 1, 1)]));
+        const imports = resolutionIndexes.importsByFile.get(file.path) ?? new Set();
+        imports.add(imported);
+        resolutionIndexes.importsByFile.set(file.path, imports);
       }
     }
     // Unresolved relative imports must be tagged and kept, never dropped
@@ -1276,9 +1280,14 @@ function buildGenerationFromSources(root, source, options = {}) {
       edges.push(importEdgeRecord(sourceNode, null, specifier, false, [fileEvidence(file, 1, 1)]));
     }
   }
-  addSchemaReferenceEdges(source.files, nodes, edges);
-  addCallEdges(source.files, nodes, edges);
-  addConfigEdges(source.files, nodes, edges);
+  // Symbols are complete only after extraction/cache reuse. Build resolver
+  // indexes once over that complete universe, then share them across all
+  // resolution passes so incremental rebuilds retain global re-resolution.
+  populateSymbolResolutionIndexes(resolutionIndexes, nodes);
+  resolutionIndexes.schemaNodes = nodes.filter((node) => node.labels?.some((label) => label.startsWith("GraphQL") || label.startsWith("Sql")));
+  addSchemaReferenceEdges(source.files, nodes, edges, resolutionIndexes);
+  addCallEdges(source.files, nodes, edges, { resolverIndexes: resolutionIndexes, work: options.resolverWork });
+  addConfigEdges(source.files, nodes, edges, resolutionIndexes);
   const factProvider = { id: "lexical", version: PROVIDER.version };
   const cleanNodes = dedupeBy(nodes, (node) => node.id).map((node) => ({ ...node, factProvider }));
   const rawEdges = dedupeBy(edges, (item) => `${item.kind}:${item.source}:${item.target ?? item.specifier ?? ""}:${item.evidence?.[0]?.path ?? ""}`)
@@ -1585,42 +1594,68 @@ function walk(root, options = {}) {
   return { paths: iteratePaths(), state, reasons };
 }
 
+function createResolutionIndexes(files, nodes) {
+  const sourceFilesByPath = new Map(files.map((file) => [file.path, file]));
+  const filesByExtension = new Map();
+  for (const file of files) {
+    const extension = file.path.split(".").at(-1)?.toLowerCase() ?? "";
+    const matches = filesByExtension.get(extension) ?? [];
+    matches.push(file);
+    filesByExtension.set(extension, matches);
+  }
+  return {
+    sourceFilesByPath,
+    filesByPath: new Map(nodes.filter((node) => node.kind === "file").map((node) => [node.path, node])),
+    filesByExtension,
+    symbolsByName: new Map(),
+    symbolsByInsensitiveName: new Map(),
+    importsByFile: new Map(),
+  };
+}
+
+function populateSymbolResolutionIndexes(indexes, nodes) {
+  for (const node of nodes) {
+    if (node.kind !== "symbol" || !["Method", "Function"].some((label) => node.labels.includes(label))) continue;
+    const name = node.qualifiedName.split(".").at(-1);
+    let group = indexes.symbolsByName.get(name);
+    if (!group) {
+      group = { name, targets: [], order: indexes.symbolsByName.size };
+      indexes.symbolsByName.set(name, group);
+      const folded = name.toLowerCase();
+      const insensitive = indexes.symbolsByInsensitiveName.get(folded) ?? [];
+      insensitive.push(group);
+      indexes.symbolsByInsensitiveName.set(folded, insensitive);
+    }
+    group.targets.push(node);
+  }
+}
+
 function addCallEdges(files, nodes, edges, options = {}) {
-  const targets = nodes.filter((node) => node.kind === "symbol" && ["Method", "Function"].some((label) => node.labels.includes(label)));
+  const indexes = options.resolverIndexes ?? createResolutionIndexes(files, nodes);
+  if (indexes.symbolsByName.size === 0) populateSymbolResolutionIndexes(indexes, nodes);
+  const targets = [...indexes.symbolsByName.values()].flatMap((group) => group.targets);
   const sources = nodes.filter((node) => node.kind === "symbol"
     && (!options.sourcePaths || options.sourcePaths.has(node.path))
     && ["Method", "Function", "Test"].some((label) => node.labels.includes(label)));
-  const targetsByName = new Map();
-  for (const target of targets) {
-    const callName = target.qualifiedName.split(".").at(-1);
-    const matches = targetsByName.get(callName) ?? [];
-    matches.push(target);
-    targetsByName.set(callName, matches);
-  }
-  const importsByPath = new Map();
-  for (const importEdge of edges.filter((item) => item.kind === "IMPORTS" && item.target !== null)) {
-    const sourcePath = importEdge.source.replace(/^file:/, "");
-    const targetPath = importEdge.target.replace(/^file:/, "");
-    const imported = importsByPath.get(sourcePath) ?? new Set();
-    imported.add(targetPath);
-    importsByPath.set(sourcePath, imported);
-  }
+  const importsByPath = indexes.importsByFile.size > 0 ? indexes.importsByFile : importsByEdges(edges);
   for (const source of sources) {
-    const file = files.find((item) => item.path === source.path);
+    const file = indexes.sourceFilesByPath.get(source.path);
     if (!file) continue;
     const ev = source.evidence[0];
     const body = file.lines.slice(ev.startLine - 1, ev.endLine).join("\n");
     // Harvest every called name from this body ONCE (extractCallNames is the proven
-    // inverse of containsCall, 302K-check equivalence), then test each candidate by
-    // set membership. Replaces an O(sources x distinct-call-names) regex scan with a
-    // single harvest + O(1) lookups, byte-identical to the old per-name regex.
+    // inverse of containsCall, 302K-check equivalence), then look up only matching
+    // candidate groups. This replaces the full target-name scan per source while
+    // retaining old target-group order for byte-identical edge output.
     const harvest = extractCallNames(file, body);
-    const calledNames = harvest.caseInsensitive
-      ? new Set(harvest.names.map((name) => name.toLowerCase()))
-      : new Set(harvest.names);
-    const isCalled = (callName) => calledNames.has(harvest.caseInsensitive ? callName.toLowerCase() : callName);
-    for (const [callName, namedTargets] of targetsByName) {
-      if (!isCalled(callName)) continue;
+    const candidateGroups = candidateGroupsForCalls(harvest, indexes);
+    if (options.work) {
+      options.work.fullCandidateInspections = (options.work.fullCandidateInspections ?? 0) + targets.length;
+      options.work.candidateNameLookups = (options.work.candidateNameLookups ?? 0) + harvest.names.length;
+      options.work.candidateInspections = (options.work.candidateInspections ?? 0)
+        + candidateGroups.reduce((count, group) => count + group.targets.length, 0);
+    }
+    for (const { name: callName, targets: namedTargets } of candidateGroups) {
       const kind = source.labels.includes("Test") ? "TESTS" : "CALLS";
       const sameFile = namedTargets.filter((target) => target.path === source.path && target.id !== source.id);
       const importedPaths = importsByPath.get(source.path) ?? new Set();
@@ -1660,10 +1695,37 @@ function addCallEdges(files, nodes, edges, options = {}) {
   }
 }
 
-function addConfigEdges(files, nodes, edges) {
-  const filesByPath = new Map(nodes.filter((node) => node.kind === "file").map((node) => [node.path, node]));
+function importsByEdges(edges) {
+  const importsByPath = new Map();
+  for (const importEdge of edges) {
+    if (importEdge.kind !== "IMPORTS" || importEdge.target === null) continue;
+    const sourcePath = importEdge.source.replace(/^file:/, "");
+    const targetPath = importEdge.target.replace(/^file:/, "");
+    const imported = importsByPath.get(sourcePath) ?? new Set();
+    imported.add(targetPath);
+    importsByPath.set(sourcePath, imported);
+  }
+  return importsByPath;
+}
+
+function candidateGroupsForCalls(harvest, indexes) {
+  const groups = new Map();
+  for (const name of harvest.names) {
+    const matches = harvest.caseInsensitive
+      ? indexes.symbolsByInsensitiveName.get(name.toLowerCase()) ?? []
+      : [indexes.symbolsByName.get(name)].filter(Boolean);
+    for (const group of matches) groups.set(group.name, group);
+  }
+  // Old resolution visited target-name groups in first-symbol order, not call
+  // occurrence order. Keep that order byte-identical while avoiding its full
+  // candidate-name scan for every source symbol.
+  return [...groups.values()].sort((left, right) => left.order - right.order);
+}
+
+function addConfigEdges(files, nodes, edges, indexes = createResolutionIndexes(files, nodes)) {
+  const filesByPath = indexes.filesByPath;
   for (const source of nodes.filter((node) => node.labels?.includes("Const"))) {
-    const file = files.find((item) => item.path === source.path);
+    const file = indexes.sourceFilesByPath.get(source.path);
     if (!file) continue;
     const line = file.lines[source.evidence[0].startLine - 1] ?? "";
     for (const match of line.matchAll(/["']([^"']+\.(?:json|yaml|yml|toml|sqlite|db))["']/g)) {
