@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, unlinkSync, writeFileSync, openSync, closeSync, writeSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync, openSync, closeSync, mkdirSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve, join } from "node:path";
 import { spawn } from "node:child_process";
@@ -19,6 +19,7 @@ function pidAlive(pid) {
 }
 
 function claimPidfile() {
+  mkdirSync(dirname(pidPath), { recursive: true });
   try {
     const fd = openSync(pidPath, "wx");
     writeSync(fd, String(process.pid));
