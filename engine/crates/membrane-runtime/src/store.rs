@@ -101,14 +101,16 @@ struct QueryEmbeddingCache {
     insertion_order: VecDeque<String>,
     hits: u64,
     misses: u64,
+    evictions: u64,
 }
 
 impl QueryEmbeddingCache {
     fn get(&mut self, key: &str) -> Option<Vec<f32>> {
-        match self.values.get(key) {
+        match self.values.get(key).cloned() {
             Some(value) => {
                 self.hits = self.hits.saturating_add(1);
-                Some(value.clone())
+                self.touch(key);
+                Some(value)
             }
             None => {
                 self.misses = self.misses.saturating_add(1);
@@ -118,26 +120,45 @@ impl QueryEmbeddingCache {
     }
 
     fn insert(&mut self, key: String, value: Vec<f32>) -> Vec<f32> {
-        if let Some(existing) = self.values.get(&key) {
-            return existing.clone();
+        if let Some(existing) = self.values.get(&key).cloned() {
+            self.touch(&key);
+            return existing;
         }
         while self.values.len() >= QUERY_EMBEDDING_CACHE_CAPACITY {
             let Some(oldest) = self.insertion_order.pop_front() else {
                 break;
             };
-            self.values.remove(&oldest);
+            if self.values.remove(&oldest).is_some() {
+                self.evictions = self.evictions.saturating_add(1);
+            }
         }
         self.insertion_order.push_back(key.clone());
         self.values.insert(key, value.clone());
         value
     }
 
+    fn touch(&mut self, key: &str) {
+        if let Some(position) = self
+            .insertion_order
+            .iter()
+            .position(|candidate| candidate == key)
+        {
+            self.insertion_order.remove(position);
+        }
+        self.insertion_order.push_back(key.to_owned());
+    }
+
     fn snapshot(&self) -> serde_json::Value {
         serde_json::json!({
+            "policy": "lru",
             "capacity": QUERY_EMBEDDING_CACHE_CAPACITY,
             "entries": self.values.len(),
             "hits": self.hits,
             "misses": self.misses,
+            "evictions": self.evictions,
+            "cache_key": "embedding_pipeline_digest:query:sha256(query_text)",
+            "invalidation_key": "embedding_pipeline_digest",
+            "reused_work": "query_embedding_provider_inference",
         })
     }
 }
@@ -7761,6 +7782,24 @@ mod tests {
         let bounded = store.health_json()["query_embedding_cache"].clone();
         assert_eq!(bounded["capacity"], QUERY_EMBEDDING_CACHE_CAPACITY);
         assert_eq!(bounded["entries"], QUERY_EMBEDDING_CACHE_CAPACITY);
+    }
+
+    #[test]
+    fn query_embedding_cache_refreshes_recency_before_eviction() {
+        let mut cache = QueryEmbeddingCache::default();
+        cache.insert("hot".into(), vec![1.0]);
+        for index in 0..QUERY_EMBEDDING_CACHE_CAPACITY - 1 {
+            cache.insert(format!("cold-{index}"), vec![index as f32]);
+        }
+        assert_eq!(cache.get("hot"), Some(vec![1.0]));
+        cache.insert("overflow".into(), vec![2.0]);
+
+        assert_eq!(cache.get("hot"), Some(vec![1.0]));
+        assert_eq!(cache.get("cold-0"), None);
+        let snapshot = cache.snapshot();
+        assert_eq!(snapshot["policy"], "lru");
+        assert_eq!(snapshot["evictions"], 1);
+        assert_eq!(snapshot["entries"], QUERY_EMBEDDING_CACHE_CAPACITY);
     }
 
     #[test]
