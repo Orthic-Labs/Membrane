@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cortex-storage-benchmark-report-v1",
+  "type": "object",
+  "required": ["schema", "command", "source", "fixture", "host", "samples", "metrics"],
+  "properties": {
+    "schema": { "const": "cortex-storage-benchmark-report-v1" },
+    "command": { "type": "string" },
+    "source": { "type": "object", "required": ["commit", "root", "worktree"] },
+    "fixture": { "type": "object", "required": ["id", "seed", "files", "contentSha256"] },
+    "host": { "type": "object", "required": ["platform", "arch", "node", "sqlite"] },
+    "samples": { "type": "integer", "minimum": 1 },
+    "metrics": {
+      "type": "object",
+      "required": ["coldBuild", "noChange", "oneFileDelta", "residentExactLookup", "fixed100FileUpdate", "walBlockedReader", "allocation"],
+      "properties": {
+        "coldBuild": { "type": "object", "required": ["samples", "p95Ms", "peakRssBytes"] },
+        "noChange": { "type": "object", "required": ["samples", "p95Ms", "peakRssBytes"] },
+        "oneFileDelta": { "type": "object", "required": ["samples", "p95Ms", "peakRssBytes"] },
+        "walBlockedReader": { "type": "object", "required": ["state", "beforeBytes", "afterBytes", "checkpoint"] },
+        "allocation": { "type": "object", "required": ["state"] }
+      }
+    }
+  }
+}

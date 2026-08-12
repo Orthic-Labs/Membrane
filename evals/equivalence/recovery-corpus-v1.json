@@ -1,0 +1,20 @@
+{
+  "schema": "cortex-recovery-equivalence-corpus-v1",
+  "cases": [
+    {
+      "id": "cancelled-service-request-is-typed-and-isolated",
+      "expectedCode": "request_cancelled",
+      "recovery": "an independent request against prior validated generation remains readable"
+    },
+    {
+      "id": "failed-publication-restores-prior-validated-db",
+      "expectedCode": "publication_validation_failed",
+      "recovery": "prior database envelope remains readable after rollback"
+    },
+    {
+      "id": "poisoned-snapshot-envelope-is-typed-and-recoverable",
+      "expectedCode": "snapshot_malformed",
+      "recovery": "restoring validated envelope permits snapshot creation"
+    }
+  ]
+}
