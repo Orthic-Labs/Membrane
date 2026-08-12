@@ -95,6 +95,7 @@ def render_crypt_shim(
     whether Git Bash's CRYPT_RUNC_SHELL default applies.
     """
     token = str(Path(db).parent / "api-token")
+    catalog = str(Path(db).parent / "catalog.db")
     if cmd_format:
         is_runc = verb.split()[-1:] == ["runc"]
         runc_env = (
@@ -110,6 +111,7 @@ def render_crypt_shim(
             ])
         lines.extend([
             f'if not defined CRYPT_DB set "CRYPT_DB={db}"\r\n',
+            f'if not defined RIGHTCONTEXT_CATALOG set "RIGHTCONTEXT_CATALOG={catalog}"\r\n',
             f'if not defined ORT_DYLIB_PATH set "ORT_DYLIB_PATH={ort}"\r\n',
             f'if not defined HF_HOME set "HF_HOME={hf}"\r\n',
             'if not defined HF_HUB_OFFLINE set "HF_HUB_OFFLINE=1"\r\n',
@@ -133,6 +135,7 @@ def render_crypt_shim(
         else f'${{CRYPT_PORT:-{crypt_port}}}'
     )
     return (f'export CRYPT_DB="{db_value}"\n'
+            f'export RIGHTCONTEXT_CATALOG="${{RIGHTCONTEXT_CATALOG:-{catalog}}}"\n'
             f'export ORT_DYLIB_PATH="${{ORT_DYLIB_PATH:-{ort}}}"\n'
             f'export HF_HOME="${{HF_HOME:-{hf}}}"\n'
             f'export HF_HUB_OFFLINE="${{HF_HUB_OFFLINE:-1}}"\n'

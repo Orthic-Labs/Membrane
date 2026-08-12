@@ -51,6 +51,7 @@ def test_render_crypt_shim_windows_cmd_format():
         compat_prefix="CRYPT", crypt_port=47851, cmd_format=True, win=True,
     )
     assert body.startswith("@echo off\r\n")
+    assert 'RIGHTCONTEXT_CATALOG=C:/db/catalog.db' in body
     assert "CRYPT_RUNC_SHELL" in body
     assert 'crypt.exe" runc --spill-dir "%CD%\\.cache\\runc" %*' in body
 
@@ -61,6 +62,7 @@ def test_render_crypt_shim_posix_format_on_windows_host_keeps_runc_shell():
         compat_prefix=None, crypt_port=47851, cmd_format=False, win=True,
     )
     assert body.startswith("export CRYPT_DB=")
+    assert 'RIGHTCONTEXT_CATALOG="${RIGHTCONTEXT_CATALOG:-/db/catalog.db}"' in body
     assert "CRYPT_RUNC_SHELL" in body
     assert 'exec "/tools/crypt" runc --spill-dir "$PWD/.cache/runc" "$@"' in body
 
