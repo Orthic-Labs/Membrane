@@ -7,6 +7,7 @@
 use crate::truncate;
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -19,6 +20,46 @@ pub struct RuncResult {
     pub anchor: String,
     pub exit_code: i32,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandAdapter {
+    Git,
+    RepositoryTestRunner,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CommandAdapterRejectionKind {
+    UnsupportedProgram,
+    UnsupportedInvocation,
+    RootEscape,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CommandAdapterError {
+    InvalidRoot(String),
+    Rejected {
+        adapter: CommandAdapter,
+        kind: CommandAdapterRejectionKind,
+    },
+    Execution(String),
+}
+
+impl std::fmt::Display for CommandAdapterError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidRoot(detail) => {
+                write!(formatter, "command_adapter_repo_invalid:{detail}")
+            }
+            Self::Rejected { adapter, kind } => write!(
+                formatter,
+                "command_adapter_rejected:{kind:?};adapter={adapter:?}"
+            ),
+            Self::Execution(detail) => write!(formatter, "command_adapter_execution:{detail}"),
+        }
+    }
+}
+
+impl std::error::Error for CommandAdapterError {}
 
 fn parse_shell_override(raw: &str) -> Vec<String> {
     raw.split_whitespace().map(|s| s.to_string()).collect()
@@ -324,26 +365,242 @@ fn publish_spill(
     Ok((window.finish().render(), path, digest))
 }
 
-/// Execute `cmd` via a platform-resolved shell, returning a capped view and
-/// (if truncated) a spill file path containing the full output.
-pub fn run_capped(
-    cmd: &str,
+fn command_name(program: &OsStr) -> String {
+    Path::new(program)
+        .file_name()
+        .unwrap_or(program)
+        .to_string_lossy()
+        .to_ascii_lowercase()
+        .trim_end_matches(".exe")
+        .to_owned()
+}
+
+fn has_root_escape(value: &str) -> bool {
+    let path = Path::new(value);
+    path.is_absolute()
+        || value.starts_with('/')
+        || value.starts_with('\\')
+        || value.as_bytes().get(1) == Some(&b':')
+        || path
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+        || value.contains("../")
+        || value.contains("..\\")
+}
+
+fn validate_existing_repo_path(
+    root: &Path,
+    value: &str,
+) -> Result<(), CommandAdapterRejectionKind> {
+    let value = value.split("::").next().unwrap_or(value);
+    if has_root_escape(value) {
+        return Err(CommandAdapterRejectionKind::RootEscape);
+    }
+    let path = std::fs::canonicalize(root.join(value))
+        .map_err(|_| CommandAdapterRejectionKind::UnsupportedInvocation)?;
+    if path.starts_with(root) {
+        Ok(())
+    } else {
+        Err(CommandAdapterRejectionKind::RootEscape)
+    }
+}
+
+fn validate_git_args(
+    args: &[std::borrow::Cow<'_, str>],
+) -> Result<(), CommandAdapterRejectionKind> {
+    let Some(subcommand) = args.first() else {
+        return Err(CommandAdapterRejectionKind::UnsupportedInvocation);
+    };
+    if !matches!(
+        subcommand.as_ref(),
+        "status" | "diff" | "log" | "show" | "rev-parse" | "ls-files"
+    ) {
+        return Err(CommandAdapterRejectionKind::UnsupportedInvocation);
+    }
+    for argument in &args[1..] {
+        let argument = argument.as_ref();
+        if matches!(
+            argument,
+            "-C" | "-c"
+                | "--git-dir"
+                | "--work-tree"
+                | "--config-env"
+                | "--no-index"
+                | "--ext-diff"
+                | "--textconv"
+                | "--output"
+        ) || [
+            "-C=",
+            "-c=",
+            "--git-dir=",
+            "--work-tree=",
+            "--config-env=",
+            "--exec-path=",
+            "--namespace=",
+            "--output=",
+        ]
+        .iter()
+        .any(|prefix| argument.starts_with(prefix))
+        {
+            return Err(CommandAdapterRejectionKind::UnsupportedInvocation);
+        }
+        if has_root_escape(argument) {
+            return Err(CommandAdapterRejectionKind::RootEscape);
+        }
+    }
+    Ok(())
+}
+
+fn validate_cargo_test_args(
+    args: &[std::borrow::Cow<'_, str>],
+) -> Result<(), CommandAdapterRejectionKind> {
+    if args.first().is_none_or(|argument| argument != "test") {
+        return Err(CommandAdapterRejectionKind::UnsupportedInvocation);
+    }
+    let mut index = 1;
+    while index < args.len() {
+        let argument = args[index].as_ref();
+        if matches!(
+            argument,
+            "--workspace"
+                | "--locked"
+                | "--all-targets"
+                | "--all-features"
+                | "--no-default-features"
+                | "--lib"
+                | "--bins"
+                | "--tests"
+                | "--benches"
+                | "--doc"
+                | "--quiet"
+                | "-q"
+        ) {
+            index += 1;
+            continue;
+        }
+        if matches!(argument, "-p" | "--package" | "--test" | "--features") {
+            let Some(value) = args.get(index + 1) else {
+                return Err(CommandAdapterRejectionKind::UnsupportedInvocation);
+            };
+            if has_root_escape(&value) || value.contains(['/', '\\']) || value.starts_with('-') {
+                return Err(CommandAdapterRejectionKind::RootEscape);
+            }
+            index += 2;
+            continue;
+        }
+        if argument.starts_with('-') || has_root_escape(argument) || argument.contains(['/', '\\'])
+        {
+            return Err(CommandAdapterRejectionKind::UnsupportedInvocation);
+        }
+        index += 1;
+    }
+    Ok(())
+}
+
+fn validate_test_runner_args(
+    root: &Path,
+    program: &str,
+    args: &[std::borrow::Cow<'_, str>],
+) -> Result<(), CommandAdapterRejectionKind> {
+    match program {
+        "cargo" => validate_cargo_test_args(args),
+        "pnpm" => match args {
+            [command] if command == "test" => Ok(()),
+            [command, script] if command == "run" && script.starts_with("test") => Ok(()),
+            _ => Err(CommandAdapterRejectionKind::UnsupportedInvocation),
+        },
+        "node" => {
+            if args.first().is_none_or(|argument| argument != "--test") {
+                return Err(CommandAdapterRejectionKind::UnsupportedInvocation);
+            }
+            for target in &args[1..] {
+                if target.starts_with('-') {
+                    return Err(CommandAdapterRejectionKind::UnsupportedInvocation);
+                }
+                validate_existing_repo_path(root, target)?;
+            }
+            Ok(())
+        }
+        "python" | "python3" => {
+            if args.len() < 2 || args[0] != "-m" || args[1] != "pytest" {
+                return Err(CommandAdapterRejectionKind::UnsupportedInvocation);
+            }
+            validate_pytest_tail(root, &args[2..])
+        }
+        "py" => {
+            let mut index = 0;
+            if args.first().is_some_and(|argument| {
+                argument.starts_with('-')
+                    && argument[1..]
+                        .chars()
+                        .all(|character| character.is_ascii_digit() || character == '.')
+            }) {
+                index += 1;
+            }
+            if args.get(index).is_none_or(|argument| argument != "-m")
+                || args
+                    .get(index + 1)
+                    .is_none_or(|argument| argument != "pytest")
+            {
+                return Err(CommandAdapterRejectionKind::UnsupportedInvocation);
+            }
+            validate_pytest_tail(root, &args[index + 2..])
+        }
+        _ => Err(CommandAdapterRejectionKind::UnsupportedProgram),
+    }
+}
+
+fn validate_pytest_tail(
+    root: &Path,
+    args: &[std::borrow::Cow<'_, str>],
+) -> Result<(), CommandAdapterRejectionKind> {
+    for argument in args {
+        if matches!(argument.as_ref(), "-q" | "-x" | "--quiet")
+            || argument.starts_with("--maxfail=")
+        {
+            continue;
+        }
+        if argument.starts_with('-') {
+            return Err(CommandAdapterRejectionKind::UnsupportedInvocation);
+        }
+        validate_existing_repo_path(root, argument)?;
+    }
+    Ok(())
+}
+
+fn validate_adapter(
+    adapter: CommandAdapter,
+    root: &Path,
+    program: &OsStr,
+    args: &[OsString],
+) -> Result<(), CommandAdapterRejectionKind> {
+    if Path::new(program).components().count() != 1 {
+        return Err(CommandAdapterRejectionKind::RootEscape);
+    }
+    let program = command_name(program);
+    let args = args
+        .iter()
+        .map(|argument| argument.to_string_lossy())
+        .collect::<Vec<_>>();
+    match adapter {
+        CommandAdapter::Git => {
+            if program != "git" {
+                return Err(CommandAdapterRejectionKind::UnsupportedProgram);
+            }
+            validate_git_args(&args)
+        }
+        CommandAdapter::RepositoryTestRunner => validate_test_runner_args(root, &program, &args),
+    }
+}
+
+fn run_command_capped(
+    mut command: Command,
     head: usize,
     tail: usize,
     spill_dir: &Path,
 ) -> Result<RuncResult, String> {
-    let argv = resolve_shell_argv();
-    let program = argv
-        .first()
-        .ok_or_else(|| "resolved shell argv unexpectedly empty".to_string())?;
-
-    let mut c = Command::new(program);
-    if argv.len() > 1 {
-        c.args(&argv[1..]);
-    }
-    c.arg(cmd).stdout(Stdio::piped()).stderr(Stdio::piped());
-
-    let mut child = c
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command
         .spawn()
         .map_err(|error| format!("spawn failed: {error}"))?;
     let stdout = child.stdout.take().ok_or("stdout capture unavailable")?;
@@ -404,6 +661,59 @@ pub fn run_capped(
         anchor: format!("mr://anchor/{digest}"),
         exit_code,
     })
+}
+
+/// Run one explicit Git or repository-test command without shell expansion.
+pub fn run_adapter_capped(
+    adapter: CommandAdapter,
+    repo_root: &Path,
+    program: &OsStr,
+    args: &[OsString],
+    head: usize,
+    tail: usize,
+    spill_dir: &Path,
+) -> Result<RuncResult, CommandAdapterError> {
+    let root = std::fs::canonicalize(repo_root)
+        .map_err(|error| CommandAdapterError::InvalidRoot(error.to_string()))?;
+    if !root.is_dir() {
+        return Err(CommandAdapterError::InvalidRoot(
+            "canonical root is not a directory".to_owned(),
+        ));
+    }
+    validate_adapter(adapter, &root, program, args)
+        .map_err(|kind| CommandAdapterError::Rejected { adapter, kind })?;
+    let mut command = Command::new(program);
+    command.args(args).current_dir(root);
+    if adapter == CommandAdapter::Git {
+        for (key, _) in std::env::vars_os() {
+            if key.to_string_lossy().starts_with("GIT_") {
+                command.env_remove(key);
+            }
+        }
+        command.env("GIT_PAGER", "cat");
+    }
+    run_command_capped(command, head, tail, spill_dir).map_err(CommandAdapterError::Execution)
+}
+
+/// Execute `cmd` via a platform-resolved shell, returning a capped view and
+/// (if truncated) a spill file path containing the full output.
+pub fn run_capped(
+    cmd: &str,
+    head: usize,
+    tail: usize,
+    spill_dir: &Path,
+) -> Result<RuncResult, String> {
+    let argv = resolve_shell_argv();
+    let program = argv
+        .first()
+        .ok_or_else(|| "resolved shell argv unexpectedly empty".to_string())?;
+
+    let mut c = Command::new(program);
+    if argv.len() > 1 {
+        c.args(&argv[1..]);
+    }
+    c.arg(cmd);
+    run_command_capped(c, head, tail, spill_dir)
 }
 
 #[cfg(test)]
@@ -622,5 +932,205 @@ mod tests {
                 None => std::env::remove_var("CRYPT_RUNC_SHELL"),
             }
         }
+    }
+
+    #[test]
+    fn adapters_run_git_and_repository_node_tests_without_shell_expansion() {
+        let _guard = lock_env();
+        let repo = tempfile::tempdir().unwrap();
+        let spills = tempfile::tempdir().unwrap();
+        let initialized = Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(repo.path())
+            .status()
+            .unwrap();
+        assert!(initialized.success());
+        let prior_git_dir = std::env::var_os("GIT_DIR");
+        unsafe {
+            std::env::set_var("GIT_DIR", repo.path().join("missing-redirection"));
+        }
+        let git_probe = run_adapter_capped(
+            CommandAdapter::Git,
+            repo.path(),
+            OsStr::new("git"),
+            &["rev-parse".into(), "--is-inside-work-tree".into()],
+            20,
+            20,
+            spills.path(),
+        )
+        .unwrap();
+        assert_eq!(git_probe.capped.trim(), "true");
+        unsafe {
+            match prior_git_dir {
+                Some(value) => std::env::set_var("GIT_DIR", value),
+                None => std::env::remove_var("GIT_DIR"),
+            }
+        }
+
+        let test = repo.path().join("adapter.test.mjs");
+        std::fs::write(
+            &test,
+            "import assert from 'node:assert/strict'; import test from 'node:test'; test('adapter', () => assert.equal(1, 1));",
+        )
+        .unwrap();
+        let node_test = run_adapter_capped(
+            CommandAdapter::RepositoryTestRunner,
+            repo.path(),
+            OsStr::new("node"),
+            &["--test".into(), "adapter.test.mjs".into()],
+            100,
+            100,
+            spills.path(),
+        )
+        .unwrap();
+        assert_eq!(node_test.exit_code, 0, "{}", node_test.capped);
+    }
+
+    #[test]
+    fn adapters_reject_shells_and_non_test_subcommands_before_spawn() {
+        let repo = tempfile::tempdir().unwrap();
+        let spills = tempfile::tempdir().unwrap();
+        std::fs::write(repo.path().join("inside.test.mjs"), "").unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        for (adapter, program, args) in [
+            (CommandAdapter::Git, "sh", vec!["status".into()]),
+            (CommandAdapter::Git, "/tmp/git", vec!["status".into()]),
+            (
+                CommandAdapter::Git,
+                "git",
+                vec!["-C".into(), "..".into(), "status".into()],
+            ),
+            (
+                CommandAdapter::Git,
+                "git",
+                vec!["status".into(), "--work-tree=..".into()],
+            ),
+            (
+                CommandAdapter::Git,
+                "git",
+                vec![
+                    "diff".into(),
+                    "--no-index".into(),
+                    "inside".into(),
+                    "../outside".into(),
+                ],
+            ),
+            (
+                CommandAdapter::Git,
+                "git",
+                vec!["diff".into(), "--output=../outside".into()],
+            ),
+            (
+                CommandAdapter::Git,
+                "git",
+                vec!["show".into(), outside.path().as_os_str().to_owned()],
+            ),
+            (
+                CommandAdapter::Git,
+                "git",
+                vec!["status".into(), "-c".into(), "core.fsmonitor=true".into()],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "cargo",
+                vec!["build".into()],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "cargo",
+                vec![
+                    "test".into(),
+                    "--manifest-path".into(),
+                    "../Cargo.toml".into(),
+                ],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "cargo",
+                vec!["test".into(), "--config".into(), "../cargo.toml".into()],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "cargo",
+                vec!["test".into(), "--target-dir".into(), "../target".into()],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "pnpm",
+                vec!["run".into(), "build".into()],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "pnpm",
+                vec!["--dir".into(), "..".into(), "test".into()],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "node",
+                vec!["--test".into(), "../outside.test.mjs".into()],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "node",
+                vec!["--test".into(), outside.path().as_os_str().to_owned()],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "python3",
+                vec!["script.py".into()],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "python3",
+                vec!["-m".into(), "pytest".into(), "../outside.py".into()],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "python3",
+                vec!["-m".into(), "pytest".into(), "--rootdir=..".into()],
+            ),
+            (
+                CommandAdapter::RepositoryTestRunner,
+                "py",
+                vec![
+                    "-3.11".into(),
+                    "-m".into(),
+                    "pytest".into(),
+                    "../outside.py".into(),
+                ],
+            ),
+        ] {
+            let error = run_adapter_capped(
+                adapter,
+                repo.path(),
+                OsStr::new(program),
+                &args,
+                20,
+                20,
+                spills.path(),
+            )
+            .unwrap_err();
+            assert!(
+                matches!(error, CommandAdapterError::Rejected { adapter: observed, .. } if observed == adapter),
+                "{error}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_adapter_rejects_symlink_target_outside_canonical_root() {
+        let repo = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        std::os::unix::fs::symlink(outside.path(), repo.path().join("escape.test.mjs")).unwrap();
+
+        let rejection = validate_adapter(
+            CommandAdapter::RepositoryTestRunner,
+            &std::fs::canonicalize(repo.path()).unwrap(),
+            OsStr::new("node"),
+            &["--test".into(), "escape.test.mjs".into()],
+        );
+
+        assert_eq!(rejection, Err(CommandAdapterRejectionKind::RootEscape));
     }
 }
