@@ -325,7 +325,7 @@ test("delta node order matches a cold lexical plus Tree-sitter body", () => {
   }
 });
 
-test("first physical winner owns provenance, portable search, and ranks while duplicate loser is inert", () => {
+test("first physical winner owns provenance, FTS, and ranks while duplicate loser is inert", () => {
   const db = openStore(":memory:");
   const file = { id: "file:src/a.ts", kind: "file", labels: ["File"], name: "a.ts", qualifiedName: "src/a.ts", path: "src/a.ts", confidence: 1, evidence: [{ path: "src/a.ts", contentHash: "before" }] };
   const lexical = { id: "shared", kind: "symbol", labels: ["Function"], name: "lexicalWinner", qualifiedName: "lexicalWinner", path: "src/a.ts", confidence: 1, evidence: [] };

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { constants as sqliteConstants } from "node:sqlite";
 import test from "node:test";
 import { applyFileDelta } from "../graph/delta-store.mjs";
 import { stableRead } from "../graph/stable-read.mjs";
@@ -83,25 +82,6 @@ test("structural delta reindexes symbols under its resealed generation", () => {
     assert.equal(rows.length, 1);
     assert.equal(rows[0].name, "deltaSearchNeedle");
     assert.equal(rows[0].generationId, generationId);
-  } finally { closeStore(db); rmSync(repo, { recursive: true, force: true }); }
-});
-
-test("structural delta maintains portable terms without writing legacy FTS", () => {
-  const repo = makeRepo();
-  const db = openDb(repo);
-  const searchWrites = [];
-  db.setAuthorizer((action, table) => {
-    if ([sqliteConstants.SQLITE_INSERT, sqliteConstants.SQLITE_UPDATE, sqliteConstants.SQLITE_DELETE].includes(action) && String(table).startsWith("symbol_search")) searchWrites.push({ action, table });
-    return sqliteConstants.SQLITE_OK;
-  });
-  try {
-    writeFileSync(join(repo, "src/service.ts"), `${readFileSync(join(repo, "src/service.ts"), "utf8")}\nexport const deltaSearchNeedle = true;\n`);
-    applyFileDelta(db, readDelta(repo, "src/service.ts"));
-    const generationId = getGenerationEnvelope(db)?.manifest?.generationId;
-    assert.equal(searchGenerationSymbols(db, generationId, ["needle"], 4)[0]?.name, "deltaSearchNeedle");
-    applyFileDelta(db, readDelta(repo, "src/service.ts", "delete"));
-    assert.equal(db.prepare("SELECT 1 FROM symbol_terms WHERE symbol_id LIKE 'symbol:src/service.ts:%' LIMIT 1").get(), undefined);
-    assert.deepEqual(searchWrites, []);
   } finally { closeStore(db); rmSync(repo, { recursive: true, force: true }); }
 });
 
