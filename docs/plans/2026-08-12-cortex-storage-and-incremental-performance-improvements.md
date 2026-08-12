@@ -53,6 +53,18 @@ Every later change lands independently and must prove identical observable outpu
 
 Fact-level bounded resolved-edge caching is not part of this plan. Indexed global resolution is final shape unless measurements after P0 still miss gates; any replacement requires a new soundness decision and its own equivalence proof.
 
+## Measured rejected experiments
+
+All measurements below used `node scripts/benchmark-storage.mjs --fixture-files 550 --samples 5` on the same host with an immediately adjacent clean `0bd5395` control. Each candidate passed focused equivalence tests, then was removed uncommitted when any latency or RSS gate regressed.
+
+| Candidate | Control → candidate evidence | Decision |
+|---|---|---|
+| Hoist repeated provider-rank registration during full rebuild | cold p50/p95 `909.74/1095.38 → 832.31/951.40 ms`; no-op `889.40/997.85 → 844.19/883.47 ms`; delta p50 `14.60 → 15.92 ms`; delta RSS p95 `83.25 → 85.13 MB`; fixed-100 `3.64 → 3.81 s` | rejected: delta, RSS, and fixed-100 regressed |
+| Reuse one `symbol_terms` insert statement during full rebuild only | cold p50/p95 `1583.60/2052.21 → 1398.03/1507.41 ms`; no-op p50 `1208.68 → 1245.73 ms`; delta p95 `33.25 → 43.46 ms`; fixed-100 `3.73 → 4.05 s` | rejected: no-op, delta, and fixed-100 regressed |
+| Skip SQLite inode publication for an integrity-checked identical generation | cold p50/p95 `1341.03/1367.00 → 1299.57/1441.86 ms`; no-op p50/p95 `1374.26/1388.05 → 917.11/950.64 ms`; delta p50/p95 `16.97/31.91 → 21.84/35.73 ms`; delta RSS p95 `82.23 → 82.84 MB` | rejected: cold p95, delta, and RSS regressed |
+
+CPU profiles from five clean canonical-core builds remain diagnostic evidence only: SQLite/store accounted for `41.5%`, CLI orchestration `22.3%`, and Tree-sitter `18.0%` of sampled CPU. No remaining isolated candidate has same-output, less-work evidence across every frozen gate, so storage and orchestration work stops here rather than weakening acceptance thresholds.
+
 ## What was wrong
 
 1. Parcel subscription exclusions resolved to existing literal paths. Excluded directories created after subscription could enter the graph.
