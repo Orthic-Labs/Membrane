@@ -91,6 +91,7 @@ import { checkScopeGrant, issueScopeGrant } from "../lib/receipt-store.mjs";
 import { incrementTelemetry, readTelemetry } from "../lib/telemetry.mjs";
 import { createSnapshot, getSnapshot, listSnapshots, changesSince } from "../graph/snapshots.mjs";
 import { adoptFileAtomically } from "../graph/atomic-store-adoption.mjs";
+import { DaemonClient } from "../service/client.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -2852,6 +2853,39 @@ function phase1CompletionMarker(args = {}) {
     : "phase1_ready full_cortex=incomplete next=phase2";
 }
 
+async function runBuildThroughDaemon(root, outDir, args = {}) {
+  if (process.env.CORTEX_LOCAL_BUILD === "1") return null;
+  const client = new DaemonClient();
+  let response;
+  try {
+    response = await client.request({
+      method: "build",
+      input: {
+        repoRoot: root,
+        outDir,
+        options: {
+          limit: Number(args.limit ?? 0),
+          check: Boolean(args.check),
+          noReadmeLink: Boolean(args["no-readme-link"]),
+        },
+      },
+      deadlineMs: 120000,
+    });
+  } catch (error) {
+    if (["ENOENT", "ECONNREFUSED", "EPIPE", "socket_closed", "connect_timeout"].includes(error?.code)) return null;
+    throw error;
+  } finally {
+    await client.close().catch(() => {});
+  }
+  if (!response?.ok) {
+    if (["method_unknown", "root_not_enrolled"].includes(response?.error?.code)) return null;
+    throw Object.assign(new Error(response?.error?.message ?? "daemon build failed"), { code: response?.error?.code ?? "build_failed" });
+  }
+  if (response.result?.stdout) process.stdout.write(response.result.stdout);
+  if (response.result?.stderr) process.stderr.write(response.result.stderr);
+  return Number.isInteger(response.result?.exitCode) ? response.result.exitCode : 10;
+}
+
 async function runMapAndPrint(root, outDir, args = {}) {
   const { rebuilt } = await ensureFresh(root, outDir, args);
   const map = readJson(join(root, outDir, "map.json"), null);
@@ -3165,6 +3199,8 @@ async function main() {
     return runGrantCommand(root, outDir, subcommand, parseArgs(grantRest));
   }
   if (command === "build") {
+    const daemonExitCode = await runBuildThroughDaemon(root, outDir, args);
+    if (daemonExitCode !== null) return daemonExitCode;
     const result = await build(root, outDir, args);
     const config = loadConfig(root, outDir);
     // A build takes ~60s on a large repo, and a source file edited by the user

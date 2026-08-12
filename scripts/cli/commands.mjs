@@ -7,6 +7,8 @@ import { applyInitPlan, uninstallInit } from "../../lib/init/apply.mjs";
 import { buildInitPlan } from "../../lib/init/plan.mjs";
 import { recoverPendingUpdate } from "../../lib/update/apply.mjs";
 import { join } from "node:path";
+import { createDaemonServer } from "../../service/server.mjs";
+import { readWatchConfig } from "../../watchman/supervisor.mjs";
 import { startCortexMcpServer } from "../cortex-mcp.mjs";
 import { EXIT, parseArgs } from "./args.mjs";
 import { machineError, printResult, renderArchitecture, renderDocTruth, renderExpand, renderImpact, renderSearch, renderStatus } from "./render.mjs";
@@ -148,12 +150,16 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         const { buildProductManifest, manifestPath } = await import("../../lib/init/manifest.mjs");
         const { startSnapshotServer } = await import("../../lib/orthic-snapshot.mjs");
         let endpoint;
+        let daemon;
+        let daemonAddress;
         let watcher;
         try {
           let manifest;
           try { manifest = JSON.parse(readFileSync(manifestPath(), "utf8")); }
           catch (error) { if (error.code !== "ENOENT") throw error; manifest = buildProductManifest({ installRoot: root }); }
           endpoint = await startSnapshotServer({ root, port: manifest.statusEndpoint.port, authHeader: manifest.statusEndpoint.authHeader, authToken: manifest.statusEndpoint.authToken });
+          daemon = createDaemonServer({ registryEntries: readWatchConfig().repos });
+          daemonAddress = await daemon.listen();
           // Cortex, not any peer, owns its watcher. Keep it attached to this
           // foreground service so Hub termination also stops the watcher.
           watcher = spawn(process.execPath, [resolve(root, "scripts", "cortex-watch.mjs"), "start"], {
@@ -166,11 +172,12 @@ async function runFacadeCommand(command, args, { root, outDir }) {
           if (watcher.exitCode !== null) throw new Error("cortex_watcher_unavailable");
         } catch (error) {
           watcher?.kill("SIGTERM");
+          await daemon?.close().catch(() => {});
           await endpoint?.close().catch(() => {});
           printResult(machineError("snapshot_server_failed", String(error?.message ?? error)), args, { stderr: true });
           return EXIT.INTERNAL;
         }
-        const payload = { schemaVersion: 1, state: "running", mode: "foreground", pid: process.pid, watcherPid: watcher.pid, serviceStart: [process.execPath, "scripts/cortex.mjs", "service", "run"], statusEndpoint: { host: endpoint.host, port: endpoint.port, authHeader: endpoint.authHeader } };
+        const payload = { schemaVersion: 1, state: "running", mode: "foreground", pid: process.pid, watcherPid: watcher.pid, serviceStart: [process.execPath, "scripts/cortex.mjs", "service", "run"], daemonEndpoint: daemonAddress.endpoint, statusEndpoint: { host: endpoint.host, port: endpoint.port, authHeader: endpoint.authHeader } };
         console.log(JSON.stringify(payload));
         // Keep event loop alive — signal listeners alone don't ref the loop, so Node would exit with 13 (unsettled top-level await)
         const keepAlive = setInterval(() => {}, 1000);
@@ -178,7 +185,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
           const shutdown = () => {
             clearInterval(keepAlive);
             watcher?.kill("SIGTERM");
-            endpoint.close().finally(resolve);
+            Promise.allSettled([daemon.close(), endpoint.close()]).finally(resolve);
           };
           process.once("SIGTERM", shutdown);
           process.once("SIGINT", shutdown);

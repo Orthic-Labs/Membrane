@@ -1,17 +1,192 @@
 // D15: service lifecycle — no OS registration (D-S03), foreground mode only (D-S04)
 
 import assert from "node:assert/strict";
-import { spawnSync, spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync, spawnSync, spawn } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import { WatchSupervisor } from "../watchman/supervisor.mjs";
 import { writeProductManifest } from "../lib/init/manifest.mjs";
+import { buildFingerprint, createBuildSingleflight } from "../service/build-singleflight.mjs";
+import { DaemonClient } from "../service/client.mjs";
+import { temporaryDaemonEndpoint } from "../service/paths.mjs";
+import { validateDeadlineMs } from "../service/protocol.mjs";
+import { createDaemonServer } from "../service/server.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts", "cortex.mjs");
+
+function deferred() {
+  let resolvePromise;
+  let rejectPromise;
+  const promise = new Promise((resolve, reject) => { resolvePromise = resolve; rejectPromise = reject; });
+  return { promise, resolve: resolvePromise, reject: rejectPromise };
+}
+
+function tick() { return new Promise((resolve) => setImmediate(resolve)); }
+
+function temporaryRepository(name) {
+  const root = mkdtempSync(join(tmpdir(), `${name}-`));
+  execFileSync("git", ["init", "-q"], { cwd: root });
+  writeFileSync(join(root, "source.mjs"), "export const value = 1;\n");
+  return root;
+}
+
+test("build fingerprint is server-derived from source, sidecars, output, and normalized options", () => {
+  const root = temporaryRepository("cortex-build-fingerprint");
+  try {
+    const base = buildFingerprint({ root, outDir: ".agent", options: { limit: 5, fingerprint: "caller-a" } });
+    const spoofed = buildFingerprint({ root, outDir: ".agent", options: { limit: 5, fingerprint: "caller-b" } });
+    assert.equal(base.fingerprint, spoofed.fingerprint);
+    writeFileSync(join(root, "source.mjs"), "export const value = 2;\n");
+    assert.notEqual(buildFingerprint({ root, outDir: ".agent", options: { limit: 5 } }).fingerprint, base.fingerprint);
+    assert.notEqual(buildFingerprint({ root, outDir: ".agent", options: { limit: 6 } }).fingerprint, base.fingerprint);
+    writeFileSync(join(root, "README.md"), "# Fixture\n");
+    const beforeGeneratedOutput = buildFingerprint({ root, outDir: ".agent", options: { limit: 5 } });
+    writeFileSync(join(root, "README.md"), "# Fixture\n\n<!-- cortex:docs:start -->\ngenerated pointer\n<!-- cortex:docs:end -->\n");
+    assert.equal(buildFingerprint({ root, outDir: ".agent", options: { limit: 5 } }).fingerprint, beforeGeneratedOutput.fingerprint);
+    mkdirSync(join(root, ".agent"), { recursive: true });
+    writeFileSync(join(root, ".agent", "config.json"), "{\"ignoredPrefixes\":[]}\n");
+    const configured = buildFingerprint({ root, outDir: ".agent", options: { limit: 5 } });
+    writeFileSync(join(root, ".agent", "config.json"), "{\"ignoredPrefixes\":[\"vendor\"]}\n");
+    assert.notEqual(buildFingerprint({ root, outDir: ".agent", options: { limit: 5 } }).fingerprint, configured.fingerprint);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("equivalent builds join while differing fingerprints run FIFO without overlap", async () => {
+  const root = temporaryRepository("cortex-build-queue");
+  const gates = new Map([[1, deferred()], [2, deferred()], [3, deferred()]]);
+  const starts = [];
+  let active = 0;
+  let maximumActive = 0;
+  const singleflight = createBuildSingleflight({ runner: async (identity) => {
+    starts.push(identity.options.limit);
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    await gates.get(identity.options.limit).promise;
+    active -= 1;
+    return { exitCode: 0, stdout: `built-${identity.options.limit}\n`, stderr: "" };
+  } });
+  try {
+    const first = singleflight.build({ root, options: { limit: 1 } });
+    const joined = singleflight.build({ root, options: { limit: 1 } });
+    const second = singleflight.build({ root, options: { limit: 2 } });
+    const third = singleflight.build({ root, options: { limit: 3 } });
+    await tick();
+    assert.deepEqual(starts, [1]);
+    gates.get(1).resolve();
+    const [firstResult, joinedResult] = await Promise.all([first, joined]);
+    assert.equal(firstResult.fingerprint, joinedResult.fingerprint);
+    await tick();
+    assert.deepEqual(starts, [1, 2]);
+    gates.get(2).resolve();
+    await second;
+    await tick();
+    assert.deepEqual(starts, [1, 2, 3]);
+    gates.get(3).resolve();
+    await third;
+    await singleflight.waitForIdle();
+    assert.equal(maximumActive, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("waiter cancellation detaches without stopping a shared or current build", async () => {
+  const root = temporaryRepository("cortex-build-cancel");
+  const currentGate = deferred();
+  const queuedGate = deferred();
+  const starts = [];
+  let completed = 0;
+  const singleflight = createBuildSingleflight({ runner: async (identity) => {
+    starts.push(identity.options.limit);
+    await (identity.options.limit === 1 ? currentGate.promise : queuedGate.promise);
+    completed += 1;
+    return { exitCode: 0, stdout: "", stderr: "" };
+  } });
+  try {
+    const cancelledController = new AbortController();
+    const survivingController = new AbortController();
+    const cancelled = singleflight.build({ root, options: { limit: 1 } }, { signal: cancelledController.signal });
+    const surviving = singleflight.build({ root, options: { limit: 1 } }, { signal: survivingController.signal });
+    await tick();
+    cancelledController.abort();
+    await assert.rejects(cancelled, { code: "request_cancelled" });
+    assert.deepEqual(starts, [1]);
+    currentGate.resolve();
+    await surviving;
+    assert.equal(completed, 1);
+
+    const lastController = new AbortController();
+    const lastWaiter = singleflight.build({ root, options: { limit: 2 } }, { signal: lastController.signal });
+    await tick();
+    lastController.abort();
+    await assert.rejects(lastWaiter, { code: "request_cancelled" });
+    assert.deepEqual(starts, [1, 2]);
+    queuedGate.resolve();
+    await singleflight.waitForIdle();
+    assert.equal(completed, 2);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("cancelled queued waiter is removed without cancelling current build", async () => {
+  const root = temporaryRepository("cortex-build-queued-cancel");
+  const gate = deferred();
+  const starts = [];
+  const singleflight = createBuildSingleflight({ runner: async (identity) => {
+    starts.push(identity.options.limit);
+    await gate.promise;
+    return { exitCode: 0, stdout: "", stderr: "" };
+  } });
+  try {
+    const current = singleflight.build({ root, options: { limit: 1 } });
+    const controller = new AbortController();
+    const queued = singleflight.build({ root, options: { limit: 2 } }, { signal: controller.signal });
+    await tick();
+    controller.abort();
+    await assert.rejects(queued, { code: "request_cancelled" });
+    gate.resolve();
+    await current;
+    await singleflight.waitForIdle();
+    assert.deepEqual(starts, [1]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("daemon build route accepts build deadline & confines root through enrollment", async () => {
+  const root = temporaryRepository("cortex-build-ipc");
+  const endpoint = temporaryDaemonEndpoint("cortex-build-ipc");
+  const observed = [];
+  const builds = {
+    async build(input) { observed.push(input); return { exitCode: 0, stdout: "built\n", stderr: "", fingerprint: "derived" }; },
+    async waitForIdle() {},
+  };
+  const daemon = createDaemonServer({ endpoint, registryEntries: [{ root, repoId: "repo" }], buildSingleflight: builds });
+  const client = new DaemonClient({ endpoint });
+  try {
+    assert.equal(validateDeadlineMs(120000, "build"), 120000);
+    assert.throws(() => validateDeadlineMs(120000, "status"), { code: "deadline_invalid" });
+    await daemon.listen();
+    const response = await client.request({ method: "build", repoId: "repo", deadlineMs: 120000, input: { outDir: ".agent", fingerprint: "spoof", options: { limit: 7 } } });
+    assert.equal(response.ok, true);
+    assert.equal(response.result.stdout, "built\n");
+    assert.equal(observed.length, 1);
+    assert.equal(observed[0].root, root);
+    assert.equal(observed[0].fingerprint, undefined);
+    assert.deepEqual(observed[0].options, { limit: 7 });
+  } finally {
+    await client.close();
+    await daemon.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("cortex service status --json returns Hub-owned envelope", () => {
   const result = spawnSync(process.execPath, [CLI, "service", "status", "--json"], { encoding: "utf8" });
