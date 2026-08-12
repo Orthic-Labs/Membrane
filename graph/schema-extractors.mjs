@@ -28,10 +28,11 @@ function extractSqlSymbols(file, addNode) {
   }
 }
 
-export function addSchemaReferenceEdges(files, nodes, edges) {
-  const schemaNodes = nodes.filter((node) => node.labels?.some((label) => label.startsWith("GraphQL") || label.startsWith("Sql")));
+export function addSchemaReferenceEdges(files, nodes, edges, indexes = {}) {
+  const schemaNodes = indexes.schemaNodes ?? nodes.filter((node) => node.labels?.some((label) => label.startsWith("GraphQL") || label.startsWith("Sql")));
+  const filesByPath = indexes.sourceFilesByPath ?? new Map(files.map((file) => [file.path, file]));
   for (const source of schemaNodes) {
-    const file = files.find((item) => item.path === source.path);
+    const file = filesByPath.get(source.path);
     if (!file) continue;
     const evidence = source.evidence[0];
     const body = file.lines.slice(evidence.startLine - 1, evidence.endLine).join("\n");
