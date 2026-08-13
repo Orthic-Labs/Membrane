@@ -17,7 +17,7 @@ import { PRECISION_TIERS } from "./precision-tiers.mjs";
 
 export const STATIC_PROVIDER = {
   id: "cortex-static",
-  version: "repo-local-deterministic-v3",
+  version: "repo-local-deterministic-v4",
   license: "workspace-owned",
   precisionTier: PRECISION_TIERS.LEXICAL,
 };

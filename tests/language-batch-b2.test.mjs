@@ -10,6 +10,7 @@ import { walkTable } from "../graph/generic-ast-walker.mjs";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "languages");
 const LANGUAGES = ["lua", "ocaml", "elm", "rescript", "solidity", "zig"];
+const EXTENSIONS = { ocaml: "ml", rescript: "res", solidity: "sol" };
 
 test("batch B2 languages route through catalog with code profile", async () => {
   const { languageCapabilityRecords } = await import("../graph/language-registry.mjs");
@@ -29,10 +30,11 @@ for (const lang of LANGUAGES) {
       assert.ok(record.error, `${lang} must carry a typed degradation reason`);
       return;
     }
-    const fixture = join(FIXTURES, lang, `basic.${lang}`);
+    const extension = EXTENSIONS[lang] ?? lang;
+    const fixture = join(FIXTURES, lang, `basic.${extension}`);
     const tree = record.parser.parse(readFileSync(fixture, "utf8"));
     try {
-      const result = walkTable({ table, tree, filePath: `basic.${lang}`, providerId: "cortex-treesitter", precisionTier: "AST" });
+      const result = walkTable({ table, tree, filePath: `basic.${extension}`, providerId: "cortex-treesitter", precisionTier: "AST" });
       for (const node of result.nodes) {
         assert.ok(node.evidence?.length > 0, `${lang}: node without evidence`);
       }

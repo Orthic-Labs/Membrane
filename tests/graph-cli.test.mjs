@@ -8,12 +8,18 @@ import { fileURLToPath } from "node:url";
 import { readEnvelope, mutateManifest } from "./_store-helpers.mjs";
 import { closeStore, openStore } from "../graph/store-sqlite.mjs";
 import { markDomainPending, readPendingDomains } from "../graph/delta-store.mjs";
+import { PARSED_LANGUAGE_EXTENSIONS } from "../graph/language-extractors.mjs";
+import { languageCapabilityRecords } from "../graph/language-registry.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CORTEX = path.resolve(HERE, "..");
 const CLI = path.join(CORTEX, "scripts/cortex.mjs");
 const SKILL = path.join(CORTEX, "SKILL.md");
 const FIXTURE = path.join(CORTEX, "evals/fixture-repos/typescript-commerce");
+const EXPECTED_PARSED_EXTENSIONS = [...new Set([
+  ...PARSED_LANGUAGE_EXTENSIONS,
+  ...languageCapabilityRecords().flatMap((record) => record.extensions),
+])].sort();
 
 function copyFixture() {
   const dir = path.join(os.tmpdir(), `cortex-graph-cli-${process.pid}-${Date.now()}`);
@@ -52,9 +58,24 @@ test("cortex graph build/status/search works from a repo root", () => {
     const doctorPayload = JSON.parse(doctor.stdout);
     assert.equal(doctorPayload.state, "ready");
     assert.ok(!doctorPayload.reasons.some((reason) => reason.code === "ledger_root_mismatch"));
-    assert.deepEqual(doctorPayload.capabilities.languageCoverage.parsedExtensions, [
-      "astro", "bat", "c", "cc", "cjs", "cpp", "cts", "cxx", "gql", "graphql", "h", "hpp", "js", "jsx", "m", "mjs", "mm", "mts", "nsh", "nsi", "ps1", "py", "rs", "sh", "sql", "swift", "ts", "tsx", "vbs", "vue",
-    ]);
+    assert.deepEqual(doctorPayload.capabilities.languageCoverage.parsedExtensions, EXPECTED_PARSED_EXTENSIONS);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("doctor degrades for unsupported source while catalog coverage remains ready", () => {
+  const repo = copyFixture();
+  try {
+    fs.writeFileSync(path.join(repo, "src/worker.cr"), "def perform\n  true\nend\n");
+    const build = run(["build", "--out", ".agent"], repo);
+    assert.equal(build.status, 0, build.stderr || build.stdout);
+    const doctor = run(["doctor", "--json", "--out", ".agent"], repo);
+    assert.equal(doctor.status, 0, doctor.stderr || doctor.stdout);
+    const payload = JSON.parse(doctor.stdout);
+    assert.equal(payload.state, "degraded");
+    assert.deepEqual(payload.graphCapabilities.unsupportedExtensions, ["cr"]);
+    assert.ok(payload.reasons.some((reason) => reason.code === "unsupported_languages"));
   } finally {
     fs.rmSync(repo, { recursive: true, force: true });
   }
@@ -211,7 +232,7 @@ test("doctor --full rejects Phase 1 alone and accepts current complete understan
     const full = run(["doctor", "--full", "--json", "--out", ".agent"], repo);
     assert.equal(full.status, 0, full.stderr || full.stdout);
     const complete = JSON.parse(full.stdout);
-    assert.equal(complete.state, "degraded");
+    assert.equal(complete.state, "ready");
     assert.equal(complete.completion.state, "complete");
     assert.deepEqual(complete.completion.phases, {
       phase1: "complete",

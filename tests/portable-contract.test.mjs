@@ -307,11 +307,11 @@ test("graphStatus detects dirty overlays when files have been modified post-buil
 test("doctor reports degraded with machine-readable reasons for unsupported languages", () => {
   const repo = copyFixture();
   try {
-    // Drop an unsupported Go file into the checkout BEFORE the first build so the
+    // Drop unsupported Crystal source into the checkout BEFORE the first build so the
     // recorded sourceHash already includes the unsupported extension.
-    const goDir = path.join(repo, "go-src");
-    fs.mkdirSync(goDir, { recursive: true });
-    fs.writeFileSync(path.join(goDir, "thing.go"), "package thing\n\nfunc hello() string { return \"world\" }\n");
+    const crystalDir = path.join(repo, "crystal-src");
+    fs.mkdirSync(crystalDir, { recursive: true });
+    fs.writeFileSync(path.join(crystalDir, "thing.cr"), "def hello\n  \"world\"\nend\n");
     spawnBuild(repo, ".agent");
 
     const payload = JSON.parse(spawnDoc(repo, ".agent"));

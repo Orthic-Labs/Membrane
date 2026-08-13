@@ -16,12 +16,12 @@ import {
 import { basename, dirname, join, relative, resolve } from "node:path";
 import {
   CODE_EXTENSIONS,
-  PARSED_LANGUAGE_EXTENSIONS,
   extractCallNames,
   extractImports,
   extractSymbols,
   extractUnresolvedImportSpecifiers,
 } from "./language-extractors.mjs";
+import { languageCapabilityRecords } from "./language-registry.mjs";
 import { addSchemaReferenceEdges } from "./schema-extractors.mjs";
 import { emptyCache, loadParseCache, writeParseCache, nextCache } from "./parse-cache.mjs";
 import {
@@ -150,7 +150,9 @@ const FILE_ONLY_EXTENSIONS = new Set([
   "html", "css", "svg",
   "sql", "csv", "tsv",
   "xml",
+  "template",
 ]);
+const FILE_ONLY_FILE_NAMES = new Set([".dockerignore", ".gitattributes"]);
 const OPAQUE_FILE_EXTENSIONS = new Set([
   "png", "jpg", "jpeg", "webp", "gif", "ico", "bmp", "avif",
   "ttf", "otf", "woff", "woff2",
@@ -159,7 +161,33 @@ const OPAQUE_FILE_EXTENSIONS = new Set([
   "onnx", "safetensors", "gguf", "bin",
   "mtlx", "tres", "srt", "lock", "hash", "sha256", "gitignore",
 ]);
-const SUPPORTED_EXTENSIONS = new Set([...CODE_EXTENSIONS, ...FILE_ONLY_EXTENSIONS, ...OPAQUE_FILE_EXTENSIONS]);
+// Canonical catalog is JSON-backed & import-safe: status never loads WASM just
+// to answer whether an extension has an AST provider.
+const AST_LANGUAGE_EXTENSIONS = new Set(languageCapabilityRecords().flatMap((record) => record.extensions));
+const PARSED_EXTENSIONS = [...new Set([...CODE_EXTENSIONS, ...AST_LANGUAGE_EXTENSIONS])].sort();
+const SUPPORTED_EXTENSIONS = new Set([...PARSED_EXTENSIONS, ...FILE_ONLY_EXTENSIONS, ...OPAQUE_FILE_EXTENSIONS]);
+
+function sourceExtension(path) {
+  const dot = path.lastIndexOf(".");
+  return dot < 0 ? "" : path.slice(dot + 1).toLowerCase();
+}
+
+function isFileOnlyPath(path) {
+  return FILE_ONLY_FILE_NAMES.has(basename(path)) || FILE_ONLY_EXTENSIONS.has(sourceExtension(path));
+}
+
+export function sourceCapabilityCoverage(files) {
+  const unsupportedExtensions = new Set();
+  let unsupportedFileCount = 0;
+  for (const file of files) {
+    if (FILE_ONLY_FILE_NAMES.has(basename(file.path))) continue;
+    const ext = sourceExtension(file.path);
+    if (!ext || SUPPORTED_EXTENSIONS.has(ext) || !/^[a-z0-9_+\-.]+$/.test(ext)) continue;
+    unsupportedExtensions.add(ext);
+    unsupportedFileCount += 1;
+  }
+  return { unsupportedExtensions: [...unsupportedExtensions].sort(), unsupportedFileCount };
+}
 
 function canonicalRoot(value) {
   const root = resolve(value);
@@ -290,7 +318,7 @@ export async function augmentGenerationWithTreeSitter(generation, repoRoot, opti
             id: PROVIDER.id,
             precisionTier: PROVIDER.precisionTier,
             role: "fallback",
-            extensions: PARSED_LANGUAGE_EXTENSIONS.filter((ext) => !astSet.has(ext)),
+            extensions: PARSED_EXTENSIONS.filter((ext) => !astSet.has(ext)),
           },
         ],
       };
@@ -377,19 +405,10 @@ export function graphStatus(repoRoot, outDir, options = {}) {
     const ledger = openStoreReadOnly(manifestPath);
     try { ledgerDiff = diffLedgerAgainstTree(ledger, null, sources.files); } finally { closeStore(ledger); }
   }
-  const unsupportedExtensions = new Set();
-  let unsupportedFileCount = 0;
+  let coverage = { unsupportedExtensions: [], unsupportedFileCount: 0 };
   let dirtyOverlayFileCount = 0;
   if (scanned) {
-    for (const file of sources.files) {
-      const dot = file.path.lastIndexOf(".");
-      if (dot < 0) continue;
-      const ext = file.path.slice(dot + 1).toLowerCase();
-      if (!SUPPORTED_EXTENSIONS.has(ext) && /^[a-z0-9_+\-.]+$/.test(ext)) {
-        unsupportedExtensions.add(ext);
-        unsupportedFileCount += 1;
-      }
-    }
+    coverage = sourceCapabilityCoverage(sources.files);
     for (const file of sources.files) {
       const recorded = recordedHashes.get(file.path);
       if (recorded && recorded !== file.contentHash) {
@@ -426,10 +445,10 @@ export function graphStatus(repoRoot, outDir, options = {}) {
     truncationReasons: sources.truncationReasons,
     clocks,
     capabilities: {
-      parsedExtensions: PARSED_LANGUAGE_EXTENSIONS,
+      parsedExtensions: PARSED_EXTENSIONS,
       opaqueFileExtensions: [...OPAQUE_FILE_EXTENSIONS].sort(),
-      unsupportedExtensions: [...unsupportedExtensions].sort(),
-      unsupportedFileCount,
+      unsupportedExtensions: coverage.unsupportedExtensions,
+      unsupportedFileCount: coverage.unsupportedFileCount,
       dirtyOverlayFileCount,
     },
   };
@@ -474,9 +493,9 @@ export function graphCapabilities(repoRoot, options = {}) {
       descriptions: EDGE_CONFIDENCE_TIER_DESCRIPTIONS,
     },
     languageCoverage: {
-      parsedExtensions: PARSED_LANGUAGE_EXTENSIONS,
+      parsedExtensions: PARSED_EXTENSIONS,
       opaqueFileExtensions: [...OPAQUE_FILE_EXTENSIONS].sort(),
-      parserMode: "deterministic-lexical-v1",
+      parserMode: "registry-backed-lexical-ast-v1",
       fallback: "Text/config and known opaque assets are represented as file nodes; unsupported source languages do not get symbol/call extraction.",
       gitIgnoreMode: "tracked-plus-unignored",
       ignoredDirectories: [...IGNORED].sort(),
@@ -1430,8 +1449,8 @@ function scanSources(root, fileLimit = 0, walkOptions = {}) {
     } catch {
       continue;
     }
-    const ext = path.includes(".") ? path.slice(path.lastIndexOf(".") + 1).toLowerCase() : "";
-    const isParsed = CODE_EXTENSIONS.has(ext) || FILE_ONLY_EXTENSIONS.has(ext);
+    const ext = sourceExtension(path);
+    const isParsed = CODE_EXTENSIONS.has(ext) || AST_LANGUAGE_EXTENSIONS.has(ext) || isFileOnlyPath(path);
     let size;
     try {
       size = statSync(absolutePath).size;

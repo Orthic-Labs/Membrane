@@ -2,9 +2,10 @@ import { SCHEMA_EXTENSIONS, extractSchemaSymbols } from "./schema-extractors.mjs
 
 const JAVASCRIPT_EXTENSIONS = new Set(["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"]);
 const COMPONENT_EXTENSIONS = new Set(["vue", "astro"]);
-const SCRIPT_EXTENSIONS = new Set(["sh", "ps1", "bat", "vbs"]);
+const SCRIPT_EXTENSIONS = new Set(["sh", "ps1", "bat", "cmd", "vbs"]);
 const NATIVE_EXTENSIONS = new Set(["c", "h", "cc", "cpp", "cxx", "hpp", "m", "mm"]);
 const NSIS_EXTENSIONS = new Set(["nsi", "nsh"]);
+const INNO_SETUP_EXTENSIONS = new Set(["iss"]);
 
 export const CODE_EXTENSIONS = new Set([
   ...JAVASCRIPT_EXTENSIONS,
@@ -12,6 +13,7 @@ export const CODE_EXTENSIONS = new Set([
   ...SCRIPT_EXTENSIONS,
   ...NATIVE_EXTENSIONS,
   ...NSIS_EXTENSIONS,
+  ...INNO_SETUP_EXTENSIONS,
   ...SCHEMA_EXTENSIONS,
   "py",
   "rs",
@@ -27,6 +29,7 @@ export function extractSymbols(file, addNode) {
   if (extension === "swift") return extractSwiftSymbols(file, addNode);
   if (NATIVE_EXTENSIONS.has(extension)) return extractNativeSymbols(file, addNode);
   if (NSIS_EXTENSIONS.has(extension)) return extractNsisSymbols(file, addNode);
+  if (INNO_SETUP_EXTENSIONS.has(extension)) return extractInnoSetupSymbols(file, addNode);
   if (SCRIPT_EXTENSIONS.has(extension)) return extractScriptSymbols(file, extension, addNode);
   return extractJavaScriptSymbols(file, addNode);
 }
@@ -168,7 +171,7 @@ function extractScriptSymbols(file, extension, addNode) {
     } else if (extension === "ps1") {
       const match = line.match(/^\s*function\s+([A-Za-z_][\w-]*)\b[^\{]*\{/i);
       if (match) addNode(symbolNode("symbol", file, match[1], match[1], lineNo, findBlockEnd(file.lines, index), ["Function"]));
-    } else if (extension === "bat") {
+    } else if (extension === "bat" || extension === "cmd") {
       const match = line.match(/^:([A-Za-z_][\w.-]*)\s*$/);
       if (match) addNode(symbolNode("symbol", file, match[1], match[1], lineNo, findBatchBlockEnd(file.lines, index), ["Function"]));
     } else if (extension === "vbs") {
@@ -215,6 +218,19 @@ function extractNsisSymbols(file, addNode) {
   }
 }
 
+function extractInnoSetupSymbols(file, addNode) {
+  for (let index = 0; index < file.lines.length; index += 1) {
+    const line = file.lines[index];
+    const section = line.match(/^\s*\[([^\]]+)\]\s*$/);
+    if (section) {
+      addNode(symbolNode("symbol", file, section[1], `section.${section[1]}`, index + 1, index + 1, ["Section"]));
+      continue;
+    }
+    const routine = line.match(/^\s*(?:procedure|function)\s+([A-Za-z_]\w*)\b/i);
+    if (routine) addNode(symbolNode("symbol", file, routine[1], routine[1], index + 1, findPascalRoutineEnd(file.lines, index), ["Function"]));
+  }
+}
+
 export function extractImports(file, files) {
   const extension = file.path.split(".").at(-1)?.toLowerCase();
   if (SCHEMA_EXTENSIONS.has(extension)) return [];
@@ -222,7 +238,8 @@ export function extractImports(file, files) {
   if (extension === "rs") return extractRustImports(file, files);
   if (NATIVE_EXTENSIONS.has(extension)) return extractNativeImports(file, files);
   if (NSIS_EXTENSIONS.has(extension)) return extractNsisImports(file, files);
-  if (["sh", "ps1", "bat"].includes(extension)) return extractScriptImports(file, files, extension);
+  if (INNO_SETUP_EXTENSIONS.has(extension)) return extractInnoSetupImports(file, files);
+  if (["sh", "ps1", "bat", "cmd"].includes(extension)) return extractScriptImports(file, files, extension);
   return extractJavaScriptImports(file, files);
 }
 
@@ -364,7 +381,7 @@ function extractScriptImports(file, files, extension) {
     else if (extension === "ps1") {
       specifier = line.match(/^\s*\.\s+["']?([^"'\s]+)["']?/)?.[1] ?? null;
       specifier = specifier?.replace(/^\$PSScriptRoot[\\/]/i, "./") ?? null;
-    } else if (extension === "bat") specifier = line.match(/^\s*call\s+["']?([^:"'\s][^"'\s]*\.bat)["']?/i)?.[1] ?? null;
+    } else if (extension === "bat" || extension === "cmd") specifier = line.match(/^\s*call\s+["']?([^:"'\s][^"'\s]*\.(?:bat|cmd))["']?/i)?.[1] ?? null;
     if (!specifier) continue;
     const resolved = resolveRelativeFile(file.path, specifier, files);
     if (resolved && resolved !== file.path) imports.add(resolved);
@@ -394,13 +411,25 @@ function extractNsisImports(file, files) {
   return [...imports];
 }
 
+function extractInnoSetupImports(file, files) {
+  const imports = new Set();
+  for (const line of file.lines) {
+    const specifier = line.match(/^\s*#include\s+["']([^"']+)["']/i)?.[1];
+    if (!specifier) continue;
+    const resolved = resolveRelativeFile(file.path, specifier, files);
+    if (resolved) imports.add(resolved);
+  }
+  return [...imports];
+}
+
 export function containsCall(file, body, callName) {
   const extension = file.path.split(".").at(-1)?.toLowerCase();
   const escaped = escapeRegExp(callName);
   if (extension === "sh" || extension === "ps1") return new RegExp(`(?:^|[\\s;&|])${escaped}(?=\\s|$)`, "m").test(body);
-  if (extension === "bat") return new RegExp(`\\bcall\\s+:${escaped}\\b`, "i").test(body);
+  if (extension === "bat" || extension === "cmd") return new RegExp(`\\bcall\\s+:${escaped}\\b`, "i").test(body);
   if (extension === "vbs") return new RegExp(`\\b(?:Call\\s+)?${escaped}\\s*\\(`, "i").test(body);
   if (NSIS_EXTENSIONS.has(extension)) return new RegExp(`\\bCall\\s+${escaped}\\b`, "i").test(body);
+  if (INNO_SETUP_EXTENSIONS.has(extension)) return new RegExp(`(?:\\.|\\b)${escaped}\\s*\\(`, "i").test(body);
   return new RegExp(`(?:\\.|\\b)${escaped}\\s*\\(`).test(body);
 }
 
@@ -425,7 +454,7 @@ export function extractCallNames(file, body) {
     harvest(/(?:^|[\s;&|])([^\s;&|]+)(?=\s|$)/gm);
     return { names: [...names], caseInsensitive: false };
   }
-  if (extension === "bat") {
+  if (extension === "bat" || extension === "cmd") {
     harvest(/\bcall\s+:(\w+)\b/gi);
     return { names: [...names], caseInsensitive: true };
   }
@@ -435,6 +464,10 @@ export function extractCallNames(file, body) {
   }
   if (NSIS_EXTENSIONS.has(extension)) {
     harvest(/\bCall\s+(\w+)\b/gi);
+    return { names: [...names], caseInsensitive: true };
+  }
+  if (INNO_SETUP_EXTENSIONS.has(extension)) {
+    harvest(/(?:\.|\b)(\w+)\s*\(/gi);
     return { names: [...names], caseInsensitive: true };
   }
   harvest(/(?:\.|\b)(\w+)\s*\(/g);
@@ -498,6 +531,20 @@ function findBatchBlockEnd(lines, startIndex) {
 
 function findVbsBlockEnd(lines, startIndex) {
   for (let index = startIndex + 1; index < lines.length; index += 1) if (/^\s*End\s+(?:Sub|Function)\b/i.test(lines[index])) return index + 1;
+  return startIndex + 1;
+}
+
+function findPascalRoutineEnd(lines, startIndex) {
+  let depth = 0;
+  let opened = false;
+  for (let index = startIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index].replace(/'[^']*'/g, "");
+    const begins = line.match(/\bbegin\b/gi)?.length ?? 0;
+    const ends = line.match(/\bend\b/gi)?.length ?? 0;
+    if (begins > 0) opened = true;
+    depth += begins - ends;
+    if (opened && depth <= 0) return index + 1;
+  }
   return startIndex + 1;
 }
 

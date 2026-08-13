@@ -274,6 +274,7 @@ test("graph status is indeterminate when freshness traversal hits a directory ca
     const status = graphStatus(repo, outDir, { maxDirs: 1 });
     assert.equal(status.state, "indeterminate");
     assert.equal(status.scanTruncated, true);
+    assert.equal(status.capabilities.unsupportedFileCount, 0);
     assert.ok(status.truncationReasons.includes("directory_limit"));
   } finally {
     fs.rmSync(repo, { recursive: true, force: true });

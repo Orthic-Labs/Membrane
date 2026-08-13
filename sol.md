@@ -1,6 +1,372 @@
-# Cross-repository function matrix
+# Cortex best-of-market performance & coverage book
 
-Function-first comparison of Cortex plus 30 repositories under `vendor-research/`. Each data row has exactly 32 cells: one function/aspect + one explicit cell for every repo. `—` means implementation not found or function outside product scope. `Opt` means optional. `Ext` means external integration. No sibling repository outside `/Volumes/D/claude/cortex` was inspected.
+Date: 2026-08-12
+
+Authority: this file is Cortex's frozen product/performance source of truth. Derived plans may sequence these requirements; they may not delete, weaken, or silently defer them.
+
+Scope: canonical `/Volumes/D/claude/cortex` only. `/Volumes/D/claude/cortex2` is throwaway & excluded.
+
+## Product promise
+
+Cortex maps every tracked, non-ignored repository file. Richness varies honestly by provider; visibility does not. Cortex combines local exact search, structural parsing, compiler/LSP facts, typed graph traversal, framework/data relationships, optional local semantic retrieval, provenance, freshness, recovery, & bounded resource use without source upload or source mutation.
+
+“Best on market” is a target, not a present claim. It becomes a claim only when a digest-frozen same-corpus comparison proves Cortex noninferior on every eligible axis & strictly better on at least one material axis without a safety, correctness, privacy, or lifecycle loss. A feature does not exist because a module or test exists; it exists only when production registry → qualification → build → store → query → doctor is wired & proven.
+
+## Current truth — not a completion claim
+
+| Area | Current state | Consequence |
+|---|---|---|
+| Canonical doctor | `broken` on 2026-08-12: stale graph/provider identity, Merkle mismatches, missing Phase 2/3 artifacts | No current graph or completion claim is accepted |
+| Working tree | Language coverage repair is uncommitted; generated architecture/product drift also exists | Dirty overlay is evidence, not baseline or release |
+| File discovery | Git-aware bounded walk, ignores, content hashes, Merkle ledger, atomic generations | Reuse; prove every file receives a disposition |
+| Parsing | Tree-sitter + lexical fallback + language-specific extraction | Broad syntax exists; capability depth differs by language |
+| Resolution | Indexed global re-resolution exists in committed source & protects against ghost edges | Qualify it; profile current no-op/storage/orchestration bottleneck; do not add unsound bounded closure caching |
+| Generic language tables | Broad tier-2 grammar tables exist, but their declared `calls` patterns are not consumed without `capabilities.call`; zero-output tests can still pass | Fix wiring or report calls unsupported; require positive fact fixtures |
+| Exact retrieval | SQLite terms/FTS structures, graph queries, daemon reads | Consolidate into one measured exact-search authority |
+| Semantic retrieval | `providers/ranking/semantic.mjs` is disabled; hybrid ranking is test-only | Absent from product until qualified & wired |
+| Provider surface | Python SCIP, Python resolver, Terraform, SQL, frameworks, hybrid ranking exist as isolated/tested modules | `implemented-unqualified`; no product capability claim |
+| Build service | Daemon-owned build singleflight, cancellation, & per-root coordination exist in committed source | Qualify lifecycle/concurrency behavior; do not rebuild it |
+| Lifecycle | Hub must be sole user-controlled parent; Cortex watcher/service may only be Hub-owned children | No launch agent, login item, scheduled task, detached daemon, or self-restart authority |
+
+## Non-negotiable invariants
+
+| ID | Invariant |
+|---|---|
+| CX-I01 | Every tracked, non-ignored file gets exactly one recorded coverage disposition; zero files vanish silently. |
+| CX-I02 | Graph freshness is deterministic Phase 1 state; nondeterministic understanding/completion never changes graph freshness. |
+| CX-I03 | Language support is a capability vector, never one marketing count. |
+| CX-I04 | Compiler/LSP/SCIP facts outrank syntax inference; syntax outranks generic structure; generic structure outranks lexical/metadata fallback. |
+| CX-I05 | Every node, edge, derived artifact, result, omission, fallback, & truncation carries path, span where applicable, content hash, provider/version, generation, source, confidence, & freshness; wall-clock age never proves freshness. |
+| CX-I06 | Global resolution evaluates the complete current symbol universe; optimization changes indexes/work, not semantics. |
+| CX-I07 | Builds stage, validate, then atomically adopt one generation; interruption preserves last valid generation. |
+| CX-I08 | Exact results remain deterministic. Semantic retrieval is optional, local-only, explainable, & never authority; repository content, chunks, symbols, claims, embeddings, & prompts never leave machine. |
+| CX-I09 | One canonical scan, content hash, provider registry, store schema, publication path, daemon coordinator, & doctor vocabulary exist. |
+| CX-I10 | Every optimization proves same outputs with less measured work before landing; thresholds, fixtures, ordering, & expected omissions never weaken. |
+| CX-I11 | Hub alone controls start, stop, restart, & optional system startup. Cortex exits with Hub ownership loss. |
+| CX-I12 | A completion claim requires clean canonical source, fresh graph, qualified capabilities, green equivalence/performance/recovery gates, Mac + Windows receipts, nested commit, parent pin, & remote verification. |
+| CX-I13 | One immutable build snapshot binds scan inputs, ignore rules, source/tree digest, provider registry, provider binaries/config, fact schema, resolver universe, index inputs, generation, & publication. Mixed-snapshot adoption is rejected. |
+| CX-I14 | Cortex owns generation-bound repository facts, exact/structural/semantic candidate retrieval, & relevance signals. Membrane alone decides packet eligibility, authorization, freshness policy, cross-source fusion, budgets, omissions, & final context. |
+| CX-I15 | Every public CLI, MCP, daemon, SDK, schema, & artifact surface has a versioned compatibility fixture, migration/deprecation state, & release receipt. |
+| CX-I16 | Cortex children accept lifecycle control only from current monotonic host/install-scoped Hub fencing token; stale/lower/foreign owners fail closed. |
+| CX-I17 | Every MCP operation is read-only. Proposals are sealed artifacts, never source or repository effects. |
+| CX-I18 | Claim verdicts, contradictions, doc-truth results, citations, & evidence hashes are byte-identical across semantic enabled/disabled/empty/corrupt/reordered states. |
+| CX-I19 | Every repository assertion in reports/docs is deterministically derived from typed cited evidence; uncited free-form LLM verdicts are prohibited. |
+| CX-I20 | Node core, parser ownership, CLI names, MCP governance, & Tier A/B/C public labels remain frozen boundaries unless product authority supersedes them explicitly. |
+| CX-I21 | Task routing, context-role coverage, ranking explanations, history signals, policy findings, proof events, & architecture communities remain typed evidence with explicit omissions; none may become hidden model judgment or packet authority. |
+| CX-I22 | Repository content, chunks, symbols, claims, embeddings, prompts, & derived payloads never leave machine. The competitor guide's remote-embedding tier is rejected; no opt-in exception exists. |
+
+## State model
+
+Never collapse these axes into one word such as `degraded`.
+
+| Axis | Allowed states | Conditions |
+|---|---|---|
+| Graph | `absent`, `building`, `fresh`, `stale`, `broken` | Generation exists; build active; source/provider identities match; source changed; integrity/identity failed |
+| File coverage | `complete`, `partial`, `indeterminate` | Every file disposed; known omissions exist; scan/provider evidence unavailable |
+| Capability | `qualified`, `fallback`, `unsupported`, `failed` | Required fixture passes; lower tier used; explicit absence; advertised provider failed |
+| Understanding | `not_run`, `partial`, `complete`, `indeterminate` | Phase 2/3 not requested; some artifacts pending; frozen suite complete; evidence cannot establish state |
+| Service | `off`, `starting`, `ready`, `draining`, `failed` | User/Hub lifecycle only |
+
+Product status is a tuple, for example `graph=fresh, file_coverage=complete, understanding=partial, service=ready`. A fresh graph with incomplete optional understanding is healthy & honest.
+
+## Universal file coverage ladder
+
+Every file receives highest available tier plus explicit lower-tier fallbacks.
+
+| Tier | Name | Minimum facts | Examples |
+|---|---|---|---|
+| U5 | Compiler/LSP/SCIP semantic | Definitions, references, imports, types, implementations, diagnostics with compiler identity | TS/JS, Python, Rust, Go, Java/Kotlin, C/C++, C#, Ruby, Swift where qualified |
+| U4 | Native syntax | Parse tree, symbols, imports, calls, ranges, parse-error coverage | Bundled Tree-sitter/native parsers |
+| U3 | Generic structural | Balanced structure, captures, rules, blocks, key/value relationships | Registered Tree-sitter grammars & Semgrep-style generic mode |
+| U2 | Lexical/document/config | Lines, headings, keys, URLs, commands, schema/config references, exact-search terms | Markdown, JSON, YAML, TOML, lockfiles, manifests, logs |
+| U1 | Opaque artifact | Path, media/type, bytes, hash, Git metadata, ownership, references, generated/binary classification | Images, archives, models, binaries |
+| U0 | Explicit exclusion | Canonical ignore rule, owner, reason, matched count | Gitignored build output, secrets, caches |
+
+Acceptance: `U1..U5 + U0 = 100%` of discovered files; unexplained remainder is always zero. “Unsupported language” may reduce semantic depth, never file visibility.
+
+## Language capability lattice
+
+Each language/dialect row records `0 absent`, `1 fallback`, `2 qualified`, or `3 precise` for:
+
+`discovery | syntax | symbols | imports | definitions | references | calls | types | implementations | frameworks | schemas/IaC | dataflow/security | tests | refactors`
+
+Doctor publishes extension count, file count, byte coverage, parse success, error-node rate, provider/version, capability vector, fallback reason, & last qualification receipt. Marketing may state only dimensions with level `2` or `3`; “36 languages” or “65 extensions” alone is prohibited.
+
+## Immutable build snapshot & authority boundary
+
+`BuildSnapshotV1` contains canonical root, source/tree digest, discovered-file manifest digest, ignore/config digest, provider-registry digest, each provider binary/config/version digest, schema version, resolver-universe digest, index-plan digest, generation ID, & parent Hub lifecycle-protocol version. Every staged fact/index row carries its snapshot/generation identity. Adoption performs one compare-and-swap: if source, registry, resolver universe, or index inputs changed, discard stage & restart. Source churn, provider upgrade, cancellation, crash, & concurrent-build fixtures must prove no mixed generation becomes queryable.
+
+Cortex standalone search may filter by repository/user query scope & rank relevance. It returns facts/candidates plus generation, provenance, confidence, capability, source policy labels, & ranking components; those labels are evidence, not an authorization decision. When Membrane consumes Cortex, Membrane re-resolves current grant/policy & solely owns admission, cross-source authority/freshness ordering, fusion, token/byte budgets, omissions, & final packet. No Cortex rank may promote authority or bypass current Membrane policy.
+
+Cortex child handshake carries Hub installation ID, instance ID, process birth identity, protocol version, artifact hash, & monotonic fencing token. Child rejects stale/lower/foreign fence even if old liveness pipe remains open; higher fence drains prior ownership before readiness. Lease-store ambiguity or lost current-owner proof causes bounded drain & exit.
+
+## Public surface compatibility contract
+
+| Surface | Target contract | Compatibility gate |
+|---|---|---|
+| CLI | build/query/status/doctor/same-machine-export remain scriptable | Golden argv/stdout/stderr/exit-code fixtures; incompatible change requires major version + migration |
+| MCP | tools/resources/errors remain schema-versioned | Protocol goldens against supported hosts; additive by default |
+| Daemon IPC | request, cancellation, waiter, generation, & error semantics | Old-client/new-daemon + new-client/old-daemon matrix for supported window |
+| SDK/query schema | facts, candidates, citations, capability vectors, omissions | Generated schema diff + consumer contract suite |
+| Stored/same-machine-exported artifacts | generation, fact, index, receipt, backup/export formats | Forward-read/backout fixture or explicit version refusal with recovery path; repository-derived outbound bytes `0` |
+| UI/IDE | Publish existing read-only Explorer, Hub-owned tray, desktop onboarding, & evidence-backed repository tour | Generation-aware UI fixtures; UI exits with Hub ownership loss |
+
+The inventory is generated from shipped entry points. Removal requires one supported-release deprecation window, migration instructions, contract-fixture update, & explicit product-authority decision.
+
+## Best-of-market absorption ledger
+
+`ADOPT` is required target scope. `ALREADY` remains gated by production proof. `GATE` lands only after its named benchmark. `REJECT` is a deliberate product boundary.
+
+| ID | Source / market leader | Best technique | Disposition | Cortex requirement |
+|---|---|---|---|---|
+| CX-A01 | [Tree-sitter](https://tree-sitter.github.io/tree-sitter/index.html) | Incremental, error-tolerant CSTs across grammars | ALREADY + ADOPT | Retain incremental parsing; qualify grammar version/error coverage |
+| CX-A02 | [ast-grep](https://ast-grep.github.io/advanced/custom-language.html) | User-registerable compiled Tree-sitter grammars | ADOPT | Signed local grammar registry + conformance fixture |
+| CX-A03 | [Semgrep](https://semgrep.dev/docs/writing-rules/rule-ideas) / OpenGrep | Generic structural fallback | ADOPT | U3 generic provider for otherwise unsupported text formats |
+| CX-A04 | [Sourcegraph](https://sourcegraph.com/docs/code-navigation/precise-code-navigation) | Compiler-accurate SCIP with search fallback | ADOPT | One compiler/LSP/SCIP interface + explicit fallback ladder |
+| CX-A05 | [Serena](https://github.com/sruckh/serena) | LSP adapter breadth | ADOPT | Sandboxed local LSP adapters with capability probes |
+| CX-A06 | [Glean](https://github.com/facebookincubator/glean) | Durable language-neutral facts + queryable xrefs/calls/hierarchies | ADOPT | Versioned fact schema & provider-neutral query surface |
+| CX-A07 | [GitHub code search](https://github.com/features/code-search) | Exact, regex, Boolean, symbol, repo-scale search | ADOPT | One deterministic exact-search API across code/docs/config |
+| CX-A08 | [Zoekt](https://github.com/sourcegraph/zoekt/blob/main/doc/design.md) | Positional trigram indexing for fast large-scale search | GATE | Adopt if corpus beats compact FTS/terms on latency + size + update cost |
+| CX-A09 | [CodeQL](https://codeql.github.com/docs/codeql-overview/supported-languages-and-frameworks/) | Public per-language/framework analysis matrix | ADOPT | Capability lattice + qualified dataflow/security adapters |
+| CX-A10 | Aider | Repository-map ranking, change awareness, token budgeting | ALREADY + ADOPT | Preserve graph ranking; add held-out pack-quality gate |
+| CX-A11 | Brain0 / codebase-memory-mcp | Resident local graph, provenance, semantic neighborhood | ADOPT | Optional local semantic lane; exact/graph authority preserved |
+| CX-A12 | CodeGraphContext / repo-graph | Delta relink, compact mmap snapshots | GATE | Retain delta; benchmark compact same-machine read-only export, never second authority |
+| CX-A13 | Code-Index-MCP / Roam / CodeCompress | FTS reuse, hash incrementality, blast radius | ALREADY + ADOPT | Consolidate exact index; qualify impact paths & no-op reuse |
+| CX-A14 | Context+ / Claude Context / Context8 | Hybrid retrieval, semantic chunks, private-code deployment | ADOPT | Explainable hybrid ranking under the local-only constitution |
+| CX-A15 | dependency-cruiser | Dependency policies, cycles, forbidden edges | ADOPT | Policy-query layer over canonical graph |
+| CX-A16 | Oxc | High-throughput native JS/TS semantic passes | GATE | Ingest precise provider facts; do not rebuild compiler |
+| CX-A17 | Greptile | Whole-repository review context & self-hosted deployment | ADOPT | Cross-repo/branch review packs + air-gapped operation |
+| CX-A18 | Mentat / code-review-graph | Session/change graph & review-oriented context | ADOPT | Change/ownership/history overlays, never canonical-source mutation |
+| CX-A19 | RepoDoctor / AI Code Audit / React Doctor | Actionable health/security/framework reports | ADOPT | Reports must cite graph facts, uncertainty, provider & generation |
+| CX-A20 | LlamaIndex / Cognee | Pluggable retrieval/knowledge graph backends | REJECT backend sprawl; ADOPT interface discipline | One local authority + provider SDK, no mandatory three-store stack |
+| CX-A21 | Cursor / hosted RAG | Large ecosystem & semantic convenience | REJECT repository/model egress; ADOPT UX latency | Local-only data + semantic plane; zero outbound repository payload |
+| CX-A22 | GritQL / ast-grep mutation | Structural rewrite/codemods | REJECT for Cortex core | Cortex remains evidence/map system; editors consume citations externally |
+| CX-A23 | Learned routing / ANN | Scale-dependent retrieval savings | GATE | Promote only on frozen relevance, latency, RSS, determinism, & fallback proof |
+| CX-A24 | LSIF/SCIP ecosystem | Portable compiler evidence interchange | ADOPT | Same-machine import/export with provenance, schema version, source digest, stale detection, & zero outbound repository-derived bytes |
+| CX-A25 | treesitter-chunker | Streaming AST chunks & parser pooling | ADOPT shared bytes/chunk deltas; GATE workers | Reuse canonical scan buffers; parallelize only after profile/RSS proof |
+| CX-A26 | PraisonAI | Pluggable agent/provider orchestration | REJECT general agent runtime; ADOPT provider contracts | Keep Cortex focused; expose bounded provider SDK |
+| CX-A27 | RepoLens | Fast manifest/stack inventory | ADOPT shallow early facts; REJECT as completeness proof | Emit package/build/framework facts before deep parsing while U0–U5 still accounts for all files |
+| CX-A28 | Signum | Contract/evidence lineage & bounded review | ALREADY + ADOPT | Preserve content-addressed receipts; no multi-model review machinery in Cortex core |
+| CX-A29 | Code Index MCP — Consiliency | BM25/symbol fast-path + optional vector tier | ADOPT exact symbol bypass; GATE vector | One exact daemon API; semantic stays optional |
+| CX-A30 | Code Index MCP — johnhuang316 | Shallow/deep indexing modes | ADOPT truthful modes | Mode choice must publish lost capability cells & fallback |
+| CX-A31 | [Semantica `22bf581`](https://github.com/semantica-agi/semantica/tree/22bf58109460d6d7578352968e4fbda0bf03c9d3) | Provenance, temporal/conflict/query contracts, inspection honesty, & recovery negatives | ADOPT/GATE/REJECT behavior only | First-party Cortex contracts in CX-F78–F109; Semantica runtime, schema, IDs, engine, SDK, MCP, stores, dependencies, & write-back remain prohibited |
+
+### Historical competitor closure index
+
+Every repository column in Appendix A resolves to a disposition row; CI must preserve this mapping.
+
+| Snapshot code | Ledger row | Snapshot code | Ledger row | Snapshot code | Ledger row |
+|---|---|---|---|---|---|
+| MT | CX-A18 | AD | CX-A10 | B0 | CX-A11 |
+| CGC | CX-A12 | CIM | CX-A29 | TSC | CX-A25 |
+| RM | CX-A13 | CBM | CX-A11 | RG | CX-A12 |
+| CC | CX-A13 | PA | CX-A26 | RL | CX-A27 |
+| AG | CX-A02/CX-A22 | GQ | CX-A22 | CP | CX-A14 |
+| SGN | CX-A28 | JCI | CX-A30 | CRG | CX-A18 |
+| RD | CX-A19 | ACA | CX-A19 | RXD | CX-A19 |
+| OG | CX-A03 | OXC | CX-A16 | C8 | CX-A14 |
+| LI | CX-A20 | SEM | CX-A03 | DC | CX-A15 |
+| COG | CX-A20 | TS | CX-A01 | CCTX | CX-A14 |
+
+The historical 30-repository matrix below remains evidence inventory. This ledger governs adoption; every snapshot repository is mapped above, & every disposition has an owner requirement plus acceptance path.
+
+Supplemental Semantica research resolves to `CX-A31`; it sits outside the historical 30-repository snapshot, while CX-F78–F109 make every adopted, gated, or rejected behavior executable.
+
+### Atomic historical-aspect closure registry
+
+These IDs bind every Appendix A row, not only every competitor column. `ADOPT` & `ALREADY` require named production proof; `GATE` requires a frozen comparative decision; `REJECT` requires a boundary fixture. CI parses this registry & fails on a missing/duplicate matrix row, ID, ledger link, requirement, or gate.
+
+| Immutable aspect IDs | Appendix row labels | Terminal disposition | Ledger / owner | Required acceptance |
+|---|---|---|---|---|
+| CX-H101–H106 | Primary job; Core runtime; Main delivery; Code-specific product; Source writes; Local-first option | ADOPT Cortex/local/evidence shape; REJECT source mutation & mandatory hosted path | CX-A17, A20–A22, A26; CX-R029–R036 | Product-surface, privacy, no-source-write, native delivery |
+| CX-H201–H208 | Repo discovery; Primary parser; Fallback parsing; Chunk unit; Symbol extraction; Import/dependency edges; Call graph; Graph type | ADOPT highest qualified tier + universal fallback | CX-A01–A06, A13, A24–A25, A30; CX-R001–R012, R021–R024 | 100% disposition, positive facts, graph equivalence, snapshot adoption |
+| CX-H301–H308 | Canonical store; SQL database; Full-text/exact search; Vector search; Embedding provider; Cache; Graph traversal; Context budgeting | ADOPT one exact/store authority; GATE optional semantic/vector; REJECT store sprawl | CX-A06–A08, A11–A14, A20, A23, A29; CX-R017–R020, R025–R032 | Exact determinism, size/update/latency, optional-lane fallback, recovery |
+| CX-H401–H413 | Incremental unit; Unchanged-work reuse; CPU optimization; Concurrency; RAM control; Disk control; Compression/zero-copy; Network/model cost; Lowest-resource mode; Idle footprint; Rebuild cost; Primary efficiency win; Main resource penalty | ALREADY + ADOPT measured reuse; GATE workers/compact same-machine export; REJECT mandatory network | CX-A01, A08, A12–A14, A16, A23, A25; CX-R009–R020, R029–R036 | Byte-equivalence, benchmark protocol, resource envelope, no-op/delta proof |
+| CX-H501–H506 | Filesystem watcher; Git hooks; Agent hooks; Agent hook job; Refresh trigger; Staleness proof | ADOPT Hub-owned freshness; REJECT independent persistence | CX-A13, A28; CX-R013–R016, R033–R036 | Matching Hub protocol, process census, source-churn/staleness proof |
+| CX-H601–H608 | Lexical/exact retrieval; Semantic retrieval; Review/diagnostics; Security boundary; Source mutation; Rollback/recovery; Main outputs; Best fit | ADOPT exact/diagnostic/recovery; GATE semantic; REJECT mutation/authority promotion | CX-A07–A11, A14–A24, A27–A30; CX-R017–R036 | Retrieval, security, authority boundary, recovery, public-surface contracts |
+| CX-P01 | Measured scale & latency | ADOPT separated local/upstream/claim evidence classes | CX-A08, A12–A14, A16, A23, A25, A29; CX-R033–R036 | Shared statistical receipt with source class, raw samples, host, & digests |
+| CX-P02 | Cache specificity | ADOPT explicit key/invalidation/reused-work evidence | CX-A01, A13, A25; CX-R009–R012 | Cache-key mutation, invalidation, no-op, & byte-equivalence fixtures |
+| CX-P03 | Incremental closure | ALREADY + ADOPT delta bounds; REJECT use for resolution soundness | CX-A12–A13; CX-R009–R012 | `MAX_HOPS=2`/`MAX_DEPENDENT_FILES=500` qualification + global-resolution boundary |
+| CX-P04 | Resolution soundness | ALREADY + ADOPT indexed complete-universe resolution; REJECT unsound bounded resolver | CX-A04, A06, A12–A13, A24; CX-R009–R012 | Ghost-edge add/delete/move/rename/ambiguity equivalence |
+| CX-P05 | Append-only ingestion | GATE only for proven append-only inputs | CX-A11, A13; CX-R009–R012 | Cursor/source/checkpoint identity, truncation/rotation/rewrite fallback |
+| CX-P06 | Large-input streaming | ADOPT shared bytes + bounded streaming; GATE workers | CX-A25; CX-R009–R012, R033–R036 | Peak-memory, threshold, cancellation, deterministic chunk-delta fixtures |
+| CX-P07 | Native layout | GATE after current measured bottlenecks pass | CX-A12, A16; CX-R017–R020 | Same facts/results + `>=20%` material resource/latency win |
+| CX-P08 | Cancellation & recovery | ALREADY + ADOPT daemon-owned build cancellation | CX-A14, A29; CX-R013–R016, R029–R032 | Waiter isolation, poisoned-stage rejection, prior-generation survival |
+| CX-P09 | Resource stop-losses | ADOPT typed CPU/time/RSS/result ceilings | CX-A03, A09, A23, A25; CX-R005–R008, R033–R036 | Provider/build/query cap & typed truncation/abstention fixtures |
+| CX-P10 | Fast-path routing | ALREADY + ADOPT resident exact/symbol bypass | CX-A07, A13, A29; CX-R013–R020 | Resident exact p95, process-start avoidance, deterministic fallback |
+| CX-P11 | Optimization order & stop rule | ADOPT measured bottleneck order; REJECT speculative workers/closure cache | CX-A08, A12, A16, A23, A25; CX-R009–R020, R033–R036 | Per-package profile, equivalence, less-work receipt; stop when gates pass |
+
+Within each range, ordinal follows displayed Appendix row order. Row label text is immutable; renaming requires a migration entry retaining old ID.
+
+### Final-absorption closure registry
+
+This registry closes every justified `ABSORB`/`ADAPT` item from final synthesis, reconciled competitor guide, & pinned Semantica review. Each row is mandatory target scope; broad ledger wording cannot substitute for its named gate.
+
+| ID | Required absorption | Owner | Executable acceptance |
+|---|---|---|---|
+| CX-F01 | Local-only semantic/data plane + read-only MCP | CX-R025–R032 | Outbound repository payload `0`; MCP mutation effects `0` |
+| CX-F02 | Universal evidence identity + content-only invalidation | CX-R005–R012 | Schema rejects any promoted fact/result/omission lacking repository identity, generation, source path, applicable span, content fingerprint, provider + version, precision tier, confidence tier, freshness domain, & derivation reason; wall-clock-only freshness and content-unchanged invalidation are rejected |
+| CX-F03 | Semantic non-authority equivalence | CX-R025–R028 | Verdict/doc-truth/citation/evidence bytes identical across semantic failure/state matrix |
+| CX-F04 | Evidence-only audit prose | CX-R025–R028, R033–R036 | Repository assertion-to-citation coverage `100%`; free-form verdict count `0` |
+| CX-F05 | Stable CLI aliases, typed MCP widening, CLI≡MCP read parity, Tier A/B/C continuity | CX-R033–R036 | Surface/migration/parity matrix; every exception explicit |
+| CX-F06 | Frozen Node core/parser/deferred-surface boundaries | CX-R029–R036 | Rust rewrite, placeholder crate, parser authorship, SEA, hosted/team, & marketplace require superseding decision |
+| CX-F07 | One-call token/byte-budgeted evidence assembly with versioned depth presets | CX-R025–R028 | Symbols, neighborhood, claims, omissions, freshness, receipts, & citations fit exact budget |
+| CX-F08 | `skeleton`, `module_api`, `hot_path`, & `topic_outline` projections | CX-R017–R020, R025–R028 | Names/signatures/spans/digests/bounded expansion/omissions/receipts golden |
+| CX-F09 | Truth-ranked candidate map | CX-R025–R028 | Centrality, verification, & optional semantic components visible; ablation proves semantic cannot alter authority |
+| CX-F10 | Working-tree diff to symbols/edges/claims/docs/tests/doc-truth | CX-R009–R012, R025–R028 | Tracked/staged/unstaged/rename/add/delete goldens |
+| CX-F11 | Named callers/callees/chain/deps/tree/overrides/blast-radius/dead-code presets | CX-R025–R028 | Budgeted positive fixtures; dynamic results typed `CROSS_FILE_HEURISTIC` or unresolved |
+| CX-F12 | Complexity × churn × claim-staleness decay hotspots | CX-R025–R028 | Versioned components, history window, generation, & missing-signal behavior |
+| CX-F13 | Sealed read-only doc-repair proposals | CX-R025–R032 | Old/proposed claim, cited evidence, generation/base digest, rationale, audit state, external acceptance link; apply count `0` |
+| CX-F14 | Preflight/attest/guard/evidence-pack read presets | CX-R025–R028, R033–R036 | Bounded findings, omissions, generation, evidence, & receipt through existing CLI/MCP reads |
+| CX-F15 | Repo-scoped prompt/request → accepted change → commit/diff → affected claims/docs provenance | CX-R005–R008, R025–R028 | Host-linked provenance + evidence-derived risk; general session/user memory count `0` |
+| CX-F16 | Signed on-demand WASM grammar lifecycle to 100+ grammars | CX-R021–R024 | New grammar starts Tier C/fallback-only; promotion requires positive symbol/import/call/error fixtures |
+| CX-F17 | Idempotent Claude/Codex/Cursor/Gemini + Git-hook enrollment | CX-R013–R016, R033–R036 | Full host matrix; hooks only nudge Hub-owned freshness |
+| CX-F18 | Same-machine SARIF export + local external-claim SARIF ingestion | CX-R005–R008, R025–R036 | Provider/version/location/source hash/generation/confidence/freshness/stale state preserved; never reclassified as Cortex verdict; remote sink/source fails typed; repository-derived outbound bytes `0` |
+| CX-F19 | Deterministic same-machine GraphML/JSON/Obsidian/SVG/read-only-Cypher export | CX-R029–R036 | Schema/generation/source digest + stable ordering embedded in every format; remote/cross-machine sink fails typed; repository-derived outbound bytes `0` |
+| CX-F20 | Baseline regression mode | CX-R033–R036 | Fail new stale claims, missing refs, unresolved-edge/capability/file-coverage regressions; baseline drift explicit |
+| CX-F21 | Explainable 0–100 evidence-health score/trend | CX-R025–R028, R033–R036 | Every deduction has `why` evidence; components retained; formula version preserves trend comparability |
+| CX-F22 | Fixed architecture/correctness/security/maintainability/documentation doctor perspectives | CX-R025–R028, R033–R036 | Typed-evidence-only report; empty perspective states no supported finding |
+| CX-F23 | Cited wiki + snippet cookbook | CX-R025–R032, R033–R036 | Every paragraph/snippet cites sealed evidence; manifests bind generation/hashes; only affected pages invalidate |
+| CX-F24 | Sealed same-machine graph exchange | CX-R029–R032 | Schema/repo/source/generation/provider manifest/checksum/signature receipt; local producer→consumer round trip passes; mismatch fails before adoption; repository-derived outbound bytes `0` |
+| CX-F25 | Publish Explorer, Hub tray, desktop onboarding, & cited repository tour | CX-R013–R016, R033–R036 | Generation-aware native UI + Hub-loss exit fixtures |
+| CX-F26 | Optional semantic feature clusters + local ontology claim taxonomy | CX-R025–R028 | Provider/model/config/digest visible; exact-only fallback; evidence/verdict mutation `0` |
+| CX-F27 | User-visible stack inventory | CX-R021–R024, R033–R036 | Packages/build systems/frameworks/runtimes/schemas/IaC cite manifest/config evidence & type ambiguity |
+| CX-F28 | Deterministic task-intent router + required-role context coverage | CX-R025–R028 | `orient/understand/change/debug/review/security/architecture/doc_truth/migration/test` corpus covers syntax, known symbol, path, stack trace, diff, & command signals; deterministic route + confidence always exist; an optional local model may refine only ambiguous cases with model/config/input digest, recorded before/after route/reason, network disabled, deterministic fallback, & no authority; every included item has `whyIncluded`; missing roles & excluded high-rank candidates are typed |
+| CX-F29 | Generation-bound `ProofPacketV1` ledger | CX-R005–R008, R025–R036 | Schema golden fixes `schemaVersion=cortex.proof.v1` & binds `task_declaration`, `grant_receipt`, `context_packet`, `observed_read`, `change_set`, `verification_run`, `policy_finding`, `phase2_verdict`, & `proof_packet`, including initiator, declaration, authority/grants, evidence reads, issued context, files/symbols changed, checks/results, policy results, drift, local provider/model identity, zero egress, repository generation, instrumentation state, & stable packet/hash-chain ID; sensitive values absent; optional Ed25519 verifies |
+| CX-F30 | Declarative architecture/change policy DSL | CX-R025–R028, R033–R036 | Schema golden requires `id`, `severity`, `scope`, `from.path`, `to.path`, `edgeKinds`, `minimumConfidence`, `message`, & `baseline`; positive/negative rule fixtures, changed-only mode, symbol/finding-fingerprint suppressions, owner/expiry/baseline migration, deterministic time/result caps, & graph-confidence non-lowering pass |
+| CX-F31 | Temporal Git intelligence + stable symbol identity | CX-R005–R012, R025–R028 | Rename/move structural identity, commit/co-change/blame/reviewer/revert/fix history, architecture evolution, & missing-history behavior; history never asserts current semantics |
+| CX-F32 | Evidence-derived architecture communities | CX-R025–R028, R033–R036 | Deterministic communities/hubs/bridges/feature-hubs with components, generation, confidence, omissions, & Explorer parity; labels never become canonical edges |
+| CX-F33 | Model-free hybrid Tier 0 + deterministic fusion | CX-R017–R020, R025–R028 | Identifier FTS/BM25, TF-IDF, MinHash/near-clone, AST/signature features, graph diffusion, & RRF ablations; exact fast path/order preserved |
+| CX-F34 | Changed-range parsing + stable boundary packing | CX-R009–R012, R021–R028 | Old-tree changed-range reuse where events provide it; stable chunk IDs/boundary IR/graph-cut packing; full-reparse equivalence, malformed-input fallback, bounded memory |
+| CX-F35 | Read-only GritQL structural query/planning adapter + negative-result cache | CX-R021–R028 | Versioned provider facts/spans/preview plan; source writes `0`; negative cache binds query/provider/source/config digests & invalidates exactly |
+| CX-F36 | Local-only semantic constitution | CX-R025–R032 | Network-disabled exact/semantic suite; remote embedding/model/provider configuration rejected; outbound repository-derived bytes `0` |
+| CX-F37 | Sealed repo-scoped `ContextPacketV1` candidate contract | CX-R025–R028, R033–R036 | Schema golden fixes `schemaVersion=cortex.context.v1` & requires `packetId`, `task.text/intent/intentConfidence`, `generation.repoId/generationId/sourceClock/barrierReceiptId`, `anchors`, `evidence[nodeId,path,span.startLine/endLine,role,precisionTier,confidenceTier,whyIncluded,contentHash]`, `relationships`, `contradictions`, `coverage.requiredRoles/coveredRoles/partial`, `omissions`, `tokenEstimate`, retrieval algorithm/provider-set digests, & caller-supplied grant + exact token/byte budget; identical inputs yield one stable candidate hash; out-of-grant evidence, cross-source fusion, final-packet issuance, & Cortex authorization/eligibility decisions each equal `0`; Membrane re-resolves policy/freshness & alone issues final context |
+| CX-F38 | Role-complete repository-candidate packing + retrieval qualification | CX-R025–R028, R033–R036 | Conceptual-task, exact-symbol, stack-trace, document, contradiction, & negative-path fixtures each freeze expected anchor IDs, expected evidence roles, must-include contradiction, must-not-include paths, minimum precision tier, caller-supplied token budget, semantic-off answer, & semantic-on answer; corpus reports Recall@1/5/10, MRR, role + contradiction coverage, unsupported/partial rate, evidence density, tokens, & avoided round trips; AST/symbol boundaries precede line/text fallback, overlap dedupes, order is stable, missing roles type explicitly, semantic-on never lowers deterministic recall, & Cortex never asserts final context completeness outside one repository/generation |
+| CX-F39 | Explainable multi-lane retrieval fusion | CX-R017–R028 | Exact, structural, lexical, change, document-truth, semantic, & policy lanes expose exactness/distance/precision/confidence/intent/centrality/change/authority/test/runtime/diversity/recency/semantic components; recency never outranks authority; every included item has `whyIncluded`; excluded high-rank candidates remain inspectable; fixed-seed RRF/ablation goldens preserve ties & exact fast path |
+| CX-F40 | Versioned `ChangePacketV1` input + classification contract | CX-R009–R012, R025–R028, R033–R036 | Schema golden fixes `schemaVersion=cortex.change.v1` & requires `changeSetId`, `base`, `head`, `changedSymbols`, `affectedSymbols`, `affectedFlows`, `recommendedTests`, `documentsToReview`, `policyFindings`, `risk.level/score/components`, & `limits.maxHops/maxDependentFiles/truncated`; staged, unstaged, tracked, branch-range, rename/add/delete, & proposed-symbol fixtures map prior/current hunks to stable symbols & classify body, signature/API, type/schema, dependency, route/config, test, documentation, deletion, & rename changes with deterministic bytes |
+| CX-F41 | Evidence-decomposed impact/risk model | CX-R025–R028, R033–R036 | Seeded change corpus reports affected-symbol/flow/test/doc precision & recall separately; risk retains blast radius, edge confidence, public API, hub/bridge, flow criticality, unresolved, test gap, contradiction, security path, churn/revert/fix, co-change, cross-repo, grant, & policy components; composite reproduces from cited inputs; bounded closure names exact truncation boundary & per-repo receipt |
+| CX-F42 | Declared-versus-observed drift, sensitive-read, & same-machine supply-chain proof export | CX-R005–R008, R025–R036 | Proof corpus compares declaration/grant with paths read/changed, symbols changed, commands/checks, policies, & participating local provider/model; records sensitive categories + paths but secret values `0`; partial instrumentation types explicitly; identical events hash identically; tampering fails; optional Ed25519 plus local in-toto/SLSA-format export verifies; remote/cross-machine sink fails typed; repository-derived outbound bytes `0`; federation retains one proof chain per repository |
+| CX-F43 | Loud typed-failure matrix | CX-R001–R036 | Goldens independently distinguish unsupported capability, missing compiler evidence, stale index, truncation, event gap, unavailable semantic provider, cancellation, policy timeout, incomplete federation, malformed/partial bundle, & poisoned provider/grammar/update manifest; each emits nonempty typed reason/omission, never confident empty success |
+| CX-F44 | Compact default agent surface + progressive discovery | CX-R013–R020, R025–R036 | Existing stable CLI/MCP names remain; default agent surface exposes at most eight intent-level read operations covering orient/context/search/impact/verify/truth/proof/status; advanced graph/policy/provider/bundle/debug capabilities appear only through schema-versioned discover/expand; host-selection corpus shows no missing operation or default tool explosion |
+| CX-F45 | Permission-declared provider/plugin capability manifest | CX-R005–R008, R021–R036 | Conformance fixtures cover Evidence/Resolver/Retrieval/Diagnostic/Verification/Trace/Embedding/Exporter/PolicyPack classes; capability values `parse/resolve/lint/taint/architecture/rewrite/trace`; languages, precision tier, process/network permission, input scope, output schema, timeout/result/resource caps, provider version/digest, & source-mutation declaration; every plugin is independently versioned; undeclared permission escalation or repository-data network access fails before execution; provider source effects `0` |
+| CX-F46 | Optional generation-bound runtime-trace evidence | CX-R005–R008, R021–R028 | TraceProvider fixture binds trace source/config/runtime digest, time domain, repo/generation, symbol/span join, confidence, & omission; absent/corrupt/partial traces degrade typed; trace-enabled/disabled graph truth remains byte-identical; source effects & outbound repository-derived bytes `0` |
+| CX-F47 | Local embedding generation, reuse, cancellation, & recovery | CX-R009–R012, R025–R036 | Before model/runtime selection, frozen answer-key A/B compares deterministic Tier 0 with one optional ONNX/WASM local provider & requires a predeclared material hybrid-quality gain; provider rows bind generation, content hash, normalized chunk-contract version, model digest, preprocessing version, & bounded batch/CPU/RAM envelope; changed evidence alone re-embeds; delete/rebuild preserves truth; cancellation/retry publishes no duplicate/partial/poisoned generation; poisoned/zero-vector snapshots recover; network-disabled test passes; exact symbol output/order/latency path remains unchanged |
+| CX-F48 | Complete same-machine `.cortex-bundle` manifest | CX-R029–R036 | Local-producer→local-consumer reuse, offline review, air-gapped local operation, local reproducible-bug replay, locally pre-indexed public library, & local federation fixtures bind repo identity, commit + dirty fingerprint, generation, schema/provider versions, canonical rows, optional derived FTS/vector material, capability coverage, build/benchmark receipts, redaction manifest, signature, & checksums; secret-bearing raw content is absent & explicit inclusion is rejected; cross-machine/network transfer, path/schema/provider/source/signature mismatch, & remote adoption fail typed; repository-derived outbound bytes `0`; repositories retain independent generations/receipts |
+| CX-F49 | Utility-first Explorer/read-surface parity | CX-R013–R016, R025–R036 | Truth, context-why, impact/risk, architecture/community, timeline, proof, coverage, retrieval-debug, policy-baseline, & performance/cache/cancellation views deep-equal versioned CLI/SDK reads for one generation; health decomposes into freshness/coverage/contradictions/unresolved/test-gap/policy/store components; UI write effects `0`; decorative visualization cannot satisfy release gate |
+| CX-F50 | Cortex-on-Cortex release dogfood consistency | CX-R033–R036 | Clean release fixture rebuilds Cortex, then fails any README/generated product/architecture count, health fact, bottleneck claim, or architecture comment that disagrees with sealed generation + checked-in benchmark receipt; generated no-op bytes remain identical |
+| CX-F51 | Repository policy behavior corpus | CX-R025–R028, R033–R036 | Positive/negative fixtures cover forbidden + required edges, public API requiring tests/docs, schema requiring migration, route requiring contract/integration test, high-risk path grant, generated-file edit, missing-symbol doc reference, unresolved-edge threshold, any repository-data egress, & cross-repo receipt completeness; changed-only/baseline/suppression results remain deterministic & capped |
+| CX-F52 | Cross-surface safety qualification | CX-R005–R008, R013–R036 | Secret corpus exercises every output/export/provider surface; traversal, symlink, junction, archive escape, malicious repository instruction, manifest poisoning, permission escalation, cap exhaustion, & malformed bundle fixtures fail typed; repository-derived outbound bytes, instruction execution from repository text, path escape, & partial adoption each equal `0` |
+| CX-F53 | Clean-room origin, license, & implementation-mode control | CX-R005–R008, R029–R036 | Every absorbed feature manifest/ADR records source URL/version/license & exactly one mode—independent behavioral implementation, documented adapter, reviewed dependency, or interoperable format; distribution/license gate passes dependencies; copied competitor source/schema/prompt/test/branding count `0`; SBOM + notices bind shipped artifacts |
+| CX-F54 | Complete-universe resolver index coverage | CX-R009–R012 | Legacy-equivalence corpus exercises exact qualified/local names, normalized imports, file/directory scope, provider/precision, export/public symbols, & route/config/schema identifiers; indexes only narrow candidates; ordered nodes/edges + unresolved reasons are identical; candidate inspections materially fall; index miss executes deterministic complete fallback |
+| CX-F55 | Resident-daemon singleflight + build interruption matrix | CX-R009–R016, R029–R036 | CLI/daemon parity fixtures bind one per-root identity + queue, deadline, capacity control, & abort signal; exact-equivalent callers join, differing builds serialize, & waiter cancellation only detaches; fault injection before/after parse, resolution, validation, identity seal, database adoption, & publication fsync/rename proves no stage leaks mixed facts & previous complete generation remains readable/recoverable |
+| CX-F56 | Storage-before-workers optimization order | CX-R009–R020, R033–R036 | Prepared/batched compact writer experiment records statements, rows, DB/WAL bytes, elapsed time, & RSS against exact output hashes; bounded workers are prohibited until write path is accepted & profile proves remaining parallel work; any correctness/resource/gate regression removes candidate uncommitted |
+| CX-F57 | Capability-probed native exact-search selection | CX-R017–R020, R033–R036 | Platform matrix detects only installed version-compatible native search, compares bytes/order/omissions with canonical exact search, refuses schema/tool mismatch typed, records selected backend/version, & falls back deterministically without network or source effects |
+| CX-F58 | Temporal truth/co-change/intent queries with compact history | CX-R005–R012, R025–R028 | Rename/move/revert/fix/blame/reviewer fixtures answer “when did this claim become false,” “what usually changes with this,” & “which declared task led here” with cited commits + stable symbols; canonical store retains compact summaries/pointers rather than full history copies; history-off/current-truth bytes remain identical |
+| CX-F59 | Structural/SAST adapter promotion matrix | CX-R005–R008, R021–R028, R033–R036 | Semgrep/OpenGrep findings + taint/supply-chain SARIF, ast-grep structural matches, dependency-cruiser architecture findings, Oxc diagnostics, & SCIP/LSP/compiler facts pass positive/negative/provider-precedence fixtures with spans/digests/caps; adapter findings stay external evidence until typed mapping; rewrite-capable engines return sealed preview/diff only; Cortex-applied source changes `0` |
+| CX-F60 | External agent-write restore-point receipt | CX-R005–R008, R025–R032 | Outer-agent fixture records pre/post tree digests, changed paths/symbols, restore artifact digest, actor/grant, verification, & restored/not-restored state; Cortex can inspect/attest but source-write + restore execution counts remain `0`; missing/expired/tampered restore artifacts type explicitly |
+| CX-F61 | Provider lifecycle events + payload-safe observability | CX-R005–R008, R013–R016, R033–R036 | Conformance trace emits probe/start/input-bound/fact-count/limit/cancel/fail/complete events with provider/snapshot/generation/duration/resource digests & stable correlation IDs; repository bytes, secrets, prompts, & model payloads are absent; event loss types instrumentation partial; hooks grant no workflow/lifecycle authority |
+| CX-F62 | Versioned evidence-only review/report templates | CX-R025–R028, R033–R036 | Template-pack fixture binds template/version/digest, perspective, Context/Change/Proof packet IDs, generation, citations, & output schema; every repository assertion resolves to sealed evidence; unsupported perspective returns explicit empty state; model prose stays labeled judgment & can never be sole analyzer or canonical fact |
+| CX-F63 | Local LSIF/SCIP compiler-evidence interchange | CX-R005–R008, R021–R024, R029–R036 | Positive same-machine import + export goldens preserve producer/version, schema version, repository/source digest, path/span, symbol identity, precision, generation, & provenance; schema/source/provider mismatch, changed source, truncated input, unsupported version, & cross-machine/remote endpoint fail typed before adoption; round trip preserves ordered compiler facts; imported evidence never outranks a fresher qualified provider; repository-derived outbound bytes `0` |
+| CX-F64 | Cross-repository branch review packs + air-gapped local review | CX-R017–R020, R025–R036 | Same-machine branch-range, dirty-worktree, cross-repo, offline, missing-repo, stale-pack, partial-pack, & receipt-mismatch fixtures produce one sealed read-only review pack with independent repo/generation/source/omission/receipt identities; raw graph merge, network requirement/transfer, source mutation, ambiguous freshness, & repository-derived outbound bytes each equal `0` |
+| CX-F65 | Complete performance closure receipt | CX-R033–R036 | Receipt binds Cortex commit, fixture commit/digest, host + runtime, warm/cold state, sample count, raw-report location, & evidence class (`locally_verified`, `upstream_reproduced`, or `upstream_claim`), then reports cold stage times, warm/no-op, one-file delta, resident exact query, context-compilation latency, impact-query latency, peak RSS, store size, cache hit/reuse count, cancellation latency, & recovery result with raw samples, units, digest, failure/censor treatment, & threshold verdict on one fixture/host class; any missing field or metric fails completeness |
+| CX-F66 | Dynamic-registration + cross-stack route change qualification | CX-R009–R012, R021–R028, R033–R036 | Positive/negative commits cover runtime registry insertion/removal/rename, manifest-driven registration, client→route→handler→service→schema flow across languages/stacks, ambiguous route, deleted handler, generated route, & unresolved dynamic target; affected symbol/flow/test/doc precision & recall are reported separately; unsupported dynamics type explicitly |
+| CX-F67 | Optional local reranker promotion gate | CX-R025–R028, R033–R036 | Frozen answer-key A/B receipt compares deterministic fusion with one local network-disabled reranker at fixed model/config/digest, seed, budget, latency, CPU, RSS, & fallback; promote only if corrected quality CI clears its predeclared material threshold without deterministic-recall, tie-order, exact-fast-path, privacy, or verdict-byte regression; otherwise record `GATE_REJECTED` & ship no reranker |
+| CX-F68 | Same-machine contract/holdout/multi-model assurance integration | CX-R025–R036 | `REJECT` review orchestration inside Cortex & any remote reviewer/provider; optional same-machine network-disabled outer workflow resolves sealed Context/Change/Proof packet IDs locally with generation, grants, deterministic checks, hidden-holdout receipt, reviewer roles, disagreements, re-verification, & typed human-escalation reason, then returns signed judgments only; model outputs never become facts/authority, repository-derived outbound bytes + Cortex source effects + Cortex runtime/dependency count stay `0`; unavailable integration degrades typed |
+| CX-F69 | Feature-admission mode + weighted decision gate | CX-R033–R036 | Every proposed absorption records exactly one of `Core`, `Native optional`, `Adapter`, `UX/workflow pattern`, or `Reject/defer`; score receipt preserves `30% moat fit + 25% user value + 20% correctness compatibility + 15% local-only/security fit + 10% implementation leverage`; core admission fails unless moat + correctness thresholds pass; observed inputs, owner decision, origin, & supersession are sealed |
+| CX-F70 | Ordered milestone dependency + exit gate | CX-R001–R036 | Plan validator preserves A truth/performance → B context → C change → D policy/proof → E local semantic/temporal → F ecosystem order, forbids large-framework import at milestone entry, requires every prior contract/gate green before successor start, & enforces A resolver material-win/no-memory-or-soundness-regression exit; remote-provider work is absent |
+| CX-F71 | Exact compact read-only operation surface | CX-R013–R020, R025–R036 | Versioned CLI≡MCP goldens preserve exactly `orient [task]`, `context <task>`, `search <query>`, `impact [diff|node|path]`, `verify [diff|packet]`, `truth [scope]`, `proof <task-or-packet>`, & `status`, including argv/schema, output, error, omission, generation, cancellation, & compatibility semantics; `context` returns repo-scoped candidates only, never Membrane's final packet; every operation is read-only; advanced operations require discover/expand |
+| CX-F72 | One generation identity + one transactional publication path | CX-R009–R016, R029–R036 | One `BuildSnapshotV1` digest is computed once after canonical scan inputs bind, carried through parse/resolution/index/validation/store, & compare-and-swap published once by stage→validate→database adoption→fsync/rename; duplicate generation hashing/publication paths count `0`; source/provider/resolver/index churn discards stage; concurrent, cancel, crash-before/after-adoption, & restart fixtures expose only prior or new complete generation |
+| CX-F73 | Complete correctness qualification corpus | CX-R001–R036 | Positive/negative goldens cover symbol rename/delete ghost edges, import aliasing, ambiguous references, provider precedence, document supersession, invalid lifecycle markers, stale generation rejection, dirty-overlay↔commit transitions, cross-repo receipt independence, unsupported-language loud partial, & cancelled build/publish recovery; every expected node/edge/verdict/omission/state is asserted non-vacuously |
+| CX-F74 | Complete determinism qualification corpus | CX-R009–R012, R025–R036 | Same-input/no-op runs prove byte-identical generated artifacts, stable `ContextPacketV1`/`ChangePacketV1`/`ProofPacketV1` hashes, stable ranking ties, stable community seed/output, stable policy findings, & identical exact/current-truth output after semantic-index deletion when semantic mode is off; any nondeterministic field is normalized or typed & excluded from sealed digest by versioned rule |
+| CX-F75 | Sole canonical SQLite authority + derived/export boundary | CX-R017–R020, R025–R036 | Clean install, upgrade, query, semantic-on/off, bundle, same-machine export, delete-derived-index, & recovery fixtures prove SQLite `.agent/graph/graph.db` is the only canonical graph/store authority; Neo4j, PostgreSQL, Qdrant, Redis, remote/hosted graph/vector services, & second writable truth stores cannot be configured, required, adopted, or queried as authority; canonical store count is `1`; derived-index deletion preserves exact truth; analytics export remains local/read-only; repository-derived outbound bytes `0` |
+| CX-F76 | Resolver-stage cost profiler | CX-R009–R012, R033–R036 | Frozen resolver fixture emits candidate count, lookup type, elapsed time, & allocation bytes by edge class with repo/generation/fixture/host/runtime digests; totals reconcile to stage receipt, no edge class is omitted, profiling-off outputs remain byte-identical, & profiler overhead is reported separately |
+| CX-F77 | Native-layout optimization sequencing gate | CX-R009–R020, R033–R036 | Native arenas, mmap, worker rewrite, or core-language rewrite cannot enter before CX-F54 resolver equivalence, CX-F56 storage-first acceptance, & CX-F76 profile prove resolver no longer dominates; frozen A/B must preserve facts/results & achieve `>=20%` material p95/RSS/disk/update-cost win without correctness, portability, recovery, or maintenance-boundary regression; failed candidate remains uncommitted |
+| CX-F78 | Pinned-source capability inventory honesty | CX-R033–R036 | Semantica `22bf581` source/license/artifact digests bind one immutable aspect inventory; every advertised operation is `qualified\|fallback\|unsupported\|failed` plus `ADOPT\|GATE\|REJECT\|ALREADY`; imports, aliases, mocks, placeholders, names, or unit-test existence never qualify capability |
+| CX-F79 | Edge occurrence + logical-family identity | CX-R005–R012, R025–R028 | Every edge has immutable occurrence ID plus family ID; occurrence digest binds repository, endpoints, kind, evidence, interval, provider/version, generation, confidence, & metadata; parallel occurrences remain distinct & family grouping never collapses evidence |
+| CX-F80 | Explicit temporal clock + strict bounds | CX-R005–R012, R025–R028 | Every temporal query names source clock & generation/commit; implicit wall-clock now is prohibited; naive, mixed-domain, reversed, malformed, or unsupported bounds return `TEMPORAL_BOUND_INVALID`, never active/current |
+| CX-F81 | Bitemporal repository-fact reconstruction | CX-R005–R012, R025–R028 | Fact schema separates valid interval from recorded/superseded generation, uses `[start,end)` + `OPEN`, & reconstructs only edges whose endpoints exist at requested valid/recorded point; history-disabled current truth stays byte-identical |
+| CX-F82 | Repository interval-algebra promotion gate | CX-R025–R028, R033–R036 | Generic temporal-KG inference/forecasting remains rejected; interval relation/gap/coverage enters only when a frozen repo-history corpus proves a named Cortex question, deterministic exact-clock answers, bounded cost, & zero new canonical facts |
+| CX-F83 | Immutable policy-pack lineage | CX-R025–R028, R033–R036 | Every finding binds policy ID, schema version, digest, status, owner, effective generation/range, superseded digest, & change reason; edits create immutable versions & old findings retain original digest |
+| CX-F84 | Repository-evidence-only decision boundary | CX-R025–R032 | Cortex stores no general decisions, private reasoning, precedents, user/session memory, approvals, or decision-compliance verdicts; it exposes only generation-bound repository evidence/policy findings; Membrane remains decision & packet authority |
+| CX-F85 | Typed proof actor/activity accountability | CX-R005–R008, R025–R036 | Proof events require actor ID/kind, automation flag, role, activity ID/start/end, optional delegation & informed-by links; unknown values remain typed unknown, never defaulted |
+| CX-F86 | Exact lineage-relation taxonomy | CX-R005–R008, R025–R036 | Evidence distinguishes `previousVersionOf`, `derivedFrom`, `used`, `generatedBy`, & bundle membership; substitution fails validation; targets resolve in same proof chain or carry explicit external receipt identity |
+| CX-F87 | Append-only evidence invalidation tombstones | CX-R005–R012, R025–R036 | Retraction appends fact ID, prior digest, invalidated generation/time domain, actor, reason, & optional replacement; current truth excludes it while audit/history retains addressability |
+| CX-F88 | Atomic derivation-transform receipt | CX-R005–R012, R025–R028 | Derived fact binds transform ID/version/digest, ordered input IDs, parameters/config digest, confidence rule, generation, output ID/digest; provenance failure prevents publication |
+| CX-F89 | PROV-O export decision gate | CX-R029–R036 | Read-only same-machine PROV-O export is admitted only if round trip preserves Cortex IDs, repository/generation, source hashes/spans, actor roles, relation distinctions, invalidation, bundle membership, & stable order with ontology-inference count `0` |
+| CX-F90 | No substitute provenance after integrity failure | CX-R005–R008, R025–R036 | Failed/unavailable lineage integrity returns `PROVENANCE_UNVERIFIED` + omission; adjacency, neighborhood, similarity, or inferred ancestry can never populate provenance/lineage/proof fields |
+| CX-F91 | Exact repository `ConflictRecordV1` | CX-R025–R028 | Schema binds conflict ID/type, subject/property-or-edge, every candidate value/evidence/source, per-candidate precision/confidence, severity, detection rule/version, generation, & state; candidate omission/overwrite fails |
+| CX-F92 | No automatic conflict truth selection | CX-R025–R028 | Voting, recency, credibility, first-seen, confidence, or similarity never selects/overwrites canonical truth; external resolution records actor, method, evidence, policy digest, & generation; Membrane independently controls admission |
+| CX-F93 | Exact graph-path response contract | CX-R017–R020, R025–R028 | Result returns ordered node IDs, edge occurrence/family IDs, kinds/directions, algorithm/version, weight mode/total, hops, confidence composition, qualified bottleneck/alternatives, generation, limits, truncation, omissions, & stable tie rule |
+| CX-F94 | Anchored discover/expand query contract | CX-R017–R028 | Query freezes anchors, edge kind/direction, hops, precision/confidence floors, optional local semantic floor, rank mode, limit, & cursor; result exposes distance, score components, generation, exclusions, & omissions |
+| CX-F95 | Versioned read-only Cortex resources | CX-R013–R020, R033–R036 | `cortex://status`, `cortex://schema`, & `cortex://generation/{id}/manifest` bind schema/generation/digest/capability state; reads create no default operation & mutation count `0` |
+| CX-F96 | No generic writable MCP graph surface | CX-R013–R036 | Entity/relationship add, decision record, annotation, import, merge, generic reason, broad analytics, source/policy/lifecycle mutation, & canonical-store write operations remain absent; effect counts each equal `0` |
+| CX-F97 | Typed failure; no silent defaults | CX-R001–R036 | Broken graph/store returns `GRAPH_BROKEN`, never empty success; missing weight/confidence stays unknown; failed enrichment emits typed provider omission; public errors use versioned schema, never success strings |
+| CX-F98 | Allowlisted digest-pinned provider execution | CX-R005–R008, R021–R036 | Validate class/schema/capabilities/permissions/dependencies/version/digest/signature/resource caps before execution; runtime filesystem scan/import/exec, guessed class, auto-load, hot-swap, network/source mutation, or partial publication is rejected; registry change forces new snapshot |
+| CX-F99 | Local repository-snapshot ingestion boundary | CX-R001–R016, R029–R032 | Cortex accepts only Hub-authorized local snapshots/artifacts; web/API/feed/email/database/cloud/stream/crawler/network-clone ingestion stays external/Membrane-owned; runtime DNS/HTTP/git-clone count `0` |
+| CX-F100 | No generic OCR/media/entity-KG ingestion | CX-R001–R008, R021–R032 | Repository-local text/config may use U1/U2; OCR, image/audio/video understanding, generic entity extraction, remote LLM enhancement, & document-KG construction remain absent; typed external evidence never outranks repository facts |
+| CX-F101 | Query/export injection boundary | CX-R025–R036 | Public surfaces accept no raw executable Cypher/SPARQL/AQL; identifiers are allowlisted, values parameterized/escaped, URI/path scheme/root confined; injection corpus proves execution, mutation, path escape, & destructive statements `0` |
+| CX-F102 | Hub-fenced transport/auth/lifecycle only | CX-R013–R016, R033–R036 | No independent public HTTP service, anonymous mode, self-issued API-key authority, or placeholder accepted build endpoint; loopback transport rejects lost/foreign Hub ownership & returns typed unavailable when Hub is absent |
+| CX-F103 | Reversible normalization + raw-span authority | CX-R009–R012, R017–R028 | Lexical/chunk record binds normalization algorithm/version/digest plus reversible byte↔normalized-offset map; raw bytes/hash/spans remain authoritative; normalization never changes citation bytes or merges distinct evidence |
+| CX-F104 | No semantic alias/entity merge authority | CX-R005–R012, R025–R028 | Near-duplicate/alias lanes emit suggestions only; they never merge nodes/edges, rewrite IDs, select values, or collapse provenance; provenance failure yields typed omission, never downgraded publication |
+| CX-F105 | No synthetic or substituted semantic vectors | CX-R017–R020, R025–R036 | Unknown, unavailable, corrupt, zero, dimension-mismatched, random, placeholder, or nondeterministic embeddings return typed unavailable + Tier-0 fallback; hash/random vectors cannot be labeled semantic; backend substitution is forbidden |
+| CX-F106 | No generic ontology/reasoning authority | CX-R021–R028 | OWL/SHACL/Rete/Datalog/abductive reasoners, ontology generator/alignment authority, bridge axioms, & LLM fact promotion remain absent; policy DSL derives only cited typed findings with rule/version/input identity |
+| CX-F107 | No independent workflow/worker/retry authority | CX-R009–R016, R029–R036 | No general orchestrator, polling worker, lifecycle hooks, self-restart, or unbounded retry; provider retry is transient-error allowlisted, capped, idempotent, cancellation/snapshot aware, receipt-recorded, & cannot partially publish |
+| CX-F108 | Confined transactional restore | CX-R029–R036 | Restore validates traversal, schema, repository/generation, source/provider manifests, entry checksums, signature, & redaction before confined staging; staged SQLite validates before Hub atomic adoption; direct extraction, live mutation, schedules, & partial restore are rejected; prior generation survives every failure |
+| CX-F109 | Export capability honesty + columnar gate | CX-R029–R036 | Missing dependency removes exporter capability & returns typed unsupported; dummy/mock/string-success exporters, OWL/AQL/writable Cypher/vector-store migration are rejected; Arrow/Parquet enters only after stable-order round trip preserves schema/provenance under bounded RSS with material size/latency gain |
+
+Semantica’s remaining three reviewed dispositions need no duplicate row: bounded analytics + no predictive facts are already exact in CX-F09/F32/F33/F41/F74; Explorer projection-only behavior in CX-F25/F49; transactional single-store/checksum behavior in CX-F42/F48/F72/F75.
+
+## Comparative leadership gate
+
+Before implementation, package 0 freezes `cortex-competitors.v1.json` with exact source/version, license, configuration, feature adapter, corpus eligibility, exclusions, & artifact digest for these named candidate families: ast-grep, OpenGrep/Semgrep, Sourcegraph SCIP/search, Serena, Glean, Zoekt, CodeQL, dependency-cruiser, Aider repository map, codebase-memory-mcp, repo-graph/CodeGraphContext, Greptile where a reproducible self-hosted build is obtainable, pinned Semantica `22bf581` as non-runtime research evidence, plus every Appendix A repository still runnable. Eligibility means a publicly obtainable build can execute the shared task on the same corpus without Cortex-only inputs. Missing, hosted-only, archived, or incompatible candidates remain in manifest with evidence & cannot be silently omitted or substituted.
+
+Every eligible comparator runs on identical corpus/holdout digests, host class, toolchain envelope, resource isolation, time/token/network budget, query/task set, scoring code, & raw-result schema. Axes are coverage depth, exactness/graph correctness, freshness/update cost, retrieval/task quality, latency, CPU/RSS/disk, privacy/egress, explainability/provenance, recovery, lifecycle control, portability, & public-surface completeness. Cortex must be noninferior on every applicable axis & strictly dominate at least one material axis. Until signed evaluator receipt passes, wording remains “best-on-market target.”
+
+Applicability is frozen before any run: an axis is inapplicable only when comparator manifest proves product does not expose that function; absence is scored as failure when function is part of comparator's advertised scope. Post-run exclusions invalidate comparison. Safety/correctness axes—file visibility, exact/graph correctness, ghost-edge behavior, privacy/egress, recovery, lifecycle, & compatibility—allow zero regression. Quality noninferiority margins are hit rate `-1 pp`, MRR `-0.01`, & task success `-1 pp`; performance/resource margins allow at most `10%` worse p95/RSS/disk/update cost. Material dominance is predeclared as at least one of: `+2 pp` hit/task success, `+0.02` MRR, `+10%` qualified capability cells at equal file visibility, or `>=20%` lower p95/RSS/disk/update cost, with paired 95% confidence interval wholly beyond zero. Privacy, correctness, or lifecycle cannot be traded for dominance.
+
+## Shared benchmark protocol
+
+Parent workspace owns canonical schema `tools/benchmarks/schemas/benchmark-protocol.v1.schema.json`, metric registry `tools/benchmarks/schemas/metric-registry.v1.json`, & validator/evaluator `tools/benchmarks/validate-receipt.mjs`; Cortex owns frozen instance `evals/manifests/benchmark-protocol.v1.json` & comparator instance `evals/manifests/cortex-competitors.v1.json`. Package 0 creates them; product authority locks schema/metrics/margins before observations; Cortex integration owner produces raw receipts; independent Oracle verifies schema, digests, commands, & verdict.
+
+Protocol is required by every performance, retrieval, equivalence, & competitor receipt. Metric registry predeclares unit, population/estimand, direction, applicable axes, noninferiority margin, material-effect threshold, one-sided 95% noninferiority CI, two-sided 95% dominance CI, Holm correction across simultaneously claimed quality/material axes, exact percentile estimator, & raw-to-verdict algorithm. It also freezes corpus + holdout digests, command, source/book/tree/artifact digests, host/hardware/OS/toolchain, isolation & power state, warm-up count, measured `N`, fixed seeds, paired baseline/candidate order, timeout/censor/failure treatment, raw schema, evaluator version, & pass rule. Minimum defaults are 5 warm-ups + 30 paired measured runs for latency/resource cells & paired bootstrap with 10,000 fixed-seed resamples for quality cells; a domain protocol may increase but never reduce them without product-authority revision. Any missing/failed/censored run fails receipt completeness; no dropping outliers after observation.
+
+## Frozen target requirements
+
+| Requirement IDs | Required outcome |
+|---|---|
+| CX-R001–R004 | Universal discovery/disposition, U0–U5 fallback ladder, capability lattice, truthful doctor |
+| CX-R005–R008 | One provider registry, qualification harness, fact schema, provider/version provenance |
+| CX-R009–R012 | Qualify indexed global resolution, ghost-edge equivalence, one scan/hash/no-op fast path, immutable `BuildSnapshotV1` atomic adoption |
+| CX-R013–R016 | Qualify existing build singleflight, exact resident routing, cancellation/waiter semantics, versioned Hub-child lifecycle |
+| CX-R017–R020 | Compact exact index, regex/Boolean/symbol API, update/size bounds, cross-branch/repo search |
+| CX-R021–R024 | Compiler/LSP/SCIP adapters, custom grammars, generic structure, framework/schema/IaC providers |
+| CX-R025–R028 | Explainable hybrid retrieval, graph/change/history relevance, policy/dataflow/security facts, typed abstention, no packet-authority decision |
+| CX-R029–R032 | Local-only permissions, encrypted same-machine export artifacts, backup/recovery, schema compatibility |
+| CX-R033–R036 | Frozen statistical/comparative protocol, public-surface compatibility, performance envelopes, Mac/Windows installed parity |
+
+## Completion gates
+
+- File disposition equals 100%; unknown/unreported count equals zero.
+- Current capability matrix is generated from production qualification receipts, not extension tables or unit tests.
+- Every atomic `CX-H` aspect has one immutable terminal disposition, ledger owner, requirement owner, & validated acceptance receipt.
+- Every `CX-F01..CX-F109` final-absorption row has its named executable receipt; umbrella ledger rows never count as closure.
+- Every `ADOPT` row maps to one `CX-R` requirement & a green acceptance receipt; every `GATE` row records benchmark decision; every `REJECT` remains tested as a boundary.
+- Frozen retrieval corpus never drops below current `86.7%` hit rate or `0.800` MRR; ordered exact results, omissions, generation identity, & ghost-edge fixtures remain equivalent.
+- 550-file cold build `<5 s`, peak RSS `<300 MB`; no-op `<1 s`; one-file delta p95 `<100 ms`; resident exact lookup p95 `<5 ms`; 5,000-file cold build `<60 s` & `<1 GB` RSS.
+- Hub-off means no Cortex service/watcher process. Hub quit drains & kills owned children. Startup occurs only when user enables Hub system startup.
+- Concurrent/stale Hub fixtures prove Cortex accepts one monotonic fenced owner & exits on ambiguous/lost ownership.
+- One `BuildSnapshotV1` identity spans scan through publication; source/provider/resolver churn never exposes mixed-generation facts.
+- Comparator & statistical receipts validate against frozen manifests; “best on market” remains target wording until noninferiority + dominance passes.
+- CLI/MCP/daemon/SDK/artifact compatibility fixtures pass across supported version window.
+- Clean canonical `main`, green full/qualification/performance/recovery suites, native Mac + Windows receipts, nested commit pushed, parent gitlink pinned/pushed, & remote SHA verification are mandatory before “done.”
+
+## Change-control rule
+
+Implementers may update status/evidence links only. Changing a requirement, acceptance threshold, competitor disposition, or invariant requires an explicit architecture decision outside implementation. Independent assurance compares code, tests, runtime, & receipts against this file; it never accepts agent prose as evidence.
+
+## Appendix A — 2026-08-12 vendored snapshot
+
+Historical function-first comparison of Cortex plus 30 repositories formerly captured under `vendor-research/`. Those vendored directories are not present in the current checkout, so their path citations are not reproducible today. Each data row has 32 cells: one aspect + Cortex + 30 repos. `—` means implementation not found/out of scope, `Opt` optional, & `Ext` external integration. Preserve this snapshot as leads; current adoption claims use official evidence above.
 
 ## Repository columns
 
@@ -72,25 +438,6 @@ Function-first comparison of Cortex plus 30 repositories under `vendor-research/
 | Rebuild cost | Moderate bounded parse | Embedding/index refresh | Tag parse + PageRank | Incremental; full ingest moderate | Graph rebuild moderate/high | AST + FTS; vectors Opt high | CPU proportional to files/chunks | Rich analysis high | Native fast but RAM-heavy | Rust graph build | Multi-language parse moderate | Pipeline-dependent | Low | Fast full scan | Fast/native scan | Embedding + clustering moderate/high | Lexical scan + audit models | Deep AST index moderate | Graph parse moderate | Copilot token-heavy | LLM token-heavy | Native scan moderate | Rule/taint dependent | Low/fast JS/TS parse | High: parse + embed + services | Adapter/model dependent | Rule/taint dependent | Module parse low/moderate | High: LLM + three stores | Minimal affected-range parse | High: chunk + embed + upload |
 | Primary efficiency win | Incremental local evidence without vector stack | Token-select context | Cached compact repo map | Passive delta memory | Queryable retained graph | Cheap lexical path before vectors | Reusable AST chunks | One DB for rich proof | Native shared engine | mmap zero-copy | Persistent compact symbol DB | Configurable stack | Avoids AST entirely | Native structural prefilters | Native query optimization | No vector DB service | Hard bounds + cache + early stop | Shallow/deep separation | Git-delta graph | Result cache | Parallel reviews | Native parallel + cache fallback | Native prefilters | Arena/shared pipeline | Scalable distributed services | Pluggable minimal core | Native prefilters | Whole-result cache | Embedded multi-store option | Incremental parsing primitive | Merkle delta embeddings |
 | Main resource penalty | Full graph rebuild + SQLite disk | Model calls | Model calls + transient NetworkX | Encrypted/vector history growth | Graph DB baseline | Semantic mode adds Qdrant/API | Parallel AST memory | Very broad analysis/index | RAM-first residency | Initial graph build | Global DB growth | Unbounded adapter/model choices | Remote clone I/O | Full-repo AST scan | Full-repo rewrite scan | Embedding/clustering | Multiple LLM audit passes | Deep index rebuild | Optional embeddings/wiki | Copilot dependency | Repeated full LLM context | Parallel workers can peak | Taint/dataflow peak | JS/TS only; consumer reparses if unshared | Highest idle service count | Connector/model sprawl | Taint/interfile peak | Full cruise without cache | LLM + multiple stores | No repository semantics | Mandatory vector + embeddings |
-
-### Performance evidence dimensions & Cortex inventory correction
-
-| Dimension | Competitor pattern | Cortex source-of-truth status |
-|---|---|---|
-| Measured scale & latency | RepoLens, Code-Index-MCP, codebase-memory, & Roam publish upstream measurements or claims | Record each value as locally verified, upstream benchmark, or upstream claim; never merge categories. Local 550-file baseline observed 23.4 s cold build, 899 MB RSS, 21.2 s lexical resolution, 2.2 s Tree-sitter, 77.9 ms one-file delta, & 2.7 ms no-op barrier; durable evidence requires command, commit, fixture, host, samples, & raw report. |
-| Cache specificity | Grit keys no-match reuse by file + pattern hashes; React Doctor separates cache domains | Cortex parse cache already reuses harvested facts by content hash. Record cache key, invalidation key, & reused work for every cache. |
-| Incremental closure | Code Review Graph uses 2 hops / 500 files | Cortex already owns `MAX_HOPS = 2` & `MAX_DEPENDENT_FILES = 500` in `graph/delta-store.mjs`; do not reimplement them. These bounds govern delta propagation, not resolved-edge soundness. |
-| Resolution soundness | Bounded relink can retain ghost edges when symbol universe changes | `graph/parse-cache.mjs` deliberately performs global re-resolution against current symbol universe. Preserve that invariant; make global resolution indexed. Any future bounded resolver requires typed truncation plus deterministic full fallback. |
-| Append-only ingestion | Brain0 stores byte cursors | Cortex has no general append-only source cursor contract; adopt only for append-only inputs with explicit checkpoint identity. |
-| Large-input streaming | treesitter-chunker supports chunk diffs & streaming | Record peak-memory model & threshold; reuse file bytes across providers before adding parallelism. |
-| Native layout | Oxc arena/SIMD; repo-graph rkyv+mmap | Later optimization only: measured parsing is under 10% of cold-build time. |
-| Cancellation & recovery | Claude Context aborts indexing & rejects poisoned snapshots | Cortex daemon already owns cancellation; extend it to builds rather than creating another cancellation system. |
-| Resource stop-losses | OpenGrep caps rules, time, & matches | Keep typed CPU/time/result ceilings across build & query paths. |
-| Fast-path routing | Code-Index-MCP bypasses BM25 for symbol intent | In-process exact query already beats 5 ms; route exact lookup through resident daemon to remove process startup. |
-
-Current bottleneck is indexed global lexical resolution, not parsing. `service/protocol.mjs` exposes query methods only, so concurrent CLI builds do not enter `service/server.mjs`'s per-root queue. Correct sequence is resolver indexes → duplicate generation-hash removal/one publication → daemon build singleflight using existing queue + cancellation → storage compaction + prepared writer → measured bounded workers → native layout. Resolved-edge caching behind two-hop/500-file closure is excluded because it conflicts with ghost-edge prevention.
-
-Final-shape rule: freeze retrieval ordering/quality, byte-identical no-op rebuilds, explicit ghost-edge cases, cancellation/recovery, and canonical benchmark receipts in CI before optimization. Each optimization must preserve those outputs while reducing measured work. Indexed global resolution is the settled architecture; bounded fact-closure resolution is deferred outside this design and should be deleted unless indexed global resolution still misses gates.
 
 ## 5. Freshness, hooks & automation
 
