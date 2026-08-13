@@ -1,250 +1,245 @@
-# Cortex build, storage, and incremental-performance improvements
+# Cortex best-of-market execution plan
 
 Date: 2026-08-12
-Status: inventory-corrected implementation plan; correctness repairs are landed
-Systems: Cortex primary; Membrane search seam secondary; no Orthic or release-artifact change
 
-## Objective
+Status: derived execution plan; implementation stopped; no completion claim
 
-Reduce Cortex cold-build time, graph storage, incremental-update latency, WAL growth, and resident-resource cost without weakening global resolution soundness, deterministic search, generation binding, atomic adoption, or Membrane's typed degradation behavior.
+Authority: [`../../sol.md`](../../sol.md). This plan cannot change its invariants, requirements, dispositions, or gates.
 
-## Current measured state
+Repository: canonical `/Volumes/D/claude/cortex` only; `cortex2` is forbidden.
 
-| Host | DB bytes | Display size | WAL | Files | Symbols | `symbol_terms` rows |
-|---|---:|---:|---:|---:|---:|---:|
-| Mac | 1,854,156,800 | 1.85 GB / 1.73 GiB | 0 | 3,975 | 163,368 | 2,586,494 |
-| Windows | 3,565,207,552 | 3.57 GB / 3.32 GiB | 0 | 11,050 | 292,930 | 4,788,038 |
+## Outcome
 
-`symbol_terms` plus `idx_symbol_terms_symbol` consumes 927,891,456 bytes on Mac and 1,810,825,216 bytes on Windows: 50.0% and 50.8% of each database.
+Deliver every `CX-R001..CX-R036` requirement through consumer-compatible packages that are independently releasable only when their partial-state contract is green. Final product maps every file, reports capability depth honestly, resolves globally without ghost edges, searches exactly at repository scale, ingests precise compiler/LSP facts where available, falls back structurally everywhere, optionally ranks semantic relevance without deciding Membrane packet authority, remains local-first, & runs only as a Hub-owned child.
 
-The secondary index alone consumes 462,319,616 bytes on Mac and 902,238,208 bytes on Windows. Average external symbol IDs are 92.7 bytes on Mac and 105.8 bytes on Windows; `symbol_terms.symbol_id` averages 99.0 and 110.4 bytes, while tokens average only 6.5 and 8.0 bytes.
+## Requirement closure map
 
-Free pages are only about 9.2 MB on Mac and 0.6 MB on Windows. `VACUUM` alone cannot materially reduce either database.
+| Book requirements | Accountable acceptance owner | Predecessors | Partial-state invariant | Not green until |
+|---|---:|---|---|---|
+| CX-R001–R004 | Cortex integration owner / P2 | 0 → 1 | Existing query/doctor schemas stay readable while U0–U5 fields are additive | Coverage + truthfulness cells; P1 disposition + P2 lattice receipts |
+| CX-R005–R008 | Cortex integration owner / P3 | 0 → 2 | Old registry path remains authoritative until one pipeline has consumer parity | Truthfulness + compatibility cells; P3 end-to-end receipt |
+| CX-R009–R012 | Cortex graph owner / P4 | 0 → 3 | Last valid generation remains queryable; no new snapshot schema adopted early | Correctness + snapshot + recovery cells; P4 churn/equivalence receipt |
+| CX-R013–R016 | Membrane Hub owner + Cortex service owner / P5 | 0; Membrane P1 protocol release | Existing lifecycle remains installed until Hub protocol compatibility is proven | Lifecycle + portability cells; joint installed receipt |
+| CX-R017–R020 | Cortex storage/query owner / P10 | 0 → 4 → 6 | Exact API & stored schema stay compatible; migration is rebuildable/backout-safe | Query + storage + recovery cells; P6/P10 receipts |
+| CX-R021–R024 | Cortex provider owner / P8 | 0 → 2 → 3 → 7 | New providers are disabled/unadvertised until positive production qualification | Coverage + truthfulness + compatibility cells; P7/P8 receipts |
+| CX-R025–R028 | Cortex retrieval owner / P9 | 0 → 3 → 8 | Exact/structural order remains default; semantic/policy additions stay additive or disabled | Retrieval + correctness + privacy cells; P8/P9 receipts |
+| CX-R029–R032 | Cortex integration owner / P10 | 0 → 4 → 6 | No export/schema becomes default before recovery & old-reader behavior pass | Compatibility + recovery + delivery cells; P10 receipt |
+| CX-R033–R036 | Cortex release owner / P10 | 0 then all owners | No performance/market/delivery claim from partial packages | Evidence + comparative + portability + delivery cells; final release receipt |
 
-The last Mac four-path incremental catch-up took about five minutes. This is live evidence that incremental search maintenance remains too expensive after contamination and WAL repairs.
+Named owner produces with package's checked-in command into `artifacts/receipts/CX-R###-R###.json`; independent Oracle verifies source/book/protocol/artifact digests & acceptance cells before green. Only named owner may propose green; validator + verifier establish it. A package may commit before downstream completion only when its partial-state invariant, compatibility/migration gate, rollback, & current acceptance cells pass; otherwise it is an integration checkpoint, not independently shippable.
 
-For Cortex core excluding competitor snapshots, a local 550-file run measured 23.4 seconds and 899 MB RSS. Lexical resolution consumed 21.2 seconds while Tree-sitter consumed 2.2 seconds. A one-file delta measured 77.9 ms and a no-op barrier 2.7 ms. These measurements remain baseline observations until their exact commands, fixture identity, host identity, and raw reports are committed beside the benchmark harness.
+## Final-absorption package map
 
-Windows is larger primarily because its graph covers 11,050 files versus 3,975 on Mac. Both graphs contain zero `node_modules` or benchmark-directory rows.
+| Packages | Mandatory book closure rows |
+|---|---|
+| 0, 2 | CX-F02, F05–F06, F20–F22 |
+| 1–3, 7–8 | CX-F15–F18, F27 |
+| 4–6 | CX-F08, F10–F11, F19, F24 |
+| 5, 10 | CX-F17, F25 |
+| 8–9 | CX-F01, F03–F04, F07, F09, F12–F14, F21–F23, F26 |
 
-Mac currently contains 177 symbols outside its primary generation; Windows contains 39. This residue is negligible today but needs a bounded invariant so incremental generations cannot accumulate silently.
+No package may mark a broad `CX-A`, `CX-H`, or `CX-R` row green while any mapped `CX-F` receipt remains absent.
 
-## Existing inventory that must be reused
+## Frozen starting evidence
 
-- `graph/delta-store.mjs` already owns the Merkle ledger, file state, artifact state, `MAX_HOPS = 2`, and `MAX_DEPENDENT_FILES = 500`. Do not build a second incremental manifest or duplicate these caps.
-- `graph/parse-cache.mjs` deliberately caches harvested facts while globally re-resolving them against the current symbol universe. Global re-resolution is a soundness invariant that prevents ghost edges when symbols move, appear, or disappear.
-- Existing parse reuse does not make global resolution cheap: repeated file and symbol scans remain the dominant cold-build cost.
-- `service/protocol.mjs` currently exposes query methods only. `service/server.mjs` already owns cancellation and a per-root queue for those reads, but no build method or cross-caller build singleflight exists.
-- Existing daemon cancellation and resource-limit behavior must be extended, not reimplemented through a separate lock-file protocol.
-- Existing exact in-process query latency is already below 5 ms. CLI/process startup, not query execution, dominates external latency.
+- Canonical doctor reported `broken` on 2026-08-12: stale graph/provider identity, Merkle mismatches, missing understanding/verdict artifacts.
+- Working tree contains an uncommitted language-coverage overlay plus unrelated generated-doc drift. Neither is accepted baseline.
+- Measured 550-file cold build: `23.4 s`, `899 MB RSS`; lexical resolution `21.2 s`, Tree-sitter `2.2 s`.
+- Measured one-file delta: `77.9 ms`; no-op barrier: `2.7 ms`.
+- Exact in-process queries are already below `5 ms`; external startup dominates CLI latency.
+- `symbol_terms` + secondary index consumed roughly half measured DB allocation; free pages were negligible.
+- Existing `delta-store` owns Merkle/file/artifact state, `MAX_HOPS=2`, & `MAX_DEPENDENT_FILES=500`.
+- Indexed global re-resolution already exists in committed source & remains a soundness choice; bounded resolved-edge closure caching is excluded.
+- Semantic provider is disabled & ranking/compiler/framework/IaC/schema modules are not wired through production end to end.
 
-## Delivery law — equivalence before optimization
+All measurements remain observations until benchmark manifests bind command, fixture, commit/tree, host, toolchain, samples, raw output, & peak RSS.
 
-No performance implementation begins until canonical CI contains these regression gates:
+## Delivery law
 
-- frozen retrieval corpus with ordered outputs, hit rate, MRR, omissions, and generation identity;
-- focused suite baseline reproduced from canonical `main` with raw command receipts;
-- byte-identical no-op rebuild output and generation identity;
-- explicit ghost-edge fixtures for symbol add, delete, move, rename, and ambiguity changes;
-- cancellation, interrupted publication, and poisoned-snapshot recovery fixtures;
-- canonical cold, no-op, and one-file-delta benchmark manifests with host/toolchain identity and raw samples.
+1. Freeze output equivalence before optimization.
+2. Land one work package at a time; each package has its own tests, measurements, rollback, compatibility proof, commit, & remote receipt only when its partial-state invariant permits release.
+3. Reject any change that alters ordered exact results, graph facts, omissions, provider/generation identity, or ghost-edge outcomes unless `sol.md` explicitly requires that new behavior.
+4. Never relax fixtures, thresholds, ordering, expected omissions, timeouts, or sample counts to make a change pass.
+5. A tested module is not a product capability until registry → qualification → build → store → query → doctor is complete.
+6. Re-measure after each package. Stop adding machinery once all frozen gates pass.
 
-Every later change lands independently and must prove identical observable outputs with less work. A failed equivalence gate rejects that change; it never causes baseline weakening, fixture deletion, ordering relaxation, or a larger tolerance. Remove the 4× CI slack only after stable host-normalized baselines exist.
+## Work package 0 — establish admissible baseline
 
-Fact-level bounded resolved-edge caching is not part of this plan. Indexed global resolution is final shape unless measurements after P0 still miss gates; any replacement requires a new soundness decision and its own equivalence proof.
+Requirements: CX-R033–R036.
 
-## Measured rejected experiments
+- Inventory every dirty path & classify it as prior implementation overlay or unrelated user drift without modifying either.
+- Reproduce canonical `main` in an isolated temporary clone only for comparison; do not switch this checkout or create a worktree.
+- Freeze graph fact/order corpus, ghost-edge add/delete/move/rename/ambiguity fixtures, retrieval corpus, no-op byte identity, interruption recovery, & lifecycle process census.
+- Freeze cold/no-op/delta/100-file/5,000-file benchmark manifests on Mac & Windows.
+- Freeze `benchmark-protocol.v1.json`, `cortex-competitors.v1.json`, atomic `CX-H` closure, public-surface inventory, supported-version window, & exact canonical `sol.md`/plan digests. Every later receipt names those digests.
+- Freeze package capacity manifest: owned file paths, prerequisite artifacts, measured baseline paths/lines, projected changed-line ceiling, native-host effort, acceptance cells, & aggregate remaining work.
+- Record current provider registry, extension/file/byte counts, capability vectors, fallback reasons, & doctor output.
 
-All measurements below used `node scripts/benchmark-storage.mjs --fixture-files 550 --samples 5` on the same host with an immediately adjacent clean `0bd5395` control. Each candidate passed focused equivalence tests, then was removed uncommitted when any latency or RSS gate regressed.
+Exit: a failing baseline is accepted as truth; test harness is green against frozen expected behavior & cannot be edited by later packages.
 
-| Candidate | Control → candidate evidence | Decision |
-|---|---|---|
-| Hoist repeated provider-rank registration during full rebuild | cold p50/p95 `909.74/1095.38 → 832.31/951.40 ms`; no-op `889.40/997.85 → 844.19/883.47 ms`; delta p50 `14.60 → 15.92 ms`; delta RSS p95 `83.25 → 85.13 MB`; fixed-100 `3.64 → 3.81 s` | rejected: delta, RSS, and fixed-100 regressed |
-| Reuse one `symbol_terms` insert statement during full rebuild only | cold p50/p95 `1583.60/2052.21 → 1398.03/1507.41 ms`; no-op p50 `1208.68 → 1245.73 ms`; delta p95 `33.25 → 43.46 ms`; fixed-100 `3.73 → 4.05 s` | rejected: no-op, delta, and fixed-100 regressed |
-| Skip SQLite inode publication for an integrity-checked identical generation | cold p50/p95 `1341.03/1367.00 → 1299.57/1441.86 ms`; no-op p50/p95 `1374.26/1388.05 → 917.11/950.64 ms`; delta p50/p95 `16.97/31.91 → 21.84/35.73 ms`; delta RSS p95 `82.23 → 82.84 MB` | rejected: cold p95, delta, and RSS regressed |
+Package 0 contributes immutable Cortex source/ref/tree/commit/artifact/protocol/book/receipt inputs to parent workspace integration owner. That owner is sole serialized writer of root `artifacts/releases/context-stack-release.v1.json`; manifest version + prior digest use compare-and-swap, & any divergent/stale child tuple is rejected. Manifest also seals Membrane Hub tuple, supported lifecycle ranges, native install source, joint test commands, & receipt digests. Exact sequence: pre-install commits exist → native artifacts build from those commits → parent owner seals one tuple → joint installed tests run against sealed artifacts → nested refs push unchanged → parent pins those exact commits → remote refs/pins verify. Any child/source/artifact/receipt mismatch or post-test change invalidates joint proof.
 
-CPU profiles from five clean canonical-core builds remain diagnostic evidence only: SQLite/store accounted for `41.5%`, CLI orchestration `22.3%`, and Tree-sitter `18.0%` of sampled CPU. No remaining isolated candidate has same-output, less-work evidence across every frozen gate, so storage and orchestration work stops here rather than weakening acceptance thresholds.
+## Work package 1 — universal file disposition
 
-## What was wrong
+Requirements: CX-R001–R004. Absorbs CX-A01–A03.
 
-1. Parcel subscription exclusions resolved to existing literal paths. Excluded directories created after subscription could enter the graph.
-2. Duplicate watcher events reached SQLite before coalescing.
-3. Watcher callbacks repeatedly opened the same database and could overlap gap reconciliation.
-4. Applied journal rows and WAL frames accumulated when checkpoints could not progress.
-5. Rebuilds modified the live store instead of constructing and validating a separate inode.
-6. Full rebuild search population performed per-symbol replacement work after the store had already been cleared.
-7. Searchable symbol information exists in both FTS `symbol_search` and portable `symbol_terms`.
-8. `symbol_terms` is `WITHOUT ROWID` but its composite primary key repeats TEXT `generation_id`, token, and TEXT `symbol_id` millions of times; its secondary symbol index repeats more of that data.
-9. TEXT IDs and generation IDs repeat across `symbols`, `edges`, `fact_owner`, search tables, and their indexes.
-10. Incremental updates still delete and reinsert search state per affected symbol, multiplying writes by token count.
+- Make discovery emit one U0–U5 disposition for every tracked, non-ignored file.
+- Add U1 opaque artifact facts: type/MIME, byte size, content hash, Git metadata, generated/binary classification, references.
+- Add U2 lexical/document/config facts for all text not handled by richer providers.
+- Add U3 generic structural provider with explicit parse confidence & error coverage.
+- Publish unexplained file/byte remainder; acceptance requires zero.
 
-## Repairs already landed
+Exit: 100% file disposition fixture across source, docs, config, schema, lockfiles, generated files, media, archives, models, binaries, unknown extensions, Unicode, case collisions, & platform path forms.
 
-- `a04307e`: coalesce events before journal persistence, reuse one actor DB handle, serialize gap repair, checkpoint passively after committed batches, prune applied journal history, and tune readers with 256 MB mmap plus 64 MB cache.
-- `7b87355`: filter ignored paths at actor ingress.
-- `e03a14e`: load configured exclusions dynamically, remove full-rebuild per-symbol search deletion, build into a fresh database, validate integrity and identity, truncate its WAL, and atomically adopt it.
-- Mac and Windows graphs were rebuilt from current source.
-- Current result on both hosts: fresh graph, zero pending paths, zero event gap, zero contamination, and zero-byte WAL after quiescent checkpoint.
+## Work package 2 — capability lattice & qualification
 
-## Pending improvements, prioritized
+Requirements: CX-R003–R008. Absorbs CX-A04, CX-A05, CX-A09.
 
-### P0 — index global resolution without weakening it
+- Replace language-count claims with generated capability matrix.
+- Qualify discovery, syntax, symbols, imports, definitions, references, calls, types, implementations, frameworks, schemas/IaC, dataflow/security, tests, & refactors independently.
+- Bind every cell to provider/version, fixture hash, platform, result, fallback, & last successful receipt.
+- Doctor reports `qualified`, `fallback`, `unsupported`, or `failed`, never inferred marketing support.
 
-- Build and reuse `filesByPath`, `symbolsByName`, `importsByFile`, and equivalent schema/config indexes once per build.
-- Iterate harvested call names and their candidate source symbols instead of every source symbol against every distinct target name.
-- Hoist shared indexes across import, call, schema, and config edge passes.
-- Preserve global re-resolution against the complete current symbol universe. Do not cache resolved edges behind a two-hop/500-file closure.
-- Keep raw harvested facts content-addressed in the existing parse/delta stores; invalidate by content hash and parser/extractor version.
-- If a future bounded resolution path is proposed, require a typed truncation result plus deterministic full-resolution fallback before adoption.
-- Remove the duplicate consecutive `computeGenerationId(cleanNodes, cleanEdges, ...)` serialization/hash.
+Exit: checked-in fixtures cover every advertised extension & every level-2/3 capability on Mac + Windows.
 
-### P1 — add daemon-owned build singleflight
+## Work package 3 — one provider pipeline
 
-- Extend the existing daemon protocol with a build operation using the same typed request/response and cancellation conventions.
-- Join concurrent equivalent builds by canonical `(repo, outDir, source fingerprint)` identity.
-- Put build ownership behind the daemon's existing canonical-root coordination; do not add an independent lock-file authority.
-- Let a newer incompatible source fingerprint cancel and replace stale in-flight work only through the existing cancellation path.
-- Prove waiter cancellation does not kill work still needed by another waiter and process termination cannot publish a partial generation.
-- Keep exact-symbol routing on the resident path so process startup does not dominate query latency.
-
-### P2 — one scan, one hash, one publication
+Requirements: CX-R005–R008, CX-R021–R024.
 
-- Reuse file bytes across document, lexical, and AST providers where ownership permits.
-- Hash staged generation content once after augmentation.
-- Publish compact sidecars from the staged generation; do not pretty-print duplicate multi-megabyte graph bodies.
-- Preserve atomic adoption, generation identity, and poisoned-snapshot recovery.
+- Create one production registry consumed by qualification, build, store, query, doctor, SDK, & MCP.
+- Wire existing Python SCIP, Python module resolver, framework, Terraform, SQL, hybrid-ranker, & provider-interface islands or mark them absent.
+- Enforce provider permissions, protocol range, input digest, output schema, time/memory/result limits, cancellation, & typed failure.
+- Store provider facts through one versioned language-neutral fact schema.
 
-### P3 — remove unused FTS and normalize keys
+Exit: deleting any registry entry removes corresponding product capability & turns its qualification/doctor row explicit; no test-only capability remains advertised.
 
-A repository consumer sweep finds no `MATCH` query against `symbol_search`; `symbolSearchIsFts` has no caller, and `searchGenerationSymbols` reads only `symbol_terms`. Remove it only after public-schema and fixed-corpus compatibility tests.
+## Work package 4 — qualify resolution & remove remaining rebuild work
 
-- Stop inserting and deleting `symbol_search` rows.
-- Remove its migration/table only after confirming no supported external DB consumer exists.
-- Measure isolated size and incremental-write effect before combining results with integer compaction.
-- Keep `symbol_terms` as canonical path because it already owns deterministic longest-token lookup, valid-generation filtering, and `*` fallback.
-- Reconsider compact contentless FTS only if a future supported consumer requires ranking or substring search.
-- Introduce `generation(id INTEGER PRIMARY KEY, external_id TEXT UNIQUE, ...)`.
-
-- Introduce `generation(id INTEGER PRIMARY KEY, external_id TEXT UNIQUE, ...)`.
-- Give symbols an integer row key; retain external string identity once only when API compatibility requires it.
-- Replace repeated `generation_id TEXT` with `generation_row INTEGER` foreign keys.
-- Replace `symbol_terms.symbol_id TEXT` with `symbol_row INTEGER`.
-- Introduce a token dictionary and replace repeated `token TEXT` with `token_row INTEGER` when its measured join cost passes the query corpus.
-- Convert edge, provider-owner, and search indexes to integer references where query contracts allow it.
-- Keep migration backups and N-2/N-1 migration fixtures.
-
-Dropping FTS alone will not halve the DB because `symbol_terms` and its secondary index dominate allocation. Near-50% reduction requires compacting that representation too. Any percentage estimate remains a planning hypothesis, not acceptance evidence.
-
-### P4 — prepare and batch SQLite writes
-
-- Remove `idx_symbol_terms_symbol` after its delete contract has a replacement; SQLite does not duplicate the indexed symbol column twice, but the measured index still repeats the remaining composite primary-key columns and occupies about one quarter of each database.
-- Retain each symbol's prior token-row list in a compact ledger or blob, then delete removed terms through exact `(generation, token, symbol)` primary-key probes.
-- Collect all affected symbol rows before opening the write transaction.
-- Use one `BEGIN IMMEDIATE` transaction per coalesced file batch.
-- Delete search rows by affected integer symbol rows or affected paths, not by the entire generation.
-- Insert replacement terms with reused prepared statements and bounded batches.
-- Use a staging table when it beats direct affected-row replacement.
-- For a full rebuild only, clear once, bulk insert, then create or rebuild secondary indexes.
-- Never run `DELETE WHERE generation_id=?` for an ordinary incremental file update.
-- Prepare statements once per writer, register provider ranks once, stage compact rows, and keep one serialized SQLite writer.
-
-### P5 — bound WAL and journal behavior
-
-- Retain WAL mode, passive post-batch checkpointing, applied-journal pruning, and truncate only at atomic adoption or an explicit quiescent maintenance boundary.
-- Add metrics for WAL bytes, oldest active reader, checkpointed frames, busy checkpoints, batch duration, and unapplied journal age.
-- Add a threshold-triggered maintenance signal; report checkpoint starvation instead of claiming a hard WAL cap.
-- Benchmark `wal_autocheckpoint` values including SQLite default and 4,000 pages.
-- Do not claim `wal_autocheckpoint=4000` prevents a multi-GB WAL; long-lived readers can still block progress.
-- Consider `synchronous=NORMAL` only after explicitly accepting possible loss of recent committed transactions during power failure. Database consistency is not identical to transaction durability.
-
-### P6 — benchmark writer and page-layout tuning
-
-- Separate connection policies by role: disposable rebuild sidecar, live watcher writer, and read-only consumer.
-- For the disposable sidecar only, benchmark `journal_mode=OFF`, `synchronous=OFF`, exclusive locking, and a larger cache; any failure discards the sidecar, and WAL must be restored and read back before integrity validation and adoption.
-- Benchmark writer `cache_size=-131072`, `mmap_size=268435456`, and current defaults.
-- Measure aggregate RSS across every resident repo actor; a 128 MB cache must not multiply unboundedly per actor.
-- Benchmark `temp_store=MEMORY`; reject it if memory pressure or concurrent rebuild RSS regresses.
-- Run `ANALYZE` and `PRAGMA optimize` once after rebuild or substantial schema change, not after each batch.
-- Buffer terms in a staging table, sort by final primary key, bulk-load sequentially, and create secondary indexes after the load.
-- Verify the effective `journal_mode` after requesting WAL; external or network filesystems may refuse it without a hard error.
-- Set `query_only=ON` on read-only consumers and keep schema migration writer-owned.
-- Benchmark page sizes 4,096, 8,192, and 16,384 bytes on both machines.
-- Apply a page-size change only during the single planned schema rebuild; larger pages can improve B-tree depth but increase small-write amplification.
-
-### P7 — parallelize outside SQLite's writer boundary
-
-- Parallelize parsing, provider extraction, tokenization, and descriptor construction with bounded workers.
-- Keep one serialized SQLite writer and one `BEGIN IMMEDIATE` batch at a time.
-- Transfer compact prepared rows to the writer instead of raw file bodies where possible.
-- Size worker concurrency from measured CPU and memory pressure, not logical-core count alone.
-- Add bounded workers only after resolver, publication, and writer changes are measured; parsing currently consumes under 10% of measured cold-build time.
-
-## Cross-system seam requirements
-
-### Cortex
-
-- Own schema, migrations, search implementation, batch writer, WAL policy, metrics, rebuild, and atomic adoption.
-
-### Membrane
-
-- Preserve the existing typed search response, valid-generation requirement, deterministic fallback, deadlines, and honest unavailable/degraded states.
-- Change only the Cortex query adapter needed for the selected canonical search representation.
-- Add parity tests against old and new stores before deleting either search representation.
-
-### Workspace and operating systems
-
-- Implement and test source changes on Mac first.
-- Rebuild and measure the Mac graph only after schema and query behavior are final.
-- Pull the same source on Windows, run native tests, then rebuild and measure Windows once.
-- Do not rebuild Membrane or Orthic signed release artifacts; this is local Cortex graph storage and query work.
-
-## Acceptance gates
-
-Correctness:
-
-- Fixed query corpus returns identical ordered symbol identities, generation filtering, fallback behavior, and typed omissions on old and new implementations.
-- Migration rollback, interrupted migration, integrity check, manifest identity, and atomic-adoption tests pass.
-- Cortex full suite, Membrane seam tests, and Mac/Windows native graph checks pass.
-
-Storage:
-
-- No `node_modules` or benchmark-directory graph rows.
-- No material free-page explanation is used as a substitute for schema reduction.
-- Old-generation symbol and term rows remain within an explicit bounded residue gate.
-- Planning targets: Mac 0.85–1.10 GB; Windows 1.60–2.00 GB. Report actual values rather than forcing these estimates.
-
-Performance:
-
-- Commit a reproducible baseline manifest containing command, source commit, fixture identity, host/toolchain identity, samples, raw timings, and peak RSS.
-- A 550-file cold build targets less than 5 seconds and less than 300 MB RSS; report misses honestly rather than weakening the gate.
-- No-change rebuild is less than 1 second; one-file delta p95 is less than 100 ms.
-- Exact symbol lookup p95 is less than 5 ms through the resident daemon.
-- A committed 5,000-file fixture cold-build gate is less than 60 seconds and less than 1 GB RSS.
-- Four-path incremental update completes in seconds, not minutes, on both hosts.
-- A fixed 100-file update corpus improves by at least 10× from the recorded baseline without changing results.
-- Idle watcher CPU returns near baseline after drain; no stuck writer or duplicate reconcile remains.
-- Aggregate watcher RSS is measured before and after every cache or worker change.
-- Remove the 4× CI slack only after stable host-normalized baselines exist.
-
-WAL and recovery:
-
-- WAL returns to zero after explicit quiescent checkpoint on both hosts.
-- A blocked-reader fixture proves growth is observable and typed; no configuration is described as a guaranteed hard cap.
-- Process interruption during build leaves the previous validated DB readable.
-
-## Execution order
-
-1. Land equivalence, ghost-edge, no-op byte identity, cancellation, and canonical benchmark gates in CI.
-2. Replace quadratic global resolver scans with shared indexes; retain global soundness and prove edge parity.
-3. Remove duplicate generation serialization/hash and publish one staged generation.
-4. Measure gates. Stop if targets pass; do not add fact-level closure caching.
-5. Extend resident daemon with cancellable build singleflight and exact-symbol fast routing.
-6. Prove FTS has no supported consumer; prototype integer-keyed terms, token dictionary, and secondary-index-free exact deletion.
-7. Select final term shape from correctness, cold-start, size, and incremental-write evidence.
-8. Land new schema as a typed rebuild-required transition with compatibility and rollback fixtures.
-9. Land prepared, affected-symbol batch maintenance through one SQLite writer.
-10. Benchmark rebuild-handle WAL, cache, temp store, page size, sorted load, and bounded workers independently.
-11. Remove FTS only after Membrane parity passes, then perform one final Mac rebuild and one final Windows rebuild.
-12. Record final DB allocation by table, latency, RSS, WAL, integrity, and seam receipts.
-
-This order attacks measured resolver cardinality first, reuses existing incremental and daemon machinery, avoids two full rebuilds, and keeps schema choice evidence-driven.
+Requirements: CX-R009–R012.
+
+- Qualify existing shared `filesByPath`, `symbolsByName`, imports-by-file, package/module, schema/config, & provider indexes against frozen graph/ghost-edge fixtures.
+- Profile current clean source after indexed resolution; treat old `21.2 s` resolver evidence as historical, not current bottleneck proof.
+- Implement true unchanged-source fast path, remove duplicate generation serialization/hash, & reuse scanned bytes/hashes across providers.
+- Fix generic tier-2 call extraction or mark each affected capability `UNSUPPORTED`; zero emitted facts never qualify a positive capability.
+- Preserve global add/delete/move/rename/ambiguity semantics exactly.
+- Implement & qualify `BuildSnapshotV1`; stage facts/indexes only under one scan/provider/schema/resolver/source identity, compare-and-swap adoption, & reject/restart any mismatch.
+- Add source/provider/resolver churn during build plus cancellation/crash fixtures proving no mixed snapshot becomes queryable.
+
+Exit: frozen graph is semantically identical; ghost-edge suite passes; no-op avoids rebuild/publication; 550-file cold build meets `<5 s` & `<300 MB RSS` or remaining profile identifies next measured bottleneck without changing resolution semantics.
+
+## Work package 5 — qualify daemon build & close Hub lifecycle
+
+Requirements: CX-R013–R016.
+
+- Retain existing cancellable build singleflight keyed by canonical repo, output, source fingerprint, provider set, & schema; remove any bypass path or mismatched identity semantics found by conformance tests.
+- Join equivalent callers; isolate waiter cancellation; replace incompatible stale work through existing cancellation path.
+- Route exact reads through resident service.
+- Consume shared `hub-child-lifecycle.v1`: protocol version, executable/artifact hash, host/install + Hub instance/process identity, monotonic fencing token, lease, inherited liveness handle, readiness, drain, exit taxonomy, restart/backoff, update, & process-tree identity.
+- Reject stale/lower/foreign Hub fences even with a live old handle; higher-fence handoff drains prior owner before readiness; ambiguous/lost owner proof exits boundedly.
+- Remove independent startup/persistence/self-restart paths only after Membrane Hub publishes compatible protocol proof. Hub owns children, readiness, drain, kill, & optional system startup.
+
+Exit: concurrent-build fixture executes one build; interrupted publication preserves prior generation; concurrent/stale Hub & lease-store-loss fixtures prove one fenced owner; Hub-off process census is zero on Mac + Windows.
+
+## Work package 6 — exact search & compact storage
+
+Requirements: CX-R017–R020. Absorbs CX-A06–A08, CX-A13.
+
+- Prove supported consumers for FTS & `symbol_terms`; select one exact authority.
+- Benchmark compact FTS/terms against positional trigram prototype on exact, prefix, substring, regex, Boolean, symbol, update, size, & memory corpora.
+- Normalize generation/symbol/token identities to integer rows where measured beneficial.
+- Prepare/batch affected rows through one SQLite writer; never rewrite whole generation for ordinary delta.
+- Migrate by typed rebuild-required transition with N-2/N-1 fixtures, rollback, atomic adoption, & recovery.
+
+Exit: exact API meets p95 `<5 ms`; no-op `<1 s`; delta p95 `<100 ms`; 100-file update improves `>=10×`; storage/update cost beats frozen baseline without relevance loss.
+
+## Work package 7 — precise semantic providers
+
+Requirements: CX-R021–R024. Absorbs CX-A04, CX-A05, CX-A16, CX-A24.
+
+- Define compiler/LSP/SCIP adapter ABI, sandbox, permissions, version/probe, source digest, incremental update, & stale behavior.
+- Prioritize TS/JS, Python, Rust, Go, Java/Kotlin, C/C++, C#, Ruby, & Swift based on repository byte coverage, not marketing order.
+- Import portable SCIP/LSIF with provenance; support local LSP adapters where compiler indexers are absent.
+- Preserve U4/U3/U2 fallback for every provider failure.
+
+Exit: each precise capability has compiler/LSP-derived fixture proof; unsupported semantic dimensions remain explicit while file coverage stays complete.
+
+## Work package 8 — grammars, frameworks, schemas, IaC, policies
+
+Requirements: CX-R021–R028. Absorbs CX-A02, CX-A09, CX-A15, CX-A19.
+
+- Add signed local custom-grammar registration & conformance.
+- Wire framework routes/events/ORM/deploy/test facts, SQL/schema relations, Terraform/IaC resources, package/build/workflow ownership.
+- Add dependency policies, cycles, forbidden edges, trust boundaries, change impact, dataflow/security adapter results.
+- Every report cites facts, provider, generation, uncertainty, omissions, & source ranges.
+
+Exit: representative polyglot apps produce qualified cross-language/framework/data relationships & deterministic policy results.
+
+## Work package 9 — explainable hybrid retrieval
+
+Requirements: CX-R025–R028. Absorbs CX-A10–A14, CX-A17–A18, CX-A21.
+
+- Keep exact/structural/graph lanes authoritative.
+- Add optional local semantic candidates behind provider availability & explicit enablement.
+- Rank with visible exact, lexical, semantic, graph centrality, change relevance, ownership/history, diversity, & source freshness evidence. Cortex never assigns packet authority or authorization.
+- Add typed abstention & deterministic exact fallback.
+- Never upload source/embeddings by default; any egress requires explicit provider permission & receipt.
+
+Exit: held-out retrieval/whole-task results improve without exact-order, privacy, latency, RSS, determinism, or fallback regression. Otherwise semantic remains disabled.
+
+## Work package 10 — cross-repository operation, recovery, & release proof
+
+Requirements: CX-R017–R020, CX-R029–R036.
+
+- Add branch/repository identity, ownership/history overlays, cross-repo symbol references, bounded pack export, schema compatibility, backup/restore, diagnostics, & repair.
+- Exercise corrupt DB, stale provider, missing grammar/compiler, blocked WAL reader, interrupted build, source churn, daemon death, Hub loss, & downgrade.
+- Produce Mac + Windows qualification, performance, lifecycle, & recovery receipts.
+- Run public CLI/MCP/daemon/SDK/schema/artifact compatibility matrix & migrations across supported version window.
+- Run frozen same-corpus competitor adapters under shared statistical evaluator; retain target wording unless noninferiority + dominance passes.
+- Release sequence is strict: Membrane Hub protocol commit/release + compatibility receipt → Cortex child adoption → installed joint Mac/Windows process-census/fault receipt with matching protocol/artifact hashes → Cortex commit/push → parent pin/push.
+- Commit/push Cortex; then pin/push parent gitlink; verify remote SHAs.
+
+Exit: every `CX-A` ledger row has `ALREADY+proof`, `ADOPT+receipt`, `GATE+decision`, or enforced `REJECT`; every CX-R requirement is green.
+
+## Frozen acceptance matrix
+
+| Axis | Gate |
+|---|---|
+| Coverage | `U1..U5 + U0 = 100%`; unexplained files/bytes `0` |
+| Truthfulness | Capability cells generated from current production receipts; no module/test-only claims |
+| Correctness | Ordered exact results, graph facts, ghost edges, omissions, provider/generation identity equivalent |
+| Snapshot | One `BuildSnapshotV1`; source/provider/resolver churn exposes `0` mixed-generation rows/results |
+| Retrieval | Hit rate `>=86.7%`; MRR `>=0.800`; semantic must improve held-out outcomes to enable |
+| Cold build | 550 files `<5 s`, peak RSS `<300 MB`; 5,000 files `<60 s`, peak RSS `<1 GB` |
+| Incremental | no-op `<1 s`; one-file delta p95 `<100 ms`; fixed 100-file update `>=10×` baseline improvement |
+| Query | resident exact lookup p95 `<5 ms`; deterministic under concurrency |
+| Storage | Selected index beats current bytes/update work; no forced target-size claim; old-generation residue bounded |
+| Recovery | Previous generation survives interruption/corruption; migrations rebuild/rollback deterministically |
+| Lifecycle | exactly one fenced Hub owner; Hub-off process census `0`; Hub quit drains/kills; no independent persistence artifacts |
+| Portability | Identical source/provider/schema contract passes native Mac + Windows |
+| Compatibility | CLI/MCP/daemon/SDK/schema/artifact supported-version matrix `100%` |
+| Comparative | Frozen eligible manifest; all-axis noninferiority + one material dominance or target wording only |
+| Evidence | Shared statistical protocol complete; no missing/failed/censored samples; receipt book/tree/artifact digests exact |
+| Delivery | Clean full suite, receipts, nested commit/push, parent pin/push, remote SHAs verified |
+
+## Excluded shortcuts
+
+- No fact-level hop-bounded resolved-edge cache.
+- No lock file competing with daemon coordination.
+- No mandatory ANN, embeddings, hosted backend, or multi-store architecture.
+- No parser/compiler rewrite when qualified Tree-sitter/LSP/SCIP provider exists.
+- No source mutation/codemod surface in Cortex core.
+- No independent launchd/Task Scheduler/login/startup registration.
+- No worker pool until current measured bottleneck reaches parallelizable work & RSS gates prove bounded benefit.
+
+## Measured capacity control
+
+Fixed productivity arithmetic is forbidden. Package 0 creates `docs/plans/capacity/cortex-best-market.v1.json` under Cortex integration owner; product authority approves initial ceiling & any revision before implementation. Schema records package, owned files, baseline LOC, projected changed LOC, focused-test active minutes, native-host active minutes, external wait separately, prerequisites, acceptance cells, uncertainty range, contingency `<=10%`, & unmapped-work count `0`. Estimates derive from path-level baseline + one measured representative change per work type, never a global productivity rate; before every package starts, validator rejects missing paths, double-counting, unmapped requirements/work, ceiling increase without new authority revision, or package high estimate exceeding aggregate remaining allocation. Product authority must split/resequence/revise before any over-cap package work begins.
+
+| Package | Prerequisite artifacts | Acceptance owner/cells | Capacity fields frozen at P0 |
+|---:|---|---|---|
+| 1–3 | baseline, aspect registry, provider/surface inventory | coverage, truthfulness, compatibility | owned paths, baseline lines, projected delta, native-host effort |
+| 4–6 | snapshot schema, graph/equivalence corpus, exact-index migration design | correctness, snapshot, incremental, query, storage, recovery | same fields + migration/backout work |
+| 7–9 | qualified provider ABI, policy boundary, holdouts/comparator adapters | truthfulness, retrieval, privacy, comparative | same fields + provider/toolchain/runtime cost |
+| 10 | all acceptance-owner receipts, Hub protocol release | recovery, lifecycle, portability, delivery | exact remaining paths, native release/install effort, parent pin work |
+
+After every package, receipt records actual changed files/lines, active engineering time, native-host wait separately, completed acceptance cells, & aggregate remaining capacity. No “all requirements green” or final-package start is allowed when mapped remaining work exceeds frozen remaining ceiling; product authority must split/resequence scope without weakening this book.

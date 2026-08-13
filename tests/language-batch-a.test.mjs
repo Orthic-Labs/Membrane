@@ -30,7 +30,7 @@ for (const lang of LANGUAGES) {
       assert.ok(record.error, `${lang} must carry a typed degradation reason`);
       return;
     }
-    const ext = lang === "c_sharp" ? "cs" : lang === "objc" ? "m" : lang;
+    const ext = lang === "c_sharp" ? "cs" : lang === "objc" ? "m" : lang === "kotlin" ? "kt" : lang;
     const fixture = join(FIXTURES, lang, `basic.${ext}`);
     const tree = record.parser.parse(readFileSync(fixture, "utf8"));
     try {

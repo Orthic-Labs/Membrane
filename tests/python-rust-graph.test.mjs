@@ -9,7 +9,15 @@ import {
   buildGraphGeneration,
   graphCapabilities,
   graphStatus,
+  scanSourcesPublic,
+  sourceCapabilityCoverage,
 } from "../graph/static-provider.mjs";
+import { PARSED_LANGUAGE_EXTENSIONS } from "../graph/language-extractors.mjs";
+import { languageCapabilityRecords } from "../graph/language-registry.mjs";
+
+const CORTEX = path.resolve(import.meta.dirname, "..");
+const CATALOG_EXTENSIONS = languageCapabilityRecords().flatMap((record) => record.extensions);
+const EXPECTED_PARSED_EXTENSIONS = [...new Set([...PARSED_LANGUAGE_EXTENSIONS, ...CATALOG_EXTENSIONS])].sort();
 
 function withLanguageFixture(run) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-languages-"));
@@ -266,7 +274,7 @@ test("workspace script languages emit functions and call relationships", () => {
       "",
     ].join("\n"),
     "ops/helpers.ps1": "function Test-Release { return $true }\n",
-    "ops/build.bat": [
+    "ops/build.cmd": [
       "@echo off",
       "call :publish_release",
       "exit /b",
@@ -275,6 +283,17 @@ test("workspace script languages emit functions and call relationships", () => {
       "exit /b",
       ":verify_release",
       "exit /b",
+      "",
+    ].join("\n"),
+    "ops/installer.iss": [
+      "[Code]",
+      "procedure PublishRelease;",
+      "begin",
+      "  VerifyRelease();",
+      "end;",
+      "procedure VerifyRelease;",
+      "begin",
+      "end;",
       "",
     ].join("\n"),
     "ops/tasks.vbs": [
@@ -293,8 +312,11 @@ test("workspace script languages emit functions and call relationships", () => {
       "symbol:ops/helpers.sh::verify_release",
       "symbol:ops/release.ps1::Publish-Release",
       "symbol:ops/helpers.ps1::Test-Release",
-      "symbol:ops/build.bat::publish_release",
-      "symbol:ops/build.bat::verify_release",
+      "symbol:ops/build.cmd::publish_release",
+      "symbol:ops/build.cmd::verify_release",
+      "symbol:ops/installer.iss::section.Code",
+      "symbol:ops/installer.iss::PublishRelease",
+      "symbol:ops/installer.iss::VerifyRelease",
       "symbol:ops/tasks.vbs::PublishRelease",
       "symbol:ops/tasks.vbs::VerifyRelease",
     ];
@@ -306,8 +328,11 @@ test("workspace script languages emit functions and call relationships", () => {
       && edge.source === "symbol:ops/release.ps1::Publish-Release"
       && edge.target === "symbol:ops/helpers.ps1::Test-Release"));
     assert.ok(generation.edges.some((edge) => edge.kind === "CALLS"
-      && edge.source === "symbol:ops/build.bat::publish_release"
-      && edge.target === "symbol:ops/build.bat::verify_release"));
+      && edge.source === "symbol:ops/build.cmd::publish_release"
+      && edge.target === "symbol:ops/build.cmd::verify_release"));
+    assert.ok(generation.edges.some((edge) => edge.kind === "CALLS"
+      && edge.source === "symbol:ops/installer.iss::PublishRelease"
+      && edge.target === "symbol:ops/installer.iss::VerifyRelease"));
     assert.ok(generation.edges.some((edge) => edge.kind === "CALLS"
       && edge.source === "symbol:ops/tasks.vbs::PublishRelease"
       && edge.target === "symbol:ops/tasks.vbs::VerifyRelease"));
@@ -321,9 +346,19 @@ test("workspace script languages emit functions and call relationships", () => {
 });
 
 test("capabilities enumerate every parsed language in the tracked workspace stack", () => {
-  assert.deepEqual(graphCapabilities().languageCoverage.parsedExtensions, [
-    "astro", "bat", "c", "cc", "cjs", "cpp", "cts", "cxx", "gql", "graphql", "h", "hpp", "js", "jsx", "m", "mjs", "mm", "mts", "nsh", "nsi", "ps1", "py", "rs", "sh", "sql", "swift", "ts", "tsx", "vbs", "vue",
-  ]);
+  assert.deepEqual(graphCapabilities().languageCoverage.parsedExtensions, EXPECTED_PARSED_EXTENSIONS);
+});
+
+test("catalog extensions and current Cortex sources have complete capability accounting", () => {
+  const catalogFiles = Object.fromEntries(CATALOG_EXTENSIONS.map((extension) => [`src/sample.${extension}`, "fixture\n"]));
+  withFiles(catalogFiles, (repo) => {
+    const outDir = path.join(repo, ".agent");
+    buildGraphGeneration(repo, { outDir, persist: true });
+    assert.deepEqual(graphStatus(repo, outDir).capabilities.unsupportedExtensions, []);
+  });
+
+  const current = sourceCapabilityCoverage(scanSourcesPublic(CORTEX).files);
+  assert.deepEqual(current, { unsupportedExtensions: [], unsupportedFileCount: 0 });
 });
 
 test("opaque assets and framework resource files do not masquerade as unsupported languages", () => {
