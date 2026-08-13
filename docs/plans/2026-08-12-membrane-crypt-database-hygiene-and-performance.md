@@ -1,249 +1,251 @@
-# Membrane and Crypt runtime, database hygiene, and performance
+# Membrane best-of-market execution plan
 
 Date: 2026-08-12
-Status: inventory-corrected implementation plan; no live database mutation performed
-Systems: Membrane/Crypt primary; workspace installation secondary; Cortex excluded
 
-## Objective
+Status: derived execution plan; implementation stopped; no completion claim
 
-Reduce measured Membrane/Crypt latency and growth while giving every owned SQLite database one canonical owner, path, lifecycle, WAL policy, recovery procedure, and resource budget. Durable Crypt memory remains non-disposable.
+Authority: [`../../sol.md`](../../sol.md). This plan cannot change its invariants, requirements, dispositions, or gates.
 
-## Boundary from Cortex
+Repository: canonical `/Volumes/D/claude/membrane` only; `membrane2` is forbidden.
 
-Cortex's graph is derived and may be rebuilt into a fresh sidecar. `crypt-engine.db` contains durable user memory and event history; it must be backed up, logically validated, and recoverably adopted. Cortex schema compaction remains in the separate Cortex storage book.
+## Outcome
 
-## Current measured state
+Deliver every `MB-R001..MB-R036` requirement through consumer-compatible packages that are independently releasable only when their partial-state contract is green. Final system provides deterministic, authority-first, local context; durable typed memory; explainable hybrid recall; reversible consolidation; temporal truth; governed artifact references; typed context editing; robust backup/recovery; real whole-task evaluation; & absolute user process control through Hub.
 
-| Host | Database | Main bytes | WAL bytes | Integrity | Important state |
-|---|---|---:|---:|---|---|
-| Mac | workspace-root `catalog.db` | 4,096 | 74,192 | OK | Seven tables, all zero rows; stale WAL/SHM |
-| Mac | `tools/.cache/memory/catalog.db` | 73,728 | 37,112 | OK | One grant, receipt, and retrieval event |
-| Mac | `tools/.cache/memory/crypt-engine.db` | 253,059,072 | 4,132,392 | OK | 2,516 memories; 27,046 free pages |
-| Mac | `tools/.cache/memory/context-telemetry-outbox.db` | 11,718,656 | 0 | OK | 8,192 queued rows; checkpointed |
-| Windows | workspace-root `catalog.db` | 4,096 | 74,192 | OK | Same empty/stale shape as Mac |
-| Windows | `tools/.cache/memory/catalog.db` | 73,728 | 0 | OK | Checkpointed |
-| Windows | `tools/.cache/memory/crypt-engine.db` | 49,930,240 | 7,024,632 | OK | 2,420 memories; one free page |
-| Windows | `tools/.cache/memory/context-telemetry-outbox.db` | 12,496,896 | 0 | OK | Checkpointed |
+## Requirement closure map
 
-All measured stores use 4,096-byte pages and report WAL mode.
+| Book requirements | Accountable acceptance owner | Predecessors | Partial-state invariant | Not green until |
+|---|---:|---|---|---|
+| MB-R001–R004 | Membrane Hub owner / P1 | 0 | Existing installed ownership remains until shared protocol & joint child proof pass | Lifecycle + portability cells; joint Hub/Cortex native receipt |
+| MB-R005–R008 | Crypt memory owner / P5 | 0 → 2 | Existing memory schema/API remains authoritative; additions are versioned & disabled until migrated | Equivalence + recovery cells; P2/P5 migration receipt |
+| MB-R009–R012 | Membrane policy owner / P5 | 0 → 2 | Current ACL path remains fail-closed; no new cache/derived projection admitted early | Scope + revocation + publication cells; P2/P5 race receipt |
+| MB-R013–R016 | Membrane planner owner / P6 | 0 → 2 → 3 | Current packet order stays authoritative; new lanes stay additive/disabled | Equivalence + scope + task-quality cells; P6 receipt |
+| MB-R017–R020 | Membrane planner owner / P6 | 0 → 2 → 3 | Existing packet/edit contract stays readable; optimization cannot alter outcomes | Equivalence + token + warm-context cells; P6 receipt |
+| MB-R021–R024 | Crypt memory owner / P5 | 0 → 2 | Background output remains invisible/non-authoritative until full identity validates | Scope + recovery + equivalence cells; P5 receipt |
+| MB-R025–R028 | Membrane artifact owner / P8 | 0 → 2 → 4 → 7 | Stored formats remain readable; ArtifactRef stays disabled until policy/recovery works | Revocation + storage + recovery cells; P4/P7/P8 receipts |
+| MB-R029–R032 | Crypt storage owner / P9 | 0 → 3 → 7 | Current DB identity remains authoritative; maintenance never changes sole copy | Resources + storage + recovery + observability cells; P7/P9 receipts |
+| MB-R033–R036 | Membrane release owner / P10 | 0 then all owners | No performance/market/delivery claim from partial packages | Evidence + comparative + compatibility + native delivery cells; final release receipt |
 
-Mac `crypt-engine.db` has 27,046 free pages, about 110.8 MB or 43.8% of the main file. This is genuine reclaimable internal space, unlike the Cortex graph. A safe compaction could approach 142 MB, but only a measured copy-and-adopt run may establish the result.
+Named owner produces with package's checked-in command into `artifacts/receipts/MB-R###-R###.json`; independent Oracle verifies source/book/protocol/artifact digests & acceptance cells before green. Only named owner may propose green; validator + verifier establish it. A package may commit before downstream completion only when its partial-state invariant, compatibility/migration gate, rollback, & current acceptance cells pass; otherwise it is an integration checkpoint, not independently shippable.
 
-Mac is also carrying more durable and projected content: 9,620 `doc_projections` and 18,522 `doc_artifacts`, versus 2,661 and 2,794 on Windows. Host size difference is therefore both real content and Mac free-page accumulation.
+## Final-absorption package map
 
-`doc_projections` occupies about 108.0 MB on Mac and 28.8 MB on Windows. Its derivation, retention, and rebuild contract needs proof before any pruning.
+| Packages | Mandatory book closure rows |
+|---|---|
+| 0, 2 | MB-F01–F03, F05–F06, F24–F25 |
+| 3, 6 | MB-F04, F07–F12, F20–F23 |
+| 5 | MB-F13–F17, F26 |
+| 7 | MB-F06–F07, F18 |
+| 9–10 | MB-F18–F26 |
 
-The top-level Mac cache contains `test-old-runtime.db-wal` and `test-old-runtime.db-shm` without a matching main DB. They are orphan candidates, not automatic deletion targets.
+No package may mark a broad `MB-A`, atomic aspect, or `MB-R` row green while any mapped `MB-F` receipt remains absent.
 
-## Existing inventory that must be reused
+## Frozen starting evidence
 
-- `doc_artifacts` already stores path, `content_hash`, and `parser_version` in `engine/crates/membrane-runtime/src/doc_spine.rs`. Document sync does not query that table before parsing unchanged files. Add one lookup path; do not create another manifest.
-- `run_capped` in `engine/crates/membrane-runtime/src/runc.rs` already preserves bounded head/tail output and exit status, but captures full output in memory and always writes a spill file. Work remaining is streaming capture plus spill creation only after cap breach.
-- Federation provider code is subprocess-heavy: `live.py` invokes seven subprocesses and Crypt/anchors providers invoke two each. Waiting on subprocesses releases Python's GIL, so CPU starvation is not established by inspection.
-- FTS5-backed lexical retrieval, a bounded LRU for repeated provider results, worker-thread execution, and prefix enforcement are genuinely absent from the inspected implementation.
-- Repository rules require warm federation measurement before gateway concurrency or budget changes. That measurement gates concurrency work.
+- Canonical doctor reported `broken` on 2026-08-12: stale Cortex/provider identity, Merkle mismatches, missing understanding/verdict artifacts, & 302 missing references.
+- Four Crypt database/WAL files contain an uncommitted stopped-task overlay. It is not accepted baseline or release evidence.
+- Crypt schema, scoped memory, temporal facts, lifecycle events, feedback, supersession, expiry, quarantine/restore, hybrid vector/lexical retrieval, vector index, query-embedding LRU, worker admission, resident federation worker, streaming `run_capped`, identifier prefixes, & document hash/parser-version skipping exist in source but lack current clean installed qualification.
+- Doc Spine production recall scans projections; FTS exists in benchmark/test surfaces, not production query path. Doc packet admission remains shadow-only.
+- LoCoMo, LongMemEval, BEAM, & whole-task commit-reveal harnesses are source-ready only; no accepted real result exists.
+- Full-provider warm profiling is absent; a fixture that merges empty provider sets is not performance evidence.
+- Backup/restore/export/wipe, artifact registry, multimodal extraction, one unified policy plane, & final Hub lifecycle are incomplete.
+- Historical DB measurements remain useful leads: Mac Crypt held material free pages; duplicate catalogs/orphan sidecars needed ownership proof. No live data mutation is authorized by this plan.
 
-## Delivery law — equivalence before optimization
+## Delivery law
 
-No performance implementation begins until canonical CI freezes packet contents/order, typed omissions/degradation, grants, freshness/generation identity, cancellation, timeout behavior, no-op document sync, command exit/output behavior, and warm federation benchmark receipts.
+1. Freeze packets, decisions, & real baselines before optimization.
+2. Land one package at a time with focused tests, measurement, rollback, compatibility proof, commit, & remote receipt only when its partial-state invariant permits release.
+3. Same canonical inputs must preserve candidates/order, grants, authority, freshness, omissions, deadlines, cancellation, token/byte caps, exit/output behavior, & receipts unless `sol.md` requires a new behavior.
+4. Never relax fixtures, thresholds, timeouts, expected omissions, or sample counts to pass.
+5. Source-ready, unit-tested, or schema-present does not mean installed, qualified, measured, or complete.
+6. Hot-path concurrency/caches/workers remain unchanged until full-provider profiling identifies a bottleneck & equivalent bounded variant wins.
 
-Every later change lands independently and must prove identical observable behavior with less work. A failed gate rejects that change; it never weakens expected packets, typed errors, deadlines, fixtures, or thresholds.
+## Work package 0 — truth freeze & plan sync
 
-Resident-worker isolation and gateway concurrency remain measurement-gated. Initial command adapters are limited to Git and repository test runners; broader adapters require a demonstrated recurring parsing need and a separate contract.
+Requirements: MB-R033–R036.
 
-## Canonical storage contracts found in source
+- Inventory dirty overlay without modifying it; reproduce clean committed baseline separately.
+- Generate a machine-readable requirement/competitor/status map from `sol.md`; CI rejects unmapped `MB-A`, `MB-R`, or `MB-I` IDs.
+- Freeze packet/order/omission/freshness/grant/cancellation/timeout/context-edit/output receipts.
+- Freeze full-provider warm benchmark, DB identity, lifecycle process census, retrieval corpus, benchmark dataset identity, & whole-task holdout protocol.
+- Freeze `benchmark-protocol.v1.json`, `membrane-competitors.v1.json`, atomic aspect closure, public-surface inventory, supported-version window, & exact canonical `sol.md`/plan digests. Every later receipt names those digests.
+- Freeze package capacity manifest: owned file paths, prerequisite artifacts, measured baseline paths/lines, projected changed-line ceiling, native-host effort, acceptance cells, & aggregate remaining work.
 
-- Crypt durable store: `<workspace>/tools/.cache/memory/crypt-engine.db`, overridable by `CRYPT_DB`.
-- Rust context catalog: `<context-home>/catalog.db`; `CONTEXT_HOME` wins, otherwise resolution derives from `CRYPT_DB` or environment home.
-- Python scope-grant reader: `RIGHTCONTEXT_CATALOG`, defaulting to `~/.claude/rightcontext/catalog.db`.
-- Telemetry outbox: sibling `context-telemetry-outbox.db` under the memory cache unless explicitly overridden.
-- Installed service state identifies the workspace Crypt DB and native lifecycle owner.
+Exit: failing current behavior is recorded honestly; later packages cannot edit expected outputs or gates.
 
-Rust and Python catalog defaults are not one canonical resolver. The empty workspace-root `catalog.db` appearing identically on both hosts is evidence of historical or alternate configuration, but not proof that deletion is safe.
+Package 0 contributes immutable Membrane Hub source/ref/tree/commit/artifact/protocol/book/receipt inputs to parent workspace integration owner. That owner is sole serialized writer of root `artifacts/releases/context-stack-release.v1.json`; manifest version + prior digest use compare-and-swap, & any divergent/stale child tuple is rejected. Manifest also seals Cortex tuple, supported lifecycle ranges, native install source, joint test commands, & receipt digests. Exact sequence: pre-install commits exist → native artifacts build from those commits → parent owner seals one tuple → joint installed tests run against sealed artifacts → nested refs push unchanged → parent pins those exact commits → remote refs/pins verify. Any child/source/artifact/receipt mismatch or post-test change invalidates joint proof.
 
-## Problems to resolve
+## Work package 1 — Hub-only lifecycle closure
 
-1. Two catalog files with the same schema can exist under different paths, while Rust and Python defaults disagree.
-2. Both hosts have an empty 4 KB workspace-root catalog whose 74 KB stale WAL holds uncheckpointed schema state.
-3. Orphan sidecars exist without a matching main file on Mac.
-4. No single inventory receipt binds active process, canonical main file, WAL, SHM, schema version, and installation identity.
-5. Mac Crypt contains about 110.8 MB of reclaimable free pages.
-6. Crypt and catalog open WAL with sensible PRAGMAs but do not verify the effective mode after requesting it.
-7. WAL checkpoint ownership and observable starvation thresholds are not explicit across every store.
-8. Catalog access is mutex-serialized; Crypt read concurrency and contention need measurement before adding handles or pools.
-9. Projection and outbox retention must remain bounded without deleting durable facts.
+Requirements: MB-R001–R004.
 
-## Existing good shape
+- Make Hub sole OS-started/user-controlled process. “Start at login” registers Hub only.
+- Hub directly owns Membrane/Crypt resident + Cortex watcher/service in one process group on macOS & Job Object on Windows.
+- Publish shared `hub-child-lifecycle.v1`: protocol version, executable/artifact hash, lease, inherited liveness handle, readiness, drain, exit taxonomy, restart/backoff, update, & process-tree identity.
+- Atomically acquire one host/install-scoped Hub owner lease with monotonic fencing token before child start. Children reject stale/lower/foreign fences; lease-store ambiguity fails closed; update handoff advances fence without overlap.
+- Issue short-lived Hub lease + inherited liveness pipe; children exit on pipe closure, lease expiry, parent death, update, or quit.
+- Reject an existing listener lacking current Hub lease as `rogue_process`; never adopt silently.
+- Add bounded restart/backoff, crash-loop state, health/readiness, update-safe drain, full child-tree kill/wait.
+- Remove standalone persistence/registration/public supervisor paths; foreground CLI/MCP one-shots remain nonpersistent.
 
-- Crypt and catalog already request WAL, `synchronous=NORMAL`, 5-second busy timeout, and in-memory temporary storage.
-- Catalog is failure-isolated from the Crypt durable store.
-- Context telemetry outbox is currently checkpointed on both hosts.
-- Crypt health is native-service-owned: launchd on Mac and Task Scheduler on Windows.
-- Membrane hooks perform health checks only and do not own service lifecycle.
+Exit: Hub protocol commit/release & compatibility proof exists before Cortex removes any prior path; installed joint Mac + Windows tests name matching Hub/Cortex protocol + artifact hashes & cover concurrent Hub start, stale owner, lease-store loss/corruption, update handoff, login launch, user off/on, tray quit, parent kill, child crash, rogue port, uninstall, crash loop, one fenced owner, & zero surviving owned descendants.
 
-## Pending improvements, prioritized
+## Work package 2 — one policy & protocol plane
 
-### P0 — measure warm federation before changing concurrency
+Requirements: MB-R005–R020.
 
-- Freeze a representative warm request corpus, provider mix, host/toolchain identity, timeout budget, source commit, and raw timing/RSS receipts.
-- Attribute wall time to gateway scheduling, each subprocess launch/wait, provider CPU, serialization, and result merge.
-- Measure sequential and bounded-concurrency variants without changing production defaults.
-- Do not attribute waits to GIL starvation without profiler evidence.
-- Advance gateway concurrency only when p95 latency improves without timeout, cancellation, RSS, determinism, or typed-degradation regression.
+- Make one canonical Rust planner own eligibility, authority/freshness ordering, fusion, admission, global budget, rendering, & typed omissions.
+- Python/providers return typed candidates only; remove duplicate policy decisions or mark unreachable scaffolds.
+- Generate language bindings/schemas from one protocol source; cross-language goldens must be byte-equivalent.
+- Every candidate carries source, scope, ACL, generation, authority, freshness, sensitivity, cost, resolver, provider/version, & evidence digest.
+- Provider contracts including Cortex stop at typed facts/candidates + relevance components. Only planner resolves current grant/policy & owns packet eligibility, authorization, authority/freshness ordering, cross-source fusion, budgets, omissions, & rendering.
+- Bind cache/derived identity to source generation, policy/grant/ACL/scope/sensitivity versions; ordered invalidation fail-closes admission during revocation.
+- Bind candidate read through final publication to one policy epoch; fence/revalidate immediately before any output bytes, retry once or emit typed `policy_changed` abstention on change.
 
-### P1 — skip unchanged document artifacts through existing state
+Exit: all provider omissions reach final receipt; no policy decision changes with adapter/runtime path; revoke-during-packet across CLI/MCP/HTTP/SDK/Hub emits zero obsolete-epoch bytes.
 
-- Query `doc_artifacts` by canonical path before parsing.
-- Skip only when both content hash and parser version match current values.
-- Preserve deletion detection, parser-version invalidation, transactionality, and projection ownership.
-- Add changed, unchanged, deleted, parser-upgrade, interrupted-sync, and duplicate-path tests.
-- Emit counters for scanned, hashed, parsed, skipped, deleted, and invalidated artifacts.
+## Work package 3 — hot-path isolation & measured concurrency
 
-### P2 — finish streaming command capture
+Requirements: MB-R013–R020, MB-R029–R032.
 
-- Keep current head/tail cap and exit-code preservation.
-- Stream stdout and stderr into bounded head/tail buffers while counting bytes.
-- Create and write a spill file only after output exceeds the in-memory cap.
-- Preserve cancellation, timeout, UTF-8 handling, platform shell resolution, and exact exit status.
-- Add explicit adapters only for Git and repository test runners in this plan; keep generic execution bounded.
+- Trace representative warm requests across every provider, gateway scheduling, subprocess/RPC wait, CPU, serialization, merge, DB work, RSS, cancellation, & deadline.
+- Prompt path may read immutable ready snapshots, query local indexes, run bounded resident RPC, fuse/admit/render, & enqueue content-free telemetry.
+- Move recursive walks, document parsing, corpus embedding, schema migration, backup, checkpoint, compaction, LLM extraction, remote network, & blocking telemetry off prompt path.
+- Reuse existing resident worker, LRU, worker admission, & `run_capped`; add no second cache/pool.
+- Change concurrency only when sequential/current control loses on p95 without timeout, RSS, determinism, or result-variance regression.
 
-### P3 — add lexical and repeated-read indexes where measured
+Exit: syscall/process trace shows zero per-prompt child creation, corpus scan/mutation, maintenance, or unapproved network; full-provider warm receipt meets gate.
 
-- Add FTS5 only for a frozen lexical retrieval contract with deterministic fallback when FTS5 is unavailable.
-- Add a size-bounded LRU only where repeated provider inputs have stable cache and invalidation keys.
-- Record cache key, invalidation key, reused work, capacity, eviction, and hit/miss counters.
-- Never cache authority, freshness, grant, or generation decisions across their identity changes.
+## Work package 4 — indexed document & artifact retrieval
 
-### P4 — enforce prefixes at the owning boundary
+Requirements: MB-R025–R028. Absorbs MB-A03, MB-A07, MB-A11, MB-A14–A16.
 
-- Define canonical accepted prefixes in one parser/validator.
-- Reject ambiguous, malformed, or cross-repository identifiers with typed errors.
-- Apply validation before filesystem, database, or subprocess work.
-- Add traversal, alias collision, Unicode, case, and Windows-path fixtures.
+- Keep existing content-hash + parser-version no-op sync; prove deletion, parser upgrade, interruption, duplicate path, & source churn.
+- Replace production O(N) projection recall with measured FTS5/BM25 or chosen compact exact index while preserving path, anchor, Unicode, short-substring, source-hash, & deterministic fallback behavior.
+- Wire document candidates through final admission; retire shadow-only ambiguity.
+- Add `ArtifactRefV1`: `art:<sha256>`, MIME, bytes, origin/source/derived hashes, scope, stored ACL evidence, current authoritative policy resolver + version, timestamps, extractor/version, derived refs, integrity, availability, sensitivity.
+- Keep original bytes at source or Hub-owned object store; memory stores governed metadata/projections/citations/resolver handles.
+- Re-resolve current policy on read/citation/derived lookup/export/restore/share; deny stale/unavailable policy & cascade revocation through lexical/vector/graph/working/derived/artifact/export/restore projections.
 
-### P5 — add workers only after P0 evidence
+Exit: production trace proves indexed path; legacy corpus results remain exact; 12k-document corpus avoids O(N) scan; unsupported/missing/denied/corrupt artifacts return typed states.
 
-- Keep cancellation, deadlines, deterministic merge order, and bounded fan-out invariant.
-- Use worker threads only for measured CPU-bound Python work; subprocess waits remain async/bounded scheduling work.
-- Cap workers from measured RSS and active-provider count, not logical CPU count alone.
-- Retain sequential fallback on worker failure or small workloads.
+## Work package 5 — complete memory model
 
-### P6 — canonicalize database identity and paths
+Requirements: MB-R005–R012, MB-R021–R024. Absorbs MB-A01–A04, MB-A08–A09, MB-A14.
 
-- Implement one catalog-path resolver consumed by Rust service, Python grant reader, installers, health output, and operational tools.
-- Persist resolved Crypt, catalog, outbox, workspace, and installation identities in the runtime receipt.
-- Require absolute paths and reject accidental current-directory fallback for production.
-- Add a catalog installation identifier or equivalent metadata so two schema-identical files cannot be mistaken for one store.
-- On startup, report canonical path, effective journal mode, schema version, main/WAL sizes, and whether another same-schema catalog exists.
-- Never merge or delete duplicate catalogs automatically; classify authority from runtime binding and row provenance first.
+- Formalize Working, Episodic, Semantic, Procedural, Entity Summary, Evolving Belief, & Artifact Reference records with schema migrations/backouts.
+- Separate retain, recall, reflect, consolidate, correct, supersede, expire, forget, quarantine, restore, export, migrate, & audit contracts.
+- Unify temporal validity/supersession & bounded graph/entity traversal across memory families.
+- Add pinned, scoped, size-bounded working blocks; private/team/global visibility stays ACL-governed.
+- Reflect/consolidation creates reversible derived records with complete evidence/model/prompt/corpus identity; never silently promotes truth.
 
-### P7 — build a safe hygiene command
+Exit: provenance round-trip, contradiction, expiry, supersession, ACL, derived-belief, quarantine/restore, migration/backout, & no-unreceipted-promotion suites pass.
 
-- Inventory main, WAL, SHM, owner process, open file handles, schema version, integrity, row counts, timestamps, and configured path without creating missing databases.
-- Open probes with read-only URI mode; never let an inspection command create a zero-byte DB.
-- Use SQLite backup APIs for a live consistent backup; never copy only the main file while WAL is active.
-- Classify sidecars as active, recoverable, stale, orphan candidate, or quarantined.
-- Quarantine confirmed orphan files to a dated recoverable directory before deletion.
-- Resolve the two empty workspace-root catalogs only after proving no installed process or configuration owns them.
+## Work package 6 — explainable retrieval & context editing
 
-### P8 — compact durable Crypt safely
+Requirements: MB-R013–R020. Absorbs MB-A01–A06, MB-A09, MB-A12–A13.
 
-- Stop the native Crypt service at a declared maintenance boundary.
-- Create a consistent backup with main, schema, user version, row-count, key-set, and integrity receipts.
-- Use `VACUUM INTO` or an equivalent new-file compaction; never vacuum the only durable copy in place.
-- Validate `integrity_check`, foreign keys, schema/user version, critical-table counts, memory identity keys, event-log continuity, and recall smoke tests against the compacted file.
-- Atomically adopt the validated compacted file with a rollback copy, then restart the native service and verify health.
-- Run independently on Mac and Windows; never copy one host's durable memory database onto the other.
+- Eligibility first: grant, ACL, scope, quarantine, temporal validity, supersession, generation, source availability.
+- Run exact anchor, lexical/BM25, vector, entity/graph, temporal, & active-overlay lanes.
+- Fuse deterministically with visible lane ranks plus authority, freshness, importance, recency, frequency, outcome/feedback, & diversity; stable tie by canonical ID.
+- Keep learned reranker shadow-only until holdout proof; base order always receipt-visible.
+- Add JIT memory/artifact references & context edit contract: durable reference before clearing, placeholder, source set, byte/token delta, recovery pointer, typed failure.
+- Compression may not remove protected facts/citations/authority or change task outcome beyond equivalence gate.
 
-### P9 — define WAL and checkpoint ownership
+Exit: held-out task quality improves or stays within noninferiority gate while reducing tokens; zero scope/ACL leaks; deterministic fallback/abstention works without vectors/graph/provider.
 
-- Verify effective `journal_mode` after requesting WAL and emit typed degradation if the filesystem refuses it.
-- Let writer/maintenance ownership perform checkpoints; read-only hooks and consumers never checkpoint or migrate.
-- Use passive checkpoints after bounded committed batches or idle thresholds.
-- Use truncate checkpoints only at clean shutdown or a proven quiescent maintenance boundary.
-- Record WAL bytes, uncheckpointed frames, checkpointed frames, busy result, oldest active reader, and checkpoint duration.
-- Keep 5-second timeouts for latency-budget reads; benchmark a 30-second background-writer timeout separately.
-- Treat `journal_size_limit` as post-checkpoint retention, not a hard growth cap.
+## Work package 7 — storage identity, durability, & recovery
 
-### P10 — measure read-path tuning
+Requirements: MB-R025–R032.
 
-- Benchmark read-only `query_only` handles with 256 MB mmap and a bounded page cache against current recall latency.
-- Measure aggregate RSS before raising per-connection cache sizes.
-- Keep one writer; add read handles only if recall demonstrably queues behind writes.
-- Do not add a generic connection pool without measured concurrent-reader demand.
-- Keep schema migration writer-owned; readers fail with a typed version mismatch.
+- One resolver owns Crypt/catalog/outbox paths across Rust, Python, installer, Hub, health, & operations; absolute paths only.
+- Persist installation/store identity, schema, effective journal mode, main/WAL sizes, owner/lease, & duplicate candidates in runtime receipt.
+- Writer/maintenance owner alone checkpoints; readers never migrate/checkpoint. Report WAL frames, busy reader, duration, & starvation.
+- Add read-only inventory that never creates DBs; classify sidecars/duplicates by liveness & provenance.
+- Add live consistent backup, restore drill, deterministic vault export/import, wipe policy, integrity checks, migration preflight/backout, & recoverable quarantine.
+- Compact durable Crypt only by backup → new-file compaction → logical equivalence → atomic adopt → health → rollback proof, per host.
 
-### P11 — prove projection and outbox retention
+Exit: crash-at-every-boundary suite, active-backup test, clean-machine restore, old-schema backout, key-set/count/event continuity, recall equivalence, & no-data-loss receipts pass.
 
-- Classify `doc_projections` as durable, reproducible, or mixed before pruning or rebuilding it.
-- Bind every projection to source artifact, version, and reconstruction rule.
-- Measure why Mac carries 9,620 projections versus Windows 2,661.
-- Keep telemetry outbox capacity, retry state, and acknowledged-row pruning explicit; its current zero-byte WAL is healthy evidence, not a reason to redesign it.
+## Work package 8 — multimodal context
 
-## Ownership
+Requirements: MB-R025–R028. Absorbs MB-A07, MB-A19.
 
-### Membrane/Crypt
+- Stage local extractors: PDF/text first; image metadata/OCR second; audio transcript third; video metadata/keyframe references last.
+- Derived text/summary remains hash-addressed, cited, scoped, ACL-filtered, versioned, rebuildable, & independently expirable.
+- Original binary never enters prompt without explicit grant & budget.
 
-- Own durable schema, catalog identity, WAL policy, logical backup, compaction validation, recall parity, and service health.
+Exit: MIME/hash/ACL/sensitivity/size/deadline/missing-source/extractor-unavailable matrix passes; no binary or derived text crosses scope.
 
-### Workspace installation
+## Work package 9 — real evaluation & operability
 
-- Own canonical installed paths, runtime receipts, native service stop/start, hygiene command, and Mac/Windows orchestration.
+Requirements: MB-R029–R036. Absorbs MB-A20–A23.
 
-### RightKit and Orthic
+- Run real LoCoMo, LongMemEval, BEAM, & commit-reveal whole-task corpora against exact release on native Mac + Windows.
+- Compare eligible local/self-hosted competitors through same datasets, execution adapter, model, hardware class, budgets, scoring, & raw receipt schema.
+- Freeze named eligibility/config/exclusion manifest from `sol.md`; hosted-only, archived, missing, or incompatible entries remain explicit & cannot be cherry-picked away.
+- Measure task success, unauthorized/stale context, missed authority, precision/recall/MRR/nDCG, contradiction/temporal accuracy, tokens, cached tokens, latency, CPU/RSS, DB/index growth, durability, restoration, & cost.
+- Publish support matrix only from current installed receipts; disable unqualified integration claims.
+- Produce content-free stage metrics, typed doctor, diagnostic bundle, backup age, lifecycle, resource, omission, & benchmark dashboards.
+- Validate public CLI/MCP/HTTP/SDK/Hub UI/protocol/schema/backup/export compatibility across supported version window.
 
-- RightKit owns native build, signing, sealing, and publication when Membrane engine code changes.
-- Orthic adopts a new signed Membrane add-on only when a binary change requires a release.
-- Data-only maintenance does not trigger an app or installer rebuild.
+Exit: every `MB-A` row has `ALREADY+proof`, `ADOPT+receipt`, `GATE+decision`, or enforced `REJECT`; every MB-R requirement is green.
 
-## Acceptance gates
+## Work package 10 — native delivery
 
-Path and ownership:
+Requirements: MB-R033–R036.
 
-- Rust, Python, installer, health, and operational tools resolve the same canonical catalog on each host.
-- No production path falls back to the current working directory.
-- Every duplicate or orphan candidate has an owner/provenance disposition and recoverable quarantine receipt.
+- Run full source, protocol, lifecycle, migration, fault, security, equivalence, benchmark, & native-host gates on clean tree.
+- Build/sign each native binary on its host only; publish exact patch through existing RightKit/release path.
+- Commit/push Membrane; pin/push parent gitlink; verify remote SHAs; install through Hub; rerun installed lifecycle/doctor/benchmark/restore smoke.
+- Preserve integration order in final receipts: Hub protocol commit/release → Cortex compatible child adoption → installed joint native proof → nested pushes → parent pins.
 
-Durability:
+Exit: exact installed source/release generation/host/artifact hashes match; no dirty overlay contributes to claim.
 
-- Pre/post critical-table counts and key-set digests match after compaction.
-- Memory identities, event-log ordering, deletion records, feedback, skills, and recall behavior remain intact.
-- Failure at every pre-adoption step leaves the original DB active and readable.
-- Post-adoption rollback restores the exact prior logical state.
+## Frozen acceptance matrix
 
-Performance and resources:
+| Axis | Gate |
+|---|---|
+| Equivalence | Exact candidate/order/packet/omission/receipt fixtures `100%` |
+| Scope/security | ACL/scope leak cases `0`; denied source I/O `0`; unapproved egress `0` |
+| Revocation | stale cache/vector/graph/working/derived/artifact/citation/export/restored admission after policy change `0` |
+| Publication | obsolete-policy-epoch output bytes after revoke-during-packet `0`; deterministic retry/abstention |
+| Warm context | full-provider p50 `<=75 ms`, p95 `<=125 ms`, p99 `<=250 ms` |
+| Ready no-op | p95 `<=25 ms` |
+| Cold/degraded | bounded result or typed failure `<=1.5 s` |
+| Local recall | p95 `<=50 ms` current corpus; `<=100 ms` at 100k governed memories |
+| Task quality | holdout 95% CI lower bound no worse than baseline by `1 pp`; no authority/safety regression |
+| Token economy | `>=20%` reduction versus full-context baseline at noninferior task quality |
+| Resources | idle CPU `<1%` per child/10 min; wakeups `<6/min` combined; RSS regression `<=10%` |
+| Storage | index/projection growth `<=25%` above authority payload unless measured retrieval win justifies recorded variance |
+| Recovery | backup/restore/migration/compaction preserve authority key set, events, lifecycle, recall, & provenance |
+| Lifecycle | exactly one fenced Hub owner; Hub-off owned-process count `0`; crash/orphan/split-brain tests leave `0` children; only Hub has OS startup registration |
+| Evaluation | real corpus/release/model/hardware/host/raw receipts; synthetic results never accepted |
+| Compatibility | CLI/MCP/HTTP/SDK/Hub UI/protocol/schema/artifact/export supported-version matrix `100%` |
+| Comparative | frozen eligible manifest; all-axis noninferiority + one material dominance or target wording only |
+| Evidence | shared statistical protocol complete; no missing/failed/censored samples; receipt book/tree/artifact digests exact |
+| Delivery | clean full gates, signed native artifacts when changed, nested commit/push, parent pin/push, remote SHAs, installed proof |
 
-- Warm federation report distinguishes subprocess wait, provider CPU, scheduling, serialization, and merge time.
-- Any concurrency change beats frozen sequential p95 without increasing timeout/error rate, RSS ceiling, or result variance.
-- Unchanged document sync performs hashing plus one indexed artifact lookup and does not parse or rewrite matching artifacts.
-- `run_capped` retains bounded memory, spills only after cap breach, and preserves full output plus exit status in spill mode.
-- FTS5, LRU, and workers land only with focused before/after measurements and explicit fallback behavior.
-- Mac Crypt main file reflects reclaimed free pages without forced target-size claims.
-- Recall latency does not regress; report p50, p95, cold, and concurrent-write measurements.
-- RSS is measured for service, read handles, mmap, and cache changes.
-- WAL returns to zero after a quiescent checkpoint and remains observable when a reader blocks progress.
+## Excluded shortcuts
 
-Cross-platform:
+- No prompt-time LLM extraction, summarization, graph construction, migration, backup, or corpus scanning.
+- No mandatory hosted memory/vector/graph service or unapproved egress.
+- No automatic truth promotion, hidden prompt/procedure rewrite, destructive forgetting, or opaque learned global score.
+- No unbounded graph traversal, full-history resend, blind blob injection, or multi-store baseline.
+- No second LRU, worker pool, manifest, policy plane, lifecycle supervisor, or database authority where one exists.
+- No independent launchd, login item, Task Scheduler entry, daemon persistence, port-owner adoption, or child self-restart.
+- No provider/concurrency tuning from empty fixtures or GIL speculation.
 
-- Mac launchd and Windows Task Scheduler health pass after maintenance.
-- Native tests pass on both hosts.
-- No database is transferred between hosts.
-- Any Rust binary change receives a new native Mac and Windows signed Membrane patch release before Orthic adoption.
+## Measured capacity control
 
-## Execution order
+Fixed productivity arithmetic is forbidden. Package 0 creates `docs/plans/capacity/membrane-best-market.v1.json` under Membrane integration owner; product authority approves initial ceiling & any revision before implementation. Schema records package, owned files, baseline LOC, projected changed LOC, focused-test active minutes, native-host active minutes, external wait separately, prerequisites, acceptance cells, uncertainty range, contingency `<=10%`, & unmapped-work count `0`. Estimates derive from path-level baseline + one measured representative change per work type, never a global productivity rate; before every package starts, validator rejects missing paths, double-counting, unmapped requirements/work, ceiling increase without new authority revision, or package high estimate exceeding aggregate remaining allocation. Product authority must split/resequence/revise before any over-cap package work begins.
 
-1. Land packet, typed-degradation, no-op sync, command behavior, cancellation, and warm benchmark equivalence gates in CI.
-2. Freeze live database path, owner, schema, row-count, allocation, WAL, and process receipts on both hosts.
-3. Land existing-`doc_artifacts` unchanged-file skipping and focused sync tests.
-4. Finish streaming `run_capped`; spill only after cap breach; limit adapters to Git and test runners.
-5. Select measured FTS5/LRU/prefix work; add workers or gateway concurrency only if P0 evidence justifies them.
-6. Land canonical path resolution and read-only inventory without touching live data.
-7. Classify duplicate catalogs and orphan sidecars; quarantine only after liveness proof.
-8. Add effective-WAL verification, checkpoint metrics, and writer-owned maintenance policy.
-9. Prove projection and outbox retention contracts.
-10. Rehearse backup, compact, validate, adopt, rollback, and restart on fixtures.
-11. Compact Mac Crypt once; measure size, recall, RSS, WAL, and health.
-12. Compact Windows Crypt only if measured free pages justify it; current evidence says they do not.
-13. If source changed, build and sign Membrane natively on both hosts, publish through GitHub Releases, then adopt through Orthic.
+| Package | Prerequisite artifacts | Acceptance owner/cells | Capacity fields frozen at P0 |
+|---:|---|---|---|
+| 1–2 | baseline, shared lifecycle protocol, aspect/surface/policy inventory | lifecycle, equivalence, scope, compatibility | owned paths, baseline lines, projected delta, native-host effort |
+| 3–4 | full-provider trace, provider protocol, document/artifact identity | warm/cold, revocation, retrieval, storage | same fields + profiling/index migration work |
+| 5–6 | memory migrations, policy invalidation, holdout corpus | memory, scope, equivalence, task/token quality | same fields + migration/backout/model-runtime cost |
+| 7–8 | DB identity, backup/restore design, extractor manifests | durability, recovery, multimodal security | same fields + fault/native-host work |
+| 9–10 | all acceptance-owner receipts, comparator adapters, release manifests | evidence, comparative, compatibility, delivery | exact remaining paths, native release/install effort, Cortex joint proof, parent pin work |
 
-This order freezes behavior before optimization, measures before changing federation, reuses existing artifact and head/tail machinery, and keeps durable-memory maintenance separate from Cortex's disposable graph rebuild.
+After every package, receipt records actual changed files/lines, active engineering time, native-host wait separately, completed acceptance cells, & aggregate remaining capacity. No “all requirements green” or final-package start is allowed when mapped remaining work exceeds frozen remaining ceiling; product authority must split/resequence scope without weakening this book.

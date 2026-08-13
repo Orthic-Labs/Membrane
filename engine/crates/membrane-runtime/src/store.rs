@@ -1666,6 +1666,18 @@ fn db_path(db: &MemDb) -> Option<PathBuf> {
         })
 }
 
+fn detailed_database_status(
+    probe: crate::memdb::MemDbProbe,
+    memory_count: Option<i64>,
+    startup_wal_degraded: bool,
+) -> &'static str {
+    match (probe, memory_count) {
+        (crate::memdb::MemDbProbe::Ok, Some(0)) => "empty",
+        (crate::memdb::MemDbProbe::Ok, _) if startup_wal_degraded => "degraded",
+        _ => probe.status(),
+    }
+}
+
 fn new_uuid_v4() -> Result<String, String> {
     let mut bytes = [0u8; 16];
     getrandom::getrandom(&mut bytes)
@@ -5709,15 +5721,19 @@ impl MemoryStore {
         } else {
             None
         };
-        let database_status = match (database, memory_count) {
-            (crate::memdb::MemDbProbe::Ok, Some(0)) => "empty",
-            _ => database.status(),
-        };
+        let startup_wal = self.db.startup_wal_reports();
+        let startup_wal_degraded = startup_wal.iter().any(|report| report.status != "ok");
+        let database_status =
+            detailed_database_status(database, memory_count, startup_wal_degraded);
         health["database"] = serde_json::json!({
             "status": database_status,
             "memoryCount": memory_count,
+            "startupWal": {
+                "main": startup_wal[0],
+                "eventLedger": startup_wal[1],
+            },
         });
-        if database != crate::memdb::MemDbProbe::Ok {
+        if database != crate::memdb::MemDbProbe::Ok || startup_wal_degraded {
             health["ok"] = serde_json::Value::Bool(false);
         }
         health
@@ -7130,6 +7146,42 @@ fn sanitize_memory_id(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detailed_health_keeps_database_parity_and_surfaces_startup_wal() {
+        let health = MemoryStore::new().detailed_health_json();
+        assert_eq!(health["database"]["status"], "empty");
+        assert_eq!(health["database"]["memoryCount"], 0);
+        for name in ["main", "eventLedger"] {
+            let report = &health["database"]["startupWal"][name];
+            assert_eq!(report["status"], "ok");
+            assert!(report["path"].is_null());
+            assert!(report["mainBytes"].is_null());
+            assert!(report["walBytes"].is_null());
+        }
+    }
+
+    #[test]
+    fn detailed_database_status_preserves_probe_and_empty_precedence() {
+        use crate::memdb::MemDbProbe;
+
+        assert_eq!(
+            detailed_database_status(MemDbProbe::Ok, Some(1), true),
+            "degraded"
+        );
+        assert_eq!(
+            detailed_database_status(MemDbProbe::Ok, Some(0), true),
+            "empty"
+        );
+        assert_eq!(
+            detailed_database_status(MemDbProbe::Busy, None, true),
+            "busy"
+        );
+        assert_eq!(
+            detailed_database_status(MemDbProbe::Error, None, true),
+            "error"
+        );
+    }
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 
     #[test]

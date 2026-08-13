@@ -4499,19 +4499,8 @@ pub fn run(
     let workspace_root =
         crate::runtime_receipt::resolve_workspace_root(std::env::var_os("WORKSPACE_ROOT"), db_path)
             .map_err(|error| error.to_string())?;
-    let telemetry_outbox = crate::runtime_receipt::resolve_telemetry_outbox_path_from(
-        std::env::var_os("CRYPT_TELEMETRY_OUTBOX"),
-        std::env::var_os("MEMBRANE_TELEMETRY_OUTBOX"),
-        db_path,
-    )
-    .map_err(|error| error.to_string())?;
-    let runtime_receipt = crate::runtime_receipt::RuntimeReceiptV1::new(
-        &workspace_root,
-        db_path,
-        &catalog_path,
-        &telemetry_outbox,
-        identity,
-        claim,
+    let configured_event_db = crate::runtime_receipt::validate_telemetry_event_binding(
+        std::env::var_os("MEMBRANE_EVENT_DB"),
     )
     .map_err(|error| error.to_string())?;
     #[cfg(feature = "fastembed")]
@@ -4523,6 +4512,24 @@ pub fn run(
             .commit();
     }
     let store = MemoryStore::try_open(MemDb::open(db_path).map_err(|e| e.to_string())?)?;
+    let telemetry_event_db = store.db().event_db_path().ok_or_else(|| {
+        "resident Crypt store has no physical telemetry event database".to_string()
+    })?;
+    if configured_event_db
+        .as_deref()
+        .is_some_and(|configured| configured != telemetry_event_db)
+    {
+        return Err("resident Crypt telemetry event binding changed during startup".to_string());
+    }
+    let runtime_receipt = crate::runtime_receipt::RuntimeReceiptV2::new(
+        &workspace_root,
+        db_path,
+        &catalog_path,
+        telemetry_event_db,
+        identity,
+        claim,
+    )
+    .map_err(|error| error.to_string())?;
     let context_ingest_lease =
         crate::context_telemetry::ContextIngestLease::from_startup(identity, claim)
             .map_err(|error| format!("prepare telemetry ingest lease: {error}"))?;

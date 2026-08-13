@@ -1,8 +1,500 @@
-# Function-first comparison: Membrane & 36 vendored systems
+# Membrane best-of-market context & memory book
+
+Date: 2026-08-12
+
+Authority: this file is Membrane/Crypt's frozen product/performance source of truth. Derived plans may sequence it; they may not delete, weaken, or silently defer requirements.
+
+Scope: canonical `/Volumes/D/claude/membrane` only. `/Volumes/D/claude/membrane2` is throwaway & excluded.
+
+## Product promise
+
+Membrane delivers smallest sufficient, freshest, authorized, provenance-bound context for each task. Crypt supplies durable local memory with explicit retention, retrieval, correction, expiry, supersession, quarantine, export, & recovery. Every omission and fallback is typed. Hub is sole user-controlled lifecycle owner.
+
+“Best on market” is a target, not a present claim. It becomes a claim only when a digest-frozen same-corpus comparison proves Membrane noninferior on every eligible axis & strictly better on at least one material axis without an authority, privacy, safety, durability, or lifecycle loss. No module, schema, fixture, or source-ready harness counts as shipped until its production route & qualifying evidence exist.
+
+## Current truth — not a completion claim
+
+| Area | Current state | Consequence |
+|---|---|---|
+| Canonical doctor | `broken` on 2026-08-12: stale Cortex dependency/provider identity, Merkle mismatches, missing understanding/verdict artifacts | No current end-to-end completion claim is accepted |
+| Working tree | Four Crypt database/WAL files contain an uncommitted stopped-task overlay | Overlay is evidence, not accepted baseline or release |
+| Durable memory | SQLite-backed scoped memory, temporal facts, lifecycle events, supersession, expiry, feedback, quarantine/restore, deterministic consolidation | Strong base; qualify installed paths & data migrations |
+| Memory families | Runtime enum exposes Working, Episodic, Semantic | Procedural, entity-summary, evolving-belief, & artifact-reference types are absent as first-class governed records |
+| Retrieval | Lexical + vector RRF, resident vector index, scope filters, outcome nudge, graph augmentation elsewhere | Add complete explainable component contract, temporal/authority signals, & benchmark proof |
+| Context assembly | Typed packets, grants, freshness, budgets, omissions, compression, provider fusion | Freeze output equivalence before optimization |
+| Documents | `doc_artifacts` now queries content hash + parser version before parsing | Prior plan is stale; classify as implemented-unqualified, not pending infrastructure |
+| Benchmarks | LoCoMo, LongMemEval, BEAM adapters & whole-task commit-reveal harness exist | Source-ready only; no real dataset/run result may be claimed |
+| Lifecycle | Existing historical service machinery conflicts with user intent | Final rule: Hub starts/stops Membrane + Cortex; no independent persistence |
+
+## Non-negotiable invariants
+
+| ID | Invariant |
+|---|---|
+| MB-I01 | Hub alone owns start, stop, restart, & optional system startup. Membrane/Crypt & Cortex watcher are Hub-owned children only. |
+| MB-I02 | Hub-off means no owned Membrane, Crypt, Cortex service, watcher, launch agent, login item, scheduled task, detached daemon, or self-restart process. |
+| MB-I03 | Context authority, scope, generation, provenance, freshness, sensitivity, budget, & omission state are typed data, never prose inference. |
+| MB-I04 | Durable memory is local-first, transactional, backupable, inspectable, exportable, & recoverable. No destructive maintenance touches the only copy. |
+| MB-I05 | Hot path is deterministic, bounded, cancellable, & free of mandatory LLM extraction/consolidation. |
+| MB-I06 | Background consolidation never silently changes authority, scope, source, or truth; every result is evidence-bound, reversible, & corpus-versioned. |
+| MB-I07 | Retrieval is hybrid but explainable. Every score component, veto, fallback, truncation, & abstention is observable. |
+| MB-I08 | Similarity never grants visibility. Scope/ACL filtering happens before ranking & persists through caches, graph expansion, exports, & shared blocks. |
+| MB-I09 | Retain, recall, reflect, consolidate, correct, supersede, expire, forget, quarantine, restore, export, migrate, & audit have distinct contracts. |
+| MB-I10 | Context clearing/compaction leaves a typed placeholder/receipt & preserves a retrievable reference before bytes leave active context. |
+| MB-I11 | Every optimization proves same packets/decisions with less measured work; no threshold, fixture, omission, timeout, or expected order weakens. |
+| MB-I12 | “Done” requires clean canonical source, real benchmark evidence, Mac + Windows installed receipts, signed native artifacts when binaries change, nested commit, parent pin, push, & remote verification. |
+| MB-I13 | Membrane alone decides packet eligibility, current authorization, authority/freshness ordering, cross-source fusion, global budgets, omissions, & final rendering. Providers including Cortex return typed candidates/facts, never final packet authority. |
+| MB-I14 | Cache & derived identities bind source generation plus current policy/grant/ACL/scope/sensitivity versions; revocation invalidates every projection before later reads can admit it. |
+| MB-I15 | Artifact access re-resolves current authoritative policy at use/export/restore time; a stored ACL digest is evidence, never continuing permission. |
+| MB-I16 | Every public CLI, MCP, HTTP, SDK, Hub UI, protocol, schema, backup, & export surface has a versioned compatibility fixture, migration/deprecation state, & release receipt. |
+| MB-I17 | Packet admission & publication bind one current policy epoch; epoch change before emission aborts/retries or returns typed abstention. |
+| MB-I18 | Exactly one host-scoped Hub instance may issue child leases; monotonic fencing prevents split-brain ownership. |
+| MB-I19 | `ScopeGrant`, `ContextCandidateSet`, `ContextPacket`, `ContextReceipt`, & `KnowledgeEmission` remain distinct versioned contracts; provider/storage schemas never escape adapters. |
+| MB-I20 | For overlapping claims, current authorized repository evidence outranks stale memory; authority & freshness remain separate receipt components. |
+| MB-I21 | Packet budgets reconcile `native`, `rendered`, `resolver_backed`, & `metadata_only` lanes independently with input/admitted/rendered/omitted totals. |
+| MB-I22 | Deterministic secret + prompt-injection scanning runs before `crypt put` derivatives & every Push compression/model/egress transform. |
+| MB-I23 | Canonical owning prefixes validate before filesystem, database, or subprocess I/O; invalid/ambiguous/escaping targets perform zero I/O. |
+| MB-I24 | Required runtime has zero third-party service, competitor process/package/plugin/checkout, remote model/vector/rerank endpoint, dynamic download, or optional vendor-provider dependency. Signed bundled build libraries remain supply-chain inputs, never runtime authorities. |
+| MB-I25 | Admission decisions, substantive domain decisions, & outcome attribution are separate versioned families joined only through explicit evidence references. |
+| MB-I26 | Canonical events/receipts are provenance write authority; every graph/standard export is a deterministic rebuildable projection. |
+| MB-I27 | Valid time & recorded/known time remain independent for durable facts, decisions, policies, exceptions, conflicts, & findings; historical replay excludes later-known evidence. |
+| MB-I28 | Private model chain-of-thought is never requested, persisted, exported, replayed, or treated as evidence. Store concise rationale summaries, typed factors, cited evidence, & verdicts only. |
+
+## State model
+
+Report independent axes; never collapse them into one alarming state.
+
+| Axis | Allowed states | Meaning |
+|---|---|---|
+| Hub/service | `off`, `starting`, `ready`, `draining`, `failed` | User-controlled lifecycle; `off` is healthy when selected |
+| Context packet | `complete`, `partial`, `abstained`, `failed` | All required lanes; typed omissions; insufficient safe evidence; contract failure |
+| Source freshness | `fresh`, `stale`, `unavailable`, `indeterminate` | Source identity matches; newer source exists; dependency absent; evidence cannot decide |
+| Memory operation | `durable`, `advisory`, `rejected`, `conflict`, `failed` | Committed receipt; non-durable fallback; policy denial; identity/version conflict; execution failure |
+| Evaluation | `not_run`, `source_ready`, `measured`, `invalid`, `stale` | No run; harness only; bound result; gate failure; wrong release/corpus/host |
+
+`service=off` is intentional control, not degradation. A packet can be `partial` because an optional provider missed deadline while authoritative lanes remain fresh; its receipt must name exact missing lane, reason, & effect.
+
+## Canonical memory model
+
+| Type | Purpose | Formation | Retrieval constraints | Current status |
+|---|---|---|---|---|
+| Scratchpad | Ephemeral private task scratch, never durable search input | Explicit task-local write | Exact task/session only; non-searchable; TTL; never promoted | ADOPT as distinct family |
+| Working | Session/task scratch state | Explicit hot-path write | Session/task scope, short TTL | Implemented |
+| Episodic | Observed event, action, result, tool trace | Receipt-bound event | Time, task, actor, outcome, source | Implemented; deepen schema |
+| Semantic | Stable fact/preference/knowledge | Explicit fact or promoted evidence | Valid-time, authority, veracity, supersession | Implemented across memory + temporal store |
+| Procedural | Instruction, workflow, policy, skill | Explicit governed write/import | Authority, version, applicability, safety scope | ADOPT as first-class type |
+| Policy/keystone | High-authority constraint or invariant | Explicit signed policy action only | Exact scope/subject/operation, version, validity, approval, exception, supersession | ADOPT as distinct family; never automatic |
+| Skill | Packaged procedure with declared tools & evidence | Verified versioned release after replay/conformance | Scope, permissions, version, expiry, outcome, rollback | ADOPT as distinct family |
+| Entity summary | Current evidence-backed view of person/project/component | Background derivation | Source set, as-of time, reversible regeneration | ADOPT |
+| Evolving belief | Hypothesis with supporting/conflicting evidence | Reflect lane only | Confidence, evidence IDs, contradiction, never authority by itself | ADOPT |
+| Artifact reference | Image/audio/video/binary/document/tool-output pointer | Ingestion/reference capture | Hash, MIME, location, sensitivity, summary, availability | ADOPT |
+
+No LLM-generated summary becomes a semantic fact. It remains derived evidence with model/prompt/corpus identity until explicitly promoted.
+
+## Canonical operation model
+
+| Operation | Contract |
+|---|---|
+| Retain | Validate scope/ACL/source/type; commit bytes + provenance + receipt atomically |
+| Recall | Filter authorization/freshness first; retrieve/rank; return citations, score components, omissions, & abstention |
+| Reflect | Optional evidence synthesis over recall; creates derived belief/summary only, never mutates source facts |
+| Consolidate | Deterministic duplicate/date normalization first; optional model lane isolated; transaction aborts on corpus drift |
+| Correct/supersede | Append replacement + temporal transition; retain history; current view excludes superseded row |
+| Expire/forget | Policy/TTL or explicit user action; tombstone & audit receipt; hard delete only under declared retention policy |
+| Quarantine/restore | Reversible exclusion from recall with complete row preservation & reason |
+| Export/import/migrate | Deterministic versioned vault, hashes, ACL/provenance preservation, dry-run, backup, rollback |
+| Context edit | Clear/compress only after durable reference exists; emit placeholder, byte/token delta, source set, & recovery pointer |
+
+## Atomic domain-governance protocol freeze
+
+These are exact first-party contracts. Missing, renamed, widened, provider-shaped, vendor-shaped, or unversioned fields fail byte-golden compatibility; extension fields require the normal protocol-version process.
+
+| Contract | Exact required/optional fields & closed enums |
+|---|---|
+| `TemporalEnvelopeV1` | `validFrom?: UTC instant`, `validUntil?: UTC instant\|OPEN`, `recordedFrom: UTC instant`, `recordedUntil?: UTC instant\|OPEN`, `observedAt?: UTC instant`, `sourceGeneration?: string`; validity & recorded intervals are independent half-open intervals; absent end means `OPEN`; inverted/naive/malformed intervals reject. |
+| `DomainDecisionV1` | `id`, `scopeGrantRef`, `sessionRef?`, `taskRef?`, `category`, `scenario`, `outcome`, `rationaleSummary?`, `structuredFactors?: [{name,value,influence?: supports\|opposes\|neutral}]`, `assertedConfidence?` in `[0,1]`, `madeBy`, `contextSnapshotRef`, `packetHash`, `receiptRef`, `policyRefs[]`, `approvalRefs[]`, `exceptionRefs[]`, `temporal`, `state: proposed\|approved\|rejected\|executed\|reversed\|superseded\|invalidated`, `generation`; private reasoning/embedding fields are forbidden. |
+| `DecisionEvidenceV1` | `decisionRef`, `receiptRef`, `candidateRef?`, `sourceRef`, `sourceHash`, `role: supports\|contradicts\|constraint\|precedent\|policy\|background\|post_context_evidence`, `usageState: selected\|rendered\|resolver_backed\|resolved\|referenced\|acted_on\|unknown`, `resolverRef?`, `sourceSpan?`, `authority`, `freshness`, `temporal?`; every non-post-context edge resolves against exact receipt/candidate/source bytes. |
+| `DecisionRelationV1` | `subjectRef`, `subjectKind: decision`, `objectRef`, `objectKind: decision\|policy\|exception\|approval\|actor\|source\|implementation`, `kind: caused\|influenced\|precedent_for\|supersedes\|contradicts\|implements\|reverts\|invalidates\|approved_by\|exception_to`, `evidenceRefs[]`, `confidence?` in `[0,1]`, `temporal`, `createdBy`, `generation`; `caused`, `precedent_for`, `supersedes`, `implements`, `reverts`, & `invalidates` reject cycles before mutation. |
+| `PolicyVersionV1` | `id`, `scopeGrantRef`, `version`, `category`, `rules[]`, `applicability:{scopeRefs[],roles[],tasks[],operations[],subjects[]}`, `effectiveFrom`, `effectiveUntil: UTC instant\|OPEN`, `state: draft\|active\|superseded\|retired\|invalidated`, `actor`, `evidenceRefs[]`, `previousVersionRef?`, `generation`, `digest`; rules use only the bounded first-party policy expression set. |
+| `PolicyEvaluationV1` | `id`, `policyRef`, `policyVersion`, `subjectRef`, `operation`, `taskRef?`, `actorRef`, `inputRefs[]`, `result: allow\|deny\|not_applicable\|indeterminate`, `ruleResults[]`, `explanation`, `exceptionRef?`, `approvalRefs[]`, `evaluatedAt`, `generation`, `digest`; fixed input/policy bytes produce byte-identical results. |
+| `PolicyExceptionV1` | `id`, `policyRef`, `policyVersion`, `scopeRef`, `subjectRef`, `taskRef?`, `operation`, `decisionRef?`, `requestedBy`, `reason`, `justification`, `evidenceRefs[]`, `approvalRefs[]`, `validFrom`, `validUntil`, `state: requested\|approved\|rejected\|revoked\|expired\|superseded`, `revokedBy?`, `revokedAt?`, `temporal`, `generation`; chat text alone never authorizes. |
+| `ApprovalRecordV1` | `id`, `subjectRef`, `subjectKind: decision\|policy\|exception\|promotion\|release`, `approver`, `authorityRef`, `method: hub_ui\|signed_cli\|signed_api\|system_policy`, `verdict: approved\|rejected`, `justification`, `evidenceRefs[]`, `validFrom`, `validUntil: UTC instant\|OPEN`, `revokedBy?`, `revokedAt?`, `temporal`, `generation`; email/chat/call self-report is evidence only, never approval authority. |
+| `ConflictRecordV1` | `id`, `scopeGrantRef`, `subjectRef`, `predicateRef?`, `kind: value\|type\|relationship\|temporal\|logical\|authority\|source\|decision\|schema\|identity\|scope`, `claimRefs[]`, `evidenceRefs[]`, `overlap`, `state: open\|quarantined\|resolved\|superseded\|invalidated`, `resolutionRef?`, `createdBy`, `temporal`, `generation`; exact claims remain queryable after resolution. |
+| `InvalidationV1` | `id`, `targetRef`, `targetKind`, `scopeGrantRef`, `reason`, `evidenceRefs[]`, `invalidatedBy`, `invalidatedAt`, `replacementRef?`, `policyRef`, `generation`, `digest`; current indexes exclude target while history/export retains tombstone. |
+| `ProvenanceProjectionRowV1` | `id`, `scopeGrantRef`, `entityRef`, `activityRef`, `actorRef`, `role`, `relation: used\|previous_version\|derived_from\|supersedes\|contradicts\|precedent_for\|implements\|reverts\|invalidates`, `objectRef`, `sourceRef`, `sourceSpan?`, `temporal`, `bundleRef?`, `sequence`, `previousChainDigest?`, `generation`, `digest`; rows are deterministic projections only. |
+| `TemporalQueryV1` | `scopeGrantRef`, `recordKinds[]: fact\|decision\|policy\|exception\|conflict\|finding`, `subjectRefs[]?`, `validAt?`, `knownAt?`, `includeSuperseded: false\|true`, `includeInvalidated: false\|true`, `limit`, `cursor?`, `generation`; both times absent means current view; late-known rows never enter earlier `knownAt`. |
+
+## Exact canonical storage registry
+
+Crypt event/store ownership is unchanged. These names are one versioned registry contract; aliases, duplicate manifests, parallel logs, & independently mutable projections are forbidden.
+
+| Class | Exact canonical members | Executable acceptance |
+|---|---|---|
+| Append-oriented events/tables | `context_exposure_event`, `context_outcome_event`, `memory_lifecycle_event`, `domain_decision_event`, `decision_evidence`, `decision_relation_event`, `policy_version_event`, `policy_evaluation_event`, `policy_exception_event`, `approval_event`, `conflict_event`, `invalidation_tombstone`, `session_summary_node`, `transform_manifest`, `risk_signal`, `provider_conformance_receipt` | Migration creates each member once under Crypt ownership; duplicate/alias/second-ledger counts `0`; copied-database migrate/backout + deterministic replay pass |
+| Rebuildable projections/indexes | `current_memory_state`, `current_decision_policy_exception_state`, `bitemporal_fact_decision_intervals`, `active_conflicts_resolutions`, `precedent_index`, `receipt_to_decision_evidence`, `provenance_entity_activity_actor_role`, `value_outcome_aggregates` | Delete/rebuild yields identical canonical payload digests, counts, temporal/current answers, relations, & aggregate inputs without deleting history |
+
+## Exact hook-event policy freeze
+
+Each row is one atomic operation-registry obligation owned by `MB-F82`. Host adapters may report unsupported; they may not widen blocking behavior or silently emulate an event.
+
+| Event | Required behavior | Exact blocking/fallback policy |
+|---|---|---|
+| `SessionStart` | Readiness, installation generation, bounded checkpoint/working-context restore | Fail open with typed degradation unless explicit security/policy denial |
+| `UserPromptSubmit` | Federate & inject task context | One bounded ingress deadline; timeout remains visible |
+| `PreToolUse` | Scope/path/policy check, read bump, conflict advisory, optional command rewrite | Hard block only for explicit security/policy denial |
+| `PostToolUse` | Observe outcome, transform output, ingest eligible writes | Transform failure returns bounded raw output + exact anchor |
+| `PostToolUseFailure` | Capture tool failure, error identity, & candidate impact | Non-blocking |
+| `PreCompact` | Write pending checkpoint + immutable span boundary | Non-blocking with typed failure |
+| `PostCompact` | Save redacted summary node, rearm recall, preserve lineage | Non-blocking |
+| `Stop` | Durable-signal advisory + pending-proposal warning | Advisory-only; block count `0` |
+| `SessionEnd` | Finalize session ledger, close ephemeral state, emit handoff candidate | Non-blocking |
+| `SubagentStart` | Register child task, monotonic scope, overlay, & parent receipt | Non-blocking |
+| `SubagentStop` | Record result, evidence, unresolved risk, & handoff | Non-blocking |
+| `TaskCompleted` | Attach verified outcome/test/merge evidence | Non-blocking |
+| `Notification` | Capture allowlisted operational signals only | Non-blocking |
+| Git commit/worktree | Invalidate freshness & publish overlay/commit identity | Bounded background; never delays Git completion |
+
+Every event uses stable IDs, deduplicates retries, propagates deadline/cancellation, & distinguishes `skipped`, `unsupported`, `timeout`, `failed`, `denied`, & `complete`.
+
+## Exact public inspection & workflow freeze
+
+Each row is one atomic registry obligation. Mutable effects stay in ten canonical MCP tools; resources remain read-only; workflow artifacts are signed first-party callers of canonical operations.
+
+| Surface | Exact frozen members |
+|---|---|
+| `membrane_context` additions | `plannerPolicy: precise\|balanced\|broad\|review\|continuity\|governance`; `explain: none\|summary\|full_receipt`; source/session diversity policy; low-confidence query-expansion permission; maximum rerank model-call class; `validAt?`; `knownAt?` |
+| `membrane_source_read` additions | `lines\|head\|tail\|search\|json_select\|table_project\|aggregate\|log_diagnostics\|full`; source hash, grant, CPU, byte, & deadline bounds; arbitrary shell/code/mutation forbidden |
+| `membrane_cortex` operation enum | `manifest_status\|resolve\|impact\|trace_path\|architecture_orient\|review_context\|hot_path\|affected_flows\|blind_spots\|communities\|bridge_hub_nodes\|surprising_connections\|cross_repo\|risk_drift\|wiki_section\|minimal_context` |
+| `membrane_feedback` additions | Evidence refs, verdict refs, `attribution: observed\|derived\|inferred\|verified`, & observed transition; nullable only with typed `unknown`; self-report cannot affect ranking before calibration |
+| `membrane_working_context` enum | `save\|load\|close`; handoff & summary are read-only resources, never mutable operations |
+| `membrane_temporal_fact` additions | Explicit single-valued predicate policy, ontology refs, policy refs, native `TemporalEnvelopeV1`, `validAt?`, & `knownAt?`; validity never infers knowledge time |
+| Read-only resources | `membrane://receipt/<receipt-id>`; `delivery-trace/<trace-id>`; `anchor/<sha256>`; `provider/<id>/status`; `session/<id>/summary`; `memory/<id>/lifecycle`; `decision/<id>`; `decision/<id>/evidence`; `decision/<id>/causal-chain`; `decision/<id>/precedents`; `policy/<id>/version/<version>`; `conflict/<id>`; `provenance/<entity-id>`; `replay/<session-or-decision-id>?validAt=<t>&knownAt=<k>`; `support-matrix`; `capabilities` under the same `membrane://` authority |
+| Signed workflow artifacts | Review diff with impact context; diagnose failing test; orient repository; resume long task; propose durable knowledge; inspect context omission; audit memory conflict; review decision + policy basis; trace precedent/causal ancestry/invalidation; authorize policy exception through host authority; recover anchored output |
+
+## Exact competency-question freeze
+
+Each question is a mandatory CI/qualification fixture owned by `MB-F92`; every answer returns exact evidence refs, coverage, typed unknowns, & deterministic unsupported state.
+
+| ID | Required executable question |
+|---|---|
+| `MB-CQ01` | Which decision currently governs this subsystem? |
+| `MB-CQ02` | What exact evidence supports or contradicts it? |
+| `MB-CQ03` | What superseded the previous decision? |
+| `MB-CQ04` | What code/tests implement it? |
+| `MB-CQ05` | Which facts were valid and known at the original decision time? |
+| `MB-CQ06` | What conflicts remain unresolved? |
+| `MB-CQ07` | Which policy version and exception authorized the action? |
+| `MB-CQ08` | Which source is authoritative when claims disagree? |
+
+## Hot-path & background boundary
+
+Hot path: authorization, freshness, exact/lexical/vector/entity/temporal retrieval, deterministic scoring, budgets, context assembly, compression, typed receipts, cancellation.
+
+Background: embedding refresh, entity summaries, belief reflection, deduplication, temporal normalization, benchmark replay, maintenance, backup, compaction.
+
+Background failure never blocks safe hot-path recall & never becomes an untyped “degraded” response.
+
+## Cross-system authority boundary
+
+Cortex supplies immutable-generation repository facts/candidates plus provenance, confidence, capability, policy labels, & relevance components. Other providers do the same for their domains. Membrane re-resolves current grant/policy & solely owns eligibility, authority/freshness policy, cross-source fusion, global token/byte/time budgets, protected facts, omissions, & final packet. Provider relevance cannot promote authority, extend scope, or override a revocation. Standalone Cortex search remains a separate product surface & is never represented as a Membrane-authorized packet.
+
+## Revocation, cache, derived-record, & artifact contract
+
+Every cache/projection/embedding/graph/working block/export candidate key includes source ID + source generation, subject/scope, policy version, grant-set digest, ACL version, sensitivity/egress policy version, provider/extractor/model version, & schema version. A policy/grant/ACL/scope/source change emits ordered invalidation; admission fail-closes until affected lexical, vector, graph, working, summary, belief, artifact, export, & backup-index projections are invalidated or rebuilt. Races test revoke-before-read, revoke-during-build, revoke-during-packet, revoke-during-export, scope move, grant narrowing, restore of old backup, & offline policy resolver.
+
+Packet planning is one policy-epoch transaction: candidate reads, eligibility, fusion, rendering, & output receipt bind resolver epoch + grant digest. Immediately before publication on every CLI/MCP/HTTP/SDK/Hub surface, planner revalidates that epoch under a publication fence. Change aborts emission & deterministically retries once against new epoch or returns typed `policy_changed` abstention; no bytes from obsolete epoch are released.
+
+`ArtifactRefV1` binds content/source identity, derived projection identity, provenance, stored ACL evidence, & authoritative policy resolver/version. Every read, citation expansion, derived lookup, export, restore, or share re-resolves current policy. Missing, changed, stale, or unavailable policy resolves to typed denial; it never trusts an old ACL digest. Revocation cascades to derived text, embeddings, graph facts, summaries, citations, caches, exports, & restored indexes while preserving auditable tombstone/receipt evidence.
+
+## Public surface compatibility contract
+
+| Surface | Target contract | Compatibility gate |
+|---|---|---|
+| CLI | context/memory/status/doctor/backup/restore remain scriptable | Golden argv/stdout/stderr/exit-code fixtures; incompatible change requires major version + migration |
+| MCP | tools/resources/errors/typed omissions remain schema-versioned | Protocol goldens against supported hosts; additive by default |
+| HTTP/resident RPC | request, lease, cancellation, deadline, packet, & error semantics | Old-client/new-service + new-client/old-service matrix for supported window |
+| SDK/generated bindings | candidate, policy, packet, memory, artifact, receipt schemas | One source schema + generated-binding byte goldens |
+| Hub UI/lifecycle | explicit off/on/startup preference, state, crash-loop, update, uninstall | Installed Mac + Windows interaction & process-census fixtures |
+| Backup/export/artifacts | identity, policy version, provenance, tombstone, migration | Forward-read/backout or explicit version refusal with recovery path |
+
+Removal requires one supported-release deprecation window, migration instructions, contract-fixture update, & explicit product-authority decision.
+
+## Single-Hub fencing contract
+
+Hub atomically acquires one host/install-scoped durable owner lease with installation ID, Hub instance ID, process birth identity, monotonic fencing token, expiry, & protocol version before starting any child. Renewal preserves fence; update handoff advances it atomically; stale owner, lease-store loss, or ambiguous ownership fails closed & drains children. Every child lease/request carries fence; children reject lower/stale/foreign fences even when liveness handles remain open. Concurrent-Hub, stale-owner restart, clock jump, lease-store corruption/loss, update handoff, crash recovery, & uninstall fixtures must leave at most one fenced owner & zero descendants after off/quit.
+
+## Best-of-market absorption ledger
+
+`ADOPT` is required target scope. `ALREADY` still needs installed proof. `GATE` lands only after named evidence. `REJECT` is deliberate.
+
+| ID | Source / market leader | Best technique | Disposition | Membrane requirement |
+|---|---|---|---|---|
+| MB-A01 | [LangMem](https://langchain-ai.github.io/langmem/concepts/conceptual_guide/) | Semantic/episodic/procedural memory; hot/background formation; rich recall signals | ADOPT | First-class types + bounded background lane + explainable scoring |
+| MB-A02 | [Hindsight](https://docs.hindsight.vectorize.io/) | Retain/recall/reflect separation; facts, experiences, entity summaries, evolving beliefs | ADOPT | Distinct APIs; reflect is evidence-bound & non-authoritative |
+| MB-A03 | [Zep Graphiti](https://help.getzep.com/graphiti/getting-started/overview) | Temporal knowledge graph with historical relationships | ALREADY + ADOPT | Unify temporal facts, graph edges, current/as-of queries, provenance |
+| MB-A04 | [Letta](https://docs.letta.com/guides/core-concepts/memory/memory-blocks) | Persistent editable/shared memory blocks | ADOPT | Explicit private/team/global blocks with ACL + provenance |
+| MB-A05 | [Anthropic context editing](https://platform.claude.com/docs/en/build-with-claude/context-editing) | Compaction & tool-result clearing with placeholders | ADOPT | Receipt-backed context editing + retrievable references |
+| MB-A06 | [Anthropic memory tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool) | Client-controlled storage & just-in-time retrieval | ALREADY + ADOPT | Preserve local control; standard JIT memory references |
+| MB-A07 | [MemOS](https://github.com/MemTensor/MemOS/blob/main/README.md) | Text, images, tool traces, personas | ADOPT | Governed artifact-reference type, not blind blob injection |
+| MB-A08 | Mem0 | Simple extraction/update/search & entity linking | ADOPT API simplicity; REJECT mandatory hosted path | Typed local retain/recall, conflict handling, source identity |
+| MB-A09 | Cognee / GraphRAG | Graph-grounded retrieval & entity relationships | ALREADY + ADOPT | Bounded graph lane with citations, temporal validity, & scope safety |
+| MB-A10 | Zep / Mem0 managed services | Operational convenience & shared service access | REJECT service/egress; ADOPT operability first-party | Local health, backup, update, & support ergonomics with no remote provider |
+| MB-A11 | Letta / LangChain namespaces | Scoped multi-agent memories | ALREADY + ADOPT | One canonical scope/ACL chain across every store/cache/export |
+| MB-A12 | RTK / context-mode / lean-ctx | Model-free output reduction, spill, cache, dedupe | ALREADY + ADOPT | Streamed bounded capture, conditional spill, exact exit/output receipts |
+| MB-A13 | LLMLingua / Headroom / token-efficient | Learned or semantic compression | GATE | Only if protected facts/citations & whole-task outcomes remain equivalent |
+| MB-A14 | Memary / BondAI / AgentMemory | Memory lifecycle, persona, agent state | ADOPT governed lifecycle; REJECT hidden self-modification | Typed state + explicit user/agent authority |
+| MB-A15 | Cline / Claude Code memory | Human-readable project instruction files | ALREADY + ADOPT | Deterministic doc spine, precedence, conflict, supersession, provenance |
+| MB-A16 | Ivy-Tendril / prpack / CodeCompress | Compact code/task packs | ALREADY + ADOPT | Cortex-grounded candidate sets + token budgets + receipts |
+| MB-A17 | Caura Memclaw / Mengram | Background capture & consolidation | ADOPT read-only proposal mining; GATE promotion | Opt-in, bounded, receipt-bound miner emits quarantined cited `KnowledgeEmission` proposals; auto-write `0` |
+| MB-A18 | LlamaIndex / Haystack / txtai | Pluggable retrievers & storage adapters | ADOPT provider contract; REJECT runtime ecosystem/store sprawl | One durable authority + signed first-party qualified providers only |
+| MB-A19 | Vanna | Domain-specific retrieval with structured data | ADOPT | Schema/query artifact references with authority & result provenance |
+| MB-A20 | Synalinks / Rasa | Structured outputs, validation, dialogue state | ALREADY + ADOPT | Schematized packets, state transitions, repairable validation |
+| MB-A21 | LongMemEval / LoCoMo / BEAM | Long-horizon memory evaluation | ALREADY harness + ADOPT real runs | Bound datasets, model/hardware/release, no fixture-as-result claim |
+| MB-A22 | Whole-task holdouts | End-task outcome over proxy retrieval metrics | ALREADY harness + ADOPT real runs | Commit-reveal holdout, unauthorized/stale/missed-authority cases |
+| MB-A23 | Learned policies/rerankers | Adaptive routing/relevance | GATE | Shadow-only until held-out causal improvement & rollback proof |
+| MB-A24 | Cloud auto-learning/prompt rewrite | Frictionless adaptation | REJECT | No unreviewed procedural/prompt mutation or silent truth promotion |
+| MB-A25 | Multi-store vector/graph stacks | Scale-out flexibility | REJECT external runtime stores/sidecars; ADOPT measured internal scaling tactics | Preserve SQLite authority; scale through first-party local formats/processes in signed release set |
+| MB-A26 | Mentat | Explicit selected context, diff awareness, bounded conversation support | ADOPT selection ergonomics; REJECT editor/history ownership | Membrane supplies cited context/checkpoints; host owns conversation & edits |
+| MB-A27 | Brain0 | Passive local capture, provenance graph, lightweight/heavy split | ADOPT provenance + derived-projection split | Durable authority stays separate from rebuildable indexes |
+| MB-A28 | codebase-memory-mcp | Shared resident local code memory & compact native retrieval | ADOPT resident/local pattern; REJECT RAM-first authority | Use Cortex/Crypt authorities with bounded caches |
+| MB-A29 | BaseAI | Serverless/pipe memory composition | ADOPT portable provider interface; REJECT hosted dependency | Local deterministic provider contracts first |
+| MB-A30 | PraisonAI | Broad pluggable memory/agent integrations | REJECT general orchestration; ADOPT adapter discipline | Keep policy in Membrane, providers emit candidates only |
+| MB-A31 | Supercompress | Content-addressed compression, exact-block selection, cache reuse | ALREADY + ADOPT | Protect citations/authority & prove whole-task equivalence |
+| MB-A32 | code-review-graph | Review-specific graph context & impact | ADOPT via Cortex lane | Bounded cited graph candidates, no duplicate graph authority |
+| MB-A33 | Context8 | Private-code RAG with service-scale workers | REJECT mandatory Postgres/Qdrant/Redis; ADOPT team operability later | Single-user local baseline; team mode requires ACL/backup/audit qualification |
+| MB-A34 | Memonto | Ontology-oriented memory & explicit forget | ADOPT typed entity/relationship + forget receipt | No LLM-derived ontology fact becomes authority automatically |
+| MB-A35 | repo-graph | Compact local structural graph & on-demand navigation | ADOPT through Cortex; REJECT duplicate memory graph authority | Membrane consumes generation-bound graph candidates only |
+| MB-A36 | [Semantica](https://github.com/semantica-agi/semantica/tree/22bf58109460d6d7578352968e4fbda0bf03c9d3) | First-class decisions, causal relations, bitemporal facts, provenance, policy exceptions, conflicts, & invalidation | ADOPT contracts first-party; REJECT runtime/engine/provider | Membrane/Crypt domain governance; no Semantica process, package, MCP, database, API, ID, or write-back |
+
+### Historical competitor closure index
+
+Every repository column in Appendix A resolves to a disposition row; CI must preserve this mapping.
+
+| Snapshot code | Ledger row | Snapshot code | Ledger row | Snapshot code | Ledger row |
+|---|---|---|---|---|---|
+| MEN | MB-A26 | B0 | MB-A27 | CBM | MB-A28 |
+| TEN | MB-A16 | RG | MB-A35 | BAI | MB-A29 |
+| PRP | MB-A16 | CC | MB-A16 | PRA | MB-A30 |
+| RASA | MB-A20 | SC | MB-A31 | SYN | MB-A20 |
+| MGR | MB-A17 | MCL | MB-A17 | CLI | MB-A15 |
+| HAY | MB-A18 | CTE | MB-A13 | ZEP | MB-A03/MB-A10 |
+| HDR | MB-A13 | CRG | MB-A32 | MEMY | MB-A14 |
+| BOND | MB-A14 | LC | MB-A11/MB-A18 | LET | MB-A04 |
+| M0 | MB-A08/MB-A10 | GR | MB-A09 | CM | MB-A12 |
+| TXT | MB-A18 | C8 | MB-A33 | AM | MB-A14 |
+| RTK | MB-A12 | LI | MB-A18 | MTO | MB-A34 |
+| COG | MB-A09 | VAN | MB-A19 | LCTX | MB-A12 |
+
+The historical 36-system matrix remains inventory below. This ledger governs absorption; every snapshot repository is mapped above, & every disposition has an acceptance path.
+
+Supplemental guide competitor Semantica resolves to `MB-A36`; it is research evidence outside historical 36-column snapshot, but its adopted aspects are mandatory in final-absorption registry.
+
+### Atomic historical-aspect closure registry
+
+These immutable IDs bind every Appendix A row, not only competitor columns. `ADOPT` & `ALREADY` require production proof; `GATE` requires a frozen decision; `REJECT` requires a boundary fixture. CI fails on a missing/duplicate matrix ID, ledger link, requirement owner, or gate.
+
+| Immutable aspect IDs | Atomic aspects | Terminal disposition | Ledger / owner | Required acceptance |
+|---|---|---|---|---|
+| F01–F03 | Core job; Main runtime; Execution shape | ADOPT local authority-first product + Hub-owned shape; REJECT mandatory hosted/orchestrator ownership | MB-A10, A24–A25, A29–A30, A33; MB-R001–R004, R033–R036 | Lifecycle, privacy, public-surface, native delivery |
+| D01–D08 | Primary persistence; SQL/transactions; Vector index; Graph store; Lexical/full-text index; Cache; Schema/migrations; Retention/GC/sync | ADOPT one durable authority + rebuildable first-party indexes; REJECT external scale/store sprawl | MB-A03, A07–A11, A18, A25, A27–A28, A33–A35; MB-R009–R012, R025–R032 | Recovery, scope/revocation, index quality/size, migration/backout |
+| I01–I05 | Capture source; Parser/structuring; Change detection; Background ingestion; Embedding path | ADOPT governed incremental capture; GATE background model/embedding; REJECT prompt-hot-path extraction | MB-A01–A03, A07–A09, A15, A17, A27; MB-R005–R012, R021–R028 | Source identity, corpus guard, cancellation, policy invalidation |
+| R01–R04 | Lexical retrieval; Vector retrieval; Graph retrieval; Rank/fusion/freshness | ADOPT explainable deterministic hybrid; GATE learned ranking; REJECT opaque authority score | MB-A01–A04, A08–A09, A11, A18–A19, A23, A32–A35; MB-R009–R016 | ACL-before-rank, component receipts, task/recall quality, abstention |
+| C01–C05 | Context assembly; Prompt compression; Tool/output compression; Token budget; Recovery/reversibility | ADOPT typed packets/JIT/edit receipts; GATE learned compression | MB-A05–A06, A12–A13, A16, A26, A31; MB-R013–R020, R025–R028 | Packet equivalence, protected facts, token economy, recovery |
+| P01–P06 | Model-call avoidance; CPU/RAM tactic; Disk/data-growth tactic; Concurrency/batching; Network/service floor; Main scale bottleneck | ADOPT measured local economy; GATE first-party workers; REJECT remote/sidecars, speculative concurrency, & egress | MB-A10, A12–A13, A17–A18, A23, A25, A28, A31, A33; MB-R017–R020, R025–R036 | Shared benchmark protocol, no-op/warm/resource/egress gates |
+| H01–H19 | Hook stack through TaskCompleted | ADOPT only bounded host callbacks under Hub; REJECT independent persistence or hook-owned policy | MB-A12, A15, A17, A20, A24, A30; MB-R001–R004, R017–R024 | Shared Hub-child protocol, process census, exact event/receipt fixtures |
+| A01–A06 | CLI; MCP; HTTP/API; SDK/library; UI/IDE; Workflow/multi-agent | ADOPT versioned bounded surfaces; REJECT general agent/workflow ownership | MB-A18, A20, A26, A29–A30; MB-R001–R020, R033–R036 | Compatibility matrix, deprecation/migration, scope parity |
+| S01–S02 | Scope/identity; Privacy/security | ADOPT current-policy fail-closed enforcement | MB-A04, A06–A11, A14, A18, A24–A25, A27–A30, A33; MB-R009–R012, R025–R032 | Revocation races, zero leaks/egress, restore/export policy |
+| O01–O02 | Telemetry/receipts; Eval/failure/degradation | ADOPT content-free typed evidence + real evaluation | MB-A20–A23, A28, A31; MB-R029–R036 | Statistical protocol, comparator gate, doctor/receipt validity |
+
+### Final-absorption closure registry
+
+This registry closes every justified `Adopt`/`Adapt` item from final 36-competitor synthesis plus Semantica & reconciled guide. Each row is mandatory target scope; broad ledger wording cannot substitute for its named gate.
+
+| ID | Required absorption | Owner | Executable acceptance |
+|---|---|---|---|
+| MB-F01 | Five distinct typed contracts | MB-R009–R016 | Byte-golden schemas; provider/storage-shaped field leakage `0` |
+| MB-F02 | Fresh authorized code precedence over stale memory | MB-R009–R016 | Conflicting-evidence ranking golden with separate authority/freshness receipt components |
+| MB-F03 | Four-lane budget reconciliation | MB-R013–R020 | Exact native/rendered/resolver-backed/metadata-only input/admit/render/omit accounting |
+| MB-F04 | Default-on `runc` PostToolUse interception for qualified commands | MB-R017–R020 | Versioned Git + test-runner registry, default activation, raw recovery `100%`, non-cached input reduction `>=40%`, quality noninferiority |
+| MB-F05 | Pre-derivation secret + prompt-injection scanning | MB-R009–R012, R017–R020 | Seeded secret/injection derivative bytes before scan `0`; typed block/redact reason |
+| MB-F06 | Canonical-prefix validation before I/O | MB-R009–R012, R025–R032 | Traversal/symlink/wrong-DB/subprocess fixtures perform side effects `0` |
+| MB-F07 | One CCR store, marker, & restore API for every Push transform | MB-R017–R020, R025–R028 | Receipt binds marker/original digest/transform/source; cross-tool byte-exact restore `100%` |
+| MB-F08 | Typed task/intent-aware Push selection | MB-R013–R020 | Deterministic entity/error/definition/dependency bias + exact fallback + whole-task noninferiority |
+| MB-F09 | Packet lifecycle spine | MB-R013–R020, R029–R032 | `assemble→admit→render→deliver→reconcile` exactly once per packet/receipt |
+| MB-F10 | Identifier-aware FTS5/BM25 | MB-R013–R016 | camelCase/snake_case/qualified symbol/path/error token corpus; exact priority + deterministic fallback |
+| MB-F11 | Query-kind boosts within provider set only | MB-R013–R016 | Symbol/error/prose goldens; raw cross-provider score comparison & authority promotion `0` |
+| MB-F12 | Typed structural-answer blind spots | MB-R013–R016 | Unsupported/unindexed language, stale generation, truncated depth/coverage, reason, & answer-effect fixtures |
+| MB-F13 | Pinned session/task keystones in reserved memory lane | MB-R005–R016 | Scope, expiry, authorization, budget, revocation, & receipt fixtures |
+| MB-F14 | Archive-first SessionEnd Episodic pipeline | MB-R005–R008, R021–R024 | Goal/decisions/open work/dead ends/verification/identifiers/revision/lineage; separate reviewed reversible promotion |
+| MB-F15 | Violated-assumption Procedural proposal source | MB-R005–R008, R021–R024 | Receipt-bound `KnowledgeEmission`; explicit review/authority/version/applicability/rollback; active mutation `0` |
+| MB-F16 | Opt-in read-only session-trail miner | MB-R021–R024 | Quarantined proposals with transcript/model/prompt/corpus citations; auto-write `0`; held-out precision receipt |
+| MB-F17 | Deterministic contradiction detection | MB-R005–R008, R021–R024 | Same subject+predicate/different value/overlapping validity; retain both, close validity, append supersession, history loss `0` |
+| MB-F18 | Hash-chained + Ed25519-signed runtime receipts | MB-R025–R036 | Schema-v22 write/sync/savings payload + chain root/sequence/key/release identity; tamper/reorder/replay/rotation suite |
+| MB-F19 | Declared-vs-done drift | MB-R009–R016, R029–R032 | Task/plan vs generation-bound Git changes yield matched/omitted/extra/indeterminate/unavailable audit receipts |
+| MB-F20 | Per-transform savings ledger + daily report | MB-R029–R036 | Command/filter, before/after bytes/tokens, restore digest, opportunity/result/evidence class; tokens/task, activation, recovery, cache ratio |
+| MB-F21 | Cortex blast-radius recall lane | MB-R013–R016, R033–R036 | Digest-frozen ground truth; 100% claim requires missed dependency count `0` |
+| MB-F22 | Prompt-cache break forensics | MB-R029–R032 | Model switch/tool churn/index-prefix growth/policy-grant change/indeterminate seeded classification |
+| MB-F23 | Callable doctor performance proof | MB-R029–R036 | Frozen warm-federation rerun prints p50/p95/p99, N, release/corpus/host, target, verdict |
+| MB-F24 | Ten-tool MCP discipline | MB-R033–R036 | Existing ten tools extended by default; new tool requires product decision, non-overlap, compatibility, host qualification |
+| MB-F25 | Quantitative evidence-class taxonomy | MB-R029–R036 | Every published number exactly one of measured/calculated/estimated/counterfactual/vendor-reported; measured binds raw receipt; coverage `100%` |
+| MB-F26 | Memory compounding evaluation | MB-R005–R008, R021–R024, R033–R036 | Cold-resume success, source rereads, accepted/rejected proposals, feedback curve; fewer rereads at quality noninferiority |
+| MB-F27 | Three separate decision families | MB-R005–R016 | Byte-golden `AdmissionDecision`, `DomainDecision`, & `OutcomeAttribution`; generic decision-table/provider-shape leakage `0` |
+| MB-F28 | Receipt-bound `DecisionEvidence` | MB-R005–R016 | Every substantive evidence role resolves to packet/receipt/candidate/source hash/span/authority/freshness or typed post-context evidence; mismatch fails loudly |
+| MB-F29 | Native bitemporal governance | MB-R005–R012, R021–R028 | Distinct valid-at & known-at answers for facts/decisions/policies/exceptions/conflicts/findings; late-arriving evidence never leaks into historical replay |
+| MB-F30 | Deterministic provenance projection + standards export | MB-R005–R012, R025–R036 | Correction, derivation, supersession, contradiction, precedent, implementation, reversion, invalidation, entity/activity/actor, chain & bundle identities rebuild identically; PROV-O/JSON-LD round-trip |
+| MB-F31 | Expanded conflict subsystem | MB-R005–R012, R021–R028 | Value/type/relationship/temporal/logical + authority/source/decision/schema/identity/scope fixtures preserve both claims; resolution appends event or quarantines, history loss `0` |
+| MB-F32 | Versioned policy, evaluation, exception, approval, & precedent contracts | MB-R005–R016, R021–R028 | Scope/role/task/operation applicability; approver authority, evidence, justification, validity, expiry, revocation, replay; semantic-neighbor-only precedent acceptance `0` |
+| MB-F33 | Causal decision/outcome rail | MB-R005–R016, R029–R036 | Typed caused/influenced/precedent/implements/reverts relations join selected/rendered/resolved/referenced/acted-on/successful/harmful/unknown outcomes with calibrated attribution confidence |
+| MB-F34 | Narrow deterministic typed policy evaluator | MB-R009–R016, R021–R024 | Explicit policy/rule/input/output explanation, fixture determinism, time/result caps, unsupported-rule refusal; Rete/Datalog/SPARQL/general reasoning dependency `0` |
+| MB-F35 | `SessionCapsuleV1` + `AgentHandoffV1` | MB-R005–R008, R017–R024 | Immutable summary DAG, exact expansion, valid/known replay, monotonic child grants, overlay/worktree identity, bounded lease, resume quality noninferiority |
+| MB-F36 | Context Inspector + Decision Inspector + value ledger | MB-R029–R036 | Canonical Hub snapshot shows inclusion/omission/transform/recovery, evidence/policy/conflict/causal history, provider/value/outcome state; uninstrumented remains explicit |
+| MB-F37 | One public operation registry | MB-R033–R036 | MCP/CLI/hooks/SDK/docs/fixtures generated from one registry; semantic parity for every shared operation; host bridges contain policy/storage/ranking logic `0` |
+| MB-F38 | Vendor-absence + signed release-set supply-chain contract | MB-R001–R004, R025–R036 | Network-disabled installed tests; competitor/third-party runtime processes/packages/MCP/API calls `0`; component compatibility identity, lock/hash/license/SBOM, signed native artifact & backout receipt |
+| MB-F39 | Source/session diversity + duplicate control | MB-R005–R020 | Visible family/session quotas, deterministic overflow, exact-repeat collapse, near-duplicate representative lineage, expansion preserved |
+| MB-F40 | Expansion-regret feedback | MB-R013–R020, R029–R036 | Every later fetch of omitted/compacted evidence joins original packet/item/reason, latency, bytes/tokens, & downstream outcome without claiming causality |
+| MB-F41 | Policy simulation, replay, & one-click backout | MB-R021–R036 | Frozen traces compare control/candidate before activation; signed cohort/version identity; prior path restores without data loss or authority broadening |
+| MB-F42 | Protected numeric facts + minimum-sufficient-source selection | MB-R013–R020 | Counts/versions/exit codes/line numbers/dates preserved; full changed source included only when diff/reference lacks required state; exact recovery remains available |
+| MB-F43 | No-op/cost/credibility evidence | MB-R009–R016, R025–R036 | No-op sync states why; expensive optional work publishes expected latency/cost class; credibility attaches to claim-source edge, never whole document |
+| MB-F44 | First-party-only runtime constitution | MB-R001–R004, R009–R036 | Remote model/vector/rerank/provider & external sidecar configuration rejected; dynamic plugins/downloads absent; local correctness/retrieval/policy/receipts/recovery/export/update/rollback pass with networking blocked |
+| MB-F45 | Competitor-feature absorption evidence package | MB-R033–R036 | Each absorbed behavior binds decision, pinned source paths/digests/license, must-absorb/must-not lists, first-party fixtures, differential/security reports, conformance receipt, rollback, & kill criterion; source checkout/package/service/runtime dependency `0` |
+| MB-F46 | Installed-path qualification + uniform provider state envelope | MB-R001–R004, R029–R036 | Each `{platform, client, release_generation}` passes one frozen real-client scenario suite; receipt binds source/install/hook/binary/schema hashes plus readiness, last-success generation/time, source age, freshness, deadline/terminal/circuit/stale eligibility, typed omission, & first stable failure ID; stale generation invalidates support |
+| MB-F47 | Candidate exposure transition rail | MB-R013–R020, R029–R036 | Receipt/candidate/task/turn/trace/digest joins replay byte-identically through retrieved/considered→selected→rendered/resolver/metadata→host-delivered→provable model-visible→resolved/referenced/expanded/acted; packets alone create no later transition & `>=95%` qualification deliveries reconcile |
+| MB-F48 | Outcome epistemic classes + calibration gate | MB-R013–R016, R021–R024, R029–R036 | Every outcome is observed/derived/inferred/verified; unobservable is not ignored, contradiction is not supersession, inferred feedback cannot rank or activate, & human-labelled precision/recall passes a preregistered threshold before online policy effects |
+| MB-F49 | Event-sourced memory lifecycle machine | MB-R005–R008, R021–R028 | Deterministic replay covers proposed→quarantined→active→superseded/retired/tombstoned plus rejected/expired/risk-quarantined transitions with actor/policy/scope/authority/evidence/temporal/lineage/backout fields; access-count deletion `0`; summaries/plans/tool exhaust require explicit ingestion/promotion policy |
+| MB-F50 | Hash-bound typed source-query plan | MB-R009–R020 | Existing source/Cortex operations allow only ranges/head-tail, regex/substring, JSON selection, count/group/sort, table projection, Cortex signatures/refs, log extraction, & diff hunks under grant/hash/CPU/byte/deadline gates; arbitrary shell/code execution `0`; every result receipts exact query & source |
+| MB-F51 | Evidence-gated deterministic adapter expansion | MB-R017–R020, R029–R036 | Git + repository tests remain initial default set; grep/find, JSON/L, compiler/build, package diagnostics, CSV/table, diff, signature, & prose adapters promote separately only after burn/corpus proof, with exit/errors/failing tests/paths/symbols/numerics/URLs/negations/quotes/head-tail preserved, non-growth guard, parse-failure reason, & exact raw anchor |
+| MB-F52 | Typed query-kind + stable planner-policy registry | MB-R013–R016 | Fixed goldens cover identifier, bug, test, impact, review, architecture, API/schema/config, precedent, memory/procedure, incident/governance, & broad synthesis under precise/balanced/broad/review/continuity/governance policies; policies alter provider-local mixes, never public tool count, authority, or scope |
+| MB-F53 | Retrieval flood, turn-repeat, & expansion control | MB-R013–R020 | Deterministic caps cover source/file/module/session/document-family/plan/community/decision families, provider flood, repeated results across turns, & bounded graph hops; low-coverage expansion plus ambiguous-top-set rerank are separately budgeted/disableable with typed suppression/fallback receipts |
+| MB-F54 | Versioned Cortex operation contract | MB-R013–R016, R033–R036 | Conformance fixtures qualify manifest/status, resolve, impact, trace/path, orient, review_context, hot_path, affected_flows, blind_spots, communities, bridge/hub nodes, surprising connections, cross_repo, risk_drift, wiki_section, & minimal_context; every result binds generation, manifest digest, source observation, provider composition, blind spots, & resolvers |
+| MB-F55 | Cortex-only structural ownership + evidence hierarchy | MB-R009–R016, R033–R036 | Membrane imports Cortex source, reads graph DB, spawns Cortex, implements parser/LSP/graph, or persists raw nodes/edges/embeddings/layouts `0`; compiler/SCIP/LSP, AST, deterministic join, lexical/config, runtime/history, & inference classes remain distinct; generated structural prose never receives source-code authority |
+| MB-F56 | Full hook lifecycle + capability truth matrix | MB-R001–R004, R017–R024, R033–R036 | Installed clients exercise SessionStart, prompt, pre/post/failure tool, pre/post compact, Stop, SessionEnd, SubagentStart/Stop, TaskCompleted, Notification, & Git/worktree events with stable IDs, idempotency, deadline/cancellation, exact skipped/unsupported/failed states, & host capability truth; hook-owned service singleton starts `0` |
+| MB-F57 | Atomic `SessionCapsuleV1` continuity contract | MB-R005–R008, R017–R024 | Byte-golden capsule binds session/task/repo/scope, commit/worktree/overlay, immutable raw spans, protected tail, working state, summary-DAG lineage, decisions/evidence, files/symbols, tests/risks, provider/policy/transform generations, anchors, expiry, & signature; atomic compaction expands exactly & raw transcript auto-ingestion `0` |
+| MB-F58 | Atomic `AgentHandoffV1` contract | MB-R009–R012, R017–R024 | Byte-golden handoff binds parent/child/task, repo/scope/worktree/overlay, goal/status/next action, decisions/evidence, touched files/symbols, tests/failures/risks, capsule/anchor handles, & bounded lease; child grant never exceeds parent & host/Legion retains scheduling/PTY/worktree/review/merge/cancellation authority |
+| MB-F59 | Content-free sensitive-read + egress receipt | MB-R009–R012, R025–R036 | Receipt records source/path class, sensitivity, rendered/resolver/denied/redacted state, destination, grant/policy, byte/token class, & digest without plaintext; secret/privacy filtering precedes model proposals, exports, & team bundles; every resolver rechecks current permission/hash |
+| MB-F60 | SSRF, redirect, metadata, & local-network containment | MB-R009–R012, R025–R032 | Cross-scope/path traversal plus redirect chains, localhost, metadata-service, private/local-network, symlink, junction, IPC, DB, & subprocess escape corpus fails before side effects; denial/redaction/exception receipts are typed |
+| MB-F61 | Signed portable context/session/team/qualification bundles | MB-R017–R020, R025–R036 | Offline verification binds content digest, policy, installation/release/provider/source generations, signer, & canonical receipt chain for exported contexts, handoffs, team sync, & qualification; checksum-only authenticity claims `0`; tamper/replay/key-rotation/backout suite passes |
+| MB-F62 | Typed evidence-backed risk/drift signals | MB-R009–R016, R021–R032 | Revert/corrective commit, test break, failed tool path, plan-diff drift, stale generation, contradiction, cross-scope request, sensitive read, low-confidence knowledge, failed recovery, policy exceptions, & intent mismatch reproduce from source events with scope/evidence; hidden global risk score `0` |
+| MB-F63 | Failure-to-procedure + least-privilege skill pipeline | MB-R005–R008, R021–R024 | Recurrent or replay-proven pattern flows through evidence, extraction, dedup, sandbox/replay, `KnowledgeEmission`, quarantine/review, signed scoped activation/version/expiry, monitoring, supersession/retirement; candidate includes triggers/preconditions/steps/tool permissions/anti-steps/examples/tests/failures; rules-file auto-mutation `0` |
+| MB-F64 | Coverage-aware economics & inspector ratios | MB-R029–R036 | Every ratio exposes numerator, denominator, matched coverage, unknown count, source age, cached/uncached split, & content-free derivation from canonical receipts/events/projections; missing cost/latency/feedback/provider coverage remains unknown, never zero or clean |
+| MB-F65 | Signed first-party module capability manifest | MB-R009–R016, R025–R036 | Each optional Orthic module declares operation/schema/release/signature/readiness/generation/authority/source families/bounds/cancellation/privacy/resolver/conformance; unsigned/arbitrary library/package/MCP/container/remote loading `0`; absence/mismatch is typed & cannot bypass admission/DLP/receipts/resource gates |
+| MB-F66 | Optional first-party team/fleet causal sync | MB-R005–R012, R025–R036 | Single-user local engine remains complete; sync moves content-addressed policy-filtered source events/bundles, rebuilds local indexes, preserves causal append/conflict history, explicit team roles/policies/retention, offline repair, signed staged update/rollback, & read-only fleet state; third-party identity/store/cloud/correctness dependency `0` |
+| MB-F67 | Read-only inspection resources + signed workflow artifacts | MB-R029–R036 | Receipt/delivery/anchor/provider/session/memory/decision/policy/conflict/provenance/replay/support/capability resources resolve or fail visibly; signed first-party review/diagnose/orient/resume/knowledge/conflict/decision/precedent/recovery workflows call canonical operations only; mutation requires separate explicit Hub authority |
+| MB-F68 | Receipt-backed promotion ladder + complete metric registry | MB-R029–R036 | Fixture→shadow→candidate→default-with-fallback→legacy-retirement stages each emit machine receipt; preregistered quality/economy/reliability metrics include critical-span/source/temporal/provenance/policy/replay/poisoning quality, rendered/cache/model/tool/wall/expansion/index costs, readiness/hash/hook/idempotency/recovery/migration/support/unknown reliability |
+| MB-F69 | Sole registered MCP + no downstream MCP client | MB-R001–R004, R033–R036 | Supported-host census registers exactly one first-party Membrane MCP server; proxy/aggregate/discover/forward/auto-install/downstream MCP-client paths `0`; CLI/hooks/loopback remain parity surfaces from canonical operation registry |
+| MB-F70 | Executable evidence-authority precedence | MB-R009–R016, R029–R036 | Conflict fixtures enforce current executable/source contract > generated product truth/current state > provider contract > design rationale > comparison snapshot > marketing/vendor claim; lower evidence cannot change owner, advertise support, or outrank current authorized source |
+| MB-F71 | Reversible identity-preserving migration discipline | MB-R021–R032 | Unchanged docs skip only on existing `doc_artifacts` content-hash+parser-version match; duplicate manifest `0`; copied-DB migrate/backout records before/after state counts & reversible events; unresolved legacy stays typed unknown; correction/derivation/supersession/contradiction/precedent/implementation/reversion/invalidation remain distinct & recorded time is never fabricated |
+| MB-F72 | Rationale without private chain-of-thought | MB-R005–R016, R029–R036 | Protocol/storage/export/telemetry/session/handoff fixtures accept concise rationale summaries, typed factors, evidence, & verdicts while rejecting private reasoning traces; chain-of-thought bytes persisted/exported `0` |
+| MB-F73 | Stable ordering + cross-surface idempotency | MB-R013–R020, R029–R036 | Fixed inputs byte-stably order providers/repositories/candidates/omissions/receipt rows; repeated hook/API/session/outcome events with same identity create duplicate terminal states, memories, outcomes, or nodes `0` |
+| MB-F74 | Crypt-only canonical durable persistence ownership | MB-R005–R012, R021–R032 | Crypt events/store are sole write authority for memory, lifecycle, domain governance, evidence relations, & tombstones; Membrane/provider/Cortex/Hub analytics writes to parallel canonical stores `0`; caches, graphs, value/provenance views, & standards exports rebuild deterministically from Crypt authority |
+| MB-F75 | Exact `TemporalEnvelopeV1` | MB-R037 | Byte-golden required/optional fields, `OPEN`, UTC, independent half-open valid/recorded intervals, malformed/inverted rejection, late-evidence historical exclusion |
+| MB-F76 | Exact `DomainDecisionV1` | MB-R038 | Byte-golden fields + closed state/factor enums; confidence bounds; immutable packet/receipt/policy/approval/exception binding; private reasoning/embedding fields reject |
+| MB-F77 | Exact `DecisionEvidenceV1` | MB-R039 | Byte-golden fields + role/usage enums; every non-post-context edge resolves exact receipt/candidate/source hash/span/authority/freshness or fails before mutation |
+| MB-F78 | Exact `DecisionRelationV1` | MB-R040 | Byte-golden fields + object/kind enums; evidence/time/generation required; unknown relation kind rejects |
+| MB-F79 | Acyclic decision-relation enforcement | MB-R041 | Insert cycle for each declared-acyclic kind rejects before canonical event/index mutation; `influenced`/`contradicts` cycles remain representable & visibly classified |
+| MB-F80 | Cross-repository/worktree/tenant conflict isolation | MB-R042 | Same subject/predicate fixtures in three isolation dimensions produce no cross-scope conflict, quarantine, resolution, retrieval, export, or metric contamination |
+| MB-F81 | One ingress deadline + child cancellation + lane isolation | MB-R043 | One monotonic ingress deadline reaches every child; unfinished process/task is cancelled then killed within bound; late results cannot publish; healthy authoritative lanes survive with exact typed omission |
+| MB-F82 | Exact hook blocking/fail-open matrix | MB-R044 | Every exact hook-event policy row above is byte-golden; Stop advisory-only; PostToolUse transform failure returns bounded raw + anchor; security/policy denial alone hard-blocks; timeout/skipped/unsupported/failed remain distinct |
+| MB-F83 | First-party reader/model/archive delivery gates | MB-R045 | PDF/DOCX/PPTX/HTML, OCR/media, multilingual retrieval model, & issue/chat archive modules each have signed offline artifact, lock/hash/license/SBOM, install/backout, malformed/encrypted/oversize/unsupported, DLP/scope/deadline/cancel, & real-client qualification receipts; first-run downloads `0` |
+| MB-F84 | Exact `membrane_context` additions | MB-R046 | Operation registry freezes planner `precise\|balanced\|broad\|review\|continuity\|governance`, explain `none\|summary\|full_receipt`, diversity policy, query-expansion permission, rerank model-call class, & valid/known time; MCP/CLI/SDK fixtures match |
+| MB-F85 | Exact `membrane_source_read` additions | MB-R047 | Closed modes `lines\|head\|tail\|search\|json_select\|table_project\|aggregate\|log_diagnostics\|full`; source hash/grant/CPU/byte/deadline receipt; arbitrary shell/code/mutation `0` |
+| MB-F86 | Exact `membrane_feedback` additions | MB-R048 | Freeze evidence refs, verdict refs, `observed\|derived\|inferred\|verified` attribution, & observed transition; nullable only with typed `unknown`; self-report ranking effects before calibration `0` |
+| MB-F87 | Exact `membrane_working_context` enum | MB-R049 | `save\|load\|close` is complete mutable enum; handoff/summary remain read-only typed resources; hidden mutable aliases `0`; MCP/CLI/SDK parity passes |
+| MB-F88 | Exact `membrane_temporal_fact` additions | MB-R050 | Freeze single-valued predicate policy, ontology refs, policy refs, native temporal envelope, `validAt`, & `knownAt`; validity-to-knowledge inference `0`; current/historical fixtures pass |
+| MB-F89 | Scratchpad isolation family | MB-R051 | Non-searchable task/session-only TTL store; durable search/export/promotion/background-ingest rows `0`; close/expiry produces content-free receipt |
+| MB-F90 | Policy/keystone family | MB-R052 | Signed explicit activation only; scope/subject/operation/version/validity/approval/exception/supersession fixtures; mined or summary auto-promotion `0` |
+| MB-F91 | Skill family | MB-R053 | Procedure/tool/evidence/permission/version/expiry/outcome/backout contract; replay + conformance + signed release required; authority broadening & vendor operation names `0` |
+| MB-F92 | Eight executable competency questions | MB-R054 | `MB-CQ01..MB-CQ08` each return typed answer, exact evidence refs, coverage, unknowns, & deterministic unsupported state in CI; optional status `0` |
+| MB-F93 | Exact `PolicyVersionV1` | MB-R055 | Byte-golden fields + closed state; applicability/effective interval/version/digest/previous-version binding; unsupported rule or widened applicability rejects |
+| MB-F94 | Exact `PolicyEvaluationV1` | MB-R056 | Byte-golden fields + closed result; fixed policy/input bytes produce byte-identical rule results/explanation; resource cap returns typed refusal |
+| MB-F95 | Exact `PolicyExceptionV1` | MB-R057 | Byte-golden fields + closed state; exact scope/subject/task/operation/time/evidence/approval/revocation replay; chat-only authority `0` |
+| MB-F96 | Exact `ApprovalRecordV1` | MB-R058 | Byte-golden fields + subject/method/verdict enums; authority/evidence/validity/revocation replay; email/chat/call self-report approval `0` |
+| MB-F97 | Exact `ConflictRecordV1` | MB-R059 | Byte-golden fields + kind/state enums; preserve exact claims; append resolution/quarantine; history overwrite `0` |
+| MB-F98 | Exact `InvalidationV1` | MB-R060 | Byte-golden target/scope/reason/evidence/actor/time/replacement/policy/generation/digest; current exclusion + audit/export tombstone retention |
+| MB-F99 | Exact `ProvenanceProjectionRowV1` | MB-R061 | Byte-golden fields + relation enum; deterministic projection covers entity/activity/actor/role, exact spans, valid/recorded time, bundle, sequence, & checksum chain; parallel write authority `0` |
+| MB-F100 | Exact `TemporalQueryV1` | MB-R062 | Byte-golden scope/kind/subject/time/history/limit/cursor/generation fields; current, valid-at, known-at, & combined fixtures exclude late-known evidence deterministically |
+| MB-F101 | Source-absorption evidence discipline | MB-R063 | Each source disposition receipt binds source/version, selected paths/digests/license, `ADOPT\|GATE\|REJECT`, first-party fixture derivation, & must-not-runtime list; source prose/performance claims alone satisfy shipped evidence `0` |
+| MB-F102 | Dependency & promotion sequence | MB-R064 | Receipts enforce runtime truth/fault isolation → exact governance/provenance/lifecycle substrate → attributable outcomes → reversible Push → diversified Pull/Cortex qualification → hooks/session/handoff → policy/security/risk → inspectors/modules → optional team layer; default-on promotion cannot skip any predecessor gate |
+| MB-F103 | Exhaustive obligation ledger | MB-R065 | Machine validation extracts every normative `sol2` imperative, contract field, closed enum, public operation/resource, acceptance/negative/recovery fixture, metric, sequencing rule, disposition, & competitor aspect into one immutable source atom mapped to exactly one `MB-F` row; missing/multiple/umbrella-only mappings `0` |
+| MB-F104 | Exact canonical append registry | MB-R066 | All 16 named events/tables exist once under Crypt ownership; aliases/duplicate manifests/parallel logs `0`; copied-database migrate/backout & deterministic replay pass |
+| MB-F105 | Exact rebuildable projection registry | MB-R067 | All eight named projections delete/rebuild to identical payload digests, counts, relations, temporal/current answers, & aggregate inputs; history deletion `0` |
+| MB-F106 | Canonical chain-head continuity | MB-R068 | Before chained append, read & verify canonical head; unavailable/invalid head returns `failed{reason=chain_gap}` with append count `0` & sequence/root resets `0` |
+| MB-F107 | Provenance activity + delegation relations | MB-R069 | `ProvenanceProjectionRowV1` adds optional activity start/end plus `acted_on_behalf_of\|informed_by`; delegation requires exact authority + evidence refs, informed-by targets activity, inferred delegation count `0` |
+| MB-F108 | Atomic `DerivationStepV1` | MB-R070 | Schema binds scope grant, rule/version/digest, ordered input refs/hashes, parameters, output ref/hash, actor/activity/evidence, temporal envelope, status, generation, & digest; output is eligible only after atomic append; free-form formulas/vendor engines/provenance-optional success are rejected |
+| MB-F109 | Exact decision causal-query contract | MB-R071 | Query binds grant, decision, upstream/downstream, relation kinds, valid/known time, depth, limit/cursor, invalidation policy, & generation; result returns ordered nodes/evidence edges, hops, cursor, cycle/truncation/coverage, & `path\|no_path\|unsupported\|failed`; no-path is never failure/empty-success |
+| MB-F110 | Advisory-only causal/precedent heuristics | MB-R072 | Similarity, impact, decay, centrality, community, & predicted-link scores rank inspectable candidates only after frozen-corpus calibration; they create no causal/precedent/authority/policy/conflict/outcome facts; unavailable lanes remain typed, never silently reweighted |
+| MB-F111 | Closed temporal-relation operation | MB-R073 | Returns exactly all 13 Allen relations; retroactive impact returns `affected\|partial\|unaffected`; finite/`OPEN` half-open combinations pass byte-golden symmetry/inverse fixtures |
+| MB-F112 | Deterministic temporal-normalization gate | MB-R074 | Proposal-only result binds input, locale/reference/granularity/interval, `normalized\|ambiguous\|unparseable\|unsupported`, rule version, & digest; relative input requires reference instant, ambiguity abstains, & normalization never sets recorded time or authority |
+| MB-F113 | No automatic conflict-resolution truth | MB-R075 | Voting, credibility weighting, recency, first-seen, & confidence never change current indexes; recommendations remain attributed under versioned policy; resolution requires explicit authority/policy event, evidence, justification, temporal scope, & replay |
+| MB-F114 | Exact `PolicyRuleResultV1` | MB-R076 | Rule result binds rule/subject/focus/path/constraint, `pass\|violation\|warning\|not_applicable\|indeterminate\|unsupported`, actual/expected, severity, evidence, explanation, generation, & digest; `PolicyEvaluationV1.ruleResults[]` accepts only this contract |
+| MB-F115 | No validation theatre | MB-R077 | Keyword overlap, counts, placeholders, empty eval modules, skipped constraints, & absent reasoners return `unsupported\|not_run`, never answerable/conforms/consistent/satisfiable; every competency answer executes declared operations over frozen fixtures & resolves exact evidence |
+| MB-F116 | Integrity-aware paginated inspection envelope | MB-R078 | Result binds grant/generation/limit/cursor/items/next cursor/coverage, `verified\|failed\|not_applicable` integrity, `complete\|partial\|empty\|unsupported\|failed` status, & omissions; integrity failure cannot downgrade to traversal success; backend reads stay bounded |
+| MB-F117 | No absence-is-compliant fallback | MB-R079 | Missing violation edge, policy/rule/input/backend, unsupported rule, evaluator exception, or decision confidence never yields allow/compliant; return indeterminate/unsupported with evidence; unknown-to-allow count `0` |
+| MB-F118 | Exact `PolicyImpactAnalysisV1` | MB-R080 | Binds grant, control/candidate policy refs+digests, subjects, valid/known time, per-subject control/candidate evaluation refs + closed transition, unknowns, coverage, generation, & digest; only `PolicyRuleResultV1` drives transitions; confidence/risk heuristics cannot substitute |
+
+## Comparative leadership gate
+
+Before implementation, package 0 freezes `membrane-competitors.v1.json` with exact source/version, license, configuration, execution adapter, dataset eligibility, exclusions, & artifact digest for LangMem, Hindsight, Graphiti/Zep self-hosted, Letta OSS, Mem0 OSS, MemOS, Cognee, Microsoft GraphRAG, LlamaIndex, Haystack, txtai, Supercompress, context-mode, RTK, lean-ctx, codebase-memory-mcp, repo-graph, pinned Semantica research snapshot, & every Appendix A repository still runnable. Semantica is schema/fixture research only, never executable runtime candidate. Eligible means a publicly obtainable local/self-hosted build can run shared task on same host without Membrane-only inputs or mandatory proprietary SaaS. Hosted-only, archived, missing, or incompatible candidates remain named with evidence; they cannot be silently omitted, replaced, or cherry-picked.
+
+Every eligible comparator runs identical corpus/holdout digests, model, host class, toolchain envelope, isolation, time/token/network budget, task set, scoring code, & raw schema. Axes are end-task success, unauthorized/stale/missed-authority rates, context precision/recall, temporal/contradiction accuracy, latency, tokens/cost, CPU/RSS/disk, durability/recovery, privacy/egress, explainability/provenance, interoperability, lifecycle control, & operability. Membrane must be noninferior on every applicable axis & strictly dominate at least one material axis. Until signed evaluator receipt passes, wording remains “best-on-market target.”
+
+Applicability is frozen before any run: an axis is inapplicable only when comparator manifest proves product does not expose that function; absence is failure when function is advertised. Post-run exclusions invalidate comparison. Authority/safety axes—unauthorized, stale, missed-authority, scope leak, egress, durability/recovery, lifecycle, & compatibility—allow zero regression. Quality noninferiority margins are task success `-1 pp`, recall/precision/MRR/nDCG `-1 pp`/`-0.01`, & temporal/contradiction accuracy `-1 pp`; latency/token/cost/CPU/RSS/disk margins allow at most `10%` worse. Material dominance is predeclared as at least one of: `+2 pp` task/precision/recall/temporal accuracy, `+0.02` MRR/nDCG, or `>=20%` lower p95/tokens/cost/CPU/RSS/disk at noninferior task quality, with paired 95% confidence interval wholly beyond zero. Authority, privacy, durability, or lifecycle cannot be traded for dominance.
+
+## Shared benchmark protocol
+
+Parent workspace owns canonical schema `tools/benchmarks/schemas/benchmark-protocol.v1.schema.json`, metric registry `tools/benchmarks/schemas/metric-registry.v1.json`, & validator/evaluator `tools/benchmarks/validate-receipt.mjs`; Membrane owns frozen instance `evals/manifests/benchmark-protocol.v1.json` & comparator instance `evals/manifests/membrane-competitors.v1.json`. Package 0 creates them; product authority locks schema/metrics/margins before observations; Membrane integration owner produces raw receipts; independent Oracle verifies schema, digests, commands, & verdict.
+
+Protocol is required by every performance, retrieval, equivalence, task-quality, & competitor receipt. Metric registry predeclares unit, population/estimand, direction, applicable axes, noninferiority margin, material-effect threshold, one-sided 95% noninferiority CI, two-sided 95% dominance CI, Holm correction across simultaneously claimed quality/material axes, exact percentile estimator, & raw-to-verdict algorithm. It also freezes corpus + holdout digests, command, source/book/tree/artifact digests, model/config, host/hardware/OS/toolchain, isolation & power state, warm-up count, measured `N`, fixed seeds, paired baseline/candidate order, timeout/censor/failure treatment, raw schema, evaluator version, & pass rule. Minimum defaults are 5 warm-ups + 30 paired measured runs for latency/resource cells & paired bootstrap with 10,000 fixed-seed resamples for quality cells; corpus protocols may increase but never reduce them without product-authority revision. Any missing/failed/censored run fails receipt completeness; no dropping outliers after observation.
+
+## Frozen target requirements
+
+| Requirement IDs | Required outcome |
+|---|---|
+| MB-R001–R004 | Hub-only lifecycle, child cleanup, optional Hub startup, no independent persistence |
+| MB-R005–R008 | Canonical memory types, retain/recall/reflect split, temporal current/as-of views, reversible derived beliefs |
+| MB-R009–R012 | Scope/ACL isolation, revocation-safe caches/derived records/shared blocks, provenance/authority, sensitivity/egress policy |
+| MB-R013–R016 | Membrane-only packet authority, explainable hybrid retrieval, typed abstention/veto, JIT references, graph/entity/temporal lanes |
+| MB-R017–R020 | Packet equivalence, context edit receipts, compression protection, bounded streaming/spill |
+| MB-R021–R024 | Deterministic consolidation, background transaction/corpus guards, quarantine/restore, retention/deletion |
+| MB-R025–R028 | Current-policy ArtifactRef, doc incrementality, import/export/migration, backup/compaction/recovery |
+| MB-R029–R032 | Canonical DB identity, WAL/checkpoint ownership, bounded caches/concurrency, full observability/doctor |
+| MB-R033–R036 | Frozen statistical/comparative protocol, public-surface compatibility, real task runs, Mac/Windows signed installed parity |
+| MB-R037–R040 | Exact `TemporalEnvelopeV1`, `DomainDecisionV1`, `DecisionEvidenceV1`, & `DecisionRelationV1` contracts |
+| MB-R041–R044 | Acyclic relations, isolated conflicts, ingress deadline/child cancellation/lane isolation, & exact hook blocking policy |
+| MB-R045–R050 | Offline first-party module delivery plus exact context/source-read/feedback/working/temporal operation additions |
+| MB-R051–R054 | Distinct scratchpad, policy/keystone, & skill families plus mandatory executable competency questions |
+| MB-R055–R062 | Exact policy/evaluation/exception/approval/conflict/invalidation/provenance/temporal-query contracts |
+| MB-R063–R065 | Source-absorption evidence discipline, dependency/promotion ordering, & exhaustive one-source-atom-to-one-atomic-row validation |
+| MB-R066–R067 | Exact Crypt-owned append-event/table registry plus deterministic rebuildable projection registry |
+| MB-R068–R071 | Chain continuity, provenance activity/delegation, atomic derivation, & exact causal-query contracts |
+| MB-R072–R075 | Advisory heuristic boundary, closed temporal relations, temporal-normalization gate, & no automatic conflict truth |
+| MB-R076–R080 | Exact policy-rule result, validation honesty, integrity-aware inspection, absence-is-not-compliant, & exact policy-impact analysis |
+
+## Completion gates
+
+- Every `ADOPT` row maps to one `MB-R` requirement & green acceptance receipt; each `GATE` records a measured decision; each `REJECT` is enforced by boundary tests.
+- Every atomic Appendix `F/D/I/R/C/P/H/A/S/O` aspect has one terminal disposition, ledger owner, requirement owner, & validated acceptance receipt.
+- Every `MB-F01..MB-F118` final-absorption row has its named executable receipt; umbrella ledger rows never count as closure.
+- Packet contents/order, grants, freshness, generation, authority, omissions, deadlines, cancellation, output/exit behavior, & deterministic no-op behavior are frozen before optimization.
+- Real LoCoMo, LongMemEval, BEAM, & whole-task runs identify corpus/version/hash, release, model, hardware, host, & raw outputs. Synthetic fixtures never count.
+- Membrane must pass frozen same-harness competitor noninferiority + dominance. No published vendor number is accepted as apples-to-apples proof.
+- Revocation race fixtures prove no stale cache, vector, graph, working, derived, artifact, citation, export, or restored projection can be admitted.
+- Revoke-during-packet fixtures prove obsolete-epoch output bytes `0` across every public surface; retry/abstention is deterministic.
+- Concurrent/stale Hub fixtures prove one monotonic fenced owner & reject every lower/foreign child lease.
+- CLI/MCP/HTTP/SDK/Hub UI/protocol/artifact/export compatibility fixtures pass across supported version window.
+- Warm full federation p50 `<=75 ms`, p95 `<=125 ms`, p99 `<=250 ms`; ready no-op p95 `<=25 ms`; cold/fallback returns bounded result or typed failure `<=1.5 s`.
+- Local recall p95 `<=50 ms` at current corpus & `<=100 ms` at 100k governed memories; task-quality 95% CI lower bound no worse than baseline by `1 pp`; token use improves `>=20%` versus full-context baseline at noninferior task quality.
+- Idle CPU `<1%` per child over 10 min, wakeups `<6/min` combined, RSS regression `<=10%`; index/projection growth `<=25%` above authority payload unless frozen comparative evidence records a superior retrieval trade.
+- Hub-off leaves zero owned services/watchers. Hub quit drains & kills children. Startup occurs only when user enables Hub system startup.
+- Clean canonical `main`, green full/qualification/performance/recovery suites, installed Mac + Windows receipts, signed native artifacts when binaries change, nested commit pushed, parent gitlink pinned/pushed, & remote SHA verification are mandatory before “done.”
+
+## Change-control rule
+
+Implementers may update status/evidence links only. Changing a requirement, threshold, competitor disposition, or invariant requires explicit architecture authority outside implementation. Independent assurance checks source, runtime, databases, tests, receipts, installed behavior, & lifecycle against this file; agent prose is never evidence.
+
+## Appendix A — 2026-08-12 vendored snapshot
 
 ## Scope & reading rules
 
-This document compares only `/Volumes/D/claude/membrane` plus 36 repositories under `vendor-research/`. No sibling or parent-workspace repository was used. Organization is strictly by function, feature, or aspect; repositories never receive standalone chapters.
+This appendix records a prior comparison of `/Volumes/D/claude/membrane` plus 36 repositories that were under `vendor-research/`. Those vendored directories are absent now, so local links below are historical leads, not reproducible current evidence. No sibling or parent-workspace repository was used. Organization is strictly by function, feature, or aspect; repositories never receive standalone chapters.
 
 - **Not evidenced** means inspected source, manifest, config, tests, & primary README expose no implementation for that function. It does not claim no implementation exists outside this snapshot.
 - **Framework/pluggable** means repo supplies interfaces or integrations but intentionally chooses no single backend.
@@ -127,19 +619,3 @@ Lowest infrastructure floors: CTE has no runtime; PRP is one zero-dependency pas
 Strongest visible DB efficiency pattern is embedded SQLite-family storage + incremental/content-addressed updates + bounded retrieval. MGR, MCL, C8, & LET deliberately accept more processes, RAM, network hops, backups, & consistency work to gain shared concurrency, queues, isolation, & horizontal scale.
 
 Largest ingest costs sit with GR, COG, M0, MCL, & MEMY because LLM extraction, embeddings, graph construction, or multi-store writes purchase richer later recall. Strongest work-avoidance designs sit with B0 content caches, CBM/RG/CC/CRG precomputed code graphs, SC/HDR content-addressed recovery, CM sandboxing, RTK model-free stream filters, & LCTX content-addressed spill.
-
-### Membrane inventory correction & adoption order
-
-| Area | Existing implementation | Remaining work |
-|---|---|---|
-| Document incrementality | `doc_artifacts` already stores path, `content_hash`, & `parser_version` in `engine/crates/membrane-runtime/src/doc_spine.rs` | Query existing row before parsing; skip only on matching hash + parser version. Do not add another manifest. |
-| Command output bounds | `run_capped` preserves head/tail output & exit status, but captures full output in memory and always spills | Stream capture; begin spill only after cap breach; limit initial adapters to Git + repository test runners. |
-| Gateway concurrency | `live.py` makes seven subprocess calls; Crypt & anchors providers make two each | Subprocess waits release GIL, so CPU-starvation premise is unproved. Measure warm provider scheduling, CPU, subprocess wait, serialization, RSS, timeout, & result variance before changing concurrency. |
-| Lexical retrieval | No checked-in FTS5 path found for proposed retriever | Add only behind fixed corpus, deterministic fallback, & measured benefit. |
-| Repeated-read cache | No bounded LRU found for proposed provider-result reuse | Add only with explicit cache key, invalidation key, capacity, eviction, & hit/miss evidence. |
-| Worker execution | No worker-thread implementation found for proposed CPU work | Add only for measured CPU-bound work after warm federation profiling; keep bounded sequential fallback. |
-| Prefix enforcement | No canonical owning-boundary enforcement found | Validate canonical prefixes before filesystem, database, or subprocess work; return typed failures. |
-
-Adoption order: warm federation measurement → existing-`doc_artifacts` skip → streaming `run_capped` completion → prefix enforcement → measured FTS5/LRU → workers or gateway concurrency only when profiling justifies them. Database hygiene & durable Crypt compaction remain separate, recoverable maintenance work.
-
-Final-shape rule: freeze packet contents/order, typed degradation, grants, freshness/generation identity, cancellation, no-op sync, command output/exit behavior, and warm federation receipts in CI before optimization. Each change must preserve those outputs while reducing measured work. Resident-worker isolation stays out unless profiling requires it; initial command adapters stop at Git + repository test runners.

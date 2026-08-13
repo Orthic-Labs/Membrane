@@ -1923,6 +1923,104 @@ pub enum MemDbProbe {
     Error,
 }
 
+/// Content-free startup observation for one SQLite database owned by MemDb.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartupWalReport {
+    pub status: String,
+    pub degradation_reason: Option<String>,
+    pub path: Option<PathBuf>,
+    pub effective_journal_mode: Option<String>,
+    pub main_bytes: Option<u64>,
+    pub wal_bytes: Option<u64>,
+    pub observation_errors: Vec<String>,
+}
+
+/// Classifies a journal-mode result without requiring a live SQLite connection.
+pub fn classify_wal_mode(mode: Option<&str>) -> (&'static str, Option<&'static str>) {
+    if mode.is_some_and(|value| value.eq_ignore_ascii_case("wal")) {
+        ("ok", None)
+    } else {
+        ("degraded", Some("journal_mode_not_wal"))
+    }
+}
+
+fn absolute_path(path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .unwrap_or_else(|_| path.to_path_buf())
+    }
+}
+
+fn startup_wal_report(conn: &Connection, path: Option<&Path>) -> StartupWalReport {
+    let effective_journal_mode = conn
+        .query_row("PRAGMA journal_mode", [], |row| row.get::<_, String>(0))
+        .ok();
+    let (mut status, mut degradation_reason) = classify_wal_mode(effective_journal_mode.as_deref());
+    let path = path.map(absolute_path);
+    let mut observation_errors = Vec::new();
+    let main_bytes = path
+        .as_ref()
+        .and_then(|value| match std::fs::metadata(value) {
+            Ok(metadata) => Some(metadata.len()),
+            Err(error) => {
+                observation_errors.push(format!("main_metadata_unavailable:{:?}", error.kind()));
+                None
+            }
+        });
+    let wal_bytes = path.as_ref().and_then(|value| {
+        let mut wal = value.as_os_str().to_os_string();
+        wal.push("-wal");
+        match std::fs::metadata(PathBuf::from(wal)) {
+            Ok(metadata) => Some(metadata.len()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(0),
+            Err(error) => {
+                observation_errors.push(format!("wal_metadata_unavailable:{:?}", error.kind()));
+                None
+            }
+        }
+    });
+    if !observation_errors.is_empty() && status == "ok" {
+        status = "degraded";
+        degradation_reason = Some("storage_metadata_unavailable");
+    }
+    StartupWalReport {
+        status: status.to_owned(),
+        degradation_reason: degradation_reason.map(str::to_owned),
+        path,
+        effective_journal_mode,
+        main_bytes,
+        wal_bytes,
+        observation_errors,
+    }
+}
+
+fn in_memory_startup_wal_reports() -> Arc<[StartupWalReport; 2]> {
+    Arc::new([
+        StartupWalReport {
+            status: "ok".to_owned(),
+            degradation_reason: None,
+            path: None,
+            effective_journal_mode: None,
+            main_bytes: None,
+            wal_bytes: None,
+            observation_errors: Vec::new(),
+        },
+        StartupWalReport {
+            status: "ok".to_owned(),
+            degradation_reason: None,
+            path: None,
+            effective_journal_mode: None,
+            main_bytes: None,
+            wal_bytes: None,
+            observation_errors: Vec::new(),
+        },
+    ])
+}
+
 impl MemDbProbe {
     pub fn status(self) -> &'static str {
         match self {
@@ -2018,6 +2116,7 @@ pub struct MemDb {
     conn: Arc<Mutex<Connection>>,
     event_conn: Arc<Mutex<Connection>>,
     event_db_path: Option<Arc<PathBuf>>,
+    startup_wal: Arc<[StartupWalReport; 2]>,
 }
 
 impl MemDb {
@@ -2034,10 +2133,15 @@ impl MemDb {
         backfill_legacy_recall_identity(&mut conn)?;
         let event_path = resolve_event_db_path(path);
         let event_conn = extract_event_ledger(&mut conn, &event_path)?;
+        let startup_wal = Arc::new([
+            startup_wal_report(&conn, Some(path)),
+            startup_wal_report(&event_conn, Some(&event_path)),
+        ]);
         let db = Self {
             conn: Arc::new(Mutex::new(conn)),
             event_conn: Arc::new(Mutex::new(event_conn)),
             event_db_path: Some(Arc::new(event_path)),
+            startup_wal,
         };
         db.flush_context_event_outbox()
             .map_err(|_| rusqlite::Error::InvalidQuery)?;
@@ -2059,6 +2163,7 @@ impl MemDb {
             conn: conn.clone(),
             event_conn: conn,
             event_db_path: None,
+            startup_wal: in_memory_startup_wal_reports(),
         }
     }
 
@@ -2076,6 +2181,11 @@ impl MemDb {
 
     pub fn event_db_path(&self) -> Option<&Path> {
         self.event_db_path.as_deref().map(PathBuf::as_path)
+    }
+
+    /// Startup-only WAL observations for main Crypt storage then physical event ledger.
+    pub fn startup_wal_reports(&self) -> &[StartupWalReport; 2] {
+        &self.startup_wal
     }
 
     /// Probe the live SQLite connection without waiting behind another request. The forge query
@@ -3017,6 +3127,51 @@ mod tests {
     }
 
     #[test]
+    fn startup_wal_reports_file_backed_main_and_event_ledger() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("crypt.db");
+        let db = MemDb::open(&path).unwrap();
+        let reports = db.startup_wal_reports();
+
+        assert_eq!(reports[0].status, "ok");
+        assert_eq!(reports[1].status, "ok");
+        assert_eq!(reports[0].effective_journal_mode.as_deref(), Some("wal"));
+        assert_eq!(reports[1].effective_journal_mode.as_deref(), Some("wal"));
+        assert_eq!(reports[0].path.as_deref(), Some(path.as_path()));
+        assert_eq!(reports[1].path.as_deref(), db.event_db_path());
+        assert_ne!(reports[0].path, reports[1].path);
+        assert!(reports[0].main_bytes.is_some());
+        assert!(reports[1].main_bytes.is_some());
+        assert!(reports[0].wal_bytes.is_some());
+        assert!(reports[1].wal_bytes.is_some());
+    }
+
+    #[test]
+    fn classify_wal_mode_reports_non_wal_degradation_without_a_database() {
+        assert_eq!(classify_wal_mode(Some("wal")), ("ok", None));
+        assert_eq!(
+            classify_wal_mode(Some("delete")),
+            ("degraded", Some("journal_mode_not_wal"))
+        );
+        assert_eq!(
+            classify_wal_mode(None),
+            ("degraded", Some("journal_mode_not_wal"))
+        );
+    }
+
+    #[test]
+    fn startup_wal_reports_in_memory_as_healthy_without_paths() {
+        let db = MemDb::open_in_memory();
+        for report in db.startup_wal_reports() {
+            assert_eq!(report.status, "ok");
+            assert_eq!(report.degradation_reason, None);
+            assert_eq!(report.path, None);
+            assert_eq!(report.main_bytes, None);
+            assert_eq!(report.wal_bytes, None);
+        }
+    }
+
+    #[test]
     fn health_probe_recovers_a_poisoned_connection_after_a_successful_forge() {
         let db = MemDb::open_in_memory();
         let connection = Arc::clone(&db.conn);
@@ -3410,6 +3565,7 @@ mod tests {
             conn: conn.clone(),
             event_conn: conn,
             event_db_path: None,
+            startup_wal: in_memory_startup_wal_reports(),
         };
         insert_recall_fixture(&db, 50, "smoke-spotcheck", "production", "dry-run-target");
         drop(db);
@@ -3461,6 +3617,7 @@ mod tests {
             conn: conn.clone(),
             event_conn: conn,
             event_db_path: None,
+            startup_wal: in_memory_startup_wal_reports(),
         };
         insert_recall_fixture(&db, 60, "codex", "production", "roundtrip-production");
         insert_recall_fixture(

@@ -7,16 +7,19 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-pub const RUNTIME_RECEIPT_SCHEMA_VERSION: u32 = 1;
+pub const RUNTIME_RECEIPT_SCHEMA_VERSION: u32 = 2;
+pub const TELEMETRY_OUTBOX_TABLE: &str = "membrane_event_outbox";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RuntimeReceiptV1 {
+pub struct RuntimeReceiptV2 {
     pub schema_version: u32,
     pub workspace_root: PathBuf,
     pub crypt_db: PathBuf,
     pub catalog_db: PathBuf,
+    pub telemetry_event_db: PathBuf,
     pub telemetry_outbox_db: PathBuf,
+    pub telemetry_outbox_table: String,
     pub installation_id: String,
     pub startup_generation: u64,
     pub service_instance_id: String,
@@ -101,30 +104,21 @@ pub fn resolve_workspace_root(
     Err(RuntimeReceiptError::WorkspaceUnbound(crypt_db))
 }
 
-pub fn resolve_telemetry_outbox_path_from(
-    crypt_outbox: Option<std::ffi::OsString>,
-    membrane_outbox: Option<std::ffi::OsString>,
-    crypt_db: &Path,
-) -> Result<PathBuf, RuntimeReceiptError> {
-    if let Some(path) = crypt_outbox.filter(|value| !value.is_empty()) {
-        return require_absolute("CRYPT_TELEMETRY_OUTBOX", PathBuf::from(path));
-    }
-    if let Some(path) = membrane_outbox.filter(|value| !value.is_empty()) {
-        return require_absolute("MEMBRANE_TELEMETRY_OUTBOX", PathBuf::from(path));
-    }
-    let crypt_db = require_absolute("CRYPT_DB", crypt_db)?;
-    Ok(crypt_db
-        .parent()
-        .expect("absolute database path has a parent")
-        .join("context-telemetry-outbox.db"))
+pub fn validate_telemetry_event_binding(
+    configured: Option<std::ffi::OsString>,
+) -> Result<Option<PathBuf>, RuntimeReceiptError> {
+    configured
+        .filter(|value| !value.is_empty())
+        .map(|value| require_absolute("MEMBRANE_EVENT_DB", PathBuf::from(value)))
+        .transpose()
 }
 
-impl RuntimeReceiptV1 {
+impl RuntimeReceiptV2 {
     pub fn new(
         workspace_root: &Path,
         crypt_db: &Path,
         catalog_db: &Path,
-        telemetry_outbox_db: &Path,
+        telemetry_event_db: &Path,
         identity: &InstallationIdentity,
         claim: &StartupClaim,
     ) -> Result<Self, RuntimeReceiptError> {
@@ -137,12 +131,15 @@ impl RuntimeReceiptV1 {
         {
             return Err(RuntimeReceiptError::IdentityMismatch);
         }
+        let crypt_db = require_absolute("CRYPT_DB", crypt_db)?;
         Ok(Self {
             schema_version: RUNTIME_RECEIPT_SCHEMA_VERSION,
             workspace_root: require_absolute("WORKSPACE_ROOT", workspace_root)?,
-            crypt_db: require_absolute("CRYPT_DB", crypt_db)?,
+            crypt_db: crypt_db.clone(),
             catalog_db: require_absolute("RIGHTCONTEXT_CATALOG", catalog_db)?,
-            telemetry_outbox_db: require_absolute("CRYPT_TELEMETRY_OUTBOX", telemetry_outbox_db)?,
+            telemetry_event_db: require_absolute("MEMBRANE_EVENT_DB", telemetry_event_db)?,
+            telemetry_outbox_db: crypt_db,
+            telemetry_outbox_table: TELEMETRY_OUTBOX_TABLE.to_string(),
             installation_id: identity.installation_id.clone(),
             startup_generation: claim.startup_generation,
             service_instance_id: claim.service_instance_id.clone(),
@@ -229,15 +226,15 @@ impl RuntimeReceiptV1 {
     }
 }
 
-static CURRENT_RECEIPT: Mutex<Option<RuntimeReceiptV1>> = Mutex::new(None);
+static CURRENT_RECEIPT: Mutex<Option<RuntimeReceiptV2>> = Mutex::new(None);
 
-pub fn publish_current(receipt: RuntimeReceiptV1) {
+pub fn publish_current(receipt: RuntimeReceiptV2) {
     *CURRENT_RECEIPT
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(receipt);
 }
 
-pub fn current_snapshot() -> Option<RuntimeReceiptV1> {
+pub fn current_snapshot() -> Option<RuntimeReceiptV2> {
     CURRENT_RECEIPT
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -274,21 +271,40 @@ mod tests {
     }
 
     #[test]
-    fn resolvers_require_absolute_bindings_and_use_canonical_sibling() {
+    fn workspace_resolver_requires_absolute_binding_and_uses_canonical_parent() {
         let root = std::env::temp_dir().join("runtime-receipt-resolver");
         let db = root.join("tools/.cache/memory/crypt-engine.db");
         assert_eq!(resolve_workspace_root(None, &db).unwrap(), root);
-        assert_eq!(
-            resolve_telemetry_outbox_path_from(None, None, &db).unwrap(),
-            db.parent().unwrap().join("context-telemetry-outbox.db")
-        );
-        assert!(matches!(
-            resolve_telemetry_outbox_path_from(Some("relative.db".into()), None, &db),
-            Err(RuntimeReceiptError::Relative { .. })
-        ));
         assert!(matches!(
             resolve_workspace_root(None, Path::new("relative.db")),
             Err(RuntimeReceiptError::Relative { .. })
+        ));
+        assert!(matches!(
+            validate_telemetry_event_binding(Some("relative-events.db".into())),
+            Err(RuntimeReceiptError::Relative {
+                binding: "MEMBRANE_EVENT_DB",
+                ..
+            })
+        ));
+        assert_eq!(
+            validate_telemetry_event_binding(Some(db.clone().into_os_string())).unwrap(),
+            Some(db.clone())
+        );
+
+        let (identity, claim) = identity();
+        assert!(matches!(
+            RuntimeReceiptV2::new(
+                &root,
+                &db,
+                &db.with_file_name("catalog.db"),
+                Path::new("relative-events.db"),
+                &identity,
+                &claim,
+            ),
+            Err(RuntimeReceiptError::Relative {
+                binding: "MEMBRANE_EVENT_DB",
+                ..
+            })
         ));
     }
 
@@ -298,15 +314,19 @@ mod tests {
         let root = temp.path();
         let crypt_db = root.join("tools/.cache/memory/crypt-engine.db");
         let catalog_db = root.join("tools/.cache/memory/catalog.db");
-        let outbox_db = root.join("tools/.cache/memory/context-telemetry-outbox.db");
+        let event_db = root.join("tools/.cache/memory/crypt-engine.membrane-events.sqlite3");
         let (identity, claim) = identity();
         let receipt =
-            RuntimeReceiptV1::new(root, &crypt_db, &catalog_db, &outbox_db, &identity, &claim)
+            RuntimeReceiptV2::new(root, &crypt_db, &catalog_db, &event_db, &identity, &claim)
                 .unwrap();
         let path = receipt.persist().unwrap();
         assert_eq!(receipt.persist().unwrap(), path);
-        let decoded: RuntimeReceiptV1 = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let decoded: RuntimeReceiptV2 = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         assert_eq!(decoded, receipt);
+        assert_eq!(decoded.schema_version, 2);
+        assert_eq!(decoded.telemetry_event_db, event_db);
+        assert_eq!(decoded.telemetry_outbox_db, crypt_db);
+        assert_eq!(decoded.telemetry_outbox_table, TELEMETRY_OUTBOX_TABLE);
         assert!(path.is_file());
         assert!(fs::read_dir(path.parent().unwrap())
             .unwrap()
@@ -322,7 +342,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let (identity, mut claim) = identity();
         claim.startup_generation += 1;
-        let result = RuntimeReceiptV1::new(
+        let result = RuntimeReceiptV2::new(
             temp.path(),
             &temp.path().join("crypt.db"),
             &temp.path().join("catalog.db"),
@@ -345,11 +365,11 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
         let (identity, claim) = identity();
-        let receipt = RuntimeReceiptV1::new(
+        let receipt = RuntimeReceiptV2::new(
             root,
             &root.join("tools/.cache/memory/crypt-engine.db"),
             &root.join("tools/.cache/memory/catalog.db"),
-            &root.join("tools/.cache/memory/context-telemetry-outbox.db"),
+            &root.join("tools/.cache/memory/crypt-engine.membrane-events.sqlite3"),
             &identity,
             &claim,
         )
