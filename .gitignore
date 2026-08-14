@@ -16,3 +16,4 @@ apps/cortex-tray/src-tauri/gen/
 apps/cortex-tray/src-tauri/target/
 .blueprint/
 .agent-test*/
+/repos/

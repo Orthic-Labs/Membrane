@@ -102,7 +102,7 @@ deterministic contract checks). The `claude` driver is additionally
 hard-blocked from CI. CI ownership of CX-B7 therefore means: conformance is
 enforced in CI, behavioral evidence is produced out-of-band (local or
 scheduled owner-invoked runs) and committed as reports — the same pattern the
-best-shape plan (W6, `docs/plans/2026-08-08-cortex-best-shape.md`) describes
+implementation plan (W4, `solimplement.md`) describes
 as "Phase D is one command away" rather than a CI gate.
 
 ## Reading a report

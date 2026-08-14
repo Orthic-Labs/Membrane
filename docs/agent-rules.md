@@ -27,3 +27,5 @@ Keep uncertainty, contradictions, freshness, and precision visible.
 - Rebuild after source changes and require a fresh graph before impact claims.
 - Run query and freshness tests for changed graph surfaces.
 - Compare generated claim verdicts against source fingerprints.
+
+Before sealing any contract touching hub, watcher lifecycle, the cortex↔membrane API, or peer-service discovery, read `docs/plans/orthic/SEAM-CONTRACT.md` and declare it a dependency.
