@@ -16,6 +16,7 @@ node_modules/
 .blueprint/
 .audit/
 memory-mirror/
+/repos/
 
 # OS noise
 .DS_Store
