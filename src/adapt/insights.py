@@ -9,7 +9,7 @@ Honest scope, stated in-product (plan 5.5, line 103):
     not just in a comment — see ``FailureCardV1.honestyLimit``.)
 
 The module consumes ``TranscriptEventV1`` rows from
-``tools/lib/orthic_transcripts`` (plan 5.1), runs every named detector
+``tools/skills/legion/lib/orthic_transcripts`` (plan 5.1), runs every named detector
 against them, and emits one ``FailureCardV1`` per detected failure mode.
 There is no database, no apply path, no authority grant — detectors write
 to a dict, a caller can hand to a printer, a JSON file, or a CI log.
@@ -335,7 +335,7 @@ def _tool_call_pairs(events: list[dict[str, Any]]) -> dict[str, dict[str, dict[s
     """Map ``call_id`` -> ``{"call": ..., "result": ... | None}``.
 
     Pairs by ``(call_id, occurrence)`` — same key as the parser layer uses
-    (see tools/lib/orthic_transcripts/__init__.py:iter_events_for_host).
+    (see tools/skills/legion/lib/orthic_transcripts/__init__.py:iter_events_for_host).
     """
     pairs: dict[str, dict[str, dict[str, Any]]] = defaultdict(
         lambda: {"call": None, "result": None}
@@ -1367,7 +1367,7 @@ def report(
     """Run the full pipeline and emit a JSON-serializable report.
 
     Accepts either an already-parsed events list (e.g. from
-    ``tools.lib.orthic_transcripts.parse``) or a string/Path to a Claude
+    ``tools.skills.legion.lib.orthic_transcripts.parse``) or a string/Path to a Claude
     or Codex transcript JSONL — the latter will be parsed via the
     frozen prefix-receipt path.
     """
@@ -1556,14 +1556,14 @@ def _role_context_projection(path: str | Path, provenance: dict[str, Any] | None
 
 def _parse_through_layer(path: str | Path) -> list[dict[str, Any]]:
     """Parse a transcript file via the frozen ``TranscriptEventV1`` layer
-    at ``tools/lib/orthic_transcripts``.
+    inside Legion at ``tools/skills/legion/lib/orthic_transcripts``.
 
     Plan 5.1: callers MUST go through this layer so byte spans and event
     ids line up with the rest of the substrate. We do not reimplement
     the parser.
 
     Discovery is robust: we walk up from this file until we find a
-    sibling directory ``tools/lib/orthic_transcripts`` that contains
+    sibling directory ``tools/skills/legion/lib/orthic_transcripts`` that contains
     ``__init__.py``. That works from both the adapt repo and any test
     harness that imports this module by file path.
     """
@@ -1573,7 +1573,7 @@ def _parse_through_layer(path: str | Path) -> list[dict[str, Any]]:
     here = Path(__file__).resolve()
     candidates: list[Path] = []
     for parent in here.parents:
-        candidate = parent / "tools" / "lib" / "orthic_transcripts"
+        candidate = parent / "tools" / "skills" / "legion" / "lib" / "orthic_transcripts"
         if (candidate / "__init__.py").is_file():
             candidates.append(candidate)
         if parent == parent.parent:
@@ -1581,7 +1581,7 @@ def _parse_through_layer(path: str | Path) -> list[dict[str, Any]]:
     if not candidates:
         # Fall back to the canonical workspace root (two parents up from
         # the package directory inside /adapt).
-        candidates.append(here.parents[2] / "tools" / "lib" / "orthic_transcripts")
+        candidates.append(here.parents[2] / "tools" / "skills" / "legion" / "lib" / "orthic_transcripts")
     layer = candidates[0]
     init_py = layer / "__init__.py"
     spec = importlib.util.spec_from_file_location(

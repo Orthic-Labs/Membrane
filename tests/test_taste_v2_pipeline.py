@@ -15,7 +15,7 @@ from adapt import run_journal
 from adapt import taste_v2
 from adapt import taste_v2_pipeline
 from adapt import transcript_sources
-from tools.lib.orthic_transcripts import parse_source_events
+from tools.skills.legion.lib.orthic_transcripts import parse_source_events
 
 
 def _isolate_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
