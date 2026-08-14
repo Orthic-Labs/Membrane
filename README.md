@@ -63,7 +63,7 @@ Repository content is untrusted data, never agent instruction. Secrets are redac
 
 ## Cortex on Cortex
 
-This repo maps itself: the current generation covers **129 files, 10 documents, 89 claims, 30 code refs**, and its own generated architecture doc reports 17 stale claims and 15 missing references — visible, because hiding them would defeat the point.
+This repo maps itself. Run `cortex doctor --full --json` for current file, document, claim, code-reference, stale-claim, & missing-reference counts; no snapshot count is treated as durable documentation.
 
 ## Quick start
 
@@ -99,6 +99,12 @@ Parser depth varies by language (lexical fallback is broader than AST coverage).
 ## Repository truth docs
 - [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
 - [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
+
+## Planning authority
+
+- [Product, performance, competitor, & research contract](sol.md)
+- [Single implementation plan](solimplement.md)
+- [Implementation status](references/IMPLEMENTATION-STATUS.md) — release-pinned surface summary; live status comes from `cortex doctor --full --json`
 
 ## License
 
