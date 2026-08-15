@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://orthic.labs/schemas/orthic.snapshot.v2.json",
+  "title": "orthic.snapshot.v2",
+  "description": "Read-only, loopback-authenticated, bounded, content-free, freshness-bearing, omission-bearing, typed-degraded Hub snapshot. Items are closed bounded evidence-handle objects (no arbitrary maps): only the named scalar/handle fields below are permitted, values are primitives only (no nested objects/arrays), so a snapshot never carries source text, memory text, secrets, or product content. Total payload cap is 65536 bytes, enforced at the Hub read boundary to match the live runtime (src-tauri/src/hub_runtime.rs MAX_SNAPSHOT_BYTES).",
+  "type": "object",
+  "required": ["schemaVersion", "productId", "observedAtUnixMs", "sections"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 2 },
+    "productId": { "type": "string", "enum": ["cortex", "membrane"] },
+    "observedAtUnixMs": { "type": "integer", "minimum": 0 },
+    "sections": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 16,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["state", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "state": { "type": "string", "enum": ["available", "degraded", "unavailable"] },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "items": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "maxProperties": 8,
+              "required": ["label"],
+              "properties": {
+                "label": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "kind": { "type": "string", "maxLength": 64 },
+                "count": { "type": "number", "minimum": 0 },
+                "severity": { "type": "string", "enum": ["info", "warning", "error", "critical"] },
+                "evidence": { "type": "string", "maxLength": 512 },
+                "resolver": { "type": "string", "maxLength": 512 },
+                "observedAtUnixMs": { "type": "integer", "minimum": 0 },
+                "stale": { "type": "boolean" }
+              }
+            }
+          },
+          "evidence": { "type": "string", "maxLength": 512 },
+          "resolver": { "type": "string", "maxLength": 512 },
+          "observedAtUnixMs": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "stale": { "type": "boolean" },
+    "cacheAgeMs": { "type": "integer", "minimum": 0 }
+  }
+}

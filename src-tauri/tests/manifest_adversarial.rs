@@ -9,7 +9,7 @@ use std::os::windows::fs::symlink_file;
 
 fn valid_base(dir: &Path) -> serde_json::Value {
     serde_json::json!({
-        "schemaVersion":1,"productId":"membrane","displayName":"Membrane","productVersion":"1.0.0","hubCompatRange":">=0.1.0","installRoot": dir.to_string_lossy(),"serviceStart":[format!("{}/bin", dir.to_string_lossy())],"serviceStop":[],"statusEndpoint":{"host":"127.0.0.1","port":8080,"authHeader":"X-Token","authToken":"secret"},"icon": format!("{}/icon.png", dir.to_string_lossy())
+        "schemaVersion":2,"productId":"membrane","displayName":"Membrane","productVersion":"1.0.0","hubCompatRange":">=0.1.0","installRoot": dir.to_string_lossy(),"serviceStart":[format!("{}/bin", dir.to_string_lossy())],"serviceStop":[],"icon": format!("{}/icon.png", dir.to_string_lossy()),"artifactDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     })
 }
 
@@ -106,14 +106,14 @@ fn case8_icon_escape_rejected() {
 }
 
 #[test]
-fn case9_host_non_loopback_rejected() {
+fn case9_static_endpoint_and_secret_rejected() {
     let dir = tempfile::tempdir().unwrap();
     let install = dir.path().join("install");
     fs::create_dir_all(&install).unwrap();
     let mut v = valid_base(&install);
     v["statusEndpoint"] = serde_json::json!({"host":"0.0.0.0","port":8080,"authHeader":"H","authToken":"T"});
-    assert_eq!(validate_manifest_value(v).unwrap_err(), "statusEndpoint_not_loopback");
+    assert_eq!(validate_manifest_value(v).unwrap_err(), "manifest_schema_invalid");
     let mut v2 = valid_base(&install);
     v2["statusEndpoint"] = serde_json::json!({"host":"192.168.1.1","port":8080,"authHeader":"H","authToken":"T"});
-    assert_eq!(validate_manifest_value(v2).unwrap_err(), "statusEndpoint_not_loopback");
+    assert_eq!(validate_manifest_value(v2).unwrap_err(), "manifest_schema_invalid");
 }

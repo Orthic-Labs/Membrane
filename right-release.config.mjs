@@ -12,7 +12,9 @@ const buildInputs = {
   ],
   exclude: ["**/tests/**", "dist/**", "node_modules/**", "src-tauri/target/**", "src-tauri/gen/**"],
 };
-const macDmg = `src-tauri/target/release/bundle/dmg/Orthic_${version}_aarch64.dmg`;
+// build-mac-release.mjs builds with an explicit --target aarch64-apple-darwin,
+// so Tauri writes under the triple subdir, not target/release directly.
+const macDmg = `src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Orthic_${version}_aarch64.dmg`;
 const windowsInstaller = `src-tauri/target/release/bundle/nsis/Orthic_${version}_x64-setup.exe`;
 
 export default {

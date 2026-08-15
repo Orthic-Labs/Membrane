@@ -10,7 +10,12 @@ function countValid(dir) {
     if (!f.endsWith('.json')) continue;
     try {
       const j = JSON.parse(readFileSync(join(dir, f), 'utf8'));
-      if (j.schemaVersion === 1 && (j.productId === 'cortex' || j.productId === 'membrane')) c++;
+      if (
+        j.schemaVersion === 2 &&
+        (j.productId === 'cortex' || j.productId === 'membrane') &&
+        /^sha256:[0-9a-f]{64}$/.test(j.artifactDigest) &&
+        !('statusEndpoint' in j)
+      ) c++;
     } catch {}
   }
   return c;

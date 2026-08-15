@@ -1,0 +1,13 @@
+{
+  "$comment": "Fixture product manifest template owned by OR-NATIVE-HARNESS. N-MAC/N-WIN instantiate it per scenario to install a supervised fixture product whose serviceStart is the shipped, executable lifecycle-fixture.mjs (tests/native/lifecycle-fixture.mjs). On Mac the script has a shebang and is chmod +x, so serviceStart[0] is the script itself and the Hub computes artifactDigest = sha256(script). On Windows N-WIN stages a launcher as serviceStart[0] (e.g. a node-SEA or .cmd) with its own stamped digest. N-MAC/N-WIN replace <fixture-child> with the absolute executable path, <scenario> with the scenario under test, <fixture-install-root> with the staged install dir, and stamp artifactDigest from serviceStart[0]'s bytes. The all-zero sentinel below is recognized by the harness self-check before stamping.",
+  "schemaVersion": 2,
+  "productId": "cortex",
+  "displayName": "Cortex Fixture",
+  "productVersion": "0.0.0-fixture",
+  "hubCompatRange": ">=0.1.0",
+  "installRoot": "<fixture-install-root>",
+  "serviceStart": ["<fixture-child>", "--scenario", "<scenario>"],
+  "serviceStop": ["<fixture-child>", "--scenario", "normal"],
+  "icon": "<fixture-install-root>/icon.png",
+  "artifactDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+}

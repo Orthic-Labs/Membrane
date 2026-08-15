@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://orthic.labs/schemas/orthic.lifecycle.v1.json",
+  "title": "orthic.lifecycle.v1",
+  "description": "Inherited authenticated lifecycle channel protocol between the Orthic Hub (parent) and each supervised product child. One newline-delimited JSON frame per line. The parent writes hello and command frames into the child's stdin; the child writes register and ack frames onto its stdout. No bearer secret, dynamic endpoint, PID, fence, instance ID, or live state may ever appear in the static manifest, argv, environment, logs, crash dumps, or snapshots.",
+  "definitions": {
+    "fence": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic ownership fence. The Hub only ever increases it per product; any frame carrying a stale fence fails closed."
+    },
+    "productId": {
+      "type": "string",
+      "enum": ["cortex", "membrane"]
+    },
+    "lifecycleState": {
+      "type": "string",
+      "enum": ["starting", "ready", "degraded", "draining", "stopped", "incompatible", "failed"],
+      "description": "Closed lifecycle states (orthic.lifecycle.v1 §4.2)."
+    },
+    "registerState": {
+      "type": "string",
+      "enum": ["starting", "ready", "degraded", "incompatible", "failed"],
+      "description": "States a child may report in a register frame. draining/stopped are observed on the parent side, never self-registered."
+    },
+    "lifecycleCommand": {
+      "type": "string",
+      "enum": ["drain", "stop", "update_handoff", "ownership_loss"],
+      "description": "Closed lifecycle commands: drain, stop, update handoff, and ownership-loss acknowledgement."
+    },
+    "loopbackEndpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["port"],
+      "properties": {
+        "host": { "type": "string", "enum": ["127.0.0.1", "localhost", "::1"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      },
+      "description": "Loopback-only snapshot endpoint registered by the child over the lifecycle channel. Non-loopback hosts fail closed."
+    },
+    "helloFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "lifecycleVersion", "installationId", "productId", "instanceId", "fence", "artifactDigest", "declaredDataRoot", "secret"],
+      "properties": {
+        "kind": { "const": "hello" },
+        "lifecycleVersion": { "const": 1 },
+        "installationId": { "type": "string", "minLength": 1 },
+        "productId": { "$ref": "#/definitions/productId" },
+        "instanceId": { "type": "string", "minLength": 1 },
+        "fence": { "$ref": "#/definitions/fence" },
+        "artifactDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "declaredDataRoot": { "type": "string", "minLength": 1 },
+        "secret": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "description": "Parent -> child binding frame. Binds installation ID, product ID, instance ID, artifact digest, lifecycle version, monotonic fence, and declared data root. The secret exists only on this inherited pipe."
+    },
+    "registerFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "state", "fence"],
+      "properties": {
+        "kind": { "const": "register" },
+        "state": { "$ref": "#/definitions/registerState" },
+        "fence": { "$ref": "#/definitions/fence" },
+        "endpoint": { "$ref": "#/definitions/loopbackEndpoint" },
+        "capability": { "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "description": "Child -> parent readiness frame. Registers the loopback snapshot endpoint plus an ephemeral auth capability. A ready state requires both endpoint and capability."
+    },
+    "commandFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "command", "fence"],
+      "properties": {
+        "kind": { "const": "command" },
+        "command": { "$ref": "#/definitions/lifecycleCommand" },
+        "fence": { "$ref": "#/definitions/fence" }
+      },
+      "description": "Parent -> child lifecycle command, accepted only with the matching exact fence."
+    },
+    "ackFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "command", "fence"],
+      "properties": {
+        "kind": { "const": "ack" },
+        "command": { "$ref": "#/definitions/lifecycleCommand" },
+        "fence": { "$ref": "#/definitions/fence" }
+      },
+      "description": "Child -> parent exact-fence acknowledgement of a lifecycle command."
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/definitions/helloFrame" },
+    { "$ref": "#/definitions/registerFrame" },
+    { "$ref": "#/definitions/commandFrame" },
+    { "$ref": "#/definitions/ackFrame" }
+  ]
+}

@@ -15,9 +15,9 @@ fn snapshot(state: &str, reason: &str) -> CachedSnapshot {
     for key in SECTIONS {
         sections.insert(key.to_string(), serde_json::json!({"state":state,"reason":reason,"items":[],"resolver":null,"evidence":null,"observedAtUnixMs":1}));
     }
-    let value = serde_json::json!({"schemaVersion":1,"productId":"membrane","observedAtUnixMs":1,"sections":sections});
+    let value = serde_json::json!({"schemaVersion":2,"productId":"membrane","observedAtUnixMs":1,"sections":sections});
     CachedSnapshot {
-        schema_version: 1,
+        schema_version: 2,
         observed_at_unix_ms: 1,
         payload: value,
     }

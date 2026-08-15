@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "type": "lifecycle",
+  "variant": "valid",
+  "description": "Valid orthic.lifecycle.v1 frames: hello, register, command, ack. Each frame is one newline-delimited JSON line.",
+  "frames": [
+    { "kind": "hello", "lifecycleVersion": 1, "installationId": "inst-1", "productId": "cortex", "instanceId": "inst-1:1", "fence": 1, "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "declaredDataRoot": "/var/lib/cortex", "secret": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" },
+    { "kind": "register", "state": "ready", "fence": 1, "endpoint": { "host": "127.0.0.1", "port": 8181 }, "capability": "cap-ready-1" },
+    { "kind": "command", "command": "drain", "fence": 1 },
+    { "kind": "ack", "command": "drain", "fence": 1 }
+  ],
+  "expect": "accept"
+}

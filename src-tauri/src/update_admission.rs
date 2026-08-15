@@ -244,6 +244,13 @@ pub fn assess(
     hub_updater::verify(&candidate, &verifier)
 }
 
+/// Bridge from the admission gate to the supervisor's update handoff (O2).
+/// The Hub may only drain and hand off a running child after this returns
+/// `true`; a blocked update must never reach the supervisor's handoff.
+pub fn may_handoff(result: &Result<VerifiedUpdate, BlockedUpdate>) -> bool {
+    result.is_ok()
+}
+
 // --- Deterministic, unexecuted-at-task-time source tests -------------------
 //
 // Not run by this task (no `cargo test`, per this task's hard rules); left
@@ -329,6 +336,23 @@ mod tests {
             &real_windows_platform_receipt(&[]),
         );
         assert!(outcome.is_ok(), "full valid RightKit evidence must verify");
+        assert!(may_handoff(&outcome));
+    }
+
+    #[test]
+    fn may_handoff_is_false_for_blocked_updates() {
+        let blocked = assess(
+            "0.1.5",
+            "0.1.6",
+            ARTIFACT_SHA256_HEX,
+            Platform::Windows,
+            &[TRUSTED_KEY.to_string()],
+            "some-other-key",
+            &real_windows_manifest_entry(),
+            &real_windows_platform_receipt(&[]),
+        );
+        assert!(blocked.is_err(), "an unrecognized signing key must fail closed");
+        assert!(!may_handoff(&blocked));
     }
 
     #[test]

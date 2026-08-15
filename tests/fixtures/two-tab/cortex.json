@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "productId": "cortex",
   "displayName": "Cortex",
   "productVersion": "1.0.0",
@@ -7,6 +7,6 @@
   "installRoot": "/tmp/cortex",
   "serviceStart": ["/tmp/cortex/bin/cortex"],
   "serviceStop": [],
-  "statusEndpoint": { "host": "127.0.0.1", "port": 18080, "authHeader": "X-Token", "authToken": "secret" },
-  "icon": "/tmp/cortex/icon.png"
+  "icon": "/tmp/cortex/icon.png",
+  "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 }

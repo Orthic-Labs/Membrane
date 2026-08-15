@@ -1,0 +1,356 @@
+{
+  "$schema": "https://orthic.labs/schemas/orthic-native-lifecycle-matrix.v1.json",
+  "title": "Orthic native lifecycle qualification matrix",
+  "schemaVersion": 1,
+  "description": "Producer-side matrix for O5 native lifecycle qualification. N-MAC and N-WIN execute every applicable case from identical source/contract/add-on digests and emit a receipt conforming to receipt.schema.json. Lifecycle/adversarial cases stage a fixture product manifest (whose serviceStart is the shipped executable lifecycle-fixture.mjs with a scenario) into the Hub product-scan directory, then LAUNCH THE HUB — the Hub supervises the fixture; the case observes the Hub-level outcome. The wrong-digest case is manifest-level (the Hub refuses launch before spawn, so no fixture scenario speaks the lifecycle channel). No fabricated Hub CLI flags (--select/--handoff) or nonexistent right-release rollback subcommand are referenced.",
+  "phases": ["first-run", "selection", "headless", "lifecycle", "crash", "update", "uninstall", "adversarial"],
+  "placeholders": [
+    { "token": "<fixture-child>", "description": "Absolute path to the executable tests/native/lifecycle-fixture.mjs (Mac: shebang+chmod+x; Windows: a staged launcher). serviceStart[0]; digest-stamped into the fixture manifest's artifactDigest as sha256(serviceStart[0])." },
+    { "token": "<staged-fixture-manifest>", "description": "Absolute path to a fixture product manifest N-MAC/N-WIN materialize from fixtures/fixture-product-manifest.template.json for a scenario, with <fixture-child>, <scenario>, <fixture-install-root> replaced and artifactDigest stamped from serviceStart[0]'s bytes. Staged into the Hub product-scan directory before launching the Hub." },
+    { "token": "<scenario>", "description": "The lifecycle-fixture.mjs --scenario value for the case (normal, degraded, incompatible-range, stale-fence, old-instance, rogue-endpoint, update-handoff)." },
+    { "token": "<fixture-install-root>", "description": "Absolute path to the staged fixture install root (owner-only), used as the manifest installRoot and icon base." },
+    { "token": "<hub-pid>", "description": "Process id of the running Hub, resolved by N-MAC/N-WIN at run time." },
+    { "token": "<child-pid>", "description": "Process id of a supervised product child, resolved at run time." },
+    { "token": "<prior-installer>", "description": "Absolute path to a previously signed installer restored from the release archive for rollback (re-install of the prior pinned bytes)." },
+    { "token": "<newer-update-manifest>", "description": "Absolute path to a signed update manifest for the replacement version, staged into the Hub update channel." }
+  ],
+  "entrypoints": {
+    "mac": {
+      "hub": "open", "hubApp": "/Applications/Orthic.app",
+      "fixtureArgs": ["<fixture-child>", "--scenario"],
+      "productsDir": "~/.orthic/hub/products.d",
+      "quit": ["osascript", "-e", "tell application \"Orthic\" to quit"],
+      "reap": ["pkill", "-f", "orthic"],
+      "census": ["pgrep", "-P", "<hub-pid>"],
+      "rollback": ["hdiutil", "attach", "<prior-installer>"],
+      "uninstall": ["rm", "-rf", "/Applications/Orthic.app", "~/.orthic"]
+    },
+    "win": {
+      "hub": "powershell", "hubApp": "$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe",
+      "fixtureArgs": ["<fixture-child>", "--scenario"],
+      "productsDir": "$env:USERPROFILE\\.orthic\\hub\\products.d",
+      "quit": ["powershell", "-NoProfile", "-Command", "Get-Process orthic | Stop-Process -Force"],
+      "reap": ["powershell", "-NoProfile", "-Command", "Get-Process orthic -ErrorAction SilentlyContinue | Stop-Process -Force"],
+      "census": ["powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_Process | ? ParentProcessId -eq <hub-pid>"],
+      "rollback": ["powershell", "-NoProfile", "-Command", "Start-Process -FilePath '<prior-installer>' -ArgumentList '/S' -Wait"],
+      "uninstall": ["powershell", "-NoProfile", "-Command", "$u = (Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Orthic').UninstallString; & $u /S"]
+    }
+  },
+  "cases": [
+    {
+      "id": "first-run",
+      "phase": "first-run",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Fresh install launches the Hub and shows onboarding; no product runtime does work before activation.",
+      "setup": [],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "onboarding picker visible; census live==0 product children" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "onboarding picker visible; census live==0 product children" }
+      ]
+    },
+    {
+      "id": "selection-cortex-only",
+      "phase": "selection",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Only a Cortex product manifest present => exactly one tab; Membrane absent so its runtime never spawns.",
+      "setup": [
+        { "mac": ["rm", "-f", "~/.orthic/hub/products.d/membrane.json"], "win": ["powershell", "-NoProfile", "-Command", "Remove-Item -ErrorAction SilentlyContinue $env:USERPROFILE\\.orthic\\hub\\products.d\\membrane.json"] }
+      ],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "one tab (cortex); census live==0 membrane children" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "one tab (cortex); census live==0 membrane children" }
+      ]
+    },
+    {
+      "id": "selection-both",
+      "phase": "selection",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Both Cortex and Membrane manifests present => exactly two tabs; Membrane implies Cortex.",
+      "setup": [],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "two tabs (cortex, membrane); membrane tab non-deselectable" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "two tabs (cortex, membrane); membrane tab non-deselectable" }
+      ]
+    },
+    {
+      "id": "membrane-implies-cortex",
+      "phase": "selection",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "If only a Membrane manifest is present the Hub still surfaces Cortex (Membrane implies Cortex) and never runs Membrane alone.",
+      "setup": [
+        { "mac": ["rm", "-f", "~/.orthic/hub/products.d/cortex.json"], "win": ["powershell", "-NoProfile", "-Command", "Remove-Item -ErrorAction SilentlyContinue $env:USERPROFILE\\.orthic\\hub\\products.d\\cortex.json"] }
+      ],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "cortex auto-present and non-deselectable; membrane not run alone" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "cortex auto-present and non-deselectable; membrane not run alone" }
+      ]
+    },
+    {
+      "id": "headless-carve-out",
+      "phase": "headless",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "A product run directly (no Hub, no hello on stdin) declares ownerMode=headless, emits zero bytes, never self-registers, and never attaches to a Hub lease. The fixture's idle guard exits 0 within 2s without writing any register.",
+      "setup": [],
+      "steps": [
+        { "platform": "mac", "command": ["node", "<fixture-child>", "--scenario", "normal"], "timeoutMs": 3000, "assert": "ownerMode=headless; stdout zero bytes; exit 0; census live==0 Hub-owned children" },
+        { "platform": "win", "command": ["node", "<fixture-child>", "--scenario", "normal"], "timeoutMs": 3000, "assert": "ownerMode=headless; stdout zero bytes; exit 0; census live==0 Hub-owned children" }
+      ]
+    },
+    {
+      "id": "ready",
+      "phase": "lifecycle",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Stage the normal-scenario fixture manifest, launch the Hub; the supervised fixture registers a loopback endpoint + capability and reaches ready.",
+      "fixtureScenario": "normal",
+      "setup": [
+        { "mac": ["cp", "<staged-fixture-manifest>", "~/.orthic/hub/products.d/cortex.json"], "win": ["powershell", "-NoProfile", "-Command", "Copy-Item '<staged-fixture-manifest>' $env:USERPROFILE\\.orthic\\hub\\products.d\\cortex.json"] }
+      ],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "product status ready; capability non-empty; endpoint 127.0.0.1" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "product status ready; capability non-empty; endpoint 127.0.0.1" }
+      ]
+    },
+    {
+      "id": "degraded",
+      "phase": "lifecycle",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Stage the degraded-scenario fixture manifest, launch the Hub; the fixture registers state=degraded and the Hub surfaces worst-state degraded without fabricating healthy.",
+      "fixtureScenario": "degraded",
+      "setup": [
+        { "mac": ["cp", "<staged-fixture-manifest>", "~/.orthic/hub/products.d/cortex.json"], "win": ["powershell", "-NoProfile", "-Command", "Copy-Item '<staged-fixture-manifest>' $env:USERPROFILE\\.orthic\\hub\\products.d\\cortex.json"] }
+      ],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "degraded tab + degraded tray severity; census live bounded; no healthy promotion" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "degraded tab + degraded tray severity; census live bounded; no healthy promotion" }
+      ]
+    },
+    {
+      "id": "incompatible",
+      "phase": "lifecycle",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Stage the incompatible-range-scenario fixture manifest, launch the Hub; the fixture registers state=incompatible and the Hub renders typed incompatible, never guessing launch.",
+      "fixtureScenario": "incompatible-range",
+      "setup": [
+        { "mac": ["cp", "<staged-fixture-manifest>", "~/.orthic/hub/products.d/cortex.json"], "win": ["powershell", "-NoProfile", "-Command", "Copy-Item '<staged-fixture-manifest>' $env:USERPROFILE\\.orthic\\hub\\products.d\\cortex.json"] }
+      ],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "tab renders incompatible; census live==0 launched children" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "tab renders incompatible; census live==0 launched children" }
+      ]
+    },
+    {
+      "id": "off",
+      "phase": "lifecycle",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Quitting the Hub stops every product child and leaves zero orphan descendants.",
+      "setup": [],
+      "steps": [
+        { "platform": "mac", "command": ["osascript", "-e", "tell application \"Orthic\" to quit"], "assert": "zero orphan children; census live==0" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Get-Process orthic | Stop-Process -Force"], "assert": "zero orphan children; census live==0" }
+      ]
+    },
+    {
+      "id": "quit",
+      "phase": "lifecycle",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Hub quit runs the declared stop argv, drains within bound, and terminates the full child tree.",
+      "setup": [],
+      "steps": [
+        { "platform": "mac", "command": ["osascript", "-e", "quit app \"Orthic\""], "assert": "declared stop argv honoured; full tree reaped; census live==0" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Get-Process orthic | Stop-Process -Force"], "assert": "declared stop argv honoured; full tree reaped; census live==0" }
+      ]
+    },
+    {
+      "id": "child-crash",
+      "phase": "crash",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "A crashed product child is restarted with capped backoff then escalates to crash-loop after the threshold.",
+      "setup": [],
+      "steps": [
+        { "platform": "mac", "command": ["kill", "-9", "<child-pid>"], "assert": "restart within backoff; crash_loop state after threshold; census live bounded" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Stop-Process -Id <child-pid> -Force"], "assert": "restart within backoff; crash_loop state after threshold; census live bounded" }
+      ]
+    },
+    {
+      "id": "restart",
+      "phase": "crash",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Hub restart re-spawns active products with fresh monotonic fences and exactly one owner per product.",
+      "setup": [],
+      "steps": [
+        { "platform": "mac", "command": ["osascript", "-e", "tell application \"Orthic\" to quit", "&&", "open", "/Applications/Orthic.app"], "assert": "one owner per product; fence strictly greater than previous; census live bounded" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Get-Process orthic | Stop-Process -Force; Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "one owner per product; fence strictly greater than previous; census live bounded" }
+      ]
+    },
+    {
+      "id": "fence-loss",
+      "phase": "lifecycle",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Loss of the Hub owner (parent death) drains the child within bound and the child exits.",
+      "setup": [],
+      "steps": [
+        { "platform": "mac", "command": ["kill", "-9", "<hub-pid>"], "assert": "child observes EOF, drains, exits; census live==0" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Stop-Process -Id <hub-pid> -Force"], "assert": "child observes EOF, drains, exits; census live==0" }
+      ]
+    },
+    {
+      "id": "update-handoff",
+      "phase": "update",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Stage the update-handoff-scenario fixture manifest, launch the Hub, then stage a newer signed update manifest into the Hub update channel; the Hub sends the lifecycle update_handoff command, the old child drains, and the replacement owns the fence.",
+      "fixtureScenario": "update-handoff",
+      "setup": [
+        { "mac": ["cp", "<staged-fixture-manifest>", "~/.orthic/hub/products.d/cortex.json", "&&", "cp", "<newer-update-manifest>", "~/.orthic/hub/updates/next.json"], "win": ["powershell", "-NoProfile", "-Command", "Copy-Item '<staged-fixture-manifest>' $env:USERPROFILE\\.orthic\\hub\\products.d\\cortex.json; Copy-Item '<newer-update-manifest>' $env:USERPROFILE\\.orthic\\hub\\updates\\next.json"] }
+      ],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "old child acks update_handoff and drains; new child owns fence; census live bounded" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "old child acks update_handoff and drains; new child owns fence; census live bounded" }
+      ]
+    },
+    {
+      "id": "rollback",
+      "phase": "update",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Rollback restores the previous installed bytes by re-running the prior signed installer (re-install of the prior pinned artifact), then re-supervises the prior version. There is no right-release rollback subcommand.",
+      "setup": [],
+      "steps": [
+        { "platform": "mac", "command": ["hdiutil", "attach", "<prior-installer>", "&&", "installer", "-pkg", "/Volumes/Orthic/Orthic.pkg", "-target", "/"], "assert": "previous installed bytes restored; prior version supervised; census live bounded" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process -FilePath '<prior-installer>' -ArgumentList '/S' -Wait"], "assert": "previous installed bytes restored; prior version supervised; census live bounded" }
+      ]
+    },
+    {
+      "id": "uninstall",
+      "phase": "uninstall",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "Uninstall leaves zero orphan children, descendants, listeners, or stale fence state. Mac reaps children then removes the bundle + Hub state dir (Orthic ships no mac uninstall script). Windows invokes the registered NSIS UninstallString silently.",
+      "setup": [],
+      "steps": [
+        { "platform": "mac", "command": ["pkill", "-f", "orthic", "&&", "rm", "-rf", "/Applications/Orthic.app", "~/.orthic"], "assert": "zero orphan descendants; products dir absent; no stale fence state" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "$u = (Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Orthic').UninstallString; & $u /S"], "assert": "zero orphan descendants; products dir absent; no stale fence state" }
+      ]
+    },
+    {
+      "id": "zero-orphan-census",
+      "phase": "uninstall",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": false,
+      "summary": "After off/quit/update/rollback/uninstall the census reports zero live children and zero descendants.",
+      "setup": [],
+      "steps": [
+        { "platform": "mac", "command": ["pgrep", "-P", "<hub-pid>"], "assert": "census.live==0 && census.descendants==0" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_Process | ? ParentProcessId -eq <hub-pid>"], "assert": "census.live==0 && census.descendants==0" }
+      ]
+    },
+    {
+      "id": "stale-fence",
+      "phase": "adversarial",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": true,
+      "fixtureScenario": "stale-fence",
+      "summary": "Stage the stale-fence-scenario fixture manifest, launch the Hub; the fixture registers with a stale fence and is rejected fail-closed.",
+      "setup": [
+        { "mac": ["cp", "<staged-fixture-manifest>", "~/.orthic/hub/products.d/cortex.json"], "win": ["powershell", "-NoProfile", "-Command", "Copy-Item '<staged-fixture-manifest>' $env:USERPROFILE\\.orthic\\hub\\products.d\\cortex.json"] }
+      ],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "registration rejected: stale_fence; census live==0 adopted children" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "registration rejected: stale_fence; census live==0 adopted children" }
+      ]
+    },
+    {
+      "id": "old-child",
+      "phase": "adversarial",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": true,
+      "fixtureScenario": "old-instance",
+      "summary": "Stage the old-instance-scenario fixture manifest, launch the Hub; the fixture's second register (old instance) cannot adopt the current lease.",
+      "setup": [
+        { "mac": ["cp", "<staged-fixture-manifest>", "~/.orthic/hub/products.d/cortex.json"], "win": ["powershell", "-NoProfile", "-Command", "Copy-Item '<staged-fixture-manifest>' $env:USERPROFILE\\.orthic\\hub\\products.d\\cortex.json"] }
+      ],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "old child rejected: stale_fence; current owner retained" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "old child rejected: stale_fence; current owner retained" }
+      ]
+    },
+    {
+      "id": "wrong-digest",
+      "phase": "adversarial",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": true,
+      "summary": "Manifest-level digest mismatch. Stage a fixture product manifest whose artifactDigest does not match the staged serviceStart[0] bytes, launch the Hub; the Hub refuses launch before spawn (artifact_digest_mismatch), so the fixture never speaks the lifecycle channel. The fixture has no wrong-digest scenario because the digest is checked before the child runs.",
+      "setup": [
+        { "mac": ["cp", "<staged-fixture-manifest:wrong-digest>", "~/.orthic/hub/products.d/cortex.json"], "win": ["powershell", "-NoProfile", "-Command", "Copy-Item '<staged-fixture-manifest:wrong-digest>' $env:USERPROFILE\\.orthic\\hub\\products.d\\cortex.json"] }
+      ],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "launch refused: artifact_digest_mismatch; census live==0 spawned children; no lifecycle register emitted" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "launch refused: artifact_digest_mismatch; census live==0 spawned children; no lifecycle register emitted" }
+      ]
+    },
+    {
+      "id": "incompatible-range",
+      "phase": "adversarial",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": true,
+      "summary": "Stage a fixture manifest whose hubCompatRange excludes the Hub version, launch the Hub; the Hub refuses launch typed (manifest_hub_range_incompatible).",
+      "setup": [
+        { "mac": ["cp", "<staged-fixture-manifest:incompatible-range>", "~/.orthic/hub/products.d/cortex.json"], "win": ["powershell", "-NoProfile", "-Command", "Copy-Item '<staged-fixture-manifest:incompatible-range>' $env:USERPROFILE\\.orthic\\hub\\products.d\\cortex.json"] }
+      ],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "tab incompatible: manifest_hub_range_incompatible; census live==0 launched children" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "tab incompatible: manifest_hub_range_incompatible; census live==0 launched children" }
+      ]
+    },
+    {
+      "id": "rogue-endpoint",
+      "phase": "adversarial",
+      "obligation": "O5",
+      "platforms": ["mac", "win"],
+      "adversarial": true,
+      "fixtureScenario": "rogue-endpoint",
+      "summary": "Stage the rogue-endpoint-scenario fixture manifest, launch the Hub; the fixture registers a non-loopback endpoint and is rejected.",
+      "setup": [
+        { "mac": ["cp", "<staged-fixture-manifest>", "~/.orthic/hub/products.d/cortex.json"], "win": ["powershell", "-NoProfile", "-Command", "Copy-Item '<staged-fixture-manifest>' $env:USERPROFILE\\.orthic\\hub\\products.d\\cortex.json"] }
+      ],
+      "steps": [
+        { "platform": "mac", "command": ["open", "/Applications/Orthic.app"], "assert": "registration rejected: endpoint_not_loopback; census live==0 adopted children" },
+        { "platform": "win", "command": ["powershell", "-NoProfile", "-Command", "Start-Process '$env:LOCALAPPDATA\\Programs\\Orthic\\orthic.exe'"], "assert": "registration rejected: endpoint_not_loopback; census live==0 adopted children" }
+      ]
+    }
+  ]
+}

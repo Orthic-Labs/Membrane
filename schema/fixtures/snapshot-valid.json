@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "type": "snapshot",
+  "variant": "valid",
+  "description": "Minimal bounded content-free orthic.snapshot.v2 instance. Item values are flat capped primitives only over the closed named evidence-handle field set.",
+  "instance": {
+    "schemaVersion": 2,
+    "productId": "membrane",
+    "observedAtUnixMs": 1700000000000,
+    "sections": {
+      "deliveries": { "state": "available", "reason": "ok", "items": [ {"label":"d1","kind":"delivery","count":3,"severity":"info","evidence":"hub.snapshot#1","resolver":"retry","observedAtUnixMs":1700000000000,"stale":false} ] },
+      "memory": { "state": "degraded", "reason": "slow disk", "evidence": "hub.snapshot#2", "resolver": "retry", "observedAtUnixMs": 1700000000000 }
+    },
+    "stale": false,
+    "cacheAgeMs": 1200
+  },
+  "expect": "accept"
+}

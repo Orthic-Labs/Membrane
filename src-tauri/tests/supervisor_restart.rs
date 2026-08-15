@@ -1,5 +1,5 @@
 use orthic::supervisor::{backoff_delay, Supervisor};
-use orthic::schema_types::{ManifestV1, StatusEndpoint};
+use orthic::schema_types::ManifestV1;
 
 #[test]
 fn backoff_increases_then_caps() {
@@ -18,7 +18,7 @@ fn kills_four_times_observes_backoff_then_unavailable() {
     let dir = tempfile::tempdir().unwrap();
     let fake_bin = dir.path().join("nonexistent_bin");
     let manifest = ManifestV1 {
-        schema_version: 1,
+        schema_version: 2,
         product_id: "membrane".into(),
         display_name: "Membrane".into(),
         product_version: "1.0.0".into(),
@@ -26,8 +26,8 @@ fn kills_four_times_observes_backoff_then_unavailable() {
         install_root: dir.path().to_string_lossy().into(),
         service_start: vec![fake_bin.to_string_lossy().into()],
         service_stop: vec![],
-        status_endpoint: StatusEndpoint { host: "127.0.0.1".into(), port: 8080, auth_header: "H".into(), auth_token: "T".into() },
         icon: dir.path().join("icon.png").to_string_lossy().into(),
+        artifact_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
     };
     let supervisor = Supervisor::new();
     let start = std::time::Instant::now();

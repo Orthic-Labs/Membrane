@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "type": "manifest",
+  "variant": "valid",
+  "description": "Minimal static secret-free orthic.product-manifest.v2 instance. Used by schema/schema.test.mjs to prove the Node validator accepts the contract shape.",
+  "instance": {
+    "schemaVersion": 2,
+    "productId": "cortex",
+    "displayName": "Cortex",
+    "productVersion": "1.0.0",
+    "hubCompatRange": ">=0.1.0",
+    "installRoot": "/Applications/Cortex",
+    "serviceStart": ["/Applications/Cortex/bin/cortex"],
+    "serviceStop": ["/Applications/Cortex/bin/cortex", "stop"],
+    "icon": "/Applications/Cortex/icon.png",
+    "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "expect": "accept"
+}

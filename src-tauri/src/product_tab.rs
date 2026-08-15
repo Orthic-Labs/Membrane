@@ -1,7 +1,7 @@
 use tauri::Manager;
 
 /// Opens a product tab as a Tauri webview window.
-/// Each product manifest declares its own surface via statusEndpoint-adjacent URL;
+/// Each product registers its live surface over inherited lifecycle transport;
 /// for now we open a generic window per product and load its installRoot-adjacent UI.
 /// The Hub hosts tabs; it does not render product content itself (D-2).
 pub fn open_product_tab(app: &tauri::AppHandle, product_id: &str, url: &str) -> Result<(), String> {

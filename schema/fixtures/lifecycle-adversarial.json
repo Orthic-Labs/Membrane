@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "type": "lifecycle",
+  "variant": "adversarial",
+  "description": "Adversarial orthic.lifecycle.v1 frames: each must be rejected. Covers future lifecycleVersion, stale fence, non-loopback endpoint, ready-without-endpoint-or-capability, unknown command, and a hello secret that is not 64 hex chars.",
+  "cases": [
+    { "id": "future-lifecycle-version", "expect": "reject", "reason": "lifecycle_version_unsupported", "frame": { "kind": "hello", "lifecycleVersion": 2, "installationId": "i", "productId": "cortex", "instanceId": "i:1", "fence": 1, "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "declaredDataRoot": "/x", "secret": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" } },
+    { "id": "non-loopback-endpoint", "expect": "reject", "reason": "endpoint_not_loopback", "frame": { "kind": "register", "state": "ready", "fence": 1, "endpoint": { "host": "10.0.0.1", "port": 9 }, "capability": "cap" } },
+    { "id": "ready-without-capability", "expect": "reject", "reason": "ready_requires_endpoint_and_capability", "frame": { "kind": "register", "state": "ready", "fence": 1, "endpoint": { "host": "127.0.0.1", "port": 9 } } },
+    { "id": "unknown-command", "expect": "reject", "reason": "unknown_lifecycle_command", "frame": { "kind": "command", "command": "reboot", "fence": 1 } },
+    { "id": "bad-secret", "expect": "reject", "reason": "hello_secret_invalid", "frame": { "kind": "hello", "lifecycleVersion": 1, "installationId": "i", "productId": "cortex", "instanceId": "i:1", "fence": 1, "artifactDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "declaredDataRoot": "/x", "secret": "not-hex" } }
+  ]
+}

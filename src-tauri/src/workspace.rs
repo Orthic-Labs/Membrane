@@ -51,13 +51,11 @@ fn from_config(config: Config) -> Result<Workspace, String> {
 /// on Windows it is `USERPROFILE`. We do not gather both -- mixing them
 /// lets a stale shell var override the real user profile on one OS.
 pub fn resolve() -> Result<Workspace, String> {
-    // Orthic rebrand: read ORTHIC_ first, keep MEMBRANE_ as compat fallback.
-    let primary = std::env::var_os("ORTHIC_WORKSPACE_ROOT")
-        .or_else(|| std::env::var_os("MEMBRANE_WORKSPACE_ROOT"))
-        .map(PathBuf::from);
-    let config = std::env::var_os("ORTHIC_WORKSPACE_CONFIG")
-        .or_else(|| std::env::var_os("MEMBRANE_WORKSPACE_CONFIG"))
-        .map(PathBuf::from);
+    // Product-neutral (O2): only Orthic-owned variables feed resolution. No
+    // product-discriminating env fallback survives — a Membrane-specific env
+    // branch is exactly the seam defect this module must not reintroduce.
+    let primary = std::env::var_os("ORTHIC_WORKSPACE_ROOT").map(PathBuf::from);
+    let config = std::env::var_os("ORTHIC_WORKSPACE_CONFIG").map(PathBuf::from);
     resolve_from(
         primary,
         std::env::var_os("WORKSPACE_ROOT").map(PathBuf::from),

@@ -12,6 +12,16 @@ orthic:
 
 # Orthic implementation plan
 
+## Live status — 2026-08-15
+
+- O0/F-OR & all six Phase A source owners are complete.
+- OR-INTEGRATION amended ownership from 2,449 to 2,470 paths with no collision, proved patch composition, & integrated current working-tree candidate.
+- `pnpm test` (39/39), schema fixtures/bundle, native harness (22/22), & full RightKit Rust suite (121/121) pass.
+- `release:doctor` remains blocked by RightKit managed `CARGO_HOME` conflict; workspace fix exists in unpublished `@rightkit/release` 0.2.62.
+- O4 adoption, J assembly, N-MAC/N-WIN, Oracle, Orthic commit/push, parent pins, publication, cross-attachment, & remote verification remain.
+
+Current receipts: workspace `tasks/evidence/orthic-suite/integration/orthic/**`. Local integration is not release completion. Historical receipts retain original authority hashes.
+
 Authority: workspace [`SEAM-CONTRACT.md`](../docs/plans/orthic/SEAM-CONTRACT.md) owns every Cortex ↔ Membrane ↔ Orthic boundary. This file owns Orthic supervisor-side implementation, contract releases, add-on adoption, installer assembly, status, & delivery closure. Current code, contract artifacts, native installed receipts, Git state, & remote state own operational truth.
 
 No other Orthic implementation plan is current. `EC-2026-08-11-orthic-hub-consolidated-contract.md` plus earlier Hub contracts are evidence/rationale only; their surviving obligations map into O0–O6.
@@ -73,13 +83,13 @@ No shared SQLite, WAL, journal, cache, temp, backup, or mutable data root is all
 
 | Package | Output | Dependency | Status |
 |---|---|---|---|
-| O0 Truth freeze | Current contract/code/release ledger, exact failing fixtures, dirty-tree classification | none | READY |
-| O1 Contract v2 bundle | Manifest v2, lifecycle v1, snapshot v2, generated types, digest, compatibility matrices | sealed execution packet | READY_AFTER_FREEZE |
-| O2 Generic supervisor | Product-neutral spawn/stop, handshake, readiness, fence, drain, crash loop, update handoff, child-tree cleanup | sealed execution packet | READY_AFTER_FREEZE |
-| O3 Product-neutral shell | Dynamic tabs/severity, bounded snapshots, dormant activation, no product-specific branches/renderers | sealed execution packet | READY_AFTER_FREEZE |
-| O4 Dual add-on adoption | Cortex + Membrane exact-digest staging, artifact verification, no source build/path deps | product artifact digests; release mechanics may start after freeze | PARTIAL_READY_AFTER_FREEZE |
-| O5 Native lifecycle qualification | Mac/Windows install, first run, off/quit/crash/update/rollback/uninstall, zero orphan proof | O2 + O3 + O4 | BLOCKED_BY_O2_O3_O4 |
-| O6 Release closure | One installer built once, checksum-identical cross-attachment, receipts, nested push + parent pin | O5 | BLOCKED_BY_O5 |
+| O0 Truth freeze | Current contract/code/release ledger, exact failing fixtures, dirty-tree classification | none | COMPLETE |
+| O1 Contract v2 bundle | Manifest v2, lifecycle v1, snapshot v2, generated types, digest, compatibility matrices | sealed execution packet | INTEGRATED_UNCOMMITTED |
+| O2 Generic supervisor | Product-neutral spawn/stop, handshake, readiness, fence, drain, crash loop, update handoff, child-tree cleanup | sealed execution packet | INTEGRATED_UNCOMMITTED |
+| O3 Product-neutral shell | Dynamic tabs/severity, bounded snapshots, dormant activation, no product-specific branches/renderers | sealed execution packet | INTEGRATED_UNCOMMITTED |
+| O4 Dual add-on adoption | Cortex + Membrane exact-digest staging, artifact verification, no source build/path deps | sealed product artifact digests | MECHANICS_GREEN; ADOPTION_PENDING |
+| O5 Native lifecycle qualification | Mac/Windows install, first run, off/quit/crash/update/rollback/uninstall, zero orphan proof | O2 + O3 + O4 | PENDING_O4 |
+| O6 Release closure | One installer built once, checksum-identical cross-attachment, receipts, nested push + parent pin | O5 | PENDING_O5 |
 
 ## 6. Package requirements
 

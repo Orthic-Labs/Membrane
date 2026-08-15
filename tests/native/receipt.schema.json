@@ -1,0 +1,40 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://orthic.labs/schemas/orthic-native-lifecycle-receipt.v1.json",
+  "title": "OrthicNativeLifecycleReceiptV1",
+  "description": "Evidence that the O5 native lifecycle matrix passed every applicable case on one platform. Verified fail-closed; no case may default to pass, and zero-orphan proof is mandatory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "platform", "artifactSha256", "cases", "zeroOrphanProof", "runnerIdentity", "signedAt"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "platform": { "type": "string", "enum": ["mac", "win"] },
+    "artifactSha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "cases": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["outcome"],
+        "properties": {
+          "outcome": { "type": "string", "enum": ["pass", "fail", "blocked"] },
+          "evidence": { "type": "string", "maxLength": 4096 }
+        }
+      }
+    },
+    "zeroOrphanProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tracked", "live", "descendants"],
+      "properties": {
+        "tracked": { "type": "integer", "minimum": 0 },
+        "live": { "type": "integer", "minimum": 0 },
+        "descendants": { "type": "integer", "minimum": 0 }
+      },
+      "description": "tracked/live/descendants must all be 0 for the receipt to certify zero orphans."
+    },
+    "runnerIdentity": { "type": "string", "minLength": 1 },
+    "signedAt": { "type": "string", "minLength": 1 }
+  }
+}

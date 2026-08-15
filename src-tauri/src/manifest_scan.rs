@@ -68,7 +68,7 @@ mod tests {
         let install = dir.path().join("prod");
         fs::create_dir_all(&install).unwrap();
         let valid = serde_json::json!({
-            "schemaVersion":1,"productId":"membrane","displayName":"Membrane","productVersion":"1.0","hubCompatRange":">=0.1","installRoot": install.to_string_lossy(),"serviceStart":[format!("{}/bin", install.to_string_lossy())],"serviceStop":[],"statusEndpoint":{"host":"127.0.0.1","port":8080,"authHeader":"H","authToken":"T"},"icon": format!("{}/icon.png", install.to_string_lossy())
+            "schemaVersion":2,"productId":"membrane","displayName":"Membrane","productVersion":"1.0","hubCompatRange":">=0.1","installRoot": install.to_string_lossy(),"serviceStart":[format!("{}/bin", install.to_string_lossy())],"serviceStop":[],"icon": format!("{}/icon.png", install.to_string_lossy()),"artifactDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         });
         fs::write(dir.path().join("a.json"), serde_json::to_vec(&valid).unwrap()).unwrap();
         fs::write(dir.path().join("bad.json"), b"not json").unwrap();

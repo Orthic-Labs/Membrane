@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "title": "Orthic contract bundle",
+  "bundleVersion": 1,
+  "description": "Canonical content-addressed artifact bundling every released Orthic contract: manifest v2, lifecycle v1, snapshot v2, their generated TS shapes, the legacy v1 schemas retained for the deprecation window, migration/deprecation metadata, and the adversarial + valid fixtures. The Hub pins this bundle; product CI pins it. Sibling-source fallback is prohibited (solimplement §3.4).",
+  "contractVersions": {
+    "manifest": 2,
+    "lifecycle": 1,
+    "snapshot": 2
+  },
+  "files": [
+    "manifest.v2.schema.json",
+    "manifest.v2.ts",
+    "snapshot.v2.schema.json",
+    "snapshot.v2.ts",
+    "lifecycle.v1.schema.json",
+    "lifecycle.v1.ts",
+    "manifest.v1.schema.json",
+    "manifest.v1.ts",
+    "snapshot.v1.schema.json",
+    "snapshot.v1.ts",
+    "MIGRATION.md",
+    "validate.mjs",
+    "schema.test.mjs",
+    "fixtures/manifest-valid.json",
+    "fixtures/manifest-adversarial.json",
+    "fixtures/snapshot-valid.json",
+    "fixtures/snapshot-adversarial.json",
+    "fixtures/lifecycle-valid.json",
+    "fixtures/lifecycle-adversarial.json"
+  ],
+  "digest": "sha256:91f7dbec8d0738e74632364f5ee4b20b47931756268539f69df22b2da4e210b2",
+  "digestRule": "sha256 over the canonical ordered concatenation: for each file in `files` (sorted), its relative path as UTF-8 followed by a NUL byte, then the raw file bytes (in the same order), then the constant tag `\\0canonical-orthic-contract-bundle-v1`. The bundle.json file itself is excluded from its own digest. Recompute with `node schema/validate.mjs --check-bundle`.",
+  "changelog": [
+    {
+      "bundleVersion": 1,
+      "date": "2026-08-15",
+      "changes": "Initial released bundle. Manifest v2 replaces v1 inline-secret endpoint with a static, secret-free contract plus artifact digest. Snapshot v2 bounds items to flat capped primitives (content-free). Lifecycle v1 introduces the inherited authenticated channel. v1 schemas retained only for the deprecation window recorded in MIGRATION.md."
+    }
+  ],
+  "migration": [
+    "See schema/MIGRATION.md for the v1→v2 migration rule, deprecation window, and unsupported-future refusal."
+  ],
+  "unsupportedFutureRefusal": true,
+  "compatibilityMatrices": [
+    {
+      "manifest": 2,
+      "lifecycle": 1,
+      "snapshot": 2,
+      "minHub": "0.1.0",
+      "admitted": true
+    }
+  ]
+}

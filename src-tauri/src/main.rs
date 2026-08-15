@@ -44,7 +44,7 @@ pub struct CachedSnapshot {
     pub payload: serde_json::Value,
 }
 
-const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
+const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
 const MAX_SNAPSHOT_BYTES: u64 = 1024 * 1024;
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const POLL_TIMEOUT: Duration = Duration::from_secs(2);
@@ -638,7 +638,7 @@ mod tests {
             );
         }
         serde_json::json!({
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "productId": "membrane",
             "observedAtUnixMs": 1,
             "sections": sections
@@ -649,7 +649,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("snapshot.json");
         let s = CachedSnapshot {
-            schema_version: 1,
+            schema_version: 2,
             observed_at_unix_ms: 7,
             payload: serde_json::json!({"state":"degraded"}),
         };
@@ -662,7 +662,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("snapshot.json");
         let good = CachedSnapshot {
-            schema_version: 1,
+            schema_version: 2,
             observed_at_unix_ms: 1,
             payload: serde_json::json!({"state":"ready"}),
         };
@@ -705,7 +705,7 @@ mod tests {
     #[test]
     fn bounded_parser_rejects_bad_schema_and_oversize() {
         assert_eq!(
-            parse_snapshot(br#"{"schemaVersion":2}"#).unwrap_err(),
+            parse_snapshot(br#"{"schemaVersion":1}"#).unwrap_err(),
             "snapshot_schema_unsupported"
         );
         assert_eq!(
@@ -715,7 +715,7 @@ mod tests {
     }
     fn snapshot_with(payload: serde_json::Value) -> CachedSnapshot {
         CachedSnapshot {
-            schema_version: 1,
+            schema_version: 2,
             observed_at_unix_ms: 1,
             payload,
         }
@@ -724,11 +724,11 @@ mod tests {
     #[test]
     fn tray_status_never_promotes_missing_data_to_healthy() {
         assert_eq!(tray_status(None), TrayStatus::Offline);
-        let implicit = snapshot_with(serde_json::json!({"schemaVersion":1,"productId":"membrane","observedAtUnixMs":1,"sections":{"deliveries":{"state":"available","reason":"ok"}}}));
+        let implicit = snapshot_with(serde_json::json!({"schemaVersion":2,"productId":"membrane","observedAtUnixMs":1,"sections":{"deliveries":{"state":"available","reason":"ok"}}}));
         // single section available but missing other sections still has available worst? Actually single section should be available, but we treat any snapshot with sections as valid.
         // To keep offline for missing data, we need to test empty sections.
         assert_eq!(tray_status(Some(&implicit)), TrayStatus::Available);
-        let empty = snapshot_with(serde_json::json!({"schemaVersion":1,"productId":"membrane","observedAtUnixMs":1,"sections":{}}));
+        let empty = snapshot_with(serde_json::json!({"schemaVersion":2,"productId":"membrane","observedAtUnixMs":1,"sections":{}}));
         assert_eq!(tray_status(Some(&empty)), TrayStatus::Offline);
         let malformed = snapshot_with(serde_json::json!({}));
         assert_eq!(tray_status(Some(&malformed)), TrayStatus::Offline);
@@ -825,7 +825,7 @@ mod tests {
     fn parser_accepts_hub_operation_envelope() {
         let snapshot = parse_snapshot(
             &serde_json::to_vec(&serde_json::json!({
-                "schemaVersion": 1,
+                "schemaVersion": 2,
                 "result": { "kind": "success", "data": canonical_payload(&[]) }
             }))
             .unwrap(),

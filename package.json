@@ -6,7 +6,7 @@
   "packageManager": "pnpm@11.18.0",
   "scripts": {
     "build": "node scripts/build-frontend.mjs",
-    "test": "node --test tests/*.mjs",
+    "test": "node --test tests/*.mjs schema/*.test.mjs",
     "rightkit:package:mac": "node scripts/build-mac-release.mjs",
     "rightkit:prepackage:win": "node scripts/stage-binaries.mjs && pnpm exec tauri build --no-bundle",
     "rightkit:package:win": "node scripts/build-windows-release.mjs",
@@ -20,7 +20,7 @@
     "@tauri-apps/plugin-os": "2.3.2"
   },
   "devDependencies": {
-    "@rightkit/release": "0.2.61",
+    "@rightkit/release": "0.2.62",
     "@tauri-apps/cli": "^2.0.0"
   }
 }

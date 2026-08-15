@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "orthic.product-manifest.v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "productId", "displayName", "productVersion", "hubCompatRange", "installRoot", "serviceStart", "serviceStop", "icon", "artifactDigest"],
+  "properties": {
+    "schemaVersion": { "const": 2, "type": "integer" },
+    "productId": { "type": "string", "enum": ["cortex", "membrane"] },
+    "displayName": { "type": "string", "minLength": 1 },
+    "productVersion": { "type": "string", "minLength": 1 },
+    "hubCompatRange": { "type": "string", "minLength": 1 },
+    "installRoot": { "type": "string", "minLength": 1 },
+    "serviceStart": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "serviceStop": { "type": "array", "items": { "type": "string" } },
+    "icon": { "type": "string", "minLength": 1 },
+    "artifactDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

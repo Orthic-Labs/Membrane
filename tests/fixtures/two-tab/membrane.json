@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "productId": "membrane",
   "displayName": "Membrane",
   "productVersion": "1.0.0",
@@ -7,6 +7,6 @@
   "installRoot": "/tmp/membrane",
   "serviceStart": ["/tmp/membrane/bin/membrane"],
   "serviceStop": [],
-  "statusEndpoint": { "host": "127.0.0.1", "port": 18081, "authHeader": "X-Token", "authToken": "secret2" },
-  "icon": "/tmp/membrane/icon.png"
+  "icon": "/tmp/membrane/icon.png",
+  "artifactDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 }
