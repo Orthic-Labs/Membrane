@@ -827,5 +827,5 @@ Related subsystem sources remain implementation-specific rather than additional 
 
 - `tools/skills/blueprint/SKILL.md` — current Blueprint contract and implementation gap.
 - `tools/skills/audit/SKILL.md` — Audit contract, evidence model, and fix loop.
-- `tools/skills/legion/skills/architect/SKILL.md` — future-state design and implementation-plan contract.
+- `legion/skills/architect/SKILL.md` — future-state design and implementation-plan contract.
 - `docs/plans/2026-07-10-blueprint-code-graph-visual-explorer-impl.md` — graph implementation plan, amended to conform to this architecture.

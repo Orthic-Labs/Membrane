@@ -94,8 +94,8 @@ const suites = {
   // Forge was retired into Arcane (workspace Phase H-10). These focused successor
   // suites cover its two remaining F13 cases: declared-check correlation + closed output schemas.
   forge: [process.execPath, ["--test",
-    join(workspaceRoot, "tools/skills/legion/packages/arcane/tests/s04-host-event.test.mjs"),
-    join(workspaceRoot, "tools/skills/legion/packages/arcane/tests/s01-bridge.test.mjs"),
+    join(workspaceRoot, "legion/packages/arcane/tests/s04-host-event.test.mjs"),
+    join(workspaceRoot, "legion/packages/arcane/tests/s01-bridge.test.mjs"),
   ], workspaceRoot],
   adapt: [join(workspaceRoot, ".venv-tools/bin/python"), ["-m", "pytest", join(workspaceRoot, "adapt/tests")], workspaceRoot],
 };
