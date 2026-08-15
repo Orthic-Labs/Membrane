@@ -39,10 +39,14 @@ const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const engine = join(repo, "engine", "Cargo.toml");
 // The global cargo policy requires target dirs inside the shared cache root
 // when one is configured; a repo-local engine/target is refused by the guard.
+// A managed build injects its own target root and overrides whatever we pass,
+// so honour it here too; otherwise cargo writes to the managed cache while the
+// sidecar copy below still reads this path and reports the binaries missing.
 const cacheRoot = process.env.RIGHT_RELEASE_CACHE_ROOT;
-const engineTarget = cacheRoot
-  ? join(cacheRoot, "dev-targets", "membrane-engine")
-  : join(repo, "engine", "target");
+const engineTarget = process.env.CARGO_TARGET_DIR
+  ?? (cacheRoot
+    ? join(cacheRoot, "dev-targets", "membrane-engine")
+    : join(repo, "engine", "target"));
 // Bake the release identity in. `release_identity.rs` reads these through
 // `option_env!`, so a build that omits them produces a binary permanently
 // reporting `sha256:unknown` — which the gateway treats as an unverifiable

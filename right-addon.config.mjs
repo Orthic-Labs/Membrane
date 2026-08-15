@@ -9,6 +9,7 @@ export default {
   buildInputs: {
     include: [
       "right-addon.config.mjs", "package.json", "pnpm-lock.yaml",
+      "scripts/release/stage-addon-binaries.mjs",
       "engine/Cargo.toml", "engine/Cargo.lock", "engine/crates/**",
       "install/assets/membrane-tab-icon.png",
       "LICENSE", "EULA.txt", "PRIVACY.md", "THIRD-PARTY-NOTICES.txt",
@@ -44,8 +45,8 @@ export default {
         { role: "third-party-notices", name: "THIRD-PARTY-NOTICES.txt", source: "THIRD-PARTY-NOTICES.txt" },
       ],
       build: {
-        cmd: "cargo",
-        args: ["build", "--manifest-path", "engine/Cargo.toml", "--workspace", "--locked", "--release", "--target", "aarch64-apple-darwin", "-p", "membrane", "--bin", "membrane", "-p", "crypt", "--bin", "crypt-service"],
+        cmd: "node",
+        args: ["scripts/release/stage-addon-binaries.mjs", "build", "--manifest-path", "engine/Cargo.toml", "--workspace", "--locked", "--release", "--target", "aarch64-apple-darwin", "-p", "membrane", "--bin", "membrane", "-p", "crypt", "--bin", "crypt-service", "--", "membrane", "crypt-service"],
       },
       signing: { contract: "apple-developer-id-executable-v1", teamId: "6KLGD3LLKF" },
     },
@@ -61,8 +62,8 @@ export default {
         { role: "third-party-notices", name: "THIRD-PARTY-NOTICES.txt", source: "THIRD-PARTY-NOTICES.txt" },
       ],
       build: {
-        cmd: "rustup",
-        args: ["run", "stable", "cargo", "build", "--manifest-path", "engine/Cargo.toml", "--workspace", "--locked", "--release", "--target", "x86_64-pc-windows-msvc", "-p", "membrane", "--bin", "membrane", "-p", "crypt", "--bin", "crypt-service"],
+        cmd: "node",
+        args: ["scripts/release/stage-addon-binaries.mjs", "build", "--manifest-path", "engine/Cargo.toml", "--workspace", "--locked", "--release", "--target", "x86_64-pc-windows-msvc", "-p", "membrane", "--bin", "membrane", "-p", "crypt", "--bin", "crypt-service", "--", "membrane.exe", "crypt-service.exe"],
       },
       signing: { contract: "azure-artifact-signing-v1" },
     },
