@@ -284,7 +284,9 @@ export class RepositoryActor extends EventEmitter {
   }
 
   openDbOnce() {
-    if (!this.db) this.db = openStore(this.dbPath);
+    // CX-F165: the watcher is the canonical mutable-state owner, so it refuses
+    // typed rather than silently landing a WAL store on synced/shared storage.
+    if (!this.db) this.db = openStore(this.dbPath, { mutablePathPolicy: "refuse" });
     return this.db;
   }
 
@@ -540,7 +542,7 @@ export class RepositoryActor extends EventEmitter {
       // Never started (no held handle) but the store already exists — a
       // one-off writable open is unavoidable here, matched by an immediate
       // close; there is no long-lived handle to reuse.
-      const db = openStore(this.dbPath);
+      const db = openStore(this.dbPath, { mutablePathPolicy: "refuse" });
       try {
         db.prepare("DELETE FROM watch_state WHERE key='watcher_pid'").run();
         db.prepare("DELETE FROM watch_state WHERE key='watcher_owner'").run();

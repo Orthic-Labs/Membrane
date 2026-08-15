@@ -6,7 +6,9 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
 import { buildProductManifest, validateProductManifest } from "../../lib/init/manifest.mjs";
-import { buildSnapshot, validateSnapshot } from "../../lib/orthic-snapshot.mjs";
+import { buildSnapshot, boundUtf8, validateSnapshot, SNAPSHOT_MAX_REASON_BYTES } from "../../lib/orthic-snapshot.mjs";
+import { computeManifestDigest, detectHubIdentityFields, detectShadowManifestKeys, assertBuildIdentityClean } from "../../graph/generation-identity.mjs";
+import { classifyMutablePath, assertSafeMutableStorePath } from "../../graph/store-sqlite.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -57,22 +59,24 @@ check("grep-gate: no hardcoded crypt outside config-default in scripts/cortex.mj
 
 check("manifest shape validates", () => {
   const localSchemaPath = join(ROOT, "schemas/orthic-product-manifest-v1.schema.json");
-  const canonicalPath = resolve(ROOT, "../orthic/schema/manifest.v1.schema.json");
-  const schemaPath = existsSync(canonicalPath) ? canonicalPath : localSchemaPath;
-  if (!existsSync(schemaPath)) throw new Error("manifest schema missing");
+  // The released contract is pinned into Cortex at publish time. Never read a
+  // sibling checkout: its presence/version is mutable and would make CI
+  // silently validate against an unrelated source tree.
+  if (!existsSync(localSchemaPath)) throw new Error("pinned manifest schema missing");
   const manifest = buildProductManifest({ installRoot: ROOT });
-  const validate = new Ajv().compile(JSON.parse(readFileSync(schemaPath, "utf8")));
+  const validate = new Ajv().compile(JSON.parse(readFileSync(localSchemaPath, "utf8")));
   if (!validate(manifest)) throw new Error(`manifest schema: ${JSON.stringify(validate.errors)}`);
   const local = validateProductManifest(manifest);
   if (!local.ok) throw new Error(`manifest security: ${local.errors.join(", ")}`);
 });
 
 check("snapshot shape validates", () => {
-  const localSchemaPath = join(ROOT, "schemas/orthic-product-snapshot-v1.schema.json");
-  const canonicalPath = resolve(ROOT, "../orthic/schema/snapshot.v1.schema.json");
-  const schemaPath = existsSync(canonicalPath) ? canonicalPath : localSchemaPath;
+  const localSchemaPath = join(ROOT, "schemas/orthic-product-snapshot-v2.schema.json");
+  // Validate only against the pinned released artifact copied into this
+  // package. A sibling ../orthic schema is explicitly not a fallback.
+  if (!existsSync(localSchemaPath)) throw new Error("pinned snapshot schema missing");
   const snapshot = buildSnapshot({ root: ROOT });
-  const validate = new Ajv().compile(JSON.parse(readFileSync(schemaPath, "utf8")));
+  const validate = new Ajv().compile(JSON.parse(readFileSync(localSchemaPath, "utf8")));
   if (!validate(snapshot)) throw new Error(`snapshot schema: ${JSON.stringify(validate.errors)}`);
   const local = validateSnapshot(snapshot);
   if (!local.ok) throw new Error(`snapshot shape: ${local.errors.join(", ")}`);
@@ -91,7 +95,6 @@ check(`watcher single-ownership: no ${MEM_WORD} in cortex-watch.mjs / watchman/`
 });
 
 check("cortex graph manifest --json shape (if graph exists)", () => {
-  // If no graph, skip — not a failure of conformance
   const out = (() => {
     try { return run("node", ["scripts/cortex.mjs", "graph", "manifest", "--json"], { stdio: "pipe" }); } catch (e) { return e.stdout ?? ""; }
   })();
@@ -102,6 +105,53 @@ check("cortex graph manifest --json shape (if graph exists)", () => {
   } catch (e) {
     if (e.message.includes("Graph store is missing")) { console.log("  (no graph — skipping)"); return; }
     throw e;
+  }
+});
+
+check("build identity: Hub protocol/lease/endpoint/instance/fence never enter manifestDigest", () => {
+  const base = {
+    schemaVersion: 1,
+    provider: { id: "lexical", version: "repo-local-v1" },
+    counts: { nodes: 3, edges: 2 },
+    repo: { rootName: "cortex", sourceHash: "xxh128:abc", fileCount: 1 },
+  };
+  const clean = computeManifestDigest(base, null);
+  const contaminated = computeManifestDigest({
+    ...base,
+    hub: { lease: "l", endpoint: "e" },
+    fence: 42,
+    protocol: "orthic.lifecycle.v1",
+    instance: "i",
+  }, null);
+  if (clean !== contaminated) throw new Error("Hub fields changed the manifest digest");
+  const leaks = detectHubIdentityFields({ ...base, fence: 1, protocol: "p" });
+  if (!leaks.includes("fence") || !leaks.includes("protocol")) throw new Error("hub-field detection missed a leak");
+  const shadows = detectShadowManifestKeys({ ...base, sourceHash: "xxh128:dup" });
+  if (shadows.length !== 1 || shadows[0].canonical !== "repo.sourceHash") throw new Error("shadow-key detection missed a duplicate");
+  assertBuildIdentityClean(base);
+  try { assertBuildIdentityClean({ ...base, fence: 1 }); throw new Error("expected build_identity_violation"); }
+  catch (e) { if (e.code !== "build_identity_violation") throw e; }
+});
+
+check("mutable state path: synced/shared storage is refused typed, local proceeds", () => {
+  const synced = classifyMutablePath("/Users/adrian/Dropbox/cortex/.agent/graph/graph.db", { probeMount: () => "local" });
+  if (synced.classification !== "synced") throw new Error(`expected synced, got ${synced.classification}`);
+  const shared = classifyMutablePath("\\\\server\\share\\repo\\.agent\\graph.db", { platform: "win32", probeMount: () => "unavailable" });
+  if (shared.classification !== "shared") throw new Error(`expected shared, got ${shared.classification}`);
+  try { assertSafeMutableStorePath("/Users/adrian/Dropbox/repo/.agent/graph.db", { probeMount: () => "local" }); throw new Error("expected refusal"); }
+  catch (e) { if (e.code !== "synced_store_path_refused") throw e; }
+  const local = classifyMutablePath("/tmp/cortex-fixture/.agent/graph/graph.db", { probeMount: () => "local" });
+  if (local.classification === "synced" || local.classification === "shared") throw new Error(`local path misclassified as ${local.classification}`);
+});
+
+check("snapshot is bounded and content-free (SEAM §4.3)", () => {
+  const snapshot = buildSnapshot({ root: ROOT });
+  if (!validateSnapshot(snapshot).ok) throw new Error(`built snapshot failed bounds: ${validateSnapshot(snapshot).errors.join(", ")}`);
+  const oversized = { ...snapshot, sections: { ...snapshot.sections, graph: { state: "available", reason: "x".repeat(500) } } };
+  if (validateSnapshot(oversized).ok) throw new Error("oversized reason was accepted");
+  const unicodeReason = boundUtf8("é".repeat(SNAPSHOT_MAX_REASON_BYTES), SNAPSHOT_MAX_REASON_BYTES);
+  if (Buffer.byteLength(unicodeReason, "utf8") > SNAPSHOT_MAX_REASON_BYTES) {
+    throw new Error("UTF-8 reason truncation exceeded byte cap");
   }
 });
 

@@ -8,7 +8,9 @@
 // explicitly given (or ':memory:'); it never resolves or writes outside that.
 
 import { DatabaseSync } from "node:sqlite";
-import { dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { statSync } from "node:fs";
 import { computeFullLedger } from "./merkle-ledger.mjs";
@@ -17,6 +19,196 @@ import { canonicalProviderId } from "./provider-identity.mjs";
 
 const FIXED_PROVIDER_RANKS = [["lexical", 0], ["treesitter", 1], ["doctruth", 2]];
 const RETAINED_APPLIED_JOURNAL_ROWS = 4096;
+
+// ---------------------------------------------------------------------------
+// Mutable state path safety (CX-F165, W2 §2).
+//
+// Before opening mutable state, canonicalize the SQLite/WAL/temp/spill/cache/
+// blob/backup/sidecar paths, classify local vs synced/shared vs unknown through
+// ONE provider-marker registry plus platform mount/share probes, and either
+// relocate known-unsafe state to explicit owner-only local storage or refuse
+// typed. Uncertainty is reported, never silently treated as safety: only a
+// STRONG signal (an explicit sync-provider folder, a UNC share, or a remote
+// filesystem mount) is refused/relocated; everything else proceeds with its
+// classification reported.
+// ---------------------------------------------------------------------------
+
+// Exact sync-provider folder markers (matched case-insensitively as whole path
+// segments, with a space/hyphen/paren suffix allowed so "OneDrive - Tenant"
+// and "OneDrive (Personal)" still match). Bare "box" and "sync" are deliberately
+// absent: they are common words, and CX-F165 prefers a reported "unknown" over
+// a false refusal.
+export const SYNC_PROVIDER_MARKERS = Object.freeze([
+  ["dropbox", "dropbox"],
+  ["onedrive", "onedrive"],
+  ["google drive", "google_drive"],
+  ["icloud drive", "icloud_drive"],
+  ["mobile documents", "icloud_drive"], // ~/Library/Mobile Documents/com~apple~CloudDocs
+  ["com~apple~clouddocs", "icloud_drive"],
+  ["box sync", "box"],
+  ["synologydrive", "synology_drive"],
+  ["synology drive", "synology_drive"],
+  ["nextcloud", "nextcloud"],
+  ["owncloud", "owncloud"],
+  ["pcloud", "pcloud"],
+  ["jottacloud", "jottacloud"],
+  ["seafile", "seafile"],
+  ["syncthing", "syncthing"],
+  ["resilio sync", "resilio_sync"],
+]);
+
+const REMOTE_FILESYSTEM_TYPES = new Set(["nfs", "nfs4", "smbfs", "cifs", "webdav", "afpfs", "sshfs", "fuse.sshfs", "fuse.s3fs", "davfs", "davfs2", "9p"]);
+
+/** Normalize an absolute store path so classification is deterministic. */
+export function canonicalizeMutablePath(dbPath) {
+  if (!dbPath || dbPath === ":memory:") return dbPath === ":memory:" ? ":memory:" : null;
+  return resolve(String(dbPath));
+}
+
+/** The WAL sidecar set that travels with a single store file. */
+export function mutableStoreSidecarPaths(dbPath) {
+  const main = canonicalizeMutablePath(dbPath);
+  if (!main || main === ":memory:") return Object.freeze({ main, wal: null, shm: null });
+  return Object.freeze({ main, wal: `${main}-wal`, shm: `${main}-shm` });
+}
+
+function mutablePathSegments(absolute, platform) {
+  const normalized = absolute.replaceAll("\\", "/");
+  const segments = normalized.split("/").filter(Boolean);
+  // On Windows, drop the drive-letter root ("C:") so it never matches a marker.
+  if (platform === "win32" && segments.length && /^[A-Za-z]:$/.test(segments[0])) segments.shift();
+  return segments;
+}
+
+function isUncPath(absolute) {
+  return absolute.startsWith("\\\\") || absolute.startsWith("//");
+}
+
+/**
+ * Best-effort mount/share probe. Returns "local", "remote", "indeterminate",
+ * or "unavailable". Only macOS/Linux provide a parseable mount table; every
+ * other platform (and every parse failure) reports "unavailable" so the caller
+ * can surface uncertainty instead of guessing.
+ */
+export function probeMount(absolute, { platform = process.platform, execFileSync: exec = execFileSync } = {}) {
+  if (isUncPath(absolute)) return "remote";
+  if (platform !== "darwin" && platform !== "linux") return "unavailable";
+  let out;
+  try {
+    // `mount` is the portable macOS/Linux enumerator; its first column is the
+    // source, second is the mount point, and the filesystem type appears in the
+    // trailing type field ("type nfs") on both platforms.
+    out = exec("mount", [], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+  } catch {
+    return "unavailable";
+  }
+  const normalized = absolute.replaceAll("\\", "/");
+  let best = null;
+  for (const line of String(out).split("\n")) {
+    // macOS: `device on /path (apfs, local, ...)`; Linux: `device on /path type ext4 (rw, ...)`.
+    const fields = line.split(/\s+/);
+    const mountPoint = fields[2];
+    if (!mountPoint) continue;
+    const normalizedMount = mountPoint.replaceAll("\\", "/").replace(/\/$/, "");
+    if (normalized !== normalizedMount && !normalized.startsWith(`${normalizedMount}/`)) continue;
+    if (!best || normalizedMount.length > best.point.length) {
+      let type = null;
+      const typeMatch = line.match(/\btype\s+(\S+)/);
+      if (typeMatch) {
+        type = typeMatch[1].replace(/[(),]/g, "");
+      } else {
+        const parenMatch = line.match(/\(([^)]*)\)/);
+        if (parenMatch) type = parenMatch[1].split(",")[0].trim();
+      }
+      best = { point: normalizedMount, type };
+    }
+  }
+  if (!best) return "indeterminate";
+  if (!best.type) return "indeterminate";
+  if (REMOTE_FILESYSTEM_TYPES.has(best.type.toLowerCase())) return "remote";
+  return "local";
+}
+
+/**
+ * Classify a mutable store path as local, synced, shared, or unknown.
+ *
+ * Decision order: UNC share → shared; remote mount → shared; sync-provider
+ * marker → synced; local mount → local; anything unresolvable → unknown
+ * (reported, never silently trusted as local).
+ */
+export function classifyMutablePath(dbPath, options = {}) {
+  if (dbPath === ":memory:" || !dbPath) {
+    return Object.freeze({ classification: "local", providers: [], probe: "memory", reasons: [] });
+  }
+  const platform = options.platform ?? process.platform;
+  // UNC shares are detected on the raw input: `resolve()` on a POSIX host would
+  // otherwise normalize the leading `//` or backslashes away.
+  if (isUncPath(String(dbPath))) {
+    return Object.freeze({ classification: "shared", providers: [], probe: "unc_share", reasons: ["unc_share_path"] });
+  }
+  const absolute = canonicalizeMutablePath(dbPath);
+  const providers = [];
+  for (const segment of mutablePathSegments(absolute, platform)) {
+    const lower = segment.toLowerCase();
+    for (const [marker, provider] of SYNC_PROVIDER_MARKERS) {
+      if (lower === marker || lower.startsWith(`${marker} `) || lower.startsWith(`${marker}-`) || lower.startsWith(`${marker}(`)) {
+        if (!providers.includes(provider)) providers.push(provider);
+      }
+    }
+  }
+  if (platform === "win32" && isUncPath(absolute)) {
+    return Object.freeze({ classification: "shared", providers, probe: "unc_share", reasons: ["unc_share_path"] });
+  }
+  const mountProbe = (options.probeMount ?? probeMount)(absolute, { platform, execFileSync: options.execFileSync ?? execFileSync });
+  if (mountProbe === "remote") {
+    return Object.freeze({ classification: "shared", providers, probe: "remote_mount", reasons: ["remote_mount_filesystem"] });
+  }
+  if (providers.length) {
+    return Object.freeze({ classification: "synced", providers, probe: mountProbe, reasons: [`sync_provider_marker:${providers.join(",")}`] });
+  }
+  if (mountProbe === "local") {
+    return Object.freeze({ classification: "local", providers: [], probe: "local", reasons: [] });
+  }
+  return Object.freeze({ classification: "unknown", providers, probe: mountProbe, reasons: [mountProbe === "unavailable" ? "mount_probe_unavailable" : "mount_probe_indeterminate"] });
+}
+
+/** Refuse typed when a mutable store path is known synced/shared. */
+export function assertSafeMutableStorePath(dbPath, options = {}) {
+  const classify = options.classify ?? classifyMutablePath;
+  const classification = classify(dbPath, options);
+  if (classification.classification === "synced" || classification.classification === "shared") {
+    const error = new Error(`refusing mutable store on ${classification.classification} storage (${classification.reasons.join(", ")})`);
+    error.code = classification.classification === "synced" ? "synced_store_path_refused" : "shared_store_path_refused";
+    error.classification = classification;
+    throw error;
+  }
+  return classification;
+}
+
+/**
+ * Resolve the effective mutable store path under CX-F165.
+ *
+ * Local/unknown/memory paths are returned unchanged. Known synced/shared paths
+ * are refused typed unless an explicit `stateRoot` (owner-only local storage)
+ * is supplied, in which case they are relocated to a repository-identity-bound
+ * path under that root so the store never lands on cloud/shared storage.
+ */
+export function resolveMutableStorePath(dbPath, { stateRoot = null, classify = classifyMutablePath } = {}) {
+  const classification = classify(dbPath);
+  if (classification.classification === "local" || classification.classification === "unknown") {
+    return Object.freeze({ path: canonicalizeMutablePath(dbPath), relocated: false, classification });
+  }
+  if (!stateRoot) {
+    const error = new Error(`refusing mutable store on ${classification.classification} storage (${classification.reasons.join(", ")})`);
+    error.code = classification.classification === "synced" ? "synced_store_path_refused" : "shared_store_path_refused";
+    error.classification = classification;
+    throw error;
+  }
+  const digest = createHash("sha256").update(String(canonicalizeMutablePath(dbPath))).digest("hex").slice(0, 24);
+  const name = dbPath === ":memory:" ? "graph.db" : basename(String(dbPath));
+  const relocated = join(resolve(String(stateRoot)), digest, name);
+  return Object.freeze({ path: relocated, relocated: true, classification });
+}
 
 // Derived from MIGRATIONS below, never hardcoded: a literal here silently
 // desyncs the moment a migration is appended, and migrate() would then stop
@@ -35,9 +227,10 @@ const RETAINED_APPLIED_JOURNAL_ROWS = 4096;
 // read and upgrade the previous two minor schema lines. Production always
 // passes no cap (full latest schema).
 export function openStore(dbPath = ":memory:", options = {}) {
-  const db = new DatabaseSync(dbPath);
+  const effectivePath = resolveOpenStorePath(dbPath, options);
+  const db = new DatabaseSync(effectivePath);
   db.exec("PRAGMA foreign_keys = ON;");
-  if (dbPath !== ":memory:") {
+  if (effectivePath !== ":memory:") {
     db.exec("PRAGMA journal_mode = WAL;");
     // WAL permits one writer at a time; without a busy_timeout a second writer gets an
     // immediate SQLITE_BUSY instead of queueing. That is exactly how the fleet watcher died
@@ -49,8 +242,25 @@ export function openStore(dbPath = ":memory:", options = {}) {
     // waits far longer rather than surfacing a spurious lock error.
     db.exec("PRAGMA busy_timeout = 30000;");
   }
-  migrateDb(db, { dbPath, upToVersion: options.upToVersion });
+  migrateDb(db, { dbPath: effectivePath, upToVersion: options.upToVersion });
   return db;
+}
+
+// Applies CX-F165 policy to `openStore`: default "report" leaves the path
+// untouched (existing callers keep their behavior), "refuse" throws typed on
+// known synced/shared storage, and "relocate" moves known-unsafe state under
+// `options.stateRoot` bound to repository identity.
+function resolveOpenStorePath(dbPath, options = {}) {
+  if (dbPath === ":memory:" || !dbPath) return ":memory:";
+  const policy = options.mutablePathPolicy ?? "report";
+  if (policy === "refuse") {
+    assertSafeMutableStorePath(dbPath, options);
+    return canonicalizeMutablePath(dbPath);
+  }
+  if (policy === "relocate") {
+    return resolveMutableStorePath(dbPath, { stateRoot: options.stateRoot, classify: options.classifyMutablePath }).path;
+  }
+  return canonicalizeMutablePath(dbPath);
 }
 
 // Location for pre-migration safety copies. One per from-version, so an

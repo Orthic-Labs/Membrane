@@ -57,7 +57,7 @@ function coalesceRenameEvents(events) {
 
 export async function reconcile(dbOrRoot, rootOrOptions = null, options = {}) {
   const root = canonicalRoot(typeof dbOrRoot === "string" ? dbOrRoot : rootOrOptions);
-  const db = typeof dbOrRoot === "string" ? openStore(join(root, options.outDir ?? ".agent", "graph", "graph.db")) : dbOrRoot;
+  const db = typeof dbOrRoot === "string" ? openStore(join(root, options.outDir ?? ".agent", "graph", "graph.db"), { mutablePathPolicy: "refuse" }) : dbOrRoot;
   const outDir = options.outDir ?? ".agent";
   const close = typeof dbOrRoot === "string";
   try {
