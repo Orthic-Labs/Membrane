@@ -14,6 +14,9 @@ import { DaemonClient } from "../service/client.mjs";
 import { temporaryDaemonEndpoint } from "../service/paths.mjs";
 import { validateDeadlineMs } from "../service/protocol.mjs";
 import { createDaemonServer } from "../service/server.mjs";
+import { computeManifestDigest, detectHubIdentityFields, detectShadowManifestKeys, assertBuildIdentityClean } from "../graph/generation-identity.mjs";
+import { classifyMutablePath, assertSafeMutableStorePath, openStore, closeStore } from "../graph/store-sqlite.mjs";
+import { validateSnapshot } from "../lib/orthic-snapshot.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts", "cortex.mjs");
@@ -293,4 +296,58 @@ test("cortex service uninstall --json works without a live service", () => {
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
   assert.equal(payload.uninstalled, true);
+});
+
+test("build identity: Hub protocol/lease/endpoint/instance/fence never enter manifestDigest", () => {
+  const base = {
+    schemaVersion: 1,
+    provider: { id: "lexical", version: "repo-local-v1" },
+    counts: { nodes: 3, edges: 2 },
+    repo: { rootName: "cortex", sourceHash: "xxh128:abc", fileCount: 1 },
+  };
+  const clean = computeManifestDigest(base, null);
+  const contaminated = computeManifestDigest({
+    ...base,
+    hub: { lease: "l", endpoint: "e" },
+    fence: 42,
+    protocol: "orthic.lifecycle.v1",
+    instance: "i",
+  }, null);
+  assert.equal(contaminated, clean, "Hub lifecycle fields must not change the manifest digest");
+  assert.deepEqual(detectHubIdentityFields({ ...base, fence: 1, protocol: "p" }), ["fence", "protocol"]);
+  assert.deepEqual(detectShadowManifestKeys({ ...base, sourceHash: "xxh128:dup" }), [{ key: "sourceHash", canonical: "repo.sourceHash" }]);
+  assertBuildIdentityClean(base);
+  assert.throws(() => assertBuildIdentityClean({ ...base, fence: 1 }), { code: "build_identity_violation" });
+});
+
+test("mutable store paths: synced/shared refused typed, local/unknown proceeds", () => {
+  const synced = classifyMutablePath("/Users/adrian/Dropbox/cortex/.agent/graph/graph.db", { probeMount: () => "local" });
+  assert.equal(synced.classification, "synced");
+  assert.throws(
+    () => assertSafeMutableStorePath("/Users/adrian/Dropbox/repo/.agent/graph.db", { probeMount: () => "local" }),
+    { code: "synced_store_path_refused" },
+  );
+  const shared = classifyMutablePath("\\\\server\\share\\repo\\.agent\\graph.db", { platform: "win32", probeMount: () => "unavailable" });
+  assert.equal(shared.classification, "shared");
+  assert.throws(() => assertSafeMutableStorePath("//server/share/repo/.agent/graph.db", { probeMount: () => "unavailable" }), { code: "shared_store_path_refused" });
+  const memory = classifyMutablePath(":memory:");
+  assert.equal(memory.classification, "local");
+  const local = classifyMutablePath("/tmp/cortex-fixture/.agent/graph/graph.db", { probeMount: () => "local" });
+  assert.ok(["local", "unknown"].includes(local.classification), `local path misclassified as ${local.classification}`);
+  assert.throws(
+    () => openStore("/Users/adrian/Dropbox/repo/.agent/graph/graph.db", { mutablePathPolicy: "refuse", probeMount: () => "local" }),
+    { code: "synced_store_path_refused" },
+  );
+});
+
+test("snapshot bounds reject oversized content-free payloads", () => {
+  const snap = {
+    schemaVersion: 1,
+    productId: "cortex",
+    observedAtUnixMs: 1,
+    sections: { graph: { state: "available", reason: "x".repeat(500) } },
+  };
+  const result = validateSnapshot(snap);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((error) => error.includes("reason exceeds")), result.errors.join(", "));
 });

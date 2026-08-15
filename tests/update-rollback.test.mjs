@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, mkdirSync, renameSync, writeFileSync, readFileSync, rmSync, symlinkSync } from "node:fs";
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, renameSync, writeFileSync, readFileSync, rmSync, symlinkSync, realpathSync } from "node:fs";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
@@ -12,6 +12,7 @@ import test from "node:test";
 import { applySignedLocalArtifactUpdate, backupStore, stageUpdate, applyStaged, recoverInterruptedSwap, recoverPendingUpdate } from "../lib/update/apply.mjs";
 import { rollback } from "../lib/update/rollback.mjs";
 import * as manifestModule from "../lib/update/manifest.mjs";
+import { isConfinedPath, resolvePhysicalPath } from "../lib/path-confinement.mjs";
 
 function fixtureRoot() {
   const root = mkdtempSync(join(tmpdir(), "cortex-rollback-"));
@@ -219,4 +220,44 @@ test("prepared apply recovery keeps pre-state before retiring prior", async () =
     const staged = stageUpdate({ fromDir: join(root, "app-v2"), toDir: appDir }); applyStaged({ stagingDir: staged, appDir, priorDir });
     assert.equal(rollback({ appDir, priorDir, root }).ok, true);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test("path confinement follows a symlinked repo root but rejects symlink escape", () => {
+  const base = mkdtempSync(join(tmpdir(), "cortex-confine-"));
+  try {
+    const real = join(base, "real");
+    mkdirSync(join(real, "sub"), { recursive: true });
+    writeFileSync(join(real, "sub", "file.txt"), "x");
+    const link = join(base, "link");
+    symlinkSync(real, link, "dir");
+
+    // A legitimately symlinked repo root must still confine its own paths.
+    assert.equal(isConfinedPath(link, join(link, "sub", "file.txt")), true);
+    assert.equal(isConfinedPath(link, join(link, "sub", "new.txt")), true);
+    // The canonical root is accepted through the symlink, and the physical
+    // resolution returns the real (canonicalised) location.
+    assert.equal(resolvePhysicalPath(join(link, "sub", "file.txt")), realpathSync(join(real, "sub", "file.txt")));
+
+    // An internal symlink stays confined when it resolves inside the root.
+    symlinkSync(join(real, "sub"), join(real, "alias"), "dir");
+    assert.equal(isConfinedPath(real, join(real, "alias", "file.txt")), true);
+
+    // A symlink (or junction) target resolving outside the root is rejected.
+    const outside = mkdtempSync(join(tmpdir(), "cortex-confine-out-"));
+    try {
+      symlinkSync(outside, join(real, "escape"), "dir");
+      assert.equal(isConfinedPath(real, join(real, "escape", "secret.txt")), false);
+      assert.equal(isConfinedPath(link, join(link, "escape", "secret.txt")), false);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+
+    // Non-existent tail under the root remains confined; a path outside the
+    // root and a relative path are not.
+    assert.equal(isConfinedPath(real, join(real, "a", "b", "c.txt")), true);
+    assert.equal(isConfinedPath(real, join(base, "elsewhere.txt")), false);
+    assert.equal(isConfinedPath(real, "relative.txt"), false);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
 });

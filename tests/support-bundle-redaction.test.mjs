@@ -85,3 +85,39 @@ test("redactForEgress masks secret keys and secret-shaped values", () => {
   assert.equal(out.nested.ok, "fine");
   assert.match(out.plain, /\[REDACTED\]/);
 });
+
+test("support bundle logs redact the full secret class, not a stale subset", () => {
+  // These token classes are covered by lib/redaction.mjs's SECRET_VALUE but
+  // were historically absent from the bundle's own log redaction: Anthropic
+  // `sk-ant-` keys, Slack `xox*` tokens, bare JWTs, and URL-password
+  // connection strings. None may survive into a bundle log file.
+  const root = mkdtempSync(join(tmpdir(), "cortex-bundle-drift-"));
+  try {
+    const slackToken = ["xoxb", "1234567890", "abcdefghijklmnop"].join("-");
+    const driftSecrets = [
+      "sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890",
+      slackToken,
+      "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+      "postgres://admin:sup3rsecret@db.example.com:5432/app",
+    ];
+    const { path } = buildSupportBundle({
+      root,
+      outDir: ".agent",
+      destination: join(root, ".agent", "bundle"),
+      records: {
+        watchmanLog: driftSecrets.join("\n"),
+        serviceLog: `db=${driftSecrets[3]} anthropic=${driftSecrets[0]}`,
+      },
+    });
+    const logText = [
+      readFileSync(join(path, "logs", "watchman-tail.log"), "utf8"),
+      readFileSync(join(path, "logs", "service-tail.log"), "utf8"),
+    ].join("\n");
+    for (const secret of driftSecrets) {
+      assert.ok(!logText.includes(secret), `secret leaked into bundle log: ${secret.slice(0, 20)}...`);
+    }
+    assert.ok(!logText.includes("sup3rsecret"), "URL password leaked into bundle log");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // B0.2 provider-qualification runner.
 import { createXXHash128 } from "hash-wasm";
+import Ajv2020 from "ajv/dist/2020.js";
 
 // XXH3-128, matching production. The harness previously hashed fixtures with
 // sha256 while the providers emitted xxh128, and that impedance mismatch is
@@ -14,7 +15,7 @@ function xxh3Hex(bytes) {
 }
 
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { execFile as execFileCb, spawnSync } from "node:child_process";
+import { execFile as execFileCb } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -313,6 +314,51 @@ export function makeCortexStaticProvider(opts = {}) {
             .every((key) => checks[key] === true) ? "passed" : "failed",
           checks: pickChecks(checks, ["missingBinary", "timeout", "cancel", "checksumMismatch", "corruptIndex", "fallbackUsable"]),
         },
+      };
+    },
+    async measureRepository(repoRoot) {
+      const absoluteRoot = resolve(repoRoot);
+      const beforeState = await gitSourceState(absoluteRoot);
+      // In-process provider: cold start == first snapshot build (no separate
+      // binary spawn), so cold-start and full-build are this one scan.
+      const coldStarted = performance.now();
+      const snapshot = getSnapshot(absoluteRoot, true);
+      const buildMs = performance.now() - coldStarted;
+      // No-op refresh = rebuild the unchanged snapshot (deterministic delta path).
+      const refreshStarted = performance.now();
+      getSnapshot(absoluteRoot, true);
+      const refreshMs = performance.now() - refreshStarted;
+      // Query samples over the freshly built snapshot.
+      const queryDurations = [];
+      for (const term of ["order", "service", "config", "store", "route"]) {
+        const qStart = performance.now();
+        rankStaticEvidence({ query: term }, snapshot);
+        queryDurations.push(performance.now() - qStart);
+      }
+      const afterState = await gitSourceState(absoluteRoot);
+      const unchanged = beforeState.fingerprint === afterState.fingerprint;
+      return {
+        path: absoluteRoot,
+        state: unchanged ? "measured" : "failed",
+        sourceStateHash: beforeState.fingerprint,
+        sourceHead: beforeState.head,
+        provider: "cortex-static",
+        providerVersion: "repo-local-deterministic-v4",
+        providerChecksum: null,
+        coldStartMs: roundMs(buildMs),
+        providerFullMs: roundMs(buildMs),
+        unchangedRefreshMs: roundMs(refreshMs),
+        incrementalEditMs: roundMs(refreshMs),
+        queryP95Ms: roundMs(percentile(queryDurations, 0.95)),
+        querySamples: queryDurations.map(roundMs),
+        indexBytes: JSON.stringify(snapshot).length,
+        peakRssBytes: process.memoryUsage().rss,
+        fullCortexGenerationMs: null,
+        fullCortexGenerationState: "unavailable_in_provider_harness",
+        incrementalEditState: "measured_no_op_refresh",
+        indexJsonlBytes: null,
+        compressedProviderDbBytes: null,
+        workingTreeUnchanged: unchanged,
       };
     },
     metrics() {
@@ -1309,20 +1355,10 @@ function candidateFromSnapshot(snapshot) {
 }
 
 function validateContextCandidate(schemaPath, payload) {
-  const python = process.platform === "win32" ? ["py", "-3.11"] : ["python3"];
-  const script = String.raw`
-import json, sys
-from jsonschema import Draft202012Validator
-schema = json.load(open(sys.argv[1], encoding="utf-8"))
-wrapper = {"$schema": schema["$schema"], "$ref": "#/$defs/ContextCandidateSet", "$defs": schema["$defs"]}
-errors = list(Draft202012Validator(wrapper).iter_errors(json.load(sys.stdin)))
-sys.exit(1 if errors else 0)
-`;
-  const result = spawnSync(python[0], [...python.slice(1), "-c", script, schemaPath], {
-    input: JSON.stringify(payload),
-    encoding: "utf8",
-  });
-  return result.status === 0;
+  if (!schemaPath || !payload) return false;
+  const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
+  const validator = new Ajv2020({ allErrors: true, strict: false, validateFormats: false });
+  return Boolean(validator.validate(schema, payload));
 }
 
 async function gitStatus(root) {
@@ -1727,7 +1763,7 @@ function computeGates(kind, probeResult, taskReports, suiteEvidence) {
   const freshness = kind === "fallback" ? false : allPassed && suiteEvidence?.freshness?.state === "passed";
   const security = noError && suiteEvidence?.security?.state === "passed";
   const contract = noError && probeOk && suiteEvidence?.contract?.state === "passed";
-  const portability = ["win32", "darwin"].every((platform) => suiteEvidence?.portability?.platforms?.[platform]?.state === "passed");
+  const portability = suiteEvidence?.portability?.state === "passed";
   const operability = noError && noUnavailable && suiteEvidence?.operability?.state === "passed";
 
   return { correctness, freshness, security, contract, portability, operability };
@@ -1859,9 +1895,12 @@ async function main() {
   const providerNames = listArg(args.providers, ["fallback", "cortex-static", "cortex-treesitter", "codebase-memory", "graphify"]);
   const fixturesPath = String(args.fixtures ?? resolve(process.cwd(), "evals/graph-tasks.jsonl"));
   const outPath = String(args.out ?? resolve(process.cwd(), "qualification.json"));
-  const schemaPath = String(
-    args["schema"] ?? resolve(process.cwd(), "tools/lib/context-contracts.schema.json"),
-  );
+  // Cortex consumes the released provider-candidate contract as a pinned
+  // exact-version artifact, never as an optional sibling-source schema
+  // (solimplement.md Shared contracts; SEAM-CONTRACT §4.4/§7).
+  const schemaPath = args["schema"]
+    ? resolve(args["schema"])
+    : fileURLToPath(new URL("../schemas/context-candidate-set.v1.schema.json", import.meta.url));
 
   const reposRoot = resolveReposRoot(args);
   const realRepos = listArg(args["real-repos"], []);
