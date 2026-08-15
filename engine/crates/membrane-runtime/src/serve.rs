@@ -61,6 +61,13 @@ const DEFAULT_ANCHOR_RETRIEVE_BYTES: usize = 64 * 1024;
 const MAX_ANCHOR_RETRIEVE_BYTES: usize = 256 * 1024;
 const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
 const DIAGNOSTICS_WORKER_EXIT_TIMEOUT: Duration = Duration::from_millis(100);
+const SNAPSHOT_MAX_SECTIONS: usize = 16;
+const SNAPSHOT_MAX_ITEMS_PER_SECTION: usize = 1000;
+const SNAPSHOT_MAX_REASON_BYTES: usize = 200;
+const SNAPSHOT_MAX_ITEM_LABEL_BYTES: usize = 128;
+const SNAPSHOT_MAX_ITEM_KIND_BYTES: usize = 64;
+const SNAPSHOT_MAX_ITEM_STRING_BYTES: usize = 512;
+const SNAPSHOT_MAX_TOTAL_BYTES: usize = 65_536;
 #[cfg(test)]
 const TEST_GATE_WAIT_TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -1278,6 +1285,14 @@ fn authorized(headers: &HeaderMap, expected: Option<&str>) -> bool {
     secure_eq(actual.as_bytes(), expected.as_bytes())
 }
 
+fn orthic_capability_authorized(headers: &HeaderMap) -> bool {
+    crate::service::lifecycle_control().snapshot_authorized(
+        headers
+            .get("x-orthic-capability")
+            .and_then(|value| value.to_str().ok()),
+    )
+}
+
 fn is_public_path(path: &str) -> bool {
     matches!(path, "/" | "/index.html" | "/health" | "/livez")
 }
@@ -1354,6 +1369,7 @@ const HTTP_ROUTE_SPECS: &[HttpRouteSpec] = &[
     ("POST", "/delivery/trace", HttpWorkClass::General),
     ("GET", "/hub/capabilities", HttpWorkClass::General),
     ("GET", "/hub/snapshot", HttpWorkClass::General),
+    ("GET", "/snapshot", HttpWorkClass::General),
     ("POST", "/verify-memory", HttpWorkClass::General),
     ("POST", "/compress", HttpWorkClass::Model),
     ("POST", "/scope_grants", HttpWorkClass::General),
@@ -1466,6 +1482,20 @@ async fn dispatch(
         return reject(StatusCode::FORBIDDEN, "cross-origin request rejected");
     }
     let path = uri.path();
+    if method == Method::GET && path == "/snapshot" {
+        if !orthic_capability_authorized(&headers) { return reject(StatusCode::UNAUTHORIZED, "valid Orthic capability required"); }
+        return match orthic_snapshot_v2() {
+            Ok(value) => json_response(StatusCode::OK, value.to_string()),
+            Err(reason) => reject(StatusCode::SERVICE_UNAVAILABLE, &reason),
+        };
+    }
+    if !crate::service::lifecycle_control().admission_open() {
+        return retryable_reject(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "resident is draining",
+            "lifecycle_draining",
+        );
+    }
     if !is_public_path(path) && !authorized(&headers, state.api_token.as_deref()) {
         return reject(StatusCode::UNAUTHORIZED, "valid bearer token required");
     }
@@ -2518,6 +2548,109 @@ fn hub_stream_from_live_probe(reachable: bool) -> Option<membrane_protocol::HubS
         reason: "observed".into(),
         resolver: Some("hub_inputs::live_inputs_from_local_service".into()),
     })
+}
+
+fn bounded_utf8(value: &str, max_bytes: usize) -> String {
+    if value.len() <= max_bytes {
+        return value.to_string();
+    }
+    let marker = "…";
+    let limit = max_bytes.saturating_sub(marker.len());
+    let mut end = limit.min(value.len());
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{}", &value[..end], marker)
+}
+
+/// Projects legacy Hub v1 state into the closed, content-free
+/// `orthic.snapshot.v2` shape. Legacy items are deliberately summarized rather
+/// than forwarded: their arbitrary maps are not legal v2 snapshot content.
+fn orthic_snapshot_v2() -> Result<Value, String> {
+    let live = crate::hub_inputs::live_inputs_from_local_service();
+    let facade = crate::hub::HubFacadeV1::new(hub_stream_from_live_probe(live.is_some()));
+    let observed_at_unix_ms = now_unix_ms();
+    let inputs = live.unwrap_or_else(|| crate::hub::HubInputsV1::unavailable("source_not_connected"));
+    let legacy = facade.dispatch_json("hub.snapshot", observed_at_unix_ms, inputs)?;
+    let sections = legacy
+        .get("sections")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "snapshot sections unavailable".to_string())?;
+    if sections.is_empty() || sections.len() > SNAPSHOT_MAX_SECTIONS {
+        return Err("snapshot section bounds invalid".into());
+    }
+
+    let mut bounded_sections = serde_json::Map::new();
+    for (name, section) in sections.iter().take(SNAPSHOT_MAX_SECTIONS) {
+        let legacy_state = match section.get("state").and_then(Value::as_str) {
+            Some("available") => "available",
+            Some("degraded") => "degraded",
+            _ => "unavailable",
+        };
+        let raw_count = section
+            .get("items")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0);
+        let item_limit_exceeded = raw_count > SNAPSHOT_MAX_ITEMS_PER_SECTION;
+        let state = if item_limit_exceeded {
+            "degraded"
+        } else {
+            legacy_state
+        };
+        let reason = bounded_utf8(
+            if item_limit_exceeded {
+                "snapshot_item_limit"
+            } else {
+                section
+                    .get("reason")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or("reason_unavailable")
+            },
+            SNAPSHOT_MAX_REASON_BYTES,
+        );
+        let count = raw_count.min(SNAPSHOT_MAX_ITEMS_PER_SECTION);
+        let item = json!({
+            "label": bounded_utf8(name, SNAPSHOT_MAX_ITEM_LABEL_BYTES),
+            "kind": bounded_utf8("hub_section", SNAPSHOT_MAX_ITEM_KIND_BYTES),
+            "count": count,
+            "severity": match state {
+                "available" => "info",
+                "degraded" => "warning",
+                _ => "error",
+            },
+            "evidence": bounded_utf8(&format!("hub.snapshot.v1/{name}"), SNAPSHOT_MAX_ITEM_STRING_BYTES),
+            "resolver": "membrane.hub.v1",
+            "observedAtUnixMs": section.get("observedAtUnixMs").and_then(Value::as_u64).unwrap_or(observed_at_unix_ms),
+            "stale": state != "available",
+        });
+        bounded_sections.insert(
+            bounded_utf8(name, SNAPSHOT_MAX_ITEM_LABEL_BYTES),
+            json!({
+                "state": state,
+                "reason": reason,
+                "items": [item],
+                "evidence": "hub.snapshot.v1",
+                "resolver": "membrane.hub.v1",
+                "observedAtUnixMs": observed_at_unix_ms,
+            }),
+        );
+    }
+    let stale = sections
+        .values()
+        .any(|section| section.get("state").and_then(Value::as_str) != Some("available"));
+    let snapshot = json!({
+        "schemaVersion": 2,
+        "productId": "membrane",
+        "observedAtUnixMs": observed_at_unix_ms,
+        "sections": bounded_sections,
+        "stale": stale,
+    });
+    if snapshot.to_string().len() > SNAPSHOT_MAX_TOTAL_BYTES {
+        return Err("snapshot exceeds total byte bound".into());
+    }
+    Ok(snapshot)
 }
 
 fn route_with_context_ingest_lease(
@@ -4587,6 +4720,7 @@ pub fn run(
         REQUEST_TIMEOUT,
         MAX_CONCURRENT_REQUESTS,
     );
+    let lifecycle = crate::service::lifecycle_control().clone();
     let server_result = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -4595,9 +4729,33 @@ pub fn run(
             let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
                 .await
                 .map_err(|error| error.to_string())?;
-            axum::serve(listener, app)
-                .await
-                .map_err(|error| error.to_string())
+            lifecycle.mark_ready(port);
+            let shutdown = lifecycle.clone();
+            let server = std::future::IntoFuture::into_future(
+                axum::serve(listener, app).with_graceful_shutdown(async move {
+                    while !shutdown.shutdown_requested() {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                }),
+            );
+            tokio::pin!(server);
+            let shutdown_observer = lifecycle.clone();
+            tokio::select! {
+                result = &mut server => result.map_err(|error| error.to_string()),
+                _ = async move {
+                    while !shutdown_observer.shutdown_requested() {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                } => {
+                    match tokio::time::timeout(Duration::from_secs(5), &mut server).await {
+                        Ok(result) => result.map_err(|error| error.to_string()),
+                        Err(_) => {
+                            lifecycle.fail("lifecycle drain timeout");
+                            Err("lifecycle drain timeout".to_string())
+                        }
+                    }
+                }
+            }
         });
 
     server_result
@@ -4904,8 +5062,9 @@ mod tests {
             let path_end = path.find('"').expect("handler path terminator");
             implemented.insert((method, &path[..path_end]));
         }
-        // Root/index share one condition; livez and scratchpad are handled before dispatch.
+        // Root/index share one condition; snapshot, livez, and scratchpad are handled before dispatch.
         implemented.insert(("GET", "/index.html"));
+        implemented.insert(("GET", "/snapshot"));
         implemented.insert(("GET", "/livez"));
         implemented.insert(("POST", "/scratchpad"));
         implemented.insert(("POST", "/scratchpad/session-close"));
@@ -5256,6 +5415,38 @@ mod tests {
             payload_down["sections"]["providers"], payload_up["sections"]["providers"],
             "snapshot providers section must differ by backend health: down={payload_down} up={payload_up}"
         );
+    }
+
+    #[test]
+    fn orthic_snapshot_is_closed_v2_while_hub_snapshot_stays_v1() {
+        let _guard = HUB_ROUTE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { std::env::set_var("CRYPT_PORT", "1"); }
+
+        let snapshot = orthic_snapshot_v2().unwrap();
+        unsafe { std::env::remove_var("CRYPT_PORT"); }
+
+        assert_eq!(snapshot["schemaVersion"], 2);
+        assert_eq!(snapshot["productId"], "membrane");
+        let sections = snapshot["sections"].as_object().unwrap();
+        assert!(!sections.is_empty() && sections.len() <= SNAPSHOT_MAX_SECTIONS);
+        for section in sections.values() {
+            assert!(matches!(section["state"].as_str(), Some("available" | "degraded" | "unavailable")));
+            assert!(!section["reason"].as_str().unwrap().is_empty());
+            assert!(section["reason"].as_str().unwrap().len() <= SNAPSHOT_MAX_REASON_BYTES);
+            let items = section["items"].as_array().unwrap();
+            assert!(items.len() <= SNAPSHOT_MAX_ITEMS_PER_SECTION);
+            for item in items {
+                let fields = item.as_object().unwrap();
+                assert_eq!(fields.len(), 8);
+                for field in ["label", "kind", "count", "severity", "evidence", "resolver", "observedAtUnixMs", "stale"] {
+                    assert!(fields.contains_key(field));
+                }
+            }
+        }
+
+        let store = MemoryStore::new();
+        let (_, hub) = route_for_tests(&store, "GET", "/hub/snapshot", "");
+        assert_eq!(serde_json::from_str::<Value>(&hub).unwrap()["schemaVersion"], 1);
     }
 
     #[tokio::test]

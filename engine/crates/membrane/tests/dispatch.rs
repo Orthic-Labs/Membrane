@@ -72,3 +72,11 @@ fn privileged_port_is_rejected_at_parse_time() {
     let err = parse_mode(["membrane", "loopback-api", "--port", "22"].iter().copied()).unwrap_err();
     assert!(err.contains("port 22 is privileged"));
 }
+
+#[test]
+fn shipped_supervisor_config_is_schema_v2_without_watcher_policy() {
+    let config = include_str!("../../../../install/config.example.json");
+    assert!(config.contains("\"schemaVersion\": 2"));
+    assert!(!config.contains("watcherPolicy"));
+    assert!(!config.contains("watchman.pid"));
+}

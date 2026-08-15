@@ -5,6 +5,7 @@
 
 use crate::generate_cli_subcommands;
 use clap::{Arg, Command as ClapCommand, Parser, Subcommand};
+use serde::Deserialize;
 use std::ffi::OsString;
 
 const GENERATED_CLI_SUBCOMMANDS: &str = include_str!("generated_cli_subcommands.rs");
@@ -409,6 +410,255 @@ where
     Ok(invocation)
 }
 
+/// Typed hello frame. A lifecycle peer may not widen this binding with ignored fields.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LifecycleHelloV1 {
+    kind: String,
+    lifecycle_version: u8,
+    fence: u64,
+    installation_id: String,
+    product_id: String,
+    instance_id: String,
+    artifact_digest: String,
+    declared_data_root: String,
+    secret: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LifecycleCommand {
+    Drain,
+    Stop,
+    UpdateHandoff,
+    OwnershipLoss,
+    ParentEof,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LifecycleEndpoint {
+    pub host: String,
+    pub port: u16,
+}
+
+/// A validated inherited channel. Capability material remains in memory only & is emitted only
+/// on the inherited channel's ready registration; it never enters environment, argv, or logs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LifecycleChannel {
+    fence: u64,
+    capability: String,
+}
+
+impl LifecycleChannel {
+    pub const fn fence(&self) -> u64 {
+        self.fence
+    }
+    pub fn capability(&self) -> &str {
+        &self.capability
+    }
+
+    /// Emit lifecycle state without capability material. Runtime calls this after every
+    /// admission dependency is live, never during hello parsing.
+    pub fn ready(&self, endpoint: LifecycleEndpoint) -> Result<(), String> {
+        if endpoint.host != "127.0.0.1" || endpoint.port < 1024 {
+            return Err("lifecycle ready endpoint invalid".into());
+        }
+        emit_lifecycle_frame(serde_json::json!({
+            "kind": "register", "state": "ready", "fence": self.fence,
+            "endpoint": {"host": endpoint.host, "port": endpoint.port},
+            "capability": self.capability,
+        }))
+    }
+
+    /// Runtime owns admission closure, bounded draining, exact-fence acknowledgement, then
+    /// natural return. This channel parser intentionally cannot stop a running service itself.
+    pub fn acknowledge_drained(&self, command: LifecycleCommand) -> Result<(), String> {
+        let command = match command {
+            LifecycleCommand::Drain => "drain",
+            LifecycleCommand::Stop => "stop",
+            LifecycleCommand::UpdateHandoff => "update_handoff",
+            LifecycleCommand::OwnershipLoss => "ownership_loss",
+            LifecycleCommand::ParentEof => return Ok(()),
+        };
+        emit_lifecycle_frame(serde_json::json!({"kind":"ack","command":command,"fence":self.fence}))
+    }
+
+    pub fn failed(&self) -> Result<(), String> {
+        emit_lifecycle_frame(serde_json::json!({
+            "kind": "register", "state": "failed", "fence": self.fence
+        }))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LifecycleCommandFrame {
+    kind: String,
+    command: String,
+    fence: u64,
+}
+
+fn emit_lifecycle_frame(frame: serde_json::Value) -> Result<(), String> {
+    use std::io::Write;
+    let encoded = serde_json::to_string(&frame)
+        .map_err(|error| format!("lifecycle frame encode: {error}"))?;
+    let mut stdout = std::io::stdout().lock();
+    writeln!(stdout, "{encoded}").map_err(|error| format!("lifecycle frame write: {error}"))?;
+    stdout
+        .flush()
+        .map_err(|error| format!("lifecycle frame flush: {error}"))
+}
+
+/// Consume and bind hello before a resident begins startup. Ordinary launches have no channel.
+pub fn consume_lifecycle_channel() -> Result<Option<LifecycleChannel>, String> {
+    if std::env::var("ORTHIC_LIFECYCLE_STDIO").as_deref() != Ok("1") {
+        return Ok(None);
+    }
+    use std::io::BufRead;
+    let mut line = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .map_err(|error| format!("lifecycle hello read failed: {error}"))?;
+    let hello: LifecycleHelloV1 =
+        serde_json::from_str(&line).map_err(|error| format!("lifecycle hello invalid: {error}"))?;
+    validate_lifecycle_hello_shape(&hello)?;
+    let declared_root = std::fs::canonicalize(&hello.declared_data_root)
+        .map_err(|_| "lifecycle data root unavailable")?;
+    let configured_root = std::env::var_os("WORKSPACE_ROOT")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::current_dir().ok())
+        .and_then(|path| std::fs::canonicalize(path).ok())
+        .ok_or("lifecycle configured data root unavailable")?;
+    if declared_root != configured_root {
+        return Err("lifecycle data root mismatch".into());
+    }
+    if hello.installation_id != sha256_text(&declared_root.to_string_lossy()) {
+        return Err("lifecycle installation identity mismatch".into());
+    }
+    let exe = std::env::current_exe().map_err(|_| "lifecycle executable unavailable")?;
+    if hello.artifact_digest != sha256_file(&exe).map_err(|_| "lifecycle artifact unavailable")? {
+        return Err("lifecycle artifact identity mismatch".into());
+    }
+    let channel = LifecycleChannel {
+        fence: hello.fence,
+        capability: hello.secret,
+    };
+    emit_lifecycle_frame(
+        serde_json::json!({"kind":"register","state":"starting","fence":channel.fence}),
+    )?;
+    Ok(Some(channel))
+}
+
+fn validate_lifecycle_hello_shape(hello: &LifecycleHelloV1) -> Result<(), String> {
+    if hello.kind != "hello" || hello.lifecycle_version != 1 {
+        return Err("lifecycle schema incompatible".into());
+    }
+    if hello.fence < 1 {
+        return Err("lifecycle fence must be >= 1".into());
+    }
+    if hello.product_id != "membrane" {
+        return Err("lifecycle product identity mismatch".into());
+    }
+    for (name, value) in [
+        ("installationId", &hello.installation_id),
+        ("instanceId", &hello.instance_id),
+    ] {
+        if !bounded_lifecycle_id(value) {
+            return Err(format!("lifecycle {name} invalid"));
+        }
+    }
+    if hello.declared_data_root.is_empty()
+        || hello.declared_data_root.len() > 4096
+        || hello.declared_data_root.chars().any(char::is_control)
+    {
+        return Err("lifecycle declaredDataRoot invalid".into());
+    }
+    if !is_hex64(&hello.secret) {
+        return Err("lifecycle secret must be exactly 64 lowercase hex characters".into());
+    }
+    if !is_sha256_digest(&hello.artifact_digest) {
+        return Err("lifecycle artifact digest invalid".into());
+    }
+    Ok(())
+}
+
+fn bounded_lifecycle_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 256
+        && value.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b':' | b'/')
+        })
+}
+
+fn is_hex64(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+}
+fn is_sha256_digest(value: &str) -> bool {
+    value.len() == 71 && value.starts_with("sha256:") && is_hex64(&value[7..])
+}
+
+fn sha256_text(value: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(value.as_bytes());
+    format!("sha256:{digest:x}")
+}
+
+fn sha256_file(path: &std::path::Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path)?;
+    let digest = Sha256::digest(bytes);
+    Ok(format!("sha256:{digest:x}"))
+}
+
+pub fn monitor_lifecycle_channel(
+    channel: LifecycleChannel,
+    control: membrane_runtime::service::LifecycleControl,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        let stdin = std::io::stdin();
+        let mut input = stdin.lock();
+        let mut line = String::new();
+        loop {
+            line.clear();
+            let read = match input.read_line(&mut line) {
+                Ok(read) => read,
+                Err(_) => {
+                    control.fail("lifecycle command read failed");
+                    return;
+                }
+            };
+            if read == 0 {
+                control.request_drain(Some("parent_eof"));
+                return;
+            }
+            let frame: LifecycleCommandFrame = match serde_json::from_str(&line) {
+                Ok(frame) => frame,
+                Err(_) => {
+                    control.fail("lifecycle command invalid");
+                    return;
+                }
+            };
+            if frame.kind != "command" || frame.fence != channel.fence() {
+                control.fail("lifecycle command fence mismatch");
+                return;
+            }
+            let command = match frame.command.as_str() {
+                "drain" | "stop" | "update_handoff" | "ownership_loss" => frame.command,
+                _ => {
+                    control.fail("lifecycle command unsupported");
+                    return;
+                }
+            };
+            control.request_drain(Some(&command));
+            return;
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -477,5 +727,44 @@ mod tests {
     fn no_mode_is_rejected() {
         let err = parse_mode(["membrane"].iter().copied()).unwrap_err();
         assert!(!err.is_empty());
+    }
+
+    fn valid_hello() -> serde_json::Value {
+        serde_json::json!({
+            "kind": "hello",
+            "lifecycleVersion": 1,
+            "fence": 1,
+            "installationId": "installation-1",
+            "productId": "membrane",
+            "instanceId": "instance-1",
+            "artifactDigest": format!("sha256:{}", "a".repeat(64)),
+            "declaredDataRoot": "/tmp/membrane",
+            "secret": "b".repeat(64),
+        })
+    }
+
+    #[test]
+    fn lifecycle_hello_is_closed_and_bounded() {
+        let hello: LifecycleHelloV1 = serde_json::from_value(valid_hello()).unwrap();
+        validate_lifecycle_hello_shape(&hello).unwrap();
+
+        let mut unknown = valid_hello();
+        unknown["ignored"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<LifecycleHelloV1>(unknown).is_err());
+
+        for (field, value) in [
+            ("fence", serde_json::json!(0)),
+            ("productId", serde_json::json!("cortex")),
+            ("secret", serde_json::json!("A".repeat(64))),
+            ("artifactDigest", serde_json::json!("sha256:short")),
+        ] {
+            let mut invalid = valid_hello();
+            invalid[field] = value;
+            let hello: LifecycleHelloV1 = serde_json::from_value(invalid).unwrap();
+            assert!(
+                validate_lifecycle_hello_shape(&hello).is_err(),
+                "field={field}"
+            );
+        }
     }
 }

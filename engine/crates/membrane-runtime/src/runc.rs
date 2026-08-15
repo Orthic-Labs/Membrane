@@ -6,12 +6,21 @@
 
 use crate::truncate;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::collections::VecDeque;
 use std::ffi::{OsStr, OsString};
-use std::fs::File;
-use std::io::{Read, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{mpsc, Arc};
+
+const CAPTURE_CHUNK_BYTES: usize = 8 * 1024;
+const CAPTURE_CHANNEL_DEPTH: usize = 32;
+const MAX_INLINE_CAPTURE_BYTES: usize = 256 * 1024;
+const MAX_PREVIEW_EDGE_BYTES: usize = 32 * 1024;
+static CAPTURE_FILE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone)]
 pub struct RuncResult {
@@ -19,6 +28,7 @@ pub struct RuncResult {
     pub spill_path: Option<PathBuf>,
     pub anchor: String,
     pub exit_code: i32,
+    pub recovery_marker: Option<crate::compress::RecoveryMarkerV1>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,118 +122,158 @@ pub fn resolve_shell_argv() -> Vec<String> {
     default_shell_argv()
 }
 
-enum StreamBody {
-    Memory(Vec<u8>),
-    Spill(PathBuf),
-}
-
-struct StreamCapture {
-    body: StreamBody,
+struct OrderedCapture {
+    path: PathBuf,
     byte_count: usize,
     newline_count: usize,
     ends_with_newline: bool,
+    digest: String,
 }
 
-impl StreamCapture {
-    fn read_with(
-        &self,
-        mut consume: impl FnMut(&[u8]) -> Result<(), String>,
-    ) -> Result<(), String> {
-        match &self.body {
-            StreamBody::Memory(bytes) => consume(bytes),
-            StreamBody::Spill(path) => {
-                let mut file = File::open(path)
-                    .map_err(|error| format!("temporary capture reopen failed: {error}"))?;
-                let mut chunk = [0u8; 64 * 1024];
-                loop {
-                    let read = file
-                        .read(&mut chunk)
-                        .map_err(|error| format!("temporary capture read failed: {error}"))?;
-                    if read == 0 {
-                        return Ok(());
-                    }
-                    consume(&chunk[..read])?;
+impl OrderedCapture {
+    fn cleanup(&self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+#[derive(Debug)]
+enum CaptureMessage {
+    Chunk {
+        sequence: u64,
+        lane: &'static str,
+        bytes: Vec<u8>,
+    },
+    Failed {
+        lane: &'static str,
+        reason: String,
+    },
+    Finished,
+}
+
+fn read_capture_lane(
+    mut reader: impl Read,
+    lane: &'static str,
+    sequence: Arc<AtomicU64>,
+    sender: mpsc::SyncSender<CaptureMessage>,
+) {
+    let mut chunk = [0u8; CAPTURE_CHUNK_BYTES];
+    loop {
+        match reader.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => {
+                let sequence = sequence.fetch_add(1, Ordering::Relaxed);
+                if sender
+                    .send(CaptureMessage::Chunk {
+                        sequence,
+                        lane,
+                        bytes: chunk[..read].to_vec(),
+                    })
+                    .is_err()
+                {
+                    return;
                 }
+            }
+            Err(error) => {
+                let _ = sender.send(CaptureMessage::Failed {
+                    lane,
+                    reason: error.to_string(),
+                });
+                return;
             }
         }
     }
-
-    fn cleanup(&self) {
-        if let StreamBody::Spill(path) = &self.body {
-            let _ = std::fs::remove_file(path);
-        }
-    }
+    let _ = sender.send(CaptureMessage::Finished);
 }
 
-fn capture_stream(
-    mut reader: impl Read,
-    line_limit: usize,
+fn capture_ordered(
+    stdout: impl Read + Send + 'static,
+    stderr: impl Read + Send + 'static,
     spill_dir: &Path,
-    lane: &str,
-) -> Result<StreamCapture, String> {
-    let mut memory = Vec::new();
-    let mut spill: Option<(PathBuf, File)> = None;
+) -> Result<(OrderedCapture, std::thread::JoinHandle<()>, std::thread::JoinHandle<()>), String> {
+    std::fs::create_dir_all(spill_dir)
+        .map_err(|error| format!("spill_dir create failed: {error}"))?;
+    let path = spill_dir.join(format!(
+        ".ordered-{}-{}-{}.tmp",
+        std::process::id(),
+        crate::time::now_millis(),
+        CAPTURE_FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed),
+    ));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|error| format!("ordered capture create failed: {error}"))?;
+    let (sender, receiver) = mpsc::sync_channel(CAPTURE_CHANNEL_DEPTH);
+    let sequence = Arc::new(AtomicU64::new(0));
+    let stdout_sequence = Arc::clone(&sequence);
+    let stdout_sender = sender.clone();
+    let stdout_thread = std::thread::spawn(move || {
+        read_capture_lane(stdout, "stdout", stdout_sequence, stdout_sender)
+    });
+    let stderr_thread = std::thread::spawn(move || {
+        read_capture_lane(stderr, "stderr", sequence, sender)
+    });
+
+    let mut next_sequence = 0u64;
+    let mut pending = BTreeMap::<u64, (&'static str, Vec<u8>)>::new();
+    let mut finished = 0usize;
     let mut byte_count = 0usize;
     let mut newline_count = 0usize;
     let mut ends_with_newline = false;
-    let mut chunk = [0u8; 64 * 1024];
-    loop {
-        let read = reader
-            .read(&mut chunk)
-            .map_err(|error| format!("{lane} capture failed: {error}"))?;
-        if read == 0 {
-            break;
-        }
-        let part = &chunk[..read];
-        byte_count = byte_count.saturating_add(read);
-        newline_count =
-            newline_count.saturating_add(part.iter().filter(|byte| **byte == b'\n').count());
-        ends_with_newline = part.last() == Some(&b'\n');
-        if spill.is_none() && newline_count > line_limit {
-            std::fs::create_dir_all(spill_dir)
-                .map_err(|error| format!("spill_dir create failed: {error}"))?;
-            let path = spill_dir.join(format!(
-                ".capture-{}-{lane}-{}.tmp",
-                std::process::id(),
-                crate::time::now_millis()
-            ));
-            let mut file = File::create(&path)
-                .map_err(|error| format!("temporary capture create failed: {error}"))?;
-            file.write_all(&memory)
-                .and_then(|_| file.write_all(part))
-                .map_err(|error| format!("temporary capture write failed: {error}"))?;
-            memory.clear();
-            spill = Some((path, file));
-        } else if let Some((_, file)) = spill.as_mut() {
-            file.write_all(part)
-                .map_err(|error| format!("temporary capture write failed: {error}"))?;
-        } else {
-            memory.extend_from_slice(part);
+    let mut hasher = Sha256::new();
+    let mut failure = None;
+    while finished < 2 {
+        match receiver.recv() {
+            Ok(CaptureMessage::Chunk { sequence, lane, bytes }) => {
+                pending.insert(sequence, (lane, bytes));
+                while let Some((_lane, bytes)) = pending.remove(&next_sequence) {
+                    file.write_all(&bytes)
+                        .map_err(|error| format!("ordered capture write failed: {error}"))?;
+                    hasher.update(&bytes);
+                    byte_count = byte_count.saturating_add(bytes.len());
+                    newline_count = newline_count.saturating_add(
+                        bytes.iter().filter(|byte| **byte == b'\n').count(),
+                    );
+                    ends_with_newline = bytes.last() == Some(&b'\n');
+                    next_sequence = next_sequence.saturating_add(1);
+                }
+            }
+            Ok(CaptureMessage::Failed { lane, reason }) => {
+                failure.get_or_insert_with(|| format!("{lane} capture failed: {reason}"));
+                finished += 1;
+            }
+            Ok(CaptureMessage::Finished) => finished += 1,
+            Err(_) => break,
         }
     }
-    let body = match spill {
-        Some((path, mut file)) => {
-            file.flush()
-                .map_err(|error| format!("temporary capture flush failed: {error}"))?;
-            StreamBody::Spill(path)
-        }
-        None => StreamBody::Memory(memory),
-    };
-    Ok(StreamCapture {
-        body,
+    if let Some(reason) = failure {
+        let _ = std::fs::remove_file(&path);
+        return Err(reason);
+    }
+    if !pending.is_empty() {
+        let _ = std::fs::remove_file(&path);
+        return Err("ordered capture sequence gap".to_string());
+    }
+    file.flush()
+        .map_err(|error| format!("ordered capture flush failed: {error}"))?;
+    Ok((OrderedCapture {
+        path,
         byte_count,
         newline_count,
         ends_with_newline,
-    })
+        digest: format!("{:x}", hasher.finalize()),
+    }, stdout_thread, stderr_thread))
 }
 
 struct LineWindow {
     head_limit: usize,
     tail_limit: usize,
-    head: Vec<String>,
-    tail: VecDeque<String>,
+    head: Vec<Vec<u8>>,
+    tail: VecDeque<Vec<u8>>,
     line_count: usize,
     pending: Vec<u8>,
+    dropped_hasher: Sha256,
+    dropped_len: usize,
 }
 
 impl LineWindow {
@@ -235,6 +285,8 @@ impl LineWindow {
             tail: VecDeque::with_capacity(tail_limit),
             line_count: 0,
             pending: Vec::new(),
+            dropped_hasher: Sha256::new(),
+            dropped_len: 0,
         }
     }
 
@@ -244,10 +296,10 @@ impl LineWindow {
             if *byte != b'\n' {
                 continue;
             }
-            self.pending.extend_from_slice(&bytes[start..index]);
-            if self.pending.last() == Some(&b'\r') {
-                self.pending.pop();
-            }
+            // Preserve exact source bytes, including line terminators, so
+            // retained byte counts & omitted-byte digest describe the durable
+            // spill rather than a normalized rendering.
+            self.pending.extend_from_slice(&bytes[start..=index]);
             self.finish_line();
             start = index + 1;
         }
@@ -262,107 +314,184 @@ impl LineWindow {
     }
 
     fn finish_line(&mut self) {
-        let line = String::from_utf8_lossy(&self.pending).into_owned();
-        self.pending.clear();
+        let line = std::mem::take(&mut self.pending);
         self.line_count += 1;
-        if self.head.len() < self.head_limit {
+        let dropped = if self.head.len() < self.head_limit {
             self.head.push(line);
+            None
         } else if self.tail_limit > 0 {
-            if self.tail.len() == self.tail_limit {
-                self.tail.pop_front();
-            }
+            let evicted = if self.tail.len() == self.tail_limit {
+                self.tail.pop_front()
+            } else {
+                None
+            };
             self.tail.push_back(line);
+            evicted
+        } else {
+            Some(line)
+        };
+        if let Some(dropped) = dropped {
+            self.dropped_hasher.update(&dropped);
+            self.dropped_len = self.dropped_len.saturating_add(dropped.len());
         }
     }
 
-    fn render(self) -> String {
+    fn render(self) -> (String, String, usize, usize, usize) {
+        let head_bytes = self.head.iter().map(|line| line.len()).sum();
+        let tail_bytes = self.tail.iter().map(|line| line.len()).sum();
         let elided = self
             .line_count
             .saturating_sub(self.head_limit.saturating_add(self.tail_limit));
-        let mut lines = self.head;
+        let display = |mut line: Vec<u8>| {
+            if line.last() == Some(&b'\n') { line.pop(); }
+            if line.last() == Some(&b'\r') { line.pop(); }
+            String::from_utf8_lossy(&line).into_owned()
+        };
+        let mut lines = self.head.into_iter().map(display).collect::<Vec<_>>();
         lines.push(format!("… {elided} lines elided …"));
-        lines.extend(self.tail);
-        lines.join("\n")
+        lines.extend(self.tail.into_iter().map(display));
+        let rendered = lines.join("\n");
+        let dropped_digest = format!("{:x}", self.dropped_hasher.finalize());
+        (rendered, dropped_digest, self.dropped_len, head_bytes, tail_bytes)
     }
 }
 
+fn hash_file_range(path: &Path, start: u64, length: usize) -> Result<String, String> {
+    let mut file = File::open(path).map_err(|error| format!("capture reopen failed: {error}"))?;
+    file.seek(SeekFrom::Start(start))
+        .map_err(|error| format!("capture seek failed: {error}"))?;
+    let mut remaining = length;
+    let mut chunk = [0u8; 64 * 1024];
+    let mut hasher = Sha256::new();
+    while remaining > 0 {
+        let requested = remaining.min(chunk.len());
+        let read = file
+            .read(&mut chunk[..requested])
+            .map_err(|error| format!("capture range read failed: {error}"))?;
+        if read == 0 {
+            return Err("capture range ended early".to_string());
+        }
+        hasher.update(&chunk[..read]);
+        remaining -= read;
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn byte_preview(
+    capture: &OrderedCapture,
+) -> Result<(String, String, usize, usize, usize), String> {
+    let head_bytes = capture.byte_count.min(MAX_PREVIEW_EDGE_BYTES);
+    let tail_bytes = capture
+        .byte_count
+        .saturating_sub(head_bytes)
+        .min(MAX_PREVIEW_EDGE_BYTES);
+    let dropped_len = capture
+        .byte_count
+        .saturating_sub(head_bytes.saturating_add(tail_bytes));
+    let mut file = File::open(&capture.path)
+        .map_err(|error| format!("capture preview reopen failed: {error}"))?;
+    let mut head = vec![0u8; head_bytes];
+    file.read_exact(&mut head)
+        .map_err(|error| format!("capture head read failed: {error}"))?;
+    let mut tail = vec![0u8; tail_bytes];
+    if tail_bytes > 0 {
+        file.seek(SeekFrom::End(-(tail_bytes as i64)))
+            .and_then(|_| file.read_exact(&mut tail))
+            .map_err(|error| format!("capture tail read failed: {error}"))?;
+    }
+    let dropped_digest = hash_file_range(&capture.path, head_bytes as u64, dropped_len)?;
+    let capped = format!(
+        "{}\n… {dropped_len} bytes elided …\n{}",
+        String::from_utf8_lossy(&head),
+        String::from_utf8_lossy(&tail)
+    );
+    Ok((capped, dropped_digest, dropped_len, head_bytes, tail_bytes))
+}
+
+fn line_preview(
+    capture: &OrderedCapture,
+    head: usize,
+    tail: usize,
+) -> Result<(String, String, usize, usize, usize), String> {
+    if capture.byte_count > MAX_INLINE_CAPTURE_BYTES {
+        return byte_preview(capture);
+    }
+    let bytes = std::fs::read(&capture.path)
+        .map_err(|error| format!("capture preview read failed: {error}"))?;
+    let mut window = LineWindow::new(head, tail);
+    window.push(&bytes);
+    Ok(window.finish().render())
+}
+
 fn publish_spill(
-    stdout: &StreamCapture,
-    stderr: &StreamCapture,
+    capture: &OrderedCapture,
     head: usize,
     tail: usize,
     spill_dir: &Path,
-) -> Result<(String, PathBuf, String), String> {
-    std::fs::create_dir_all(spill_dir)
-        .map_err(|error| format!("spill_dir create failed: {error}"))?;
-    let temp = spill_dir.join(format!(
-        ".combined-{}-{}.tmp",
-        std::process::id(),
-        crate::time::now_millis()
-    ));
-    let mut file = File::create(&temp).map_err(|error| format!("spill create failed: {error}"))?;
-    let mut hasher = Sha256::new();
-    let mut size_bytes = 0usize;
-    let mut window = LineWindow::new(head, tail);
-    let mut pending = Vec::new();
-    let mut write_lossy = |bytes: &[u8]| -> Result<(), String> {
-        pending.extend_from_slice(bytes);
-        let Some(end) = pending.iter().rposition(|byte| *byte == b'\n') else {
-            return Ok(());
-        };
-        let complete = pending.drain(..=end).collect::<Vec<_>>();
-        let text = String::from_utf8_lossy(&complete);
-        file.write_all(text.as_bytes())
-            .map_err(|error| format!("spill write failed: {error}"))?;
-        hasher.update(text.as_bytes());
-        size_bytes = size_bytes.saturating_add(text.len());
-        window.push(&complete);
-        Ok(())
-    };
-    stdout.read_with(&mut write_lossy)?;
-    stderr.read_with(&mut write_lossy)?;
-    drop(write_lossy);
-    if !pending.is_empty() {
-        let text = String::from_utf8_lossy(&pending);
-        file.write_all(text.as_bytes())
-            .map_err(|error| format!("spill write failed: {error}"))?;
-        hasher.update(text.as_bytes());
-        size_bytes = size_bytes.saturating_add(text.len());
-        window.push(&pending);
-    }
-    file.flush()
-        .map_err(|error| format!("spill flush failed: {error}"))?;
-    let digest = format!("{:x}", hasher.finalize());
+) -> Result<(String, PathBuf, String, crate::compress::RecoveryMarkerV1), String> {
+    let (capped, dropped_digest, dropped_len, head_bytes, tail_bytes) =
+        line_preview(capture, head, tail)?;
+    let digest = capture.digest.clone();
     let path = spill_dir.join(format!("{digest}.log"));
-    std::fs::rename(&temp, &path)
+    File::open(&capture.path)
+        .and_then(|file| file.sync_all())
+        .map_err(|error| format!("spill sync failed: {error}"))?;
+    std::fs::rename(&capture.path, &path)
         .or_else(|error| {
             if path.is_file() {
-                let _ = std::fs::remove_file(&temp);
+                let _ = std::fs::remove_file(&capture.path);
                 Ok(())
             } else {
                 Err(error)
             }
         })
         .map_err(|error| format!("spill publish failed: {error}"))?;
+    File::open(spill_dir)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("spill directory sync failed: {error}"))?;
     let metadata = spill_dir.join(format!("{digest}.json"));
     let metadata_temp = spill_dir.join(format!(
         ".{digest}.metadata.{}.tmp",
         crate::time::now_millis()
     ));
     let created_at_millis = crate::time::now_millis();
+    let expires_at_millis = created_at_millis.saturating_add(anchor_ttl_millis());
+    let recovery = crate::compress::RecoveryMarkerV1 {
+        schema_version: crate::compress::RECOVERY_MARKER_SCHEMA_VERSION,
+        source_digest: format!("sha256:{digest}"),
+        transform: "head_tail_spill".to_string(),
+        transform_version: 1,
+        kept_head_bytes: head_bytes,
+        kept_tail_bytes: tail_bytes,
+        protected_spans: Vec::new(),
+        dropped_bytes_digest: format!("sha256:{dropped_digest}"),
+        recovery_handle: format!("mr://anchor/{digest}"),
+        expires_at_millis: expires_at_millis as u64,
+    };
     let record = serde_json::json!({
         "schemaVersion": 1,
         "anchor": format!("mr://anchor/{digest}"),
         "sha256": digest,
         "createdAtMillis": created_at_millis,
-        "expiresAtMillis": created_at_millis.saturating_add(anchor_ttl_millis()),
-        "sizeBytes": size_bytes,
+        "expiresAtMillis": expires_at_millis,
+        "sizeBytes": capture.byte_count,
+        "droppedBytes": dropped_len,
+        "recovery": &recovery,
     });
-    std::fs::write(&metadata_temp, record.to_string())
-        .map_err(|error| format!("anchor metadata write failed: {error}"))?;
+    {
+        let mut metadata_file = File::create(&metadata_temp)
+            .map_err(|error| format!("anchor metadata create failed: {error}"))?;
+        metadata_file.write_all(record.to_string().as_bytes())
+            .map_err(|error| format!("anchor metadata write failed: {error}"))?;
+        metadata_file.sync_all()
+            .map_err(|error| format!("anchor metadata sync failed: {error}"))?;
+    }
     std::fs::rename(&metadata_temp, &metadata)
         .map_err(|error| format!("anchor metadata publish failed: {error}"))?;
-    Ok((window.finish().render(), path, digest))
+    File::open(spill_dir)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("anchor metadata directory sync failed: {error}"))?;
+    Ok((capped, path, digest, recovery))
 }
 
 fn command_name(program: &OsStr) -> String {
@@ -606,60 +735,41 @@ fn run_command_capped(
     let stdout = child.stdout.take().ok_or("stdout capture unavailable")?;
     let stderr = child.stderr.take().ok_or("stderr capture unavailable")?;
     let line_limit = head.saturating_add(tail);
-    let stdout_dir = spill_dir.to_path_buf();
-    let stderr_dir = spill_dir.to_path_buf();
-    let stdout_thread =
-        std::thread::spawn(move || capture_stream(stdout, line_limit, &stdout_dir, "stdout"));
-    let stderr_thread =
-        std::thread::spawn(move || capture_stream(stderr, line_limit, &stderr_dir, "stderr"));
+    let (capture, stdout_thread, stderr_thread) = capture_ordered(stdout, stderr, spill_dir)?;
     let status = child
         .wait()
         .map_err(|error| format!("wait failed: {error}"))?;
-    let stdout = stdout_thread
+    stdout_thread
         .join()
-        .map_err(|_| "stdout capture panicked".to_owned())??;
-    let stderr = stderr_thread
+        .map_err(|_| "stdout capture panicked".to_owned())?;
+    stderr_thread
         .join()
-        .map_err(|_| "stderr capture panicked".to_owned())??;
+        .map_err(|_| "stderr capture panicked".to_owned())?;
 
-    let total_bytes = stdout.byte_count.saturating_add(stderr.byte_count);
-    let total_newlines = stdout.newline_count.saturating_add(stderr.newline_count);
-    let ends_with_newline = if stderr.byte_count > 0 {
-        stderr.ends_with_newline
+    let total_lines = capture
+        .newline_count
+        .saturating_add(usize::from(capture.byte_count > 0 && !capture.ends_with_newline));
+    let result = if total_lines > line_limit || capture.byte_count > MAX_INLINE_CAPTURE_BYTES {
+        publish_spill(&capture, head, tail, spill_dir)
+            .map(|(capped, path, digest, marker)| (capped, Some(path), digest, Some(marker)))
     } else {
-        stdout.ends_with_newline
-    };
-    let total_lines =
-        total_newlines.saturating_add(usize::from(total_bytes > 0 && !ends_with_newline));
-    let result = if total_lines > line_limit {
-        publish_spill(&stdout, &stderr, head, tail, spill_dir)
-            .map(|(capped, path, digest)| (capped, Some(path), digest))
-    } else {
-        let mut combined = Vec::with_capacity(total_bytes);
-        stdout.read_with(|chunk| {
-            combined.extend_from_slice(chunk);
-            Ok(())
-        })?;
-        stderr.read_with(|chunk| {
-            combined.extend_from_slice(chunk);
-            Ok(())
-        })?;
+        let combined = std::fs::read(&capture.path)
+            .map_err(|error| format!("ordered capture reopen failed: {error}"))?;
         let full = String::from_utf8_lossy(&combined).into_owned();
         let (capped, was_truncated) = truncate::head_tail(&full, head, tail);
         debug_assert!(!was_truncated);
-        let digest = format!("{:x}", Sha256::digest(full.as_bytes()));
-        Ok((capped, None, digest))
+        Ok((capped, None, capture.digest.clone(), None))
     };
-    stdout.cleanup();
-    stderr.cleanup();
-    let (capped, spill_path, digest) = result?;
+    capture.cleanup();
+    let (capped, spill_path, digest, recovery_marker) = result?;
     let exit_code = status.code().unwrap_or(1);
 
     Ok(RuncResult {
         capped,
-        spill_path,
+        spill_path: spill_path.clone(),
         anchor: format!("mr://anchor/{digest}"),
         exit_code,
+        recovery_marker,
     })
 }
 
@@ -856,6 +966,59 @@ mod tests {
         }
     }
 
+    /// P2 §8.7: the spill metadata carries the one canonical context-recovery
+    /// marker so truncated output can be bound to its full bytes by digest and
+    /// restored exactly.
+    #[test]
+    fn run_capped_spill_metadata_carries_recovery_marker() {
+        let _guard = lock_env();
+        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
+        unsafe {
+            std::env::remove_var("CRYPT_RUNC_SHELL");
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let long_cmd = "i=1; while [ $i -le 100 ]; do echo l$i; i=$((i+1)); done".to_string();
+        let r = run_capped(&long_cmd, 3, 3, dir.path()).expect("run_capped ok");
+        let spill = r.spill_path.as_ref().expect("spilled output");
+        let metadata: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(spill.with_extension("json")).unwrap(),
+        )
+        .unwrap();
+        let recovery = &metadata["recovery"];
+        assert_eq!(recovery["transform"], "head_tail_spill");
+        assert_eq!(recovery["transformVersion"], 1);
+        assert!(recovery["keptHeadBytes"].as_u64().is_some_and(|value| value > 0));
+        assert!(recovery["keptTailBytes"].as_u64().is_some_and(|value| value > 0));
+        assert_eq!(recovery["recoveryHandle"], metadata["anchor"]);
+        assert_eq!(recovery["expiresAtMillis"], metadata["expiresAtMillis"]);
+        assert_eq!(
+            recovery["sourceDigest"],
+            format!("sha256:{}", spill.file_stem().unwrap().to_string_lossy())
+        );
+        assert!(metadata["droppedBytes"]
+            .as_u64()
+            .is_some_and(|bytes| bytes > 0));
+        assert!(recovery["droppedBytesDigest"]
+            .as_str()
+            .is_some_and(|d| d.starts_with("sha256:")));
+        let marker = r.recovery_marker.as_ref().expect("canonical recovery marker");
+        let source = std::fs::read(spill).unwrap();
+        let dropped_end = source.len().saturating_sub(marker.kept_tail_bytes);
+        assert!(marker.kept_head_bytes <= dropped_end);
+        assert_eq!(
+            marker.dropped_bytes_digest,
+            crate::digest::digest_bytes(&source[marker.kept_head_bytes..dropped_end]),
+            "marker must bind exact omitted spill bytes, including line terminators"
+        );
+
+        unsafe {
+            match prior {
+                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
+                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
+            }
+        }
+    }
+
     /// Non-truncated output stays in memory & creates no spill artifact.
     #[test]
     fn run_capped_does_not_spill_when_output_fits() {
@@ -879,6 +1042,33 @@ mod tests {
                 None => std::env::remove_var("CRYPT_RUNC_SHELL"),
             }
         }
+    }
+
+    #[test]
+    fn newline_free_output_spills_on_byte_ceiling_with_exact_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = vec![b'x'; MAX_INLINE_CAPTURE_BYTES + 1];
+        let (capture, stdout_thread, stderr_thread) = capture_ordered(
+            std::io::Cursor::new(source.clone()),
+            std::io::Cursor::new(Vec::<u8>::new()),
+            dir.path(),
+        )
+        .expect("capture newline-free bytes");
+        stdout_thread.join().unwrap();
+        stderr_thread.join().unwrap();
+        assert_eq!(capture.newline_count, 0);
+        assert_eq!(capture.byte_count, source.len());
+
+        let (preview, spill, digest, marker) =
+            publish_spill(&capture, 100, 100, dir.path()).expect("publish exact spill");
+        assert_eq!(std::fs::read(&spill).unwrap(), source);
+        assert_eq!(digest, format!("{:x}", Sha256::digest(&source)));
+        assert!(preview.len() <= (MAX_PREVIEW_EDGE_BYTES * 2) + 64);
+        let dropped_end = source.len() - marker.kept_tail_bytes;
+        assert_eq!(
+            marker.dropped_bytes_digest,
+            crate::digest::digest_bytes(&source[marker.kept_head_bytes..dropped_end])
+        );
     }
 
     #[test]

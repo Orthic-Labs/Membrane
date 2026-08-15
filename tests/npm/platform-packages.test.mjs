@@ -22,7 +22,12 @@ function platformKeyParts(key) {
 }
 
 test("every PLATFORM_PACKAGES entry has a matching npm/platforms/<key>/package.json", () => {
-  const dirs = readdirSync(PLATFORMS_ROOT).sort();
+  // Filter Finder/macOS metadata (`.DS_Store`) and any other non-directory or
+  // hidden entries so the registry lockstep check reflects real platform dirs.
+  const dirs = readdirSync(PLATFORMS_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => entry.name)
+    .sort();
   assert.deepEqual(dirs, Object.keys(PLATFORM_PACKAGES).sort());
 });
 

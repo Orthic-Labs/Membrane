@@ -126,3 +126,117 @@ test('malicious neighbours fail open without suppressing a legitimate write', { 
     assert.equal(probe2.matched, 1, 'only the legitimate record hydrates');
   } finally { cleanup(root); }
 });
+
+// ---------------------------------------------------------------------------
+// P2 §8.9 — bounded durable outbox.
+// ---------------------------------------------------------------------------
+function outboxEnv() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'membrane-outbox-'));
+  const env = { ...process.env, MEMBRANE_DATA_ROOT: dir };
+  return { dir, env };
+}
+function cleanupOutbox({ dir }) {
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
+}
+
+test('outbox enqueue is idempotent, bounded, and deadline-checked', { concurrency: false }, () => {
+  const { dir, env } = outboxEnv();
+  try {
+    const now = Date.now();
+    const first = ledgerStore.enqueueOutbox(env, { eventId: 'mutation-1', payload: { op: 'a' }, deadlineAtMs: now + 60_000, nowMs: now });
+    assert.equal(first.status, 'enqueued');
+    assert.deepEqual(first.record.payload, { op: 'a' });
+    const again = ledgerStore.enqueueOutbox(env, { eventId: 'mutation-1', payload: { op: 'a' }, deadlineAtMs: now + 60_000, nowMs: now });
+    assert.equal(again.status, 'duplicate');
+    const drift = ledgerStore.enqueueOutbox(env, { eventId: 'mutation-1', payload: { op: 'changed' }, deadlineAtMs: now + 60_000, nowMs: now });
+    assert.equal(drift.status, 'conflict');
+    assert.equal(drift.reason, 'outbox_event_id_payload_drift');
+    // Same id is stable: only one record exists on disk.
+    assert.equal(fs.readdirSync(ledgerStore.outboxRoot(env)).filter((n) => n.endsWith('.json')).length, 1);
+    // Expired deadline is refused, not silently queued.
+    const expired = ledgerStore.enqueueOutbox(env, { eventId: 'mutation-expired', payload: { op: 'b' }, deadlineAtMs: now - 1, nowMs: now });
+    assert.equal(expired.status, 'invalid');
+    assert.equal(expired.reason, 'outbox_deadline_expired');
+  } finally { cleanupOutbox({ dir }); }
+});
+
+test('outbox crash before effect retains WAL record until a later replay', { concurrency: false }, () => {
+  const { dir, env } = outboxEnv();
+  try {
+    ledgerStore.enqueueOutbox(env, { eventId: 'crash-pre-effect', payload: { op: 'a' }, deadlineAtMs: 10_000, nowMs: 0 });
+    let effects = 0;
+    ledgerStore.deliverOutbox(env, () => { throw new Error('simulated crash before effect'); }, { nowMs: 0 });
+    assert.equal(effects, 0);
+    assert.equal(ledgerStore.replayOutbox(env, { nowMs: 100 }).length, 1);
+    const recovered = ledgerStore.deliverOutbox(env, () => { effects += 1; return { status: 'persisted' }; }, { nowMs: 100 });
+    assert.equal(recovered.acked, 1);
+    assert.equal(effects, 1);
+    assert.equal(ledgerStore.replayOutbox(env, { nowMs: 100 }).length, 0);
+  } finally { cleanupOutbox({ dir }); }
+});
+
+test('outbox crash after effect before ack replays only idempotent ack', { concurrency: false }, () => {
+  const { dir, env } = outboxEnv();
+  try {
+    ledgerStore.enqueueOutbox(env, { eventId: 'crash-post-effect', payload: { op: 'a' }, deadlineAtMs: 10_000, nowMs: 0 });
+    let effects = 0;
+    assert.throws(() => ledgerStore.deliverOutbox(env, () => { effects += 1; return { status: 'persisted' }; }, {
+      nowMs: 0,
+      afterEffectBeforeAck: () => { throw new Error('simulated crash after effect'); },
+    }), /simulated crash after effect/);
+    assert.equal(effects, 1);
+    assert.equal(ledgerStore.replayOutbox(env, { nowMs: 1 }).length, 1);
+    const recovered = ledgerStore.deliverOutbox(env, () => { effects += 1; return { status: 'persisted' }; }, { nowMs: 1 });
+    assert.equal(recovered.acked, 1);
+    assert.equal(effects, 1);
+  } finally { cleanupOutbox({ dir }); }
+});
+
+test('outbox replay cursor is stable, ordered, and bounded; ack is idempotent', { concurrency: false }, () => {
+  const { dir, env } = outboxEnv();
+  try {
+    const now = 1_000;
+    ledgerStore.enqueueOutbox(env, { eventId: 'mutation-b', payload: {}, deadlineAtMs: 10_000, nowMs: now });
+    ledgerStore.enqueueOutbox(env, { eventId: 'mutation-a', payload: {}, deadlineAtMs: 10_000, nowMs: now });
+    const due = ledgerStore.replayOutbox(env, { nowMs: now + 1, limit: 10 });
+    assert.deepEqual(due.map((r) => r.eventId), ['mutation-a', 'mutation-b']); // (nextAttemptAtMs, eventId) order
+    assert.deepEqual(due[0].payload, {}); // replay carries committed mutation input
+    assert.equal(ledgerStore.replayOutbox(env, { nowMs: now - 1 }).length, 0); // not due yet
+    assert.equal(ledgerStore.replayOutbox(env, { nowMs: now + 1, limit: 1 }).length, 1); // bounded
+    assert.equal(ledgerStore.ackOutbox(env, 'mutation-a').status, 'acked');
+    assert.equal(ledgerStore.ackOutbox(env, 'mutation-a').status, 'absent'); // idempotent ack
+    assert.deepEqual(ledgerStore.replayOutbox(env, { nowMs: now + 1 }).map((r) => r.eventId), ['mutation-b']);
+  } finally { cleanupOutbox({ dir }); }
+});
+
+test('expired replay is terminal and visible in the DLQ', { concurrency: false }, () => {
+  const { dir, env } = outboxEnv();
+  try {
+    ledgerStore.enqueueOutbox(env, { eventId: 'mutation-expiring', payload: { op: 'd' }, deadlineAtMs: 10, nowMs: 0 });
+    assert.deepEqual(ledgerStore.replayOutbox(env, { nowMs: 10 }), []);
+    assert.equal(ledgerStore.listDeadLetters(env)[0].eventId, 'mutation-expiring');
+  } finally { cleanupOutbox({ dir }); }
+});
+
+test('outbox failure backoff is bounded and exhausted items reach the visible DLQ', { concurrency: false }, () => {
+  const { dir, env } = outboxEnv();
+  try {
+    const now = 0;
+    ledgerStore.enqueueOutbox(env, { eventId: 'mutation-poison', payload: { op: 'c' }, deadlineAtMs: 100_000, nowMs: now });
+    // Two failures → exponential backoff (100 then 200), still retryable.
+    const f1 = ledgerStore.markOutboxFailed(env, 'mutation-poison', { error: 'boom', nowMs: now });
+    assert.equal(f1.status, 'retry_scheduled');
+    assert.equal(f1.nextAttemptAtMs, 100);
+    const f2 = ledgerStore.markOutboxFailed(env, 'mutation-poison', { error: 'boom', nowMs: now });
+    assert.equal(f2.nextAttemptAtMs, 200);
+    assert.equal(f2.attempts, 2);
+    // Exhaust the attempt budget (maxAttempts: 2) → dead-lettered, never silent.
+    const f3 = ledgerStore.markOutboxFailed(env, 'mutation-poison', { error: 'boom', nowMs: now, maxAttempts: 2 });
+    assert.equal(f3.status, 'dead_lettered');
+    assert.equal(ledgerStore.replayOutbox(env, { nowMs: now + 1 }).length, 0);
+    const dlq = ledgerStore.listDeadLetters(env);
+    assert.equal(dlq.length, 1);
+    assert.equal(dlq[0].eventId, 'mutation-poison');
+    assert.equal(dlq[0].lastError, 'boom');
+  } finally { cleanupOutbox({ dir }); }
+});

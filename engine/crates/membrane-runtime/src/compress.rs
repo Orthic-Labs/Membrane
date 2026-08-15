@@ -23,7 +23,7 @@
 //! 677MB ONNX model so CI catches structural regressions even when the parity
 //! test (which needs the model) is skipped.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Compress prose, keeping approximately `rate` (0.0–1.0) of the original.
 ///
@@ -44,6 +44,7 @@ pub struct BudgetCompression {
     pub budget_tokens: usize,
     pub protected_tokens: usize,
     pub budget_met: bool,
+    pub recovery_marker: Option<RecoveryMarkerV1>,
 }
 
 /// Content-free accounting for material removed by a transform.
@@ -95,6 +96,164 @@ pub fn drop_manifest_meta(manifest: &DropManifest) -> String {
         manifest.dropped_numeric_literals,
         manifest.kept_identifier_ratio_milli,
         manifest.risk,
+    )
+}
+
+/// Canonical context-recovery marker (P2 §8.7).
+///
+/// One marker type is shared by `run_capped`, skeletonization, and compression
+/// so every lossy transform can prove exact restore. It is content-free with
+/// respect to the dropped bytes: only digests, byte counts, spans, and opaque
+/// handles are retained — never the removed content itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryMarkerV1 {
+    pub schema_version: u32,
+    /// `sha256:<hex>` of the complete pre-transform source bytes.
+    pub source_digest: String,
+    /// Stable transform id: `head_tail`, `skeletonize`, `compress_prose`, …
+    pub transform: String,
+    pub transform_version: u32,
+    /// Byte length of the source prefix kept verbatim (head), if any.
+    pub kept_head_bytes: usize,
+    /// Byte length of the source suffix kept verbatim (tail), if any.
+    pub kept_tail_bytes: usize,
+    /// Interleaved byte ranges kept verbatim (protected spans) with reasons.
+    pub protected_spans: Vec<RecoverySpanV1>,
+    /// `sha256:<hex>` of the removed bytes, concatenated in source order.
+    pub dropped_bytes_digest: String,
+    /// Opaque handle to the complete source bytes (e.g. `mr://anchor/<digest>`).
+    pub recovery_handle: String,
+    /// Unix-millisecond expiry; after this the handle must not be honored.
+    pub expires_at_millis: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoverySpanV1 {
+    pub start: usize,
+    pub end: usize,
+    pub reason: String,
+}
+
+pub const RECOVERY_MARKER_SCHEMA_VERSION: u32 = 1;
+/// `sha256:<hex>` of the empty byte string — the well-known empty digest.
+pub const EMPTY_DROPPED_BYTES_DIGEST: &str =
+    "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+/// Build a canonical recovery marker.
+///
+/// `source` is the complete pre-transform bytes. `protected_spans` are the
+/// non-head/tail byte ranges of `source` retained verbatim; they must be in
+/// ascending, non-overlapping order and within `source.len()`. Everything not
+/// covered by head/tail/protected spans is treated as dropped and its digest is
+/// computed here (over the exact dropped bytes, in source order).
+pub fn build_recovery_marker(
+    source: &[u8],
+    transform: &str,
+    transform_version: u32,
+    kept_head_bytes: usize,
+    kept_tail_bytes: usize,
+    protected_spans: &[(usize, usize, &str)],
+    recovery_handle: &str,
+    ttl_millis: u64,
+    now_millis: u64,
+) -> Result<RecoveryMarkerV1, String> {
+    let source_len = source.len();
+    if kept_head_bytes > source_len || kept_tail_bytes > source_len {
+        return Err("recovery_marker_head_tail_exceeds_source".to_string());
+    }
+    if kept_head_bytes.saturating_add(kept_tail_bytes) > source_len {
+        return Err("recovery_marker_head_tail_overlap".to_string());
+    }
+
+    let mut spans: Vec<RecoverySpanV1> = Vec::with_capacity(protected_spans.len() + 2);
+    if kept_head_bytes > 0 {
+        spans.push(RecoverySpanV1 {
+            start: 0,
+            end: kept_head_bytes,
+            reason: "head".to_string(),
+        });
+    }
+    for (start, end, reason) in protected_spans {
+        let (start, end) = (*start, *end);
+        if start >= end || end > source_len {
+            return Err("recovery_marker_span_out_of_bounds".to_string());
+        }
+        if let Some(prev) = spans.last() {
+            if start < prev.end {
+                return Err("recovery_marker_span_overlap".to_string());
+            }
+        }
+        spans.push(RecoverySpanV1 {
+            start,
+            end,
+            reason: (*reason).to_string(),
+        });
+    }
+    if kept_tail_bytes > 0 {
+        let start = source_len - kept_tail_bytes;
+        if let Some(prev) = spans.last() {
+            if start < prev.end {
+                return Err("recovery_marker_tail_overlaps_spans".to_string());
+            }
+        }
+        spans.push(RecoverySpanV1 {
+            start,
+            end: source_len,
+            reason: "tail".to_string(),
+        });
+    }
+
+    let mut dropped = Vec::new();
+    let mut cursor = 0usize;
+    for span in &spans {
+        if span.start > cursor {
+            dropped.extend_from_slice(&source[cursor..span.start]);
+        }
+        cursor = cursor.max(span.end);
+    }
+    if cursor < source_len {
+        dropped.extend_from_slice(&source[cursor..]);
+    }
+
+    Ok(RecoveryMarkerV1 {
+        schema_version: RECOVERY_MARKER_SCHEMA_VERSION,
+        source_digest: crate::digest::digest_bytes(source),
+        transform: transform.to_string(),
+        transform_version,
+        kept_head_bytes,
+        kept_tail_bytes,
+        protected_spans: spans,
+        dropped_bytes_digest: crate::digest::digest_bytes(&dropped),
+        recovery_handle: recovery_handle.to_string(),
+        expires_at_millis: now_millis.saturating_add(ttl_millis),
+    })
+}
+
+/// Exact restore verification: the recovered bytes must hash back to the
+/// marker's source digest. A marker whose expiry has passed is never accepted,
+/// and an unknown schema version fails closed.
+pub fn verify_recovery_marker(marker: &RecoveryMarkerV1, recovered: &[u8], now_millis: u64) -> bool {
+    marker.schema_version == RECOVERY_MARKER_SCHEMA_VERSION
+        && now_millis <= marker.expires_at_millis
+        && marker.source_digest == crate::digest::digest_bytes(recovered)
+}
+
+/// Compact, content-free metadata string for telemetry (mirrors
+/// [`drop_manifest_meta`]).
+pub fn recovery_marker_meta(marker: &RecoveryMarkerV1) -> String {
+    format!(
+        "schema={};transform={};transform_version={};kept_head={};kept_tail={};protected_spans={};dropped={};recovery={};expires_at={}",
+        marker.schema_version,
+        marker.transform,
+        marker.transform_version,
+        marker.kept_head_bytes,
+        marker.kept_tail_bytes,
+        marker.protected_spans.len(),
+        marker.dropped_bytes_digest,
+        marker.recovery_handle,
+        marker.expires_at_millis,
     )
 }
 
@@ -188,6 +347,9 @@ pub fn compress_to_budget_with_options(
             budget_tokens,
             protected_tokens,
             budget_met: false,
+            // No durable source publication occurs at this pure transform
+            // boundary; do not emit an unresolvable recovery handle.
+            recovery_marker: None,
         };
     }
 
@@ -238,6 +400,7 @@ pub fn compress_to_budget_with_options(
         budget_tokens,
         protected_tokens,
         budget_met: output_tokens <= budget_tokens,
+        recovery_marker: None,
     }
 }
 
@@ -997,5 +1160,130 @@ mod tests {
         eprintln!(
             "compress_matches_python_jaccard: min={min_score:.4} mean={mean:.4} threshold={THRESHOLD} (n={n_tested})"
         );
+    }
+}
+
+#[cfg(test)]
+mod recovery_marker_tests {
+    use super::*;
+
+    #[test]
+    fn marker_binds_source_dropped_and_restore_exactly() {
+        // "head" (4 bytes) + dropped middle + "tail" (4 bytes).
+        let source = b"HEADmiddleTAIL";
+        let marker = build_recovery_marker(
+            source,
+            "head_tail",
+            1,
+            4,
+            4,
+            &[],
+            "mr://anchor/abc",
+            60_000,
+            1_000,
+        )
+        .expect("marker builds");
+
+        assert_eq!(marker.schema_version, RECOVERY_MARKER_SCHEMA_VERSION);
+        assert_eq!(marker.source_digest, crate::digest::digest_bytes(source));
+        assert_eq!(marker.kept_head_bytes, 4);
+        assert_eq!(marker.kept_tail_bytes, 4);
+        // Dropped bytes are exactly "middle".
+        assert_eq!(
+            marker.dropped_bytes_digest,
+            crate::digest::digest_bytes(b"middle")
+        );
+        assert_eq!(marker.protected_spans.len(), 2);
+        assert_eq!(marker.protected_spans[0].reason, "head");
+        assert_eq!(marker.protected_spans[1].reason, "tail");
+        assert_eq!(marker.expires_at_millis, 61_000);
+
+        // Exact restore verification holds on the full bytes...
+        assert!(verify_recovery_marker(&marker, source, 2_000));
+        // ...fails on any tampered recovery...
+        assert!(!verify_recovery_marker(&marker, b"HEADMIDDLETAIL", 2_000));
+        // ...and fails closed after expiry.
+        assert!(!verify_recovery_marker(&marker, source, 61_001));
+    }
+
+    #[test]
+    fn marker_protected_spans_and_no_drop_use_empty_digest() {
+        let source = b"abcdef";
+        // Keep all six bytes as protected spans; nothing is dropped.
+        let marker = build_recovery_marker(
+            source,
+            "compress_prose",
+            2,
+            0,
+            0,
+            &[(0, 3, "protected"), (3, 6, "protected")],
+            "mr://anchor/def",
+            0,
+            5,
+        )
+        .expect("marker builds");
+        assert_eq!(marker.dropped_bytes_digest, EMPTY_DROPPED_BYTES_DIGEST);
+        assert_eq!(marker.protected_spans.len(), 2);
+        assert!(verify_recovery_marker(&marker, source, 5));
+    }
+
+    #[test]
+    fn marker_rejects_overlap_and_out_of_bounds() {
+        assert!(build_recovery_marker(
+            b"abcdef",
+            "head_tail",
+            1,
+            4,
+            4,
+            &[],
+            "mr://anchor/x",
+            0,
+            0,
+        )
+        .is_err()); // head + tail overlap
+        assert!(build_recovery_marker(
+            b"abc",
+            "head_tail",
+            1,
+            1,
+            1,
+            &[(1, 3, "protected")],
+            "mr://anchor/x",
+            0,
+            0,
+        )
+        .is_err()); // protected span overlaps tail
+        assert!(build_recovery_marker(
+            b"abc",
+            "head_tail",
+            1,
+            0,
+            0,
+            &[(2, 9, "protected")],
+            "mr://anchor/x",
+            0,
+            0,
+        )
+        .is_err()); // span out of bounds
+    }
+
+    #[test]
+    fn marker_meta_is_content_free() {
+        let marker = build_recovery_marker(
+            b"abc",
+            "skeletonize",
+            1,
+            0,
+            0,
+            &[],
+            "mr://anchor/y",
+            0,
+            0,
+        )
+        .unwrap();
+        let meta = recovery_marker_meta(&marker);
+        assert!(meta.contains("transform=skeletonize"));
+        assert!(meta.contains("dropped="));
+        assert!(!meta.contains("source="));
     }
 }

@@ -59,6 +59,24 @@ fn child<'a>(root: &'a Value, camel: &str, snake: &str) -> &'a Value {
         .unwrap_or(&Value::Null)
 }
 
+/// Accept both wire spellings for phase names.  `hostDelivery` was the first
+/// phase added, so a one-off replacement used to work there while
+/// `eventStore` silently missed its snake-case spelling.  Keeping conversion
+/// here makes projections tolerant of persisted v1 reports without weakening
+/// their content-free shape.
+fn snake_case(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 4);
+    for ch in value.chars() {
+        if ch.is_ascii_uppercase() {
+            out.push('_');
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 /// Project one externally assembled trace. No data-plane reads or writes occur here.
 pub fn project_delivery_trace(report: &Value) -> DeliveryTraceView {
     let data = report
@@ -105,7 +123,7 @@ pub fn project_delivery_trace(report: &Value) -> DeliveryTraceView {
     let phases = PHASES
         .iter()
         .map(|name| {
-            let source = child(data, name, &name.replace("Delivery", "_delivery"));
+            let source = child(data, name, &snake_case(name));
             let phase_state = text(source, "state", "status").unwrap_or_else(|| "unknown".into());
             let evidence = text(source, "evidence", "reason")
                 .unwrap_or_else(|| "unknown — no evidence".into());
@@ -176,5 +194,20 @@ mod tests {
         let view = project_delivery_trace(&report);
         let names: Vec<_> = view.phases.iter().map(|p| p.name.as_str()).collect();
         assert_eq!(names, ["task","providers","candidates","admission","render","hostDelivery","evidence","outcome","feedback"]);
+    }
+
+    #[test]
+    fn snake_case_phase_aliases_are_read_for_every_phase() {
+        let d = dig("x");
+        let report = json!({
+            "trace_id":"t",
+            "packet": d.clone(),
+            "host_delivery": {"digest":"x", "state":"sent", "evidence":"host"},
+            "event_store": {"digest":"x", "state":"stored", "evidence":"event"},
+            "outcome": d
+        });
+        let view = project_delivery_trace(&report);
+        assert_eq!(view.phases[5].state, "sent");
+        assert_eq!(view.digests.state, "available");
     }
 }

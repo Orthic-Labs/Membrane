@@ -16,6 +16,9 @@ pub struct BudgetSkeleton {
     pub budget_tokens: usize,
     pub level: &'static str,
     pub budget_met: bool,
+    /// Present only when full source bytes were durably published to a
+    /// resolvable recovery handle. Pure skeletonization does not publish.
+    pub recovery_marker: Option<crate::compress::RecoveryMarkerV1>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -188,7 +191,7 @@ pub fn skeletonize_to_budget(path: &Path, src: &str, budget_tokens: usize) -> Bu
     let input_tokens = crate::compress::estimate_tokens(src);
     let signature = skeletonize(path, src);
     if crate::compress::estimate_tokens(&signature) <= budget_tokens {
-        return budget_result(signature, input_tokens, budget_tokens, "signature");
+        return budget_result(signature, src, path, input_tokens, budget_tokens, "signature");
     }
 
     let public = signature
@@ -203,7 +206,7 @@ pub fn skeletonize_to_budget(path: &Path, src: &str, budget_tokens: usize) -> Bu
         .collect::<Vec<_>>()
         .join("\n");
     if !public.is_empty() && crate::compress::estimate_tokens(&public) <= budget_tokens {
-        return budget_result(public, input_tokens, budget_tokens, "public-signature");
+        return budget_result(public, src, path, input_tokens, budget_tokens, "public-signature");
     }
 
     let comment = if matches!(
@@ -219,11 +222,13 @@ pub fn skeletonize_to_budget(path: &Path, src: &str, budget_tokens: usize) -> Bu
     } else {
         format!("// crypt: {} elided; retrieve original", path.display())
     };
-    budget_result(stub, input_tokens, budget_tokens, "path-stub")
+    budget_result(stub, src, path, input_tokens, budget_tokens, "path-stub")
 }
 
 fn budget_result(
     text: String,
+    _source: &str,
+    _path: &Path,
     input_tokens: usize,
     budget_tokens: usize,
     level: &'static str,
@@ -236,6 +241,9 @@ fn budget_result(
         budget_tokens,
         level,
         budget_met: output_tokens <= budget_tokens,
+        // This transform has no durable source publisher. Emitting a marker
+        // here would advertise an unresolvable recovery handle.
+        recovery_marker: None,
     }
 }
 
@@ -258,6 +266,13 @@ mod tests {
     fn unsupported_ext_passthrough() {
         let src = "const x = 1;";
         assert_eq!(skeletonize(Path::new("x.zig"), src), src);
+    }
+
+    #[test]
+    fn budget_skeleton_does_not_claim_unpublished_recovery() {
+        let source = "fn example() { println!(\"secret body\"); }";
+        let result = skeletonize_to_budget(Path::new("example.rs"), source, 2);
+        assert!(result.recovery_marker.is_none());
     }
 
     /// Per the plan (`docs/plans/2026-07-01-context-engine-unification.md` task 2):

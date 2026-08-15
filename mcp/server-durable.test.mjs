@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -14,48 +14,26 @@ const membraneRoot = fileURLToPath(new URL("../", import.meta.url));
 const engineRoot = fileURLToPath(new URL("../engine/", import.meta.url));
 const sourceCrypt = join(engineRoot, "target", "debug", process.platform === "win32" ? "crypt.exe" : "crypt");
 
-// Walks the engine workspace's Rust/manifest sources (skipping build output) and returns the
-// newest mtime found. Used to decide whether an already-built `crypt` binary still reflects the
-// current source tree, so a fresh checkout only pays for a rebuild when one is actually needed —
-// the guarded `cargo` on this host requires RIGHT_RELEASE_CACHE_ROOT and a working shared
-// sccache, neither of which a same-source rerun should depend on.
-function newestEngineSourceMtimeMs(dir) {
-  let newest = 0;
-  const stack = [dir];
-  while (stack.length) {
-    const current = stack.pop();
-    let entries;
-    try { entries = readdirSync(current, { withFileTypes: true }); } catch { continue; }
-    for (const entry of entries) {
-      // "tests"/"examples"/"benches" are separate Cargo targets that never link into a `[[bin]]`
-      // build, so touching them must not count as staleness for the crypt binary.
-      if (["target", "tests", "examples", "benches"].includes(entry.name) || entry.name.startsWith(".")) continue;
-      const full = join(current, entry.name);
-      if (entry.isDirectory()) { stack.push(full); continue; }
-      if (!entry.name.endsWith(".rs") && entry.name !== "Cargo.toml" && entry.name !== "Cargo.lock") continue;
-      const mtime = statSync(full).mtimeMs;
-      if (mtime > newest) newest = mtime;
-    }
-  }
-  return newest;
-}
-
-function isCryptFresh() {
-  return existsSync(sourceCrypt) && statSync(sourceCrypt).mtimeMs >= newestEngineSourceMtimeMs(engineRoot);
-}
-
 async function currentCrypt() {
   if (process.env.CRYPT_TEST_BIN) return process.env.CRYPT_TEST_BIN;
-  if (isCryptFresh()) return sourceCrypt;
-  const cargo = spawn("cargo", ["build", "--manifest-path", join(engineRoot, "Cargo.toml"), "--bin", "crypt"], {
+  const cargo = spawn("cargo", ["build", "--manifest-path", join(engineRoot, "Cargo.toml"), "--bin", "crypt", "--message-format=json-render-diagnostics"], {
     cwd: membraneRoot,
-    stdio: ["ignore", "ignore", "pipe"],
+    stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
+  let stdout = "";
   let stderr = "";
+  cargo.stdout.on("data", (chunk) => { stdout += chunk; });
   cargo.stderr.on("data", (chunk) => { stderr += chunk; });
   const [code] = await once(cargo, "close");
-  if (code !== 0 || !existsSync(sourceCrypt)) {
+  let builtCrypt = null;
+  for (const line of stdout.split(/\r?\n/)) {
+    try {
+      const message = JSON.parse(line);
+      if (message.reason === "compiler-artifact" && message.target?.name === "crypt" && typeof message.executable === "string") builtCrypt = message.executable;
+    } catch { /* non-JSON Cargo output is irrelevant */ }
+  }
+  if (code !== 0 || !builtCrypt || !existsSync(builtCrypt)) {
     // The rebuild failed (e.g. RIGHT_RELEASE_CACHE_ROOT unset, or a broken shared build cache).
     // Fall back to a previously built binary rather than failing outright — it is stale relative
     // to source, but still a real Crypt build, so the test keeps exercising real behavior instead
@@ -66,7 +44,7 @@ async function currentCrypt() {
     }
     throw new Error(`current Crypt build failed: ${stderr}`);
   }
-  return sourceCrypt;
+  return builtCrypt;
 }
 
 async function rpc(messages, env) {

@@ -155,6 +155,29 @@ fn unresolved(candidate: &Value, provider: &str, generation: &str) -> SourceReso
     });
     if !candidate_set.get("omissions").is_some_and(Value::is_array) { candidate_set["omissions"] = json!([]); }
     candidate_set["omissions"].as_array_mut().unwrap().extend(omissions);
+    // Provider completion order is not an admission signal.  Keep both the
+    // receipt side-channel and omission list canonical so equivalent provider
+    // results serialize identically before the planner sees them.
+    receipts.sort_by(|left, right| {
+        left.candidate_id
+            .cmp(&right.candidate_id)
+            .then(left.provider.cmp(&right.provider))
+            .then(left.status.as_str().cmp(right.status.as_str()))
+    });
+    if let Some(omissions) = candidate_set["omissions"].as_array_mut() {
+        omissions.sort_by(|left, right| {
+            let left_id = left.get("id").and_then(Value::as_str).unwrap_or_default();
+            let right_id = right.get("id").and_then(Value::as_str).unwrap_or_default();
+            left_id
+                .cmp(right_id)
+                .then_with(|| {
+                    left.get("reason")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .cmp(right.get("reason").and_then(Value::as_str).unwrap_or_default())
+                })
+        });
+    }
     receipts
 }
 

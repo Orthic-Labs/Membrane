@@ -5,6 +5,154 @@
 
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
+
+const LIFECYCLE_READY_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Ephemeral capability received from the Orthic lifecycle channel.
+/// It is copied into process memory at startup, never persisted.
+#[derive(Clone)]
+pub struct LifecycleControl {
+    snapshot_capability: Option<Arc<str>>,
+    admission_open: Arc<AtomicBool>,
+    shutdown_requested: Arc<AtomicBool>,
+    ready: Arc<(Mutex<Option<u16>>, Condvar)>,
+    command: Arc<Mutex<Option<String>>>,
+    failure: Arc<Mutex<Option<String>>>,
+}
+
+impl Default for LifecycleControl {
+    fn default() -> Self {
+        Self {
+            snapshot_capability: None,
+            admission_open: Arc::new(AtomicBool::new(true)),
+            shutdown_requested: Arc::new(AtomicBool::new(false)),
+            ready: Arc::new((Mutex::new(None), Condvar::new())),
+            command: Arc::new(Mutex::new(None)),
+            failure: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
+impl LifecycleControl {
+    /// Bind a capability received from a validated lifecycle hello frame.
+    /// The caller must retain no copy after this handoff.
+    pub fn from_lifecycle_capability(capability: &str) -> Result<Self, String> {
+        if capability.len() != 64
+            || !capability
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+        {
+            return Err("lifecycle snapshot capability invalid".into());
+        }
+        Ok(Self {
+            snapshot_capability: Some(Arc::<str>::from(capability)),
+            ..Self::default()
+        })
+    }
+
+    pub fn snapshot_authorized(&self, supplied: Option<&str>) -> bool {
+        let (Some(expected), Some(actual)) = (&self.snapshot_capability, supplied) else {
+            return false;
+        };
+        if expected.len() != actual.len() {
+            return false;
+        }
+        expected
+            .as_bytes()
+            .iter()
+            .zip(actual.as_bytes())
+            .fold(0u8, |difference, (left, right)| difference | (left ^ right))
+            == 0
+    }
+
+    pub fn admission_open(&self) -> bool {
+        self.admission_open.load(Ordering::Acquire)
+    }
+
+    pub fn shutdown_requested(&self) -> bool {
+        self.shutdown_requested.load(Ordering::Acquire)
+    }
+
+    pub fn request_drain(&self, command: Option<&str>) {
+        if let Some(command) = command {
+            if let Ok(mut current) = self.command.lock() {
+                if current.is_none() {
+                    *current = Some(command.to_string());
+                }
+            }
+        }
+        self.admission_open.store(false, Ordering::Release);
+        self.shutdown_requested.store(true, Ordering::Release);
+        self.ready.1.notify_all();
+    }
+
+    pub fn fail(&self, reason: impl Into<String>) {
+        if let Ok(mut failure) = self.failure.lock() {
+            if failure.is_none() {
+                *failure = Some(reason.into());
+            }
+        }
+        self.request_drain(None);
+    }
+
+    pub fn failure(&self) -> Option<String> {
+        self.failure.lock().ok().and_then(|value| value.clone())
+    }
+
+    pub fn command(&self) -> Option<String> {
+        self.command.lock().ok().and_then(|value| value.clone())
+    }
+
+    pub(crate) fn mark_ready(&self, port: u16) {
+        if let Ok(mut ready) = self.ready.0.lock() {
+            *ready = Some(port);
+            self.ready.1.notify_all();
+        }
+    }
+
+    pub fn wait_until_ready(&self) -> Result<u16, String> {
+        let ready = self
+            .ready
+            .0
+            .lock()
+            .map_err(|_| "lifecycle ready state unavailable".to_string())?;
+        let (ready, timeout) = self
+            .ready
+            .1
+            .wait_timeout_while(ready, LIFECYCLE_READY_WAIT, |port| {
+                port.is_none() && !self.shutdown_requested()
+            })
+            .map_err(|_| "lifecycle ready state unavailable".to_string())?;
+        if self.shutdown_requested() {
+            return Err(self
+                .failure()
+                .unwrap_or_else(|| "lifecycle startup stopped before ready".to_string()));
+        }
+        if let Some(port) = *ready {
+            return Ok(port);
+        }
+        if timeout.timed_out() {
+            return Err("lifecycle startup timeout".to_string());
+        }
+        Err(self
+            .failure()
+            .unwrap_or_else(|| "lifecycle startup stopped before ready".to_string()))
+    }
+}
+
+static LIFECYCLE_CONTROL: OnceLock<LifecycleControl> = OnceLock::new();
+
+pub fn install_lifecycle_control(control: LifecycleControl) -> Result<(), String> {
+    LIFECYCLE_CONTROL
+        .set(control)
+        .map_err(|_| "lifecycle control already bound".to_string())
+}
+
+pub fn lifecycle_control() -> &'static LifecycleControl {
+    LIFECYCLE_CONTROL.get_or_init(LifecycleControl::default)
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -142,6 +290,16 @@ pub(crate) fn runtime_from_exe(exe: &Path) -> Result<Runtime, String> {
 /// passes a lease, the runtime validates the signature before starting. With no lease the
 /// runtime falls back to the legacy `run_service` behavior.
 pub fn run_service_from(lease: Option<&std::path::Path>) -> Result<(), String> {
+    run_service_with_lifecycle(lease, LifecycleControl::default())
+}
+
+/// Starts a lifecycle-managed resident with its snapshot capability held only
+/// in memory. The lifecycle dispatcher validates the inherited channel before
+/// constructing this control object.
+pub fn run_service_with_lifecycle(
+    lease: Option<&std::path::Path>,
+    lifecycle: LifecycleControl,
+) -> Result<(), String> {
     if let Some(lease_path) = lease {
         // Validate the lease file is present and parses before handing off to the supervisor
         // machinery. The full lease authority check belongs to the supervisor itself; here we
@@ -158,6 +316,7 @@ pub fn run_service_from(lease: Option<&std::path::Path>) -> Result<(), String> {
         // Store the path so downstream consumers (serve.rs) can pick it up if needed.
         std::env::set_var("MEMBRANE_SUPERVISOR_LEASE", lease_path);
     }
+    install_lifecycle_control(lifecycle)?;
     run_service()
 }
 
@@ -218,6 +377,29 @@ pub fn run_service() -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lifecycle_capability_is_bounded_memory_only_authority() {
+        let capability = "a".repeat(64);
+        let control = LifecycleControl::from_lifecycle_capability(&capability).unwrap();
+        assert!(control.snapshot_authorized(Some(&capability)));
+        assert!(!control.snapshot_authorized(Some("wrong")));
+        assert!(!control.snapshot_authorized(None));
+        assert!(LifecycleControl::from_lifecycle_capability("").is_err());
+        assert!(LifecycleControl::from_lifecycle_capability(&"x".repeat(257)).is_err());
+    }
+
+    #[test]
+    fn lifecycle_control_closes_admission_and_preserves_first_command() {
+        let control = LifecycleControl::default();
+        control.mark_ready(47_851);
+        assert_eq!(control.wait_until_ready().unwrap(), 47_851);
+        control.request_drain(Some("stop"));
+        control.request_drain(Some("drain"));
+        assert!(!control.admission_open());
+        assert!(control.shutdown_requested());
+        assert_eq!(control.command().as_deref(), Some("stop"));
+    }
 
     #[test]
     fn build_info_exposes_source_commit_and_tree_identity_fields() {

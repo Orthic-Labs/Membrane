@@ -1,7 +1,7 @@
-//! Per-user Membrane supervisor. Orchestrates lock acquisition, lease publishing, watcher
-//! dedup, resident spawn, and restart. The supervisor's outer loop is intentionally simple
+//! Per-user Membrane supervisor. Orchestrates lock acquisition, lease publishing, resident
+//! spawn, and restart. The supervisor's outer loop is intentionally simple
 //! and explicit so the contract is auditable; the supervisor's internals (lock, lease,
-//! watcher, resident) are independently testable.
+//! resident) are independently testable.
 //!
 //! MBR-201: build a per-user Membrane supervisor.
 
@@ -13,7 +13,6 @@ use crate::lease::{
 };
 use crate::lock::{release_if_owned, try_acquire_until, LockOutcome, SupervisorLock};
 use crate::resident::{preflight_resident_binary, ResidentHandle, ResidentInvocation};
-use crate::watcher::{WatcherAction, WatcherCoordinator};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -81,7 +80,6 @@ pub enum CycleOutcome {
     /// resident to completion in a single shot (used by tests and one-shot CLI mode).
     Completed {
         resident_pid: Option<u32>,
-        watcher_action: WatcherAction,
     },
     /// The supervisor refused to start because another supervisor is already running.
     RefusedAlreadyRunning { pid: u32 },
@@ -97,24 +95,18 @@ pub struct Supervisor {
     config: SupervisorConfig,
     state: SupervisorState,
     lock: SupervisorLock,
-    coordinator: WatcherCoordinator,
 }
 
 impl Supervisor {
-    /// Build a supervisor over the given config and state. The lock and watcher coordinator
-    /// are wired up from config; no IO happens in this constructor.
+    /// Build a supervisor over the given config and state. The lock is wired up from config;
+    /// no IO happens in this constructor.
     pub fn new(config: SupervisorConfig, state: SupervisorState) -> Result<Self> {
         config.restart_policy; // exhaustiveness touch (no-op; config already validated in parse)
         let lock = SupervisorLock::new(config.pid_lock_path.clone());
-        let coordinator = WatcherCoordinator::new(
-            config.watcher_policy.pid_file.clone(),
-            config.watcher_policy.script.clone(),
-        );
         Ok(Self {
             config,
             state,
             lock,
-            coordinator,
         })
     }
 
@@ -198,15 +190,6 @@ impl Supervisor {
             }
         })?;
         atomic_write(&self.config.status_path, &body)
-    }
-
-    /// Decide what to do about the watcher this cycle. The supervisor's caller routes on
-    /// the outcome: `Adopt` is a read-only liveness observation (purely informational,
-    /// never influencing what Membrane spawns), `Unavailable` is reported and skipped.
-    /// The supervisor never spawns a watcher — Membrane observes, never claims, per D-S09.
-    pub fn reconcile_watcher(&self) -> Result<WatcherAction> {
-        let action = self.coordinator.decide_with_invariant()?;
-        Ok(action)
     }
 
     /// Spawn the resident child. Validates the binary's preflight first; the runtime will
@@ -311,8 +294,6 @@ pub fn for_test(
     endpoint_path: PathBuf,
     status_path: PathBuf,
     loopback_port: u16,
-    watcher_pid_file: PathBuf,
-    watcher_script: Option<PathBuf>,
     restart_policy: RestartPolicy,
 ) -> Result<Supervisor> {
     let config = SupervisorConfig {
@@ -324,11 +305,6 @@ pub fn for_test(
         pid_lock_path,
         loopback_port,
         restart_policy,
-        watcher_policy: crate::config::WatcherPolicy {
-            managed: true,
-            pid_file: watcher_pid_file,
-            script: watcher_script,
-        },
         lifetime_seconds: None,
     };
     Supervisor::new(config, Supervisor::fresh_state())
@@ -358,15 +334,9 @@ pub fn dry_run(
 ) -> Result<CheckReport> {
     let lock = SupervisorLock::new(config.pid_lock_path.clone());
     let lock_outcome = lock.try_acquire(own_pid)?;
-    let coordinator = WatcherCoordinator::new(
-        config.watcher_policy.pid_file.clone(),
-        config.watcher_policy.script.clone(),
-    );
-    let watcher_action = coordinator.decide_with_invariant()?;
     Ok(CheckReport {
         own_pid,
         lock: lock_outcome,
-        watcher: watcher_action,
         state_snapshot: state.clone(),
         endpoint_preview: SupervisorEndpointV1 {
             schema_version: SUPERVISOR_ENDPOINT_SCHEMA_VERSION,
@@ -385,7 +355,6 @@ pub fn dry_run(
 pub struct CheckReport {
     pub own_pid: u32,
     pub lock: LockOutcome,
-    pub watcher: WatcherAction,
     pub state_snapshot: SupervisorState,
     pub endpoint_preview: SupervisorEndpointV1,
 }
@@ -436,8 +405,6 @@ mod tests {
             dir.join("endpoint.json"),
             dir.join("status.json"),
             47851,
-            dir.join("watchman.pid"),
-            None,
             RestartPolicy::default(),
         )
         .unwrap();
@@ -455,8 +422,6 @@ mod tests {
             dir.join("endpoint.json"),
             dir.join("status.json"),
             47851,
-            dir.join("watchman.pid"),
-            None,
             RestartPolicy::default(),
         )
         .unwrap();
@@ -510,8 +475,6 @@ mod tests {
             dir.join("endpoint.json"),
             dir.join("status.json"),
             47851,
-            dir.join("watchman.pid"),
-            None,
             RestartPolicy {
                 max_restarts: 3,
                 window_seconds: 60,
@@ -544,8 +507,6 @@ mod tests {
             dir.join("endpoint.json"),
             dir.join("status.json"),
             47851,
-            dir.join("watchman.pid"),
-            None,
             RestartPolicy::default(),
         )
         .unwrap();
@@ -555,7 +516,7 @@ mod tests {
     }
 
     #[test]
-    fn dry_run_reports_lock_and_watcher_status() {
+    fn dry_run_reports_lock_status() {
         let dir = test_config_dir();
         let config = SupervisorConfig {
             schema_version: crate::config::CONFIG_SCHEMA_VERSION,
@@ -566,17 +527,11 @@ mod tests {
             pid_lock_path: dir.join("supervisor.pid"),
             loopback_port: 47851,
             restart_policy: RestartPolicy::default(),
-            watcher_policy: crate::config::WatcherPolicy {
-                managed: true,
-                pid_file: dir.join("watchman.pid"),
-                script: None,
-            },
             lifetime_seconds: None,
         };
         let state = Supervisor::fresh_state();
         let report = dry_run(&config, &state, std::process::id()).unwrap();
         assert_eq!(report.lock, LockOutcome::Acquired);
-        assert_eq!(report.watcher, WatcherAction::Unavailable);
         assert_eq!(
             report.endpoint_preview.supervisor_instance_id,
             state.supervisor_instance_id

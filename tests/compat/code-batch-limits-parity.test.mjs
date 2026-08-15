@@ -16,10 +16,12 @@ function numeric(raw) {
     .reduce((product, n) => product * n, 1);
 }
 
-function extract(source, pattern) {
+function extract(source, pattern, wanted) {
   const constants = {};
   let match;
-  while ((match = pattern.exec(source)) !== null) constants[match[1]] = numeric(match[2]);
+  while ((match = pattern.exec(source)) !== null) {
+    if (wanted.includes(match[1])) constants[match[1]] = numeric(match[2]);
+  }
   return constants;
 }
 
@@ -31,8 +33,10 @@ const PAIRS = [
 ];
 
 test("Rust and JS code-batch limits remain equal", () => {
-  const rust = extract(read("../../engine/crates/membrane-runtime/src/code_batch.rs"), /pub const (\w+): \w+ = ([^;]+);/g);
-  const js = extract(read("../../operations/code/code-batch-limits.mjs"), /export const (\w+) = ([^;]+);/g);
+  const wantedRust = ["MAX_ITEMS", "MAX_BYTES", "MAX_TOKENS", "MAX_DEADLINE_MS"];
+  const wantedJs = ["CODE_BATCH_MAX_ITEMS", "CODE_BATCH_MAX_BYTES", "CODE_BATCH_MAX_TOKENS", "CODE_BATCH_MAX_DEADLINE_MS"];
+  const rust = extract(read("../../engine/crates/membrane-runtime/src/code_batch.rs"), /pub const (\w+): \w+ = ([^;]+);/g, wantedRust);
+  const js = extract(read("../../operations/code/code-batch-limits.mjs"), /export const (\w+) = ([^;]+);/g, wantedJs);
   for (const [rustName, jsName] of PAIRS) {
     assert.ok(rustName in rust, `code_batch.rs is missing ${rustName}`);
     assert.ok(jsName in js, `code-batch-limits.mjs is missing ${jsName}`);

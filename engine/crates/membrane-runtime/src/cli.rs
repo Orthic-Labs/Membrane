@@ -4308,6 +4308,13 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             } else {
                 println!();
             }
+            if let Some(marker) = &res.recovery_marker {
+                println!(
+                    "[recovery] {}",
+                    serde_json::to_string(marker)
+                        .map_err(|error| format!("recovery marker encode failed: {error}"))?
+                );
+            }
             println!("[anchor] {}", res.anchor);
             eprintln!("runc: exit={} full={spill_display}", res.exit_code);
             std::process::exit(res.exit_code);

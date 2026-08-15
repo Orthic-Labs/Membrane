@@ -330,5 +330,25 @@ export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTE
       audit("memory-nag", "advisory", { session_id: event.sessionId || null }, home);
       return typedStatus("available", "memory_nag", { additionalContext });
     },
+    async postToolUseFailure(event) {
+      const reason = String(event.payload?.error?.message || event.payload?.error || event.payload?.reason || "");
+      if (!reason.trim()) return typedStatus("skipped", "failure_not_applicable");
+      // Bounded, secret-safe: only a redacted, content-free summary is retained.
+      const summary = redactSummary(reason);
+      audit("memory-failure", "observed", { session_id: event.sessionId || null }, home);
+      return typedStatus("available", "failure_observed", { summaryLength: summary.length, contentFree: true });
+    },
+    async taskCompleted(event) {
+      if (!event.sessionId) return typedStatus("skipped", "episode_not_applicable");
+      const outcomes = Array.isArray(event.payload?.outcomes) ? event.payload.outcomes : [];
+      const bounded = outcomes.slice(0, 64);
+      const outcomeDigest = createHash("sha256").update(JSON.stringify(bounded)).digest("hex");
+      audit("memory-episode", "observed", { session_id: event.sessionId, outcome_count: outcomes.length }, home);
+      return typedStatus("available", "episode_captured", { outcomeDigest: `sha256:${outcomeDigest}`, contentFree: true });
+    },
+    async sessionEnd(event) {
+      audit("memory-session-end", "observed", { session_id: event.sessionId || null }, home);
+      return typedStatus("available", "session_closed");
+    },
   });
 }

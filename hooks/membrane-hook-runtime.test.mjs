@@ -27,6 +27,7 @@ test("dispatches Crypt status before memory behavior in declared order", async (
     "membrane.crypt-status", "membrane.memory-rearm", "membrane.memory-recall",
     "membrane.memory-pre-compact", "membrane.memory-post-compact", "membrane.memory-bump",
     "membrane.memory-conflict", "membrane.tool-observer", "membrane.memory-ingest", "membrane.memory-nag",
+    "membrane.memory-failure", "membrane.memory-episode", "membrane.memory-session-end",
   ]);
   assert.equal(result.results[0].output.reason, "event_not_applicable");
   assert.equal(result.results[2].output.reason, "memory_recalled");

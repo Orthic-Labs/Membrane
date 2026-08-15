@@ -4,9 +4,8 @@
 //! 1. Read the JSON config from `--config <path>` (the installer writes this on its own).
 //! 2. Acquire the single-instance PID lock.
 //! 3. Publish a fresh lease + endpoint file.
-//! 4. Decide whether the cortex watcher is already running (adopt) or missing (spawn).
-//! 5. Spawn the resident (`membrane supervisor-child --lease <path>`) and wait.
-//! 6. On exit, apply the restart policy; back off and try again.
+//! 4. Spawn the resident (`membrane supervisor-child --lease <path>`) and wait.
+//! 5. On exit, apply the restart policy; back off and try again.
 //!
 //! MBR-201: build a per-user Membrane supervisor.
 
@@ -15,7 +14,7 @@
 use clap::{Parser, Subcommand};
 use membrane_supervisor::{
     dry_run, load_or_init_state, save_state, CycleOutcome, LockOutcome, ResidentHandle, Supervisor,
-    SupervisorConfig, SupervisorError, SupervisorState, WatcherAction,
+    SupervisorConfig, SupervisorError, SupervisorState,
 };
 use std::path::PathBuf;
 use std::time::Duration;
@@ -27,7 +26,7 @@ const LOCK_WAIT_DEADLINE: Duration = Duration::from_secs(5);
 #[command(
     name = "membrane-supervisor",
     bin_name = "membrane-supervisor",
-    about = "Per-user Membrane supervisor. Owns one resident, publishes discovery, dedupes the watcher.",
+    about = "Per-user Membrane supervisor. Owns one resident and publishes discovery.",
     version
 )]
 struct Cli {
@@ -37,7 +36,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// One-shot health check. Reads the config and reports lock + watcher status without
+    /// One-shot health check. Reads the config and reports lock status without
     /// launching anything. The doctor uses this on install/upgrade.
     Check {
         /// Path to the JSON config file.
@@ -139,7 +138,7 @@ fn run_subcommand(
     Ok(())
 }
 
-/// Run the supervisor's outer loop. Each iteration: reconcile the watcher, publish a fresh
+/// Run the supervisor's outer loop. Each iteration: publish a fresh
 /// lease + endpoint, spawn the resident, wait for it. When the resident exits cleanly the
 /// loop exits; when it exits with a non-zero code the loop applies the restart policy.
 fn run_outer_loop(
@@ -154,11 +153,9 @@ fn run_outer_loop(
             if cycle >= cap {
                 return Ok(CycleOutcome::Completed {
                     resident_pid: state.last_resident_pid,
-                    watcher_action: WatcherAction::Unavailable,
                 });
             }
         }
-        let watcher_action = supervisor.reconcile_watcher()?;
         let lease = supervisor.publish_lease(0, &iso8601_now())?;
         lease.verify_self_integrity()?;
         supervisor.publish_status()?;
@@ -182,7 +179,6 @@ fn run_outer_loop(
             if !should_restart {
                 return Ok(CycleOutcome::Completed {
                     resident_pid: Some(own_pid),
-                    watcher_action,
                 });
             }
             let backoff = supervisor.next_backoff(cycle);
@@ -190,7 +186,6 @@ fn run_outer_loop(
         } else {
             return Ok(CycleOutcome::Completed {
                 resident_pid: Some(own_pid),
-                watcher_action,
             });
         }
     }

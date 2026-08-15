@@ -2,6 +2,13 @@ import { createHash } from "node:crypto";
 
 const digest = (value) => `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 const sortById = (left, right) => String(left.id || left.node_id || left.candidate_id).localeCompare(String(right.id || right.node_id || right.candidate_id));
+const nodeId = (node) => node.id || node.node_id;
+const edgeId = (edge) => JSON.stringify([edge.from, edge.to, edge.type || ""]);
+
+function omissionAggregate(kind, reason, omittedIds, recovery) {
+  const sortedIds = [...omittedIds].map(String).sort();
+  return { kind, reason, count: sortedIds.length, omittedIdsSha256: digest(sortedIds), recovery };
+}
 
 function bounded(value, bounds) {
   return value.filter((entry) => (entry.depth ?? 0) <= bounds.depth).slice(0, bounds.nodes);
@@ -9,21 +16,84 @@ function bounded(value, bounds) {
 
 export function buildNeighborhood({ providerId, repositoryId, sourceGenerationId, seeds = [], nodes = [], edges = [], evidencePaths = [], sourceResolutions = [], bounds = {} }) {
   const limit = { depth: bounds.depth ?? 2, nodes: bounds.nodes ?? 64, edges: bounds.edges ?? 128, elapsed_ms: bounds.elapsed_ms ?? 250, estimated_tokens: bounds.estimated_tokens ?? 4096 };
-  const seedIds = new Set(seeds.map((seed) => seed.id || seed.node_id));
-  const selected = bounded([...nodes].sort(sortById), limit);
-  const selectedIds = new Set(selected.map((node) => node.id || node.node_id));
-  const typedEdges = edges.filter((edge) => selectedIds.has(edge.from) && selectedIds.has(edge.to)).sort((a, b) => `${a.from}:${a.to}:${a.type}`.localeCompare(`${b.from}:${b.to}:${b.type}`)).slice(0, limit.edges);
+  const seedIds = new Set(seeds.map(nodeId));
+  // Keep anchors inside bounded snapshots even when their canonical IDs sort
+  // after the node cap. Without this, a large repository can return a packet
+  // with no seed path at all, making every explanation an omission.
+  const adjacency = new Map();
+  for (const edge of edges) {
+    const next = adjacency.get(edge.from) || [];
+    next.push(edge.to);
+    adjacency.set(edge.from, next);
+  }
+  const distance = new Map([...seedIds].map((id) => [id, 0]));
+  const queue = [...seedIds];
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index];
+    for (const next of adjacency.get(current) || []) {
+      if (!distance.has(next)) {
+        distance.set(next, distance.get(current) + 1);
+        queue.push(next);
+      }
+    }
+  }
+  const orderedNodes = [...nodes]
+    .filter((node) => {
+      const id = nodeId(node);
+      const graphDistance = distance.get(id);
+      // Graph reachability is authoritative for bounded traversal. Do not
+      // trust a provider-supplied depth field to smuggle deep nodes into a
+      // shallow snapshot; disconnected nodes remain available for omission
+      // accounting after reachable nodes consume the cap.
+      return graphDistance === undefined || graphDistance <= limit.depth;
+    })
+    .sort((left, right) => {
+      const leftDistance = distance.get(nodeId(left)) ?? Number.POSITIVE_INFINITY;
+      const rightDistance = distance.get(nodeId(right)) ?? Number.POSITIVE_INFINITY;
+      return leftDistance - rightDistance || sortById(left, right);
+    });
+  const depthOmitted = nodes.filter((node) => {
+    const graphDistance = distance.get(nodeId(node));
+    return graphDistance !== undefined && graphDistance > limit.depth;
+  });
+  const selected = orderedNodes.slice(0, limit.nodes);
+  const nodeOmitted = orderedNodes.slice(limit.nodes);
+  const selectedIds = new Set(selected.map(nodeId));
+  const selectedEdges = edges.filter((edge) => selectedIds.has(edge.from) && selectedIds.has(edge.to)).sort((a, b) => edgeId(a).localeCompare(edgeId(b)));
+  const typedEdges = selectedEdges.slice(0, limit.edges);
   const reachable = new Set(seedIds);
   let changed = true;
   while (changed) {
     changed = false;
     for (const edge of typedEdges) if (reachable.has(edge.from) && !reachable.has(edge.to)) { reachable.add(edge.to); changed = true; }
   }
-  const omissions = selected.filter((node) => !reachable.has(node.id || node.node_id)).map((node) => ({ node_id: node.id || node.node_id, reason: "no_seed_path", recovery: "add_anchor_or_allow_relation" }));
+  const disconnected = selected.filter((node) => !reachable.has(nodeId(node)));
+  const depthIds = new Set(depthOmitted.map(nodeId));
+  const nodeIds = new Set(nodeOmitted.map(nodeId));
+  const deliveredEdges = typedEdges.filter((edge) => reachable.has(edge.from) && reachable.has(edge.to));
+  const edgeOmissions = new Map();
+  const omitEdge = (reason, edge, recovery) => {
+    const bucket = edgeOmissions.get(reason) || { ids: [], recovery };
+    bucket.ids.push(edgeId(edge));
+    edgeOmissions.set(reason, bucket);
+  };
+  for (const edge of edges) {
+    if (depthIds.has(edge.from) || depthIds.has(edge.to)) omitEdge("depth_limit", edge, "increase_depth_bound");
+    else if (nodeIds.has(edge.from) || nodeIds.has(edge.to)) omitEdge("node_limit", edge, "increase_node_bound");
+    else if (!selectedIds.has(edge.from) || !selectedIds.has(edge.to)) omitEdge("endpoint_unavailable", edge, "include_edge_endpoints");
+    else if (!typedEdges.includes(edge)) omitEdge("edge_limit", edge, "increase_edge_bound");
+    else if (!reachable.has(edge.from) || !reachable.has(edge.to)) omitEdge("no_seed_path", edge, "add_anchor_or_allow_relation");
+  }
+  const omissions = [
+    ...disconnected.map((node) => ({ node_id: nodeId(node), reason: "no_seed_path", recovery: "add_anchor_or_allow_relation" })).sort((a, b) => String(a.node_id).localeCompare(String(b.node_id))),
+    ...(depthOmitted.length ? [omissionAggregate("depth", "depth_limit", depthOmitted.map(nodeId), "increase_depth_bound")] : []),
+    ...(nodeOmitted.length ? [omissionAggregate("node", "node_limit", nodeOmitted.map(nodeId), "increase_node_bound")] : []),
+    ...[...edgeOmissions.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([reason, entry]) => omissionAggregate("edge", reason, entry.ids, entry.recovery)),
+  ];
   return {
     schema: "orthic.context-neighborhood.v1", provider_id: providerId, repository_id: repositoryId,
-    source_generation_id: sourceGenerationId, seed_nodes: [...seeds], nodes: selected.filter((node) => reachable.has(node.id || node.node_id)),
-    typed_edges: typedEdges.filter((edge) => reachable.has(edge.from) && reachable.has(edge.to)), evidence_paths: [...evidencePaths].sort(),
+    source_generation_id: sourceGenerationId, seed_nodes: [...seeds].sort(sortById), nodes: selected.filter((node) => reachable.has(nodeId(node))),
+    typed_edges: deliveredEdges, evidence_paths: [...evidencePaths].sort(),
     source_resolutions: [...sourceResolutions].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))), bounds: limit, omissions,
   };
 }

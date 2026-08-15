@@ -1,7 +1,54 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { performance } from "node:perf_hooks";
-import { boundedLifecycleId, createLifecycle, withCancellationGrace } from "./lifecycle.mjs";
+import { boundedLifecycleId, createLifecycle, createLifecycleChannel, withCancellationGrace } from "./lifecycle.mjs";
+
+function inheritedChannel() {
+  const handlers = new Map();
+  const sent = [];
+  return {
+    inherited: true,
+    authenticated: true,
+    sent,
+    on(event, handler) { handlers.set(event, handler); },
+    send: async (message) => sent.push(message),
+    emit(event) { return handlers.get(event)?.(); },
+  };
+}
+
+const childIdentity = {
+  installationId: "sha256:installation",
+  productId: "membrane",
+  instanceId: "instance-1",
+  artifactDigest: `sha256:${"a".repeat(64)}`,
+  dataRoot: "/tmp/membrane",
+};
+
+test("orthic lifecycle rejects unauthenticated transport & non-exact fences", async () => {
+  assert.throws(() => createLifecycleChannel({ channel: {}, identity: childIdentity, fence: 7 }), /not_authenticated/);
+  const lifecycle = createLifecycleChannel({ channel: inheritedChannel(), identity: childIdentity, fence: 7 });
+  await assert.rejects(lifecycle.command("drain", 6), /stale_fence/);
+  await assert.rejects(lifecycle.command("drain", 8), /stale_fence/);
+  assert.equal(lifecycle.fence, 7);
+});
+
+test("orthic lifecycle parent loss performs bounded drain then stop", async () => {
+  const channel = inheritedChannel();
+  const calls = [];
+  const lifecycle = createLifecycleChannel({
+    channel,
+    identity: childIdentity,
+    fence: 3,
+    drain: async () => calls.push("drain"),
+    stop: async () => calls.push("stop"),
+    drainTimeoutMs: 20,
+  });
+  await lifecycle.hello();
+  await channel.emit("close");
+  assert.deepEqual(calls, ["drain", "stop"]);
+  assert.equal(lifecycle.state, "stopped");
+  assert.equal(lifecycle.parentLost, true);
+});
 
 test("MBR-305: long context work emits ordered progress and structured logs", async () => {
   const logs = [];

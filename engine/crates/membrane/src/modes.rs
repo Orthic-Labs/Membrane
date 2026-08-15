@@ -3,7 +3,10 @@
 //!
 //! MBR-102: create one membrane executable with mode subcommands.
 
-use crate::dispatch::{InstallInvocation, MembraneMode, ParsedInvocation, UninstallInvocation};
+use crate::dispatch::{
+    consume_lifecycle_channel, monitor_lifecycle_channel, InstallInvocation, LifecycleCommand,
+    LifecycleEndpoint, MembraneMode, ParsedInvocation, UninstallInvocation,
+};
 use crate::{EXIT_INTERNAL_ERROR, EXIT_OK, EXIT_USER_ERROR};
 
 /// MBR-108: map a parsed mode to the process plane it executes in. The mapping is the single
@@ -203,10 +206,70 @@ fn dispatch_loopback_api(port: u16) -> DispatchOutcome {
 }
 
 fn dispatch_supervisor_child(lease: Option<&std::path::Path>) -> DispatchOutcome {
-    match membrane_runtime::service::run_service_from(lease) {
-        Ok(()) => DispatchOutcome::Ok,
-        Err(error) => classify_runtime_error(error),
+    let lifecycle = match consume_lifecycle_channel() {
+        Ok(channel) => channel,
+        Err(error) => return DispatchOutcome::UserError(error),
+    };
+    let Some(channel) = lifecycle else {
+        return match membrane_runtime::service::run_service_from(lease) {
+            Ok(()) => DispatchOutcome::Ok,
+            Err(error) => classify_runtime_error(error),
+        };
+    };
+    let control = match membrane_runtime::service::LifecycleControl::from_lifecycle_capability(
+        channel.capability(),
+    ) {
+        Ok(control) => control,
+        Err(error) => return DispatchOutcome::UserError(error),
+    };
+    let ready_channel = channel.clone();
+    let ready_control = control.clone();
+    std::thread::spawn(move || match ready_control.wait_until_ready() {
+        Ok(port) => {
+            if let Err(error) = ready_channel.ready(LifecycleEndpoint {
+                host: "127.0.0.1".to_string(),
+                port,
+            }) {
+                ready_control.fail(error);
+            }
+        }
+        Err(error) => {
+            if !ready_control.shutdown_requested() {
+                ready_control.fail(error);
+            }
+        }
+    });
+    let _monitor = monitor_lifecycle_channel(channel.clone(), control.clone());
+    let service = membrane_runtime::service::run_service_with_lifecycle(lease, control.clone());
+    if let Err(error) = service {
+        let _ = channel.failed();
+        return classify_runtime_error(error);
     }
+    if let Some(error) = control.failure() {
+        let _ = channel.failed();
+        return DispatchOutcome::InternalError(error);
+    }
+    let command = match control.command().as_deref() {
+        Some("drain") => LifecycleCommand::Drain,
+        Some("stop") => LifecycleCommand::Stop,
+        Some("update_handoff") => LifecycleCommand::UpdateHandoff,
+        Some("ownership_loss") => LifecycleCommand::OwnershipLoss,
+        Some("parent_eof") => LifecycleCommand::ParentEof,
+        Some(_) => {
+            let _ = channel.failed();
+            return DispatchOutcome::InternalError("lifecycle command state invalid".into());
+        }
+        None => {
+            let _ = channel.failed();
+            return DispatchOutcome::InternalError(
+                "lifecycle resident stopped without a drain command".into(),
+            );
+        }
+    };
+    if let Err(error) = channel.acknowledge_drained(command) {
+        return DispatchOutcome::InternalError(error);
+    }
+    DispatchOutcome::Ok
 }
 
 /// MBR-203: install handler. Loads the plan (or builds a default), runs

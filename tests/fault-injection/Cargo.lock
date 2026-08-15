@@ -1048,6 +1048,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "membrane-core"
+version = "0.1.0"
+dependencies = [
+ "membrane-protocol",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "membrane-fault-injection"
 version = "0.1.0"
 dependencies = [
@@ -1091,6 +1101,7 @@ dependencies = [
  "crypt-format",
  "crypt-store",
  "getrandom 0.2.17",
+ "membrane-core",
  "membrane-mcp",
  "membrane-protocol",
  "ort",

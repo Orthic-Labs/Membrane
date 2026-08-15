@@ -120,9 +120,6 @@ impl SupervisorLock {
 /// Is `pid` alive in this process's PID namespace? On Unix we use `kill(pid, 0)`. On Windows
 /// the conservative path reports "alive" because we cannot probe without Win32; the installer
 /// follows up by surfacing a `PidLockHeld` error when the supervisor cannot start.
-///
-/// Public so the watcher coordinator can use the same probe to decide whether to adopt a
-/// recorded watcher pidfile.
 pub fn pid_alive_probe(pid: u32) -> bool {
     if pid == 0 {
         return false;

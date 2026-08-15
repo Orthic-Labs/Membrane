@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 /// Schema version of the supervisor config. The supervisor refuses config files with a newer
 /// `schema_version` so a downgrade cannot silently widen authority.
-pub const CONFIG_SCHEMA_VERSION: u32 = 1;
+pub const CONFIG_SCHEMA_VERSION: u32 = 2;
 
 /// Default unprivileged loopback port the supervisor expects the resident to bind. Mirrors
 /// the constant embedded in `membrane-dispatch::LoopbackArgs` so the supervisor's default
@@ -47,27 +47,6 @@ impl Default for RestartPolicy {
     }
 }
 
-/// Watcher coordination policy. The supervisor never spawns or owns the watcher;
-/// it only observes the pidfile to learn whether a live watcher exists (purely
-/// informational, never influencing what Membrane spawns). Duplicate watchers are
-/// impossible because Membrane never spawns — it only adopts a live pid as a
-/// read-only liveness probe, per D-S09.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WatcherPolicy {
-    /// Reserved flag; the supervisor never spawns regardless of this value.
-    /// `true`/`false` both mean "observe only" — the supervisor only adopts a
-    /// live pid as a read-only liveness probe and never spawns, per D-S09.
-    pub managed: bool,
-    /// PID file the watcher is required to publish. The supervisor reads this on every
-    /// decision cycle and refuses to spawn a duplicate.
-    pub pid_file: PathBuf,
-    /// Optional path to the watcher script. When `None`, the coordinator reports
-    /// `Unavailable`. Retained for `Adopt`'s script-presence check to distinguish
-    /// "cortex not installed" from a dead pid — not used to spawn, per D-S09.
-    pub script: Option<PathBuf>,
-}
-
 /// Typed supervisor config, deserialized from the JSON the installer writes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -92,8 +71,6 @@ pub struct SupervisorConfig {
     pub loopback_port: u16,
     /// Restart policy applied to the resident.
     pub restart_policy: RestartPolicy,
-    /// Watcher coordination policy.
-    pub watcher_policy: WatcherPolicy,
     /// Hard ceiling on the supervisor's lifetime in seconds. The OS service manager restarts
     /// the supervisor when this elapses, forcing a clean process identity. `None` keeps the
     /// supervisor running indefinitely (subject to crash-only restart).
@@ -175,7 +152,7 @@ mod tests {
 
     fn base_config() -> SupervisorConfig {
         SupervisorConfig {
-            schema_version: 1,
+            schema_version: CONFIG_SCHEMA_VERSION,
             resident_binary: PathBuf::from("/opt/membrane/bin/membrane"),
             lease_path: PathBuf::from("/tmp/membrane/lease.json"),
             endpoint_path: PathBuf::from("/tmp/membrane/endpoint.json"),
@@ -183,11 +160,6 @@ mod tests {
             pid_lock_path: PathBuf::from("/tmp/membrane/supervisor.pid"),
             loopback_port: 47851,
             restart_policy: RestartPolicy::default(),
-            watcher_policy: WatcherPolicy {
-                managed: true,
-                pid_file: PathBuf::from("/tmp/membrane/watchman.pid"),
-                script: Some(PathBuf::from("/opt/membrane/bin/cortex-watch.mjs")),
-            },
             lifetime_seconds: Some(86_400),
         }
     }
@@ -208,6 +180,15 @@ mod tests {
         let err = SupervisorConfig::parse(&bytes).unwrap_err();
         assert_eq!(err.label(), "invalid-config");
         assert!(format!("{err}").contains("schema_version 99"));
+    }
+
+    #[test]
+    fn parse_rejects_v1_config() {
+        let mut config = base_config();
+        config.schema_version = 1;
+        let bytes = serde_json::to_vec(&config).unwrap();
+        let err = SupervisorConfig::parse(&bytes).unwrap_err();
+        assert!(format!("{err}").contains("schema_version 1"));
     }
 
     #[test]

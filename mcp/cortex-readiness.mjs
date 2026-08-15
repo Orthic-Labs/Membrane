@@ -1,5 +1,6 @@
 // Observer-only Cortex seam. Membrane connects to an already-running Cortex
-// daemon; it never imports sibling source, reads graph.db, or spawns Cortex.
+// daemon through the published IPC socket; it never imports sibling source,
+// opens Cortex's private store, or spawns Cortex.
 import { randomUUID } from "node:crypto";
 import { connect } from "node:net";
 import { homedir } from "node:os";

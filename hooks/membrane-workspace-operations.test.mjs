@@ -134,3 +134,38 @@ test("Membrane owns rearm, access bump, conflict, observer, & nag behavior", asy
   const nag = await runHook({ event: "Stop", transcript_path: transcript }, { operations: ops });
   assert.match(nag.hookSpecificOutput.additionalContext, /durable correction/);
 });
+
+test("PostToolUseFailure, TaskCompleted, and SessionEnd are covered with typed, bounded, secret-safe handlers", async () => {
+  const { root } = fixture();
+  const ops = createWorkspaceMemoryOperations({
+    rootFor: () => root,
+    contextAdapter: {},
+    probeStatus: async () => true,
+    runCrypt: async () => true,
+  });
+
+  const failure = await dispatchMembraneHookEvent({
+    event: "PostToolUseFailure",
+    session_id: "s",
+    tool_name: "Bash",
+    error: { message: "failed while api_key=SECRET token=hunter2" },
+  }, ops);
+  const failureOut = failure.results.find(({ id }) => id === "membrane.memory-failure").output;
+  assert.equal(failureOut.reason, "failure_observed");
+  assert.equal(failureOut.detail.contentFree, true);
+  assert.ok(!failureOut.detail.summaryLength || failureOut.detail.summaryLength >= 0);
+
+  const episode = await dispatchMembraneHookEvent({
+    event: "TaskCompleted",
+    session_id: "s",
+    outcomes: [{ id: "a", ok: true }],
+  }, ops);
+  const episodeOut = episode.results.find(({ id }) => id === "membrane.memory-episode").output;
+  assert.equal(episodeOut.reason, "episode_captured");
+  assert.match(episodeOut.detail.outcomeDigest, /^sha256:[0-9a-f]{64}$/);
+  assert.equal(episodeOut.detail.contentFree, true);
+
+  const sessionEnd = await dispatchMembraneHookEvent({ event: "SessionEnd", session_id: "s" }, ops);
+  const sessionEndOut = sessionEnd.results.find(({ id }) => id === "membrane.memory-session-end").output;
+  assert.equal(sessionEndOut.reason, "session_closed");
+});

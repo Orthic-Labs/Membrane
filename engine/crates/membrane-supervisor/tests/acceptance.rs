@@ -1,7 +1,6 @@
 //! MBR-201 acceptance integration tests. These exercise the public surface of the
-//! supervisor crate as a client adapter would: build a supervisor from a config, prove
-//! that one supervisor serves many clients, and prove that duplicate watchers cannot run
-//! simultaneously.
+//! supervisor crate as a client adapter would: build a supervisor from a config and prove
+//! that one supervisor serves many clients.
 //!
 //! These tests compile but **do not run** at task-commit time. The Book 1 gate invokes
 //! them along with the rest of the workspace suite.
@@ -10,9 +9,8 @@
 
 use membrane_supervisor::supervisor::for_test;
 use membrane_supervisor::{
-    read_watcher_pidfile, release_if_owned, LockOutcome, RestartPolicy, SupervisorLock,
-    WatcherAction, WatcherCoordinator, CONFIG_SCHEMA_VERSION, DEFAULT_LOOPBACK_PORT,
-    SUPERVISOR_LEASE_SCHEMA_VERSION,
+    release_if_owned, LockOutcome, RestartPolicy, SupervisorLock, CONFIG_SCHEMA_VERSION,
+    DEFAULT_LOOPBACK_PORT, SUPERVISOR_LEASE_SCHEMA_VERSION,
 };
 
 /// Acceptance test #1 — multiple clients reuse one healthy service.
@@ -28,7 +26,6 @@ fn multiple_clients_reuse_one_endpoint() {
     let endpoint_path = dir.join("endpoint.json");
     let status_path = dir.join("status.json");
     let pid_lock_path = dir.join("supervisor.pid");
-    let watcher_pidfile = dir.join("watchman.pid");
 
     let mut supervisor = for_test(
         pid_lock_path.clone(),
@@ -36,8 +33,6 @@ fn multiple_clients_reuse_one_endpoint() {
         endpoint_path.clone(),
         status_path.clone(),
         DEFAULT_LOOPBACK_PORT,
-        watcher_pidfile.clone(),
-        None,
         RestartPolicy::default(),
     )
     .expect("supervisor should build");
@@ -83,79 +78,7 @@ fn multiple_clients_reuse_one_endpoint() {
     assert_eq!(second_parsed["loopbackPort"], DEFAULT_LOOPBACK_PORT);
 }
 
-/// Acceptance test #2 — duplicate watchers cannot run simultaneously.
-///
-/// Two supervisors racing on the same user MUST both decide `Adopt` for the watcher if
-/// the watcher is alive — never a spawn (D-S09). The supervisor's lock prevents the second
-/// supervisor from doing useful work, but the decision function itself returns `Adopt`
-/// every time, so the type-level invariant is the duplicate-impossible property.
-#[test]
-fn duplicate_watchers_cannot_run_simultaneously() {
-    // Build two WatcherCoordinators over the SAME pidfile. Each one asks: "what do I do?"
-    // The answer must be the same, and must be one of {Adopt, Unavailable} — never a spawn (D-S09).
-    // Critically, two supervisors both observe the same state and agree; neither ever spawns
-    // first one's pidfile write.
-    let temp = tempfile::tempdir().unwrap();
-    let pidfile = temp.path().join("watchman.pid");
-    let script = temp.path().join("cortex-watch.mjs");
-
-    // Round 1: pidfile missing, script present. Both coordinators decide Unavailable (D-S09).
-    std::fs::write(&script, b"#!/usr/bin/env node\n").unwrap();
-    let coordinator_a = WatcherCoordinator::new(pidfile.clone(), Some(script.clone()));
-    let coordinator_b = WatcherCoordinator::new(pidfile.clone(), Some(script.clone()));
-    let action_a = coordinator_a.decide();
-    let action_b = coordinator_b.decide();
-    assert!(
-        matches!(action_a, WatcherAction::Unavailable),
-        "expected Unavailable, got {:?}",
-        action_a
-    );
-    assert!(
-        matches!(action_b, WatcherAction::Unavailable),
-        "expected Unavailable, got {:?}",
-        action_b
-    );
-
-    // Round 2: simulate that one of them wrote its PID and forked the watcher. The
-    // recorded PID is overwhelmingly unlikely to be alive in the test runner, so we
-    // expect Unavailable (dead pid yields Unavailable, never a spawn). The point
-    // supervisors observe the same state and decide the same action.
-    let recorded_pid: u32 = 7_777_777;
-    std::fs::write(&pidfile, format!("{recorded_pid}\n")).unwrap();
-    let action_a2 = coordinator_a.decide();
-    let action_b2 = coordinator_b.decide();
-    assert_eq!(
-        action_a2, action_b2,
-        "two supervisors MUST agree on the watcher action"
-    );
-
-    // Round 3: simulate a watcher that outlives the supervisor — recorded PID is the
-    // current test process, which IS alive. Both supervisors MUST adopt; neither can
-    // spawn fresh, because spawning fresh on top of a live pid would create a
-    // duplicate. This is the heart of the duplicate-impossible invariant.
-    let live_pid = std::process::id();
-    std::fs::write(&pidfile, format!("{live_pid}\n")).unwrap();
-    let action_a3 = coordinator_a.decide();
-    let action_b3 = coordinator_b.decide();
-    assert_eq!(action_a3, WatcherAction::Adopt { pid: live_pid });
-    assert_eq!(action_b3, WatcherAction::Adopt { pid: live_pid });
-
-    // Documented invariant: at most one watcher per pidfile scope. Since both
-    // supervisors agree to adopt, no second watcher is created.
-    if !matches!(action_a3, WatcherAction::Adopt { .. })
-        || !matches!(action_b3, WatcherAction::Adopt { .. })
-    {
-        panic!("acceptance violated: at least one coordinator did not adopt the live watcher");
-    }
-
-    // Belt-and-braces: read the pidfile via the public helper to confirm the recorded
-    // value matches what we wrote.
-    let (readback_pid, readback_alive) = read_watcher_pidfile(&pidfile);
-    assert_eq!(readback_pid, Some(live_pid));
-    assert!(readback_alive);
-}
-
-/// Acceptance test #3 — the supervisor's single-instance lock prevents two supervisors
+/// Acceptance test #2 — the supervisor's single-instance lock prevents two supervisors
 /// from running concurrently. Two acquire attempts on the same lock with different PIDs
 /// must end with one `Acquired` and one `Held { .. }`.
 #[test]
@@ -204,7 +127,7 @@ fn supervisor_lock_prevents_concurrent_managers() {
 }
 
 #[allow(dead_code)]
-const fn _endpoint_schema_version_is_one() {
+const fn _supervisor_schema_versions_are_current() {
     let _ = SUPERVISOR_LEASE_SCHEMA_VERSION;
-    let _ = CONFIG_SCHEMA_VERSION;
+    assert!(CONFIG_SCHEMA_VERSION == 2);
 }

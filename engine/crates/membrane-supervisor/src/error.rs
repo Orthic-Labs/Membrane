@@ -38,10 +38,6 @@ pub enum SupervisorError {
         reason: String,
     },
 
-    /// A watcher sidecar (cortex-watch.mjs) reported a state the supervisor could not act on.
-    #[error("watcher coordinator could not decide action: {reason}")]
-    WatcherDecision { reason: String },
-
     /// MBR-207: the heartbeat table reported one client as both
     /// installed and delivering — the Hub/CLI conflation the supervisor
     /// exists to prevent. Carries the offending client id and the two
@@ -67,7 +63,6 @@ impl SupervisorError {
             SupervisorError::InvalidConfig { .. } => "invalid-config",
             SupervisorError::ResidentSpawn { .. } => "resident-spawn-failed",
             SupervisorError::PublishFailed { .. } => "publish-failed",
-            SupervisorError::WatcherDecision { .. } => "watcher-decision-failed",
             SupervisorError::HeartbeatConflation { .. } => "heartbeat-conflation",
             SupervisorError::Io { .. } => "io-failed",
         }

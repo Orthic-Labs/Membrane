@@ -8,7 +8,7 @@ import vm from 'node:vm';
 
 const DASHBOARD_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  '../crates/crypt/src/dashboard.html',
+  '../crates/membrane-runtime/src/dashboard.html',
 );
 
 function dashboardOutboxSource() {

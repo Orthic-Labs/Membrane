@@ -298,16 +298,32 @@ function main() {
   const root = resolveWorkspaceRoot(event);
   const result = runClient(buildRequest(event, root), root);
   const request = result.request;
-  result.eventStore = appendObservableEvent(buildObservableEvent({
+  const observable = buildObservableEvent({
     installationId: process.env.MEMBRANE_INSTALLATION_ID || 'host-installation', clientId: request.client,
     sessionId: request.session, taskId: request.taskEnvelope.task_id, turnId: request.turnEnvelope.turn_id,
     traceId: request.turnEnvelope.task_id, eventType: 'packet_delivered', origin: 'host',
     content: result.payload?.packet || result.reason || 'degraded',
     completeness: { packet: result.state === 'context_enforced', receipt: true },
     policyDigest: process.env.MEMBRANE_POLICY_VERSION || 'membrane-policy-v1',
-  }));
+  });
+  // WAL admission is a hard precondition for every observable effect. An
+  // unavailable or conflicting WAL record leaves this turn's event untouched;
+  // only records recovered from the durable cursor can reach ingress.
+  const admitted = ledgerStore.enqueueOutbox(process.env, {
+    eventId: observable.event_id,
+    payload: observable,
+    deadlineAtMs: Date.now() + 60_000,
+  });
+  if (admitted.status === 'enqueued' || admitted.status === 'duplicate') {
+    const delivery = ledgerStore.deliverOutbox(process.env, appendObservableEvent, { limit: 16 });
+    result.eventStore = delivery.delivered || delivery.acked
+      ? { status: 'persisted', target: 'membrane_prompt_ingress' }
+      : { status: 'queued', reason: delivery.failed ? 'outbox_effect_failed' : 'outbox_pending' };
+  } else {
+    result.eventStore = { status: 'unavailable', reason: admitted.reason || 'outbox_admission_failed' };
+  }
   process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: eventName, additionalContext: render(result) } })}\n`);
 }
 
 if (require.main === module) main();
-module.exports = { buildRequest, defaultClient, finalize, findClient, render, prepareDelivery, resolveWorkspaceRoot, runClient, main, __resetDeliveryLedger };
+module.exports = { buildRequest, defaultClient, finalize, findClient, main, render, prepareDelivery, resolveWorkspaceRoot, runClient, __resetDeliveryLedger };
