@@ -38,7 +38,7 @@ jobs:
           node-version: "22.22.3"
           registry-url: https://registry.npmjs.org
           package-manager-cache: false
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.18.0
       - run: pnpm install --frozen-lockfile
