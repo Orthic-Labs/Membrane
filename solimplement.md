@@ -12,6 +12,16 @@ cortex:
 
 # Cortex implementation plan
 
+## Live status — 2026-08-15
+
+- W0/F-CX & all six Phase A source owners are complete.
+- Integrated working-tree candidate has 19 staged paths at baseline `cdfd7de41dc17494cd8ba6975508b3f44defcb13`.
+- `pnpm test`, `pnpm test:all` (912/912), security (27/27), hardening (20/20), qualification, AX (15 pass, 3 pending skips), & full doctor pass.
+- Mac arm64 unsigned archive exists at `release/candidates/darwin-arm64/cortex-darwin-arm64.tar.gz`, SHA-256 `1579c85bc3c4ad292cbad1557c1b253e9027934fd7105ca259d7fa9a757416d8`; RightKit sealing/signing & Windows artifact remain.
+- W7/W8 are **not complete**: independent certification, native artifacts, Cortex commit/push, Orthic adoption, installed Mac/Windows proof, parent pin, publication, & remote verification remain.
+
+Current receipts: workspace `tasks/evidence/orthic-suite/integration/cortex/**`. This status annotates execution only; requirements, gates, & ownership below remain authoritative. Historical receipts retain original authority hashes.
+
 Authority: [`sol.md`](sol.md) owns product target, performance target, competitor absorption, & research disposition. Workspace [`SEAM-CONTRACT.md`](../docs/plans/orthic/SEAM-CONTRACT.md) owns every Cortex ↔ Membrane ↔ Orthic boundary. This file owns Cortex implementation order, child-side conformance, open-work classification, evidence gates, & delivery closure. Code, `cortex doctor --full --json`, qualification receipts, native-host receipts, Git state, & remote state own current operational truth.
 
 No other Cortex implementation plan is current. Predecessor plans are archived under `../docs/archive/cortex-pre-solimplement-2026-08-14/`; retained evidence remains evidence, not competing authority.
