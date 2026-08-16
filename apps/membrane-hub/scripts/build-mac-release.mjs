@@ -16,7 +16,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { notarytoolAuthArgs } from "@rightkit/release/notary-auth.mjs";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
-const dmg = `src-tauri/target/release/bundle/dmg/Membrane Hub_${version}_aarch64.dmg`;
+// A managed build owns the target root, so src-tauri/target is not a valid
+// assumption; honour the injected directory like build-windows-release.mjs does.
+const bundleRoot = process.env.CARGO_TARGET_DIR || "src-tauri/target";
+const dmg = `${bundleRoot}/release/bundle/dmg/Membrane Hub_${version}_aarch64.dmg`;
 const env = {
   ...process.env,
   APPLE_SIGNING_IDENTITY: process.env.APPLE_SIGNING_IDENTITY || "Developer ID Application: Adrian D'souza (6KLGD3LLKF)",

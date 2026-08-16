@@ -19,7 +19,7 @@
     "@tauri-apps/plugin-os": "2.3.2"
   },
   "devDependencies": {
-    "@rightkit/release": "0.2.54",
+    "@rightkit/release": "0.2.62",
     "@tauri-apps/cli": "^2.0.0"
   }
 }
