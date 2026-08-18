@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://membrane/schemas/sdk-python-package-boundary.v1.schema.json",
   "title": "SdkPythonPackageBoundaryV1",
-  "description": "MBR-909: the declared distribution boundary for the membrane-client Python package. Encodes 'publish the SDK, not the core app' as data: which top-level importable packages the sdist/wheel may contain, which repository path prefixes must never appear inside it, and which file extensions (native binaries, installers, archives) are forbidden. tests/sdk/python_package_boundary_test.py reads this document plus packages/python/pyproject.toml and the on-disk package tree, and fails if any of them drift from this declaration. Canonical instance: packages/python/package-boundary.v1.json.",
+  "description": "MBR-909: the declared distribution boundary for the membrane-client Python package. Encodes 'publish the SDK, not the core app' as data: which top-level importable packages the sdist/wheel may contain, which repository path prefixes must never appear inside it, and which file extensions (native binaries, installers, archives) are forbidden. tests/sdk/python_package_boundary_test.py reads this document plus dist/packages/python/pyproject.toml and the on-disk package tree, and fails if any of them drift from this declaration. Canonical instance: packages/python/package-boundary.v1.json.",
   "type": "object",
   "additionalProperties": false,
   "required": [

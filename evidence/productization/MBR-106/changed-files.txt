@@ -1,8 +1,0 @@
-docs/installation/roots.md
-engine/crates/membrane-runtime/src/lib.rs
-engine/crates/membrane-runtime/src/paths.rs
-engine/crates/membrane-runtime/src/receipt.rs
-engine/crates/membrane-runtime/tests/paths.rs
-engine/crates/membrane-runtime/tests/receipt.rs
-engine/crates/membrane/src/modes.rs
-install/paths.example.json

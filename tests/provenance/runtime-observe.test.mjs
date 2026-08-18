@@ -27,7 +27,7 @@ import {
 } from "./bridge.mjs";
 
 const FAKE_HEAD = "abc1234567890abcdef1234567890abcdef12345";
-const FAKE_PORCELAIN = " M src/lib.rs\n?? adapters/provenance/index.mjs\n";
+const FAKE_PORCELAIN = " M src/lib.rs\n?? mcp/adapters/provenance/index.mjs\n";
 const FAKE_NUMSTAT = "12\t3\tsrc/lib.rs\n0\t0\tCargo.lock\n";
 
 function makeStubGit() {
@@ -58,7 +58,7 @@ test("captureWorkingTreeJs returns a WorkingTreeSnapshotV1 with the expected fie
   assert.equal(snapshot.gitHead, FAKE_HEAD);
   assert.deepEqual(snapshot.dirtyPaths, [
     "src/lib.rs",
-    "adapters/provenance/index.mjs",
+    "mcp/adapters/provenance/index.mjs",
   ]);
   assert.equal(snapshot.diffAdded, 12);
   assert.equal(snapshot.diffRemoved, 3);
@@ -88,7 +88,7 @@ test("statusPaths and diffNumstat return parsed data", () => {
   const stub = makeStubGit();
   assert.deepEqual(statusPaths("/tmp/workspace", stub.gitCommand), [
     "src/lib.rs",
-    "adapters/provenance/index.mjs",
+    "mcp/adapters/provenance/index.mjs",
   ]);
   assert.deepEqual(diffNumstat("/tmp/workspace", stub.gitCommand), {
     added: 12,

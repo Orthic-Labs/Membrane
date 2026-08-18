@@ -1,3 +1,0 @@
-engine/crates/crypt-store/src/context_telemetry.rs
-mcp/context-renderer-lib.cjs
-mcp/context-renderer.test.mjs

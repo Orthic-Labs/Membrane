@@ -1,7 +1,0 @@
-scripts/release/homebrew/generate.mjs
-tests/platform/macos/homebrew-generate.test.mjs
-docs/install-homebrew.md
-evidence/productization/MBR-904/summary.json
-evidence/productization/MBR-904/commands.log
-evidence/productization/MBR-904/changed-files.txt
-evidence/productization/MBR-904/acceptance.json

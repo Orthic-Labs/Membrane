@@ -1,6 +1,0 @@
-$ node --test mcp/deadline.test.mjs mcp/workspace-routing.test.mjs mcp/server.test.mjs mcp/client.test.mjs
-# pass (EXIT=0). One absolute monotonic deadline; concurrency bound; order-stable
-# receipts; run() spawn terminates child work on abort; client honors deadline.
-# Full task command is `pnpm test`; red at baseline only on PRE-EXISTING,
-# out-of-scope environmental tests, so MBR-005 is recorded env-blocked with
-# acceptance pass.

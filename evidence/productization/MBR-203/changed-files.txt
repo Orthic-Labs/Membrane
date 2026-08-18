@@ -1,9 +1,0 @@
-docs/install.md
-engine/crates/membrane/Cargo.toml
-engine/crates/membrane/src/dispatch.rs
-engine/crates/membrane/src/install_tx.rs
-engine/crates/membrane/src/lib.rs
-engine/crates/membrane/src/modes.rs
-install/install-tx.example.json
-mcp/install.mjs
-tests/install/install-tx.test.mjs

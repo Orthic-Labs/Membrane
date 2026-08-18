@@ -26,7 +26,7 @@ import {
   parseYaml,
   stableStringify,
   writeArtifacts,
-} from "../../tools/productization/generate-client-matrix.mjs";
+} from "../../scripts/tools/productization/generate-client-matrix.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, "..", "..");

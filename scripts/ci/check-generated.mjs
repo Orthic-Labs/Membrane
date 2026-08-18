@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
-const result = spawnSync(process.execPath, ["tools/productization/check-docs.mjs", "--check"], {
+const result = spawnSync(process.execPath, ["scripts/tools/productization/check-docs.mjs", "--check"], {
   cwd: repoRoot,
   stdio: "inherit",
 });

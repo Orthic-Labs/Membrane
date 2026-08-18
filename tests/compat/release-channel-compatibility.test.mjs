@@ -7,7 +7,7 @@
 // task's hard rule against running cargo.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluateCompatibility, evaluateReleaseChannel } from "../../release/channels/compatibility-policy.mjs";
+import { evaluateCompatibility, evaluateReleaseChannel } from "../../dist/release/channels/compatibility-policy.mjs";
 
 const descriptor = (overrides = {}) => ({
   schemaVersion: 1,

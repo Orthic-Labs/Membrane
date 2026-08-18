@@ -1,8 +1,0 @@
-$ node --test mcp/server.test.mjs
-# tests pass (EXIT=0); includes the MBR-001 scope=workspace acceptance test.
-# Full task command is `pnpm test`; at baseline it is red in this isolated
-# worktree on PRE-EXISTING, out-of-scope environmental tests:
-#   - mcp/repository-catalog.test.mjs hardcodes 19 workspace repos (env differs)
-#   - scripts/run-m0-baseline-current.test.mjs needs sibling forge/cortex/docs fixtures
-# Those are unrelated to MBR-001 and fixing them would require edits outside
-# the task allowlist, so MBR-001 is recorded env-blocked with acceptance pass.

@@ -31,3 +31,11 @@ docs/product.md
 # `**/target/` rule above matches directories only — leaving the bridge
 # untracked, which right-release own clean-tree gate then rejects.
 **/target
+
+# Historical evidence receipts (evidence/g2, evidence/productization) were
+# purged from the repo as dead weight — nobody reads them and no executable
+# code depends on them. Ignore future run receipts under these paths so they
+# don't get re-committed, while keeping the load-bearing subtrees tracked
+# (evidence/qualification, evidence/releases, evidence/platform, evidence/g3).
+evidence/g2/
+evidence/productization/

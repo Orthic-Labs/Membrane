@@ -1,9 +1,0 @@
-packaging/oci/Containerfile
-scripts/release/oci/generate-oci-release.mjs
-tests/oci/generate-oci-release.test.mjs
-tests/oci/oci-contract.test.mjs
-docs/install-oci.md
-evidence/productization/MBR-910/summary.json
-evidence/productization/MBR-910/acceptance.json
-evidence/productization/MBR-910/commands.log
-evidence/productization/MBR-910/changed-files.txt

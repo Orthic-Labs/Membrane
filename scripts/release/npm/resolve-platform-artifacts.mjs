@@ -1,7 +1,7 @@
 // MBR-906: resolves, per npm platform key, the real artifact MBR-903's
 // multi-platform release pipeline has already sealed and recorded, by
 // reading its immutable evidence/releases/<releaseId>/release-generation.json
-// (release/contracts/release-generation.v1.schema.json), read-only.
+// (dist/release/contracts/release-generation.v1.schema.json), read-only.
 //
 // This module never builds, signs, notarizes, uploads, or publishes
 // anything, and it never invents a version, commit, digest, or URL: every
@@ -9,17 +9,17 @@
 // already wrote for a target it independently verified. A platform whose
 // pipeline target is not "verified" -- or that has no Membrane
 // release-pipeline target at all (linux-*: no RightKit Linux build exists,
-// release/contracts/platforms.v1.json has no linux entry) -- is a declared,
+// dist/release/contracts/platforms.v1.json has no linux entry) -- is a declared,
 // named gap, never a fabricated artifact. It is the resolution layer the
-// npm bootstrapper (npm/bin/membrane.mjs, npm/index.mjs) and the per-platform
-// package scaffolds under npm/platforms/** use it without re-deriving a
+// npm bootstrapper (dist/npm/bin/membrane.mjs, dist/npm/index.mjs) and the per-platform
+// package scaffolds under dist/npm/platforms/** use it without re-deriving a
 // release identity or mutating release state.
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { releaseId as computeReleaseId } from "../identity.mjs";
 
-// npm platform key (npm/index.mjs's PLATFORM_PACKAGES) -> the pipeline
-// target enum release/contracts/platforms.v1.json and
+// npm platform key (dist/npm/index.mjs's PLATFORM_PACKAGES) -> the pipeline
+// target enum dist/release/contracts/platforms.v1.json and
 // evidence/releases/<releaseId>/release-generation.json actually use. Only
 // entries with a real pipeline target are mapped; the rest are `null`,
 // documented, permanent gaps -- never guessed at.
@@ -65,7 +65,7 @@ export function resolveNpmPlatformArtifact({ repoRoot, releaseId, npmPlatformKey
   const pipelineTarget = NPM_PLATFORM_TO_PIPELINE_TARGET[npmPlatformKey];
   if (pipelineTarget === null) {
     throw new NoPipelineTargetError(
-      `declared gap: ${npmPlatformKey} has no Membrane release-pipeline target; no RightKit build produces this platform today (release/contracts/platforms.v1.json)`,
+      `declared gap: ${npmPlatformKey} has no Membrane release-pipeline target; no RightKit build produces this platform today (dist/release/contracts/platforms.v1.json)`,
     );
   }
 

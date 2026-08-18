@@ -8,7 +8,7 @@ Both halves' only consumer was the legacy Hub, which M-2 removes after external 
 
 ## S-7: `mcp_http.rs`
 
-Already honestly disclosed as intentionally out of scope: `evidence/productization/MBR-306/summary.json` states CLI wiring is intentionally out of scope. No new deferral decision is needed; this entry records the existing disclosure for completeness so the "0 DELETED" count in the consolidated disposition remains auditable. No `mcp_http.rs` wiring is added in any CU; the HTTP transport remains outside membrane's loopback scope.
+Already honestly disclosed as intentionally out of scope: `evidence/productization/MBR-306/summary.json` stated CLI wiring is intentionally out of scope. No new deferral decision is needed; this entry records the existing disclosure for completeness so the "0 DELETED" count in the consolidated disposition remains auditable. That receipt was historical CI output with no code path reading it, and has since been removed from the repo along with the rest of `evidence/productization/` (see `evidence/README.md`); the disclosure it recorded is retained here for continuity. No `mcp_http.rs` wiring is added in any CU; the HTTP transport remains outside membrane's loopback scope.
 
 ## S-8: `notifications.rs` (MBR-711) + `devices`/`alerts`
 

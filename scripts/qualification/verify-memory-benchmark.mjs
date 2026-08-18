@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
-import { adaptMemoryBenchmark } from '../../benchmarks/memory/adapters.mjs';
+import { adaptMemoryBenchmark } from '../../tests/benchmarks/memory/adapters.mjs';
 
 const fail = reason => ({ status: 'open', reason });
 export function verifyMemoryBenchmark(input) {

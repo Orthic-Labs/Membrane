@@ -94,7 +94,7 @@ or telemetry. It is not a license grant. Paid support and prices are **unavailab
 policy, managed updates, and optional telemetry are **undecided**. Any future
 paid capability must never gate local safety, authority, receipts, updates, or
 export. See [pricing](docs/pricing.md), [support policy](docs/support-policy.md),
-and [public support boundaries](website/support-boundaries.md).
+and [public support boundaries](docs/support-boundaries.md).
 
 ## Repository truth docs
 - [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
@@ -102,7 +102,7 @@ and [public support boundaries](website/support-boundaries.md).
 - [Operations](docs/operations.md) — run and verify the product-truth surface (generated, code-grounded)
 - [Protocol](docs/protocol.md) — MCP tool contract and behavior (generated, code-grounded)
 
-Gate: `node tools/productization/check-docs.mjs --check` fails on a broken README link, a stale generated doc, a wrong tool count, or stale platform status.
+Gate: `node scripts/tools/productization/check-docs.mjs --check` fails on a broken README link, a stale generated doc, a wrong tool count, or stale platform status.
 <!-- blueprint:docs:end -->
 
 <!-- support-matrix:start -->
@@ -112,6 +112,6 @@ Generated from current MBR-801 installed-path conformance receipts — 0 of 10
 platform/client pairs currently qualified. Full table, tiers, and reasons:
 [docs/support-matrix.md](docs/support-matrix.md) (also machine-readable at `docs/support-matrix.json`).
 This block, the JSON/MD matrix, and `server.json`'s per-target `platformReceipt`
-fields are all written by `node tools/productization/generate-support-matrix.mjs`
+fields are all written by `node scripts/tools/productization/generate-support-matrix.mjs`
 from the same receipts; none of them is hand-maintained.
 <!-- support-matrix:end -->

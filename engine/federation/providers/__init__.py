@@ -22,7 +22,7 @@ _LEGACY_TOOLS_ROOT = Path(__file__).resolve().parents[3]
 
 
 def workspace_tools_path(*parts: str) -> Path:
-    """Resolve a path under the workspace `tools/` tree across both layouts.
+    """Resolve a path under the workspace `scripts/tools/` tree across both layouts.
 
     The membrane consolidation moved this package from `tools/crypt/` to
     `membrane/engine/`, which silently repointed every `parents[3] / "skills"`

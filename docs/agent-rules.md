@@ -7,7 +7,7 @@ Crypt is its durable-memory subsystem.
 ## Canonical sources
 - Read `README.md` for product contracts and measured behavior.
 - Read `docs/architecture.md` for components, flows, and provider boundaries.
-- Read `docs/MEMBRANE-STATE.md` in the parent workspace for live rollout state.
+- Read `docs/design/MEMBRANE-STATE.md` for live rollout state.
 
 ## Commands
 - Run `pnpm test` for MCP, client, and install-binding coverage.

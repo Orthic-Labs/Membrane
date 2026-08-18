@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { join } from "node:path";
 import {
   CONTEXT_OPERATION, ENVELOPE_VERSION, ERROR_CODES, ERROR_VERSION, MembraneClient, ProtocolError, SOURCE_READ_OPERATION,
-} from "../../packages/typescript/index.mjs";
+} from "../../dist/packages/typescript/index.mjs";
 
 const root = join(import.meta.dirname, "../..");
 const read = (path) => readFile(join(root, path), "utf8");
@@ -13,7 +13,7 @@ const golden = async (name) => JSON.parse(await read(`operations/operations/${na
 test("canonical v1 golden envelopes share TypeScript, Python & Rust constants", async () => {
   const [context, source, python, rust] = await Promise.all([
     golden("membrane-context.v1.golden.json"), golden("membrane-source-read.v1.golden.json"),
-    read("packages/python/src/membrane_client/client.py"), read("engine/crates/membrane-client/src/lib.rs"),
+    read("dist/packages/python/src/membrane_client/client.py"), read("engine/crates/membrane-client/src/lib.rs"),
   ]);
   for (const envelope of [context, source]) {
     assert.equal(envelope.schemaVersion, ENVELOPE_VERSION);
@@ -38,7 +38,7 @@ test("TypeScript client accepts canonical success & types canonical error", asyn
 
 test("typed error sets match Python & Rust contracts", async () => {
   const [python, rust, index] = await Promise.all([
-    read("packages/python/src/membrane_client/client.py"),
+    read("dist/packages/python/src/membrane_client/client.py"),
     read("engine/crates/membrane-client/src/lib.rs"),
     read("operations/operations/operations-index.v1.golden.json").then(JSON.parse),
   ]);

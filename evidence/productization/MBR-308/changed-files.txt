@@ -1,5 +1,0 @@
-docs/sdk/README.md
-docs/sdk/http-transport.md
-engine/crates/membrane-client/tests/compat.rs
-tests/sdk/http-transport-contract.test.mjs
-tests/sdk/python_client_test.py

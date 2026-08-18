@@ -22,7 +22,7 @@ advertises no tools until native tool execution exists.
 | `docs/clients/support-matrix.v1.json` | Generated client × operation matrix. Conforms to `schemas/client-support-matrix.v1.schema.json`. |
 | `schemas/client-capability.v1.schema.json` | JSON Schema for one capability envelope. |
 | `schemas/client-support-matrix.v1.schema.json` | JSON Schema for the matrix. |
-| `tools/productization/generate-client-matrix.mjs` | Generator (byte-stable). |
+| `scripts/tools/productization/generate-client-matrix.mjs` | Generator (byte-stable). |
 | `mcp/install.mjs` | Exposes `loadClientCapabilities`, `loadSupportMatrix`, `clientsForEnrollment`, and `supportedOperationsFor` for the install path. |
 | `tests/clients/client-matrix.test.mjs` | Contract test for the registry. |
 
@@ -82,7 +82,7 @@ legitimately use the operation at all.
 3. Regenerate the artifacts:
 
    ```sh
-   node tools/productization/generate-client-matrix.mjs
+   node scripts/tools/productization/generate-client-matrix.mjs
    ```
 
    The two artifacts are byte-stable; the diff against the previous

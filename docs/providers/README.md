@@ -12,8 +12,8 @@ provider contract.
 |---|---|
 | `engine/crates/membrane-provider-sdk/` | The Rust crate every adapter depends on. Defines the `Provider` trait, the `Fixture` shape, and the `run_conformance` harness. |
 | `engine/crates/membrane-testkit/` | The canonical Cortex and Crypt conformance fixture corpus, embedded as JSON and exposed via `golden_fixtures()`. |
-| `examples/providers/cortex_example/` | Reference Cortex adapter built on the SDK. |
-| `examples/providers/crypt_example/`  | Reference Crypt adapter built on the SDK. |
+| `docs/examples/providers/cortex_example/` | Reference Cortex adapter built on the SDK. |
+| `docs/examples/providers/crypt_example/`  | Reference Crypt adapter built on the SDK. |
 | `docs/providers/` | This README plus per-example docs. |
 
 ## The `Provider` trait
@@ -100,7 +100,7 @@ conformance failure outside the harness can convert any
    regression suites).
 4. Add a CLI entry point that runs `run_conformance` and prints the
    `ConformanceReport` to stdout. The reference adapters in
-   `examples/providers/{cortex,crypt}_example/` are the canonical
+   `docs/examples/providers/{cortex,crypt}_example/` are the canonical
    shape.
 
 ### What a fixture round-trip means

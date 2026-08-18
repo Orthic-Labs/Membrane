@@ -13,10 +13,10 @@ submit correct, honest, and mechanically checked against the real repo state.
 (read-only; it publishes, signs, or submits nothing):
 
 1. **Identity** — `server.name`, `server.npm.mcpName`, and
-   `npm/package.json`'s `mcpName` all equal
+   `dist/npm/package.json`'s `mcpName` all equal
    `io.github.orthic-labs/membrane`; `server.npm.package` and
-   `npm/package.json`'s `name` both equal `@orthic/membrane`; `server.version`
-   equals `npm/package.json`'s `version` and is valid semver; the repository
+   `dist/npm/package.json`'s `name` both equal `@orthic/membrane`; `server.version`
+   equals `dist/npm/package.json`'s `version` and is valid semver; the repository
    URL matches on both sides; and `server.npm.install` pins the exact
    `npm:@orthic/membrane@<version>` route. This half is delegated to
    `scripts/release/verify-mcp-registry.mjs` (a prior, unmodified pass — see
@@ -33,7 +33,7 @@ submit correct, honest, and mechanically checked against the real repo state.
    MCP Registry, and running `npm publish` for `@orthic/membrane` and its six
    platform packages, are the deliberately separate, credentialed, manual
    actions this task's hard rules forbid it from performing or automating.
-3. **Native artifact evidence** — for each of the six `npm/platforms/**`
+3. **Native artifact evidence** — for each of the six `dist/npm/platforms/**`
    packages (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`,
    `win32-arm64`, `win32-x64`), `server.json`'s `nativeArtifacts` entry names
    the matching package and version. Every `sha256`, `signature`, and
@@ -93,7 +93,7 @@ gap must update `server.json` in the same change or these tests fail.
 
 - No `npm publish`, no MCP Registry submission, no signing, no
   package/version invention. Every identifier in `server.json` is either
-  copied from `npm/package.json` (already landed by MBR-906) or copied from
+  copied from `dist/npm/package.json` (already landed by MBR-906) or copied from
   the live `mcp/server.mjs`/`operations.mjs` source via
   `tool-contract-coverage.mjs`.
 - No golden fixtures or error taxonomy were added for `membrane_cortex`;

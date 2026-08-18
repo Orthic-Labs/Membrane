@@ -151,9 +151,12 @@ that exact integration commit or a release generation.
 
 - Mac: `docs/benchmarks/vector-backend/round1/lane-simd-mac/`.
 - Windows: `engine/vector-bakeoff/lane-simd-windows/` from pushed `f20f5ab`.
-- Paired runtime ranking receipts: `evidence/g2/final-d891b274/macos/vector-ranking-v2.json`
-  and `evidence/g2/final-d891b274/windows/vector-ranking-v2.json`. These prove
-  measured runtime behavior for their bound release only; they do not certify
-  later source commits as installed.
+- Paired runtime ranking receipts: previously `evidence/g2/final-d891b274/macos/vector-ranking-v2.json`
+  and `evidence/g2/final-d891b274/windows/vector-ranking-v2.json`. These proved
+  measured runtime behavior for their bound release only; they did not certify
+  later source commits as installed. These receipts were historical CI output
+  with no code path reading them, and have since been removed from the repo
+  (see `evidence/README.md`); the claim above is retained for record but is no
+  longer independently verifiable from the tree.
 - Canonical config: `engine/vector-bakeoff/config/crossover-v1.json`, SHA-256
   `0abb7ef1ef52617c9b839a0f49b9a58b0ec74c3ef548d81d21a8e4bb25831205`.

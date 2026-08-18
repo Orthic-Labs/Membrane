@@ -1,5 +1,0 @@
-$ node --test mcp/authorization.test.mjs mcp/server.test.mjs
-# pass (EXIT=0). Per-target authorization uses the same primitive as direct calls.
-# Full task command is `pnpm test`; red at baseline only on PRE-EXISTING,
-# out-of-scope environmental tests (repo-count drift; sibling fixtures), so
-# MBR-003 is recorded env-blocked with acceptance pass.

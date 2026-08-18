@@ -41,7 +41,7 @@ function resolveRuntimeConfigIdentity(configPath) {
 
 // Mirrors crypt-store/src/context_telemetry.rs::default_prompt_telemetry_ingress: the ingress
 // journal lives next to the crypt db (CRYPT_DB override, else the workspace-standard cache path
-// derived from the same tools/ tree runtime.json lives in). Returns { ok:true, target, dbPath }
+// derived from the same scripts/tools/ tree runtime.json lives in). Returns { ok:true, target, dbPath }
 // or { ok:false } when the config can't be trusted enough to derive a path from it.
 function resolveDefaultIngressTarget(configPath = RUNTIME_CONFIG_PATH, env = process.env) {
   try {

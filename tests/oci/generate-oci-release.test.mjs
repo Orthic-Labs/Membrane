@@ -1,9 +1,9 @@
-// MBR-910: proves packaging/oci/release.v1.json can only be promoted to
+// MBR-910: proves dist/packaging/oci/release.v1.json can only be promoted to
 // "ready" from a real MBR-903 release-generation.json plus real,
 // already-on-disk evidence files -- and refuses (fails closed, no write) the
 // moment any one of those is missing, mismatched, or tampered with. Every
 // fixture lives under a throwaway temp directory (never the real repo's
-// packaging/oci/release.v1.json or evidence/releases/), and nothing here
+// dist/packaging/oci/release.v1.json or evidence/releases/), and nothing here
 // builds, signs, or runs a container.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -131,7 +131,7 @@ test("buildOciRelease fails closed on a non-digest-pinned --image", () => {
   assert.throws(() => buildOciRelease(options), /digest-pinned/);
 });
 
-test("writeOciRelease writes packaging/oci/release.v1.json, is idempotent, and refuses to overwrite a different ready release", () => {
+test("writeOciRelease writes dist/packaging/oci/release.v1.json, is idempotent, and refuses to overwrite a different ready release", () => {
   const root = tempRepoRoot();
   const genPath = writeReleaseGeneration(root);
   const options = fullOptions(root, genPath);
@@ -148,7 +148,7 @@ test("writeOciRelease writes packaging/oci/release.v1.json, is idempotent, and r
   // A genuinely different ready release (new binary content) for the SAME
   // already-recorded ready release must be refused, not silently overwritten.
   writeFileSync(options.binaryPath, "different-binary-bytes");
-  assert.throws(() => writeOciRelease(options), /already records a different ready release/);
+  assert.throws(() => writeOciRelease(options), /already records a different ready dist/release/);
 });
 
 test("leaves an existing unavailable release.v1.json alone when generation fails", () => {

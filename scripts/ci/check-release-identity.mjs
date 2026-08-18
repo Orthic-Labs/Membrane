@@ -7,7 +7,7 @@ import addonConfig from "../../right-addon.config.mjs";
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const sourcePaths = [
   "right-addon.config.mjs", "package.json", "pnpm-lock.yaml", "engine",
-  "install/assets/membrane-tab-icon.png", "LICENSE", "EULA.txt", "PRIVACY.md", "THIRD-PARTY-NOTICES.txt",
+  "dist/install/assets/membrane-tab-icon.png", "LICENSE", "docs/legal/EULA.txt", "docs/legal/PRIVACY.md", "docs/legal/THIRD-PARTY-NOTICES.txt",
 ];
 const dirty = execFileSync("git", ["-C", repoRoot, "status", "--porcelain", "--", ...sourcePaths], { encoding: "utf8" }).trim();
 const roleBuilds = Object.values(addonConfig.targets).flatMap(({ build }) => build.args);

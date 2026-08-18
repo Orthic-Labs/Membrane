@@ -4,8 +4,8 @@
 // and never invokes the Crypt engine; absent a dataset root (or an executor,
 // which this CLI does not supply) it reports an explicit degrade per
 // benchmark rather than fabricating a result.
-import { runMemoryBenchmark } from '../../../benchmarks/memory/runner.mjs';
-import { BENCHMARKS } from '../../../benchmarks/memory/contracts.mjs';
+import { runMemoryBenchmark } from '../../../tests/benchmarks/memory/runner.mjs';
+import { BENCHMARKS } from '../../../tests/benchmarks/memory/contracts.mjs';
 
 export function parseArgs(argv) {
   const out = {};

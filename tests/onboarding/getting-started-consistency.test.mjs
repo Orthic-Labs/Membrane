@@ -94,7 +94,7 @@ test("doc's offline fixture commands point at files that exist", () => {
   assert.match(doc, /node examples\/quickstart\/run\.mjs/);
   assert.match(doc, /node examples\/quickstart\/run\.mjs --degraded/);
   // Resolvable without throwing — proves the path is real, not aspirational.
-  read("examples/quickstart/run.mjs");
+  read("docs/examples/quickstart/run.mjs");
 });
 
 test("doc's live-path MCP server dependency claim matches package.json", () => {

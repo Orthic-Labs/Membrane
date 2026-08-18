@@ -75,7 +75,7 @@ fn privileged_port_is_rejected_at_parse_time() {
 
 #[test]
 fn shipped_supervisor_config_is_schema_v2_without_watcher_policy() {
-    let config = include_str!("../../../../install/config.example.json");
+    let config = include_str!("../../../../dist/install/config.example.json");
     assert!(config.contains("\"schemaVersion\": 2"));
     assert!(!config.contains("watcherPolicy"));
     assert!(!config.contains("watchman.pid"));

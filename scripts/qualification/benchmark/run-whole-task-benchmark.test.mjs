@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseArgs, runCli } from './run-whole-task-benchmark.mjs';
-import { commitSalt } from '../../../benchmarks/whole-task/holdout.mjs';
+import { commitSalt } from '../../../tests/benchmarks/whole-task/holdout.mjs';
 
 test('parseArgs reads every documented flag', () => {
   const args = parseArgs([

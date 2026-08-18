@@ -1,5 +1,0 @@
-docs/protocol/http-mcp.md
-engine/crates/membrane-runtime/Cargo.toml
-engine/crates/membrane-runtime/src/lib.rs
-engine/crates/membrane-runtime/src/mcp_http.rs
-engine/crates/membrane-runtime/src/serve.rs

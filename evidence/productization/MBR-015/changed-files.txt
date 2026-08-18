@@ -1,5 +1,0 @@
-docs/membrane/capability-matrix.v1.json
-mcp/adapter-manifest.mjs
-mcp/capability-inventory.mjs
-mcp/repository-catalog.mjs
-mcp/repository-catalog.test.mjs

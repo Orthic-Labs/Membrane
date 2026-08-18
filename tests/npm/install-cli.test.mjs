@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { artifactDigest, UnsupportedPlatformError, ArtifactVerificationError } from "../../npm/index.mjs";
-import { runInstall, PlatformPackageMissingError, SigningTrustNotConfiguredError } from "../../npm/bin/membrane.mjs";
+import { artifactDigest, UnsupportedPlatformError, ArtifactVerificationError } from "../../dist/npm/index.mjs";
+import { runInstall, PlatformPackageMissingError, SigningTrustNotConfiguredError } from "../../dist/npm/bin/membrane.mjs";
 
 const artifact = Buffer.from("native-fixture-cli");
 const metadata = {

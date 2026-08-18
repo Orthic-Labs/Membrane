@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { verifyOciRelease } from "../../scripts/release/verify-oci-release.mjs";
 
-const manifest = JSON.parse(readFileSync(new URL("../../packaging/oci/release.v1.json", import.meta.url)));
+const manifest = JSON.parse(readFileSync(new URL("../../dist/packaging/oci/release.v1.json", import.meta.url)));
 test("OCI contract stays unavailable & non-publishing", () => assert.deepEqual(verifyOciRelease(manifest), { verified: true, state: "unavailable", publish: false }));
 test("OCI contract rejects release-ready mutation", () => assert.throws(() => verifyOciRelease({ ...manifest, state: "ready" }), /FAIL CLOSED/));
 test("ready OCI contract requires every hash-bound release proof", () => {
@@ -15,7 +15,7 @@ test("ready OCI contract requires every hash-bound release proof", () => {
   assert.equal(verifyOciRelease(ready, root).state, "ready"); ready.evidence.sbom.sha256 = "f".repeat(64); assert.throws(() => verifyOciRelease(ready, root), /hash mismatch/);
 });
 test("Containerfile fixes non-root, digest base & a real headless healthcheck", () => {
-  const file = readFileSync(new URL("../../packaging/oci/Containerfile", import.meta.url), "utf8");
+  const file = readFileSync(new URL("../../dist/packaging/oci/Containerfile", import.meta.url), "utf8");
   assert.match(file, /^FROM .+@sha256:[a-f0-9]{64}$/m);
   assert.match(file, /^USER 65532:65532$/m);
   // MBR-910: the healthcheck must invoke a real, read-only, non-interactive
@@ -25,6 +25,6 @@ test("Containerfile fixes non-root, digest base & a real headless healthcheck", 
 });
 
 test("Containerfile exposes no network port by default (loopback-bound guarantee)", () => {
-  const file = readFileSync(new URL("../../packaging/oci/Containerfile", import.meta.url), "utf8");
+  const file = readFileSync(new URL("../../dist/packaging/oci/Containerfile", import.meta.url), "utf8");
   assert.doesNotMatch(file, /^EXPOSE\b/m);
 });

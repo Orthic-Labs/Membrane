@@ -1,5 +1,0 @@
-engine/crates/crypt-store/src/context_telemetry.rs
-mcp/context-renderer-lib.cjs
-mcp/delivery-serialization.mjs
-mcp/delivery-serialization.test.mjs
-schemas/delivery-metrics.v1.schema.json

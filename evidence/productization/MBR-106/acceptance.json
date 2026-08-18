@@ -1,9 +1,0 @@
-{
-  "schema": "orthic.membrane-evidence.acceptance.v1",
-  "taskId": "MBR-106",
-  "acceptance": "Install, update, rollback, and uninstall preserve user data and remove only receipt-owned files.",
-  "status": "pass",
-  "verifiedBy": "cargo fmt --manifest-path engine/Cargo.toml --all -- --check && cargo test --manifest-path engine/Cargo.toml --workspace",
-  "observed": "Exact task commit is present in the integrated Book 1 tree; every declared deferred command passed in the final phased gate.",
-  "at": "2026-08-07T19:44:45.528Z"
-}

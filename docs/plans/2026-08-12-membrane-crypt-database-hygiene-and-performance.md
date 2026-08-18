@@ -1,5 +1,7 @@
 # Membrane best-of-market execution plan
 
+> **Superseded by:** [`../MEMBRANE-IMPLEMENTATION-GUIDE.md`](../MEMBRANE-IMPLEMENTATION-GUIDE.md) as implementation authority (2026-08-18). Historical content retained.
+
 Date: 2026-08-12
 
 Status: derived execution plan; implementation stopped; no completion claim

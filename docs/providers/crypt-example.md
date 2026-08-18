@@ -25,8 +25,8 @@ this property via `run_conformance`.
 ## Layout
 
 ```
-examples/providers/crypt_example/
-├── Cargo.toml      # member of examples/providers/ workspace
+docs/examples/providers/crypt_example/
+├── Cargo.toml      # member of docs/examples/providers/ workspace
 ├── README.md       # this file
 └── src/
     ├── lib.rs      # the Provider impl + handle_* helpers
@@ -38,7 +38,7 @@ examples/providers/crypt_example/
 From the repository root:
 
 ```sh
-cargo run --manifest-path examples/providers/crypt_example/Cargo.toml --bin crypt_example
+cargo run --manifest-path docs/examples/providers/crypt_example/Cargo.toml --bin crypt_example
 ```
 
 The binary exits 0 if every Crypt fixture in `membrane-testkit` passes

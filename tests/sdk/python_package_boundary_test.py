@@ -1,12 +1,12 @@
 """MBR-909: prove the Python SDK package is a thin client, never the core app.
 
 This reads the machine-checkable boundary declaration
-(packages/python/package-boundary.v1.json), validates its shape against the
+(dist/packages/python/package-boundary.v1.json), validates its shape against the
 fields schemas/sdk-python-package-boundary.v1.schema.json requires (a small
 hand-rolled structural check standing in for a `jsonschema` validator: no
 such package is installed in this workspace, and installing one is a new
 dependency this task does not add, so this stays on the STDLIB rung), then
-cross-checks the declaration against the real packages/python/pyproject.toml
+cross-checks the declaration against the real dist/packages/python/pyproject.toml
 and the on-disk package tree. A future change that quietly starts bundling
 the core app, another language's SDK, or a native binary inside
 `membrane-client` fails this test instead of going unnoticed at publish time.
@@ -129,7 +129,7 @@ class PackageBoundaryMatchesRealPackageTest(unittest.TestCase):
         self.assertIs(self.pyproject["tool"]["setuptools"]["include-package-data"], False)
 
     def test_readme_and_license_stay_inside_the_package_directory(self):
-        """A readme/license path that climbs out of packages/python (e.g.
+        """A readme/license path that climbs out of dist/packages/python (e.g.
         '../../docs/...') is unverifiable by this task, since no build
         backend is installed to prove it resolves; keeping both references
         inside the package directory keeps the declared metadata testable."""

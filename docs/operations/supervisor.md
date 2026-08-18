@@ -107,7 +107,7 @@ operation for current supervisor lease state; uninstall removes it only when its
 receipt has the exact Membrane owner and canonical entry. Enterprise service
 deployment is separate, explicit administrator work and is never selected by opt-in.
 
-The supervisor's restart policy is configured in `install/config.example.json`. It
+The supervisor's restart policy is configured in `dist/install/config.example.json`. It
 applies only to the resident (the OS service manager restarts the supervisor itself):
 
 ```
@@ -180,4 +180,4 @@ Book 1 gate along with every other deferred command.
 - `install/macos/com.membrane.supervisor.plist` — the per-user launchd agent.
 - `install/linux/membrane-supervisor.service` — the per-user systemd unit.
 - `install/windows/membrane-supervisor.xml` — the Task Scheduler entry.
-- `install/config.example.json` — canonical supervisor config.
+- `dist/install/config.example.json` — canonical supervisor config.

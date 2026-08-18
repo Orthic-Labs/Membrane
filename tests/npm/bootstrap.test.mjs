@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { artifactDigest, bootstrap, selectPlatform, verifyArtifact, UnsupportedPlatformError, ArtifactVerificationError } from "../../npm/index.mjs";
+import { artifactDigest, bootstrap, selectPlatform, verifyArtifact, UnsupportedPlatformError, ArtifactVerificationError } from "../../dist/npm/index.mjs";
 
 const artifact = Buffer.from("native-fixture");
 const metadata = { sha256: artifactDigest(artifact), packageName: "@orthic/membrane-linux-x64", platform: "linux-x64", version: "0.1.0", signature: { algorithm: "ed25519", keyId: "fixture-key", value: "fixture-signature", digest: artifactDigest(artifact) } };

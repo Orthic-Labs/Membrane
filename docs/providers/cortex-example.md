@@ -25,8 +25,8 @@ this property via `run_conformance`.
 ## Layout
 
 ```
-examples/providers/cortex_example/
-├── Cargo.toml      # member of examples/providers/ workspace
+docs/examples/providers/cortex_example/
+├── Cargo.toml      # member of docs/examples/providers/ workspace
 ├── README.md       # this file
 └── src/
     ├── lib.rs      # the Provider impl + handle_* helpers
@@ -38,7 +38,7 @@ examples/providers/cortex_example/
 From the repository root:
 
 ```sh
-cargo run --manifest-path examples/providers/cortex_example/Cargo.toml --bin cortex_example
+cargo run --manifest-path docs/examples/providers/cortex_example/Cargo.toml --bin cortex_example
 ```
 
 The binary exits 0 if every Cortex fixture in `membrane-testkit` passes

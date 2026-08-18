@@ -464,7 +464,7 @@ mod tests {
             1_700_000_000_001,
             stub_git(
                 Some("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"),
-                " M engine/crates/membrane-runtime/src/lib.rs\n?? adapters/provenance/index.mjs\n",
+                " M engine/crates/membrane-runtime/src/lib.rs\n?? mcp/adapters/provenance/index.mjs\n",
                 "12\t3\tsrc/lib.rs\n0\t0\tCargo.lock\n",
             ),
         )
@@ -475,7 +475,7 @@ mod tests {
             .contains(&"engine/crates/membrane-runtime/src/lib.rs".to_string()));
         assert!(snapshot
             .dirty_paths
-            .contains(&"adapters/provenance/index.mjs".to_string()));
+            .contains(&"mcp/adapters/provenance/index.mjs".to_string()));
         assert_eq!(snapshot.diff_added, 12);
         assert_eq!(snapshot.diff_removed, 3);
         let _ = fs::remove_dir_all(&workspace);

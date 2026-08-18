@@ -1,7 +1,0 @@
-...........s............................................................ [ 43%]
-......................s................................................. [ 86%]
-......................                                                   [100%]
-=========================== short test summary info ===========================
-SKIPPED [1] tools\pipelines\memory\test_context_promotion_build.py:580: POSIX executable modes
-SKIPPED [1] tools\pipelines\memory\test_context_p2_load.py:226: current debug memright is unavailable
-164 passed, 2 skipped in 43.19s

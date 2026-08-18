@@ -1,2 +1,0 @@
-mcp/capability-inventory.mjs
-mcp/capability-inventory.test.mjs

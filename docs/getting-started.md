@@ -100,8 +100,8 @@ content. Never present degraded output as context success.
 Run without a service or native client:
 
 ```sh
-node examples/quickstart/run.mjs
-node examples/quickstart/run.mjs --degraded
+node docs/examples/quickstart/run.mjs
+node docs/examples/quickstart/run.mjs --degraded
 ```
 
 Fixture exits non-zero when service marker or receipt is missing and labels all output `executionMode: fixture` plus `evidenceAuthority: synthetic`; it never proves live delivery.

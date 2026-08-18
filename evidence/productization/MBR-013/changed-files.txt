@@ -1,5 +1,0 @@
-README.md
-docs/product-truth.md
-mcp/product-truth.test.mjs
-operations/product-truth.json
-tools/productization/generate-product-truth.mjs

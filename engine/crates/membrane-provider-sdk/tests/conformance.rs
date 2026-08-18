@@ -3,11 +3,11 @@
 //! Runs the canonical Cortex-shaped and Crypt-shaped adapters through the
 //! SDK's `run_conformance` harness, against the golden fixture set from
 //! `membrane-testkit`. The shapes are identical to the reference adapters
-//! in `examples/providers/{cortex,crypt}_example/`. Those reference crates
-//! live in a separate workspace (`examples/providers/Cargo.toml`); the
+//! in `docs/examples/providers/{cortex,crypt}_example/`. Those reference crates
+//! live in a separate workspace (`docs/examples/providers/Cargo.toml`); the
 //! SDK's conformance test therefore uses inline stub adapters with the
 //! SAME shape and the SAME wire behavior. The Book 1 gate can verify
-//! the live reference adapters in `examples/providers/` separately.
+//! the live reference adapters in `docs/examples/providers/` separately.
 //!
 //! Per task spec, the deferred `cargo test --workspace` sweep is NOT
 //! invoked here — the Book 1 gate runs the full workspace test sweep.

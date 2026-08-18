@@ -4,8 +4,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const contract = JSON.parse(readFileSync(resolve(root, "release/contracts/pipeline.v1.json"), "utf8"));
-const platforms = JSON.parse(readFileSync(resolve(root, "release/contracts/platforms.v1.json"), "utf8"));
+const contract = JSON.parse(readFileSync(resolve(root, "dist/release/contracts/pipeline.v1.json"), "utf8"));
+const platforms = JSON.parse(readFileSync(resolve(root, "dist/release/contracts/platforms.v1.json"), "utf8"));
 const HEX40 = /^[0-9a-f]{40}$/; const HEX64 = /^[0-9a-f]{64}$/;
 const fail = (message) => { throw new Error(`FAIL CLOSED: ${message}`); };
 const required = (obj, key) => { if (typeof obj?.[key] !== "string" || !obj[key]) fail(`missing ${key}`); return obj[key]; };

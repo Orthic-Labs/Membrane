@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://membrane/schemas/client-capability.v1.schema.json",
   "title": "ClientCapabilityV1",
-  "description": "MBR-206 client-capability envelope. One envelope per AI/MCP client the Membrane runtime knows how to enroll. Each envelope declares its transport, discovery method, native install commands, supported operations, and the authority the install path may grant. The matrix generator (tools/productization/generate-client-matrix.mjs) reads operations/clients.yaml and emits a list of envelopes matching this schema.",
+  "description": "MBR-206 client-capability envelope. One envelope per AI/MCP client the Membrane runtime knows how to enroll. Each envelope declares its transport, discovery method, native install commands, supported operations, and the authority the install path may grant. The matrix generator (scripts/tools/productization/generate-client-matrix.mjs) reads operations/clients.yaml and emits a list of envelopes matching this schema.",
   "type": "object",
   "additionalProperties": false,
   "required": [

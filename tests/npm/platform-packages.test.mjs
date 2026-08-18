@@ -1,5 +1,5 @@
 // MBR-906: proves the per-platform optionalDependency package scaffolds
-// under npm/platforms/** stay in lockstep with npm/index.mjs's
+// under dist/npm/platforms/** stay in lockstep with dist/npm/index.mjs's
 // PLATFORM_PACKAGES registry (the source of truth the bootstrapper's
 // selectPlatform() actually resolves against), carry valid npm os/cpu
 // fields, and ship no native binary (this task never bundles the core app).
@@ -8,11 +8,11 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve, dirname } from "node:path";
-import { PLATFORM_PACKAGES } from "../../npm/index.mjs";
+import { PLATFORM_PACKAGES } from "../../dist/npm/index.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const PLATFORMS_ROOT = resolve(HERE, "../../npm/platforms");
-const ROOT_PACKAGE = JSON.parse(readFileSync(resolve(HERE, "../../npm/package.json"), "utf8"));
+const PLATFORMS_ROOT = resolve(HERE, "../../dist/npm/platforms");
+const ROOT_PACKAGE = JSON.parse(readFileSync(resolve(HERE, "../../dist/npm/package.json"), "utf8"));
 
 const EXPECTED_OS = { darwin: "darwin", linux: "linux", win32: "win32" };
 
@@ -21,7 +21,7 @@ function platformKeyParts(key) {
   return { os, cpu };
 }
 
-test("every PLATFORM_PACKAGES entry has a matching npm/platforms/<key>/package.json", () => {
+test("every PLATFORM_PACKAGES entry has a matching dist/npm/platforms/<key>/package.json", () => {
   // Filter Finder/macOS metadata (`.DS_Store`) and any other non-directory or
   // hidden entries so the registry lockstep check reflects real platform dirs.
   const dirs = readdirSync(PLATFORMS_ROOT, { withFileTypes: true })
@@ -34,7 +34,7 @@ test("every PLATFORM_PACKAGES entry has a matching npm/platforms/<key>/package.j
 test("each per-platform package.json declares the exact registered name and valid os/cpu constraints", () => {
   for (const [key, expectedName] of Object.entries(PLATFORM_PACKAGES)) {
     const pkg = JSON.parse(readFileSync(resolve(PLATFORMS_ROOT, key, "package.json"), "utf8"));
-    assert.equal(pkg.name, expectedName, `${key} package.json name must match npm/index.mjs's PLATFORM_PACKAGES`);
+    assert.equal(pkg.name, expectedName, `${key} package.json name must match dist/npm/index.mjs's PLATFORM_PACKAGES`);
     const { os, cpu } = platformKeyParts(key);
     assert.deepEqual(pkg.os, [EXPECTED_OS[os]], `${key} os field`);
     assert.deepEqual(pkg.cpu, [cpu], `${key} cpu field`);

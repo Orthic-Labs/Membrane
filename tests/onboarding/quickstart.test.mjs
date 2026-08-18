@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 const root = join(fileURLToPath(new URL("../..", import.meta.url)));
-const script = join(root, "examples/quickstart/run.mjs");
+const script = join(root, "docs/examples/quickstart/run.mjs");
 const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
 const receipt = { status: "enrolled", receipt_id: "r", repository_id: "repo", scope_id: "scope" };
 test("quickstart emits explicitly synthetic packet only with receipt and service", () => { const result = run(); assert.equal(result.status, 0, result.stderr); const output = JSON.parse(result.stdout); assert.ok(output.packet); assert.equal(output.executionMode, "fixture"); assert.equal(output.evidenceAuthority, "synthetic"); assert.equal(output.receipts[0].receipt_id, "enroll-demo-0001"); });

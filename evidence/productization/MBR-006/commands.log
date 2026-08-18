@@ -1,5 +1,0 @@
-$ node --test mcp/server.test.mjs mcp/client.test.mjs
-# pass (EXIT=0). Workspace rows now carry canonical generation/manifest identity.
-# Full task command is `pnpm test`; red at baseline only on PRE-EXISTING,
-# out-of-scope environmental tests, so MBR-006 is recorded env-blocked with
-# acceptance pass.

@@ -30,7 +30,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parents[2]
-sys.path.insert(0, str(REPO_ROOT / "packages/python/src"))
+sys.path.insert(0, str(REPO_ROOT / "dist/packages/python/src"))
 from membrane_client import ProtocolError, analyze_receipt  # noqa: E402
 
 

@@ -18,7 +18,7 @@
 // drive); wire one programmatically via runWholeTaskBenchmark({ execute }) or
 // extend this CLI at the Book gate once a real installed-path executor exists.
 
-import { runWholeTaskBenchmark, DEFAULT_CORPUS_PATH } from '../../../benchmarks/whole-task/runner.mjs';
+import { runWholeTaskBenchmark, DEFAULT_CORPUS_PATH } from '../../../tests/benchmarks/whole-task/runner.mjs';
 
 export function parseArgs(argv) {
   const out = {};

@@ -20,7 +20,7 @@ and observed result, sanitized logs, and whether data or authorization may be
 affected. Remove tokens, private paths, source text, and personal data. Attach a
 minimal reproduction only after confirming it contains no secrets.
 
-For a security issue, follow [`SECURITY.md`](../SECURITY.md#report-a-vulnerability)
+For a security issue, follow [`SECURITY.md`](../.github/SECURITY.md#report-a-vulnerability)
 and use a private maintainer channel; the repository's public contact is
 **unavailable**.
 

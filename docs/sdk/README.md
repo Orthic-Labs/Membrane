@@ -43,9 +43,9 @@ TypeScript equivalents because they check packaging concerns specific to
 publishing `membrane-client` on PyPI as a standalone distribution:
 
 - `tests/sdk/python_package_boundary_test.py` proves the package
-  (`packages/python/`) is a thin client only — no core app, no other SDK,
+  (`dist/packages/python/`) is a thin client only — no core app, no other SDK,
   no native binary — against the machine-checkable declaration in
-  `packages/python/package-boundary.v1.json` /
+  `dist/packages/python/package-boundary.v1.json` /
   `schemas/sdk-python-package-boundary.v1.schema.json`. See
   `docs/sdk/python-publishing.md`.
 - `tests/sdk/python_daemon_compatibility_test.py` proves the client accepts

@@ -1,0 +1,65 @@
+# Membrane competitor index
+
+60 repositories surveyed, listed alphabetically. Clones were local and
+gitignored; links below point at the upstream sources.
+
+- [AbanteAI/archive-old-cli-mentat](https://github.com/AbanteAI/archive-old-cli-mentat)
+- [AlmanacCode/codealmanac](https://github.com/AlmanacCode/codealmanac)
+- [Brain0-ai/brain0](https://github.com/Brain0-ai/brain0)
+- [Consiliency/treesitter-chunker](https://github.com/Consiliency/treesitter-chunker)
+- [DeusData/codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)
+- [Ivy-Interactive/Ivy-Tendril](https://github.com/Ivy-Interactive/Ivy-Tendril)
+- [James-Chahwan/repo-graph](https://github.com/James-Chahwan/repo-graph)
+- [LangbaseInc/baseai](https://github.com/LangbaseInc/baseai)
+- [Lucas2944/prpack](https://github.com/Lucas2944/prpack)
+- [MCrank/code-compress](https://github.com/MCrank/code-compress)
+- [MemTensor/MemOS](https://github.com/MemTensor/MemOS)
+- MemoryOS
+- MemoryOS-bailab
+- [MervinPraison/PraisonAI](https://github.com/MervinPraison/PraisonAI)
+- [RasaHQ/rasa](https://github.com/RasaHQ/rasa)
+- [Supercompress/Supercompress](https://github.com/Supercompress/Supercompress)
+- [SynaLinks/synalinks](https://github.com/SynaLinks/synalinks)
+- byterover-cli
+- [caura-ai/caura](https://github.com/caura-ai/caura)
+- claude-subconscious
+- [cline/cline](https://github.com/cline/cline)
+- [codegraph-ai/CodeGraph](https://github.com/codegraph-ai/CodeGraph)
+- [cq27-dev/rag-rat](https://github.com/cq27-dev/rag-rat)
+- [deepset-ai/haystack](https://github.com/deepset-ai/haystack)
+- [drona23/claude-token-efficient](https://github.com/drona23/claude-token-efficient)
+- emulo
+- [getzep/graphiti](https://github.com/getzep/graphiti)
+- [getzep/zep](https://github.com/getzep/zep)
+- greplica
+- [headroomlabs-ai/headroom](https://github.com/headroomlabs-ai/headroom)
+- hindsight
+- honcho
+- [juspay/code-review-graph-rescript](https://github.com/juspay/code-review-graph-rescript)
+- [kingjulio8238/Memary](https://github.com/kingjulio8238/Memary)
+- [krohling/bondai](https://github.com/krohling/bondai)
+- [langchain-ai/langchain](https://github.com/langchain-ai/langchain)
+- [langchain-ai/langmem](https://github.com/langchain-ai/langmem)
+- [letta-ai/letta](https://github.com/letta-ai/letta)
+- [mem0ai/mem0](https://github.com/mem0ai/mem0)
+- memory-lancedb-pro
+- memvid
+- mengram
+- [microsoft/graphrag](https://github.com/microsoft/graphrag)
+- [mksglu/context-mode](https://github.com/mksglu/context-mode)
+- mnemon
+- [mnemosyne-oss/mnemosyne](https://github.com/mnemosyne-oss/mnemosyne)
+- [neuml/txtai](https://github.com/neuml/txtai)
+- [qualixar/superlocalmemory](https://github.com/qualixar/superlocalmemory)
+- [quantmew/context8](https://github.com/quantmew/context8)
+- [rohitg00/agentmemory](https://github.com/rohitg00/agentmemory)
+- [rtk-ai/rtk](https://github.com/rtk-ai/rtk)
+- [run-llama/llama_index](https://github.com/run-llama/llama_index)
+- semantic
+- semantica
+- [shihanwan/memonto](https://github.com/shihanwan/memonto)
+- [supermemoryai/supermemory](https://github.com/supermemoryai/supermemory)
+- [topoteretes/cognee](https://github.com/topoteretes/cognee)
+- [vanna-ai/vanna](https://github.com/vanna-ai/vanna)
+- [volcengine/OpenViking](https://github.com/volcengine/OpenViking)
+- [yvgude/lean-ctx](https://github.com/yvgude/lean-ctx)

@@ -1,6 +1,6 @@
 # Python SDK publishing policy
 
-MBR-909 makes `membrane-client` (the Python package under `packages/python/`)
+MBR-909 makes `membrane-client` (the Python package under `dist/packages/python/`)
 ready to publish as a standalone PyPI distribution once its transport
 contract is exercised through a live `tools/call` round trip (see "Known
 gap" below) — and encodes, as machine-checked data rather than only prose,
@@ -9,7 +9,7 @@ Membrane core application.
 
 ## What "publish the SDK, not the core app" means here
 
-`packages/python/package-boundary.v1.json` (validated against
+`dist/packages/python/package-boundary.v1.json` (validated against
 `schemas/sdk-python-package-boundary.v1.schema.json` and cross-checked
 against `pyproject.toml` and the on-disk tree by
 `tests/sdk/python_package_boundary_test.py`) declares, as data:
@@ -21,8 +21,8 @@ against `pyproject.toml` and the on-disk tree by
 - **`runtimeDependencies: []`** — zero third-party or first-party runtime
   dependencies. The client never vendors, downloads, or requires the
   Membrane daemon, another SDK, or a native extension to import.
-- **`forbiddenPathPrefixes`** (`engine/`, `apps/`, `packaging/`, `release/`,
-  `install/`, `npm/`, `packages/typescript/`) — the repository locations of
+- **`forbiddenPathPrefixes`** (`engine/`, `apps/`, `dist/packaging/`, `dist/release/`,
+  `dist/install/`, `dist/npm/`, `dist/packages/typescript/`) — the repository locations of
   the Rust engine/daemon, the desktop app, installer/release tooling, the
   npm bootstrapper, and the TypeScript SDK. `pyproject.toml` must never
   reference any of them; the test asserts this by scanning the file's own
@@ -57,7 +57,7 @@ transport function the caller injects — it never ships it.
 - `include-package-data = false` is set explicitly so a later, unrelated
   edit cannot silently pull stray files (docs, evidence, fixtures) into the
   sdist through setuptools' default auto-discovery.
-- `readme` and `license` stay inside `packages/python/` (`README.md`, and a
+- `readme` and `license` stay inside `dist/packages/python/` (`README.md`, and a
   `license.text` string naming the repository's actual
   `Orthic Labs Source Use License v1.0`, not a fabricated OSI license). No
   build backend is installed in this environment to prove a `readme`/

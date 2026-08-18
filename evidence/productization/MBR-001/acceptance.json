@@ -1,9 +1,0 @@
-{
-  "schema": "orthic.membrane-evidence.acceptance.v1",
-  "taskId": "MBR-001",
-  "acceptance": "An executable test invokes scope=workspace and reaches the first child without ReferenceError.",
-  "status": "pass",
-  "verifiedBy": "node --test mcp/server.test.mjs",
-  "observed": "scope=workspace returns {ok:true, scope:workspace, repos:[workspace-root, child]} with isError=false and no ReferenceError",
-  "at": "2026-08-05T23:42:04.191527+00:00"
-}

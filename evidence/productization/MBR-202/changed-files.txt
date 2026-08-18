@@ -1,7 +1,0 @@
-engine/crates/membrane-protocol/src/lease.rs
-engine/crates/membrane-protocol/src/lib.rs
-engine/crates/membrane-supervisor/src/admission.rs
-engine/crates/membrane-supervisor/src/lib.rs
-engine/crates/membrane-supervisor/tests/admission.rs
-schemas/component-lease.v1.schema.json
-tests/supervisor/fixtures/component-lease-v1.golden.json

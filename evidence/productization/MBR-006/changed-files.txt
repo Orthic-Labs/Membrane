@@ -1,2 +1,0 @@
-mcp/server.mjs
-mcp/server.test.mjs

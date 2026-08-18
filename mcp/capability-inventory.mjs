@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { TOOLS, TOOL_OUTPUT_SCHEMA } from "./server.mjs";
-import { computeProductTruth } from "../tools/productization/generate-product-truth.mjs";
+import { computeProductTruth } from "../scripts/tools/productization/generate-product-truth.mjs";
 
 // MBR-016: a capability may be labeled "shipped" ONLY when every required gate
 // for its claim class passes. Test-presence alone is no longer sufficient. The

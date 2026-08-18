@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, appendFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { provenanceRowFromJs } from "../../adapters/provenance/index.mjs";
+import { provenanceRowFromJs } from "../../mcp/adapters/provenance/index.mjs";
 
 /**
  * Default git invocation. Mirrors the Rust `default_git_command`:

@@ -8,7 +8,7 @@
 This document is the canonical, user-facing privacy contract for the
 Membrane runtime's provenance adapter. It complements the technical
 contract in `engine/crates/membrane-runtime/src/provenance.rs` and the
-TypeScript twin in `adapters/provenance/index.mjs`. If the runtime
+TypeScript twin in `mcp/adapters/provenance/index.mjs`. If the runtime
 behaviour and this document disagree, the runtime is the source of truth
 and this document must be updated in the same change.
 

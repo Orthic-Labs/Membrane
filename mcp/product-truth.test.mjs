@@ -4,7 +4,7 @@ import {
   checkProductTruth,
   computeProductTruth,
   evaluateReadmeAgainstTruth,
-} from "../tools/productization/generate-product-truth.mjs";
+} from "../scripts/tools/productization/generate-product-truth.mjs";
 
 test("MBR-013: product truth is derived from live source (10 tools, 7 adapters)", async () => {
   const truth = await computeProductTruth();

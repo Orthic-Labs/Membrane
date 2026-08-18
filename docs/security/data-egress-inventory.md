@@ -5,7 +5,7 @@
 | Data | Location / lifetime | Evidence |
 | --- | --- | --- |
 | Provenance JSONL metadata | `<MEMBRANE_DATA_ROOT>/provenance.jsonl`; append-only; lifetime of install unless user wipes | [`docs/privacy.md`](../privacy.md) |
-| Scope-grant token or digest | Provenance row only when caller supplies it; treated as sensitive | [`PRIVACY.md`](../../PRIVACY.md), [`docs/privacy.md`](../privacy.md) |
+| Scope-grant token or digest | Provenance row only when caller supplies it; treated as sensitive | [`PRIVACY.md`](../legal/PRIVACY.md), [`docs/privacy.md`](../privacy.md) |
 | Workspace-relative dirty paths and diff counts | Same provenance row; file bodies excluded | [`engine/crates/membrane-runtime/src/provenance.rs`](../../engine/crates/membrane-runtime/src/provenance.rs) |
 | Installation, binding, and update receipts | Runtime data root; schema/versioned JSON receipts | [`engine/crates/membrane-runtime/src/installation_manifest.rs`](../../engine/crates/membrane-runtime/src/installation_manifest.rs), [`engine/crates/membrane/src/update.rs`](../../engine/crates/membrane/src/update.rs) |
 

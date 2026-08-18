@@ -1,6 +1,6 @@
 # Python client
 
-`membrane-client` (`packages/python/`) is packaging-ready, not published: its
+`membrane-client` (`dist/packages/python/`) is packaging-ready, not published: its
 distribution boundary, metadata, and version (`0.1.0`) are in place and
 tested, but no PyPI publish has happened and none is triggered by this
 source change. See `docs/sdk/python-publishing.md` for the publishing

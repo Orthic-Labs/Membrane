@@ -12,7 +12,7 @@ async function json(path) { return JSON.parse(await readFile(path, "utf8")); }
 
 /** Validate source metadata. Published installation requires independent registry evidence. */
 export async function verifyMcpRegistry({ directory = root, requirePublished = true } = {}) {
-  const [server, npm] = await Promise.all([json(resolve(directory, "server.json")), json(resolve(directory, "npm/package.json"))]);
+  const [server, npm] = await Promise.all([json(resolve(directory, "server.json")), json(resolve(directory, "dist/npm/package.json"))]);
   const expectedName = "io.github.orthic-labs/membrane";
   const expectedPackage = "@orthic/membrane";
   const expectedRepository = "https://github.com/orthic-labs/membrane";

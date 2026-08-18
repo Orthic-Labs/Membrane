@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MBR-910: binds packaging/oci/release.v1.json to a REAL release.
+// MBR-910: binds dist/packaging/oci/release.v1.json to a REAL release.
 //
 // This script never builds, signs, pushes, or runs a container -- Book-Mode's
 // MBR-910 override forbids CI/automation and this task's hard rules forbid
@@ -18,7 +18,7 @@
 // candidate document and calls that validator before ever writing anything.
 // Missing or invalid input -- a release-generation.json that doesn't exist
 // yet, a base image that drifted from the Containerfile, a proof file that
-// isn't there -- fails closed and packaging/oci/release.v1.json is left
+// isn't there -- fails closed and dist/packaging/oci/release.v1.json is left
 // exactly as it was (state: "unavailable"). Nothing here ever fabricates a
 // digest, version, or hash.
 import { createHash } from "node:crypto";
@@ -81,7 +81,7 @@ function readContainerfileBase(repoRoot) {
 /**
  * Pure assembly: builds the candidate ready-state OCI release document from
  * real, already-on-disk inputs and validates it with verifyOciRelease before
- * returning it. Never touches packaging/oci/release.v1.json itself -- callers
+ * returning it. Never touches dist/packaging/oci/release.v1.json itself -- callers
  * decide whether/where to write.
  */
 export function buildOciRelease({
@@ -90,7 +90,7 @@ export function buildOciRelease({
 }) {
   const generation = readReleaseGeneration(resolve(repoRoot, releaseGenerationPath));
   const containerfileBase = readContainerfileBase(repoRoot);
-  if (base !== containerfileBase) fail(`--base (${base}) does not match packaging/oci/Containerfile's FROM line (${containerfileBase}); the image actually built must match the source contract`);
+  if (base !== containerfileBase) fail(`--base (${base}) does not match dist/packaging/oci/Containerfile's FROM line (${containerfileBase}); the image actually built must match the source contract`);
   if (!/^[a-z0-9./_-]+@sha256:[a-f0-9]{64}$/.test(image ?? "")) fail("--image must be an exact digest-pinned reference (repo@sha256:<64 hex>)");
   if (!existsSync(resolve(repoRoot, binaryPath))) fail(`--binary not found: ${binaryPath}`);
   const artifactSha256 = sha256OfFile(resolve(repoRoot, binaryPath));
@@ -120,7 +120,7 @@ export function buildOciRelease({
 }
 
 /**
- * Writes packaging/oci/release.v1.json only after buildOciRelease succeeds.
+ * Writes dist/packaging/oci/release.v1.json only after buildOciRelease succeeds.
  * Idempotent: an identical candidate written twice succeeds silently; a
  * candidate that would change the currently-recorded ready release throws,
  * mirroring MBR-903's writeImmutableReleaseGeneration -- a bound release
@@ -134,7 +134,7 @@ export function writeOciRelease(options) {
     const existing = readFileSync(path, "utf8");
     const existingDoc = JSON.parse(existing);
     if (existingDoc.state === "ready" && existing.trim() !== next.trim()) {
-      fail(`packaging/oci/release.v1.json already records a different ready release; a sealed OCI release identity must never be rewritten (${path})`);
+      fail(`dist/packaging/oci/release.v1.json already records a different ready release; a sealed OCI release identity must never be rewritten (${path})`);
     }
   }
   writeFileSync(path, next);
@@ -168,7 +168,7 @@ function usage() {
     "usage: generate-oci-release.mjs --release-generation PATH --image REPO@sha256:HEX --base REF@sha256:HEX\n" +
     "  --binary PATH --sbom PATH --ed25519 PATH --cosign PATH --rootless-health PATH --secret-scan PATH\n" +
     "  [--repo-root PATH] [--write]\n\n" +
-    "Binds packaging/oci/release.v1.json to a real MBR-903 release-generation.json plus real,\n" +
+    "Binds dist/packaging/oci/release.v1.json to a real MBR-903 release-generation.json plus real,\n" +
     "already-produced evidence files. Every input must already exist on disk -- this command\n" +
     "never builds, signs, pushes, or runs an image. Without --write, prints the candidate\n" +
     "document only. Fails closed (no write) if any input is missing or invalid.",

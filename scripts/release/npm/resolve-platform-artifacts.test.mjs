@@ -2,7 +2,7 @@
 //
 // These tests never build, sign, publish, or run a mutating git command.
 // They exercise pure functions against a throwaway temp directory fixture
-// shaped exactly like release/contracts/release-generation.v1.schema.json,
+// shaped exactly like dist/release/contracts/release-generation.v1.schema.json,
 // plus one direct assertion against the real repository root proving this
 // resolver invents nothing when no release has actually been recorded.
 import test from "node:test";

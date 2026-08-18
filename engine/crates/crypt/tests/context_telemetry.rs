@@ -420,7 +420,7 @@ fn unknown_closure_rejects_a_saturated_delivery_cap_without_partial_write() {
 #[test]
 fn shared_fixture_validates_and_matches_language_neutral_canonical_digest() {
     let fixture_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../pipelines/memory/fixtures/context-telemetry-events-v1.json");
+        .join("../../fixtures/telemetry/context-telemetry-events-v1.json");
     let fixture: Value = serde_json::from_slice(&std::fs::read(fixture_path).unwrap()).unwrap();
     let valid = fixture["valid_events"].as_array().unwrap();
     for raw in valid {
@@ -446,7 +446,7 @@ fn shared_fixture_validates_and_matches_language_neutral_canonical_digest() {
 #[test]
 fn checked_in_registry_matches_canonical_parent_workspace_registry() {
     let local_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../lib/context-telemetry-registry.json");
+        .join("../../fixtures/context-telemetry-registry.json");
     let local = std::fs::read(&local_path).unwrap();
     let local_normalized = String::from_utf8(local).unwrap().replace("\r\n", "\n");
     let local_sha = format!("{:x}", sha2::Sha256::digest(&local_normalized));

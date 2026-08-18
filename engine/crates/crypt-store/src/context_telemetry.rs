@@ -196,7 +196,7 @@ const MAX_OBSERVABLE_QUERY_LIMIT: usize = 1_000;
 /// origin/event_type filtering (applied in Rust, not SQL) rejects most of a wide raw window.
 const MAX_OBSERVABLE_SCAN_ROWS: usize = 10_000;
 
-const REGISTRY_JSON: &str = include_str!("../../../../lib/context-telemetry-registry.json");
+const REGISTRY_JSON: &str = include_str!("../../../fixtures/context-telemetry-registry.json");
 const EXTENSION_PATTERN: &str = r"^ext\.[a-z0-9][a-z0-9_-]{0,31}\.[a-z0-9][a-z0-9._-]{0,46}$";
 
 struct ContextRegistry {
