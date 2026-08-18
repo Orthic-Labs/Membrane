@@ -20,6 +20,3 @@ apps/cortex-tray/src-tauri/target/
 
 # macOS
 .DS_Store
-
-# Research corpus: local-only (third-party papers, competitor material)
-/research/
