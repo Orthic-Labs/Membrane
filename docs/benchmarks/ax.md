@@ -101,9 +101,8 @@ CX-B7 CI job is `ax-conformance`, which runs `run-conformance.mjs` (Phase C,
 deterministic contract checks). The `claude` driver is additionally
 hard-blocked from CI. CI ownership of CX-B7 therefore means: conformance is
 enforced in CI, behavioral evidence is produced out-of-band (local or
-scheduled owner-invoked runs) and committed as reports — the same pattern the
-implementation plan (W4, `solimplement.md`) describes
-as "Phase D is one command away" rather than a CI gate.
+scheduled owner-invoked runs) and committed as reports — the same pattern
+described as "Phase D is one command away" rather than a CI gate.
 
 ## Reading a report
 

@@ -7,10 +7,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createCortexApplicationService } from "../lib/application/service.mjs";
-import { RootRegistry } from "../lib/application/root-registry.mjs";
-import { CortexError } from "../lib/application/errors.mjs";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
+import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
+import { CortexError } from "../src/lib/application/errors.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 
 const FIXTURE = join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce");
 

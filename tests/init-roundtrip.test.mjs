@@ -9,8 +9,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { buildInitPlan } from "../lib/init/plan.mjs";
-import { applyInitPlan } from "../lib/init/apply.mjs";
+import { buildInitPlan } from "../src/lib/init/plan.mjs";
+import { applyInitPlan } from "../src/lib/init/apply.mjs";
 import { removeBlock } from "../scripts/cortex-install.mjs";
 
 const CORTEX = fileURLToPath(new URL("../scripts/cortex.mjs", import.meta.url));
@@ -97,7 +97,7 @@ test("CLI uninstall restores non-UTF8 host bytes", () => {
 });
 
 test("init state validator rejects corrupt and escaping restore plans", async () => {
-  const module = await import("../lib/init/apply.mjs");
+  const module = await import("../src/lib/init/apply.mjs");
   assert.equal(typeof module.validateInstallState, "function");
   if (typeof module.validateInstallState !== "function") return;
   const root = makeRepo("generic");
@@ -135,7 +135,7 @@ test("uninstall preserves host edits made after init", () => {
 test("install state integrity rejects repo-side snapshot tampering", async () => {
   const root = makeRepo("generic"), keyDir = mkdtempSync(join(tmpdir(), "cortex-state-keys-"));
   try {
-    const integrity = await import("../lib/init/state-integrity.mjs");
+    const integrity = await import("../src/lib/init/state-integrity.mjs");
     assert.equal(typeof integrity.sealInstallState, "function");
     const state = { version: 1, files: { [join(root, "CORTEX-AGENT.md")]: { exists: false, bytes: null, installed: "a".repeat(64) } } };
     const sealed = integrity.sealInstallState(root, state, { stateKeyDir: keyDir });
@@ -146,7 +146,7 @@ test("install state integrity rejects repo-side snapshot tampering", async () =>
 });
 
 test("init apply preserves corrupt state and its external key", async () => {
-  const root = makeRepo("generic"), integrity = await import("../lib/init/state-integrity.mjs"), path = join(root, ".agent", "graph", "cortex-install-state.json");
+  const root = makeRepo("generic"), integrity = await import("../src/lib/init/state-integrity.mjs"), path = join(root, ".agent", "graph", "cortex-install-state.json");
   try {
     mkdirSync(join(root, ".agent", "graph"), { recursive: true });
     const sealed = integrity.sealInstallState(root, { version: 1, files: {} }), corrupt = { ...sealed, integrity: { ...sealed.integrity, tag: "0".repeat(64) } };

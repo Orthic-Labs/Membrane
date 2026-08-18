@@ -5,10 +5,10 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseRules } from "../lib/rules/parser.mjs";
-import { evaluateRules } from "../lib/rules/evaluate.mjs";
-import { toSarif } from "../lib/sarif.mjs";
-import { ledgerLink } from "../lib/run-ledger.mjs";
+import { parseRules } from "../src/lib/rules/parser.mjs";
+import { evaluateRules } from "../src/lib/rules/evaluate.mjs";
+import { toSarif } from "../src/lib/sarif.mjs";
+import { ledgerLink } from "../src/lib/run-ledger.mjs";
 
 export async function runAction({ workspace = process.env.GITHUB_WORKSPACE ?? process.cwd(), rulesPath = "cortex.rules.yml", version = "0.2.0", isFork = false } = {}) {
   const rulesFile = join(workspace, rulesPath);

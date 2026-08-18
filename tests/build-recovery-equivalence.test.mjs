@@ -8,11 +8,11 @@ import { join } from "node:path";
 import test from "node:test";
 
 import corpus from "../evals/equivalence/recovery-corpus-v1.json" with { type: "json" };
-import { createCortexApplicationService } from "../lib/application/service.mjs";
-import { adoptFileAtomically } from "../graph/atomic-store-adoption.mjs";
-import { closeStore, openStore, openStoreReadOnly, readManifestEnvelope } from "../graph/store-sqlite.mjs";
-import { createSnapshot } from "../graph/snapshots.mjs";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
+import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { adoptFileAtomically } from "../src/graph/atomic-store-adoption.mjs";
+import { closeStore, openStore, openStoreReadOnly, readManifestEnvelope } from "../src/graph/store-sqlite.mjs";
+import { createSnapshot } from "../src/graph/snapshots.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 
 const FIXTURE = join(import.meta.dirname, "..", "evals", "fixture-repos", "typescript-commerce");
 

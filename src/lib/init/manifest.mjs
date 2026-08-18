@@ -17,7 +17,7 @@ function snapshotToken(value = process.env.CORTEX_SNAPSHOT_TOKEN) {
   return typeof value === "string" && value.length > 0 ? value : randomBytes(32).toString("base64url");
 }
 
-export function buildProductManifest({ installRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../.."), version = null } = {}) {
+export function buildProductManifest({ installRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../.."), version = null } = {}) {
   const pkg = JSON.parse(readFileSync(join(installRoot, "package.json"), "utf8"));
   const ver = version ?? pkg.version ?? "0.0.0";
   const root = resolve(installRoot);

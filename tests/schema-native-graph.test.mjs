@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { buildGraphGeneration, graphCapabilities } from "../graph/static-provider.mjs";
+import { buildGraphGeneration, graphCapabilities } from "../src/graph/static-provider.mjs";
 
 function withFiles(files, run) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-schema-native-"));

@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { toSarif } from "../lib/sarif.mjs";
-import { ledgerLink, verifyLedgerLink, verifyLedgerChain } from "../lib/run-ledger.mjs";
+import { toSarif } from "../src/lib/sarif.mjs";
+import { ledgerLink, verifyLedgerLink, verifyLedgerChain } from "../src/lib/run-ledger.mjs";
 import { runAction } from "../action/index.mjs";
 
 test("SARIF maps findings with stable rules and severities", () => {

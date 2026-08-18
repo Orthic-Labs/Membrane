@@ -2,7 +2,7 @@ name: qualification
 on:
   pull_request:
     paths:
-      - 'graph/**'
+      - 'src/graph/**'
       - 'schemas/**'
       - 'tests/**'
       - 'evals/**'
@@ -28,7 +28,7 @@ jobs:
         with:
           version: 11.18.0
       - run: pnpm install --frozen-lockfile
-      - run: python -m pip install -r requirements-test.txt
+      - run: python -m pip install -r build/requirements-test.txt
       - run: node scripts/benchmark-retrieval.mjs --check-contract
       - run: pnpm test:all
   schema:

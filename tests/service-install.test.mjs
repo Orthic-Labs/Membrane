@@ -6,12 +6,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { installService, serviceTarget, foregroundRunArgs } from "../service/install.mjs";
-import { serviceStatus } from "../service/status.mjs";
-import { uninstallService } from "../service/uninstall.mjs";
+import { installService, serviceTarget, foregroundRunArgs } from "../src/service/install.mjs";
+import { serviceStatus } from "../src/service/status.mjs";
+import { uninstallService } from "../src/service/uninstall.mjs";
 
 test("OS templates are deleted per D-17", () => {
-  const templates = join(import.meta.dirname, "..", "service", "templates");
+  const templates = join(import.meta.dirname, "..", "src", "service", "templates");
   assert.equal(existsSync(templates), false, "service/templates must not exist per D-17");
 });
 
@@ -63,7 +63,7 @@ test("uninstallService with purge lists the data dir", () => {
 test("grep gate: no OS-registration code reachable in service/", async () => {
   const { readFileSync, readdirSync } = await import("node:fs");
   const { join } = await import("node:path");
-  const svcFiles = readdirSync("service").filter((f) => f.endsWith(".mjs")).map((f) => join("service", f));
+  const svcFiles = readdirSync("src/service").filter((f) => f.endsWith(".mjs")).map((f) => join("src/service", f));
   for (const f of svcFiles) {
     const src = readFileSync(f, "utf8");
     assert.equal(/launchctl/.test(src), false, `${f} must not contain launchctl per D-S03`);

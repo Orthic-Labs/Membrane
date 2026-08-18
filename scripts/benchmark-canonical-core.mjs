@@ -15,7 +15,7 @@ const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const EXCLUDED_PREFIXES = [".agent/", "vendor-research/", "evals/fixture-repos/", "evals/performance-fixtures/", "evals/performance-baselines/", "coverage/", "dist/", "out/", ".cache/"];
 // Current static-provider instrumentation may depend on a concurrently-added
 // publication helper. Overlay both explicitly; HEAD remains every other input.
-const MEASUREMENT_OVERLAY_PATHS = ["graph/static-provider.mjs", "graph/publication.mjs", "scripts/benchmark-canonical-core.mjs"];
+const MEASUREMENT_OVERLAY_PATHS = ["src/graph/static-provider.mjs", "graph/publication.mjs", "scripts/benchmark-canonical-core.mjs"];
 
 function sha256(value) { return createHash("sha256").update(value).digest("hex"); }
 function p95(values) { return [...values].sort((left, right) => left - right)[Math.max(0, Math.ceil(values.length * 0.95) - 1)] ?? null; }

@@ -1,6 +1,6 @@
 // D32: example language table plugin for the test kit.
 
-import { definePlugin } from "../../sdk/providers.mjs";
+import { definePlugin } from "../../src/sdk/providers.mjs";
 
 export default definePlugin({
   id: "example.lang.dsl",

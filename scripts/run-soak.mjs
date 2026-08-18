@@ -20,8 +20,8 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { applyFault, buildFaultSequence, faultCoverageReport } from "./fault-inject.mjs";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
-import { bulkInsertGeneration, countRows, saveGeneration } from "../graph/store-sqlite.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
+import { bulkInsertGeneration, countRows, saveGeneration } from "../src/graph/store-sqlite.mjs";
 
 /**
  * Build one synthetic generation at a given path. The driver doesn't exercise

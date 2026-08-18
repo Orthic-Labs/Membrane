@@ -5,8 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { applyInitPlan, uninstallInit } from "../lib/init/apply.mjs";
-import { buildInitPlan } from "../lib/init/plan.mjs";
+import { applyInitPlan, uninstallInit } from "../src/lib/init/apply.mjs";
+import { buildInitPlan } from "../src/lib/init/plan.mjs";
 import { readWatchConfig, writeWatchConfig } from "../watchman/supervisor.mjs";
 
 function fixture() {
@@ -19,7 +19,7 @@ function fixture() {
 
 test("onboarding enrolls only after explicit watch selection and uninstalls reversibly", () => {
   const { root, home, watch } = fixture();
-  const trust = join(import.meta.dirname, "..", "lib", "update", "trusted-update-keys.json");
+  const trust = join(import.meta.dirname, "..", "src", "lib", "update", "trusted-update-keys.json");
   const trustBefore = createHash("sha256").update(readFileSync(trust)).digest("hex");
   try {
     const off = buildInitPlan({ root, host: "generic", mcp: "off", watch: "off" });

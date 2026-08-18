@@ -9,4 +9,4 @@ Apache-2.0 (see `LICENSES/README.md`).
 - **Code contributions** are not accepted at this time. A contributor
   agreement is being prepared; until it is published, unsolicited pull
   requests cannot be merged.
-- Trademark use is governed by `TRADEMARKS.md`.
+- Trademark use is governed by `../docs/TRADEMARKS.md`.

@@ -5,7 +5,7 @@
 
 import { performance } from "node:perf_hooks";
 import { readFileSync } from "node:fs";
-import { loadLanguageRecord } from "../graph/treesitter-provider.mjs";
+import { loadLanguageRecord } from "../src/graph/treesitter-provider.mjs";
 
 const SMOKE_LANGUAGES = ["javascript", "typescript", "python", "rust"];
 

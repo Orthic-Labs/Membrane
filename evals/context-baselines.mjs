@@ -3,8 +3,8 @@ import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { recordTokenSavings } from "../lib/telemetry.mjs";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
+import { recordTokenSavings } from "../src/lib/telemetry.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const FIXTURES = join(ROOT, "evals", "fixture-repos");

@@ -4,7 +4,7 @@ import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from 
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BUILD_SCRIPT = fileURLToPath(new URL("../scripts/cortex.mjs", import.meta.url));
+const BUILD_SCRIPT = fileURLToPath(new URL("../../scripts/cortex.mjs", import.meta.url));
 const BUILD_INPUT_SIDECARS = Object.freeze(["config.json", "understanding.json", "verdicts.json", "reconcile.json"]);
 const EXCLUDED_SEGMENTS = new Set([".git", "node_modules", "target"]);
 

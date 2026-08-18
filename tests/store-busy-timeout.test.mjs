@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { openStore, openStoreReadOnly, closeStore } from "../graph/store-sqlite.mjs";
+import { openStore, openStoreReadOnly, closeStore } from "../src/graph/store-sqlite.mjs";
 
 // Regression guard for the production fleet-watcher death: WAL without busy_timeout turns any
 // writer/writer race into an instant "database is locked" throw. Serial tests can never catch

@@ -4,10 +4,10 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
-import { CortexRepositoryWorker, RepositoryActor } from "../graph/watchman.mjs";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
-import { MAX_SOURCE_FILE_BYTES, stableRead } from "../graph/stable-read.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { CortexRepositoryWorker, RepositoryActor } from "../src/graph/watchman.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
+import { MAX_SOURCE_FILE_BYTES, stableRead } from "../src/graph/stable-read.mjs";
 import { isEligibleWatchPath, normalizeEvents, startWatch, waitForNativeProbe } from "../watchman/adapter.mjs";
 
 const ROOT = join(import.meta.dirname, "..");

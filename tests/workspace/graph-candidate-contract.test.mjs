@@ -46,7 +46,7 @@ test("graph candidates CLI validates as ContextCandidateSet v1", { skip: workspa
 });
 
 test("candidate set applies real tiering: anchors reserved, exact flagged, overflow receipted", async () => {
-  const { buildGraphGeneration, createContextCandidateSet } = await import("../../graph/static-provider.mjs");
+  const { buildGraphGeneration, createContextCandidateSet } = await import("../../src/graph/static-provider.mjs");
   const repo = path.join(os.tmpdir(), `cortex-tiering-${process.pid}-${Date.now()}`);
   fs.mkdirSync(repo, { recursive: true });
   try {

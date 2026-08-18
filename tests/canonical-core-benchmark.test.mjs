@@ -3,7 +3,7 @@ import test from "node:test";
 import { REPORT_SCHEMA, isCanonicalCorePath, selectCanonicalCoreFiles, validateCanonicalCoreReport } from "../scripts/benchmark-canonical-core.mjs";
 
 test("canonical core selection retains tracked runtime sources & excludes fixtures, generated output, and vendor research", () => {
-  assert.deepEqual(selectCanonicalCoreFiles(["scripts/cortex.mjs", ".agent/manifest.json", "vendor-research/notes.md", "evals/fixture-repos/sample/index.js", "evals/performance-fixtures/sample.json", "graph/store-sqlite.mjs"]), ["graph/store-sqlite.mjs", "scripts/cortex.mjs"]);
+  assert.deepEqual(selectCanonicalCoreFiles(["scripts/cortex.mjs", ".agent/manifest.json", "vendor-research/notes.md", "evals/fixture-repos/sample/index.js", "evals/performance-fixtures/sample.json", "src/graph/store-sqlite.mjs"]), ["scripts/cortex.mjs", "src/graph/store-sqlite.mjs"]);
   assert.equal(isCanonicalCorePath("tests/canonical-core-benchmark.test.mjs"), true);
 });
 

@@ -10,15 +10,15 @@ import {
   tierConfidence,
   isTierAtLeast,
   filterEdgesByMinTier,
-} from "../graph/confidence-tiers.mjs";
-import { PRECISION_TIERS, PRECISION_TIER_ORDER } from "../graph/precision-tiers.mjs";
-import { probeScip, augmentGenerationWithScip } from "../graph/scip-provider.mjs";
+} from "../src/graph/confidence-tiers.mjs";
+import { PRECISION_TIERS, PRECISION_TIER_ORDER } from "../src/graph/precision-tiers.mjs";
+import { probeScip, augmentGenerationWithScip } from "../src/graph/scip-provider.mjs";
 import {
   buildGraphGeneration,
   graphCapabilities,
   graphPrecisionProbe,
-} from "../graph/static-provider.mjs";
-import { buildTreeSitterGraph, PROVIDER as TREESITTER_PROVIDER } from "../graph/treesitter-provider.mjs";
+} from "../src/graph/static-provider.mjs";
+import { buildTreeSitterGraph, PROVIDER as TREESITTER_PROVIDER } from "../src/graph/treesitter-provider.mjs";
 
 function withFiles(files, run) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-tiers-"));

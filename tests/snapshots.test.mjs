@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
-import { createSnapshot, getSnapshot, listSnapshots, changesSince } from "../graph/snapshots.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
+import { createSnapshot, getSnapshot, listSnapshots, changesSince } from "../src/graph/snapshots.mjs";
 
 function seeded() {
   const db = openStore(":memory:");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkRuntime, RUNTIME_CAPABILITIES } from "../lib/runtime-capabilities.mjs";
+import { checkRuntime, RUNTIME_CAPABILITIES } from "../src/lib/runtime-capabilities.mjs";
 
 test("runtime capability check returns the running Node version and an explicit supported flag", () => {
   const result = checkRuntime();

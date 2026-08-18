@@ -7,12 +7,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createDaemonServer } from "../service/server.mjs";
-import { DaemonClient } from "../service/client.mjs";
-import { temporaryDaemonEndpoint } from "../service/paths.mjs";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
-import { createCortexApplicationService } from "../lib/application/service.mjs";
-import { RootRegistry } from "../lib/application/root-registry.mjs";
+import { createDaemonServer } from "../src/service/server.mjs";
+import { DaemonClient } from "../src/service/client.mjs";
+import { temporaryDaemonEndpoint } from "../src/service/paths.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
 
 function controlledFreshnessService({ onFreshness = () => {}, onStatus = () => {} } = {}) {
   return {

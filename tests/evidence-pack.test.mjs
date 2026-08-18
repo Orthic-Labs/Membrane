@@ -3,9 +3,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { composeFederatedSlices, isRepoAllowed } from "../lib/federation/index.mjs";
-import { buildEvidencePack, evidencePackToMarkdown } from "../lib/evidence-pack.mjs";
-import { redactForEgress } from "../lib/redaction.mjs";
+import { composeFederatedSlices, isRepoAllowed } from "../src/lib/federation/index.mjs";
+import { buildEvidencePack, evidencePackToMarkdown } from "../src/lib/evidence-pack.mjs";
+import { redactForEgress } from "../src/lib/redaction.mjs";
 
 test("federation composes slices without raw-merging", () => {
   const composed = composeFederatedSlices([

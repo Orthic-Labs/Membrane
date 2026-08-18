@@ -8,9 +8,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { defineLanguageTable } from "../graph/language-table.mjs";
-import { walkTable } from "../graph/generic-ast-walker.mjs";
-import { genericEngineEnabled } from "../graph/treesitter-provider.mjs";
+import { defineLanguageTable } from "../src/graph/language-table.mjs";
+import { walkTable } from "../src/graph/generic-ast-walker.mjs";
+import { genericEngineEnabled } from "../src/graph/treesitter-provider.mjs";
 
 function fakeTree(rootNode) {
   return { rootNode };

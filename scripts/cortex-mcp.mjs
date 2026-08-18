@@ -15,15 +15,15 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
-import { createCortexApplicationService } from "../lib/application/service.mjs";
-import { RootRegistry } from "../lib/application/root-registry.mjs";
-import { CortexError } from "../lib/application/errors.mjs";
-import { redactForEgress } from "../lib/redaction.mjs";
-import { closeStore, openStoreReadOnly } from "../graph/store-sqlite.mjs";
-import { readIndexedMeta } from "../graph/traverse-store.mjs";
-import { RESOURCE_URIS, resourceForUri } from "../mcp/resources.mjs";
-import { PROMPTS, promptByName } from "../mcp/prompts.mjs";
-import { TOOL_EFFECTS } from "../mcp/effects.mjs";
+import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
+import { CortexError } from "../src/lib/application/errors.mjs";
+import { redactForEgress } from "../src/lib/redaction.mjs";
+import { closeStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
+import { readIndexedMeta } from "../src/graph/traverse-store.mjs";
+import { RESOURCE_URIS, resourceForUri } from "../src/mcp/resources.mjs";
+import { PROMPTS, promptByName } from "../src/mcp/prompts.mjs";
+import { TOOL_EFFECTS } from "../src/mcp/effects.mjs";
 
 const OUT_DIR = ".agent";
 

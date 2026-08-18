@@ -31,7 +31,7 @@ import {
   generateDocs,
   isGenerated,
   maintainReadmePointer,
-} from "../lib/generated-docs.mjs";
+} from "../src/lib/generated-docs.mjs";
 
 // Use a self-contained CLI invocation so we exercise the real build path.
 const SCRIPT = fileURLToPath(new URL("../scripts/cortex.mjs", import.meta.url));

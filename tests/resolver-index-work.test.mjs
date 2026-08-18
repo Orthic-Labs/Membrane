@@ -5,8 +5,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { buildGraphGeneration, scanSourcesPublic } from "../graph/static-provider.mjs";
-import { containsCall } from "../graph/language-extractors.mjs";
+import { buildGraphGeneration, scanSourcesPublic } from "../src/graph/static-provider.mjs";
+import { containsCall } from "../src/graph/language-extractors.mjs";
 
 function legacyCallEdges(files, nodes, edges) {
   const targets = nodes.filter((node) => node.kind === "symbol" && ["Method", "Function"].some((label) => node.labels.includes(label)));

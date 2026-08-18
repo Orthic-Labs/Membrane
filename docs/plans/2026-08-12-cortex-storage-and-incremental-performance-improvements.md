@@ -4,7 +4,7 @@ Date: 2026-08-12
 
 Status: derived execution plan; implementation stopped; no completion claim
 
-Authority: [`../../sol.md`](../../sol.md). This plan cannot change its invariants, requirements, dispositions, or gates.
+Authority: the code and qualification receipts in this repository. This plan cannot change its invariants, requirements, dispositions, or gates.
 
 Repository: canonical `/Volumes/D/claude/cortex` only; `cortex2` is forbidden.
 
@@ -58,7 +58,7 @@ All measurements remain observations until benchmark manifests bind command, fix
 
 1. Freeze output equivalence before optimization.
 2. Land one work package at a time; each package has its own tests, measurements, rollback, compatibility proof, commit, & remote receipt only when its partial-state invariant permits release.
-3. Reject any change that alters ordered exact results, graph facts, omissions, provider/generation identity, or ghost-edge outcomes unless `sol.md` explicitly requires that new behavior.
+3. Reject any change that alters ordered exact results, graph facts, omissions, provider/generation identity, or ghost-edge outcomes unless the plan's requirements explicitly require that new behavior.
 4. Never relax fixtures, thresholds, ordering, expected omissions, timeouts, or sample counts to make a change pass.
 5. A tested module is not a product capability until registry → qualification → build → store → query → doctor is complete.
 6. Re-measure after each package. Stop adding machinery once all frozen gates pass.
@@ -71,7 +71,7 @@ Requirements: CX-R033–R036.
 - Reproduce canonical `main` in an isolated temporary clone only for comparison; do not switch this checkout or create a worktree.
 - Freeze graph fact/order corpus, ghost-edge add/delete/move/rename/ambiguity fixtures, retrieval corpus, no-op byte identity, interruption recovery, & lifecycle process census.
 - Freeze cold/no-op/delta/100-file/5,000-file benchmark manifests on Mac & Windows.
-- Freeze `benchmark-protocol.v1.json`, `cortex-competitors.v1.json`, atomic `CX-H` closure, public-surface inventory, supported-version window, & exact canonical `sol.md`/plan digests. Every later receipt names those digests.
+- Freeze `benchmark-protocol.v1.json`, `cortex-competitors.v1.json`, atomic `CX-H` closure, public-surface inventory, supported-version window, & exact canonical plan digests. Every later receipt names those digests.
 - Freeze package capacity manifest: owned file paths, prerequisite artifacts, measured baseline paths/lines, projected changed-line ceiling, native-host effort, acceptance cells, & aggregate remaining work.
 - Record current provider registry, extension/file/byte counts, capability vectors, fallback reasons, & doctor output.
 

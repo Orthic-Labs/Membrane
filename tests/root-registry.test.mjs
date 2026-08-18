@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { RootRegistry } from "../lib/application/root-registry.mjs";
-import { CortexError } from "../lib/application/errors.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
+import { CortexError } from "../src/lib/application/errors.mjs";
 
 function makeRepo(name = "repo-a") {
   const root = mkdtempSync(join(tmpdir(), `cortex-registry-${name}-`));

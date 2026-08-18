@@ -13,9 +13,9 @@
 // object on stdout — `{ schemaVersion, candidates: [...] }`. Read-only: this
 // path never repairs, reconciles, or writes; freshness verdicts are the
 // resident service's job.
-import { closeStore, openStoreReadOnly, readManifestEnvelope } from "../graph/store-sqlite.mjs";
-import { indexedQueryGeneration } from "../graph/traverse-store.mjs";
-import { createContextCandidateSet } from "../graph/static-provider.mjs";
+import { closeStore, openStoreReadOnly, readManifestEnvelope } from "../src/graph/store-sqlite.mjs";
+import { indexedQueryGeneration } from "../src/graph/traverse-store.mjs";
+import { createContextCandidateSet } from "../src/graph/static-provider.mjs";
 import { join, resolve } from "node:path";
 
 function parseArgs(argv) {

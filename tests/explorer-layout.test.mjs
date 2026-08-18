@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { projectOrb, sphericalLayout } from "../lib/explorer/layout.mjs";
+import { projectOrb, sphericalLayout } from "../src/lib/explorer/layout.mjs";
 
 test("spherical layout is deterministic and bounded", () => {
   const input = [{ id: "c" }, { id: "a" }, { id: "b" }];

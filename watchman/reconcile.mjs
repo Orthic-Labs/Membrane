@@ -1,9 +1,9 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { diffLedgerAgainstTree } from "../graph/merkle-ledger.mjs";
-import { normalizeIgnoredPrefixes } from "../graph/ignored-prefixes.mjs";
-import { scanSourceMetadataPublic, scanSourcesPublic } from "../graph/static-provider.mjs";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
+import { diffLedgerAgainstTree } from "../src/graph/merkle-ledger.mjs";
+import { normalizeIgnoredPrefixes } from "../src/graph/ignored-prefixes.mjs";
+import { scanSourceMetadataPublic, scanSourcesPublic } from "../src/graph/static-provider.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 import { eventsSince, writeSnapshot } from "./adapter.mjs";
 import { appendWatchEvents, drainJournal } from "./repo-actor.mjs";
 

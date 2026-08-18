@@ -11,7 +11,7 @@ export function uninstallService({ purgeData = false, dataDir = null } = {}) {
   const target = null; // D-S03: no OS target
   const purged = [];
   if (purgeData) {
-    const dir = dataDir ?? join(SCRIPT_DIR, "..", ".agent");
+    const dir = dataDir ?? join(SCRIPT_DIR, "..", "..", ".agent");
     rmSync(dir, { recursive: true, force: true });
     purged.push(dir);
   }

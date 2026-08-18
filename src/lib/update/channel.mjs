@@ -11,7 +11,7 @@ export const CHANNELS = Object.freeze(["stable", "beta", "nightly"]);
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
 export function detectInstallOwner() {
-  const self = resolve(SCRIPT_DIR, "..", "..");
+  const self = resolve(SCRIPT_DIR, "..", "..", "..");
   // npm/pnpm global install: the package lives under a node_modules tree.
   if (self.includes(`${sep()}node_modules${sep()}`)) {
     const parts = self.split(sep());

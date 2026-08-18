@@ -7,8 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { profileForPath, extractSqlFacts, extractDockerfileFacts } from "../providers/schemas/sql.mjs";
-import { extractTerraformFacts, extractKubernetesFacts, profileFile, extractProfileFacts } from "../providers/iac/terraform.mjs";
+import { profileForPath, extractSqlFacts, extractDockerfileFacts } from "../src/providers/schemas/sql.mjs";
+import { extractTerraformFacts, extractKubernetesFacts, profileFile, extractProfileFacts } from "../src/providers/iac/terraform.mjs";
 
 test("profileForPath routes by extension and content hints", () => {
   assert.equal(profileForPath("infra/main.tf"), "terraform");

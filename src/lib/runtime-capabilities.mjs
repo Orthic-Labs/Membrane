@@ -21,7 +21,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // hardcoded literal that can desync if the engine floor moves.
 let SUPPORTED_RANGE = ">=22.22.3";
 try {
-  const pkgPath = resolve(__dirname, "..", "package.json");
+  const pkgPath = resolve(__dirname, "..", "..", "package.json");
   const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
   if (pkg?.engines?.node) SUPPORTED_RANGE = pkg.engines.node;
 } catch {

@@ -6,14 +6,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadLanguageRecord } from "../graph/treesitter-provider.mjs";
-import { walkTable } from "../graph/generic-ast-walker.mjs";
+import { loadLanguageRecord } from "../src/graph/treesitter-provider.mjs";
+import { walkTable } from "../src/graph/generic-ast-walker.mjs";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "languages");
 const LANGUAGES = ["go", "java", "kotlin", "c_sharp", "c", "cpp", "objc"];
 
 test("batch A languages route through catalog with code profile", async () => {
-  const { languageCapabilityRecords } = await import("../graph/language-registry.mjs");
+  const { languageCapabilityRecords } = await import("../src/graph/language-registry.mjs");
   const records = languageCapabilityRecords();
   for (const lang of LANGUAGES) {
     const record = records.find((r) => r.language === lang);
@@ -24,7 +24,7 @@ test("batch A languages route through catalog with code profile", async () => {
 
 for (const lang of LANGUAGES) {
   test(`${lang} fixture parses and emits nodes without fabrication`, async () => {
-    const table = (await import(`../graph/language-tables/${lang}.mjs`)).default;
+    const table = (await import(`../src/graph/language-tables/${lang}.mjs`)).default;
     const record = await loadLanguageRecord(table.id);
     if (!record.parser) {
       assert.ok(record.error, `${lang} must carry a typed degradation reason`);
@@ -48,7 +48,7 @@ for (const lang of LANGUAGES) {
 }
 
 test("batch A no name-only exact call/reference edges are emitted", async () => {
-  const { languageCapabilityRecords } = await import("../graph/language-registry.mjs");
+  const { languageCapabilityRecords } = await import("../src/graph/language-registry.mjs");
   const records = languageCapabilityRecords().filter((r) => LANGUAGES.includes(r.language));
   assert.equal(records.length, LANGUAGES.length);
 });

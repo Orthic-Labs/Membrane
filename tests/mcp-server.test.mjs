@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
-import { RESOURCE_URIS } from "../mcp/resources.mjs";
-import { PROMPTS } from "../mcp/prompts.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { RESOURCE_URIS } from "../src/mcp/resources.mjs";
+import { PROMPTS } from "../src/mcp/prompts.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const SERVER = join(ROOT, "scripts/cortex-mcp.mjs");

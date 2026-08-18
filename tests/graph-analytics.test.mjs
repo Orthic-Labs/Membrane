@@ -4,8 +4,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { findSccs, findCycles, deadCodeCandidates, assignLayers, analyticsDigest } from "../graph/analytics/index.mjs";
-import { buildArchitectureModel } from "../graph/architecture-model.mjs";
+import { findSccs, findCycles, deadCodeCandidates, assignLayers, analyticsDigest } from "../src/graph/analytics/index.mjs";
+import { buildArchitectureModel } from "../src/graph/architecture-model.mjs";
 
 test("Tarjan SCC finds cycles deterministically", () => {
   const edges = [

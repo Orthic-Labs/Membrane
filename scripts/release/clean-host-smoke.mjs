@@ -11,7 +11,7 @@ import { verifyCandidate } from "./check-release.mjs";
 import { deriveUpdateKeyId } from "./generate-update-keys.mjs";
 import { npmCliArgs } from "./npm-cli.mjs";
 import { signUpdateManifest } from "./sign-update-manifest.mjs";
-import { loadTrustedUpdateKeys } from "../../lib/update/manifest.mjs";
+import { loadTrustedUpdateKeys } from "../../src/lib/update/manifest.mjs";
 import { verifyMcpInitialize } from "./mcp-client-smoke.mjs";
 
 function run(command, args, options = {}) {
@@ -68,7 +68,7 @@ export async function runUpdateTrustLifecycle({ cortex, packageRoot, repo, app, 
   } finally {
     if (shippedRootExisted) renameSync(trustRootBackup, shippedRootPath);
   }
-  const { canonicalManifestPayload } = await import(pathToFileURL(join(packageRoot, "lib", "update", "manifest.mjs")));
+  const { canonicalManifestPayload } = await import(pathToFileURL(join(packageRoot, "src", "lib", "update", "manifest.mjs")));
   let shippedRootBefore = null, signingKeyId = null;
   if (useShippedRoot) {
     // The shipped root is never overwritten. The manifest is signed with the
@@ -121,7 +121,7 @@ export async function runCleanHostSmoke({ candidate } = {}) {
     // never replace it; only an empty (or absent) shipped root falls back to
     // installing the ephemeral key, and only after the fail-closed stage.
     let shippedKeys;
-    try { shippedKeys = loadTrustedUpdateKeys(join(packageRoot, "lib", "update", "trusted-update-keys.json")); }
+    try { shippedKeys = loadTrustedUpdateKeys(join(packageRoot, "src", "lib", "update", "trusted-update-keys.json")); }
     catch { throw new Error("shipped trust root is corrupt"); }
     const useShippedRoot = !!shippedKeys && Object.keys(shippedKeys).length >= 1;
     const trustRoot = { source: useShippedRoot ? "shipped" : "ephemeral", keyCount: useShippedRoot ? Object.keys(shippedKeys).length : 0 };
@@ -142,7 +142,7 @@ export async function runCleanHostSmoke({ candidate } = {}) {
     stages.mcp = true;
     JSON.parse(runNode(cortex, ["update", "check", "--offline", "--json"], { cwd: repo }));
     stages.updateCheck = true;
-    const { treeDigest } = await import(pathToFileURL(join(packageRoot, "lib", "update", "manifest.mjs")));
+    const { treeDigest } = await import(pathToFileURL(join(packageRoot, "src", "lib", "update", "manifest.mjs")));
     const app = join(repo, "app"), prior = join(repo, "app.prior");
     const update = join(temp, "update");
     mkdirSync(app); mkdirSync(update);
@@ -152,7 +152,7 @@ export async function runCleanHostSmoke({ candidate } = {}) {
     writeFileSync(join(update, "package.json"), JSON.stringify({ name: "@orthic-labs/cortex-target", version: "0.3.0" }));
     const keys = generateKeyPairSync("ed25519"), manifestPath = join(temp, "manifest.json");
     const manifest = { schemaVersion: 1, channel: "stable", version: "0.3.0", commit: "a".repeat(40), publishedAt: "2026-08-08T00:00:00Z", artifacts: [{ name: "local", packageName: "@orthic-labs/cortex-target", platform: process.platform, arch: process.arch, sha256: treeDigest(update) }], signatureAlgorithm: "Ed25519", keyId: "ephemeral", signature: "" };
-    const shippedRootPath = join(packageRoot, "lib", "update", "trusted-update-keys.json");
+    const shippedRootPath = join(packageRoot, "src", "lib", "update", "trusted-update-keys.json");
     const lifecycle = await runUpdateTrustLifecycle({
       cortex, packageRoot, repo, app, prior, update, manifestPath, manifest,
       ephemeralKeys: keys, useShippedRoot, shippedKeys, shippedRootPath,

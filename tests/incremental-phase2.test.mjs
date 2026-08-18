@@ -7,7 +7,7 @@ import {
   isReconciliationDecisionCurrent,
   reconcileInputFingerprint,
   sealPhase2Artifacts,
-} from "../lib/incremental-phase2.mjs";
+} from "../src/lib/incremental-phase2.mjs";
 
 function graph(generationId, hashes) {
   return {

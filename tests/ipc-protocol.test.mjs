@@ -7,13 +7,13 @@ import { join } from "node:path";
 import { connect, createServer } from "node:net";
 import test from "node:test";
 
-import { encodeRequest, encodeResponse, encodeCancel, decodeLine, PROTOCOL_VERSION, METHODS, validateDeadlineMs, validateProtocolVersion } from "../service/protocol.mjs";
-import { createDaemonServer } from "../service/server.mjs";
-import { DaemonClient } from "../service/client.mjs";
-import { daemonEndpoint, temporaryDaemonEndpoint } from "../service/paths.mjs";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
-import { createCortexApplicationService } from "../lib/application/service.mjs";
-import { RootRegistry } from "../lib/application/root-registry.mjs";
+import { encodeRequest, encodeResponse, encodeCancel, decodeLine, PROTOCOL_VERSION, METHODS, validateDeadlineMs, validateProtocolVersion } from "../src/service/protocol.mjs";
+import { createDaemonServer } from "../src/service/server.mjs";
+import { DaemonClient } from "../src/service/client.mjs";
+import { daemonEndpoint, temporaryDaemonEndpoint } from "../src/service/paths.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

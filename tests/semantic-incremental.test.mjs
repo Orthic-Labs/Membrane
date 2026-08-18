@@ -4,8 +4,8 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { claimEvidenceFingerprint, buildIncrementalPhase2Plan } from "../lib/incremental-phase2.mjs";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
+import { claimEvidenceFingerprint, buildIncrementalPhase2Plan } from "../src/lib/incremental-phase2.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/cortex.mjs");

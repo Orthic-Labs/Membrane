@@ -80,7 +80,7 @@ From a source checkout:
 ```sh
 pnpm install
 pnpm test                       # requires Node >= 22.22.3
-python3 -m pip install -r requirements-test.txt   # for the full workspace suite
+python3 -m pip install -r build/requirements-test.txt   # for the full workspace suite
 pnpm run test:all
 ```
 
@@ -96,16 +96,6 @@ Bins: `cortex`, `cortex-watch`, `cortex-mcp` (MCP server), `cortex-install`.
 
 Parser depth varies by language (lexical fallback is broader than AST coverage). Dynamic runtime registration can stay unresolved without executable or compiler evidence. SCIP precision requires a repository-supplied export. Embeddings and semantic vector search are not active. Explorer, tray, and desktop onboarding are implemented but not yet published. Raw graph data is not copied into durable memory.
 
-## Repository truth docs
-- [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
-- [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
-
-## Planning authority
-
-- [Product, performance, competitor, & research contract](sol.md)
-- [Single implementation plan](solimplement.md)
-- [Implementation status](references/IMPLEMENTATION-STATUS.md) — release-pinned surface summary; live status comes from `cortex doctor --full --json`
-
 ## License
 
 Cortex is **source-available**, not open source. Its proprietary core is covered
@@ -118,7 +108,7 @@ mirror, modify, or repackage proprietary core.
 The SDK (`sdk/`), schemas (`schemas/`), and examples (`examples/`) are licensed
 under [Apache-2.0](LICENSES/README.md), so integrations and independently authored
 plugins may build against those surfaces without relicensing proprietary core.
-Trademarks: see [TRADEMARKS.md](TRADEMARKS.md).
+Trademarks: see [TRADEMARKS.md](docs/TRADEMARKS.md).
 
 ---
 

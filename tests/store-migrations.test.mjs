@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { buildFixtureStores } from "../fixtures/stores/build-stores.mjs";
-import { applyFileDelta } from "../graph/delta-store.mjs";
+import { applyFileDelta } from "../src/graph/delta-store.mjs";
 import {
   closeStore,
   getFile,
@@ -25,7 +25,7 @@ import {
   repairInterruptedMigration,
   saveGeneration,
   SCHEMA_VERSION,
-} from "../graph/store-sqlite.mjs";
+} from "../src/graph/store-sqlite.mjs";
 
 function withFixtureStores(fn) {
   const dir = mkdtempSync(join(tmpdir(), "cortex-migrations-"));

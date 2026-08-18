@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { contentDigest } from "../graph/generation-identity.mjs";
-import { stableRead } from "../graph/stable-read.mjs";
+import { contentDigest } from "../src/graph/generation-identity.mjs";
+import { stableRead } from "../src/graph/stable-read.mjs";
 
 test("stableRead returns exact bytes, digest, identity, and stats", () => {
   const dir = mkdtempSync(join(tmpdir(), "cortex-stable-read-"));

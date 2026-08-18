@@ -3,8 +3,8 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, wri
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 import { RepositoryActor } from "../watchman/repo-actor.mjs";
 import { FRESHNESS, WatchSupervisor, writeWatchConfig } from "../watchman/supervisor.mjs";
 

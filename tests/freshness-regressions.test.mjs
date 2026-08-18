@@ -4,12 +4,12 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { stableRead } from "../graph/stable-read.mjs";
-import { applyFileDelta, clearDomainPending, DOC_PROVIDER, markDomainPending, readPendingDomains, STRUCTURAL_PROVIDER } from "../graph/delta-store.mjs";
-import { computeFullLedger, updateLeafChain } from "../graph/merkle-ledger.mjs";
-import { buildGraphGeneration, parseFileFacts } from "../graph/static-provider.mjs";
-import { closeStore, listFileMetadata, openStore, openStoreReadOnly } from "../graph/store-sqlite.mjs";
-import { CortexRepositoryWorker, RepositoryActor } from "../graph/watchman.mjs";
+import { stableRead } from "../src/graph/stable-read.mjs";
+import { applyFileDelta, clearDomainPending, DOC_PROVIDER, markDomainPending, readPendingDomains, STRUCTURAL_PROVIDER } from "../src/graph/delta-store.mjs";
+import { computeFullLedger, updateLeafChain } from "../src/graph/merkle-ledger.mjs";
+import { buildGraphGeneration, parseFileFacts } from "../src/graph/static-provider.mjs";
+import { closeStore, listFileMetadata, openStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
+import { CortexRepositoryWorker, RepositoryActor } from "../src/graph/watchman.mjs";
 import { normalizeEvents } from "../watchman/adapter.mjs";
 import { reconcile } from "../watchman/reconcile.mjs";
 
@@ -447,7 +447,7 @@ test("restart drains journal row appended before process death exactly once", as
     buildGraphGeneration(repo, { outDir: ".agent", persist: true });
     writeFileSync(join(repo, "src/service.ts"), "export const restartRecovered = true;\n");
     const child = spawnSync(process.execPath, ["--input-type=module", "-e", `
-      import { openStore, closeStore } from ${JSON.stringify(new URL("../graph/store-sqlite.mjs", import.meta.url).href)};
+      import { openStore, closeStore } from ${JSON.stringify(new URL("../src/graph/store-sqlite.mjs", import.meta.url).href)};
       import { appendWatchEvents } from ${JSON.stringify(new URL("../watchman/repo-actor.mjs", import.meta.url).href)};
       const db = openStore(${JSON.stringify(dbPath(repo))});
       appendWatchEvents(db, [{ eventKind: "modify", path: "src/service.ts", observedMs: 1 }]);

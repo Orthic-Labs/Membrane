@@ -7,13 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { CortexClient, EmbeddedCortexClient, PROTOCOL_VERSION } from "../sdk/index.mjs";
-import { definePlugin, PLUGIN_TYPES } from "../sdk/providers.mjs";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
-import { createDaemonServer } from "../service/server.mjs";
-import { temporaryDaemonEndpoint } from "../service/paths.mjs";
-import { createCortexApplicationService } from "../lib/application/service.mjs";
-import { RootRegistry } from "../lib/application/root-registry.mjs";
+import { CortexClient, EmbeddedCortexClient, PROTOCOL_VERSION } from "../src/sdk/index.mjs";
+import { definePlugin, PLUGIN_TYPES } from "../src/sdk/providers.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { createDaemonServer } from "../src/service/server.mjs";
+import { temporaryDaemonEndpoint } from "../src/service/paths.mjs";
+import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
 import examplePlugin from "../examples/providers/example-language-plugin.mjs";
 
 test("SDK exposes typed client classes and protocol version", () => {

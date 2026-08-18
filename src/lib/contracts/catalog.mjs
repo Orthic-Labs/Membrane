@@ -1,4 +1,4 @@
-import catalog from "../../schemas/catalog.json" with { type: "json" };
+import catalog from "../../../schemas/catalog.json" with { type: "json" };
 
 export const CONTRACT_CATALOG = Object.freeze(catalog.contracts.map((entry) => Object.freeze({ ...entry })));
 

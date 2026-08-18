@@ -5,7 +5,7 @@ import { dirname, resolve, join } from "node:path";
 import { spawn } from "node:child_process";
 import { WatchSupervisor, defaultConfigPath, readWatchConfig, writeWatchConfig } from "../watchman/supervisor.mjs";
 import { reconcile } from "../watchman/reconcile.mjs";
-import { syncToCurrentSourceAtPath } from "../graph/barrier.mjs";
+import { syncToCurrentSourceAtPath } from "../src/graph/barrier.mjs";
 
 const configPath = defaultConfigPath();
 const pidPath = join(dirname(configPath), "watchman.pid");

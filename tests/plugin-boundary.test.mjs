@@ -6,8 +6,8 @@
 
 import assert from "node:assert/strict";
 import test from "node:test";
-import { definePlugin, PLUGIN_TYPES } from "../sdk/providers.mjs";
-import { defineProvider } from "../providers/index.mjs";
+import { definePlugin, PLUGIN_TYPES } from "../src/sdk/providers.mjs";
+import { defineProvider } from "../src/providers/index.mjs";
 
 test("definePlugin rejects a manifest missing a required key", () => {
   assert.throws(() => definePlugin({ id: "x", version: "1.0.0" }), /plugin missing/);

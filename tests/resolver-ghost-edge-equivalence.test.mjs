@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 
 const corpus = JSON.parse(readFileSync(join(import.meta.dirname, "../evals/equivalence/ghost-edge-corpus-v1.json"), "utf8"));
 

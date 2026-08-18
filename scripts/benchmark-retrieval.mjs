@@ -33,8 +33,8 @@ import { readFileSync, existsSync, mkdirSync, mkdtempSync, cpSync, rmSync, statS
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { openStore, openStoreReadOnly, closeStore, traversalNeighbors, hydrateNodesByIds } from "../graph/store-sqlite.mjs";
-import { buildGraphGeneration, readGeneration, graphNeighbors, queryGraph } from "../graph/static-provider.mjs";
+import { openStore, openStoreReadOnly, closeStore, traversalNeighbors, hydrateNodesByIds } from "../src/graph/store-sqlite.mjs";
+import { buildGraphGeneration, readGeneration, graphNeighbors, queryGraph } from "../src/graph/static-provider.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");

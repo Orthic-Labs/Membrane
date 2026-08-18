@@ -10,9 +10,9 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-import { CHANNELS, detectInstallOwner, channelEnabled } from "../lib/update/channel.mjs";
-import { loadUpdateManifest, loadTrustedUpdateKeys, verifyArtifactChecksum, verifySignedManifest, rejectDowngrade, rejectReplay } from "../lib/update/manifest.mjs";
-import { backupStore } from "../lib/update/apply.mjs";
+import { CHANNELS, detectInstallOwner, channelEnabled } from "../src/lib/update/channel.mjs";
+import { loadUpdateManifest, loadTrustedUpdateKeys, verifyArtifactChecksum, verifySignedManifest, rejectDowngrade, rejectReplay } from "../src/lib/update/manifest.mjs";
+import { backupStore } from "../src/lib/update/apply.mjs";
 import { signUpdateManifest } from "../scripts/release/sign-update-manifest.mjs";
 import { deriveUpdateKeyId } from "../scripts/release/generate-update-keys.mjs";
 
@@ -116,7 +116,7 @@ test("cortex update apply for source owner requires a signed manifest path", () 
 });
 
 test("Ed25519 manifest verification trusts only a pinned key-id map", async () => {
-  const module = await import("../lib/update/manifest.mjs");
+  const module = await import("../src/lib/update/manifest.mjs");
   assert.equal(typeof module.canonicalManifestPayload, "function");
   assert.equal(typeof module.verifySignedManifest, "function");
   if (typeof module.canonicalManifestPayload !== "function" || typeof module.verifySignedManifest !== "function") return;
@@ -134,7 +134,7 @@ test("Ed25519 manifest verification trusts only a pinned key-id map", async () =
 });
 
 test("trusted key root accepts only a unique strict key list", async () => {
-  const { loadTrustedUpdateKeys } = await import("../lib/update/manifest.mjs");
+  const { loadTrustedUpdateKeys } = await import("../src/lib/update/manifest.mjs");
   const dir = mkdtempSync(join(tmpdir(), "cortex-trust-root-"));
   try {
     const path = join(dir, "trusted-update-keys.json");
@@ -197,7 +197,7 @@ test("a root holding keys A and B verifies manifests signed by either", () => {
 });
 
 test("shipped trusted-update-keys.json is an empty schemaVersion 1 root that fails closed", () => {
-  const shippedPath = join(ROOT, "lib", "update", "trusted-update-keys.json");
+  const shippedPath = join(ROOT, "src", "lib", "update", "trusted-update-keys.json");
   assert.deepEqual(JSON.parse(readFileSync(shippedPath, "utf8")), { schemaVersion: 1, keys: [] });
   const loaded = loadTrustedUpdateKeys(shippedPath);
   assert.deepEqual(loaded, {});

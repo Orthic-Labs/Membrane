@@ -24,8 +24,8 @@ import {
   saveGeneration,
   loadGeneration,
   hydrateNodesByIds,
-} from "../graph/store-sqlite.mjs";
-import { computeGenerationId } from "../graph/generation-identity.mjs";
+} from "../src/graph/store-sqlite.mjs";
+import { computeGenerationId } from "../src/graph/generation-identity.mjs";
 
 function sampleGeneration() {
   return {

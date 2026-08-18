@@ -8,9 +8,9 @@ import {
   buildGraphGeneration,
   augmentGenerationWithTreeSitter,
   finalizeGenerationIdentity,
-} from "../graph/static-provider.mjs";
-import { computeGenerationId } from "../graph/generation-identity.mjs";
-import { validatePortableManifest } from "../graph/portable-manifest.mjs";
+} from "../src/graph/static-provider.mjs";
+import { computeGenerationId } from "../src/graph/generation-identity.mjs";
+import { validatePortableManifest } from "../src/graph/portable-manifest.mjs";
 import {
   openStore,
   closeStore,
@@ -18,7 +18,7 @@ import {
   loadGeneration,
   getGenerationEnvelope,
   countRows,
-} from "../graph/store-sqlite.mjs";
+} from "../src/graph/store-sqlite.mjs";
 
 const FIXTURE = join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce");
 

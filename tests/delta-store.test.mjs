@@ -3,12 +3,12 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { applyFileDelta } from "../graph/delta-store.mjs";
-import { stableRead } from "../graph/stable-read.mjs";
-import { buildGraphGeneration, parseFileFacts, scanSourcesPublic } from "../graph/static-provider.mjs";
-import { closeStore, getGenerationEnvelope, openStore, saveGeneration, searchGenerationSymbols } from "../graph/store-sqlite.mjs";
-import { compareRepoPaths, normalizeRepoPath } from "../graph/path-order.mjs";
-import { canonicalProviderId } from "../graph/provider-identity.mjs";
+import { applyFileDelta } from "../src/graph/delta-store.mjs";
+import { stableRead } from "../src/graph/stable-read.mjs";
+import { buildGraphGeneration, parseFileFacts, scanSourcesPublic } from "../src/graph/static-provider.mjs";
+import { closeStore, getGenerationEnvelope, openStore, saveGeneration, searchGenerationSymbols } from "../src/graph/store-sqlite.mjs";
+import { compareRepoPaths, normalizeRepoPath } from "../src/graph/path-order.mjs";
+import { canonicalProviderId } from "../src/graph/provider-identity.mjs";
 
 const FIXTURE = join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce");
 

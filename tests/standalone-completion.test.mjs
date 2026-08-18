@@ -33,7 +33,7 @@ function xxh3Hex(value) {
 }
 import { fileURLToPath } from "node:url";
 import { readEnvelope, mutateManifest } from "./_store-helpers.mjs";
-import { readGeneration } from "../graph/static-provider.mjs";
+import { readGeneration } from "../src/graph/static-provider.mjs";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const CORTEX = join(HERE, "..");

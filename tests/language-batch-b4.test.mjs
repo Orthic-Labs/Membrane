@@ -5,20 +5,20 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadLanguageRecord } from "../graph/treesitter-provider.mjs";
-import { walkTable } from "../graph/generic-ast-walker.mjs";
+import { loadLanguageRecord } from "../src/graph/treesitter-provider.mjs";
+import { walkTable } from "../src/graph/generic-ast-walker.mjs";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "languages");
 
 test("Swift routes through catalog with code profile", async () => {
-  const { languageCapabilityRecords } = await import("../graph/language-registry.mjs");
+  const { languageCapabilityRecords } = await import("../src/graph/language-registry.mjs");
   const record = languageCapabilityRecords().find((candidate) => candidate.language === "swift");
   assert.ok(record, "missing catalog entry swift");
   assert.equal(record.factProfile, "code");
 });
 
 test("swift fixture parses with evidence-bearing nodes", async () => {
-  const table = (await import("../graph/language-tables/swift.mjs")).default;
+  const table = (await import("../src/graph/language-tables/swift.mjs")).default;
   const record = await loadLanguageRecord(table.id);
   if (!record.parser) {
     assert.ok(record.error, "swift must carry a typed degradation reason");

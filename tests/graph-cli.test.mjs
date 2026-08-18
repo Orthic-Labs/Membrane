@@ -6,10 +6,10 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { readEnvelope, mutateManifest } from "./_store-helpers.mjs";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
-import { markDomainPending, readPendingDomains } from "../graph/delta-store.mjs";
-import { PARSED_LANGUAGE_EXTENSIONS } from "../graph/language-extractors.mjs";
-import { languageCapabilityRecords } from "../graph/language-registry.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
+import { markDomainPending, readPendingDomains } from "../src/graph/delta-store.mjs";
+import { PARSED_LANGUAGE_EXTENSIONS } from "../src/graph/language-extractors.mjs";
+import { languageCapabilityRecords } from "../src/graph/language-registry.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CORTEX = path.resolve(HERE, "..");

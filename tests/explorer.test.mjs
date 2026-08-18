@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { startExplorerServer } from "../lib/http-server.mjs";
-import { serveExplorerAsset } from "../lib/explorer/static.mjs";
+import { startExplorerServer } from "../src/lib/http-server.mjs";
+import { serveExplorerAsset } from "../src/lib/explorer/static.mjs";
 
 test("explorer shell boots without exposing API", async () => {
   const service = { status: async () => ({ state: "fresh" }), architecture: async () => ({ nodes: [] }) };
@@ -19,6 +19,6 @@ test("explorer shell boots without exposing API", async () => {
 });
 
 test("standalone explorer never launches a token-bearing browser child", () => {
-  const source = readFileSync(new URL("../lib/explorer/index.mjs", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../src/lib/explorer/index.mjs", import.meta.url), "utf8");
   assert.doesNotMatch(source, /spawn\(|execFile|xdg-open|\/c.*, *start/);
 });

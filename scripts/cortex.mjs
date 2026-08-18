@@ -4,7 +4,7 @@ import { createXXHash128 } from "hash-wasm";
 // Phase 7.5 — runtime capability check. Emits `unsupported_node_runtime`
 // with a structured payload before any work begins; surfaces `node:sqlite`
 // availability instead of dying with ERR_UNKNOWN_BUILTIN_MODULE on Node <22.
-import { requireRuntime } from "../lib/runtime-capabilities.mjs";
+import { requireRuntime } from "../src/lib/runtime-capabilities.mjs";
 requireRuntime();
 
 // XXH3-128 everywhere in cortex: these are content/identity digests for
@@ -54,19 +54,19 @@ import {
   repositoryIdentity,
   queryGraph,
   resolveGraphNode,
-} from "../graph/static-provider.mjs";
-import { normalizeIgnoredPrefixes, pathMatchesIgnoredPrefix } from "../graph/ignored-prefixes.mjs";
-import { leafDigestForFile } from "../graph/merkle-ledger.mjs";
-import { buildNeighborhood } from "../graph/neighborhood.mjs";
-import { generateDocs, generatedDocsGenerationId } from "../lib/generated-docs.mjs";
+} from "../src/graph/static-provider.mjs";
+import { normalizeIgnoredPrefixes, pathMatchesIgnoredPrefix } from "../src/graph/ignored-prefixes.mjs";
+import { leafDigestForFile } from "../src/graph/merkle-ledger.mjs";
+import { buildNeighborhood } from "../src/graph/neighborhood.mjs";
+import { generateDocs, generatedDocsGenerationId } from "../src/lib/generated-docs.mjs";
 import { dispatchFacade } from "./cli/commands.mjs";
 import {
   buildIncrementalPhase2Plan,
   isReconciliationDecisionCurrent,
   sealPhase2Artifacts,
-} from "../lib/incremental-phase2.mjs";
-import { CODE_EXTENSIONS } from "../graph/language-extractors.mjs";
-import { adoptRebuiltGeneration, openStore, openStoreReadOnly, closeStore, countRows, listFileMetadata, listSymbolMetadata, readManifestEnvelope, searchGenerationSymbols } from "../graph/store-sqlite.mjs";
+} from "../src/lib/incremental-phase2.mjs";
+import { CODE_EXTENSIONS } from "../src/graph/language-extractors.mjs";
+import { adoptRebuiltGeneration, openStore, openStoreReadOnly, closeStore, countRows, listFileMetadata, listSymbolMetadata, readManifestEnvelope, searchGenerationSymbols } from "../src/graph/store-sqlite.mjs";
 import {
   readIndexedMeta,
   indexedQueryGeneration,
@@ -79,19 +79,19 @@ import {
   boundedImpact,
   boundedArchitecture,
   encodeTabular,
-} from "../graph/traverse-store.mjs";
-import { workingTreeSummary } from "../sources/dirty-files.mjs";
-import { stableRead } from "../graph/stable-read.mjs";
-import { applyFileDelta, clearDomainPending, DOC_PROVIDER, MAX_DEPENDENT_FILES, MAX_HOPS } from "../graph/delta-store.mjs";
-import { collectDependents } from "../graph/store-sqlite.mjs";
-import { buildIncrementalTreeSitterFacts, disposeTreeSitterProvider, SUPPORTED_EXTENSIONS } from "../graph/treesitter-provider.mjs";
+} from "../src/graph/traverse-store.mjs";
+import { workingTreeSummary } from "../src/sources/dirty-files.mjs";
+import { stableRead } from "../src/graph/stable-read.mjs";
+import { applyFileDelta, clearDomainPending, DOC_PROVIDER, MAX_DEPENDENT_FILES, MAX_HOPS } from "../src/graph/delta-store.mjs";
+import { collectDependents } from "../src/graph/store-sqlite.mjs";
+import { buildIncrementalTreeSitterFacts, disposeTreeSitterProvider, SUPPORTED_EXTENSIONS } from "../src/graph/treesitter-provider.mjs";
 import { reconcile as reconcileGraph } from "../watchman/reconcile.mjs";
-import { syncToCurrentSource } from "../graph/barrier.mjs";
-import { checkScopeGrant, issueScopeGrant } from "../lib/receipt-store.mjs";
-import { incrementTelemetry, readTelemetry } from "../lib/telemetry.mjs";
-import { createSnapshot, getSnapshot, listSnapshots, changesSince } from "../graph/snapshots.mjs";
-import { adoptFileAtomically } from "../graph/atomic-store-adoption.mjs";
-import { DaemonClient } from "../service/client.mjs";
+import { syncToCurrentSource } from "../src/graph/barrier.mjs";
+import { checkScopeGrant, issueScopeGrant } from "../src/lib/receipt-store.mjs";
+import { incrementTelemetry, readTelemetry } from "../src/lib/telemetry.mjs";
+import { createSnapshot, getSnapshot, listSnapshots, changesSince } from "../src/graph/snapshots.mjs";
+import { adoptFileAtomically } from "../src/graph/atomic-store-adoption.mjs";
+import { DaemonClient } from "../src/service/client.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -3229,8 +3229,8 @@ async function main() {
   }
   if (command === "doctor") {
     if (args["repair-plan"]) {
-      const { collectDoctorDiagnostics } = await import("../lib/operations/doctor.mjs");
-      const { buildRepairPlan } = await import("../lib/operations/repair.mjs");
+      const { collectDoctorDiagnostics } = await import("../src/lib/operations/doctor.mjs");
+      const { buildRepairPlan } = await import("../src/lib/operations/repair.mjs");
       const diagnostics = collectDoctorDiagnostics(root, outDir, { full: Boolean(args.full) });
       const plan = buildRepairPlan({ root, outDir, graphState: diagnostics.state, reasons: diagnostics.reasons });
       if (args["apply-repair"]) {
@@ -3255,9 +3255,9 @@ async function main() {
     return doctor(root, outDir, { json: Boolean(args.json), full: Boolean(args.full) });
   }
   if (command === "support-bundle") {
-    const { buildSupportBundle } = await import("../lib/operations/support-bundle.mjs");
-    const { collectDoctorDiagnostics } = await import("../lib/operations/doctor.mjs");
-    const { buildRepairPlan } = await import("../lib/operations/repair.mjs");
+    const { buildSupportBundle } = await import("../src/lib/operations/support-bundle.mjs");
+    const { collectDoctorDiagnostics } = await import("../src/lib/operations/doctor.mjs");
+    const { buildRepairPlan } = await import("../src/lib/operations/repair.mjs");
     const destination = String(args._[0] ?? args.path ?? "").trim() || null;
     const diagnostics = collectDoctorDiagnostics(root, outDir);
     const plan = buildRepairPlan({ root, outDir, graphState: diagnostics.state, reasons: diagnostics.reasons });

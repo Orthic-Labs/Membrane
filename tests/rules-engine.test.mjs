@@ -6,10 +6,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
-import { parseRules } from "../lib/rules/parser.mjs";
-import { evaluateRules, pathMatches } from "../lib/rules/evaluate.mjs";
-import { isExceptionValid, suppressedByException } from "../lib/rules/exceptions.mjs";
-import { changedSlice } from "../lib/rules/baseline.mjs";
+import { parseRules } from "../src/lib/rules/parser.mjs";
+import { evaluateRules, pathMatches } from "../src/lib/rules/evaluate.mjs";
+import { isExceptionValid, suppressedByException } from "../src/lib/rules/exceptions.mjs";
+import { changedSlice } from "../src/lib/rules/baseline.mjs";
 
 const EXAMPLE = join(import.meta.dirname, "..", "examples", "cortex.rules.yml");
 

@@ -2,12 +2,12 @@
 // application service; write/build paths stay in the main CLI until D30.
 // Graph subcommands remain as aliases.
 
-import { createCortexApplicationService } from "../../lib/application/service.mjs";
-import { applyInitPlan, uninstallInit } from "../../lib/init/apply.mjs";
-import { buildInitPlan } from "../../lib/init/plan.mjs";
-import { recoverPendingUpdate } from "../../lib/update/apply.mjs";
+import { createCortexApplicationService } from "../../src/lib/application/service.mjs";
+import { applyInitPlan, uninstallInit } from "../../src/lib/init/apply.mjs";
+import { buildInitPlan } from "../../src/lib/init/plan.mjs";
+import { recoverPendingUpdate } from "../../src/lib/update/apply.mjs";
 import { join } from "node:path";
-import { createDaemonServer } from "../../service/server.mjs";
+import { createDaemonServer } from "../../src/service/server.mjs";
 import { readWatchConfig } from "../../watchman/supervisor.mjs";
 import { startCortexMcpServer } from "../cortex-mcp.mjs";
 import { EXIT, parseArgs } from "./args.mjs";
@@ -80,7 +80,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       return EXIT.OK;
     }
     case "explore": {
-      const { startLocalExplorer } = await import("../../lib/explorer/index.mjs");
+      const { startLocalExplorer } = await import("../../src/lib/explorer/index.mjs");
       const explorer = await startLocalExplorer({ root, outDir, service });
       const payload = { schemaVersion: 1, state: "listening", url: explorer.url };
       if (args.json || args["no-open"]) printResult(payload, args);
@@ -122,9 +122,9 @@ async function runFacadeCommand(command, args, { root, outDir }) {
     }
     case "service": {
       const subcommand = String(args._[0] ?? args.subcommand ?? "status");
-      const { installService } = await import("../../service/install.mjs");
-      const { serviceStatus } = await import("../../service/status.mjs");
-      const { uninstallService } = await import("../../service/uninstall.mjs");
+      const { installService } = await import("../../src/service/install.mjs");
+      const { serviceStatus } = await import("../../src/service/status.mjs");
+      const { uninstallService } = await import("../../src/service/uninstall.mjs");
       if (subcommand === "install") {
         const result = installService({ root, dryRun: Boolean(args["dry-run"]) });
         printResult(result, args);
@@ -147,8 +147,8 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         const { readFileSync } = await import("node:fs");
         const { spawn } = await import("node:child_process");
         const { resolve } = await import("node:path");
-        const { buildProductManifest, manifestPath } = await import("../../lib/init/manifest.mjs");
-        const { startSnapshotServer } = await import("../../lib/orthic-snapshot.mjs");
+        const { buildProductManifest, manifestPath } = await import("../../src/lib/init/manifest.mjs");
+        const { startSnapshotServer } = await import("../../src/lib/orthic-snapshot.mjs");
         let endpoint;
         let daemon;
         let daemonAddress;
@@ -212,7 +212,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       const subcommand = String(args._[0] ?? args.subcommand ?? "check");
       const channel = args.channel ?? "stable";
       const offline = Boolean(args.offline);
-      const { detectInstallOwner, channelEnabled } = await import("../../lib/update/channel.mjs");
+      const { detectInstallOwner, channelEnabled } = await import("../../src/lib/update/channel.mjs");
       const owner = detectInstallOwner();
       if (subcommand === "check") {
         const enabled = channelEnabled(channel, { offline });
@@ -239,7 +239,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         const local = ["manifest", "artifact", "artifact-name", "app-dir", "prior-dir", "repo-root"];
         const supplied = local.filter((key) => args[key] !== undefined);
         if (supplied.length) {
-          const { applySignedLocalArtifactUpdate } = await import("../../lib/update/apply.mjs");
+          const { applySignedLocalArtifactUpdate } = await import("../../src/lib/update/apply.mjs");
           const result = applySignedLocalArtifactUpdate({
             manifestPath: args.manifest, artifactDir: args.artifact,
             artifactName: args["artifact-name"], appDir: args["app-dir"], priorDir: args["prior-dir"],
@@ -259,7 +259,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       }
       if (subcommand === "rollback") {
         if (args["app-dir"] || args["prior-dir"] || args["repo-root"]) {
-          const { rollback } = await import("../../lib/update/rollback.mjs");
+          const { rollback } = await import("../../src/lib/update/rollback.mjs");
           const result = rollback({ appDir: args["app-dir"], priorDir: args["prior-dir"], root: args["repo-root"], receiptPath: join(args["repo-root"] ?? root, ".agent", "update", "accepted-manifest.json") });
           printResult({ schemaVersion: 1, owner, action: "rollback", ...result }, args);
           return result.ok ? EXIT.OK : EXIT.INTERNAL;
@@ -271,14 +271,14 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       return EXIT.USAGE;
     }
     case "languages": {
-      const { languagesJson } = await import("../../graph/language-registry.mjs");
+      const { languagesJson } = await import("../../src/graph/language-registry.mjs");
       printResult(languagesJson(), args);
       return EXIT.OK;
     }
     case "rules": {
       const subcommand = String(args._[0] ?? args.subcommand ?? "check");
-      const { parseRules } = await import("../../lib/rules/parser.mjs");
-      const { evaluateRules } = await import("../../lib/rules/evaluate.mjs");
+      const { parseRules } = await import("../../src/lib/rules/parser.mjs");
+      const { evaluateRules } = await import("../../src/lib/rules/evaluate.mjs");
       const { readFileSync, existsSync } = await import("node:fs");
       const rulesPath = join(root, "cortex.rules.yml");
       if (!existsSync(rulesPath)) {

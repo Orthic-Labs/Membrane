@@ -4,8 +4,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { semanticCandidateProvider, semanticEnabled } from "../providers/ranking/semantic.mjs";
-import { hybridRank, SCORE_COMPONENTS } from "../providers/ranking/hybrid.mjs";
+import { semanticCandidateProvider, semanticEnabled } from "../src/providers/ranking/semantic.mjs";
+import { hybridRank, SCORE_COMPONENTS } from "../src/providers/ranking/hybrid.mjs";
 
 test("semantic provider is candidate-only and disabled by default", async () => {
   assert.equal(semanticEnabled(), false);

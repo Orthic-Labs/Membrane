@@ -9,8 +9,8 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-import { createCortexApplicationService } from "../lib/application/service.mjs";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
+import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/cortex.mjs");
@@ -143,7 +143,7 @@ test("expand with an ambiguous anchor raises anchor_ambiguous", async () => {
   try {
     const service = createCortexApplicationService();
     // A name shared by exactly two symbols is ambiguous by contract.
-    const { openStore, closeStore } = await import("../graph/store-sqlite.mjs");
+    const { openStore, closeStore } = await import("../src/graph/store-sqlite.mjs");
     const dbPath = join(repo, ".agent", "graph", "graph.db");
     const db = openStore(dbPath);
     try {

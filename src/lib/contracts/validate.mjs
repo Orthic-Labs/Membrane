@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import { CONTRACT_CATALOG, contractByName } from "./catalog.mjs";
 
-const SCHEMA_DIR = fileURLToPath(new URL("../../schemas/", import.meta.url));
+const SCHEMA_DIR = fileURLToPath(new URL("../../../schemas/", import.meta.url));
 const ajv = new Ajv2020({
   allErrors: true,
   strict: true,
@@ -13,7 +13,7 @@ const ajv = new Ajv2020({
 const validators = new Map();
 
 for (const entry of CONTRACT_CATALOG) {
-  const schema = JSON.parse(readFileSync(new URL(entry.file, new URL("../../schemas/", import.meta.url)), "utf8"));
+  const schema = JSON.parse(readFileSync(new URL(entry.file, new URL("../../../schemas/", import.meta.url)), "utf8"));
   const validator = ajv.compile(schema);
   validators.set(entry.name, { entry, schema, validator });
 }

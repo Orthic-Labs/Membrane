@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { adoptFileAtomically } from "../graph/atomic-store-adoption.mjs";
+import { adoptFileAtomically } from "../src/graph/atomic-store-adoption.mjs";
 
 test("fresh store replaces prior file only after validation", () => {
   const dir = mkdtempSync(join(tmpdir(), "cortex-adopt-"));

@@ -9,10 +9,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { applySignedLocalArtifactUpdate, backupStore, stageUpdate, applyStaged, recoverInterruptedSwap, recoverPendingUpdate } from "../lib/update/apply.mjs";
-import { rollback } from "../lib/update/rollback.mjs";
-import * as manifestModule from "../lib/update/manifest.mjs";
-import { isConfinedPath, resolvePhysicalPath } from "../lib/path-confinement.mjs";
+import { applySignedLocalArtifactUpdate, backupStore, stageUpdate, applyStaged, recoverInterruptedSwap, recoverPendingUpdate } from "../src/lib/update/apply.mjs";
+import { rollback } from "../src/lib/update/rollback.mjs";
+import * as manifestModule from "../src/lib/update/manifest.mjs";
+import { isConfinedPath, resolvePhysicalPath } from "../src/lib/path-confinement.mjs";
 
 function fixtureRoot() {
   const root = mkdtempSync(join(tmpdir(), "cortex-rollback-"));
@@ -132,7 +132,7 @@ test("local update rejects a symlinked app target before trust lookup", () => {
 test("update receipt integrity uses a separate external key namespace", async () => {
   const root = fixtureRoot(), keyDir = mkdtempSync(join(tmpdir(), "cortex-update-keys-"));
   try {
-    const integrity = await import("../lib/init/state-integrity.mjs");
+    const integrity = await import("../src/lib/init/state-integrity.mjs");
     const receipt = integrity.sealLocalState(root, { version: "0.3.0", commit: "a".repeat(40) }, { namespace: "update", stateKeyDir: keyDir });
     assert.doesNotThrow(() => integrity.verifyLocalState(root, receipt, { namespace: "update", stateKeyDir: keyDir }));
     receipt.version = "9.9.9";
@@ -143,7 +143,7 @@ test("update receipt integrity uses a separate external key namespace", async ()
 test("pending rollback transaction restores both failed app and database", async () => {
   const root = fixtureRoot();
   try {
-    const integrity = await import("../lib/init/state-integrity.mjs"), appDir = join(root, "app"), priorDir = join(root, "app-prior"), failedApp = join(root, "app.failed"), dbPath = join(root, ".agent", "graph", "graph.db"), failedDb = `${dbPath}.failed`;
+    const integrity = await import("../src/lib/init/state-integrity.mjs"), appDir = join(root, "app"), priorDir = join(root, "app-prior"), failedApp = join(root, "app.failed"), dbPath = join(root, ".agent", "graph", "graph.db"), failedDb = `${dbPath}.failed`;
     mkdirSync(failedApp); writeFileSync(join(failedApp, "version.txt"), "v2");
     const db = new DatabaseSync(dbPath); db.exec("UPDATE state SET value = 'sqlite-v2'"); db.close(); copyFileSync(dbPath, failedDb);
     const reset = new DatabaseSync(dbPath); reset.exec("UPDATE state SET value = 'sqlite-v1'"); reset.close();
@@ -158,7 +158,7 @@ test("pending rollback transaction restores both failed app and database", async
 test("direct rollback recovers a pending apply journal before receipt handling", async () => {
   const root = fixtureRoot();
   try {
-    const integrity = await import("../lib/init/state-integrity.mjs"), appDir = join(root, "app"), priorDir = join(root, "app-prior"), journalPath = join(root, ".agent", "update", "transaction.json");
+    const integrity = await import("../src/lib/init/state-integrity.mjs"), appDir = join(root, "app"), priorDir = join(root, "app-prior"), journalPath = join(root, ".agent", "update", "transaction.json");
     const backup = backupStore(root); renameSync(appDir, priorDir); mkdirSync(appDir); writeFileSync(join(appDir, "version.txt"), "v2");
     const receipt = { channel: "stable", version: "0.2.0", commit: "a".repeat(40), storeBackup: backup.path, storeBackupDigest: createHash("sha256").update(readFileSync(backup.path)).digest("hex") };
     mkdirSync(join(root, ".agent", "update"), { recursive: true });
@@ -198,7 +198,7 @@ test("rollback rejects a retained app outside its repository root", () => {
 test("apply recovery restores a retired prior before receipt commit", async () => {
   const root = fixtureRoot();
   try {
-    const integrity = await import("../lib/init/state-integrity.mjs"), appDir = join(root, "app"), priorDir = join(root, "app-prior"), retiredPrior = `${priorDir}.retired`;
+    const integrity = await import("../src/lib/init/state-integrity.mjs"), appDir = join(root, "app"), priorDir = join(root, "app-prior"), retiredPrior = `${priorDir}.retired`;
     mkdirSync(priorDir); writeFileSync(join(priorDir, "version.txt"), "v0"); renameSync(priorDir, retiredPrior); renameSync(appDir, priorDir);
     mkdirSync(join(root, ".agent", "update"), { recursive: true });
     writeFileSync(join(root, ".agent", "update", "transaction.json"), JSON.stringify(integrity.sealLocalState(root, { operation: "apply", phase: "prepared", appDir, priorDir, retiredPrior, preAppDigest: manifestModule.treeDigest(priorDir), prePriorDigest: manifestModule.treeDigest(retiredPrior), artifactDigest: "a".repeat(64) }, { namespace: "update" })));
@@ -211,7 +211,7 @@ test("apply recovery restores a retired prior before receipt commit", async () =
 test("prepared apply recovery keeps pre-state before retiring prior", async () => {
   const root = fixtureRoot();
   try {
-    const integrity = await import("../lib/init/state-integrity.mjs"), appDir = join(root, "app"), priorDir = join(root, "app-prior"), next = `${appDir}.next`;
+    const integrity = await import("../src/lib/init/state-integrity.mjs"), appDir = join(root, "app"), priorDir = join(root, "app-prior"), next = `${appDir}.next`;
     mkdirSync(priorDir); writeFileSync(join(priorDir, "version.txt"), "v0"); mkdirSync(next); writeFileSync(join(next, "version.txt"), "v2");
     mkdirSync(join(root, ".agent", "update"), { recursive: true });
     writeFileSync(join(root, ".agent", "update", "transaction.json"), JSON.stringify(integrity.sealLocalState(root, { operation: "apply", phase: "prepared", appDir, priorDir, next, retiredPrior: `${priorDir}.retired`, preAppDigest: manifestModule.treeDigest(appDir), prePriorDigest: manifestModule.treeDigest(priorDir), artifactDigest: manifestModule.treeDigest(next) }, { namespace: "update" })));

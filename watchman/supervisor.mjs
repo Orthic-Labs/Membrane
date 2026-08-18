@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import { closeStore, openStoreReadOnly } from "../graph/store-sqlite.mjs";
+import { closeStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
 import { RepositoryActor } from "./repo-actor.mjs";
 import { reconcile as defaultReconcile } from "./reconcile.mjs";
 

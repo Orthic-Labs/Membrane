@@ -17,9 +17,9 @@ import {
   openStore,
   repairInterruptedMigration,
   SCHEMA_VERSION,
-} from "../graph/store-sqlite.mjs";
-import { backupStore } from "../lib/update/apply.mjs";
-import { rollback } from "../lib/update/rollback.mjs";
+} from "../src/graph/store-sqlite.mjs";
+import { backupStore } from "../src/lib/update/apply.mjs";
+import { rollback } from "../src/lib/update/rollback.mjs";
 
 function fixtureSetup() {
   const dir = mkdtempSync(join(tmpdir(), "cortex-rollback-"));

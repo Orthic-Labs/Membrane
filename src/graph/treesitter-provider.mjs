@@ -100,7 +100,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const requireFromHere = createRequire(import.meta.url);
 const GRAMMAR_PACKAGE_JSON = requireFromHere.resolve("tree-sitter-wasms/package.json");
 const WASM_DIR = join(dirname(GRAMMAR_PACKAGE_JSON), "out");
-const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 let grammarCatalog = null;
 let grammarManifest = null;
 

@@ -13,9 +13,9 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { RootRegistry } from "../lib/application/root-registry.mjs";
-import { repositoryIdentity } from "../graph/static-provider.mjs";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
+import { repositoryIdentity } from "../src/graph/static-provider.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");

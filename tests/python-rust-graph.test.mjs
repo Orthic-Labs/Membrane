@@ -11,9 +11,9 @@ import {
   graphStatus,
   scanSourcesPublic,
   sourceCapabilityCoverage,
-} from "../graph/static-provider.mjs";
-import { PARSED_LANGUAGE_EXTENSIONS } from "../graph/language-extractors.mjs";
-import { languageCapabilityRecords } from "../graph/language-registry.mjs";
+} from "../src/graph/static-provider.mjs";
+import { PARSED_LANGUAGE_EXTENSIONS } from "../src/graph/language-extractors.mjs";
+import { languageCapabilityRecords } from "../src/graph/language-registry.mjs";
 
 const CORTEX = path.resolve(import.meta.dirname, "..");
 const CATALOG_EXTENSIONS = languageCapabilityRecords().flatMap((record) => record.extensions);

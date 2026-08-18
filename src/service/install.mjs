@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { writeProductManifest } from "../lib/init/manifest.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
-const CLI_SCRIPT = join(SCRIPT_DIR, "..", "scripts", "cortex.mjs");
+const CLI_SCRIPT = join(SCRIPT_DIR, "..", "..", "scripts", "cortex.mjs");
 
 // D-S03: no OS service registration under any configuration.
 export function installService({ root = process.cwd(), logDir = null, dryRun = false } = {}) {

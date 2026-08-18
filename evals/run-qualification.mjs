@@ -676,7 +676,7 @@ export function makeCortexTreeSitterProvider(opts = {}) {
     const absolute = resolve(repoRoot);
     if (!refresh && snapshots.has(absolute)) return snapshots.get(absolute);
     const started = performance.now();
-    const { buildTreeSitterGraph } = await import("../graph/treesitter-provider.mjs");
+    const { buildTreeSitterGraph } = await import("../src/graph/treesitter-provider.mjs");
     // contentHash is supplied explicitly so the harness, not the provider,
     // decides the digest — and it is now the SAME XXH3-128 the provider would
     // derive on its own, because the harness moved off sha256 (2026-07-26).
@@ -749,7 +749,7 @@ export function makeCortexTreeSitterProvider(opts = {}) {
     capabilities: new Set(CORTEX_STATIC_CAPABILITIES),
     async probe() {
       try {
-        const mod = await import("../graph/treesitter-provider.mjs");
+        const mod = await import("../src/graph/treesitter-provider.mjs");
         return {
           available: true,
           kind: "cortex-treesitter",
@@ -1897,7 +1897,7 @@ async function main() {
   const outPath = String(args.out ?? resolve(process.cwd(), "qualification.json"));
   // Cortex consumes the released provider-candidate contract as a pinned
   // exact-version artifact, never as an optional sibling-source schema
-  // (solimplement.md Shared contracts; SEAM-CONTRACT §4.4/§7).
+  // (shared contracts; SEAM-CONTRACT §4.4/§7).
   const schemaPath = args["schema"]
     ? resolve(args["schema"])
     : fileURLToPath(new URL("../schemas/context-candidate-set.v1.schema.json", import.meta.url));

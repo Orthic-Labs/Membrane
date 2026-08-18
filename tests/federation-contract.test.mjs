@@ -4,8 +4,8 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { buildGraphGeneration, createContextCandidateSet, readGeneration } from "../graph/static-provider.mjs";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
+import { buildGraphGeneration, createContextCandidateSet, readGeneration } from "../src/graph/static-provider.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 import { writeWatchConfig } from "../watchman/supervisor.mjs";
 
 const ROOT = join(import.meta.dirname, "..");

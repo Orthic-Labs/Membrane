@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { normalizeGitOrigin, repositoryIdentity } from "../graph/static-provider.mjs";
+import { normalizeGitOrigin, repositoryIdentity } from "../src/graph/static-provider.mjs";
 
 test("normalizeGitOrigin accepts HTTPS, SSH shorthand, and ssh://git@ URLs", () => {
   assert.deepEqual(normalizeGitOrigin("https://github.com/owner/repo.git"), { host: "github.com", owner: "owner", repo: "repo" });

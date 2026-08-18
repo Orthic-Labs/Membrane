@@ -14,7 +14,7 @@
 
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { closeStore, openStore, saveGeneration } from "../../graph/store-sqlite.mjs";
+import { closeStore, openStore, saveGeneration } from "../../src/graph/store-sqlite.mjs";
 
 function fileNode(path, hash, language = "typescript") {
   return { id: `file:${path}`, kind: "file", name: path, path, labels: ["file"], language, confidence: 1, evidence: [{ contentHash: hash }], factProvider: { id: "lexical", version: "9.9.9" } };

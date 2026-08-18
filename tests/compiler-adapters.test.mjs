@@ -9,10 +9,10 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { defineProvider, example } from "../providers/index.mjs";
-import { pythonScipProvider } from "../providers/compilers/python-scip.mjs";
-import { resolveModuleSpecifier } from "../providers/modules/javascript.mjs";
-import { probeScip } from "../graph/scip-provider.mjs";
+import { defineProvider, example } from "../src/providers/index.mjs";
+import { pythonScipProvider } from "../src/providers/compilers/python-scip.mjs";
+import { resolveModuleSpecifier } from "../src/providers/modules/javascript.mjs";
+import { probeScip } from "../src/graph/scip-provider.mjs";
 
 const PYTHON_FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "compiler-adapters", "python");
 
@@ -230,7 +230,7 @@ test("python SCIP collect degrades without throwing and still returns valid entr
 });
 
 test("python SCIP adapter never spawns a process", () => {
-  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "providers", "compilers", "python-scip.mjs"), "utf8");
+  const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "src", "providers", "compilers", "python-scip.mjs"), "utf8");
   for (const banned of ["execFile", "spawn", "exec("]) {
     assert.ok(!source.includes(banned), `adapter must not reference ${banned}`);
   }

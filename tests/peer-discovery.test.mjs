@@ -27,8 +27,8 @@ test("peerBinCandidates vendor-neutral — no hardcoded crypt outside config-def
 
 test("cortex.config.example.toml documents peer discovery", async () => {
   const { readFileSync, existsSync } = await import("node:fs");
-  assert.equal(existsSync("cortex.config.example.toml"), true);
-  const toml = readFileSync("cortex.config.example.toml", "utf8");
+  assert.equal(existsSync("examples/cortex.config.example.toml"), true);
+  const toml = readFileSync("examples/cortex.config.example.toml", "utf8");
   assert.match(toml, /\[peers\]/);
   assert.match(toml, /CORTEX_PEER_BIN/);
   assert.match(toml, /CRYPT_BIN/);

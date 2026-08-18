@@ -8,8 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { buildInitPlan } from "../lib/init/plan.mjs";
-import { detectHosts } from "../lib/init/detect-hosts.mjs";
+import { buildInitPlan } from "../src/lib/init/plan.mjs";
+import { detectHosts } from "../src/lib/init/detect-hosts.mjs";
 
 test("buildInitPlan is side-effect free", () => {
   const root = mkdtempSync(join(tmpdir(), "cortex-init-plan-"));

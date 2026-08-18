@@ -2,7 +2,7 @@
 
 Pinned source of truth: this file ships with the matching Cortex package and release commit.
 
-`sol.md` owns product/performance scope. `solimplement.md` owns current implementation sequencing & delivery gates. Executable evidence below owns live status.
+Executable evidence and the code own live status.
 
 Do not duplicate the full feature inventory here. Verify the current installation with:
 

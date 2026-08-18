@@ -7,11 +7,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { startExplorerServer } from "../lib/http-server.mjs";
-import { createSessionToken, verifySessionToken } from "../lib/session-token.mjs";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
-import { createCortexApplicationService } from "../lib/application/service.mjs";
-import { RootRegistry } from "../lib/application/root-registry.mjs";
+import { startExplorerServer } from "../src/lib/http-server.mjs";
+import { createSessionToken, verifySessionToken } from "../src/lib/session-token.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { RootRegistry } from "../src/lib/application/root-registry.mjs";
 
 function apiGet(url, token) {
   return fetch(url, { headers: { authorization: `Bearer ${token}` } });

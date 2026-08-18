@@ -4,9 +4,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildEvidencePack, evidencePackToMarkdown } from "../lib/evidence-pack.mjs";
-import { toSarif } from "../lib/sarif.mjs";
-import { graphMermaid } from "../graph/static-provider.mjs";
+import { buildEvidencePack, evidencePackToMarkdown } from "../src/lib/evidence-pack.mjs";
+import { toSarif } from "../src/lib/sarif.mjs";
+import { graphMermaid } from "../src/graph/static-provider.mjs";
 
 test("JSON evidence pack is reproducible", () => {
   const a = buildEvidencePack({ repoId: "r", generationId: "g", results: [{ id: "s", path: "a.ts" }] });

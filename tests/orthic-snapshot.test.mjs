@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { SNAPSHOT_SCHEMA_VERSION, buildSnapshot, startSnapshotServer, validateSnapshot } from "../lib/orthic-snapshot.mjs";
+import { SNAPSHOT_SCHEMA_VERSION, buildSnapshot, startSnapshotServer, validateSnapshot } from "../src/lib/orthic-snapshot.mjs";
 
 test("snapshot builds with required fields", () => {
   const snap = buildSnapshot({ root: process.cwd(), outDir: ".agent" });
@@ -58,8 +58,8 @@ test("snapshot validates against pinned released schema", async () => {
 
 test("dogfood check: no productId branching", async () => {
   const { readFileSync } = await import("node:fs");
-  const manifestSrc = readFileSync("lib/init/manifest.mjs", "utf8");
-  const snapSrc = readFileSync("lib/orthic-snapshot.mjs", "utf8");
+  const manifestSrc = readFileSync("src/lib/init/manifest.mjs", "utf8");
+  const snapSrc = readFileSync("src/lib/orthic-snapshot.mjs", "utf8");
   // No product-conditional branching in code meant to be product-generic (SEAM Unit 3c)
   assert.equal(/productId\s*===/.test(manifestSrc), false, "manifest must not branch on productId");
   assert.equal(/productId\s*===/.test(snapSrc), false, "snapshot must not branch on productId");

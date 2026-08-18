@@ -4,8 +4,8 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { buildNeighborhood } from "../graph/neighborhood.mjs";
-import { buildGraphGeneration, readGeneration } from "../graph/static-provider.mjs";
+import { buildNeighborhood } from "../src/graph/neighborhood.mjs";
+import { buildGraphGeneration, readGeneration } from "../src/graph/static-provider.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/cortex.mjs");
@@ -78,7 +78,7 @@ test("neighborhood CLI emits a barrier receipt and schema-valid output", () => {
 });
 
 test("admission preserves an attached neighborhood", async () => {
-  const { createAdmission } = await import("../lib/admission.mjs");
+  const { createAdmission } = await import("../src/lib/admission.mjs");
   const generation = handFixture();
   const storeDir = mkdtempSync(join(tmpdir(), "cortex-neighborhood-admission-"));
   const admission = createAdmission({
@@ -100,7 +100,7 @@ test("admission preserves an attached neighborhood", async () => {
 // fewer multiplications per iteration. A perf fix that silently changed
 // scores would be a regression; this test fails immediately if so.
 test("dangling-mass rewrite is behavior-preserving on a fully-reachable fixture", async () => {
-  const { pageRank, pageRankLegacyImpl, ITERATIONS } = await import("../graph/neighborhood.mjs");
+  const { pageRank, pageRankLegacyImpl, ITERATIONS } = await import("../src/graph/neighborhood.mjs");
   // Fully connected: every node has at least one out-edge, so the dangling
   // mass path is exercised but only one node dangles. Plus a dangling node
   // so the two implementations diverge IF the rewrite is wrong.

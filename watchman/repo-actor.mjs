@@ -1,14 +1,14 @@
 import { EventEmitter } from "node:events";
 import { existsSync, mkdirSync, appendFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
-import { applyFileDelta, DOC_PROVIDER, MAX_DEPENDENT_FILES, MAX_HOPS, STRUCTURAL_PROVIDER } from "../graph/delta-store.mjs";
-import { parseFileFacts } from "../graph/static-provider.mjs";
-import { buildIncrementalTreeSitterFacts, SUPPORTED_EXTENSIONS } from "../graph/treesitter-provider.mjs";
+import { applyFileDelta, DOC_PROVIDER, MAX_DEPENDENT_FILES, MAX_HOPS, STRUCTURAL_PROVIDER } from "../src/graph/delta-store.mjs";
+import { parseFileFacts } from "../src/graph/static-provider.mjs";
+import { buildIncrementalTreeSitterFacts, SUPPORTED_EXTENSIONS } from "../src/graph/treesitter-provider.mjs";
 import { extractDoc, isDoc, loadConfig } from "../scripts/cortex.mjs";
-import { MAX_SOURCE_FILE_BYTES, stableRead } from "../graph/stable-read.mjs";
-import { collectDependents, closeStore, listFileMetadata, listSymbolMetadata, maintainStore, openStore, openStoreReadOnly } from "../graph/store-sqlite.mjs";
+import { MAX_SOURCE_FILE_BYTES, stableRead } from "../src/graph/stable-read.mjs";
+import { collectDependents, closeStore, listFileMetadata, listSymbolMetadata, maintainStore, openStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
 import { eventsSince, isEligibleWatchPath, startWatch, writeSnapshot } from "./adapter.mjs";
-import { normalizeIgnoredPrefixes } from "../graph/ignored-prefixes.mjs";
+import { normalizeIgnoredPrefixes } from "../src/graph/ignored-prefixes.mjs";
 
 const REPAIR_BATCH = 50;
 const DEBOUNCE_MS = 1000;

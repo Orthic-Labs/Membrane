@@ -5,9 +5,9 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import test from "node:test";
 
-import { acquireUnixLock, createDaemonServer } from "../service/server.mjs";
-import { DaemonClient } from "../service/client.mjs";
-import { temporaryDaemonEndpoint } from "../service/paths.mjs";
+import { acquireUnixLock, createDaemonServer } from "../src/service/server.mjs";
+import { DaemonClient } from "../src/service/client.mjs";
+import { temporaryDaemonEndpoint } from "../src/service/paths.mjs";
 
 test("daemon restart re-binds the endpoint", async () => {
   const endpoint = temporaryDaemonEndpoint("cortex-restart");

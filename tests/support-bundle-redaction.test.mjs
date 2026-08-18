@@ -7,8 +7,8 @@ import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { buildSupportBundle, SUPPORT_BUNDLE_ALLOWLIST } from "../lib/operations/support-bundle.mjs";
-import { redactForEgress } from "../lib/redaction.mjs";
+import { buildSupportBundle, SUPPORT_BUNDLE_ALLOWLIST } from "../src/lib/operations/support-bundle.mjs";
+import { redactForEgress } from "../src/lib/redaction.mjs";
 
 const KNOWN_SECRETS = [
   "ghp_1234567890abcdefghijklmnopqrstuvwxyz",

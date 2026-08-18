@@ -12,7 +12,7 @@
 
 import { join, resolve, dirname } from "node:path";
 import { mkdirSync } from "node:fs";
-import { openStore, closeStore, saveGeneration } from "../graph/store-sqlite.mjs";
+import { openStore, closeStore, saveGeneration } from "../src/graph/store-sqlite.mjs";
 
 // `resolve`, not `join` — several tests pass an ABSOLUTE outDir (a temp dir
 // outside the repo), and production code resolves the same way. `join` would

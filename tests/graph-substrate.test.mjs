@@ -15,11 +15,11 @@ import {
   queryGraph,
   scanSourcesPublic,
   finalizeGenerationIdentity,
-} from "../graph/static-provider.mjs";
-import { normalizeIgnoredPrefixes } from "../graph/ignored-prefixes.mjs";
-import { EDGE_CONFIDENCE_TIER_ORDER } from "../graph/confidence-tiers.mjs";
+} from "../src/graph/static-provider.mjs";
+import { normalizeIgnoredPrefixes } from "../src/graph/ignored-prefixes.mjs";
+import { EDGE_CONFIDENCE_TIER_ORDER } from "../src/graph/confidence-tiers.mjs";
 import { mutateManifest } from "./_store-helpers.mjs";
-import { closeStore, openStore, saveGeneration, searchGenerationSymbols, readManifestEnvelope } from "../graph/store-sqlite.mjs";
+import { closeStore, openStore, saveGeneration, searchGenerationSymbols, readManifestEnvelope } from "../src/graph/store-sqlite.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CORTEX = path.resolve(HERE, "..");

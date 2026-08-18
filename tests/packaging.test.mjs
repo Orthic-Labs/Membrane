@@ -17,10 +17,10 @@ test("package.json exposes standalone version, bin, engines, and files", () => {
   assert.match(pkg.engines.node, />=22\.22\.3/);
   assert.ok(existsSync(join(ROOT, "scripts/cortex.mjs")));
   assert.ok(Array.isArray(pkg.files));
-  for (const required of ["scripts/", "graph/", "lib/", "sources/", "schemas/"]) {
+  for (const required of ["scripts/", "src/graph/", "src/lib/", "src/sources/", "schemas/"]) {
     assert.ok(pkg.files.includes(required), `files must include ${required}`);
   }
-  assert.equal(pkg.exports?.["./admission"], "./lib/admission.mjs");
+  assert.equal(pkg.exports?.["./admission"], "./src/lib/admission.mjs");
   assert.ok(pkg.scripts?.test);
   assert.ok(pkg.scripts?.["test:workspace"]);
   assert.doesNotMatch(pkg.scripts.test, /workspace/);
@@ -28,8 +28,8 @@ test("package.json exposes standalone version, bin, engines, and files", () => {
 });
 
 test("admission library and schemas ship in the package surface", () => {
-  assert.ok(existsSync(join(ROOT, "lib/admission.mjs")));
-  assert.ok(existsSync(join(ROOT, "lib/receipt-store.mjs")));
-  assert.ok(existsSync(join(ROOT, "lib/orientation-evidence.mjs")));
+  assert.ok(existsSync(join(ROOT, "src/lib/admission.mjs")));
+  assert.ok(existsSync(join(ROOT, "src/lib/receipt-store.mjs")));
+  assert.ok(existsSync(join(ROOT, "src/lib/orientation-evidence.mjs")));
   assert.ok(existsSync(join(ROOT, "schemas/cortex-admission-v1.schema.json")));
 });

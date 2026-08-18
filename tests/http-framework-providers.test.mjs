@@ -7,8 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { extractRoutes, frameworkGateActive } from "../providers/frameworks/http/index.mjs";
-import { extractEventFacts, extractDatabaseFacts, extractDeploymentFacts, CROSS_STACK_EDGES } from "../providers/frameworks/index.mjs";
+import { extractRoutes, frameworkGateActive } from "../src/providers/frameworks/http/index.mjs";
+import { extractEventFacts, extractDatabaseFacts, extractDeploymentFacts, CROSS_STACK_EDGES } from "../src/providers/frameworks/index.mjs";
 
 test("framework gates activate only on imports", () => {
   assert.equal(frameworkGateActive(["express"], "next-express"), true);

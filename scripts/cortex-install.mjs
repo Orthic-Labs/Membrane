@@ -5,9 +5,9 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSy
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { removeInstallStateKey, sealInstallState, verifyInstallState } from "../lib/init/state-integrity.mjs";
-import { writeProductManifest } from "../lib/init/manifest.mjs";
-import { isConfinedPath, resolvePhysicalPath } from "../lib/path-confinement.mjs";
+import { removeInstallStateKey, sealInstallState, verifyInstallState } from "../src/lib/init/state-integrity.mjs";
+import { writeProductManifest } from "../src/lib/init/manifest.mjs";
+import { isConfinedPath, resolvePhysicalPath } from "../src/lib/path-confinement.mjs";
 
 const START = "<!-- cortex:start -->";
 const END = "<!-- cortex:end -->";

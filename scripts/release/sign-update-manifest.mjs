@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { canonicalManifestPayload } from "../../lib/update/manifest.mjs";
+import { canonicalManifestPayload } from "../../src/lib/update/manifest.mjs";
 import { deriveUpdateKeyId } from "./generate-update-keys.mjs";
 
 export function signUpdateManifest(manifest, { privateKeyPem } = {}) {

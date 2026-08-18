@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const CORTEX_CLI = join(ROOT, "scripts", "cortex.mjs");

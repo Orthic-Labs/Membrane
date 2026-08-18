@@ -8,15 +8,15 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { WatchSupervisor } from "../watchman/supervisor.mjs";
-import { writeProductManifest } from "../lib/init/manifest.mjs";
-import { buildFingerprint, createBuildSingleflight } from "../service/build-singleflight.mjs";
-import { DaemonClient } from "../service/client.mjs";
-import { temporaryDaemonEndpoint } from "../service/paths.mjs";
-import { validateDeadlineMs } from "../service/protocol.mjs";
-import { createDaemonServer } from "../service/server.mjs";
-import { computeManifestDigest, detectHubIdentityFields, detectShadowManifestKeys, assertBuildIdentityClean } from "../graph/generation-identity.mjs";
-import { classifyMutablePath, assertSafeMutableStorePath, openStore, closeStore } from "../graph/store-sqlite.mjs";
-import { validateSnapshot } from "../lib/orthic-snapshot.mjs";
+import { writeProductManifest } from "../src/lib/init/manifest.mjs";
+import { buildFingerprint, createBuildSingleflight } from "../src/service/build-singleflight.mjs";
+import { DaemonClient } from "../src/service/client.mjs";
+import { temporaryDaemonEndpoint } from "../src/service/paths.mjs";
+import { validateDeadlineMs } from "../src/service/protocol.mjs";
+import { createDaemonServer } from "../src/service/server.mjs";
+import { computeManifestDigest, detectHubIdentityFields, detectShadowManifestKeys, assertBuildIdentityClean } from "../src/graph/generation-identity.mjs";
+import { classifyMutablePath, assertSafeMutableStorePath, openStore, closeStore } from "../src/graph/store-sqlite.mjs";
+import { validateSnapshot } from "../src/lib/orthic-snapshot.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts", "cortex.mjs");

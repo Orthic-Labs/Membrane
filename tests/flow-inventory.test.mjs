@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { graphFlowInventory } from "../graph/static-provider.mjs";
+import { graphFlowInventory } from "../src/graph/static-provider.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CORTEX = path.resolve(HERE, "..");

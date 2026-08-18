@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { buildProductManifest, validateProductManifest, writeProductManifest } from "../lib/init/manifest.mjs";
+import { buildProductManifest, validateProductManifest, writeProductManifest } from "../src/lib/init/manifest.mjs";
 
 test("manifest builds with required SEAM §4.1 fields", () => {
   const manifest = buildProductManifest({ installRoot: process.cwd() });

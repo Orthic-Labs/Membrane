@@ -9,7 +9,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { loadUpdateManifest } from "../../lib/update/manifest.mjs";
+import { loadUpdateManifest } from "../../src/lib/update/manifest.mjs";
 
 export function verifyCandidate(candidateDir) {
   const dir = resolve(candidateDir);

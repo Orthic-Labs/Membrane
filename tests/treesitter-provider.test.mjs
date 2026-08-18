@@ -18,7 +18,7 @@ import {
   loadLanguageTable,
   validateGrammarCatalog,
   upgradeDylinkSection,
-} from "../graph/treesitter-provider.mjs";
+} from "../src/graph/treesitter-provider.mjs";
 
 after(() => disposeTreeSitterProvider());
 

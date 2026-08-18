@@ -8,8 +8,8 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-import { collectDoctorDiagnostics } from "../lib/operations/doctor.mjs";
-import { buildRepairPlan } from "../lib/operations/repair.mjs";
+import { collectDoctorDiagnostics } from "../src/lib/operations/doctor.mjs";
+import { buildRepairPlan } from "../src/lib/operations/repair.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/cortex.mjs");

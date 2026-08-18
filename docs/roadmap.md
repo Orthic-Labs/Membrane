@@ -53,5 +53,5 @@ multi-channel publication remain in progress.
 
 ## How to contribute
 
-See `CONTRIBUTING.md` and the runbook's packet format. Every change ships
+See `.github/CONTRIBUTING.md` and the runbook's packet format. Every change ships
 through `qualification.yml`; a failing qualification gate blocks merge.

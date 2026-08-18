@@ -34,7 +34,7 @@ precision; it is a claim of grammar/fixture coverage.
 
 ## Security and threat model
 
-- Security policy: `SECURITY.md`.
+- Security policy: `.github/SECURITY.md`.
 - Threat model and control-to-gate mapping: `docs/reference/threat-model.md`.
 - Generated `compatibility.json` security block links both, plus the
   qualification gate (`qualification.yml`) that enforces them on every

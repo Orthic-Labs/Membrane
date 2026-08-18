@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import test from "node:test";
 
-import { loadCustomLanguages } from "../lib/languages/custom-config.mjs";
+import { loadCustomLanguages } from "../src/lib/languages/custom-config.mjs";
 
 function sha256Hex(input) {
   return createHash("sha256").update(input).digest("hex");

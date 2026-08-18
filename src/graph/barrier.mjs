@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { reconcile } from "../watchman/reconcile.mjs";
+import { reconcile } from "../../watchman/reconcile.mjs";
 import { closeStore, getGenerationEnvelope, insertGenerationReceipt, openStore } from "./store-sqlite.mjs";
 import { recordBarrierDuration } from "../lib/telemetry.mjs";
 

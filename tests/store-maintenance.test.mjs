@@ -4,8 +4,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { constants as sqliteConstants } from "node:sqlite";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
-import { adoptRebuiltGeneration, closeStore, maintainStore, openStore, resetWatchStateAfterRebuild } from "../graph/store-sqlite.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { adoptRebuiltGeneration, closeStore, maintainStore, openStore, resetWatchStateAfterRebuild } from "../src/graph/store-sqlite.mjs";
 
 test("store maintenance checkpoints WAL and bounds applied watcher history", () => {
   const db = openStore(join(mkdtempSync(join(tmpdir(), "cortex-store-maintenance-")), "graph.db"));

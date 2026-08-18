@@ -20,12 +20,12 @@ import {
   buildGraphGeneration,
   scanSourcesPublic as scanSources,
   sourceHashPublic as sourceHash,
-} from "../graph/static-provider.mjs";
+} from "../src/graph/static-provider.mjs";
 import {
   AGENT_DIR_NAME,
   MANIFEST_NAME,
   bootstrapFromTracked,
-} from "../graph/bootstrap.mjs";
+} from "../src/graph/bootstrap.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CORTEX = path.resolve(HERE, "..");

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
-import { closeStore, openStore, saveGeneration, searchGenerationSymbols, symbolTermTokens } from "../graph/store-sqlite.mjs";
+import { closeStore, openStore, saveGeneration, searchGenerationSymbols, symbolTermTokens } from "../src/graph/store-sqlite.mjs";
 
 const CORPUS_PATH = join(import.meta.dirname, "..", "evals", "equivalence", "retrieval-corpus-v1.json");
 const corpus = JSON.parse(readFileSync(CORPUS_PATH, "utf8"));

@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
-import { createAdmission, DECISION_ACTIONS } from "../lib/admission.mjs";
-import { CortexError } from "../lib/application/errors.mjs";
-import { createReceiptStore } from "../lib/receipt-store.mjs";
+import { createAdmission, DECISION_ACTIONS } from "../src/lib/admission.mjs";
+import { CortexError } from "../src/lib/application/errors.mjs";
+import { createReceiptStore } from "../src/lib/receipt-store.mjs";
 
 const CLAIM_BOUNDARY_KEYS = ["cleanClaimAllowed", "gaps", "prohibitedClaims", "safeClaims", "status"];
 

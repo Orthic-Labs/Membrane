@@ -7,8 +7,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { CONTRACT_CATALOG, contractByName } from "../lib/contracts/catalog.mjs";
-import { validateContract, validateContractResult } from "../lib/contracts/validate.mjs";
+import { CONTRACT_CATALOG, contractByName } from "../src/lib/contracts/catalog.mjs";
+import { validateContract, validateContractResult } from "../src/lib/contracts/validate.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");

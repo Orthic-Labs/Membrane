@@ -3,9 +3,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { RELATIONSHIP_KINDS, confidenceFromResolutionPath } from "../graph/relationship-kinds.mjs";
-import { extractCommentClaims } from "../lib/comment-claims.mjs";
-import { chunkBySyntax } from "../lib/token-budget.mjs";
+import { RELATIONSHIP_KINDS, confidenceFromResolutionPath } from "../src/graph/relationship-kinds.mjs";
+import { extractCommentClaims } from "../src/lib/comment-claims.mjs";
+import { chunkBySyntax } from "../src/lib/token-budget.mjs";
 
 test("relationship vocabulary includes the D27 kinds", () => {
   for (const kind of ["INHERITS", "IMPLEMENTS", "MIXES_IN", "USES", "TESTS", "COVERS", "GENERATES"]) {

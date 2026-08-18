@@ -4,12 +4,10 @@ WORKDIR /opt/cortex
 COPY package.json pnpm-lock.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile --prod
 COPY scripts scripts
-COPY graph graph
-COPY lib lib
+COPY src src
 COPY watchman watchman
-COPY sources sources
 COPY schemas schemas
 COPY references references
-COPY SKILL.md README.md LICENSE CHANGELOG.md ./
+COPY SKILL.md README.md LICENSE docs/CHANGELOG.md ./
 ENV CORTEX_NO_UPDATE_CHECK=1
 ENTRYPOINT ["node", "scripts/cortex.mjs"]

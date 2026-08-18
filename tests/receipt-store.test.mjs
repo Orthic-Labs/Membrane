@@ -9,7 +9,7 @@ import {
   buildOrientationReceipt,
   receiptLookupKey,
   defaultReceiptStoreDir,
-} from "../lib/receipt-store.mjs";
+} from "../src/lib/receipt-store.mjs";
 
 test("receipt store defaults outside the repo tree", () => {
   const dir = defaultReceiptStoreDir();

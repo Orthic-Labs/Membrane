@@ -5,10 +5,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
-import { buildProductManifest, validateProductManifest } from "../../lib/init/manifest.mjs";
-import { buildSnapshot, boundUtf8, validateSnapshot, SNAPSHOT_MAX_REASON_BYTES } from "../../lib/orthic-snapshot.mjs";
-import { computeManifestDigest, detectHubIdentityFields, detectShadowManifestKeys, assertBuildIdentityClean } from "../../graph/generation-identity.mjs";
-import { classifyMutablePath, assertSafeMutableStorePath } from "../../graph/store-sqlite.mjs";
+import { buildProductManifest, validateProductManifest } from "../../src/lib/init/manifest.mjs";
+import { buildSnapshot, boundUtf8, validateSnapshot, SNAPSHOT_MAX_REASON_BYTES } from "../../src/lib/orthic-snapshot.mjs";
+import { computeManifestDigest, detectHubIdentityFields, detectShadowManifestKeys, assertBuildIdentityClean } from "../../src/graph/generation-identity.mjs";
+import { classifyMutablePath, assertSafeMutableStorePath } from "../../src/graph/store-sqlite.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 

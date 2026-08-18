@@ -9,7 +9,7 @@ import test from "node:test";
 
 import { inventoryGrammars } from "../scripts/grammars/inventory.mjs";
 import { verifyGrammars } from "../scripts/grammars/verify.mjs";
-import { languageByExtension, languageCapabilityRecords, manifestDigest } from "../graph/language-registry.mjs";
+import { languageByExtension, languageCapabilityRecords, manifestDigest } from "../src/graph/language-registry.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts", "cortex.mjs");

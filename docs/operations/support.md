@@ -15,13 +15,13 @@ Ground truth: `release/compatibility.template.json` `supportPolicy`; final compa
   supported line before `1.0.0` ships.
 - Feature work lands on the current line going forward, not as backports
   to `0.1.x` or any older line.
-- `1.0.0` is the next line; `SECURITY.md` additionally marks `1.0.0`
+- `1.0.0` is the next line; `.github/SECURITY.md` additionally marks `1.0.0`
   release candidates as supported once the 1.0 gate (packets D50–D53)
   passes.
 
 ## Reporting and triage
 
-Report vulnerabilities privately per `SECURITY.md` — do not open a public
+Report vulnerabilities privately per `.github/SECURITY.md` — do not open a public
 issue for a security defect. Every report is triaged against the control
 mapping in `docs/reference/threat-model.md`.
 

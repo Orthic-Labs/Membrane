@@ -9,10 +9,10 @@ import { join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 import { generateBenchmarkFixture, fixtureFilePath } from "./generate-benchmark-fixture.mjs";
-import { openStore, openStoreReadOnly, closeStore, searchGenerationSymbols, getGenerationEnvelope, listFileMetadata } from "../graph/store-sqlite.mjs";
-import { applyFileDelta, STRUCTURAL_PROVIDER } from "../graph/delta-store.mjs";
-import { parseFileFacts } from "../graph/static-provider.mjs";
-import { stableRead } from "../graph/stable-read.mjs";
+import { openStore, openStoreReadOnly, closeStore, searchGenerationSymbols, getGenerationEnvelope, listFileMetadata } from "../src/graph/store-sqlite.mjs";
+import { applyFileDelta, STRUCTURAL_PROVIDER } from "../src/graph/delta-store.mjs";
+import { parseFileFacts } from "../src/graph/static-provider.mjs";
+import { stableRead } from "../src/graph/stable-read.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const CLI = join(ROOT, "scripts", "cortex.mjs");

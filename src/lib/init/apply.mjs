@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultConfigPath, readWatchConfig, writeWatchConfig } from "../../watchman/supervisor.mjs";
+import { defaultConfigPath, readWatchConfig, writeWatchConfig } from "../../../watchman/supervisor.mjs";
 import { buildInitPlan } from "./plan.mjs";
 import { removeInstallStateKey, sealInstallState, verifyInstallState } from "./state-integrity.mjs";
 import { isConfinedPath, resolvePhysicalPath } from "../path-confinement.mjs";
@@ -15,7 +15,7 @@ import { isConfinedPath, resolvePhysicalPath } from "../path-confinement.mjs";
 const START = "<!-- cortex:start -->";
 const END = "<!-- cortex:end -->";
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
-const CORTEX_SCRIPT = join(SCRIPT_DIR, "..", "..", "scripts", "cortex.mjs");
+const CORTEX_SCRIPT = join(SCRIPT_DIR, "..", "..", "..", "scripts", "cortex.mjs");
 
 function statePath(root) { return join(root, ".agent", "graph", "cortex-install-state.json"); }
 function loadState(root) {
@@ -132,7 +132,7 @@ export function applyInitPlan({ root = process.cwd(), plan = null, build = true,
             ...value,
             mcpServers: {
               ...(value.mcpServers ?? {}),
-              cortex: { command: process.execPath, args: [join(SCRIPT_DIR, "..", "..", "scripts", "cortex-mcp.mjs"), "--root", root] },
+              cortex: { command: process.execPath, args: [join(SCRIPT_DIR, "..", "..", "..", "scripts", "cortex-mcp.mjs"), "--root", root] },
             },
           }));
         } else {

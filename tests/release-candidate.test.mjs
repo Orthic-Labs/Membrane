@@ -9,11 +9,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { SCHEMA_VERSION } from "../graph/store-sqlite.mjs";
+import { SCHEMA_VERSION } from "../src/graph/store-sqlite.mjs";
 import { buildCandidate, isDirty } from "../scripts/release/build-candidate.mjs";
 import { verifyCandidate } from "../scripts/release/check-release.mjs";
 import { verifyNativeReceipt } from "../scripts/release/verify-native-receipt.mjs";
-import { loadUpdateManifest, verifyArtifactChecksum, verifySignedManifest } from "../lib/update/manifest.mjs";
+import { loadUpdateManifest, verifyArtifactChecksum, verifySignedManifest } from "../src/lib/update/manifest.mjs";
 import { signUpdateManifest } from "../scripts/release/sign-update-manifest.mjs";
 
 const compatibilityFiles = ["compatibility.template.json"];

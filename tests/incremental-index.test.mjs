@@ -30,8 +30,8 @@ import {
   containsCall,
   extractCallNames,
   extractSymbols,
-} from "../graph/language-extractors.mjs";
-import { buildGraphGeneration, readGeneration } from "../graph/static-provider.mjs";
+} from "../src/graph/language-extractors.mjs";
+import { buildGraphGeneration, readGeneration } from "../src/graph/static-provider.mjs";
 import {
   PARSE_CACHE_VERSION,
   emptyCache,
@@ -39,10 +39,10 @@ import {
   writeParseCache,
   diffFiles,
   nextCache,
-} from "../graph/parse-cache.mjs";
-import { applyFileDelta } from "../graph/delta-store.mjs";
-import { closeStore, countRows, getGenerationEnvelope, hydrateNodesByIds, loadGeneration, openStore, saveGeneration, searchGenerationSymbols } from "../graph/store-sqlite.mjs";
-import { computeGenerationId } from "../graph/generation-identity.mjs";
+} from "../src/graph/parse-cache.mjs";
+import { applyFileDelta } from "../src/graph/delta-store.mjs";
+import { closeStore, countRows, getGenerationEnvelope, hydrateNodesByIds, loadGeneration, openStore, saveGeneration, searchGenerationSymbols } from "../src/graph/store-sqlite.mjs";
+import { computeGenerationId } from "../src/graph/generation-identity.mjs";
 
 function fileOf(path, text) {
   return {

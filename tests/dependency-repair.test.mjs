@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/cortex.mjs");

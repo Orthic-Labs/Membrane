@@ -8,11 +8,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createCortexApplicationService } from "../lib/application/service.mjs";
+import { createCortexApplicationService } from "../src/lib/application/service.mjs";
 import { seedStore, readEnvelope, writeEnvelope, mutateManifest } from "./_store-helpers.mjs";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
-import { CortexError } from "../lib/application/errors.mjs";
-import { syncToCurrentSource } from "../graph/barrier.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { CortexError } from "../src/lib/application/errors.mjs";
+import { syncToCurrentSource } from "../src/graph/barrier.mjs";
 
 const FIXTURE = join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce");
 
@@ -82,7 +82,7 @@ test("stale barrier rejection raises stale_blocked unless allowStale", async () 
   const repo = builtRepo();
   try {
     // Force an unreachable target clock so the barrier times out -> stale_blocked.
-    const { openStore, closeStore } = await import("../graph/store-sqlite.mjs");
+    const { openStore, closeStore } = await import("../src/graph/store-sqlite.mjs");
     const dbPath = join(repo, ".agent", "graph", "graph.db");
     const db = openStore(dbPath);
     try {
@@ -105,7 +105,7 @@ test("stale barrier rejection raises stale_blocked unless allowStale", async () 
 test("freshness work aborts with request_cancelled", async () => {
   const repo = builtRepo();
   try {
-    const { openStore, closeStore } = await import("../graph/store-sqlite.mjs");
+    const { openStore, closeStore } = await import("../src/graph/store-sqlite.mjs");
     const db = openStore(join(repo, ".agent", "graph", "graph.db"));
     try {
       db.prepare("INSERT INTO watch_state(key,value) VALUES ('source_clock','99999') ON CONFLICT(key) DO UPDATE SET value=excluded.value").run();
@@ -123,7 +123,7 @@ test("freshness work aborts with request_cancelled", async () => {
 
 test("freshness cancellation waits for active reconciliation before returning", async () => {
   const repo = builtRepo();
-  const { openStore, closeStore } = await import("../graph/store-sqlite.mjs");
+  const { openStore, closeStore } = await import("../src/graph/store-sqlite.mjs");
   const db = openStore(join(repo, ".agent", "graph", "graph.db"));
   let release;
   let settled = false;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dispatchCortexGraphIndexHook } from "../lib/hooks/cortex-graph-index.mjs";
+import { dispatchCortexGraphIndexHook } from "../src/lib/hooks/cortex-graph-index.mjs";
 
 test("Cortex graph/index hook uses neutral normalized ordered dispatch with typed results", async () => {
   const order = [];

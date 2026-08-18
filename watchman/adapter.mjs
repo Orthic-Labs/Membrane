@@ -2,7 +2,7 @@ import ParcelWatcher from "@parcel/watcher";
 import { readdirSync, realpathSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { SCAN_EXCLUSIONS } from "../graph/static-provider.mjs";
+import { SCAN_EXCLUSIONS } from "../src/graph/static-provider.mjs";
 
 const EVENT_TYPES = new Set(["create", "update", "delete"]);
 const PROBE_PREFIX = "cortex-watch-probe-";

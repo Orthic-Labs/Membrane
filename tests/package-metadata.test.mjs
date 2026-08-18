@@ -26,18 +26,18 @@ test("all required bins are declared", () => {
 
 test("exports include schemas, contracts, and service", () => {
   assert.equal(pkg.exports["./schemas"], "./schemas/catalog.json");
-  assert.equal(pkg.exports["./contracts"], "./lib/contracts/validate.mjs");
-  assert.equal(pkg.exports["./service"], "./lib/application/service.mjs");
+  assert.equal(pkg.exports["./contracts"], "./src/lib/contracts/validate.mjs");
+  assert.equal(pkg.exports["./service"], "./src/lib/application/service.mjs");
 });
 
 test("exports include the sdk entry point with types", () => {
-  assert.equal(pkg.exports["./sdk"].types, "./sdk/types.d.ts");
-  assert.equal(pkg.exports["./sdk"].default, "./sdk/index.mjs");
+  assert.equal(pkg.exports["./sdk"].types, "./src/sdk/types.d.ts");
+  assert.equal(pkg.exports["./sdk"].default, "./src/sdk/index.mjs");
 });
 
 test("files allowlist ships sdk and service directories", () => {
-  assert.ok(pkg.files.includes("sdk/"), "files must include sdk/");
-  assert.ok(pkg.files.includes("service/"), "files must include service/");
+  assert.ok(pkg.files.includes("src/sdk/"), "files must include src/sdk/");
+  assert.ok(pkg.files.includes("src/service/"), "files must include src/service/");
 });
 
 test("publish config is public and sideEffects false", () => {

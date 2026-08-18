@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const SERVER = join(ROOT, "scripts/cortex-mcp.mjs");
@@ -168,7 +168,7 @@ test("stale barrier is surfaced as an error with allowStale opt-out", async () =
   const repo = buildRepo();
   try {
     // Force an unreachable target clock.
-    const { openStore, closeStore } = await import("../graph/store-sqlite.mjs");
+    const { openStore, closeStore } = await import("../src/graph/store-sqlite.mjs");
     const db = openStore(join(repo, ".agent", "graph", "graph.db"));
     try {
       db.prepare("INSERT INTO watch_state(key,value) VALUES ('source_clock','99999') ON CONFLICT(key) DO UPDATE SET value='99999'").run();

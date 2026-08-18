@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { closeStore, openStore, readManifestEnvelope } from "../graph/store-sqlite.mjs";
+import { closeStore, openStore, readManifestEnvelope } from "../src/graph/store-sqlite.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CORTEX = path.resolve(HERE, "..");

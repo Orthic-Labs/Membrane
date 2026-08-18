@@ -29,9 +29,9 @@ import {
   applyTrimToSymbol,
   truncationReceipt,
   charsToTokens,
-} from "../lib/token-budget.mjs";
-import { createContextCandidateSet, buildGraphGeneration } from "../graph/static-provider.mjs";
-import { produce as produceGraphResolve } from "../sources/graph-resolve.mjs";
+} from "../src/lib/token-budget.mjs";
+import { createContextCandidateSet, buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { produce as produceGraphResolve } from "../src/sources/graph-resolve.mjs";
 
 // ---------- PURE HELPERS ----------
 

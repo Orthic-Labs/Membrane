@@ -7,13 +7,13 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 
-import { RESOURCE_URIS, resourceForUri } from "../mcp/resources.mjs";
-import { PROMPTS, promptByName } from "../mcp/prompts.mjs";
-import { TOOL_EFFECTS } from "../mcp/effects.mjs";
-import { MCP_COMPATIBILITY, HOSTS, mcpConfigForHost } from "../mcp/compatibility.mjs";
-import { HOOK_POLICY_MODES, HOOK_POLICIES, policyBehavior } from "../lib/init/host-configs.mjs";
+import { RESOURCE_URIS, resourceForUri } from "../src/mcp/resources.mjs";
+import { PROMPTS, promptByName } from "../src/mcp/prompts.mjs";
+import { TOOL_EFFECTS } from "../src/mcp/effects.mjs";
+import { MCP_COMPATIBILITY, HOSTS, mcpConfigForHost } from "../src/mcp/compatibility.mjs";
+import { HOOK_POLICY_MODES, HOOK_POLICIES, policyBehavior } from "../src/lib/init/host-configs.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const SERVER = join(ROOT, "scripts/cortex-mcp.mjs");

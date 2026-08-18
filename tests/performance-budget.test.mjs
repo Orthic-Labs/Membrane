@@ -4,9 +4,9 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { syncToCurrentSource } from "../graph/barrier.mjs";
-import { issueScopeGrant, checkScopeGrant } from "../lib/receipt-store.mjs";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
+import { syncToCurrentSource } from "../src/graph/barrier.mjs";
+import { issueScopeGrant, checkScopeGrant } from "../src/lib/receipt-store.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 import { CortexRepositoryWorker } from "../watchman/repo-actor.mjs";
 
 const ROOT = join(import.meta.dirname, "..");

@@ -4,8 +4,8 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
-import { checkScopeGrant, issueScopeGrant } from "../lib/receipt-store.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { checkScopeGrant, issueScopeGrant } from "../src/lib/receipt-store.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/cortex.mjs");

@@ -29,16 +29,16 @@ const NETWORK_APIS = [
 
 const ALLOWED = [
   // Update checks are opt-in, channel-gated, and disabled by CORTEX_NO_UPDATE_CHECK=1.
-  "lib/update/channel.mjs",
-  "lib/update/manifest.mjs",
-  "lib/update/apply.mjs",
+  "src/lib/update/channel.mjs",
+  "src/lib/update/manifest.mjs",
+  "src/lib/update/apply.mjs",
   // The local explorer binds loopback only (127.0.0.1) — not egress.
-  "lib/http-server.mjs",
-  "lib/orthic-snapshot.mjs",
-  "lib/session-token.mjs",
-  "lib/explorer/static.mjs",
+  "src/lib/http-server.mjs",
+  "src/lib/orthic-snapshot.mjs",
+  "src/lib/session-token.mjs",
+  "src/lib/explorer/static.mjs",
   // Telemetry is off by default and documented as opt-in.
-  "lib/telemetry.mjs",
+  "src/lib/telemetry.mjs",
 ];
 
 export function toInventoryPath(path, nativeSeparator = sep) {

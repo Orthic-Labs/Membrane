@@ -14,7 +14,7 @@ import {
   gitMetadata,
   rulesDocuments,
   liveOverlay,
-} from "../../sources/index.mjs";
+} from "../../src/sources/index.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 import os from "node:os";

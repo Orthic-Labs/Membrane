@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const CATALOG = JSON.parse(readFileSync(join(ROOT, "grammars", "catalog.json"), "utf8"));
 const MANIFEST_PATH = join(ROOT, "grammars", "manifest.json");
 

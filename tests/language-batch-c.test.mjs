@@ -7,14 +7,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadLanguageRecord } from "../graph/treesitter-provider.mjs";
-import { walkTable } from "../graph/generic-ast-walker.mjs";
+import { loadLanguageRecord } from "../src/graph/treesitter-provider.mjs";
+import { walkTable } from "../src/graph/generic-ast-walker.mjs";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "languages");
 const LANGUAGES = ["bash", "elisp", "embedded_template", "html", "css", "json", "ql", "systemrdl", "tlaplus", "toml", "vue", "yaml"];
 
 test("batch C languages route through catalog with exact profiles", async () => {
-  const { languageCapabilityRecords } = await import("../graph/language-registry.mjs");
+  const { languageCapabilityRecords } = await import("../src/graph/language-registry.mjs");
   const records = languageCapabilityRecords();
   const expected = {
     bash: "code", elisp: "code", embedded_template: "markup", html: "markup",
@@ -30,7 +30,7 @@ test("batch C languages route through catalog with exact profiles", async () => 
 
 for (const lang of LANGUAGES) {
   test(`${lang} fixture parses with evidence-bearing nodes`, async () => {
-    const table = (await import(`../graph/language-tables/${lang}.mjs`)).default;
+    const table = (await import(`../src/graph/language-tables/${lang}.mjs`)).default;
     const record = await loadLanguageRecord(table.id);
     // ABI-incompatible grammars degrade honestly (typed error), never fabricate.
     if (!record.parser) {

@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { buildOrientationReceipt } from "../lib/receipt-store.mjs";
+import { buildOrientationReceipt } from "../src/lib/receipt-store.mjs";
 import {
   ORIENTATION_EVIDENCE_KIND,
   buildOrientationEvidence,
   candidateSetDigest,
   writeOrientationEvidenceFile,
   defaultEvidencePath,
-} from "../lib/orientation-evidence.mjs";
+} from "../src/lib/orientation-evidence.mjs";
 
 test("candidateSetDigest is stable for equivalent candidate sets", () => {
   const a = {

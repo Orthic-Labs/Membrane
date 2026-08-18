@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { pythonProjectInfo, resolvePythonModule } from "../providers/modules/python-resolver.mjs";
+import { pythonProjectInfo, resolvePythonModule } from "../src/providers/modules/python-resolver.mjs";
 
 function withRepo(run) {
   const root = mkdtempSync(join(tmpdir(), "cortex-pyresolve-"));

@@ -5,14 +5,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 
-import { loadLanguageRecord } from "../graph/treesitter-provider.mjs";
-import { walkTable } from "../graph/generic-ast-walker.mjs";
+import { loadLanguageRecord } from "../src/graph/treesitter-provider.mjs";
+import { walkTable } from "../src/graph/generic-ast-walker.mjs";
 
 const FIXTURES = join(import.meta.dirname, "fixtures", "languages");
 const LANGUAGES = ["php", "ruby"];
 
 test("batch B1 languages route through catalog with code profile", async () => {
-  const { languageCapabilityRecords } = await import("../graph/language-registry.mjs");
+  const { languageCapabilityRecords } = await import("../src/graph/language-registry.mjs");
   const records = languageCapabilityRecords();
   for (const lang of LANGUAGES) {
     const record = records.find((r) => r.language === lang);
@@ -23,7 +23,7 @@ test("batch B1 languages route through catalog with code profile", async () => {
 
 for (const lang of LANGUAGES) {
   test(`${lang} fixture parses with evidence-bearing nodes`, async () => {
-    const table = (await import(`../graph/language-tables/${lang}.mjs`)).default;
+    const table = (await import(`../src/graph/language-tables/${lang}.mjs`)).default;
     const record = await loadLanguageRecord(table.id);
     // ABI-incompatible grammars degrade honestly (typed error), never fabricate.
     if (!record.parser) {
@@ -45,7 +45,7 @@ for (const lang of LANGUAGES) {
 }
 
 test("dynamic-language ambiguous calls stay unresolved", async () => {
-  const table = (await import("../graph/language-tables/ruby.mjs")).default;
+  const table = (await import("../src/graph/language-tables/ruby.mjs")).default;
   const record = await loadLanguageRecord(table.id);
   const tree = record.parser.parse(readFileSync(join(FIXTURES, "ruby", "basic.rb"), "utf8"));
   try {

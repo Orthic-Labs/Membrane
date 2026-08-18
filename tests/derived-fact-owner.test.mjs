@@ -3,9 +3,9 @@ import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { CortexRepositoryWorker } from "../graph/watchman.mjs";
-import { buildGraphGeneration } from "../graph/static-provider.mjs";
-import { closeStore, getGenerationEnvelope, listDerivedFactOwners, openStore } from "../graph/store-sqlite.mjs";
+import { CortexRepositoryWorker } from "../src/graph/watchman.mjs";
+import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
+import { closeStore, getGenerationEnvelope, listDerivedFactOwners, openStore } from "../src/graph/store-sqlite.mjs";
 
 // derived_fact_owner ledger (P2 requirement 3): every fact in `fact_owner`
 // must record which generation and which repository produced it. The ledger

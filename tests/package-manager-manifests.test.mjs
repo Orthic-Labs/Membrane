@@ -49,8 +49,8 @@ test("MCP server.json launches cortex mcp serve from npm", () => {
 });
 
 test("container files exist for CI/headless use", () => {
-  assert.ok(existsSync(join(ROOT, "Dockerfile")));
-  assert.ok(existsSync(join(ROOT, ".dockerignore")));
+  assert.ok(existsSync(join(ROOT, "build/Dockerfile")));
+  assert.ok(existsSync(join(ROOT, "build/.dockerignore")));
   assert.ok(existsSync(join(ROOT, "release", "container", "README.md")));
 });
 

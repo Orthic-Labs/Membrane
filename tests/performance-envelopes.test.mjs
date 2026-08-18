@@ -10,10 +10,10 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { openStore, closeStore } from "../graph/store-sqlite.mjs";
-import { applyFileDelta } from "../graph/delta-store.mjs";
-import { stableRead } from "../graph/stable-read.mjs";
-import { syncToCurrentSource } from "../graph/barrier.mjs";
+import { openStore, closeStore } from "../src/graph/store-sqlite.mjs";
+import { applyFileDelta } from "../src/graph/delta-store.mjs";
+import { stableRead } from "../src/graph/stable-read.mjs";
+import { syncToCurrentSource } from "../src/graph/barrier.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/cortex.mjs");

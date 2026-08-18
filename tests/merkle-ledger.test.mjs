@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { closeStore, openStore } from "../graph/store-sqlite.mjs";
-import { computeFullLedger, diffLedgerAgainstTree, updateLeafChain } from "../graph/merkle-ledger.mjs";
+import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
+import { computeFullLedger, diffLedgerAgainstTree, updateLeafChain } from "../src/graph/merkle-ledger.mjs";
 import test from "node:test";
 
 const treeA = [

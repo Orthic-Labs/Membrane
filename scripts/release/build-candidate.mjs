@@ -15,7 +15,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { SCHEMA_VERSION } from "../../graph/store-sqlite.mjs";
+import { SCHEMA_VERSION } from "../../src/graph/store-sqlite.mjs";
 import { npmCliArgs } from "./npm-cli.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -69,8 +69,8 @@ export function buildCandidate({ out = null, platform = null, version = null, al
 
   const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: gitRoot, encoding: "utf8" }).trim();
   const artifactFiles = walk(join(ROOT, "scripts")).concat(
-    walk(join(ROOT, "lib")),
-    walk(join(ROOT, "graph")),
+    walk(join(ROOT, "src", "lib")),
+    walk(join(ROOT, "src", "graph")),
     walk(join(ROOT, "schemas")),
   );
   const artifactList = artifactFiles

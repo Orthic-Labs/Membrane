@@ -89,7 +89,7 @@ function repackWithShippedRoot(tarballPath, keys) {
   mkdirSync(unpacked, { recursive: true });
   const extract = spawnSync("tar", ["-xzf", tarballPath, "-C", unpacked], { encoding: "utf8" });
   if (extract.status !== 0) throw new Error(`tar extract failed: ${extract.stderr || extract.stdout}`);
-  writeFileSync(join(unpacked, "package", "lib", "update", "trusted-update-keys.json"), `${JSON.stringify({ schemaVersion: 1, keys })}\n`);
+  writeFileSync(join(unpacked, "package", "src", "lib", "update", "trusted-update-keys.json"), `${JSON.stringify({ schemaVersion: 1, keys })}\n`);
   const repack = spawnSync("tar", ["-czf", join(dir, "repacked.tgz"), "-C", unpacked, "package"], { encoding: "utf8" });
   if (repack.status !== 0) throw new Error(`tar repack failed: ${repack.stderr || repack.stdout}`);
   const packed = join(dir, "repacked.tgz");
