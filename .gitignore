@@ -42,3 +42,6 @@ docs/evidence/productization/
 
 # Python test cache
 .pytest_cache/
+
+# Research PDFs are not committed — see docs/research/papers/MANIFEST.md
+docs/research/**/*.pdf

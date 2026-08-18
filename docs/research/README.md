@@ -21,33 +21,16 @@ choice was made — not as a spec to implement against.
   ledger, canonical improvement guide, implementation guide) written from that
   comparative pass and later folded into the implementation authority.
 
-- **`papers/`** — the academic paper library.
-  - `core/` — papers selected primarily for Membrane, grouped by topic
-    (`adaptive_retrieval`, `agent_architectures`, `context_engineering`,
-    `context_memory`, `evaluation`, `rag_core`, `security`, `surveys`).
-  - `overlap/` — papers whose mechanisms also matter to Cortex
-    (`graph_structured_retrieval`, `repository_context`); duplicated here
-    deliberately so the two systems' corpora stay independent. This is the
-    *only* intentional cross-folder PDF duplication in this corpus — do not
-    read a paper appearing in both `core/` and `overlap/` as an unnoticed
-    duplicate; it is deliberate.
-  - `articles/` — the three web-article write-ups saved as markdown
-    (Anthropic, Manus, Chroma context-rot), kept apart from PDFs since they
-    have no arXiv id or byte-identity to check.
-  - `MANIFEST.md` — inventory of every `core/` + `overlap/` PDF (48 files)
-    with byte sizes and sha256 hashes, for integrity checking.
-
-  There is no `reading/` junk-drawer any more: a 2026-08-18 pass checked
-  every PDF for exact content duplication (sha256) and near-duplication
-  (shared arXiv id) across the whole `papers/` tree and found **zero**
-  duplicates — every paper that had accumulated in `reading/` was a genuinely
-  distinct work, not a second copy of something already in `core/`/`overlap/`.
-  The 16 loose PDFs were filed into the existing topic folders, or into the
-  new `agent_architectures/` topic (self-improving/open-ended agent design —
-  CodeAct, Darwin Gödel Machine, OMNI-EPIC, automated agentic-system design,
-  multi-agent evolving orchestration, the observation-masking complexity-trap
-  paper) since the existing taxonomy had no home for that theme. The 3 loose
-  `.md` articles moved to `articles/`.
+- **`papers/`** — the paper library, 48 papers stored as **extracted markdown,
+  not PDFs**. Flat: topic is legible from the filename and indexed by
+  `MANIFEST.md`. Each file's frontmatter carries `topic`, `source` (arXiv or
+  publisher URL) and `source_pdf_sha256`, so the exact original is re-fetchable
+  and verifiable. Figures, equations and tables do not survive extraction —
+  fetch the PDF when they matter.
+  - `articles/` — three web-article write-ups (Anthropic, Manus, Chroma
+    context-rot) kept apart from the papers.
+  - `MANIFEST.md` — inventory grouped by topic, with source links and the
+    original PDF's size and hash.
 
 - **`notes/`** — kebab-cased reading notes distilling individual papers and
   articles (originally the `momo-research` log). `figures/` holds the
@@ -60,9 +43,9 @@ choice was made — not as a spec to implement against.
 
 - Want the "why" behind a Membrane design decision? Start in `synthesis/`.
 - Want to know how Membrane compares to another tool? Start in `competitors/`.
-- Want the primary source for a technique? Search `papers/core/` or
-  `papers/overlap/` by topic, or `papers/articles/` for the web write-ups;
-  check `papers/MANIFEST.md` to confirm a file's integrity.
+- Want the primary source for a technique? Grep `papers/*.md` directly — the
+  text is searchable now — or scan `papers/MANIFEST.md`, which groups every
+  paper by topic with its source link.
 - Want a fast summary instead of a full paper? Check `notes/` first.
 
 Fresh code and the implementation guide outrank anything in this corpus —
