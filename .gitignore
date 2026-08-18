@@ -32,10 +32,13 @@ docs/product.md
 # untracked, which right-release own clean-tree gate then rejects.
 **/target
 
-# Historical evidence receipts (evidence/g2, evidence/productization) were
+# Historical evidence receipts (evidence/g2, docs/evidence/productization) were
 # purged from the repo as dead weight — nobody reads them and no executable
 # code depends on them. Ignore future run receipts under these paths so they
 # don't get re-committed, while keeping the load-bearing subtrees tracked
-# (evidence/qualification, evidence/releases, evidence/platform, evidence/g3).
+# (docs/evidence/qualification, docs/evidence/releases, docs/evidence/platform, docs/evidence/g3).
 evidence/g2/
-evidence/productization/
+docs/evidence/productization/
+
+# Python test cache
+.pytest_cache/

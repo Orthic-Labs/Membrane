@@ -1,6 +1,6 @@
 // MBR-906: resolves, per npm platform key, the real artifact MBR-903's
 // multi-platform release pipeline has already sealed and recorded, by
-// reading its immutable evidence/releases/<releaseId>/release-generation.json
+// reading its immutable docs/evidence/releases/<releaseId>/release-generation.json
 // (dist/release/contracts/release-generation.v1.schema.json), read-only.
 //
 // This module never builds, signs, notarizes, uploads, or publishes
@@ -20,7 +20,7 @@ import { releaseId as computeReleaseId } from "../identity.mjs";
 
 // npm platform key (dist/npm/index.mjs's PLATFORM_PACKAGES) -> the pipeline
 // target enum dist/release/contracts/platforms.v1.json and
-// evidence/releases/<releaseId>/release-generation.json actually use. Only
+// docs/evidence/releases/<releaseId>/release-generation.json actually use. Only
 // entries with a real pipeline target are mapped; the rest are `null`,
 // documented, permanent gaps -- never guessed at.
 export const NPM_PLATFORM_TO_PIPELINE_TARGET = Object.freeze({
@@ -36,7 +36,7 @@ export class NoPipelineTargetError extends Error {}
 export class ArtifactNotVerifiedError extends Error {}
 
 export function releaseGenerationPath({ repoRoot, releaseId }) {
-  return resolve(repoRoot, "evidence", "releases", releaseId, "release-generation.json");
+  return resolve(repoRoot, "docs", "evidence", "releases", releaseId, "release-generation.json");
 }
 
 /** Reads MBR-903's immutable release-generation record, or null if none has been written yet (the true state of an unreleased checkout, not an error). */

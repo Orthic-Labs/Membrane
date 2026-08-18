@@ -36,7 +36,7 @@ test("Rust and JS code-batch limits remain equal", () => {
   const wantedRust = ["MAX_ITEMS", "MAX_BYTES", "MAX_TOKENS", "MAX_DEADLINE_MS"];
   const wantedJs = ["CODE_BATCH_MAX_ITEMS", "CODE_BATCH_MAX_BYTES", "CODE_BATCH_MAX_TOKENS", "CODE_BATCH_MAX_DEADLINE_MS"];
   const rust = extract(read("../../engine/crates/membrane-runtime/src/code_batch.rs"), /pub const (\w+): \w+ = ([^;]+);/g, wantedRust);
-  const js = extract(read("../../operations/code/code-batch-limits.mjs"), /export const (\w+) = ([^;]+);/g, wantedJs);
+  const js = extract(read("../../schemas/registry/code/code-batch-limits.mjs"), /export const (\w+) = ([^;]+);/g, wantedJs);
   for (const [rustName, jsName] of PAIRS) {
     assert.ok(rustName in rust, `code_batch.rs is missing ${rustName}`);
     assert.ok(jsName in js, `code-batch-limits.mjs is missing ${jsName}`);

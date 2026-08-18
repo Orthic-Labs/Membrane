@@ -22,7 +22,7 @@ export function parseToolsetConfig(raw) {
   } catch { return null; }
 }
 
-const groups = parseToolsetConfig(await readFile(new URL("../operations/toolsets.yaml", import.meta.url), "utf8"));
+const groups = parseToolsetConfig(await readFile(new URL("../schemas/registry/toolsets.yaml", import.meta.url), "utf8"));
 
 export function toolsetNames(params = {}, configuredGroups = groups) {
   const requested = params?._meta?.[version];

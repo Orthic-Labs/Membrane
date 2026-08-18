@@ -13,7 +13,7 @@ use membrane_mcp::{get_prompt_payload, list_prompts_payload, PROMPT_NAMES};
 use serde_json::Value;
 
 const OPERATIONS_INDEX: &str =
-    include_str!("../../../../operations/operations/operations-index.v1.golden.json");
+    include_str!("../../../../schemas/registry/operations/operations-index.v1.golden.json");
 
 fn registry_operations() -> Vec<String> {
     let value: Value = serde_json::from_str(OPERATIONS_INDEX).expect("registry parses");

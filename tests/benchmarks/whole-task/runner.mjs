@@ -32,7 +32,7 @@ const WORKSPACE_ROOT = resolve(HERE, '../..');
 export const DEFAULT_CORPUS_PATH = resolve(HERE, 'corpus.fixture.json');
 
 // A per-platform receipt for THIS harness (mirrors MBR-801's
-// evidence/qualification/mbr801/{macos,windows}/receipt.json pattern): real
+// docs/evidence/qualification/mbr801/{macos,windows}/receipt.json pattern): real
 // hostname/arch, a caller-supplied release generation, and a `measured`
 // flag the caller sets only after cases actually ran on that machine. This
 // never fabricates measurement — it records identity for a platform the

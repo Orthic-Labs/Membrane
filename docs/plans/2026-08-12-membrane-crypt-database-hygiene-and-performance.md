@@ -6,7 +6,7 @@ Date: 2026-08-12
 
 Status: derived execution plan; implementation stopped; no completion claim
 
-Authority: [`../../sol.md`](../../sol.md). This plan cannot change its invariants, requirements, dispositions, or gates.
+Authority: `sol.md` (external workspace-level governance document, outside this repository). This plan cannot change its invariants, requirements, dispositions, or gates.
 
 Repository: canonical `/Volumes/D/claude/membrane` only; `membrane2` is forbidden.
 

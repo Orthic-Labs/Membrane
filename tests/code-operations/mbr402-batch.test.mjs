@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { executeCodeBatch } from "../../operations/code/mbr402-batch.mjs";
+import { executeCodeBatch } from "../../schemas/registry/code/mbr402-batch.mjs";
 
 const admission = (item) => ({ ok: item.allow !== false, code: "denied", repositoryRoot: item.root, authority: "read-only", generationId: item.generation, sourceHash: item.hash });
 test("MBR-402 calls provider once and emits request-order receipts", async () => {

@@ -4,7 +4,7 @@
 // authority escalation." This file proves the legacy (JS) surface returns the
 // exact same `prompts/list` and `prompts/get` payload the native (Rust)
 // surface emits, by computing the Rust projection directly from the canonical
-// `operations/prompts/*.json` source and asserting byte-for-byte equality.
+// `schemas/registry/prompts/*.json` source and asserting byte-for-byte equality.
 //
 // If the native (Rust) binary is available on disk the test also spawns it
 // and asserts the live wire payload matches the JS projection. The native
@@ -46,7 +46,7 @@ function projectGetEntry(prompt) {
 }
 
 const canonicalPrompts = await Promise.all(PROMPT_FILES.map(async (file) => {
-  const raw = await readFile(join(REPO_ROOT, "operations", "prompts", file), "utf8");
+  const raw = await readFile(join(REPO_ROOT, "schemas", "registry", "prompts", file), "utf8");
   return JSON.parse(raw);
 }));
 

@@ -11,7 +11,7 @@ use crate::{EXIT_INTERNAL_ERROR, EXIT_OK, EXIT_USER_ERROR};
 
 /// MBR-108: map a parsed mode to the process plane it executes in. The mapping is the single
 /// source of truth referenced by `docs/architecture.md` and by
-/// `operations/plane-boundaries.v1.golden.json`. Adding a new mode without updating this
+/// `schemas/registry/plane-boundaries.v1.golden.json`. Adding a new mode without updating this
 /// helper is a contract violation.
 pub fn plane_of(mode: &MembraneMode) -> membrane_runtime::Plane {
     match mode {

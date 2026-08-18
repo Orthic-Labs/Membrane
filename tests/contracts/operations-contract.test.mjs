@@ -34,7 +34,7 @@ function loadRepoJson(repoRelativePath) {
 
 test("the operations-index fixture is the canonical registry", () => {
   const index = loadRepoJson(
-    "operations/operations/operations-index.v1.golden.json",
+    "schemas/registry/operations/operations-index.v1.golden.json",
   );
   assert.strictEqual(index.schemaVersion, 1);
   assert.strictEqual(index.indexVersion, 1);

@@ -1,23 +1,17 @@
-# RightContext ADR index
+# Membrane ADR index
 
-This is the compact decision log for the governing RightContext and Crypt context-system ADRs.
-The linked ADR owns its decision, rationale, and supersession. [RightContext state](RIGHTCONTEXT-STATE.md)
-owns current deployment truth; [Context Engineering](../../tools/lib/CONTEXT-ENGINEERING.md) owns the
-three-family/eight-layer engine policy; the [unified architecture](UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md)
-owns the durable RightContext product boundary. Execution plans, review artifacts, and documents
-without an ADR decision are intentionally excluded.
+> **Historical / Superseded** — the original RightContext-era ADR index (2026-07-era) listed nine decisions under `docs/plans/2026-07-*`; those files were deleted during the public reorganization and are not recoverable from git history. This index has been rewritten to describe only the ADR/plan documents that currently exist under `docs/plans/`.
 
-| Decision | Status | Successor | Canonical owner | Related / dependencies |
-|---|---|---|---|---|
-| [Crypt context-engineering hardening pass](plans/2026-07-05-crypt-context-engineering-next.md) | Implemented | None | [Context Engineering](../../tools/lib/CONTEXT-ENGINEERING.md) | The ADR is the frozen rationale and evidence; its gated fused-ranking experiment was measured and reverted. |
-| [Admission budget lanes and memory DB-provenance seal](plans/2026-07-15-rightcontext-admission-lanes-memory-seal.md) | Implemented | None | [Admission-lanes ADR](plans/2026-07-15-rightcontext-admission-lanes-memory-seal.md) | — |
-| [Verified per-candidate feedback rail](plans/2026-07-15-rightcontext-feedback-rail.md) | Implemented | None | [Feedback-rail ADR](plans/2026-07-15-rightcontext-feedback-rail.md) | The accepted [IR-11 activation contract](plans/2026-07-17-rightcontext-independent-review-addendum.md) remains pending and does not supersede this decision. |
-| [One-hop wikilink recall](plans/2026-07-15-rightcontext-link-graph-recall.md) | Implemented | None | [Link-graph ADR](plans/2026-07-15-rightcontext-link-graph-recall.md) | — |
-| [Trust-gated memory-content delivery](plans/2026-07-15-rightcontext-memory-delivery.md) | Implemented | None | [Memory-delivery ADR](plans/2026-07-15-rightcontext-memory-delivery.md) | The [harness-protocol ADR](plans/2026-07-16-rightcontext-harness-protocol-adr.md) governs transport evolution. |
-| [Warm-service inversion and three thin doors](plans/2026-07-16-rightcontext-harness-protocol-adr.md) | Proposed | None | [Harness-protocol ADR](plans/2026-07-16-rightcontext-harness-protocol-adr.md) | Proof requirements live in the [gate plan](plans/2026-07-16-rightcontext-gates-execution.md). |
-| [Event-log compaction: checkpoint and acknowledgement](plans/2026-07-10-crypt-compaction-checkpoint-ack.md) | Proposed | None | [Checkpoint-and-ack ADR](plans/2026-07-10-crypt-compaction-checkpoint-ack.md) | Companion decisions: [crash-safe promotion](plans/2026-07-10-crypt-compaction-crash-safe-epoch.md) and [replica bootstrap](plans/2026-07-10-crypt-compaction-replica-bootstrap.md). |
-| [Event-log compaction: crash-safe epoch promotion](plans/2026-07-10-crypt-compaction-crash-safe-epoch.md) | Proposed | None | [Crash-safe epoch ADR](plans/2026-07-10-crypt-compaction-crash-safe-epoch.md) | Depends on the [checkpoint-and-ack ADR](plans/2026-07-10-crypt-compaction-checkpoint-ack.md). |
-| [Event-log compaction: replica bootstrap](plans/2026-07-10-crypt-compaction-replica-bootstrap.md) | Proposed | None | [Replica-bootstrap ADR](plans/2026-07-10-crypt-compaction-replica-bootstrap.md) | Depends on the [checkpoint-and-ack ADR](plans/2026-07-10-crypt-compaction-checkpoint-ack.md). |
+The linked plan owns its decision, rationale, and supersession. [Membrane state](MEMBRANE-STATE.md) owns
+current deployment truth. Execution plans, review artifacts, and documents without a decision are
+intentionally excluded.
+
+| Decision | Status | Canonical owner | Related / dependencies |
+|---|---|---|---|
+| [Vector backend bake-off harness](../plans/2026-08-01-vector-backend-bakeoff-harness.md) | Implemented (source accepted; release binding open) | [Vector-backend bake-off plan](../plans/2026-08-01-vector-backend-bakeoff-harness.md) | See [Membrane state](MEMBRANE-STATE.md) for release-binding status. |
+| [F10 — tamper-evident canonical context-event history](../plans/2026-08-08-membrane-f10-event-integrity.md) | Source implemented; release/installed acceptance separate | [F10 event-integrity plan](../plans/2026-08-08-membrane-f10-event-integrity.md) | — |
+| [Membrane best-of-market execution plan (Crypt DB hygiene and performance)](../plans/2026-08-12-membrane-crypt-database-hygiene-and-performance.md) | Superseded | [`MEMBRANE-IMPLEMENTATION-GUIDE.md`](../MEMBRANE-IMPLEMENTATION-GUIDE.md) | Implementation stopped on this plan; the implementation guide is now the authority. |
+| [Planned retrieval and circuit admission](../plans/2026-08-17-contextplan-recallcircuit.md) | Proposed | [Recall-circuit plan](../plans/2026-08-17-contextplan-recallcircuit.md) | Pinned to base `e640aaa7` / tree `bca3d94b`; distinct from [`MEMBRANE-IMPLEMENTATION-GUIDE.md`](../MEMBRANE-IMPLEMENTATION-GUIDE.md), which is the current implementation authority. |
 
 Update this index only when a listed decision is accepted, implemented, superseded, or replaced.
 Do not copy live measurements or review prose into it.

@@ -1,10 +1,10 @@
 # Membrane — Windows + Mac current state and backlog (source of truth)
 
-**What this is:** the single cross-platform current-state map of Membrane (the umbrella context system; historically called RightContext in older docs and internal aliases) and Crypt (its durable-memory engine; literal `crypt*` identifiers remain compatibility surfaces) for both Windows and Mac. Design rationale lives in `docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` (2026-07-12, design-era) and `tools/lib/CONTEXT-ENGINEERING.md`; the operational telemetry/identity coverage contract and 2026-07-21 audit are in `docs/MEMBRANE-TELEMETRY-IDENTITY.md`; per-feature ADRs + measurements live in the `docs/plans/2026-07-*` files linked below. This doc is the index of *what is live now* and *what is next*. Last updated **2026-08-08**.
+**What this is:** the single cross-platform current-state map of Membrane (the umbrella context system; historically called RightContext in older docs and internal aliases) and Crypt (its durable-memory engine; literal `crypt*` identifiers remain compatibility surfaces) for both Windows and Mac. Design rationale lives in `docs/design/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md` (2026-07-12, design-era) and `tools/lib/CONTEXT-ENGINEERING.md`; the operational telemetry/identity coverage contract and 2026-07-21 audit are in `docs/design/MEMBRANE-TELEMETRY-IDENTITY.md`; per-feature ADRs referenced below (`docs/plans/2026-07-*`) were deleted and are not recoverable; current ADRs/plans live under `docs/plans/2026-08-*`. This doc is the index of *what is live now* and *what is next*. Last updated **2026-08-08**.
 
 ## Repository posture (honest)
 
-This tree is an **internal mirror / workspace-coupled checkout**, not a self-contained public product. Live planner hooks, Crypt DB paths, federation providers, and install binding assume the Damned Designs studio workspace (`scripts/tools/`, shared hooks, launchd/Task Scheduler wiring). Public MCP surface names use Membrane; RightContext remains a compatibility alias in headers, telemetry tokens, and historical evidence. Capability truth is generated from `mcp/server.mjs`, `forge/hooks/membrane-capability-matrix.json`, and `docs/rightcontext/federation-freeze-v1.json` by `mcp/capability-inventory.mjs`; exercised path: `mcp/capability-inventory.test.mjs`.
+This tree is an **internal mirror / workspace-coupled checkout**, not a self-contained public product. Live planner hooks, Crypt DB paths, federation providers, and install binding assume the Damned Designs studio workspace (`scripts/tools/`, shared hooks, launchd/Task Scheduler wiring). Public MCP surface names use Membrane; RightContext remains a compatibility alias in headers, telemetry tokens, and historical evidence. Capability truth is generated from `mcp/server.mjs`, `docs/membrane/capability-matrix.v1.json`, and `docs/membrane/federation-freeze-v1.json` by `mcp/capability-inventory.mjs`; exercised path: `mcp/capability-inventory.test.mjs`.
 
 ## Vector dispatch v2 — source accepted, release binding open
 
@@ -512,7 +512,7 @@ a tenth federation provider may probe session capabilities once at SessionStart,
 environment changes, and surface content-free contradictions such as a standing rule mandating an
 unavailable tool. It consumes no per-prompt packet budget and does not expand Gate 1, 2, or 3.
 The governing specification is Part C of
-[`2026-07-18-codex-handoff.md`](plans/2026-07-18-codex-handoff.md).
+`2026-07-18-codex-handoff.md` (deleted, not recoverable).
 
 ```mermaid
 flowchart TB
@@ -539,11 +539,11 @@ flowchart TB
 
 | # | Feature | State | Key files | ADR + measurements |
 |---|---|---|---|---|
-| 1 | **Feedback rail** — per-candidate recall self-learning; `get`→used, delete/supersede→contradicted; verified `contradicted` = veto-until-superseded (sha-aware); shared `recall_scored` and live `/recall` both apply it; persisted `context_feedback` (schema v7); `metrics.feedback`. MCP `membrane_feedback` now persists through the engine/CLI feedback path with `LifecycleReceiptV1` readback; unavailable-engine paths remain explicit `accepted_advisory` + `durable:false`. | LIVE (engine + receipt-bound MCP path); fallback explicit | `crypt-core/effectiveness.rs`, `crypt/feedback.rs`, `store.rs`, `serve.rs` (`/feedback`), `main.rs` (`feedback` verb), `mcp/server.mjs` (`membrane_feedback`) | [plan](plans/2026-07-15-rightcontext-feedback-rail.md) |
-| 2 | **Skills = 9th provider** — workspace skill catalog served cross-repo; discover from any repo; `crypt skill-read <name>` loads bodies; provenance-sealed delivery (bodyHash + Git) | LIVE | `federation/providers/skills.py`, `tools/skills/skills-catalog/{ingest,provider}.py`, `main.rs` (`skill-read`), `recall_planner.py` carve-out, `lib/skill_frontmatter.py` | [plan](plans/2026-07-15-skills-as-rightcontext-provider.md) |
-| 3 | **Memory-content delivery** — federation memory provider fixed from stub → real `recall_scored` + content previews; UTF-8 subprocess; planner `structural` key | LIVE | `federation.rs` (`memory_candidates_payload`), `federation/providers/crypt.py`, `recall_planner.py` memory carve-out | [plan](plans/2026-07-15-rightcontext-memory-delivery.md) |
-| 4 | **Admission reserved lanes + memory DB-provenance seal** — two-pass admission (memory 800 / skill 300 tok lanes, then global fill) fixes overlay-flood starvation; memory delivery verified against a real DB row (read-only, fail-closed) | LIVE | `crypt-core/planner.rs`, `recall_planner.py` (`_verify_memory_row`) | [plan](plans/2026-07-15-rightcontext-admission-lanes-memory-seal.md) |
-| 5 | **Link-graph recall** — `links(src,dst)` table (schema v8) from `[[wikilinks]]`; extract-on-write + backfill; shared one-hop recall at a discounted tier, depth 1, at most 20%/8 hits. The old federation merge is removed. | LIVE (333 edges at validation) | `memdb.rs` (links table), `store.rs` (`linked_neighbors`, `backfill_links`, `recall_scored_detailed`) | [plan](plans/2026-07-15-rightcontext-link-graph-recall.md) |
+| 1 | **Feedback rail** — per-candidate recall self-learning; `get`→used, delete/supersede→contradicted; verified `contradicted` = veto-until-superseded (sha-aware); shared `recall_scored` and live `/recall` both apply it; persisted `context_feedback` (schema v7); `metrics.feedback`. MCP `membrane_feedback` now persists through the engine/CLI feedback path with `LifecycleReceiptV1` readback; unavailable-engine paths remain explicit `accepted_advisory` + `durable:false`. | LIVE (engine + receipt-bound MCP path); fallback explicit | `crypt-core/effectiveness.rs`, `crypt/feedback.rs`, `store.rs`, `serve.rs` (`/feedback`), `main.rs` (`feedback` verb), `mcp/server.mjs` (`membrane_feedback`) | plan (deleted, not recoverable) |
+| 2 | **Skills = 9th provider** — workspace skill catalog served cross-repo; discover from any repo; `crypt skill-read <name>` loads bodies; provenance-sealed delivery (bodyHash + Git) | LIVE | `federation/providers/skills.py`, `tools/skills/skills-catalog/{ingest,provider}.py`, `main.rs` (`skill-read`), `recall_planner.py` carve-out, `lib/skill_frontmatter.py` | plan (deleted, not recoverable) |
+| 3 | **Memory-content delivery** — federation memory provider fixed from stub → real `recall_scored` + content previews; UTF-8 subprocess; planner `structural` key | LIVE | `federation.rs` (`memory_candidates_payload`), `federation/providers/crypt.py`, `recall_planner.py` memory carve-out | plan (deleted, not recoverable) |
+| 4 | **Admission reserved lanes + memory DB-provenance seal** — two-pass admission (memory 800 / skill 300 tok lanes, then global fill) fixes overlay-flood starvation; memory delivery verified against a real DB row (read-only, fail-closed) | LIVE | `crypt-core/planner.rs`, `recall_planner.py` (`_verify_memory_row`) | plan (deleted, not recoverable) |
+| 5 | **Link-graph recall** — `links(src,dst)` table (schema v8) from `[[wikilinks]]`; extract-on-write + backfill; shared one-hop recall at a discounted tier, depth 1, at most 20%/8 hits. The old federation merge is removed. | LIVE (333 edges at validation) | `memdb.rs` (links table), `store.rs` (`linked_neighbors`, `backfill_links`, `recall_scored_detailed`) | plan (deleted, not recoverable) |
 | 6 | **Reversible governance** — low-effectiveness never-used rows move to schema-v10 quarantine with complete row preservation; transactional list/restore CLI and API; duplicate pruning remains permanent | LIVE | `memdb.rs`, `dream.rs`, `serve.rs`, `main.rs` | completion record in the cold-chat handoff |
 | 7 | **Codex hook parity** — `brief@local-brief` 1.0.4, one prompt hook, active-repo resolution, sealed memory/skill delivery, fail-open legacy path, no duplicate brief-policy injection | LIVE | `tools/codex-brief-plugin/recall_planner.js`, source plugin `hooks.json` | completion record in the cold-chat handoff |
 | 8 | **Membrane-owned observable event ledger** — frozen `ObservableEventV1` ingress, content-free host/tool receipts, append-only SQLite persistence, explicit ingress-unavailable status | PARTIAL / active source path; installed service readback pending | `engine/crates/crypt/src/context_telemetry.rs`, `mcp/server.mjs`, `forge/hooks/observable-ingress.js`, `forge/hooks/claude-code/tool-receipt.js` | Fable H2/L1 implementation |
@@ -570,7 +570,7 @@ Only the absence of safe deliverable context or provider unavailability invokes 
 A third-party Kimi K3 audit of RightContext/Crypt was independently validated in-session
 against live `crypt metrics`, service `/health` (port 47851), the delivery/heartbeat logs, and
 source. Disposition (full table:
-[`2026-07-18-kimi-audit-validation.md`](plans/2026-07-18-kimi-audit-validation.md)):
+`2026-07-18-kimi-audit-validation.md` (deleted, not recoverable)):
 
 - **Confirmed exactly (live-reproduced):** the deployment boundary above; feedback rail all-zero
   (`verified_used`/`verified_contradicted`/`advisory`/`vetoes` = 0); curate 21 runs / 433 merged /
@@ -695,7 +695,7 @@ RC-1.5 lower packet-budget smoke are now complete. **RC-1.3-CROSS-CLIENT v2 was 
 (2026-07-18):** the frozen protocol, new normalized-hash-disjoint synthetic fixture, three cold
 repeats, full six-candidate guards, calibration-only `D_cal`, held-out `D_eval`, legacy
 `MIN_COS=0.40` decision binding, and normalized live-rehashed runtime-asset contract are specified
-in [the v2 protocol](plans/2026-07-18-rightcontext-cross-platform-parity-v2.md). No cross-host pass
+in the v2 protocol document (deleted, not recoverable). No cross-host pass
   was claimed at that checkpoint. The genuine Windows protocol-validation capture is committed at
   `6bc622b2` and validates locally with three cold repeats against release generation `a589851…`;
   the corrected Mac runtime record, genuine Mac v2 capture, and comparison were still absent at

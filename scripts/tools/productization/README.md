@@ -8,7 +8,7 @@ either a node script or a manual command runner.
 
 | File | Owner task | Purpose |
 |---|---|---|
-| `generate-product-truth.mjs` | MBR-013 | Builds the canonical `operations/product-truth.json` artifact. |
+| `generate-product-truth.mjs` | MBR-013 | Builds the canonical `schemas/registry/product-truth.json` artifact. |
 | `check-docs.mjs` | MBR-1001 | One-shot local gate that fails on stale generated docs or broken README links. |
 | `render-docs.mjs` | MBR-1001 | Renderers for the four generated product docs. |
 | `generate-client-matrix.mjs` | MBR-206 | Builds the MBR-206 client registry capabilities + support matrix. |
@@ -18,7 +18,7 @@ either a node script or a manual command runner.
 
 Reads:
 
-- `evidence/qualification/mbr801/<platform>/receipt.json` — real MBR-801
+- `docs/evidence/qualification/mbr801/<platform>/receipt.json` — real MBR-801
   installed-path conformance receipts (`orthic.mbr801-installed-receipt.v1`),
   produced by `node scripts/qualification/run.mjs` and validated here through
   the existing `scripts/qualification/verify-mbr801-evidence.mjs` (never
@@ -65,13 +65,13 @@ console.log(render(matrix));
 
 Reads:
 
-- `operations/clients.yaml` — the human-authored client registry.
-- `operations/operations/operations-index.v1.golden.json` — the MBR-301
+- `schemas/registry/clients.yaml` — the human-authored client registry.
+- `schemas/registry/operations/operations-index.v1.golden.json` — the MBR-301
   operation universe.
 
 Emits:
 
-- `operations/clients.capabilities.v1.json` — capability envelopes
+- `schemas/registry/clients.capabilities.v1.json` — capability envelopes
   conforming to `schemas/client-capability.v1.schema.json`.
 - `docs/clients/support-matrix.v1.json` — the client × operation
   matrix conforming to `schemas/client-support-matrix.v1.schema.json`.

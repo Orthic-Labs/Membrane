@@ -8,7 +8,7 @@
 //
 // The binding it proves: the OCI contract's `identity` (tag, commit,
 // release_generation) is read verbatim from MBR-903's own immutable
-// evidence/releases/<releaseId>/release-generation.json -- never
+// docs/evidence/releases/<releaseId>/release-generation.json -- never
 // hand-typed here -- and every evidence artifact (SBOM, Ed25519 signature,
 // cosign receipt, rootless-health receipt, secret-scan receipt) and the Linux
 // binary baked into the image must already exist on disk with a real,

@@ -60,4 +60,4 @@ authority is requested.
 ## Source of truth
 
 The canonical JSON definition lives at
-[`operations/prompts/plan.v1.json`](../../operations/prompts/plan.v1.json).
+[`schemas/registry/prompts/plan.v1.json`](../../schemas/registry/prompts/plan.v1.json).

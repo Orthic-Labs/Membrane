@@ -21,7 +21,7 @@ import { selectWorkspaceTargets } from "./workspace-routing.mjs";
 import { createDeadline, deadlineSignal, mapConcurrent, terminalReason, timeoutReceipt } from "./deadline.mjs";
 import { boundedLifecycleId, createLifecycle, withCancellationGrace } from "./lifecycle.mjs";
 import { toolsetNames } from "./toolsets.mjs";
-import { executeCodeBatch } from "../operations/code/mbr402-batch.mjs";
+import { executeCodeBatch } from "../schemas/registry/code/mbr402-batch.mjs";
 import { requestCortex } from "./cortex-readiness.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

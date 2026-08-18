@@ -8,7 +8,7 @@ import {
 
 const root = join(import.meta.dirname, "../..");
 const read = (path) => readFile(join(root, path), "utf8");
-const golden = async (name) => JSON.parse(await read(`operations/operations/${name}`));
+const golden = async (name) => JSON.parse(await read(`schemas/operations/operations/${name}`));
 
 test("canonical v1 golden envelopes share TypeScript, Python & Rust constants", async () => {
   const [context, source, python, rust] = await Promise.all([
@@ -40,7 +40,7 @@ test("typed error sets match Python & Rust contracts", async () => {
   const [python, rust, index] = await Promise.all([
     read("dist/packages/python/src/membrane_client/client.py"),
     read("engine/crates/membrane-client/src/lib.rs"),
-    read("operations/operations/operations-index.v1.golden.json").then(JSON.parse),
+    read("schemas/registry/operations/operations-index.v1.golden.json").then(JSON.parse),
   ]);
   for (const operation of [CONTEXT_OPERATION, SOURCE_READ_OPERATION]) {
     const codes = index.operations.find(item => item.name === operation).errorCodes;

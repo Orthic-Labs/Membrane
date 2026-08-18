@@ -147,7 +147,7 @@ test("resolveAllNpmPlatformArtifacts aggregates every platform's real state with
 
 test("today's real Membrane checkout has no release-generation recorded for a plausible release: nothing is invented", () => {
   // Proves this resolver does not fabricate an artifact against the actual
-  // repository: no evidence/releases/<releaseId>/release-generation.json
+  // repository: no docs/evidence/releases/<releaseId>/release-generation.json
   // exists for this releaseId in the real checkout (only mac releases are
   // sealed under .right-release/sealed/ today; MBR-903's write-once
   // evidence layer has not been run with --write on this checkout).

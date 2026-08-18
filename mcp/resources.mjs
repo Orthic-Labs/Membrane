@@ -1,6 +1,6 @@
 // Canonical Membrane MCP resources — legacy (JS) surface.
 //
-// Every resource definition lives in `operations/resources/*.json` so the
+// Every resource definition lives in `schemas/registry/resources/*.json` so the
 // native (Rust) MCP server and this legacy (JS) MCP server serve the exact
 // same payload. This module reads the canonical JSON at runtime, exposes the
 // same `listResources()` / `readResource(uri, grants)` shape the Rust module
@@ -34,7 +34,7 @@ async function loadAll() {
   if (cached) return cached;
   const entries = await Promise.all(
     RESOURCE_FILES.map(async (file) => {
-      const raw = await readFile(join(REPO_ROOT, "operations", "resources", file), "utf8");
+      const raw = await readFile(join(REPO_ROOT, "schemas", "registry", "resources", file), "utf8");
       return JSON.parse(raw);
     }),
   );

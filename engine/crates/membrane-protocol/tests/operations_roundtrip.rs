@@ -147,7 +147,7 @@ fn every_operation_fixtures_round_trip() {
 /// contract aligned.
 #[test]
 fn operations_index_matches_registry() {
-    let index_path = "operations/operations/operations-index.v1.golden.json";
+    let index_path = "schemas/registry/operations/operations-index.v1.golden.json";
     let raw = load_repo_file(index_path);
     let on_disk: OperationsIndex =
         serde_json::from_str(&raw).expect("operations index fixture deserializes");
@@ -241,7 +241,7 @@ fn operations_are_independently_versioned() {
 /// `bindings/operations.test.mjs`.
 #[test]
 fn operations_index_canonical_digest_is_pinned() {
-    let raw = load_repo_file("operations/operations/operations-index.v1.golden.json");
+    let raw = load_repo_file("schemas/registry/operations/operations-index.v1.golden.json");
     let value: Value = serde_json::from_str(&raw).expect("index fixture parses");
     let digest = digest_str(&canonicalize(&value));
     let expected = "sha256:bac766d8cc9a7a2b3033805d88e13a02d7d90b67c2bb85aec67795e78200b62e";

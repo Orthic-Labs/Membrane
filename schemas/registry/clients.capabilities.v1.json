@@ -1,0 +1,167 @@
+{
+  "clients": [
+    {
+      "authorityGrant": {
+        "loopbackOnly": true,
+        "maxLevel": "L4",
+        "scopes": [
+          "read-only",
+          "workspace-read"
+        ]
+      },
+      "binaryEnv": "MEMBRANE_CLAUDE_BIN",
+      "degradedOperations": [],
+      "detectCommand": "--version",
+      "discoveryMethod": "native-mcp-cli",
+      "displayName": "Claude Code",
+      "honestLevel": "L4",
+      "id": "claude",
+      "installCommand": "mcp add --scope <local|project|user> membrane -- <node> <server>",
+      "schemaVersion": 1,
+      "scopeDefault": "local",
+      "supportedOperations": [
+        "membrane_context",
+        "membrane_source_read",
+        "membrane_knowledge_propose",
+        "membrane_checkpoint_save",
+        "membrane_checkpoint_load",
+        "membrane_working_context",
+        "membrane_temporal_fact",
+        "membrane_scratchpad",
+        "membrane_feedback"
+      ],
+      "transport": "stdio"
+    },
+    {
+      "authorityGrant": {
+        "loopbackOnly": true,
+        "maxLevel": "L2",
+        "scopes": [
+          "read-only"
+        ]
+      },
+      "binaryEnv": "MEMBRANE_CODEX_BIN",
+      "degradedOperations": [],
+      "detectCommand": "--version",
+      "discoveryMethod": "native-mcp-cli",
+      "displayName": "Codex CLI",
+      "honestLevel": "L2",
+      "id": "codex",
+      "installCommand": "mcp add membrane -- <node> <server>",
+      "schemaVersion": 1,
+      "scopeDefault": "project",
+      "supportedOperations": [
+        "membrane_context",
+        "membrane_source_read",
+        "membrane_knowledge_propose",
+        "membrane_checkpoint_save",
+        "membrane_checkpoint_load",
+        "membrane_working_context",
+        "membrane_temporal_fact",
+        "membrane_scratchpad",
+        "membrane_feedback"
+      ],
+      "transport": "stdio"
+    },
+    {
+      "authorityGrant": {
+        "loopbackOnly": true,
+        "maxLevel": "L1",
+        "scopes": [
+          "read-only"
+        ]
+      },
+      "binaryEnv": "MEMBRANE_CURSOR_BIN",
+      "degradedOperations": [
+        "membrane_source_read",
+        "membrane_knowledge_propose",
+        "membrane_checkpoint_save",
+        "membrane_checkpoint_load",
+        "membrane_temporal_fact",
+        "membrane_scratchpad",
+        "membrane_feedback"
+      ],
+      "detectCommand": "--version",
+      "discoveryMethod": "rules-file-and-mcp",
+      "displayName": "Cursor",
+      "honestLevel": "L1",
+      "id": "cursor",
+      "installCommand": "mcp add membrane -- <node> <server>",
+      "schemaVersion": 1,
+      "scopeDefault": "project",
+      "supportedOperations": [
+        "membrane_context",
+        "membrane_working_context"
+      ],
+      "transport": "stdio"
+    },
+    {
+      "authorityGrant": {
+        "loopbackOnly": true,
+        "maxLevel": "L1",
+        "scopes": [
+          "read-only"
+        ]
+      },
+      "binaryEnv": "MEMBRANE_WINDSURF_BIN",
+      "degradedOperations": [
+        "membrane_source_read",
+        "membrane_knowledge_propose",
+        "membrane_checkpoint_save",
+        "membrane_checkpoint_load",
+        "membrane_temporal_fact",
+        "membrane_scratchpad",
+        "membrane_feedback"
+      ],
+      "detectCommand": "--version",
+      "discoveryMethod": "rules-file-and-mcp",
+      "displayName": "Windsurf",
+      "honestLevel": "L1",
+      "id": "windsurf",
+      "installCommand": "mcp add membrane -- <node> <server>",
+      "schemaVersion": 1,
+      "scopeDefault": "project",
+      "supportedOperations": [
+        "membrane_context",
+        "membrane_working_context"
+      ],
+      "transport": "stdio"
+    },
+    {
+      "authorityGrant": {
+        "loopbackOnly": false,
+        "maxLevel": "L0",
+        "scopes": [
+          "read-only"
+        ]
+      },
+      "binaryEnv": "MEMBRANE_GENERIC_MCP_BIN",
+      "degradedOperations": [
+        "membrane_source_read",
+        "membrane_knowledge_propose",
+        "membrane_checkpoint_save",
+        "membrane_checkpoint_load",
+        "membrane_working_context",
+        "membrane_temporal_fact",
+        "membrane_scratchpad",
+        "membrane_feedback"
+      ],
+      "detectCommand": "--version",
+      "discoveryMethod": "mcp-stdio-only",
+      "displayName": "Generic MCP client",
+      "honestLevel": "L0",
+      "id": "generic_mcp",
+      "installCommand": "stdio-launch <node> <server>",
+      "schemaVersion": 1,
+      "scopeDefault": "local",
+      "supportedOperations": [
+        "membrane_context"
+      ],
+      "transport": "stdio"
+    }
+  ],
+  "generatedFrom": [
+    "schemas/registry/operations/operations-index.v1.golden.json"
+  ],
+  "schemaVersion": 1
+}

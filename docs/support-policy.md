@@ -28,8 +28,9 @@ and use a private maintainer channel; the repository's public contact is
 
 Keep generated client artifacts synchronized with their registry and contract
 tests ([`docs/clients/README.md`](clients/README.md)). Updates are transactional
-and receipt-backed ([`docs/update.md`](update.md)); do not infer upgrade safety
-from a passing source-only test when installed receipts are missing.
+and receipt-backed (see [dual-signature admission](design/update-dual-signature.md)
+and [update rollback](troubleshooting/update-rollback.md)); do not infer upgrade
+safety from a passing source-only test when installed receipts are missing.
 
 ## Commercial boundary
 

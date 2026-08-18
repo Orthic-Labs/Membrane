@@ -49,7 +49,7 @@ lock-step with the Rust type by the round-trip tests below.
 
 ## How the round-trip is enforced
 
-Golden fixtures under `operations/` (one per shape, `*.v1.golden.json`) are the
+Golden fixtures under `schemas/operations/` (one per shape, `*.v1.golden.json`) are the
 shared canonical instances. Both sides read the **same** files and assert the
 **same** canonical `sha256:` digest:
 
@@ -85,6 +85,6 @@ types, the fixtures, or the canonical rules fails the pinned-digest assertion on
 ## Changing the contract
 
 Make the change in `src/types.rs`, regenerate/update the matching schema under
-`schemas/` and the golden fixture under `operations/`, then update the pinned
+`schemas/` and the golden fixture under `schemas/operations/`, then update the pinned
 digest in **both** `tests/roundtrip.rs` and `bindings/roundtrip.test.mjs`.
 Digest drift is a deliberate, visible failure — never a silent one.

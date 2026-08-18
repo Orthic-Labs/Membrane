@@ -86,7 +86,7 @@ pub struct AdapterHeartbeatV1 {
     /// `windsurf-mcp`. Treated as opaque by the supervisor: it never
     /// dereferences the id, so a future adapter does not require a code
     /// change here. This is intentional so MBR-207 does not fork on
-    /// MBR-206's `operations/clients.yaml` arriving later.
+    /// MBR-206's `schemas/registry/clients.yaml` arriving later.
     pub client_id: String,
     /// Adapter self-declared version (semver-ish). Captured for the Hub
     /// "what is installed" view; never parsed by the supervisor.

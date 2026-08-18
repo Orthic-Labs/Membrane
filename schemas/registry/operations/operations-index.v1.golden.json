@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "indexVersion": 1,
+  "operations": [
+    {
+      "name": "membrane_context",
+      "schemaVersion": 1,
+      "errorVersion": 1,
+      "schemaPath": "schemas/operations/membrane-context.v1.schema.json",
+      "successFixture": "schemas/registry/operations/membrane-context.v1.golden.json",
+      "errorFixture": "schemas/registry/operations/membrane-context.v1.error.golden.json",
+      "errorCodes": [
+        "context_unavailable",
+        "context_scope_denied",
+        "context_workspace_no_repos",
+        "context_workspace_abstained",
+        "context_deadline_exceeded",
+        "context_caller_scope_binding_denied",
+        "context_caller_not_authorized",
+        "context_cross_root_denied",
+        "context_target_denied",
+        "context_envelope_invalid"
+      ]
+    },
+    {
+      "name": "membrane_source_read",
+      "schemaVersion": 1,
+      "errorVersion": 1,
+      "schemaPath": "schemas/operations/membrane-source-read.v1.schema.json",
+      "successFixture": "schemas/registry/operations/membrane-source-read.v1.golden.json",
+      "errorFixture": "schemas/registry/operations/membrane-source-read.v1.error.golden.json",
+      "errorCodes": [
+        "source_read_unavailable",
+        "source_read_hash_mismatch",
+        "source_read_anchor_missing",
+        "source_read_scope_denied",
+        "source_read_envelope_invalid"
+      ]
+    },
+    {
+      "name": "membrane_cortex",
+      "schemaVersion": 1,
+      "errorVersion": 1,
+      "schemaPath": "schemas/operations/membrane-cortex.v1.schema.json",
+      "successFixture": "schemas/registry/operations/membrane-cortex.v1.golden.json",
+      "errorFixture": "schemas/registry/operations/membrane-cortex.v1.error.golden.json",
+      "errorCodes": [
+        "cortex_unavailable",
+        "cortex_envelope_invalid",
+        "cortex_caller_scope_binding_denied",
+        "cortex_caller_not_authorized",
+        "cortex_cross_root_denied",
+        "cortex_batch_invalid"
+      ]
+    },
+    {
+      "name": "membrane_knowledge_propose",
+      "schemaVersion": 1,
+      "errorVersion": 1,
+      "schemaPath": "schemas/operations/membrane-knowledge-propose.v1.schema.json",
+      "successFixture": "schemas/registry/operations/membrane-knowledge-propose.v1.golden.json",
+      "errorFixture": "schemas/registry/operations/membrane-knowledge-propose.v1.error.golden.json",
+      "errorCodes": [
+        "proposal_emission_text_required",
+        "proposal_payload_too_large",
+        "proposal_rate_limited",
+        "proposal_binding_unresolvable",
+        "proposal_durable_write_failed",
+        "proposal_scope_denied"
+      ]
+    },
+    {
+      "name": "membrane_checkpoint_save",
+      "schemaVersion": 1,
+      "errorVersion": 1,
+      "schemaPath": "schemas/operations/membrane-checkpoint-save.v1.schema.json",
+      "successFixture": "schemas/registry/operations/membrane-checkpoint-save.v1.golden.json",
+      "errorFixture": "schemas/registry/operations/membrane-checkpoint-save.v1.error.golden.json",
+      "errorCodes": [
+        "checkpoint_payload_too_large",
+        "checkpoint_rate_limited",
+        "checkpoint_scope_denied",
+        "checkpoint_save_unavailable",
+        "checkpoint_envelope_invalid"
+      ]
+    },
+    {
+      "name": "membrane_checkpoint_load",
+      "schemaVersion": 1,
+      "errorVersion": 1,
+      "schemaPath": "schemas/operations/membrane-checkpoint-load.v1.schema.json",
+      "successFixture": "schemas/registry/operations/membrane-checkpoint-load.v1.golden.json",
+      "errorFixture": "schemas/registry/operations/membrane-checkpoint-load.v1.error.golden.json",
+      "errorCodes": [
+        "checkpoint_not_found",
+        "checkpoint_expired",
+        "checkpoint_scope_denied",
+        "checkpoint_load_unavailable",
+        "checkpoint_envelope_invalid"
+      ]
+    },
+    {
+      "name": "membrane_working_context",
+      "schemaVersion": 1,
+      "errorVersion": 1,
+      "schemaPath": "schemas/operations/membrane-working-context.v1.schema.json",
+      "successFixture": "schemas/registry/operations/membrane-working-context.v1.golden.json",
+      "errorFixture": "schemas/registry/operations/membrane-working-context.v1.error.golden.json",
+      "errorCodes": [
+        "working_context_payload_too_large",
+        "working_context_rate_limited",
+        "working_context_scope_required",
+        "working_context_id_required",
+        "working_context_operation_invalid",
+        "working_context_scope_denied",
+        "working_context_envelope_invalid"
+      ]
+    },
+    {
+      "name": "membrane_temporal_fact",
+      "schemaVersion": 1,
+      "errorVersion": 1,
+      "schemaPath": "schemas/operations/membrane-temporal-fact.v1.schema.json",
+      "successFixture": "schemas/registry/operations/membrane-temporal-fact.v1.golden.json",
+      "errorFixture": "schemas/registry/operations/membrane-temporal-fact.v1.error.golden.json",
+      "errorCodes": [
+        "temporal_fact_payload_too_large",
+        "temporal_fact_scope_denied",
+        "temporal_fact_scope_mismatch",
+        "temporal_fact_query_invalid",
+        "temporal_fact_operation_invalid",
+        "temporal_fact_envelope_invalid"
+      ]
+    },
+    {
+      "name": "membrane_scratchpad",
+      "schemaVersion": 1,
+      "errorVersion": 1,
+      "schemaPath": "schemas/operations/membrane-scratchpad.v1.schema.json",
+      "successFixture": "schemas/registry/operations/membrane-scratchpad.v1.golden.json",
+      "errorFixture": "schemas/registry/operations/membrane-scratchpad.v1.error.golden.json",
+      "errorCodes": [
+        "scratchpad_payload_too_large",
+        "scratchpad_scope_required",
+        "scratchpad_scope_denied",
+        "scratchpad_operation_invalid",
+        "scratchpad_envelope_invalid"
+      ]
+    },
+    {
+      "name": "membrane_feedback",
+      "schemaVersion": 1,
+      "errorVersion": 1,
+      "schemaPath": "schemas/operations/membrane-feedback.v1.schema.json",
+      "successFixture": "schemas/registry/operations/membrane-feedback.v1.golden.json",
+      "errorFixture": "schemas/registry/operations/membrane-feedback.v1.error.golden.json",
+      "errorCodes": [
+        "feedback_invalid",
+        "feedback_invalid_verdict_ref",
+        "feedback_payload_too_large",
+        "feedback_rate_limited",
+        "feedback_binding_unresolvable",
+        "feedback_durable_write_failed",
+        "feedback_independent_readback_mismatch"
+      ]
+    }
+    ,{"name":"hub.capabilities","schemaVersion":1,"errorVersion":1,"schemaPath":"schemas/operations/hub-capabilities.v1.schema.json","successFixture":"schemas/registry/operations/hub-capabilities.v1.golden.json","errorFixture":"schemas/registry/operations/hub-capabilities.v1.error.golden.json","errorCodes":["hub_unavailable"]},{"name":"hub.snapshot","schemaVersion":1,"errorVersion":1,"schemaPath":"schemas/operations/hub-snapshot.v1.schema.json","successFixture":"schemas/registry/operations/hub-snapshot.v1.golden.json","errorFixture":"schemas/registry/operations/hub-snapshot.v1.error.golden.json","errorCodes":["hub_unavailable"]}
+  ]
+}

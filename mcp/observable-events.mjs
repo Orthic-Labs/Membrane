@@ -95,7 +95,7 @@ function mintV4Uuid() {
  *
  * @param {object} input
  * @param {string} input.kind - one of OBSERVABLE_EVENT_KINDS
- * @param {string} input.clientId - stable client id from operations/clients.yaml
+ * @param {string} input.clientId - stable client id from schemas/registry/clients.yaml
  * @param {string} input.installationId - UUIDv4 installation id
  * @param {number} input.occurredAtUnixMs - producing client wall clock (ms)
  * @param {object} input.payload - open per-kind payload (must be an object)

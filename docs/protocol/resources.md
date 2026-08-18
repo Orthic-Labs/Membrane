@@ -3,7 +3,7 @@
 `engine/crates/membrane-mcp` and `mcp/` (legacy JS) expose a bounded set of
 read-only MCP **resources** — structured payloads a client can pull without
 triggering a tool call. Every resource lives as a single canonical JSON file
-under `operations/resources/*.json` so the native (Rust) server and the
+under `schemas/registry/resources/*.json` so the native (Rust) server and the
 legacy JS server return the exact same bytes. The resources are bounded,
 versioned, and gated by typed access grants; reads outside the matching
 grant return a typed rejection with no content leak.
@@ -47,7 +47,7 @@ Every resource declaration carries the same shape:
 - `version` is independently advanced per resource: bumping one resource's
   version never moves a sibling.
 - `accessGrants` is a non-empty array of grant-type names drawn from the
-  closed set listed in `operations/resources/resources-index.v1.json`
+  closed set listed in `schemas/registry/resources/resources-index.v1.json`
   under `supportedGrantTypes`. Adding a new grant type is an index-level
   change with a corresponding `indexVersion` bump.
 - `authorityEscalation` is always `false`. Resources are read-only; they
@@ -56,7 +56,7 @@ Every resource declaration carries the same shape:
 ## Supported grant types
 
 The closed set of resource-level grant types lives in
-`operations/resources/resources-index.v1.json`:
+`schemas/registry/resources/resources-index.v1.json`:
 
 | Grant              | Issuer                                   | Surfaces                                              |
 |--------------------|------------------------------------------|-------------------------------------------------------|
@@ -224,9 +224,9 @@ A resource whose body is parametric declares its template in the
 templates — the URI is the full key. Adding a parametric resource in a
 future book requires:
 
-1. Writing `operations/resources/<name>.vN.json` with a `template.uriTemplate`
+1. Writing `schemas/registry/resources/<name>.vN.json` with a `template.uriTemplate`
    block whose placeholders are RFC 6570 level-1 variables.
-2. Adding an entry to `operations/resources/resources-index.v1.json` under
+2. Adding an entry to `schemas/registry/resources/resources-index.v1.json` under
    `resources[]`, including the matching `accessGrants` and `version`.
 3. Extending the Rust `resources::read_payload` to substitute the URI
    template variables before the access-grant check.
@@ -246,7 +246,7 @@ The Rust module lives in `engine/crates/membrane-mcp/src/resources.rs`
 (`listResources`, `readResource`, `readResourceByName`,
 `allResourceDefinitions`, `RESOURCE_NAMES`, `RESOURCE_URIS`).
 
-Both modules load the same four `operations/resources/*.json` files at
+Both modules load the same four `schemas/registry/resources/*.json` files at
 runtime (or compile time, in the Rust case, via `include_str!`) and project
 them through the same field order. The parity test
 `tests/mcp-resources/resources.parity.test.mjs` proves the projection is

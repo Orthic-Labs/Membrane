@@ -15,7 +15,7 @@ same "checked against the shared schema, not review" property MBR-308 (see
 python_client_test.py's PythonClientGoldenFixtureTest) applied to the
 operation-envelope fixtures.
 
-`operations/operations/*.golden.json` (schemaVersion/errorVersion) is
+`schemas/operations/operations/*.golden.json` (schemaVersion/errorVersion) is
 intentionally out of scope here: every current operation envelope declares
 exactly one schema version (1), so there is no second, older supported
 version of that contract for a "current vs previous daemon" test to exercise

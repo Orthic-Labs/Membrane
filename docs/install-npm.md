@@ -1,5 +1,7 @@
 # npm bootstrap
 
+> See also: [installation/](installation/) for the manifest/IPC handshake contract and stable-roots reference.
+
 `@orthic/membrane` is a thin loader for a native Membrane command/service
 pair. It selects its platform package, validates artifact bytes against its
 recorded digest and signature metadata, then exposes native dispatch. Missing

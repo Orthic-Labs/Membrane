@@ -74,7 +74,7 @@ test("OPERATIONS registry covers every required MCP tool", () => {
 
 test("on-disk operations-index fixture matches the OPERATIONS registry", () => {
   const onDisk = loadRepoJson(
-    "operations/operations/operations-index.v1.golden.json",
+    "schemas/registry/operations/operations-index.v1.golden.json",
   );
   assert.strictEqual(onDisk.operations.length, OPERATIONS.length, "operation count drifted");
   for (let i = 0; i < onDisk.operations.length; i += 1) {
@@ -114,7 +114,7 @@ test("on-disk operations-index fixture matches the OPERATIONS registry", () => {
 
 test("operations-index canonical digest is pinned", () => {
   const raw = JSON.stringify(
-    loadJson("operations/operations/operations-index.v1.golden.json"),
+    loadJson("schemas/registry/operations/operations-index.v1.golden.json"),
   );
   // Parse and re-canonicalize to absorb any whitespace drift in the on-disk
   // file, matching the Rust side exactly.

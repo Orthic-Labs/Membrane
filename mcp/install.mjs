@@ -671,10 +671,10 @@ import { dirname as _mbr206Dirname, join as _mbr206Join } from "node:path";
 
 const _MBR206_HERE = _mbr206Dirname(_mbr206FileURLToPath(import.meta.url));
 const _MBR206_REPO_ROOT = _mbr206Join(_MBR206_HERE, "..");
-export const _MBR206_CLIENT_CAPABILITIES_PATH = _mbr206Join(_MBR206_REPO_ROOT, "operations", "clients.capabilities.v1.json");
+export const _MBR206_CLIENT_CAPABILITIES_PATH = _mbr206Join(_MBR206_REPO_ROOT, "schemas", "registry", "clients.capabilities.v1.json");
 export const _MBR206_SUPPORT_MATRIX_PATH = _mbr206Join(_MBR206_REPO_ROOT, "docs", "clients", "support-matrix.v1.json");
-export const _MBR206_CLIENT_REGISTRY_PATH = _mbr206Join(_MBR206_REPO_ROOT, "operations", "clients.yaml");
-export const _MBR206_OPERATIONS_INDEX_PATH = _mbr206Join(_MBR206_REPO_ROOT, "operations", "operations", "operations-index.v1.golden.json");
+export const _MBR206_CLIENT_REGISTRY_PATH = _mbr206Join(_MBR206_REPO_ROOT, "schemas", "registry", "clients.yaml");
+export const _MBR206_OPERATIONS_INDEX_PATH = _mbr206Join(_MBR206_REPO_ROOT, "schemas", "registry", "operations", "operations-index.v1.golden.json");
 
 /**
  * Load the generated client capabilities artifact (one envelope per declared
@@ -702,7 +702,7 @@ export async function loadSupportMatrix({ path = _MBR206_SUPPORT_MATRIX_PATH } =
  * MCP CLIs are present and addressable.
  *
  * The returned ids are stable, lowercase, and in the order they appear in
- * `operations/clients.yaml`.
+ * `schemas/registry/clients.yaml`.
  */
 export async function clientsForEnrollment({ capabilitiesPath = _MBR206_CLIENT_CAPABILITIES_PATH } = {}) {
   const caps = await loadClientCapabilities({ path: capabilitiesPath });

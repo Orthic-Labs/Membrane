@@ -72,7 +72,7 @@ for every tool call, regardless of transport. The canonical `membrane_context`
 (`schemas/operations/membrane-context.v1.schema.json`,
 `schemas/operations/membrane-source-read.v1.schema.json`) are not yet
 reachable through a live `tools/call` round trip over either transport — only
-through the golden fixtures in `operations/operations/*.golden.json` and
+through the golden fixtures in `schemas/operations/operations/*.golden.json` and
 whatever in-process or test transport a caller injects directly. A transport
 function built from this page is correct for the admission layer today;
 treat the operation dispatch itself as not yet wired until that stub is

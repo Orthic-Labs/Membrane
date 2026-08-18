@@ -1,5 +1,7 @@
 # MCP Registry metadata (MBR-907)
 
+> See also: [installation/](installation/) for the manifest/IPC handshake contract and stable-roots reference.
+
 `server.json` at the repo root is the metadata this repo would submit to the
 official [MCP Registry](https://github.com/modelcontextprotocol/registry)
 under the reserved server name `io.github.orthic-labs/membrane`, once a real
@@ -71,7 +73,7 @@ silently reported as fully covered.
 (`mcp/server.mjs`'s `TOOL_DEFINITIONS`, dispatched at
 `if (name === "membrane_cortex")`), but it has no matching entry in
 `OPERATIONS` — no `schemaVersion`/`errorVersion`, no golden success/error
-fixture pair under `operations/operations/`, and no closed error-code
+fixture pair under `schemas/operations/operations/`, and no closed error-code
 taxonomy the MBR-301 contract machinery validates. This task does not add
 golden fixtures or an error taxonomy for `membrane_cortex` (that is
 `membrane_cortex`'s own contract work, outside this task's allowed paths);
@@ -98,7 +100,7 @@ gap must update `server.json` in the same change or these tests fail.
   `tool-contract-coverage.mjs`.
 - No golden fixtures or error taxonomy were added for `membrane_cortex`;
   that would require changes to `engine/crates/membrane-protocol/**` and
-  `operations/operations/**`, both outside this task's allowed paths (see
+  `schemas/operations/operations/**`, both outside this task's allowed paths (see
   `MBR-401`'s allowlist note in
   `MEMBRANE-BOOK-MODE-EXECUTION-RULES.md` for where that work belongs).
 - The manifest command `node scripts/release/verify-release-plan.mjs --task

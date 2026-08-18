@@ -32,5 +32,5 @@ test("identity and native artifact tampering are rejected", async () => {
 
 test("publication flags cannot substitute for namespace and artifact proof", async () => {
   const directory = await fixture(server => { server.publication.namespaceStatus = "published"; server.publication.artifactStatus = "published"; });
-  await assert.rejects(() => verifyMcpRegistry({ directory }), /unpublished|artifact evidence/);
+  await assert.rejects(() => verifyMcpRegistry({ directory }), /unpublished|artifact docs/evidence/);
 });

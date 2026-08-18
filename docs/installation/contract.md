@@ -2,11 +2,11 @@
 
 **MBR-105** defines how a Membrane installation identifies itself to every
 peer that talks to it. The contract is the typed shape
-[`InstallationManifestV1`](../engine/crates/membrane-protocol/src/installation.rs),
+[`InstallationManifestV1`](../../engine/crates/membrane-protocol/src/installation.rs),
 the JSON Schema
-[`installation-manifest.v1.schema.json`](../schemas/installation-manifest.v1.schema.json),
+[`installation-manifest.v1.schema.json`](../../schemas/installation-manifest.v1.schema.json),
 and the handshake gate
-[`handshake_ingress`](../engine/crates/membrane-runtime/src/serve.rs) that
+[`handshake_ingress`](../../engine/crates/membrane-runtime/src/serve.rs) that
 the resident service runs on every loopback request.
 
 ## Why a manifest

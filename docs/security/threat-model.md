@@ -18,7 +18,7 @@ external-host proof is **unavailable**.
 | Prompt injection in source | Source is data; exact range and path validation precede grant minting | [`mcp/scope-grant-v1.mjs`](../../mcp/scope-grant-v1.mjs), [`tests/adversarial/scope-grant-adversarial.test.mjs`](../../tests/adversarial/scope-grant-adversarial.test.mjs) |
 | Corrupt or partial registry | Atomic write, schema failure is fail-closed | [`docs/THREAT-MODEL-MCP-V1.md`](../design/THREAT-MODEL-MCP-V1.md), [`mcp/installation-binding.test.mjs`](../../mcp/installation-binding.test.mjs) |
 | Local journal disclosure | Metadata-only provenance; no payload or socket | [`docs/privacy.md`](../privacy.md), [`engine/crates/membrane-runtime/src/provenance.rs`](../../engine/crates/membrane-runtime/src/provenance.rs) |
-| Malicious update | Verified staging, atomic activation, rollback, last-step receipt | [`engine/crates/membrane/src/update.rs`](../../engine/crates/membrane/src/update.rs), [`docs/update.md`](../update.md) |
+| Malicious update | Verified staging, atomic activation, rollback, last-step receipt | [`engine/crates/membrane/src/update.rs`](../../engine/crates/membrane/src/update.rs), [`docs/design/update-dual-signature.md`](../design/update-dual-signature.md) |
 
 ## Residual risk
 

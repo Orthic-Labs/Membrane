@@ -178,7 +178,7 @@ export function renderArchitectureDoc(truth, platforms) {
     "",
     "The typed contract lives at `engine/crates/membrane-runtime/src/planes.rs`",
     "(`Plane`, `PlaneBoundary`, `PLANE_BOUNDARIES`, `plane_for_path`). The golden",
-    "fixture is `operations/plane-boundaries.v1.golden.json`; the runtime",
+    "fixture is `schemas/registry/plane-boundaries.v1.golden.json`; the runtime",
     "classifies a source file into a plane by the crate segment that owns it",
     "(`membrane-runtime` / `membrane-mcp` → Application,",
     "`membrane-supervisor` → Control, `crypt-store` → Data).",

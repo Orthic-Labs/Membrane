@@ -1,8 +1,10 @@
 # Context Engineering — Evolution Snapshot (v1 → proposed v4)
 
-**What this is:** the frozen 2026-07-16 evening snapshot of the workspace context system — the original three-family / eight-layer design, each generation of machinery built under it, what got folded in when (Blueprint, skills, federation), and the proposed v4 direction. For volatile/live values, use `RIGHTCONTEXT-STATE.md`.
+> **Historical / Superseded** — this document describes the RightContext-era design as of 2026-07-16; the product is now Membrane. Kept for design history.
 
-**Canonical sources (this doc summarizes, they govern):** [tools/lib/CONTEXT-ENGINEERING.md](../../tools/lib/CONTEXT-ENGINEERING.md) (families, layers, engine), [docs/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md](UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md) (responsibility boundaries), [docs/RIGHTCONTEXT-STATE.md](RIGHTCONTEXT-STATE.md) (live state and evidence), [docs/plans/2026-07-16-rightcontext-harness-protocol-adr.md](plans/2026-07-16-rightcontext-harness-protocol-adr.md) (proposed v4 commitments). On conflict, the state doc owns current operation and the ADR owns proposed sequencing.
+**What this is:** the frozen 2026-07-16 evening snapshot of the workspace context system — the original three-family / eight-layer design, each generation of machinery built under it, what got folded in when (Blueprint, skills, federation), and the proposed v4 direction. For volatile/live values, use `MEMBRANE-STATE.md`.
+
+**Canonical sources (this doc summarizes, they govern):** `tools/lib/CONTEXT-ENGINEERING.md` in the outer workspace (families, layers, engine — not present in this repository), [docs/design/UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md](UNIFIED-CONTEXT-SYSTEM-ARCHITECTURE.md) (responsibility boundaries), [docs/design/MEMBRANE-STATE.md](MEMBRANE-STATE.md) (live state and evidence). The proposed-v4 harness-protocol ADR referenced by earlier drafts of this snapshot was deleted and is not recoverable. On conflict, the state doc owns current operation.
 
 **Provenance:** Git history begins at `dc863dea` on 2026-06-10; earlier dates are attested by workspace documentation rather than repository commits.
 
@@ -191,7 +193,7 @@ Assembly precedence is authority-first, not completion-time-first: explicit anch
 
 ## 5. v4 — proposed: measured assembly, thin doors (ADR 2026-07-16, 7 review rounds)
 
-[The harness-protocol ADR](plans/2026-07-16-rightcontext-harness-protocol-adr.md) is **`proposed`** and governs the full commitments, measurements, deferred list, and review dispositions. Phase 0 plus the transport spike are conditionally approved; later phases execute only as the evidence branches them.
+The harness-protocol ADR (deleted, not recoverable) was **`proposed`** and governed the full commitments, measurements, deferred list, and review dispositions. Phase 0 plus the transport spike are conditionally approved; later phases execute only as the evidence branches them.
 
 Why v4 exists:
 
@@ -221,7 +223,7 @@ context — so a session can receive a perfect packet and lose every conclusion 
 it ends. Four independent architecture reviews (2026-07-16/17) each named "reasoning is not
 first-class" without coordinating; that convergence is the evidence for the boundary.
 
-**Cognition (REASON)** is defined in [CONTEXT-ENGINEERING.md §1a/§2a](../../tools/lib/CONTEXT-ENGINEERING.md)
+**Cognition (REASON)** is defined in `CONTEXT-ENGINEERING.md §1a/§2a` (outer-workspace document, not present in this repository)
 as layers 9–11, all `[Target]` — named, **not built**:
 
 | # | Flows | Tool `[Target]` | Status vs today |
@@ -277,4 +279,4 @@ nobody recalls is Graphify with extra steps.
 - Blueprint: `.blueprint/` (portable) + `.agent/` (machine-local) per repo; typed stores `.audit/architect/decisions.jsonl`, audit findings store
 - Skills catalog: `tools/skills/` (authoring) + engine `skills` table (serving) · `crypt skill-read`
 - Telemetry: `tools/.cache/metrics/rightcontext-*.jsonl` · dashboard `spoares.com/memory`
-- Sync: `daily-sync.sh` on both machines (pull → sync → mirror push → analysis/dashboard); current scheduler state belongs to `RIGHTCONTEXT-STATE.md`.
+- Sync: `daily-sync.sh` on both machines (pull → sync → mirror push → analysis/dashboard); current scheduler state belongs to `MEMBRANE-STATE.md`.

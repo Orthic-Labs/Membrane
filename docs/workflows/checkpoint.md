@@ -63,4 +63,4 @@ caller binding. The lifecycle receipt must be surfaced verbatim.
 ## Source of truth
 
 The canonical JSON definition lives at
-[`operations/prompts/checkpoint.v1.json`](../../operations/prompts/checkpoint.v1.json).
+[`schemas/registry/prompts/checkpoint.v1.json`](../../schemas/registry/prompts/checkpoint.v1.json).

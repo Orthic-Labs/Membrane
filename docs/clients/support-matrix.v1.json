@@ -334,7 +334,7 @@
     }
   ],
   "generatedFrom": [
-    "operations/operations/operations-index.v1.golden.json"
+    "schemas/registry/operations/operations-index.v1.golden.json"
   ],
   "matrixVersion": 1,
   "operations": [

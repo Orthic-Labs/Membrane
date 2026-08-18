@@ -19,7 +19,7 @@ fn run() -> Result<ExitCode, String> {
     }
 
     let index_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../operations/operations/operations-index.v1.golden.json");
+        .join("../../../../../schemas/registry/operations/operations-index.v1.golden.json");
     let index: OperationsIndex = serde_json::from_str(
         &fs::read_to_string(&index_path)
             .map_err(|error| format!("read {}: {error}", index_path.display()))?,

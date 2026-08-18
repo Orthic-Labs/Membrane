@@ -10,7 +10,7 @@ Trusted runtime alone executes the request & returns an immutable, content-free 
 
 `applyRuntimeReceipt(request, receipt)` is the only path from a pending request to a rendered outcome, & it never trusts a claimed outcome on its own:
 
-- The receipt must be shape-valid against `operations/hub/actions/hub-actions.v1.json#runtimeReceipt` (closed outcome enum, ISO timestamp, `repair/hub/<action>` path, bounded identifiers).
+- The receipt must be shape-valid against `schemas/registry/hub/actions/hub-actions.v1.json#runtimeReceipt` (closed outcome enum, ISO timestamp, `repair/hub/<action>` path, bounded identifiers).
 - The receipt must be cryptographically bound to the exact request: matching `actionId`, `capabilityReceiptId`, `requestDigest`, & `repairPath`. A forged, replayed, or wrong-action receipt is rejected as `unavailable` / `receipt-not-bound-to-request`, never accepted.
 - A bound receipt whose outcome is `rejected` renders as `rejected`, never `proven` — the Hub never upgrades a runtime rejection into a success.
 - Only a bound, shape-valid receipt with outcome `applied`, `repaired`, or `rolled-back` renders as `proven`.

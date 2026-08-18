@@ -2,8 +2,8 @@
 
 **Status:** single implementation authority for `Orthic-Labs/Membrane`
 **Date:** 2026-08-18 · **Baseline:** `main` at `e640aaa7`
-**Supersedes:** `research/competitors/sources/MEMBRANE-CANONICAL-MASTER-IMPROVEMENT-GUIDE.md`, `research/competitors/sources/MEMBRANE-IMPLEMENTATION-GUIDE.md`, `research/competitors/sources/MEMBRANE-ABSORPTION-LEDGER.md`, and the August 12 plan (`docs/plans/2026-08-12-membrane-crypt-database-hygiene-and-performance.md`) as implementation authority. Those documents remain as research provenance; nothing in them outranks this one.
-**Does not replace:** `docs/architecture.md` (generated product truth), `README.md` (product contracts), `.claude/AGENTS.md`.
+**Supersedes:** `docs/research/competitors/sources/MEMBRANE-CANONICAL-MASTER-IMPROVEMENT-GUIDE.md`, `docs/research/competitors/sources/MEMBRANE-IMPLEMENTATION-GUIDE.md`, `docs/research/competitors/sources/MEMBRANE-ABSORPTION-LEDGER.md`, and the August 12 plan (`docs/plans/2026-08-12-membrane-crypt-database-hygiene-and-performance.md`) as implementation authority. Those documents remain as research provenance; nothing in them outranks this one.
+**Does not replace:** `docs/architecture.md` (generated product truth), `README.md` (product contracts), `AGENTS.md`.
 **Subordinate execution plan:** `docs/plans/2026-08-17-contextplan-recallcircuit.md` (ContextPlan + Cortex RecallCircuit + layout v2) is the file-exact P0/P1 slice of Phases 1, 5, and 6 below; it executes under this guide's invariants and does not compete with it.
 **Evidence basis:** 60-repository competitor corpus, four independent registers, four consolidations, spot-checked against the tree. No implementation or completion is claimed here.
 

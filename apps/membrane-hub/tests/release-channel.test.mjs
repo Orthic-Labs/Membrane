@@ -17,5 +17,5 @@ test('projection preserves channel, support, compatibility, migration, rollback'
 test('renderer is read-only projection', () => {
   const root = { innerHTML: '' };
   renderReleaseChannel({ channel: '<nightly>', support: { state: 'unknown', startsAt: 'unknown' }, requiredUpdate: 'required' }, root);
-  assert.match(root.innerHTML, /&lt;nightly&gt;/); assert.match(root.innerHTML, /missing signed update evidence/); assert.match(root.innerHTML, /required/);
+  assert.match(root.innerHTML, /&lt;nightly&gt;/); assert.match(root.innerHTML, /missing signed update docs/evidence/); assert.match(root.innerHTML, /required/);
 });

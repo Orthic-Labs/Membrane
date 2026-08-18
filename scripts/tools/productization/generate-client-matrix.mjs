@@ -2,11 +2,11 @@
 // MBR-206 — Generate the client registry and support matrix.
 //
 // Reads:
-//   operations/clients.yaml                        (human-authored registry)
-//   operations/operations/operations-index.v1.golden.json  (MBR-301 operation universe)
+//   schemas/registry/clients.yaml                        (human-authored registry)
+//   schemas/registry/operations/operations-index.v1.golden.json  (MBR-301 operation universe)
 //
 // Emits:
-//   operations/clients.capabilities.v1.json       (capability envelopes, schema client-capability.v1)
+//   schemas/registry/clients.capabilities.v1.json       (capability envelopes, schema client-capability.v1)
 //   docs/clients/support-matrix.v1.json           (cartesian client x operation matrix)
 //
 // Both artifacts are byte-stable across runs: identical inputs produce byte-identical
@@ -25,13 +25,13 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
-const REGISTRY = join(REPO_ROOT, "operations", "clients.yaml");
-const OPERATION_INDEX = join(REPO_ROOT, "operations", "operations", "operations-index.v1.golden.json");
-const CAPABILITIES_OUT = join(REPO_ROOT, "operations", "clients.capabilities.v1.json");
+const REGISTRY = join(REPO_ROOT, "schemas", "registry", "clients.yaml");
+const OPERATION_INDEX = join(REPO_ROOT, "schemas", "registry", "operations", "operations-index.v1.golden.json");
+const CAPABILITIES_OUT = join(REPO_ROOT, "schemas", "registry", "clients.capabilities.v1.json");
 const MATRIX_OUT = join(REPO_ROOT, "docs", "clients", "support-matrix.v1.json");
 
 /**
- * Minimal YAML parser supporting the exact dialect used in operations/clients.yaml:
+ * Minimal YAML parser supporting the exact dialect used in schemas/registry/clients.yaml:
  *   - block maps with `: ` separator
  *   - block sequences with `- ` prefix
  *   - quoted scalars ("..." or '...')

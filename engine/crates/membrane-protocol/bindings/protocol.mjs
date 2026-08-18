@@ -42,11 +42,11 @@ export function canonicalDigest(value) {
 
 /** The five typed contract shapes and their on-disk artifacts. */
 export const SHAPES = [
-  { name: "ScopeGrantV1", schema: "schemas/scope-grant.v1.schema.json", fixture: "operations/scope-grant.v1.golden.json" },
-  { name: "ContextCandidateSetV1", schema: "schemas/context-candidate-set.v1.schema.json", fixture: "operations/context-candidate-set.v1.golden.json" },
-  { name: "ContextPacketV1", schema: "schemas/context-packet.v1.schema.json", fixture: "operations/context-packet.v1.golden.json" },
-  { name: "ContextReceiptV1", schema: "schemas/context-receipt.v1.schema.json", fixture: "operations/context-receipt.v1.golden.json" },
-  { name: "KnowledgeEmissionV1", schema: "schemas/knowledge-emission.v1.schema.json", fixture: "operations/knowledge-emission.v1.golden.json" },
+  { name: "ScopeGrantV1", schema: "schemas/scope-grant.v1.schema.json", fixture: "schemas/registry/scope-grant.v1.golden.json" },
+  { name: "ContextCandidateSetV1", schema: "schemas/context-candidate-set.v1.schema.json", fixture: "schemas/registry/context-candidate-set.v1.golden.json" },
+  { name: "ContextPacketV1", schema: "schemas/context-packet.v1.schema.json", fixture: "schemas/registry/context-packet.v1.golden.json" },
+  { name: "ContextReceiptV1", schema: "schemas/context-receipt.v1.schema.json", fixture: "schemas/registry/context-receipt.v1.golden.json" },
+  { name: "KnowledgeEmissionV1", schema: "schemas/knowledge-emission.v1.schema.json", fixture: "schemas/registry/knowledge-emission.v1.golden.json" },
 ];
 
 /** Read + parse a repo-relative JSON file. */

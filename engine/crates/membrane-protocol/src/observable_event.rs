@@ -10,7 +10,7 @@
 //!
 //! The TypeScript twin lives in `mcp/observable-events.mjs`; both sides must
 //! agree byte-for-byte over the canonical digest. The golden fixture is
-//! `operations/observable-event.v1.golden.json`; the JSON Schema is
+//! `schemas/registry/observable-event.v1.golden.json`; the JSON Schema is
 //! `schemas/observable-event.v1.schema.json`. The `SHAPES` const in
 //! `lib.rs` exposes this shape next to the five existing protocol shapes.
 
@@ -86,7 +86,7 @@ pub struct ObservableEventV1 {
     /// Lowercase UUIDv4, freshly minted by [`ObservableEventV1::new`].
     pub event_id: String,
     pub kind: ObservableEventKindV1,
-    /// Stable client id, drawn from `operations/clients.yaml` (MBR-206).
+    /// Stable client id, drawn from `schemas/registry/clients.yaml` (MBR-206).
     /// Examples: `claude`, `codex`, `cursor`, `windsurf`, `generic_mcp`.
     pub client_id: String,
     /// UUIDv4 installation id from `installation_identity::InstallationIdentity`.

@@ -23,8 +23,8 @@ Regenerate with `node tools/productization/generate-product-truth.mjs`.
 
 ## Core surfaces
 
-- [memory.md](memory.md) — memory lifecycle, plus detail in [memory/](memory/)
-- [hub.md](hub.md) — hub facade overview, plus detail in [hub/](hub/) and [hub-handoff.md](hub-handoff.md)
+- [memory/](memory/) — memory lifecycle ([lifecycle.md](memory/lifecycle.md)) and vault export ([vault-export.md](memory/vault-export.md))
+- [hub/](hub/) — hub overview, facade, and per-resource docs, plus [hub-handoff.md](hub-handoff.md)
 - [MEMBRANE-IMPLEMENTATION-GUIDE.md](MEMBRANE-IMPLEMENTATION-GUIDE.md) — canonical implementation authority
 - [agent-rules.md](agent-rules.md) — rules for agents working in this repository
 

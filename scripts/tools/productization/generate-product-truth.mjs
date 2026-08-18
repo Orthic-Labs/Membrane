@@ -5,7 +5,7 @@
 // describe them) must be DERIVED from source, never hand-written and left to
 // drift. This generator reads the live tool inventory (mcp/server.mjs) and the
 // vendored adapter capability matrix (docs/membrane/capability-matrix.v1.json),
-// and emits canonical truth artifacts under operations/ and docs/.
+// and emits canonical truth artifacts under schemas/operations/ and docs/.
 //
 // `--check` is the manually invoked book-gate product-truth check (the no-CI
 // override replaces "CI fails" with this local command). It exits non-zero when
@@ -28,7 +28,7 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "..", "..", "..");
-const TRUTH_JSON = join(REPO_ROOT, "operations", "product-truth.json");
+const TRUTH_JSON = join(REPO_ROOT, "schemas", "registry", "product-truth.json");
 const TRUTH_DOC = join(REPO_ROOT, "docs", "product-truth.md");
 const README = join(REPO_ROOT, "README.md");
 const MATRIX = join(REPO_ROOT, "docs", "membrane", "capability-matrix.v1.json");

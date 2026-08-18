@@ -1,6 +1,6 @@
 //! Canonical Membrane MCP prompts.
 //!
-//! Every prompt definition lives in `operations/prompts/*.json` so the native
+//! Every prompt definition lives in `schemas/registry/prompts/*.json` so the native
 //! (Rust) MCP server and the legacy JS MCP server serve the exact same payload.
 //! This module embeds those JSON files at compile time via `include_str!` and
 //! exposes a tiny façade so `prompts/list` and `prompts/get` JSON-RPC methods
@@ -8,10 +8,10 @@
 
 use serde_json::{json, Value};
 
-const RECAP: &str = include_str!("../../../../operations/prompts/recap.v1.json");
-const PLAN: &str = include_str!("../../../../operations/prompts/plan.v1.json");
-const SUMMARIZE: &str = include_str!("../../../../operations/prompts/summarize.v1.json");
-const CHECKPOINT: &str = include_str!("../../../../operations/prompts/checkpoint.v1.json");
+const RECAP: &str = include_str!("../../../../schemas/registry/prompts/recap.v1.json");
+const PLAN: &str = include_str!("../../../../schemas/registry/prompts/plan.v1.json");
+const SUMMARIZE: &str = include_str!("../../../../schemas/registry/prompts/summarize.v1.json");
+const CHECKPOINT: &str = include_str!("../../../../schemas/registry/prompts/checkpoint.v1.json");
 
 pub(crate) fn definitions() -> Value {
     Value::Array(

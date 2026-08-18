@@ -59,6 +59,6 @@ summarize the results. No further authority is granted.
 ## Source of truth
 
 The canonical JSON definition lives at
-[`operations/prompts/recap.v1.json`](../../operations/prompts/recap.v1.json).
+[`schemas/registry/prompts/recap.v1.json`](../../schemas/registry/prompts/recap.v1.json).
 Both the native (Rust) and legacy (JS) servers embed that file via
 `include_str!` and runtime `readFile` respectively and serve it verbatim.

@@ -3,7 +3,7 @@
 //! These tests assert every resource:
 //!   (a) is bounded — its `accessGrants` array is non-empty and every grant
 //!       references a known protocol grant type (declared in
-//!       `operations/resources/resources-index.v1.json`'s
+//!       `schemas/registry/resources/resources-index.v1.json`'s
 //!       `supportedGrantTypes` block),
 //!   (b) declares `authorityEscalation: false`,
 //!   (c) declares a positive `version`,
@@ -25,7 +25,7 @@ use std::fs;
 use std::path::PathBuf;
 
 const RESOURCES_INDEX: &str =
-    include_str!("../../../../operations/resources/resources-index.v1.json");
+    include_str!("../../../../schemas/registry/resources/resources-index.v1.json");
 
 fn supported_grant_types() -> Vec<String> {
     let value: Value = serde_json::from_str(RESOURCES_INDEX).expect("resources-index parses");
@@ -44,7 +44,7 @@ fn resource_payload_by_name(name: &str) -> Value {
     // compiled-in resource definitions agree.
     let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = here
-        .join("../../../operations/resources")
+        .join("../../../../schemas/registry/resources")
         .join(format!("{name}.v1.json"));
     let raw = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     serde_json::from_str(&raw).expect("canonical resource parses")

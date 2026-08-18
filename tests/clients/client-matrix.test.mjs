@@ -11,7 +11,7 @@
 // Asserts:
 //   (a) every declared client can be discovered through at least one transport,
 //   (b) every supported_operation reference resolves to a real operation in
-//       operations/operations/,
+//       schemas/operations/operations/,
 //   (c) the generated matrix is byte-stable across runs.
 //
 // The test imports the same pure builder functions the generator uses so the
@@ -31,8 +31,8 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, "..", "..");
 
-const REGISTRY_TEXT = readFileSync(join(REPO_ROOT, "operations", "clients.yaml"), "utf8");
-const OPERATION_INDEX = JSON.parse(readFileSync(join(REPO_ROOT, "operations", "operations", "operations-index.v1.golden.json"), "utf8"));
+const REGISTRY_TEXT = readFileSync(join(REPO_ROOT, "schemas", "registry", "clients.yaml"), "utf8");
+const OPERATION_INDEX = JSON.parse(readFileSync(join(REPO_ROOT, "schemas", "registry", "operations", "operations-index.v1.golden.json"), "utf8"));
 const REGISTRY = parseYaml(REGISTRY_TEXT);
 
 const checks = [];

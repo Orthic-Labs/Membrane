@@ -3,7 +3,7 @@
 // already-on-disk evidence files -- and refuses (fails closed, no write) the
 // moment any one of those is missing, mismatched, or tampered with. Every
 // fixture lives under a throwaway temp directory (never the real repo's
-// dist/packaging/oci/release.v1.json or evidence/releases/), and nothing here
+// dist/packaging/oci/release.v1.json or docs/evidence/releases/), and nothing here
 // builds, signs, or runs a container.
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -31,7 +31,7 @@ function sha256(bytes) {
 function tempRepoRoot() {
   const root = mkdtempSync(join(tmpdir(), "mbr-910-oci-"));
   mkdirSync(resolve(root, "packaging", "oci"), { recursive: true });
-  mkdirSync(resolve(root, "evidence", "releases", `${APP}-${VERSION}-${COMMIT.slice(0, 8)}`), { recursive: true });
+  mkdirSync(resolve(root, "docs", "evidence", "releases", `${APP}-${VERSION}-${COMMIT.slice(0, 8)}`), { recursive: true });
   mkdirSync(resolve(root, "evidence", "productization", "MBR-910"), { recursive: true });
   writeFileSync(resolve(root, "packaging", "oci", "Containerfile"), `FROM ${BASE}\nUSER 65532:65532\n`);
   return root;
@@ -51,7 +51,7 @@ function writeReleaseGeneration(root, overrides = {}) {
     targets: [{ target: "mac-arm64", status: "pending" }],
     ...overrides,
   };
-  const path = resolve(root, "evidence", "releases", `${APP}-${VERSION}-${COMMIT.slice(0, 8)}`, "release-generation.json");
+  const path = resolve(root, "docs", "evidence", "releases", `${APP}-${VERSION}-${COMMIT.slice(0, 8)}`, "release-generation.json");
   writeFileSync(path, JSON.stringify(doc, null, 2));
   return path;
 }
@@ -105,7 +105,7 @@ test("buildOciRelease binds identity to the real release-generation record and v
 
 test("buildOciRelease fails closed when release-generation.json does not exist yet", () => {
   const root = tempRepoRoot();
-  const options = fullOptions(root, resolve(root, "evidence", "releases", "does-not-exist", "release-generation.json"));
+  const options = fullOptions(root, resolve(root, "docs", "evidence", "releases", "does-not-exist", "release-generation.json"));
   assert.throws(() => buildOciRelease(options), /FAIL CLOSED/);
 });
 
@@ -157,7 +157,7 @@ test("leaves an existing unavailable release.v1.json alone when generation fails
   const unavailable = { schema: "orthic.membrane.oci-release.v1", state: "unavailable", publish: false, image: "registry.invalid/orthic/membrane", base: BASE, identity: { tag: "UNAVAILABLE", commit: "0".repeat(40), release_generation: "0".repeat(64), artifact_sha256: "0".repeat(64) }, evidence: { sbom: null, ed25519: null, cosign: null, rootlessHealth: null, secretScan: null } };
   writeFileSync(releasePath, `${JSON.stringify(unavailable, null, 2)}\n`);
 
-  const options = fullOptions(root, resolve(root, "evidence", "releases", "does-not-exist", "release-generation.json"));
+  const options = fullOptions(root, resolve(root, "docs", "evidence", "releases", "does-not-exist", "release-generation.json"));
   assert.throws(() => writeOciRelease(options), /FAIL CLOSED/);
   assert.deepEqual(JSON.parse(readFileSync(releasePath, "utf8")), unavailable);
 });

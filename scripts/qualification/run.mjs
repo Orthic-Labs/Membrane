@@ -198,7 +198,7 @@ export async function runInstalledPathHarness(options = {}) {
   const {
     task = "MBR-801",
     workspaceRoot = resolve(HERE, "../.."),
-    evidenceRoot = join(workspaceRoot, "evidence", "qualification", "mbr801"),
+    evidenceRoot = join(workspaceRoot, "docs", "evidence", "qualification", "mbr801"),
     platform: platformOverride,
     releaseManifestPath,
     eventDbPath,
@@ -251,7 +251,7 @@ function cli() {
   const value = (name) => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
   const task = value("--task");
   const workspaceRoot = resolve(value("--workspace-root") || resolve(HERE, "../.."));
-  const evidenceRoot = resolve(value("--evidence-root") || join(workspaceRoot, "evidence", "qualification", "mbr801"));
+  const evidenceRoot = resolve(value("--evidence-root") || join(workspaceRoot, "docs", "evidence", "qualification", "mbr801"));
   const platform = value("--platform");
   const releaseManifestPath = value("--release-manifest") ? resolve(value("--release-manifest")) : undefined;
   const eventDbPath = value("--event-db") ? resolve(value("--event-db")) : undefined;

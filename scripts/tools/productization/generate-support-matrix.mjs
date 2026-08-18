@@ -18,7 +18,7 @@
 //
 // Run:  node scripts/tools/productization/generate-support-matrix.mjs [--commit <sha>] [--release-generation <hex>]
 // Book-gate real use additionally requires a real MBR-801 receipt on disk at
-// evidence/qualification/mbr801/<platform>/receipt.json for the platform to
+// docs/evidence/qualification/mbr801/<platform>/receipt.json for the platform to
 // ever show "qualified".
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -67,7 +67,7 @@ function platformConformance(platform, receiptPath, expected) {
 
 /**
  * Pure matrix builder — no disk writes. `receiptPaths` maps platform -> path
- * to a candidate evidence/qualification/mbr801/<platform>/receipt.json.
+ * to a candidate docs/evidence/qualification/mbr801/<platform>/receipt.json.
  * Exported for deterministic testing.
  */
 export function buildMatrix({ commit, releaseGeneration, clients, receiptPaths }) {
@@ -116,7 +116,7 @@ export function buildMatrix({ commit, releaseGeneration, clients, receiptPaths }
       commit: expected.commit,
       releaseGeneration: expected.releaseGeneration,
       source: "scripts/qualification/run.mjs + scripts/qualification/verify-mbr801-evidence.mjs",
-      receiptDirectory: "evidence/qualification/mbr801",
+      receiptDirectory: "docs/evidence/qualification/mbr801",
     },
     rows,
   };
@@ -211,8 +211,8 @@ export function generate({ repoRoot = root, commit, releaseGeneration, receiptPa
   const clients = clientUniverse(repoRoot);
   const currentCommit = commit ?? safeGitCommit(repoRoot);
   const paths = receiptPaths ?? {
-    macos: join(repoRoot, "evidence", "qualification", "mbr801", "macos", "receipt.json"),
-    windows: join(repoRoot, "evidence", "qualification", "mbr801", "windows", "receipt.json"),
+    macos: join(repoRoot, "docs", "evidence", "qualification", "mbr801", "macos", "receipt.json"),
+    windows: join(repoRoot, "docs", "evidence", "qualification", "mbr801", "windows", "receipt.json"),
   };
   const matrix = buildMatrix({ commit: currentCommit, releaseGeneration: releaseGeneration ?? null, clients, receiptPaths: paths });
 

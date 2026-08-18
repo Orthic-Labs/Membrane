@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-The typed operation registry in `membrane-protocol` is the source of truth for operation IDs, help text, parameters, flag names, and defaults. The canonical operation index is `operations/operations/operations-index.v1.golden.json`.
+The typed operation registry in `membrane-protocol` is the source of truth for operation IDs, help text, parameters, flag names, and defaults. The canonical operation index is `schemas/registry/operations/operations-index.v1.golden.json`.
 
 A CLI subcommand name is the lowercased operation ID with dots replaced by dashes. Parameter names are exposed unchanged as long flags by prefixing them with `--`. The parser consumes the registry help text and defaults directly.
 

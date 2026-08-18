@@ -1,7 +1,7 @@
 {
   "name": "cortex-context-scope-grant",
   "operation": "membrane_context",
-  "description": "Cortex adapter returns a successful workspace context with an active scope grant. Mirrors the shape of operations/operations/membrane-context.v1.golden.json.",
+  "description": "Cortex adapter returns a successful workspace context with an active scope grant. Mirrors the shape of schemas/registry/operations/membrane-context.v1.golden.json.",
   "request": {
     "scope": "workspace",
     "taskEnvelope": {

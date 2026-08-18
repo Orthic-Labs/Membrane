@@ -88,7 +88,7 @@ Per `docs/sdk/http-transport.md` (MBR-308), the shared `McpServer::dispatch`
 `tools/call` branch is currently a stub for every tool call regardless of
 transport. No SDK — Python included — can complete a live operation round
 trip today; `membrane-client`'s compatibility is proven only against the
-canonical golden fixtures (`operations/operations/*.golden.json`) and the
+canonical golden fixtures (`schemas/operations/operations/*.golden.json`) and the
 schema-declared receipt-version window, not a running daemon. This task
 does not paper over that: "publish-ready packaging" here means the
 distribution boundary and metadata are correct and tested, not that a live

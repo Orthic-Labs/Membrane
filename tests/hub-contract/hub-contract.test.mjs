@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import { validate } from "../../engine/crates/membrane-protocol/bindings/protocol.mjs";
 
 const read = (path) => JSON.parse(readFileSync(new URL(`../../${path}`, import.meta.url), "utf8"));
-const snapshotOperation = read("operations/operations/hub-snapshot.v1.golden.json");
-const capabilitiesOperation = read("operations/operations/hub-capabilities.v1.golden.json");
+const snapshotOperation = read("schemas/registry/operations/hub-snapshot.v1.golden.json");
+const capabilitiesOperation = read("schemas/registry/operations/hub-capabilities.v1.golden.json");
 const fixture = { snapshot: snapshotOperation.result.data, capabilities: capabilitiesOperation.result.data };
 const snapshotSchema = read("schemas/hub-snapshot.v1.json");
 const capabilitySchema = read("schemas/hub-capabilities.v1.json");

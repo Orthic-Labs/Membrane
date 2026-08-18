@@ -1,6 +1,6 @@
 // Canonical Membrane MCP prompts — legacy (JS) surface.
 //
-// Every prompt definition lives in `operations/prompts/*.json` so the native
+// Every prompt definition lives in `schemas/registry/prompts/*.json` so the native
 // (Rust) MCP server and this legacy (JS) MCP server serve the exact same
 // payload. This module reads the canonical JSON at runtime, exposes the same
 // `listPrompts()` / `getPrompt(name)` shape the Rust module emits, and
@@ -21,7 +21,7 @@ let cached = null;
 async function loadAll() {
   if (cached) return cached;
   const entries = await Promise.all(PROMPT_FILES.map(async (file) => {
-    const raw = await readFile(join(REPO_ROOT, "operations", "prompts", file), "utf8");
+    const raw = await readFile(join(REPO_ROOT, "schemas", "registry", "prompts", file), "utf8");
     return JSON.parse(raw);
   }));
   cached = entries;

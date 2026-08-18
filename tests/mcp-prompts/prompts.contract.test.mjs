@@ -19,7 +19,7 @@ import { listPrompts, getPrompt, allPromptDefinitions, PROMPT_NAMES } from "../.
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..");
 
-const registry = JSON.parse(await readFile(join(REPO_ROOT, "operations", "operations", "operations-index.v1.golden.json"), "utf8"));
+const registry = JSON.parse(await readFile(join(REPO_ROOT, "schemas", "registry", "operations", "operations-index.v1.golden.json"), "utf8"));
 const KNOWN_OPERATIONS = new Set(registry.operations.map((entry) => entry.name));
 
 // Operations the prompt contract treats as read-only. This mirrors the

@@ -24,7 +24,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(HERE, "..", "..", "..", "..");
 
 /** The cross-operation registry. Must match the Rust `OPERATIONS` constant
- *  AND the on-disk `operations/operations/operations-index.v1.golden.json`
+ *  AND the on-disk `schemas/registry/operations/operations-index.v1.golden.json`
  *  fixture in name, schemaVersion, errorVersion, and error-code set. */
 export const OPERATIONS = [
   {
@@ -32,8 +32,8 @@ export const OPERATIONS = [
     schemaVersion: 1,
     errorVersion: 1,
     schemaPath: "schemas/operations/membrane-context.v1.schema.json",
-    successFixture: "operations/operations/membrane-context.v1.golden.json",
-    errorFixture: "operations/operations/membrane-context.v1.error.golden.json",
+    successFixture: "schemas/registry/operations/membrane-context.v1.golden.json",
+    errorFixture: "schemas/registry/operations/membrane-context.v1.error.golden.json",
     errorCodes: [
       "context_unavailable",
       "context_scope_denied",
@@ -52,8 +52,8 @@ export const OPERATIONS = [
     schemaVersion: 1,
     errorVersion: 1,
     schemaPath: "schemas/operations/membrane-source-read.v1.schema.json",
-    successFixture: "operations/operations/membrane-source-read.v1.golden.json",
-    errorFixture: "operations/operations/membrane-source-read.v1.error.golden.json",
+    successFixture: "schemas/registry/operations/membrane-source-read.v1.golden.json",
+    errorFixture: "schemas/registry/operations/membrane-source-read.v1.error.golden.json",
     errorCodes: [
       "source_read_unavailable",
       "source_read_hash_mismatch",
@@ -67,8 +67,8 @@ export const OPERATIONS = [
     schemaVersion: 1,
     errorVersion: 1,
     schemaPath: "schemas/operations/membrane-cortex.v1.schema.json",
-    successFixture: "operations/operations/membrane-cortex.v1.golden.json",
-    errorFixture: "operations/operations/membrane-cortex.v1.error.golden.json",
+    successFixture: "schemas/registry/operations/membrane-cortex.v1.golden.json",
+    errorFixture: "schemas/registry/operations/membrane-cortex.v1.error.golden.json",
     errorCodes: [
       "cortex_unavailable",
       "cortex_envelope_invalid",
@@ -83,8 +83,8 @@ export const OPERATIONS = [
     schemaVersion: 1,
     errorVersion: 1,
     schemaPath: "schemas/operations/membrane-knowledge-propose.v1.schema.json",
-    successFixture: "operations/operations/membrane-knowledge-propose.v1.golden.json",
-    errorFixture: "operations/operations/membrane-knowledge-propose.v1.error.golden.json",
+    successFixture: "schemas/registry/operations/membrane-knowledge-propose.v1.golden.json",
+    errorFixture: "schemas/registry/operations/membrane-knowledge-propose.v1.error.golden.json",
     errorCodes: [
       "proposal_emission_text_required",
       "proposal_payload_too_large",
@@ -99,8 +99,8 @@ export const OPERATIONS = [
     schemaVersion: 1,
     errorVersion: 1,
     schemaPath: "schemas/operations/membrane-checkpoint-save.v1.schema.json",
-    successFixture: "operations/operations/membrane-checkpoint-save.v1.golden.json",
-    errorFixture: "operations/operations/membrane-checkpoint-save.v1.error.golden.json",
+    successFixture: "schemas/registry/operations/membrane-checkpoint-save.v1.golden.json",
+    errorFixture: "schemas/registry/operations/membrane-checkpoint-save.v1.error.golden.json",
     errorCodes: [
       "checkpoint_payload_too_large",
       "checkpoint_rate_limited",
@@ -114,8 +114,8 @@ export const OPERATIONS = [
     schemaVersion: 1,
     errorVersion: 1,
     schemaPath: "schemas/operations/membrane-checkpoint-load.v1.schema.json",
-    successFixture: "operations/operations/membrane-checkpoint-load.v1.golden.json",
-    errorFixture: "operations/operations/membrane-checkpoint-load.v1.error.golden.json",
+    successFixture: "schemas/registry/operations/membrane-checkpoint-load.v1.golden.json",
+    errorFixture: "schemas/registry/operations/membrane-checkpoint-load.v1.error.golden.json",
     errorCodes: [
       "checkpoint_not_found",
       "checkpoint_expired",
@@ -129,8 +129,8 @@ export const OPERATIONS = [
     schemaVersion: 1,
     errorVersion: 1,
     schemaPath: "schemas/operations/membrane-working-context.v1.schema.json",
-    successFixture: "operations/operations/membrane-working-context.v1.golden.json",
-    errorFixture: "operations/operations/membrane-working-context.v1.error.golden.json",
+    successFixture: "schemas/registry/operations/membrane-working-context.v1.golden.json",
+    errorFixture: "schemas/registry/operations/membrane-working-context.v1.error.golden.json",
     errorCodes: [
       "working_context_payload_too_large",
       "working_context_rate_limited",
@@ -146,8 +146,8 @@ export const OPERATIONS = [
     schemaVersion: 1,
     errorVersion: 1,
     schemaPath: "schemas/operations/membrane-temporal-fact.v1.schema.json",
-    successFixture: "operations/operations/membrane-temporal-fact.v1.golden.json",
-    errorFixture: "operations/operations/membrane-temporal-fact.v1.error.golden.json",
+    successFixture: "schemas/registry/operations/membrane-temporal-fact.v1.golden.json",
+    errorFixture: "schemas/registry/operations/membrane-temporal-fact.v1.error.golden.json",
     errorCodes: [
       "temporal_fact_payload_too_large",
       "temporal_fact_scope_denied",
@@ -162,8 +162,8 @@ export const OPERATIONS = [
     schemaVersion: 1,
     errorVersion: 1,
     schemaPath: "schemas/operations/membrane-scratchpad.v1.schema.json",
-    successFixture: "operations/operations/membrane-scratchpad.v1.golden.json",
-    errorFixture: "operations/operations/membrane-scratchpad.v1.error.golden.json",
+    successFixture: "schemas/registry/operations/membrane-scratchpad.v1.golden.json",
+    errorFixture: "schemas/registry/operations/membrane-scratchpad.v1.error.golden.json",
     errorCodes: [
       "scratchpad_payload_too_large",
       "scratchpad_scope_required",
@@ -177,8 +177,8 @@ export const OPERATIONS = [
     schemaVersion: 1,
     errorVersion: 1,
     schemaPath: "schemas/operations/membrane-feedback.v1.schema.json",
-    successFixture: "operations/operations/membrane-feedback.v1.golden.json",
-    errorFixture: "operations/operations/membrane-feedback.v1.error.golden.json",
+    successFixture: "schemas/registry/operations/membrane-feedback.v1.golden.json",
+    errorFixture: "schemas/registry/operations/membrane-feedback.v1.error.golden.json",
     errorCodes: [
       "feedback_invalid",
       "feedback_invalid_verdict_ref",
@@ -189,8 +189,8 @@ export const OPERATIONS = [
       "feedback_independent_readback_mismatch",
     ],
   },
-  { name: "hub.capabilities", schemaVersion: 1, errorVersion: 1, schemaPath: "schemas/operations/hub-capabilities.v1.schema.json", successFixture: "operations/operations/hub-capabilities.v1.golden.json", errorFixture: "operations/operations/hub-capabilities.v1.error.golden.json", errorCodes: ["hub_unavailable"] },
-  { name: "hub.snapshot", schemaVersion: 1, errorVersion: 1, schemaPath: "schemas/operations/hub-snapshot.v1.schema.json", successFixture: "operations/operations/hub-snapshot.v1.golden.json", errorFixture: "operations/operations/hub-snapshot.v1.error.golden.json", errorCodes: ["hub_unavailable"] },
+  { name: "hub.capabilities", schemaVersion: 1, errorVersion: 1, schemaPath: "schemas/operations/hub-capabilities.v1.schema.json", successFixture: "schemas/registry/operations/hub-capabilities.v1.golden.json", errorFixture: "schemas/registry/operations/hub-capabilities.v1.error.golden.json", errorCodes: ["hub_unavailable"] },
+  { name: "hub.snapshot", schemaVersion: 1, errorVersion: 1, schemaPath: "schemas/operations/hub-snapshot.v1.schema.json", successFixture: "schemas/registry/operations/hub-snapshot.v1.golden.json", errorFixture: "schemas/registry/operations/hub-snapshot.v1.error.golden.json", errorCodes: ["hub_unavailable"] },
 ];
 
 /** Validate one operation's success and error fixtures against the

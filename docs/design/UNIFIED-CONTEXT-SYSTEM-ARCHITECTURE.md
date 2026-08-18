@@ -1,6 +1,8 @@
 # Unified Context System Architecture
 
-> **CURRENT STATE + BACKLOG → [docs/RIGHTCONTEXT-STATE.md](RIGHTCONTEXT-STATE.md).** This file is the design-era rationale (2026-07-12); for what is LIVE now (feedback rail, skills provider, memory delivery, admission lanes + seal, link-graph recall, the `RIGHTCONTEXT_MODE=on` flip) and the ordered backlog, read the state doc.
+> **Historical / Superseded** — this document describes the RightContext-era design as of 2026-07-12; the product is now Membrane. Kept for design history.
+
+> **CURRENT STATE + BACKLOG → [docs/design/MEMBRANE-STATE.md](MEMBRANE-STATE.md).** This file is the design-era rationale (2026-07-12); for what is LIVE now (feedback rail, skills provider, memory delivery, admission lanes + seal, link-graph recall, the `RIGHTCONTEXT_MODE=on` flip) and the ordered backlog, read the state doc.
 
 **Status:** Proposed product architecture; current implementation is partial
 **Last architectural review:** 2026-07-12; validated synthesis of MiniMax, DeepSeek, Kimi, GLM, and GPT reviews
@@ -9,7 +11,7 @@
 **Primary systems:** Blueprint, Audit, Architect, Crypt, context planner, client adapters
 
 `tools/lib/CONTEXT-ENGINEERING.md` remains the source of truth for the three families, eight layers,
-routing policy, and Crypt engine behavior. `RIGHTCONTEXT-STATE.md` owns deployed operational state
+routing policy, and Crypt engine behavior. `MEMBRANE-STATE.md` owns deployed operational state
 and evidence. This document owns the product boundary and design-era rationale that implementation
 plans must satisfy.
 
@@ -808,7 +810,7 @@ These sources overlap only enough to orient a reader. Each claim has one governi
 | Document | Unique governed claims | Allowed overlap / redirect | Precedence when claims overlap |
 |---|---|---|---|
 | `tools/lib/CONTEXT-ENGINEERING.md` | Three families, eight layers, routing, Crypt schema/scoring, lifecycle, sync, and measurement guard | Other docs may summarize the frame and link here | Governs invariant context-economy and engine policy |
-| `docs/RIGHTCONTEXT-STATE.md` | Installed/deployed state, current evidence, volatile measurements, open operational backlog | Architecture/evolution docs may state a non-quantified status and redirect here | Governs what is live now |
+| `docs/design/MEMBRANE-STATE.md` | Installed/deployed state, current evidence, volatile measurements, open operational backlog | Architecture/evolution docs may state a non-quantified status and redirect here | Governs what is live now |
 | `docs/CONTEXT-ENGINEERING-EVOLUTION.md` | Frozen chronology, era exits, entry-shape evolution, and fold dependencies | May summarize architecture without redefining it | Governs historical sequence only |
 | This document | Product boundary, subsystem responsibilities, provider-neutral contracts, repository portability, root confinement, authority/failure policy, and non-goals | State and evolution docs may link to these boundaries | Governs durable RightContext design rationale |
 | `docs/plans/2026-07-16-rightcontext-harness-protocol-adr.md` | Proposed v4 commitments, evidence branches, deferred scope, rollback, and decision status | Architecture docs may summarize the direction with `[Target]` labels | Governs proposed v4 decisions and sequencing |

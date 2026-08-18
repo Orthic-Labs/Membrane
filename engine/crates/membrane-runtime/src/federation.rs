@@ -682,7 +682,7 @@ mod tests {
     use super::*;
 
     #[test] #[rustfmt::skip] fn federation_emits_content_free_cache_prefix_diagnostic() {
-        let mut source: Value = serde_json::from_str(include_str!("../../../../operations/context-candidate-set.v1.golden.json")).unwrap(); source["generationId"] = serde_json::json!("gen-current"); source["candidates"][0]["sourceKind"] = serde_json::json!("graph");
+        let mut source: Value = serde_json::from_str(include_str!("../../../../schemas/registry/context-candidate-set.v1.golden.json")).unwrap(); source["generationId"] = serde_json::json!("gen-current"); source["candidates"][0]["sourceKind"] = serde_json::json!("graph");
         source["candidates"][0]["sourceResolution"] = serde_json::json!({"schemaVersion":1,"candidateId":"cand-blueprint-types","provider":"cortex-treesitter","status":"resolved","expectedHash":"sha256:0000000000000000000000000000000000000000000000000000000000000011","resolvedHash":"sha256:0000000000000000000000000000000000000000000000000000000000000011","expectedGeneration":"gen-current","resolvedGeneration":"gen-current","expectedPath":"engine/crates/membrane-protocol/src/types.rs:1-60","resolvedPath":"engine/crates/membrane-protocol/src/types.rs:1-60","resolver":"source_read"}); let ccs = serde_json::to_string(&source).unwrap();
         let payload = envelope_from_ccs(
             &ccs,

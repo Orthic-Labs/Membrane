@@ -53,4 +53,4 @@ any typed error verbatim.
 ## Source of truth
 
 The canonical JSON definition lives at
-[`operations/prompts/summarize.v1.json`](../../operations/prompts/summarize.v1.json).
+[`schemas/registry/prompts/summarize.v1.json`](../../schemas/registry/prompts/summarize.v1.json).

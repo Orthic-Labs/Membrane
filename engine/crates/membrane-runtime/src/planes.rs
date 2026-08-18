@@ -11,7 +11,7 @@
 ///
 /// Order matters: callers iterate `PLANE_BOUNDARIES` in declaration order and expect
 /// Application, Control, Data in that order. The mode → plane mapping in
-/// `membrane::modes::plane_of` and the `operations/plane-boundaries.v1.golden.json` fixture
+/// `membrane::modes::plane_of` and the `schemas/registry/plane-boundaries.v1.golden.json` fixture
 /// must stay aligned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Plane {
@@ -60,7 +60,7 @@ pub struct PlaneBoundary {
 }
 
 /// Canonical three-plane boundary table. Mirrors
-/// `operations/plane-boundaries.v1.golden.json` byte-for-byte. Any change here MUST be
+/// `schemas/registry/plane-boundaries.v1.golden.json` byte-for-byte. Any change here MUST be
 /// reflected in that fixture.
 pub const PLANE_BOUNDARIES: &[PlaneBoundary] = &[
     PlaneBoundary {

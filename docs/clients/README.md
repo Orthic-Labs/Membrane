@@ -10,15 +10,15 @@ operator-facing view of the Membrane client surface.
 
 ## Files
 
-`operations/toolsets.yaml` is valid JSON-as-YAML discovery policy. Clients may
+`schemas/registry/toolsets.yaml` is valid JSON-as-YAML discovery policy. Clients may
 send `params._meta["membrane.toolsets.v1"]` to `tools/list`; invalid requests
 fall back to `membrane_context`. Native discovery negotiates same metadata but
 advertises no tools until native tool execution exists.
 
 | Path | Purpose |
 |---|---|
-| `operations/clients.yaml` | Human-authored registry — one row per client. |
-| `operations/clients.capabilities.v1.json` | Generated capability envelopes. Conforms to `schemas/client-capability.v1.schema.json`. |
+| `schemas/registry/clients.yaml` | Human-authored registry — one row per client. |
+| `schemas/registry/clients.capabilities.v1.json` | Generated capability envelopes. Conforms to `schemas/client-capability.v1.schema.json`. |
 | `docs/clients/support-matrix.v1.json` | Generated client × operation matrix. Conforms to `schemas/client-support-matrix.v1.schema.json`. |
 | `schemas/client-capability.v1.schema.json` | JSON Schema for one capability envelope. |
 | `schemas/client-support-matrix.v1.schema.json` | JSON Schema for the matrix. |
@@ -37,7 +37,7 @@ advertises no tools until native tool execution exists.
 | `generic_mcp` | Generic MCP client | stdio | mcp-stdio-only | L0 | context |
 
 The nine operations referenced by the matrix come from
-`operations/operations/operations-index.v1.golden.json` (MBR-301):
+`schemas/registry/operations/operations-index.v1.golden.json` (MBR-301):
 
 - `membrane_context`
 - `membrane_source_read`
@@ -58,7 +58,7 @@ legitimately use the operation at all.
 ## Adding a new client
 
 1. Append a new entry under `clients:` in
-   `operations/clients.yaml`. Every required key is mandatory:
+   `schemas/registry/clients.yaml`. Every required key is mandatory:
 
    | Key | Meaning |
    |---|---|

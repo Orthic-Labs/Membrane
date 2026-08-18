@@ -12,7 +12,7 @@
 //!   | KnowledgeEmission      | [`KnowledgeEmissionV1`]  | `schemas/knowledge-emission.v1.schema.json` |
 //!
 //! The Rust types in [`types`] are authoritative. The JSON Schemas under
-//! `schemas/` are derived from them, and golden fixtures under `operations/`
+//! `schemas/` are derived from them, and golden fixtures under `schemas/operations/`
 //! are the shared canonical instances. The crate's tests prove — and the
 //! TypeScript binding under `bindings/` independently re-proves — that each
 //! golden fixture:
@@ -138,7 +138,7 @@ macro_rules! shape {
         ContractShape {
             name: $name,
             schema_path: concat!("schemas/", $schema),
-            fixture_path: concat!("operations/", $fixture),
+            fixture_path: concat!("schemas/operations/", $fixture),
             schema: include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/assets/schemas/",

@@ -18,7 +18,7 @@
   [`mcp/client.mjs`](../../mcp/client.mjs) and [`mcp/installation-binding.mjs`](../../mcp/installation-binding.mjs).
 - Release tooling may contact Apple notarization or Azure signing services;
   those are build-time integrations, not context-data destinations
-  ([`docs/release/macos.md`](../release/macos.md), [`docs/release/windows.md`](../release/windows.md)).
+  ([`docs/release/platform-acceptance.md`](../release/platform-acceptance.md)).
 - A complete runtime egress inventory, firewall capture, and third-party
   provider audit are **unavailable**. No claim of zero egress beyond cited code
   is justified.

@@ -1,6 +1,6 @@
 //! Canonical Membrane MCP resources.
 //!
-//! Every resource definition lives in `operations/resources/*.json` so the
+//! Every resource definition lives in `schemas/registry/resources/*.json` so the
 //! native (Rust) MCP server and the legacy JS MCP server serve the exact same
 //! payload. This module embeds those JSON files at compile time via
 //! `include_str!` and exposes a tiny façade so `resources/list` and
@@ -10,12 +10,12 @@
 use serde_json::{json, Value};
 
 const RESOURCES_INDEX: &str =
-    include_str!("../../../../operations/resources/resources-index.v1.json");
+    include_str!("../../../../schemas/registry/resources/resources-index.v1.json");
 const INSTALLATION_MANIFEST: &str =
-    include_str!("../../../../operations/resources/installation-manifest.v1.json");
-const LEASE_STATUS: &str = include_str!("../../../../operations/resources/lease-status.v1.json");
+    include_str!("../../../../schemas/registry/resources/installation-manifest.v1.json");
+const LEASE_STATUS: &str = include_str!("../../../../schemas/registry/resources/lease-status.v1.json");
 const OPERATION_REGISTRY: &str =
-    include_str!("../../../../operations/resources/operation-registry.v1.json");
+    include_str!("../../../../schemas/registry/resources/operation-registry.v1.json");
 
 /// All canonical resource definitions, embedded at compile time.
 const DEFINITION_RAWS: &[&str] = &[

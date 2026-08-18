@@ -4,11 +4,11 @@ The **contract source of truth** for the Membrane protocol's five typed shapes.
 
 | Shape               | Rust type                 | JSON Schema                                       | Golden fixture                                  |
 |---------------------|---------------------------|---------------------------------------------------|-------------------------------------------------|
-| ScopeGrant          | `ScopeGrantV1`            | `schemas/scope-grant.v1.schema.json`              | `operations/scope-grant.v1.golden.json`         |
-| ContextCandidateSet | `ContextCandidateSetV1`   | `schemas/context-candidate-set.v1.schema.json`    | `operations/context-candidate-set.v1.golden.json` |
-| ContextPacket       | `ContextPacketV1`         | `schemas/context-packet.v1.schema.json`           | `operations/context-packet.v1.golden.json`      |
-| ContextReceipt      | `ContextReceiptV1`        | `schemas/context-receipt.v1.schema.json`          | `operations/context-receipt.v1.golden.json`     |
-| KnowledgeEmission   | `KnowledgeEmissionV1`     | `schemas/knowledge-emission.v1.schema.json`       | `operations/knowledge-emission.v1.golden.json`  |
+| ScopeGrant          | `ScopeGrantV1`            | `schemas/scope-grant.v1.schema.json`              | `schemas/registry/scope-grant.v1.golden.json`         |
+| ContextCandidateSet | `ContextCandidateSetV1`   | `schemas/context-candidate-set.v1.schema.json`    | `schemas/registry/context-candidate-set.v1.golden.json` |
+| ContextPacket       | `ContextPacketV1`         | `schemas/context-packet.v1.schema.json`           | `schemas/registry/context-packet.v1.golden.json`      |
+| ContextReceipt      | `ContextReceiptV1`        | `schemas/context-receipt.v1.schema.json`          | `schemas/registry/context-receipt.v1.golden.json`     |
+| KnowledgeEmission   | `KnowledgeEmissionV1`     | `schemas/knowledge-emission.v1.schema.json`       | `schemas/registry/knowledge-emission.v1.golden.json`  |
 
 The Rust types in `src/types.rs` are authoritative. Everything else — the JSON
 Schemas, the golden fixtures, the TypeScript binding — is derived from and

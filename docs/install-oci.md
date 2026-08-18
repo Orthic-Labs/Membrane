@@ -1,5 +1,7 @@
 # Optional headless Docker/OCI image
 
+> See also: [installation/](installation/) for the manifest/IPC handshake contract and stable-roots reference.
+
 `dist/packaging/oci/` is an optional evaluation-only headless container surface.
 It is not desktop support or an Orthic installer replacement. Its committed
 release record remains unavailable until independently produced artifacts and

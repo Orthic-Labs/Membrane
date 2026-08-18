@@ -3,7 +3,7 @@
 // Acceptance: "Resources are bounded, versioned, and do not leak content
 // across grants." This file proves the legacy (JS) surface returns the exact
 // same `resources/list` payload the native (Rust) surface emits, by computing
-// the Rust projection directly from the canonical `operations/resources/*.json`
+// the Rust projection directly from the canonical `schemas/registry/resources/*.json`
 // source and asserting byte-for-byte equality. It also proves a denied read
 // never leaks the resource body.
 //
@@ -54,7 +54,7 @@ function projectListEntry(resource) {
 
 const canonicalResources = await Promise.all(
   RESOURCE_FILES.map(async (file) => {
-    const raw = await readFile(join(REPO_ROOT, "operations", "resources", file), "utf8");
+    const raw = await readFile(join(REPO_ROOT, "schemas", "registry", "resources", file), "utf8");
     return JSON.parse(raw);
   }),
 );

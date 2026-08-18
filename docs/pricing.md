@@ -34,5 +34,5 @@ turn an unavailable remote dependency into a local correctness guarantee.
 
 Membrane publishes no price, plan name, usage allowance, uptime target,
 retention period, data-collection claim, or availability claim until each is
-explicitly decided and documented. See [`support-boundaries.md`](../website/support-boundaries.md)
+explicitly decided and documented. See [`support-boundaries.md`](support-boundaries.md)
 for the public-facing boundary summary.

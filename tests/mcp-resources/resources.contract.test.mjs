@@ -4,7 +4,7 @@
 // across grants." This file asserts every resource:
 //   (a) is bounded — its `accessGrants` array is non-empty and every grant
 //       references a known protocol grant type declared in
-//       `operations/resources/resources-index.v1.json`'s `supportedGrantTypes`
+//       `schemas/registry/resources/resources-index.v1.json`'s `supportedGrantTypes`
 //       block,
 //   (b) declares `authorityEscalation: false`,
 //   (c) declares a positive `version`,
@@ -33,7 +33,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..");
 
 const resourcesIndex = JSON.parse(
-  await readFile(join(REPO_ROOT, "operations", "resources", "resources-index.v1.json"), "utf8"),
+  await readFile(join(REPO_ROOT, "schemas", "registry", "resources", "resources-index.v1.json"), "utf8"),
 );
 const SUPPORTED_GRANT_TYPES = new Set(
   resourcesIndex.supportedGrantTypes.map((entry) => entry.name),

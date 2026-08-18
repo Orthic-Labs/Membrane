@@ -118,7 +118,7 @@ impl Provider for CortexExample {
 fn handle_membrane_context(request: &Value) -> Value {
     // Pull the task/turn/client envelopes out of the request and re-emit
     // them in the response. The reference adapter is deterministic; the
-    // shape mirrors operations/operations/membrane-context.v1.golden.json.
+    // shape mirrors schemas/registry/operations/membrane-context.v1.golden.json.
     let task_envelope = request
         .get("taskEnvelope")
         .cloned()

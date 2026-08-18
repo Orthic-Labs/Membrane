@@ -230,7 +230,7 @@
       }
     },
     "cortexBatchReceipt": {
-      "description": "operations/code/mbr402-batch.mjs executeCodeBatch() per-item receipt, in request order. `data` is present only when status is \"success\"; `code` (and optional `detail`) only when status is \"terminal\".",
+      "description": "schemas/registry/code/mbr402-batch.mjs executeCodeBatch() per-item receipt, in request order. `data` is present only when status is \"success\"; `code` (and optional `detail`) only when status is \"terminal\".",
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "status"],

@@ -78,7 +78,7 @@ The cross-operation registry is the only artifact that observes the
 whole set:
 
 - Schema: `schemas/operations/operations-index.v1.schema.json`
-- Fixture: `operations/operations/operations-index.v1.golden.json`
+- Fixture: `schemas/registry/operations/operations-index.v1.golden.json`
 
 Each entry in `operations` carries:
 
@@ -127,10 +127,10 @@ enforced by tests that run at the Book 1 gate.
 1. Write `schemas/operations/<op>.v1.schema.json` with the
    `schemaVersion` / `operation` / `errorVersion` envelope and the
    `result.oneOf: [success, error]` shape.
-2. Write `operations/operations/<op>.v1.golden.json` and
-   `operations/operations/<op>.v1.error.golden.json` — valid instances
+2. Write `schemas/operations/operations/<op>.v1.golden.json` and
+   `schemas/operations/operations/<op>.v1.error.golden.json` — valid instances
    of the success and error branches respectively.
-3. Add an entry to `operations/operations/operations-index.v1.golden.json`
+3. Add an entry to `schemas/registry/operations/operations-index.v1.golden.json`
    with the new operation's `name`, `schemaVersion`, `errorVersion`,
    `schemaPath`, `successFixture`, `errorFixture`, and `errorCodes`.
 4. Add a matching entry to `OPERATIONS` in

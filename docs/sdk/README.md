@@ -5,7 +5,7 @@ Python, TypeScript, & Rust clients expose only `membrane_context` plus
 socket, retries, starts, stops, or discovers a daemon.
 
 Every response must match canonical v1 envelopes in
-`operations/operations/membrane-*.v1.golden.json`: `schemaVersion: 1`,
+`schemas/registry/operations/membrane-*.v1.golden.json`: `schemaVersion: 1`,
 `errorVersion: 1`, matching operation, & a closed success or typed-error result.
 Unknown fields, versions, operations, & error codes fail closed.
 
@@ -23,8 +23,8 @@ match Python client behavior. Rust exposes matching constants, `ProtocolError`,
 ## Compatibility test suite
 
 All three clients validate the identical canonical v1 golden envelopes in
-`operations/operations/*.golden.json` and the identical closed error-code
-sets in `operations/operations/operations-index.v1.golden.json`, so drift
+`schemas/schemas/registry/operations/*.golden.json` and the identical closed error-code
+sets in `schemas/registry/operations/operations-index.v1.golden.json`, so drift
 between languages or against the shared schema fails a test instead of
 requiring review to notice:
 
