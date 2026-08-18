@@ -14,7 +14,7 @@ import { languageCapabilityRecords } from "../src/graph/language-registry.mjs";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CORTEX = path.resolve(HERE, "..");
 const CLI = path.join(CORTEX, "scripts/cortex.mjs");
-const SKILL = path.join(CORTEX, "SKILL.md");
+const SKILL = path.join(CORTEX, "skills/cortex/SKILL.md");
 const FIXTURE = path.join(CORTEX, "evals/fixture-repos/typescript-commerce");
 const EXPECTED_PARSED_EXTENSIONS = [...new Set([
   ...PARSED_LANGUAGE_EXTENSIONS,

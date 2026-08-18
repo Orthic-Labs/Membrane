@@ -8,6 +8,6 @@ COPY src src
 COPY watchman watchman
 COPY schemas schemas
 COPY references references
-COPY SKILL.md README.md LICENSE docs/CHANGELOG.md ./
+COPY README.md LICENSE docs/CHANGELOG.md ./
 ENV CORTEX_NO_UPDATE_CHECK=1
 ENTRYPOINT ["node", "scripts/cortex.mjs"]

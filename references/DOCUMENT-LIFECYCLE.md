@@ -1,7 +1,7 @@
 # Cortex — Document Lifecycle
 
 Supersession markers, structured lifecycle frontmatter, archive globs, and authority resolution.
-Extracted from `SKILL.md` to keep the operational contract readable. **This is normative**, not
+Extracted from `skills/cortex/SKILL.md` to keep the operational contract readable. **This is normative**, not
 background reading — Phase 1 and Phase 4 both depend on it.
 
 ## Historical-document lifecycle
