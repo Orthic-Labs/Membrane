@@ -16,7 +16,7 @@ _MAX_METADATA_ROWS = 50
 PROVENANCE_KINDS = frozenset({"external_user", "assistant", "developer", "internal_context",
                               "tool_result", "subagent"})
 _INTERNAL_PREFIXES = ("<codex_internal_context", "<recommended_plugins", "<system-reminder",
-                      "<command-name", "<environment_context", "<permissions", "<app-context",
+                      "<codex_delegation", "<hook_prompt", "<command-name", "<environment_context", "<permissions", "<app-context",
                       "<skills_instructions", "# agents.md instructions for ")
 
 

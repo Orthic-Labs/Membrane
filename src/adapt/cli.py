@@ -206,6 +206,7 @@ def main() -> int:
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--restart-stale", action="store_true")
     ap.add_argument("--manifest", type=Path)
+    ap.add_argument("--out", type=Path)
     ap.add_argument("--quiet", action="store_true")
     ap.add_argument("--spend", action="store_true",
                     help="with --insights: print the token-spend table instead of the JSON report")
@@ -235,6 +236,7 @@ def main() -> int:
     if args.insights:
         from adapt.insights import cli_insights
         return cli_insights([*args.insights,
+                             *(["--out", str(args.out)] if args.out else []),
                              *(["--quiet"] if args.quiet else []),
                              *(["--spend"] if args.spend else [])])
     return _mine(args)

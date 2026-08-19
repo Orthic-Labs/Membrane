@@ -20,6 +20,12 @@ def _spec(host: str) -> sources.SourceSpec:
     return sources.SourceSpec(host, host, ".", ("*.jsonl",), True)
 
 
+@pytest.mark.parametrize("prefix", ["<hook_prompt", "<codex_delegation"])
+def test_generated_codex_user_wrappers_are_not_external_authority(prefix: str) -> None:
+    event = {"kind": "user_message", "role": "user", "text": f"{prefix}>generated</x>"}
+    assert sources.event_provenance(event) == "internal_context"
+
+
 def test_discover_is_stat_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     path = _write(tmp_path / ".codex/sessions/2026/08/10/thread.jsonl", [{"payload": {"session_id": "s"}}])
     opened = []

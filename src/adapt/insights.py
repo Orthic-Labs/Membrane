@@ -1572,10 +1572,14 @@ def _parse_through_layer(path: str | Path) -> list[dict[str, Any]]:
     line up with the rest of the substrate — we do not reimplement the parser.
     The parser lives at :mod:`adapt.orthic_transcripts`, owned by Adapt (see
     that package's ``VENDORED.md``); imports never point back into Legion.
-    """
-    from adapt.orthic_transcripts import parse
 
-    return parse(Path(path))
+    Insights mines evidence, so it reads the uncapped canonical source events:
+    ``parse`` applies the projection cap and would silently drop the earliest
+    turns of a long transcript, understating provenance counts.
+    """
+    from adapt.orthic_transcripts import parse_source_events
+
+    return parse_source_events(Path(path))
 
 
 # ---------------------------------------------------------------------------

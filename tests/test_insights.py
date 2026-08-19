@@ -38,7 +38,7 @@ except ModuleNotFoundError:  # pragma: no cover - this Python 3.14 has no pytest
 
     pytest = _PytestShim()
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from adapt import insights  # noqa: E402
 
 ADAPT = Path(__file__).resolve().parent.parent
@@ -86,6 +86,25 @@ def _ev(**kw) -> dict:
         "flags": kw.get("flags", {}),
     }
     return out
+
+
+def test_top_level_cli_forwards_insights_output(monkeypatch, tmp_path):
+    from adapt import cli
+
+    captured = {}
+
+    def capture(argv):
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(insights, "cli_insights", capture)
+    output = tmp_path / "report.json"
+    monkeypatch.setattr(sys, "argv", [
+        "adapt.py", "--insights", "one.jsonl", "two.jsonl", "--out", str(output), "--quiet",
+    ])
+
+    assert cli.main() == 0
+    assert captured["argv"] == ["one.jsonl", "two.jsonl", "--out", str(output), "--quiet"]
 
 
 ALL_DETECTOR_SLUGS = [slug for slug, _ in insights.ALL_DETECTORS]
@@ -547,6 +566,24 @@ def test_role_context_never_becomes_evidence(tmp_path=None):
     rep = insights.report_many([path])
     assert rep["sessionSummaries"][0]["contextEventCount"] == 2
     assert rep["cards"] == []
+
+
+def test_report_many_uses_uncapped_source_events(tmp_path=None):
+    import tempfile
+    path = (tmp_path or Path(tempfile.mkdtemp(prefix="insights-source-"))) / "source.jsonl"
+    rows = [
+        {"type": "session_meta", "payload": {"id": "s1", "cwd": "/repo"}},
+        *[
+            {"type": "response_item", "payload": {"type": "message", "role": "user",
+             "content": [{"type": "input_text", "text": f"user turn {index}"}]}}
+            for index in range(10)
+        ],
+    ]
+    path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+
+    rep = insights.report_many([path])
+
+    assert rep["transcriptProvenance"]["eligibleUserTurns"] == 10
 
 
 def test_report_many_uses_session_meta_roles_for_cross_agent_repeat(tmp_path=None):
