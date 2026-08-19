@@ -61,7 +61,7 @@ And it's reversible: a run journal checkpoints every stage; safe resume reuses c
 |---|---|---|
 | **Taste** | durable preferences → Crypt | ships |
 | **Doctor** | multiwriter conformance receipts (`issue` / `validate`) | ships; Blueprint/Forge checks not yet |
-| **Insights** | failure/waste mining | deferred — not a product yet |
+| **Insights** | failure/waste mining + token spend | report-only; writes nothing |
 
 ## Using it
 
@@ -71,10 +71,32 @@ python3 adapt.py --incremental --manifest pending.json
 python3 adapt.py --apply-from-manifest resolved.json
 python3 adapt.py --compile-core path/to/core.json
 python3 adapt.py --insights session-one.jsonl session-two.jsonl
+python3 adapt.py --insights session.jsonl --spend       # token-spend table only
+python3 adapt.py --token-spend session.jsonl            # spend + waste findings
 
 python3 adapt.py doctor issue --out receipt.json
 python3 adapt.py doctor validate --receipt receipt.json
 ```
+
+### Token spend
+
+`--token-spend` answers "where did the tokens go, and which were wasted?" from
+usage the transcript already records — no tokenizer, no API call. Totals
+(fresh input, cache read, cache write, output, thinking; per model, and main
+vs subagent lane) are provider-reported billed counts, so they are exact.
+Per-tool attribution splits each request's context growth across the tool
+results and messages that entered since the previous request; it is bounded by
+what that text could plausibly cost, and the unexplained remainder is reported
+as `session_prefix` / `context_overhead` rather than charged to the last
+message. Fields named `attributed*` are inferences, not measurements.
+
+Waste findings: `oversized_tool_result`, `duplicate_tool_call_cost`,
+`cold_cache_rebuild`, `tool_dominates_context` — each naming its measured
+token cost. Cost in currency is opt-in via `--rates` (a caller-supplied
+model → per-million-token table); no rate table is bundled, because a stale
+hard-coded price is a fabricated number. The same block appears in the
+`--insights` JSON report under `tokenSpend`, per session and aggregate, and
+never affects the failure score.
 
 Writes are opt-in (`--apply`); smoke & manifest generation stay dry-run. LLM proposal lanes are `local` (default) or `minimax`; every proposal is rebound to an exact canonical external-user event, then passes deterministic admission. `--deterministic-only` disables LLM recall explicitly. Tests: `python3 -m pytest -q`.
 

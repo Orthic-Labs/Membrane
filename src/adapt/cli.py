@@ -195,6 +195,9 @@ def main() -> int:
     mode.add_argument("--smoke", action="store_true")
     mode.add_argument("--apply-from-manifest", type=Path)
     mode.add_argument("--insights", metavar="TRANSCRIPT", nargs="+")
+    mode.add_argument("--token-spend", metavar="TRANSCRIPT", nargs="+",
+                      dest="token_spend",
+                      help="report where tokens were spent or wasted in a transcript")
     mode.add_argument("--compile-core", type=Path)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
@@ -204,6 +207,12 @@ def main() -> int:
     ap.add_argument("--restart-stale", action="store_true")
     ap.add_argument("--manifest", type=Path)
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--spend", action="store_true",
+                    help="with --insights: print the token-spend table instead of the JSON report")
+    ap.add_argument("--json", action="store_true",
+                    help="with --token-spend: emit JSON instead of the text table")
+    ap.add_argument("--rates", type=Path, default=None,
+                    help="with --token-spend: model rate table (per million tokens)")
     ap.add_argument("--lane", default="local")
     ap.add_argument("--allow-external-lane", action="store_true")
     ap.add_argument("--deterministic-only", action="store_true",
@@ -219,9 +228,15 @@ def main() -> int:
         result = core_compiler.compile_and_write(records, args.compile_core, lane=args.lane)
         print(f"adapt: compiled {len(result['rules'])} core rules ({result['estimated_tokens']} estimated tokens) -> {args.compile_core}")
         return 0
+    if args.token_spend:
+        from adapt.token_spend import cli_token_spend
+        extra = (["--json"] if args.json else []) + (["--rates", str(args.rates)] if args.rates else [])
+        return cli_token_spend([*args.token_spend, *extra])
     if args.insights:
         from adapt.insights import cli_insights
-        return cli_insights([*args.insights, *( ["--quiet"] if args.quiet else [])])
+        return cli_insights([*args.insights,
+                             *(["--quiet"] if args.quiet else []),
+                             *(["--spend"] if args.spend else [])])
     return _mine(args)
 
 
