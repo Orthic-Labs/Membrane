@@ -1555,57 +1555,16 @@ def _role_context_projection(path: str | Path, provenance: dict[str, Any] | None
 
 
 def _parse_through_layer(path: str | Path) -> list[dict[str, Any]]:
-    """Parse a transcript file via the frozen ``TranscriptEventV1`` layer
-    inside Legion at ``legion/lib/orthic_transcripts``.
+    """Parse a transcript via Adapt's vendored ``TranscriptEventV1`` layer.
 
-    Plan 5.1: callers MUST go through this layer so byte spans and event
-    ids line up with the rest of the substrate. We do not reimplement
-    the parser.
-
-    Discovery is robust: we walk up from this file until we find a
-    sibling directory ``legion/lib/orthic_transcripts`` that contains
-    ``__init__.py``. That works from both the adapt repo and any test
-    harness that imports this module by file path.
+    Plan 5.1: callers MUST go through this layer so byte spans and event ids
+    line up with the rest of the substrate — we do not reimplement the parser.
+    The parser lives at :mod:`adapt.orthic_transcripts`, owned by Adapt (see
+    that package's ``VENDORED.md``); imports never point back into Legion.
     """
-    import importlib.util
-    import sys
+    from adapt.orthic_transcripts import parse
 
-    here = Path(__file__).resolve()
-    candidates: list[Path] = []
-    for parent in here.parents:
-        candidate = parent / "tools" / "skills" / "legion" / "lib" / "orthic_transcripts"
-        if (candidate / "__init__.py").is_file():
-            candidates.append(candidate)
-        if parent == parent.parent:
-            break
-    if not candidates:
-        # Fall back to the canonical workspace root (two parents up from
-        # the package directory inside /adapt).
-        candidates.append(here.parents[2] / "tools" / "skills" / "legion" / "lib" / "orthic_transcripts")
-    layer = candidates[0]
-    init_py = layer / "__init__.py"
-    spec = importlib.util.spec_from_file_location(
-        "orthic_transcripts", init_py,
-        submodule_search_locations=[str(layer)],
-    )
-    if spec is None or spec.loader is None:
-        raise ImportError(
-            f"cannot load TranscriptEventV1 from {layer}"
-        )
-    module = importlib.util.module_from_spec(spec)
-    sys.modules.setdefault("orthic_transcripts", module)
-    sys.modules.setdefault("orthic_transcripts.host_adapters", None)
-    ha_init = layer / "host_adapters.py"
-    if ha_init.is_file():
-        ha_spec = importlib.util.spec_from_file_location(
-            "orthic_transcripts.host_adapters", ha_init,
-        )
-        if ha_spec and ha_spec.loader:
-            ha = importlib.util.module_from_spec(ha_spec)
-            sys.modules["orthic_transcripts.host_adapters"] = ha
-            ha_spec.loader.exec_module(ha)
-    spec.loader.exec_module(module)
-    return module.parse(Path(path))
+    return parse(Path(path))
 
 
 # ---------------------------------------------------------------------------

@@ -16,10 +16,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from adapt import workspace_runtime
-
-sys.path.insert(0, str(workspace_runtime.workspace_root()))
-from tools.skills.legion.lib.orthic_transcripts import parse_source_events
+from adapt.orthic_transcripts import parse_source_events
 from adapt import preference_record
 from adapt import adapt_llm
 from adapt import taste_v2
