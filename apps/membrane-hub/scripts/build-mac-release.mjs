@@ -13,12 +13,16 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { notarytoolAuthArgs } from "@rightkit/release/notary-auth.mjs";
+import { resolveManagedCargoTarget } from "./lib/target-root.mjs";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 // A managed build owns the target root, so src-tauri/target is not a valid
-// assumption; honour the injected directory like build-windows-release.mjs does.
-const bundleRoot = process.env.CARGO_TARGET_DIR || "src-tauri/target";
+// assumption; `cargo metadata` against the src-tauri manifest is the sole
+// source of truth for where the build actually lands (see lib/target-root.mjs).
+const manifestPath = fileURLToPath(new URL("../src-tauri/Cargo.toml", import.meta.url));
+const bundleRoot = resolveManagedCargoTarget(manifestPath);
 const dmg = `${bundleRoot}/release/bundle/dmg/Membrane Hub_${version}_aarch64.dmg`;
 const env = {
   ...process.env,

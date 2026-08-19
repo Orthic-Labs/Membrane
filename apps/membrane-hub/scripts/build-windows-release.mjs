@@ -18,10 +18,16 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { bundleRoot, parentWorkspaceRoot, repoRootFromCwd, sidecarSourcePath, signedDir, SIDECAR_NAMES, targetTriple } from "./release-assets.mjs";
+import { resolveManagedCargoTarget } from "./lib/target-root.mjs";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
-const directory = `${process.env.CARGO_TARGET_DIR || "src-tauri/target"}/release/bundle/nsis/`;
+// `cargo metadata` against the src-tauri manifest is the sole source of
+// truth for locating the build output (see lib/target-root.mjs); a stale
+// but set CARGO_TARGET_DIR must never be trusted directly.
+const manifestPath = fileURLToPath(new URL("../src-tauri/Cargo.toml", import.meta.url));
+const directory = `${resolveManagedCargoTarget(manifestPath)}/release/bundle/nsis/`;
 const source = `${directory}Membrane Hub_${version}_x64-setup.exe`;
 const destination = `${directory}Membrane_${version}_x64-setup.exe`;
 

@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { engineReleaseIdentity } from "./release-identity.mjs";
+import { resolveManagedCargoTarget } from "./lib/target-root.mjs";
 
 const output = new URL("../dist/", import.meta.url);
 rmSync(output, { recursive: true, force: true });
@@ -37,16 +38,10 @@ const target = process.env.TAURI_ENV_TARGET_TRIPLE || targets[`${process.platfor
 if (!target) throw new Error(`unsupported sidecar target: ${process.platform}-${process.arch}`);
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
 const engine = join(repo, "engine", "Cargo.toml");
-// The global cargo policy requires target dirs inside the shared cache root
-// when one is configured; a repo-local engine/target is refused by the guard.
-// A managed build injects its own target root and overrides whatever we pass,
-// so honour it here too; otherwise cargo writes to the managed cache while the
-// sidecar copy below still reads this path and reports the binaries missing.
-const cacheRoot = process.env.RIGHT_RELEASE_CACHE_ROOT;
-const engineTarget = process.env.CARGO_TARGET_DIR
-  ?? (cacheRoot
-    ? join(cacheRoot, "dev-targets", "membrane-engine")
-    : join(repo, "engine", "target"));
+// A managed build owns the target root; process.env.CARGO_TARGET_DIR can be
+// set but stale, so it is never trusted to LOCATE output. cargo metadata
+// against the engine manifest is the sole source of truth here.
+const engineTarget = resolveManagedCargoTarget(engine);
 // Bake the release identity in. `release_identity.rs` reads these through
 // `option_env!`, so a build that omits them produces a binary permanently
 // reporting `sha256:unknown` — which the gateway treats as an unverifiable
@@ -60,6 +55,7 @@ console.log(
 const cargo = process.platform === "win32"
   ? { program: process.env.ComSpec || "cmd.exe", prefix: ["/d", "/s", "/c", "cargo.cmd"] }
   : { program: "cargo", prefix: [] };
+// rightkit-allow-cargo-target-dir: sets CARGO_TARGET_DIR for the spawned cargo child using the metadata-resolved engineTarget, not a location read
 const result = spawnSync(cargo.program, [...cargo.prefix, "build", "--manifest-path", engine, "--release", "--target", target, "-p", "crypt", "-p", "membrane", "--bin", "crypt", "--bin", "crypt-service", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CARGO_TARGET_DIR: engineTarget, CRYPT_SOURCE_COMMIT: identity.commit, CRYPT_SOURCE_TREE_SHA256: identity.sourceTreeSha256 } });
 if (result.error) throw result.error;
 if (result.status !== 0) throw new Error(`Membrane sidecar build failed with exit ${result.status}`);
