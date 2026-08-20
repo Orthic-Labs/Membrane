@@ -40,7 +40,7 @@ test("F13 runM0 discloses every case as baseline-undrivable rather than silently
 // than the rest of this file (cross-repo pnpm/pytest runs) — that cost buys real evidence.
 test("F13 runM0 end-to-end: real cross-repo suites at current HEAD (slow, unmocked)", { timeout: 9 * 60_000 }, () => {
   const result = runM0();
-  assert.equal(result.schema, "orthic.membrane.m0-run.v1");
+  assert.equal(result.schema, "membrane.m0-run.v1");
   assert.equal(result.cases.length, 10);
   for (const suite of result.suites) {
     assert.equal(suite.status, 0, `${suite.owner} suite failed at current HEAD: ${suite.output_tail.slice(-400)}`);

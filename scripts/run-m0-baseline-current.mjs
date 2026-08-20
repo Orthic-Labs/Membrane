@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,8 +19,8 @@ const sha = (value) => createHash("sha256").update(value).digest("hex");
 // Honesty disclosure (read this before trusting `baseline_red`): the `baseline` value below for
 // every case is a literal transcription of the fixture's own `failure` column — the documented
 // pre-fix input — not bytes read from an actual checkout of a historical commit. Reproducing the
-// real historical behavior would require checking out an old commit of 5 different
-// language runtimes (Rust engine, JS membrane/blueprint, Python forge/adapt) and rebuilding each,
+// real historical behavior would require checking out an old commit of several
+// language runtimes (Rust engine, JS Membrane/Blueprint, Python Adapt) & rebuilding each,
 // which this workspace's primary-checkout-only / no-worktree-without-approval rule forbids doing
 // in place, and which a temporary worktree could only do with Adrian's explicit sign-off. So
 // `baseline_red` here proves "the documented failure input fails the current validator", not
@@ -90,18 +90,20 @@ const suites = {
   // explicit root grant"), not project-registry.mjs — the original suite list omitted it, so
   // "current_green" for that fixture was gated on a suite that never actually exercised the fix.
   membrane: [process.execPath, ["--test", join(membraneRoot, "mcp/project-registry.test.mjs"), join(membraneRoot, "mcp/repository-catalog.test.mjs")], workspaceRoot],
-  blueprint: ["pnpm", ["--dir", join(workspaceRoot, "blueprint"), "test:all"], workspaceRoot],
+  blueprint: ["pnpm", ["--dir", join(membraneRoot, "blueprint"), "test:all"], workspaceRoot],
   // Forge was retired into Arcane (workspace Phase H-10). These focused successor
   // suites cover its two remaining F13 cases: declared-check correlation + closed output schemas.
   forge: [process.execPath, ["--test",
-    join(workspaceRoot, "legion/packages/arcane/tests/s04-host-event.test.mjs"),
-    join(workspaceRoot, "legion/packages/arcane/tests/s01-bridge.test.mjs"),
+    join(workspaceRoot, "legion/src/packages/arcane/tests/s04-host-event.test.mjs"),
+    join(workspaceRoot, "legion/src/packages/arcane/tests/s01-bridge.test.mjs"),
   ], workspaceRoot],
-  adapt: [join(workspaceRoot, ".venv-tools/bin/python"), ["-m", "pytest", join(workspaceRoot, "adapt/tests")], workspaceRoot],
+  adapt: [join(workspaceRoot, ".venv-tools/bin/python"), ["-m", "pytest", join(membraneRoot, "adapt/tests")], workspaceRoot],
 };
 
 function runSuite(owner) {
   const [command, args, cwd] = suites[owner];
+  const defaultCortexBin = join(membraneRoot, "engine/target/debug", process.platform === "win32" ? "cortex.exe" : "cortex");
+  const cortexTestBin = process.env.CORTEX_TEST_BIN || (existsSync(defaultCortexBin) ? defaultCortexBin : "");
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
@@ -110,7 +112,7 @@ function runSuite(owner) {
     env: {
       ...process.env,
       CI: "1",
-      CORTEX_TEST_BIN: process.env.CORTEX_TEST_BIN || join(membraneRoot, "engine/target/debug", process.platform === "win32" ? "cortex.exe" : "cortex"),
+      ...(cortexTestBin ? { CORTEX_TEST_BIN: cortexTestBin } : {}),
     },
   });
   const output = `${result.stdout || ""}${result.stderr || ""}`;
@@ -121,7 +123,7 @@ export { fixturePath, probes };
 
 export function runM0({ runSuiteImpl = runSuite } = {}) {
   const fixture = JSON.parse(readFileSync(fixturePath, "utf8"));
-  if (fixture.schema !== "orthic.membrane.fable-m0-fixtures.v1") throw new Error("m0_fixture_schema_invalid");
+  if (fixture.schema !== "membrane.m0-false-success-fixtures.v1") throw new Error("m0_fixture_schema_invalid");
   const unknown = fixture.cases.filter(({ id }) => !probes[id]).map(({ id }) => id);
   if (unknown.length) throw new Error(`m0_probe_missing:${unknown.join(",")}`);
   const owners = [...new Set(fixture.cases.map(({ owner }) => owner))];
@@ -152,7 +154,7 @@ export function runM0({ runSuiteImpl = runSuite } = {}) {
   });
   const passed = cases.every((entry) => entry.baseline.status === "expected_failure" && entry.current.status === "pass");
   return {
-    schema: "orthic.membrane.m0-run.v1",
+    schema: "membrane.m0-run.v1",
     passed,
     baseline_red: cases.filter((entry) => entry.baseline.status === "expected_failure").length,
     current_green: cases.filter((entry) => entry.current.status === "pass").length,
