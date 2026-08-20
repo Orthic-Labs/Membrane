@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Semantic HTML preservation of the Glitch Cat Club 'Applying Knowledge Graphs' artifact, extracted from the supplied PDF rather than embedding page images.">
+<title>Applying Knowledge Graphs — Semantic Archive</title>
+<style>
+:root{--bg:#0c0d10;--panel:#15171d;--panel2:#1c1f27;--text:#f3f4f6;--muted:#a7acb8;--line:#303541;--accent:#ff6b4a;--accent2:#ffd166;--good:#61d095;--bad:#ff7b86;--blue:#72a7ff;--code:#0a0b0e;--max:1120px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:linear-gradient(180deg,#0a0b0e,#101218 28rem);color:var(--text);font:16px/1.62 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:var(--blue)}code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.wrap{max-width:var(--max);margin:auto;padding:0 24px}.mast{padding:64px 0 36px;border-bottom:1px solid var(--line)}.eyebrow{letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:800;font-size:.78rem}.mast h1{font-size:clamp(2.7rem,7vw,5.8rem);line-height:.95;margin:.3rem 0 1rem;letter-spacing:-.055em}.subtitle{font-size:1.2rem;color:var(--muted);max-width:760px}.meta{display:flex;gap:14px;flex-wrap:wrap;margin-top:24px}.pill{border:1px solid var(--line);background:#111319;border-radius:999px;padding:7px 11px;color:#c9ced8;font-size:.86rem}.notice{margin:26px 0 0;padding:15px 17px;border-left:3px solid var(--accent2);background:#171711;color:#ded9bd}.layout{display:grid;grid-template-columns:250px minmax(0,1fr);gap:38px;padding:34px 0 70px}.toc{position:sticky;top:20px;align-self:start;border:1px solid var(--line);background:rgba(17,19,25,.88);backdrop-filter:blur(8px);padding:18px;border-radius:14px;max-height:calc(100vh - 40px);overflow:auto}.toc strong{display:block;margin-bottom:8px}.toc a{display:block;color:#c8ccd5;text-decoration:none;padding:4px 0;font-size:.9rem}.toc a:hover{color:white}.content section{padding:34px 0;border-bottom:1px solid var(--line)}.section-no{color:var(--accent);font-weight:900;letter-spacing:.12em;font-size:.8rem}.content h2{font-size:clamp(1.8rem,4vw,3rem);line-height:1.08;margin:.2rem 0 1rem;letter-spacing:-.035em}.content h3{font-size:1.24rem;margin:1.8rem 0 .5rem}.lead{font-size:1.12rem;color:#d7dae2}.callout{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:18px 0}.callout strong{color:white}.quote{font-size:1.15rem;border-left:4px solid var(--accent);padding:12px 18px;background:#171318;margin:22px 0}.steps{counter-reset:step;list-style:none;padding:0}.steps li{counter-increment:step;position:relative;padding:0 0 14px 42px}.steps li:before{content:counter(step);position:absolute;left:0;top:.1rem;width:27px;height:27px;display:grid;place-items:center;background:var(--accent);color:#151515;border-radius:50%;font-weight:900;font-size:.82rem}.diagram{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:18px;background:#0f1116;border:1px solid var(--line);border-radius:12px}.node{padding:9px 11px;background:var(--panel2);border:1px solid #3a4050;border-radius:9px;font-weight:700}.arrow{color:var(--accent2);font-weight:900}.subarrow{font-size:.78rem;color:var(--muted);display:block;text-align:center}.good{color:var(--good)}.bad{color:var(--bad)}table{width:100%;border-collapse:collapse;margin:18px 0;background:#111319;border:1px solid var(--line);border-radius:12px;overflow:hidden}th,td{padding:12px 14px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}th{background:#1a1d24;color:white;font-size:.82rem;text-transform:uppercase;letter-spacing:.06em}tr:last-child td{border-bottom:0}.tag{display:inline-block;font-size:.72rem;text-transform:uppercase;font-weight:800;letter-spacing:.06em;padding:3px 7px;border-radius:6px;background:#222735;color:#dce3f4;margin-right:5px}pre{background:var(--code);border:1px solid var(--line);border-radius:12px;padding:17px;overflow:auto;color:#e8eaf0;line-height:1.5;font-size:.9rem}.terminal{border-color:#2c5941}.tree{white-space:pre;line-height:1.65}.chart{padding:16px;background:#0f1116;border:1px solid var(--line);border-radius:14px;overflow:auto}.chart svg{width:100%;min-width:620px;height:auto;display:block}.legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:.86rem;margin-top:10px}.dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}.ontology{display:grid;grid-template-columns:1fr 1fr;gap:16px}.ontology .callout{margin:0}.full-loop{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px}.loopbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:17px}.footer{padding:34px 0 60px;color:var(--muted);font-size:.86rem}.searchbar{display:flex;gap:8px;margin-top:18px}.searchbar input{min-width:260px;max-width:520px;width:100%;background:#0d0f13;color:white;border:1px solid var(--line);border-radius:9px;padding:10px 12px}.searchbar button{background:var(--accent);border:0;border-radius:9px;padding:10px 14px;font-weight:800;cursor:pointer}.hit{outline:2px solid var(--accent2);outline-offset:4px}@media(max-width:840px){.layout{grid-template-columns:1fr}.toc{position:relative;top:auto;max-height:none}.grid2,.ontology,.full-loop{grid-template-columns:1fr}.full-loop .arrow{transform:rotate(90deg);justify-self:center}.mast{padding-top:42px}}@media print{body{background:white;color:#111}.toc,.searchbar{display:none}.layout{display:block}.content section{break-inside:avoid}.callout,pre,table,.diagram,.chart,.loopbox{border-color:#bbb;background:#fafafa;color:#111}.mast{border-color:#bbb}.notice{background:#fffbe6}.subtitle,.lead,.footer{color:#444}a{color:#111;text-decoration:none}}
+</style>
+</head>
+<body>
+<header class="mast"><div class="wrap">
+  <div class="eyebrow">Glitch Cat Club · semantic preservation</div>
+  <h1>Applying Knowledge Graphs</h1>
+  <p class="subtitle">How to add a knowledge graph to an AI system, with the correct tooling.</p>
+  <div class="meta">
+    <span class="pill">Source artifact captured 16 Aug 2026</span>
+    <span class="pill">Supplied PDF: 19 pages, substantive content on pages 1–12</span>
+    <span class="pill">This archive contains extracted HTML text, tables, code and recreated diagrams — no PDF page images</span>
+  </div>
+  <div class="notice"><strong>Preservation note.</strong> This page reproduces the claims and examples in the supplied artifact. It is an extracted semantic archive, not an independent verification of those claims.</div>
+  <div class="searchbar"><input id="q" type="search" placeholder="Search this archive…"><button type="button" onclick="findNext()">Find next</button></div>
+</div></header>
+<div class="wrap layout">
+<nav class="toc" aria-label="Contents">
+  <strong>Contents</strong>
+  <a href="#demo">What the artifact demonstrates</a>
+  <a href="#test">01 · The test case</a>
+  <a href="#pull-push">02 · Pull vs push</a>
+  <a href="#tiers">03 · Tiers / Tier 1</a>
+  <a href="#results">04 · Results</a>
+  <a href="#scaling">Longer chains & limits</a>
+  <a href="#ontology">05 · Ontology</a>
+  <a href="#store">06 · Store</a>
+  <a href="#traversal">07 · Traversal</a>
+  <a href="#injection">08 · Injection</a>
+  <a href="#make-it-yours">09 · Make it yours</a>
+  <a href="#appendix">Appendix · Full loop</a>
+</nav>
+<main class="content" id="content">
+<section id="demo">
+  <div class="section-no">OVERVIEW</div>
+  <h2>This artifact will demonstrate</h2>
+  <ol class="steps">
+    <li>A knowledge graph made the smallest model as accurate as the biggest: Haiku went from a wrong answer to the right one, with zero tool calls and 2 ms retrieval.</li>
+    <li>Faster and cheaper, measured: 20 seconds of visible searching became an instant answer; 660 to 1,180 tokens of document reads became ~400 tokens, fixed at any corpus size.</li>
+    <li>Proven on a deliberate multi-hop trap case.</li>
+    <li>The mechanism: deterministic prompt injection through a <code>UserPromptSubmit</code> hook, so retrieval bypasses the model entirely; the traversal is done before the model wakes.</li>
+    <li>How to build your own: the ontology and logical modelling are covered below, and the repo teaches your AI the whole design system.</li>
+  </ol>
+  <div class="callout"><span class="tag">All runs real</span> captured 16 Aug 2026<br><span class="tag">Repo</span> <a href="https://github.com/Glitch-Cat-Club/graph-memory-starter">github.com/Glitch-Cat-Club/graph-memory-starter</a></div>
+</section>
+
+<section id="test">
+  <div class="section-no">01 · THE TEST CASE</div>
+  <h2>A trap, on purpose</h2>
+  <p class="lead">What it proves: with a graph, even the smallest model answers a question that defeats keyword search.</p>
+  <ol>
+    <li>The rule lives in one file: refunds over £500 need the Ops Manager.</li>
+    <li>The person lives in another: the Ops Manager is Sarah.</li>
+    <li>The twist lives in a third: Sarah is away all March; Marcus covers her.</li>
+    <li>Decoys are planted around them: a stale policy with different numbers, and an expenses document using the same £500.</li>
+  </ol>
+  <p>The three files share no words, so keyword search finds the wrong things first. The artifact uses the same question against two folders — one raw, one with the graph — across three model sizes, with and without the graph.</p>
+  <div class="quote">“A customer wants an £800 refund in March. Who signs it off?”<br><strong>Correct answer: Marcus Webb.</strong></div>
+</section>
+
+<section id="pull-push">
+  <div class="section-no">02 · THE DIFFERENCE</div>
+  <h2>Pull vs push</h2>
+  <p>The “pretend knowledge graph” pattern still makes the model search and read itself; the graph is decoration. Done properly, code finds the facts before the model is involved and hands them over. The model never takes part in finding them.</p>
+  <h3>Pull · search during the turn</h3>
+  <div class="diagram" aria-label="Pull flow">
+    <span class="node">prompt</span><span class="arrow">→</span><span class="node">model</span><span class="arrow">→</span><span class="node">grep</span><span class="arrow">→</span><span class="node">read</span><span class="arrow">→</span><span class="node">grep</span><span class="arrow">→</span><span class="node">model</span><span class="arrow">→</span><span class="node">answer</span>
+  </div>
+  <p class="bad"><strong>seconds · cost grows with corpus size · accuracy depends on the model</strong></p>
+  <h3>Push · retrieve before the turn</h3>
+  <div class="diagram" aria-label="Push flow">
+    <span class="node">prompt</span><span class="arrow">→</span><span class="node">hook queries graph<br><small class="good">2 ms · no LLM</small></span><span class="arrow">→</span><span class="node">inject</span><span class="arrow">→</span><span class="node">model</span><span class="arrow">→</span><span class="node">answer</span>
+  </div>
+  <p class="good"><strong>one model call · fixed cost · accuracy from structure</strong></p>
+  <p><strong>Artifact summary:</strong> Pull means the model hunts for facts during the conversation. Push means code finds the facts first and hands them over. That swap is the whole difference.</p>
+</section>
+
+<section id="tiers">
+  <div class="section-no">03 · GETTING STARTED</div>
+  <h2>There are tiers to this. Today: Tier 1.</h2>
+  <p>Levels exist so you do not have to go deep to get value. Tier 1 is enough to start properly.</p>
+  <table>
+    <thead><tr><th>Tier</th><th>Tooling</th><th>When</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Tier 1 ← this demo</strong></td><td>SQLite or Postgres. A real graph in three tables, traversed by a recursive query.</td><td>Up to a few hundred thousand facts. Most personal and small-business systems live here.</td></tr>
+      <tr><td><strong>Tier 2</strong></td><td>An embedded graph engine: Cypher and native traversal, one file, no server. Kuzu lineage (archived 2025; forks continue).</td><td>Deep, variable-length queries.</td></tr>
+      <tr><td><strong>Tier 3</strong></td><td>Neo4j. The enterprise standard; traversal runs inside the engine.</td><td>Team and server.</td></tr>
+    </tbody>
+  </table>
+  <div class="quote"><strong>One rule at every tier:</strong> the model never does the traversal. Code queries the graph. The model reads the result.</div>
+  <h3>Tier 1, in full</h3>
+  <ul><li>3 SQLite tables: entities, relations, aliases</li><li>1 recursive query for traversal</li><li>1 prompt-submit hook for injection</li><li>~250 lines. No server, no API key, no framework.</li></ul>
+</section>
+
+<section id="results">
+  <div class="section-no">04 · RESULTS</div>
+  <h2>The graph made the smallest model as accurate as the biggest</h2>
+  <p class="lead">The artifact’s headline: without the graph, Haiku named the wrong approver. With it: correct, zero tool calls, 2 ms retrieval. The model stopped mattering for correctness because the graph walks the facts and the model only reads them. The reasoning moved upstream: a strong model builds the graph once; a cheap model answers everything after.</p>
+  <table>
+    <thead><tr><th>Model</th><th>Search (no graph)</th><th>Graph (injected)</th></tr></thead>
+    <tbody>
+      <tr><td>Fable 5</td><td class="good">correct · 2 searches, 4 files read, 20 s</td><td class="good">correct · 0 tool calls</td></tr>
+      <tr><td>Sonnet</td><td class="good">correct · 5 searches, 8 files read, 13 calls</td><td class="good">correct · 0 tool calls</td></tr>
+      <tr><td>Haiku</td><td class="bad">wrong · stopped at the first fact</td><td class="good">correct · 0 tool calls</td></tr>
+    </tbody>
+  </table>
+  <pre class="terminal"><code>❯ A customer wants an £800 refund in March. Who signs it off?
+  ⎿ UserPromptSubmit says: memory: 8 facts recalled in 2 ms
+
+● Marcus Webb. Over the £500 threshold, so Ops Manager sign-off;
+  that role is Sarah Chen's; she is on leave all March and the
+  delegation memo gives Marcus her approvals for that window.</code></pre>
+  <ul>
+    <li>Injected context: ~400 tokens, fixed at any corpus size.</li>
+    <li>Search reads: 660 to 1,180 tokens, growing with scale.</li>
+    <li>Unscripted questions on Haiku + graph: all correct.</li>
+    <li>Outside the vocabulary: “no memory matches”, no guessing.</li>
+    <li>One question, one corpus, six runs. The mechanism is what generalises; the repo re-runs everything.</li>
+  </ul>
+</section>
+
+<section id="scaling">
+  <div class="section-no">04 · RESULTS, CONTINUED</div>
+  <h2>What happens as chains get longer</h2>
+  <div class="chart" role="img" aria-label="Conceptual chart showing graph injection remaining flat while model-driven search cost increases with chain depth; measured dots are at three hops.">
+  <svg viewBox="0 0 900 330" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="900" height="330" fill="#0f1116"/>
+    <line x1="70" y1="270" x2="850" y2="270" stroke="#4a5060"/><line x1="70" y1="40" x2="70" y2="270" stroke="#4a5060"/>
+    <text x="72" y="28" fill="#b8bdc8" font-size="14">cost per question / completion difficulty</text>
+    <text x="690" y="305" fill="#b8bdc8" font-size="14">chain depth (hops)</text>
+    <path d="M90 95 C240 98 420 100 820 104" fill="none" stroke="#61d095" stroke-width="5"/>
+    <path d="M90 235 C250 210 430 165 820 72" fill="none" stroke="#ff7b86" stroke-width="4" stroke-dasharray="10 9"/>
+    <circle cx="420" cy="103" r="7" fill="#61d095"/><text x="438" y="100" fill="#61d095" font-size="13">~400 tokens · 0 calls</text>
+    <circle cx="420" cy="165" r="7" fill="#ff7b86"/><text x="438" y="162" fill="#ffb0b7" font-size="13">660–1,180 tokens · 5–13 calls</text>
+    <text x="610" y="125" fill="#ffd166" font-size="13">past top-k depth: ranking needs tuning</text>
+    <text x="725" y="88" fill="#ffb0b7" font-size="13">search</text><text x="725" y="100" fill="#7fe3aa" font-size="13">graph</text>
+    <g fill="#a7acb8" font-size="12"><text x="90" y="288">1</text><text x="235" y="288">2</text><text x="380" y="288">3</text><text x="525" y="288">4</text><text x="670" y="288">5</text><text x="815" y="288">6</text></g>
+  </svg>
+  </div>
+  <p>In the artifact, the dots are measured at the 3-hop chain. The curves are presented as the mechanism’s shape: each search hop adds calls, reads and a vocabulary guess; the graph walk is one query at any depth. The graph caveat is explicit: past top-k depth, ranking needs tuning.</p>
+  <h3>Limits, and what fixes each</h3>
+  <table>
+    <thead><tr><th>Limit</th><th>When you feel it</th><th>Fix</th><th>Nature</th></tr></thead>
+    <tbody>
+      <tr><td>Lexical seeding</td><td>A question that names no known entity or alias finds nothing.</td><td>Add embedding seeding beside the alias table.</td><td>Extension, same design.</td></tr>
+      <tr><td>Top-k crowding</td><td>Dense hub entities push chain links out of a fixed-size injection.</td><td>Rank by path membership between seeds; prune; raise k.</td><td>Tuning, same design.</td></tr>
+      <tr><td>Store size</td><td>Past a few hundred thousand edges, or heavy concurrent queries.</td><td>Move up a tier. Same schema shape.</td><td>Tier move.</td></tr>
+      <tr><td>Meaning at scale</td><td>Name collisions merge; stale docs pollute.</td><td>Disambiguation at extraction; supersession at ingest.</td><td>Modelling discipline.</td></tr>
+    </tbody>
+  </table>
+  <div class="quote">The limit is never hops. Six hops is six edges. Density, size, vagueness and ambiguity are the real axes, and nothing dead-ends.</div>
+</section>
+
+<section id="ontology">
+  <div class="section-no">05 · BUILD: THE ONTOLOGY AND THE LOGICAL MODEL</div>
+  <h2>How to build an ontology</h2>
+  <p>Start from the questions you want answered. List the kinds of things those questions mention; that becomes the entity vocabulary. List the ways those things connect; that becomes the relationship vocabulary. Keep both lists small and closed, and put conditions such as amounts, dates and windows in entity descriptions. The logical model is the shape a fact takes: a typed entity, a typed relation between two entities, and an alias for a name variant.</p>
+  <p>For the company-operations use case in the artifact, the questions were about approvals, roles and cover. Five entity types and five relationships followed from those questions. The extraction step then processes each document against that vocabulary.</p>
+  <div class="ontology">
+    <div class="callout"><h3>Entity types</h3><p><code>PERSON</code> · <code>ROLE</code> · <code>POLICY</code> · <code>PROCESS</code> · <code>DOCUMENT</code></p></div>
+    <div class="callout"><h3>Relationship types</h3><p><code>approved_by</code> · <code>held_by</code> · <code>delegates_to</code> · <code>part_of</code> · <code>references</code></p></div>
+  </div>
+  <h3><code>corpus/refund-policy.md</code></h3>
+  <pre><code>---
+type: policy
+title: Refund approvals
+entities: [Refund approvals, Ops Manager]
+links: [org-chart, customer-support-sop]
+---
+Refunds over £500 require approval by the **Ops Manager**
+before payment is released.</code></pre>
+  <p>Extraction also works on unstructured prose. The vocabulary is the prerequisite; front matter is maintenance discipline.</p>
+</section>
+
+<section id="store">
+  <div class="section-no">06 · BUILD: THE STORE</div>
+  <h2>As many tables as your facts have shapes</h2>
+  <p>The artifact’s logical-modelling rule is: list the shapes your facts take, and each shape becomes a table. This model uses three: a thing exists (<code>entities</code>), two things connect (<code>relations</code>), and a thing has another name (<code>aliases</code>). Three is not a magic number; facts in other shapes, such as time-bounded facts or measurements, imply additional tables.</p>
+  <h3><code>src/schema.sql</code></h3>
+  <pre><code>CREATE TABLE entities (
+  id TEXT PRIMARY KEY,              -- uuid5(type + normalised name)
+  name TEXT,
+  type TEXT,
+  description TEXT,
+  source_doc TEXT
+);
+
+CREATE TABLE relations (
+  source_id TEXT,
+  target_id TEXT,
+  predicate TEXT,
+  source_doc TEXT
+);
+
+CREATE TABLE aliases (
+  entity_id TEXT,
+  alias TEXT
+);</code></pre>
+  <p><strong>Identity is computed, never looked up.</strong> An entity ID is derived from its type and normalised name, so repeated occurrences of “Ops Manager” across documents converge on the same node under that identity rule.</p>
+  <h3><code>src/build_graph.py</code></h3>
+  <pre><code>def entity_id(type_: str, name: str) -&gt; str:
+    key = f"{type_}:{normalise(name)}"
+    return str(uuid.uuid5(uuid.NAMESPACE_OID, key))</code></pre>
+  <div class="callout"><strong>Artifact run:</strong> <code>python src/build_graph.py</code> → 13 entities, 13 relations, 10 aliases from 8 docs. Extraction varies run to run; deterministic IDs make re-runs merge instead of duplicating.</div>
+</section>
+
+<section id="traversal">
+  <div class="section-no">07 · BUILD: TRAVERSAL</div>
+  <h2>Two jobs: find the starting points, walk the connections</h2>
+  <p>Every implementation needs these two jobs, whatever the tier:</p>
+  <ol><li><strong>Seeding:</strong> match question words against entity names and aliases.</li><li><strong>Walking:</strong> collect connected facts hop by hop.</li></ol>
+  <div class="diagram" aria-label="Refund approval traversal">
+    <span class="node">Refund approvals<br><small>POLICY</small></span><span class="arrow">-- approved_by →</span><span class="node">Ops Manager<br><small>ROLE</small></span><span class="arrow">-- held_by →</span><span class="node">Sarah Chen<br><small>PERSON</small></span><span class="arrow">-- delegates_to (March) →</span><span class="node">Marcus Webb<br><small>PERSON</small></span>
+  </div>
+  <p><strong>The question seeds at “refund”. The walk does the rest.</strong></p>
+  <h3><code>src/recall.py</code> · recursive walk</h3>
+  <pre><code>WITH RECURSIVE walk(entity_id, depth) AS (
+  SELECT id, 0 FROM entities WHERE id IN ({seeds})
+  UNION
+  SELECT CASE WHEN r.source_id = w.entity_id
+              THEN r.target_id ELSE r.source_id END,
+         w.depth + 1
+  FROM relations r JOIN walk w
+    ON w.entity_id IN (r.source_id, r.target_id)
+  WHERE w.depth &lt; ?
+)
+SELECT e1.name, r.predicate, e2.name, r.source_doc
+FROM relations r
+JOIN entities e1 ON e1.id = r.source_id
+JOIN entities e2 ON e2.id = r.target_id
+WHERE r.source_id IN (SELECT entity_id FROM walk)
+  AND r.target_id IN (SELECT entity_id FROM walk);</code></pre>
+  <h3>Output · 2 ms (abridged in source)</h3>
+  <pre class="terminal"><code>memory: 8 facts recalled in 2 ms
+
+Refund approvals --[approved_by]--&gt; Ops Manager     (refund-policy.md)
+Ops Manager --[held_by]--&gt; Sarah Chen               (org-chart.md)
+Sarah Chen --[delegates_to]--&gt; Marcus Webb            (delegation-memo.md)
+… 5 more facts
+
+where:
+  Refund approvals: Refunds over £500 need Ops Manager sign-off; ...
+  Sarah Chen: On leave 1-31 March
+  Marcus Webb: Covers Sarah Chen's sign-offs during her March leave; ...
+  … 6 more entity notes</code></pre>
+  <p>The artifact emits text, shaped however the system wants; this shape carries the facts and their conditions.</p>
+</section>
+
+<section id="injection">
+  <div class="section-no">08 · BUILD: INJECTION</div>
+  <h2>The whole integration is one JSON field</h2>
+  <h3><code>hooks.json</code> → <code>.claude/settings.json</code></h3>
+  <pre><code>{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python src/recall_hook.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}</code></pre>
+  <h3><code>src/recall_hook.py</code></h3>
+  <pre><code>import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from recall import recall
+
+prompt = json.load(sys.stdin).get("prompt", "")
+facts = recall(prompt, hops=3, top_k=8)
+text = facts.as_text()
+
+print(json.dumps({
+    "systemMessage": text.split("\n")[0],
+    "hookSpecificOutput": {
+        "hookEventName": "UserPromptSubmit",
+        "additionalContext": text,
+    }
+}))</code></pre>
+  <p><code>additionalContext</code> places the facts in front of the model before it thinks. <code>systemMessage</code> prints the count line at submit, before the model speaks.</p>
+  <p>The source says the hook fires on every prompt in this project only. A prompt matching nothing costs about a millisecond and one “no memory matches” line; a match costs at most top-k facts (~400 tokens). It explicitly names a relevance gate as the at-scale refinement.</p>
+</section>
+
+<section id="make-it-yours">
+  <div class="section-no">09 · MAKE IT YOURS</div>
+  <h2>Clone, swap, rebuild</h2>
+  <pre class="tree"><code>graph-memory-starter/
+├── corpus/                  8 modelled docs
+├── corpus-before/           12 unstructured docs (the A/B control)
+├── extraction/              LLM output per doc: nodes, edges, aliases
+├── src/                     schema.sql, build_graph.py, recall.py, recall_hook.py
+├── hooks.json
+└── extract-prompt.md        the extraction prompt, for your own docs</code></pre>
+  <ul>
+    <li>Swap <code>corpus/</code> for your docs.</li>
+    <li>Define your vocabulary from your questions.</li>
+    <li>Extract with <code>extract-prompt.md</code>.</li>
+    <li>Rebuild.</li>
+  </ul>
+  <p>Needs: a coding assistant with prompt hooks, Python and SQLite. The source says nothing to install and no API key.</p>
+  <p>To reproduce the A/B exactly, the artifact says to run the search condition in <code>corpus-before/</code> before wiring the hook (or isolate that folder so the hook never reaches it), and pin the same model on both sides with thinking off via <code>"model"</code> and <code>MAX_THINKING_TOKENS=0</code>.</p>
+</section>
+
+<section id="appendix">
+  <div class="section-no">APPENDIX</div>
+  <h2>The full loop</h2>
+  <div class="full-loop">
+    <div class="loopbox"><strong>READ PATH</strong><br><br>user hits enter<br>↓<br><strong>hook</strong> · <code>recall_hook.py</code><br>↔ <strong>store</strong> · SQLite entities / relations / aliases<br>↓<br><strong>model call</strong> · context pre-loaded<br><br><span class="good">READ: deterministic, milliseconds</span></div>
+    <div class="arrow">⇄</div>
+    <div class="loopbox"><strong>WRITE / COMPREHENSION PATH</strong><br><br>turns + tool calls<br>↓<br>captured async, never blocks<br>↓<br><strong>extract</strong> · LLM, deferred: idle / threshold<br>↓<br>writes triples to store<br><br><span class="bad">WRITE: expensive, when nobody waits</span></div>
+  </div>
+  <div class="quote">Capture is cheap and constant. Comprehension is expensive and deferred.</div>
+  <h3>Run record</h3>
+  <ul>
+    <li>Build: 13 entities, 13 relations, 10 aliases from 8 docs.</li>
+    <li>Recall: 2 ms, full chain.</li>
+    <li>Hook driven over stdin/stdout exactly as the harness drives it; valid JSON out.</li>
+    <li>Nine fresh-agent probes and two live on-screen runs, 16 Aug 2026.</li>
+    <li>The Haiku search failure and the empty-recall refusal are included.</li>
+  </ul>
+</section>
+</main>
+</div>
+<footer class="footer"><div class="wrap">
+  Semantic archive produced from the supplied PDF <code>Applying Knowledge Graphs.pdf</code>. Blank printed pages 13–19 are intentionally omitted because they contain no substantive artifact content. Original artifact URL recorded in the PDF: <a href="https://claude.ai/code/artifact/5f055546-f494-4dc4-a677-677e9dfcfff4#no_universal_links">Claude Code artifact</a>.
+</div></footer>
+<script>
+let hits=[],hitIndex=-1;
+function clearHits(){document.querySelectorAll('.hit').forEach(e=>e.classList.remove('hit'));hits=[];hitIndex=-1}
+function findNext(){const q=document.getElementById('q').value.trim().toLowerCase();if(!q)return; if(!hits.length){clearHits(); const walker=document.createTreeWalker(document.getElementById('content'),NodeFilter.SHOW_ELEMENT); let n; while(n=walker.nextNode()){if(['SCRIPT','STYLE'].includes(n.tagName))continue; if(n.children.length===0 && (n.textContent||'').toLowerCase().includes(q))hits.push(n)}} if(!hits.length)return; hitIndex=(hitIndex+1)%hits.length; document.querySelectorAll('.hit').forEach(e=>e.classList.remove('hit')); const el=hits[hitIndex];el.classList.add('hit');el.scrollIntoView({behavior:'smooth',block:'center'})}
+document.getElementById('q').addEventListener('input',clearHits);document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')findNext()});
+</script>
+</body></html>

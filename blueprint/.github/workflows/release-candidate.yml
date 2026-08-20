@@ -1,0 +1,49 @@
+name: release-candidate
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  candidate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.3
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - run: pnpm install --frozen-lockfile
+      # --- Release seal gate inputs (EC v4 D-18 / U53) ---
+      # CU-13: SBOM / checksums / provenance via build-candidate → check-release
+      # CU-17/18: signing is NOT in-repo — right-release from primary checkout only (no in-repo signing jobs, no secrets)
+      # Clean-host: exercised by right-release sealing, verified here via runtime bundle + candidate checks
+      # U60: Hub installer byte-identical attach (no rebuild) — verifies via checksum, attaches to release
+      # U61: seam-conformance (grep-gates) runs in ci.yml, not here; verify-release asserts its evidence
+      - run: node --test tests/release-candidate.test.mjs
+      - run: node scripts/release/build-candidate.mjs --platform current --out "${{ runner.temp }}/cortex-rc"
+      - run: node scripts/release/check-release.mjs "${{ runner.temp }}/cortex-rc"
+      # U53 orchestration: CU-13 outputs (compatibility.json, checksums.txt, SBOM.spdx.json, artifact-catalog.json, update-manifest.json) are gate inputs for seal
+      - run: node scripts/release/verify-release.mjs "${{ runner.temp }}/cortex-rc"
+      # U60: byte-identical Hub installer — download pinned Hub artifact, verify checksum, attach (D-S07: cortex does not build Hub)
+      - run: node scripts/release/verify-hub-installer.mjs --hub-version "${{ vars.HUB_APP_VERSION }}" --checksum "${{ vars.HUB_INSTALLER_CHECKSUM }}" --out "${{ runner.temp }}/hub-installer"
+      # CU-14: runtime bundle (portable, no system Node) + D18 Windows integration — seal requires this matrix
+      - run: node --test tests/runtime-bundle.test.mjs
+      - run: node scripts/release/stage-runtime.mjs --out "${{ runner.temp }}/cortex-runtime"
+      - run: node scripts/release/build-runtime-bundle.mjs --out "${{ runner.temp }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cortex-rc-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/cortex-rc/**
+            ${{ runner.temp }}/cortex-*.tar.gz
+            ${{ runner.temp }}/cortex-*.zip
+            ${{ runner.temp }}/cortex-*.sha256

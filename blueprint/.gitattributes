@@ -1,0 +1,5 @@
+evals/fixture-repos/** text eol=lf
+docs/product.md text eol=lf
+docs/architecture.md text eol=lf
+*.wasm binary
+*.db binary

@@ -1,0 +1,11 @@
+version = 1
+
+[[languages]]
+id = "mydsl"
+extensions = ["mydsl"]
+grammar = "tools/grammars/tree-sitter-mydsl.wasm"
+grammar_sha256 = "REQUIRED_HEX"
+table = "tools/grammars/mydsl.table.json"
+table_sha256 = "REQUIRED_HEX"
+fact_profile = "code"
+precision_tier = "AST"

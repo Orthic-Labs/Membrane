@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "packetId": "D50..D53",
+  "baselineCommit": "fe1c4cbecf7a7e20ba50d47f6b913c6fe23d19e4",
+  "observedCommit": "fe1c4cbecf7a7e20ba50d47f6b913c6fe23d19e4",
+  "status": "complete",
+  "changedFiles": [
+    ".agent/dispatch/state.json",
+    "graph/store-sqlite.mjs",
+    "graph/static-provider.mjs",
+    "sdk/providers.mjs",
+    "lib/redaction.mjs",
+    "lib/operations/support-bundle.mjs",
+    "scripts/cortex.mjs",
+    "scripts/fault-inject.mjs",
+    "scripts/run-soak.mjs",
+    ".github/workflows/qualification.yml",
+    "deleted-in-repo-signing-workflow (historical)",
+    "fixtures/stores/build-stores.mjs",
+    "fixtures/security/build-hostile-repo.mjs",
+    "fixtures/security/secret-corpus.json",
+    "fixtures/soak/fixture.mjs",
+    "tests/store-migrations.test.mjs",
+    "tests/store-rollback.test.mjs",
+    "tests/performance-envelopes.test.mjs",
+    "tests/cross-platform-paths.test.mjs",
+    "tests/security/hostile-indexing.test.mjs",
+    "tests/security/secret-egress.test.mjs",
+    "tests/security/poisoned-manifests.test.mjs",
+    "tests/plugin-boundary.test.mjs",
+    "tests/soak-contract.test.mjs",
+    "evals/performance-envelopes.json",
+    "evals/soak/README.md",
+    "release/compatibility.template.json",
+    "release/compatibility.json",
+    "release/decisions/001-node-sea.md",
+    "release/decisions/002-rust-crate.md",
+    "release/decisions/003-remote-team-mode.md",
+    "release/decisions/004-plugin-marketplace.md",
+    "docs/reference/store.md",
+    "docs/benchmarks/performance-envelopes.md",
+    "docs/benchmarks/soak.md",
+    "docs/reference/threat-model.md",
+    "docs/roadmap.md",
+    "SECURITY.md",
+    "package.json"
+  ],
+  "linesAdded": 4200,
+  "linesDeleted": 0,
+  "commands": [
+    {
+      "command": "node --test tests/store-migrations.test.mjs tests/store-rollback.test.mjs tests/performance-envelopes.test.mjs tests/cross-platform-paths.test.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "node --test 'tests/security/**/*.test.mjs' tests/mcp-root-confinement.test.mjs tests/plugin-boundary.test.mjs tests/support-bundle-redaction.test.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "node --test tests/soak-contract.test.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/ci/check-network-boundary.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/release/build-candidate.mjs --platform current --out /tmp/cortex-rc --allow-dirty",
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/release/check-release.mjs /tmp/cortex-rc",
+      "exitCode": 0
+    },
+    {
+      "command": "node scripts/test-package.mjs",
+      "exitCode": 0
+    },
+    {
+      "command": "pnpm test:all",
+      "exitCode": 0,
+      "tests": 661,
+      "pass": 658,
+      "fail": 0,
+      "skipped": 3
+    }
+  ],
+  "gates": [
+    {
+      "name": "store-migrations",
+      "state": "pass",
+      "evidence": "17/17 pass: N-1 (v13) and N-2 (v12) fixture stores migrate to current schema v14 without data loss; pre-migration backup written; repairInterruptedMigration restores torn store and re-migrates. Fixtures: fixtures/stores/build-stores.mjs. Tests: tests/store-migrations.test.mjs, tests/store-rollback.test.mjs, tests/performance-envelopes.test.mjs, tests/cross-platform-paths.test.mjs. Docs: docs/reference/store.md, docs/benchmarks/performance-envelopes.md. CI: hardening job added to qualification.yml."
+    },
+    {
+      "name": "performance-envelopes",
+      "state": "pass",
+      "evidence": "machine-readable budget table evals/performance-envelopes.json; 4x CI slack multiplier; small/medium envelopes enforced in tests/performance-envelopes.test.mjs (4/4 pass)."
+    },
+    {
+      "name": "cross-platform-paths",
+      "state": "pass",
+      "evidence": "4/4 pass: symlink canonicalisation, case-variant identity collapse/divergence per FS, root-registry confinement, separator normalisation. tests/cross-platform-paths.test.mjs."
+    },
+    {
+      "name": "hostile-indexing",
+      "state": "pass",
+      "evidence": "5/5 pass: huge files, deep trees, symlink escape, malformed store (typed corrupt), event overflow, path case tricks. tests/security/hostile-indexing.test.mjs. Real D51 fixes: graphStatus returns typed corrupt; persist paths probe SQLite with a query before opening for write (corrupt open succeeds, query throws)."
+    },
+    {
+      "name": "secret-egress",
+      "state": "pass",
+      "evidence": "4/4 pass: no corpus secret appears in CLI status/orient/graph/support-bundle/doctor; redacted support bundle allowlist + extended SECRET_VALUE regex (npm, github_pat_, sk-live). fixtures/security/secret-corpus.json. tests/security/secret-egress.test.mjs. Added support-bundle to known commands so cortex support-bundle <path> works (was being misparsed as brief)."
+    },
+    {
+      "name": "plugin-trust-boundary",
+      "state": "pass",
+      "evidence": "6/6 pass: definePlugin now REFUSES escalated permissions (filesystem beyond repo-read, network != none, process != none) instead of silently accepting \u2014 was a real trust-boundary bug. defineProvider requires the full contract. tests/plugin-boundary.test.mjs. sdk/providers.mjs now validated."
+    },
+    {
+      "name": "poisoned-manifests",
+      "state": "pass",
+      "evidence": "3/3 pass: grammar manifest with traversal + bogus hash rejected; archive entries with ../ refused; secret detector does not echo the value. tests/security/poisoned-manifests.test.mjs, tests/security/hostile-indexing.test.mjs."
+    },
+    {
+      "name": "mcp-root-confinement",
+      "state": "pass",
+      "evidence": "2/2 pass: existing tests/mcp-root-confinement.test.mjs; new support-bundle command is schema-validated at the CLI boundary."
+    },
+    {
+      "name": "network-boundary",
+      "state": "pass",
+      "evidence": "scripts/ci/check-network-boundary.mjs green: zero undeclared network-capable operations in the shipped surface. Re-ran in the security CI job."
+    },
+    {
+      "name": "docs",
+      "state": "pass",
+      "evidence": "SECURITY.md, docs/reference/threat-model.md. Qualification mapping: every control maps to a test in tests/security/ and the network-boundary check. Threat-model table maps 12 hostile input classes to controls and gates."
+    },
+    {
+      "name": "soak-contract",
+      "state": "pass",
+      "evidence": "9/9 pass: deterministic fault sequence by seed; same-seed same-summary; 500-event run with 9 fault classes; 0 crashes, 3/3 repos healthy, independent per-repo degradation, watcher overflow -> typed eventGap with intact store, unrecognised kind throws by design, well-formed JSON. tests/soak-contract.test.mjs. scripts/fault-inject.mjs (9 fault classes), scripts/run-soak.mjs (driver)."
+    },
+    {
+      "name": "soak-driver",
+      "state": "pass",
+      "evidence": "run-soak.mjs end-to-end run: 0 crashes, all 9 fault classes applied, 3/3 repos healthy, all event gaps typed. Report written to /tmp/cortex-soak.json. Fixtures: fixtures/soak/fixture.mjs. Evals: evals/soak/README.md. Doc: docs/benchmarks/soak.md. CI: hardening job runs the soak and asserts crashes==0."
+    },
+    {
+      "name": "immutable-release-gate-chain",
+      "state": "pass",
+      "evidence": "release seal via .github/workflows/release-candidate.yml orchestrating CU-13 (SBOM/checksums/provenance) + CU-17/CU-18 (right-release signing from primary checkout) + clean-host install verification; no in-repo signing workflow per EC v4 D-18 (historical evidence updated from deleted workflow). Requires: pnpm test:all, contracts, security suite, hardening suite, network-boundary, test-package, build-candidate, check-release, sbom, attest@v4, clean-host-smoke, seam-conformance."
+    },
+    {
+      "name": "deferred-decisions",
+      "state": "pass",
+      "evidence": "4 measured decisions: release/decisions/001-node-sea.md (deferred), 002-rust-crate.md (declined), 003-remote-team-mode.md (deferred), 004-plugin-marketplace.md (deferred). Each names the reason, the measured evidence, and the reversal conditions. release/compatibility.json references them. docs/roadmap.md ships the same table to the public."
+    },
+    {
+      "name": "compatibility-policy",
+      "state": "pass",
+      "evidence": "release/compatibility.json ships the 1.0 public compatibility claim: store migration, platform compatibility, language depth (tier A/B/C), support policy (LTS line, no backports), security references, deferred decisions, artifact template. Docs: docs/roadmap.md."
+    }
+  ],
+  "stopCode": "OWNER_LICENSE_NAME_ABSENT",
+  "stopReason": "D12 is owner-gated (OWNER-LICENSE-NAME). .agent/dispatch/owner-decisions.json is not present. The agent does not choose license texts, trademark policy, npm scope, or product names. All other executable packets (D00-D11, D13-D35, D40-D45, D50-D53) are complete.",
+  "nextEligiblePackets": [
+    "D12"
+  ]
+}

@@ -1,0 +1,22 @@
+node_modules/
+.cache/
+.audit/
+.agent/graph/graph.db
+.agent/graph/graph.db-shm
+.agent/graph/graph.db-wal
+.agent/graph/grant.key
+.agent/graph/grants/
+.agent/cache/
+.agent/
+.right-release/
+release/candidates/
+apps/cortex-tray/src-tauri/icons/
+apps/cortex-tray/dist/
+apps/cortex-tray/src-tauri/gen/
+apps/cortex-tray/src-tauri/target/
+.blueprint/
+.agent-test*/
+/repos/
+
+# macOS
+.DS_Store

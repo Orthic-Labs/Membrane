@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orthic.labs/schemas/run-attestation-v1.json",
+  "title": "RunAttestationV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runId", "productVersion", "commit", "generationId", "inputs", "outputs", "artifactDigests", "createdAt"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string", "minLength": 1 },
+    "productVersion": { "type": "string", "minLength": 1 },
+    "commit": { "type": "string", "minLength": 1 },
+    "generationId": { "type": "string", "minLength": 1 },
+    "inputs": { "type": "object", "additionalProperties": true },
+    "outputs": { "type": "object", "additionalProperties": true },
+    "artifactDigests": { "type": "object", "additionalProperties": true },
+    "createdAt": { "type": "string" },
+    "details": { "type": "object", "additionalProperties": true },
+    "properties": { "type": "object", "additionalProperties": true },
+    "extensions": { "type": "object", "additionalProperties": true }
+  }
+}

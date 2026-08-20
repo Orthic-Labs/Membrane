@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "provider": "cortex-treesitter",
+  "version": "1.0.0",
+  "precisionTier": "AST",
+  "languages": ["javascript", "typescript", "python", "rust"],
+  "capabilities": ["definitions", "references", "imports"],
+  "permissions": { "filesystem": "repo-read", "network": "none", "process": "none" },
+  "state": "available",
+  "details": {},
+  "properties": {},
+  "extensions": {}
+}

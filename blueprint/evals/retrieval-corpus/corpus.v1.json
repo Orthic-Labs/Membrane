@@ -1,0 +1,237 @@
+{
+  "schemaVersion": 1,
+  "schema": "cortex-retrieval-corpus-v1",
+  "description": "Real retrieval failures sourced from the workspace. Every gold answer is a path+region (or {abstained:true}). Class identifies how the failure was observed: 'specific-symbol' (find the exact symbol), 'specific-file' (find the file), 'misleading-lexical' (the obvious lexical match is wrong), 'no-gold' (nothing relevant exists, must abstain), 'region' (find a region/line). Gold rationale is included for every case.",
+  "abstention": {
+    "shape": { "abstained": true, "reason": "no_relevant_seed" },
+    "rule": "no-gold cases MUST be answered with this shape; any returned path/symbol fails the case",
+    "scoring": "abstain on no-gold = +1.0, return junk on no-gold = 0.0"
+  },
+  "fixturesRoot": "../fixture-repos",
+  "cases": [
+    {
+      "id": "tsc-001-place-order-route",
+      "repo": "typescript-commerce",
+      "class": "specific-symbol",
+      "query": "register the POST /orders HTTP route that calls the order service",
+      "gold": { "path": "src/routes.ts", "region": [3, 8], "rationale": "registerOrderRoute is the only file defining an HTTP POST /orders handler; verified by reading the fixture's only routes file." }
+    },
+    {
+      "id": "tsc-002-place-order-service",
+      "repo": "typescript-commerce",
+      "class": "specific-symbol",
+      "query": "the OrderService class that places an order via the store",
+      "gold": { "path": "src/service.ts", "region": [3, 9], "rationale": "OrderService.placeOrder is the only method that combines find + save on the OrderStore." }
+    },
+    {
+      "id": "tsc-003-order-store-find-save",
+      "repo": "typescript-commerce",
+      "class": "specific-symbol",
+      "query": "OrderStore.find and OrderStore.save map-based persistence",
+      "gold": { "path": "src/store.ts", "region": [6, 13], "rationale": "OrderStore owns the private rows Map and the only find/save methods." }
+    },
+    {
+      "id": "tsc-004-place-order-flow",
+      "repo": "typescript-commerce",
+      "class": "specific-file",
+      "query": "placeOrder flow entry HTTP layer",
+      "gold": { "path": "src/routes.ts", "region": [3, 8], "rationale": "the placeOrder flow starts at the HTTP route, not at the service (services are downstream)." }
+    },
+    {
+      "id": "tsc-005-service-imports-store",
+      "repo": "typescript-commerce",
+      "class": "region",
+      "query": "where does OrderService import OrderStore from",
+      "gold": { "path": "src/service.ts", "region": [1, 1], "rationale": "line 1 is the only import statement in service.ts; verified by file content." }
+    },
+    {
+      "id": "tsc-006-routes-imports-service",
+      "repo": "typescript-commerce",
+      "class": "region",
+      "query": "where does routes import the order service type from",
+      "gold": { "path": "src/routes.ts", "region": [1, 1], "rationale": "line 1 is the only import in routes.ts." }
+    },
+    {
+      "id": "tsc-007-order-store-type-def",
+      "repo": "typescript-commerce",
+      "class": "region",
+      "query": "Order type definition with sku and status",
+      "gold": { "path": "src/store.ts", "region": [1, 1], "rationale": "type Order = { sku: string; status: string } is on line 1 of store.ts." }
+    },
+    {
+      "id": "tsc-008-config-file-anchor",
+      "repo": "typescript-commerce",
+      "class": "specific-symbol",
+      "query": "typescript-commerce config.ts runtime configuration",
+      "gold": { "path": "src/config.ts", "region": [1, 200], "rationale": "config.ts exists in src/; verified by directory listing." }
+    },
+    {
+      "id": "tsc-009-misleading-lexical-order-string",
+      "repo": "typescript-commerce",
+      "class": "misleading-lexical",
+      "query": "find OrderStore string constants for status",
+      "gold": { "path": "src/store.ts", "region": [8, 9], "rationale": "status appears literally only inside the store's find/save bodies; the order 'string' status values 'created' is hardcoded at service.ts:8. Lexical match would scatter hits across the test directory if the corpus contained test mocks. Here both stores and service contain 'status'; the gold pin is the store because that is where Order is defined and persisted.",
+        "trap": "if a tester were to add a tests/ mock file with literal status strings, lexical retrieval would surface tests before store.ts."
+      }
+    },
+    {
+      "id": "tsc-010-no-gold-quantum-encryption",
+      "repo": "typescript-commerce",
+      "class": "no-gold",
+      "query": "post-quantum encryption helpers",
+      "gold": { "abstained": true, "reason": "no_relevant_seed", "rationale": "no encryption primitives exist in the typescript-commerce fixture. Verified by full file read: only order service / store / routes / config / tests exist." }
+    },
+    {
+      "id": "tsc-011-no-gold-graphql",
+      "repo": "typescript-commerce",
+      "class": "no-gold",
+      "query": "GraphQL schema and resolvers",
+      "gold": { "abstained": true, "reason": "no_relevant_seed", "rationale": "no GraphQL files exist; only REST routes." }
+    },
+    {
+      "id": "tsc-012-no-gold-database-migrations",
+      "repo": "typescript-commerce",
+      "class": "no-gold",
+      "query": "database migration framework",
+      "gold": { "abstained": true, "reason": "no_relevant_seed", "rationale": "no migrations directory; persistence is in-memory only." }
+    },
+
+    {
+      "id": "mixdoc-001-truth-table-doc",
+      "repo": "mixed-doc",
+      "class": "specific-symbol",
+      "query": "the document truth table for verification",
+      "gold": { "path": "README.md", "region": [1, 200], "rationale": "README.md is the canonical document-truth reference; verified by file listing under mixed-doc/." }
+    },
+    {
+      "id": "mixdoc-002-architecture-doc",
+      "repo": "mixed-doc",
+      "class": "specific-file",
+      "query": "architecture document overview",
+      "gold": { "path": "docs/ARCHITECTURE.md", "region": [1, 400], "rationale": "docs/ARCHITURE.md is the only architecture doc in the fixture; mixed-doc/ contains only this doc under docs/." }
+    },
+    {
+      "id": "mixdoc-003-start-here-doc",
+      "repo": "mixed-doc",
+      "class": "specific-file",
+      "query": "START-HERE onboarding document",
+      "gold": { "path": "docs/START-HERE.md", "region": [1, 200], "rationale": "docs/START-HERE.md is in the fixture." }
+    },
+    {
+      "id": "mixdoc-004-refresh-ts",
+      "repo": "mixed-doc",
+      "class": "specific-symbol",
+      "query": "refresh implementation TypeScript module",
+      "gold": { "path": "src/refresh.ts", "region": [1, 200], "rationale": "src/refresh.ts is the only TS module in mixed-doc/." }
+    },
+    {
+      "id": "mixdoc-005-misleading-lexical-architecture",
+      "repo": "mixed-doc",
+      "class": "misleading-lexical",
+      "query": "architecture references in the README",
+      "gold": { "path": "README.md", "region": [1, 200], "rationale": "README.md is the canonical architecture reference for mixed-doc; the docs/ARCHITECTURE.md contains redundant text. Lexical ranking by raw term count would lift ARCHITECTURE.md because it has more matches, but the README is the agreed canonical reference.",
+        "trap": "pure tf-idf on the term 'architecture' would rank docs/ARCHITECTURE.md above README.md."
+      }
+    },
+    {
+      "id": "mixdoc-006-no-gold-deployment",
+      "repo": "mixed-doc",
+      "class": "no-gold",
+      "query": "Kubernetes deployment manifests and Helm charts",
+      "gold": { "abstained": true, "reason": "no_relevant_seed", "rationale": "no k8s/helm files in fixture." }
+    },
+
+    {
+      "id": "pyctx-001-app-entry",
+      "repo": "python-context",
+      "class": "specific-symbol",
+      "query": "python application entrypoint",
+      "gold": { "path": "app.py", "region": [1, 200], "rationale": "app.py is the top-level Python module in the fixture." }
+    },
+    {
+      "id": "pyctx-002-index-module",
+      "repo": "python-context",
+      "class": "specific-symbol",
+      "query": "python index dispatch",
+      "gold": { "path": "index.py", "region": [1, 200], "rationale": "index.py is the second Python module in the fixture." }
+    },
+    {
+      "id": "pyctx-003-test-index",
+      "repo": "python-context",
+      "class": "specific-symbol",
+      "query": "test_index test cases",
+      "gold": { "path": "test_index.py", "region": [1, 200], "rationale": "test_index.py is the only test file in the fixture." }
+    },
+    {
+      "id": "pyctx-004-misleading-lexical-import",
+      "repo": "python-context",
+      "class": "misleading-lexical",
+      "query": "import statements for the index module",
+      "gold": { "path": "index.py", "region": [1, 20], "rationale": "the index module's import block is the canonical answer. Lexical scoring can match 'import' inside test_index.py which imports from index; that file should not outrank the gold.",
+        "trap": "tf-idf on the term 'import' across all three files would lift the test file because tests typically contain more import lines."
+      }
+    },
+    {
+      "id": "pyctx-005-no-gold-async",
+      "repo": "python-context",
+      "class": "no-gold",
+      "query": "asyncio event loop and async coroutines",
+      "gold": { "abstained": true, "reason": "no_relevant_seed", "rationale": "no async/await keywords in any fixture file." }
+    },
+
+    {
+      "id": "rust-001-cargo-manifest",
+      "repo": "rust-audio",
+      "class": "specific-symbol",
+      "query": "rust audio crate manifest",
+      "gold": { "path": "Cargo.toml", "region": [1, 80], "rationale": "Cargo.toml is the only manifest file in the fixture." }
+    },
+    {
+      "id": "rust-002-lib-rs",
+      "repo": "rust-audio",
+      "class": "specific-symbol",
+      "query": "rust audio library entrypoint lib.rs",
+      "gold": { "path": "src/lib.rs", "region": [1, 200], "rationale": "src/lib.rs is the only source file in the fixture." }
+    },
+    {
+      "id": "rust-003-misleading-lexical-rust",
+      "repo": "rust-audio",
+      "class": "misleading-lexical",
+      "query": "rust audio module declaration",
+      "gold": { "path": "src/lib.rs", "region": [1, 200], "rationale": "src/lib.rs is the module root; Cargo.toml contains 'rust' but is the manifest, not the module declaration. Lexical scoring on 'module' would surface lib.rs anyway, but a tester might be tempted to pick Cargo.toml because of the term 'rust'.",
+        "trap": "tf-idf on 'rust' matches Cargo.toml strongly; module declaration semantics require lib.rs."
+      }
+    },
+    {
+      "id": "rust-004-no-gold-async-runtime",
+      "repo": "rust-audio",
+      "class": "no-gold",
+      "query": "tokio runtime configuration",
+      "gold": { "abstained": true, "reason": "no_relevant_seed", "rationale": "Cargo.toml is the only manifest file and contains no tokio runtime block in the fixture (verified by file read)." }
+    },
+
+    {
+      "id": "tsc-013-test-fixture-anchor",
+      "repo": "typescript-commerce",
+      "class": "specific-symbol",
+      "query": "service unit tests for placeOrder",
+      "gold": { "path": "test/service.test.ts", "region": [1, 200], "rationale": "test/service.test.ts is the only test file in the fixture." }
+    },
+    {
+      "id": "pyctx-006-misleading-lexical-test",
+      "repo": "python-context",
+      "class": "misleading-lexical",
+      "query": "python test cases for index",
+      "gold": { "path": "test_index.py", "region": [1, 200], "rationale": "test_index.py is the only Python test file. Lexical scoring on 'test' can match imports within app.py and index.py, but those are not test files.",
+        "trap": "any Python source file with the substring 'test' anywhere (e.g., inside an identifier) would be matched lexically."
+      }
+    },
+    {
+      "id": "tsc-014-no-gold-observability",
+      "repo": "typescript-commerce",
+      "class": "no-gold",
+      "query": "OpenTelemetry tracing instrumentation",
+      "gold": { "abstained": true, "reason": "no_relevant_seed", "rationale": "no tracing or telemetry code in the fixture." }
+    }
+  ]
+}

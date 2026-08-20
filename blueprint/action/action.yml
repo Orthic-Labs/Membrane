@@ -1,0 +1,14 @@
+name: Cortex Architecture Rules
+description: Run Cortex rules on the changed slice and upload SARIF.
+inputs:
+  version:
+    description: 'Immutable Cortex release version (e.g. v0.2.0)'
+    required: true
+    default: 'v0.2.0'
+  rules-path:
+    description: 'Path to cortex.rules.yml'
+    required: false
+    default: 'cortex.rules.yml'
+runs:
+  using: 'node20'
+  main: 'index.mjs'

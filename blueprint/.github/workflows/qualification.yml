@@ -1,0 +1,91 @@
+name: qualification
+on:
+  pull_request:
+    paths:
+      - 'src/graph/**'
+      - 'schemas/**'
+      - 'tests/**'
+      - 'evals/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  qualification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.3
+          package-manager-cache: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - run: pnpm install --frozen-lockfile
+      - run: python -m pip install -r build/requirements-test.txt
+      - run: node scripts/benchmark-retrieval.mjs --check-contract
+      - run: pnpm test:all
+  schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.3
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - run: pnpm install --frozen-lockfile
+      - run: node --test tests/contracts-v1.test.mjs
+      - run: node scripts/grammars/inventory.mjs --check || true
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.3
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - run: pnpm install --frozen-lockfile
+      - run: node scripts/ci/check-network-boundary.mjs
+      - name: Hostile-repository and secret-egress suite
+        run: pnpm test:security
+  hardening:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.3
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - run: pnpm install --frozen-lockfile
+      - run: node --test tests/store-migrations.test.mjs tests/store-rollback.test.mjs tests/performance-envelopes.test.mjs tests/cross-platform-paths.test.mjs
+      - run: node --test tests/soak-contract.test.mjs tests/daemon-recovery.test.mjs tests/freshness-regressions.test.mjs
+      - run: node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/cortex-soak.json
+      - run: test ! -s /tmp/cortex-soak.json && exit 1 || node -e "const r=require('/tmp/cortex-soak.json'); if (r.summary.crashes>0) { console.error('soak crashes:', r.findings); process.exit(1);} console.log('soak summary:', JSON.stringify(r.summary));"
+  ax-conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22.22.3
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - run: pnpm install --frozen-lockfile
+      - run: node evals/ax/run-conformance.mjs --root .

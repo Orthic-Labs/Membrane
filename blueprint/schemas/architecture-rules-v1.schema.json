@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orthic.labs/schemas/architecture-rules-v1.json",
+  "title": "ArchitectureRulesV1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "rules"],
+  "properties": {
+    "version": { "const": 1 },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "from", "disallow", "severity"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "from": { "type": "object", "additionalProperties": true },
+          "disallow": { "type": "object", "additionalProperties": true },
+          "severity": { "enum": ["error", "warning", "info"] },
+          "rationale": { "type": "string" },
+          "exceptions": { "type": "object", "additionalProperties": true }
+        }
+      }
+    }
+  }
+}

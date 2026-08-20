@@ -1,0 +1,74 @@
+{
+  "schema": "cortex-retrieval-equivalence-corpus-v1",
+  "description": "Frozen portable symbol-term retrieval contract before storage optimization.",
+  "generations": [
+    {
+      "id": "retrieval-corpus-gen-a",
+      "symbols": [
+        { "id": "symbol:src/payments/gateway.mjs::PaymentGateway.capture", "name": "capture", "qualifiedName": "PaymentGateway.capture", "path": "src/payments/gateway.mjs", "confidence": 0.98 },
+        { "id": "symbol:src/accounts/customer-reader.mjs::CustomerReader.load", "name": "load", "qualifiedName": "CustomerReader.load", "path": "src/accounts/customer-reader.mjs", "confidence": 0.9 },
+        { "id": "symbol:src/accounts/customer-writer.mjs::CustomerWriter.save", "name": "save", "qualifiedName": "CustomerWriter.save", "path": "src/accounts/customer-writer.mjs", "confidence": 0.9 },
+        { "id": "symbol:src/accounts/customer-ledger.mjs::CustomerLedger.audit", "name": "audit", "qualifiedName": "CustomerLedger.audit", "path": "src/accounts/customer-ledger.mjs", "confidence": 0.7 },
+        { "id": "symbol:src/ledger/archive.mjs::LedgerArchive.compact", "name": "compact", "qualifiedName": "LedgerArchive.compact", "path": "src/ledger/archive.mjs", "confidence": 0.99 }
+      ]
+    },
+    {
+      "id": "retrieval-corpus-gen-b",
+      "symbols": [
+        { "id": "symbol:legacy/customer.mjs::CustomerLegacy.find", "name": "find", "qualifiedName": "CustomerLegacy.find", "path": "legacy/customer.mjs", "confidence": 1 },
+        { "id": "symbol:legacy/payment.mjs::PaymentLegacy.capture", "name": "capture", "qualifiedName": "PaymentLegacy.capture", "path": "legacy/payment.mjs", "confidence": 1 }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "id": "customer-order-is-confidence-then-path-then-id",
+      "generationId": "retrieval-corpus-gen-a",
+      "tokens": ["customer"],
+      "limit": 3,
+      "expected": { "ids": ["symbol:src/accounts/customer-reader.mjs::CustomerReader.load", "symbol:src/accounts/customer-writer.mjs::CustomerWriter.save", "symbol:src/accounts/customer-ledger.mjs::CustomerLedger.audit"], "generationId": "retrieval-corpus-gen-a", "omission": null },
+      "relevantIds": ["symbol:src/accounts/customer-reader.mjs::CustomerReader.load"]
+    },
+    {
+      "id": "longest-token-wins-over-higher-confidence-shorter-token",
+      "generationId": "retrieval-corpus-gen-a",
+      "tokens": ["customerLedger"],
+      "limit": 3,
+      "expected": { "ids": ["symbol:src/accounts/customer-reader.mjs::CustomerReader.load", "symbol:src/accounts/customer-writer.mjs::CustomerWriter.save", "symbol:src/accounts/customer-ledger.mjs::CustomerLedger.audit"], "generationId": "retrieval-corpus-gen-a", "omission": null },
+      "relevantIds": ["symbol:src/accounts/customer-reader.mjs::CustomerReader.load"]
+    },
+    {
+      "id": "asterisk-fallback-is-deterministic-and-capped",
+      "generationId": "retrieval-corpus-gen-a",
+      "tokens": ["unmatchedToken"],
+      "limit": 2,
+      "expected": { "ids": ["symbol:src/ledger/archive.mjs::LedgerArchive.compact", "symbol:src/payments/gateway.mjs::PaymentGateway.capture"], "generationId": "retrieval-corpus-gen-a", "omission": null },
+      "relevantIds": ["symbol:src/ledger/archive.mjs::LedgerArchive.compact"]
+    },
+    {
+      "id": "generation-a-excludes-newer-generation-payment",
+      "generationId": "retrieval-corpus-gen-a",
+      "tokens": ["payment"],
+      "limit": 4,
+      "expected": { "ids": ["symbol:src/payments/gateway.mjs::PaymentGateway.capture"], "generationId": "retrieval-corpus-gen-a", "omission": null },
+      "relevantIds": ["symbol:src/payments/gateway.mjs::PaymentGateway.capture"]
+    },
+    {
+      "id": "generation-b-returns-its-own-symbol-identity",
+      "generationId": "retrieval-corpus-gen-b",
+      "tokens": ["customer"],
+      "limit": 4,
+      "expected": { "ids": ["symbol:legacy/customer.mjs::CustomerLegacy.find"], "generationId": "retrieval-corpus-gen-b", "omission": null },
+      "relevantIds": ["symbol:legacy/customer.mjs::CustomerLegacy.find"]
+    },
+    {
+      "id": "unknown-generation-is-a-typed-omission",
+      "generationId": "retrieval-corpus-generation-missing",
+      "tokens": ["customer"],
+      "limit": 4,
+      "expected": { "ids": [], "generationId": "retrieval-corpus-generation-missing", "omission": "generation_not_found" },
+      "relevantIds": []
+    }
+  ],
+  "expectedSummary": { "queries": 6, "hits": 5, "reciprocalRankSum": 5, "hitRate": 0.8333333333333334, "mrr": 0.8333333333333334, "omissions": 1 }
+}

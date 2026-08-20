@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "generatedFor": "D50",
+  "baselineCommit": "fe1c4cbecf7a7e20ba50d47f6b913c6fe23d19e4",
+  "repoClasses": {
+    "small": {
+      "description": "<= 2k lines, single module, < 50 files",
+      "fixture": "evals/fixture-repos/mixed-doc",
+      "budgets": {
+        "coldBuildMs": 15000,
+        "incrementalUpdateMs": 40000,
+        "noopBarrierMs": 300,
+        "searchImpactMs": 2000,
+        "mcpResponseMs": 2500,
+        "rssMb": 600,
+        "dbSizeMb": 200,
+        "incrementalWriteBytes": 5000000
+      }
+    },
+    "medium": {
+      "description": "2k-40k lines, multi-module, dozens of files",
+      "fixture": "evals/fixture-repos/typescript-commerce",
+      "budgets": {
+        "coldBuildMs": 60000,
+        "incrementalUpdateMs": 25000,
+        "noopBarrierMs": 500,
+        "searchImpactMs": 3000,
+        "mcpResponseMs": 3000,
+        "rssMb": 1200,
+        "dbSizeMb": 400,
+        "incrementalWriteBytes": 10000000
+      }
+    },
+    "large": {
+      "description": "> 40k lines or > 500 files (CI sampled on a representative subset, soak runs in D52)",
+      "fixture": null,
+      "budgets": {
+        "coldBuildMs": 300000,
+        "incrementalUpdateMs": 90000,
+        "noopBarrierMs": 1500,
+        "searchImpactMs": 8000,
+        "mcpResponseMs": 8000,
+        "rssMb": 2500,
+        "dbSizeMb": 900,
+        "incrementalWriteBytes": 40000000
+      }
+    }
+  },
+  "ciSlackMultiplier": 4.0,
+  "waivers": []
+}

@@ -1,0 +1,10 @@
+node_modules
+.git
+.agent
+.agent*
+tests
+evals
+docs
+release
+.github
+*.tgz

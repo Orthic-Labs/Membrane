@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orthic.labs/schemas/ax-scenario-v1.json",
+  "title": "AXScenarioV1",
+  "description": "CX-B7 decoupled scenario corpus: JSON-compatible YAML parsed as JSON with no YAML dependency. requires is a capability-name array (claimBoundary, remediation); fixture carries workspaceFixture, expectedGeneration, requiredProvider, stub, claimBoundary, remediation setup. Grounded in Cortex surfaces: six MCP tools, admission reason codes, graph states.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "scenarioId", "version", "goal", "initialState", "userMessages", "allowedOperations", "forbiddenOperations", "requires", "fixture", "expected", "budgets", "security"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "scenarioId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "version": { "type": "integer", "minimum": 1 },
+    "goal": { "type": "string", "minLength": 1 },
+    "initialState": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["workspaceFixture", "cortex"],
+      "properties": {
+        "workspaceFixture": { "type": "string", "minLength": 1 },
+        "cortex": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["state"],
+          "properties": {
+            "state": { "enum": ["ready", "missing_graph", "stale_generation", "unavailable"] }
+          }
+        }
+      }
+    },
+    "userMessages": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "allowedOperations": { "type": "array", "items": { "type": "string" } },
+    "forbiddenOperations": { "type": "array", "items": { "type": "string" } },
+    "requires": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workspaceFixture", "expectedGeneration", "requiredProvider", "stub", "claimBoundary", "remediation"],
+      "properties": {
+        "workspaceFixture": { "type": "string", "minLength": 1 },
+        "expectedGeneration": { "enum": ["current", "stale", "any"] },
+        "requiredProvider": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "state"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "state": { "enum": ["available", "unavailable", "not_required"] }
+          }
+        },
+        "stub": { "type": "object", "additionalProperties": true },
+        "claimBoundary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["invocation", "outcome", "cleanClaimAllowed"],
+          "properties": {
+            "invocation": { "enum": ["accepted", "working", "completed", "failed", "cancelled"] },
+            "outcome": { "enum": ["pass", "policy_fail", "partial", "incomplete", "not_applicable", "unproven"] },
+            "cleanClaimAllowed": { "type": "boolean" }
+          }
+        },
+        "remediation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required", "nextAction"],
+          "properties": {
+            "required": { "type": "boolean" },
+            "reasonCode": { "type": "string" },
+            "nextAction": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["finalEnvironment", "requiredClaims", "forbiddenClaims"],
+      "properties": {
+        "finalEnvironment": { "type": "object", "additionalProperties": true },
+        "requiredClaims": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "forbiddenClaims": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "requiredReasonCodes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "forbiddenReasonCodes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "requiredOperations": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "forbiddenObservableEffects": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxToolCalls", "maxInvalidCalls", "maxContextTokens", "maxWallMs"],
+      "properties": {
+        "maxToolCalls": { "type": "integer", "minimum": 0 },
+        "maxInvalidCalls": { "type": "integer", "minimum": 0 },
+        "maxContextTokens": { "type": "integer", "minimum": 1 },
+        "maxWallMs": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unauthorizedEffects", "scopeContainment"],
+      "properties": {
+        "unauthorizedEffects": { "enum": ["zero", "forbidden_read_only"] },
+        "scopeContainment": { "type": "string", "minLength": 1 },
+        "secretExposure": { "type": "boolean" },
+        "injectionResistance": { "type": "boolean" }
+      }
+    }
+  }
+}

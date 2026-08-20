@@ -1,0 +1,1075 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-11T22:01:44.195Z",
+  "generators": {
+    "scipTypescript": "0.4.0",
+    "rustAnalyzer": "1.96.1 (31fca3ad 2026-06-26)",
+    "scipPython": "0.6.6",
+    "scipCli": "0.9.0"
+  },
+  "indexes": {
+    "typescript-commerce": {
+      "sha256": "7969c6f2c05d93004f540df009988cda93a91a43fa3962352430d98815e9b983"
+    },
+    "rust-audio": {
+      "sha256": "885e628ddc5372aa2bb8f3608e5304a63fc564ac486f8b7cc01547e3462603b8"
+    },
+    "python-context": {
+      "sha256": "a9cb14bd061e3de7b9f6eaae7f000617398ed07455c953f7e59b23cd257c046b"
+    }
+  },
+  "tasks": {
+    "ts-symbol-definition": {
+      "symbols": [
+        "local 2",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save()."
+      ],
+      "evidence": [
+        {
+          "path": "src/service.ts",
+          "expectedSpan": [
+            6,
+            9
+          ],
+          "occurrences": [
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "role": "definition",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "role": "definition",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "local 2",
+              "role": "definition",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "local 2",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            }
+          ]
+        }
+      ]
+    },
+    "ts-call-path": {
+      "symbols": [
+        "local 2",
+        "local 3",
+        "local 4",
+        "local 7",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save()."
+      ],
+      "evidence": [
+        {
+          "path": "src/routes.ts",
+          "expectedSpan": [
+            3,
+            8
+          ],
+          "occurrences": [
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
+              "role": "definition",
+              "startLine": 3,
+              "endLine": 3
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+              "role": "definition",
+              "startLine": 3,
+              "endLine": 3
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+              "role": "definition",
+              "startLine": 3,
+              "endLine": 3
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+              "role": "reference",
+              "startLine": 3,
+              "endLine": 3
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+              "role": "reference",
+              "startLine": 4,
+              "endLine": 4
+            },
+            {
+              "symbol": "local 3",
+              "role": "definition",
+              "startLine": 4,
+              "endLine": 4
+            },
+            {
+              "symbol": "local 4",
+              "role": "definition",
+              "startLine": 4,
+              "endLine": 4
+            },
+            {
+              "symbol": "local 7",
+              "role": "definition",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "local 3",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "local 4",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "local 7",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            }
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "expectedSpan": [
+            6,
+            9
+          ],
+          "occurrences": [
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "role": "definition",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "role": "definition",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "local 2",
+              "role": "definition",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "local 2",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            }
+          ]
+        }
+      ]
+    },
+    "ts-import-path": {
+      "symbols": [
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#"
+      ],
+      "evidence": [
+        {
+          "path": "src/routes.ts",
+          "expectedSpan": [
+            1,
+            1
+          ],
+          "occurrences": [
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/",
+              "role": "definition",
+              "startLine": 1,
+              "endLine": 1
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+              "role": "reference",
+              "startLine": 1,
+              "endLine": 1
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/",
+              "role": "reference",
+              "startLine": 1,
+              "endLine": 1
+            }
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "expectedSpan": [
+            1,
+            1
+          ],
+          "occurrences": [
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/",
+              "role": "definition",
+              "startLine": 1,
+              "endLine": 1
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
+              "role": "reference",
+              "startLine": 1,
+              "endLine": 1
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/",
+              "role": "reference",
+              "startLine": 1,
+              "endLine": 1
+            }
+          ]
+        }
+      ]
+    },
+    "ts-route-storage-flow": {
+      "symbols": [
+        "local 2",
+        "local 3",
+        "local 4",
+        "local 7",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)"
+      ],
+      "evidence": [
+        {
+          "path": "src/routes.ts",
+          "expectedSpan": [
+            3,
+            8
+          ],
+          "occurrences": [
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().",
+              "role": "definition",
+              "startLine": 3,
+              "endLine": 3
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+              "role": "definition",
+              "startLine": 3,
+              "endLine": 3
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+              "role": "definition",
+              "startLine": 3,
+              "endLine": 3
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#",
+              "role": "reference",
+              "startLine": 3,
+              "endLine": 3
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(router)",
+              "role": "reference",
+              "startLine": 4,
+              "endLine": 4
+            },
+            {
+              "symbol": "local 3",
+              "role": "definition",
+              "startLine": 4,
+              "endLine": 4
+            },
+            {
+              "symbol": "local 4",
+              "role": "definition",
+              "startLine": 4,
+              "endLine": 4
+            },
+            {
+              "symbol": "local 7",
+              "role": "definition",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`routes.ts`/registerOrderRoute().(service)",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "local 3",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "local 4",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "local 7",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            }
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "expectedSpan": [
+            6,
+            9
+          ],
+          "occurrences": [
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "role": "definition",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "role": "definition",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "local 2",
+              "role": "definition",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#find().",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().(sku)",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "local 2",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            }
+          ]
+        },
+        {
+          "path": "src/store.ts",
+          "expectedSpan": [
+            10,
+            13
+          ],
+          "occurrences": [
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "role": "definition",
+              "startLine": 10,
+              "endLine": 10
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "role": "definition",
+              "startLine": 10,
+              "endLine": 10
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
+              "role": "reference",
+              "startLine": 10,
+              "endLine": 10
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
+              "role": "reference",
+              "startLine": 11,
+              "endLine": 11
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "role": "reference",
+              "startLine": 11,
+              "endLine": 11
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "role": "reference",
+              "startLine": 11,
+              "endLine": 11
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "role": "reference",
+              "startLine": 11,
+              "endLine": 11
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "role": "reference",
+              "startLine": 12,
+              "endLine": 12
+            }
+          ]
+        }
+      ]
+    },
+    "ts-blast-radius": {
+      "symbols": [
+        "local 2",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)"
+      ],
+      "evidence": [
+        {
+          "path": "src/store.ts",
+          "expectedSpan": [
+            10,
+            13
+          ],
+          "occurrences": [
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "role": "definition",
+              "startLine": 10,
+              "endLine": 10
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "role": "definition",
+              "startLine": 10,
+              "endLine": 10
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#",
+              "role": "reference",
+              "startLine": 10,
+              "endLine": 10
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#rows.",
+              "role": "reference",
+              "startLine": 11,
+              "endLine": 11
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "role": "reference",
+              "startLine": 11,
+              "endLine": 11
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "role": "reference",
+              "startLine": 11,
+              "endLine": 11
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "role": "reference",
+              "startLine": 11,
+              "endLine": 11
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().(order)",
+              "role": "reference",
+              "startLine": 12,
+              "endLine": 12
+            }
+          ]
+        },
+        {
+          "path": "src/service.ts",
+          "expectedSpan": [
+            8,
+            8
+          ],
+          "occurrences": [
+            {
+              "symbol": "local 2",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().(store)",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#save().",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:sku.",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/Order#typeLiteral0:status.",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            }
+          ]
+        },
+        {
+          "path": "test/service.test.ts",
+          "expectedSpan": [
+            4,
+            7
+          ],
+          "occurrences": [
+            {
+              "symbol": "local 2",
+              "role": "definition",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "local 2",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            }
+          ]
+        }
+      ]
+    },
+    "ts-test-coverage": {
+      "symbols": [
+        "local 2",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+        "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#"
+      ],
+      "evidence": [
+        {
+          "path": "test/service.test.ts",
+          "expectedSpan": [
+            4,
+            7
+          ],
+          "occurrences": [
+            {
+              "symbol": "local 2",
+              "role": "definition",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#`<constructor>`().",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`store.ts`/OrderStore#",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "local 2",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "scip-typescript npm claude-tools-shared 1.0.0 skills/cortex/evals/fixture-repos/typescript-commerce/src/`service.ts`/OrderService#placeOrder().",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            }
+          ]
+        }
+      ]
+    },
+    "semantic-rust-audio": {
+      "symbols": [
+        "local 2",
+        "local 3",
+        "rust-analyzer cargo alloc https://github.com/rust-lang/rust/library/alloc vec/Vec#",
+        "rust-analyzer cargo cortex-rust-audio-fixture 0.1.0 crate/",
+        "rust-analyzer cargo cortex-rust-audio-fixture 0.1.0 normalize().",
+        "rust-analyzer cargo core https://github.com/rust-lang/rust/library/core f32/impl#[f32]clamp().",
+        "rust-analyzer cargo core https://github.com/rust-lang/rust/library/core iter/traits/iterator/Iterator#collect().",
+        "rust-analyzer cargo core https://github.com/rust-lang/rust/library/core iter/traits/iterator/Iterator#map().",
+        "rust-analyzer cargo core https://github.com/rust-lang/rust/library/core ops/arith/impl#[f32][Neg]neg().",
+        "rust-analyzer cargo core https://github.com/rust-lang/rust/library/core slice/impl#[`[T]`]iter()."
+      ],
+      "evidence": [
+        {
+          "path": "src/lib.rs",
+          "expectedSpan": [
+            8,
+            10
+          ],
+          "occurrences": [
+            {
+              "symbol": "rust-analyzer cargo cortex-rust-audio-fixture 0.1.0 crate/",
+              "role": "definition",
+              "startLine": 1,
+              "endLine": 21
+            },
+            {
+              "symbol": "rust-analyzer cargo cortex-rust-audio-fixture 0.1.0 normalize().",
+              "role": "definition",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "local 2",
+              "role": "definition",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "rust-analyzer cargo alloc https://github.com/rust-lang/rust/library/alloc vec/Vec#",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "local 2",
+              "role": "reference",
+              "startLine": 9,
+              "endLine": 9
+            },
+            {
+              "symbol": "rust-analyzer cargo core https://github.com/rust-lang/rust/library/core slice/impl#[`[T]`]iter().",
+              "role": "reference",
+              "startLine": 9,
+              "endLine": 9
+            },
+            {
+              "symbol": "rust-analyzer cargo core https://github.com/rust-lang/rust/library/core iter/traits/iterator/Iterator#map().",
+              "role": "reference",
+              "startLine": 9,
+              "endLine": 9
+            },
+            {
+              "symbol": "local 3",
+              "role": "definition",
+              "startLine": 9,
+              "endLine": 9
+            },
+            {
+              "symbol": "local 3",
+              "role": "reference",
+              "startLine": 9,
+              "endLine": 9
+            },
+            {
+              "symbol": "rust-analyzer cargo core https://github.com/rust-lang/rust/library/core f32/impl#[f32]clamp().",
+              "role": "reference",
+              "startLine": 9,
+              "endLine": 9
+            },
+            {
+              "symbol": "rust-analyzer cargo core https://github.com/rust-lang/rust/library/core ops/arith/impl#[f32][Neg]neg().",
+              "role": "reference",
+              "startLine": 9,
+              "endLine": 9
+            },
+            {
+              "symbol": "rust-analyzer cargo core https://github.com/rust-lang/rust/library/core iter/traits/iterator/Iterator#collect().",
+              "role": "reference",
+              "startLine": 9,
+              "endLine": 9
+            }
+          ]
+        }
+      ]
+    },
+    "semantic-python-context": {
+      "symbols": [
+        "local 0",
+        "local 1",
+        "local 2",
+        "scip-python python cortex-python-context-fixture 1 index/ContextIndex#_documents.",
+        "scip-python python cortex-python-context-fixture 1 index/ContextIndex#retrieve().",
+        "scip-python python cortex-python-context-fixture 1 index/ContextIndex#retrieve().(limit)",
+        "scip-python python cortex-python-context-fixture 1 index/ContextIndex#retrieve().(query)",
+        "scip-python python cortex-python-context-fixture 1 index/ContextIndex#retrieve().(self)",
+        "scip-python python python-stdlib 3.11 builtins/int#",
+        "scip-python python python-stdlib 3.11 builtins/list#",
+        "scip-python python python-stdlib 3.11 builtins/set#",
+        "scip-python python python-stdlib 3.11 builtins/set#intersection().",
+        "scip-python python python-stdlib 3.11 builtins/str#",
+        "scip-python python python-stdlib 3.11 builtins/str#lower().",
+        "scip-python python python-stdlib 3.11 builtins/str#split()."
+      ],
+      "evidence": [
+        {
+          "path": "index.py",
+          "expectedSpan": [
+            5,
+            8
+          ],
+          "occurrences": [
+            {
+              "symbol": "scip-python python cortex-python-context-fixture 1 index/ContextIndex#retrieve().",
+              "role": "definition",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-python python python-stdlib 3.11 builtins/list#",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-python python python-stdlib 3.11 builtins/str#",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-python python cortex-python-context-fixture 1 index/ContextIndex#retrieve().(self)",
+              "role": "definition",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-python python cortex-python-context-fixture 1 index/ContextIndex#retrieve().(query)",
+              "role": "definition",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-python python python-stdlib 3.11 builtins/str#",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-python python cortex-python-context-fixture 1 index/ContextIndex#retrieve().(limit)",
+              "role": "definition",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "scip-python python python-stdlib 3.11 builtins/int#",
+              "role": "reference",
+              "startLine": 5,
+              "endLine": 5
+            },
+            {
+              "symbol": "local 0",
+              "role": "definition",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "scip-python python python-stdlib 3.11 builtins/set#",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "scip-python python cortex-python-context-fixture 1 index/ContextIndex#retrieve().(query)",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "scip-python python python-stdlib 3.11 builtins/str#lower().",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "scip-python python python-stdlib 3.11 builtins/str#split().",
+              "role": "reference",
+              "startLine": 6,
+              "endLine": 6
+            },
+            {
+              "symbol": "local 1",
+              "role": "definition",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "local 2",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "local 2",
+              "role": "definition",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-python python cortex-python-context-fixture 1 index/ContextIndex#retrieve().(self)",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-python python cortex-python-context-fixture 1 index/ContextIndex#_documents.",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "local 0",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-python python python-stdlib 3.11 builtins/set#intersection().",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "local 2",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "scip-python python python-stdlib 3.11 builtins/str#split().",
+              "role": "reference",
+              "startLine": 7,
+              "endLine": 7
+            },
+            {
+              "symbol": "local 1",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            },
+            {
+              "symbol": "scip-python python cortex-python-context-fixture 1 index/ContextIndex#retrieve().(limit)",
+              "role": "reference",
+              "startLine": 8,
+              "endLine": 8
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orthic.labs/schemas/scope-grant-v1.json",
+  "title": "ScopeGrantV1",
+  "description": "A task-scoped cooperating-host grant. HMAC is tamper-evidence for cooperating hosts, not cryptographic security against a hostile local user.",
+  "type": "object",
+  "required": ["taskId", "repoRoot", "generationId", "receiptId", "paths", "issuedMs", "ttlMs", "signature"],
+  "properties": {
+    "taskId": { "type": "string", "minLength": 1 },
+    "repoRoot": { "type": "string", "minLength": 1 },
+    "generationId": { "type": ["string", "null"] },
+    "receiptId": { "type": "string", "minLength": 1 },
+    "paths": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+    "issuedMs": { "type": "integer", "minimum": 0 },
+    "ttlMs": { "type": "integer", "minimum": 1 },
+    "signature": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  },
+  "additionalProperties": false
+}

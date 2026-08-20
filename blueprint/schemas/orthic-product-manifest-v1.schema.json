@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ManifestV1",
+  "type": "object",
+  "required": ["schemaVersion", "productId", "displayName", "productVersion", "hubCompatRange", "installRoot", "serviceStart", "serviceStop", "statusEndpoint", "icon"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "productId": { "type": "string", "enum": ["cortex", "membrane"] },
+    "displayName": { "type": "string", "minLength": 1 },
+    "productVersion": { "type": "string", "minLength": 1 },
+    "hubCompatRange": { "type": "string", "minLength": 1 },
+    "installRoot": { "type": "string", "minLength": 1 },
+    "serviceStart": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "serviceStop": { "type": "array", "items": { "type": "string" } },
+    "statusEndpoint": {
+      "type": "object",
+      "required": ["host", "port", "authHeader", "authToken"],
+      "additionalProperties": false,
+      "properties": {
+        "host": { "type": "string", "minLength": 1 },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "authHeader": { "type": "string", "minLength": 1 },
+        "authToken": { "type": "string", "minLength": 1 }
+      }
+    },
+    "icon": { "type": "string", "minLength": 1 }
+  }
+}

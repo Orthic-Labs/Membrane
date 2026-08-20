@@ -1,0 +1,454 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "fc04e73b1a894b0e30d7ff0abc497e674993ed03",
+  "observedCommit": "fc04e73b1a894b0e30d7ff0abc497e674993ed03",
+  "startedAt": "2026-08-06T00:00:00.000Z",
+  "platform": "win32-x64",
+  "runtime": {
+    "node": "v26.5.0",
+    "pnpm": "11.18.0",
+    "python": "3.11.0"
+  },
+  "workingTree": "dirty",
+  "completedPackets": [
+    "D00",
+    "D01",
+    "D02",
+    "D03",
+    "D04",
+    "D05",
+    "D06",
+    "D07",
+    "D08",
+    "D09",
+    "D10",
+    "D11",
+    "D13",
+    "D14",
+    "D15",
+    "D16",
+    "D17",
+    "D18",
+    "D19",
+    "D20",
+    "D21",
+    "D22",
+    "D23",
+    "D24",
+    "D25",
+    "D26",
+    "D27",
+    "D28",
+    "D29",
+    "D30",
+    "D31",
+    "D32",
+    "D33",
+    "D34",
+    "D35",
+    "D40",
+    "D41",
+    "D42",
+    "D43",
+    "D44",
+    "D45",
+    "D50",
+    "D51",
+    "D52",
+    "D53"
+  ],
+  "activePacket": null,
+  "evidence": [
+    {
+      "packet": "D00-D13",
+      "gate": "core",
+      "state": "pass",
+      "evidence": "see earlier records; all green"
+    },
+    {
+      "packet": "D14",
+      "gate": "runtime bundles",
+      "state": "pass",
+      "evidence": "no-system-Node help; realpath guard fix"
+    },
+    {
+      "packet": "D15",
+      "gate": "service",
+      "state": "pass",
+      "evidence": "12 pass; uninstall purge test now uses temp dataDir"
+    },
+    {
+      "packet": "D16",
+      "gate": "update/rollback",
+      "state": "pass",
+      "evidence": "14 pass; check-network-boundary green; pnpm test 419"
+    },
+    {
+      "packet": "D17",
+      "gate": "macOS signing artifacts",
+      "state": "pass",
+      "evidence": "10 pass (macos+windows tests); sign-and-package.sh S-14 order, distribution.xml, postinstall, uninstall; LIVE SIGNING OWNER-GATED (not-run)"
+    },
+    {
+      "packet": "D18",
+      "gate": "Windows signing artifacts",
+      "state": "pass",
+      "evidence": "Cortex.iss per-user, azure artifact-signing workflow, verify-signatures.ps1, uninstall-check; LIVE SIGNING OWNER-GATED (not-run)"
+    },
+    {
+      "packet": "D19",
+      "gate": "package-manager manifests",
+      "state": "pass",
+      "evidence": "7 pass; ruby -c OK; server.json valid; homebrew/winget/scoop/linux/container/catalog complete"
+    },
+    {
+      "packet": "D20",
+      "gate": "inventory --check",
+      "state": "pass",
+      "evidence": "36 grammars, 0.1.13, digest a4f33e3c"
+    },
+    {
+      "packet": "D20",
+      "gate": "verify.mjs",
+      "state": "pass",
+      "evidence": "36 grammars routed"
+    },
+    {
+      "packet": "D20",
+      "gate": "grammar-manifest.test.mjs",
+      "state": "pass",
+      "evidence": "6 pass: inventory, catalog, digest, registry routing, capability records, languages --json"
+    },
+    {
+      "packet": "D20",
+      "gate": "pnpm test",
+      "state": "pass",
+      "evidence": "442 pass / 0 fail"
+    },
+    {
+      "packet": "D21",
+      "gate": "generic-ast-walker + confidence-precision-tiers",
+      "state": "pass",
+      "evidence": "26 pass: table freeze, function/import/comment emission, partial/failed parse, data-profile no-fabrication, engine opt-in"
+    },
+    {
+      "packet": "D21",
+      "gate": "pnpm test",
+      "state": "pass",
+      "evidence": "pass / 0 fail"
+    },
+    {
+      "packet": "D22",
+      "gate": "treesitter-parity",
+      "state": "pass",
+      "evidence": "5 pass: JS/TS/TSX/Python/Rust legacy\u2194generic semantic parity; childForFieldName fix; loadLanguageRecord exported"
+    },
+    {
+      "packet": "D22",
+      "gate": "pnpm test:all",
+      "state": "pass",
+      "evidence": "487 pass / 0 fail"
+    },
+    {
+      "packet": "D23",
+      "gate": "language-batch-a",
+      "state": "pass",
+      "evidence": "go/java/kotlin/csharp/c/cpp/objc tables + fixtures"
+    },
+    {
+      "packet": "D24",
+      "gate": "language-batch-b",
+      "state": "pass",
+      "evidence": "php/ruby/swift/dart/scala/elixir/lua/ocaml/elm/rescript/solidity/zig"
+    },
+    {
+      "packet": "D25",
+      "gate": "language-batch-c",
+      "state": "pass",
+      "evidence": "bash/elisp/erb/html/css/json/ql/systemrdl/tlaplus/toml/vue/yaml profiles; 37 batch tests; --require-all-wired green; 524 pass"
+    },
+    {
+      "packet": "D23-D25",
+      "gate": "pnpm test:all",
+      "state": "pass",
+      "evidence": "524 pass / 0 fail; elm/ql/yaml ABI/runtime degradation honest"
+    },
+    {
+      "packet": "D26",
+      "gate": "custom-language.test.mjs",
+      "state": "pass",
+      "evidence": "4 pass: repo-confined load, built-in conflict, path/hash rejection, absent config"
+    },
+    {
+      "packet": "D27",
+      "gate": "relationship-vocabulary + comment-claims + syntax-chunks",
+      "state": "pass",
+      "evidence": "8 pass: vocabulary, resolution-path confidence, claims with span/hash/data_only, truncation receipts"
+    },
+    {
+      "packet": "D26+D27",
+      "gate": "pnpm test",
+      "state": "pass",
+      "evidence": "pass / 0 fail"
+    },
+    {
+      "packet": "D28",
+      "gate": "compiler-adapters + module-resolution",
+      "state": "pass",
+      "evidence": "5 pass: defineProvider contract, JS/TS resolver (relative/extensionless/index/bare), SCIP typed degradation, provider absence"
+    },
+    {
+      "packet": "D29",
+      "gate": "iac-profiles",
+      "state": "pass",
+      "evidence": "7 pass: routing, SQL/Dockerfile/Terraform/K8s positive+negative+ambiguous, disk extraction"
+    },
+    {
+      "packet": "D28+D29",
+      "gate": "pnpm test",
+      "state": "pass",
+      "evidence": "pass / 0 fail"
+    },
+    {
+      "packet": "D30",
+      "gate": "ipc-protocol + ipc-concurrency + daemon-recovery",
+      "state": "pass",
+      "evidence": "9 pass: envelopes, methods, search over daemon, method_unknown, cancellation, concurrent clients, one-repo isolation, restart rebind, stale-endpoint fast fail"
+    },
+    {
+      "packet": "D30",
+      "gate": "pnpm test:all",
+      "state": "pass",
+      "evidence": "pass / 0 fail"
+    },
+    {
+      "packet": "D31",
+      "gate": "mcp-resources + host matrix + hook policies",
+      "state": "pass",
+      "evidence": "5 pass: 8 URI resources, 6 tool-referencing prompts, SDK compat matrix, 7 host configs, policy fail-open/fail-closed"
+    },
+    {
+      "packet": "D32",
+      "gate": "sdk.test.mjs + plugin boundary",
+      "state": "pass",
+      "evidence": "6 pass: CortexClient, EmbeddedCortexClient, daemon IPC, plugin types, example plugin, no-override"
+    },
+    {
+      "packet": "D31+D32",
+      "gate": "pnpm test:all + test-package",
+      "state": "pass",
+      "evidence": "568 pass / 0 fail; tarball clean"
+    },
+    {
+      "packet": "D33",
+      "gate": "http-framework-providers",
+      "state": "pass",
+      "evidence": "import gates, Express/FastAPI/Tauri routes, positive/negative/ambiguity, inline-comment stripping"
+    },
+    {
+      "packet": "D34",
+      "gate": "cross-stack providers",
+      "state": "pass",
+      "evidence": "events/db/deploy facts with CROSS_FILE_HEURISTIC edges, polyglot trace"
+    },
+    {
+      "packet": "D35",
+      "gate": "federation + evidence packs",
+      "state": "pass",
+      "evidence": "slice composition, generation ambiguity, scope, packs with digest/omissions/cursor/redaction"
+    },
+    {
+      "packet": "D33-D35",
+      "gate": "pnpm test:all",
+      "state": "pass",
+      "evidence": "pass / 0 fail"
+    },
+    {
+      "packet": "D40",
+      "gate": "graph-analytics + architecture-model",
+      "state": "pass",
+      "evidence": "7 pass: Tarjan SCC, cycles, dead-code candidates, layers, digest, hotspots"
+    },
+    {
+      "packet": "D41",
+      "gate": "rules-engine",
+      "state": "pass",
+      "evidence": "6 pass: DSL parse, globs, evaluation, stable fingerprints, exceptions, baselines"
+    },
+    {
+      "packet": "D42",
+      "gate": "sarif + action + run-ledger",
+      "state": "pass",
+      "evidence": "4 pass: SARIF mapping, ledger verify/tamper/broken-chain, Action read-only"
+    },
+    {
+      "packet": "D40-D42",
+      "gate": "pnpm test",
+      "state": "pass",
+      "evidence": "567 pass / 0 fail"
+    },
+    {
+      "packet": "D43",
+      "gate": "benchmark-contract + parser smoke",
+      "state": "pass",
+      "evidence": "4 pass: preregistered metrics, repo classes, parser benchmark records hardware/versions/failures"
+    },
+    {
+      "packet": "D44",
+      "gate": "hybrid-ranking + semantic sidecar",
+      "state": "pass",
+      "evidence": "4 pass: candidate-only, disabled default, opt-in, explainable components, deterministic"
+    },
+    {
+      "packet": "D45",
+      "gate": "ui-security + export",
+      "state": "pass",
+      "evidence": "7 pass: tokens, loopback auth, endpoints, 401/404/405, exports reproducible"
+    },
+    {
+      "packet": "D43-D45",
+      "gate": "pnpm test:all",
+      "state": "pass",
+      "evidence": "pass / 0 fail"
+    },
+    {
+      "packet": "D50",
+      "gate": "store-migrations",
+      "state": "pass",
+      "evidence": "17/17 pass: N-1 (v13) and N-2 (v12) fixture stores migrate to current schema v14 without data loss; pre-migration backup written; repairInterruptedMigration restores torn store and re-migrates. Fixtures: fixtures/stores/build-stores.mjs. Tests: tests/store-migrations.test.mjs, tests/store-rollback.test.mjs, tests/performance-envelopes.test.mjs, tests/cross-platform-paths.test.mjs. Docs: docs/reference/store.md, docs/benchmarks/performance-envelopes.md. CI: hardening job added to qualification.yml."
+    },
+    {
+      "packet": "D50",
+      "gate": "performance-envelopes",
+      "state": "pass",
+      "evidence": "machine-readable budget table evals/performance-envelopes.json; 4x CI slack multiplier; small/medium envelopes enforced in tests/performance-envelopes.test.mjs (4/4 pass)."
+    },
+    {
+      "packet": "D50",
+      "gate": "cross-platform-paths",
+      "state": "pass",
+      "evidence": "4/4 pass: symlink canonicalisation, case-variant identity collapse/divergence per FS, root-registry confinement, separator normalisation. tests/cross-platform-paths.test.mjs."
+    },
+    {
+      "packet": "D51",
+      "gate": "hostile-indexing",
+      "state": "pass",
+      "evidence": "5/5 pass: huge files, deep trees, symlink escape, malformed store (typed corrupt), event overflow, path case tricks. tests/security/hostile-indexing.test.mjs. Real D51 fixes: graphStatus returns typed corrupt; persist paths probe SQLite with a query before opening for write (corrupt open succeeds, query throws)."
+    },
+    {
+      "packet": "D51",
+      "gate": "secret-egress",
+      "state": "pass",
+      "evidence": "4/4 pass: no corpus secret appears in CLI status/orient/graph/support-bundle/doctor; redacted support bundle allowlist + extended SECRET_VALUE regex (npm, github_pat_, sk-live). fixtures/security/secret-corpus.json. tests/security/secret-egress.test.mjs. Added support-bundle to known commands so cortex support-bundle <path> works (was being misparsed as brief)."
+    },
+    {
+      "packet": "D51",
+      "gate": "plugin-trust-boundary",
+      "state": "pass",
+      "evidence": "6/6 pass: definePlugin now REFUSES escalated permissions (filesystem beyond repo-read, network != none, process != none) instead of silently accepting \u2014 was a real trust-boundary bug. defineProvider requires the full contract. tests/plugin-boundary.test.mjs. sdk/providers.mjs now validated."
+    },
+    {
+      "packet": "D51",
+      "gate": "poisoned-manifests",
+      "state": "pass",
+      "evidence": "3/3 pass: grammar manifest with traversal + bogus hash rejected; archive entries with ../ refused; secret detector does not echo the value. tests/security/poisoned-manifests.test.mjs, tests/security/hostile-indexing.test.mjs."
+    },
+    {
+      "packet": "D51",
+      "gate": "mcp-root-confinement",
+      "state": "pass",
+      "evidence": "2/2 pass: existing tests/mcp-root-confinement.test.mjs; new support-bundle command is schema-validated at the CLI boundary."
+    },
+    {
+      "packet": "D51",
+      "gate": "network-boundary",
+      "state": "pass",
+      "evidence": "scripts/ci/check-network-boundary.mjs green: zero undeclared network-capable operations in the shipped surface. Re-ran in the security CI job."
+    },
+    {
+      "packet": "D51",
+      "gate": "docs",
+      "state": "pass",
+      "evidence": "SECURITY.md, docs/reference/threat-model.md. Qualification mapping: every control maps to a test in tests/security/ and the network-boundary check. Threat-model table maps 12 hostile input classes to controls and gates."
+    },
+    {
+      "packet": "D52",
+      "gate": "soak-contract",
+      "state": "pass",
+      "evidence": "9/9 pass: deterministic fault sequence by seed; same-seed same-summary; 500-event run with 9 fault classes; 0 crashes, 3/3 repos healthy, independent per-repo degradation, watcher overflow -> typed eventGap with intact store, unrecognised kind throws by design, well-formed JSON. tests/soak-contract.test.mjs. scripts/fault-inject.mjs (9 fault classes), scripts/run-soak.mjs (driver)."
+    },
+    {
+      "packet": "D52",
+      "gate": "soak-driver",
+      "state": "pass",
+      "evidence": "run-soak.mjs end-to-end run: 0 crashes, all 9 fault classes applied, 3/3 repos healthy, all event gaps typed. Report written to /tmp/cortex-soak.json. Fixtures: fixtures/soak/fixture.mjs. Evals: evals/soak/README.md. Doc: docs/benchmarks/soak.md. CI: hardening job runs the soak and asserts crashes==0."
+    },
+    {
+      "packet": "D53",
+      "gate": "immutable-release-gate-chain",
+      "state": "pass",
+      "evidence": "release seal via .github/workflows/release-candidate.yml orchestrating CU-13 (SBOM/checksums/provenance) + CU-17/CU-18 (right-release signing from primary checkout) + clean-host install verification; no in-repo signing workflow per EC v4 D-18. Requires: pnpm test:all, contracts, security suite, hardening suite, network-boundary, test-package, build-candidate, check-release, sbom, attest@v4, clean-host-smoke, seam-conformance."
+    },
+    {
+      "packet": "D53",
+      "gate": "deferred-decisions",
+      "state": "pass",
+      "evidence": "4 measured decisions: release/decisions/001-node-sea.md (deferred), 002-rust-crate.md (declined), 003-remote-team-mode.md (deferred), 004-plugin-marketplace.md (deferred). Each names the reason, the measured evidence, and the reversal conditions. release/compatibility.json references them. docs/roadmap.md ships the same table to the public."
+    },
+    {
+      "packet": "D53",
+      "gate": "compatibility-policy",
+      "state": "pass",
+      "evidence": "release/compatibility.json ships the 1.0 public compatibility claim: store migration, platform compatibility, language depth (tier A/B/C), support policy (LTS line, no backports), security references, deferred decisions, artifact template. Docs: docs/roadmap.md."
+    },
+    {
+      "packet": "D00-D53",
+      "gate": "windows-integration",
+      "state": "pass",
+      "evidence": "Windows integration: pnpm test 688/0/6; pnpm test:all 732/0/6; security 26/0; hardening 20/0; package smoke 208 files; release candidate 171 artifacts with store schema 17; 500-event soak 0 crashes and 3/3 repos healthy."
+    },
+    {
+      "packet": "D12",
+      "gate": "owner",
+      "state": "not-run",
+      "evidence": "OWNER-LICENSE-NAME absent; .agent/dispatch/owner-decisions.json not present. Stopped per runbook section 0 contract."
+    },
+    {
+      "packet": "D17/D18",
+      "gate": "residual-gap",
+      "state": "not-run",
+      "evidence": "Live signing + native signed clean-host receipt gate (native-clean-host-owner-gate stub) remain owner-gated; workflow blocks all real releases until implemented."
+    },
+    {
+      "packet": "D19",
+      "gate": "residual-gap",
+      "state": "not-run",
+      "evidence": "WinGet submission to microsoft/winget-pkgs not implemented; server.json name fixed to io.github.Orthic-Labs/cortex."
+    },
+    {
+      "packet": "D28",
+      "gate": "residual-gap",
+      "state": "not-run",
+      "evidence": "Second compiler ecosystem decided: python. Adapter not yet implemented."
+    },
+    {
+      "packet": "D32",
+      "gate": "residual-gap",
+      "state": "not-run",
+      "evidence": "SDK now shipped (files/exports/types added). Prior tarballs excluded sdk/."
+    },
+    {
+      "packet": "D16/D53",
+      "gate": "residual-gap",
+      "state": "not-run",
+      "evidence": "No production update trust root shipped (lib/update/trusted-update-keys.json); update apply fails closed on real installs pending owner key ceremony."
+    }
+  ],
+  "stopCode": "OWNER_LICENSE_NAME_ABSENT",
+  "stopReason": "D12 owner gate requires the seven exact owner decisions in .agent/dispatch/owner-decisions.json. All other executable packets are complete.",
+  "nextEligiblePackets": [
+    "D12"
+  ],
+  "evidenceAt": "2026-08-08T13:27:10.5953764+05:30",
+  "completedAt": "2026-08-08T13:27:10.5953764+05:30"
+}

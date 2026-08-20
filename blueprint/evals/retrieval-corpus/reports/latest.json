@@ -1,0 +1,4804 @@
+{
+  "schemaVersion": 1,
+  "schema": "cortex-retrieval-report-v1",
+  "runAt": "2026-08-09T23:57:57.163Z",
+  "corpusPath": "D:\\Claude\\cortex\\evals\\retrieval-corpus\\corpus.v1.json",
+  "corpusSize": 30,
+  "corpusClassCounts": {
+    "specific-symbol": 12,
+    "specific-file": 3,
+    "region": 3,
+    "misleading-lexical": 5,
+    "no-gold": 7
+  },
+  "strategies": [
+    "lexical",
+    "graph",
+    "hybrid"
+  ],
+  "limit": 10,
+  "summary": {
+    "lexical": {
+      "hitRate": 0.23333333333333334,
+      "mrr": 0.23333333333333334,
+      "abstainedCorrectly": 7,
+      "junkOnNoGold": 0,
+      "abstainedOnPositiveGold": 3,
+      "avgLatencyMs": 0.13786999999999808,
+      "avgRetrievedPerQuery": 3.4,
+      "avgUsedPerQuery": 3.4,
+      "freshnessFailures": 0,
+      "total": 30
+    },
+    "graph": {
+      "hitRate": 0.8666666666666667,
+      "mrr": 0.7333333333333333,
+      "abstainedCorrectly": 7,
+      "junkOnNoGold": 0,
+      "abstainedOnPositiveGold": 3,
+      "avgLatencyMs": 21.07655666666665,
+      "avgRetrievedPerQuery": 3.7,
+      "avgUsedPerQuery": 3.7,
+      "freshnessFailures": 0,
+      "total": 30
+    },
+    "hybrid": {
+      "hitRate": 0.8666666666666667,
+      "mrr": 0.8,
+      "abstainedCorrectly": 7,
+      "junkOnNoGold": 0,
+      "abstainedOnPositiveGold": 3,
+      "avgLatencyMs": 0.891006666666711,
+      "avgRetrievedPerQuery": 3.2333333333333334,
+      "avgUsedPerQuery": 3.2333333333333334,
+      "freshnessFailures": 0,
+      "total": 30
+    }
+  },
+  "classBreakdown": {
+    "specific-symbol": {
+      "lexical": {
+        "hits": 0,
+        "total": 12
+      },
+      "graph": {
+        "hits": 9,
+        "total": 12
+      },
+      "hybrid": {
+        "hits": 9,
+        "total": 12
+      }
+    },
+    "specific-file": {
+      "lexical": {
+        "hits": 0,
+        "total": 3
+      },
+      "graph": {
+        "hits": 2,
+        "total": 3
+      },
+      "hybrid": {
+        "hits": 2,
+        "total": 3
+      }
+    },
+    "region": {
+      "lexical": {
+        "hits": 0,
+        "total": 3
+      },
+      "graph": {
+        "hits": 3,
+        "total": 3
+      },
+      "hybrid": {
+        "hits": 3,
+        "total": 3
+      }
+    },
+    "misleading-lexical": {
+      "lexical": {
+        "hits": 0,
+        "total": 5
+      },
+      "graph": {
+        "hits": 5,
+        "total": 5
+      },
+      "hybrid": {
+        "hits": 5,
+        "total": 5
+      }
+    },
+    "no-gold": {
+      "lexical": {
+        "hits": 7,
+        "total": 7
+      },
+      "graph": {
+        "hits": 7,
+        "total": 7
+      },
+      "hybrid": {
+        "hits": 7,
+        "total": 7
+      }
+    }
+  },
+  "perCase": [
+    {
+      "caseId": "tsc-001-place-order-route",
+      "repo": "typescript-commerce",
+      "class": "specific-symbol",
+      "query": "register the POST /orders HTTP route that calls the order service",
+      "goldRationale": "registerOrderRoute is the only file defining an HTTP POST /orders handler; verified by reading the fixture's only routes file.",
+      "gold": {
+        "path": "src/routes.ts",
+        "region": [
+          3,
+          8
+        ],
+        "rationale": "registerOrderRoute is the only file defining an HTTP POST /orders handler; verified by reading the fixture's only routes file."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-001-place-order-route",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "tsc-001-place-order-route",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 2,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "tsc-001-place-order-route",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 1.0994999999999209,
+        "graph": 7.710900000000038,
+        "hybrid": 2.703000000000088
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 10,
+          "used": 10,
+          "tokens": 799
+        },
+        "graph": {
+          "retrieved": 9,
+          "used": 9,
+          "tokens": 454
+        },
+        "hybrid": {
+          "retrieved": 9,
+          "used": 9,
+          "tokens": 436
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:resources/orders.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:src/routes.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:src/service.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:resources/orders.json",
+            "path": "resources/orders.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "path": "src/service.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "path": "src/store.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "path": "src/config.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "path": "src/service.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:resources/orders.json",
+            "path": "resources/orders.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "path": "src/store.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "path": "src/config.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-002-place-order-service",
+      "repo": "typescript-commerce",
+      "class": "specific-symbol",
+      "query": "the OrderService class that places an order via the store",
+      "goldRationale": "OrderService.placeOrder is the only method that combines find + save on the OrderStore.",
+      "gold": {
+        "path": "src/service.ts",
+        "region": [
+          3,
+          9
+        ],
+        "rationale": "OrderService.placeOrder is the only method that combines find + save on the OrderStore."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-002-place-order-service",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "tsc-002-place-order-service",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "tsc-002-place-order-service",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.15689999999995052,
+        "graph": 19.85469999999998,
+        "hybrid": 2.9886000000000195
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 10,
+          "used": 10,
+          "tokens": 793
+        },
+        "graph": {
+          "retrieved": 8,
+          "used": 8,
+          "tokens": 398
+        },
+        "hybrid": {
+          "retrieved": 8,
+          "used": 8,
+          "tokens": 384
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::Order",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:resources/orders.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:src/store.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "path": "src/service.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::Order",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "path": "src/store.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "path": "src/service.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "path": "src/store.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::Order",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-003-order-store-find-save",
+      "repo": "typescript-commerce",
+      "class": "specific-symbol",
+      "query": "OrderStore.find and OrderStore.save map-based persistence",
+      "goldRationale": "OrderStore owns the private rows Map and the only find/save methods.",
+      "gold": {
+        "path": "src/store.ts",
+        "region": [
+          6,
+          13
+        ],
+        "rationale": "OrderStore owns the private rows Map and the only find/save methods."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-003-order-store-find-save",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "tsc-003-order-store-find-save",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "tsc-003-order-store-find-save",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.19610000000000127,
+        "graph": 91.41200000000003,
+        "hybrid": 1.7315000000000964
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 3,
+          "used": 3,
+          "tokens": 234
+        },
+        "graph": {
+          "retrieved": 4,
+          "used": 4,
+          "tokens": 196
+        },
+        "hybrid": {
+          "retrieved": 4,
+          "used": 4,
+          "tokens": 188
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "path": "src/store.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "path": "src/store.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-004-place-order-flow",
+      "repo": "typescript-commerce",
+      "class": "specific-file",
+      "query": "placeOrder flow entry HTTP layer",
+      "goldRationale": "the placeOrder flow starts at the HTTP route, not at the service (services are downstream).",
+      "gold": {
+        "path": "src/routes.ts",
+        "region": [
+          3,
+          8
+        ],
+        "rationale": "the placeOrder flow starts at the HTTP route, not at the service (services are downstream)."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-004-place-order-flow",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "tsc-004-place-order-flow",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 3,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "tsc-004-place-order-flow",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 3,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.22670000000016444,
+        "graph": 39.16129999999998,
+        "hybrid": 1.4296999999999116
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 2,
+          "used": 2,
+          "tokens": 180
+        },
+        "graph": {
+          "retrieved": 5,
+          "used": 5,
+          "tokens": 267
+        },
+        "hybrid": {
+          "retrieved": 5,
+          "used": 5,
+          "tokens": 258
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-005-service-imports-store",
+      "repo": "typescript-commerce",
+      "class": "region",
+      "query": "where does OrderService import OrderStore from",
+      "goldRationale": "line 1 is the only import statement in service.ts; verified by file content.",
+      "gold": {
+        "path": "src/service.ts",
+        "region": [
+          1,
+          1
+        ],
+        "rationale": "line 1 is the only import statement in service.ts; verified by file content."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-005-service-imports-store",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "tsc-005-service-imports-store",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "tsc-005-service-imports-store",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.15350000000012187,
+        "graph": 26.47750000000019,
+        "hybrid": 1.6467000000000098
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 5,
+          "used": 5,
+          "tokens": 398
+        },
+        "graph": {
+          "retrieved": 7,
+          "used": 7,
+          "tokens": 356
+        },
+        "hybrid": {
+          "retrieved": 7,
+          "used": 7,
+          "tokens": 344
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "path": "src/service.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "path": "src/store.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "path": "src/service.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "path": "src/store.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-006-routes-imports-service",
+      "repo": "typescript-commerce",
+      "class": "region",
+      "query": "where does routes import the order service type from",
+      "goldRationale": "line 1 is the only import in routes.ts.",
+      "gold": {
+        "path": "src/routes.ts",
+        "region": [
+          1,
+          1
+        ],
+        "rationale": "line 1 is the only import in routes.ts."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-006-routes-imports-service",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "tsc-006-routes-imports-service",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 2,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "tsc-006-routes-imports-service",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.13259999999991123,
+        "graph": 26.158500000000004,
+        "hybrid": 1.9125000000001364
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 10,
+          "used": 10,
+          "tokens": 795
+        },
+        "graph": {
+          "retrieved": 8,
+          "used": 8,
+          "tokens": 410
+        },
+        "hybrid": {
+          "retrieved": 8,
+          "used": 8,
+          "tokens": 394
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:resources/orders.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:src/routes.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:src/service.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:test/service.test.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/routes.ts::result",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:resources/orders.json",
+            "path": "resources/orders.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "path": "src/service.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "path": "src/config.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "path": "src/service.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:resources/orders.json",
+            "path": "resources/orders.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "path": "src/config.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-007-order-store-type-def",
+      "repo": "typescript-commerce",
+      "class": "region",
+      "query": "Order type definition with sku and status",
+      "goldRationale": "type Order = { sku: string; status: string } is on line 1 of store.ts.",
+      "gold": {
+        "path": "src/store.ts",
+        "region": [
+          1,
+          1
+        ],
+        "rationale": "type Order = { sku: string; status: string } is on line 1 of store.ts."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-007-order-store-type-def",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "tsc-007-order-store-type-def",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 6,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "tsc-007-order-store-type-def",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 6,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.1893000000000029,
+        "graph": 21.456500000000005,
+        "hybrid": 1.0274999999999181
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 10,
+          "used": 10,
+          "tokens": 803
+        },
+        "graph": {
+          "retrieved": 8,
+          "used": 8,
+          "tokens": 409
+        },
+        "hybrid": {
+          "retrieved": 8,
+          "used": 8,
+          "tokens": 394
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "file:resources/orders.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::Order",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:resources/orders.json",
+            "path": "resources/orders.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "path": "src/config.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "path": "src/service.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "file:resources/orders.json",
+            "path": "resources/orders.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "path": "src/config.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "path": "src/service.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-008-config-file-anchor",
+      "repo": "typescript-commerce",
+      "class": "specific-symbol",
+      "query": "typescript-commerce config.ts runtime configuration",
+      "goldRationale": "config.ts exists in src/; verified by directory listing.",
+      "gold": {
+        "path": "src/config.ts",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "config.ts exists in src/; verified by directory listing."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-008-config-file-anchor",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "tsc-008-config-file-anchor",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "tsc-008-config-file-anchor",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.11910000000011678,
+        "graph": 20.25610000000006,
+        "hybrid": 1.3141000000000531
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 10,
+          "used": 10,
+          "tokens": 750
+        },
+        "graph": {
+          "retrieved": 8,
+          "used": 8,
+          "tokens": 355
+        },
+        "hybrid": {
+          "retrieved": 7,
+          "used": 7,
+          "tokens": 293
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "file:src/config.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:tsconfig.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:src/routes.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:src/service.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:src/store.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:test/service.test.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/routes.ts::result",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/service.ts::existing",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:src/config.ts",
+            "path": "src/config.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:src/routes.ts",
+            "path": "src/routes.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:src/service.ts",
+            "path": "src/service.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:tsconfig.json",
+            "path": "tsconfig.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "path": "src/config.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:resources/orders.json",
+            "path": "resources/orders.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:src/store.ts",
+            "path": "src/store.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:test/service.test.ts",
+            "path": "test/service.test.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "file:src/config.ts",
+            "path": "src/config.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:tsconfig.json",
+            "path": "tsconfig.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/config.ts::ORDER_DB_PATH",
+            "path": "src/config.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:src/routes.ts",
+            "path": "src/routes.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:src/service.ts",
+            "path": "src/service.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:src/store.ts",
+            "path": "src/store.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:test/service.test.ts",
+            "path": "test/service.test.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-009-misleading-lexical-order-string",
+      "repo": "typescript-commerce",
+      "class": "misleading-lexical",
+      "query": "find OrderStore string constants for status",
+      "goldRationale": "status appears literally only inside the store's find/save bodies; the order 'string' status values 'created' is hardcoded at service.ts:8. Lexical match would scatter hits across the test directory if the corpus contained test mocks. Here both stores and service contain 'status'; the gold pin is the store because that is where Order is defined and persisted.",
+      "gold": {
+        "path": "src/store.ts",
+        "region": [
+          8,
+          9
+        ],
+        "rationale": "status appears literally only inside the store's find/save bodies; the order 'string' status values 'created' is hardcoded at service.ts:8. Lexical match would scatter hits across the test directory if the corpus contained test mocks. Here both stores and service contain 'status'; the gold pin is the store because that is where Order is defined and persisted.",
+        "trap": "if a tester were to add a tests/ mock file with literal status strings, lexical retrieval would surface tests before store.ts."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-009-misleading-lexical-order-string",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "tsc-009-misleading-lexical-order-string",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "tsc-009-misleading-lexical-order-string",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.09190000000012333,
+        "graph": 18.015199999999822,
+        "hybrid": 0.7342000000001008
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 3,
+          "used": 3,
+          "tokens": 234
+        },
+        "graph": {
+          "retrieved": 4,
+          "used": 4,
+          "tokens": 196
+        },
+        "hybrid": {
+          "retrieved": 4,
+          "used": 4,
+          "tokens": 188
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "path": "src/store.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore",
+            "path": "src/store.ts",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-010-no-gold-quantum-encryption",
+      "repo": "typescript-commerce",
+      "class": "no-gold",
+      "query": "post-quantum encryption helpers",
+      "goldRationale": "no encryption primitives exist in the typescript-commerce fixture. Verified by full file read: only order service / store / routes / config / tests exist.",
+      "gold": {
+        "abstained": true,
+        "reason": "no_relevant_seed",
+        "rationale": "no encryption primitives exist in the typescript-commerce fixture. Verified by full file read: only order service / store / routes / config / tests exist."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-010-no-gold-quantum-encryption",
+          "strategy": "lexical",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "graph": {
+          "caseId": "tsc-010-no-gold-quantum-encryption",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "hybrid": {
+          "caseId": "tsc-010-no-gold-quantum-encryption",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.08009999999990214,
+        "graph": 0.038000000000010914,
+        "hybrid": 0.027399999999943248
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "graph": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "hybrid": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "graph": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "hybrid": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-011-no-gold-graphql",
+      "repo": "typescript-commerce",
+      "class": "no-gold",
+      "query": "GraphQL schema and resolvers",
+      "goldRationale": "no GraphQL files exist; only REST routes.",
+      "gold": {
+        "abstained": true,
+        "reason": "no_relevant_seed",
+        "rationale": "no GraphQL files exist; only REST routes."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-011-no-gold-graphql",
+          "strategy": "lexical",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "graph": {
+          "caseId": "tsc-011-no-gold-graphql",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "hybrid": {
+          "caseId": "tsc-011-no-gold-graphql",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.07999999999992724,
+        "graph": 0.03289999999992688,
+        "hybrid": 0.02549999999996544
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "graph": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "hybrid": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "graph": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "hybrid": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-012-no-gold-database-migrations",
+      "repo": "typescript-commerce",
+      "class": "no-gold",
+      "query": "database migration framework",
+      "goldRationale": "no migrations directory; persistence is in-memory only.",
+      "gold": {
+        "abstained": true,
+        "reason": "no_relevant_seed",
+        "rationale": "no migrations directory; persistence is in-memory only."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-012-no-gold-database-migrations",
+          "strategy": "lexical",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "graph": {
+          "caseId": "tsc-012-no-gold-database-migrations",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "hybrid": {
+          "caseId": "tsc-012-no-gold-database-migrations",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.07210000000009131,
+        "graph": 0.03260000000000218,
+        "hybrid": 0.022800000000188447
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "graph": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "hybrid": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "graph": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "hybrid": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "mixdoc-001-truth-table-doc",
+      "repo": "mixed-doc",
+      "class": "specific-symbol",
+      "query": "the document truth table for verification",
+      "goldRationale": "README.md is the canonical document-truth reference; verified by file listing under mixed-doc/.",
+      "gold": {
+        "path": "README.md",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "README.md is the canonical document-truth reference; verified by file listing under mixed-doc/."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "mixdoc-001-truth-table-doc",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "abstained_on_positive_gold"
+        },
+        "graph": {
+          "caseId": "mixdoc-001-truth-table-doc",
+          "strategy": "graph",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "abstained_on_positive_gold"
+        },
+        "hybrid": {
+          "caseId": "mixdoc-001-truth-table-doc",
+          "strategy": "hybrid",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "abstained_on_positive_gold"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.06179999999994834,
+        "graph": 0.01700000000005275,
+        "hybrid": 0.011900000000196087
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "graph": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "hybrid": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "graph": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "hybrid": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "mixdoc-002-architecture-doc",
+      "repo": "mixed-doc",
+      "class": "specific-file",
+      "query": "architecture document overview",
+      "goldRationale": "docs/ARCHITURE.md is the only architecture doc in the fixture; mixed-doc/ contains only this doc under docs/.",
+      "gold": {
+        "path": "docs/ARCHITECTURE.md",
+        "region": [
+          1,
+          400
+        ],
+        "rationale": "docs/ARCHITURE.md is the only architecture doc in the fixture; mixed-doc/ contains only this doc under docs/."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "mixdoc-002-architecture-doc",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "abstained_on_positive_gold"
+        },
+        "graph": {
+          "caseId": "mixdoc-002-architecture-doc",
+          "strategy": "graph",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "abstained_on_positive_gold"
+        },
+        "hybrid": {
+          "caseId": "mixdoc-002-architecture-doc",
+          "strategy": "hybrid",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "abstained_on_positive_gold"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.038399999999910506,
+        "graph": 0.00909999999998945,
+        "hybrid": 0.006499999999959982
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "graph": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "hybrid": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "graph": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "hybrid": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "mixdoc-003-start-here-doc",
+      "repo": "mixed-doc",
+      "class": "specific-file",
+      "query": "START-HERE onboarding document",
+      "goldRationale": "docs/START-HERE.md is in the fixture.",
+      "gold": {
+        "path": "docs/START-HERE.md",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "docs/START-HERE.md is in the fixture."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "mixdoc-003-start-here-doc",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "mixdoc-003-start-here-doc",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "mixdoc-003-start-here-doc",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.06949999999983447,
+        "graph": 18.595100000000002,
+        "hybrid": 0.5186000000001059
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 1,
+          "used": 1,
+          "tokens": 77
+        },
+        "graph": {
+          "retrieved": 1,
+          "used": 1,
+          "tokens": 46
+        },
+        "hybrid": {
+          "retrieved": 1,
+          "used": 1,
+          "tokens": 44
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "file:docs/START-HERE.md",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:docs/START-HERE.md",
+            "path": "docs/START-HERE.md",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "file:docs/START-HERE.md",
+            "path": "docs/START-HERE.md",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "mixdoc-004-refresh-ts",
+      "repo": "mixed-doc",
+      "class": "specific-symbol",
+      "query": "refresh implementation TypeScript module",
+      "goldRationale": "src/refresh.ts is the only TS module in mixed-doc/.",
+      "gold": {
+        "path": "src/refresh.ts",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "src/refresh.ts is the only TS module in mixed-doc/."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "mixdoc-004-refresh-ts",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "mixdoc-004-refresh-ts",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "mixdoc-004-refresh-ts",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.044700000000148066,
+        "graph": 24.426200000000108,
+        "hybrid": 0.8840999999999894
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 2,
+          "used": 2,
+          "tokens": 155
+        },
+        "graph": {
+          "retrieved": 3,
+          "used": 3,
+          "tokens": 140
+        },
+        "hybrid": {
+          "retrieved": 2,
+          "used": 2,
+          "tokens": 90
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "file:src/refresh.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/refresh.ts::refreshRepository",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:src/refresh.ts",
+            "path": "src/refresh.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/refresh.ts::refreshRepository",
+            "path": "src/refresh.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:config/cortex.json",
+            "path": "config/cortex.json",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "file:src/refresh.ts",
+            "path": "src/refresh.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/refresh.ts::refreshRepository",
+            "path": "src/refresh.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "mixdoc-005-misleading-lexical-architecture",
+      "repo": "mixed-doc",
+      "class": "misleading-lexical",
+      "query": "architecture references in the README",
+      "goldRationale": "README.md is the canonical architecture reference for mixed-doc; the docs/ARCHITECTURE.md contains redundant text. Lexical ranking by raw term count would lift ARCHITECTURE.md because it has more matches, but the README is the agreed canonical reference.",
+      "gold": {
+        "path": "README.md",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "README.md is the canonical architecture reference for mixed-doc; the docs/ARCHITECTURE.md contains redundant text. Lexical ranking by raw term count would lift ARCHITECTURE.md because it has more matches, but the README is the agreed canonical reference.",
+        "trap": "pure tf-idf on the term 'architecture' would rank docs/ARCHITECTURE.md above README.md."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "mixdoc-005-misleading-lexical-architecture",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "mixdoc-005-misleading-lexical-architecture",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "mixdoc-005-misleading-lexical-architecture",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.050700000000006185,
+        "graph": 26.59179999999992,
+        "hybrid": 0.7417000000000371
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 1,
+          "used": 1,
+          "tokens": 69
+        },
+        "graph": {
+          "retrieved": 1,
+          "used": 1,
+          "tokens": 39
+        },
+        "hybrid": {
+          "retrieved": 1,
+          "used": 1,
+          "tokens": 37
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "file:README.md",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:README.md",
+            "path": "README.md",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "file:README.md",
+            "path": "README.md",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "mixdoc-006-no-gold-deployment",
+      "repo": "mixed-doc",
+      "class": "no-gold",
+      "query": "Kubernetes deployment manifests and Helm charts",
+      "goldRationale": "no k8s/helm files in fixture.",
+      "gold": {
+        "abstained": true,
+        "reason": "no_relevant_seed",
+        "rationale": "no k8s/helm files in fixture."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "mixdoc-006-no-gold-deployment",
+          "strategy": "lexical",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "graph": {
+          "caseId": "mixdoc-006-no-gold-deployment",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "hybrid": {
+          "caseId": "mixdoc-006-no-gold-deployment",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.05759999999986576,
+        "graph": 0.01869999999985339,
+        "hybrid": 0.013999999999896318
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "graph": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "hybrid": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "graph": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "hybrid": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "pyctx-001-app-entry",
+      "repo": "python-context",
+      "class": "specific-symbol",
+      "query": "python application entrypoint",
+      "goldRationale": "app.py is the top-level Python module in the fixture.",
+      "gold": {
+        "path": "app.py",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "app.py is the top-level Python module in the fixture."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "pyctx-001-app-entry",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "abstained_on_positive_gold"
+        },
+        "graph": {
+          "caseId": "pyctx-001-app-entry",
+          "strategy": "graph",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "abstained_on_positive_gold"
+        },
+        "hybrid": {
+          "caseId": "pyctx-001-app-entry",
+          "strategy": "hybrid",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "abstained_on_positive_gold"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.04349999999999454,
+        "graph": 0.01209999999991851,
+        "hybrid": 0.009000000000014552
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "graph": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "hybrid": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "graph": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "hybrid": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "pyctx-002-index-module",
+      "repo": "python-context",
+      "class": "specific-symbol",
+      "query": "python index dispatch",
+      "goldRationale": "index.py is the second Python module in the fixture.",
+      "gold": {
+        "path": "index.py",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "index.py is the second Python module in the fixture."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "pyctx-002-index-module",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "pyctx-002-index-module",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "pyctx-002-index-module",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.06970000000001164,
+        "graph": 31.243399999999838,
+        "hybrid": 0.8978000000001884
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 6,
+          "used": 6,
+          "tokens": 464
+        },
+        "graph": {
+          "retrieved": 7,
+          "used": 7,
+          "tokens": 309
+        },
+        "hybrid": {
+          "retrieved": 5,
+          "used": 5,
+          "tokens": 211
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "file:index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.__init__",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.retrieve",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:test_index.py::test_context_question_uses_index",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:index.py",
+            "path": "index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:test_index.py",
+            "path": "test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex",
+            "path": "index.py",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.__init__",
+            "path": "index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.retrieve",
+            "path": "index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:app.py",
+            "path": "app.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:app.py::answer_context_question",
+            "path": "app.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "file:index.py",
+            "path": "index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:test_index.py",
+            "path": "test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex",
+            "path": "index.py",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.__init__",
+            "path": "index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.retrieve",
+            "path": "index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "pyctx-003-test-index",
+      "repo": "python-context",
+      "class": "specific-symbol",
+      "query": "test_index test cases",
+      "goldRationale": "test_index.py is the only test file in the fixture.",
+      "gold": {
+        "path": "test_index.py",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "test_index.py is the only test file in the fixture."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "pyctx-003-test-index",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "pyctx-003-test-index",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "pyctx-003-test-index",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.04870000000005348,
+        "graph": 55.45569999999998,
+        "hybrid": 2.5736000000001695
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 2,
+          "used": 2,
+          "tokens": 165
+        },
+        "graph": {
+          "retrieved": 4,
+          "used": 4,
+          "tokens": 193
+        },
+        "hybrid": {
+          "retrieved": 2,
+          "used": 2,
+          "tokens": 101
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "file:test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:test_index.py::test_context_question_uses_index",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:test_index.py",
+            "path": "test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:test_index.py::test_context_question_uses_index",
+            "path": "test_index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:app.py",
+            "path": "app.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:app.py::answer_context_question",
+            "path": "app.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "file:test_index.py",
+            "path": "test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:test_index.py::test_context_question_uses_index",
+            "path": "test_index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "pyctx-004-misleading-lexical-import",
+      "repo": "python-context",
+      "class": "misleading-lexical",
+      "query": "import statements for the index module",
+      "goldRationale": "the index module's import block is the canonical answer. Lexical scoring can match 'import' inside test_index.py which imports from index; that file should not outrank the gold.",
+      "gold": {
+        "path": "index.py",
+        "region": [
+          1,
+          20
+        ],
+        "rationale": "the index module's import block is the canonical answer. Lexical scoring can match 'import' inside test_index.py which imports from index; that file should not outrank the gold.",
+        "trap": "tf-idf on the term 'import' across all three files would lift the test file because tests typically contain more import lines."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "pyctx-004-misleading-lexical-import",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "pyctx-004-misleading-lexical-import",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "pyctx-004-misleading-lexical-import",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.06219999999984793,
+        "graph": 77.3877,
+        "hybrid": 0.6264000000001033
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 6,
+          "used": 6,
+          "tokens": 464
+        },
+        "graph": {
+          "retrieved": 7,
+          "used": 7,
+          "tokens": 309
+        },
+        "hybrid": {
+          "retrieved": 5,
+          "used": 5,
+          "tokens": 211
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "file:index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.__init__",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.retrieve",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:test_index.py::test_context_question_uses_index",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:index.py",
+            "path": "index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:test_index.py",
+            "path": "test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex",
+            "path": "index.py",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.__init__",
+            "path": "index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.retrieve",
+            "path": "index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:app.py",
+            "path": "app.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:app.py::answer_context_question",
+            "path": "app.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "file:index.py",
+            "path": "index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:test_index.py",
+            "path": "test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex",
+            "path": "index.py",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.__init__",
+            "path": "index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.retrieve",
+            "path": "index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "pyctx-005-no-gold-async",
+      "repo": "python-context",
+      "class": "no-gold",
+      "query": "asyncio event loop and async coroutines",
+      "goldRationale": "no async/await keywords in any fixture file.",
+      "gold": {
+        "abstained": true,
+        "reason": "no_relevant_seed",
+        "rationale": "no async/await keywords in any fixture file."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "pyctx-005-no-gold-async",
+          "strategy": "lexical",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "graph": {
+          "caseId": "pyctx-005-no-gold-async",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "hybrid": {
+          "caseId": "pyctx-005-no-gold-async",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.036800000000084765,
+        "graph": 0.014800000000150249,
+        "hybrid": 0.010600000000067666
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "graph": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "hybrid": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "graph": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "hybrid": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "rust-001-cargo-manifest",
+      "repo": "rust-audio",
+      "class": "specific-symbol",
+      "query": "rust audio crate manifest",
+      "goldRationale": "Cargo.toml is the only manifest file in the fixture.",
+      "gold": {
+        "path": "Cargo.toml",
+        "region": [
+          1,
+          80
+        ],
+        "rationale": "Cargo.toml is the only manifest file in the fixture."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "rust-001-cargo-manifest",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "rust-001-cargo-manifest",
+          "strategy": "graph",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "hybrid": {
+          "caseId": "rust-001-cargo-manifest",
+          "strategy": "hybrid",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.04729999999995016,
+        "graph": 2.4971999999997934,
+        "hybrid": 1.1733000000001539
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 1,
+          "used": 1,
+          "tokens": 96
+        },
+        "graph": {
+          "retrieved": 2,
+          "used": 2,
+          "tokens": 109
+        },
+        "hybrid": {
+          "retrieved": 1,
+          "used": 1,
+          "tokens": 63
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "symbol:src/lib.rs::transcription_decodes_normalized_audio",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "symbol:src/lib.rs::transcription_decodes_normalized_audio",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/lib.rs::transcribe",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "symbol:src/lib.rs::transcription_decodes_normalized_audio",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "rust-002-lib-rs",
+      "repo": "rust-audio",
+      "class": "specific-symbol",
+      "query": "rust audio library entrypoint lib.rs",
+      "goldRationale": "src/lib.rs is the only source file in the fixture.",
+      "gold": {
+        "path": "src/lib.rs",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "src/lib.rs is the only source file in the fixture."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "rust-002-lib-rs",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "rust-002-lib-rs",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 2,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "rust-002-lib-rs",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.08159999999998035,
+        "graph": 63.36779999999999,
+        "hybrid": 0.6830999999999676
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 6,
+          "used": 6,
+          "tokens": 460
+        },
+        "graph": {
+          "retrieved": 6,
+          "used": 6,
+          "tokens": 277
+        },
+        "hybrid": {
+          "retrieved": 6,
+          "used": 6,
+          "tokens": 265
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "symbol:src/lib.rs::transcription_decodes_normalized_audio",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:src/lib.rs",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/lib.rs::normalize",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/lib.rs::transcribe",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:src/decoder.rs",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/decoder.rs::decode",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:src/decoder.rs",
+            "path": "src/decoder.rs",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:src/lib.rs",
+            "path": "src/lib.rs",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/lib.rs::normalize",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/lib.rs::transcribe",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/lib.rs::transcription_decodes_normalized_audio",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/decoder.rs::decode",
+            "path": "src/decoder.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "symbol:src/lib.rs::transcription_decodes_normalized_audio",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:src/lib.rs",
+            "path": "src/lib.rs",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/lib.rs::normalize",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/lib.rs::transcribe",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:src/decoder.rs",
+            "path": "src/decoder.rs",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/decoder.rs::decode",
+            "path": "src/decoder.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "rust-003-misleading-lexical-rust",
+      "repo": "rust-audio",
+      "class": "misleading-lexical",
+      "query": "rust audio module declaration",
+      "goldRationale": "src/lib.rs is the module root; Cargo.toml contains 'rust' but is the manifest, not the module declaration. Lexical scoring on 'module' would surface lib.rs anyway, but a tester might be tempted to pick Cargo.toml because of the term 'rust'.",
+      "gold": {
+        "path": "src/lib.rs",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "src/lib.rs is the module root; Cargo.toml contains 'rust' but is the manifest, not the module declaration. Lexical scoring on 'module' would surface lib.rs anyway, but a tester might be tempted to pick Cargo.toml because of the term 'rust'.",
+        "trap": "tf-idf on 'rust' matches Cargo.toml strongly; module declaration semantics require lib.rs."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "rust-003-misleading-lexical-rust",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "rust-003-misleading-lexical-rust",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "rust-003-misleading-lexical-rust",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.03669999999988249,
+        "graph": 19.24239999999986,
+        "hybrid": 0.54950000000008
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 1,
+          "used": 1,
+          "tokens": 96
+        },
+        "graph": {
+          "retrieved": 2,
+          "used": 2,
+          "tokens": 109
+        },
+        "hybrid": {
+          "retrieved": 1,
+          "used": 1,
+          "tokens": 63
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "symbol:src/lib.rs::transcription_decodes_normalized_audio",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "symbol:src/lib.rs::transcription_decodes_normalized_audio",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/lib.rs::transcribe",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "symbol:src/lib.rs::transcription_decodes_normalized_audio",
+            "path": "src/lib.rs",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "rust-004-no-gold-async-runtime",
+      "repo": "rust-audio",
+      "class": "no-gold",
+      "query": "tokio runtime configuration",
+      "goldRationale": "Cargo.toml is the only manifest file and contains no tokio runtime block in the fixture (verified by file read).",
+      "gold": {
+        "abstained": true,
+        "reason": "no_relevant_seed",
+        "rationale": "Cargo.toml is the only manifest file and contains no tokio runtime block in the fixture (verified by file read)."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "rust-004-no-gold-async-runtime",
+          "strategy": "lexical",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "graph": {
+          "caseId": "rust-004-no-gold-async-runtime",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "hybrid": {
+          "caseId": "rust-004-no-gold-async-runtime",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.03710000000000946,
+        "graph": 0.010800000000017462,
+        "hybrid": 0.008199999999987995
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "graph": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "hybrid": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "graph": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "hybrid": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-013-test-fixture-anchor",
+      "repo": "typescript-commerce",
+      "class": "specific-symbol",
+      "query": "service unit tests for placeOrder",
+      "goldRationale": "test/service.test.ts is the only test file in the fixture.",
+      "gold": {
+        "path": "test/service.test.ts",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "test/service.test.ts is the only test file in the fixture."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-013-test-fixture-anchor",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "tsc-013-test-fixture-anchor",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 2,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "tsc-013-test-fixture-anchor",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 2,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.15440000000012333,
+        "graph": 24.069799999999987,
+        "hybrid": 1.7621000000001459
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 7,
+          "used": 7,
+          "tokens": 563
+        },
+        "graph": {
+          "retrieved": 10,
+          "used": 10,
+          "tokens": 485
+        },
+        "hybrid": {
+          "retrieved": 8,
+          "used": 8,
+          "tokens": 387
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:src/service.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:test/service.test.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/service.ts::existing",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:test/service.test.ts::service",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:src/service.ts",
+            "path": "src/service.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:test/service.test.ts",
+            "path": "test/service.test.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::existing",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:src/routes.ts",
+            "path": "src/routes.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:src/store.ts",
+            "path": "src/store.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "symbol:src/service.ts::OrderService.placeOrder",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:test/service.test.ts::placeOrder stores a new order",
+            "path": "test/service.test.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:src/service.ts",
+            "path": "src/service.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:test/service.test.ts",
+            "path": "test/service.test.ts",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/service.ts::existing",
+            "path": "src/service.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/routes.ts::registerOrderRoute",
+            "path": "src/routes.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.find",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:src/store.ts::OrderStore.save",
+            "path": "src/store.ts",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "pyctx-006-misleading-lexical-test",
+      "repo": "python-context",
+      "class": "misleading-lexical",
+      "query": "python test cases for index",
+      "goldRationale": "test_index.py is the only Python test file. Lexical scoring on 'test' can match imports within app.py and index.py, but those are not test files.",
+      "gold": {
+        "path": "test_index.py",
+        "region": [
+          1,
+          200
+        ],
+        "rationale": "test_index.py is the only Python test file. Lexical scoring on 'test' can match imports within app.py and index.py, but those are not test files.",
+        "trap": "any Python source file with the substring 'test' anywhere (e.g., inside an identifier) would be matched lexically."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "pyctx-006-misleading-lexical-test",
+          "strategy": "lexical",
+          "hit": false,
+          "score": 0,
+          "rank": null,
+          "reason": "miss"
+        },
+        "graph": {
+          "caseId": "pyctx-006-misleading-lexical-test",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 2,
+          "reason": "hit"
+        },
+        "hybrid": {
+          "caseId": "pyctx-006-misleading-lexical-test",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "hit"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.08109999999987849,
+        "graph": 18.694799999999987,
+        "hybrid": 0.6796999999999116
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 6,
+          "used": 6,
+          "tokens": 464
+        },
+        "graph": {
+          "retrieved": 7,
+          "used": 7,
+          "tokens": 323
+        },
+        "hybrid": {
+          "retrieved": 5,
+          "used": 5,
+          "tokens": 225
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "id": "file:test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:test_index.py::test_context_question_uses_index",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "file:index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.__init__",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.retrieve",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "lexical"
+          }
+        ],
+        "graph": [
+          {
+            "id": "file:index.py",
+            "path": "index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:test_index.py",
+            "path": "test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex",
+            "path": "index.py",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.__init__",
+            "path": "index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:test_index.py::test_context_question_uses_index",
+            "path": "test_index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "file:app.py",
+            "path": "app.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          },
+          {
+            "id": "symbol:app.py::answer_context_question",
+            "path": "app.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "graph"
+          }
+        ],
+        "hybrid": [
+          {
+            "id": "file:test_index.py",
+            "path": "test_index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:test_index.py::test_context_question_uses_index",
+            "path": "test_index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "file:index.py",
+            "path": "index.py",
+            "kind": "file",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex",
+            "path": "index.py",
+            "kind": "class",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          },
+          {
+            "id": "symbol:index.py::ContextIndex.__init__",
+            "path": "index.py",
+            "kind": "symbol",
+            "abstained": false,
+            "reason": null,
+            "source": "hybrid"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "tsc-014-no-gold-observability",
+      "repo": "typescript-commerce",
+      "class": "no-gold",
+      "query": "OpenTelemetry tracing instrumentation",
+      "goldRationale": "no tracing or telemetry code in the fixture.",
+      "gold": {
+        "abstained": true,
+        "reason": "no_relevant_seed",
+        "rationale": "no tracing or telemetry code in the fixture."
+      },
+      "scored": {
+        "lexical": {
+          "caseId": "tsc-014-no-gold-observability",
+          "strategy": "lexical",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "graph": {
+          "caseId": "tsc-014-no-gold-observability",
+          "strategy": "graph",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        },
+        "hybrid": {
+          "caseId": "tsc-014-no-gold-observability",
+          "strategy": "hybrid",
+          "hit": true,
+          "score": 1,
+          "rank": 1,
+          "reason": "abstained_correctly"
+        }
+      },
+      "latenciesMs": {
+        "lexical": 0.5165000000001783,
+        "graph": 0.036100000000033106,
+        "hybrid": 0.016599999999925785
+      },
+      "tokenCounts": {
+        "lexical": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "graph": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        },
+        "hybrid": {
+          "retrieved": 0,
+          "used": 0,
+          "tokens": 12
+        }
+      },
+      "fresh": true,
+      "results": {
+        "lexical": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "graph": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ],
+        "hybrid": [
+          {
+            "abstained": true,
+            "reason": "no_relevant_seed",
+            "source": null
+          }
+        ]
+      }
+    }
+  ]
+}
