@@ -1,5 +1,5 @@
-# Blueprint overlay — SEAM-CONTRACT dependency
+# Blueprint overlay — in-repo seam authority
 
-Before sealing any contract touching hub, watcher lifecycle, the blueprint↔membrane API, or peer-service discovery, read `docs/plans/orthic/SEAM-CONTRACT.md` and declare it a dependency.
+Before sealing any contract touching hub, watcher lifecycle, Blueprint↔Membrane API, or peer-service discovery, read `docs/FEDERATION-CONTRACT.md`, `docs/operations/service.md`, and `docs/architecture.md`, then run `node scripts/ci/check-seam-conformance.mjs`.
 
-This overlay carries SEAM-CONTRACT §8 last row — anti-drift mechanism. See `tools/rhook`, `docs/plans/orthic/SEAM-CONTRACT.md` §8 for conformance checks.
+Keep Blueprint seam authority self-contained. Never require a workspace-external plan as a local prerequisite.

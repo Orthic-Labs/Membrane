@@ -30,11 +30,11 @@ function check(name, fn) {
 
 const MEMBRANE = "_mem" + "brane";
 try {
-  const out = execFileSync("grep", ["-rn", MEMBRANE, "scripts/", "lib/", "service/"], { encoding: "utf8", cwd: ROOT });
+  const out = execFileSync("grep", ["-rn", MEMBRANE, "scripts/", "src/lib/", "src/service/"], { encoding: "utf8", cwd: ROOT });
   const filtered = out.split("\n").filter((l) => !l.includes("check-seam-conformance.mjs")).join("\n").trim();
-  if (filtered) { console.error(`✗ grep-gate ${MEMBRANE}: found\n${filtered.slice(0, 500)}`); failed = true; } else console.log(`✓ grep-gate: zero ${MEMBRANE} in scripts/ lib/ service/`);
+  if (filtered) { console.error(`✗ grep-gate ${MEMBRANE}: found\n${filtered.slice(0, 500)}`); failed = true; } else console.log(`✓ grep-gate: zero ${MEMBRANE} in scripts/ src/lib/ src/service/`);
 } catch (e) {
-  if (e.status === 1) console.log(`✓ grep-gate: zero ${MEMBRANE} in scripts/ lib/ service/`);
+  if (e.status === 1) console.log(`✓ grep-gate: zero ${MEMBRANE} in scripts/ src/lib/ src/service/`);
   else { console.error(`✗ grep-gate ${MEMBRANE} error: ${e.message}`); failed = true; }
 }
 
