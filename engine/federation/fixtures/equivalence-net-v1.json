@@ -13,7 +13,7 @@
     "_rightcontext"
   ],
   "providerOrder": [
-    "cortex",
+    "blueprint",
     "audit",
     "architect",
     "crypt",
@@ -30,7 +30,7 @@
     "authentication_failed": "authentication",
     "invalid_output": "invalid_output",
     "stale_snapshot": "stale_snapshot",
-    "cortex_generation_changed": "generation_mismatch",
+    "blueprint_generation_changed": "generation_mismatch",
     "budget_drop": "cancellation_budget_drop",
     "circuit_open": "circuit_open"
   },

@@ -35,8 +35,8 @@ struct Expected {
     graph_state: GraphState,
     stable: bool,
     attempts: usize,
-    cortex_class: String,
-    cortex_usable: bool,
+    blueprint_class: String,
+    blueprint_usable: bool,
 }
 
 struct ScriptedProbe {
@@ -101,12 +101,12 @@ fn shared_fixture_covers_clean_dirty_partial_and_concurrent_epochs() {
         assert_eq!(verdict.stable, case.expected.stable, "{}", case.name);
         assert_eq!(verdict.attempts, case.expected.attempts, "{}", case.name);
         assert_eq!(
-            verdict.providers.cortex.freshness_class, case.expected.cortex_class,
+            verdict.providers.blueprint.freshness_class, case.expected.blueprint_class,
             "{}",
             case.name
         );
         assert_eq!(
-            verdict.providers.cortex.usable, case.expected.cortex_usable,
+            verdict.providers.blueprint.usable, case.expected.blueprint_usable,
             "{}",
             case.name
         );
@@ -174,9 +174,9 @@ fn overlay_limit_failure_is_typed_indeterminate() {
 }
 
 #[test]
-fn partial_reindex_degrades_cortex_without_disabling_stable_overlay_or_skills() {
+fn partial_reindex_degrades_blueprint_without_disabling_stable_overlay_or_skills() {
     let mut epoch = FreshnessEpoch::coherent_for_test("a", "old-generation", "skills");
-    epoch.cortex_generation = Some("new-generation".to_string());
+    epoch.blueprint_generation = Some("new-generation".to_string());
     let mut probe = ScriptedProbe {
         epochs: VecDeque::from([epoch.clone(), epoch]),
         overlays: VecDeque::from([OverlayObservation {
@@ -194,7 +194,7 @@ fn partial_reindex_degrades_cortex_without_disabling_stable_overlay_or_skills() 
     let verdict = evaluate_freshness(&mut probe, 3);
 
     assert_eq!(verdict.graph_state, GraphState::PartialReindex);
-    assert!(!verdict.providers.cortex.usable);
+    assert!(!verdict.providers.blueprint.usable);
     assert!(verdict.providers.dirty_overlay.usable);
     assert!(verdict.providers.skills.usable);
 }
@@ -230,8 +230,8 @@ fn legacy_blueprint_without_base_commit_keeps_head_overlay_available_without_cla
         verdict.base_commit.as_deref(),
         Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
     );
-    assert_eq!(verdict.cortex_base_commit, None);
-    assert!(!verdict.providers.cortex.usable);
+    assert_eq!(verdict.blueprint_base_commit, None);
+    assert!(!verdict.providers.blueprint.usable);
     assert!(verdict.providers.dirty_overlay.usable);
 }
 
@@ -338,8 +338,8 @@ fn filesystem_probe_binds_blueprint_to_commit_and_reports_verified_dirty_overlay
     );
     assert_eq!(clean.graph_state, GraphState::Clean);
     assert_eq!(clean.base_commit.as_deref(), Some(head.as_str()));
-    assert_eq!(clean.cortex_base_commit.as_deref(), Some(head.as_str()));
-    assert!(clean.providers.cortex.usable);
+    assert_eq!(clean.blueprint_base_commit.as_deref(), Some(head.as_str()));
+    assert!(clean.providers.blueprint.usable);
     assert!(clean.stage_elapsed_ms.contains_key("git_status"));
 
     std::fs::write(
@@ -403,8 +403,8 @@ fn filesystem_probe_reads_blueprint_generation_from_graph_db() {
 
     assert_eq!(clean.graph_state, GraphState::Clean);
     assert_eq!(clean.base_commit.as_deref(), Some(head.as_str()));
-    assert_eq!(clean.cortex_generation.as_deref(), Some(generation));
-    assert_eq!(clean.providers.cortex.usable, true);
+    assert_eq!(clean.blueprint_generation.as_deref(), Some(generation));
+    assert_eq!(clean.providers.blueprint.usable, true);
 }
 
 /// `blueprint graph build` leaves a WAL store checkpointed with its `-wal`
@@ -461,9 +461,9 @@ fn filesystem_probe_reads_a_checkpointed_wal_graph_db_without_sidecars() {
         repo.path().canonicalize().unwrap(),
     );
 
-    assert_eq!(verdict.cortex_generation.as_deref(), Some(generation));
+    assert_eq!(verdict.blueprint_generation.as_deref(), Some(generation));
     assert_eq!(verdict.graph_state, GraphState::Clean);
-    assert!(verdict.providers.cortex.usable);
+    assert!(verdict.providers.blueprint.usable);
 }
 
 #[test]

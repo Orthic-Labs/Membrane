@@ -13,7 +13,7 @@ Exactly three architecture/planning documents are normative for the current conv
 Derived navigation/reference docs live under [subsystems/](subsystems/):
 
 - [SYSTEM.md](subsystems/SYSTEM.md) — Membrane parent-system map.
-- [cortex.md](subsystems/cortex.md) — durable-knowledge reference.
+- [blueprint.md](subsystems/blueprint.md) — durable-knowledge reference.
 - [guide.md](subsystems/guide.md) — document-navigation/index reference.
 - [adapt.md](subsystems/adapt.md) — learning/proposal reference.
 - [push.md](subsystems/push.md) — reversible-reduction reference.
@@ -30,7 +30,7 @@ Regenerate with the current productization tooling under `scripts/tools/producti
 - [protocol.md](protocol.md) — landed MCP/tool contract and behavior.
 - [product-truth.md](product-truth.md) — raw derived facts backing the generated docs.
 
-Generated/runtime docs may continue to contain legacy `Cortex`, `Crypt`, or `Spine` implementation names until the corresponding code migration lands. Do not hand-edit them to pretend implementation has moved.
+Generated/runtime docs may continue to contain legacy `Blueprint`, `Crypt`, or `Spine` implementation names until the corresponding code migration lands. Do not hand-edit them to pretend implementation has moved.
 
 ## Get started
 
@@ -58,4 +58,4 @@ Design rationale, architecture history, research, and point-in-time state remain
 
 ## Plans
 
-The active Blueprint/Cortex monorepo/name migration is the canonical migration plan linked above. Other plans remain scoped work/provenance and cannot override the canonical doctrines.
+The active Blueprint/Blueprint monorepo/name migration is the canonical migration plan linked above. Other plans remain scoped work/provenance and cannot override the canonical doctrines.

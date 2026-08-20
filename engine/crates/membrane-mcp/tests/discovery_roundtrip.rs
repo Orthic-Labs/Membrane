@@ -18,7 +18,7 @@ fn negotiated_toolsets_never_advertise_unsupported_native_tools() {
     let server = McpServer;
     for meta in [
         json!({}),
-        json!({"membrane.toolsets.v1": ["memory", "cortex"]}),
+        json!({"membrane.toolsets.v1": ["memory", "blueprint"]}),
         json!({"membrane.toolsets.v1": ["unknown"]}),
     ] {
         let response = server

@@ -4,7 +4,7 @@ import { buildNeighborhood, conformanceCheck, fixedFusion, providerReadiness } f
 
 test("R1 neighborhood is deterministic, seed-connected, bounded, and omission-explicit", () => {
   const args = {
-    providerId: "cortex", repositoryId: "repo-a", sourceGenerationId: "sha256:" + "a".repeat(64),
+    providerId: "blueprint", repositoryId: "repo-a", sourceGenerationId: "sha256:" + "a".repeat(64),
     seeds: [{ id: "anchor", kind: "user_anchor" }], nodes: [{ id: "anchor" }, { id: "child" }, { id: "orphan" }],
     edges: [{ from: "anchor", to: "child", type: "imports" }, { from: "orphan", to: "orphan", type: "hub" }],
     bounds: { depth: 2, nodes: 8, edges: 8, elapsed_ms: 10, estimated_tokens: 100 },
@@ -17,7 +17,7 @@ test("R1 neighborhood is deterministic, seed-connected, bounded, and omission-ex
 
 test("R1 retains anchors when canonical ordering would otherwise exceed node bound", () => {
   const result = buildNeighborhood({
-    providerId: "cortex", repositoryId: "repo-a", sourceGenerationId: "gen-a",
+    providerId: "blueprint", repositoryId: "repo-a", sourceGenerationId: "gen-a",
     seeds: [{ id: "z-anchor" }],
     nodes: [{ id: "a-orphan" }, { id: "z-anchor" }, { id: "z-child" }],
     edges: [{ from: "z-anchor", to: "z-child", type: "imports" }],
@@ -29,7 +29,7 @@ test("R1 retains anchors when canonical ordering would otherwise exceed node bou
 
 test("R1 enforces traversal depth from graph distance, not provider depth fields", () => {
   const result = buildNeighborhood({
-    providerId: "cortex", repositoryId: "repo-a", sourceGenerationId: "gen-a",
+    providerId: "blueprint", repositoryId: "repo-a", sourceGenerationId: "gen-a",
     seeds: [{ id: "root" }],
     nodes: [
       { id: "root", depth: 0 }, { id: "one", depth: 0 },
@@ -48,7 +48,7 @@ test("R1 enforces traversal depth from graph distance, not provider depth fields
 
 test("R1 receipts aggregate every depth, node, and edge omission deterministically", () => {
   const args = {
-    providerId: "cortex", repositoryId: "repo-a", sourceGenerationId: "gen-a",
+    providerId: "blueprint", repositoryId: "repo-a", sourceGenerationId: "gen-a",
     seeds: [{ id: "root" }],
     nodes: [{ id: "root" }, { id: "a" }, { id: "b" }, { id: "deep" }, { id: "orphan" }],
     edges: [
@@ -85,7 +85,7 @@ test("R2 fixed fusion names policy, quotas providers, and rejects raw probabilit
 });
 
 test("R3 readiness and conformance expose identity and lane-local failures", () => {
-  const ready = providerReadiness({ providerId: "cortex", modelId: "tree-sitter-v1", configDigest: "sha256:" + "c".repeat(64), capabilities: { live_resolution: true } });
+  const ready = providerReadiness({ providerId: "blueprint", modelId: "tree-sitter-v1", configDigest: "sha256:" + "c".repeat(64), capabilities: { live_resolution: true } });
   assert.equal(conformanceCheck(ready, { live_resolution: true }).pass, true);
   assert.deepEqual(conformanceCheck(ready, { scope_leak: true, live_resolution: true }).errors, ["scope_leak"]);
 });

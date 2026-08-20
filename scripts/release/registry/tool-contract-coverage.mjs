@@ -16,10 +16,10 @@
 // currently uncontracted MCP surface: it has no golden fixtures and no
 // closed error-code taxonomy tracked by that mechanism. This module marks
 // it "gap" rather than silently reporting it as covered. Today that is
-// exactly `membrane_cortex`: mcp/server.mjs (TOOL_DEFINITIONS, line ~59;
-// dispatch at `if (name === "membrane_cortex")`) exposes it as a real
+// exactly `membrane_blueprint`: mcp/server.mjs (TOOL_DEFINITIONS, line ~59;
+// dispatch at `if (name === "membrane_blueprint")`) exposes it as a real
 // tool, but OPERATIONS (engine/crates/membrane-protocol/bindings/
-// operations.mjs) has no entry named "membrane_cortex" -- confirmed by
+// operations.mjs) has no entry named "membrane_blueprint" -- confirmed by
 // this module's own test (tests/mcp-registry/tool-contract-coverage.test.mjs)
 // importing both real modules directly, not a fixture.
 //

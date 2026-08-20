@@ -129,13 +129,13 @@ def test_completion_permutations_keep_precedence_receipts_and_packet_hash_stable
         "graphState": "clean",
         "snapshotId": "sha256:" + "1" * 64,
         "baseCommit": "a" * 40,
-        "cortexBaseCommit": "a" * 40,
-        "cortexGeneration": "sha256:" + "2" * 64,
+        "blueprintBaseCommit": "a" * 40,
+        "blueprintGeneration": "sha256:" + "2" * 64,
         "skillsGeneration": "sha256:" + "3" * 64,
         "serviceGeneration": "fixture-service-generation",
         "releaseGeneration": RELEASE_GENERATION,
         "providers": {
-            "cortex": {"freshnessClass": "committed_snapshot", "usable": True},
+            "blueprint": {"freshnessClass": "committed_snapshot", "usable": True},
             "dirtyOverlay": {"freshnessClass": "dirty_overlay", "usable": True},
             "skills": {"freshnessClass": "current", "usable": True},
         },
@@ -159,11 +159,11 @@ def test_completion_permutations_keep_precedence_receipts_and_packet_hash_stable
     monkeypatch.setattr(gateway.rules, "produce", lambda *_args: [candidates["rules"]])
     monkeypatch.setattr(gateway.anchors, "produce", lambda *_args: [candidates["anchors"]])
     monkeypatch.setattr(
-        gateway.cortex,
+        gateway.blueprint,
         "produce_with_observability",
         lambda *_args, **_kwargs: (
-            [candidates["cortex"]],
-            verdict["cortexGeneration"],
+            [candidates["blueprint"]],
+            verdict["blueprintGeneration"],
             [],
             {"stageElapsedMs": {}},
         ),

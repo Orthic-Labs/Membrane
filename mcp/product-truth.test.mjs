@@ -34,14 +34,14 @@ test("MBR-013: the check fails when README says six tools while source exposes t
 
 test("MBR-013: the check fails when a README-linked generated doc is absent", async () => {
   const truth = await computeProductTruth();
-  const readme = "- **MCP server** — ten tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_cortex`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_working_context`, `membrane_temporal_fact`, `membrane_scratchpad`, `membrane_feedback`). See [docs/product-truth.md](docs/product-truth.md).";
+  const readme = "- **MCP server** — ten tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_blueprint`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_working_context`, `membrane_temporal_fact`, `membrane_scratchpad`, `membrane_feedback`). See [docs/product-truth.md](docs/product-truth.md).";
   const failures = evaluateReadmeAgainstTruth(readme, truth, { docPresent: false });
   assert.ok(failures.some((f) => /generated doc absent/.test(f)), failures.join("; "));
 });
 
 test("MBR-013: the check fails when the README omits the generated-doc link", async () => {
   const truth = await computeProductTruth();
-  const readme = "- **MCP server** — ten tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_cortex`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_working_context`, `membrane_temporal_fact`, `membrane_scratchpad`, `membrane_feedback`).";
+  const readme = "- **MCP server** — ten tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_blueprint`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_working_context`, `membrane_temporal_fact`, `membrane_scratchpad`, `membrane_feedback`).";
   const failures = evaluateReadmeAgainstTruth(readme, truth, { docPresent: true });
   assert.ok(failures.some((f) => /does not link the generated product-truth doc/.test(f)), failures.join("; "));
 });

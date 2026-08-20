@@ -1,22 +1,22 @@
 {
-  "name": "cortex-context-scope-grant",
+  "name": "blueprint-context-scope-grant",
   "operation": "membrane_context",
-  "description": "Cortex adapter returns a successful workspace context with an active scope grant. Mirrors the shape of schemas/registry/operations/membrane-context.v1.golden.json.",
+  "description": "Blueprint adapter returns a successful workspace context with an active scope grant. Mirrors the shape of schemas/registry/operations/membrane-context.v1.golden.json.",
   "request": {
     "scope": "workspace",
     "taskEnvelope": {
       "schema": "orthic.task-envelope.v1",
-      "taskId": "task-mbr-104-cortex-context"
+      "taskId": "task-mbr-104-blueprint-context"
     },
     "turnEnvelope": {
       "schema": "orthic.turn-envelope.v1",
       "turnId": "turn-1",
-      "sessionId": "session-mbr-104-cortex",
+      "sessionId": "session-mbr-104-blueprint",
       "sequence": 1
     },
     "clientEnvelope": {
       "schema": "orthic.client-envelope.v1",
-      "clientId": "cortex-adapter",
+      "clientId": "blueprint-adapter",
       "adapterVersion": "0.1.0"
     }
   },
@@ -27,27 +27,27 @@
       "scope": "workspace",
       "packet": { "status": "available" },
       "scopeGrant": {
-        "id": "sgv1-mbr-104-cortex",
+        "id": "sgv1-mbr-104-blueprint",
         "status": "active"
       },
       "taskEnvelope": {
         "schema": "orthic.task-envelope.v1",
-        "taskId": "task-mbr-104-cortex-context"
+        "taskId": "task-mbr-104-blueprint-context"
       },
       "turnEnvelope": {
         "schema": "orthic.turn-envelope.v1",
         "turnId": "turn-1",
-        "sessionId": "session-mbr-104-cortex",
+        "sessionId": "session-mbr-104-blueprint",
         "sequence": 1
       },
       "clientEnvelope": {
         "schema": "orthic.client-envelope.v1",
-        "clientId": "cortex-adapter",
+        "clientId": "blueprint-adapter",
         "adapterVersion": "0.1.0"
       },
       "overlay": {
         "schema": "orthic.overlay-identity.v1",
-        "sessionId": "session-mbr-104-cortex",
+        "sessionId": "session-mbr-104-blueprint",
         "worktreePath": "/Volumes/D/claude/.worktrees/membrane-book1"
       },
       "repos": [

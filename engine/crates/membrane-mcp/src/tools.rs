@@ -15,7 +15,7 @@ pub(crate) fn negotiated_definitions(params: Option<&Value>) -> Value {
             groups.iter().all(|group| {
                 matches!(
                     group.as_str(),
-                    Some("default" | "memory" | "cortex" | "diagnostic")
+                    Some("default" | "memory" | "blueprint" | "diagnostic")
                 ) && seen.insert(group)
             })
         })

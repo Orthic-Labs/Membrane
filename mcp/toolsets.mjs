@@ -3,10 +3,10 @@ import { readFile } from "node:fs/promises";
 const version = "membrane.toolsets.v1";
 const fallback = ["membrane_context"];
 const names = new Set([
-  "membrane_context", "membrane_source_read", "membrane_cortex", "membrane_knowledge_propose", "membrane_checkpoint_save",
+  "membrane_context", "membrane_source_read", "membrane_blueprint", "membrane_knowledge_propose", "membrane_checkpoint_save",
   "membrane_checkpoint_load", "membrane_working_context", "membrane_temporal_fact", "membrane_scratchpad", "membrane_feedback",
 ]);
-const groupNames = ["default", "memory", "cortex", "diagnostic"];
+const groupNames = ["default", "memory", "blueprint", "diagnostic"];
 
 export function parseToolsetConfig(raw) {
   try {

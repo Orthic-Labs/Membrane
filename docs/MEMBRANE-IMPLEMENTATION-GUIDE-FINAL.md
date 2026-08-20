@@ -21,7 +21,7 @@ Membrane does **not** need a new architecture. It already owns the hard, differe
 - typed omissions, degradation, receipts; repository confinement and signed grants;
 - local-first SQLite Crypt with temporal facts and immutable supersession;
 - deterministic transforms and compression primitives; resident federation and local vectors;
-- Application / Control / Data planes; a real Membrane ↔ Cortex boundary.
+- Application / Control / Data planes; a real Membrane ↔ Blueprint boundary.
 
 Every source agrees the corpus asks Membrane to **finish and connect** this spine, not replace it. Thirty of thirty examined competitors record what *changed*; none records **what was dropped from a context packet and why**. That receipt/evidence layer is the product differentiator, and the highest-return work is making it reachable, exercised, and measured.
 
@@ -29,7 +29,7 @@ Target:
 
 > **Membrane is a local-first, evidence-aware context control plane and context compiler.** It governs how information is admitted, represented, stored, indexed, related, retrieved, transformed, delivered, remembered, forgotten, and verified — and it produces evidence for every material decision.
 
-Memory is only one class of governed context. Documents, decisions, taste, gotchas, procedures, episodes, temporal facts, artifacts, rules, audit evidence, live Git state, and Cortex code semantics all participate in the same economy without being flattened into one blob.
+Memory is only one class of governed context. Documents, decisions, taste, gotchas, procedures, episodes, temporal facts, artifacts, rules, audit evidence, live Git state, and Blueprint code semantics all participate in the same economy without being flattened into one blob.
 
 The design shift the corpus asks for is not *larger* but **more discriminating**: more possible evidence → better discrimination → less delivered context → higher evidence density. Optimize `Context Utility ÷ Delivered Attention Cost` under hard constraints of scope, authority, freshness, truth, security, and deadline.
 
@@ -41,10 +41,10 @@ Breaking one requires an explicit architecture decision, migration, compatibilit
 
 1. **Five public shapes stay stable.** Enrich internally, keyed by existing candidate/source/trace IDs. Version deliberately (V2) only when a real consumer cannot be served by existing fields. No donor-shaped public envelopes.
 2. **One planner owns final policy**, in order: grant validity → eligibility/scope → authority → freshness → provider-local relevance + bounded fusion → dedupe/diversity → global token/byte admission → representation/lane → publication revalidation → omissions + receipt. Providers describe evidence; Membrane decides attention.
-3. **Never flatten unrelated scores.** Cosine, BM25, graph support, Cortex confidence, rule priority, freshness, and feedback are not one calibrated scale. Use hard policy classes → rank fusion (RRF) → bounded utility modifiers within equal policy classes → deterministic canonical-ID tie-breaks. Keep *generation score* (could be relevant), *policy score* (may be admitted), and *utility* (worth its tokens) as distinct dimensions.
+3. **Never flatten unrelated scores.** Cosine, BM25, graph support, Blueprint confidence, rule priority, freshness, and feedback are not one calibrated scale. Use hard policy classes → rank fusion (RRF) → bounded utility modifiers within equal policy classes → deterministic canonical-ID tie-breaks. Keep *generation score* (could be relevant), *policy score* (may be admitted), and *utility* (worth its tokens) as distinct dimensions.
 4. **One cross-provider attention budget.** Lanes reconcile to one ceiling; provider ceilings bound fan-out cost only.
-5. **SQLite/Crypt is canonical durable truth; everything else is a projection.** FTS, vectors, relation graph, derived summaries are rebuildable. Markdown is source evidence or export, never a round-trip database. Git + Cortex supply freshness/repository evidence. The artifact store holds immutable content-addressed raw payloads.
-6. **Cortex owns code semantics** — parsing, ASTs, symbols, references, imports/calls/types, entry points, blast radius, rename/move continuity, structural fingerprints, snapshots/diffs, failure-signal resolution. Membrane consumes evidence and decides scope, currency, authority, budget, and delivery mode. No second parser/index stack in Membrane.
+5. **SQLite/Crypt is canonical durable truth; everything else is a projection.** FTS, vectors, relation graph, derived summaries are rebuildable. Markdown is source evidence or export, never a round-trip database. Git + Blueprint supply freshness/repository evidence. The artifact store holds immutable content-addressed raw payloads.
+6. **Blueprint owns code semantics** — parsing, ASTs, symbols, references, imports/calls/types, entry points, blast radius, rename/move continuity, structural fingerprints, snapshots/diffs, failure-signal resolution. Membrane consumes evidence and decides scope, currency, authority, budget, and delivery mode. No second parser/index stack in Membrane.
 7. **Application / Control / Data planes stay separate.** No fourth plane; no SQLite ownership in MCP handlers; no hidden mutation in request routing.
 8. **Local-first.** No remote vector/graph store, Redis, distributed queue, or hosted retrieval as a required dependency. Add an abstraction only when two real implementations need it.
 9. **Provider failure is typed degradation, not packet fiction.** A failed provider degrades its own lane; healthy providers continue unless the failed one is a hard prerequisite.
@@ -66,8 +66,8 @@ Breaking one requires an explicit architecture decision, migration, compatibilit
 | Fusion, budget, lanes, omissions, publication, receipts | `membrane-core` + runtime/MCP | Strengthen; never delegate to providers |
 | Durable knowledge, temporal facts, lifecycle, feedback, relations | Crypt (`crypt-core` / `crypt-store`) | Implement locally |
 | Lexical + semantic + temporal memory retrieval | Crypt | Implement locally |
-| AST/symbol/reference/call graph, stable code identity, impact | Cortex | Consume via `engine/federation/providers/cortex.py` |
-| Code/document claim validation | Cortex + Audit | Feed resolution status to planner |
+| AST/symbol/reference/call graph, stable code identity, impact | Blueprint | Consume via `engine/federation/providers/blueprint.py` |
+| Code/document claim validation | Blueprint + Audit | Feed resolution status to planner |
 | Immutable raw artifacts | Membrane runtime under Hub-controlled storage | Add governed content-addressed artifact abstraction |
 | Tool-result/context reduction | Membrane Push/runtime | Converge `runc`/`skel`/`compress`/truncate under one transform contract |
 | Session working context | Membrane runtime + Crypt episodic | Bound it; never own full host transcript |
@@ -93,7 +93,7 @@ ScopeGrant + request/task/session identity + one deadline
 └───────────────────────────────────────────────────────┘
         │ ContextPlan-selected / staged candidate generation
    ┌────┼────────┬──────────┬────────┬─────────┐
- Cortex  Crypt  Live/Git   Rules    Docs    Audit
+ Blueprint  Crypt  Live/Git   Rules    Docs    Audit
  code    knowledge current  policy  evidence findings
          ├ exact/ID/anchor
          ├ FTS5/BM25 lexical
@@ -157,7 +157,7 @@ Separate **what a thing is**, **why it is believed**, **when it was true**, and 
 | `logical_id` | which durable object is this (stable across metadata changes) |
 | `content_sha256` | exact immutable content/version |
 | `evidence_id` | which observation/source event supports it (many per record) |
-| source/code anchor | where it resolves; Cortex-backed for code; resolution state may change without rewriting history |
+| source/code anchor | where it resolves; Blueprint-backed for code; resolution state may change without rewriting history |
 | derivation fingerprint | how derived: transform/extractor/model/prompt/config version |
 | `artifact_id` = `art:<sha256>` | which immutable raw payload |
 | `event_id` | which lifecycle/write event |
@@ -230,7 +230,7 @@ This requirement closes the accountability loop: anything Membrane stores or ret
 
 **Stage 0 — normalize.** One monotonic request deadline propagated everywhere; nested stages consume remaining time only (~25% headroom convention). Deterministic query-signal extraction (paths, identifiers, stack traces, quoted strings, error codes, hashes, dates, *why/when/previous/decision/changed*) emits weights that decide which channels get budget — never scope or authority. Recorded in the receipt. No model in the hot path.
 
-**Stage 0b — ContextPlan before fan-out.** Membrane decides which computations are worth running before providers execute: a deterministic, conservative plan (`engine/federation/context_plan.py`) classifies the task (security / migration / architecture / impact / debug / local_edit / docs / general), assigns risk, selects the provider subset, and sets the Cortex traversal policy (`policy_id`, `max_hops`, `max_paths`). Not an LLM router. `general` keeps today's full provider set until evaluation proves narrowing safe; only obvious low-risk classes skip advisory/history lanes. Rolled out shadow ("would run" vs "did run") → low-risk classes → broader classes. Receipts carry `taskClass/risk/providers/cortexPolicyId`, never task text. Retrieval is staged: identity/rules/live → Cortex structural recall → *sufficiency evaluator* → audit/architect/memory/skills only if justified → expensive semantic escalation only if still justified. The evaluator (`retrieval_evaluator.py`, P1) returns `sufficient | insufficient | ambiguous | contradictory | stale | unsafe | provider_failure` plus typed reasons/missing; it decides whether another stage is justified, never answers the task. **Stop condition:** do not retrieve more because budget remains; retrieve more when expected decision value is positive. Rule-based first; no LLM call to decide whether an LLM should receive more context.
+**Stage 0b — ContextPlan before fan-out.** Membrane decides which computations are worth running before providers execute: a deterministic, conservative plan (`engine/federation/context_plan.py`) classifies the task (security / migration / architecture / impact / debug / local_edit / docs / general), assigns risk, selects the provider subset, and sets the Blueprint traversal policy (`policy_id`, `max_hops`, `max_paths`). Not an LLM router. `general` keeps today's full provider set until evaluation proves narrowing safe; only obvious low-risk classes skip advisory/history lanes. Rolled out shadow ("would run" vs "did run") → low-risk classes → broader classes. Receipts carry `taskClass/risk/providers/blueprintPolicyId`, never task text. Retrieval is staged: identity/rules/live → Blueprint structural recall → *sufficiency evaluator* → audit/architect/memory/skills only if justified → expensive semantic escalation only if still justified. The evaluator (`retrieval_evaluator.py`, P1) returns `sufficient | insufficient | ambiguous | contradictory | stale | unsafe | provider_failure` plus typed reasons/missing; it decides whether another stage is justified, never answers the task. **Stop condition:** do not retrieve more because budget remains; retrieve more when expected decision value is positive. Rule-based first; no LLM call to decide whether an LLM should receive more context.
 
 **Stage 1 — candidate generation.** Crypt channels behind one trait, one file each, independently ablatable, optional ones off without breaking retrieval:
 1. `exact` — canonical IDs, anchors, paths, entities, error/quoted text;
@@ -239,7 +239,7 @@ This requirement closes the accountability loop: anything Membrane stores or ret
 4. `temporal` — valid/as-of/supersession-aware;
 5. `relation` — bounded, seeded by already-relevant records;
 6. `working` — task/session-local blocks.
-Cortex structural retrieval enters as provider candidates.
+Blueprint structural retrieval enters as provider candidates.
 
 **Stage 2 — hard eligibility** (before any soft relevance): grant + repository scope; ACL; influence/instruction policy; quarantine/deletion/revocation; temporal validity/**expiry checked here, not as a rank penalty**; source resolution state; freshness constraints; sensitivity routing. No reranker resurrects an ineligible candidate.
 
@@ -261,7 +261,7 @@ Cortex structural retrieval enters as provider candidates.
 
 The verified weakness: production lexical is keyword-exact + substring + stored score; FTS5 exists only in a test. Implement **SQLite FTS5/BM25** as a rebuildable projection: BM25, phrase/exact bonus, bounded prefix, field weighting, scope/family/authority filters, deterministic tie-breaks, incremental upsert/delete from canonical events, schema/index version, rebuild/repair command, fallback to current lexical path when unavailable/corrupt. Tokenize `snake_case`, `camelCase`, `PascalCase`, `kebab-case`, path segments, `module::symbol`. Retrieval must work with zero embedding models. No Tantivy/Elasticsearch/Qdrant. Separate per-channel overfetch from provider result limit from final admitted size; overfetch bounded and visible.
 
-Fallback ladder: FTS+vector → hybrid; FTS only → exact+FTS+temporal; FTS down → legacy lexical (+vector); relations down → skip expansion; Cortex degraded → keep healthy providers, type the missing evidence.
+Fallback ladder: FTS+vector → hybrid; FTS only → exact+FTS+temporal; FTS down → legacy lexical (+vector); relations down → skip expansion; Blueprint degraded → keep healthy providers, type the missing evidence.
 
 ---
 
@@ -316,15 +316,15 @@ Measured adoption of existing compression is one use in seven opportunities; not
 
 ---
 
-## 8. Cortex bridge and source-drift verification
+## 8. Blueprint bridge and source-drift verification
 
-"Fresh code evidence outranks stale memory" is currently a policy with no detector. Membrane-side anchor: `repository_id, path, symbol/definition_id, range, content hash, base commit/Cortex generation, structural fingerprint (from Cortex), resolution state, last verified`.
+"Fresh code evidence outranks stale memory" is currently a policy with no detector. Membrane-side anchor: `repository_id, path, symbol/definition_id, range, content hash, base commit/Blueprint generation, structural fingerprint (from Blueprint), resolution state, last verified`.
 
-Verification hierarchy: exact content/range at current source → current; Cortex stable id resolves elsewhere → moved; one strong structural match → resolved with updated anchor; multiple → ambiguous; absent → missing/drifted; outside grant → inaccessible, never auto-resolved. Five-way identifier resolution: `symbol | file | text_present | absent | unresolvable` — collapsing text-present and absent into `NOT_FOUND` is the root of the divergence false-positive class. **Authoritative absence requires proof of coverage**: emit not-found only when the binding proves the domain is indexed; otherwise downgrade to indeterminate and surface blind spots as receipt fields.
+Verification hierarchy: exact content/range at current source → current; Blueprint stable id resolves elsewhere → moved; one strong structural match → resolved with updated anchor; multiple → ambiguous; absent → missing/drifted; outside grant → inaccessible, never auto-resolved. Five-way identifier resolution: `symbol | file | text_present | absent | unresolvable` — collapsing text-present and absent into `NOT_FOUND` is the root of the divergence false-positive class. **Authoritative absence requires proof of coverage**: emit not-found only when the binding proves the domain is indexed; otherwise downgrade to indeterminate and surface blind spots as receipt fields.
 
-**RecallCircuit is the unit of Cortex evidence.** Membrane sends a task-shaped request with policy/hops/paths; Cortex returns a generation-bound `RecallCircuitV1` (`paths`, `nodes`, `edges`, `unresolved`). Membrane does not traverse the graph. Each **complete** path becomes **one atomic candidate** (`sourceKind: repo_code_circuit`, `id: cortex-circuit:<circuitId>:<pathId>`, `sourceHash` over the path descriptor, `trustClass: workspace_tracked`, `instructionPolicy: data_only`, `scoreComponents: path_complete / evidence_complete / evidence_coverage / hop_efficiency`, rendered as `A --[KIND]--> B --[KIND]--> C` + evidence refs). The path is the semantic unit; top-k admission must never split `A→B→C` into independently admitted nodes. Generation mismatch or schema mismatch → no candidate + typed warning, never reinterpreted as legacy output. Empty circuit / `no_relevant_seed` → zero candidates + loud typed abstention, never generic repository text. Legacy `cortex-candidates.mjs` remains the version-skew/rollback fallback. Cache key includes `policy_id/max_hops/max_paths`. Planner treats `repo_code_circuit` at repo-code priority and applies a bounded `circuit_quality` tie-break *within that source kind only* (complete/evidenced beats incomplete at equal lane score); reserved memory/skill lanes stay. This is where "spend intelligence at build, answer from structure" (graph-memory-starter) lands: pre-walked paths arrive as evidence, the model does not rediscover them. *Cortex-side dependency: RecallCircuit/`cortex-recall.mjs` are specified in the Cortex guides, not yet shipped; Membrane consumption lands with legacy fallback first.*
+**RecallCircuit is the unit of Blueprint evidence.** Membrane sends a task-shaped request with policy/hops/paths; Blueprint returns a generation-bound `RecallCircuitV1` (`paths`, `nodes`, `edges`, `unresolved`). Membrane does not traverse the graph. Each **complete** path becomes **one atomic candidate** (`sourceKind: repo_code_circuit`, `id: blueprint-circuit:<circuitId>:<pathId>`, `sourceHash` over the path descriptor, `trustClass: workspace_tracked`, `instructionPolicy: data_only`, `scoreComponents: path_complete / evidence_complete / evidence_coverage / hop_efficiency`, rendered as `A --[KIND]--> B --[KIND]--> C` + evidence refs). The path is the semantic unit; top-k admission must never split `A→B→C` into independently admitted nodes. Generation mismatch or schema mismatch → no candidate + typed warning, never reinterpreted as legacy output. Empty circuit / `no_relevant_seed` → zero candidates + loud typed abstention, never generic repository text. Legacy `blueprint-candidates.mjs` remains the version-skew/rollback fallback. Cache key includes `policy_id/max_hops/max_paths`. Planner treats `repo_code_circuit` at repo-code priority and applies a bounded `circuit_quality` tie-break *within that source kind only* (complete/evidenced beats incomplete at equal lane score); reserved memory/skill lanes stay. This is where "spend intelligence at build, answer from structure" (graph-memory-starter) lands: pre-walked paths arrive as evidence, the model does not rediscover them. *Blueprint-side dependency: RecallCircuit/`blueprint-recall.mjs` are specified in the Blueprint guides, not yet shipped; Membrane consumption lands with legacy fallback first.*
 
-Cortex query modes Membrane requests: symbol lookup, references/callers, related context, impact, failure signal → symbols, entry points, change context, claim evidence. Response carries stable id, path/range, source hash, revision, dirty overlay, relationship, confidence, coverage, generation, verification status, resolver. Cortex failure degrades only the Cortex lane.
+Blueprint query modes Membrane requests: symbol lookup, references/callers, related context, impact, failure signal → symbols, entry points, change context, claim evidence. Response carries stable id, path/range, source hash, revision, dirty overlay, relationship, confidence, coverage, generation, verification status, resolver. Blueprint failure degrades only the Blueprint lane.
 
 Drift audit as deterministic substrate → bounded model verdict → deterministic gate: pass 0 builds a churn-skipped queue with no model; pass 1 asks only `current | diverged` (`unverifiable` deliberately absent from the vocabulary — pass 0 owns it). Parser: `VERDICT: current | diverged` selects nothing; reset fields on each new verdict line. Derive findings from **persisted** verdicts, never the current run; queue priority: broken anchors → never-checked → content churn → inputs churn → prompt churn last. Embedding provenance: store the hash of the text actually embedded beside the content hash; NULL means unknown, not stale.
 
@@ -332,7 +332,7 @@ Drift audit as deterministic substrate → bounded model verdict → determinist
 
 ## 9. Relations and entities — deliberately narrow
 
-Relation row: `relation_id, src, dst (record or entity), kind, valid_from/valid_until, observed_at, producer/evidence refs, confidence, supersession state`. Vocabulary starts with what changes recall/explanation: `supports, contradicts, supersedes, derived_from, part_of, about_entity/mentions, caused_by, applies_to, depends_on, implements, same_as, related_to`. Relations preserve evidence; an embedding similarity is not a relation. Expansion: depth 1, global and per-seed caps, allowed kinds, cycle detection, same scope, provenance on every expanded candidate, no expansion from stale/weak seeds, still subject to authority/freshness/budget. Aliases first; destructive entity merge only when identity is proven. Community detection, PageRank, DRIFT, spreading activation are experiments. Code call/import/reference graphs stay Cortex-owned.
+Relation row: `relation_id, src, dst (record or entity), kind, valid_from/valid_until, observed_at, producer/evidence refs, confidence, supersession state`. Vocabulary starts with what changes recall/explanation: `supports, contradicts, supersedes, derived_from, part_of, about_entity/mentions, caused_by, applies_to, depends_on, implements, same_as, related_to`. Relations preserve evidence; an embedding similarity is not a relation. Expansion: depth 1, global and per-seed caps, allowed kinds, cycle detection, same scope, provenance on every expanded candidate, no expansion from stale/weak seeds, still subject to authority/freshness/budget. Aliases first; destructive entity merge only when identity is proven. Community detection, PageRank, DRIFT, spreading activation are experiments. Code call/import/reference graphs stay Blueprint-owned.
 
 ---
 
@@ -346,7 +346,7 @@ Relation row: `relation_id, src, dst (record or entity), kind, valid_from/valid_
 - **Per-segment permission verdicts** (Deny > Ask > Allow > Default; unattestable → ask). **Loopback guard** requiring a loopback `Host:` literal, IPv6-mapped IPv4 accepted, 404 not 403. **Hook/config integrity**: hash at install, re-verify before activation, refuse on drift.
 - **Erasure**: remove from canonical, FTS, vectors, relations, artifact refs, exports, caches; tombstone keeps identity hash, timestamp, scope, reason, receipt — never payload; in-flight reads cannot republish after commit; `receipt_version` bound into the MAC; backup/restore respects erasure. Crypto-shred only when the threat model requires it.
 - **Corruption → quarantine** (`quarantined_at`, `quarantine_reason`), never silent regeneration; corruption-injection tests.
-- **RecallCircuit poisoning fixtures are phase-local, not deferred security polish:** README prompt injection, source-comment tool instructions, stale architecture documents claiming authority, and generated files claiming system-message status must remain `data_only`/non-authoritative through Cortex → candidate → planner → renderer.
+- **RecallCircuit poisoning fixtures are phase-local, not deferred security polish:** README prompt injection, source-comment tool instructions, stale architecture documents claiming authority, and generated files claiming system-message status must remain `data_only`/non-authoritative through Blueprint → candidate → planner → renderer.
 
 ---
 
@@ -400,7 +400,7 @@ Security and observability are cross-cutting from Phase 0; their dedicated phase
 | **2 Evidence identity + records + sidecar** | truth substrate | `record.rs`, `ranking_signals.rs`, `conflict.rs`; separate identities; normalized evidence tables; backfill `legacy_unattributed`; preserve temporal facts/IDs; V1 stable | any record explains identity, origin, resolution, authority, derivation, supersession without mutable fields |
 | **3 Admission + lifecycle** | memory lean by construction | `admission.rs`, `lifecycle.rs`; write dispositions incl. no-op; negative knowledge; Dream → reversible proposal stage with deterministic guards; bounded verified reinforcement; taste/gotcha semantics; held-out calibration | duplicates no-op; conflicts preserve evidence; transitions versioned/reversible; no derived summary becomes truth |
 | **4 FTS5/BM25 + explainable fusion** | fix the largest verified retrieval gap | `lexical.rs`, `retrieval_trace.rs`; channel registry; overfetch ≠ final K; RRF baseline kept; exact pinning; post-fusion diversity; two-phase fill in `context-renderer-lib.cjs`; ablation/fallback tests | lexical quality up on frozen cases; vector-off fallback deterministic; stale evidence cannot rank up via similarity; p95/RSS in gate |
-| **5 Cortex anchors + drift** | verifiable code claims, no duplicate Cortex | **RecallCircuit → atomic path candidates** in `cortex.py` with legacy fallback; `repo_code_circuit` priority + bounded circuit-quality tie-break in `planner.rs`; anchor/resolution state; consume stable ids + fingerprints; move/rename/ambiguous/missing; bind generation; query modes; embedding provenance column | multi-hop fixtures need fewer model tool calls; generation mismatch fails closed; deterministic resolution states; no Membrane parser |
+| **5 Blueprint anchors + drift** | verifiable code claims, no duplicate Blueprint | **RecallCircuit → atomic path candidates** in `blueprint.py` with legacy fallback; `repo_code_circuit` priority + bounded circuit-quality tie-break in `planner.rs`; anchor/resolution state; consume stable ids + fingerprints; move/rename/ambiguous/missing; bind generation; query modes; embedding provenance column | multi-hop fixtures need fewer model tool calls; generation mismatch fails closed; deterministic resolution states; no Membrane parser |
 | **6a Layout + working set** (may run with 6) | position-aware delivery | layout v2 behind flag in `context-renderer-lib.cjs`; working-set classes in JS/Rust twins with schema bump + digest fixtures | flag-off bytes unchanged; parity exact; answer-quality non-regression before graduation |
 | **6 Artifact-backed Push** | loss-bounded, recoverable reduction | `artifact.rs`, `context_edit.rs`; converge `runc`/skel/compress/truncate; externalize before lossy; protected/atomic spans; query-critical restore; `TokenBalanceV1`; representation planner; deterministic prefix; citation-by-construction | no protected corruption; raw resolvable; reduction measured at non-inferior evidence quality |
 | **7 Relations + aliases** | recall-aware relations, no graph platform | `relations.rs`; evidence on edges; depth-1 bounded expansion; alias canonicalization | scoped, capped, cycle-safe, disable-able |
@@ -426,9 +426,9 @@ Security and observability are cross-cutting from Phase 0; their dedicated phase
 | `engine/crates/crypt-store/src/relations.rs` | new if not in `memdb.rs` | durable relation rows |
 | `engine/crates/membrane-runtime/src/{admission_policy,compress,compression_provider,delivery_trace_view,checkpoint}.rs` | existing | policy epoch; one transform ladder; receipt-visible; explanation surface; bounded session continuity |
 | `engine/crates/membrane-runtime/src/{artifact,context_edit}.rs` | **new** | content-addressed artifacts; externalize/reduce/restore |
-| `engine/federation/context_plan.py`, `engine/federation/test_context_plan.py` | **new** | deterministic task/risk/provider/Cortex policy before fan-out; shadow then low-risk rollout |
+| `engine/federation/context_plan.py`, `engine/federation/test_context_plan.py` | **new** | deterministic task/risk/provider/Blueprint policy before fan-out; shadow then low-risk rollout |
 | `engine/federation/gateway.py` | existing | execute ContextPlan-selected subset under the existing bounded/deadline machinery |
-| `engine/federation/providers/cortex.py`, `test_cortex_provider.py` | existing | prefer generation-bound RecallCircuit atomic path candidates; legacy fallback; poisoning/generation/abstention tests |
+| `engine/federation/providers/blueprint.py`, `test_blueprint_provider.py` | existing | prefer generation-bound RecallCircuit atomic path candidates; legacy fallback; poisoning/generation/abstention tests |
 | `mcp/server.mjs`, `mcp/context-renderer-lib.cjs`, `mcp/authorization.mjs`, `mcp/deadline.mjs`, `mcp/retrieval-contracts.mjs` | existing | thin; two-phase fill; centralized authorization; one deadline; score-neutral capability flags |
 | `schemas/context-receipt.v1.schema.json`, `schemas/host-delivery-receipt.v1.schema.json` | existing | ranking trace, rejection reasons, lane latency, `actions[]`, ingress-cap vs budget-drop |
 | `docs/MEMBRANE-CURRENT-STATE-MANIFEST.json` | stale | regenerate from source |
@@ -449,7 +449,7 @@ Additive first (side tables, no destructive rewrites of `MemoryEntry`/temporal s
 | Rejected | Take instead |
 |---|---|
 | External vector/graph DB, Redis, Postgres, RocksDB, multi-backend matrices | narrow internal interface only when two real implementations exist |
-| Duplicating Cortex (parser, LSP, SCIP, symbol/code graph) | stable anchors, fingerprints, blind-spot reporting via provider contract |
+| Duplicating Blueprint (parser, LSP, SCIP, symbol/code graph) | stable anchors, fingerprints, blind-spot reporting via provider contract |
 | Agent frameworks, PTYs, autonomous loops, multi-agent runtime, browser automation, LLM router, network-proxy interception, hosted/serverless architecture, prompt optimization, P2P memory federation | mechanisms, not scope |
 | Markdown-as-database round-trip | export only; Crypt is typed truth |
 | LLM deciding add/update/delete; model-generated executable code | model proposes; deterministic policy decides |
@@ -470,7 +470,7 @@ Additive first (side tables, no destructive rewrites of `MemoryEntry`/temporal s
 
 **Push** — one reversible ladder; raw governed and recoverable; task-critical spans survive or restore exactly; transforms carry hashes/fingerprints/savings/failure receipts; savings measured against evidence quality.
 
-**Cortex boundary** — Cortex supplies identities/ranges/relations/impact/generation; Membrane does scope/authority/freshness/admission/resolution policy; moved/ambiguous/missing distinguished mechanically; no second parser.
+**Blueprint boundary** — Blueprint supplies identities/ranges/relations/impact/generation; Membrane does scope/authority/freshness/admission/resolution policy; moved/ambiguous/missing distinguished mechanically; no second parser.
 
 **Security** — DLP/influence at persist and delivery; text cannot self-authorize; path/root/symlink/case tests green; revoke/delete races cannot publish stale bytes; erased content cannot reappear from any projection.
 
@@ -507,10 +507,10 @@ This appendix is **normative implementation detail**, not a companion plan. It w
 |---|---|---|
 | ADD | `engine/federation/context_plan.py` | Deterministic provider/query plan before fan-out |
 | MODIFY | `engine/federation/gateway.py` | Build provider tasks, then execute only the plan-selected subset |
-| MODIFY | `engine/federation/providers/cortex.py` | Prefer Cortex RecallCircuit; convert each complete path into one atomic candidate; retain legacy fallback |
+| MODIFY | `engine/federation/providers/blueprint.py` | Prefer Blueprint RecallCircuit; convert each complete path into one atomic candidate; retain legacy fallback |
 | MODIFY | `engine/crates/crypt-core/src/planner.rs` | Recognize `repo_code_circuit`; reward evidence/path completeness without deleting reserved lanes |
 | ADD | `engine/federation/test_context_plan.py` | Deterministic planning tests |
-| MODIFY | `engine/federation/providers/test_cortex_provider.py` | RecallCircuit parsing, generation pinning and fallback tests |
+| MODIFY | `engine/federation/providers/test_blueprint_provider.py` | RecallCircuit parsing, generation pinning and fallback tests |
 | MODIFY | Rust planner tests in `planner.rs` | Atomic circuit ranking/admission tests |
 | MODIFY | `mcp/context-renderer-lib.cjs` | Optional layout-v2 ordering: constraints front, evidence middle, dirty/live state late |
 | MODIFY | `mcp/context-renderer.test.mjs` | Exact byte-order/layout tests |
@@ -523,13 +523,13 @@ Do **not** change in P0:
 - canonical `CandidateV1` in `engine/crates/membrane-protocol/src/types.rs`;
 - the five core Membrane contract shapes;
 - Crypt/vector storage;
-- Cortex database or graph;
+- Blueprint database or graph;
 - working-context schema;
 - reserved memory/skill lanes;
 - prompt-hook ownership;
 - ContextReceipt content-free policy.
 
-A Cortex path can fit inside the existing candidate contract as an **atomic candidate**, so do not create a protocol migration unless evidence requires it.
+A Blueprint path can fit inside the existing candidate contract as an **atomic candidate**, so do not create a protocol migration unless evidence requires it.
 
 ---
 
@@ -553,7 +553,7 @@ _WORD = re.compile(r"[a-z0-9_./:-]+")
 
 
 @dataclass(frozen=True)
-class CortexPlan:
+class BlueprintPlan:
     enabled: bool
     policy_id: str
     max_hops: int
@@ -566,7 +566,7 @@ class ContextPlan:
     task_class: str
     risk: str
     providers: tuple[str, ...]
-    cortex: CortexPlan
+    blueprint: BlueprintPlan
 
 
 def _terms(task: str) -> set[str]:
@@ -581,7 +581,7 @@ def _has_any(text: str, needles: Iterable[str]) -> bool:
 def build_context_plan(
     task: str,
     *,
-    cortex_usable: bool,
+    blueprint_usable: bool,
     live_usable: bool,
     skills_usable: bool,
 ) -> ContextPlan:
@@ -649,8 +649,8 @@ def build_context_plan(
     if live_usable:
         providers.append("live")
 
-    if cortex_usable and task_class != "docs":
-        providers.append("cortex")
+    if blueprint_usable and task_class != "docs":
+        providers.append("blueprint")
 
     if task_class in {"security", "migration", "architecture"}:
         providers.extend(("audit", "architect"))
@@ -683,8 +683,8 @@ def build_context_plan(
         task_class=task_class,
         risk=risk,
         providers=tuple(providers),
-        cortex=CortexPlan(
-            enabled=cortex_usable and "cortex" in providers,
+        blueprint=BlueprintPlan(
+            enabled=blueprint_usable and "blueprint" in providers,
             policy_id=policy,
             max_hops=hops,
             max_paths=paths,
@@ -744,31 +744,31 @@ all_tasks: dict[str, Any] = {
 }
 ```
 
-Then conditionally add live/skills/cortex:
+Then conditionally add live/skills/blueprint:
 
 ```python
-cortex_usable = bool(cortex_state.get("usable"))
+blueprint_usable = bool(blueprint_state.get("usable"))
 live_usable = bool(overlay_state.get("usable"))
 skills_usable = bool(skills_state.get("usable"))
 
 plan = build_context_plan(
     task,
-    cortex_usable=cortex_usable,
+    blueprint_usable=blueprint_usable,
     live_usable=live_usable,
     skills_usable=skills_usable,
 )
 
-if cortex_usable:
-    all_tasks["cortex"] = lambda: _adapter(
-        "cortex",
-        cortex.produce_with_observability,
+if blueprint_usable:
+    all_tasks["blueprint"] = lambda: _adapter(
+        "blueprint",
+        blueprint.produce_with_observability,
         repo_root,
         task,
         max_tokens,
-        expected_generation=expected_cortex_generation,
-        policy_id=plan.cortex.policy_id,
-        max_hops=plan.cortex.max_hops,
-        max_paths=plan.cortex.max_paths,
+        expected_generation=expected_blueprint_generation,
+        policy_id=plan.blueprint.policy_id,
+        max_hops=plan.blueprint.max_hops,
+        max_paths=plan.blueprint.max_paths,
     )
 
 if live_usable:
@@ -806,12 +806,12 @@ It already:
 
 - enforces one absolute deadline;
 - isolates provider failures;
-- gives Cortex special scheduling because it is a structural dependency;
+- gives Blueprint special scheduling because it is a structural dependency;
 - emits typed timeout warnings.
 
 Changing routing and concurrency semantics simultaneously would make regressions harder to attribute.
 
-P1 may replace the Cortex special-case with generic stages after ContextPlan is qualified.
+P1 may replace the Blueprint special-case with generic stages after ContextPlan is qualified.
 
 #### 4.4 Do not put raw task text into receipts
 
@@ -822,8 +822,8 @@ If ContextPlan observability is emitted, expose only:
   "schemaVersion": 1,
   "taskClass": "impact",
   "risk": "medium",
-  "providers": ["rules", "anchors", "git", "live", "cortex", "skills"],
-  "cortexPolicyId": "impact.reverse"
+  "providers": ["rules", "anchors", "git", "live", "blueprint", "skills"],
+  "blueprintPolicyId": "impact.reverse"
 }
 ```
 
@@ -831,9 +831,9 @@ Do not duplicate `task` content into telemetry/receipt surfaces.
 
 ---
 
-### 5. MODIFY `engine/federation/providers/cortex.py`
+### 5. MODIFY `engine/federation/providers/blueprint.py`
 
-The provider currently normalizes Cortex's flat candidates. Change it to prefer `RecallCircuitV1`.
+The provider currently normalizes Blueprint's flat candidates. Change it to prefer `RecallCircuitV1`.
 
 #### 5.1 Function signature
 
@@ -873,7 +873,7 @@ A result produced under `explore.both` must never satisfy an `impact.reverse` ca
 Derive:
 
 ```python
-recall_cli = Path(cortex_cli).with_name("cortex-recall.mjs")
+recall_cli = Path(blueprint_cli).with_name("blueprint-recall.mjs")
 ```
 
 If it exists, invoke:
@@ -891,7 +891,7 @@ cmd = [
 ]
 ```
 
-If it does not exist, use the existing `cortex-candidates.mjs` flow unchanged.
+If it does not exist, use the existing `blueprint-candidates.mjs` flow unchanged.
 
 This gives version-skew compatibility.
 
@@ -909,7 +909,7 @@ isinstance(document["edges"], list)
 
 On mismatch:
 
-- return no Cortex candidate;
+- return no Blueprint candidate;
 - emit a typed warning;
 - do not silently reinterpret it as legacy candidate output.
 
@@ -1021,12 +1021,12 @@ def _circuit_candidates(
         evidence_coverage = float(path.get("evidenceCoverage") or 0.0)
 
         candidates.append({
-            "id": f"cortex-circuit:{document['circuitId']}:{path_id}",
+            "id": f"blueprint-circuit:{document['circuitId']}:{path_id}",
             "layer": 3,
-            "provider": "cortex",
+            "provider": "blueprint",
             "sourceKind": "repo_code_circuit",
             "sourceRef": (
-                f"cortex://circuit/{document['circuitId']}/{path_id}"
+                f"blueprint://circuit/{document['circuitId']}/{path_id}"
             ),
             "sourceHash": _sha256_json(descriptor),
             "trustClass": "workspace_tracked",
@@ -1055,7 +1055,7 @@ def _circuit_candidates(
             ),
             "recoverable": True,
             "resolver": (
-                f"cortex graph path {seed_id} {terminal_id}"
+                f"blueprint graph path {seed_id} {terminal_id}"
             ),
             "text": text,
         })
@@ -1085,7 +1085,7 @@ This avoids top-k admission splitting a required chain.
 
 #### 5.6 Empty circuit behavior
 
-If Cortex returns:
+If Blueprint returns:
 
 ```json
 {
@@ -1094,7 +1094,7 @@ If Cortex returns:
 }
 ```
 
-emit no Cortex candidate.
+emit no Blueprint candidate.
 
 Do not convert the unresolved state into generic repository text.
 
@@ -1218,7 +1218,7 @@ Add tests to the existing Rust module:
 
 ```rust
 #[test]
-fn complete_cortex_circuit_beats_incomplete_peer() {
+fn complete_blueprint_circuit_beats_incomplete_peer() {
     let mut complete = candidate(
         "circuit:complete",
         "repo_code_circuit",
@@ -1226,7 +1226,7 @@ fn complete_cortex_circuit_beats_incomplete_peer() {
         0.8,
         false,
     );
-    complete.provider = Some("cortex".into());
+    complete.provider = Some("blueprint".into());
     complete.score_components.insert("path_complete".into(), 1.0);
     complete.score_components.insert("evidence_coverage".into(), 1.0);
     complete.score_components.insert("hop_efficiency".into(), 0.5);
@@ -1238,7 +1238,7 @@ fn complete_cortex_circuit_beats_incomplete_peer() {
         0.8,
         false,
     );
-    incomplete.provider = Some("cortex".into());
+    incomplete.provider = Some("blueprint".into());
     incomplete.score_components.insert("path_complete".into(), 0.0);
     incomplete.score_components.insert("evidence_coverage".into(), 0.5);
 
@@ -1333,7 +1333,7 @@ const order = blocks
 `mcp/context-renderer.test.mjs`:
 
 - rules precede evidence under layout v2;
-- Cortex circuit is in evidence middle;
+- Blueprint circuit is in evidence middle;
 - live/dirty overlay follows ordinary evidence;
 - same packet produces byte-identical output across repeated runs;
 - layout v1 remains unchanged when flag off;
@@ -1415,7 +1415,7 @@ P1 staged flow:
 
 ```text
 Stage 0: identity/rules/live
-Stage 1: Cortex structural recall
+Stage 1: Blueprint structural recall
 evaluate
 Stage 2: audit/architect/memory/skills only if justified
 evaluate
@@ -1518,9 +1518,9 @@ The reserved-lane policy remains until calibrated replacement outperforms it.
 
 Membrane already carries `trustClass` and `instructionPolicy`.
 
-Strengthen admission tests around Cortex circuits:
+Strengthen admission tests around Blueprint circuits:
 
-A Cortex path is **data**, not executable instruction.
+A Blueprint path is **data**, not executable instruction.
 
 Required invariant:
 
@@ -1535,7 +1535,7 @@ must remain:
 instructionPolicy = "data_only"
 ```
 
-and never become host/system instruction merely because Cortex connected it structurally.
+and never become host/system instruction merely because Blueprint connected it structurally.
 
 Add adversarial fixtures where:
 
@@ -1556,13 +1556,13 @@ Membrane must preserve source trust and authority independently of semantic simi
 
 Do not delete providers. Stop invoking them when ContextPlan explicitly says they have no expected value.
 
-### Flattened Cortex node candidates
+### Flattened Blueprint node candidates
 
-Once RecallCircuit is available, do not make isolated graph nodes the normal Cortex candidate unit for multi-hop questions.
+Once RecallCircuit is available, do not make isolated graph nodes the normal Blueprint candidate unit for multi-hop questions.
 
 Keep legacy parsing only for version skew and rollback.
 
-### Hard-coded Cortex scheduling as the only "planning" concept
+### Hard-coded Blueprint scheduling as the only "planning" concept
 
 P0 can retain `_collect_tasks_bounded()` unchanged for safety.
 
@@ -1603,8 +1603,8 @@ Assert:
 - class `local_edit`;
 - risk `low`;
 - no `audit`, `architect`, `crypt`;
-- Cortex included when usable;
-- Cortex policy bounded to 2 hops.
+- Blueprint included when usable;
+- Blueprint policy bounded to 2 hops.
 
 ### Impact
 
@@ -1618,7 +1618,7 @@ Assert:
 
 - class `impact`;
 - policy `impact.reverse`;
-- Cortex included;
+- Blueprint included;
 - skills included when available;
 - no unnecessary architect unless architecture signal exists.
 
@@ -1633,7 +1633,7 @@ change auth token validation
 Assert:
 
 - high risk;
-- Cortex + audit + architect + skills + crypt;
+- Blueprint + audit + architect + skills + crypt;
 - policy `impact.reverse`.
 
 ### General ambiguity
@@ -1642,15 +1642,15 @@ Assert broad current provider set is preserved.
 
 ### Provider unavailable
 
-If Cortex is unusable:
+If Blueprint is unusable:
 
 - plan does not include it;
-- caller still receives non-Cortex providers;
+- caller still receives non-Blueprint providers;
 - no fake graph candidate is created.
 
 ---
 
-#### MODIFY `engine/federation/providers/test_cortex_provider.py`
+#### MODIFY `engine/federation/providers/test_blueprint_provider.py`
 
 Required new cases:
 
@@ -1711,7 +1711,7 @@ Measure:
 - delivered tokens;
 - missing-context feedback rate.
 
-#### Cortex-circuit metrics
+#### Blueprint-circuit metrics
 
 - path completeness;
 - evidence coverage;
@@ -1774,7 +1774,7 @@ Only narrow:
 
 Keep `general` broad.
 
-#### Commit M3 — Cortex RecallCircuit consumption
+#### Commit M3 — Blueprint RecallCircuit consumption
 
 - prefer new lean script;
 - path -> atomic candidate;
@@ -1815,7 +1815,7 @@ Set planning off and execute current full provider set.
 
 #### RecallCircuit failure/version skew
 
-`cortex.py` falls back to `cortex-candidates.mjs`.
+`blueprint.py` falls back to `blueprint-candidates.mjs`.
 
 #### Planner regression
 
@@ -1838,13 +1838,13 @@ No stored-data migration is involved.
 P0 is done only when all are true:
 
 - [ ] Membrane remains a separate system.
-- [ ] No Cortex graph/store logic is copied into Membrane.
+- [ ] No Blueprint graph/store logic is copied into Membrane.
 - [ ] ContextPlan runs before provider execution.
 - [ ] Low-risk requests can skip providers with no expected value.
 - [ ] Ambiguous general requests preserve broad coverage.
-- [ ] Cortex RecallCircuit is preferred when available.
-- [ ] Legacy Cortex candidates remain a rollback/version-skew fallback.
-- [ ] Each Cortex path is atomic in admission.
+- [ ] Blueprint RecallCircuit is preferred when available.
+- [ ] Legacy Blueprint candidates remain a rollback/version-skew fallback.
+- [ ] Each Blueprint path is atomic in admission.
 - [ ] Generation mismatch fails closed.
 - [ ] No-seed circuit creates no fake context.
 - [ ] Repository content remains `data_only`.
@@ -1967,14 +1967,14 @@ This ledger is the coverage proof. It maps every exact entry from the original 6
 |---|---|---|
 | `AbanteAI/archive-old-cli-mentat` | undo/redo, context controls, end-task eval | Adapt reversibility/evaluation; coding agent/TUI out of scope |
 | `AlmanacCode/codealmanac` | scheduled knowledge lifecycle, transcript mining, evidence per claim, validation, no-op success | Strong absorb into lifecycle/retain/provenance |
-| `Brain0-ai/brain0` | line/source provenance, drift detection, DLP, stable symbol identity, attestations, crypto-shred | Absorb provenance/DLP; stable code symbols via Cortex |
-| `Consiliency/treesitter-chunker` | AST chunks, token budgets, stable symbol graph, incremental/parallel chunking, packing priority | Cortex owner; Membrane consumes outputs |
-| `DeusData/codebase-memory-mcp` | deep semantic code extraction, graph analysis, coverage honesty, incremental reindex | Absorb through Cortex, not Crypt |
+| `Brain0-ai/brain0` | line/source provenance, drift detection, DLP, stable symbol identity, attestations, crypto-shred | Absorb provenance/DLP; stable code symbols via Blueprint |
+| `Consiliency/treesitter-chunker` | AST chunks, token budgets, stable symbol graph, incremental/parallel chunking, packing priority | Blueprint owner; Membrane consumes outputs |
+| `DeusData/codebase-memory-mcp` | deep semantic code extraction, graph analysis, coverage honesty, incremental reindex | Absorb through Blueprint, not Crypt |
 | `Ivy-Interactive/Ivy-Tendril` | process/job supervision, retries, usage accounting, health | Absorb through Hub; agent execution itself out of scope |
-| `James-Chahwan/repo-graph` | failure-signal resolution, blast radius, cross-stack tracing, entry points, coverage honesty, PageRank | High-value via Cortex; PageRank benchmark-gated |
+| `James-Chahwan/repo-graph` | failure-signal resolution, blast radius, cross-stack tracing, entry points, coverage honesty, PageRank | High-value via Blueprint; PageRank benchmark-gated |
 | `LangbaseInc/baseai` | local resident server, unified local/prod pipe, typed boundaries, streaming | Adapt resident/typed runtime concepts; generic agent loop/UI out of scope |
 | `Lucas2944/prpack` | task-specific context packaging, base/head completeness, adjacent tests, content hygiene, spend gate | Absorb as evaluation/task-pack design; PR product features not Membrane core |
-| `MCrank/code-compress` | production FTS5, incremental symbol indexing, budgeted context, references/blast radius | FTS absorb in Membrane; symbol graph via Cortex |
+| `MCrank/code-compress` | production FTS5, incremental symbol indexing, budgeted context, references/blast radius | FTS absorb in Membrane; symbol graph via Blueprint |
 | `MemTensor/MemOS` | scheduled memory OS, RRF+MMR+recency, usefulness feedback, automatic state transitions | Absorb fusion/diversity/feedback behind gates |
 | `MemoryOS` | Ebbinghaus lifecycle, temporal graph, query expansion, rerank, explain mode, LongMemEval, lineage | One of the strongest direct sources for lifecycle/retrieval/eval |
 | `MemoryOS-bailab` | heat-based tiers, per-tier capacity, profile extraction, hard retrieval cap | Adapt capacity/heat; profile extraction proposal-only |
@@ -1986,18 +1986,18 @@ This ledger is the coverage proof. It maps every exact entry from the original 6
 | `caura-ai/caura` | recall gating, atomic-fact enrichment, DLP, degrade-safe ranking, typed event bus | Absorb policy/retain/fallback patterns |
 | `claude-subconscious` | lifecycle hooks, mid-task injection, sync dedup, nonblocking session push | Adapt hook reliability; do not depend on one host |
 | `cline/cline` | projection-based compaction, Git checkpoints, staleness watchers, context mention expansion | Absorb projection fidelity/freshness concepts; editing checkpoints belong harness |
-| `codegraph-ai/CodeGraph` | bi-temporal memory, memory↔code links, BM25+vector+graph fusion, design claim verification | Adapt temporal/link ideas; code graph owner Cortex |
-| `cq27-dev/rag-rat` | deterministic dream guards, verify pass, SCIP/LSP oracles, signed op-log, evidence distill, peer sync | Absorb lifecycle guards; SCIP/LSP through Cortex; op-log ideas for sync |
+| `codegraph-ai/CodeGraph` | bi-temporal memory, memory↔code links, BM25+vector+graph fusion, design claim verification | Adapt temporal/link ideas; code graph owner Blueprint |
+| `cq27-dev/rag-rat` | deterministic dream guards, verify pass, SCIP/LSP oracles, signed op-log, evidence distill, peer sync | Absorb lifecycle guards; SCIP/LSP through Blueprint; op-log ideas for sync |
 | `deepset-ai/haystack` | token-aware compaction, tool-result pruning/offload, typed state, filter protocol, structured eval | Strong absorb reversible Push/eval; generic framework out of scope |
 | `drona23/claude-token-efficient` | real provider-usage A/B/C benchmarking, behavior-targeted tests, pre-compaction save | Strong absorb into evaluation and session continuity |
 | `emulo` | content-addressed identity, strict validation, policy gates, fail-closed redaction, atomic storage, proof harness | Strong absorb into identity/security/eval |
 | `getzep/graphiti` | episodes, bi-temporal edges, multi-strategy search, bounded BFS, resolution, sagas | Absorb episodes/temporal relations narrowly; graph driver sprawl rejected |
 | `getzep/zep` | ingest pipeline, boundary-aware splitting, provenance episodes, alias canonicalization, injection hardening, indexing-lag tolerance | Strong absorb retain/entity/security/retrieval-fallback concepts |
-| `greplica` | code-anchored claims, fingerprints/drift, parent-chain memory commits, proposal writes, reconciliation | Absorb evidence/claim lifecycle; code anchors via Cortex |
+| `greplica` | code-anchored claims, fingerprints/drift, parent-chain memory commits, proposal writes, reconciliation | Absorb evidence/claim lifecycle; code anchors via Blueprint |
 | `headroomlabs-ai/headroom` | CCR reversible compression, per-tool interception, proactive context expansion, fidelity eval, savings audit | Core source for ArtifactRef/query verifier/Push economics |
 | `hindsight` | sentence/fact typing, temporal ranges, entity resolution, causal links, DLP, async retain, export/audit | Strong absorb into Crypt model/lifecycle/security |
 | `honcho` | explicit vs derived observations, bounded derivation/Dreamer, trigger gates, telemetry | Absorb derived-record distinction + schedule gates |
-| `juspay/code-review-graph-rescript` | typed code graph, diff impact, graph snapshots, flow tracing, RRF, graph evals | Absorb through Cortex; RRF/eval concepts in Membrane |
+| `juspay/code-review-graph-rescript` | typed code graph, diff impact, graph snapshots, flow tracing, RRF, graph evals | Absorb through Blueprint; RRF/eval concepts in Membrane |
 | `kingjulio8238/Memary` | graph neighborhood recall, synonym expansion, graph-first routing | Relation retrieval idea only; graph-first default rejected |
 | `krohling/bondai` | tiered memory, model-facing memory tools, event lifecycle, hierarchical conversation compression | Adapt memory tiers/lifecycle; generic toolkit/personas out of scope |
 | `langchain-ai/langchain` | indexing RecordManager, typed message identity, rate limits, store abstractions | Adapt idempotent indexing/types; backend proliferation rejected |
@@ -2013,11 +2013,11 @@ This ledger is the coverage proof. It maps every exact entry from the original 6
 | `mnemosyne-oss/mnemosyne` | typed memory, per-type decay, veracity consolidation, multi-voice recall, conflicts, MMR, encrypted sync | Strong absorb into lifecycle/retrieval/sync |
 | `neuml/txtai` | score-aware hybrid fusion, sparse scoring family, explain search | Absorb lexical/explain/fusion ideas; workflow/agent/cloud surface rejected |
 | `qualixar/superlocalmemory` | admission journal, hash-chain audit, ABAC, retention rules, erasure fence, multi-channel retrieval | Absorb journal/erasure/retrieval/security; P2P mesh later/optional |
-| `quantmew/context8` | AST hierarchical chunks, hash-based incremental indexing, cancellation, commit pinning | Absorb through Cortex; cancellation/freshness into provider contract |
+| `quantmew/context8` | AST hierarchical chunks, hash-based incremental indexing, cancellation, commit pinning | Absorb through Blueprint; cancellation/freshness into provider contract |
 | `rohitg00/agentmemory` | validated observation compression, hard working-memory budgets, leases, provenance verification, eval discipline | Absorb compression/eval/locking patterns; Crypt/runtime |
 | `rtk-ai/rtk` | never-worse filters, data-class truncation, savings economics, hook integrity | Strong absorb Push guards/economics/security |
 | `run-llama/llama_index` | memory blocks, transformation hashes, ingestion cache, property-graph subretrievers | Absorb transformation identity; backend/LLM graph zoo rejected |
-| `semantic` | generic AST, scope/reference resolution, LSP tags | Cortex-only; do not absorb parser into Membrane |
+| `semantic` | generic AST, scope/reference resolution, LSP tags | Blueprint-only; do not absorb parser into Membrane |
 | `semantica` | PROV provenance, conflict workflows, temporal layer, version checksums | Absorb provenance/conflict/temporal concepts; reasoner/ontology platform rejected |
 | `shihanwan/memonto` | ontology/triples, delta updates, vector→graph expansion | Delta/typed relation concept; open ontology/SPARQL/script writes rejected |
 | `supermemoryai/supermemory` | spaces/scopes, save-or-forget semantics, typed citations, document-centric memory | Adapt scope/write/citation ideas; extension/UI ecosystem out of scope |

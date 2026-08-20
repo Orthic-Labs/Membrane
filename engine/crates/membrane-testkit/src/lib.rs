@@ -1,6 +1,6 @@
 //! # membrane-testkit
 //!
-//! The Membrane testkit. Ships the canonical Cortex and Crypt conformance
+//! The Membrane testkit. Ships the canonical Blueprint and Crypt conformance
 //! fixture corpus as embedded JSON, plus a `golden_fixtures()` accessor
 //! that returns the union of both sets as a `Vec<Fixture>`.
 //!
@@ -12,23 +12,23 @@
 //!
 //! ## Layout
 //!
-//!   * `src/fixtures/cortex/*.json` — the canonical Cortex adapter
+//!   * `src/fixtures/blueprint/*.json` — the canonical Blueprint adapter
 //!     conformance set (one file per operation/case).
 //!   * `src/fixtures/crypt/*.json` — the canonical Crypt adapter
 //!     conformance set (one file per operation/case).
 //!   * `golden_fixtures()` — returns the union, parsed into
 //!     `membrane_provider_sdk::Fixture` values.
-//!   * `cortex_fixtures()` / `crypt_fixtures()` — return the per-adapter
+//!   * `blueprint_fixtures()` / `crypt_fixtures()` — return the per-adapter
 //!     set, useful for adapter-specific unit tests.
 
 use membrane_provider_sdk::Fixture;
 
-/// Embedded Cortex fixtures. New files added to `src/fixtures/cortex/`
+/// Embedded Blueprint fixtures. New files added to `src/fixtures/blueprint/`
 /// must also be appended to this list (the manifest is hand-maintained
 /// to keep the corpus self-describing).
-pub const CORTEX_FIXTURE_NAMES: &[&str] = &[
-    "cortex-context-scope-grant.json",
-    "cortex-source-read-anchor.json",
+pub const BLUEPRINT_FIXTURE_NAMES: &[&str] = &[
+    "blueprint-context-scope-grant.json",
+    "blueprint-source-read-anchor.json",
 ];
 
 /// Embedded Crypt fixtures. New files added to `src/fixtures/crypt/`
@@ -36,11 +36,11 @@ pub const CORTEX_FIXTURE_NAMES: &[&str] = &[
 pub const CRYPT_FIXTURE_NAMES: &[&str] =
     &["crypt-knowledge-propose.json", "crypt-checkpoint-save.json"];
 
-/// All Cortex fixtures, in declaration order.
-pub fn cortex_fixtures() -> Vec<Fixture> {
-    CORTEX_FIXTURE_NAMES
+/// All Blueprint fixtures, in declaration order.
+pub fn blueprint_fixtures() -> Vec<Fixture> {
+    BLUEPRINT_FIXTURE_NAMES
         .iter()
-        .map(|name| load_fixture("cortex", name))
+        .map(|name| load_fixture("blueprint", name))
         .collect()
 }
 
@@ -52,11 +52,11 @@ pub fn crypt_fixtures() -> Vec<Fixture> {
         .collect()
 }
 
-/// The union of `cortex_fixtures()` and `crypt_fixtures()`. This is the
+/// The union of `blueprint_fixtures()` and `crypt_fixtures()`. This is the
 /// set the Book 1 gate runs the SDK's `run_conformance` over.
 pub fn golden_fixtures() -> Vec<Fixture> {
-    let mut all = Vec::with_capacity(CORTEX_FIXTURE_NAMES.len() + CRYPT_FIXTURE_NAMES.len());
-    all.extend(cortex_fixtures());
+    let mut all = Vec::with_capacity(BLUEPRINT_FIXTURE_NAMES.len() + CRYPT_FIXTURE_NAMES.len());
+    all.extend(blueprint_fixtures());
     all.extend(crypt_fixtures());
     all
 }
@@ -64,11 +64,11 @@ pub fn golden_fixtures() -> Vec<Fixture> {
 /// Load one embedded fixture by adapter directory and file name.
 fn load_fixture(dir: &str, name: &str) -> Fixture {
     let json = match (dir, name) {
-        ("cortex", "cortex-context-scope-grant.json") => {
-            include_str!("fixtures/cortex/cortex-context-scope-grant.json")
+        ("blueprint", "blueprint-context-scope-grant.json") => {
+            include_str!("fixtures/blueprint/blueprint-context-scope-grant.json")
         }
-        ("cortex", "cortex-source-read-anchor.json") => {
-            include_str!("fixtures/cortex/cortex-source-read-anchor.json")
+        ("blueprint", "blueprint-source-read-anchor.json") => {
+            include_str!("fixtures/blueprint/blueprint-source-read-anchor.json")
         }
         ("crypt", "crypt-knowledge-propose.json") => {
             include_str!("fixtures/crypt/crypt-knowledge-propose.json")

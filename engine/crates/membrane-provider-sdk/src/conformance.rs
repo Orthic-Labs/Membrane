@@ -32,7 +32,7 @@ use serde_json::Value;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Fixture {
-    /// Stable, unique fixture name (e.g. `cortex-context-scope-grant`).
+    /// Stable, unique fixture name (e.g. `blueprint-context-scope-grant`).
     pub name: String,
     /// Operation name (e.g. `membrane_context`). MUST appear in the
     /// provider's `list_capabilities()`.
@@ -56,7 +56,7 @@ pub struct Fixture {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FixtureFailure {
-    /// Fixture name (e.g. `cortex-context-scope-grant`).
+    /// Fixture name (e.g. `blueprint-context-scope-grant`).
     pub fixture: String,
     /// Operation the fixture targeted.
     pub operation: String,

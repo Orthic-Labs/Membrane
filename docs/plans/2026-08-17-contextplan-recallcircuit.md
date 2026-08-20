@@ -25,11 +25,11 @@ Membrane owns:
 
 Membrane does **not** own:
 
-- Cortex graph construction;
-- Cortex entity identity;
+- Blueprint graph construction;
+- Blueprint entity identity;
 - code semantic truth;
 - repository graph traversal algorithms;
-- Cortex generations;
+- Blueprint generations;
 - a duplicate code graph;
 - independent program-analysis semantics.
 
@@ -37,16 +37,16 @@ The integration is:
 
 ```text
 Membrane
-  -> task-shaped structured request to Cortex
+  -> task-shaped structured request to Blueprint
 
-Cortex
+Blueprint
   -> generation-bound RecallCircuit
 
 Membrane
   -> chooses whether/how much of that evidence reaches the model
 ```
 
-No store merge. No raw graph merge. No copied Cortex DB.
+No store merge. No raw graph merge. No copied Blueprint DB.
 
 ---
 
@@ -59,24 +59,24 @@ The improved design adds a stage before provider execution:
 ```text
 task
 -> ContextPlan
--> selected providers / budgets / Cortex traversal policy
+-> selected providers / budgets / Blueprint traversal policy
 -> provider execution
 -> candidate set
 -> deterministic admission
 -> context packet + receipts
 ```
 
-The second critical change is how Cortex is consumed:
+The second critical change is how Blueprint is consumed:
 
 ```text
 OLD
-Cortex nodes/snippets -> flattened candidates
+Blueprint nodes/snippets -> flattened candidates
 
 NEW
-Cortex completed evidence path -> one atomic candidate
+Blueprint completed evidence path -> one atomic candidate
 ```
 
-Membrane does not traverse the graph. Cortex does.
+Membrane does not traverse the graph. Blueprint does.
 
 ---
 
@@ -86,10 +86,10 @@ Membrane does not traverse the graph. Cortex does.
 |---|---|---|
 | ADD | `engine/federation/context_plan.py` | Deterministic provider/query plan before fan-out |
 | MODIFY | `engine/federation/gateway.py` | Build provider tasks, then execute only the plan-selected subset |
-| MODIFY | `engine/federation/providers/cortex.py` | Prefer Cortex RecallCircuit; convert each complete path into one atomic candidate; retain legacy fallback |
+| MODIFY | `engine/federation/providers/blueprint.py` | Prefer Blueprint RecallCircuit; convert each complete path into one atomic candidate; retain legacy fallback |
 | MODIFY | `engine/crates/crypt-core/src/planner.rs` | Recognize `repo_code_circuit`; reward evidence/path completeness without deleting reserved lanes |
 | ADD | `engine/federation/test_context_plan.py` | Deterministic planning tests |
-| MODIFY | `engine/federation/providers/test_cortex.py` | RecallCircuit parsing, generation pinning and fallback tests |
+| MODIFY | `engine/federation/providers/test_blueprint.py` | RecallCircuit parsing, generation pinning and fallback tests |
 | MODIFY | Rust planner tests in `planner.rs` | Atomic circuit ranking/admission tests |
 | MODIFY | `mcp/context-renderer-lib.cjs` | Optional layout-v2 ordering: constraints front, evidence middle, dirty/live state late |
 | MODIFY | `mcp/context-renderer.test.mjs` | Exact byte-order/layout tests |
@@ -102,13 +102,13 @@ Do **not** change in P0:
 - canonical `CandidateV1` in `engine/crates/membrane-protocol/src/types.rs`;
 - the five core Membrane contract shapes;
 - Crypt/vector storage;
-- Cortex database or graph;
+- Blueprint database or graph;
 - working-context schema;
 - reserved memory/skill lanes;
 - prompt-hook ownership;
 - ContextReceipt content-free policy.
 
-A Cortex path can fit inside the existing candidate contract as an **atomic candidate**, so do not create a protocol migration unless evidence requires it.
+A Blueprint path can fit inside the existing candidate contract as an **atomic candidate**, so do not create a protocol migration unless evidence requires it.
 
 ---
 
@@ -132,7 +132,7 @@ _WORD = re.compile(r"[a-z0-9_./:-]+")
 
 
 @dataclass(frozen=True)
-class CortexPlan:
+class BlueprintPlan:
     enabled: bool
     policy_id: str
     max_hops: int
@@ -145,7 +145,7 @@ class ContextPlan:
     task_class: str
     risk: str
     providers: tuple[str, ...]
-    cortex: CortexPlan
+    blueprint: BlueprintPlan
 
 
 def _terms(task: str) -> set[str]:
@@ -160,7 +160,7 @@ def _has_any(text: str, needles: Iterable[str]) -> bool:
 def build_context_plan(
     task: str,
     *,
-    cortex_usable: bool,
+    blueprint_usable: bool,
     live_usable: bool,
     skills_usable: bool,
 ) -> ContextPlan:
@@ -228,8 +228,8 @@ def build_context_plan(
     if live_usable:
         providers.append("live")
 
-    if cortex_usable and task_class != "docs":
-        providers.append("cortex")
+    if blueprint_usable and task_class != "docs":
+        providers.append("blueprint")
 
     if task_class in {"security", "migration", "architecture"}:
         providers.extend(("audit", "architect"))
@@ -262,8 +262,8 @@ def build_context_plan(
         task_class=task_class,
         risk=risk,
         providers=tuple(providers),
-        cortex=CortexPlan(
-            enabled=cortex_usable and "cortex" in providers,
+        blueprint=BlueprintPlan(
+            enabled=blueprint_usable and "blueprint" in providers,
             policy_id=policy,
             max_hops=hops,
             max_paths=paths,
@@ -323,31 +323,31 @@ all_tasks: dict[str, Any] = {
 }
 ```
 
-Then conditionally add live/skills/cortex:
+Then conditionally add live/skills/blueprint:
 
 ```python
-cortex_usable = bool(cortex_state.get("usable"))
+blueprint_usable = bool(blueprint_state.get("usable"))
 live_usable = bool(overlay_state.get("usable"))
 skills_usable = bool(skills_state.get("usable"))
 
 plan = build_context_plan(
     task,
-    cortex_usable=cortex_usable,
+    blueprint_usable=blueprint_usable,
     live_usable=live_usable,
     skills_usable=skills_usable,
 )
 
-if cortex_usable:
-    all_tasks["cortex"] = lambda: _adapter(
-        "cortex",
-        cortex.produce_with_observability,
+if blueprint_usable:
+    all_tasks["blueprint"] = lambda: _adapter(
+        "blueprint",
+        blueprint.produce_with_observability,
         repo_root,
         task,
         max_tokens,
-        expected_generation=expected_cortex_generation,
-        policy_id=plan.cortex.policy_id,
-        max_hops=plan.cortex.max_hops,
-        max_paths=plan.cortex.max_paths,
+        expected_generation=expected_blueprint_generation,
+        policy_id=plan.blueprint.policy_id,
+        max_hops=plan.blueprint.max_hops,
+        max_paths=plan.blueprint.max_paths,
     )
 
 if live_usable:
@@ -385,12 +385,12 @@ It already:
 
 - enforces one absolute deadline;
 - isolates provider failures;
-- gives Cortex special scheduling because it is a structural dependency;
+- gives Blueprint special scheduling because it is a structural dependency;
 - emits typed timeout warnings.
 
 Changing routing and concurrency semantics simultaneously would make regressions harder to attribute.
 
-P1 may replace the Cortex special-case with generic stages after ContextPlan is qualified.
+P1 may replace the Blueprint special-case with generic stages after ContextPlan is qualified.
 
 ## 4.4 Do not put raw task text into receipts
 
@@ -401,8 +401,8 @@ If ContextPlan observability is emitted, expose only:
   "schemaVersion": 1,
   "taskClass": "impact",
   "risk": "medium",
-  "providers": ["rules", "anchors", "git", "live", "cortex", "skills"],
-  "cortexPolicyId": "impact.reverse"
+  "providers": ["rules", "anchors", "git", "live", "blueprint", "skills"],
+  "blueprintPolicyId": "impact.reverse"
 }
 ```
 
@@ -410,9 +410,9 @@ Do not duplicate `task` content into telemetry/receipt surfaces.
 
 ---
 
-# 5. MODIFY `engine/federation/providers/cortex.py`
+# 5. MODIFY `engine/federation/providers/blueprint.py`
 
-The provider currently normalizes Cortex's flat candidates. Change it to prefer `RecallCircuitV1`.
+The provider currently normalizes Blueprint's flat candidates. Change it to prefer `RecallCircuitV1`.
 
 ## 5.1 Function signature
 
@@ -452,7 +452,7 @@ A result produced under `explore.both` must never satisfy an `impact.reverse` ca
 Derive:
 
 ```python
-recall_cli = Path(cortex_cli).with_name("cortex-recall.mjs")
+recall_cli = Path(blueprint_cli).with_name("blueprint-recall.mjs")
 ```
 
 If it exists, invoke:
@@ -470,7 +470,7 @@ cmd = [
 ]
 ```
 
-If it does not exist, use the existing `cortex-candidates.mjs` flow unchanged.
+If it does not exist, use the existing `blueprint-candidates.mjs` flow unchanged.
 
 This gives version-skew compatibility.
 
@@ -488,7 +488,7 @@ isinstance(document["edges"], list)
 
 On mismatch:
 
-- return no Cortex candidate;
+- return no Blueprint candidate;
 - emit a typed warning;
 - do not silently reinterpret it as legacy candidate output.
 
@@ -600,12 +600,12 @@ def _circuit_candidates(
         evidence_coverage = float(path.get("evidenceCoverage") or 0.0)
 
         candidates.append({
-            "id": f"cortex-circuit:{document['circuitId']}:{path_id}",
+            "id": f"blueprint-circuit:{document['circuitId']}:{path_id}",
             "layer": 3,
-            "provider": "cortex",
+            "provider": "blueprint",
             "sourceKind": "repo_code_circuit",
             "sourceRef": (
-                f"cortex://circuit/{document['circuitId']}/{path_id}"
+                f"blueprint://circuit/{document['circuitId']}/{path_id}"
             ),
             "sourceHash": _sha256_json(descriptor),
             "trustClass": "workspace_tracked",
@@ -634,7 +634,7 @@ def _circuit_candidates(
             ),
             "recoverable": True,
             "resolver": (
-                f"cortex graph path {seed_id} {terminal_id}"
+                f"blueprint graph path {seed_id} {terminal_id}"
             ),
             "text": text,
         })
@@ -664,7 +664,7 @@ This avoids top-k admission splitting a required chain.
 
 ## 5.6 Empty circuit behavior
 
-If Cortex returns:
+If Blueprint returns:
 
 ```json
 {
@@ -673,7 +673,7 @@ If Cortex returns:
 }
 ```
 
-emit no Cortex candidate.
+emit no Blueprint candidate.
 
 Do not convert the unresolved state into generic repository text.
 
@@ -797,7 +797,7 @@ Add tests to the existing Rust module:
 
 ```rust
 #[test]
-fn complete_cortex_circuit_beats_incomplete_peer() {
+fn complete_blueprint_circuit_beats_incomplete_peer() {
     let mut complete = candidate(
         "circuit:complete",
         "repo_code_circuit",
@@ -805,7 +805,7 @@ fn complete_cortex_circuit_beats_incomplete_peer() {
         0.8,
         false,
     );
-    complete.provider = Some("cortex".into());
+    complete.provider = Some("blueprint".into());
     complete.score_components.insert("path_complete".into(), 1.0);
     complete.score_components.insert("evidence_coverage".into(), 1.0);
     complete.score_components.insert("hop_efficiency".into(), 0.5);
@@ -817,7 +817,7 @@ fn complete_cortex_circuit_beats_incomplete_peer() {
         0.8,
         false,
     );
-    incomplete.provider = Some("cortex".into());
+    incomplete.provider = Some("blueprint".into());
     incomplete.score_components.insert("path_complete".into(), 0.0);
     incomplete.score_components.insert("evidence_coverage".into(), 0.5);
 
@@ -912,7 +912,7 @@ const order = blocks
 `mcp/context-renderer.test.mjs`:
 
 - rules precede evidence under layout v2;
-- Cortex circuit is in evidence middle;
+- Blueprint circuit is in evidence middle;
 - live/dirty overlay follows ordinary evidence;
 - same packet produces byte-identical output across repeated runs;
 - layout v1 remains unchanged when flag off;
@@ -994,7 +994,7 @@ P1 staged flow:
 
 ```text
 Stage 0: identity/rules/live
-Stage 1: Cortex structural recall
+Stage 1: Blueprint structural recall
 evaluate
 Stage 2: audit/architect/memory/skills only if justified
 evaluate
@@ -1097,9 +1097,9 @@ The reserved-lane policy remains until calibrated replacement outperforms it.
 
 Membrane already carries `trustClass` and `instructionPolicy`.
 
-Strengthen admission tests around Cortex circuits:
+Strengthen admission tests around Blueprint circuits:
 
-A Cortex path is **data**, not executable instruction.
+A Blueprint path is **data**, not executable instruction.
 
 Required invariant:
 
@@ -1114,7 +1114,7 @@ must remain:
 instructionPolicy = "data_only"
 ```
 
-and never become host/system instruction merely because Cortex connected it structurally.
+and never become host/system instruction merely because Blueprint connected it structurally.
 
 Add adversarial fixtures where:
 
@@ -1135,13 +1135,13 @@ Membrane must preserve source trust and authority independently of semantic simi
 
 Do not delete providers. Stop invoking them when ContextPlan explicitly says they have no expected value.
 
-### Flattened Cortex node candidates
+### Flattened Blueprint node candidates
 
-Once RecallCircuit is available, do not make isolated graph nodes the normal Cortex candidate unit for multi-hop questions.
+Once RecallCircuit is available, do not make isolated graph nodes the normal Blueprint candidate unit for multi-hop questions.
 
 Keep legacy parsing only for version skew and rollback.
 
-### Hard-coded Cortex scheduling as the only "planning" concept
+### Hard-coded Blueprint scheduling as the only "planning" concept
 
 P0 can retain `_collect_tasks_bounded()` unchanged for safety.
 
@@ -1182,8 +1182,8 @@ Assert:
 - class `local_edit`;
 - risk `low`;
 - no `audit`, `architect`, `crypt`;
-- Cortex included when usable;
-- Cortex policy bounded to 2 hops.
+- Blueprint included when usable;
+- Blueprint policy bounded to 2 hops.
 
 ### Impact
 
@@ -1197,7 +1197,7 @@ Assert:
 
 - class `impact`;
 - policy `impact.reverse`;
-- Cortex included;
+- Blueprint included;
 - skills included when available;
 - no unnecessary architect unless architecture signal exists.
 
@@ -1212,7 +1212,7 @@ change auth token validation
 Assert:
 
 - high risk;
-- Cortex + audit + architect + skills + crypt;
+- Blueprint + audit + architect + skills + crypt;
 - policy `impact.reverse`.
 
 ### General ambiguity
@@ -1221,15 +1221,15 @@ Assert broad current provider set is preserved.
 
 ### Provider unavailable
 
-If Cortex is unusable:
+If Blueprint is unusable:
 
 - plan does not include it;
-- caller still receives non-Cortex providers;
+- caller still receives non-Blueprint providers;
 - no fake graph candidate is created.
 
 ---
 
-## MODIFY `engine/federation/providers/test_cortex.py`
+## MODIFY `engine/federation/providers/test_blueprint.py`
 
 Required new cases:
 
@@ -1290,7 +1290,7 @@ Measure:
 - delivered tokens;
 - missing-context feedback rate.
 
-## Cortex-circuit metrics
+## Blueprint-circuit metrics
 
 - path completeness;
 - evidence coverage;
@@ -1353,7 +1353,7 @@ Only narrow:
 
 Keep `general` broad.
 
-## Commit M3 — Cortex RecallCircuit consumption
+## Commit M3 — Blueprint RecallCircuit consumption
 
 - prefer new lean script;
 - path -> atomic candidate;
@@ -1394,7 +1394,7 @@ Set planning off and execute current full provider set.
 
 ## RecallCircuit failure/version skew
 
-`cortex.py` falls back to `cortex-candidates.mjs`.
+`blueprint.py` falls back to `blueprint-candidates.mjs`.
 
 ## Planner regression
 
@@ -1417,13 +1417,13 @@ No stored-data migration is involved.
 P0 is done only when all are true:
 
 - [ ] Membrane remains a separate system.
-- [ ] No Cortex graph/store logic is copied into Membrane.
+- [ ] No Blueprint graph/store logic is copied into Membrane.
 - [ ] ContextPlan runs before provider execution.
 - [ ] Low-risk requests can skip providers with no expected value.
 - [ ] Ambiguous general requests preserve broad coverage.
-- [ ] Cortex RecallCircuit is preferred when available.
-- [ ] Legacy Cortex candidates remain a rollback/version-skew fallback.
-- [ ] Each Cortex path is atomic in admission.
+- [ ] Blueprint RecallCircuit is preferred when available.
+- [ ] Legacy Blueprint candidates remain a rollback/version-skew fallback.
+- [ ] Each Blueprint path is atomic in admission.
 - [ ] Generation mismatch fails closed.
 - [ ] No-seed circuit creates no fake context.
 - [ ] Repository content remains `data_only`.
@@ -1449,13 +1449,13 @@ TASK
 Membrane ContextPlan
   |
   +--> choose providers
-  +--> choose Cortex policy
+  +--> choose Blueprint policy
   +--> allocate deadlines
   |
   v
 PROVIDERS
   |
-  +--> Cortex computes RecallCircuit
+  +--> Blueprint computes RecallCircuit
   +--> rules
   +--> live state
   +--> Git
@@ -1490,4 +1490,4 @@ The important change is not "retrieve more intelligently."
 
 It is:
 
-**Membrane decides which computations are worth running, while Cortex supplies already-computed structural evidence rather than forcing the model to rediscover graph relationships.**
+**Membrane decides which computations are worth running, while Blueprint supplies already-computed structural evidence rather than forcing the model to rediscover graph relationships.**

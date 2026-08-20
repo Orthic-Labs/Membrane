@@ -128,7 +128,7 @@ function routeToolCall(event, options) {
       decision: SUGGEST,
       reason: 'broad_discovery',
       suggestion:
-        'Broad discovery: membrane_context answers this from the current Cortex ' +
+        'Broad discovery: membrane_context answers this from the current Blueprint ' +
         'generation with file/span provenance, usually in fewer tokens than a tree-wide sweep. ' +
         'Proceeding with the search is still allowed.',
     };

@@ -22,7 +22,7 @@ import { createDeadline, deadlineSignal, mapConcurrent, terminalReason, timeoutR
 import { boundedLifecycleId, createLifecycle, withCancellationGrace } from "./lifecycle.mjs";
 import { toolsetNames } from "./toolsets.mjs";
 import { executeCodeBatch } from "../schemas/registry/code/mbr402-batch.mjs";
-import { requestCortex } from "./cortex-readiness.mjs";
+import { requestBlueprint } from "./blueprint-readiness.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -57,7 +57,7 @@ const CALLER_SCHEMA = {
 const TOOL_DEFINITIONS = [
   { name: "membrane_context", description: "Use when you need a federated context packet for one exact caller binding. Do not use for raw memory CRUD, arbitrary filesystem reads, or bypassing repository-bound access.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." }, explicitRepositoryIds: { type: "array", items: { type: "string" }, description: "MBR-004 bounded routing: workspace scope only. Exact repository ids to select even without an alias mention." }, deadlineMs: { type: "integer", minimum: 1, description: "MBR-005: optional absolute budget for the workspace fan-out in ms; one ingress deadline bounds all children." }, taskEnvelope: { type: "object", description: "MBR-007: orthic.task-envelope.v1 identity preserved end to end." }, turnEnvelope: { type: "object", description: "MBR-007: orthic.turn-envelope.v1 identity preserved end to end." }, clientEnvelope: { type: "object", description: "MBR-007: orthic.client-envelope.v1 identity." }, overlay: { type: "object", description: "MBR-007: orthic.overlay-identity.v1 worktree/session overlay." } } } },
   { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
-  { name: "membrane_cortex", description: "Bounded Cortex architecture, symbol, reference, impact, or read-only snapshot view with generation freshness and source-hash resolver handles.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], additionalProperties: false, properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["architecture", "symbol", "reference", "references", "impact", "changes", "snapshot_get", "snapshot_list", "changes_since"] }, node: { type: "string", minLength: 1, maxLength: 256, pattern: "^[A-Za-z0-9_.$:/-]+$" }, name: { type: "string", minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }, depth: { type: "integer", minimum: 1, maximum: 5 }, limit: { type: "integer", minimum: 1, maximum: 100 }, budget: { type: "integer", minimum: 1, maximum: 10000 }, deadlineMs: { type: "integer", minimum: 1, maximum: 5000 }, items: { type: "array", minItems: 1, maxItems: 50, items: { type: "object" } } }, oneOf: [{ properties: { operation: { enum: ["architecture", "changes", "snapshot_get", "snapshot_list", "changes_since"] } }, not: { required: ["node"] } }, { properties: { operation: { enum: ["symbol", "reference", "references", "impact"] } }, required: ["node"] }] } },
+  { name: "membrane_blueprint", description: "Bounded Blueprint architecture, symbol, reference, impact, or read-only snapshot view with generation freshness and source-hash resolver handles.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], additionalProperties: false, properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["architecture", "symbol", "reference", "references", "impact", "changes", "snapshot_get", "snapshot_list", "changes_since"] }, node: { type: "string", minLength: 1, maxLength: 256, pattern: "^[A-Za-z0-9_.$:/-]+$" }, name: { type: "string", minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }, depth: { type: "integer", minimum: 1, maximum: 5 }, limit: { type: "integer", minimum: 1, maximum: 100 }, budget: { type: "integer", minimum: 1, maximum: 10000 }, deadlineMs: { type: "integer", minimum: 1, maximum: 5000 }, items: { type: "array", minItems: 1, maxItems: 50, items: { type: "object" } } }, oneOf: [{ properties: { operation: { enum: ["architecture", "changes", "snapshot_get", "snapshot_list", "changes_since"] } }, not: { required: ["node"] } }, { properties: { operation: { enum: ["symbol", "reference", "references", "impact"] } }, required: ["node"] }] } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
   { name: "membrane_checkpoint_save", description: "Save an A0 session checkpoint for one exact caller binding; never durable knowledge.", inputSchema: { type: "object", required: ["repository", "caller", "checkpoint"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, checkpoint: { type: "object" } } } },
   { name: "membrane_checkpoint_load", description: "Load an unexpired A0 session checkpoint for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "id"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, id: { type: "string" }, asOfMs: { type: "integer", minimum: 0 } } } },
@@ -69,7 +69,7 @@ const TOOL_DEFINITIONS = [
 const TOOLS = TOOL_DEFINITIONS.map((tool) => ({
   ...tool,
   inputSchema: { ...tool.inputSchema, additionalProperties: false },
-  annotations: tool.annotations ?? { readOnlyHint: tool.name === "membrane_context" || tool.name === "membrane_source_read" || tool.name === "membrane_cortex", destructiveHint: false, idempotentHint: tool.name === "membrane_context" || tool.name === "membrane_source_read" || tool.name === "membrane_cortex" },
+  annotations: tool.annotations ?? { readOnlyHint: tool.name === "membrane_context" || tool.name === "membrane_source_read" || tool.name === "membrane_blueprint", destructiveHint: false, idempotentHint: tool.name === "membrane_context" || tool.name === "membrane_source_read" || tool.name === "membrane_blueprint" },
 }));
 
 const TRACE_FIELDS = {
@@ -261,7 +261,7 @@ function run(command, args, input, env = process.env, signal) {
 // otherwise reports a typed unknown reason.
 function repositoryIdentity(packet, entry) {
   const freshness = packet?.packet?.freshness || {};
-  const generationId = freshness.generationId ?? entry?.cortexGenerationId ?? null;
+  const generationId = freshness.generationId ?? entry?.blueprintGenerationId ?? null;
   const manifestDigest = freshness.manifestDigest ?? entry?.manifestDigest ?? null;
   const sourceCommit = freshness.sourceCommit ?? entry?.sourceCommit ?? "";
   const identityStatus = generationId ? "known" : "unknown";
@@ -424,13 +424,13 @@ async function durableFeedback(binding, args) {
   }
 }
 
-const CORTEX_OPERATIONS = new Set(["architecture", "symbol", "reference", "references", "impact", "changes", "snapshot_get", "snapshot_list", "changes_since"]);
-const SAFE_CORTEX_VALUE = /^[A-Za-z0-9_.$:/-]{1,256}$/;
+const BLUEPRINT_OPERATIONS = new Set(["architecture", "symbol", "reference", "references", "impact", "changes", "snapshot_get", "snapshot_list", "changes_since"]);
+const SAFE_BLUEPRINT_VALUE = /^[A-Za-z0-9_.$:/-]{1,256}$/;
 const HASH = /^(?:sha256:[0-9a-f]{64}|xxh128:[0-9a-f]{32})$/;
 const GIT_COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
-function cortexValue(value) { return typeof value === "string" && SAFE_CORTEX_VALUE.test(value) ? value : null; }
-function cortexHash(value) { return typeof value === "string" && HASH.test(value) ? value : null; }
-function validCortexAuth(args) {
+function blueprintValue(value) { return typeof value === "string" && SAFE_BLUEPRINT_VALUE.test(value) ? value : null; }
+function blueprintHash(value) { return typeof value === "string" && HASH.test(value) ? value : null; }
+function validBlueprintAuth(args) {
   const caller = args.caller;
   const bounded = (value, max) => typeof value === "string" && value.length > 0 && Buffer.byteLength(value, "utf8") <= max;
   if (!bounded(args.repository, 4096) || !caller || typeof caller !== "object" || Array.isArray(caller)) return false;
@@ -438,27 +438,27 @@ function validCortexAuth(args) {
   const allowed = new Set(["root", "repositoryId", "scopeId", "scopeDescriptor"]);
   return Object.keys(caller).every((key) => allowed.has(key)) && (caller.scopeDescriptor === undefined || (caller.scopeDescriptor && typeof caller.scopeDescriptor === "object" && !Array.isArray(caller.scopeDescriptor)));
 }
-function cortexInteger(value, fallback, min, max, field) {
+function blueprintInteger(value, fallback, min, max, field) {
   if (value === undefined) return fallback;
-  if (!Number.isInteger(value) || value < min || value > max) throw new Error(`invalid cortex ${field}`);
+  if (!Number.isInteger(value) || value < min || value > max) throw new Error(`invalid blueprint ${field}`);
   return value;
 }
-export function cortexCommand(args) {
+export function blueprintCommand(args) {
   const operation = args.operation;
-  if (!CORTEX_OPERATIONS.has(operation)) throw new Error("invalid cortex operation");
-  if (!validCortexAuth(args)) throw new Error("invalid cortex auth envelope");
+  if (!BLUEPRINT_OPERATIONS.has(operation)) throw new Error("invalid blueprint operation");
+  if (!validBlueprintAuth(args)) throw new Error("invalid blueprint auth envelope");
   const snapshotOperation = operation === "snapshot_get" || operation === "snapshot_list" || operation === "changes_since";
   const allowed = operation === "architecture" || operation === "changes" ? new Set(["repository", "caller", "operation", "limit", "budget", "items", "deadlineMs"])
     : snapshotOperation ? new Set(["repository", "caller", "operation", "name", "limit", "deadlineMs"])
     : new Set(["repository", "caller", "operation", "node", "limit", "budget", "depth"]);
-  for (const key of Object.keys(args)) if (!allowed.has(key)) throw new Error(`invalid cortex ${key}`);
+  for (const key of Object.keys(args)) if (!allowed.has(key)) throw new Error(`invalid blueprint ${key}`);
   const term = args.node ?? args.query;
-  if (snapshotOperation && operation !== "snapshot_list" && !cortexValue(args.name)) throw new Error("invalid cortex snapshot name");
+  if (snapshotOperation && operation !== "snapshot_list" && !blueprintValue(args.name)) throw new Error("invalid blueprint snapshot name");
   if (!snapshotOperation && (operation === "architecture" || operation === "changes" ? (args.node !== undefined || args.query !== undefined || args.from !== undefined || args.to !== undefined)
-    : !cortexValue(term))) throw new Error("invalid cortex node or query");
-  const limit = cortexInteger(args.limit, 20, 1, 100, "limit");
-  const budget = cortexInteger(args.budget, 2000, 1, 10000, "budget");
-  const depth = args.depth === undefined ? null : cortexInteger(args.depth, 1, 1, 5, "depth");
+    : !blueprintValue(term))) throw new Error("invalid blueprint node or query");
+  const limit = blueprintInteger(args.limit, 20, 1, 100, "limit");
+  const budget = blueprintInteger(args.budget, 2000, 1, 10000, "budget");
+  const depth = args.depth === undefined ? null : blueprintInteger(args.depth, 1, 1, 5, "depth");
   const command = operation === "snapshot_get" ? ["snapshot", "get", args.name]
     : operation === "snapshot_list" ? ["snapshot", "list"]
     : operation === "changes_since" ? ["changes-since", args.name]
@@ -475,7 +475,7 @@ export function cortexCommand(args) {
   return { operation, command };
 }
 
-export async function cortexBatchCapability(binding, args, signal) {
+export async function blueprintBatchCapability(binding, args, signal) {
   const batch = args.items;
   return executeCodeBatch({
     items: batch,
@@ -483,107 +483,107 @@ export async function cortexBatchCapability(binding, args, signal) {
     signal,
     authorize: async (item) => {
       const target = { ...item, repository: item.repository || args.repository, caller: item.caller || args.caller, operation: item.operation || args.operation };
-      if (!item || typeof item !== "object" || !CORTEX_OPERATIONS.has(target.operation) || typeof item.generationId !== "string" || !item.generationId || typeof item.sourceHash !== "string" || !item.sourceHash) return { ok: false, code: "freshness_required" };
+      if (!item || typeof item !== "object" || !BLUEPRINT_OPERATIONS.has(target.operation) || typeof item.generationId !== "string" || !item.generationId || typeof item.sourceHash !== "string" || !item.sourceHash) return { ok: false, code: "freshness_required" };
       const commandArgs = { repository: target.repository, caller: target.caller, operation: target.operation };
       if (target.node !== undefined) commandArgs.node = target.node;
       if (target.limit !== undefined) commandArgs.limit = target.limit;
       if (target.budget !== undefined) commandArgs.budget = target.budget;
       if (target.depth !== undefined) commandArgs.depth = target.depth;
-      cortexCommand(commandArgs);
+      blueprintCommand(commandArgs);
       const targetBinding = await authorize(target, "context");
-      if (targetBinding.cortex_generation_id && targetBinding.cortex_generation_id !== item.generationId) return { ok: false, code: "stale_generation" };
-      if (!cortexHash(item.sourceHash)) return { ok: false, code: "invalid_source_hash" };
+      if (targetBinding.blueprint_generation_id && targetBinding.blueprint_generation_id !== item.generationId) return { ok: false, code: "stale_generation" };
+      if (!blueprintHash(item.sourceHash)) return { ok: false, code: "invalid_source_hash" };
       return { ok: true, repositoryRoot: targetBinding.root, authority: callerLevel(targetBinding), generationId: item.generationId, sourceHash: item.sourceHash };
     },
-    // Cortex's IPC protocol has no batch method. Returning no provider rows is
+    // Blueprint's IPC protocol has no batch method. Returning no provider rows is
     // a safe typed fallback: Membrane never substitutes a CLI child process.
     provider: async () => [],
   });
 }
-function cortexFreshness(value) {
+function blueprintFreshness(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const generationId = cortexValue(value.generationId || value.id);
+  const generationId = blueprintValue(value.generationId || value.id);
   const barrierResult = value.barrierResult === "caught_up" || value.barrierResult === "timeout" ? value.barrierResult : null;
-  const receiptId = cortexValue(value.receiptId);
+  const receiptId = blueprintValue(value.receiptId);
   return generationId && barrierResult && receiptId ? { generationId, barrierResult, receiptId } : null;
 }
-function cortexGitIdentity(value) {
+function blueprintGitIdentity(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const head = value.head || value.commit;
   const dirty = typeof value.dirty === "boolean" ? value.dirty : (typeof value.clean === "boolean" ? !value.clean : null);
   return typeof head === "string" && GIT_COMMIT.test(head) && dirty === false ? { head, dirty } : null;
 }
-function cortexGeneration(value) {
+function blueprintGeneration(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const generationId = cortexValue(value.generationId);
-  const manifestDigest = cortexHash(value.manifestDigest);
-  const sourceObservation = cortexGitIdentity(value.sourceObservation);
+  const generationId = blueprintValue(value.generationId);
+  const manifestDigest = blueprintHash(value.manifestDigest);
+  const sourceObservation = blueprintGitIdentity(value.sourceObservation);
   return generationId && manifestDigest && sourceObservation ? { generationId, manifestDigest, sourceObservation } : null;
 }
-export function sanitizeCortexPayload(payload, operation) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("cortex_unavailable");
-  const freshness = cortexFreshness(payload.freshness || payload.freshnessReceipt || payload.manifest || payload.sourceGeneration);
+export function sanitizeBlueprintPayload(payload, operation) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("blueprint_unavailable");
+  const freshness = blueprintFreshness(payload.freshness || payload.freshnessReceipt || payload.manifest || payload.sourceGeneration);
   if (operation === "snapshot_get") {
-    const identity = cortexGeneration(payload);
-    const name = cortexValue(payload.name);
-    const leaves = Array.isArray(payload.leaves) ? payload.leaves.map((leaf) => ({ path: cortexValue(leaf?.path), digest: cortexHash(leaf?.digest) })).filter((leaf) => leaf.path && leaf.digest) : null;
-    if (!identity || !name || !leaves || leaves.length !== payload.leaves.length) throw new Error("cortex_unavailable");
+    const identity = blueprintGeneration(payload);
+    const name = blueprintValue(payload.name);
+    const leaves = Array.isArray(payload.leaves) ? payload.leaves.map((leaf) => ({ path: blueprintValue(leaf?.path), digest: blueprintHash(leaf?.digest) })).filter((leaf) => leaf.path && leaf.digest) : null;
+    if (!identity || !name || !leaves || leaves.length !== payload.leaves.length) throw new Error("blueprint_unavailable");
     return { operation, name, ...identity, leaves };
   }
   if (operation === "snapshot_list") {
-    if (!Array.isArray(payload)) throw new Error("cortex_unavailable");
-    const snapshots = payload.map((row) => { const identity = cortexGeneration(row); const name = cortexValue(row?.name); return identity && name ? { name, ...identity } : null; });
-    if (snapshots.some((row) => !row)) throw new Error("cortex_unavailable");
+    if (!Array.isArray(payload)) throw new Error("blueprint_unavailable");
+    const snapshots = payload.map((row) => { const identity = blueprintGeneration(row); const name = blueprintValue(row?.name); return identity && name ? { name, ...identity } : null; });
+    if (snapshots.some((row) => !row)) throw new Error("blueprint_unavailable");
     return { operation, snapshots };
   }
   if (operation === "changes_since") {
-    const base = cortexGeneration(payload.base); const head = cortexGeneration(payload.head);
-    const changes = Array.isArray(payload.changes) ? payload.changes.map((row) => ({ path: cortexValue(row?.path), kind: row?.kind })).filter((row) => row.path && ["added", "modified", "deleted"].includes(row.kind)) : null;
+    const base = blueprintGeneration(payload.base); const head = blueprintGeneration(payload.head);
+    const changes = Array.isArray(payload.changes) ? payload.changes.map((row) => ({ path: blueprintValue(row?.path), kind: row?.kind })).filter((row) => row.path && ["added", "modified", "deleted"].includes(row.kind)) : null;
     const receipt = payload.receipt;
     const ordered = changes.every((row, index) => index === 0 || changes[index - 1].path.localeCompare(row.path) <= 0);
-    if (!base || !head || !changes || changes.length !== payload.changes.length || !ordered || !receipt || !Number.isInteger(receipt.total) || receipt.total < changes.length || !Number.isInteger(receipt.limit) || receipt.limit < 1 || receipt.limit > 10000 || typeof receipt.truncated !== "boolean" || receipt.truncated !== (receipt.total > receipt.limit)) throw new Error("cortex_unavailable");
+    if (!base || !head || !changes || changes.length !== payload.changes.length || !ordered || !receipt || !Number.isInteger(receipt.total) || receipt.total < changes.length || !Number.isInteger(receipt.limit) || receipt.limit < 1 || receipt.limit > 10000 || typeof receipt.truncated !== "boolean" || receipt.truncated !== (receipt.total > receipt.limit)) throw new Error("blueprint_unavailable");
     return { operation, base, head, changes, receipt: { total: receipt.total, limit: receipt.limit, truncated: receipt.truncated } };
   }
   if (operation === "changes") {
-    const generationId = cortexValue(payload.generationId);
-    const manifestDigest = cortexHash(payload.manifestDigest);
+    const generationId = blueprintValue(payload.generationId);
+    const manifestDigest = blueprintHash(payload.manifestDigest);
     const observation = payload.sourceObservation;
     const commitValue = observation?.commit || observation?.head;
     const commit = typeof commitValue === "string" && GIT_COMMIT.test(commitValue) ? commitValue : null;
     const clean = typeof observation?.clean === "boolean" ? observation.clean : null;
-    if (!generationId || !manifestDigest || !commit || clean === null || !freshness || freshness.generationId !== generationId) throw new Error("cortex_unavailable");
-    return { operation, sourceGeneration: generationId, freshness, changes: { generationId, manifestDigest, sourceObservation: { commit, clean } }, resolver: "cortex graph manifest --json" };
+    if (!generationId || !manifestDigest || !commit || clean === null || !freshness || freshness.generationId !== generationId) throw new Error("blueprint_unavailable");
+    return { operation, sourceGeneration: generationId, freshness, changes: { generationId, manifestDigest, sourceObservation: { commit, clean } }, resolver: "blueprint graph manifest --json" };
   }
   const rows = payload.results || payload.nodes || payload.impacted || payload.examples || (payload.id ? [payload] : []);
   const items = (Array.isArray(rows) ? rows : [rows]).filter((row) => row && typeof row === "object").map((row) => {
-    const id = cortexValue(row.id || row.nodeId || row.path);
-    const sourceHash = cortexHash(row.sourceHash || row.contentHash || row.contentDigest);
-    const resolver = id ? `cortex graph resolve --node ${id}` : null;
-    return { id, name: cortexValue(row.name || row.qualifiedName), kind: cortexValue(row.kind), path: cortexValue(row.path || row.sourceRef), sourceHash, startLine: Number.isInteger(row.startLine) && row.startLine > 0 ? row.startLine : null, endLine: Number.isInteger(row.endLine) && row.endLine > 0 ? row.endLine : null, freshness, resolver: resolver && resolver.length <= 320 ? resolver : null };
+    const id = blueprintValue(row.id || row.nodeId || row.path);
+    const sourceHash = blueprintHash(row.sourceHash || row.contentHash || row.contentDigest);
+    const resolver = id ? `blueprint graph resolve --node ${id}` : null;
+    return { id, name: blueprintValue(row.name || row.qualifiedName), kind: blueprintValue(row.kind), path: blueprintValue(row.path || row.sourceRef), sourceHash, startLine: Number.isInteger(row.startLine) && row.startLine > 0 ? row.startLine : null, endLine: Number.isInteger(row.endLine) && row.endLine > 0 ? row.endLine : null, freshness, resolver: resolver && resolver.length <= 320 ? resolver : null };
   }).filter((item) => item.id && item.sourceHash && item.freshness && item.resolver);
   return { operation, sourceGeneration: freshness?.generationId || null, freshness, items };
 }
-function cortexIpcRequest(operation, args, binding, signal, request = requestCortex) {
+function blueprintIpcRequest(operation, args, binding, signal, request = requestBlueprint) {
   const deadlineMs = args.deadlineMs ?? 2000;
   const input = { repoRoot: binding.root };
   if (operation === "architecture") Object.assign(input, { budget: args.budget ?? 2000 });
   else if (operation === "symbol") Object.assign(input, { nodeId: args.node });
   else if (operation === "reference" || operation === "references") Object.assign(input, { anchor: args.node, direction: "both", depth: args.depth ?? 1, budget: args.budget ?? 2000 });
   else if (operation === "impact") Object.assign(input, { anchor: args.node, depth: args.depth ?? 3, budget: args.budget ?? 2000 });
-  else throw new Error("cortex_unavailable");
+  else throw new Error("blueprint_unavailable");
   const method = operation === "symbol" ? "resolve"
     : operation === "reference" || operation === "references" ? "expand"
       : operation;
   return request(method, input, { deadlineMs, signal });
 }
 
-export async function cortexCapability(binding, args, signal, { request = requestCortex } = {}) {
-  const { operation } = cortexCommand(args);
+export async function blueprintCapability(binding, args, signal, { request = requestBlueprint } = {}) {
+  const { operation } = blueprintCommand(args);
   let payload;
-  try { payload = await cortexIpcRequest(operation, args, binding, signal, request); }
-  catch { throw new Error("cortex_unavailable"); }
-  try { return sanitizeCortexPayload(payload, operation); }
-  catch { throw new Error("cortex_unavailable"); }
+  try { payload = await blueprintIpcRequest(operation, args, binding, signal, request); }
+  catch { throw new Error("blueprint_unavailable"); }
+  try { return sanitizeBlueprintPayload(payload, operation); }
+  catch { throw new Error("blueprint_unavailable"); }
 }
 async function callTool(name, args, trace = {}, lifecycle) {
   if (name === "membrane_context") {
@@ -715,10 +715,10 @@ async function callTool(name, args, trace = {}, lifecycle) {
     const out = await run(process.env.CRYPT_BIN || "crypt", cryptArgs(["doc", "read", "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash], install), "", await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "source_read_unavailable", detail: out.stderr.slice(0, 240) });
   }
-  if (name === "membrane_cortex") {
+  if (name === "membrane_blueprint") {
     const binding = await authorize(args, "context");
-    if (Array.isArray(args.items)) return cortexBatchCapability(binding, args, lifecycle?.signal);
-    return cortexCapability(binding, args, lifecycle?.signal);
+    if (Array.isArray(args.items)) return blueprintBatchCapability(binding, args, lifecycle?.signal);
+    return blueprintCapability(binding, args, lifecycle?.signal);
   }
   if (name === "membrane_checkpoint_save") {
     const binding = await authorize(args, "checkpoint");

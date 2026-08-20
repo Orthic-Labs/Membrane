@@ -1,7 +1,7 @@
 # Membrane Provider SDK and Conformance Kit
 
 MBR-104 seeds the contract surface that every Membrane-compatible external
-adapter (Cortex, Crypt, custom client adapters) implements and is validated
+adapter (Blueprint, Crypt, custom client adapters) implements and is validated
 against. The SDK, the fixture corpus, and the two reference adapters are
 the three artifacts that together establish a single, byte-exact Membrane
 provider contract.
@@ -11,8 +11,8 @@ provider contract.
 | Path | Purpose |
 |---|---|
 | `engine/crates/membrane-provider-sdk/` | The Rust crate every adapter depends on. Defines the `Provider` trait, the `Fixture` shape, and the `run_conformance` harness. |
-| `engine/crates/membrane-testkit/` | The canonical Cortex and Crypt conformance fixture corpus, embedded as JSON and exposed via `golden_fixtures()`. |
-| `docs/examples/providers/cortex_example/` | Reference Cortex adapter built on the SDK. |
+| `engine/crates/membrane-testkit/` | The canonical Blueprint and Crypt conformance fixture corpus, embedded as JSON and exposed via `golden_fixtures()`. |
+| `docs/examples/providers/blueprint_example/` | Reference Blueprint adapter built on the SDK. |
 | `docs/examples/providers/crypt_example/`  | Reference Crypt adapter built on the SDK. |
 | `docs/providers/` | This README plus per-example docs. |
 
@@ -49,14 +49,14 @@ pub trait Provider: Send + Sync {
 
 A `Fixture` is a single canonical request/response pair the adapter must
 round-trip through identically. The `membrane-testkit` crate embeds the
-canonical Cortex and Crypt fixture sets as JSON and exposes them via
+canonical Blueprint and Crypt fixture sets as JSON and exposes them via
 `golden_fixtures()`. The same fixture set powers the SDK's own
 conformance test (`engine/crates/membrane-provider-sdk/tests/conformance.rs`)
 and the reference adapters' `run_*_conformance` helpers.
 
 ```json
 {
-  "name": "cortex-context-scope-grant",
+  "name": "blueprint-context-scope-grant",
   "operation": "membrane_context",
   "description": "...",
   "request": { ... },
@@ -100,7 +100,7 @@ conformance failure outside the harness can convert any
    regression suites).
 4. Add a CLI entry point that runs `run_conformance` and prints the
    `ConformanceReport` to stdout. The reference adapters in
-   `docs/examples/providers/{cortex,crypt}_example/` are the canonical
+   `docs/examples/providers/{blueprint,crypt}_example/` are the canonical
    shape.
 
 ### What a fixture round-trip means
@@ -141,5 +141,5 @@ fixtures, commit once, defer the gate.
 
 ## Reference adapters
 
-* `examples/providers/cortex_example/README.md`
+* `examples/providers/blueprint_example/README.md`
 * `examples/providers/crypt_example/README.md`

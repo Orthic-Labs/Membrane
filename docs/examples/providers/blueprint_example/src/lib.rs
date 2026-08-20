@@ -1,6 +1,6 @@
-//! Reference Cortex adapter built on `membrane-provider-sdk`.
+//! Reference Blueprint adapter built on `membrane-provider-sdk`.
 //!
-//! This crate is a **minimal but real** example of how a Cortex-shaped
+//! This crate is a **minimal but real** example of how a Blueprint-shaped
 //! adapter is written against the Membrane provider SDK. It implements
 //! `membrane_provider_sdk::Provider` for two operations:
 //!
@@ -17,7 +17,7 @@
 //! exercises this property via `run_conformance`.
 //!
 //! The adapter is intentionally pure (no I/O, no clock, no randomness).
-//! Real Cortex adapters will read the cortex graph and the scope-grant
+//! Real Blueprint adapters will read the blueprint graph and the scope-grant
 //! store, but those reads are out of scope for the conformance adapter
 //! — the SDK is the contract layer, not the implementation layer.
 
@@ -28,23 +28,23 @@ use membrane_provider_sdk::provider::{
 use membrane_provider_sdk::{
     run_conformance, CapabilityV1, ConformanceReport, Fixture, Provider, ProviderError, Result,
 };
-use membrane_testkit::cortex_fixtures;
+use membrane_testkit::blueprint_fixtures;
 use serde_json::{json, Value};
 
-/// The set of operations the reference Cortex adapter advertises.
-pub const CORTEX_OPERATIONS: &[&str] = &["membrane_context", "membrane_source_read"];
+/// The set of operations the reference Blueprint adapter advertises.
+pub const BLUEPRINT_OPERATIONS: &[&str] = &["membrane_context", "membrane_source_read"];
 
-/// The reference Cortex adapter.
+/// The reference Blueprint adapter.
 ///
 /// The struct is `pub` so the conformance test in
 /// `membrane-provider-sdk/tests/conformance.rs` can construct it
 /// directly.
-pub struct CortexExample {
+pub struct BlueprintExample {
     /// `true` after a successful `initialize`.
     ready: bool,
 }
 
-impl CortexExample {
+impl BlueprintExample {
     /// Construct an un-initialized adapter. Call `initialize` before any
     /// other method.
     pub fn new() -> Self {
@@ -52,13 +52,13 @@ impl CortexExample {
     }
 }
 
-impl Default for CortexExample {
+impl Default for BlueprintExample {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Provider for CortexExample {
+impl Provider for BlueprintExample {
     fn initialize(&mut self, _config: &Value) -> Result<()> {
         self.ready = true;
         Ok(())
@@ -66,9 +66,9 @@ impl Provider for CortexExample {
 
     fn readiness(&self) -> ProviderReadinessV1 {
         let identity = ProviderIdentityV1 {
-            provider_id: "cortex-example".into(),
+            provider_id: "blueprint-example".into(),
             installation_id: "example-installation".into(),
-            service_id: "cortex-example-service".into(),
+            service_id: "blueprint-example-service".into(),
             release_generation: "example-v1".into(),
             data_root_digest: "sha256:example-root".into(),
         };
@@ -92,7 +92,7 @@ impl Provider for CortexExample {
     }
 
     fn list_capabilities(&self) -> Vec<CapabilityV1> {
-        CORTEX_OPERATIONS
+        BLUEPRINT_OPERATIONS
             .iter()
             .map(|name| CapabilityV1 {
                 name: (*name).to_string(),
@@ -104,7 +104,7 @@ impl Provider for CortexExample {
 
     fn handle_operation(&self, operation: &str, request: &Value) -> Result<Value> {
         if !self.ready {
-            return Err(ProviderError::Uninitialized("cortex_example".into()));
+            return Err(ProviderError::Uninitialized("blueprint_example".into()));
         }
         match operation {
             "membrane_context" => Ok(handle_membrane_context(request)),
@@ -138,7 +138,7 @@ fn handle_membrane_context(request: &Value) -> Value {
     let session_id = turn_envelope
         .get("sessionId")
         .and_then(Value::as_str)
-        .unwrap_or("session-mbr-104-cortex");
+        .unwrap_or("session-mbr-104-blueprint");
 
     json!({
         "kind": "success",
@@ -147,7 +147,7 @@ fn handle_membrane_context(request: &Value) -> Value {
             "scope": scope,
             "packet": { "status": "available" },
             "scopeGrant": {
-                "id": "sgv1-mbr-104-cortex",
+                "id": "sgv1-mbr-104-blueprint",
                 "status": "active"
             },
             "taskEnvelope": task_envelope,
@@ -177,7 +177,7 @@ fn handle_membrane_source_read(request: &Value) -> Value {
     let anchor_id = request
         .get("anchorId")
         .and_then(Value::as_str)
-        .unwrap_or("anchor-mbr-104-cortex");
+        .unwrap_or("anchor-mbr-104-blueprint");
     json!({
         "kind": "success",
         "data": {
@@ -193,10 +193,10 @@ fn handle_membrane_source_read(request: &Value) -> Value {
     })
 }
 
-/// Run the reference Cortex adapter against the canonical cortex fixture
+/// Run the reference Blueprint adapter against the canonical blueprint fixture
 /// set from `membrane-testkit`. Convenience for downstream callers
 /// (e.g. the conformance test in `membrane-provider-sdk/tests/`).
-pub fn run_cortex_conformance(provider: &CortexExample) -> ConformanceReport {
-    let fixtures: Vec<Fixture> = cortex_fixtures();
+pub fn run_blueprint_conformance(provider: &BlueprintExample) -> ConformanceReport {
+    let fixtures: Vec<Fixture> = blueprint_fixtures();
     run_conformance(provider, &fixtures)
 }

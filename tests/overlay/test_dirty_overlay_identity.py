@@ -25,10 +25,10 @@ def _assemble(session: str, worktree: str, digest: str) -> dict:
         "sourceKind": "graph",
         "sourceRef": "src/lib.rs",
         "sourceHash": "sha256:" + "a" * 64,
-        "resolver": "cortex graph resolve",
+        "resolver": "blueprint graph resolve",
     }
     return gateway._merge_candidates(
-        [("cortex", [candidate], [])],
+        [("blueprint", [candidate], [])],
         _freshness(session, worktree, digest),
         gateway.Path(worktree),
         "task",

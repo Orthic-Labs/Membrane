@@ -21,7 +21,7 @@ All three share one context economy: compression, retrieval, curation, and assem
 ```mermaid
 flowchart LR
     T[task + repository] --> SG[ScopeGrant]
-    SG --> F[federation fan-out<br/>9 parallel providers:<br/>Cortex · rules · live files · Git<br/>audit · architect · skills · memory · anchors]
+    SG --> F[federation fan-out<br/>9 parallel providers:<br/>Blueprint · rules · live files · Git<br/>audit · architect · skills · memory · anchors]
     F --> FA[freshness / authority<br/>fresh proof outranks snapshots,<br/>docs, memory, history]
     FA --> AP[admission planner<br/>reserved lanes, then global fill<br/>under one token budget]
     AP --> CP[ContextPacket<br/>what the agent gets]
@@ -37,7 +37,7 @@ Every source keeps its own type, authority, and freshness — the code graph is 
 - **Freshness beats similarity.** A stale but semantically-similar candidate cannot silently outrank current code.
 - **Root confinement.** Access stays repository-bound even though the service can see a wider workspace.
 - **Local-first data plane.** SQLite stores, local embeddings, a loopback service, Git-based event sync. No hosted context vendor sees credentials or content.
-- **Replaceable producers.** Cortex, memory, rules, or a future provider can change without changing the client packet contract.
+- **Replaceable producers.** Blueprint, memory, rules, or a future provider can change without changing the client packet contract.
 
 The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `ContextPacket`, `ContextReceipt`, `KnowledgeEmission` — so provider database formats, parsers, and local paths never leak into client adapters. Claude, Codex, and any MCP client share one policy.
 
@@ -53,7 +53,7 @@ The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `Cont
 ## Inside
 
 - **Crypt** — the durable-memory engine: a Rust CLI plus loopback HTTP service over SQLite, with a quantized vector store and hybrid retriever. Its legacy name is **Crypt**, and the installed `crypt*` binaries remain the compatibility facade.
-- **MCP server** — ten tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_cortex`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_working_context`, `membrane_temporal_fact`, `membrane_scratchpad`, `membrane_feedback`), serving both the 2025-03-26 and 2026-07-28 MCP discovery eras. The generated source of truth for this surface is [docs/product-truth.md](docs/product-truth.md).
+- **MCP server** — ten tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_blueprint`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_working_context`, `membrane_temporal_fact`, `membrane_scratchpad`, `membrane_feedback`), serving both the 2025-03-26 and 2026-07-28 MCP discovery eras. The generated source of truth for this surface is [docs/product-truth.md](docs/product-truth.md).
 - **Federation gateway** — a supervised resident worker behind `POST /federate` that fans out to the providers in parallel; HTTP-first with automatic CLI fallback.
 - **Prompt hooks** — per-host recall planners (Claude and Codex) that route candidates through admission on every prompt.
 - **Orthic Hub add-on** — this repository produces Membrane's portable command, service, icon, and legal inputs for Orthic Hub. Orthic owns its desktop installer; Membrane retains no desktop release lane.
@@ -84,7 +84,7 @@ This checkout is an internal mirror of a workspace-coupled control plane for the
 ---
 
 <sub><b><a href="https://orthic-labs.github.io">Orthic Labs</a></b> — local-first infrastructure for AI-assisted development.<br>
-<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Cortex">Cortex</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/Adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
+<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Blueprint">Blueprint</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/Adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
 
 <!-- blueprint:docs:start -->
 ## Support & pricing boundaries

@@ -13,7 +13,7 @@
   },
   "allocations": { "code": 320, "memory": 96 },
   "providerAccounting": {
-    "cortex-treesitter": {
+    "blueprint-treesitter": {
       "deliveryStage": "planned",
       "selectedTokens": 320,
       "renderedTokens": 0,
@@ -25,7 +25,7 @@
     {
       "id": "cand-blueprint-types",
       "layer": 1,
-      "provider": "cortex-treesitter",
+      "provider": "blueprint-treesitter",
       "sourceKind": "code",
       "sourceRef": "engine/crates/membrane-protocol/src/types.rs:1-60",
       "sourceHash": "sha256:0000000000000000000000000000000000000000000000000000000000000011",

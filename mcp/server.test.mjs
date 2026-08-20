@@ -124,9 +124,9 @@ assert.deepEqual(tools.filter((name) => /(?:^|_)(?:put|get|recall|doctor|schema|
 assert.deepEqual(rows[2].result.resources, [{ uri: "membrane://protocol/v1", name: "Membrane protocol v1", mimeType: "text/markdown" }]);
 assert.match(rows[3].result.contents[0].text, /federate/i);
 assert.doesNotMatch(rows[3].result.contents[0].text, /plan_context/i);
-const cortexToolset = await rpc([{ jsonrpc: "2.0", id: 5, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["cortex"] } } }]);
-assert.deepEqual(cortexToolset[0].result.tools.map((tool) => tool.name).sort(), ["membrane_context", "membrane_cortex", "membrane_source_read"]);
-const invalidToolset = await rpc([{ jsonrpc: "2.0", id: 6, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["cortex", "cortex"] } } }]);
+const blueprintToolset = await rpc([{ jsonrpc: "2.0", id: 5, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["blueprint"] } } }]);
+assert.deepEqual(blueprintToolset[0].result.tools.map((tool) => tool.name).sort(), ["membrane_context", "membrane_blueprint", "membrane_source_read"]);
+const invalidToolset = await rpc([{ jsonrpc: "2.0", id: 6, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["blueprint", "blueprint"] } } }]);
 assert.deepEqual(invalidToolset[0].result.tools.map((tool) => tool.name), ["membrane_context"]);
 for (const tool of rows[1].result.tools) {
   assert.ok(tool.outputSchema, `${tool.name} declares an output schema`);

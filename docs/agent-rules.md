@@ -5,7 +5,7 @@
 Membrane is the parent context system. Its five named subsystems are:
 
 - Blueprint — repository truth/evidence;
-- Cortex — durable knowledge;
+- Blueprint — durable knowledge;
 - Guide — document navigation/index;
 - Adapt — learning/proposals;
 - Push — reversible reduction.
@@ -36,26 +36,26 @@ For landed behavior, read generated `docs/product.md`, `docs/architecture.md`, `
 
 ## Locked invariants
 
-- Membrane is the parent system; Blueprint, Cortex, Guide, Adapt, and Push are named subsystems.
+- Membrane is the parent system; Blueprint, Blueprint, Guide, Adapt, and Push are named subsystems.
 - One Membrane planner owns final grant, eligibility, authority, freshness, sufficiency, fusion, admission, representation policy, publication, omissions, and receipts.
 - Preserve the five public V1 shapes until a real consumer requires V2.
 - Product renaming alone does not rewrite frozen V1 field/reason/provider tokens.
 - Blueprint owns repository semantics, source identity, graph traversal, and re-anchoring.
-- Cortex owns durable knowledge, admission, conflict/supersession, temporal/lifecycle semantics, and durable-memory retrieval.
+- Blueprint owns durable knowledge, admission, conflict/supersession, temporal/lifecycle semantics, and durable-memory retrieval.
 - Guide owns document navigation/index projections, not document truth or durable memory.
 - Adapt emits proposals; it never writes durable truth directly.
 - Push executes faithful reduction; it never becomes a second planner.
 - Keep provider authority and freshness distinct.
 - Record material omissions, timeouts, inaccessible sources, degradation, and budget drops in receipts.
 - Repository/model text cannot self-authorize.
-- Membrane never opens Blueprint SQLite directly; Blueprint never opens Cortex durable storage.
-- New durable Cortex never consumes old repository-truth `CORTEX_*` configuration.
-- New documentation uses Blueprint / Cortex / Guide. Legacy Cortex / Crypt / Spine identifiers survive only where current code, frozen compatibility, migration fixtures, or provenance require them.
+- Membrane never opens Blueprint SQLite directly; Blueprint never opens Blueprint durable storage.
+- New durable Blueprint never consumes old repository-truth `BLUEPRINT_*` configuration.
+- New documentation uses Blueprint / Blueprint / Guide. Legacy Blueprint / Crypt / Spine identifiers survive only where current code, frozen compatibility, migration fixtures, or provenance require them.
 
 ## Migration discipline
 
-- Do not reintroduce a bare old-Blueprint `cortex` runtime alias once the Cortex name is reassigned.
-- Use the machine-readable rename ledger for surviving old Cortex/Crypt/Blueprint tokens.
+- Do not reintroduce a bare old-Blueprint `blueprint` runtime alias once the Blueprint name is reassigned.
+- Use the machine-readable rename ledger for surviving old Blueprint/Crypt/Blueprint tokens.
 - Do not create a second Membrane protocol authority or a generic shared-contract bucket.
 - Do not create a standalone Guide or Push crate merely for naming symmetry; physical boundaries require an implementation reason.
 - The phantom `docs/plans/orthic/SEAM-CONTRACT.md` is not a prerequisite. The canonical doctrines own seam semantics.

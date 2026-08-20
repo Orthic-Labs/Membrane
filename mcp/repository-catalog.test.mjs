@@ -66,7 +66,7 @@ test("catalog enrollment binds every repository to one digest without implicit c
 });
 
 // Ambient workspace integration: when the real multi-repo workspace IS present
-// (the resolved parent holds the sibling repos, e.g. cortex/ and forge/), the
+// (the resolved parent holds the sibling repos, e.g. blueprint/ and forge/), the
 // catalog must surface the full federation. From a clean checkout of Membrane
 // alone the parent holds only this repo, so the assertion degrades to
 // membrane-alone — proving the runtime never hard-requires a sibling source

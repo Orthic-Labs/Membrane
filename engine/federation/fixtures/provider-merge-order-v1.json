@@ -1,6 +1,6 @@
 {
   "declaredProviderOrder": [
-    "cortex",
+    "blueprint",
     "audit",
     "architect",
     "crypt",
@@ -12,7 +12,7 @@
   ],
   "completionOrders": [
     [
-      "cortex",
+      "blueprint",
       "audit",
       "architect",
       "crypt",
@@ -31,14 +31,14 @@
       "crypt",
       "architect",
       "audit",
-      "cortex"
+      "blueprint"
     ],
     [
       "crypt",
       "skills",
       "audit",
       "live",
-      "cortex",
+      "blueprint",
       "anchors",
       "architect",
       "rules",

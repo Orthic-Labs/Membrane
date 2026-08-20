@@ -21,18 +21,18 @@ def test_freshness_uses_workspace_default_token_file(monkeypatch, tmp_path: Path
     # The route validates a source-barrier receipt, so the payload must carry an
     # overlay identity bound to this worktree and the anonymous session the
     # gateway sends when no session id is supplied.
-    cortex_generation = "sha256:" + "e" * 64
+    blueprint_generation = "sha256:" + "e" * 64
     overlay_digest = "sha256:" + "b" * 64
     payload = {
         "schemaVersion": 1,
         "graphState": "fresh",
-        "cortexGeneration": cortex_generation,
+        "blueprintGeneration": blueprint_generation,
         "overlayDigest": overlay_digest,
         "sourceBarrierReceipt": {
             "overlay_identity": {
                 "session_id": "anonymous",
                 "worktree_path": str(workspace.resolve()),
-                "generation_id": gateway._contract_digest(cortex_generation),
+                "generation_id": gateway._contract_digest(blueprint_generation),
                 "overlay_digest": gateway._contract_digest(overlay_digest),
             },
             "dirty_overlay_digest": gateway._contract_digest(overlay_digest),
@@ -60,7 +60,7 @@ def _stable_release_manifest(monkeypatch):
     )
 
 
-def _verdict(graph_state: str = "dirty_overlay", *, cortex_usable: bool = False) -> dict:
+def _verdict(graph_state: str = "dirty_overlay", *, blueprint_usable: bool = False) -> dict:
     return {
         "schemaVersion": 1,
         "checkedAt": "2026-07-17T00:00:00Z",
@@ -74,9 +74,9 @@ def _verdict(graph_state: str = "dirty_overlay", *, cortex_usable: bool = False)
         "graphState": graph_state,
         "headCommit": "a" * 40,
         "baseCommit": "a" * 40,
-        "cortexBaseCommit": "9" * 40,
+        "blueprintBaseCommit": "9" * 40,
         "manifestDigest": "sha256:" + "d" * 64,
-        "cortexGeneration": "sha256:" + "e" * 64,
+        "blueprintGeneration": "sha256:" + "e" * 64,
         "skillsGeneration": "sha256:" + "f" * 64,
         "overlayDigest": "sha256:" + "b" * 64,
         "overlayCount": 1,
@@ -87,7 +87,7 @@ def _verdict(graph_state: str = "dirty_overlay", *, cortex_usable: bool = False)
             {"path": "src/app.py", "status": " M", "contentHash": "sha256:" + "1" * 64}
         ],
         "providers": {
-            "cortex": {"freshnessClass": "stale_snapshot", "usable": cortex_usable},
+            "blueprint": {"freshnessClass": "stale_snapshot", "usable": blueprint_usable},
             "dirtyOverlay": {"freshnessClass": "dirty_overlay", "usable": True},
             "skills": {"freshnessClass": "current", "usable": True},
         },
@@ -95,7 +95,7 @@ def _verdict(graph_state: str = "dirty_overlay", *, cortex_usable: bool = False)
     }
 
 
-def _stub_non_cortex_providers(monkeypatch) -> None:
+def _stub_non_blueprint_providers(monkeypatch) -> None:
     monkeypatch.setattr(gateway.audit, "produce", lambda *_args: [])
     monkeypatch.setattr(gateway.architect, "produce", lambda *_args: [])
     monkeypatch.setattr(gateway.crypt, "produce", lambda *_args: ([{"id": "memory:one"}], "g"))
@@ -111,14 +111,14 @@ def _stub_non_cortex_providers(monkeypatch) -> None:
     monkeypatch.setattr(gateway.skills, "produce", lambda *_args: [])
 
 
-def test_stale_cortex_is_lane_local_and_other_providers_fan_out(monkeypatch, tmp_path: Path):
+def test_stale_blueprint_is_lane_local_and_other_providers_fan_out(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: _verdict("stale_snapshot"), raising=False)
     monkeypatch.setattr(
-        gateway.cortex,
+        gateway.blueprint,
         "produce",
-        lambda *_args: (_ for _ in ()).throw(AssertionError("unusable Cortex lane must be skipped")),
+        lambda *_args: (_ for _ in ()).throw(AssertionError("unusable Blueprint lane must be skipped")),
     )
-    _stub_non_cortex_providers(monkeypatch)
+    _stub_non_blueprint_providers(monkeypatch)
 
     providers, freshness = gateway._gather_all_parallel(
         task="test",
@@ -129,9 +129,9 @@ def test_stale_cortex_is_lane_local_and_other_providers_fan_out(monkeypatch, tmp
     )
 
     assert any(name == "crypt" for name, _candidates, _warnings in providers)
-    cortex_lane = next(item for item in providers if item[0] == "cortex")
-    assert cortex_lane[1] == []
-    assert cortex_lane[2][0]["kind"] == "cortex_lane_degraded"
+    blueprint_lane = next(item for item in providers if item[0] == "blueprint")
+    assert blueprint_lane[1] == []
+    assert blueprint_lane[2][0]["kind"] == "blueprint_lane_degraded"
     assert freshness["stale"] is False
     assert freshness["graphState"] == "stale_snapshot"
     assert freshness["baseCommit"] == "a" * 40
@@ -146,20 +146,20 @@ def test_stale_cortex_is_lane_local_and_other_providers_fan_out(monkeypatch, tmp
     assert freshness["_stageElapsedMs"]["git_status"] == 4.0
     assert all(value >= 0 for value in freshness["_stageElapsedMs"].values())
     assert set(freshness["_providerElapsedMs"]) == {
-        "cortex", "audit", "architect", "crypt", "git", "live", "rules", "anchors", "skills"
+        "blueprint", "audit", "architect", "crypt", "git", "live", "rules", "anchors", "skills"
     }
     assert all(value >= 0 for value in freshness["_providerElapsedMs"].values())
 
 
-def test_dirty_worktree_delivers_overlay_and_non_cortex_lanes(monkeypatch, tmp_path: Path):
+def test_dirty_worktree_delivers_overlay_and_non_blueprint_lanes(monkeypatch, tmp_path: Path):
     verdict = _verdict()
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
     monkeypatch.setattr(
-        gateway.cortex,
+        gateway.blueprint,
         "produce",
-        lambda *_args: (_ for _ in ()).throw(AssertionError("unusable Cortex lane must be skipped")),
+        lambda *_args: (_ for _ in ()).throw(AssertionError("unusable Blueprint lane must be skipped")),
     )
-    _stub_non_cortex_providers(monkeypatch)
+    _stub_non_blueprint_providers(monkeypatch)
     live_calls = []
     monkeypatch.setattr(
         gateway.live,
@@ -261,7 +261,7 @@ def test_unusable_skills_lane_is_skipped_without_disabling_other_providers(monke
     verdict = _verdict()
     verdict["providers"]["skills"] = {"freshnessClass": "unknown", "usable": False}
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
-    _stub_non_cortex_providers(monkeypatch)
+    _stub_non_blueprint_providers(monkeypatch)
     monkeypatch.setattr(
         gateway.skills,
         "produce",
@@ -283,15 +283,15 @@ def test_unusable_skills_lane_is_skipped_without_disabling_other_providers(monke
     assert freshness["stale"] is False
 
 
-def test_cortex_generation_change_after_verdict_omits_lane(monkeypatch, tmp_path: Path):
-    verdict = _verdict(cortex_usable=True)
+def test_blueprint_generation_change_after_verdict_omits_lane(monkeypatch, tmp_path: Path):
+    verdict = _verdict(blueprint_usable=True)
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
-    _stub_non_cortex_providers(monkeypatch)
+    _stub_non_blueprint_providers(monkeypatch)
     monkeypatch.setattr(
-        gateway.cortex,
+        gateway.blueprint,
         "produce_with_observability",
         lambda *_args, **_kwargs: (
-            [{"id": "cortex:mixed"}],
+            [{"id": "blueprint:mixed"}],
             "sha256:" + "0" * 64,
             [],
             {"stageElapsedMs": {}},
@@ -306,24 +306,24 @@ def test_cortex_generation_change_after_verdict_omits_lane(monkeypatch, tmp_path
         scope_grant_id=None,
     )
 
-    cortex_lane = next(item for item in providers if item[0] == "cortex")
-    assert cortex_lane[1] == []
-    assert cortex_lane[2][0]["kind"] == "cortex_generation_changed"
+    blueprint_lane = next(item for item in providers if item[0] == "blueprint")
+    assert blueprint_lane[1] == []
+    assert blueprint_lane[2][0]["kind"] == "blueprint_generation_changed"
     assert any(name == "crypt" for name, _candidates, _warnings in providers)
     assert freshness["stale"] is False
 
 
-def test_gateway_passes_freshness_generation_into_cortex_provider(monkeypatch, tmp_path: Path):
-    verdict = _verdict(cortex_usable=True)
+def test_gateway_passes_freshness_generation_into_blueprint_provider(monkeypatch, tmp_path: Path):
+    verdict = _verdict(blueprint_usable=True)
     observed = {}
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
-    _stub_non_cortex_providers(monkeypatch)
+    _stub_non_blueprint_providers(monkeypatch)
 
     def produce(_repo, _task, _max_tokens, *, expected_generation=None):
         observed["expected_generation"] = expected_generation
         return [], expected_generation, [], {"stageElapsedMs": {}}
 
-    monkeypatch.setattr(gateway.cortex, "produce_with_observability", produce)
+    monkeypatch.setattr(gateway.blueprint, "produce_with_observability", produce)
 
     gateway._gather_all_parallel(
         task="test",
@@ -333,13 +333,13 @@ def test_gateway_passes_freshness_generation_into_cortex_provider(monkeypatch, t
         scope_grant_id=None,
     )
 
-    assert observed["expected_generation"] == verdict["cortexGeneration"]
+    assert observed["expected_generation"] == verdict["blueprintGeneration"]
 
 
 def test_filesystem_skills_generation_cannot_pass_unchanged_db_verdict(monkeypatch, tmp_path: Path):
     before = _verdict()
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: before, raising=False)
-    _stub_non_cortex_providers(monkeypatch)
+    _stub_non_blueprint_providers(monkeypatch)
     monkeypatch.setattr(
         gateway.skills,
         "produce",
@@ -362,11 +362,11 @@ def test_filesystem_skills_generation_cannot_pass_unchanged_db_verdict(monkeypat
 
 
 def test_merge_candidates_stamps_provider_and_freshness_provenance(tmp_path: Path):
-    cortex_candidate = {"id": "a", "sourceKind": "repo_code"}
-    crypt_candidate = {"id": "b", "sourceKind": "repo_code", "provider": "cortex"}
+    blueprint_candidate = {"id": "a", "sourceKind": "repo_code"}
+    crypt_candidate = {"id": "b", "sourceKind": "repo_code", "provider": "blueprint"}
     merged = gateway._merge_candidates(
         [
-            ("cortex", [cortex_candidate], []),
+            ("blueprint", [blueprint_candidate], []),
             ("crypt", [crypt_candidate], []),
         ],
         {
@@ -374,7 +374,7 @@ def test_merge_candidates_stamps_provider_and_freshness_provenance(tmp_path: Pat
             "stale": False,
             "graphState": "dirty_overlay",
             "baseCommit": "a" * 40,
-            "cortexBaseCommit": "9" * 40,
+            "blueprintBaseCommit": "9" * 40,
             "overlayDigest": "sha256:" + "b" * 64,
             "snapshotId": "sha256:" + "c" * 64,
             "serviceGeneration": "svc-test-generation",
@@ -389,7 +389,7 @@ def test_merge_candidates_stamps_provider_and_freshness_provenance(tmp_path: Pat
     )
 
     assert [(c["id"], c["provider"]) for c in merged["candidates"]] == [
-        ("a", "cortex"),
+        ("a", "blueprint"),
         ("b", "crypt"),
     ]
     assert merged["candidates"][0]["freshnessClass"] == "stale_snapshot"
@@ -406,18 +406,18 @@ def test_merge_candidates_stamps_provider_and_freshness_provenance(tmp_path: Pat
     assert merged["_rightcontext"]["cacheAgeMs"] == 37
     assert merged["_rightcontext"]["refreshInFlight"] is True
     assert merged["_rightcontext"]["stageElapsedMs"] == {}
-    assert cortex_candidate == {"id": "a", "sourceKind": "repo_code"}
+    assert blueprint_candidate == {"id": "a", "sourceKind": "repo_code"}
     assert crypt_candidate == {
         "id": "b",
         "sourceKind": "repo_code",
-        "provider": "cortex",
+        "provider": "blueprint",
     }
 
 
 def test_crypt_stage_timing_is_nested_and_content_free(monkeypatch, tmp_path: Path):
     verdict = _verdict()
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
-    _stub_non_cortex_providers(monkeypatch)
+    _stub_non_blueprint_providers(monkeypatch)
     monkeypatch.setattr(
         gateway.crypt,
         "produce_with_observability",
@@ -460,22 +460,22 @@ def test_crypt_stage_timing_is_nested_and_content_free(monkeypatch, tmp_path: Pa
     assert "secret prompt content" not in str(merged["_rightcontext"])
 
 
-def test_cortex_stage_timing_uses_tuple4_observability_and_is_sanitized(
+def test_blueprint_stage_timing_uses_tuple4_observability_and_is_sanitized(
     monkeypatch, tmp_path: Path
 ):
-    verdict = _verdict(cortex_usable=True)
+    verdict = _verdict(blueprint_usable=True)
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
-    _stub_non_cortex_providers(monkeypatch)
+    _stub_non_blueprint_providers(monkeypatch)
     monkeypatch.setattr(
-        gateway.cortex,
+        gateway.blueprint,
         "produce_with_observability",
         lambda *_args, **_kwargs: (
-            [{"id": "cortex:one"}],
-            verdict["cortexGeneration"],
+            [{"id": "blueprint:one"}],
+            verdict["blueprintGeneration"],
             [],
             {
                 "stageElapsedMs": {
-                    "cortex_node_spawn": 7.0,
+                    "blueprint_node_spawn": 7.0,
                     "repo_code_scan": 11.0,
                     "task": "must-not-propagate",
                 }
@@ -495,8 +495,8 @@ def test_cortex_stage_timing_uses_tuple4_observability_and_is_sanitized(
         providers, freshness, tmp_path, "secret prompt content", "trace-1", 4096
     )
 
-    assert merged["_rightcontext"]["providerStageElapsedMs"]["cortex"] == {
-        "cortex_node_spawn": 7.0,
+    assert merged["_rightcontext"]["providerStageElapsedMs"]["blueprint"] == {
+        "blueprint_node_spawn": 7.0,
         "repo_code_scan": 11.0,
     }
     assert "must-not-propagate" not in str(merged["_rightcontext"])

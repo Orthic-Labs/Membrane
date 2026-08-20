@@ -62,7 +62,7 @@
     "fallbackMode": { "type": "string", "enum": ["none", "non_graph_sources_only", "portable_text_only"] },
     "degradationReason": {
       "type": "string",
-      "enum": ["none", "cortex_stale", "cortex_unavailable", "cortex_corrupt", "provider_capability_missing", "release_generation_mismatch", "release_generation_unavailable"]
+      "enum": ["none", "blueprint_stale", "blueprint_unavailable", "blueprint_corrupt", "provider_capability_missing", "release_generation_mismatch", "release_generation_unavailable"]
     },
     "releaseGenerationStatus": { "type": "string", "enum": ["matched", "mismatch", "unavailable"] }
   }

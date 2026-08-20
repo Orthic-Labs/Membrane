@@ -264,7 +264,7 @@ mod tests {
     fn fixed_corpus_is_identical_for_every_completion_order() {
         let corpus = vec![
             set(
-                "cortex",
+                "blueprint",
                 vec![
                     candidate("c2", 0.5, "hash-c2"),
                     candidate("c1", 0.9, "hash-shared"),
@@ -280,7 +280,7 @@ mod tests {
             set("diagnostic", vec![candidate("d1", 0.9, "hash-d1")]),
         ];
         let bounds = FusionBounds {
-            provider_quotas: BTreeMap::from([("cortex".to_string(), 2), ("memory".to_string(), 2)]),
+            provider_quotas: BTreeMap::from([("blueprint".to_string(), 2), ("memory".to_string(), 2)]),
             rrf_k: 60,
             max_items: 3,
         };
@@ -312,7 +312,7 @@ mod tests {
         assert_eq!(
             expected.receipt.provider_order,
             vec![
-                "cortex".to_string(),
+                "blueprint".to_string(),
                 "diagnostic".to_string(),
                 "memory".to_string()
             ]

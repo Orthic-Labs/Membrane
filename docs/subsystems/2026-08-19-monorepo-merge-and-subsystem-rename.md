@@ -3,7 +3,7 @@
 **Status:** canonical migration plan · not yet executed  
 **Date:** 2026-08-19  
 **Target repository:** `Orthic-Labs/Membrane`  
-**Scope:** merge the former `Orthic-Labs/Cortex` repository into Membrane; rename **Cortex → Blueprint**; rename **Crypt → Cortex**.  
+**Scope:** merge the former `Orthic-Labs/Blueprint` repository into Membrane; rename **Blueprint → Blueprint**; rename **Crypt → Blueprint**.  
 **Architecture authority:** `BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md` and `MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`.  
 **Rule:** this plan may execute already-canonical seam hardening required to make the migration safe, but it does not change subsystem semantic ownership.
 
@@ -11,8 +11,8 @@
 
 | Before | After | Meaning |
 |---|---|---|
-| Cortex | **Blueprint** | repository truth/evidence engine; Node; own SQLite; own daemon + watcher |
-| Crypt | **Cortex** | durable-knowledge engine; Rust; own SQLite; Membrane data plane |
+| Blueprint | **Blueprint** | repository truth/evidence engine; Node; own SQLite; own daemon + watcher |
+| Crypt | **Blueprint** | durable-knowledge engine; Rust; own SQLite; Membrane data plane |
 | Membrane | Membrane | context control plane |
 
 This document supersedes every earlier monorepo/rename plan for these systems.
@@ -33,7 +33,7 @@ one atomic change boundary
 one integration authority
 ```
 
-At the product/system level, Membrane is the parent system. Blueprint and Cortex are named Membrane subsystems with independent runtime/storage/protocol boundaries. Guide, Adapt, and Push are also named Membrane subsystems but are outside this merge/rename plan's physical scope.
+At the product/system level, Membrane is the parent system. Blueprint and Blueprint are named Membrane subsystems with independent runtime/storage/protocol boundaries. Guide, Adapt, and Push are also named Membrane subsystems but are outside this merge/rename plan's physical scope.
 
 It does **not** create:
 
@@ -47,16 +47,16 @@ one semantic subsystem
 
 ## 0.2 The name reassignment is a hard semantic migration
 
-`Cortex` is not merely retired. The name is reassigned from the repository-truth engine to the durable-knowledge engine.
+`Blueprint` is not merely retired. The name is reassigned from the repository-truth engine to the durable-knowledge engine.
 
-Therefore the migration must never allow a bare `cortex` runtime/config identifier to mean two systems simultaneously.
+Therefore the migration must never allow a bare `blueprint` runtime/config identifier to mean two systems simultaneously.
 
 This changes the compatibility strategy from the earlier draft:
 
-- no old-Blueprint `cortex` binary shim survives into the new Cortex era;
-- no old-Blueprint `CORTEX_*` runtime environment fallback survives into the new Cortex era;
-- no old-Blueprint `membrane_cortex` alias remains enabled by default once the name is reassigned;
-- old Blueprint IPC names are not reused by the new Cortex subsystem;
+- no old-Blueprint `blueprint` binary shim survives into the new Blueprint era;
+- no old-Blueprint `BLUEPRINT_*` runtime environment fallback survives into the new Blueprint era;
+- no old-Blueprint `membrane_blueprint` alias remains enabled by default once the name is reassigned;
+- old Blueprint IPC names are not reused by the new Blueprint subsystem;
 - frozen historical wire tokens remain readable only through explicitly versioned/ledgered compatibility code.
 
 ## 0.3 Existing V1 wire contracts do not get renamed for branding
@@ -70,13 +70,13 @@ A product rename alone does not justify breaking:
 - historical receipt provider values;
 - serialized compatibility aliases.
 
-If a V1 token contains `cortex` or `crypt`, it keeps its historical semantic meaning until a separately justified protocol version replaces it.
+If a V1 token contains `blueprint` or `crypt`, it keeps its historical semantic meaning until a separately justified protocol version replaces it.
 
 The rename gate therefore means **zero unclassified active old-product tokens**, not destructive rewriting of immutable history or frozen V1 protocol data.
 
 ## 0.4 New runtime namespaces
 
-To avoid old/new `CORTEX_*` collisions:
+To avoid old/new `BLUEPRINT_*` collisions:
 
 ### Blueprint
 
@@ -93,27 +93,27 @@ provider:  blueprint on new internal/current surfaces
 tool:      membrane_blueprint
 ```
 
-### Cortex durable-knowledge subsystem
+### Blueprint durable-knowledge subsystem
 
-Cortex is a Membrane subsystem, not a second standalone repository-truth CLI.
+Blueprint is a Membrane subsystem, not a second standalone repository-truth CLI.
 
 ```text
-Rust crates:  cortex
-              cortex-core
-              cortex-store
-              cortex-format
+Rust crates:  blueprint
+              blueprint-core
+              blueprint-store
+              blueprint-format
 
-bins:         membrane-cortex
-              membrane-cortex-service
+bins:         membrane-blueprint
+              membrane-blueprint-service
 
-env:          MEMBRANE_CORTEX_*
+env:          MEMBRANE_BLUEPRINT_*
 
-store:        cortex-engine.db
+store:        blueprint-engine.db
 ```
 
-The new durable subsystem does **not** claim the bare global `cortex` executable and does not use the generic `CORTEX_*` environment namespace. This prevents stale installs/configuration from being interpreted as the wrong system.
+The new durable subsystem does **not** claim the bare global `blueprint` executable and does not use the generic `BLUEPRINT_*` environment namespace. This prevents stale installs/configuration from being interpreted as the wrong system.
 
-There is no raw public `membrane_cortex` memory CRUD tool. Durable Cortex is accessed through Membrane's governed context/knowledge APIs.
+There is no raw public `membrane_blueprint` memory CRUD tool. Durable Blueprint is accessed through Membrane's governed context/knowledge APIs.
 
 ---
 
@@ -123,11 +123,11 @@ The occurrence counts in the uploaded draft were measured snapshots. They are us
 
 Before implementation, Phase 0 remeasures against the exact clean checkouts being merged.
 
-## 1.1 Rename-A hazard: `Cortex → Blueprint`
+## 1.1 Rename-A hazard: `Blueprint → Blueprint`
 
 Audit:
 
-- all `Cortex`, `cortex`, `CORTEX_*`;
+- all `Blueprint`, `blueprint`, `BLUEPRINT_*`;
 - package names;
 - binary names;
 - IPC/socket names;
@@ -144,7 +144,7 @@ Audit:
 
 ## 1.2 Hidden hazard: Blueprint was an earlier historical name
 
-Membrane previously used `Blueprint` before the repository-truth subsystem was renamed Cortex.
+Membrane previously used `Blueprint` before the repository-truth subsystem was renamed Blueprint.
 
 Before introducing the new canonical Blueprint name, inventory all existing:
 
@@ -170,7 +170,7 @@ UNRELATED_TERM
 
 A stale historical alias must not become canonical merely because the name is being reused.
 
-## 1.3 Rename-B hazard: `Crypt → Cortex`
+## 1.3 Rename-B hazard: `Crypt → Blueprint`
 
 Audit:
 
@@ -201,7 +201,7 @@ drain writer/service
 → verified backup/copy to temp
 → open + integrity/schema/identity verification
 → fsync
-→ atomic adopt as cortex-engine.db
+→ atomic adopt as blueprint-engine.db
 → update store identity
 → restart/readback
 → retain rollback copy until qualification gate
@@ -227,15 +227,15 @@ membrane/
 ├── engine/
 │   ├── Cargo.toml
 │   ├── crates/
-│   │   ├── cortex/
-│   │   ├── cortex-core/
-│   │   ├── cortex-store/
-│   │   ├── cortex-format/
+│   │   ├── blueprint/
+│   │   ├── blueprint-core/
+│   │   ├── blueprint-store/
+│   │   ├── blueprint-format/
 │   │   └── membrane-*/
 │   └── federation/
 │       └── providers/
 │           ├── blueprint.py
-│           └── cortex.py
+│           └── blueprint.py
 │
 ├── mcp/
 ├── schemas/                           # Membrane-owned schemas
@@ -315,9 +315,9 @@ CI enforces all of these.
 ## 3.1 Storage
 
 - Blueprint owns `.agent/graph/graph.db`.
-- Cortex owns the Membrane durable-knowledge database.
+- Blueprint owns the Membrane durable-knowledge database.
 - Membrane never opens Blueprint's SQLite store directly.
-- Blueprint never opens Cortex's durable store.
+- Blueprint never opens Blueprint's durable store.
 - No raw store merge occurs.
 
 ## 3.2 Process
@@ -325,7 +325,7 @@ CI enforces all of these.
 - Blueprint keeps its resident service.
 - Blueprint keeps its watcher.
 - Membrane keeps its Application / Control / Data process architecture.
-- Cortex remains part of Membrane's data/runtime subsystem.
+- Blueprint remains part of Membrane's data/runtime subsystem.
 - Repository co-location does not authorize in-process graph shortcuts.
 
 ## 3.3 Imports
@@ -335,7 +335,7 @@ Allowed:
 ```text
 Membrane → Blueprint public protocol/service/client surface
 Blueprint → Blueprint internals
-Membrane → Cortex durable-memory crates through canonical Membrane owners
+Membrane → Blueprint durable-memory crates through canonical Membrane owners
 ```
 
 Forbidden:
@@ -345,7 +345,7 @@ engine/** → blueprint/src/**
 mcp/**    → blueprint/src/**
 blueprint/** → engine/**
 blueprint/** → mcp/**
-Blueprint → Cortex store
+Blueprint → Blueprint store
 Membrane → Blueprint store
 ```
 
@@ -411,14 +411,14 @@ No broad path exemption such as `docs/**` or `research/**` is accepted without c
 The gate is not:
 
 ```bash
-git grep cortex | wc -l == 0
+git grep blueprint | wc -l == 0
 ```
 
-because frozen wire values, immutable research, historical URLs and the new durable Cortex legitimately contain the token.
+because frozen wire values, immutable research, historical URLs and the new durable Blueprint legitimately contain the token.
 
 The gate is:
 
-> every `cortex` / `crypt` / `blueprint` token is either owned by its new canonical subsystem or is explicitly classified in the rename ledger.
+> every `blueprint` / `crypt` / `blueprint` token is either owned by its new canonical subsystem or is explicitly classified in the rename ledger.
 
 After Rename B:
 
@@ -426,13 +426,13 @@ After Rename B:
 Blueprint meaning:
     Blueprint / blueprint / BLUEPRINT_*
 
-Cortex durable meaning:
-    Cortex in prose
-    cortex-* Rust crates
-    MEMBRANE_CORTEX_*
-    cortex-engine.db
+Blueprint durable meaning:
+    Blueprint in prose
+    blueprint-* Rust crates
+    MEMBRANE_BLUEPRINT_*
+    blueprint-engine.db
 
-legacy old-repository Cortex:
+legacy old-repository Blueprint:
     only frozen/ledgered historical wire, URLs, migration fixtures
 
 legacy Crypt:
@@ -470,7 +470,7 @@ Do not combine the two semantic renames into one PR.
   - IPC endpoint;
   - environment-variable inventory.
 - Remeasure rename occurrence/file/path counts.
-- Inventory all pre-existing `blueprint*` legacy aliases in Membrane and the former Cortex tree.
+- Inventory all pre-existing `blueprint*` legacy aliases in Membrane and the former Blueprint tree.
 - Build the initial rename ledger.
 - Resolve phantom `SEAM-CONTRACT.md` prerequisites; the subsystem SSOTs own their seam semantics.
 
@@ -491,7 +491,7 @@ Do not combine the two semantic renames into one PR.
 From the Membrane checkout:
 
 ```bash
-git remote add blueprint-src <path-or-url-to-former-cortex-repo>
+git remote add blueprint-src <path-or-url-to-former-blueprint-repo>
 git fetch blueprint-src
 git subtree add --prefix=blueprint blueprint-src main
 ```
@@ -500,7 +500,7 @@ Do not use `--squash`; imported history remains reachable.
 
 At this phase:
 
-- subsystem content remains semantically Cortex internally;
+- subsystem content remains semantically Blueprint internally;
 - the physical prefix is already `blueprint/`;
 - no product identifiers are renamed yet.
 
@@ -596,16 +596,16 @@ This is seam hardening already required by the SSOTs, not a new ownership change
 
 ---
 
-## Phase 3 — Rename A: repository-truth Cortex → Blueprint
+## Phase 3 — Rename A: repository-truth Blueprint → Blueprint
 
 One PR. Prefer one mechanically focused rename commit plus narrowly separated generated-artifact updates if tooling requires them; do not mix feature work.
 
 ### Rename active surfaces
 
 ```text
-Cortex       → Blueprint
-cortex       → blueprint
-CORTEX_*     → BLUEPRINT_*
+Blueprint       → Blueprint
+blueprint       → blueprint
+BLUEPRINT_*     → BLUEPRINT_*
 ```
 
 where the token semantically names the repository-truth product.
@@ -631,15 +631,15 @@ Rename:
 - V1 field/reason names whose mutation would break the protocol;
 - research quotations/provenance;
 - external old repository URLs;
-- unrelated uses of the word cortex.
+- unrelated uses of the word blueprint.
 
 Those are ledgered.
 
 ### Public tool change
 
-`membrane_cortex` currently means repository truth.
+`membrane_blueprint` currently means repository truth.
 
-Because `Cortex` is being reassigned, do **not** keep it as a normal alias for Blueprint.
+Because `Blueprint` is being reassigned, do **not** keep it as a normal alias for Blueprint.
 
 Introduce `membrane_blueprint` with an explicit operation/tool-catalog version bump.
 
@@ -649,16 +649,16 @@ If a legacy toolset must exist for migration testing, it is disabled by default 
 
 Publish `@orthic-labs/blueprint`.
 
-Deprecate existing `@orthic-labs/cortex` versions with a migration message.
+Deprecate existing `@orthic-labs/blueprint` versions with a migration message.
 
-Do not publish a runtime re-export package that continues to install the bare `cortex` executable.
+Do not publish a runtime re-export package that continues to install the bare `blueprint` executable.
 
 The old package name is a historical migration pointer, not a second live identity.
 
 ### Gate
 
 - all active repository-truth runtime/config names use Blueprint;
-- no normal old-Blueprint `cortex` bin/env/socket/tool alias remains;
+- no normal old-Blueprint `blueprint` bin/env/socket/tool alias remains;
 - all surviving old names are in the rename ledger;
 - clean install of `@orthic-labs/blueprint` works;
 - Membrane integration uses Blueprint names;
@@ -666,7 +666,7 @@ The old package name is a historical migration pointer, not a second live identi
 
 ---
 
-## Phase 4 — Namespace quarantine before reassigning Cortex
+## Phase 4 — Namespace quarantine before reassigning Blueprint
 
 This phase exists specifically because the same token is being reused.
 
@@ -674,15 +674,15 @@ This phase exists specifically because the same token is being reused.
 
 Confirm:
 
-- no old repository-truth runtime reads `CORTEX_*`;
-- no old repository-truth process listens on `orthic-cortex-*`;
-- no active old repository-truth binary named `cortex` is installed by the new Blueprint package;
-- no default MCP tool named `membrane_cortex` still points to Blueprint;
-- no active provider lookup interprets `"cortex"` as current Blueprint unless reading explicitly historical V1 data.
+- no old repository-truth runtime reads `BLUEPRINT_*`;
+- no old repository-truth process listens on `orthic-blueprint-*`;
+- no active old repository-truth binary named `blueprint` is installed by the new Blueprint package;
+- no default MCP tool named `membrane_blueprint` still points to Blueprint;
+- no active provider lookup interprets `"blueprint"` as current Blueprint unless reading explicitly historical V1 data.
 
 ### Configuration migration
 
-For user-facing files/state that previously named Cortex:
+For user-facing files/state that previously named Blueprint:
 
 - installer/upgrade tooling performs a one-time explicit migration to Blueprint names;
 - migration is idempotent;
@@ -692,21 +692,21 @@ For user-facing files/state that previously named Cortex:
 
 ### Gate
 
-A semantic namespace test proves that a fresh/current process cannot interpret the token `cortex` as the repository-truth subsystem.
+A semantic namespace test proves that a fresh/current process cannot interpret the token `blueprint` as the repository-truth subsystem.
 
 Only then may Rename B begin.
 
 ---
 
-## Phase 5 — Rename B: durable-knowledge Crypt → Cortex
+## Phase 5 — Rename B: durable-knowledge Crypt → Blueprint
 
 ### Rust/source names
 
 ```text
-crypt            → cortex
-crypt-core       → cortex-core
-crypt-store      → cortex-store
-crypt-format     → cortex-format
+crypt            → blueprint
+crypt-core       → blueprint-core
+crypt-store      → blueprint-store
+crypt-format     → blueprint-format
 ```
 
 Update:
@@ -722,33 +722,33 @@ Update:
 
 ### Runtime names
 
-Do not claim the bare `cortex` global executable.
+Do not claim the bare `blueprint` global executable.
 
 Use:
 
 ```text
-membrane-cortex
-membrane-cortex-service
+membrane-blueprint
+membrane-blueprint-service
 ```
 
 Use:
 
 ```text
-MEMBRANE_CORTEX_*
+MEMBRANE_BLUEPRINT_*
 ```
 
 for new environment variables.
 
-During the safe migration window, new Cortex may read legacy `CRYPT_*` variables because those names cannot be mistaken for old Blueprint. Emit deprecation diagnostics and remove that fallback at the stated release boundary.
+During the safe migration window, new Blueprint may read legacy `CRYPT_*` variables because those names cannot be mistaken for old Blueprint. Emit deprecation diagnostics and remove that fallback at the stated release boundary.
 
-Never use old repository-truth `CORTEX_*` variables as a fallback for durable Cortex.
+Never use old repository-truth `BLUEPRINT_*` variables as a fallback for durable Blueprint.
 
 ### Store
 
 Canonical new install name:
 
 ```text
-cortex-engine.db
+blueprint-engine.db
 ```
 
 Migration:
@@ -779,8 +779,8 @@ Likewise, historical receipt/provider values remain readable with their original
 ### Gate
 
 - Rust workspace green under new crate names;
-- current runtime labels use Cortex;
-- no durable Cortex code consumes old Blueprint `CORTEX_*`;
+- current runtime labels use Blueprint;
+- no durable Blueprint code consumes old Blueprint `BLUEPRINT_*`;
 - store migration passes integrity + backup/restore + recall-equivalence;
 - V1 old-data fixtures remain readable;
 - rollback to the verified old store is tested.
@@ -793,7 +793,7 @@ Likewise, historical receipt/provider values remain readable with their original
 
 The primary Membrane installation may ship one Hub add-on/bundle that manages both:
 
-- Membrane/Cortex durable engine;
+- Membrane/Blueprint durable engine;
 - Blueprint service/watcher.
 
 The add-on still models them as distinct children/subsystems.
@@ -816,7 +816,7 @@ One top-level Membrane doctor may aggregate health, but output keeps distinct se
 
 ```text
 Membrane
-Cortex durable store
+Blueprint durable store
 Blueprint evidence store/service
 ```
 
@@ -838,7 +838,7 @@ Generated `docs/product.md` / `docs/architecture.md` remain generated runtime tr
 
 ### Old GitHub repository
 
-Do not claim GitHub can automatically redirect `Orthic-Labs/Cortex` to a subdirectory of the existing Membrane repository.
+Do not claim GitHub can automatically redirect `Orthic-Labs/Blueprint` to a subdirectory of the existing Membrane repository.
 
 Before archiving the old repository:
 
@@ -883,13 +883,13 @@ Review:
 - old GitHub/npm links;
 - historical `blueprintGeneration` aliases from the earlier product-name cycle.
 
-## 6.2 Cortex durable rename
+## 6.2 Blueprint durable rename
 
 Review:
 
 - four Rust crate directories/package names;
 - binary names;
-- `MEMBRANE_CORTEX_*` variables;
+- `MEMBRANE_BLUEPRINT_*` variables;
 - release-generation variables;
 - actual resolved store path;
 - store identity record;
@@ -907,10 +907,10 @@ Review:
 Add a fixture containing simultaneously:
 
 ```text
-legacy old Blueprint-via-Cortex receipt
+legacy old Blueprint-via-Blueprint receipt
 current Blueprint receipt
 legacy Crypt durable record
-current Cortex durable record
+current Blueprint durable record
 ```
 
 Assert every item resolves to exactly one semantic owner.
@@ -927,14 +927,14 @@ No decoder may infer ownership from the bare English product name alone when pro
 | 2 boundaries | revert generated bindings/lints/seam client; no data migration |
 | 3 Blueprint rename | revert rename before Rename B; npm deprecation can be corrected with a follow-up release |
 | 4 quarantine | restore Blueprint namespace only if Rename B has not begun |
-| 5 Cortex rename | code rollback plus explicit store-identity rollback to the verified retained old store; never rely on `git revert` alone |
+| 5 Blueprint rename | code rollback plus explicit store-identity rollback to the verified retained old store; never rely on `git revert` alone |
 | 6 packaging/docs | keep prior install artifacts available until new qualification is green |
 
 ## 7.1 Point of no ambiguous rollback
 
-After Rename B begins, never restore old repository-truth `cortex` runtime aliases in the same installation.
+After Rename B begins, never restore old repository-truth `blueprint` runtime aliases in the same installation.
 
-Rollback of Blueprint after that point means restoring a **Blueprint-named** build, not reintroducing old `cortex` binaries/env/socket names.
+Rollback of Blueprint after that point means restoring a **Blueprint-named** build, not reintroducing old `blueprint` binaries/env/socket names.
 
 This prevents rollback itself from recreating the name collision.
 
@@ -956,20 +956,20 @@ The monorepo/rename migration is complete only when all are true.
 - [ ] Membrane does not import `blueprint/src/**`.
 - [ ] Blueprint does not import Membrane engine/MCP internals.
 - [ ] Membrane never opens Blueprint SQLite.
-- [ ] Blueprint never opens Cortex durable SQLite.
+- [ ] Blueprint never opens Blueprint durable SQLite.
 - [ ] Real daemon integration test proves the seam.
 - [ ] Repository text remains `data_only`.
 
 ## Naming
 
 - [ ] Repository truth is called Blueprint on all current active surfaces.
-- [ ] Durable knowledge is called Cortex on all current active surfaces.
+- [ ] Durable knowledge is called Blueprint on all current active surfaces.
 - [ ] New Blueprint uses `BLUEPRINT_*`.
-- [ ] New durable Cortex uses `MEMBRANE_CORTEX_*`.
-- [ ] New durable Cortex does not install a bare global `cortex` binary.
+- [ ] New durable Blueprint uses `MEMBRANE_BLUEPRINT_*`.
+- [ ] New durable Blueprint does not install a bare global `blueprint` binary.
 - [ ] `membrane_blueprint` is the repository-truth MCP tool.
-- [ ] No default `membrane_cortex` alias still points to Blueprint.
-- [ ] Every surviving legacy `cortex`/`crypt` token is classified in the rename ledger.
+- [ ] No default `membrane_blueprint` alias still points to Blueprint.
+- [ ] Every surviving legacy `blueprint`/`crypt` token is classified in the rename ledger.
 - [ ] Every pre-existing historical `blueprint*` alias was classified before Rename A.
 
 ## Protocol
@@ -978,12 +978,12 @@ The monorepo/rename migration is complete only when all are true.
 - [ ] Generated/consumer bindings regenerate/equivalence-check cleanly.
 - [ ] Membrane V1 shapes remain compatible.
 - [ ] Frozen V1 old-name tokens retain their historical meaning.
-- [ ] Provider/reason decoding can distinguish historical old Cortex from current Blueprint/Cortex state.
+- [ ] Provider/reason decoding can distinguish historical old Blueprint from current Blueprint/Blueprint state.
 
 ## Store migration
 
 - [ ] Actual pre-rename durable store path was resolved, not guessed.
-- [ ] New canonical store is `cortex-engine.db`.
+- [ ] New canonical store is `blueprint-engine.db`.
 - [ ] Migration drains the writer and uses verified atomic adoption.
 - [ ] Integrity/schema/readback green.
 - [ ] Backup/restore and recall equivalence green.
@@ -994,12 +994,12 @@ The monorepo/rename migration is complete only when all are true.
 - [ ] Blueprint service + watcher remain separate responsibilities.
 - [ ] Membrane normal Blueprint path is persistent daemon IPC.
 - [ ] Per-query subprocess is typed fallback only.
-- [ ] Cortex remains Membrane-owned durable knowledge, not a second repository-truth service.
+- [ ] Blueprint remains Membrane-owned durable knowledge, not a second repository-truth service.
 
 ## Packaging
 
 - [ ] `@orthic-labs/blueprint` clean install works.
-- [ ] Old `@orthic-labs/cortex` package is deprecated as historical repository-truth name and installs no conflicting runtime shim.
+- [ ] Old `@orthic-labs/blueprint` package is deprecated as historical repository-truth name and installs no conflicting runtime shim.
 - [ ] Combined Membrane bundle works.
 - [ ] Standalone Blueprint works.
 - [ ] Mac qualification green.
@@ -1024,7 +1024,7 @@ The semantic system hierarchy is:
 ```text
 Membrane
 ├── Blueprint   repository evidence + repository truth
-├── Cortex      durable governed knowledge
+├── Blueprint      durable governed knowledge
 ├── Guide       document navigation + section index
 ├── Adapt       learning + governed proposals
 └── Push        reversible reduction
@@ -1032,12 +1032,12 @@ Membrane
 
 Membrane's core planner remains the context control plane across those subsystems.
 
-This migration changes the physical placement/names of Blueprint and Cortex only. Guide, Adapt, and Push remain Membrane subsystems but their physical placement is not decided by this plan.
+This migration changes the physical placement/names of Blueprint and Blueprint only. Guide, Adapt, and Push remain Membrane subsystems but their physical placement is not decided by this plan.
 
-Within the `Orthic-Labs/Membrane` repository, Blueprint and Cortex retain their own process/storage/protocol boundaries even though they sit under the Membrane system.
+Within the `Orthic-Labs/Membrane` repository, Blueprint and Blueprint retain their own process/storage/protocol boundaries even though they sit under the Membrane system.
 
 The repository merge exists so a seam change can land atomically.
 
 The process, storage, protocol, trust and semantic boundaries remain real.
 
-The rename is complete only when **Blueprint** can no longer be confused with historical Cortex, and **Cortex** can no longer be confused with the repository-truth product that previously carried that name.
+The rename is complete only when **Blueprint** can no longer be confused with historical Blueprint, and **Blueprint** can no longer be confused with the repository-truth product that previously carried that name.

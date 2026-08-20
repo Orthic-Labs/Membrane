@@ -40,7 +40,7 @@ test("OPERATIONS registry covers every required MCP tool", () => {
   const expectedNames = [
     "membrane_context",
     "membrane_source_read",
-    "membrane_cortex",
+    "membrane_blueprint",
     "membrane_knowledge_propose",
     "membrane_checkpoint_save",
     "membrane_checkpoint_load",

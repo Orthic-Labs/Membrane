@@ -238,7 +238,7 @@ d
 e
 Mem
 Hippocampus
-Neocortex
+Neoblueprint
 Mindmap
 API
 Add 
@@ -461,7 +461,7 @@ memory.
 In the early stages of human-like memory research, the focus was on simulating the structural and functional
 mechanisms of human memory. One representative early work is the HippoRAG series of models[50, 51],
 inspired by the "hippocampal indexing theory" in human long-term memory. The model integrates LLMs,
-knowledge graphs, and the Personalized PageRank algorithm to emulate the roles of the neocortex and
+knowledge graphs, and the Personalized PageRank algorithm to emulate the roles of the neoblueprint and
 hippocampus in memory, achieving more efficient knowledge integration and retrieval. Memory3[1], inspired
 by the hierarchical structure of human memory, makes the KV-cache in the attention mechanism explicit
 as a memory carrier for the model. This approach offers a lower-cost alternative to parameter storage or

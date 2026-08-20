@@ -367,7 +367,7 @@ mod tests {
         };
         inputs.providers = HubReadV1::Degraded {
             reason: "readiness_handle_missing".into(),
-            items: vec![json!({"provider":"cortex","status":"unknown"})],
+            items: vec![json!({"provider":"blueprint","status":"unknown"})],
             metadata: HubMetadataV1::default(),
         };
         let snapshot = facade.snapshot(42, inputs);

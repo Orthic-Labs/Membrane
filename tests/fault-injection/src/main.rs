@@ -10,7 +10,7 @@ use std::{fs, path::PathBuf, time::Duration};
 
 fn id() -> ProviderIdentityV1 {
     ProviderIdentityV1 {
-        provider_id: "cortex".into(),
+        provider_id: "blueprint".into(),
         installation_id: "install-a".into(),
         service_id: "service-a".into(),
         release_generation: "gen-a".into(),

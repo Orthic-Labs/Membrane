@@ -66,10 +66,10 @@ pub struct ScopeGrantV1 {
     pub manifest_digest: String,
     pub repository_id: String,
     pub repository_root: String,
-    /// Cortex blueprint generation the grant binds to.
-    pub cortex_generation: String,
-    /// Cortex graph freshness state (`clean`, `stale_snapshot`, ...).
-    pub cortex_freshness: String,
+    /// Blueprint blueprint generation the grant binds to.
+    pub blueprint_generation: String,
+    /// Blueprint graph freshness state (`clean`, `stale_snapshot`, ...).
+    pub blueprint_freshness: String,
     /// `sha256:<hex>` digest of the canonical request object.
     pub request_hash: String,
     /// `sha256:<hex>` digest of the canonical context packet.
@@ -493,9 +493,9 @@ pub enum FallbackMode {
 #[serde(rename_all = "snake_case")]
 pub enum DegradationReason {
     None,
-    CortexStale,
-    CortexUnavailable,
-    CortexCorrupt,
+    BlueprintStale,
+    BlueprintUnavailable,
+    BlueprintCorrupt,
     ProviderCapabilityMissing,
     ReleaseGenerationMismatch,
     ReleaseGenerationUnavailable,

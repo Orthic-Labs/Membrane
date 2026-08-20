@@ -31,6 +31,6 @@ assert.equal(valid(forged), false, "forged signer denied");
 assert.equal(valid({ ...grant, expiresAt: "2026-08-01T00:00:00.000Z" }), false, "expired denied");
 for (const [field, value] of [
   ["taskId", "other"], ["sessionId", "other"], ["repositoryId", "other"], ["repositoryRoot", "/other"],
-  ["cortexGeneration", "other"], ["requestHash", "sha256:" + "c".repeat(64)], ["contextPacketHash", "sha256:" + "d".repeat(64)],
+  ["blueprintGeneration", "other"], ["requestHash", "sha256:" + "c".repeat(64)], ["contextPacketHash", "sha256:" + "d".repeat(64)],
 ]) assert.equal(valid({ ...grant, [field]: value }), false, `${field} binding denied`);
 assert.notEqual(grant.id, signed().id, "minted ScopeGrant IDs are one-use replay identities");

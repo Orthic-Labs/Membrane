@@ -186,15 +186,15 @@ mod tests {
     use super::*;
     #[rustfmt::skip] fn hash() -> String { format!("sha256:{}", "a".repeat(64)) }
     fn set(receipt: Value) -> Value {
-        json!({"provider":"cortex","generationId":"gen-2","candidates":[{"id":"node-1","layer":3,
+        json!({"provider":"blueprint","generationId":"gen-2","candidates":[{"id":"node-1","layer":3,
             "sourceKind":"graph","sourceRef":"src/lib.rs","sourceHash":hash(),
-            "resolver":"cortex graph resolve --node node-1","sourceResolution":receipt}],"omissions":[]})
+            "resolver":"blueprint graph resolve --node node-1","sourceResolution":receipt}],"omissions":[]})
     }
     #[test] #[rustfmt::skip] fn only_exact_current_resolution_reaches_admission() {
-        let exact = json!({"schemaVersion":1,"candidateId":"node-1","provider":"cortex","status":"resolved",
+        let exact = json!({"schemaVersion":1,"candidateId":"node-1","provider":"blueprint","status":"resolved",
             "expectedHash":hash(),"resolvedHash":hash(),"expectedGeneration":"gen-2",
             "resolvedGeneration":"gen-2","expectedPath":"src/lib.rs","resolvedPath":"src/lib.rs",
-            "resolver":"cortex graph resolve --node node-1"});
+            "resolver":"blueprint graph resolve --node node-1"});
         let mut admitted = set(exact.clone());
         assert_eq!(
             gate_source_resolutions(&mut admitted)[0].status,

@@ -149,4 +149,4 @@ Crypt is its durable-memory subsystem.
 - Check packet and receipt schemas together after contract changes.
 - Measure warm federation behavior when modifying gateway concurrency or budgets.
 
-Before sealing any contract touching hub, watcher lifecycle, the cortex↔membrane API, or peer-service discovery, read `docs/plans/orthic/SEAM-CONTRACT.md` and declare it a dependency.
+Before sealing any contract touching hub, watcher lifecycle, the blueprint↔membrane API, or peer-service discovery, read `docs/plans/orthic/SEAM-CONTRACT.md` and declare it a dependency.

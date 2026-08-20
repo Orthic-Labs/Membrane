@@ -1,12 +1,12 @@
-# `cortex_example` — reference Cortex adapter
+# `blueprint_example` — reference Blueprint adapter
 
 A minimal but real reference adapter that demonstrates how a
-Cortex-shaped Membrane provider is written against
+Blueprint-shaped Membrane provider is written against
 `membrane-provider-sdk`.
 
 ## What it does
 
-The `cortex_example` crate implements the `Provider` trait for two
+The `blueprint_example` crate implements the `Provider` trait for two
 operations from the Membrane registry:
 
 | Operation               | Purpose                                                   |
@@ -25,12 +25,12 @@ this property via `run_conformance`.
 ## Layout
 
 ```
-docs/examples/providers/cortex_example/
+docs/examples/providers/blueprint_example/
 ├── Cargo.toml      # member of docs/examples/providers/ workspace
 ├── README.md       # this file
 └── src/
     ├── lib.rs      # the Provider impl + handle_* helpers
-    └── main.rs     # the tiny CLI: cortex_example run-conformance
+    └── main.rs     # the tiny CLI: blueprint_example run-conformance
 ```
 
 ## How to run
@@ -38,17 +38,17 @@ docs/examples/providers/cortex_example/
 From the repository root:
 
 ```sh
-cargo run --manifest-path docs/examples/providers/cortex_example/Cargo.toml --bin cortex_example
+cargo run --manifest-path docs/examples/providers/blueprint_example/Cargo.toml --bin blueprint_example
 ```
 
-The binary exits 0 if every Cortex fixture in `membrane-testkit` passes
+The binary exits 0 if every Blueprint fixture in `membrane-testkit` passes
 the SDK's `run_conformance` harness, 1 otherwise. The output is the
 JSON-serialized `ConformanceReport` on stdout.
 
 ## Notes
 
 * The adapter is intentionally pure (no I/O, no clock, no randomness).
-  A real Cortex adapter will read the cortex graph and the scope-grant
+  A real Blueprint adapter will read the blueprint graph and the scope-grant
   store; those reads are out of scope for the conformance adapter —
   the SDK is the contract layer, not the implementation layer.
 * The `CapabilityV1` entries carry `schemaVersion = 1` and

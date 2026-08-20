@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "state": "ready",
   "identity": {
-    "providerId": "cortex",
+    "providerId": "blueprint",
     "installationId": "installation-1",
     "serviceId": "service-1",
     "releaseGeneration": "release-1",

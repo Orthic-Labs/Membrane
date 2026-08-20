@@ -34,7 +34,7 @@ Push owns faithful reduction mechanics. The Membrane planner owns the final deci
 
 - final ranking/admission — Membrane planner;
 - the decision that a piece of evidence deserves attention — Membrane planner;
-- durable knowledge — Cortex;
+- durable knowledge — Blueprint;
 - repository truth — Blueprint;
 - document indexing — Guide.
 

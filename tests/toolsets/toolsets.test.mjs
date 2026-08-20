@@ -4,16 +4,16 @@ import { parseToolsetConfig, toolsetNames } from "../../mcp/toolsets.mjs";
 
 const groups = {
   default: ["membrane_context"], memory: ["membrane_context", "membrane_feedback"],
-  cortex: ["membrane_source_read"], diagnostic: [],
+  blueprint: ["membrane_source_read"], diagnostic: [],
 };
 const params = (value) => ({ _meta: { "membrane.toolsets.v1": value } });
 
 test("toolsets negotiate valid groups & conservative metadata fallback", () => {
   assert.deepEqual(toolsetNames({}, groups), ["membrane_context"]);
   assert.deepEqual(toolsetNames(params(["memory"]), groups), ["membrane_context", "membrane_feedback"]);
-  assert.deepEqual(toolsetNames(params(["cortex"]), groups), ["membrane_context", "membrane_source_read"]);
+  assert.deepEqual(toolsetNames(params(["blueprint"]), groups), ["membrane_context", "membrane_source_read"]);
   assert.deepEqual(toolsetNames(params(["diagnostic"]), groups), ["membrane_context"]);
-  assert.deepEqual(toolsetNames(params(["memory", "cortex"]), groups), ["membrane_context", "membrane_feedback", "membrane_source_read"]);
+  assert.deepEqual(toolsetNames(params(["memory", "blueprint"]), groups), ["membrane_context", "membrane_feedback", "membrane_source_read"]);
   for (const value of ["memory", ["unknown"], ["memory", "memory"], { memory: true }]) assert.deepEqual(toolsetNames(params(value), groups), ["membrane_context"]);
 });
 

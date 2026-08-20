@@ -12,7 +12,7 @@
     },
     {
       "client": "claude",
-      "operation": "membrane_cortex",
+      "operation": "membrane_blueprint",
       "support": "unsupported"
     },
     {
@@ -72,7 +72,7 @@
     },
     {
       "client": "codex",
-      "operation": "membrane_cortex",
+      "operation": "membrane_blueprint",
       "support": "unsupported"
     },
     {
@@ -132,7 +132,7 @@
     },
     {
       "client": "cursor",
-      "operation": "membrane_cortex",
+      "operation": "membrane_blueprint",
       "support": "unsupported"
     },
     {
@@ -192,7 +192,7 @@
     },
     {
       "client": "windsurf",
-      "operation": "membrane_cortex",
+      "operation": "membrane_blueprint",
       "support": "unsupported"
     },
     {
@@ -252,7 +252,7 @@
     },
     {
       "client": "generic_mcp",
-      "operation": "membrane_cortex",
+      "operation": "membrane_blueprint",
       "support": "unsupported"
     },
     {
@@ -350,7 +350,7 @@
     },
     {
       "errorVersion": 1,
-      "name": "membrane_cortex",
+      "name": "membrane_blueprint",
       "schemaVersion": 1
     },
     {

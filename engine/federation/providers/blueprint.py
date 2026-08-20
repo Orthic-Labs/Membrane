@@ -1,8 +1,8 @@
-"""Cortex provider — spawns `cortex.mjs graph candidates` and parses output.
+"""Blueprint provider — spawns `blueprint.mjs graph candidates` and parses output.
 
 Reads a real ContextCandidateSet v1 produced by the existing static
-provider (Cortex graph is the live machine-local generation). Output
-candidates carry provider="cortex" and sourceGeneration = the
+provider (Blueprint graph is the live machine-local generation). Output
+candidates carry provider="blueprint" and sourceGeneration = the
 manifest.generationId.
 """
 from __future__ import annotations
@@ -22,24 +22,24 @@ from typing import Any
 
 from . import workspace_tools_path
 
-CORTEX_CLI_DEFAULT = Path(__file__).resolve().parents[4] / "cortex/scripts/cortex.mjs"
-CORTEX_SKILLS_CLI_DEFAULT = workspace_tools_path(
-    "skills", "cortex", "scripts", "cortex.mjs"
+BLUEPRINT_CLI_DEFAULT = Path(__file__).resolve().parents[4] / "blueprint/scripts/blueprint.mjs"
+BLUEPRINT_SKILLS_CLI_DEFAULT = workspace_tools_path(
+    "skills", "blueprint", "scripts", "blueprint.mjs"
 )
-CORTEX_CANDIDATE_CAP_DEFAULT = 64
-# Cortex runs inside the gateway's absolute fan-out deadline (1.5 s, see
+BLUEPRINT_CANDIDATE_CAP_DEFAULT = 64
+# Blueprint runs inside the gateway's absolute fan-out deadline (1.5 s, see
 # gateway._PRODUCTION_FANOUT_TIMEOUT_S). The lean candidates entrypoint
-# (cortex-candidates.mjs) answers in ~0.9 s at 150k-symbol scale; the previous
+# (blueprint-candidates.mjs) answers in ~0.9 s at 150k-symbol scale; the previous
 # 0.35 s deadline was sized for the full CLI on a small graph and could never
-# be met at real workspace scale — every production packet lost its cortex
+# be met at real workspace scale — every production packet lost its blueprint
 # lane to a spawn timeout, silently.
-CORTEX_TIMEOUT_S = 1.2
-CORTEX_CACHE_TTL_S = 300.0
-CORTEX_CACHE_MAX_ENTRIES = 16
+BLUEPRINT_TIMEOUT_S = 1.2
+BLUEPRINT_CACHE_TTL_S = 300.0
+BLUEPRINT_CACHE_MAX_ENTRIES = 16
 
 # A successful candidate query can be reused only for its exact task, cap &
 # graph generation. This keeps a brief Node-spawn miss from discarding an
-# already-attested Cortex answer, without treating manifest metadata as code
+# already-attested Blueprint answer, without treating manifest metadata as code
 # context or crossing a graph/source transition.
 _candidate_cache: dict[tuple[str, str, str, int], tuple[float, list[dict]]] = {}
 _candidate_cache_lock = threading.Lock()
@@ -76,43 +76,43 @@ def _cache_candidates(
 ) -> None:
     now = time.monotonic() if now is None else now
     with _candidate_cache_lock:
-        if len(_candidate_cache) >= CORTEX_CACHE_MAX_ENTRIES:
+        if len(_candidate_cache) >= BLUEPRINT_CACHE_MAX_ENTRIES:
             oldest = min(_candidate_cache, key=lambda entry: _candidate_cache[entry][0])
             _candidate_cache.pop(oldest, None)
         _candidate_cache[key] = (
-            now + CORTEX_CACHE_TTL_S,
+            now + BLUEPRINT_CACHE_TTL_S,
             [dict(candidate) for candidate in candidates],
         )
 
 
 def candidate_cap(max_tokens: int, raw_override: str | None = None) -> int:
     """Bound repo-code candidate generation independently of the total token budget."""
-    raw = raw_override if raw_override is not None else os.environ.get("MEMBRANE_CORTEX_CAP")
+    raw = raw_override if raw_override is not None else os.environ.get("MEMBRANE_BLUEPRINT_CAP")
     try:
-        configured = int(raw) if raw is not None else CORTEX_CANDIDATE_CAP_DEFAULT
+        configured = int(raw) if raw is not None else BLUEPRINT_CANDIDATE_CAP_DEFAULT
     except ValueError:
-        configured = CORTEX_CANDIDATE_CAP_DEFAULT
+        configured = BLUEPRINT_CANDIDATE_CAP_DEFAULT
     return min(max(1, configured), 256, max(1, max_tokens))
 
 
-def _resolve_cortex_cli() -> str:
-    """Locate the Cortex CLI on this host.
+def _resolve_blueprint_cli() -> str:
+    """Locate the Blueprint CLI on this host.
 
-    Honour an explicit CORTEX_CLI override (CI / dev override) and
-    otherwise locate `cortex.mjs` relative to this file. Return the
+    Honour an explicit BLUEPRINT_CLI override (CI / dev override) and
+    otherwise locate `blueprint.mjs` relative to this file. Return the
     resolved path; raise FileNotFoundError if missing.
     """
-    explicit = os.environ.get("CORTEX_CLI")
+    explicit = os.environ.get("BLUEPRINT_CLI")
     if explicit:
         return explicit
-    for candidate in (CORTEX_CLI_DEFAULT, CORTEX_SKILLS_CLI_DEFAULT):
+    for candidate in (BLUEPRINT_CLI_DEFAULT, BLUEPRINT_SKILLS_CLI_DEFAULT):
         if candidate.exists():
             return str(candidate)
-    return str(CORTEX_CLI_DEFAULT)
+    return str(BLUEPRINT_CLI_DEFAULT)
 
 
 def _resolve_node() -> str:
-    """Locate a Node.js binary that can run `cortex.mjs`.
+    """Locate a Node.js binary that can run `blueprint.mjs`.
 
     Honour NODE_BIN, then PATH lookup, then a Windows `node.exe` and
     POSIX `node` fallback. Raise FileNotFoundError if missing.
@@ -141,15 +141,15 @@ def _resolve_node() -> str:
 
 
 def _read_manifest(repo_root: Path) -> dict | None:
-    """Read the sealed Cortex generation, preferring the graph.db envelope.
+    """Read the sealed Blueprint generation, preferring the graph.db envelope.
 
     Plan 3.2: direct sqlite3 access is deleted. The generation is read via
-    ``cortex.mjs graph status --json`` (the Node CLI reads graph.db internally).
-    Falls back to manifest.json files for older Cortex repos.
+    ``blueprint.mjs graph status --json`` (the Node CLI reads graph.db internally).
+    Falls back to manifest.json files for older Blueprint repos.
     """
-    # Manifest files first: microseconds, refreshed by every `cortex build`,
+    # Manifest files first: microseconds, refreshed by every `blueprint build`,
     # and sufficient for the generation id this caller needs. The CLI probe
-    # below spawns the FULL cortex.mjs module graph (~2.6 s at workspace
+    # below spawns the FULL blueprint.mjs module graph (~2.6 s at workspace
     # scale) against a 2 s deadline — inside the federation fan-out it timed
     # out on every call and silently spent the entire provider budget before
     # the candidates spawn even started.
@@ -162,8 +162,8 @@ def _read_manifest(repo_root: Path) -> dict | None:
             except (OSError, json.JSONDecodeError):
                 pass
 
-    # Fallback: the CLI (reads graph.db through Cortex's own reader).
-    cli = _resolve_cortex_cli()
+    # Fallback: the CLI (reads graph.db through Blueprint's own reader).
+    cli = _resolve_blueprint_cli()
     node_bin = _resolve_node()
     if Path(cli).exists() and node_bin:
         try:
@@ -183,7 +183,7 @@ def _read_manifest(repo_root: Path) -> dict | None:
         except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, TypeError, ValueError):
             pass
 
-    # Fallback: JSON manifest files (older Cortex repos).
+    # Fallback: JSON manifest files (older Blueprint repos).
     candidates = [
         repo_root / ".agent" / "graph" / "manifest.json",
         repo_root / ".agent" / "manifest.json",
@@ -197,9 +197,9 @@ def _read_manifest(repo_root: Path) -> dict | None:
     return None
 
 
-def _cortex_warning(reason_kind: str, message: str) -> dict:
+def _blueprint_warning(reason_kind: str, message: str) -> dict:
     return {
-        "provider": "cortex",
+        "provider": "blueprint",
         "kind": reason_kind,
         "severity": "warning",
         "message": message[:400],
@@ -241,7 +241,7 @@ def _normalise_source_hash(value: object) -> str:
 
 
 # Plan 3.2: _direct_index_candidates deleted — all candidate requests now
-# route through the Node CLI lane (cortex.mjs graph candidates). The pinned
+# route through the Node CLI lane (blueprint.mjs graph candidates). The pinned
 # generation is passed via --expected-generation, not by querying sqlite.
 # Abstention detection moved to _produce (below).
 
@@ -270,16 +270,16 @@ def _produce(
     * the Node CLI returned no candidates (no lexical evidence).
     """
     warnings: list[dict] = []
-    cli = _resolve_cortex_cli()
+    cli = _resolve_blueprint_cli()
     if not Path(cli).exists():
-        warnings.append(_cortex_warning("cortex_cli_missing", f"cortex CLI missing at {cli}"))
-        return [], "cortex-missing", warnings
+        warnings.append(_blueprint_warning("blueprint_cli_missing", f"blueprint CLI missing at {cli}"))
+        return [], "blueprint-missing", warnings
     node_bin = _resolve_node()
     # The lean entrypoint reports generationId itself, so the separate manifest
-    # probe (which pays the full cortex.mjs module graph — ~2.6 s against a 2 s
+    # probe (which pays the full blueprint.mjs module graph — ~2.6 s against a 2 s
     # deadline — whenever manifest.json lacks a generationId) is skipped
     # entirely on that path. The cache key is built after the run instead.
-    lean_cli = Path(cli).with_name("cortex-candidates.mjs")
+    lean_cli = Path(cli).with_name("blueprint-candidates.mjs")
     manifest = None if lean_cli.exists() else _read_manifest(repo_root)
     generation_id = (manifest or {}).get("generationId") or ""
     cap = candidate_cap(max_tokens)
@@ -289,7 +289,7 @@ def _produce(
         cached = _cached_candidates(cache_key)
         if cached is not None:
             return cached, generation_id, warnings
-    # Prefer the lean candidates entrypoint when the Cortex checkout ships it:
+    # Prefer the lean candidates entrypoint when the Blueprint checkout ships it:
     # same ContextCandidateSet v1 stdout contract, ~2s less module-graph cost,
     # and strictly read-only (no barrier, no reconcile, no writes).
     if lean_cli.exists():
@@ -319,7 +319,7 @@ def _produce(
             cwd=str(repo_root),
             capture_output=True,
             text=True,
-            timeout=CORTEX_TIMEOUT_S,
+            timeout=BLUEPRINT_TIMEOUT_S,
             check=False,
         )
     except subprocess.TimeoutExpired:
@@ -328,29 +328,29 @@ def _produce(
             if cached is not None:
                 return cached, generation_id, warnings
         warnings.append(
-            _cortex_warning(
+            _blueprint_warning(
                 "provider_timeout",
-                f"cortex exceeded {CORTEX_TIMEOUT_S:.2f}s process deadline",
+                f"blueprint exceeded {BLUEPRINT_TIMEOUT_S:.2f}s process deadline",
             )
         )
-        return [], "cortex-timeout", warnings
+        return [], "blueprint-timeout", warnings
     subprocess_finished = time.monotonic()
     subprocess_elapsed_ms = max(0.0, (subprocess_finished - subprocess_started) * 1000.0)
     observability["stageElapsedMs"] = {
-        "cortex_node_spawn": round(subprocess_elapsed_ms, 6),
+        "blueprint_node_spawn": round(subprocess_elapsed_ms, 6),
     }
     if proc.returncode != 0:
-        warnings.append(_cortex_warning("cortex_nonzero_exit", f"exit={proc.returncode}; stderr={proc.stderr.strip()[:300]}"))
-        return [], "cortex-failed", warnings
+        warnings.append(_blueprint_warning("blueprint_nonzero_exit", f"exit={proc.returncode}; stderr={proc.stderr.strip()[:300]}"))
+        return [], "blueprint-failed", warnings
     out = proc.stdout.strip()
     if not out:
-        warnings.append(_cortex_warning("cortex_empty_output", "empty stdout"))
-        return [], "cortex-failed", warnings
+        warnings.append(_blueprint_warning("blueprint_empty_output", "empty stdout"))
+        return [], "blueprint-failed", warnings
     try:
         payload = json.loads(out)
     except json.JSONDecodeError as exc:
-        warnings.append(_cortex_warning("cortex_json_decode", str(exc)[:300]))
-        return [], "cortex-failed", warnings
+        warnings.append(_blueprint_warning("blueprint_json_decode", str(exc)[:300]))
+        return [], "blueprint-failed", warnings
     raw_membrane = payload.get("_membrane") if isinstance(payload, dict) else None
     raw_stages = raw_membrane.get("stageElapsedMs") if isinstance(raw_membrane, dict) else None
     raw_repo_scan = raw_stages.get("repo_code_scan") if isinstance(raw_stages, dict) else None
@@ -362,7 +362,7 @@ def _produce(
     ):
         repo_scan_ms = min(float(raw_repo_scan), subprocess_elapsed_ms)
         observability["stageElapsedMs"] = {
-            "cortex_node_spawn": round(subprocess_elapsed_ms - repo_scan_ms, 6),
+            "blueprint_node_spawn": round(subprocess_elapsed_ms - repo_scan_ms, 6),
             "repo_code_scan": round(repo_scan_ms, 6),
         }
     # `graph candidates` returns a full ContextCandidateSet v1 object
@@ -372,12 +372,12 @@ def _produce(
     elif isinstance(payload, list):
         results = payload
     else:
-        warnings.append(_cortex_warning("cortex_unexpected_shape", f"unexpected top-level shape; first 200 bytes: {out[:200]}"))
-        return [], "cortex-failed", warnings
+        warnings.append(_blueprint_warning("blueprint_unexpected_shape", f"unexpected top-level shape; first 200 bytes: {out[:200]}"))
+        return [], "blueprint-failed", warnings
 
     candidates: list[dict[str, Any]] = []
     for entry in results:
-        # Cortex CLI may emit candidates in two shapes:
+        # Blueprint CLI may emit candidates in two shapes:
         # 1. Top-level (modern): sourceRef/sourceHash at root, no `evidence[]`
         # 2. Evidence-wrapped (legacy): each candidate has `evidence[]` with
         #    path/startLine/endLine/contentHash.
@@ -405,7 +405,7 @@ def _produce(
             continue
         declared_trust = entry.get("trustClass")
         candidates.append({
-            "id": f"cortex:{entry_id}",
+            "id": f"blueprint:{entry_id}",
             "layer": int(entry.get("layer", 3)),
             "sourceKind": entry.get("sourceKind", "repo_code"),
             "sourceRef": source_ref,
@@ -419,10 +419,10 @@ def _produce(
             "exact": bool(entry.get("exact", False)),
             "recoverable": bool(entry.get("recoverable", True)),
             # Plan 3.4 resolver drift: this lane actually executes
-            # `cortex.mjs graph candidates`; the per-id re-fetch contract
-            # is the same `cortex graph resolve --node <id>` shape used
-            # by anchors.py:91 and Cortex at cortex/scripts/cortex.mjs:2501.
-            "resolver": entry.get("resolver") or f"cortex graph resolve --node {entry_id}",
+            # `blueprint.mjs graph candidates`; the per-id re-fetch contract
+            # is the same `blueprint graph resolve --node <id>` shape used
+            # by anchors.py:91 and Blueprint at blueprint/scripts/blueprint.mjs:2501.
+            "resolver": entry.get("resolver") or f"blueprint graph resolve --node {entry_id}",
             "text": entry.get("qualifiedName") or entry.get("name") or entry_id,
         })
     # The lean entrypoint reports its own generation (no manifest probe ran);
@@ -433,7 +433,7 @@ def _produce(
             cache_key = _cache_key(repo_root, generation_id, task, cap)
     if cache_key is not None and candidates:
         _cache_candidates(cache_key, candidates)
-    generation_id = generation_id or "cortex-federation-stub"
+    generation_id = generation_id or "blueprint-federation-stub"
     # Plan 3.3: when the graph is pinned (expected_generation matches) and the
     # CLI returned zero candidates, this is abstention — not a failure. The
     # graph is current but has no lexical evidence for this task.
@@ -444,8 +444,8 @@ def _produce(
             "candidates": [],
             "generationId": generation_id,
         }
-        warnings.append(_cortex_warning(
-            "cortex_abstained_no_relevant_seed",
+        warnings.append(_blueprint_warning(
+            "blueprint_abstained_no_relevant_seed",
             f"fresh graph {generation_id} has no relevant seed for task",
         ))
     if cache_key is not None and generation_id == (expected_generation or generation_id):

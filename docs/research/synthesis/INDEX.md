@@ -63,6 +63,6 @@ Not cloned (assessed not relevant): `momo-research`'s paper-only nature aside,
 - Articles saved as markdown are text extractions of the live pages, not the
   original HTML; originals remain at the source URLs.
 - Assessment framing: everything here is Membrane-domain (Persist/Pull/Push).
-  None of it is Cortex-domain — Cortex is a repo truth graph, not a memory
-  system. Memory-type systems rank below fresh Cortex evidence in Membrane's
+  None of it is Blueprint-domain — Blueprint is a repo truth graph, not a memory
+  system. Memory-type systems rank below fresh Blueprint evidence in Membrane's
   admission policy.

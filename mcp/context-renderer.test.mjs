@@ -245,9 +245,9 @@ test("render emits the header, the data-only wrapper, and metadata without dupli
 });
 
 test("render reports a degraded state honestly and ships no body", () => {
-  const out = render({ state: "degraded", reason: "cortex_unavailable", payload: {} });
+  const out = render({ state: "degraded", reason: "blueprint_unavailable", payload: {} });
   assert.match(out, /^Membrane: degraded/);
-  assert.match(out, /omissions: cortex_unavailable/);
+  assert.match(out, /omissions: blueprint_unavailable/);
   assert.ok(!out.includes("<membrane-context "), "a degraded result must not render a context body");
 });
 

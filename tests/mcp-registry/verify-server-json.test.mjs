@@ -46,26 +46,26 @@ test("a missing tools array is rejected", async () => {
 
 test("a tool list missing a real tool (understating the surface) is rejected", async () => {
   const directory = await fixture((server) => {
-    server.tools = server.tools.filter((tool) => tool.name !== "membrane_cortex");
+    server.tools = server.tools.filter((tool) => tool.name !== "membrane_blueprint");
   });
   await assert.rejects(() => verifyServerJson({ directory, requirePublished: false }), /declares 9 tool\(s\); the live server \+ operations registry has 10/);
 });
 
 test("fabricating a gap for a contract-covered tool is rejected", async () => {
-  // membrane_cortex used to be the registry's one real gap, and this test
+  // membrane_blueprint used to be the registry's one real gap, and this test
   // used to prove server.json could not silently upgrade it. That gap is now
   // closed (real OPERATIONS entry + golden fixtures), so the drift that is
   // actually possible today is the opposite one: understating a covered tool
   // as a gap. The verifier must reject in that direction too -- server.json
   // has to match the live derivation exactly, not merely err "safely".
   const directory = await fixture((server) => {
-    const cortex = server.tools.find((tool) => tool.name === "membrane_cortex");
-    cortex.contractCoverage = "gap";
-    cortex.gapReason = "fabricated: not absent from OPERATIONS at all";
+    const blueprint = server.tools.find((tool) => tool.name === "membrane_blueprint");
+    blueprint.contractCoverage = "gap";
+    blueprint.gapReason = "fabricated: not absent from OPERATIONS at all";
   });
   await assert.rejects(
     () => verifyServerJson({ directory, requirePublished: false }),
-    /tool "membrane_cortex" must declare contractCoverage "operations_registry"/,
+    /tool "membrane_blueprint" must declare contractCoverage "operations_registry"/,
   );
 });
 

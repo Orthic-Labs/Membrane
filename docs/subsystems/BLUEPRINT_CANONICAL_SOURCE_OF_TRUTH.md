@@ -4,13 +4,13 @@
 **Repository:** `Orthic-Labs/Membrane`  
 **Subsystem path after monorepo migration:** `blueprint/`  
 **Standalone package:** `@orthic-labs/blueprint`  
-**Pre-merge evidence baseline:** former `Orthic-Labs/Cortex` at `bd46965d6738657db6ed95afad1dc622ce1c5b95`  
+**Pre-merge evidence baseline:** former `Orthic-Labs/Blueprint` at `bd46965d6738657db6ed95afad1dc622ce1c5b95`  
 **Companion Membrane evidence baseline:** `Orthic-Labs/Membrane` at `50e6bb22ab7518a98d3b5bc730c6913d338c7d21`  
 **Date:** 2026-08-19  
 **Companion migration authority:** `2026-08-19-monorepo-merge-and-subsystem-rename.md` for physical merge/name migration only  
-**Supersedes:** `CORTEX_SOURCE_OF_TRUTH_REVISED.md`, `CORTEX_CANONICAL_SOURCE_OF_TRUTH.md`, and all earlier Cortex/Blueprint absorption or implementation planning documents
+**Supersedes:** `BLUEPRINT_SOURCE_OF_TRUTH_REVISED.md`, `BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md`, and all earlier Blueprint/Blueprint absorption or implementation planning documents
 
-**Naming:** `Blueprint` is the repository truth/evidence subsystem formerly named `Cortex`. The durable-knowledge subsystem formerly named `Crypt` is now named `Cortex`. Historical wire tokens remain readable only where a frozen protocol requires them; they do not change semantic ownership.
+**Naming:** `Blueprint` is the repository truth/evidence subsystem formerly named `Blueprint`. The durable-knowledge subsystem formerly named `Crypt` is now named `Blueprint`. Historical wire tokens remain readable only where a frozen protocol requires them; they do not change semantic ownership.
 
 ---
 
@@ -65,7 +65,7 @@ They retain separate:
 
 Membrane may consume Blueprint only through Blueprint-owned public protocol/service surfaces. `engine/**` and `mcp/**` do not import `blueprint/src/**`. Blueprint does not import Membrane engine internals.
 
-The sibling subsystem named Cortex is Membrane's durable-knowledge engine. Blueprint does not read or write the Cortex store and does not depend on Cortex memory semantics.
+The sibling subsystem named Blueprint is Membrane's durable-knowledge engine. Blueprint does not read or write the Blueprint store and does not depend on Blueprint memory semantics.
 
 > **Physical co-location does not imply semantic ownership.** Blueprint and Membrane share a repository so their seam can evolve atomically; they retain separate package, process, protocol, storage, testing, and responsibility boundaries.
 

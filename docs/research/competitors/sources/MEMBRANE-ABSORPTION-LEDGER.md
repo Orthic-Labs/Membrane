@@ -154,7 +154,7 @@ Keep relevance, freshness, authority, veracity, effectiveness, exactness, scope 
 - **policy score** — should this be admitted?
 - **utility** — is it worth its token cost?
 
-All four consolidations flag collapsing these into one number as the change that would destroy Membrane's strongest architectural property. A cosine from Crypt, a graph score from Cortex, a rule priority, and a Git freshness signal are not on one calibrated scale.
+All four consolidations flag collapsing these into one number as the change that would destroy Membrane's strongest architectural property. A cosine from Crypt, a graph score from Blueprint, a rule priority, and a Git freshness signal are not on one calibrated scale.
 
 ### 17. Exact-evidence pinning — ordering-only, still vetoable
 **Candidate**
@@ -576,7 +576,7 @@ Recorded so the next pass does not re-import these under new names. All four con
 | Multi-hop retrieval, beam search, spreading activation, graph communities, Leiden, PageRank, DRIFT, HyDE, dynamic-K | Unproven at Membrane's corpus size; expensive; easy to over-engineer. One source qualifies its own approach with "do not copy the cost model" | The bounded-fan-out and convergence-stopping discipline if scope-tree traversal is ever built; the intent-to-edge-weight mapping alone, which is cheap and separable |
 | Bandit-driven adaptive compression policy | Genuinely clever, unfalsifiable without a large local corpus, and it makes rendering **nondeterministic** — colliding head-on with prompt-cache stability (#55) | Revisit only after cache stability is measured |
 | LLM deciding add/update/delete; model-generated executable code | Membrane's admission is machinery-driven with receipts, and that is the point. The executable-code path (generated Python `exec`'d with escalating-temperature retry) is rejected on **safety** by two independent passes regardless of measurement | Model *proposes*; deterministic policy decides. #24 and #33 are the mechanisms |
-| Duplicating Cortex — a second parser stack, symbol engine, dependency graph, or global code index | At least a quarter of the most attractive competitor features are code-intelligence features. Membrane is the consumer and planner; Cortex owns code semantics | Stable anchors, evidence validation, blind-spot reporting, source fingerprints — consumed through the provider contract |
+| Duplicating Blueprint — a second parser stack, symbol engine, dependency graph, or global code index | At least a quarter of the most attractive competitor features are code-intelligence features. Membrane is the consumer and planner; Blueprint owns code semantics | Stable anchors, evidence validation, blind-spot reporting, source fingerprints — consumed through the provider contract |
 | Markdown-as-database round-trip | Its own analysis names it an anti-pattern; it forces two divergent memory semantics because the engine re-parses its own rendering | **Export, not storage.** Crypt stays the typed source of truth; the Hub renders it read-only. Rendering stays strictly one-directional. Recorded as *confirmation* of Membrane's approach, not absorption |
 | Observer/observed directional memory | The deepest conceptual shift in the set, and plainly right for a multi-agent memory product — but Membrane's boundary is a repository, not a social graph | The narrow version: a received claim is "peer P asserts X", not "X". Revisit only if team sync (Phase 6) makes divergent views a real requirement |
 | Network-proxy interception; hosted/server architecture; agent frameworks, PTYs, autonomous coding loops, multi-agent chat, browser automation, generic planning engines | Different products with different threat models. **Steal mechanisms, not scope** | — |
@@ -614,7 +614,7 @@ Reject any implementation that violates one of these, regardless of how well it 
 8. **No destructive forgetting without quarantine or tombstone semantics.**
 9. **No provider implementation detail leaks through the packet contract.**
 10. **No new daemon, and no external infrastructure required for local correctness.**
-11. **No duplicated Cortex functionality.**
+11. **No duplicated Blueprint functionality.**
 12. **No feature is promoted without an evaluation delta.**
 13. **The simplest sufficient implementation wins.**
 

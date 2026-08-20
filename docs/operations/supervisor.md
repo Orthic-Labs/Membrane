@@ -4,7 +4,7 @@
 `engine/crates/membrane-supervisor` crate. The supervisor is a separate OS service that
 sits in front of the `membrane` binary. It runs as the user (per-user launchd agent on
 macOS, per-user systemd unit on Linux, per-user Task Scheduler entry on Windows), owns
-exactly one resident process, and dedupes the cortex watcher.
+exactly one resident process, and dedupes the blueprint watcher.
 
 ## Why a separate process
 
@@ -63,7 +63,7 @@ OS whether a recorded PID is alive (`kill(pid, 0)` on Unix).
 
 ## Watcher dedup
 
-The cortex watcher is a separate sidecar (`cortex-watch.mjs`) that subscribes to FSEvents
+The blueprint watcher is a separate sidecar (`blueprint-watch.mjs`) that subscribes to FSEvents
 / inotify / ReadDirectoryChangesW. Two watchers would each open their own file
 descriptors on the same workspace roots, doubling CPU and producing duplicate events.
 

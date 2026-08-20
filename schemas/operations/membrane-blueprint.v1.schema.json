@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://membrane/schemas/operations/membrane-cortex.v1.schema.json",
-  "title": "MembraneCortexV1",
-  "description": "MBR-301: operation-specific contract for the membrane_cortex MCP tool (added by MBR-401). Bounded Cortex architecture, symbol, reference, impact, snapshot, and changes views with generation freshness and source-hash resolver handles, via mcp/server.mjs cortexCapability()/cortexBatchCapability(). The sub-operation is carried in `operation` (architecture, symbol, reference, references, impact, changes, snapshot_get, snapshot_list, changes_since); a request with an `items` array instead runs the MBR-402 fail-closed batch path and returns per-item receipts.",
+  "$id": "https://membrane/schemas/operations/membrane-blueprint.v1.schema.json",
+  "title": "MembraneBlueprintV1",
+  "description": "MBR-301: operation-specific contract for the membrane_blueprint MCP tool (added by MBR-401). Bounded Blueprint architecture, symbol, reference, impact, snapshot, and changes views with generation freshness and source-hash resolver handles, via mcp/server.mjs blueprintCapability()/blueprintBatchCapability(). The sub-operation is carried in `operation` (architecture, symbol, reference, references, impact, changes, snapshot_get, snapshot_list, changes_since); a request with an `items` array instead runs the MBR-402 fail-closed batch path and returns per-item receipts.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "operation", "errorVersion", "result"],
   "properties": {
     "schemaVersion": { "type": "integer", "const": 1 },
-    "operation": { "type": "string", "const": "membrane_cortex" },
+    "operation": { "type": "string", "const": "membrane_blueprint" },
     "errorVersion": { "type": "integer", "const": 1, "description": "Independent error-taxonomy version. Bumping this revises the typed error codes for this operation only." },
     "result": { "$ref": "#/$defs/result" }
   },
@@ -20,7 +20,7 @@
       "required": ["kind", "data"],
       "properties": {
         "kind": { "type": "string", "const": "success" },
-        "data": { "$ref": "#/$defs/cortexOutput" }
+        "data": { "$ref": "#/$defs/blueprintOutput" }
       }
     },
     "error": {
@@ -38,12 +38,12 @@
     "errorCode": {
       "type": "string",
       "enum": [
-        "cortex_unavailable",
-        "cortex_envelope_invalid",
-        "cortex_caller_scope_binding_denied",
-        "cortex_caller_not_authorized",
-        "cortex_cross_root_denied",
-        "cortex_batch_invalid"
+        "blueprint_unavailable",
+        "blueprint_envelope_invalid",
+        "blueprint_caller_scope_binding_denied",
+        "blueprint_caller_not_authorized",
+        "blueprint_cross_root_denied",
+        "blueprint_batch_invalid"
       ]
     },
     "freshness": {
@@ -77,12 +77,12 @@
           "required": ["head", "dirty"],
           "properties": {
             "head": { "$ref": "#/$defs/gitCommit" },
-            "dirty": { "type": "boolean", "const": false, "description": "cortexGitIdentity() only resolves a non-null identity for a clean (dirty=false) source observation; a dirty source fails closed as cortex_unavailable instead of being surfaced here." }
+            "dirty": { "type": "boolean", "const": false, "description": "blueprintGitIdentity() only resolves a non-null identity for a clean (dirty=false) source observation; a dirty source fails closed as blueprint_unavailable instead of being surfaced here." }
           }
         }
       }
     },
-    "cortexNodeItem": {
+    "blueprintNodeItem": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "name", "kind", "path", "sourceHash", "startLine", "endLine", "freshness", "resolver"],
@@ -95,11 +95,11 @@
         "startLine": { "type": ["integer", "null"], "minimum": 1 },
         "endLine": { "type": ["integer", "null"], "minimum": 1 },
         "freshness": { "$ref": "#/$defs/freshness" },
-        "resolver": { "type": "string", "minLength": 1, "maxLength": 320, "description": "e.g. `cortex graph resolve --node <id>`" }
+        "resolver": { "type": "string", "minLength": 1, "maxLength": 320, "description": "e.g. `blueprint graph resolve --node <id>`" }
       }
     },
-    "cortexNodeListOutput": {
-      "description": "sanitizeCortexPayload()'s default branch: architecture, symbol, reference, references, impact.",
+    "blueprintNodeListOutput": {
+      "description": "sanitizeBlueprintPayload()'s default branch: architecture, symbol, reference, references, impact.",
       "type": "object",
       "additionalProperties": false,
       "required": ["operation", "sourceGeneration", "freshness", "items"],
@@ -107,11 +107,11 @@
         "operation": { "type": "string", "enum": ["architecture", "symbol", "reference", "references", "impact"] },
         "sourceGeneration": { "type": ["string", "null"] },
         "freshness": { "oneOf": [{ "$ref": "#/$defs/freshness" }, { "type": "null" }] },
-        "items": { "type": "array", "items": { "$ref": "#/$defs/cortexNodeItem" } }
+        "items": { "type": "array", "items": { "$ref": "#/$defs/blueprintNodeItem" } }
       }
     },
-    "cortexChangesOutput": {
-      "description": "sanitizeCortexPayload() operation === \"changes\": manifest identity, distinct commit/clean naming from the snapshot family's head/dirty naming.",
+    "blueprintChangesOutput": {
+      "description": "sanitizeBlueprintPayload() operation === \"changes\": manifest identity, distinct commit/clean naming from the snapshot family's head/dirty naming.",
       "type": "object",
       "additionalProperties": false,
       "required": ["operation", "sourceGeneration", "freshness", "changes", "resolver"],
@@ -137,10 +137,10 @@
             }
           }
         },
-        "resolver": { "type": "string", "const": "cortex graph manifest --json" }
+        "resolver": { "type": "string", "const": "blueprint graph manifest --json" }
       }
     },
-    "cortexSnapshotLeaf": {
+    "blueprintSnapshotLeaf": {
       "type": "object",
       "additionalProperties": false,
       "required": ["path", "digest"],
@@ -149,7 +149,7 @@
         "digest": { "$ref": "#/$defs/sourceHash" }
       }
     },
-    "cortexSnapshotGetOutput": {
+    "blueprintSnapshotGetOutput": {
       "type": "object",
       "additionalProperties": false,
       "required": ["operation", "name", "generationId", "manifestDigest", "sourceObservation", "leaves"],
@@ -167,10 +167,10 @@
             "dirty": { "type": "boolean", "const": false }
           }
         },
-        "leaves": { "type": "array", "items": { "$ref": "#/$defs/cortexSnapshotLeaf" } }
+        "leaves": { "type": "array", "items": { "$ref": "#/$defs/blueprintSnapshotLeaf" } }
       }
     },
-    "cortexSnapshotListEntry": {
+    "blueprintSnapshotListEntry": {
       "type": "object",
       "additionalProperties": false,
       "required": ["name", "generationId", "manifestDigest", "sourceObservation"],
@@ -189,16 +189,16 @@
         }
       }
     },
-    "cortexSnapshotListOutput": {
+    "blueprintSnapshotListOutput": {
       "type": "object",
       "additionalProperties": false,
       "required": ["operation", "snapshots"],
       "properties": {
         "operation": { "type": "string", "const": "snapshot_list" },
-        "snapshots": { "type": "array", "items": { "$ref": "#/$defs/cortexSnapshotListEntry" } }
+        "snapshots": { "type": "array", "items": { "$ref": "#/$defs/blueprintSnapshotListEntry" } }
       }
     },
-    "cortexChangeRow": {
+    "blueprintChangeRow": {
       "type": "object",
       "additionalProperties": false,
       "required": ["path", "kind"],
@@ -207,7 +207,7 @@
         "kind": { "type": "string", "enum": ["added", "modified", "deleted"] }
       }
     },
-    "cortexChangesSinceReceipt": {
+    "blueprintChangesSinceReceipt": {
       "type": "object",
       "additionalProperties": false,
       "required": ["total", "limit", "truncated"],
@@ -217,7 +217,7 @@
         "truncated": { "type": "boolean" }
       }
     },
-    "cortexChangesSinceOutput": {
+    "blueprintChangesSinceOutput": {
       "type": "object",
       "additionalProperties": false,
       "required": ["operation", "base", "head", "changes", "receipt"],
@@ -225,11 +225,11 @@
         "operation": { "type": "string", "const": "changes_since" },
         "base": { "$ref": "#/$defs/generationIdentity" },
         "head": { "$ref": "#/$defs/generationIdentity" },
-        "changes": { "type": "array", "items": { "$ref": "#/$defs/cortexChangeRow" } },
-        "receipt": { "$ref": "#/$defs/cortexChangesSinceReceipt" }
+        "changes": { "type": "array", "items": { "$ref": "#/$defs/blueprintChangeRow" } },
+        "receipt": { "$ref": "#/$defs/blueprintChangesSinceReceipt" }
       }
     },
-    "cortexBatchReceipt": {
+    "blueprintBatchReceipt": {
       "description": "schemas/registry/code/mbr402-batch.mjs executeCodeBatch() per-item receipt, in request order. `data` is present only when status is \"success\"; `code` (and optional `detail`) only when status is \"terminal\".",
       "type": "object",
       "additionalProperties": false,
@@ -242,19 +242,19 @@
         "detail": {}
       }
     },
-    "cortexBatchOutput": {
-      "description": "membrane_cortex called with an `items` array runs the batch path; the tool result IS the receipts array (not wrapped in an object).",
+    "blueprintBatchOutput": {
+      "description": "membrane_blueprint called with an `items` array runs the batch path; the tool result IS the receipts array (not wrapped in an object).",
       "type": "array",
-      "items": { "$ref": "#/$defs/cortexBatchReceipt" }
+      "items": { "$ref": "#/$defs/blueprintBatchReceipt" }
     },
-    "cortexOutput": {
+    "blueprintOutput": {
       "oneOf": [
-        { "$ref": "#/$defs/cortexNodeListOutput" },
-        { "$ref": "#/$defs/cortexChangesOutput" },
-        { "$ref": "#/$defs/cortexSnapshotGetOutput" },
-        { "$ref": "#/$defs/cortexSnapshotListOutput" },
-        { "$ref": "#/$defs/cortexChangesSinceOutput" },
-        { "$ref": "#/$defs/cortexBatchOutput" }
+        { "$ref": "#/$defs/blueprintNodeListOutput" },
+        { "$ref": "#/$defs/blueprintChangesOutput" },
+        { "$ref": "#/$defs/blueprintSnapshotGetOutput" },
+        { "$ref": "#/$defs/blueprintSnapshotListOutput" },
+        { "$ref": "#/$defs/blueprintChangesSinceOutput" },
+        { "$ref": "#/$defs/blueprintBatchOutput" }
       ]
     }
   }

@@ -33,13 +33,13 @@ Membrane does **not** need a new top-level architecture. It already has the diff
 - resident federation and local vector retrieval;
 - temporal facts with immutable supersession semantics;
 - explicit Application / Control / Data process planes;
-- a real separation between Membrane context control and Cortex repository semantics.
+- a real separation between Membrane context control and Blueprint repository semantics.
 
 The competitor corpus does not justify replacing those foundations. It says Membrane should **finish** them.
 
 The canonical target is:
 
-> **Keep Membrane's contract and planner spine. Make Crypt a selective, lifecycle-aware, evidence-addressed knowledge substrate; make Pull a real indexed, explainable, multi-channel evidence retriever; make Push reversible through governed artifact references; let Cortex own code semantics and source drift; and make every inclusion, omission, transformation, lifecycle transition, recovery action, and adaptive policy measurable and reversible.**
+> **Keep Membrane's contract and planner spine. Make Crypt a selective, lifecycle-aware, evidence-addressed knowledge substrate; make Pull a real indexed, explainable, multi-channel evidence retriever; make Push reversible through governed artifact references; let Blueprint own code semantics and source drift; and make every inclusion, omission, transformation, lifecycle transition, recovery action, and adaptive policy measurable and reversible.**
 
 The work therefore collapses into twelve programs:
 
@@ -47,7 +47,7 @@ The work therefore collapses into twelve programs:
 2. evidence, epistemic identity, and immutable content identity;
 3. persistence admission, conflict handling, and lifecycle state;
 4. production lexical retrieval plus explainable channel fusion;
-5. Cortex-backed source anchors and drift verification;
+5. Blueprint-backed source anchors and drift verification;
 6. reversible artifact-backed Push/context editing;
 7. narrow temporal relations/entity aliases, not a graph platform;
 8. session continuity plus bounded background curation;
@@ -76,10 +76,10 @@ The four guides are more convergent than they first appear. Most differences are
 | How should retrieval be structured? | Qwen proposes a retrieval-channel registry; M3/Flash describe a staged pipeline | Use a **small internal channel abstraction**, not a plugin ecosystem. Start with exact, lexical, semantic, temporal, relation, and active-working channels. Do not add generic backend factories. |
 | What replaces current lexical search? | Qwen allows FTS5 or an in-process Rust index; Flash strongly favors FTS5/BM25 | Implement **SQLite FTS5/BM25 first**, because SQLite is already canonical durable truth and current lexical scoring is simplistic. Keep the current deterministic lexical path as fallback. Replace FTS5 only if measured quality/resource evidence clearly favors an in-process alternative. |
 | Should query classification be core? | Qwen promotes it strongly; Flash makes adaptive routing gated | Add a deterministic, inspectable query-signal stage only after Phase 0. It may influence channel execution, never scope/authority. More aggressive retrieve/no-retrieve gating remains benchmark-gated. |
-| Should graph retrieval be high priority? | Some guides emphasize graph expansion; Flash is narrower | **Relation storage and evidence identity are high value; broad graph traversal is not.** Use bounded expansion only after strong seeds. Repository code graph work stays in Cortex. |
+| Should graph retrieval be high priority? | Some guides emphasize graph expansion; Flash is narrower | **Relation storage and evidence identity are high value; broad graph traversal is not.** Use bounded expansion only after strong seeds. Repository code graph work stays in Blueprint. |
 | Should decay/retention formulas be copied? | Donors offer Ebbinghaus, Weibull, heat, maturity, frequency, etc. | Do not canonize a donor formula. Model stable lifecycle signals, hysteresis, and policy versions; calibrate the simplest useful policy on held-out outcomes. |
 | Is Dream the lifecycle engine? | Older Membrane framing can imply this; Pro/Qwen explicitly object | No. Dream/consolidation becomes **one reversible background phase** inside an explicit lifecycle policy. Admission, reinforcement, conflict, supersession, expiry, quarantine, restore, and forget are separate contracts. |
-| Where does source drift live? | Pro emphasizes source anchors; many donor memos suggest AST/symbol infrastructure | Membrane stores/uses evidence identity and resolution state. **Cortex owns parsing, symbols, structural fingerprints, rename/move identity, reference/call graphs, and impact.** |
+| Where does source drift live? | Pro emphasizes source anchors; many donor memos suggest AST/symbol infrastructure | Membrane stores/uses evidence identity and resolution state. **Blueprint owns parsing, symbols, structural fingerprints, rename/move identity, reference/call graphs, and impact.** |
 | How aggressive should compression be? | Qwen frames context assembly as a compiler; M3 stresses loss-bounded transforms; Flash emphasizes artifact externalization | Use one ordered **reversible Push ladder**: exact dedupe → content-addressed externalization → structure-preserving reduction → optional compression → explicit truncation last, with protected spans and exact restoration. |
 | When does Hub lifecycle work happen? | The August 12 plan makes it an early work package; other guides focus on Membrane internals | Keep it early only at the **seam**: Membrane must expose readiness/drain/health/identity and stop owning user-facing OS lifecycle. Hub remains the OS/start-at-login owner. Do not turn this guide into a Hub rewrite. |
 | Where does multimodal belong? | August 12 plan gives it a package; Flash demotes advanced multimodal embeddings | Artifact/evidence identity must land first. Then add deterministic extractors in stages. Multimodal embeddings remain optional and evidence-gated. |
@@ -118,7 +118,7 @@ Providers return typed candidates, evidence, and provider-local relevance inform
 
 ## 2.3 Never flatten unrelated scores
 
-A vector cosine, lexical BM25 score, graph support, Cortex confidence, policy authority, and freshness are not calibrated probabilities on one shared scale.
+A vector cosine, lexical BM25 score, graph support, Blueprint confidence, policy authority, and freshness are not calibrated probabilities on one shared scale.
 
 Use:
 
@@ -148,15 +148,15 @@ SQLite canonical rows/events      = durable truth
 FTS / vector indexes              = rebuildable retrieval projections
 memory relation graph             = rebuildable/derivable projection over canonical IDs
 Markdown                          = export / human-readable interchange
-Git + Cortex                      = source freshness / repository evidence
+Git + Blueprint                      = source freshness / repository evidence
 artifact store                    = immutable raw payloads addressed by content identity
 ```
 
 No second authoritative memory corpus.
 
-## 2.7 Cortex owns repository semantics
+## 2.7 Blueprint owns repository semantics
 
-Membrane must not become a second parser/indexer. Cortex owns:
+Membrane must not become a second parser/indexer. Blueprint owns:
 
 - language parsing and adapters;
 - symbols and stable definition identity;
@@ -196,8 +196,8 @@ One provider timing out or being unavailable must not silently claim full contex
 | Cross-provider fusion, budget, lanes, omissions, publication, receipts | `membrane-core` + runtime/MCP | Strengthen; never delegate to providers |
 | Durable knowledge records, temporal facts, lifecycle, feedback, memory relations | Crypt | Implement in `crypt-core` / `crypt-store` |
 | Production lexical + semantic + temporal memory retrieval | Crypt | Implement/refine locally |
-| AST/symbol/reference/call/type graph, stable code identity, blast radius | Cortex | Consume through `engine/federation/providers/cortex.py`; do not duplicate |
-| Code/document claim validation | Cortex + Audit | Feed evidence/resolution status to planner |
+| AST/symbol/reference/call/type graph, stable code identity, blast radius | Blueprint | Consume through `engine/federation/providers/blueprint.py`; do not duplicate |
+| Code/document claim validation | Blueprint + Audit | Feed evidence/resolution status to planner |
 | Large immutable raw payload/object storage | Membrane runtime under Hub-controlled local storage | Add governed content-addressed artifact abstraction |
 | Tool-result/context reduction | Membrane Push/runtime | Converge existing `runc`/`skel`/`compress`/truncation behavior under one transform contract |
 | Session working/hot context | Membrane runtime + Crypt episodic persistence | Bound it; do not own full host conversation history |
@@ -231,7 +231,7 @@ ScopeGrant + task + session identity
         │ parallel candidate generation
         ├──────────┬──────────┬──────────┬──────────┬───────────┐
         ▼          ▼          ▼          ▼          ▼           ▼
-     Cortex      Crypt      Live/Git   Rules      Docs       Audit/etc.
+     Blueprint      Crypt      Live/Git   Rules      Docs       Audit/etc.
  code semantics knowledge  current     policy    evidence    findings
                    │
                    ├─ exact / ID / anchor
@@ -323,7 +323,7 @@ Never overload one hash/ID to answer five different questions.
 | Logical record ID | “Which durable knowledge object is this?” | Stable across non-semantic metadata changes; not reused for unrelated content |
 | Content hash | “Are these exact canonical bytes/content equivalent?” | `sha256`; immutable version/content identity |
 | Evidence ID | “Which observation/source event supports this claim?” | Identifies source observation/range/commit/event; can have multiple per record |
-| Source/code anchor ID | “Where in source does the evidence resolve?” | Cortex-backed for code; may drift/resolution-state change without rewriting history |
+| Source/code anchor ID | “Where in source does the evidence resolve?” | Blueprint-backed for code; may drift/resolution-state change without rewriting history |
 | Derivation/pipeline fingerprint | “How was this derived?” | Transform/extractor/model/prompt/config/version identity for rebuildable derived views |
 | Artifact ID | “Which immutable raw payload is this?” | Content-addressed; resolver policy checked at read time |
 
@@ -487,7 +487,7 @@ Crypt canonical channels:
 5. **relation/entity** — bounded only, seeded by already-relevant records;
 6. **active working** — task/session-local blocks.
 
-Repository structural retrieval remains a Cortex provider concern and enters Membrane as provider candidates.
+Repository structural retrieval remains a Blueprint provider concern and enters Membrane as provider candidates.
 
 ## Stage 2 — hard eligibility
 
@@ -614,7 +614,7 @@ FTS + vector available → hybrid rank fusion
 FTS available, vectors unavailable → exact + FTS + temporal
 FTS unavailable/corrupt → existing deterministic lexical + optional vector
 relation projection unavailable → continue without relation expansion
-Cortex degraded → preserve healthy providers, type the missing structural evidence
+Blueprint degraded → preserve healthy providers, type the missing structural evidence
 ```
 
 Graceful degradation must never silently claim equivalent evidence coverage.
@@ -778,9 +778,9 @@ Derived text remains cited, scoped, versioned, rebuildable, and independently ex
 
 ---
 
-# 10. Cortex bridge and source-drift verification
+# 10. Blueprint bridge and source-drift verification
 
-The competitor corpus contains many excellent code-intelligence mechanisms. They belong in Cortex, with Membrane consuming typed evidence.
+The competitor corpus contains many excellent code-intelligence mechanisms. They belong in Blueprint, with Membrane consuming typed evidence.
 
 ## 10.1 Membrane-side source anchor
 
@@ -792,8 +792,8 @@ path
 symbol/definition_id when available
 start/end range when available
 source/content hash
-base commit / Cortex generation
-structural fingerprint when Cortex provides one
+base commit / Blueprint generation
+structural fingerprint when Blueprint provides one
 resolution state
 last verified time
 ```
@@ -810,15 +810,15 @@ Do not substitute one for the other.
 For code-backed durable knowledge:
 
 1. same exact content/range at current source → resolved/current;
-2. Cortex stable symbol/definition identity resolves elsewhere → moved but continuous;
+2. Blueprint stable symbol/definition identity resolves elsewhere → moved but continuous;
 3. structural fingerprint/semantic resolver gives one strong match → resolved with updated anchor metadata;
 4. multiple plausible targets → ambiguous;
 5. target absent → missing/drifted;
 6. source outside current grant → inaccessible, never auto-resolved.
 
-## 10.4 Membrane requests; Cortex reasons
+## 10.4 Membrane requests; Blueprint reasons
 
-Useful Cortex query modes may include:
+Useful Blueprint query modes may include:
 
 - exact symbol/source resolution;
 - references/callers/callees;
@@ -866,7 +866,7 @@ implements
 related_to
 ```
 
-Repository call/import/reference/type relations stay Cortex-owned.
+Repository call/import/reference/type relations stay Blueprint-owned.
 
 ## 11.3 Bounded expansion
 
@@ -956,7 +956,7 @@ Change concurrency only after full-provider profiling shows a bottleneck and the
 
 ## 13.3 Provider-level degradation
 
-A Cortex freshness timeout should not automatically erase healthy Crypt/rules/live candidates unless the requested answer explicitly requires current Cortex semantics.
+A Blueprint freshness timeout should not automatically erase healthy Crypt/rules/live candidates unless the requested answer explicitly requires current Blueprint semantics.
 
 Normalize failures such as:
 
@@ -1305,23 +1305,23 @@ The order below reconciles all four guides and the current codebase. Security an
 
 ---
 
-## Phase 5 — Cortex-backed source anchors and drift verification
+## Phase 5 — Blueprint-backed source anchors and drift verification
 
-**Goal:** make stored code claims mechanically verifiable without duplicating Cortex.
+**Goal:** make stored code claims mechanically verifiable without duplicating Blueprint.
 
 **Do:**
 
 - define Membrane-side anchor/evidence resolution state;
-- consume stable Cortex symbol/definition IDs and structural fingerprints;
+- consume stable Blueprint symbol/definition IDs and structural fingerprints;
 - support move/rename continuity and ambiguity/missing states;
-- bind Cortex generation/base commit to evidence;
+- bind Blueprint generation/base commit to evidence;
 - expose query modes for references/impact/failure resolution/claim verification;
 - cache only resolution projections that are invalidated by generation/policy changes.
 
 **Primary paths:**
 
-- `engine/federation/providers/cortex.py`
-- `engine/federation/providers/test_cortex_provider.py`
+- `engine/federation/providers/blueprint.py`
+- `engine/federation/providers/test_blueprint_provider.py`
 - `engine/crates/membrane-provider-sdk/`
 - Crypt evidence/record persistence from Phase 2.
 
@@ -1588,8 +1588,8 @@ The map below is intentionally conservative: it names verified existing source f
 | `engine/crates/membrane-runtime/src/checkpoint.rs` | existing | Bounded explicit session continuity |
 | `engine/crates/membrane-runtime/src/artifact.rs` | **new** | Governed content-addressed artifact identity/resolution |
 | `engine/crates/membrane-runtime/src/context_edit.rs` | **new** | Ordered externalize/reduce/restore contract |
-| `engine/federation/providers/cortex.py` | existing | Consume stable code evidence/query modes; no local parser |
-| `engine/federation/providers/test_cortex_provider.py` | existing | Drift/ambiguity/generation/degradation contract tests |
+| `engine/federation/providers/blueprint.py` | existing | Consume stable code evidence/query modes; no local parser |
+| `engine/federation/providers/test_blueprint_provider.py` | existing | Drift/ambiguity/generation/degradation contract tests |
 | `mcp/server.mjs` | existing | Remain thin; expose typed capability/degradation, not duplicate ranking policy |
 | `mcp/context-renderer-lib.cjs` | existing | Render/reconcile resolver-backed/protected views under one budget |
 | `mcp/authorization.mjs` | existing/current surface expected | Publication/root/scope authorization seam; keep policy centralized |
@@ -1610,7 +1610,7 @@ These ideas may be good in their source systems and still be wrong for Membrane 
 
 - generic agent/workflow/orchestration framework;
 - PTY/coding-agent execution loop;
-- duplicate Cortex parser/AST/symbol/call graph;
+- duplicate Blueprint parser/AST/symbol/call graph;
 - external vector database as required storage;
 - external graph database as required storage;
 - Redis/distributed queue infrastructure for the local workstation product;
@@ -1652,14 +1652,14 @@ This ledger is the coverage proof. It maps every exact entry from `competitor.md
 |---|---|---|
 | `AbanteAI/archive-old-cli-mentat` | undo/redo, context controls, end-task eval | Adapt reversibility/evaluation; coding agent/TUI out of scope |
 | `AlmanacCode/codealmanac` | scheduled knowledge lifecycle, transcript mining, evidence per claim, validation, no-op success | Strong absorb into lifecycle/retain/provenance |
-| `Brain0-ai/brain0` | line/source provenance, drift detection, DLP, stable symbol identity, attestations, crypto-shred | Absorb provenance/DLP; stable code symbols via Cortex |
-| `Consiliency/treesitter-chunker` | AST chunks, token budgets, stable symbol graph, incremental/parallel chunking, packing priority | Cortex owner; Membrane consumes outputs |
-| `DeusData/codebase-memory-mcp` | deep semantic code extraction, graph analysis, coverage honesty, incremental reindex | Absorb through Cortex, not Crypt |
+| `Brain0-ai/brain0` | line/source provenance, drift detection, DLP, stable symbol identity, attestations, crypto-shred | Absorb provenance/DLP; stable code symbols via Blueprint |
+| `Consiliency/treesitter-chunker` | AST chunks, token budgets, stable symbol graph, incremental/parallel chunking, packing priority | Blueprint owner; Membrane consumes outputs |
+| `DeusData/codebase-memory-mcp` | deep semantic code extraction, graph analysis, coverage honesty, incremental reindex | Absorb through Blueprint, not Crypt |
 | `Ivy-Interactive/Ivy-Tendril` | process/job supervision, retries, usage accounting, health | Absorb through Hub; agent execution itself out of scope |
-| `James-Chahwan/repo-graph` | failure-signal resolution, blast radius, cross-stack tracing, entry points, coverage honesty, PageRank | High-value via Cortex; PageRank benchmark-gated |
+| `James-Chahwan/repo-graph` | failure-signal resolution, blast radius, cross-stack tracing, entry points, coverage honesty, PageRank | High-value via Blueprint; PageRank benchmark-gated |
 | `LangbaseInc/baseai` | local resident server, unified local/prod pipe, typed boundaries, streaming | Adapt resident/typed runtime concepts; generic agent loop/UI out of scope |
 | `Lucas2944/prpack` | task-specific context packaging, base/head completeness, adjacent tests, content hygiene, spend gate | Absorb as evaluation/task-pack design; PR product features not Membrane core |
-| `MCrank/code-compress` | production FTS5, incremental symbol indexing, budgeted context, references/blast radius | FTS absorb in Membrane; symbol graph via Cortex |
+| `MCrank/code-compress` | production FTS5, incremental symbol indexing, budgeted context, references/blast radius | FTS absorb in Membrane; symbol graph via Blueprint |
 | `MemTensor/MemOS` | scheduled memory OS, RRF+MMR+recency, usefulness feedback, automatic state transitions | Absorb fusion/diversity/feedback behind gates |
 | `MemoryOS` | Ebbinghaus lifecycle, temporal graph, query expansion, rerank, explain mode, LongMemEval, lineage | One of the strongest direct sources for lifecycle/retrieval/eval |
 | `MemoryOS-bailab` | heat-based tiers, per-tier capacity, profile extraction, hard retrieval cap | Adapt capacity/heat; profile extraction proposal-only |
@@ -1671,18 +1671,18 @@ This ledger is the coverage proof. It maps every exact entry from `competitor.md
 | `caura-ai/caura` | recall gating, atomic-fact enrichment, DLP, degrade-safe ranking, typed event bus | Absorb policy/retain/fallback patterns |
 | `claude-subconscious` | lifecycle hooks, mid-task injection, sync dedup, nonblocking session push | Adapt hook reliability; do not depend on one host |
 | `cline/cline` | projection-based compaction, Git checkpoints, staleness watchers, context mention expansion | Absorb projection fidelity/freshness concepts; editing checkpoints belong harness |
-| `codegraph-ai/CodeGraph` | bi-temporal memory, memory↔code links, BM25+vector+graph fusion, design claim verification | Adapt temporal/link ideas; code graph owner Cortex |
-| `cq27-dev/rag-rat` | deterministic dream guards, verify pass, SCIP/LSP oracles, signed op-log, evidence distill, peer sync | Absorb lifecycle guards; SCIP/LSP through Cortex; op-log ideas for sync |
+| `codegraph-ai/CodeGraph` | bi-temporal memory, memory↔code links, BM25+vector+graph fusion, design claim verification | Adapt temporal/link ideas; code graph owner Blueprint |
+| `cq27-dev/rag-rat` | deterministic dream guards, verify pass, SCIP/LSP oracles, signed op-log, evidence distill, peer sync | Absorb lifecycle guards; SCIP/LSP through Blueprint; op-log ideas for sync |
 | `deepset-ai/haystack` | token-aware compaction, tool-result pruning/offload, typed state, filter protocol, structured eval | Strong absorb reversible Push/eval; generic framework out of scope |
 | `drona23/claude-token-efficient` | real provider-usage A/B/C benchmarking, behavior-targeted tests, pre-compaction save | Strong absorb into evaluation and session continuity |
 | `emulo` | content-addressed identity, strict validation, policy gates, fail-closed redaction, atomic storage, proof harness | Strong absorb into identity/security/eval |
 | `getzep/graphiti` | episodes, bi-temporal edges, multi-strategy search, bounded BFS, resolution, sagas | Absorb episodes/temporal relations narrowly; graph driver sprawl rejected |
 | `getzep/zep` | ingest pipeline, boundary-aware splitting, provenance episodes, alias canonicalization, injection hardening, indexing-lag tolerance | Strong absorb retain/entity/security/retrieval-fallback concepts |
-| `greplica` | code-anchored claims, fingerprints/drift, parent-chain memory commits, proposal writes, reconciliation | Absorb evidence/claim lifecycle; code anchors via Cortex |
+| `greplica` | code-anchored claims, fingerprints/drift, parent-chain memory commits, proposal writes, reconciliation | Absorb evidence/claim lifecycle; code anchors via Blueprint |
 | `headroomlabs-ai/headroom` | CCR reversible compression, per-tool interception, proactive context expansion, fidelity eval, savings audit | Core source for ArtifactRef/query verifier/Push economics |
 | `hindsight` | sentence/fact typing, temporal ranges, entity resolution, causal links, DLP, async retain, export/audit | Strong absorb into Crypt model/lifecycle/security |
 | `honcho` | explicit vs derived observations, bounded derivation/Dreamer, trigger gates, telemetry | Absorb derived-record distinction + schedule gates |
-| `juspay/code-review-graph-rescript` | typed code graph, diff impact, graph snapshots, flow tracing, RRF, graph evals | Absorb through Cortex; RRF/eval concepts in Membrane |
+| `juspay/code-review-graph-rescript` | typed code graph, diff impact, graph snapshots, flow tracing, RRF, graph evals | Absorb through Blueprint; RRF/eval concepts in Membrane |
 | `kingjulio8238/Memary` | graph neighborhood recall, synonym expansion, graph-first routing | Relation retrieval idea only; graph-first default rejected |
 | `krohling/bondai` | tiered memory, model-facing memory tools, event lifecycle, hierarchical conversation compression | Adapt memory tiers/lifecycle; generic toolkit/personas out of scope |
 | `langchain-ai/langchain` | indexing RecordManager, typed message identity, rate limits, store abstractions | Adapt idempotent indexing/types; backend proliferation rejected |
@@ -1698,11 +1698,11 @@ This ledger is the coverage proof. It maps every exact entry from `competitor.md
 | `mnemosyne-oss/mnemosyne` | typed memory, per-type decay, veracity consolidation, multi-voice recall, conflicts, MMR, encrypted sync | Strong absorb into lifecycle/retrieval/sync |
 | `neuml/txtai` | score-aware hybrid fusion, sparse scoring family, explain search | Absorb lexical/explain/fusion ideas; workflow/agent/cloud surface rejected |
 | `qualixar/superlocalmemory` | admission journal, hash-chain audit, ABAC, retention rules, erasure fence, multi-channel retrieval | Absorb journal/erasure/retrieval/security; P2P mesh later/optional |
-| `quantmew/context8` | AST hierarchical chunks, hash-based incremental indexing, cancellation, commit pinning | Absorb through Cortex; cancellation/freshness into provider contract |
+| `quantmew/context8` | AST hierarchical chunks, hash-based incremental indexing, cancellation, commit pinning | Absorb through Blueprint; cancellation/freshness into provider contract |
 | `rohitg00/agentmemory` | validated observation compression, hard working-memory budgets, leases, provenance verification, eval discipline | Absorb compression/eval/locking patterns; Crypt/runtime |
 | `rtk-ai/rtk` | never-worse filters, data-class truncation, savings economics, hook integrity | Strong absorb Push guards/economics/security |
 | `run-llama/llama_index` | memory blocks, transformation hashes, ingestion cache, property-graph subretrievers | Absorb transformation identity; backend/LLM graph zoo rejected |
-| `semantic` | generic AST, scope/reference resolution, LSP tags | Cortex-only; do not absorb parser into Membrane |
+| `semantic` | generic AST, scope/reference resolution, LSP tags | Blueprint-only; do not absorb parser into Membrane |
 | `semantica` | PROV provenance, conflict workflows, temporal layer, version checksums | Absorb provenance/conflict/temporal concepts; reasoner/ontology platform rejected |
 | `shihanwan/memonto` | ontology/triples, delta updates, vector→graph expansion | Delta/typed relation concept; open ontology/SPARQL/script writes rejected |
 | `supermemoryai/supermemory` | spaces/scopes, save-or-forget semantics, typed citations, document-centric memory | Adapt scope/write/citation ideas; extension/UI ecosystem out of scope |
@@ -1743,9 +1743,9 @@ Membrane is in the intended “best shape” only when all of the following are 
 - transforms have source/output hashes, fingerprints, savings, and failure receipts;
 - token savings are evaluated against task/evidence quality, not compression ratio alone.
 
-## Cortex boundary
+## Blueprint boundary
 
-- Cortex supplies stable code identities/ranges/relations/impact and current generation evidence;
+- Blueprint supplies stable code identities/ranges/relations/impact and current generation evidence;
 - Membrane performs scope/authority/freshness/admission and source-resolution policy;
 - changed/moved/ambiguous/missing code evidence is mechanically distinguished;
 - no second code parser/graph stack exists in Membrane.

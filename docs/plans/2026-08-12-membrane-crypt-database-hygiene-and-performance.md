@@ -18,7 +18,7 @@ Deliver every `MB-R001..MB-R036` requirement through consumer-compatible package
 
 | Book requirements | Accountable acceptance owner | Predecessors | Partial-state invariant | Not green until |
 |---|---:|---|---|---|
-| MB-R001–R004 | Membrane Hub owner / P1 | 0 | Existing installed ownership remains until shared protocol & joint child proof pass | Lifecycle + portability cells; joint Hub/Cortex native receipt |
+| MB-R001–R004 | Membrane Hub owner / P1 | 0 | Existing installed ownership remains until shared protocol & joint child proof pass | Lifecycle + portability cells; joint Hub/Blueprint native receipt |
 | MB-R005–R008 | Crypt memory owner / P5 | 0 → 2 | Existing memory schema/API remains authoritative; additions are versioned & disabled until migrated | Equivalence + recovery cells; P2/P5 migration receipt |
 | MB-R009–R012 | Membrane policy owner / P5 | 0 → 2 | Current ACL path remains fail-closed; no new cache/derived projection admitted early | Scope + revocation + publication cells; P2/P5 race receipt |
 | MB-R013–R016 | Membrane planner owner / P6 | 0 → 2 → 3 | Current packet order stays authoritative; new lanes stay additive/disabled | Equivalence + scope + task-quality cells; P6 receipt |
@@ -44,7 +44,7 @@ No package may mark a broad `MB-A`, atomic aspect, or `MB-R` row green while any
 
 ## Frozen starting evidence
 
-- Canonical doctor reported `broken` on 2026-08-12: stale Cortex/provider identity, Merkle mismatches, missing understanding/verdict artifacts, & 302 missing references.
+- Canonical doctor reported `broken` on 2026-08-12: stale Blueprint/provider identity, Merkle mismatches, missing understanding/verdict artifacts, & 302 missing references.
 - Four Crypt database/WAL files contain an uncommitted stopped-task overlay. It is not accepted baseline or release evidence.
 - Crypt schema, scoped memory, temporal facts, lifecycle events, feedback, supersession, expiry, quarantine/restore, hybrid vector/lexical retrieval, vector index, query-embedding LRU, worker admission, resident federation worker, streaming `run_capped`, identifier prefixes, & document hash/parser-version skipping exist in source but lack current clean installed qualification.
 - Doc Spine production recall scans projections; FTS exists in benchmark/test surfaces, not production query path. Doc packet admission remains shadow-only.
@@ -75,14 +75,14 @@ Requirements: MB-R033–R036.
 
 Exit: failing current behavior is recorded honestly; later packages cannot edit expected outputs or gates.
 
-Package 0 contributes immutable Membrane Hub source/ref/tree/commit/artifact/protocol/book/receipt inputs to parent workspace integration owner. That owner is sole serialized writer of root `artifacts/releases/context-stack-release.v1.json`; manifest version + prior digest use compare-and-swap, & any divergent/stale child tuple is rejected. Manifest also seals Cortex tuple, supported lifecycle ranges, native install source, joint test commands, & receipt digests. Exact sequence: pre-install commits exist → native artifacts build from those commits → parent owner seals one tuple → joint installed tests run against sealed artifacts → nested refs push unchanged → parent pins those exact commits → remote refs/pins verify. Any child/source/artifact/receipt mismatch or post-test change invalidates joint proof.
+Package 0 contributes immutable Membrane Hub source/ref/tree/commit/artifact/protocol/book/receipt inputs to parent workspace integration owner. That owner is sole serialized writer of root `artifacts/releases/context-stack-release.v1.json`; manifest version + prior digest use compare-and-swap, & any divergent/stale child tuple is rejected. Manifest also seals Blueprint tuple, supported lifecycle ranges, native install source, joint test commands, & receipt digests. Exact sequence: pre-install commits exist → native artifacts build from those commits → parent owner seals one tuple → joint installed tests run against sealed artifacts → nested refs push unchanged → parent pins those exact commits → remote refs/pins verify. Any child/source/artifact/receipt mismatch or post-test change invalidates joint proof.
 
 ## Work package 1 — Hub-only lifecycle closure
 
 Requirements: MB-R001–R004.
 
 - Make Hub sole OS-started/user-controlled process. “Start at login” registers Hub only.
-- Hub directly owns Membrane/Crypt resident + Cortex watcher/service in one process group on macOS & Job Object on Windows.
+- Hub directly owns Membrane/Crypt resident + Blueprint watcher/service in one process group on macOS & Job Object on Windows.
 - Publish shared `hub-child-lifecycle.v1`: protocol version, executable/artifact hash, lease, inherited liveness handle, readiness, drain, exit taxonomy, restart/backoff, update, & process-tree identity.
 - Atomically acquire one host/install-scoped Hub owner lease with monotonic fencing token before child start. Children reject stale/lower/foreign fences; lease-store ambiguity fails closed; update handoff advances fence without overlap.
 - Issue short-lived Hub lease + inherited liveness pipe; children exit on pipe closure, lease expiry, parent death, update, or quit.
@@ -90,7 +90,7 @@ Requirements: MB-R001–R004.
 - Add bounded restart/backoff, crash-loop state, health/readiness, update-safe drain, full child-tree kill/wait.
 - Remove standalone persistence/registration/public supervisor paths; foreground CLI/MCP one-shots remain nonpersistent.
 
-Exit: Hub protocol commit/release & compatibility proof exists before Cortex removes any prior path; installed joint Mac + Windows tests name matching Hub/Cortex protocol + artifact hashes & cover concurrent Hub start, stale owner, lease-store loss/corruption, update handoff, login launch, user off/on, tray quit, parent kill, child crash, rogue port, uninstall, crash loop, one fenced owner, & zero surviving owned descendants.
+Exit: Hub protocol commit/release & compatibility proof exists before Blueprint removes any prior path; installed joint Mac + Windows tests name matching Hub/Blueprint protocol + artifact hashes & cover concurrent Hub start, stale owner, lease-store loss/corruption, update handoff, login launch, user off/on, tray quit, parent kill, child crash, rogue port, uninstall, crash loop, one fenced owner, & zero surviving owned descendants.
 
 ## Work package 2 — one policy & protocol plane
 
@@ -100,7 +100,7 @@ Requirements: MB-R005–R020.
 - Python/providers return typed candidates only; remove duplicate policy decisions or mark unreachable scaffolds.
 - Generate language bindings/schemas from one protocol source; cross-language goldens must be byte-equivalent.
 - Every candidate carries source, scope, ACL, generation, authority, freshness, sensitivity, cost, resolver, provider/version, & evidence digest.
-- Provider contracts including Cortex stop at typed facts/candidates + relevance components. Only planner resolves current grant/policy & owns packet eligibility, authorization, authority/freshness ordering, cross-source fusion, budgets, omissions, & rendering.
+- Provider contracts including Blueprint stop at typed facts/candidates + relevance components. Only planner resolves current grant/policy & owns packet eligibility, authorization, authority/freshness ordering, cross-source fusion, budgets, omissions, & rendering.
 - Bind cache/derived identity to source generation, policy/grant/ACL/scope/sensitivity versions; ordered invalidation fail-closes admission during revocation.
 - Bind candidate read through final publication to one policy epoch; fence/revalidate immediately before any output bytes, retry once or emit typed `policy_changed` abstention on change.
 
@@ -200,7 +200,7 @@ Requirements: MB-R033–R036.
 - Run full source, protocol, lifecycle, migration, fault, security, equivalence, benchmark, & native-host gates on clean tree.
 - Build/sign each native binary on its host only; publish exact patch through existing RightKit/release path.
 - Commit/push Membrane; pin/push parent gitlink; verify remote SHAs; install through Hub; rerun installed lifecycle/doctor/benchmark/restore smoke.
-- Preserve integration order in final receipts: Hub protocol commit/release → Cortex compatible child adoption → installed joint native proof → nested pushes → parent pins.
+- Preserve integration order in final receipts: Hub protocol commit/release → Blueprint compatible child adoption → installed joint native proof → nested pushes → parent pins.
 
 Exit: exact installed source/release generation/host/artifact hashes match; no dirty overlay contributes to claim.
 
@@ -248,6 +248,6 @@ Fixed productivity arithmetic is forbidden. Package 0 creates `docs/plans/capaci
 | 3–4 | full-provider trace, provider protocol, document/artifact identity | warm/cold, revocation, retrieval, storage | same fields + profiling/index migration work |
 | 5–6 | memory migrations, policy invalidation, holdout corpus | memory, scope, equivalence, task/token quality | same fields + migration/backout/model-runtime cost |
 | 7–8 | DB identity, backup/restore design, extractor manifests | durability, recovery, multimodal security | same fields + fault/native-host work |
-| 9–10 | all acceptance-owner receipts, comparator adapters, release manifests | evidence, comparative, compatibility, delivery | exact remaining paths, native release/install effort, Cortex joint proof, parent pin work |
+| 9–10 | all acceptance-owner receipts, comparator adapters, release manifests | evidence, comparative, compatibility, delivery | exact remaining paths, native release/install effort, Blueprint joint proof, parent pin work |
 
 After every package, receipt records actual changed files/lines, active engineering time, native-host wait separately, completed acceptance cells, & aggregate remaining capacity. No “all requirements green” or final-package start is allowed when mapped remaining work exceeds frozen remaining ceiling; product authority must split/resequence scope without weakening this book.

@@ -37,7 +37,7 @@ ad hoc).
 
 - Linux daily-sync / replication scheduling does not exist today, in any
   form (no cron/systemd-timer equivalent has been written).
-- Windows cortex-watch registration is unimplemented.
+- Windows blueprint-watch registration is unimplemented.
 
 Treat both as open gaps, not silent no-ops.
 

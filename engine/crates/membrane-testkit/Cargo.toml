@@ -3,7 +3,7 @@ name = "membrane-testkit"
 version = "0.1.0"
 edition.workspace = true
 license-file.workspace = true
-description = "Membrane testkit. Ships the canonical Cortex and Crypt conformance fixture corpus and the golden_fixtures() accessor that returns the union of both sets. Used by the membrane-provider-sdk conformance test and by example providers in docs/examples/providers/."
+description = "Membrane testkit. Ships the canonical Blueprint and Crypt conformance fixture corpus and the golden_fixtures() accessor that returns the union of both sets. Used by the membrane-provider-sdk conformance test and by example providers in docs/examples/providers/."
 
 [lib]
 name = "membrane_testkit"

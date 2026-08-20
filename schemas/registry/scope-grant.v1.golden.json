@@ -14,8 +14,8 @@
   "manifestDigest": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
   "repositoryId": "membrane",
   "repositoryRoot": "/Volumes/D/claude/membrane",
-  "cortexGeneration": "gen-2026-08-04T03-59-00",
-  "cortexFreshness": "clean",
+  "blueprintGeneration": "gen-2026-08-04T03-59-00",
+  "blueprintFreshness": "clean",
   "requestHash": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
   "contextPacketHash": "sha256:0000000000000000000000000000000000000000000000000000000000000003",
   "readPaths": [

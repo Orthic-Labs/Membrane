@@ -754,7 +754,7 @@ mod tests {
 
         for (field, value) in [
             ("fence", serde_json::json!(0)),
-            ("productId", serde_json::json!("cortex")),
+            ("productId", serde_json::json!("blueprint")),
             ("secret", serde_json::json!("A".repeat(64))),
             ("artifactDigest", serde_json::json!("sha256:short")),
         ] {

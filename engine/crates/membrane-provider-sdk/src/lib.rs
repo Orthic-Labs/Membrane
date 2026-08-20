@@ -68,8 +68,8 @@
 //! }
 //! ```
 //!
-//! The `membrane-testkit` crate supplies the golden Cortex and Crypt
-//! fixture sets, and the `docs/examples/providers/{cortex,crypt}_example`
+//! The `membrane-testkit` crate supplies the golden Blueprint and Crypt
+//! fixture sets, and the `docs/examples/providers/{blueprint,crypt}_example`
 //! crates show two reference adapters. See `docs/providers/README.md` for
 //! the full adapter-authoring guide.
 

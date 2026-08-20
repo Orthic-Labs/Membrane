@@ -1,11 +1,11 @@
 {
-  "name": "cortex-source-read-anchor",
+  "name": "blueprint-source-read-anchor",
   "operation": "membrane_source_read",
-  "description": "Cortex adapter returns a successful source-read envelope with one anchor section. Mirrors the shape of operations/operations/membrane-source-read.v1.golden.json.",
+  "description": "Blueprint adapter returns a successful source-read envelope with one anchor section. Mirrors the shape of operations/operations/membrane-source-read.v1.golden.json.",
   "request": {
-    "scopeGrantId": "sgv1-mbr-104-cortex",
+    "scopeGrantId": "sgv1-mbr-104-blueprint",
     "sourceRef": "engine/crates/membrane-protocol/src/operations.rs:1-60",
-    "anchorId": "anchor-mbr-104-cortex"
+    "anchorId": "anchor-mbr-104-blueprint"
   },
   "expectedResponse": {
     "kind": "success",
@@ -13,7 +13,7 @@
       "ok": true,
       "contentSha256": "sha256:000000000000000000000000000000000000000000000000000000000000a401",
       "section": {
-        "anchorId": "anchor-mbr-104-cortex",
+        "anchorId": "anchor-mbr-104-blueprint",
         "startLine": 1,
         "endLine": 60
       },

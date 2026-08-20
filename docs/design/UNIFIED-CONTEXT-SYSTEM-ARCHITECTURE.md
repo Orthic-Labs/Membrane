@@ -827,7 +827,7 @@ zero remaining governed claims. No current canonical source meets that test.
 
 Related subsystem sources remain implementation-specific rather than additional architecture owners:
 
-- `cortex/README.md` — current repository-map contract and implementation surface.
+- `blueprint/README.md` — current repository-map contract and implementation surface.
 - `legion/skills/audit/SKILL.md` — Audit contract, evidence model, and fix loop.
 - `legion/skills/architect/SKILL.md` — future-state design and implementation-plan contract.
 - `docs/plans/2026-07-10-blueprint-code-graph-visual-explorer-impl.md` — graph implementation plan, amended to conform to this architecture.

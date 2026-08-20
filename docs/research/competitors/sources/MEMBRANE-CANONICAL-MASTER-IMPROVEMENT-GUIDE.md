@@ -33,7 +33,7 @@ It already has the difficult and differentiated part of the system:
 - resolver-backed source recovery;
 - resident services;
 - deterministic degradation;
-- separation between Membrane, Crypt, Cortex, Audit, Architect and the surrounding host/runtime.
+- separation between Membrane, Crypt, Blueprint, Audit, Architect and the surrounding host/runtime.
 
 The competitor research overwhelmingly argues for **finishing and connecting these primitives**, not replacing them.
 
@@ -58,7 +58,7 @@ Artifacts
 Rules / policy
 Audit evidence
 Live files / Git state
-Code semantics supplied by Cortex
+Code semantics supplied by Blueprint
 ```
 
 These should participate in a common context economy without being flattened into one indistinguishable blob.
@@ -215,7 +215,7 @@ These are not equivalent quantities:
 
 ```text
 Crypt vector cosine
-Cortex graph relevance
+Blueprint graph relevance
 Git freshness
 rule priority
 BM25 score
@@ -279,11 +279,11 @@ Artifact store
 
 This is especially important for the document spine.
 
-## 2.5 Cortex owns code semantics
+## 2.5 Blueprint owns code semantics
 
-Do not duplicate Cortex inside Membrane.
+Do not duplicate Blueprint inside Membrane.
 
-Cortex should own:
+Blueprint should own:
 
 ```text
 parsing
@@ -361,7 +361,7 @@ Do not allow convenience features to collapse these boundaries.
 └──────────────────────────────────────────────────────────────────┘
           │              │              │              │
           ▼              ▼              ▼              ▼
-       Cortex           Crypt       Live / Git     Docs / Artifacts
+       Blueprint           Crypt       Live / Git     Docs / Artifacts
    code semantics     knowledge     current facts   indexed evidence
                          │
                          ├── exact / anchor
@@ -604,7 +604,7 @@ Create canonical cases covering:
 
 ### Failure
 
-- Cortex unavailable;
+- Blueprint unavailable;
 - Crypt unavailable;
 - resolver unavailable;
 - provider timeout;
@@ -1215,7 +1215,7 @@ missing
 unsupported
 ```
 
-Cortex supplies move/rename-stable code identity.
+Blueprint supplies move/rename-stable code identity.
 
 Membrane consumes it.
 
@@ -1223,11 +1223,11 @@ Do not infer competing symbol identities from raw paths.
 
 ---
 
-# 25. Improvement 20 — Strengthen the Cortex bridge
+# 25. Improvement 20 — Strengthen the Blueprint bridge
 
 **Priority:** P2
 
-Membrane should request compact semantic operations from Cortex:
+Membrane should request compact semantic operations from Blueprint:
 
 ```text
 symbol_lookup
@@ -1240,7 +1240,7 @@ change_context
 claim_evidence
 ```
 
-A Cortex evidence response should provide enough information for Membrane to reason about:
+A Blueprint evidence response should provide enough information for Membrane to reason about:
 
 ```text
 stable symbol ID
@@ -1256,7 +1256,7 @@ verification status
 resolver
 ```
 
-If Cortex fails, only the Cortex evidence lane should degrade.
+If Blueprint fails, only the Blueprint evidence lane should degrade.
 
 Membrane continues functioning.
 
@@ -1785,7 +1785,7 @@ Do not add a large backend matrix without a demonstrated product need.
 
 Do not require Neo4j/FalkorDB/RDF/SPARQL/ontology engines as architecture.
 
-## 46.3 Not another Cortex
+## 46.3 Not another Blueprint
 
 Do not add a duplicate parser, LSP, SCIP, symbol index, or code graph.
 
@@ -1866,7 +1866,7 @@ Out of scope.
 
 ## Release 5 — Source truth
 
-37. Cortex bridge enrichment;
+37. Blueprint bridge enrichment;
 38. source-anchor resolution;
 39. move/rename verification;
 40. source drift classification;
@@ -2048,7 +2048,7 @@ Turning a new retrieval feature off must not destroy records written while it wa
 - cancellation;
 - circuit breaker;
 - partial results;
-- degraded Cortex;
+- degraded Blueprint;
 - unavailable artifact.
 
 ## Recovery
@@ -2123,7 +2123,7 @@ memories
 preferences/taste
 gotchas
 live/Git
-Cortex
+Blueprint
 rules
 audit
 ```
@@ -2210,7 +2210,7 @@ but:
 34. Add query-critical/protected-evidence verification.
 35. Restore exact spans automatically when compression loses required evidence.
 36. Add source-anchor and source-drift verification.
-37. Enrich the Cortex provider contract rather than duplicating code intelligence.
+37. Enrich the Blueprint provider contract rather than duplicating code intelligence.
 38. Add a narrow provenance-bearing temporal relation model.
 39. Add conservative entity/alias resolution.
 40. Add bounded relation retrieval.
@@ -2232,7 +2232,7 @@ but:
 56. Measure p50/p95/p99, CPU, RSS, index/storage and token economics.
 57. Run memory, retrieval, compression, poisoning, session and whole-task evaluations.
 58. Keep advanced adaptive retrieval disabled until it beats deterministic controls.
-59. Do not build another Cortex, graph platform, vector platform, agent framework or LLM router inside Membrane.
+59. Do not build another Blueprint, graph platform, vector platform, agent framework or LLM router inside Membrane.
 60. Preserve Membrane's receipt/evidence architecture as the central product differentiator.
 
 ---
@@ -2247,7 +2247,7 @@ It points toward something more disciplined:
 
 The document spine, memories, taste, gotchas, sessions and external evidence are different semantic classes, but they belong to the same governed context economy.
 
-Cortex supplies repository semantics.
+Blueprint supplies repository semantics.
 
 Crypt supplies durable knowledge.
 

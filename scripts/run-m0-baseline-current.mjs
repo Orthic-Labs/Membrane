@@ -20,7 +20,7 @@ const sha = (value) => createHash("sha256").update(value).digest("hex");
 // every case is a literal transcription of the fixture's own `failure` column — the documented
 // pre-fix input — not bytes read from an actual checkout of a historical commit. Reproducing the
 // real historical behavior would require checking out an old commit of 5 different
-// language runtimes (Rust engine, JS membrane/cortex, Python forge/adapt) and rebuilding each,
+// language runtimes (Rust engine, JS membrane/blueprint, Python forge/adapt) and rebuilding each,
 // which this workspace's primary-checkout-only / no-worktree-without-approval rule forbids doing
 // in place, and which a temporary worktree could only do with Adrian's explicit sign-off. So
 // `baseline_red` here proves "the documented failure input fails the current validator", not
@@ -90,7 +90,7 @@ const suites = {
   // explicit root grant"), not project-registry.mjs — the original suite list omitted it, so
   // "current_green" for that fixture was gated on a suite that never actually exercised the fix.
   membrane: [process.execPath, ["--test", join(membraneRoot, "mcp/project-registry.test.mjs"), join(membraneRoot, "mcp/repository-catalog.test.mjs")], workspaceRoot],
-  cortex: ["pnpm", ["--dir", join(workspaceRoot, "cortex"), "test:all"], workspaceRoot],
+  blueprint: ["pnpm", ["--dir", join(workspaceRoot, "blueprint"), "test:all"], workspaceRoot],
   // Forge was retired into Arcane (workspace Phase H-10). These focused successor
   // suites cover its two remaining F13 cases: declared-check correlation + closed output schemas.
   forge: [process.execPath, ["--test",

@@ -72,7 +72,7 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
   }
   return {
     schema: "orthic.capability-inventory.v1",
-    vocabulary: { current: ["Membrane", "Crypt", "Forge", "Adapt", "Cortex"], compatibility: ["RightContext", "Crypt", "Forge", "Adapt", "Blueprint"] },
+    vocabulary: { current: ["Membrane", "Crypt", "Forge", "Adapt", "Blueprint"], compatibility: ["RightContext", "Crypt", "Forge", "Adapt", "Blueprint"] },
     labels: ["shipped", "partial", "unwired", "design", "deprecated"],
     gate_model: { gates: FIVE_GATES, required: REQUIRED_GATES },
     exercised_path_rule: "No shipped claim without all five gates: exercised-path test, artifact, platforms, generated documentation, and a backing contract.",

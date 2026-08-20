@@ -115,8 +115,8 @@ export function mintScopeGrantV1({ binding, args, packet, freshness, signingKey,
     manifestDigest: freshness.manifestDigest,
     repositoryId: binding.repository_id,
     repositoryRoot: binding.root,
-    cortexGeneration: freshness.blueprintGeneration,
-    cortexFreshness: freshness.graphState,
+    blueprintGeneration: freshness.blueprintGeneration,
+    blueprintFreshness: freshness.graphState,
     requestHash: hash(request),
     contextPacketHash: hash(packet),
     readPaths,
@@ -146,8 +146,8 @@ export function validateScopeGrantV1(grant, { binding, args, packet, freshness, 
   if (!signatureValid) return false;
   if (Date.parse(grant.expiresAt) <= now || grant.status !== "active") return false;
   const immutableFields = [
-    "schemaVersion", "issuer", "client", "taskId", "sessionId", "repositoryId", "repositoryRoot", "cortexGeneration",
-    "cortexFreshness", "requestHash", "contextPacketHash", "manifestDigest", "sourceReadBytesMax",
+    "schemaVersion", "issuer", "client", "taskId", "sessionId", "repositoryId", "repositoryRoot", "blueprintGeneration",
+    "blueprintFreshness", "requestHash", "contextPacketHash", "manifestDigest", "sourceReadBytesMax",
     "uniqueFilesMax", "resultsMax", "cryptStatus", "degraded",
   ];
   return immutableFields.every((field) => grant[field] === expected[field]) &&

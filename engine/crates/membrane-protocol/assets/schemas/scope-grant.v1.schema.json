@@ -8,7 +8,7 @@
   "required": [
     "schemaVersion", "id", "issuer", "client", "repositoryIds", "permittedEdgeTypes",
     "taskId", "sessionId", "issuedAt", "expiresAt", "status", "nonce", "manifestDigest",
-    "repositoryId", "repositoryRoot", "cortexGeneration", "cortexFreshness", "requestHash",
+    "repositoryId", "repositoryRoot", "blueprintGeneration", "blueprintFreshness", "requestHash",
     "contextPacketHash", "readPaths", "sourceReadBytesMax", "uniqueFilesMax", "resultsMax",
     "cryptStatus", "degraded", "signatureAlgorithm", "keyId", "signature"
   ],
@@ -28,8 +28,8 @@
     "manifestDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "repositoryId": { "type": "string", "minLength": 1 },
     "repositoryRoot": { "type": "string", "minLength": 1 },
-    "cortexGeneration": { "type": "string" },
-    "cortexFreshness": { "type": "string", "enum": ["clean", "dirty_overlay", "stale_snapshot", "missing_snapshot", "partial_reindex", "concurrent_update", "indeterminate"] },
+    "blueprintGeneration": { "type": "string" },
+    "blueprintFreshness": { "type": "string", "enum": ["clean", "dirty_overlay", "stale_snapshot", "missing_snapshot", "partial_reindex", "concurrent_update", "indeterminate"] },
     "requestHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "contextPacketHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "readPaths": {

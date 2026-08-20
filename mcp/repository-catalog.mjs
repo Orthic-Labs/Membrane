@@ -4,7 +4,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { defaultRegistryPath, enroll } from "./project-registry.mjs";
-import { readCortexReadiness } from "./cortex-readiness.mjs";
+import { readBlueprintReadiness } from "./blueprint-readiness.mjs";
 
 const SUBMODULE_PATH = /^\s*path\s*=\s*(.+?)\s*$/gm;
 
@@ -176,18 +176,18 @@ export async function buildRepositoryCatalog(workspaceRoot, options = {}) {
   const root = await realpath(resolve(workspaceRoot));
   const discovered = await discoverRepositoryRoots(root);
   const workspaceId = options.workspaceId || repositoryId(".");
-  // Status is read through Cortex's published IPC seam concurrently. A missing
+  // Status is read through Blueprint's published IPC seam concurrently. A missing
   // daemon is a typed degradation, never a graph.db read or a spawned fallback.
   const readinessByAbsolute = new Map(await Promise.all(discovered.map(async ({ absoluteRoot }) => [
-    absoluteRoot, await readCortexReadiness(absoluteRoot),
+    absoluteRoot, await readBlueprintReadiness(absoluteRoot),
   ])));
   const repositories = await Promise.all(discovered.map(async ({ relativeRoot, absoluteRoot }) => {
     const repository_id = repositoryId(relativeRoot);
     const isWorkspaceRoot = relativeRoot === ".";
     const graphRel = `${relativeRoot === "." ? "" : `${relativeRoot}/`}.agent/graph/graph.db`;
     const readiness = readinessByAbsolute.get(absoluteRoot);
-    const { generationId: cortexGenerationId, manifestDigest } = readiness ?? { generationId: null, manifestDigest: null };
-    const hasGraphDb = Boolean(cortexGenerationId);
+    const { generationId: blueprintGenerationId, manifestDigest } = readiness ?? { generationId: null, manifestDigest: null };
+    const hasGraphDb = Boolean(blueprintGenerationId);
     const origin = readGitOrigin(absoluteRoot);
     const sourceCommit = readGitHead(absoluteRoot);
     const rootBinding = absoluteRoot;
@@ -208,7 +208,7 @@ export async function buildRepositoryCatalog(workspaceRoot, options = {}) {
       origin,
       rootBinding,
       graphPath: graphRel,
-      cortexGenerationId,
+      blueprintGenerationId,
       manifestDigest,
       sourceCommit,
       watcherState,
@@ -223,13 +223,13 @@ export async function buildRepositoryCatalog(workspaceRoot, options = {}) {
       scope_id: scopeId(relativeRoot),
       role: isWorkspaceRoot ? "workspace-root" : "child-repository",
       ...(isWorkspaceRoot ? {} : { parent_repository_id: repositoryId(".") }),
-      // `cortex_graph` is the legacy path-pointer to the local graph.db. The
-      // plan moved this to `graphPath`; we keep `cortex_graph` for
+      // `blueprint_graph` is the legacy path-pointer to the local graph.db. The
+      // plan moved this to `graphPath`; we keep `blueprint_graph` for
       // backward-compat with the existing entry shape used by caller code
       // that still reads it. The retired `blueprint_manifest` pointer (defect
       // 26) is GONE — that path no longer exists and the contract asserts it
       // must not appear on any entry.
-      cortex_graph: graphRel,
+      blueprint_graph: graphRel,
       grants: [],
     };
   }));

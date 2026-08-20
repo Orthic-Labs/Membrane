@@ -53,7 +53,7 @@ test("production entrypoint executes as a cross-platform Node script", () => {
   assert.equal(JSON.parse(child.stdout).hookSpecificOutput.hookEventName, "Unknown");
 });
 
-test("ingest accepts only durable memory & Cortex artifacts, including host memory", () => {
+test("ingest accepts only durable memory & Blueprint artifacts, including host memory", () => {
   const { root, file } = fixture();
   const unrelated = join(root, "README.md");
   writeFileSync(unrelated, "not durable", "utf8");

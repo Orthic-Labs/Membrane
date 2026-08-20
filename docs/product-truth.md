@@ -8,7 +8,7 @@ Do not hand-edit; regenerate instead. `--check` fails if this file is stale.
 - `membrane_checkpoint_load`
 - `membrane_checkpoint_save`
 - `membrane_context`
-- `membrane_cortex`
+- `membrane_blueprint`
 - `membrane_feedback`
 - `membrane_knowledge_propose`
 - `membrane_scratchpad`

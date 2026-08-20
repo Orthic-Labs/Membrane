@@ -216,9 +216,9 @@ impl FallbackMode {
 #[serde(rename_all = "snake_case")]
 pub enum DegradationReason {
     None,
-    CortexStale,
-    CortexUnavailable,
-    CortexCorrupt,
+    BlueprintStale,
+    BlueprintUnavailable,
+    BlueprintCorrupt,
     ProviderCapabilityMissing,
     ReleaseGenerationMismatch,
     ReleaseGenerationUnavailable,
@@ -228,9 +228,9 @@ impl DegradationReason {
     fn as_str(&self) -> &'static str {
         match self {
             Self::None => "none",
-            Self::CortexStale => "cortex_stale",
-            Self::CortexUnavailable => "cortex_unavailable",
-            Self::CortexCorrupt => "cortex_corrupt",
+            Self::BlueprintStale => "blueprint_stale",
+            Self::BlueprintUnavailable => "blueprint_unavailable",
+            Self::BlueprintCorrupt => "blueprint_corrupt",
             Self::ProviderCapabilityMissing => "provider_capability_missing",
             Self::ReleaseGenerationMismatch => "release_generation_mismatch",
             Self::ReleaseGenerationUnavailable => "release_generation_unavailable",
@@ -509,14 +509,14 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
     let freshness_stale = input.candidate_set.freshness.stale;
     let graph_degradation_reason = match input.candidate_set.freshness.graph_state {
         // Plan 1.2: a dirty worktree is informational, never a degradation. It
-        // used to map to CortexStale, which is why an ordinary edited file put
+        // used to map to BlueprintStale, which is why an ordinary edited file put
         // every packet into portable-text fallback.
         Some(GraphState::StaleSnapshot | GraphState::PartialReindex) => {
-            Some(DegradationReason::CortexStale)
+            Some(DegradationReason::BlueprintStale)
         }
         Some(
             GraphState::MissingSnapshot | GraphState::ConcurrentUpdate | GraphState::Indeterminate,
-        ) => Some(DegradationReason::CortexUnavailable),
+        ) => Some(DegradationReason::BlueprintUnavailable),
         Some(GraphState::Clean | GraphState::DirtyOverlay) | None => None,
     };
     let release_degradation_reason = release_generation_degradation(&input.candidate_set.freshness);
@@ -534,7 +534,7 @@ pub fn plan(input: &PlannerInput) -> Result<PlannerOutput, PlannerError> {
     } else if freshness_stale {
         (
             FallbackMode::PortableTextOnly,
-            DegradationReason::CortexStale,
+            DegradationReason::BlueprintStale,
         )
     } else {
         (
@@ -1716,9 +1716,9 @@ mod tests {
             skill.provider = Some("skills".into());
             candidates.push(skill);
         }
-        let mut cortex = candidate("blueprint:src:planner", "repo_code", 1, 0.01, false);
-        cortex.provider = Some("blueprint".into());
-        candidates.push(cortex);
+        let mut blueprint = candidate("blueprint:src:planner", "repo_code", 1, 0.01, false);
+        blueprint.provider = Some("blueprint".into());
+        candidates.push(blueprint);
 
         let mut input = empty_planner_input(candidates);
         input.max_tokens = 32;
@@ -1812,7 +1812,7 @@ mod tests {
         let out = plan(&input).unwrap();
         assert_eq!(out.provider_status, ProviderStatus::Stale);
         assert_eq!(out.fallback_mode, FallbackMode::PortableTextOnly);
-        assert_eq!(out.degradation_reason, DegradationReason::CortexStale);
+        assert_eq!(out.degradation_reason, DegradationReason::BlueprintStale);
         assert!(out.source_generation.is_none());
         // The protected anchor still admits even under fallback quarantine.
         assert_eq!(out.packet.blocks.len(), 1);
@@ -1942,7 +1942,7 @@ mod tests {
         let out = plan(&input).unwrap();
 
         // Plan 1.2: a dirty worktree is advisory, exactly as this test's name
-        // says. It previously asserted Degraded/CortexStale, which is the
+        // says. It previously asserted Degraded/BlueprintStale, which is the
         // always-on alarm Phase 1 removes — an ordinary edited file forced every
         // packet to declare degraded context. The provenance assertions below
         // are unchanged and still prove the overlay is fully attributed: the

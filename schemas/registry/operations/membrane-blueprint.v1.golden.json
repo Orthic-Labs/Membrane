@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "operation": "membrane_cortex",
+  "operation": "membrane_blueprint",
   "errorVersion": 1,
   "result": {
     "kind": "success",
@@ -26,7 +26,7 @@
             "barrierResult": "caught_up",
             "receiptId": "receipt-mbr-401-001"
           },
-          "resolver": "cortex graph resolve --node engine/crates/membrane-protocol/src/operations.rs:OperationSpec"
+          "resolver": "blueprint graph resolve --node engine/crates/membrane-protocol/src/operations.rs:OperationSpec"
         }
       ]
     }

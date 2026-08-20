@@ -9,7 +9,7 @@ import { runBenchmark } from "../mcp/e2e-benchmark.mjs";
 
 const SCENARIOS = [
   ["repository_orientation", "pwd"],
-  ["cross_repo_impact", "git submodule status membrane cortex"],
+  ["cross_repo_impact", "git submodule status membrane blueprint"],
   ["preference_application", "rg -n 'Brief mode is a hard' AGENTS.md"],
   ["stale_graph_immediate_edit", "git status --short membrane"],
   ["contradiction", "git branch --show-current"],

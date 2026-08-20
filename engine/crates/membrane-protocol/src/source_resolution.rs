@@ -75,8 +75,8 @@ mod tests {
     fn receipt() -> SourceResolutionReceiptV1 {
         SourceResolutionReceiptV1 {
             schema_version: 1,
-            candidate_id: "cortex:symbol".into(),
-            provider: "cortex".into(),
+            candidate_id: "blueprint:symbol".into(),
+            provider: "blueprint".into(),
             status: SourceResolutionStatusV1::Resolved,
             expected_hash: format!("sha256:{}", "a".repeat(64)),
             resolved_hash: Some(format!("sha256:{}", "a".repeat(64))),
@@ -84,7 +84,7 @@ mod tests {
             resolved_generation: Some("gen-1".into()),
             expected_path: "src/lib.rs".into(),
             resolved_path: Some("src/lib.rs".into()),
-            resolver: "cortex graph resolve --node symbol".into(),
+            resolver: "blueprint graph resolve --node symbol".into(),
             overlay_identity: None,
         }
     }

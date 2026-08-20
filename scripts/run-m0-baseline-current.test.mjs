@@ -34,7 +34,7 @@ test("F13 runM0 discloses every case as baseline-undrivable rather than silently
   assert.ok(result.cases.every((entry) => entry.baseline.live_reproduced === false && entry.current.live_reproduced === true));
 });
 
-// Slow, unmocked integration proof: actually spawn the real crypt/membrane-host/membrane/cortex/
+// Slow, unmocked integration proof: actually spawn the real crypt/membrane-host/membrane/blueprint/
 // forge/adapt suites at current HEAD, on this machine, exactly as the CLI entrypoint does.
 // This is the test that makes "current_green" a live claim instead of a mocked one. It is slower
 // than the rest of this file (cross-repo pnpm/pytest runs) — that cost buys real evidence.

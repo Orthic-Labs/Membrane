@@ -2,8 +2,8 @@
 //!
 //! The per-user Membrane supervisor. A separate binary from `membrane` itself; it owns one
 //! resident (the `membrane supervisor-child` process), publishes a discovery file for client
-//! adapters to read, and enforces a single-instance lock. Cortex owns its own watcher and
-//! services unconditionally (D-S09); Membrane never observes, adopts, or supervises Cortex
+//! adapters to read, and enforces a single-instance lock. Blueprint owns its own watcher and
+//! services unconditionally (D-S09); Membrane never observes, adopts, or supervises Blueprint
 //! watcher state.
 //!
 //! Why a separate process: the supervisor must outlive a resident crash and respawn it

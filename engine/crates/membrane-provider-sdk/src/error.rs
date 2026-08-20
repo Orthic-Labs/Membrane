@@ -57,7 +57,7 @@ pub enum ProviderError {
     /// match the expected response. Produced only by `run_conformance`.
     #[error("conformance mismatch on fixture {fixture}: {reason}")]
     ConformanceMismatch {
-        /// Fixture name (e.g. `cortex-context-scope-grant`).
+        /// Fixture name (e.g. `blueprint-context-scope-grant`).
         fixture: String,
         /// Why the response did not match the expected response.
         reason: String,

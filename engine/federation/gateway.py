@@ -48,13 +48,13 @@ if str(_PARENT) not in sys.path:
 
 # Local providers — all in-process or short subprocess. None of them touch
 # the Crypt DB schema, all read-only or pure.
-from federation.providers import cortex, audit, architect, crypt, git_provider  # noqa: E402
+from federation.providers import blueprint, audit, architect, crypt, git_provider  # noqa: E402
 from federation.providers import live, rules, anchors, scope_grant  # noqa: E402
 from federation.providers import skills  # noqa: E402
 
 
 _PROVIDER_STAGE_NAMES = frozenset({
-    "request_parse", "embed", "recall", "rank", "cortex_node_spawn", "repo_code_scan",
+    "request_parse", "embed", "recall", "rank", "blueprint_node_spawn", "repo_code_scan",
 })
 _LANE_FAILURE_KINDS = frozenset({
     "timeout", "crash", "unavailable", "authentication", "invalid_output",
@@ -86,10 +86,10 @@ def _resolve_release_manifest() -> Path:
 
 
 _RELEASE_MANIFEST = _resolve_release_manifest()
-# 1.5 s: sized so the cortex lane's lean Node entrypoint (~0.9 s at
+# 1.5 s: sized so the blueprint lane's lean Node entrypoint (~0.9 s at
 # 150k-symbol scale) fits with headroom, while staying inside the resident
 # service's 2 s request budget. The previous 0.35 s was sized for a small
-# graph and silently zeroed the cortex lane on every production packet.
+# graph and silently zeroed the blueprint lane on every production packet.
 _PRODUCTION_FANOUT_TIMEOUT_S = 1.5
 _REPLAY_FANOUT_TIMEOUT_S = 45.0
 
@@ -308,7 +308,7 @@ def _fetch_freshness_verdict(repo_root: Path, session: str | None = None) -> dic
     receipt = payload.get("sourceBarrierReceipt")
     identity = receipt.get("overlay_identity") if isinstance(receipt, dict) else None
     expected_path = str(repo_root.resolve())
-    generation = payload.get("cortexGeneration")
+    generation = payload.get("blueprintGeneration")
     overlay_digest = payload.get("overlayDigest")
     dirty_digest = receipt.get("dirty_overlay_digest") if isinstance(receipt, dict) else None
     if (
@@ -435,12 +435,12 @@ def _collect_tasks_bounded(
     deadline = time.monotonic() + max(0.0, timeout_s)
     out: list[tuple[str, list[dict], list[dict]]] = []
 
-    # Cortex admission is a dependency, not an advisory lane. Execute its
+    # Blueprint admission is a dependency, not an advisory lane. Execute its
     # bounded, generation-pinned lookup before CPU-heavy providers can starve
     # its Python thread under the GIL. Every other provider still fans out in
     # parallel under the remainder of this same absolute deadline.
     for name, task in tasks:
-        if name != "cortex":
+        if name != "blueprint":
             continue
         result = invoke(name, task)
         pending.remove(name)
@@ -496,12 +496,12 @@ def _collect_tasks_bounded(
 
 
 def _manifest_digest(repo_root: Path) -> str:
-    manifest_path = repo_root / ".cortex" / "manifest.json"
+    manifest_path = repo_root / ".blueprint" / "manifest.json"
     try:
         content = manifest_path.read_bytes()
     except OSError as exc:
         raise PermissionError(
-            f"scope_grant_invalid: cortex manifest unavailable at {manifest_path}"
+            f"scope_grant_invalid: blueprint manifest unavailable at {manifest_path}"
         ) from exc
     return "sha256:" + hashlib.sha256(content).hexdigest()
 
@@ -637,14 +637,14 @@ def _gather_all_parallel(
         "indexedAt": str(verdict.get("checkedAt") or indexed_at),
         "stale": False,
         "graphState": str(verdict.get("graphState") or "indeterminate"),
-        # The Cortex generation the packet was assembled against. Consumers had
+        # The Blueprint generation the packet was assembled against. Consumers had
         # no way to tell WHICH graph answered them: `revision` is a per-request
         # trace id, not a generation, so "is this packet current?" was
         # unanswerable from the packet itself (plan 1.1).
-        "generationId": verdict.get("cortexGeneration"),
+        "generationId": verdict.get("blueprintGeneration"),
         "snapshotId": verdict.get("snapshotId"),
         "baseCommit": verdict.get("baseCommit"),
-        "cortexBaseCommit": verdict.get("cortexBaseCommit"),
+        "blueprintBaseCommit": verdict.get("blueprintBaseCommit"),
         "overlayDigest": verdict.get("overlayDigest"),
         "overlayIdentity": (verdict.get("sourceBarrierReceipt") or {}).get("overlay_identity"),
         "serviceGeneration": verdict.get("serviceGeneration"),
@@ -656,12 +656,12 @@ def _gather_all_parallel(
         "cacheAgeMs": verdict.get("cacheAgeMs"),
         "refreshInFlight": bool(verdict.get("refreshInFlight", False)),
         "_providerFreshness": {
-            "cortex": (providers_state.get("cortex") or {}).get("freshnessClass"),
+            "blueprint": (providers_state.get("blueprint") or {}).get("freshnessClass"),
             "live": (providers_state.get("dirtyOverlay") or {}).get("freshnessClass"),
             "skills": (providers_state.get("skills") or {}).get("freshnessClass"),
         },
         "_providerBaseCommit": {
-            "cortex": verdict.get("cortexBaseCommit"),
+            "blueprint": verdict.get("blueprintBaseCommit"),
             "live": verdict.get("baseCommit"),
         },
     }
@@ -680,7 +680,7 @@ def _gather_all_parallel(
         return [], freshness
     provider_elapsed_ms: dict[str, float] = {}
     provider_stage_elapsed_ms: dict[str, dict[str, float]] = {}
-    expected_cortex_generation = str(verdict.get("cortexGeneration") or "")
+    expected_blueprint_generation = str(verdict.get("blueprintGeneration") or "")
     expected_skills_generation = str(verdict.get("skillsGeneration") or "")
 
     # Build the list of (name, callable, args) — the actual fan-out.
@@ -736,16 +736,16 @@ def _gather_all_parallel(
                             stages[stage] = numeric
                 if stages:
                     provider_stage_elapsed_ms[name] = stages
-        if name == "cortex" and str(generation or "") != expected_cortex_generation:
+        if name == "blueprint" and str(generation or "") != expected_blueprint_generation:
             return (
                 name,
                 [],
                 [
                     {
-                        "provider": "cortex",
-                        "kind": "cortex_generation_changed",
+                        "provider": "blueprint",
+                        "kind": "blueprint_generation_changed",
                         "severity": "warning",
-                        "message": "cortex generation changed after freshness verdict",
+                        "message": "blueprint generation changed after freshness verdict",
                     }
                 ],
             )
@@ -764,7 +764,7 @@ def _gather_all_parallel(
             )
         return (name, cands, warnings)
 
-    cortex_state = providers_state.get("cortex") or {}
+    blueprint_state = providers_state.get("blueprint") or {}
     overlay_state = providers_state.get("dirtyOverlay") or {}
     skills_state = providers_state.get("skills") or {}
     tasks = [
@@ -777,17 +777,17 @@ def _gather_all_parallel(
         ("rules", lambda: _adapter("rules", rules.produce, repo_root, task, client)),
         ("anchors", lambda: _adapter("anchors", anchors.produce, repo_root, explicit_anchors, task)),
     ]
-    if bool(cortex_state.get("usable")):
+    if bool(blueprint_state.get("usable")):
         tasks.append(
             (
-                "cortex",
+                "blueprint",
                 lambda: _adapter(
-                    "cortex",
-                    cortex.produce_with_observability,
+                    "blueprint",
+                    blueprint.produce_with_observability,
                     repo_root,
                     task,
                     max_tokens,
-                    expected_generation=expected_cortex_generation,
+                    expected_generation=expected_blueprint_generation,
                 ),
             )
         )
@@ -816,17 +816,17 @@ def _gather_all_parallel(
     # Parallel fan-out under one absolute budget. Slow lanes receive typed terminals and cannot
     # hold the prompt waiter open.
     out: list[tuple[str, list[dict[str, Any]], list[dict[str, Any]]]] = []
-    if not bool(cortex_state.get("usable")):
+    if not bool(blueprint_state.get("usable")):
         out.append(
             (
-                "cortex",
+                "blueprint",
                 [],
                 [
                     {
-                        "provider": "cortex",
-                        "kind": "cortex_lane_degraded",
+                        "provider": "blueprint",
+                        "kind": "blueprint_lane_degraded",
                         "severity": "warning",
-                        "message": f"cortex lane unavailable: {freshness['graphState']}",
+                        "message": f"blueprint lane unavailable: {freshness['graphState']}",
                     }
                 ],
             )
@@ -857,7 +857,7 @@ def _gather_all_parallel(
     }
 
     order = {name: index for index, name in enumerate(
-        ("cortex", "audit", "architect", "crypt", "git", "live", "rules", "anchors", "skills")
+        ("blueprint", "audit", "architect", "crypt", "git", "live", "rules", "anchors", "skills")
     )}
     out.sort(key=lambda item: order.get(item[0], len(order)))
     freshness["_providerElapsedMs"] = {
@@ -895,8 +895,8 @@ def _merge_candidates(
     provider_counts: dict[str, int] = {}
     provider_freshness = freshness.get("_providerFreshness") or {}
     provider_base_commit = dict(freshness.get("_providerBaseCommit") or {})
-    if freshness.get("cortexBaseCommit"):
-        provider_base_commit.setdefault("cortex", freshness["cortexBaseCommit"])
+    if freshness.get("blueprintBaseCommit"):
+        provider_base_commit.setdefault("blueprint", freshness["blueprintBaseCommit"])
     graph_state = str(freshness.get("graphState") or "indeterminate")
 
     for provider_name, candidates, warnings in per_provider_candidates:
@@ -915,7 +915,7 @@ def _merge_candidates(
                 explicit_provider_class = provider_freshness.get(provider_name)
                 if explicit_provider_class:
                     stamped["freshnessClass"] = explicit_provider_class
-                elif provider_name == "cortex":
+                elif provider_name == "blueprint":
                     stamped["freshnessClass"] = (
                         "committed_snapshot" if graph_state == "clean" else "stale_snapshot"
                     )

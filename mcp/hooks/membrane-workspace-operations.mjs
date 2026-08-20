@@ -215,12 +215,12 @@ function redactSummary(summary) {
 
 function ingestArgs(root, file, event) {
   const rel = relative(root, file).replaceAll("\\", "/");
-  const cortex = rel.startsWith(".agent/okf/") || file.endsWith("/start-here.md");
+  const blueprint = rel.startsWith(".agent/okf/") || file.endsWith("/start-here.md");
   const args = [
     "put", basename(file, ".md"), "--scope", memoryScope(root, file), "--file", file,
-    "--artifact-family", cortex ? "cortex" : "memory",
+    "--artifact-family", blueprint ? "blueprint" : "memory",
     "--producer", "membrane_hook",
-    "--record-type", cortex ? "cortex_concept" : "markdown_memory",
+    "--record-type", blueprint ? "blueprint_concept" : "markdown_memory",
     "--authority", "A0", "--influence-class", "data_only",
   ];
   if (event.sessionId) args.push("--session", event.sessionId);
