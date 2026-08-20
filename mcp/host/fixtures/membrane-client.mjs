@@ -5,6 +5,6 @@ process.stdout.write(JSON.stringify({
   ok: true,
   providerStatus: 'ready',
   degradationReason: 'none',
-  packet: { schema: 'orthic.context-packet.v1', task: request.task, content: 'source-backed data' },
+  packet: { schema: 'membrane.context-packet.v1', task: request.task, content: 'source-backed data' },
   receipts: [{ id: 'receipt-1' }],
 }));

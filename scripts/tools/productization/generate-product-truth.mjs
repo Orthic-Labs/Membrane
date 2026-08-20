@@ -34,7 +34,7 @@ const README = join(REPO_ROOT, "README.md");
 const MATRIX = join(REPO_ROOT, "docs", "membrane", "capability-matrix.v1.json");
 const MANIFEST = join(REPO_ROOT, "docs", "design", "MEMBRANE-CURRENT-STATE-MANIFEST.json");
 
-const TRUTH_SCHEMA = "orthic.product-truth.v1";
+const TRUTH_SCHEMA = "membrane.product-truth.v1";
 
 // Number words the README prose may use for the tool count claim.
 const NUMBER_WORDS = { six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };

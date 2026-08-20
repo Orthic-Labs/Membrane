@@ -18,7 +18,7 @@ function buildObservableEvent({ installationId, clientId, sessionId, taskId, tur
   if (identifiers.some((value) => !IDENTIFIER.test(value))) throw new Error('observable event identifiers must be opaque identifiers');
   const lineage = [...identifiers, eventType].join(':');
   return validateObservableEvent({
-    schema: 'orthic.observable-event.v1',
+    schema: 'membrane.observable-event.v1',
     installation_id: String(installationId), client_id: String(clientId), session_id: String(sessionId),
     task_id: String(taskId), turn_id: String(turnId), trace_id: String(traceId),
     event_id: `observable-${digest(lineage).slice(7, 31)}`, event_type: eventType, origin,
@@ -33,7 +33,7 @@ function validateObservableEvent(event) {
   if (!event || typeof event !== 'object' || Array.isArray(event)) throw new Error('observable event must be an object');
   const allowed = new Set(['schema', 'installation_id', 'client_id', 'session_id', 'task_id', 'turn_id', 'trace_id', 'event_id', 'event_type', 'origin', 'content_ref_or_digest', 'timestamp', 'completeness', 'policy_snapshot_digest', 'char_count']);
   for (const key of Object.keys(event)) if (!allowed.has(key)) throw new Error(`observable event contains forbidden field: ${key}`);
-  if (event.schema !== 'orthic.observable-event.v1') throw new Error('unsupported observable event schema');
+  if (event.schema !== 'membrane.observable-event.v1') throw new Error('unsupported observable event schema');
   for (const key of ['installation_id', 'client_id', 'session_id', 'task_id', 'turn_id', 'trace_id', 'event_id']) {
     if (typeof event[key] !== 'string' || !IDENTIFIER.test(event[key])) throw new Error(`invalid observable event ${key}`);
   }

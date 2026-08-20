@@ -91,7 +91,7 @@ export function buildNeighborhood({ providerId, repositoryId, sourceGenerationId
     ...[...edgeOmissions.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([reason, entry]) => omissionAggregate("edge", reason, entry.ids, entry.recovery)),
   ];
   return {
-    schema: "orthic.context-neighborhood.v1", provider_id: providerId, repository_id: repositoryId,
+    schema: "membrane.context-neighborhood.v1", provider_id: providerId, repository_id: repositoryId,
     source_generation_id: sourceGenerationId, seed_nodes: [...seeds].sort(sortById), nodes: selected.filter((node) => reachable.has(nodeId(node))),
     typed_edges: deliveredEdges, evidence_paths: [...evidencePaths].sort(),
     source_resolutions: [...sourceResolutions].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))), bounds: limit, omissions,
@@ -126,7 +126,7 @@ export function fixedFusion(candidates, { providerQuotas = {}, rrfK = 60, maxIte
 }
 
 export function providerReadiness({ providerId, modelId, configDigest, capabilities = {}, supported = true, reason = null, observedAt = new Date().toISOString() }) {
-  return { schema: "orthic.provider-readiness.v1", provider_id: providerId, status: supported ? "ready" : "degraded", observed_at: observedAt, details: { model_id: modelId, config_digest: configDigest, capabilities, ...(reason ? { reason } : {}) } };
+  return { schema: "membrane.provider-readiness.v1", provider_id: providerId, status: supported ? "ready" : "degraded", observed_at: observedAt, details: { model_id: modelId, config_digest: configDigest, capabilities, ...(reason ? { reason } : {}) } };
 }
 
 export function conformanceCheck(provider, fixture = {}) {
@@ -160,7 +160,7 @@ export function calibrationHarness({ training = [], heldout = [], candidatePolic
   const improvement = candidate.evidence_completeness > baseline.evidence_completeness || candidate.utility_per_token > baseline.utility_per_token;
   const noRegression = candidate.scope_regressions === 0 && candidate.freshness_regressions === 0;
   return {
-    schema: "orthic.retrieval-calibration.v1",
+    schema: "membrane.retrieval-calibration.v1",
     policy: "offline-heldout-only",
     training_cases: training.length,
     heldout_cases: heldout.length,

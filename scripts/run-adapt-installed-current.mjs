@@ -45,7 +45,7 @@ const execution = spawnSync(
   },
 );
 const result = {
-  schema: "orthic.adapt-installed-current.v1",
+  schema: "membrane.adapt-installed-current.v1",
   passed: execution.status === 0 && schedulerCurrent && shimCurrent,
   source: {
     runner: sourceRunner,

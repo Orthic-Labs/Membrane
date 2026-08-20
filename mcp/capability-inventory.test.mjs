@@ -4,7 +4,7 @@ import { buildCapabilityInventory } from "./capability-inventory.mjs";
 
 test("capability inventory is generated from live MCP, adapter, and contract surfaces", async () => {
   const inventory = await buildCapabilityInventory();
-  assert.equal(inventory.schema, "orthic.capability-inventory.v1");
+  assert.equal(inventory.schema, "membrane.capability-inventory.v1");
   assert.deepEqual(inventory.labels, ["shipped", "partial", "unwired", "design", "deprecated"]);
   assert.ok(inventory.mcp.tools.some((tool) => tool.name === "membrane_context"));
   assert.equal(inventory.adapters.codex_cli.level, "L2");

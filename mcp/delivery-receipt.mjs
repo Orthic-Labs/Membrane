@@ -4,8 +4,8 @@
 // `project_delivery_trace` — the fixture `delivery-receipt.test.mjs` asserts the call-site exists.
 import { createRequire } from 'node:module';
 
-const DELIVERY_RECEIPT_SCHEMA = 'orthic.delivery-receipt.v1';
-const DELIVERY_TRACE_SCHEMA = 'orthic.delivery-trace.v1';
+const DELIVERY_RECEIPT_SCHEMA = 'membrane.delivery-receipt.v1';
+const DELIVERY_TRACE_SCHEMA = 'membrane.delivery-trace.v1';
 const PHASES = ['task','providers','candidates','admission','render','hostDelivery','evidence','outcome','feedback'];
 const SCHEMA_VERSION = 1;
 

@@ -154,7 +154,7 @@ fn handle_membrane_context(request: &Value) -> Value {
             "turnEnvelope": turn_envelope,
             "clientEnvelope": client_envelope,
             "overlay": {
-                "schema": "orthic.overlay-identity.v1",
+                "schema": "membrane.overlay-identity.v1",
                 "sessionId": session_id,
                 "worktreePath": "/Volumes/D/claude/.worktrees/membrane-book1"
             },

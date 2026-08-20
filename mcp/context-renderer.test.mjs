@@ -101,7 +101,7 @@ test("a self-loading host with a matching host receipt never receives rule bytes
     sessionId: "s1",
     client: "claude_code",
     hostReceipts: [{
-      schema: "orthic.host-delivery-receipt.v1",
+      schema: "membrane.host-delivery-receipt.v1",
       receipt_id: "r1",
       client: "claude_code",
       sessionId: "s1",
@@ -143,7 +143,7 @@ test("MBR-010: mismatched host receipt produces delivery=unknown, never native",
     sessionId: "s1",
     client: "claude_code",
     hostReceipts: [{
-      schema: "orthic.host-delivery-receipt.v1",
+      schema: "membrane.host-delivery-receipt.v1",
       receipt_id: "r1",
       client: "claude_code",
       sessionId: "s1",
@@ -174,7 +174,7 @@ test("MBR-010: a malformed receipt is never proof of native delivery", () => {
 
 test("MBR-010: matchHostDeliveryReceipt distinguishes native/unknown/missing", () => {
   const hash = `sha256:${"e".repeat(64)}`;
-  const good = { schema: "orthic.host-delivery-receipt.v1", receipt_id: "r", client: "codex", sessionId: "s", sourceHash: hash, deliveredAt: "2026-08-07T00:00:00Z", mechanism: "native_load" };
+  const good = { schema: "membrane.host-delivery-receipt.v1", receipt_id: "r", client: "codex", sessionId: "s", sourceHash: hash, deliveredAt: "2026-08-07T00:00:00Z", mechanism: "native_load" };
   assert.equal(matchHostDeliveryReceipt([], { client: "codex", sessionId: "s", sourceHash: hash }), "missing");
   assert.equal(matchHostDeliveryReceipt([good], { client: "codex", sessionId: "s", sourceHash: hash }), "native");
   assert.equal(matchHostDeliveryReceipt([good], { client: "codex", sessionId: "s", sourceHash: `sha256:${"f".repeat(64)}` }), "unknown");

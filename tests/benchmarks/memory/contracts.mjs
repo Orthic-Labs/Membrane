@@ -35,5 +35,5 @@ export function makeResult({ benchmark, identity, metrics, raw, role = 'result',
   if (componentUnderTest !== COMPONENT) throw new Error(`componentUnderTest must be ${COMPONENT}`);
   if (!ROLES.includes(role)) throw new Error(`role must be ${ROLES.join(', ')}`);
   if (!raw || typeof raw !== 'object') throw new Error('raw benchmark payload is required');
-  return { schema: 'orthic.memory-benchmark.v1', benchmark, componentUnderTest, role, identity: assertIdentity(identity), metrics: assertMetrics(metrics), raw };
+  return { schema: 'membrane.memory-benchmark.v1', benchmark, componentUnderTest, role, identity: assertIdentity(identity), metrics: assertMetrics(metrics), raw };
 }

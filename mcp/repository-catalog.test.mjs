@@ -27,7 +27,7 @@ const EXPECTED_TOTAL = CHILDREN.length + 1; // workspace root + children
 test("catalog discovers the workspace root plus every child repository (fixture, sibling-independent)", async () => {
   const { root, cleanup } = await fixtureWorkspace(CHILDREN);
   const catalog = await buildRepositoryCatalog(root);
-  assert.equal(catalog.schema, "orthic.repository-catalog.v1");
+  assert.equal(catalog.schema, "membrane.repository-catalog.v1");
   assert.equal(catalog.repositories.length, EXPECTED_TOTAL);
   assert.equal(catalog.repositories.filter((entry) => entry.role === "workspace-root").length, 1);
   assert.equal(catalog.repositories.filter((entry) => entry.role === "child-repository").length, CHILDREN.length);

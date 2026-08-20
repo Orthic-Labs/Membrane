@@ -1,5 +1,5 @@
 {
-  "schema": "orthic.host-capability-matrix.v1",
+  "schema": "membrane.host-capability-matrix.v1",
   "hosts": {
     "claude_code": {
       "injection": ["SessionStart", "UserPromptSubmit"],

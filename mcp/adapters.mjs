@@ -17,12 +17,12 @@ export const STATUSES = Object.freeze({
 
 const STATUS_VALUES = new Set(Object.values(STATUSES));
 const SCHEMA_VERSION = 1;
-const SCHEMA = "orthic.adapter-heartbeat.v1";
+const SCHEMA = "membrane.adapter-heartbeat.v1";
 const DEFAULT_STALENESS_MS = 60_000;
 
 export function adapterManifest(name) {
   if (!LEVELS[name]) throw new Error("unsupported_adapter");
-  return { schema: "orthic.adapter-shim.v1", adapter_id: name, max_honest_level: LEVELS[name], injection: "membrane_context", tool_receipts: false, response_gate: false };
+  return { schema: "membrane.adapter-shim.v1", adapter_id: name, max_honest_level: LEVELS[name], injection: "membrane_context", tool_receipts: false, response_gate: false };
 }
 
 export function requestContext(name, request, { root = process.cwd(), client = CLIENT } = {}) {

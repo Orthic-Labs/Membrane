@@ -9,7 +9,7 @@
   "properties": {
     "schema": {
       "type": "string",
-      "const": "orthic.host-delivery-receipt.v1"
+      "const": "membrane.host-delivery-receipt.v1"
     },
     "receipt_id": {
       "type": "string",

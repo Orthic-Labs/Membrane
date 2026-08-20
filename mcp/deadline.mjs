@@ -70,7 +70,7 @@ export function terminalReason(signal) {
 // blamed for a deadline it only borrowed from the caller.
 export function timeoutReceipt(layer, deadlineMs) {
   return {
-    schema: "orthic.timeout-receipt.v1",
+    schema: "membrane.timeout-receipt.v1",
     layer,
     remainingMs: remainingMs(deadlineMs),
     exceeded: remainingMs(deadlineMs) <= 0,

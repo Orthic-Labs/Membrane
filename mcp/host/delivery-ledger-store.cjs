@@ -13,7 +13,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
 
-const LEDGER_SCHEMA = 'orthic.delivery-ledger-record.v1';
+const LEDGER_SCHEMA = 'membrane.delivery-ledger-record.v1';
 const DIR_NAME = 'context-delivery-ledger-v1';
 const MAX_DIAG = 200;
 
@@ -113,7 +113,7 @@ function persist(session, ledgerKey, startIndex, env = process.env) {
 // through listDeadLetters.
 // ---------------------------------------------------------------------------
 
-const OUTBOX_SCHEMA = 'orthic.mutation-outbox-record.v1';
+const OUTBOX_SCHEMA = 'membrane.mutation-outbox-record.v1';
 const OUTBOX_DIR_NAME = 'mutation-outbox-v1';
 const DEAD_LETTER_DIR_NAME = 'dead-letter';
 const DEFAULT_MAX_ATTEMPTS = 8;

@@ -71,7 +71,7 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
     }
   }
   return {
-    schema: "orthic.capability-inventory.v1",
+    schema: "membrane.capability-inventory.v1",
     vocabulary: { current: ["Membrane", "Cortex", "Forge", "Adapt", "Blueprint"] },
     labels: ["shipped", "partial", "unwired", "design", "deprecated"],
     gate_model: { gates: FIVE_GATES, required: REQUIRED_GATES },

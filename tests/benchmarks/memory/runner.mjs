@@ -10,7 +10,7 @@ import { verifyMemoryBenchmark } from '../../scripts/qualification/verify-memory
 // degrades explicitly instead of fabricating a result.
 
 function degrade(benchmark, reason, extra = {}) {
-  return { schema: 'orthic.memory-benchmark-run.v1', benchmark, componentUnderTest: COMPONENT, status: 'degraded', reason, ...extra };
+  return { schema: 'membrane.memory-benchmark-run.v1', benchmark, componentUnderTest: COMPONENT, status: 'degraded', reason, ...extra };
 }
 
 /**
@@ -31,12 +31,12 @@ export async function runMemoryBenchmark({ benchmark, datasetRoot, execute } = {
   try {
     verification = verifyMemoryBenchmark({ benchmark, ...raw });
   } catch (error) {
-    return { schema: 'orthic.memory-benchmark-run.v1', benchmark, componentUnderTest: COMPONENT, status: 'invalid', reason: error.message, datasetRoot };
+    return { schema: 'membrane.memory-benchmark-run.v1', benchmark, componentUnderTest: COMPONENT, status: 'invalid', reason: error.message, datasetRoot };
   }
   if (verification.status !== 'passed') {
-    return { schema: 'orthic.memory-benchmark-run.v1', benchmark, componentUnderTest: COMPONENT, status: 'invalid', reason: verification.reason, datasetRoot };
+    return { schema: 'membrane.memory-benchmark-run.v1', benchmark, componentUnderTest: COMPONENT, status: 'invalid', reason: verification.reason, datasetRoot };
   }
-  return { ...verification, schema: 'orthic.memory-benchmark-run.v1', status: 'ran', datasetRoot };
+  return { ...verification, schema: 'membrane.memory-benchmark-run.v1', status: 'ran', datasetRoot };
 }
 
 /**
@@ -49,5 +49,5 @@ export async function runAllMemoryBenchmarks({ datasetRoot, execute } = {}) {
   for (const benchmark of BENCHMARKS) {
     results.push(await runMemoryBenchmark({ benchmark, datasetRoot, execute }));
   }
-  return { schema: 'orthic.memory-benchmark-run-report.v1', results };
+  return { schema: 'membrane.memory-benchmark-run-report.v1', results };
 }

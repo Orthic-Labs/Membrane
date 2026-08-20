@@ -55,7 +55,7 @@ const CALLER_SCHEMA = {
   additionalProperties: false,
 };
 const TOOL_DEFINITIONS = [
-  { name: "membrane_context", description: "Use when you need a federated context packet for one exact caller binding. Do not use for raw memory CRUD, arbitrary filesystem reads, or bypassing repository-bound access.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." }, explicitRepositoryIds: { type: "array", items: { type: "string" }, description: "MBR-004 bounded routing: workspace scope only. Exact repository ids to select even without an alias mention." }, deadlineMs: { type: "integer", minimum: 1, description: "MBR-005: optional absolute budget for the workspace fan-out in ms; one ingress deadline bounds all children." }, taskEnvelope: { type: "object", description: "MBR-007: orthic.task-envelope.v1 identity preserved end to end." }, turnEnvelope: { type: "object", description: "MBR-007: orthic.turn-envelope.v1 identity preserved end to end." }, clientEnvelope: { type: "object", description: "MBR-007: orthic.client-envelope.v1 identity." }, overlay: { type: "object", description: "MBR-007: orthic.overlay-identity.v1 worktree/session overlay." } } } },
+  { name: "membrane_context", description: "Use when you need a federated context packet for one exact caller binding. Do not use for raw memory CRUD, arbitrary filesystem reads, or bypassing repository-bound access.", inputSchema: { type: "object", required: ["task", "repository", "caller"], properties: { task: { type: "string", minLength: 1, pattern: "\\S" }, repository: { type: "string" }, caller: CALLER_SCHEMA, budget: { type: "integer", minimum: 1 }, intent: { type: "string" }, session: { type: "string" }, taskId: { type: "string" }, anchors: { type: "string" }, scopeGrantId: { type: "string" }, scope: { type: "string", enum: ["repo", "workspace"], description: "\"repo\" (default): single-repo query. \"workspace\": fan out across catalog repos by alias, fuse results." }, explicitRepositoryIds: { type: "array", items: { type: "string" }, description: "MBR-004 bounded routing: workspace scope only. Exact repository ids to select even without an alias mention." }, deadlineMs: { type: "integer", minimum: 1, description: "MBR-005: optional absolute budget for the workspace fan-out in ms; one ingress deadline bounds all children." }, taskEnvelope: { type: "object", description: "MBR-007: membrane.task-envelope.v1 identity preserved end to end." }, turnEnvelope: { type: "object", description: "MBR-007: membrane.turn-envelope.v1 identity preserved end to end." }, clientEnvelope: { type: "object", description: "MBR-007: membrane.client-envelope.v1 identity." }, overlay: { type: "object", description: "MBR-007: membrane.overlay-identity.v1 worktree/session overlay." } } } },
   { name: "membrane_source_read", description: "Hash-bound DocReadV1 section fetch for one exact caller binding.", inputSchema: { type: "object", required: ["repository", "caller", "sourceRef", "anchorId", "expectedContentHash"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, sourceRef: { type: "string" }, anchorId: { type: "string" }, expectedContentHash: { type: "string" } } } },
   { name: "membrane_blueprint", description: "Bounded Blueprint architecture, symbol, reference, impact, or read-only snapshot view with generation freshness and source-hash resolver handles.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], additionalProperties: false, properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["architecture", "symbol", "reference", "references", "impact", "changes", "snapshot_get", "snapshot_list", "changes_since"] }, node: { type: "string", minLength: 1, maxLength: 256, pattern: "^[A-Za-z0-9_.$:/-]+$" }, name: { type: "string", minLength: 1, maxLength: 128, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" }, depth: { type: "integer", minimum: 1, maximum: 5 }, limit: { type: "integer", minimum: 1, maximum: 100 }, budget: { type: "integer", minimum: 1, maximum: 10000 }, deadlineMs: { type: "integer", minimum: 1, maximum: 5000 }, items: { type: "array", minItems: 1, maxItems: 50, items: { type: "object" } } }, oneOf: [{ properties: { operation: { enum: ["architecture", "changes", "snapshot_get", "snapshot_list", "changes_since"] } }, not: { required: ["node"] } }, { properties: { operation: { enum: ["symbol", "reference", "references", "impact"] } }, required: ["node"] }] } },
   { name: "membrane_knowledge_propose", description: "Submit a bounded typed KnowledgeEmission proposal for quarantine review.", inputSchema: { type: "object", required: ["repository", "caller", "emission"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, emission: { type: "object" } } } },
@@ -107,7 +107,7 @@ function receiptId(prefix, value) { return `${prefix}-${createHash("sha256").upd
 function digest(value) { return `sha256:${createHash("sha256").update(typeof value === "string" ? value : JSON.stringify(value)).digest("hex")}`; }
 function lifecycleReceipt(operation, status, durableId, eventId, readback) {
   return {
-    schema: "orthic.lifecycle-receipt.v1",
+    schema: "membrane.lifecycle-receipt.v1",
     operation,
     status,
     durable_id: durableId,
@@ -280,24 +280,24 @@ function requestEnvelopeFor(args) {
   const sessionId = turn.sessionId || args.session || null;
   return {
     taskEnvelope: {
-      schema: "orthic.task-envelope.v1",
+      schema: "membrane.task-envelope.v1",
       taskId: task.taskId || args.taskId || null,
       text: task.text || args.task || null,
       intent: task.intent || args.intent || null,
     },
     turnEnvelope: {
-      schema: "orthic.turn-envelope.v1",
+      schema: "membrane.turn-envelope.v1",
       turnId: turn.turnId || null,
       sessionId,
       sequence: Number.isInteger(turn.sequence) ? turn.sequence : null,
     },
     clientEnvelope: {
-      schema: "orthic.client-envelope.v1",
+      schema: "membrane.client-envelope.v1",
       clientId: clientEnv.clientId || args.client || "mcp",
       adapterVersion: clientEnv.adapterVersion || null,
     },
     overlay: {
-      schema: "orthic.overlay-identity.v1",
+      schema: "membrane.overlay-identity.v1",
       sessionId: overlay.sessionId || sessionId,
       worktreePath: overlay.worktreePath || args.repo || args.repository || null,
     },

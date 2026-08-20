@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "orthic.mbr804-whole-task.v1",
+  "$id": "membrane.mbr804-whole-task.v1",
   "title": "MBR-804 whole-task benchmark receipt",
   "type": "object",
   "required": ["schema", "status", "run", "task", "bakeoff", "hosts", "metrics", "failures", "publication"],
   "properties": {
-    "schema": {"const": "orthic.mbr804-whole-task.v1"},
+    "schema": {"const": "membrane.mbr804-whole-task.v1"},
     "status": {"enum": ["source-ready", "complete", "open"]},
     "run": {"type": "object", "required": ["run_id", "started_at", "ended_at", "measured"], "properties": {"run_id": {"type": "string", "minLength": 1}, "started_at": {"type": "string"}, "ended_at": {"type": "string"}, "measured": {"type": "boolean"}}},
     "task": {"type": "object", "required": ["task_id", "release", "corpus", "models", "hardware", "controls"], "properties": {"task_id": {"const": "MBR-804"}, "release": {"type": "object", "required": ["commit", "generation", "client", "service"], "properties": {"commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"}, "generation": {"type": "string", "minLength": 1}, "client": {"type": "string", "minLength": 1}, "service": {"type": "string", "minLength": 1}}}, "corpus": {"type": "object", "required": ["id", "version", "sha256", "cases"], "properties": {"id": {"type": "string"}, "version": {"type": "string"}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "cases": {"type": "integer", "minimum": 1}}}, "models": {"type": "array", "minItems": 1}, "hardware": {"type": "object", "required": ["macos", "windows"]}, "controls": {"type": "object", "required": ["unauthorized_context", "stale_context", "missed_authoritative", "cache_policy"]}}},

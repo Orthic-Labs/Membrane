@@ -233,7 +233,7 @@ export async function buildRepositoryCatalog(workspaceRoot, options = {}) {
       grants: [],
     };
   }));
-  const body = { schema: "orthic.repository-catalog.v1", workspace_id: workspaceId, repositories };
+  const body = { schema: "membrane.repository-catalog.v1", workspace_id: workspaceId, repositories };
   return { ...body, catalog_digest: digest(body) };
 }
 

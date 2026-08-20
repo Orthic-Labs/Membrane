@@ -83,7 +83,7 @@ test("terminalReason classifies an abort reason", () => {
 test("MBR-008: timeout receipts name the layer and the remaining budget", () => {
   const deadline = createDeadline(1000);
   const receipt = timeoutReceipt("client.http", deadline);
-  assert.equal(receipt.schema, "orthic.timeout-receipt.v1");
+  assert.equal(receipt.schema, "membrane.timeout-receipt.v1");
   assert.equal(receipt.layer, "client.http");
   assert.equal(typeof receipt.remainingMs, "number");
   assert.ok(receipt.remainingMs >= 0 && receipt.remainingMs <= 1000);

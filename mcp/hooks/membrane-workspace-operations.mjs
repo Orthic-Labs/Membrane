@@ -80,7 +80,7 @@ function postObservable(root, event, trace, { signal } = {}) {
   let policy = "membrane-tool-observer-v1";
   try { policy = readFileSync(policyPath); } catch {}
   const body = JSON.stringify({ events: [{
-    schema: "orthic.observable-event.v1",
+    schema: "membrane.observable-event.v1",
     installation_id: "tool-observer",
     client_id: process.env.CORTEX_CLIENT === "claude" ? "claude_code" : (process.env.CORTEX_CLIENT || "codex"),
     session_id: session,

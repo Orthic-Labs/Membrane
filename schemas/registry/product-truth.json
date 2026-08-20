@@ -13,7 +13,7 @@
     "mcp/server.mjs",
     "docs/membrane/capability-matrix.v1.json"
   ],
-  "schema": "orthic.product-truth.v1",
+  "schema": "membrane.product-truth.v1",
   "toolCount": 10,
   "tools": [
     "membrane_blueprint",

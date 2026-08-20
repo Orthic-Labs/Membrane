@@ -56,7 +56,7 @@ test("classifyStatus coerces a self-declared installed heartbeat with no receipt
 
 test("adapterSnapshot produces a deterministic installed envelope for an unknown client", () => {
   const snapshot = adapterSnapshot("cursor", { now: NOW, stalenessMs: STALENESS_MS });
-  assert.equal(snapshot.schema, "orthic.adapter-heartbeat.v1");
+  assert.equal(snapshot.schema, "membrane.adapter-heartbeat.v1");
   assert.equal(snapshot.schemaVersion, 1);
   assert.equal(snapshot.clientId, "cursor");
   assert.equal(snapshot.status, STATUSES.installed);
@@ -66,7 +66,7 @@ test("adapterSnapshot produces a deterministic installed envelope for an unknown
 
 test("assertNoConflation throws when installed and delivering coexist on one client", () => {
   const conflated = {
-    schema: "orthic.adapter-heartbeat.v1",
+    schema: "membrane.adapter-heartbeat.v1",
     schemaVersion: 1,
     clientId: "broken",
     adapterVersion: "0.1.0",

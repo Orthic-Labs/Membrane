@@ -9,7 +9,7 @@ const sha256 = (value) => `sha256:${createHash("sha256").update(value).digest("h
 const commit = (cwd) => { try { return execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim(); } catch { return "unknown"; } };
 
 export function benchmarkManifest({ workspaceRoot, eventDbPath, model = "unspecified", hardware = process.platform, warmCold = "unspecified", adapters = [] } = {}) {
-  return { schema: "orthic.e2e-benchmark-manifest.v1", execution_mode: "installed", workspace_commit: commit(workspaceRoot), event_db_sha256: existsSync(eventDbPath || "") ? sha256(readFileSync(eventDbPath)) : null, model, hardware, warm_cold: warmCold, adapters, scenarios: SCENARIOS, generated_at: new Date().toISOString() };
+  return { schema: "membrane.e2e-benchmark-manifest.v1", execution_mode: "installed", workspace_commit: commit(workspaceRoot), event_db_sha256: existsSync(eventDbPath || "") ? sha256(readFileSync(eventDbPath)) : null, model, hardware, warm_cold: warmCold, adapters, scenarios: SCENARIOS, generated_at: new Date().toISOString() };
 }
 
 function archivedReceipt(path, scenario, traceId, eventIds) {
@@ -18,7 +18,7 @@ function archivedReceipt(path, scenario, traceId, eventIds) {
     const bytes = readFileSync(path);
     const receipt = JSON.parse(bytes);
     const recorded = new Set(receipt.event_ids || []);
-    const valid = receipt.schema === "orthic.e2e-scenario-receipt.v1"
+    const valid = receipt.schema === "membrane.e2e-scenario-receipt.v1"
       && receipt.scenario === scenario
       && receipt.trace_id === traceId
       && receipt.status === "complete"
@@ -45,7 +45,7 @@ function traceProof(db, source, scenario) {
 export function runBenchmark({ workspaceRoot, eventDbPath, scenarioRunner, model, hardware, warmCold, adapters = [] } = {}) {
   const manifest = benchmarkManifest({ workspaceRoot, eventDbPath, model, hardware, warmCold, adapters });
   if (!eventDbPath || !existsSync(eventDbPath) || typeof scenarioRunner !== "function") {
-    return { schema: "orthic.e2e-benchmark-result.v1", manifest, records: [], status: "blocked_incomplete_path", exit_gate: { exact_manifest: false, failures_archived: false, model_tool_behavior_exercised: false, isolated_ann_claim: false } };
+    return { schema: "membrane.e2e-benchmark-result.v1", manifest, records: [], status: "blocked_incomplete_path", exit_gate: { exact_manifest: false, failures_archived: false, model_tool_behavior_exercised: false, isolated_ann_claim: false } };
   }
   const db = new DatabaseSync(eventDbPath, { readOnly: true });
   try {
@@ -55,7 +55,7 @@ export function runBenchmark({ workspaceRoot, eventDbPath, scenarioRunner, model
     const failuresArchived = records.every((record) => record.archive_valid === true);
     const modelToolBehaviorExercised = records.every((record) => record.status === "complete");
     const complete = uniqueTraces && exactManifest && failuresArchived && modelToolBehaviorExercised;
-    return { schema: "orthic.e2e-benchmark-result.v1", manifest, records, status: complete ? "complete" : "blocked_incomplete_path", exit_gate: { exact_manifest: exactManifest, failures_archived: failuresArchived, model_tool_behavior_exercised: modelToolBehaviorExercised, unique_traces: uniqueTraces, isolated_ann_claim: false } };
+    return { schema: "membrane.e2e-benchmark-result.v1", manifest, records, status: complete ? "complete" : "blocked_incomplete_path", exit_gate: { exact_manifest: exactManifest, failures_archived: failuresArchived, model_tool_behavior_exercised: modelToolBehaviorExercised, unique_traces: uniqueTraces, isolated_ann_claim: false } };
   } finally {
     db.close();
   }

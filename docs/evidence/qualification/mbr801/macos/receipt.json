@@ -1,5 +1,5 @@
 {
-  "schema": "orthic.mbr801-installed-receipt.v1",
+  "schema": "membrane.mbr801-installed-receipt.v1",
   "platform": "macos",
   "status": "incomplete",
   "commit": "39feb543f7fc614297b033c69098d9841e64d89b",

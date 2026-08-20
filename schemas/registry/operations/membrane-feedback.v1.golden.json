@@ -13,7 +13,7 @@
       "source": "advisory",
       "verified": false,
       "lifecycleReceipt": {
-        "schema": "orthic.lifecycle-receipt.v1",
+        "schema": "membrane.lifecycle-receipt.v1",
         "operation": "feedback",
         "status": "persisted",
         "durableId": "feedback-mbr-301-001",

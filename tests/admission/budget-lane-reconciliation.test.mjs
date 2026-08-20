@@ -196,7 +196,7 @@ test("a natively-loaded rule is recorded in the native lane at zero tokens", () 
     sessionId: "s1",
     client: "claude_code",
     hostReceipts: [{
-      schema: "orthic.host-delivery-receipt.v1",
+      schema: "membrane.host-delivery-receipt.v1",
       receipt_id: "r1",
       client: "claude_code",
       sessionId: "s1",

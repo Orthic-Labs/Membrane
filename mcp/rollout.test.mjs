@@ -23,7 +23,7 @@ function artifact(kind, status, { fingerprintCommit = REAL_MEMBRANE_COMMIT, omit
 }
 function benchmarkArtifact(workspaceCommit) {
   const path = join(mkdtempSync(join(tmpdir(), "membrane-rollout-")), "benchmark.json");
-  const bytes = Buffer.from(JSON.stringify({ schema: "orthic.e2e-benchmark-result.v1", status: "complete", manifest: { workspace_commit: workspaceCommit } }));
+  const bytes = Buffer.from(JSON.stringify({ schema: "membrane.e2e-benchmark-result.v1", status: "complete", manifest: { workspace_commit: workspaceCommit } }));
   writeFileSync(path, bytes);
   return { path, sha256: digest(bytes) };
 }

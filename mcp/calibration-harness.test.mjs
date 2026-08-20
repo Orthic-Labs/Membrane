@@ -6,7 +6,7 @@ const cases = [{ expected_ids: ["anchor"], candidates: [{ id: "anchor", provider
 
 test("R2 calibration is held-out, deterministic, and fallback-safe", () => {
   const result = calibrationHarness({ training: cases, heldout: cases, candidatePolicy: fixedFusion, baselinePolicy: fixedFusion });
-  assert.equal(result.schema, "orthic.retrieval-calibration.v1");
+  assert.equal(result.schema, "membrane.retrieval-calibration.v1");
   assert.equal(result.deployable, false);
   assert.equal(result.fallback, "membrane-fusion-fixed-v1");
   assert.equal(result.candidate.scope_regressions, 0);

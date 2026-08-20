@@ -82,7 +82,7 @@ const degradedEvents = existsSync(degradedIngress) ? observableEvents(parseLines
 const degradedEvent = degradedEvents.find((event) => event.client_id === "ccx" && event.event_type === "packet_delivered");
 
 const result = {
-  schema: "orthic.ccx-live.v1",
+  schema: "membrane.ccx-live.v1",
   generated_at: new Date().toISOString(),
   passed: Boolean(
     healthRun.status === 0 && health?.status === "ok"

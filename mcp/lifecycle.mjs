@@ -3,7 +3,7 @@
 export const DEFAULT_CANCELLATION_GRACE_MS = 250;
 export const MAX_LIFECYCLE_LOG_EVENTS = 8;
 export const LIFECYCLE_VERSION = 1;
-export const LIFECYCLE_SCHEMA = "orthic.lifecycle.v1";
+export const LIFECYCLE_SCHEMA = "membrane.lifecycle.v1";
 export const LIFECYCLE_STATES = Object.freeze(["hello", "starting", "ready", "degraded", "draining", "stopped", "incompatible", "failed"]);
 export const LIFECYCLE_COMMANDS = Object.freeze(["drain", "stop", "update_handoff", "ownership_loss"]);
 
@@ -25,7 +25,7 @@ function lifecycleIdentity(identity = {}) {
 }
 
 /**
- * Child-side orthic.lifecycle.v1 channel. The Hub owns lease issuance; this object only
+ * Child-side membrane.lifecycle.v1 channel. The Hub owns lease issuance; this object only
  * authenticates inherited transport, binds hello identity/fence, rejects stale requests,
  * and performs bounded drain/stop on parent or ownership loss.
  */
@@ -148,7 +148,7 @@ export function createLifecycle({ operation, requestId, signal, progressToken, l
   const safeRequestId = boundedLifecycleId(requestId);
   const safeProgressToken = boundedLifecycleId(progressToken, null);
   const event = (eventType, fields = {}) => ({
-    schema: "orthic.mcp.lifecycle-log.v1",
+    schema: "membrane.mcp.lifecycle-log.v1",
     event: eventType,
     operation: safeOperation,
     requestId: safeRequestId,

@@ -13,7 +13,7 @@ export function verifyWholeTaskBenchmark(input) {
   let value;
   let base;
   try { ({ value, base } = load(input)); } catch { return fail('receipt is not valid JSON'); }
-  if (!value || value.schema !== 'orthic.mbr804-whole-task.v1') return fail('schema identity missing');
+  if (!value || value.schema !== 'membrane.mbr804-whole-task.v1') return fail('schema identity missing');
   if (value.status !== 'complete') return fail('real current results are required; source-ready is not PASS');
   if (!value.run?.measured || !required(value.run, ['run_id', 'started_at', 'ended_at'])) return fail('run is not measured and timestamped');
   const task = value.task;

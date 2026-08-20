@@ -38,7 +38,7 @@ test('reconciled digests are available with 9 phases', () => {
 });
 
 test('delivery receipt schema and validation are stable', () => {
-  assert.equal(DELIVERY_RECEIPT_SCHEMA, 'orthic.delivery-receipt.v1');
+  assert.equal(DELIVERY_RECEIPT_SCHEMA, 'membrane.delivery-receipt.v1');
   const r = buildDeliveryReceipt({ traceId: 't-1', digest: `sha256:${'a'.repeat(64)}` });
   assert.equal(validateDeliveryReceipt(r).traceId, 't-1');
   assert.equal(validateDeliveryReceipt({ schema: 'wrong' }), null);

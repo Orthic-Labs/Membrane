@@ -59,8 +59,8 @@ try {
     return { code, stdout, stderr, parsed: JSON.parse(stdout) };
   }
 
-  const taskEnvelope = { schema: "orthic.task-envelope.v1", task_id: "task-1" };
-  const turnEnvelope = { schema: "orthic.turn-envelope.v1", task_id: "task-1", turn_id: "turn-1" };
+  const taskEnvelope = { schema: "membrane.task-envelope.v1", task_id: "task-1" };
+  const turnEnvelope = { schema: "membrane.turn-envelope.v1", task_id: "task-1", turn_id: "turn-1" };
   const absent = await runClient({
     task: "large response", repo: process.cwd(), session: "session-fallback",
     taskEnvelope, turnEnvelope,
@@ -192,8 +192,8 @@ try {
   assert.equal(requests[12].headers["x-membrane-trace"], generated.parsed.traceId);
 
   // CU-10 / MBR-007 envelope continuity: clientEnvelope + overlay survive the client round-trip
-  const clientEnv = { schema: "orthic.client-envelope.v1", clientId: "test-client", adapterVersion: "9.9.9" };
-  const overlayId = { schema: "orthic.overlay-identity.v1", sessionId: "session-fallback", worktreePath: process.cwd() };
+  const clientEnv = { schema: "membrane.client-envelope.v1", clientId: "test-client", adapterVersion: "9.9.9" };
+  const overlayId = { schema: "membrane.overlay-identity.v1", sessionId: "session-fallback", worktreePath: process.cwd() };
   const envelopeFull = await runClient({
     task: "envelope continuity", repo: process.cwd(), session: "session-fallback",
     taskEnvelope, turnEnvelope, clientEnvelope: clientEnv, overlay: overlayId,

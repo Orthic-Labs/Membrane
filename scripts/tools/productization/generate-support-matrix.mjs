@@ -111,7 +111,7 @@ export function buildMatrix({ commit, releaseGeneration, clients, receiptPaths }
   });
 
   return {
-    schema: "orthic.membrane.support-tier-matrix.v1",
+    schema: "membrane.support-tier-matrix.v1",
     generatedFrom: {
       commit: expected.commit,
       releaseGeneration: expected.releaseGeneration,

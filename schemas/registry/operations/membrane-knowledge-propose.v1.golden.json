@@ -11,7 +11,7 @@
       "durableId": "proposal-mbr-301-001",
       "reviewState": "pending",
       "lifecycleReceipt": {
-        "schema": "orthic.lifecycle-receipt.v1",
+        "schema": "membrane.lifecycle-receipt.v1",
         "operation": "knowledge_propose",
         "status": "needs_review",
         "durableId": "proposal-mbr-301-001",

@@ -1,5 +1,5 @@
 {
-  "schema": "orthic.mbr804-whole-task-corpus.v1",
+  "schema": "membrane.mbr804-whole-task-corpus.v1",
   "id": "mbr804-whole-task-corpus",
   "version": "1",
   "fixture": true,

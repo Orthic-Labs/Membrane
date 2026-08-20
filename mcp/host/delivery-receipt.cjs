@@ -5,7 +5,7 @@
 
 const crypto = require('node:crypto');
 
-const DELIVERY_RECEIPT_SCHEMA = 'orthic.delivery-receipt.v1';
+const DELIVERY_RECEIPT_SCHEMA = 'membrane.delivery-receipt.v1';
 const DIGEST_RE = /^sha256:[a-f0-9]{64}$/;
 
 function sha256Hex(value) {

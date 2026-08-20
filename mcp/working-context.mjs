@@ -32,14 +32,14 @@ export function workingContext({ contextId, sessionId, taskId, items = [], expir
   const expiry = instant(expiresAt, "working_context_expiry");
   if (items.length > Math.min(maxItems, MAX_ITEMS) || maxItems < 1 || maxItems > MAX_ITEMS || maxTokens < 1 || maxTokens > MAX_TOKENS || tokenEstimate(items) > maxTokens) throw new Error("working_context_bounds_invalid");
   if (authority === "A1" && sourceRefs.length === 0) throw new Error("working_context_provenance_required");
-  const body = { schema: "orthic.working-context.v1", session_id: sessionId, task_id: taskId, items: [...items], expires_at: expiry, max_items: maxItems, max_tokens: maxTokens, authority, source_refs: [...sourceRefs], priority: "high", injectable: true, durable: durable === true };
+  const body = { schema: "membrane.working-context.v1", session_id: sessionId, task_id: taskId, items: [...items], expires_at: expiry, max_items: maxItems, max_tokens: maxTokens, authority, source_refs: [...sourceRefs], priority: "high", injectable: true, durable: durable === true };
   return { context_id: contextId || `working-context-${digest(body).slice(7, 31)}`, ...body };
 }
 
 export function scratchpad({ sessionId, taskId, items = [], expiresAt }) {
   if (!sessionId || !taskId || !Array.isArray(items) || items.length > MAX_ITEMS) throw new Error("scratchpad_bounds_invalid");
   if (items.some((item) => item && typeof item === "object" && ["chain_of_thought", "private_reasoning", "reasoning"].some((key) => key in item))) throw new Error("scratchpad_private_reasoning_forbidden");
-  return { schema: "orthic.scratchpad.v1", session_id: sessionId, task_id: taskId, items: [...items], expires_at: instant(expiresAt, "scratchpad_expiry"), searchable: false, consolidatable: false, authority: "none", durable: false };
+  return { schema: "membrane.scratchpad.v1", session_id: sessionId, task_id: taskId, items: [...items], expires_at: instant(expiresAt, "scratchpad_expiry"), searchable: false, consolidatable: false, authority: "none", durable: false };
 }
 
 export function temporalFact({ factId, subject, predicate, object, observedAt, scopeId, authority = "A0", veracity = "unknown", sourceRefs = [], validFrom, validUntil, supersedes }) {
@@ -49,7 +49,7 @@ export function temporalFact({ factId, subject, predicate, object, observedAt, s
   const end = validUntil ? instant(validUntil, "temporal_fact_valid_until") : undefined;
   if (end && end <= start) throw new Error("temporal_fact_interval_invalid");
   if (authority !== "A0" && sourceRefs.length === 0) throw new Error("temporal_fact_provenance_required");
-  return { schema: "orthic.temporal-fact.v1", fact_id: factId, subject, predicate, object, observed_at: observed, scope_id: scopeId, authority, veracity, source_refs: [...sourceRefs], valid_from: start, ...(end ? { valid_until: end } : {}), ...(supersedes ? { supersedes } : {}) };
+  return { schema: "membrane.temporal-fact.v1", fact_id: factId, subject, predicate, object, observed_at: observed, scope_id: scopeId, authority, veracity, source_refs: [...sourceRefs], valid_from: start, ...(end ? { valid_until: end } : {}), ...(supersedes ? { supersedes } : {}) };
 }
 
 export function applyTemporalFact(facts, next, { singleValuedPredicates = [] } = {}) {

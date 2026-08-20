@@ -140,7 +140,7 @@ fn handle_membrane_knowledge_propose(request: &Value) -> Value {
             "taskEnvelope": task_envelope,
             "turnEnvelope": turn_envelope,
             "binding": {
-                "schema": "orthic.binding.v1",
+                "schema": "membrane.binding.v1",
                 "kind": "source_ref",
                 "value": source_ref
             }

@@ -35,7 +35,7 @@ function cleanup(dir) {
 }
 function fresh(root, session, blocks) {
   const source = "const a=require(process.argv[1]),p=JSON.parse(process.argv[2]);process.stdout.write(a.render({state:'context_enforced',request:{session:process.argv[3]},payload:{packet:p,providerStatus:'ready',receipts:[]}}))";
-  const packet = { schema: 'orthic.context-packet.v1', budget: { packetCharBudgetDefault: 30000, configuredPacketCharBudget: 30000 }, blocks };
+  const packet = { schema: 'membrane.context-packet.v1', budget: { packetCharBudgetDefault: 30000, configuredPacketCharBudget: 30000 }, blocks };
   const result = spawnSync(process.execPath, ['-e', source, adapterPath, JSON.stringify(packet), session], { encoding: 'utf8', env: { ...process.env, MEMBRANE_DATA_ROOT: root } });
   assert.equal(result.status, 0, result.stderr);
   return result.stdout;

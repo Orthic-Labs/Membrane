@@ -76,7 +76,7 @@ test('ccx context stays bound to this installed workspace when profile cwd drift
 // finalized and accounted, and bounded by the packet budget.
 test('selected content is rendered into the prompt and accounted as finalized', () => {
   const packet = {
-    schema: 'orthic.context-packet.v1',
+    schema: 'membrane.context-packet.v1',
     budget: { packetCharBudgetDefault: 30000, configuredPacketCharBudget: 30000 },
     blocks: [
       { id: 'rules:AGENTS.md', provider: 'rules', priority: 40, estimatedTokens: 10, resolver: 'read AGENTS.md', text: 'ALPHA-CONTENT-MARKER' },
@@ -117,7 +117,7 @@ test('prepared delivery supplies one finalized count to rendering', () => {
 
 test('zero-delivery response retains bounded data-only receipt metadata', () => {
   const packet = {
-    schema: 'orthic.context-packet.v1',
+    schema: 'membrane.context-packet.v1',
     budget: { packetCharBudgetDefault: 30000, configuredPacketCharBudget: 30000 },
     blocks: [{ id: 'empty', provider: 'rules', priority: 1, resolver: 'read empty', text: '' }],
   };

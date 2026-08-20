@@ -39,7 +39,7 @@ const SELF_LOADING_RULE_CLIENTS = Object.freeze(["claude_code", "codex"]);
 const DELIVERY_MODES = Object.freeze(["native", "inline", "reference"]);
 
 /** MBR-010: schema id every host-issued native-delivery receipt must carry. */
-const HOST_DELIVERY_RECEIPT_SCHEMA = "orthic.host-delivery-receipt.v1";
+const HOST_DELIVERY_RECEIPT_SCHEMA = "membrane.host-delivery-receipt.v1";
 
 /**
  * MBR-010: the verdict for a native-delivery claim. A block may only be
@@ -435,7 +435,7 @@ function evaluateDeliveryOutcome(packet) {
  */
 class ContextSessionV1 {
   constructor({ sessionId, client, hostReceipts } = {}) {
-    this.schema = "orthic.context-session.v1";
+    this.schema = "membrane.context-session.v1";
     this.sessionId = String(sessionId || "");
     this.client = typedClient(client);
     this.capabilities = {

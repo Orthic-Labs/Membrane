@@ -41,7 +41,7 @@ export function writeHostReceipt({ evidenceRoot, platform, releaseGeneration, me
   if (platform !== 'macos' && platform !== 'windows') throw new Error('platform must be macos or windows');
   if (typeof releaseGeneration !== 'string' || !releaseGeneration) throw new Error('releaseGeneration is required');
   const receipt = {
-    schema: 'orthic.mbr804-host-receipt.v1',
+    schema: 'membrane.mbr804-host-receipt.v1',
     platform,
     release: releaseGeneration,
     hardware: `${platform}-${process.arch}-${hostname() || 'unknown-host'}`,
@@ -65,7 +65,7 @@ function loadHostReceipt(path) {
 }
 
 function degrade(reason, extra = {}) {
-  return { schema: 'orthic.whole-task-benchmark-run.v1', status: 'degraded', reason, ...extra };
+  return { schema: 'membrane.whole-task-benchmark-run.v1', status: 'degraded', reason, ...extra };
 }
 
 function loadCorpus(corpusPath) {
@@ -140,13 +140,13 @@ export async function runWholeTaskBenchmark(options = {}) {
   try {
     split = splitCorpus({ caseIds, salt, holdoutFraction });
   } catch (error) {
-    return { schema: 'orthic.whole-task-benchmark-run.v1', status: 'invalid', reason: `holdout split failed: ${error.message}` };
+    return { schema: 'membrane.whole-task-benchmark-run.v1', status: 'invalid', reason: `holdout split failed: ${error.message}` };
   }
   if (split.saltCommitment !== holdoutCommitment) {
-    return { schema: 'orthic.whole-task-benchmark-run.v1', status: 'invalid', reason: 'holdout salt does not match the pre-committed commitment; a split cannot be trusted if the salt used to compute it does not match what was published before the run' };
+    return { schema: 'membrane.whole-task-benchmark-run.v1', status: 'invalid', reason: 'holdout salt does not match the pre-committed commitment; a split cannot be trusted if the salt used to compute it does not match what was published before the run' };
   }
   const splitCheck = verifySplit({ caseIds, salt, holdoutCommitment, claimed: split });
-  if (splitCheck.status !== 'verified') return { schema: 'orthic.whole-task-benchmark-run.v1', status: 'invalid', reason: `holdout split failed self-verification: ${splitCheck.reason}` };
+  if (splitCheck.status !== 'verified') return { schema: 'membrane.whole-task-benchmark-run.v1', status: 'invalid', reason: `holdout split failed self-verification: ${splitCheck.reason}` };
 
   const bakeoff = verifyBakeoffReference({ workspaceRoot });
   if (bakeoff.status !== 'verified') return degrade('bakeoff-reference-unavailable', { bakeoff });
@@ -187,7 +187,7 @@ export async function runWholeTaskBenchmark(options = {}) {
   const isFixtureCorpus = corpus.fixture === true;
 
   const receipt = {
-    schema: 'orthic.mbr804-whole-task.v1',
+    schema: 'membrane.mbr804-whole-task.v1',
     status: isFixtureCorpus ? 'source-ready' : 'complete',
     run: { run_id: `${corpus.id}:${startedAt}`, started_at: startedAt, ended_at: endedAt, measured: true },
     task: {
@@ -221,14 +221,14 @@ export async function runWholeTaskBenchmark(options = {}) {
   };
 
   if (isFixtureCorpus) {
-    return { schema: 'orthic.whole-task-benchmark-run.v1', status: 'source-ready', reason: 'fixture corpus: protocol self-test only, cannot be reported as a measured product benchmark', receipt, perCase };
+    return { schema: 'membrane.whole-task-benchmark-run.v1', status: 'source-ready', reason: 'fixture corpus: protocol self-test only, cannot be reported as a measured product benchmark', receipt, perCase };
   }
 
   const verification = verifyWholeTaskBenchmark(receipt);
   if (verification.status !== 'passed') {
-    return { schema: 'orthic.whole-task-benchmark-run.v1', status: 'invalid', reason: verification.reason, receipt, perCase };
+    return { schema: 'membrane.whole-task-benchmark-run.v1', status: 'invalid', reason: verification.reason, receipt, perCase };
   }
-  return { schema: 'orthic.whole-task-benchmark-run.v1', status: 'ran', receipt, perCase, verification };
+  return { schema: 'membrane.whole-task-benchmark-run.v1', status: 'ran', receipt, perCase, verification };
 }
 
 function sha256OfCorpus(corpusPath) {

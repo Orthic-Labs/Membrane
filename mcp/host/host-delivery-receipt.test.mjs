@@ -6,7 +6,7 @@ const require = createRequire(import.meta.url);
 const { buildHostDeliveryReceipt, validateHostDeliveryReceipt, DELIVERY_RECEIPT_SCHEMA } = require('./delivery-receipt.cjs');
 
 test('host delivery receipt schema is stable', () => {
-  assert.equal(DELIVERY_RECEIPT_SCHEMA, 'orthic.delivery-receipt.v1');
+  assert.equal(DELIVERY_RECEIPT_SCHEMA, 'membrane.delivery-receipt.v1');
 });
 
 test('build and validate round-trip', () => {

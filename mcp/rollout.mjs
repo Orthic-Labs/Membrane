@@ -13,7 +13,7 @@ const REQUIRED = {
   advisory: [{ kind: "source", status: "source_passed" }],
   context_enforced: [{ kind: "mac", status: "mac_host_passed" }, { kind: "windows", status: "windows_host_passed" }],
   tool_enforced: [{ kind: "final", status: "final_passed" }],
-  learning: [{ kind: "benchmark", status: "complete", schema: "orthic.e2e-benchmark-result.v1" }],
+  learning: [{ kind: "benchmark", status: "complete", schema: "membrane.e2e-benchmark-result.v1" }],
 };
 const sha256 = (bytes) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 
@@ -26,7 +26,7 @@ export function commit(cwd) {
 
 /** Which commit a given receipt schema claims to have qualified against. */
 function receiptCommit(receipt) {
-  if (receipt.schema === "orthic.e2e-benchmark-result.v1") return receipt.manifest?.workspace_commit || null;
+  if (receipt.schema === "membrane.e2e-benchmark-result.v1") return receipt.manifest?.workspace_commit || null;
   return receipt.fingerprint?.membrane || null;
 }
 
@@ -44,7 +44,7 @@ function artifactProof(spec, artifact, live) {
   // checked out right now. A receipt from three commits ago can no longer certify a promotion.
   const recorded = receiptCommit(receipt);
   if (!recorded || recorded === "unknown") throw new Error(`rollout artifact missing commit binding: ${spec.kind}`);
-  const expectedCommit = receipt.schema === "orthic.e2e-benchmark-result.v1" ? live.workspaceCommit : live.membraneCommit;
+  const expectedCommit = receipt.schema === "membrane.e2e-benchmark-result.v1" ? live.workspaceCommit : live.membraneCommit;
   if (expectedCommit && recorded !== expectedCommit) throw new Error(`rollout artifact stale: ${spec.kind} (qualified ${recorded}, HEAD is ${expectedCommit})`);
   return { kind: spec.kind, path: artifact.path, sha256: actual, status: receipt.status, commit: recorded };
 }
@@ -55,7 +55,7 @@ export function advanceRollout(current, next, { artifacts = {}, membraneRoot = D
   if (from < 0 || to !== from + 1) throw new Error("rollout stage transition is not ordered");
   const live = { membraneCommit: commit(membraneRoot), workspaceCommit: commit(workspaceRoot) };
   const evidence = REQUIRED[next].map((spec) => artifactProof(spec, artifacts[spec.kind], live));
-  return { schema: "orthic.rollout-receipt.v2", from: current, to: next, evidence, status: "promoted" };
+  return { schema: "membrane.rollout-receipt.v2", from: current, to: next, evidence, status: "promoted" };
 }
 
 export { STAGES };

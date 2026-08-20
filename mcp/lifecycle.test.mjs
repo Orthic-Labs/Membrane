@@ -64,7 +64,7 @@ test("MBR-305: long context work emits ordered progress and structured logs", as
   await lifecycle.checkpoint("provider_dispatch", 40);
   await lifecycle.complete();
   assert.deepEqual(updates.map((update) => update.progress), [0, 40, 100]);
-  assert.ok(logs.every((event) => event.schema === "orthic.mcp.lifecycle-log.v1"));
+  assert.ok(logs.every((event) => event.schema === "membrane.mcp.lifecycle-log.v1"));
   assert.deepEqual(logs.map((event) => event.event), ["started", "progress", "progress", "progress", "completed"]);
 });
 

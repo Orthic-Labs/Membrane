@@ -8,7 +8,7 @@ import {
 
 test("MBR-013: product truth is derived from live source (10 tools, 7 adapters)", async () => {
   const truth = await computeProductTruth();
-  assert.equal(truth.schema, "orthic.product-truth.v1");
+  assert.equal(truth.schema, "membrane.product-truth.v1");
   assert.equal(truth.toolCount, 10);
   assert.equal(truth.tools.length, 10);
   assert.ok(truth.tools.includes("membrane_working_context"));

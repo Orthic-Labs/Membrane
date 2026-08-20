@@ -164,7 +164,7 @@ async function runScenario(db, scenario, shellCommand) {
   const outcomeLinked = scalar(db, "SELECT COUNT(*) AS value FROM context_event_link WHERE event_id=? AND relation='outcome_for' AND target_event_id=?", outcome.event_id, delivery.event_id);
   if (feedbackLinked !== 1 || outcomeLinked !== 1) fail(`${scenario}: outcome/feedback links failed readback`);
   const archivePath = join(evidenceRoot, `${platform}-scenario-archives`, `${scenario}.json`);
-  atomicJson(archivePath, { schema: "orthic.e2e-scenario-receipt.v1", scenario, trace_id: traceId, status: "complete", event_ids: eventRows.map((row) => row.event_id) });
+  atomicJson(archivePath, { schema: "membrane.e2e-scenario-receipt.v1", scenario, trace_id: traceId, status: "complete", event_ids: eventRows.map((row) => row.event_id) });
   return { scenario, trace_id: traceId, adapter: "claude_code", archive_path: archivePath, host_session_id: parsed.session_id || null, output_sha256: `sha256:${sha(output)}` };
 }
 

@@ -21,7 +21,7 @@ function fixture() {
     const eventIds = phases.map((phase, phaseIndex) => `${traceId}-${phaseIndex}`);
     phases.forEach((phase, phaseIndex) => insert.run(eventIds[phaseIndex], traceId, "codex", phase, "success", phase === "turn.observed" ? "tool" : null));
     const archivePath = join(dir, `${scenario}.json`);
-    writeFileSync(archivePath, JSON.stringify({ schema: "orthic.e2e-scenario-receipt.v1", scenario, trace_id: traceId, status: "complete", event_ids: eventIds }));
+    writeFileSync(archivePath, JSON.stringify({ schema: "membrane.e2e-scenario-receipt.v1", scenario, trace_id: traceId, status: "complete", event_ids: eventIds }));
     sources.set(scenario, { trace_id: traceId, adapter: "codex", archive_path: archivePath });
   }
   db.close();

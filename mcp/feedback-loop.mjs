@@ -7,7 +7,7 @@ export function feedbackEvent({ eventId, receiptId, outcome, recordedAt = new Da
   const transition = outcome === "contradicted" ? "invalidated" : outcome;
   if (!["used", "ignored", "invalidated"].includes(transition)) throw new Error("feedback outcome is invalid");
   return {
-    schema: "orthic.feedback-event.v1",
+    schema: "membrane.feedback-event.v1",
     event_id: `feedback-event-${createHash("sha256").update(`${eventId}:${receiptId}:${transition}`).digest("hex").slice(0, 24)}`,
     trace_id: eventId,
     candidate_id: receiptId,

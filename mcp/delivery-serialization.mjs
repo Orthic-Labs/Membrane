@@ -15,7 +15,7 @@ const require = createRequire(import.meta.url);
 const lib = require("./context-renderer-lib.cjs");
 
 /** Schema id for the canonical delivery-metrics contract. */
-export const DELIVERY_METRICS_SCHEMA = "orthic.delivery-metrics.v1";
+export const DELIVERY_METRICS_SCHEMA = "membrane.delivery-metrics.v1";
 
 /** The canonical conventions, pinned in schemas/delivery-metrics.v1.schema.json. */
 export const DELIVERY_METRICS_CONVENTIONS = Object.freeze({

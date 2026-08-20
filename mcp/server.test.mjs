@@ -179,7 +179,7 @@ try {
   assert.deepEqual(progress, [0, 10, 40, 100]);
   const logs = live.rows.filter((row) => row.method === "notifications/message");
   assert.ok(logs.length >= 2, "SDK logging/setLevel delivers lifecycle logs");
-  assert.ok(logs.every((row) => row.params.level === "info" && row.params.data.schema === "orthic.mcp.lifecycle-log.v1"));
+  assert.ok(logs.every((row) => row.params.level === "info" && row.params.data.schema === "membrane.mcp.lifecycle-log.v1"));
 
   await mkdir(join(enrolledRoot, "tools", ".cache", "memory"), { recursive: true });
   const contextBase = { sessionId: "mbr305-session", taskId: "mbr305-task", items: [], expiresAt: "2026-08-03T00:00:00Z", durable: true };
@@ -734,9 +734,9 @@ assert.ok(!Array.isArray(mbr4Data.repos) || mbr4Data.repos.length === 0, "no rep
 // MBR-007 (R06): exact task/turn/client/overlay envelopes are preserved end to
 // end -- a fixture sends taskEnvelope and turnEnvelope together and the delivery
 // carries the exact identities (never synthesized or dropped).
-const mbr7TaskEnvelope = { schema: "orthic.task-envelope.v1", taskId: "task_alpha", text: "do the thing", intent: "implementation" };
-const mbr7TurnEnvelope = { schema: "orthic.turn-envelope.v1", turnId: "turn_1", sessionId: "sess_a", sequence: 1 };
-const mbr7ClientEnvelope = { schema: "orthic.client-envelope.v1", clientId: "fixture_client", adapterVersion: "1.0.0" };
+const mbr7TaskEnvelope = { schema: "membrane.task-envelope.v1", taskId: "task_alpha", text: "do the thing", intent: "implementation" };
+const mbr7TurnEnvelope = { schema: "membrane.turn-envelope.v1", turnId: "turn_1", sessionId: "sess_a", sequence: 1 };
+const mbr7ClientEnvelope = { schema: "membrane.client-envelope.v1", clientId: "fixture_client", adapterVersion: "1.0.0" };
 const mbr7Call = await rpc([{
   jsonrpc: "2.0", id: 95, method: "tools/call",
   params: {
@@ -750,7 +750,7 @@ const mbr7Call = await rpc([{
 }], mbr3Env);
 assert.equal(mbr7Call[0].result.isError, false, toolError(mbr7Call[0]));
 const mbr7Data = mbr7Call[0].result.structuredContent.data;
-assert.equal(mbr7Data.taskEnvelope.schema, "orthic.task-envelope.v1");
+assert.equal(mbr7Data.taskEnvelope.schema, "membrane.task-envelope.v1");
 assert.equal(mbr7Data.taskEnvelope.taskId, "task_alpha");
 assert.equal(mbr7Data.turnEnvelope.turnId, "turn_1");
 assert.equal(mbr7Data.turnEnvelope.sessionId, "sess_a");

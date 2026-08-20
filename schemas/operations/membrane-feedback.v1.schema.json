@@ -68,7 +68,7 @@
       "additionalProperties": false,
       "required": ["schema", "operation", "status", "durableId", "eventId", "recordedAt"],
       "properties": {
-        "schema": { "type": "string", "const": "orthic.lifecycle-receipt.v1" },
+        "schema": { "type": "string", "const": "membrane.lifecycle-receipt.v1" },
         "operation": { "type": "string" },
         "status": { "type": "string" },
         "durableId": { "type": "string" },

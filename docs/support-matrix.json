@@ -1,7 +1,7 @@
 {
-  "schema": "orthic.membrane.support-tier-matrix.v1",
+  "schema": "membrane.support-tier-matrix.v1",
   "generatedFrom": {
-    "commit": "881afe1cd7825d8bb0e9c3b7fd35ad58ed69e970",
+    "commit": "12a1e80e5438e454ace57a0c808f22457ebba80e",
     "releaseGeneration": null,
     "source": "scripts/qualification/run.mjs + scripts/qualification/verify-mbr801-evidence.mjs",
     "receiptDirectory": "docs/evidence/qualification/mbr801"

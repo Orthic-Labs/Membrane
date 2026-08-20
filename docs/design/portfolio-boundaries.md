@@ -214,7 +214,7 @@ file, so it does not fail `check-docs.mjs`.
 
 ```json
 {
-  "schema": "orthic.portfolio-boundaries.v1",
+  "schema": "membrane.portfolio-boundaries.v1",
   "layers": [
     { "id": "PRODUCT",    "source": "docs/product.md" },
     { "id": "PROTOCOL",   "source": "docs/protocol.md + mcp/server.mjs" },

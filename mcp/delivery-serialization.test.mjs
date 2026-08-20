@@ -48,7 +48,7 @@ test("MBR-012: empty content has zero metrics and the well-known empty sha256", 
 });
 
 test("MBR-012: schema and conventions are stable and non-string input is empty", () => {
-  assert.equal(DELIVERY_METRICS_SCHEMA, "orthic.delivery-metrics.v1");
+  assert.equal(DELIVERY_METRICS_SCHEMA, "membrane.delivery-metrics.v1");
   assert.equal(DELIVERY_METRICS_CONVENTIONS.encoding, "utf8");
   assert.equal(DELIVERY_METRICS_CONVENTIONS.tokens, "ceil(bytes/4)");
   assert.equal(canonicalDeliveryMetrics(undefined).bytes, 0);

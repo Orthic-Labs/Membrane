@@ -8,7 +8,7 @@ export async function buildAdapterManifest() {
   const matrix = JSON.parse(await readFile(new URL("../docs/membrane/capability-matrix.v1.json", import.meta.url), "utf8"));
   const freeze = JSON.parse(await readFile(new URL("../docs/membrane/federation-freeze-v1.json", import.meta.url), "utf8"));
   return {
-    schema: "orthic.adapter-manifest.v1",
+    schema: "membrane.adapter-manifest.v1",
     generated_from: ["mcp/server.mjs", "docs/membrane/capability-matrix.v1.json", "docs/membrane/federation-freeze-v1.json"],
     mcp: { tools: TOOLS.map((tool) => ({ name: tool.name, input_schema: tool.inputSchema })), output_schema: TOOL_OUTPUT_SCHEMA },
     adapters: matrix.hosts,
