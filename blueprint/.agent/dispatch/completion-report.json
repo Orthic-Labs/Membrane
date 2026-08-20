@@ -11,7 +11,7 @@
     "sdk/providers.mjs",
     "lib/redaction.mjs",
     "lib/operations/support-bundle.mjs",
-    "scripts/cortex.mjs",
+    "scripts/blueprint.mjs",
     "scripts/fault-inject.mjs",
     "scripts/run-soak.mjs",
     ".github/workflows/qualification.yml",
@@ -65,11 +65,11 @@
       "exitCode": 0
     },
     {
-      "command": "node scripts/release/build-candidate.mjs --platform current --out /tmp/cortex-rc --allow-dirty",
+      "command": "node scripts/release/build-candidate.mjs --platform current --out /tmp/blueprint-rc --allow-dirty",
       "exitCode": 0
     },
     {
-      "command": "node scripts/release/check-release.mjs /tmp/cortex-rc",
+      "command": "node scripts/release/check-release.mjs /tmp/blueprint-rc",
       "exitCode": 0
     },
     {
@@ -109,7 +109,7 @@
     {
       "name": "secret-egress",
       "state": "pass",
-      "evidence": "4/4 pass: no corpus secret appears in CLI status/orient/graph/support-bundle/doctor; redacted support bundle allowlist + extended SECRET_VALUE regex (npm, github_pat_, sk-live). fixtures/security/secret-corpus.json. tests/security/secret-egress.test.mjs. Added support-bundle to known commands so cortex support-bundle <path> works (was being misparsed as brief)."
+      "evidence": "4/4 pass: no corpus secret appears in CLI status/orient/graph/support-bundle/doctor; redacted support bundle allowlist + extended SECRET_VALUE regex (npm, github_pat_, sk-live). fixtures/security/secret-corpus.json. tests/security/secret-egress.test.mjs. Added support-bundle to known commands so blueprint support-bundle <path> works (was being misparsed as brief)."
     },
     {
       "name": "plugin-trust-boundary",
@@ -144,7 +144,7 @@
     {
       "name": "soak-driver",
       "state": "pass",
-      "evidence": "run-soak.mjs end-to-end run: 0 crashes, all 9 fault classes applied, 3/3 repos healthy, all event gaps typed. Report written to /tmp/cortex-soak.json. Fixtures: fixtures/soak/fixture.mjs. Evals: evals/soak/README.md. Doc: docs/benchmarks/soak.md. CI: hardening job runs the soak and asserts crashes==0."
+      "evidence": "run-soak.mjs end-to-end run: 0 crashes, all 9 fault classes applied, 3/3 repos healthy, all event gaps typed. Report written to /tmp/blueprint-soak.json. Fixtures: fixtures/soak/fixture.mjs. Evals: evals/soak/README.md. Doc: docs/benchmarks/soak.md. CI: hardening job runs the soak and asserts crashes==0."
     },
     {
       "name": "immutable-release-gate-chain",

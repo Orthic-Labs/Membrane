@@ -93,7 +93,7 @@
       "packet": "D18",
       "gate": "Windows signing artifacts",
       "state": "pass",
-      "evidence": "Cortex.iss per-user, azure artifact-signing workflow, verify-signatures.ps1, uninstall-check; LIVE SIGNING OWNER-GATED (not-run)"
+      "evidence": "Blueprint.iss per-user, azure artifact-signing workflow, verify-signatures.ps1, uninstall-check; LIVE SIGNING OWNER-GATED (not-run)"
     },
     {
       "packet": "D19",
@@ -231,7 +231,7 @@
       "packet": "D32",
       "gate": "sdk.test.mjs + plugin boundary",
       "state": "pass",
-      "evidence": "6 pass: CortexClient, EmbeddedCortexClient, daemon IPC, plugin types, example plugin, no-override"
+      "evidence": "6 pass: BlueprintClient, EmbeddedBlueprintClient, daemon IPC, plugin types, example plugin, no-override"
     },
     {
       "packet": "D31+D32",
@@ -339,7 +339,7 @@
       "packet": "D51",
       "gate": "secret-egress",
       "state": "pass",
-      "evidence": "4/4 pass: no corpus secret appears in CLI status/orient/graph/support-bundle/doctor; redacted support bundle allowlist + extended SECRET_VALUE regex (npm, github_pat_, sk-live). fixtures/security/secret-corpus.json. tests/security/secret-egress.test.mjs. Added support-bundle to known commands so cortex support-bundle <path> works (was being misparsed as brief)."
+      "evidence": "4/4 pass: no corpus secret appears in CLI status/orient/graph/support-bundle/doctor; redacted support bundle allowlist + extended SECRET_VALUE regex (npm, github_pat_, sk-live). fixtures/security/secret-corpus.json. tests/security/secret-egress.test.mjs. Added support-bundle to known commands so blueprint support-bundle <path> works (was being misparsed as brief)."
     },
     {
       "packet": "D51",
@@ -381,7 +381,7 @@
       "packet": "D52",
       "gate": "soak-driver",
       "state": "pass",
-      "evidence": "run-soak.mjs end-to-end run: 0 crashes, all 9 fault classes applied, 3/3 repos healthy, all event gaps typed. Report written to /tmp/cortex-soak.json. Fixtures: fixtures/soak/fixture.mjs. Evals: evals/soak/README.md. Doc: docs/benchmarks/soak.md. CI: hardening job runs the soak and asserts crashes==0."
+      "evidence": "run-soak.mjs end-to-end run: 0 crashes, all 9 fault classes applied, 3/3 repos healthy, all event gaps typed. Report written to /tmp/blueprint-soak.json. Fixtures: fixtures/soak/fixture.mjs. Evals: evals/soak/README.md. Doc: docs/benchmarks/soak.md. CI: hardening job runs the soak and asserts crashes==0."
     },
     {
       "packet": "D53",
@@ -423,7 +423,7 @@
       "packet": "D19",
       "gate": "residual-gap",
       "state": "not-run",
-      "evidence": "WinGet submission to microsoft/winget-pkgs not implemented; server.json name fixed to io.github.Orthic-Labs/cortex."
+      "evidence": "WinGet submission to microsoft/winget-pkgs not implemented; server.json name fixed to io.github.Orthic-Labs/blueprint."
     },
     {
       "packet": "D28",
