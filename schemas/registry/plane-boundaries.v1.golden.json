@@ -19,11 +19,9 @@
       "name": "control",
       "ownsProcess": true,
       "ownsFiles": [
-        "engine/crates/membrane-supervisor/src/supervisor.rs",
-        "engine/crates/membrane-supervisor/src/resident.rs",
-        "engine/crates/membrane-supervisor/src/lease.rs",
-        "engine/crates/membrane-supervisor/src/lock.rs",
-        "engine/crates/membrane-supervisor/src/watcher.rs"
+        "engine/crates/membrane/src/modes.rs",
+        "engine/crates/membrane/src/dispatch.rs",
+        "engine/crates/membrane-protocol/src/lease.rs"
       ],
       "readsFrom": ["data"],
       "writesTo": ["data"]

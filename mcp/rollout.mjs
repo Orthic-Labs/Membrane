@@ -11,7 +11,7 @@ const DEFAULT_WORKSPACE_ROOT = resolve(DEFAULT_MEMBRANE_ROOT, "..");
 const STAGES = ["shadow", "advisory", "context_enforced", "tool_enforced", "learning"];
 const REQUIRED = {
   advisory: [{ kind: "source", status: "source_passed" }],
-  context_enforced: [{ kind: "mac", status: "mac_host_passed" }, { kind: "windows", status: "windows_host_passed" }],
+  context_enforced: [{ kind: "mac", status: "mac_host_passed" }],
   tool_enforced: [{ kind: "final", status: "final_passed" }],
   learning: [{ kind: "benchmark", status: "complete", schema: "membrane.e2e-benchmark-result.v1" }],
 };

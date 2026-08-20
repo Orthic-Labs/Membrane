@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "axis": "pull",
+  "status": "fixture-entrypoint-defined",
+  "entrypoint": "membrane pull plan-context",
+  "metrics": ["eligibility", "sufficiency", "omission_receipts", "packet_bounds", "publication_determinism"]
+}

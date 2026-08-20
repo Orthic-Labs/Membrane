@@ -49,7 +49,7 @@ function newestSourceMtimeMs(dirs) {
 function resolveBinary() {
   if (process.env.MEMBRANE_FAULT_TEST_BIN) return process.env.MEMBRANE_FAULT_TEST_BIN;
   if (existsSync(canonicalBinary) && statSync(canonicalBinary).mtimeMs >= newestSourceMtimeMs([crateRoot, ...dependencyCrateRoots])) return canonicalBinary;
-  const build = spawnSync('cargo', ['build', '--quiet', '--message-format=json', '--manifest-path', manifest], { encoding: 'utf8', timeout: 300_000 });
+  const build = spawnSync('rightkit', ['cargo', 'build', '--quiet', '--message-format=json', '--manifest-path', manifest], { encoding: 'utf8', timeout: 300_000 });
   if (build.status !== 0) return null;
   const artifact = (build.stdout || '').trim().split('\n').filter(Boolean)
     .map((line) => { try { return JSON.parse(line); } catch { return null; } })

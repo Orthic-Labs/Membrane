@@ -27,6 +27,50 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+/// Canonical Membrane ownership axes. These names are part of the protocol
+/// vocabulary, not product-specific implementation aliases.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubsystemAxis {
+    Pull,
+    Push,
+    Cortex,
+    Blueprint,
+    Guide,
+    Adapt,
+}
+
+impl SubsystemAxis {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pull => "pull",
+            Self::Push => "push",
+            Self::Cortex => "cortex",
+            Self::Blueprint => "blueprint",
+            Self::Guide => "guide",
+            Self::Adapt => "adapt",
+        }
+    }
+}
+
+/// Return protocol ownership for one operation. Hub operations intentionally
+/// return `None`: Hub is an integration surface, not a semantic subsystem.
+pub fn axis_for_operation(name: &str) -> Option<SubsystemAxis> {
+    match name {
+        "membrane_context" => Some(SubsystemAxis::Pull),
+        "membrane_source_read" => Some(SubsystemAxis::Guide),
+        "membrane_blueprint" => Some(SubsystemAxis::Blueprint),
+        "membrane_knowledge_propose"
+        | "membrane_checkpoint_save"
+        | "membrane_checkpoint_load"
+        | "membrane_working_context"
+        | "membrane_temporal_fact"
+        | "membrane_scratchpad"
+        | "membrane_feedback" => Some(SubsystemAxis::Cortex),
+        _ => None,
+    }
+}
+
 /// The discriminator for an operation's response.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -174,7 +218,7 @@ fn entry(
 
 /// The canonical cross-operation registry, in stable order. The TS binding
 /// (`bindings/operations.mjs`) mirrors this list; both sides are required
-/// to expose the SAME 10 operations in the SAME order so the index-round-trip
+/// to expose the SAME 12 operations in the SAME order so the index-round-trip
 /// test can pin a single digest.
 pub fn operations() -> Vec<OperationIndexEntry> {
     vec![
@@ -375,6 +419,11 @@ pub static OPERATIONS: &[OperationSpec] = &[
     OperationSpec {
         id: "membrane_source_read",
         help: "Hash-bound DocReadV1 section fetch for one exact caller binding.",
+        parameters: &[],
+    },
+    OperationSpec {
+        id: "membrane_blueprint",
+        help: "Read repository-truth evidence from Blueprint for one exact caller binding.",
         parameters: &[],
     },
     OperationSpec {

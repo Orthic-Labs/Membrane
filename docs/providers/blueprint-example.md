@@ -38,7 +38,7 @@ docs/examples/providers/blueprint_example/
 From the repository root:
 
 ```sh
-cargo run --manifest-path docs/examples/providers/blueprint_example/Cargo.toml --bin blueprint_example
+rightkit cargo run --manifest-path docs/examples/providers/blueprint_example/Cargo.toml --bin blueprint_example
 ```
 
 The binary exits 0 if every Blueprint fixture in `membrane-testkit` passes

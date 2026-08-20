@@ -132,8 +132,8 @@ adapter's versions to the registry.
 
 ## What the deferred gate does
 
-`cargo fmt --manifest-path engine/Cargo.toml --all -- --check` and
-`cargo test --manifest-path engine/Cargo.toml --workspace` are the
+`rightkit cargo fmt --manifest-path engine/Cargo.toml --all -- --check` and
+`rightkit cargo test --manifest-path engine/Cargo.toml --workspace` are the
 manifest `deferredCommands` for MBR-104. They run at the Book 1 gate,
 not in this task commit. This task's deferred-command posture is
 identical to every other Book 1 task: implement, write tests and

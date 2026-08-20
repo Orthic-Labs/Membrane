@@ -57,7 +57,7 @@ reconciliation logic on top of those types.
 ## Verify
 
 ```sh
-cargo check -p membrane-core
+rightkit cargo check --manifest-path engine/Cargo.toml -p membrane-core
 ```
 
 Test execution is deferred to the Book 1 gate.

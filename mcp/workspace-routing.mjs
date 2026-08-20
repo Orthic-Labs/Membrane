@@ -17,12 +17,10 @@ const containsPhrase = (haystack, needle) => needle.length > 0 && haystack.some(
 const signals = (values, maxLength) => [...new Set((Array.isArray(values) ? values : [])
   .filter((value) => typeof value === "string" && value.length > 0 && value.length <= maxLength))]
   .sort(bytewise).slice(0, MAX_SIGNALS);
-const repoId = (repo) => typeof repo?.repoId === "string" && repo.repoId.length > 0 && repo.repoId.length <= 256
-  ? repo.repoId : typeof repo?.repository_id === "string" && repo.repository_id.length > 0 && repo.repository_id.length <= 256
-    ? repo.repository_id : null;
+const repoId = (repo) => typeof repo?.repoId === "string" && repo.repoId.length > 0 && repo.repoId.length <= 256 ? repo.repoId : null;
 const scoreRepo = (repo, taskTokens, explicit) => {
   const id = repoId(repo);
-  const aliases = signals([id, repo.repository_id, ...(Array.isArray(repo.aliases) ? repo.aliases : [])], 256);
+  const aliases = signals([id, ...(Array.isArray(repo.aliases) ? repo.aliases : [])], 256);
   const relevanceTerms = signals(repo.relevanceTerms, 80);
   const aliasHits = aliases.filter((alias) => containsPhrase(taskTokens, words(alias, 256))).length;
   const relevanceHits = relevanceTerms.filter((term) => containsPhrase(taskTokens, words(term, 80))).length;

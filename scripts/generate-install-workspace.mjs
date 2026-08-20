@@ -63,7 +63,7 @@ function digestFor(files, runtime) {
 export function buildManifest(sourceRoot) {
   if (!existsSync(sourceRoot) || !statSync(sourceRoot).isDirectory()) throw new Error(`workspace_package_missing:${sourceRoot}`);
   const files = canonicalFiles(sourceRoot);
-  if (!files.some(({ path }) => path === "cortex_service.py")) throw new Error("workspace_package_missing:cortex_service.py");
+  if (!files.some(({ path }) => path === "membrane_shims.py")) throw new Error("workspace_package_missing:membrane_shims.py");
   const runtime = { python: ">=3.11", dependencies: [] };
   return {
     schemaVersion: SCHEMA_VERSION,

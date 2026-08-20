@@ -31,7 +31,7 @@ pinned to them.
 ## Verify
 
 ```sh
-cargo test -p membrane-protocol
+rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-protocol
 node --test engine/crates/membrane-protocol/bindings/roundtrip.test.mjs
 ```
 

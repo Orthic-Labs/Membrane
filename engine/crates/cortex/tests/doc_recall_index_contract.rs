@@ -1,4 +1,4 @@
-use cortex::{doc_spine, MemDb};
+use membrane_runtime::guide::{doc_spine, GuideDb};
 use rusqlite::Transaction;
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -7,35 +7,6 @@ use std::time::Instant;
 
 fn digest(content: &str) -> String {
     format!("{:x}", Sha256::digest(content.as_bytes()))
-}
-
-fn create_schema(db: &MemDb) {
-    db.lock()
-        .execute_batch(
-            "CREATE TABLE doc_artifacts (
-                doc_id TEXT NOT NULL,
-                repository_root TEXT NOT NULL,
-                path TEXT NOT NULL,
-                content_hash TEXT NOT NULL,
-                lifecycle_state TEXT NOT NULL,
-                sensitivity TEXT NOT NULL,
-                revision TEXT NOT NULL,
-                index_generation INTEGER NOT NULL
-            );
-            CREATE TABLE doc_projections (
-                parent_doc_id TEXT NOT NULL,
-                kind TEXT NOT NULL,
-                content TEXT NOT NULL,
-                token_count INTEGER NOT NULL,
-                anchor_id TEXT NOT NULL,
-                collapsed_to_parent TEXT,
-                source_content_hash TEXT NOT NULL,
-                source_revision TEXT NOT NULL,
-                index_generation INTEGER NOT NULL,
-                PRIMARY KEY(parent_doc_id, kind, anchor_id)
-            );",
-        )
-        .unwrap();
 }
 
 fn insert_projection(
@@ -49,14 +20,18 @@ fn insert_projection(
 ) {
     let hash = digest(markdown);
     tx.execute(
-        "INSERT INTO doc_artifacts
-         (doc_id, repository_root, path, content_hash, lifecycle_state, sensitivity, revision, index_generation)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'rev-1', 1)",
+        "INSERT INTO guide_doc_artifacts
+         (doc_id, repository_root, repository_id, revision, path, content_hash,
+          parser_version, document_class, lifecycle_state, title, summary, keywords_json,
+          superseded_by, trust_label, influence_class, sensitivity, generated,
+          index_generation, updated_at_ms)
+         VALUES (?1, ?2, 'repo', 'rev-1', ?3, ?4, 'test', 'markdown', ?5,
+                 '', '', '[]', NULL, 'trusted', 'normal', ?6, 0, 1, 0)",
         rusqlite::params![doc_id, root, path, hash, lifecycle, sensitivity],
     )
     .unwrap();
     tx.execute(
-        "INSERT INTO doc_projections
+        "INSERT INTO guide_doc_projections
          (parent_doc_id, kind, content, token_count, anchor_id, collapsed_to_parent,
           source_content_hash, source_revision, index_generation)
          VALUES (?1, 'lexical', ?2, 0, 'document', NULL, ?3, 'rev-1', 1)",
@@ -99,15 +74,14 @@ fn background_content(index: usize) -> String {
     format!("# Background {index}\n{body}\nrecord {index:05} remains deterministic\n")
 }
 
-fn seed_with_storage(corpus_size: usize, on_disk: bool) -> (tempfile::TempDir, MemDb) {
+fn seed_with_storage(corpus_size: usize, on_disk: bool) -> (tempfile::TempDir, GuideDb) {
     let root = tempfile::tempdir().unwrap();
     let root_text = root.path().to_string_lossy().into_owned();
     let db = if on_disk {
-        MemDb::open(root.path().join("benchmark.db")).unwrap()
+        GuideDb::open(root.path().join("guide-index.sqlite3")).unwrap()
     } else {
-        MemDb::open_in_memory()
+        GuideDb::open_in_memory()
     };
-    create_schema(&db);
     {
         let mut conn = db.lock();
         let tx = conn.transaction().unwrap();
@@ -189,7 +163,7 @@ fn seed_with_storage(corpus_size: usize, on_disk: bool) -> (tempfile::TempDir, M
             );
         }
         tx.execute(
-            "UPDATE doc_projections SET source_content_hash='stale' WHERE parent_doc_id='doc-retired'",
+            "UPDATE guide_doc_projections SET source_content_hash='stale' WHERE parent_doc_id='doc-retired'",
             [],
         )
         .unwrap();
@@ -213,11 +187,11 @@ fn seed_with_storage(corpus_size: usize, on_disk: bool) -> (tempfile::TempDir, M
     (root, db)
 }
 
-fn seed(corpus_size: usize) -> (tempfile::TempDir, MemDb) {
+fn seed(corpus_size: usize) -> (tempfile::TempDir, GuideDb) {
     seed_with_storage(corpus_size, false)
 }
 
-fn ids(db: &MemDb, query: &str, k: usize) -> Vec<String> {
+fn ids(db: &GuideDb, query: &str, k: usize) -> Vec<String> {
     doc_spine::recall(db, query, k)
         .unwrap()
         .into_iter()
@@ -225,28 +199,28 @@ fn ids(db: &MemDb, query: &str, k: usize) -> Vec<String> {
         .collect()
 }
 
-fn create_fts_index(db: &MemDb) {
+fn create_fts_index(db: &GuideDb) {
     db.lock()
         .execute_batch(
-            "CREATE VIRTUAL TABLE doc_projection_fts
+            "CREATE VIRTUAL TABLE guide_doc_projection_fts
                  USING fts5(content, content='', tokenize='trigram');
-             CREATE TRIGGER doc_projection_fts_insert
-                 AFTER INSERT ON doc_projections WHEN new.kind='lexical' BEGIN
-                   INSERT INTO doc_projection_fts(rowid, content) VALUES (new.rowid, new.content);
+             CREATE TRIGGER guide_doc_projection_fts_insert
+                 AFTER INSERT ON guide_doc_projections WHEN new.kind='lexical' BEGIN
+                   INSERT INTO guide_doc_projection_fts(rowid, content) VALUES (new.rowid, new.content);
                  END;
-             CREATE TRIGGER doc_projection_fts_delete
-                 AFTER DELETE ON doc_projections WHEN old.kind='lexical' BEGIN
-                   INSERT INTO doc_projection_fts(doc_projection_fts, rowid, content)
+             CREATE TRIGGER guide_doc_projection_fts_delete
+                 AFTER DELETE ON guide_doc_projections WHEN old.kind='lexical' BEGIN
+                   INSERT INTO guide_doc_projection_fts(guide_doc_projection_fts, rowid, content)
                      VALUES ('delete', old.rowid, old.content);
                  END;
-             INSERT INTO doc_projection_fts(rowid, content)
-                 SELECT rowid, content FROM doc_projections WHERE kind='lexical';
-             INSERT INTO doc_projection_fts(doc_projection_fts) VALUES('optimize');",
+             INSERT INTO guide_doc_projection_fts(rowid, content)
+                 SELECT rowid, content FROM guide_doc_projections WHERE kind='lexical';
+             INSERT INTO guide_doc_projection_fts(guide_doc_projection_fts) VALUES('optimize');",
         )
         .unwrap();
 }
 
-fn corpus_results(db: &MemDb) -> Vec<Vec<String>> {
+fn corpus_results(db: &GuideDb) -> Vec<Vec<String>> {
     [
         "quest",
         "REQUESTED",
@@ -261,13 +235,13 @@ fn corpus_results(db: &MemDb) -> Vec<Vec<String>> {
     .collect()
 }
 
-fn checkpoint(db: &MemDb) {
+fn checkpoint(db: &GuideDb) {
     db.lock()
         .execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
         .unwrap();
 }
 
-fn db_bytes(db: &MemDb) -> u64 {
+fn db_bytes(db: &GuideDb) -> u64 {
     let conn = db.lock();
     let pages: i64 = conn
         .query_row("PRAGMA page_count", [], |row| row.get(0))
@@ -278,12 +252,12 @@ fn db_bytes(db: &MemDb) -> u64 {
     (pages * page_size) as u64
 }
 
-fn lexical_bytes(db: &MemDb) -> u64 {
+fn lexical_bytes(db: &GuideDb) -> u64 {
     let bytes: i64 = db
         .lock()
         .query_row(
             "SELECT COALESCE(SUM(length(CAST(content AS BLOB))), 0)
-             FROM doc_projections WHERE kind='lexical'",
+             FROM guide_doc_projections WHERE kind='lexical'",
             [],
             |row| row.get(0),
         )
@@ -291,12 +265,12 @@ fn lexical_bytes(db: &MemDb) -> u64 {
     bytes as u64
 }
 
-fn fts_bytes(db: &MemDb) -> u64 {
+fn fts_bytes(db: &GuideDb) -> u64 {
     let bytes: i64 = db
         .lock()
         .query_row(
             "SELECT COALESCE(SUM(pgsize), 0) FROM dbstat
-             WHERE name GLOB 'doc_projection_fts*'",
+             WHERE name GLOB 'guide_doc_projection_fts*'",
             [],
             |row| row.get(0),
         )
@@ -310,18 +284,18 @@ fn wal_bytes(path: &Path) -> u64 {
         .unwrap_or(0)
 }
 
-fn replace_benchmark_projection(db: &MemDb) {
+fn replace_benchmark_projection(db: &GuideDb) {
     let markdown = "# Benchmark\nbenchmarkneedle\n";
     let hash = digest(markdown);
     let mut conn = db.lock();
     let tx = conn.transaction().unwrap();
     tx.execute(
-        "DELETE FROM doc_projections WHERE parent_doc_id='doc-benchmark'",
+        "DELETE FROM guide_doc_projections WHERE parent_doc_id='doc-benchmark'",
         [],
     )
     .unwrap();
     tx.execute(
-        "INSERT INTO doc_projections
+        "INSERT INTO guide_doc_projections
          (parent_doc_id, kind, content, token_count, anchor_id, collapsed_to_parent,
           source_content_hash, source_revision, index_generation)
          VALUES ('doc-benchmark', 'lexical', ?1, 0, 'document', NULL, ?2, 'rev-1', 1)",
@@ -406,7 +380,7 @@ fn measure_warm_lexical_recall_over_twelve_thousand_projections() {
     const MIN_P95_SPEEDUP: f64 = 3.0;
 
     let (root, db) = seed_with_storage(12_000, true);
-    let db_path = root.path().join("benchmark.db");
+    let db_path = root.path().join("guide-index.sqlite3");
     let query = "benchmarkneedle";
     let fallback_started = Instant::now();
     assert_eq!(ids(&db, query, 1), ["doc-benchmark"]);
@@ -472,7 +446,7 @@ fn measure_warm_lexical_recall_over_twelve_thousand_projections() {
             "query": query,
             "samples_per_lane": indexed_micros.len(),
             "ordered_result_parity": true,
-            "unavailable_fts_fallback": "doc_projection_fts absent -> deterministic full scan",
+            "unavailable_fts_fallback": "guide_doc_projection_fts absent -> deterministic full scan",
             "fallback_cold_us": fallback_cold_us,
             "fallback_p50_us": fallback_micros[fallback_micros.len() / 2],
             "fallback_p95_us": fallback_p95_us,

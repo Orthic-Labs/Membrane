@@ -179,6 +179,8 @@ export function createBlueprintApplicationService({
           ...repositoryIdentity(root),
           repoRoot: root,
           receiptId: receipt.receiptId,
+          indexedAt: meta.manifest.generatedAt,
+          canonical: true,
         });
         return {
           schemaVersion: 1,

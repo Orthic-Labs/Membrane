@@ -1,6 +1,6 @@
 //! DB-first surface: put/delete/list/reindex/export_md + serve routes.
-use cortex::memdb::MemDb;
-use cortex::store::MemoryStore;
+use membrane_runtime::memdb::MemDb;
+use membrane_runtime::store::MemoryStore;
 
 fn store() -> MemoryStore {
     MemoryStore::open(MemDb::open_in_memory())
@@ -69,7 +69,7 @@ fn export_md_writes_canonical_tree() {
     std::fs::create_dir_all(&ws).unwrap();
     let ws = ws.canonicalize().unwrap();
     std::env::set_var("WORKSPACE_ROOT", &ws);
-    let slug = cortex::path_to_scope(&ws.to_string_lossy());
+    let slug = membrane_runtime::path_to_scope(&ws.to_string_lossy());
     s.put(
         "ws-note",
         "workspace scoped",
@@ -103,24 +103,24 @@ fn export_md_writes_canonical_tree() {
 #[test]
 fn serve_routes_put_get_list_delete_dashboard() {
     let s = store();
-    let (c, b) = cortex::serve::route_for_tests(
+    let (c, b) = membrane_runtime::serve::route_for_tests(
         &s,
         "POST",
         "/put",
         r#"{"name":"r1","content":"route made memory","scope":"global"}"#,
     );
     assert_eq!(c, 200, "{b}");
-    let (c, b) = cortex::serve::route_for_tests(&s, "POST", "/get", r#"{"id":"global/r1"}"#);
+    let (c, b) = membrane_runtime::serve::route_for_tests(&s, "POST", "/get", r#"{"id":"global/r1"}"#);
     assert_eq!(c, 200);
     assert!(b.contains("route made memory"));
-    let (c, b) = cortex::serve::route_for_tests(&s, "POST", "/list", "{}");
+    let (c, b) = membrane_runtime::serve::route_for_tests(&s, "POST", "/list", "{}");
     assert_eq!(c, 200);
     assert!(b.contains("global/r1"));
-    let (c, _) = cortex::serve::route_for_tests(&s, "GET", "/", "");
+    let (c, _) = membrane_runtime::serve::route_for_tests(&s, "GET", "/", "");
     assert_eq!(c, 200);
-    let (c, b) = cortex::serve::route_for_tests(&s, "POST", "/delete", r#"{"id":"global/r1"}"#);
+    let (c, b) = membrane_runtime::serve::route_for_tests(&s, "POST", "/delete", r#"{"id":"global/r1"}"#);
     assert_eq!(c, 200);
     assert!(b.contains("true"));
-    let (c, _) = cortex::serve::route_for_tests(&s, "POST", "/put", r#"{"name":"","content":""}"#);
+    let (c, _) = membrane_runtime::serve::route_for_tests(&s, "POST", "/put", r#"{"name":"","content":""}"#);
     assert_eq!(c, 400);
 }

@@ -130,7 +130,44 @@ export function executeRecallCircuit(db, task, options = {}) {
   };
 }
 
+export function canonicalCandidateSet(candidateSet) {
+  return {
+    schemaVersion: candidateSet.schemaVersion,
+    traceId: candidateSet.traceId,
+    indexedAt: candidateSet.indexedAt,
+    task: candidateSet.task,
+    mode: candidateSet.mode,
+    provider: candidateSet.provider,
+    freshness: candidateSet.freshness,
+    providerCeiling: candidateSet.providerCeiling,
+    candidates: (candidateSet.candidates ?? []).map((candidate) => ({
+      id: candidate.id,
+      layer: candidate.layer,
+      ...(candidate.provider === undefined ? {} : { provider: candidate.provider }),
+      sourceKind: candidate.sourceKind,
+      sourceRef: candidate.sourceRef,
+      sourceHash: candidate.sourceHash,
+      trustClass: candidate.trustClass,
+      instructionPolicy: candidate.instructionPolicy,
+      providerScore: candidate.providerScore,
+      ...(candidate.scoreComponents === undefined ? {} : { scoreComponents: candidate.scoreComponents }),
+      ...(candidate.baseCommit === undefined ? {} : { baseCommit: candidate.baseCommit }),
+      ...(candidate.overlayDigest === undefined ? {} : { overlayDigest: candidate.overlayDigest }),
+      ...(candidate.freshnessClass === undefined ? {} : { freshnessClass: candidate.freshnessClass }),
+      ...(candidate.snapshotId === undefined ? {} : { snapshotId: candidate.snapshotId }),
+      estimatedTokens: candidate.estimatedTokens,
+      protected: candidate.protected,
+      exact: candidate.exact,
+      recoverable: candidate.recoverable,
+      resolver: candidate.resolver,
+      text: candidate.text,
+    })),
+    omissions: candidateSet.omissions ?? [],
+  };
+}
+
 export function recallCircuitToCandidateSet(circuit, options = {}) {
+  const indexedAt = options.indexedAt ?? circuit.indexedAt ?? new Date().toISOString();
   const candidates = [];
   const seen = new Set();
   for (const path of circuit.paths ?? []) {
@@ -161,18 +198,21 @@ export function recallCircuitToCandidateSet(circuit, options = {}) {
       evidencePathId: path.id,
     });
   }
-  return {
+  const candidateSet = {
     schemaVersion: 1,
+    traceId: options.traceId ?? circuit.id,
+    indexedAt,
     repoId: options.repoId ?? null,
     repoRoot: options.repoRoot ?? null,
     receiptId: options.receiptId ?? null,
     task: circuit.task,
     mode: options.mode ?? "survey",
     provider: typeof options.provider === "string" ? options.provider : options.provider?.id ?? "blueprint-static",
-    freshness: { revision: circuit.generationId, stale: false },
+    freshness: { revision: circuit.generationId, indexedAt, stale: false },
     providerCeiling: { maxCandidates: circuit.bounds?.maxPaths ?? candidates.length, maxEstimatedTokens: options.maxEstimatedTokens ?? 8000 },
     candidates,
     omissions: circuit.omissions ?? [],
     recallCircuit: { id: circuit.id, state: circuit.state, policy: circuit.policy },
   };
+  return options.canonical ? canonicalCandidateSet(candidateSet) : candidateSet;
 }

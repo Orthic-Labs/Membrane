@@ -1,8 +1,8 @@
 // Membrane Hub packages one closed runtime. Blueprint is pre-staged by its
 // release builder; native capabilities remain Tauri sidecars, never sources.
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { createServer } from "node:net";
@@ -11,18 +11,17 @@ import { fileURLToPath } from "node:url";
 const hub = fileURLToPath(new URL("../", import.meta.url));
 const runtime = join(hub, "src-tauri", "runtime");
 const axes = ["pull", "push", "cortex", "blueprint", "guide", "adapt"];
-const composition = ["membrane", "cortex-service", "blueprint", "guide", "pull", "push", "adapt"];
+const composition = ["membrane", "cortex", "blueprint", "guide", "pull", "push", "adapt"];
 const retired = /(?:^|[\\/])(crypt(?:-service)?|orthic(?:[_-]manifest)?|product-addons?)(?:[\\/]|$)/i;
 const ignored = /(?:^|[\\/])(?:\.git|node_modules|__pycache__|tests?|\.pytest_cache)(?:[\\/]|$)/;
 const digest = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
-const nativeExtension = process.platform === "win32" ? ".exe" : "";
+const MAC_TARGET = "aarch64-apple-darwin";
 
 // `preStagedResource` is emitted by Blueprint's own tested release stager.
 // `externalBin` & `tauriBundle` record ownership without copying source or
 // duplicating sidecars/icons into Tauri's resource tree.
 export const RUNTIME_SPECS = [
   { id: "membrane-command", component: "membrane", delivery: "externalBin", path: "src-tauri/binaries/membrane-{target}" },
-  { id: "cortex-service", component: "cortex-service", delivery: "externalBin", path: "src-tauri/binaries/cortex-service-{target}" },
   { id: "cortex-cli", component: "cortex", delivery: "externalBin", path: "src-tauri/binaries/cortex-{target}" },
   { id: "blueprint-runtime", component: "blueprint", axis: "blueprint", delivery: "preStagedResource", path: "src-tauri/runtime/blueprint", tree: true },
   { id: "pull-contract", component: "pull", axis: "pull", delivery: "resource", path: "../../schemas/operations/membrane-context.v1.schema.json" },
@@ -39,8 +38,8 @@ export const RUNTIME_SPECS = [
   { id: "hub-icons", component: "icons", delivery: "tauriBundle", path: "src-tauri/icons", tree: true },
 ];
 
-function targetFor(value = process.env.TAURI_ENV_TARGET_TRIPLE) { return value || (process.platform === "win32" ? "x86_64-pc-windows-msvc" : "aarch64-apple-darwin"); }
-function concretePath(source, target) { return source.replace("{target}", `${target}${target.includes("windows") ? ".exe" : ""}`); }
+function targetFor(value = process.env.TAURI_ENV_TARGET_TRIPLE) { if (value && value !== MAC_TARGET) throw new Error(`Mac target required: ${MAC_TARGET}`); return MAC_TARGET; }
+function concretePath(source, target) { return source.replace("{target}", target); }
 function filesAt(root, extensions) {
   if (!existsSync(root)) throw new Error(`runtime source missing: ${root}`);
   const files = statSync(root).isFile() ? [root] : readdirSync(root, { recursive: true }).map((name) => join(root, name)).filter((file) => lstatSync(file).isFile());
@@ -48,7 +47,7 @@ function filesAt(root, extensions) {
 }
 function stagePath(spec, source, sourceRoot, target) {
   const local = statSync(sourceRoot).isFile() ? basename(source) : relative(sourceRoot, source);
-  if (spec.delivery === "externalBin") return `external-bin/${spec.component}${target.includes("windows") ? ".exe" : ""}`;
+  if (spec.delivery === "externalBin") return `external-bin/${spec.component}`;
   if (spec.delivery === "preStagedResource") return `blueprint/${local}`.replaceAll("\\", "/");
   if (spec.delivery === "tauriBundle") return `tauri-assets/${spec.id}/${local}`.replaceAll("\\", "/");
   return `${spec.stageRoot ?? `resources/${spec.id}`}/${local}`.replaceAll("\\", "/");
@@ -64,7 +63,7 @@ export function runtimeInventory({ hubDir = hub, target = targetFor(), specs = R
     for (const source of filesAt(sourceRoot, spec.extensions)) {
       const staged = stagePath(spec, source, sourceRoot, target);
       if (retired.test(staged)) throw new Error(`retired staged runtime asset rejected: ${staged}`);
-      entries.push({ component: spec.id, ...(spec.axis ? { axis: spec.axis } : {}), ...(spec.invocation ? { invocation: spec.invocation } : {}), delivery: spec.delivery, source: relative(hubDir, source).replaceAll("\\", "/"), stagePath: staged, installerPath: spec.delivery === "externalBin" ? `sidecars/${spec.component}${target.includes("windows") ? ".exe" : ""}` : staged, sha256: digest(source) });
+      entries.push({ component: spec.id, ...(spec.axis ? { axis: spec.axis } : {}), ...(spec.invocation ? { invocation: spec.invocation } : {}), delivery: spec.delivery, source: relative(hubDir, source).replaceAll("\\", "/"), stagePath: staged, installerPath: spec.delivery === "externalBin" ? `sidecars/${spec.component}` : staged, sha256: digest(source) });
     }
   }
   entries.sort((left, right) => left.stagePath.localeCompare(right.stagePath));
@@ -116,7 +115,7 @@ export function verifyStagedInventory({ runtimeDir = runtime } = {}) {
 
 function run(command, args, { cwd, env, timeout = 12_000 } = {}) {
   return new Promise((resolveRun, rejectRun) => {
-    const child = spawn(command, args, { cwd, env: { ...process.env, ...env }, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, { cwd, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "";
     child.stdout.on("data", (chunk) => { stdout = `${stdout}${chunk}`.slice(-16_384); });
     child.stderr.on("data", (chunk) => { stderr = `${stderr}${chunk}`.slice(-16_384); });
@@ -138,50 +137,98 @@ async function waitForHealth(port, deadline = Date.now() + 8_000) {
     catch (error) { last = String(error.message ?? error); }
     await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
   }
-  throw new Error(`cortex health unavailable: ${last}`);
+  throw new Error(`membrane supervisor health unavailable: ${last}`);
 }
-async function startCortexService(sidecarDir) {
-  const service = join(sidecarDir, `cortex-service${nativeExtension}`);
-  if (!existsSync(service)) throw new Error("unpacked cortex-service missing");
-  const root = mkdtempSync(join(tmpdir(), "membrane-hub-cortex-probe-"));
+function digestText(value) { return `sha256:${createHash("sha256").update(value).digest("hex")}`; }
+function lifecycleFrame(frame, expected) {
+  if (!frame || typeof frame !== "object" || Object.keys(frame).some((key) => !["kind", "state", "command", "fence", "endpoint", "capability"].includes(key))) throw new Error("membrane supervisor lifecycle frame invalid");
+  if (frame.kind !== expected.kind || frame.state !== expected.state || frame.fence !== expected.fence || (expected.capability !== undefined && frame.capability !== expected.capability)) throw new Error("membrane supervisor lifecycle frame mismatch");
+  return frame;
+}
+function awaitLifecycle(child, lease) {
+  return new Promise((resolveLifecycle, rejectLifecycle) => {
+    let buffer = "", phase = "starting";
+    const timer = setTimeout(() => rejectLifecycle(new Error("membrane supervisor lifecycle timeout")), 8_000);
+    const fail = (error) => { clearTimeout(timer); rejectLifecycle(error); };
+    child.once("error", fail);
+    child.stdout.on("data", (chunk) => {
+      buffer += chunk;
+      for (;;) {
+        const newline = buffer.indexOf("\n"); if (newline < 0) return;
+        const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
+        try {
+          const frame = JSON.parse(line);
+          if (phase === "starting") {
+            lifecycleFrame(frame, { kind: "register", state: "starting", fence: lease.fence });
+            if (frame.command !== undefined || frame.endpoint !== undefined || frame.capability !== undefined) throw new Error("membrane supervisor starting frame invalid");
+            phase = "ready";
+          } else {
+            lifecycleFrame(frame, { kind: "register", state: "ready", fence: lease.fence, capability: lease.capability });
+            if (frame.command !== undefined || frame.endpoint?.host !== "127.0.0.1" || !Number.isInteger(frame.endpoint?.port) || frame.endpoint.port < 1024) throw new Error("membrane supervisor ready frame invalid");
+            clearTimeout(timer); resolveLifecycle(frame.endpoint); return;
+          }
+        } catch (error) { fail(error); return; }
+      }
+    });
+    child.once("close", () => fail(new Error("membrane supervisor lifecycle eof")));
+  });
+}
+async function startMembraneSupervisor(sidecarDir) {
+  const service = join(sidecarDir, "membrane");
+  if (!existsSync(service)) throw new Error("unpacked membrane supervisor missing");
+  const root = mkdtempSync(join(tmpdir(), "membrane-hub-supervisor-probe-"));
   const bin = join(root, "tools", "bin"); mkdirSync(bin, { recursive: true });
-  const executable = join(bin, `cortex-service${nativeExtension}`); copyFileSync(service, executable);
+  const executable = join(bin, "membrane"); copyFileSync(service, executable);
   const port = await freePort(); const config = join(root, "tools", "lib", "memory", "runtime.json"); mkdirSync(dirname(config), { recursive: true }); mkdirSync(join(root, "tools", ".cache", "memory"), { recursive: true });
-  writeFileSync(config, `${JSON.stringify({ schemaVersion: 1, serviceId: "cortex-local-v1", host: "127.0.0.1", port })}\n`);
-  const child = spawn(executable, [], { env: { ...process.env, MEMBRANE_OWNER_PIPE: "1", WORKSPACE_ROOT: root }, windowsHide: true, stdio: ["pipe", "ignore", "pipe"] });
+  writeFileSync(config, `${JSON.stringify({ schemaVersion: 1, serviceId: "membrane-local-v1", host: "127.0.0.1", port })}\n`);
+  const declaredDataRoot = realpathSync(root);
+  const { stdout } = await run(executable, ["build-info"]);
+  const releaseGeneration = JSON.parse(stdout).release_generation;
+  if (!/^sha256:[0-9a-f]{64}$/.test(releaseGeneration ?? "")) throw new Error("membrane supervisor release invalid");
+  const lease = { fence: 1, instanceId: `sha256:${randomBytes(32).toString("hex")}`, capability: randomBytes(32).toString("hex"), releaseGeneration, declaredDataRoot, artifactDigest: `sha256:${digest(executable)}` };
+  const hello = { kind: "hello", lifecycleVersion: 1, fence: lease.fence, installationId: digestText(declaredDataRoot), productId: "membrane", ...lease };
+  delete hello.declaredDataRoot; hello.declaredDataRoot = lease.declaredDataRoot;
+  delete hello.artifactDigest; hello.artifactDigest = lease.artifactDigest;
+  delete hello.releaseGeneration; hello.releaseGeneration = lease.releaseGeneration;
+  delete hello.capability; hello.capability = lease.capability;
+  const child = spawn(executable, ["supervisor-child"], { env: { ...process.env, MEMBRANE_LIFECYCLE_STDIO: "1", WORKSPACE_ROOT: declaredDataRoot }, stdio: ["pipe", "pipe", "pipe"] });
   let stderr = ""; child.stderr.on("data", (chunk) => { stderr = `${stderr}${chunk}`.slice(-16_384); });
-  const stop = () => { if (!child.killed) child.kill(); rmSync(root, { recursive: true, force: true }); };
-  try { const health = await waitForHealth(port); return { port, health, stop }; }
-  catch (error) { stop(); throw new Error(`${error.message}${stderr ? `: ${stderr}` : ""}`); }
+  const stop = async () => {
+    if (!child.killed) {
+      child.stdin.write(`${JSON.stringify({ kind: "command", command: "drain", fence: lease.fence, capability: lease.capability })}\n`);
+      child.stdin.end();
+      await Promise.race([new Promise((resolveStop) => child.once("close", resolveStop)), new Promise((resolveStop) => setTimeout(resolveStop, 5_000))]);
+      if (!child.killed && child.exitCode === null) child.kill();
+    }
+    rmSync(root, { recursive: true, force: true });
+  };
+  try { const endpoint = await awaitLifecycle(child, lease); if (endpoint.port !== port) throw new Error("membrane supervisor endpoint mismatch"); const health = await waitForHealth(port); return { port, health, stop }; }
+  catch (error) { await stop(); throw new Error(`${error.message}${stderr ? `: ${stderr}` : ""}`); }
 }
 function nativeUnpackedProbes() {
   let service;
   return {
     async bootstrapImport({ runtimeDir }) {
       const init = join(runtimeDir, "resources", "install-workspace", "__init__.py");
-      const command = process.platform === "win32" ? "py" : "python3";
-      const args = process.platform === "win32" ? ["-3.11", "-I", "-c"] : ["-I", "-c"];
+      const command = "python3";
+      const args = ["-I", "-c"];
       args.push("import importlib.util,pathlib,sys; p=pathlib.Path(sys.argv[1]); s=importlib.util.spec_from_file_location('membrane_install_workspace',p,submodule_search_locations=[str(p.parent)]); m=importlib.util.module_from_spec(s); sys.modules[s.name]=m; s.loader.exec_module(m)", init);
       await run(command, args); return true;
     },
-    async cortexService({ sidecarDir }) { service = await startCortexService(sidecarDir); return Boolean(service.health); },
+    async membraneSupervisorHealth({ sidecarDir }) { service = await startMembraneSupervisor(sidecarDir); return Boolean(service.health); },
     async blueprintRecall({ runtimeDir }) {
       const root = mkdtempSync(join(tmpdir(), "membrane-hub-blueprint-probe-")); writeFileSync(join(root, "probe.mjs"), "export const membraneHubProbe = true;\n");
-      const launcher = join(runtimeDir, "blueprint", "bin", process.platform === "win32" ? "blueprint.cmd" : "blueprint");
+      const launcher = join(runtimeDir, "blueprint", "bin", "blueprint");
       try { await run(launcher, ["build", "--root", root, "--out", ".agent"], { cwd: root, env: { BLUEPRINT_NO_UPDATE_CHECK: "1" }, timeout: 30_000 }); await run(launcher, ["recall", "--root", root, "--out", ".agent", "--query", "membrane hub probe"], { cwd: root, env: { BLUEPRINT_NO_UPDATE_CHECK: "1" }, timeout: 15_000 }); return true; }
       finally { rmSync(root, { recursive: true, force: true }); }
     },
     async hubSnapshot({ sidecarDir }) {
-      if (!service) throw new Error("cortex probe state missing");
-      const membrane = join(sidecarDir, `membrane${nativeExtension}`); const { stdout } = await run(membrane, ["cli", "hub-snapshot"], { env: { CORTEX_PORT: String(service.port) } });
+      if (!service) throw new Error("membrane supervisor probe state missing");
+      const membrane = join(sidecarDir, "membrane"); const { stdout } = await run(membrane, ["cli", "hub-snapshot"], { env: { MEMBRANE_PORT: String(service.port) } });
       const payload = JSON.parse(stdout); if (payload.schemaVersion !== 1) throw new Error("hub snapshot schema invalid"); return true;
     },
-    cleanup() { service?.stop(); service = undefined; },
+    async cleanup() { await service?.stop(); service = undefined; },
   };
-}
-
-function sidecarStem(name) {
-  return name.replace(/\.exe$/i, "");
 }
 
 function verifySidecars(sidecarDir, inventory) {
@@ -190,11 +237,9 @@ function verifySidecars(sidecarDir, inventory) {
     const file = join(sidecarDir, name);
     if (!existsSync(file) || !statSync(file).isFile()) throw new Error(`unpacked sidecar missing: ${name}`);
   }
-  const sidecarFamilies = new Set([...expected].map(sidecarStem));
   for (const name of readdirSync(sidecarDir)) {
     if (retired.test(name)) throw new Error(`retired unpacked sidecar rejected: ${name}`);
-    const stem = sidecarStem(name);
-    if (!expected.has(name) && [...sidecarFamilies].some((family) => stem === family || stem.startsWith(`${family}-`))) {
+    if (!expected.has(name) && [...expected].some((family) => name === family || name.startsWith(`${family}-`))) {
       throw new Error(`unexpected unpacked sidecar: ${name}`);
     }
   }
@@ -212,7 +257,7 @@ export async function verifyUnpackedArtifact({ runtimeDir = runtime, sidecarDir,
   verifySidecars(sidecarDir, inventory);
   const activeProbes = Object.keys(probes).length ? probes : nativeUnpackedProbes();
   try {
-    for (const name of ["bootstrapImport", "cortexService", "blueprintRecall", "hubSnapshot"]) {
+    for (const name of ["bootstrapImport", "membraneSupervisorHealth", "blueprintRecall", "hubSnapshot"]) {
       if (typeof activeProbes[name] !== "function") throw new Error(`unpacked executable probe required: ${name}`);
       if (!(await activeProbes[name]({ runtimeDir, sidecarDir, inventory }))) throw new Error(`unpacked executable probe failed: ${name}`);
     }

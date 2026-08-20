@@ -211,7 +211,7 @@ def _free_port() -> int:
 
 def _start_service(cortex: Path, db: Path, port: int) -> subprocess.Popen:
     env = os.environ.copy()
-    env["CORTEX_PORT"] = str(port)
+    env["MEMBRANE_PORT"] = str(port)
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     return subprocess.Popen(
         [str(cortex), "--db", str(db), "serve", "--port", str(port)],
@@ -237,7 +237,7 @@ def _wait_ready(port: int, deadline_s: float = SERVICE_READY_TIMEOUT) -> None:
 def _run_via_port(cortex: Path, db: Path, port: int,
                   cmd: list[str], input_text: str | None = None) -> str:
     env = os.environ.copy()
-    env["CORTEX_PORT"] = str(port)
+    env["MEMBRANE_PORT"] = str(port)
     res = subprocess.run([str(cortex), "--db", str(db), *cmd],
                          input=input_text, text=True, encoding="utf-8",
                          capture_output=True, check=False, env=env)

@@ -1,4 +1,4 @@
-# Push — Reversible Reduction
+# Push — Reversible Reduction & Recovery
 
 **Status:** derived subsystem reference · non-normative  
 **Canonical name:** Push  
@@ -9,9 +9,11 @@
 
 Answer one question:
 
-> **How can context already flowing toward the agent be made smaller without destroying anything the task may need back?**
+> **How can the Pull-selected context be made smaller without destroying anything the task may need back?**
 
-Push owns faithful reduction mechanics. The Membrane planner owns the final decision about whether a representation is admitted and which representation is selected.
+Push owns faithful reduction mechanics. Pull/Membrane planner owns evidence
+selection, admission, & headroom. Push executes the selected transform & never
+becomes a second planner.
 
 ## Owns
 
@@ -25,10 +27,12 @@ Push owns faithful reduction mechanics. The Membrane planner owns the final deci
   6. valid precomputed provenance-bound summary when already available;
   7. resolver-backed reference/metadata;
   8. explicit truncation last.
+- Existing reduction lineage remains under Push: `runc`, `skel`, `compress`,
+  & `truncate`.
 - Content-addressed recoverability artifacts.
 - Query-critical protected-span verification and exact restoration.
 - Token/byte balance accounting.
-- Adoption telemetry: opportunities, executions, passthrough reasons, bytes/tokens avoided, resolver refetches, restores, failures, task non-regression.
+- Host-owned adoption telemetry: opportunities, executions, passthrough reasons, bytes/tokens avoided, resolver refetches, restores, failures, task non-regression. Push never opens or writes Cortex storage.
 
 ## Does not own
 
@@ -89,7 +93,15 @@ If required material is lost, restore it exactly from the raw artifact/resolver 
 
 ## Implementation ownership
 
-The canonical Membrane doctrine currently places Push/artifact/runtime integration under `engine/crates/membrane-runtime/`.
+The canonical Membrane doctrine currently places Push/artifact/runtime integration under `engine/crates/membrane-runtime/src/push/`.
+
+Public commands are namespaced as `membrane cli push runc|skel|compress|prep|restore`.
+Cortex/Persist has no Push transform or transform-telemetry command.
+
+Runtime `cortex-format` remains only an OKF persistence-format dependency,
+re-exported through Membrane. Push compression authority is local to the
+public `push::compress` budget/rate APIs; no Push reduction path calls its
+former Cortex-format compression helper.
 
 Do not create a standalone `push` crate merely to make the subsystem name feel architecturally real. Split it only if an implementation reason independently justifies the boundary.
 

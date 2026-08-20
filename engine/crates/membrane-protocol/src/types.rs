@@ -224,6 +224,7 @@ pub struct OmissionV1 {
 pub struct ContextCandidateSetV1 {
     pub schema_version: u32,
     pub trace_id: String,
+    pub indexed_at: String,
     pub task: String,
     pub mode: String,
     pub provider: String,

@@ -1,4 +1,4 @@
-use cortex::{CheckpointError, CheckpointSourceRefV1, CheckpointV1, MemDb, MemoryStore};
+use membrane_runtime::{CheckpointError, CheckpointSourceRefV1, CheckpointV1, MemDb, MemoryStore};
 
 fn checkpoint() -> CheckpointV1 {
     CheckpointV1 {
@@ -74,7 +74,7 @@ fn checkpoint_source_refs_use_hash_bound_doc_read_statuses() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("guide.md"), "# Guide\nbody").unwrap();
     let source = "doc://repo/worktree/guide.md";
-    let outline = cortex::outline::build_outline(source, "# Guide\nbody", "comrak-0.54.0");
+    let outline = membrane_runtime::guide::outline::build_outline(source, "# Guide\nbody", "comrak-0.54.0");
     let mut value = checkpoint();
     value.source_refs = vec![CheckpointSourceRefV1 {
         source_ref: source.into(),
@@ -83,27 +83,27 @@ fn checkpoint_source_refs_use_hash_bound_doc_read_statuses() {
         label: "guide".into(),
     }];
     assert_eq!(
-        cortex::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
+        membrane_runtime::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
         "ok"
     );
     std::fs::write(temp.path().join("guide.md"), "# Guide\nchanged").unwrap();
     assert_eq!(
-        cortex::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
+        membrane_runtime::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
         "changed"
     );
     std::fs::remove_file(temp.path().join("guide.md")).unwrap();
     assert_eq!(
-        cortex::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
+        membrane_runtime::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
         "missing"
     );
     std::fs::write(temp.path().join("moved-guide.md"), "# Guide\nbody").unwrap();
     assert_eq!(
-        cortex::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
+        membrane_runtime::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
         "relocated"
     );
     value.source_refs[0].source_ref = "../guide.md".into();
     assert_eq!(
-        cortex::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
+        membrane_runtime::checkpoint::resolve_source_refs(&value, temp.path())[0].status,
         "deny"
     );
 }

@@ -26,9 +26,19 @@ def test_doctor_without_args_prints_scope_and_usage(capsys):
     assert "adapt doctor" in out.err
 
 
-def test_workspace_runtime_cortex_port(monkeypatch):
-    monkeypatch.setenv("CORTEX_PORT", "41234")
-    assert workspace_runtime.cortex_port() == 41234
+def test_workspace_runtime_membrane_port(monkeypatch):
+    monkeypatch.setenv("MEMBRANE_PORT", "41234")
+    assert workspace_runtime.membrane_port() == 41234
+
+
+def test_workspace_runtime_reads_membrane_identity(tmp_path):
+    config = tmp_path / "runtime.json"
+    config.write_text(
+        '{"schemaVersion": 1, "serviceId": "membrane-local-v1", '
+        '"host": "127.0.0.1", "port": 41235}',
+        encoding="utf-8",
+    )
+    assert workspace_runtime.membrane_port(config_path=config) == 41235
 
 
 def test_workspace_runtime_session_inventory():

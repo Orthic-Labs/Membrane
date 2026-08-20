@@ -29,14 +29,14 @@ function verifyReceipt(path, platform, expected) {
 export function verifyMbr801Evidence(input) {
   const expected = { commit: input?.commit, releaseGeneration: input?.releaseGeneration };
   if (!/^[0-9a-f]{40}$/.test(expected.commit || '') || typeof expected.releaseGeneration !== 'string' || !expected.releaseGeneration) {
-    return { schema: 'membrane.mbr801-evidence-validation.v1', status: 'open', reason: 'expected current commit and release generation are required', platforms: { macos: fail('not checked'), windows: fail('not checked') } };
+    return { schema: 'membrane.mbr801-evidence-validation.v1', status: 'open', reason: 'expected current commit and release generation are required', platforms: { macos: fail('not checked') } };
   }
-  const platforms = { macos: verifyReceipt(input.macos, 'macos', expected), windows: verifyReceipt(input.windows, 'windows', expected) };
-  return { schema: 'membrane.mbr801-evidence-validation.v1', status: platforms.macos.status === 'passed' && platforms.windows.status === 'passed' ? 'passed' : 'open', platforms };
+  const platforms = { macos: verifyReceipt(input.macos, 'macos', expected) };
+  return { schema: 'membrane.mbr801-evidence-validation.v1', status: platforms.macos.status === 'passed' ? 'passed' : 'open', platforms };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = process.argv.slice(2); const value = name => { const i = args.indexOf(name); return i < 0 ? undefined : args[i + 1]; };
-  const summary = verifyMbr801Evidence({ macos: value('--macos'), windows: value('--windows'), commit: value('--commit'), releaseGeneration: value('--release-generation') });
+  const summary = verifyMbr801Evidence({ macos: value('--macos'), commit: value('--commit'), releaseGeneration: value('--release-generation') });
   process.stdout.write(`${JSON.stringify(summary)}\n`); process.exitCode = summary.status === 'passed' ? 0 : 2;
 }

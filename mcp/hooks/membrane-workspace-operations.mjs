@@ -4,7 +4,6 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
-import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { get as httpGet } from "node:http";
 import { request as httpRequest } from "node:http";
@@ -56,11 +55,11 @@ function frontmatterField(text, key) {
 }
 
 function observablePort(root) {
-  const configured = Number(process.env.CORTEX_PORT || 47851);
+  const configured = Number(process.env.MEMBRANE_PORT || 47851);
   if (Number.isInteger(configured) && configured >= 1024 && configured <= 65535) return configured;
   try {
     const runtime = JSON.parse(readFileSync(join(root, "tools", "lib", "memory", "runtime.json"), "utf8"));
-    if (runtime.schemaVersion === 1 && runtime.serviceId === "cortex-local-v1" && Number.isInteger(runtime.port)) return runtime.port;
+    if (runtime.schemaVersion === 1 && runtime.serviceId === "membrane-local-v1" && Number.isInteger(runtime.port)) return runtime.port;
   } catch {}
   return 47851;
 }
@@ -73,7 +72,7 @@ function activeTrace(root, sessionId) {
 
 function postObservable(root, event, trace, { signal } = {}) {
   let token;
-  try { token = readFileSync(process.env.CORTEX_API_TOKEN_FILE || join(root, "tools", ".cache", "memory", "api-token"), "utf8").trim(); } catch { return Promise.resolve(false); }
+  try { token = readFileSync(process.env.MEMBRANE_API_TOKEN_FILE || join(root, "tools", ".cache", "memory", "api-token"), "utf8").trim(); } catch { return Promise.resolve(false); }
   const session = String(event.sessionId);
   const responseDigest = createHash("sha256").update(JSON.stringify(event.payload.tool_response ?? null)).digest("hex");
   const policyPath = join(root, "tools", ".cache", "memory", "active-policy.json");
@@ -82,7 +81,7 @@ function postObservable(root, event, trace, { signal } = {}) {
   const body = JSON.stringify({ events: [{
     schema: "membrane.observable-event.v1",
     installation_id: "tool-observer",
-    client_id: process.env.CORTEX_CLIENT === "claude" ? "claude_code" : (process.env.CORTEX_CLIENT || "codex"),
+    client_id: process.env.MEMBRANE_CLIENT === "claude" ? "claude_code" : (process.env.MEMBRANE_CLIENT || "codex"),
     session_id: session,
     task_id: `task-${createHash("sha256").update(`${session}:${trace}`).digest("hex").slice(0, 24)}`,
     turn_id: `turn-${trace}`,
@@ -156,27 +155,11 @@ function memoryScope(root, file) {
   return rel.startsWith("memory/") ? "global" : `repo:${createHash("sha256").update(root).digest("hex").slice(0, 16)}`;
 }
 
-function defaultRunCortex(root, args, input, { signal } = {}) {
-  const binary = process.env.CORTEX_BIN || join(root, "tools", "bin", "cortex");
-  return new Promise((resolveRun) => {
-    let child;
-    let settled = false;
-    const finish = (value) => { if (!settled) { settled = true; resolveRun(value); } };
-    try {
-      child = spawn(binary, args, { cwd: root, stdio: ["pipe", "ignore", "ignore"], windowsHide: true, signal });
-    } catch { finish(false); return; }
-    child.once("error", () => finish(false));
-    child.once("close", (code) => finish(code === 0));
-    child.stdin.once("error", () => finish(false));
-    child.stdin.end(input || "");
-  });
-}
-
 function defaultProbeStatus(root) {
-  let port = Number(process.env.CORTEX_PORT || 47851);
+  let port = Number(process.env.MEMBRANE_PORT || 47851);
   try {
     const runtime = JSON.parse(readFileSync(join(root, "tools", "lib", "memory", "runtime.json"), "utf8"));
-    if (runtime.schemaVersion === 1 && runtime.serviceId === "cortex-local-v1" && Number.isInteger(runtime.port)) port = runtime.port;
+    if (runtime.schemaVersion === 1 && runtime.serviceId === "membrane-local-v1" && Number.isInteger(runtime.port)) port = runtime.port;
   } catch {}
   if (!Number.isInteger(port) || port < 1024 || port > 65535) return Promise.resolve(false);
   return new Promise((resolveProbe) => {
@@ -232,7 +215,11 @@ function ingestArgs(root, file, event) {
   return args;
 }
 
-export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, runCortex = defaultRunCortex, continuityService, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable } = {}) {
+export function createWorkspaceMemoryOperations(options = {}) {
+  const { contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, continuityService, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable } = options;
+  // Cortex subprocess execution is never an installed-hook default. Tests may
+  // inject a seam; production must provide the current continuity service.
+  const runCortex = typeof options.runCortex === "function" ? options.runCortex : null;
   const continuity = createContinuityClient({ service: continuityService });
   return Object.freeze({
     async status(event) {
@@ -282,8 +269,7 @@ export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTE
         if (saved.state === "available") unlinkSync(path);
         return typedStatus(saved.state === "available" ? "available" : "unavailable", saved.state === "available" ? "checkpoint_captured" : saved.reason, { continuity: true });
       }
-      // Explicit runCortex remains only as an injected test seam for legacy
-      // fixture coverage. Installed hooks have no default subprocess path.
+      if (!runCortex) return typedStatus("unavailable", "continuity_service_unavailable", { continuity: false });
       const saved = await runCortex(root, ["checkpoint", "save"], JSON.stringify(checkpoint), context);
       if (saved) unlinkSync(path);
       return typedStatus(saved ? "available" : "unavailable", saved ? "checkpoint_captured" : "checkpoint_save_failed");
@@ -292,6 +278,7 @@ export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTE
       const root = rootFor(event);
       const file = durableWorkspaceFile(root, event.payload.tool_input?.file_path || event.payload.file_path, home);
       if (!file) return typedStatus("skipped", "ingest_not_applicable");
+      if (!runCortex) return typedStatus("unavailable", "memory_service_unavailable");
       const saved = await runCortex(root, ingestArgs(root, file, event), "", context);
       return typedStatus(saved ? "available" : "unavailable", saved ? "memory_ingested" : "memory_ingest_failed");
     },

@@ -8,13 +8,14 @@
 
 **Canonical subsystems:**
 - **Membrane** — the parent context system and context control plane.
+- **Pull** — semantic evidence retrieval, admission, fusion, and publication subsystem.
 - **Blueprint** — repository truth/evidence subsystem.
 - **Cortex** — durable-knowledge subsystem.
 - **Guide** — document navigation and section-index subsystem, formerly named Spine.
 - **Adapt** — learning/proposal subsystem.
 - **Push** — reversible reduction subsystem.
 
-**System hierarchy:** Blueprint, Cortex, Guide, Adapt, and Push are the five named Membrane subsystems. Planner, provider adapters, host adapters, and Hub integration are Membrane core/modules/surfaces, not peer subsystems.
+**System hierarchy:** Pull, Push, Cortex, Blueprint, Guide, and Adapt are the six named Membrane subsystems. Planner, provider adapters, host adapters, and Hub integration are Membrane core/modules/surfaces, not peer subsystems.
 
 ---
 
@@ -45,9 +46,9 @@ Guide indexes and resolves document sections without owning document truth or du
 Adapt turns experience into governed knowledge proposals; it never bypasses Cortex admission.
 Push performs reversible reduction; the Membrane planner retains final attention and representation policy.  
 Other providers own their evidence.  
-Hub owns OS/process lifecycle.  
+Hub is the sole resident service authority and owns OS/process lifecycle.
 Legion / OmniRouter / hosts own agent execution and orchestration.  
-Membrane owns context policy and is the parent system for the five named subsystems.
+Membrane owns context policy and is the parent system for the six named subsystems.
 
 The product objective is:
 
@@ -59,7 +60,7 @@ Blueprint is a named Membrane subsystem at the product/system level, while remai
 
 Blueprint and Membrane share one repository so their seam can evolve atomically. The parent/subsystem relationship does not authorize direct internal coupling.
 
-Blueprint has its own service/watcher and SQLite evidence store. Cortex has its own durable-knowledge SQLite store. Membrane never opens Blueprint's database. Blueprint never opens Cortex's database.
+Blueprint has its own service/watcher and SQLite evidence store. Cortex has its own durable-knowledge SQLite store, but Cortex has no resident service authority. Membrane never opens Blueprint's database. Blueprint never opens Cortex's database.
 
 `engine/**` and `mcp/**` do not import `blueprint/src/**`. Membrane consumes Blueprint through Blueprint-owned schemas/service methods exactly as an external consumer would.
 
@@ -75,6 +76,26 @@ A mechanism is either:
 Reintroducing an OUT mechanism requires a new architecture decision backed by a frozen measured gap.
 
 Memory is one context source. Retrieval is one mechanism. Compression is one mechanism. The product is the governed context decision.
+
+### 0.3 Canonical six axes
+
+The product has exactly six capability axes. They share one context economy but
+retain separate ownership, tests, metrics, and improvement paths:
+
+| Axis | Responsibility | Authority boundary |
+|---|---|---|
+| **Pull** | Retrieve, admit, fuse, and publish task-relevant evidence. | Membrane planner owns final policy. |
+| **Push** | Reduce information already in flight. | Faithful, reversible reduction only; never a second planner. |
+| **Cortex** | Admit, retain, lifecycle, and retrieve governed durable memory. | Durable-memory only; no resident service, port, or process authority. |
+| **Blueprint** | Own repository truth, evidence generations, and drift/change observation. | Blueprint-owned schemas/services; no duplicate parser or graph. |
+| **Guide** | Navigate indexed document sections with hash-bound references. | Navigation/index projections only; no document truth or durable memory. |
+| **Adapt** | Mine experience into governed knowledge proposals. | Proposals enter Cortex admission; no direct durable writes. |
+
+Membrane Hub is not a seventh axis. It is the sole resident service, process,
+installation, update, and release authority that hosts these axes.
+
+The current supported target is macOS. Other targets are not current supported
+targets until separately qualified and added to canonical capability truth.
 
 ---
 
@@ -189,8 +210,8 @@ The architecture must reject scope growth that does not improve the core objecti
 | Representation choice | Membrane Push / planner boundary | Native/rendered/resolver/metadata and faithful reduction |
 | Publication revalidation | Membrane runtime | Recheck authority/policy immediately before bytes leave |
 | Omissions / receipts | Membrane | Explain every material decision |
-| Durable knowledge | Cortex | Store governed long-lived knowledge |
-| Lexical/vector/temporal durable-memory retrieval | Cortex | Produce typed evidence candidates |
+| Durable knowledge | Cortex | Store governed long-lived knowledge; durable-memory only |
+| Lexical/vector/temporal durable-memory retrieval | Cortex | Produce typed evidence candidates; no service authority |
 | Memory conflict / lifecycle / supersession | Cortex | Persist and expose typed state |
 | Code parsing / AST / symbols / references / calls / imports / types | Blueprint | Membrane consumes typed evidence only |
 | Repository stable identity / source spans / generations | Blueprint | Consume and policy-evaluate |
@@ -203,7 +224,7 @@ The architecture must reject scope growth that does not improve the core objecti
 | Rules / policy evidence | Rule provider / workspace policy owner | Consume without allowing text to self-authorize |
 | Audit findings | Audit | Consume typed findings |
 | Architectural decisions/plans | Decision/architecture provider | Consume as evidence, never current-code truth |
-| OS startup / child processes / restart/backoff | Hub | Expose readiness/drain/identity only |
+| OS startup / child processes / restart/backoff | Hub | Sole resident service authority; expose readiness/drain/identity |
 | Agent execution / model routing | Legion / OmniRouter / host | Out of scope |
 | Host conversation compaction | Host | Membrane may supply artifacts/context, not own transcript |
 | Immutable raw reduction artifacts | Membrane | Govern content-addressed recoverability |
@@ -1451,6 +1472,11 @@ Hub owns:
 - installer/updater lifecycle;
 - process restart/backoff.
 
+Hub is the only resident service authority. It owns resident service identity,
+ports, leases, readiness, drain, and shutdown. Cortex may expose durable-memory
+library and CLI operations to Hub, but it does not claim a resident service,
+service identity, port, lease, or process lifecycle.
+
 Membrane exposes:
 
 - readiness;
@@ -1819,7 +1845,8 @@ Gate:
 
 ## Phase 9 — Installed-product qualification
 
-Qualify supported hosts/platforms using current artifacts.
+Qualify the sole current target, macOS, using current artifacts. Other targets
+remain outside supported-product truth until separately qualified and declared.
 
 Require:
 
@@ -1835,7 +1862,7 @@ Require:
 - restart/degradation;
 - upgrade;
 - uninstall;
-- Mac/Windows resource and latency evidence;
+- macOS resource and latency evidence;
 - whole-task comparison against frozen control.
 
 No public capability is called shipped without installed-path proof.
@@ -1864,7 +1891,7 @@ Verify paths against current `main` before tickets.
 | `engine/crates/cortex-core/` | durable-memory retrieval/admission/lifecycle/conflict policy |
 | `engine/crates/cortex-store/` | canonical durable store + rebuildable projections |
 | `engine/crates/membrane-runtime/` | publication, Push/artifact/working context/runtime integration |
-| `engine/crates/membrane-runtime/src/{doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs` | current Guide implementation under legacy Spine-era identifiers; document navigation/index only, not document truth or durable knowledge |
+| `engine/crates/membrane-runtime/src/guide/{outline,identifier,doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs` | Guide implementation; document navigation/index only, not document truth or durable knowledge |
 | `mcp/server.mjs` | thin MCP surface |
 | `mcp/context-renderer-lib.cjs` | deterministic execution of planner-selected representation/layout; no hidden ranking |
 | `mcp/working-context.mjs` | bounded active working context; schema changes mirrored with Rust |
@@ -2043,7 +2070,7 @@ It is done when the product purpose is mechanically true.
 ## 23.1 Product identity
 
 - [ ] Membrane is demonstrably a context control plane/compiler, not a memory platform or orchestrator.
-- [ ] Blueprint, Cortex, Guide, Adapt, and Push subsystem boundaries are explicit; Hub and host boundaries remain external/integration boundaries.
+- [ ] Pull, Push, Cortex, Blueprint, Guide, and Adapt subsystem boundaries are explicit; Hub and host boundaries remain external/integration boundaries.
 - [ ] Physical co-location in the monorepo does not permit direct `engine/**`/`mcp/**` imports from `blueprint/src/**`.
 - [ ] One active implementation authority exists.
 - [ ] Current product docs regenerate from landed source.
@@ -2168,7 +2195,7 @@ Every durable item can answer:
 - [ ] Authority/scope safety is non-inferior.
 - [ ] Receipt integrity is exact.
 - [ ] At least one meaningful attention/retrieval/latency/resource cost improves for every material adaptive feature.
-- [ ] Mac and Windows supported installed paths qualify against current artifacts.
+- [ ] macOS supported installed path qualifies against current artifacts.
 
 ---
 
@@ -2221,6 +2248,6 @@ PERSIST
 
 The core ownership rule is:
 
-> **Membrane is the parent context system. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Guide navigates indexed documents. Adapt produces governed learning proposals. Push performs reversible reduction. The Membrane planner determines what deserves the agent's attention now, in what form, under whose authority, and records exactly why.**
+> **Membrane is the parent context system with six axes: Pull, Push, Cortex, Blueprint, Guide, and Adapt. Blueprint determines repository evidence and repository truth. Cortex preserves durable memory only. Guide navigates indexed documents. Adapt produces governed learning proposals. Push performs reversible reduction. The Membrane planner determines what deserves the agent's attention now, in what form, under whose authority, and records exactly why. Membrane Hub is the sole resident service authority.**
 
 That is the canonical shape.

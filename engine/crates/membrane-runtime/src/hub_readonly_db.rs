@@ -18,10 +18,10 @@ pub fn configured_workspace_root() -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
-/// Resolves the local cortex-engine database path. `CORTEX_DB_PATH` overrides
+/// Resolves the local cortex-engine database path. `MEMBRANE_DB_PATH` overrides
 /// for tests/alternate installs; otherwise the workspace-relative default.
 pub fn configured_db_path() -> PathBuf {
-    std::env::var_os("CORTEX_DB_PATH")
+    std::env::var_os("MEMBRANE_DB_PATH")
         .map(PathBuf::from)
         .unwrap_or_else(|| configured_workspace_root().join("tools/.cache/memory/cortex-engine.db"))
 }

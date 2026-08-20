@@ -5,8 +5,8 @@ This module is the **only** import boundary for those deps.
 
 Required parent capabilities
 ----------------------------
-1. Cortex runtime config
-   - symbol: ``cortex_port(env=None) -> int``
+1. Membrane runtime config
+   - symbol: ``membrane_port(env=None) -> int``
    - source: ``tools/lib/memory/runtime_config.py``
    - used by: ``adapt_persistence``, ``multiwriter_conformance``
 
@@ -25,6 +25,7 @@ See ``docs/workspace-interface.md`` for the contract table.
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import sys
 from pathlib import Path
@@ -76,9 +77,27 @@ def _load_module(name: str) -> ModuleType:
         ) from exc
 
 
-def cortex_port(env: Any = None, config_path: Any = None) -> int:
-    mod = _load_module("memory.runtime_config")
-    return mod.cortex_port(env, config_path) if config_path is not None else mod.cortex_port(env)
+def _valid_port(raw: object, source: str) -> int:
+    try:
+        port = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{source} must be an integer TCP port") from exc
+    if not 1024 <= port <= 65535:
+        raise ValueError(f"{source} must be between 1024 and 65535")
+    return port
+
+
+def membrane_port(env: Any = None, config_path: Any = None) -> int:
+    values = os.environ if env is None else env
+    if values.get("MEMBRANE_PORT"):
+        return _valid_port(values["MEMBRANE_PORT"], "MEMBRANE_PORT")
+    path = Path(config_path) if config_path is not None else workspace_root() / "tools/lib/memory/runtime.json"
+    config = json.loads(path.read_text(encoding="utf-8"))
+    if config.get("schemaVersion") != 1 or config.get("serviceId") != "membrane-local-v1":
+        raise ValueError(f"invalid Membrane runtime config identity: {path}")
+    if config.get("host") != "127.0.0.1":
+        raise ValueError("Membrane runtime host must remain loopback-only")
+    return _valid_port(config.get("port"), f"{path}:port")
 
 
 def mirror_append_only() -> ModuleType:
@@ -96,7 +115,7 @@ def context_session_adapters() -> ModuleType:
 __all__ = [
     "WorkspaceRuntimeUnavailable",
     "workspace_root",
-    "cortex_port",
+    "membrane_port",
     "mirror_append_only",
     "context_session_inventory",
     "context_session_adapters",

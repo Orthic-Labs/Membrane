@@ -1,17 +1,9 @@
-// Native-host artifact proof. NSIS is installed silently into a temporary
-// directory, then only packaged runtime bytes/sidecars are passed to probes.
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+// Native-host artifact proof consumes only packaged Mac runtime bytes/sidecars.
+import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { verifyUnpackedArtifact } from "./runtime-inventory.mjs";
 
-function run(command, args) {
-  const result = spawnSync(command, args, { stdio: "inherit", windowsHide: true });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`unpacked artifact setup failed: ${command}`);
-}
 function findRuntime(root) {
   const pending = [root];
   while (pending.length) {
@@ -35,13 +27,9 @@ function args(argv) {
   return result;
 }
 
-export async function verifyPackagedArtifact({ app, nsis } = {}) {
-  if (Boolean(app) === Boolean(nsis)) throw new Error("supply exactly one of --app or --nsis");
-  if (app) return verifyUnpackedArtifact(appLayout(resolve(app)));
-  if (process.platform !== "win32") throw new Error("NSIS unpacked proof requires Windows");
-  const root = mkdtempSync(join(tmpdir(), "membrane-hub-nsis-probe-"));
-  try { run(resolve(nsis), ["/S", `/D=${join(root, "Membrane")}`]); return await verifyUnpackedArtifact(findRuntime(root)); }
-  finally { rmSync(root, { recursive: true, force: true }); }
+export async function verifyPackagedArtifact({ app } = {}) {
+  if (!app) throw new Error("supply --app");
+  return verifyUnpackedArtifact(appLayout(resolve(app)));
 }
 
 if (fileURLToPath(import.meta.url) === resolve(process.argv[1] || "")) {

@@ -6,7 +6,7 @@ import test from "node:test";
 const root = new URL("../..", import.meta.url).pathname;
 const read = path => readFileSync(join(root, path), "utf8");
 const json = path => JSON.parse(read(path));
-const platformKeys = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-arm64", "win32-x64"];
+const platformKeys = ["darwin-arm64", "darwin-x64"];
 
 test("generated npm package graph stays Membrane-owned", () => {
   const npm = json("dist/npm/package.json");

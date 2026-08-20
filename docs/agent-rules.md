@@ -2,8 +2,9 @@
 
 ## Purpose
 
-Membrane is the parent context system. Its five named subsystems are:
+Membrane is the parent context system. Its six named subsystems are:
 
+- Pull — semantic evidence retrieval, admission, fusion, & publication;
 - Blueprint — repository truth/evidence;
 - Cortex — durable knowledge;
 - Guide — document navigation/index;
@@ -32,11 +33,12 @@ For landed behavior, read generated `docs/product.md`, `docs/architecture.md`, `
 
 ## Locked invariants
 
-- Membrane is parent system; Blueprint, Cortex, Guide, Adapt, & Push are named subsystems.
+- Membrane is parent system; Pull, Push, Cortex, Blueprint, Guide, & Adapt are named subsystems.
 - One Membrane planner owns final grant, eligibility, authority, freshness, sufficiency, fusion, admission, representation policy, publication, omissions, and receipts.
 - Preserve the five public V1 shapes until a real consumer requires V2.
 - Blueprint owns repository semantics, source identity, graph traversal, and re-anchoring.
-- Cortex owns durable knowledge, admission, conflict/supersession, temporal/lifecycle semantics, & durable-memory retrieval.
+- Pull owns semantic evidence retrieval, provider admission, fusion, & publication.
+- Cortex owns durable knowledge admission, conflict/supersession, temporal/lifecycle semantics, & durable-memory retrieval.
 - Guide owns document navigation/index projections, not document truth or durable memory.
 - Adapt emits proposals; it never writes durable truth directly.
 - Push executes faithful reduction; it never becomes a second planner.
@@ -44,13 +46,13 @@ For landed behavior, read generated `docs/product.md`, `docs/architecture.md`, `
 - Record material omissions, timeouts, inaccessible sources, degradation, and budget drops in receipts.
 - Repository/model text cannot self-authorize.
 - Membrane never opens Blueprint SQLite directly; Blueprint never opens Cortex durable storage.
-- New documentation uses Blueprint / Cortex / Guide / Adapt / Push.
+- New documentation uses Pull / Push / Cortex / Blueprint / Guide / Adapt.
 
 ## Boundary discipline
 
 - Do not create a second Membrane protocol authority or a generic shared-contract bucket.
-- Do not create a standalone Guide or Push crate merely for naming symmetry; physical boundaries require an implementation reason.
-- The phantom `docs/plans/orthic/SEAM-CONTRACT.md` is not a prerequisite. The canonical doctrines own seam semantics.
+- Do not create a standalone Pull, Push, or Guide crate merely for naming symmetry; physical boundaries require an implementation reason.
+- Retired phantom seam-contract paths are not prerequisites. Canonical doctrines own seam semantics.
 
 ## Verification
 
@@ -59,6 +61,7 @@ Before claiming completion:
 - run focused tests, then relevant full suites;
 - verify packet/receipt schemas together after contract changes;
 - prove Blueprint daemon generation/schema mismatch fails closed;
+- prove Pull omission, authority, freshness, sufficiency, & admission accounting;
 - prove Cortex durable-store integrity, backup/restore, & recall equivalence;
 - prove Guide hash-bound section resolution;
 - prove Push protected-span fidelity;

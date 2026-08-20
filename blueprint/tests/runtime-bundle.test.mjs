@@ -13,7 +13,7 @@ import { stageRuntime } from "../scripts/release/stage-runtime.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const LAUNCHERS = join(ROOT, "release", "launchers");
-const runtimeName = process.platform === "win32" ? "lib/node.exe" : "lib/node";
+const runtimeName = "lib/node";
 
 function stagedBundle() {
   const out = mkdtempSync(join(tmpdir(), "blueprint-runtime-test-"));
@@ -24,7 +24,7 @@ function stagedBundle() {
 test("stageRuntime produces the S-12 layout", () => {
   const { out, result } = stagedBundle();
   try {
-    for (const path of ["bin/blueprint", "bin/blueprint.cmd", "bin/blueprint-mcp", runtimeName, "app/package/scripts/blueprint.mjs", "app/schemas", "LICENSE", "README.txt"]) {
+    for (const path of ["bin/blueprint", "bin/blueprint-mcp", runtimeName, "app/package/scripts/blueprint.mjs", "app/schemas", "LICENSE", "README.txt"]) {
       assert.ok(existsSync(join(out, path)), `missing ${path}`);
     }
     assert.equal(result.version, "0.2.0");
@@ -50,30 +50,19 @@ test("stageRuntime rejects a nonempty output without modifying it", () => {
 test("launchers are present and executable", () => {
   const { out } = stagedBundle();
   try {
-    for (const name of ["blueprint", "blueprint.cmd", "blueprint.ps1", "blueprint-mcp"]) {
+    for (const name of ["blueprint", "blueprint-mcp"]) {
       assert.ok(existsSync(join(LAUNCHERS, name)), `missing launcher ${name}`);
     }
-    if (process.platform !== "win32") {
-      for (const name of ["blueprint", "blueprint-mcp"]) {
-        const mode = statSync(join(out, "bin", name)).mode;
-        assert.ok(mode & 0o111, `staged ${name} not executable`);
-      }
+    for (const name of ["blueprint", "blueprint-mcp"]) {
+      const mode = statSync(join(out, "bin", name)).mode;
+      assert.ok(mode & 0o111, `staged ${name} not executable`);
     }
   } finally {
     rmSync(out, { recursive: true, force: true });
   }
 });
 
-test("bundled launcher runs help without system Node on PATH", () => {
-  if (process.platform === "win32") {
-    const { out } = stagedBundle();
-    try {
-      const result = spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", `call "${join(out, "bin", "blueprint.cmd")}" --help`], { env: { ...process.env, PATH: "" }, encoding: "utf8", windowsVerbatimArguments: true });
-      assert.equal(result.status, 0, result.stderr || result.stdout);
-      assert.match(result.stdout, /Blueprint — repository truth and evidence map/);
-    } finally { rmSync(out, { recursive: true, force: true }); }
-    return;
-  }
+test("bundled macOS launcher runs help without system Node on PATH", () => {
   const { out } = stagedBundle();
   try {
     const result = spawnSync(join(out, "bin", "blueprint"), ["--help"], { env: { ...process.env, PATH: "/usr/bin:/bin" }, encoding: "utf8" });

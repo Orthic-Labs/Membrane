@@ -1,4 +1,4 @@
-use cortex::freshness::{
+use membrane_runtime::freshness::{
     canonical_repo_root, evaluate_freshness, FilesystemFreshnessProbe, FreshnessEpoch,
     FreshnessProbe, GraphState, OverlayObservation,
 };
@@ -116,7 +116,7 @@ fn shared_fixture_covers_clean_dirty_partial_and_concurrent_epochs() {
 fn overlay_digest_covers_entries_beyond_the_return_cap() {
     let epoch = FreshnessEpoch::coherent_for_test("a", "g", "s");
     let entries = (0..70)
-        .map(|index| cortex::freshness::OverlayEntry {
+        .map(|index| membrane_runtime::freshness::OverlayEntry {
             path: format!("src/{index}.rs"),
             status: " M".to_string(),
             content_hash: format!("sha256:{index:064x}"),
@@ -180,7 +180,7 @@ fn partial_reindex_degrades_blueprint_without_disabling_stable_overlay_or_skills
         epochs: VecDeque::from([epoch.clone(), epoch]),
         overlays: VecDeque::from([OverlayObservation {
             stable: true,
-            entries: vec![cortex::freshness::OverlayEntry {
+            entries: vec![membrane_runtime::freshness::OverlayEntry {
                 path: "src/app.rs".to_string(),
                 status: " M".to_string(),
                 content_hash: format!("sha256:{:064x}", 7u64),
@@ -210,7 +210,7 @@ fn blueprint_without_base_commit_keeps_head_overlay_available_without_claiming_c
         epochs: VecDeque::from([epoch.clone(), epoch]),
         overlays: VecDeque::from([OverlayObservation {
             stable: true,
-            entries: vec![cortex::freshness::OverlayEntry {
+            entries: vec![membrane_runtime::freshness::OverlayEntry {
                 path: "src/app.rs".to_string(),
                 status: " M".to_string(),
                 content_hash:
@@ -264,7 +264,7 @@ fn git_status_stage_accumulates_across_freshness_retries() {
 
 #[test]
 fn freshness_route_returns_versioned_content_free_service_metadata() {
-    let store = cortex::MemoryStore::new();
+    let store = membrane_runtime::MemoryStore::new();
     let workspace = std::env::current_dir().unwrap().canonicalize().unwrap();
     let repo = tempfile::Builder::new()
         .prefix("freshness-route-")
@@ -286,7 +286,7 @@ fn freshness_route_returns_versioned_content_free_service_metadata() {
         "worktreePath": repo_root.to_string_lossy(),
     })
     .to_string();
-    let (status, payload) = cortex::serve::route_for_tests(&store, "POST", "/freshness", &body);
+    let (status, payload) = membrane_runtime::serve::route_for_tests(&store, "POST", "/freshness", &body);
     assert_eq!(status, 200, "{payload}");
     let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
     assert_eq!(value["schemaVersion"], 1);
@@ -357,7 +357,7 @@ fn filesystem_probe_binds_blueprint_to_commit_and_reports_verified_dirty_overlay
     let endpoint_dir = tempfile::tempdir().unwrap();
     let endpoint = endpoint_dir.path().join("blueprint.sock");
     let server = blueprint_status_server(&endpoint, head.clone(), generation.to_string(), 4);
-    let store = cortex::MemoryStore::new();
+    let store = membrane_runtime::MemoryStore::new();
 
     let repo_root = repo.path().canonicalize().unwrap();
     let mut clean_probe = FilesystemFreshnessProbe::new(repo_root.clone(), &store)
@@ -413,7 +413,7 @@ fn skills_generation_changes_only_when_skill_snapshot_content_changes() {
     run_git(workspace.path(), &["init"]);
     run_git(workspace.path(), &["add", "tools/skills/demo/SKILL.md"]);
 
-    let store = cortex::MemoryStore::new();
+    let store = membrane_runtime::MemoryStore::new();
     assert_eq!(store.ingest_skills(workspace.path()), (1, 0, 0));
     let first = store.skills_generation().unwrap();
     let snapshot = store.skills_snapshot().unwrap();

@@ -1,8 +1,8 @@
-use cortex::{doc_spine, MemDb};
+use membrane_runtime::guide::{doc_spine, GuideDb};
 
-fn doc_rows(db: &MemDb) -> i64 {
+fn doc_rows(db: &GuideDb) -> i64 {
     db.lock()
-        .query_row("SELECT COUNT(*) FROM doc_artifacts", [], |r| r.get(0))
+        .query_row("SELECT COUNT(*) FROM guide_doc_artifacts", [], |r| r.get(0))
         .unwrap()
 }
 
@@ -12,12 +12,12 @@ fn shadow_sync_registers_docs_excludes_health_and_tombstones_deletes() {
     std::fs::create_dir_all(temp.path().join("Health")).unwrap();
     std::fs::write(temp.path().join("runbook.md"), "# Runbook").unwrap();
     std::fs::write(temp.path().join("Health").join("private.md"), "never index").unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     let first = doc_spine::sync(&db, temp.path()).unwrap();
     assert_eq!(first.registered, 1);
     assert!(first.excluded_health > 0);
     let row: (String, String, String) = db.lock().query_row(
-        "SELECT document_class, lifecycle_state, influence_class FROM doc_artifacts WHERE path='runbook.md'",
+        "SELECT document_class, lifecycle_state, influence_class FROM guide_doc_artifacts WHERE path='runbook.md'",
         [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
     ).unwrap();
     assert_eq!(row, ("runbook".into(), "active".into(), "procedure".into()));
@@ -39,7 +39,7 @@ fn sync_excludes_health_at_any_depth_regardless_of_casing() {
     .unwrap();
     std::fs::write(temp.path().join("public.md"), "public").unwrap();
 
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     let report = doc_spine::sync(&db, temp.path()).unwrap();
 
     assert_eq!(report.registered, 1);
@@ -55,14 +55,16 @@ fn sync_discovers_tracked_and_nonignored_markdown_but_skips_gitignored_files() {
     std::fs::write(temp.path().join("untracked.md"), "nonignored").unwrap();
     std::fs::write(temp.path().join("ignored.md"), "ignored").unwrap();
 
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     let report = doc_spine::sync(&db, temp.path()).unwrap();
 
     assert_eq!(report.registered, 2);
     let paths: Vec<String> = {
         let conn = db.lock();
         let mut statement = conn
-            .prepare("SELECT path FROM doc_artifacts WHERE lifecycle_state='active' ORDER BY path")
+            .prepare(
+                "SELECT path FROM guide_doc_artifacts WHERE lifecycle_state='active' ORDER BY path",
+            )
             .unwrap();
         statement
             .query_map([], |r| r.get(0))
@@ -91,13 +93,13 @@ fn sync_hard_excludes_memory_pointers_exports_and_dependency_trees() {
     }
     std::fs::write(temp.path().join("public.md"), "included").unwrap();
 
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     let report = doc_spine::sync(&db, temp.path()).unwrap();
     assert_eq!(report.registered, 1);
     let path: String = db
         .lock()
         .query_row(
-            "SELECT path FROM doc_artifacts WHERE lifecycle_state='active'",
+            "SELECT path FROM guide_doc_artifacts WHERE lifecycle_state='active'",
             [],
             |r| r.get(0),
         )
@@ -110,12 +112,12 @@ fn sync_refreshes_hash_and_worktree_revision_after_content_changes() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("runbook.md");
     std::fs::write(&path, "first").unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     doc_spine::sync(&db, temp.path()).unwrap();
     let first: (String, String) = db
         .lock()
         .query_row(
-            "SELECT content_hash, revision FROM doc_artifacts WHERE path='runbook.md'",
+            "SELECT content_hash, revision FROM guide_doc_artifacts WHERE path='runbook.md'",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
@@ -126,7 +128,7 @@ fn sync_refreshes_hash_and_worktree_revision_after_content_changes() {
     let second: (String, String) = db
         .lock()
         .query_row(
-            "SELECT content_hash, revision FROM doc_artifacts WHERE path='runbook.md'",
+            "SELECT content_hash, revision FROM guide_doc_artifacts WHERE path='runbook.md'",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
@@ -142,12 +144,12 @@ fn sync_preserves_document_identity_across_rename_and_tombstones_old_path() {
     let old = temp.path().join("decision-old.md");
     let new = temp.path().join("decision-new.md");
     std::fs::write(&old, "# Decision\nretain identity").unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     doc_spine::sync(&db, temp.path()).unwrap();
     let first_id: String = db
         .lock()
         .query_row(
-            "SELECT doc_id FROM doc_artifacts WHERE path='decision-old.md'",
+            "SELECT doc_id FROM guide_doc_artifacts WHERE path='decision-old.md'",
             [],
             |r| r.get(0),
         )
@@ -157,12 +159,12 @@ fn sync_preserves_document_identity_across_rename_and_tombstones_old_path() {
     let report = doc_spine::sync(&db, temp.path()).unwrap();
     assert_eq!(report.tombstoned, 1);
     let active_id: String = db.lock().query_row(
-        "SELECT doc_id FROM doc_artifacts WHERE path='decision-new.md' AND lifecycle_state='active'", [], |r| r.get(0),
+        "SELECT doc_id FROM guide_doc_artifacts WHERE path='decision-new.md' AND lifecycle_state='active'", [], |r| r.get(0),
     ).unwrap();
     let old_state: String = db
         .lock()
         .query_row(
-            "SELECT lifecycle_state FROM doc_artifacts WHERE path='decision-old.md'",
+            "SELECT lifecycle_state FROM guide_doc_artifacts WHERE path='decision-old.md'",
             [],
             |r| r.get(0),
         )
@@ -179,22 +181,26 @@ fn sync_preserves_document_identity_across_rename_and_tombstones_old_path() {
 fn sync_never_admits_document_content_as_durable_memory() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("policy.md"), "never durable memory").unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
 
     doc_spine::sync(&db, temp.path()).unwrap();
 
-    let durable: i64 = db
+    let durable_tables: i64 = db
         .lock()
-        .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memories'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
-    assert_eq!(durable, 0);
+    assert_eq!(durable_tables, 0);
 }
 
 #[test]
 fn unchanged_sync_reports_reused_artifact_without_reparsing() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("runbook.md"), "# Runbook\n").unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
 
     let first = doc_spine::sync(&db, temp.path()).unwrap();
     let second = doc_spine::sync(&db, temp.path()).unwrap();
@@ -215,7 +221,7 @@ fn changed_parser_upgrade_deleted_and_duplicate_paths_keep_incremental_state_sou
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("runbook.md");
     std::fs::write(&path, "first").unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     doc_spine::sync(&db, temp.path()).unwrap();
 
     std::fs::write(&path, "second").unwrap();
@@ -232,7 +238,7 @@ fn changed_parser_upgrade_deleted_and_duplicate_paths_keep_incremental_state_sou
 
     db.lock()
         .execute(
-            "UPDATE doc_artifacts SET parser_version='older-parser' WHERE path='runbook.md'",
+            "UPDATE guide_doc_artifacts SET parser_version='older-parser' WHERE path='runbook.md'",
             [],
         )
         .unwrap();
@@ -244,7 +250,7 @@ fn changed_parser_upgrade_deleted_and_duplicate_paths_keep_incremental_state_sou
     let rows: i64 = db
         .lock()
         .query_row(
-            "SELECT COUNT(*) FROM doc_artifacts WHERE path='runbook.md'",
+            "SELECT COUNT(*) FROM guide_doc_artifacts WHERE path='runbook.md'",
             [],
             |row| row.get(0),
         )
@@ -263,11 +269,11 @@ fn changed_parser_upgrade_deleted_and_duplicate_paths_keep_incremental_state_sou
 fn failed_incremental_sync_rolls_back_generation_updates() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("first.md"), "stable").unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     let first = doc_spine::sync(&db, temp.path()).unwrap();
     db.lock()
         .execute_batch(
-            "CREATE TRIGGER reject_bad BEFORE INSERT ON doc_artifacts \
+            "CREATE TRIGGER reject_bad BEFORE INSERT ON guide_doc_artifacts \
              WHEN NEW.path='bad.md' BEGIN SELECT RAISE(ABORT, 'fixture rejection'); END;",
         )
         .unwrap();
@@ -278,7 +284,7 @@ fn failed_incremental_sync_rolls_back_generation_updates() {
     let generation: i64 = db
         .lock()
         .query_row(
-            "SELECT index_generation FROM doc_artifacts WHERE path='first.md'",
+            "SELECT index_generation FROM guide_doc_artifacts WHERE path='first.md'",
             [],
             |row| row.get(0),
         )
@@ -294,12 +300,12 @@ fn sync_persists_machine_local_lexical_projection_with_current_provenance() {
         "# Runbook\n\nverify install",
     )
     .unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
 
     doc_spine::sync(&db, temp.path()).unwrap();
 
     let row: (String, String, String, i64) = db.lock().query_row(
-        "SELECT kind, source_content_hash, source_revision, index_generation FROM doc_projections",
+        "SELECT kind, source_content_hash, source_revision, index_generation FROM guide_doc_projections",
         [],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
     ).unwrap();
@@ -313,7 +319,7 @@ fn sync_persists_machine_local_lexical_projection_with_current_provenance() {
 fn sync_frontmatter_projects_metadata_and_supersedes_declared_document() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("old.md"), "# Old\n").unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     doc_spine::sync(&db, temp.path()).unwrap();
 
     std::fs::write(
@@ -324,7 +330,7 @@ fn sync_frontmatter_projects_metadata_and_supersedes_declared_document() {
     doc_spine::sync(&db, temp.path()).unwrap();
 
     let row: (String, String, String, String, String) = db.lock().query_row(
-        "SELECT title, summary, keywords_json, lifecycle_state, doc_id FROM doc_artifacts WHERE path='new.md'",
+        "SELECT title, summary, keywords_json, lifecycle_state, doc_id FROM guide_doc_artifacts WHERE path='new.md'",
         [],
         |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
     ).unwrap();
@@ -335,7 +341,7 @@ fn sync_frontmatter_projects_metadata_and_supersedes_declared_document() {
     let old: (String, String) = db
         .lock()
         .query_row(
-            "SELECT lifecycle_state, superseded_by FROM doc_artifacts WHERE path='old.md'",
+            "SELECT lifecycle_state, superseded_by FROM guide_doc_artifacts WHERE path='old.md'",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
@@ -344,7 +350,7 @@ fn sync_frontmatter_projects_metadata_and_supersedes_declared_document() {
     let projection: String = db
         .lock()
         .query_row(
-            "SELECT content FROM doc_projections WHERE parent_doc_id=?1 AND kind='lexical'",
+            "SELECT content FROM guide_doc_projections WHERE parent_doc_id=?1 AND kind='lexical'",
             [&row.4],
             |r| r.get(0),
         )
@@ -353,7 +359,11 @@ fn sync_frontmatter_projects_metadata_and_supersedes_declared_document() {
     assert!(projection.contains("Replacement policy"));
     assert_eq!(
         db.lock()
-            .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get::<_, i64>(0))
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memories'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
             .unwrap(),
         0
     );
@@ -367,14 +377,14 @@ fn sync_frontmatter_ignores_flat_framework_metadata() {
         "---\ntitle: Framework Title\nstatus: draft\n---\n# Body\n",
     )
     .unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
 
     doc_spine::sync(&db, temp.path()).unwrap();
 
     let row: (String, String) = db
         .lock()
         .query_row(
-            "SELECT COALESCE(title, ''), lifecycle_state FROM doc_artifacts WHERE path='framework.md'",
+            "SELECT COALESCE(title, ''), lifecycle_state FROM guide_doc_artifacts WHERE path='framework.md'",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
@@ -390,14 +400,14 @@ fn sync_frontmatter_uses_only_membrane_namespace() {
         "---\ntitle: Framework Title\nstatus: active\nmembrane:\n  title: Membrane Title\n  status: draft\n---\n# Body\n",
     )
     .unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
 
     doc_spine::sync(&db, temp.path()).unwrap();
 
     let row: (String, String) = db
         .lock()
         .query_row(
-            "SELECT title, lifecycle_state FROM doc_artifacts WHERE path='namespaced.md'",
+            "SELECT title, lifecycle_state FROM guide_doc_artifacts WHERE path='namespaced.md'",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
@@ -413,14 +423,14 @@ fn sync_frontmatter_parses_membrane_keyword_list() {
         "---\nmembrane:\n  keywords: [policy, replacement]\n---\n# Body\n",
     )
     .unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
 
     doc_spine::sync(&db, temp.path()).unwrap();
 
     let keywords: String = db
         .lock()
         .query_row(
-            "SELECT keywords_json FROM doc_artifacts WHERE path='keywords.md'",
+            "SELECT keywords_json FROM guide_doc_artifacts WHERE path='keywords.md'",
             [],
             |r| r.get(0),
         )
@@ -436,28 +446,18 @@ fn sync_frontmatter_rejects_duplicate_or_dangling_supersession_without_writes() 
         "---\nmembrane:\n  title: One\n  title: Two\n  supersedes: missing.md\n---\n# Invalid\n",
     )
     .unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     let err =
         doc_spine::sync(&db, temp.path()).expect_err("duplicate frontmatter must fail closed");
     assert!(err.contains("duplicate frontmatter key"));
     assert_eq!(doc_rows(&db), 0);
     let projection_rows = db
         .lock()
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='doc_projections'",
-            [],
-            |r| r.get::<_, i64>(0),
-        )
+        .query_row("SELECT COUNT(*) FROM guide_doc_projections", [], |r| {
+            r.get::<_, i64>(0)
+        })
         .unwrap();
-    assert!(
-        projection_rows == 0
-            || db
-                .lock()
-                .query_row("SELECT COUNT(*) FROM doc_projections", [], |r| r
-                    .get::<_, i64>(0))
-                .unwrap()
-                == 0
-    );
+    assert_eq!(projection_rows, 0);
 }
 
 #[test]
@@ -534,14 +534,16 @@ fn sync_frontmatter_failure_matrix_is_atomic() {
         for (path, content) in files {
             std::fs::write(temp.path().join(path), content).unwrap();
         }
-        let db = MemDb::open_in_memory();
+        let db = GuideDb::open_in_memory();
         let err = doc_spine::sync(&db, temp.path()).expect_err(name);
         assert!(err.contains(expected), "{name}: {err}");
         assert_eq!(doc_rows(&db), 0, "{name} must not write artifacts");
         let projections: i64 = db
             .lock()
-            .query_row("SELECT COUNT(*) FROM doc_projections", [], |r| r.get(0))
-            .unwrap_or(0);
+            .query_row("SELECT COUNT(*) FROM guide_doc_projections", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
         assert_eq!(projections, 0, "{name} must not write projections");
     }
 }
@@ -551,7 +553,7 @@ fn isolated_doc_recall_returns_a_hash_bound_pointer_to_the_matching_section() {
     let temp = tempfile::tempdir().unwrap();
     let markdown = "# Runbook\n\n## Deploy\n\nDoc Spine fetches the requested anchor as source-bound content.\n\n## Rollback\n\nRestore the prior release.\n";
     std::fs::write(temp.path().join("runbook.md"), markdown).unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
 
     doc_spine::sync(&db, temp.path()).unwrap();
     let hits = doc_spine::recall(&db, "requested anchor", 1).unwrap();
@@ -560,7 +562,7 @@ fn isolated_doc_recall_returns_a_hash_bound_pointer_to_the_matching_section() {
     let hit = &hits[0];
     assert_eq!(hit.source_ref, "doc://repo/worktree/runbook.md");
     assert_eq!(hit.anchor_id, "sec:deploy:1");
-    let read = cortex::outline::read_section(
+    let read = membrane_runtime::guide::outline::read_section(
         &hit.source_ref,
         markdown,
         &hit.anchor_id,
@@ -572,11 +574,15 @@ fn isolated_doc_recall_returns_a_hash_bound_pointer_to_the_matching_section() {
         read.content,
         "## Deploy\n\nDoc Spine fetches the requested anchor as source-bound content.\n\n"
     );
-    let durable: i64 = db
+    let durable_tables: i64 = db
         .lock()
-        .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='memories'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
-    assert_eq!(durable, 0);
+    assert_eq!(durable_tables, 0);
 }
 
 #[test]
@@ -584,11 +590,11 @@ fn sync_rolls_back_projection_when_one_artifact_write_fails() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("first.md"), "first").unwrap();
     std::fs::write(temp.path().join("second.md"), "second").unwrap();
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     {
         let conn = db.lock();
         conn.execute_batch(
-            "CREATE TABLE doc_artifacts (doc_id TEXT PRIMARY KEY, repository_root TEXT NOT NULL, repository_id TEXT NOT NULL, revision TEXT NOT NULL, path TEXT NOT NULL, content_hash TEXT NOT NULL, parser_version TEXT NOT NULL, document_class TEXT NOT NULL, lifecycle_state TEXT NOT NULL, trust_label TEXT NOT NULL, influence_class TEXT NOT NULL, sensitivity TEXT NOT NULL, generated INTEGER NOT NULL, index_generation INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL, UNIQUE(repository_root, path));\n             CREATE TRIGGER reject_second BEFORE INSERT ON doc_artifacts WHEN NEW.path='second.md' BEGIN SELECT RAISE(ABORT, 'projection rejected'); END;",
+            "CREATE TRIGGER reject_second BEFORE INSERT ON guide_doc_artifacts WHEN NEW.path='second.md' BEGIN SELECT RAISE(ABORT, 'projection rejected'); END;",
         ).unwrap();
     }
 

@@ -7,7 +7,7 @@
   "required": ["schema", "traceId", "digest", "at"],
   "additionalProperties": false,
   "properties": {
-    "schema": { "type": "string", "const": "orthic.delivery-receipt.v1" },
+    "schema": { "type": "string", "const": "membrane.delivery-receipt.v1" },
     "traceId": { "type": "string", "minLength": 1 },
     "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "at": { "type": "string", "format": "date-time" },

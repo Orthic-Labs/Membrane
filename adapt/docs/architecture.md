@@ -6,55 +6,51 @@ Technical overview of components, interfaces, classified flow inventory, and cap
 The deterministic Phase-1 graph supplies the evidence substrate; Phase-2 understanding supplies
 the human component names and operational flow. Raw file and symbol nodes are intentionally omitted.
 
-Adapt is a Python CLI and library for mining durable preferences from local session transcripts, producing scoped review-manifest candidates, and optionally applying admitted rules through the Cortex boundary. The architecture is split into session parsing, LLM/deterministic extraction, synthesis, authority/admission checks, persistence/conformance, and Taste application layers.
+Adapt is a Python CLI and library for mining durable preferences from local session transcripts, producing scoped review-manifest candidates, and applying admitted rules through Membrane's authenticated Cortex batch boundary. The architecture is split into session parsing, LLM/deterministic extraction, synthesis, authority/admission checks, persistence/conformance, and Taste application layers.
 
 ## System workflow
 
-_No synthesized component workflow yet; run Blueprint Phase 2 synthesis._
+Sessions → extraction → synthesis → authority/admission → manifest v1.3 → authenticated atomic batch → scoped recall.
 
 ## Components
 
-- **CLI and compatibility facade** _(source: Undetermined — no evidence recorded)_
-- **Legacy entry facade** _(source: Undetermined — no evidence recorded)_
-- **Session discovery and parsing** _(source: Undetermined — no evidence recorded)_
-- **Extraction and synthesis** _(source: Undetermined — no evidence recorded)_
-- **Preference record model** _(source: Undetermined — no evidence recorded)_
-- **Authority and contradiction checks** _(source: Undetermined — no evidence recorded)_
-- **Admission policy** _(source: Undetermined — no evidence recorded)_
-- **Manifest construction/application** _(source: Undetermined — no evidence recorded)_
-- **Multiwriter conformance** _(source: Undetermined — no evidence recorded)_
-- **Evaluation harnesses** _(source: Undetermined — no evidence recorded)_
-- **Taste apply manifest atomically** _(source: Undetermined — no evidence recorded)_
-- **Taste pipeline entry** _(source: Undetermined — no evidence recorded)_
-- **CLI dispatch** _(source: Undetermined — no evidence recorded)_
+- **Session discovery and parsing** (`adapt_sessions.py`, `transcript_sources.py`)
+- **Extraction and synthesis** (`adapt_llm.py`, `taste_v2_pipeline.py`)
+- **Preference record model** (`preference_record.py`)
+- **Authority and contradiction checks** (`authority.py`, `admission.py`)
+- **Manifest construction and validation** (`manifest.py`, `cli.py`)
+- **Authenticated atomic persistence** (`adapt_persistence.py`, `taste_apply.py`)
+- **Multiwriter conformance** (`multiwriter_conformance.py`)
+- **Scoped core compilation** (`core_compiler.py`)
+- **Evaluation and diagnostics** (`eval/`)
 
 ## Flow inventory
 
 | Flow | Status | Evidence | Impact |
 |---|---|---|---|
-| Smoke mining from recent sessions | covered | cli.py:28-60; adapt_sessions.py:764-800; adapt_llm.py:491-647; taste.py:268-414 |  |
-| Incremental state progression | covered | adapt_sessions.py:675-800; .agent/stale.json:1 |  |
-| Manifest candidate creation and payload integrity | covered | taste.py:349-390; manifest.py:1; preference_record.py:692-740 |  |
-| Authority manifest and source verification | covered | authority.py:201-289; taste.py:380-386 |  |
-| Admission and contradiction detection | partial | admission.py:148; authority.py:343-386 |  |
-| Reviewed manifest application | partial | cli.py:36-37; taste_apply.py:1; taste.py:399-414 |  |
-| Future-session rule retrieval | partial | taste.py:203-215; preference_record.py:343 |  |
+| Smoke mining from recent sessions | covered | cli.py; adapt_sessions.py; adapt_llm.py; taste_v2_pipeline.py |  |
+| Incremental state progression | covered | adapt_sessions.py; run_incremental_multiwriter.py |  |
+| Manifest candidate creation and payload integrity | covered | cli.py; manifest.py; preference_record.py |  |
+| Authority manifest and source verification | covered | authority.py; manifest.py; taste_apply.py |  |
+| Admission and contradiction detection | partial | admission.py; authority.py |  |
+| Reviewed manifest application | covered | taste_apply.py; adapt_persistence.py | Authenticated batch receipt gates state advancement |
+| Future-session rule retrieval | partial | core_compiler.py; taste_runtime.py | Scoped retrieval remains Cortex-owned |
 | Multi-machine conformance evidence | covered | multiwriter_conformance.py:607-941 |  |
 
 ## Capability coverage
 
 | Capability | Status | Evidence | Provider |
 |---|---|---|---|
-| claims | covered | README.md:40-47; .agent/claims.json:1-10; authority.py:201-289 | README claim inventory plus authority manifest generation/verification |
-| code symbols | covered | adapt.py:59-100; preference_record.py:373-740; adapt_sessions.py:356-800 | Python modules and exported symbols |
-| code relationships | partial | adapt.py:23-55 imports and re-exports the primary modules; .agent/flows.json:1 reports zero generated flows | Static imports are visible, but automated flow extraction did not produce relationship traces |
-| task retrieval | partial | taste.py:203-215 loads rules and writes digest; preference_record.py:343 scopes matching; adapt_sessions.py:208-265 maps workspace scopes | Scoped rule loading and dimension matching exist, but direct future-session retrieval integration is outside this repository boundary |
+| claims | covered | README.md:40-47; authority.py | README claim inventory plus authority manifest generation/verification |
+| code symbols | covered | adapt.py; preference_record.py; adapt_sessions.py | Python modules and exported symbols |
+| code relationships | partial | cli.py; taste_apply.py; adapt_persistence.py | Static imports are visible, but automated flow extraction did not produce relationship traces |
+| task retrieval | partial | core_compiler.py; taste_runtime.py; preference_record.py | Scoped rule loading and dimension matching exist, but direct future-session retrieval integration is outside this repository boundary |
 | contradiction arbitration | partial | authority.py:343-386 detects conflicts and authority.py:389-420 evaluates refusal; README.md:96-100 describes unresolved authority boundaries | Deterministic detection/refusal exists; no autonomous semantic arbitration or final human-resolution workflow is evidenced |
 | transcript mining | covered | adapt_sessions.py:687-800; adapt_llm.py:491-647 | Discovery, parsing, redaction, batching, and extraction |
-| provenance-linked review manifests | covered | taste.py:349-390; preference_record.py:692-740 | Stable records, source hashes, evidence IDs, and payload hashes |
-| safe admission | covered | taste.py:320-332; admission.py:116-148; authority.py:389-420 | Taxonomy, shape, authority, and safety gates |
+| provenance-linked review manifests | covered | cli.py; manifest.py; preference_record.py | Stable records, source hashes, evidence IDs, and payload hashes |
+| safe admission | covered | admission.py; authority.py; taste_apply.py | Taxonomy, shape, authority, and safety gates |
 | multiwriter conformance | covered | multiwriter_conformance.py:607-705; multiwriter_conformance.py:818-941 | Evidence collection, receipt issuance, and receipt validation |
-| Cortex persistence | authenticated batch | adapt_persistence.py | Adapt submits reviewed records through one atomic Cortex batch; Cortex owns storage |
+| Cortex persistence | authenticated batch | adapt_persistence.py | Adapt submits reviewed records through one authenticated atomic Membrane batch; Cortex owns durable storage |
 
 ## Health & Security (loud-partial when graph is missing)
 

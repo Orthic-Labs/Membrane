@@ -38,6 +38,14 @@ function adapterLines(truth) {
   return truth.adapters.map((name) => `- \`${name}\``).join("\n");
 }
 
+function axisTable(truth) {
+  return [
+    "| Axis | Responsibility |",
+    "|---|---|",
+    ...truth.axisDefinitions.map(({ label, description }) => `| **${label}** | ${description} |`),
+  ];
+}
+
 
 function derivedFromLines(truth) {
   return truth.generatedFrom.map((source) => `- \`${source}\``);
@@ -64,6 +72,12 @@ export function renderProductDoc(truth, platforms) {
     `- **Client adapters** — ${countWord(truth.adapterCount)} host adapters from the vendored capability matrix:`,
     "",
     adapterLines(truth),
+    "",
+    "## Six axes",
+    "",
+    ...axisTable(truth),
+    "",
+    `Current supported target is **${truth.currentTarget}**. Cortex is **${truth.cortexScope}**; **${truth.residentServiceAuthority === "hub" ? "Membrane Hub" : truth.residentServiceAuthority}** is the sole resident service authority.`,
     "",
     "## Platform status",
     "",
@@ -93,7 +107,8 @@ export function renderArchitectureDoc(truth, platforms) {
     `| MCP server | \`mcp/server.mjs\` | ${countWord(truth.toolCount)} tools over stdio; dual-era MCP discovery |`,
     `| Client adapters | \`docs/membrane/capability-matrix.v1.json\` | ${countWord(truth.adapterCount)} host adapters, per-host honest capability levels |`,
     "| Federation gateway | loopback `POST /federate` | parallel provider fan-out behind the context tool |",
-    "| Cortex engine | `engine/` | durable memory: Rust CLI plus loopback service over SQLite |",
+    "| Cortex durable memory | `engine/` | governed durable-memory store, lifecycle, and retrieval; no resident service authority |",
+    "| Membrane Hub | `apps/membrane-hub/` | sole resident service, process-lifecycle, install, update, and release authority |",
     "| Cross-provider budget | `mcp/context-renderer-lib.cjs` + `engine/crates/membrane-core/` | one attention budget with explicit lanes; every receipt carries a reconciliation |",
     "",
     "## Interfaces",
@@ -155,7 +170,7 @@ export function renderArchitectureDoc(truth, platforms) {
     "| Plane | Owns | Reads from | Writes to |",
     "|---|---|---|---|",
     "| Application | CLI subcommands, stdio MCP, loopback HTTP API, MCP routing | Data | — |",
-    "| Control | supervisor-child, leases, lockfile, heartbeat publication, restart policy | Data | Data |",
+    "| Control | supervisor-child, lifecycle frames, lockfile, heartbeat publication | Data | Data |",
     "| Data | SQLite catalog, receipts, snapshot manifests, heartbeat rows, installation identity | — | — |",
     "",
     "Rules:",
@@ -163,7 +178,7 @@ export function renderArchitectureDoc(truth, platforms) {
     "- The Data plane never owns a network port. A path under `engine/crates/cortex-store/`",
     "  MUST NOT import a transport crate.",
     "- The Control plane never opens SQLite directly. Lease, lockfile, and heartbeat",
-    "  writes go through the typed Data-plane API exposed by `membrane_supervisor`.",
+    "  writes go through typed Data-plane APIs exposed by Membrane runtime.",
     "- The Application plane never writes to disk except via the Control or Data",
     "  plane. `membrane_runtime::serve` and `membrane_runtime::cli` only emit",
     "  typed receipts; they never call `std::fs` directly outside the receipts",
@@ -181,7 +196,7 @@ export function renderArchitectureDoc(truth, platforms) {
     "fixture is `schemas/registry/plane-boundaries.v1.golden.json`; the runtime",
     "classifies a source file into a plane by the crate segment that owns it",
     "(`membrane-runtime` / `membrane-mcp` → Application,",
-    "`membrane-supervisor` → Control, `cortex-store` → Data).",
+    "`membrane` resident lifecycle → Control, `cortex-store` → Data).",
     "",
     "Forbid list (enforced by review at book-end):",
     "",
@@ -198,6 +213,9 @@ function platformSentence(platforms) {
   const bestEffort = platforms.bestEffort.length
     ? ` ${platforms.bestEffort.join(" and ")} is tier-2 best-effort.`
     : "";
+  if (platforms.tier1.length === 1 && platforms.tier1[0] === "macOS" && !platforms.bestEffort.length) {
+    return "The sole supported current target is **macOS** (tier 1). Other targets are not current supported targets.";
+  }
   return `Supported platforms are **${tier1}** (tier 1).${bestEffort}`;
 }
 
@@ -225,8 +243,8 @@ export function renderOperationsDoc(truth, platforms) {
     "```sh",
     "pnpm install        # Node >= 20, pnpm 11",
     "pnpm test           # MCP server + client + install-binding suites",
-    "cargo build --workspace                          # Cortex engine",
-    "cargo test --workspace --features fastembed      # with real ONNX embeddings",
+    "rightkit cargo build --manifest-path engine/Cargo.toml --workspace  # Cortex engine",
+    "rightkit cargo test --manifest-path engine/Cargo.toml --workspace --features fastembed  # with real ONNX embeddings",
     "```",
     "",
     "## Platform status",

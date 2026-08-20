@@ -24,12 +24,8 @@ export function detectInstallOwner() {
   if (/Cellar|blueprint\/(\d+\.\d+)/.test(self) && existsSync(join(self, "..", "..", "..", "Homebrew"))) {
     return { owner: "homebrew", command: "brew upgrade blueprint", root: self };
   }
-  // WinGet: %LOCALAPPDATA%\Microsoft\WinGet\Packages
-  if (process.platform === "win32" && self.includes("WinGet")) {
-    return { owner: "winget", command: "winget upgrade Membrane.Blueprint", root: self };
-  }
   // Portable archive / native installer: identifiable by our own launcher layout.
-  if (existsSync(join(self, "lib", process.platform === "win32" ? "node.exe" : "node")) && existsSync(join(self, "app", "package"))) {
+  if (existsSync(join(self, "lib", "node")) && existsSync(join(self, "app", "package"))) {
     return { owner: "portable", command: null, root: self };
   }
   return { owner: "source", command: null, root: self };

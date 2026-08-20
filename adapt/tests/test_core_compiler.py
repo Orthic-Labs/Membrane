@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 from adapt import workspace_runtime  # noqa: E402
 
 sys.path.insert(0, str(workspace_runtime.workspace_root() / "tools" / "lib"))
@@ -45,18 +47,17 @@ def test_compile_core_emits_versioned_loadable_artifact(monkeypatch, tmp_path):
     assert loaded is not None and len(loaded.source_ids) == 6
 
 
-def test_compile_core_accepts_legacy_unclassified_adapt_preferences(monkeypatch, tmp_path):
+def test_compile_core_excludes_unclassified_records(monkeypatch, tmp_path):
     records = _records()
     for record in records:
         record["record_type"] = "unclassified"
     monkeypatch.setattr(core_compiler.adapt_sessions, "scan_batch_for_secrets_str",
                         lambda _text: True)
-    out = tmp_path / "core.json"
-    result = core_compiler.compile_and_write(
-        records, out, lane="minimax", call=lambda *_args, **_kwargs: _response(records)
-    )
-    assert len(result["rules"]) == 6
-    assert adapt_core.load_core(out) is not None
+    with pytest.raises(ValueError, match="not enough"):
+        core_compiler.compile_and_write(
+            records, tmp_path / "core.json", lane="minimax",
+            call=lambda *_args, **_kwargs: _response(records),
+        )
 
 
 def test_compile_core_rejects_unknown_provenance(monkeypatch, tmp_path):

@@ -43,7 +43,7 @@ def test_provider_uses_resident_daemon_and_generation_pin(monkeypatch, tmp_path)
             },
         }
 
-    monkeypatch.setattr(blueprint, "_read_daemon_frame", daemon)
+    monkeypatch.setattr(blueprint, "_read_daemon_recall", daemon)
     candidates, generation, warnings, observability = blueprint.produce_with_observability(
         tmp_path, "bounded runtime", 4096, expected_generation=expected
     )
@@ -57,7 +57,7 @@ def test_provider_uses_resident_daemon_and_generation_pin(monkeypatch, tmp_path)
 
 def test_daemon_abstention_is_typed(monkeypatch, tmp_path):
     expected = "sha256:" + "3" * 64
-    monkeypatch.setattr(blueprint, "_read_daemon_frame", lambda *_args: {
+    monkeypatch.setattr(blueprint, "_read_daemon_recall", lambda *_args: {
         "ok": True,
         "generation": expected,
         "result": {
@@ -80,7 +80,7 @@ def test_timeout_is_typed_without_process_fallback(monkeypatch, tmp_path):
     def timeout(*_args):
         raise socket.timeout("deadline")
 
-    monkeypatch.setattr(blueprint, "_read_daemon_frame", timeout)
+    monkeypatch.setattr(blueprint, "_read_daemon_recall", timeout)
     candidates, generation, warnings = blueprint.produce(tmp_path, "task", 4096)
 
     assert candidates == []
@@ -89,7 +89,7 @@ def test_timeout_is_typed_without_process_fallback(monkeypatch, tmp_path):
 
 
 def test_unavailable_daemon_is_typed(monkeypatch, tmp_path):
-    monkeypatch.setattr(blueprint, "_read_daemon_frame", lambda *_args: (_ for _ in ()).throw(FileNotFoundError("socket missing")))
+    monkeypatch.setattr(blueprint, "_read_daemon_recall", lambda *_args: (_ for _ in ()).throw(FileNotFoundError("socket missing")))
     candidates, generation, warnings = blueprint.produce(tmp_path, "task", 4096)
 
     assert candidates == []
@@ -113,7 +113,7 @@ def test_exact_generation_cache_avoids_second_daemon_call(monkeypatch, tmp_path)
             },
         }
 
-    monkeypatch.setattr(blueprint, "_read_daemon_frame", daemon)
+    monkeypatch.setattr(blueprint, "_read_daemon_recall", daemon)
     first = blueprint.produce(tmp_path, "task", 64, expected_generation=expected)
     second = blueprint.produce(tmp_path, "task", 64, expected_generation=expected)
 
@@ -141,10 +141,10 @@ def test_request_frame_binds_root_task_and_generation(monkeypatch, tmp_path):
     monkeypatch.setattr(blueprint.socket, "socket", lambda *_args: fake)
     monkeypatch.setattr(blueprint, "_daemon_endpoint", lambda: str(tmp_path / "blueprint.sock"))
     generation = "sha256:" + "6" * 64
-    blueprint._read_daemon_frame(tmp_path, "task text", 12, generation)
+    blueprint._read_daemon_recall(tmp_path, "task text", 12, generation)
     request = json.loads(fake.sent)
 
-    assert request["method"] == "orient"
+    assert request["method"] == "recall"
     assert request["generation"] == generation
     assert request["input"]["repoRoot"] == str(tmp_path.resolve())
     assert request["input"]["task"] == "task text"

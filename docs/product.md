@@ -34,9 +34,22 @@ narrative overview; this file carries the source-derived facts.
 - `cursor_windsurf`
 - `generic_mcp`
 
+## Six axes
+
+| Axis | Responsibility |
+|---|---|
+| **Pull** | Retrieves, admits, fuses, and publishes task-relevant evidence. |
+| **Push** | Performs faithful, reversible reduction of information already in flight. |
+| **Cortex** | Owns governed durable-memory admission, lifecycle, and retrieval; it is not a resident service authority. |
+| **Blueprint** | Owns repository truth, evidence generations, and drift/change observation. |
+| **Guide** | Navigates indexed document sections with hash-bound references. |
+| **Adapt** | Mines experience into governed proposals and never writes durable truth directly. |
+
+Current supported target is **macOS**. Cortex is **durable-memory-only**; **Membrane Hub** is the sole resident service authority.
+
 ## Platform status
 
-Supported platforms are **macOS and Windows** (tier 1). Linux is tier-2 best-effort.
+The sole supported current target is **macOS** (tier 1). Other targets are not current supported targets.
 
 ## Derived from
 

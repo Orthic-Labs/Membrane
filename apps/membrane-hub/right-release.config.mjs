@@ -14,8 +14,6 @@ const buildInputs = {
   exclude: ["**/tests/**", "dist/**", "node_modules/**", "src-tauri/target/**", "src-tauri/gen/**"],
 };
 const macDmg = `src-tauri/target/release/bundle/dmg/Membrane Hub_${version}_aarch64.dmg`;
-const windowsInstaller = `src-tauri/target/release/bundle/nsis/Membrane_${version}_x64-setup.exe`;
-const windowsRawExe = "src-tauri/target/release/membrane-hub.exe";
 
 export default {
   schema: 1,
@@ -31,17 +29,6 @@ export default {
       artifacts: [macDmg],
       hardening: [macDmg],
       installer: { artifacts: [{ file: macDmg, key: "membrane/installers/mac/current/Membrane_Hub.dmg" }] },
-    },
-    win: {
-      signed: true,
-      signingContract: "windows-raw-exe-authenticode-before-nsis-v1",
-      prePackage: { cmd: "pnpm", args: ["run", "rightkit:prepackage:win"] },
-      package: { cmd: "pnpm", args: ["run", "rightkit:package:win"] },
-      artifacts: [windowsInstaller],
-      sign: { prePackageFiles: [windowsRawExe], files: [windowsInstaller] },
-      hardening: ["src-tauri/target/release/bundle/nsis"],
-      installer: { artifacts: [{ file: windowsInstaller, key: "membrane/installers/windows/current/Membrane_x64-setup.exe" }] },
-      updater: { artifacts: [{ file: windowsInstaller, signature: `${windowsInstaller}.sig`, platform: "windows-x86_64", key: "membrane/updates/windows/current/Membrane_x64-setup.exe" }] },
     },
   },
 };

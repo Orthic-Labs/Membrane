@@ -56,8 +56,8 @@ async function nativeStdioMcp() {
   if (existsSync(canonicalBinary) && statSync(canonicalBinary).mtimeMs >= newestEngineSourceMtimeMs(engineRoot)) {
     return invoke(canonicalBinary, ["stdio-mcp"], root);
   }
-  // The "membrane" package declares three [[bin]] targets (membrane, cli-parity,
-  // membrane-compact) with no default-run, so `cargo run -p membrane` alone is ambiguous --
+  // The "membrane" package declares multiple [[bin]] targets with no default-run, so
+  // `cargo run -p membrane` alone is ambiguous --
   // `--bin membrane` is required to select the right one.
   return invoke("cargo", ["run", "--quiet", "-p", "membrane", "--bin", "membrane", "--", "stdio-mcp"], engineRoot);
 }

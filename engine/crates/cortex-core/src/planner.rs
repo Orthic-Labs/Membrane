@@ -87,6 +87,7 @@ pub struct OmissionV1 {
 pub struct ContextCandidateSetV1 {
     pub schema_version: u32,
     pub trace_id: String,
+    pub indexed_at: String,
     pub task: String,
     pub mode: String,
     pub provider: String,
@@ -1237,6 +1238,7 @@ mod tests {
         ContextCandidateSetV1 {
             schema_version: 1,
             trace_id: "trace-1".into(),
+            indexed_at: "2026-07-12T00:00:00Z".into(),
             task: "do a thing".into(),
             mode: "verify".into(),
             provider: "blueprint".into(),

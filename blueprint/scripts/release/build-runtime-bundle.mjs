@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // D14: build a platform archive from a staged runtime bundle. Creates
-// blueprint-<platform>-<arch>.tar.gz (macOS/Linux) or .zip (Windows) plus a
+// blueprint-<platform>-<arch>.tar.gz (macOS) plus a
 // checksum, and registers it in the release catalog shape.
 
 import { execFileSync } from "node:child_process";
@@ -14,17 +14,14 @@ export function buildRuntimeArchive({ out = null, stage = null } = {}) {
   const staged = stage ?? stageRuntime({ out: null }).root;
   const outDir = out ?? join(staged, "..");
   const platform = process.platform;
+  if (platform !== "darwin") throw new Error("Blueprint release packaging currently targets macOS only");
   const arch = process.arch;
-  const archiveName = `blueprint-${platform}-${arch}.${platform === "win32" ? "zip" : "tar.gz"}`;
+  const archiveName = `blueprint-${platform}-${arch}.tar.gz`;
   const archivePath = join(outDir, archiveName);
   const cwd = resolve(staged, "..");
   const dirName = basename(staged);
 
-  if (platform === "win32") {
-    execFileSync("powershell", ["-NoProfile", "-Command", `Compress-Archive -Path '${staged}\\*' -DestinationPath '${archivePath}' -Force`], { stdio: "ignore" });
-  } else {
-    execFileSync("tar", ["-czf", archivePath, dirName], { cwd, stdio: "ignore" });
-  }
+  execFileSync("tar", ["-czf", archivePath, dirName], { cwd, stdio: "ignore" });
 
   const hash = createHash("sha256").update(readFileSync(archivePath)).digest("hex");
   writeFileSync(`${archivePath}.sha256`, `${hash}  ${archiveName}\n`);

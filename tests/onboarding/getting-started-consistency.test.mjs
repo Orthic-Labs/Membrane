@@ -50,8 +50,8 @@ test("doc's enrollment env var is the one project-registry.mjs actually reads", 
 });
 
 test("doc's forced-degradation env var is the one client.mjs actually reads, with its real valid range", () => {
-  assert.match(doc, /CORTEX_PORT=59991/);
-  assert.match(clientSrc, /process\.env\.CORTEX_PORT/);
+  assert.match(doc, /MEMBRANE_PORT=59991/);
+  assert.match(clientSrc, /process\.env\.MEMBRANE_PORT/);
   assert.match(clientSrc, /n >= 1024 && n <= 65535/);
 });
 
@@ -91,8 +91,8 @@ test("doc's support-tier claim matches the generated support-matrix exactly (fai
 });
 
 test("doc's offline fixture commands point at files that exist", () => {
-  assert.match(doc, /node examples\/quickstart\/run\.mjs/);
-  assert.match(doc, /node examples\/quickstart\/run\.mjs --degraded/);
+  assert.match(doc, /node docs\/examples\/quickstart\/run\.mjs/);
+  assert.match(doc, /node docs\/examples\/quickstart\/run\.mjs --degraded/);
   // Resolvable without throwing — proves the path is real, not aspirational.
   read("docs/examples/quickstart/run.mjs");
 });

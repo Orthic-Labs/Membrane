@@ -175,7 +175,7 @@ def test_admission_uses_permission_expansion_quarantine():
     assert (ok, why) == (False, "permission-expanding")
 
 
-def test_preference_record_v12_carries_safe_defaults_and_signed_fields():
+def test_preference_record_v13_carries_safe_defaults_and_signed_fields():
     record = preference_record.PreferenceRecord.from_synthesis(
         {
             "action": "add",
@@ -189,7 +189,7 @@ def test_preference_record_v12_carries_safe_defaults_and_signed_fields():
     )
     candidate = preference_record.to_manifest_candidate(record)
 
-    assert record.schema_version == "1.2.0"
+    assert record.schema_version == "1.3.0"
     assert record.record_type == "unclassified"
     assert record.authority_effect == "neutral"
     assert candidate["record_type"] == "unclassified"

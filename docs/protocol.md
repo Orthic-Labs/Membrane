@@ -33,4 +33,4 @@ repository, root, and scope of each request.
 
 ## Platform status
 
-Supported platforms are **macOS and Windows** (tier 1). Linux is tier-2 best-effort.
+The sole supported current target is **macOS** (tier 1). Other targets are not current supported targets.

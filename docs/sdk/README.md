@@ -10,7 +10,7 @@ Every response must match canonical v1 envelopes in
 Unknown fields, versions, operations, & error codes fail closed.
 
 ```js
-import { MembraneClient } from "@orthic/membrane-client";
+import { MembraneClient } from "@membrane/membrane-client";
 
 const client = new MembraneClient((operation, request) => transport(operation, request));
 const context = client.context({ task: "inspect" });
@@ -28,7 +28,7 @@ sets in `schemas/registry/operations/operations-index.v1.golden.json`, so drift
 between languages or against the shared schema fails a test instead of
 requiring review to notice:
 
-- Rust: `engine/crates/membrane-client/tests/compat.rs` (`cargo test
+- Rust: `engine/crates/membrane-client/tests/compat.rs` (`rightkit cargo test
   --manifest-path engine/Cargo.toml -p membrane-client`).
 - TypeScript: `tests/sdk/cross-language-compat.test.mjs` (`node --test
   tests/sdk/cross-language-compat.test.mjs`).

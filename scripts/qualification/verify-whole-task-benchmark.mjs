@@ -19,15 +19,16 @@ export function verifyWholeTaskBenchmark(input) {
   const task = value.task;
   if (!task || task.task_id !== 'MBR-804' || !required(task.release, ['commit', 'generation', 'client', 'service']) || !/^[0-9a-f]{40}$/.test(task.release.commit)) return fail('exact release identity missing');
   if (!required(task.corpus, ['id', 'version', 'sha256', 'cases']) || !HASH.test(task.corpus.sha256) || task.corpus.cases < 1) return fail('exact corpus identity missing');
-  if (!Array.isArray(task.models) || !task.models.length || !task.hardware?.macos || !task.hardware?.windows) return fail('exact models or hardware missing');
+  if (!Array.isArray(task.models) || !task.models.length || !task.hardware?.macos) return fail('exact models or Mac hardware missing');
   if (!task.controls || !required(task.controls, ['unauthorized_context', 'stale_context', 'missed_authoritative', 'cache_policy'])) return fail('control definitions missing');
   if (!value.bakeoff?.immutable || !required(value.bakeoff, ['config', 'config_sha256', 'input', 'input_sha256', 'receipt', 'receipt_sha256']) || !['config', 'input', 'receipt'].every(key => HASH.test(value.bakeoff[`${key}_sha256`]) && fileMatches(base, value.bakeoff[key], value.bakeoff[`${key}_sha256`])) || !Array.isArray(value.bakeoff.arms) || value.bakeoff.arms.length < 2) return fail('immutable bakeoff files, hashes, or arms missing');
-  for (const platform of ['macos', 'windows']) { const h = value.hosts?.[platform]; if (!h || h.status !== 'measured' || !required(h, ['receipt', 'receipt_sha256', 'release', 'hardware']) || !HASH.test(h.receipt_sha256) || !fileMatches(base, h.receipt, h.receipt_sha256) || h.release !== task.release.generation) return fail(`${platform} host receipt missing, stale, or mismatched`); }
+  const host = value.hosts?.macos;
+  if (!host || host.status !== 'measured' || !required(host, ['receipt', 'receipt_sha256', 'release', 'hardware']) || !HASH.test(host.receipt_sha256) || !fileMatches(base, host.receipt, host.receipt_sha256) || host.release !== task.release.generation) return fail('macOS host receipt missing, stale, or mismatched');
   if (!required(value.metrics, ['task_success', 'context_errors', 'latency_ms', 'tokens', 'cache', 'cost'])) return fail('required measured metrics missing');
   if (Object.values(value.metrics).some(metric => metric.measured !== true || typeof metric.value !== 'number' || typeof metric.unit !== 'string' || !metric.unit)) return fail('metrics must include measured numeric values and units');
   if (!Array.isArray(value.failures)) return fail('failure list missing');
   if (!value.publication || !['not-published', 'internal-only', 'published'].includes(value.publication.disposition) || typeof value.publication.approved !== 'boolean' || (value.publication.disposition === 'published' && !value.publication.approved)) return fail('publication disposition missing or unapproved');
-  return { status: 'passed', reason: 'current measured whole-task results, controls, bakeoff hashes, and both host receipts verified' };
+  return { status: 'passed', reason: 'current measured whole-task results, controls, bakeoff hashes, and Mac host receipt verified' };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) { const p = process.argv[2]; const out = verifyWholeTaskBenchmark(p); process.stdout.write(`${JSON.stringify(out)}\n`); process.exitCode = out.status === 'passed' ? 0 : 2; }

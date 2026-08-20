@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "corpusId": "cortex-p2-frozen-synthetic-v1",
-  "corpusSha256": "3ef52668a9147f38cb4aa1959be99c828324400ab3ea819bbb9acf41eeb9557c",
+  "corpusSha256": "29f46f4e310e7a25a52065dc1925f0f98640f9ab2c88d3c5541ddb524b347c21",
   "caseCount": 8,
   "requiredCoverage": ["ASI06", "abstention", "as_of", "cross_scope", "lifecycle", "poisoning", "raw_recovery", "refetch"],
   "immutable": true,

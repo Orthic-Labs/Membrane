@@ -43,7 +43,7 @@ test('degrades explicitly when host receipts are not configured for a non-fixtur
     const result = await runWholeTaskBenchmark({ corpusPath, salt, holdoutCommitment, execute: passingExecute });
     assert.equal(result.status, 'degraded');
     assert.equal(result.reason, 'host-receipts-not-configured');
-    assert.deepEqual(result.missing.sort(), ['macos', 'windows']);
+    assert.deepEqual(result.missing, ['macos']);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -62,7 +62,7 @@ test('writeHostReceipt records real host identity and a caller-asserted measured
   }
 });
 
-test('end to end: a real (non-fixture) corpus, a real un-rerun bakeoff, and two real host receipts produce a receipt that the existing strict verifier reports as passed', async () => {
+test('end to end: a real (non-fixture) corpus, a real un-rerun bakeoff, and a real Mac host receipt produce a receipt that the existing strict verifier reports as passed', async () => {
   const corpusDir = mkdtempSync(join(tmpdir(), 'mbr804-e2e-corpus-'));
   const evidenceDir = mkdtempSync(join(tmpdir(), 'mbr804-e2e-evidence-'));
   try {
@@ -73,7 +73,6 @@ test('end to end: a real (non-fixture) corpus, a real un-rerun bakeoff, and two 
     }));
     const releaseGeneration = 'release-e2e-1';
     const macos = writeHostReceipt({ evidenceRoot: evidenceDir, platform: 'macos', releaseGeneration });
-    const windows = writeHostReceipt({ evidenceRoot: evidenceDir, platform: 'windows', releaseGeneration });
 
     const result = await runWholeTaskBenchmark({
       corpusPath,
@@ -81,8 +80,8 @@ test('end to end: a real (non-fixture) corpus, a real un-rerun bakeoff, and two 
       holdoutCommitment,
       release: { commit: 'b'.repeat(40), generation: releaseGeneration, client: 'client-e2e', service: 'service-e2e' },
       models: ['model-e2e'],
-      hardware: { macos: 'Apple-e2e', windows: 'x64-e2e' },
-      hostReceiptPaths: { macos: macos.path, windows: windows.path },
+      hardware: { macos: 'Apple-e2e' },
+      hostReceiptPaths: { macos: macos.path },
       execute: passingExecute,
     });
 
@@ -92,9 +91,7 @@ test('end to end: a real (non-fixture) corpus, a real un-rerun bakeoff, and two 
     assert.equal(result.receipt.bakeoff.immutable, true);
     assert.ok(result.receipt.bakeoff.arms.length >= 2);
     assert.equal(result.receipt.hosts.macos.status, 'measured');
-    assert.equal(result.receipt.hosts.windows.status, 'measured');
     assert.equal(result.receipt.hosts.macos.release, releaseGeneration);
-    assert.equal(result.receipt.hosts.windows.release, releaseGeneration);
     assert.equal(result.receipt.metrics.task_success.measured, true);
     assert.equal(result.verification.status, 'passed');
   } finally {
@@ -111,13 +108,12 @@ test('a failing case is recorded in failures and never silently dropped', async 
     writeFileSync(corpusPath, JSON.stringify({ id: 'mbr804-fail-corpus', version: '1', cases: [{ id: 'ok-1', category: 'task_success' }, { id: 'bad-1', category: 'unauthorized_context' }] }));
     const releaseGeneration = 'release-fail-1';
     const macos = writeHostReceipt({ evidenceRoot: evidenceDir, platform: 'macos', releaseGeneration });
-    const windows = writeHostReceipt({ evidenceRoot: evidenceDir, platform: 'windows', releaseGeneration });
 
     const result = await runWholeTaskBenchmark({
       corpusPath, salt, holdoutCommitment,
       release: { commit: 'c'.repeat(40), generation: releaseGeneration, client: 'client', service: 'service' },
-      models: ['model'], hardware: { macos: 'Apple', windows: 'x64' },
-      hostReceiptPaths: { macos: macos.path, windows: windows.path },
+      models: ['model'], hardware: { macos: 'Apple' },
+      hostReceiptPaths: { macos: macos.path },
       execute: async ({ case: c }) => (c.id === 'bad-1' ? { success: false, contextError: { unauthorized: true } } : { success: true, latencyMs: 10, tokens: 5, cacheHit: false, costUsd: 0 }),
     });
 

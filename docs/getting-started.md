@@ -82,12 +82,12 @@ rule already refused a response where `packet` is absent.
 
 ## 6. Force degradation (4:30)
 
-Stop the loopback service, or point `CORTEX_PORT` at a port nothing is
+Stop the loopback resident, or point `MEMBRANE_PORT` at a port nothing is
 listening on (must be 1024–65535 — the client silently falls back to the
 default 47851 outside that range), then repeat the step 4 request:
 
 ```sh
-export CORTEX_PORT=59991   # any port confirmed idle on this machine
+export MEMBRANE_PORT=59991   # any port confirmed idle on this machine
 ```
 
 Expected result is `providerStatus: "unavailable"`,

@@ -7,22 +7,19 @@ import { fileURLToPath } from 'node:url';
 import { BAKEOFF_REFERENCE, verifyBakeoffReference } from './bakeoff-reference.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REAL_WORKSPACE_ROOT = resolve(HERE, '../..');
+const REAL_WORKSPACE_ROOT = resolve(HERE, '../../..');
 
-test('verifies against the real, already-completed bakeoff artifacts on this tree (never spawns a process)', () => {
+test('verifies against the real, already-completed Mac bakeoff artifacts on this tree (never spawns a process)', () => {
   const result = verifyBakeoffReference({ workspaceRoot: REAL_WORKSPACE_ROOT });
   assert.equal(result.status, 'verified');
   assert.ok(result.arms.length >= 2, 'bakeoff must have compared at least two arms');
-  assert.equal(result.declared.configSha256, BAKEOFF_REFERENCE.artifacts.config.sha256, 'declared configSha256 in the host receipts must equal the pinned config artifact hash — proof both hosts ran the identical, un-rerun config');
+  assert.equal(result.declared.configSha256, BAKEOFF_REFERENCE.artifacts.config.sha256, 'declared configSha256 in Mac host receipt must equal pinned config artifact hash');
 });
 
-test('both host receipts are present and agree on config/input/manifest identity', () => {
+test('Mac host receipt is present with complete bakeoff identity', () => {
   const result = verifyBakeoffReference({ workspaceRoot: REAL_WORKSPACE_ROOT });
   const macChecked = result.checks.find((c) => c.label === 'hosts.macos');
-  const winChecked = result.checks.find((c) => c.label === 'hosts.windows');
   assert.equal(macChecked.status, 'unchanged');
-  assert.equal(winChecked.status, 'unchanged');
-  assert.notEqual(macChecked.actual, winChecked.actual, 'the two host receipts are distinct files (different hosts), not the same file counted twice');
 });
 
 test('fails closed when a reference artifact is missing at the given workspace root', () => {
@@ -43,7 +40,7 @@ test('fails closed when a reference artifact has been mutated since it was pinne
       mkdirSync(dirname(join(root, rel)), { recursive: true });
       writeFileSync(join(root, rel), readFileSync(resolve(REAL_WORKSPACE_ROOT, rel)));
     }
-    for (const key of ['macos', 'windows']) {
+    for (const key of ['macos']) {
       const rel = BAKEOFF_REFERENCE.hosts[key].path;
       mkdirSync(dirname(join(root, rel)), { recursive: true });
       writeFileSync(join(root, rel), readFileSync(resolve(REAL_WORKSPACE_ROOT, rel)));

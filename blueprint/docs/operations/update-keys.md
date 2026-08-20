@@ -13,7 +13,7 @@ Build and seal first, then upload the exact release ID through the explicit
 `update` lane:
 
 ```sh
-pnpm exec right-release upload --release <release-id> --platform <mac|win> --tier update
+pnpm exec right-release upload --release <release-id> --platform mac --tier update
 ```
 
 Key rotation remains a RightRelease operation: add the new public key, ship one

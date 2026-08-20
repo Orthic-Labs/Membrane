@@ -10,7 +10,6 @@ members = [
     "crates/membrane-protocol",
     "crates/membrane-core",
     "crates/membrane-mcp",
-    "crates/membrane-supervisor",
     "crates/membrane-provider-sdk",
     "crates/membrane-testkit",
     "crates/membrane-updater",

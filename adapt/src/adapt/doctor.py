@@ -3,7 +3,7 @@
 
 Doctor today wraps the existing Adapt multi-installation conformance receipt
 surface (``multiwriter_conformance``): installation identity, canonical pool,
-implementation/test hashes, Cortex service probe, transcript discovery
+implementation/test hashes, Membrane resident probe, transcript discovery
 counts, and the append-only mirror boundary.
 
 Net-new / not-yet (do not pretend these exist):
@@ -31,7 +31,7 @@ SCOPE = {
         "multiwriter_conformance validate",
     ],
     "not_yet": [
-        "Cortex graph/claim health",
+        "Cortex durable-memory graph/claim health",
         "Forge receipt / e2e wiring",
         "cross-system Doctor assuming Cortex/Forge receipts",
     ],

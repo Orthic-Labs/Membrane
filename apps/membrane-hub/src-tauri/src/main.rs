@@ -208,12 +208,10 @@ fn bundled_binary(name: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(format!("{name}{suffix}")))
 }
 
-fn cortex_service_supervisor() -> Result<supervisor::Supervisor, String> {
-    let program = std::env::var_os("MEMBRANE_CORTEX_SERVICE")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| bundled_binary("cortex-service"));
+fn membrane_service_supervisor() -> Result<supervisor::Supervisor, String> {
+    let program = bundled_binary("membrane");
     if !program.is_file() {
-        return Err("cortex_service_missing".into());
+        return Err("membrane_hub_resident_missing".into());
     }
     let root = workspace::resolve()
         .map_err(|_| "workspace_root_unavailable")?
@@ -221,7 +219,7 @@ fn cortex_service_supervisor() -> Result<supervisor::Supervisor, String> {
     Ok(supervisor::Supervisor::new(program, root))
 }
 
-fn stop_cortex_service(service: &ServiceState) {
+fn stop_membrane_service(service: &ServiceState) {
     service.stop();
 }
 
@@ -497,7 +495,7 @@ fn startup_setting(app: tauri::AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle, service: tauri::State<'_, ServiceState>) {
-    stop_cortex_service(&service);
+    stop_membrane_service(&service);
     app.exit(0);
 }
 
@@ -609,9 +607,9 @@ fn main() {
             if let Ok(workspace) = workspace::resolve() {
                 std::env::set_var("WORKSPACE_ROOT", workspace.root);
             }
-            let supervisor = Arc::new(cortex_service_supervisor().map_err(std::io::Error::other)?);
+            let supervisor = Arc::new(membrane_service_supervisor().map_err(std::io::Error::other)?);
             if supervisor.start().map_err(std::io::Error::other)? != supervisor::ServiceStatus::Running {
-                return Err(std::io::Error::other("cortex_service_unavailable").into());
+                return Err(std::io::Error::other("membrane_hub_resident_unavailable").into());
             }
             app.manage(supervisor.clone());
             let handle = app.handle().clone();

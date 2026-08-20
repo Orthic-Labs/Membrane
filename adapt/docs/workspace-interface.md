@@ -7,7 +7,7 @@ services through one explicit boundary.
 
 | Capability | Adapter | Parent source | Consumers |
 |---|---|---|---|
-| Cortex loopback port | `workspace_runtime.cortex_port` | `tools/lib/memory/runtime_config.py` | `adapt_persistence`, Doctor/conformance |
+| Membrane loopback port | `workspace_runtime.membrane_port` | `tools/lib/memory/runtime_config.py` | `adapt_persistence`, Doctor/conformance |
 | Session inventory | `workspace_runtime.context_session_inventory` | `tools/pipelines/memory/context_session_inventory.py` | `multiwriter_conformance` |
 | Session adapters | `workspace_runtime.context_session_adapters` | `tools/pipelines/memory/context_session_adapters.py` | `multiwriter_conformance` |
 | Append-only mirror | `workspace_runtime.mirror_append_only` | `tools/pipelines/memory/mirror_append_only.py` | `multiwriter_conformance` |

@@ -4,7 +4,7 @@
 //! [`TeamPolicySyncV1`] is trustworthy (bounds, encryption, authorization, user-origin learning
 //! scope preservation) against a caller-supplied, in-memory opt-in record and trust verifier.
 //! This module is the store-side complement, mirroring how `maintenance_exec` complements
-//! `membrane_supervisor::maintenance`: it owns the two things only durable local storage can
+//! Membrane maintenance: it owns the two things only durable local storage can
 //! verify -- whether this installation has ever explicitly opted in, and whether a generation is
 //! monotonically increasing across restarts -- and it persists the result as a content-free
 //! audit trail. It never verifies encryption or authorization itself and never becomes the

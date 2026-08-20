@@ -41,9 +41,44 @@
       "max_honest_level": "L0"
     }
   },
+  "axes": [
+    {
+      "id": "pull",
+      "label": "Pull",
+      "description": "Retrieves, admits, fuses, and publishes task-relevant evidence."
+    },
+    {
+      "id": "push",
+      "label": "Push",
+      "description": "Performs faithful, reversible reduction of information already in flight."
+    },
+    {
+      "id": "cortex",
+      "label": "Cortex",
+      "description": "Owns governed durable-memory admission, lifecycle, and retrieval; it is not a resident service authority."
+    },
+    {
+      "id": "blueprint",
+      "label": "Blueprint",
+      "description": "Owns repository truth, evidence generations, and drift/change observation."
+    },
+    {
+      "id": "guide",
+      "label": "Guide",
+      "description": "Navigates indexed document sections with hash-bound references."
+    },
+    {
+      "id": "adapt",
+      "label": "Adapt",
+      "description": "Mines experience into governed proposals and never writes durable truth directly."
+    }
+  ],
+  "current_target": "macOS",
+  "cortex_scope": "durable-memory-only",
+  "resident_service_authority": "hub",
   "support_tiers": {
-    "tier_1": ["macOS", "Windows"],
-    "tier_2_best_effort": ["Linux"]
+    "tier_1": ["macOS"],
+    "tier_2_best_effort": []
   },
   "states": ["fully_enforced", "context_enforced", "advisory", "degraded", "blocked"]
 }

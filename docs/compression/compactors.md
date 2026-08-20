@@ -1,1 +1,0 @@
-`membrane-compact run KIND --raw-root DIR [--max-lines N] -- COMMAND` supports six kinds, hard-caps summary lines, preserves typed status/counts & stores exact UTF-8 stdout/stderr at `DIR/sha256/<digest>.raw`. JSON has only a relative pointer, digest & receipt; `get` verifies digest/fails closed. Credential-shaped selected lines are redacted; wrapper flags precede `--`.

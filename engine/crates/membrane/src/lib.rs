@@ -7,12 +7,10 @@
 
 pub mod cli;
 pub mod cli_parity;
-pub mod compression;
 pub mod dispatch;
 pub mod install_tx;
 pub mod migration;
 pub mod modes;
-pub mod read_dedup;
 pub mod serve;
 pub mod uninstall;
 pub mod update;

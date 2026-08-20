@@ -2,9 +2,11 @@
 """Issue and validate content-free Adapt multi-installation conformance receipts.
 
 The receipt binds one schema-v2 installation to the current canonical Adapt
-pool, exact implementation and test files, the installed resident binary and
-its authenticated atomic-batch route, local transcript discovery counts, the
-append-only Git mirror boundary, and a disabled ``cortex-daily`` scheduler.
+pool, exact implementation and test files, the installed Membrane resident
+and its authenticated atomic-batch route, local
+transcript discovery counts, the append-only Git mirror boundary, and a
+disabled ``cortex-daily`` scheduler. Conformance is Mac-only: Cortex remains
+the durable-memory CLI, while Membrane owns the resident process.
 It never starts, stops, installs, or schedules anything.
 """
 
@@ -47,7 +49,7 @@ from adapt import taste_v2_pipeline  # noqa: E402
 from adapt import transcript_sources  # noqa: E402
 
 mirror_append_only = workspace_runtime.mirror_append_only()
-cortex_port = workspace_runtime.cortex_port
+membrane_port = workspace_runtime.membrane_port
 
 
 SCHEMA_VERSION = 1
@@ -88,7 +90,7 @@ EVIDENCE_KEYS = {
     "installation_id",
     "canonical_pool",
     "implementation",
-    "installed_service",
+    "installed_resident",
     "discovery",
     "source_clients",
     "mirror",
@@ -304,11 +306,9 @@ def source_client_rows(source_clients: Mapping[str, str]) -> list[dict[str, str]
 
 def _normalized_os() -> str:
     value = platform.system()
-    if value == "Windows":
-        return "windows"
     if value == "Darwin":
         return "macos"
-    raise ConformanceError(f"unsupported Adapt conformance platform: {value}")
+    raise ConformanceError(f"Adapt conformance requires macOS: {value}")
 
 
 def _normalized_arch() -> str:
@@ -320,7 +320,7 @@ def _normalized_arch() -> str:
     raise ConformanceError(f"unsupported Adapt conformance architecture: {value}")
 
 
-def service_evidence(
+def resident_evidence(
     *,
     binary_path: Path,
     release_manifest_path: Path,
@@ -334,13 +334,15 @@ def service_evidence(
         release_bytes = Path(release_manifest_path).read_bytes()
         release = json.loads(release_bytes)
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ConformanceError("Cortex release manifest is unavailable or invalid") from exc
+        raise ConformanceError("Membrane release manifest is unavailable or invalid") from exc
     if not isinstance(release, dict):
-        raise ConformanceError("Cortex release manifest is unavailable or invalid")
-    role = "service" if binary.name.startswith("cortex-service") else "cli"
+        raise ConformanceError("Membrane release manifest is unavailable or invalid")
+    if binary.name != "membrane":
+        raise ConformanceError("Membrane resident command is unavailable")
+    role = "membrane"
     assets = release.get("assets")
     if not isinstance(assets, list):
-        raise ConformanceError("Cortex release manifest has no assets")
+        raise ConformanceError("Membrane release manifest has no assets")
     matches = [
         row
         for row in assets
@@ -357,10 +359,10 @@ def service_evidence(
         raise ConformanceError("release manifest generation is invalid")
     observed = dict(probe())
     if observed.get("release_generation") != release_generation:
-        raise ConformanceError("resident service release does not match installed asset")
+        raise ConformanceError("Membrane resident release does not match installed asset")
     service_generation = observed.get("service_generation")
     if not isinstance(service_generation, str) or not GENERATION_RE.fullmatch(service_generation):
-        raise ConformanceError("resident service generation is invalid")
+        raise ConformanceError("Membrane resident generation is invalid")
     route_capable = (
         observed.get("batch_route_status") == 400
         and observed.get("batch_route_error") == "invalid memory batch"
@@ -387,35 +389,35 @@ def _read_json_response(request: urllib.request.Request, timeout: float) -> tupl
         status = exc.code
         raw = exc.read()
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise ConformanceError("resident Cortex service is unavailable") from exc
+        raise ConformanceError("Membrane resident is unavailable") from exc
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConformanceError("resident Cortex response is not valid JSON") from exc
+        raise ConformanceError("Membrane resident response is not valid JSON") from exc
     if not isinstance(payload, dict):
-        raise ConformanceError("resident Cortex response is not an object")
+        raise ConformanceError("Membrane resident response is not an object")
     return status, payload
 
 
-def probe_resident_service(
+def probe_resident(
     *, service_url: str, token_file: Path, timeout: float = 5.0
 ) -> dict[str, Any]:
     parsed = urllib.parse.urlsplit(service_url)
     if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"}:
-        raise ConformanceError("Cortex conformance probe must remain loopback-only")
+        raise ConformanceError("Membrane conformance probe must remain loopback-only")
     base = service_url.rstrip("/")
     health_request = urllib.request.Request(
         base + "/health", headers={"Accept": "application/json"}, method="GET"
     )
     health_status, health = _read_json_response(health_request, timeout)
     if health_status != 200 or health.get("ok") is not True:
-        raise ConformanceError("resident Cortex health is not green")
+        raise ConformanceError("Membrane resident health is not green")
     try:
         token = Path(token_file).read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise ConformanceError("Cortex API token is unavailable") from exc
+        raise ConformanceError("Cortex durable-memory API token is unavailable") from exc
     if not token:
-        raise ConformanceError("Cortex API token is empty")
+        raise ConformanceError("Cortex durable-memory API token is empty")
     route_request = urllib.request.Request(
         base + "/v1/memories:batch",
         data=b"{}",
@@ -456,26 +458,7 @@ def scheduler_evidence(
     command_runner: Callable[[Sequence[str]], subprocess.CompletedProcess[str]] = _scheduler_command,
 ) -> dict[str, Any]:
     current = system or platform.system()
-    if current == "Windows":
-        script = (
-            "$t=Get-ScheduledTask -TaskName 'cortex-daily' -ErrorAction SilentlyContinue "
-            "| Select-Object -First 1; if($null -eq $t){'absent'}else{$t.State.ToString().ToLowerInvariant()}"
-        )
-        result = command_runner([
-            "powershell.exe",
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-WindowStyle",
-            "Hidden",
-            "-Command",
-            script,
-        ])
-        if result.returncode != 0:
-            raise ConformanceError("cannot inspect cortex-daily scheduler")
-        state = result.stdout.strip().lower()
-        disabled = state in {"absent", "disabled"}
-    elif current == "Darwin":
+    if current == "Darwin":
         uid = str(os.getuid())
         result = command_runner([
             "launchctl", "print", f"gui/{uid}/com.adrian.cortex-daily"
@@ -483,7 +466,7 @@ def scheduler_evidence(
         disabled = result.returncode != 0
         state = "unloaded" if disabled else "loaded"
     else:
-        raise ConformanceError(f"unsupported Adapt scheduler platform: {current}")
+        raise ConformanceError(f"Adapt scheduler conformance requires macOS: {current}")
     if not disabled:
         raise ConformanceError("cortex-daily must remain disabled")
     return {"name": "cortex-daily", "disabled": True, "state": state}
@@ -625,7 +608,7 @@ def collect_evidence(
         if focused_tests is None
         else _validated_prior_tests(root, focused_tests)
     )
-    url = service_url or f"http://127.0.0.1:{cortex_port(os.environ)}"
+    url = service_url or f"http://127.0.0.1:{membrane_port(os.environ)}"
     token = Path(token_file) if token_file else Path(db_path).parent / "api-token"
     sessions = discover_session_evidence(
         state=state,
@@ -638,12 +621,12 @@ def collect_evidence(
             "rules": len(canonical_rules),
         },
         "implementation": hash_sources(root, DEFAULT_IMPLEMENTATION_FILES),
-        "installed_service": service_evidence(
+        "installed_resident": resident_evidence(
             binary_path=Path(binary_path),
             release_manifest_path=Path(release_manifest_path),
             os_name=_normalized_os(),
             arch=_normalized_arch(),
-            probe=lambda: probe_resident_service(
+            probe=lambda: probe_resident(
                 service_url=url, token_file=token
             ),
         ),
@@ -710,10 +693,10 @@ def _validate_evidence(evidence: Mapping[str, Any]) -> None:
     _require_hash(implementation.get("aggregate_sha256"), "implementation aggregate hash")
     if implementation["aggregate_sha256"] != aggregate_file_sha256(files):
         raise ConformanceError("implementation aggregate hash mismatch")
-    service = evidence.get("installed_service")
+    resident = evidence.get("installed_resident")
     if (
-        not isinstance(service, Mapping)
-        or set(service) != {
+        not isinstance(resident, Mapping)
+        or set(resident) != {
             "binary_role",
             "binary_sha256",
             "release_manifest_sha256",
@@ -722,18 +705,18 @@ def _validate_evidence(evidence: Mapping[str, Any]) -> None:
             "batch_route_status",
             "batch_route_capable",
         }
-        or service.get("batch_route_capable") is not True
+        or resident.get("batch_route_capable") is not True
     ):
         raise ConformanceError("authenticated atomic memory batch route is unavailable")
-    if service.get("binary_role") not in {"cli", "service"}:
-        raise ConformanceError("installed service binary role is invalid")
+    if resident.get("binary_role") != "membrane":
+        raise ConformanceError("installed resident binary role is invalid")
     for key in ("binary_sha256", "release_manifest_sha256"):
-        _require_hash(service.get(key), f"installed service {key}")
-    if service.get("batch_route_status") != 400:
+        _require_hash(resident.get(key), f"installed resident {key}")
+    if resident.get("batch_route_status") != 400:
         raise ConformanceError("authenticated atomic memory batch route is unavailable")
     for key in ("release_generation", "service_generation"):
-        if not isinstance(service.get(key), str) or not GENERATION_RE.fullmatch(service[key]):
-            raise ConformanceError(f"installed service {key} is invalid")
+        if not isinstance(resident.get(key), str) or not GENERATION_RE.fullmatch(resident[key]):
+            raise ConformanceError(f"installed resident {key} is invalid")
     discovery = evidence.get("discovery")
     if not isinstance(discovery, Mapping) or not discovery:
         raise ConformanceError("transcript discovery evidence is invalid")
@@ -881,8 +864,8 @@ def validate_receipt_payload(
 
 def _defaults(repo_root: Path) -> dict[str, Path]:
     root = Path(repo_root).resolve()
-    os_name = _normalized_os()
-    binary_name = "cortex-service.exe" if os_name == "windows" else "cortex"
+    _normalized_os()
+    binary_name = "membrane"
     db = Path(os.environ.get(
         "CORTEX_DB", str(root / "tools/.cache/memory/cortex-engine.db")
     ))
@@ -890,14 +873,14 @@ def _defaults(repo_root: Path) -> dict[str, Path]:
         "installation_file": root / "tools/.cache/memory/installation.json",
         "db_path": db,
         "binary_path": Path(os.environ.get(
-            "CORTEX_CONFORMANCE_BINARY", str(root / "tools/bin" / binary_name)
+            "MEMBRANE_CONFORMANCE_BINARY", str(root / "tools/bin" / binary_name)
         )),
         "release_manifest_path": Path(os.environ.get(
-            "CORTEX_CONFORMANCE_RELEASE_MANIFEST",
+            "MEMBRANE_CONFORMANCE_RELEASE_MANIFEST",
             str(root / "tools/lib/cortex-release.json"),
         )),
         "token_file": Path(os.environ.get(
-            "CORTEX_API_TOKEN_FILE", str(db.parent / "api-token")
+            "MEMBRANE_API_TOKEN_FILE", str(db.parent / "api-token")
         )),
     }
 

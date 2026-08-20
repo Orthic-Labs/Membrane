@@ -4,9 +4,9 @@
 //! operational replay harness & must not be used to claim production-trace
 //! equivalence, live refetch behaviour, or a P2 gate pass by itself.
 
-use cortex::{
-    admit, AdmissionRequest, Authority, InstructionPolicy, MemDb, MemoryLifecycleEventV1,
-    MemoryStore, Origin,
+use membrane_runtime::{
+    pull::admission::{admit, AdmissionRequest, Authority, InstructionPolicy, Origin},
+    MemDb, MemoryLifecycleEventV1, MemoryStore,
 };
 use cortex_core::MemoryTier;
 use serde::Deserialize;

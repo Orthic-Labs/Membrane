@@ -8,12 +8,8 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const membraneRoot = resolve(HERE, "..");
 const workspaceRoot = resolve(membraneRoot, "..");
-// Was "docs/plans/sol/membrane-competitive-review/contracts/..." — that directory no longer
-// exists after the 2026-08-02 Roundtable-to-Citadel rename (commit 59f87213), which moved the
-// fixture file to "docs/plans/sol/contracts/". The stale path made every invocation of this
-// runner throw ENOENT before it ever executed a single probe or suite — the F13 defect was not
-// merely "descriptive fixtures with a stub runner", it was a runner that could not run at all.
-const fixturePath = join(workspaceRoot, "docs/plans/sol/contracts/fable-m0-false-success-fixtures.json");
+// Keep qualification evidence inside Membrane so a standalone checkout runs identically in CI.
+const fixturePath = join(membraneRoot, "scripts", "fixtures", "fable-m0-false-success-fixtures.json");
 const sha = (value) => createHash("sha256").update(value).digest("hex");
 
 // Honesty disclosure (read this before trusting `baseline_red`): the `baseline` value below for

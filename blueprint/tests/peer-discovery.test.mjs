@@ -34,12 +34,12 @@ test("blueprint.config.example.toml documents peer discovery", async () => {
   assert.match(toml, /CORTEX_BIN/);
 });
 
-test("_diagnostics field present, _membrane absent", async () => {
+test("candidate output stays canonical, _membrane absent", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync("scripts/blueprint.mjs", "utf8");
   const cand = readFileSync("scripts/blueprint-candidates.mjs", "utf8");
   assert.equal(src.includes("_membrane"), false);
   assert.equal(cand.includes("_membrane"), false);
-  assert.equal(src.includes("_diagnostics"), true);
-  assert.equal(cand.includes("_diagnostics"), true);
+  assert.equal(src.includes("_diagnostics"), false);
+  assert.equal(cand.includes("_diagnostics"), false);
 });

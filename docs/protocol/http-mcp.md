@@ -17,7 +17,7 @@ It contains no token, session binding, request body, host, or installation ID.
 is the one place this optional transport is actually bound to a socket. It:
 
 - Binds `127.0.0.1` only (`Ipv4Addr::LOCALHOST`), the same convention as the
-  existing loopback Cortex API (`membrane-runtime::serve::run`).
+  existing loopback resident API (`membrane-runtime::serve::run`).
 - Exposes exactly one route, `POST /mcp`, carrying JSON-RPC request bodies.
 - Re-resolves the request's `Host` header at request time (never cached) and
   denies as `dns_rebinding` on any non-loopback or failed resolution, so a
@@ -29,8 +29,8 @@ is the one place this optional transport is actually bound to a socket. It:
   uses. This transport is an alternate, admission-gated entrypoint onto that
   one server, not a second implementation of it.
 - Sources its bearer token from the same on-disk credential the loopback
-  Cortex API already uses (`serve::configured_api_token`, i.e.
-  `CORTEX_API_TOKEN` / `CORTEX_API_TOKEN_FILE` / the `api-token` file beside the
+  resident already uses (`serve::configured_api_token`, i.e.
+  `MEMBRANE_API_TOKEN` / `MEMBRANE_API_TOKEN_FILE` / the `api-token` file beside the
   database) rather than minting a parallel credential, and binds its session
   value to the resident's per-boot `StartupClaim::service_instance_id`.
 - Logs only the bind address and port at startup. It never logs a bearer

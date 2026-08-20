@@ -1,0 +1,16 @@
+{
+  "schema": "membrane.m0-false-success-fixtures.v1",
+  "baseline_expectation": "Each case reproduces a known false-success or identity failure against its pre-fix owner surface.",
+  "cases": [
+    {"id": "mcp-write-noop", "owner": "cortex", "failure": "knowledge_propose reports success without durable readback", "expected": "durable_id and readback proof are absent or state is unchanged"},
+    {"id": "hook-no-delivery", "owner": "membrane-host", "failure": "registered hook runs without packet delivery", "expected": "delivery heartbeat is absent"},
+    {"id": "root-child-scope", "owner": "membrane", "failure": "root grant reads an unenrolled child repository", "expected": "exact child grant is missing"},
+    {"id": "whole-graph-invalidation", "owner": "blueprint", "failure": "one ordinary edit invalidates the complete graph", "expected": "bounded file delta is not applied"},
+    {"id": "generation-envelope-drift", "owner": "blueprint", "failure": "graph body and generation envelope disagree", "expected": "generation digest does not match published rows"},
+    {"id": "arbitrary-shell-check", "owner": "forge", "failure": "unrelated successful shell command satisfies a criterion", "expected": "CheckSpec match fails"},
+    {"id": "adapt-update-as-add", "owner": "adapt", "failure": "update creates a new record", "expected": "stable RuleKey resolves one existing durable ID"},
+    {"id": "adapt-field-loss", "owner": "adapt", "failure": "typed field disappears during manifest round-trip", "expected": "typed semantics differ after reload"},
+    {"id": "forge-mcp-output-schema", "owner": "forge", "failure": "assess returns structured content outside declared MCP output schema", "expected": "schema validation rejects the response before fix"},
+    {"id": "overlay-without-session", "owner": "blueprint", "failure": "dirty overlay receipt has no session/worktree identity", "expected": "concurrent sessions cannot distinguish overlay state"}
+  ]
+}

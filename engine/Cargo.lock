@@ -2052,21 +2052,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "membrane-supervisor"
-version = "0.1.0"
-dependencies = [
- "clap",
- "libc",
- "membrane-protocol",
- "membrane-runtime",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "membrane-testkit"
 version = "0.1.0"
 dependencies = [

@@ -10,7 +10,7 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 const LIFECYCLE_READY_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Ephemeral capability received from the Orthic lifecycle channel.
+/// Ephemeral capability received from Membrane lifecycle channel.
 /// It is copied into process memory at startup, never persisted.
 #[derive(Clone)]
 pub struct LifecycleControl {
@@ -174,10 +174,10 @@ pub(crate) struct Runtime {
 fn build_info() -> serde_json::Value {
     serde_json::json!({
         "product_version": env!("CARGO_PKG_VERSION"),
-        "cortex_source_commit": option_env!("CORTEX_SOURCE_COMMIT").unwrap_or("unknown"),
-        "source_tree_sha256": option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown"),
-        "release_generation": cortex::release_identity::release_generation(),
-        "target": cortex::release_identity::target_triple(),
+        "membrane_source_commit": option_env!("MEMBRANE_SOURCE_COMMIT").unwrap_or("unknown"),
+        "source_tree_sha256": option_env!("MEMBRANE_SOURCE_TREE_SHA256").unwrap_or("unknown"),
+        "release_generation": crate::release_identity::release_generation(),
+        "target": crate::release_identity::target_triple(),
     })
 }
 
@@ -185,8 +185,8 @@ pub(crate) fn prepare_runtime_identity(
     runtime: &Runtime,
 ) -> Result<
     (
-        cortex::installation_identity::InstallationIdentity,
-        cortex::installation_identity::StartupClaim,
+        crate::installation_identity::InstallationIdentity,
+        crate::installation_identity::StartupClaim,
     ),
     String,
 > {
@@ -195,7 +195,7 @@ pub(crate) fn prepare_runtime_identity(
         .ancestors()
         .nth(4)
         .ok_or_else(|| "resolve workspace root from database path".to_string())?;
-    cortex::installation_identity::prepare_service_start(workspace_root)
+    crate::installation_identity::prepare_service_start(workspace_root)
         .map_err(|error| format!("prepare installation identity: {error}"))
 }
 
@@ -217,9 +217,9 @@ fn runtime_from_exe_at_workspace(
         }
         let bin = root.join("tools/bin");
         let service_names = if cfg!(windows) {
-            ["cortex-service.exe", "cortex-service.exe"]
+            ["membrane.exe", "membrane.exe"]
         } else {
-            ["cortex-service", "cortex-service"]
+            ["membrane", "membrane"]
         };
         let actual = std::fs::canonicalize(exe).ok()?;
         service_names.iter().find_map(|name| {
@@ -234,7 +234,6 @@ fn runtime_from_exe_at_workspace(
     });
     let membrane_owned_bin = workspace_root
         .filter(|root| root.is_absolute())
-        .filter(|_| std::env::var("MEMBRANE_OWNER_PIPE").as_deref() == Ok("1"))
         .map(|root| root.join("tools/bin"))
         .filter(|bin| bin.is_dir());
     let bin = direct_bin
@@ -242,13 +241,13 @@ fn runtime_from_exe_at_workspace(
         .or(linked_bin)
         .or(membrane_owned_bin)
         .ok_or_else(|| {
-            "cortex-service must be Membrane-owned or run from its exact canonical tools/bin path"
+            "membrane resident must be Membrane-owned or run from its exact canonical tools/bin path"
                 .to_string()
         })?;
     let tools = bin
         .parent()
         .filter(|path| path.file_name().is_some_and(|name| name == "tools"))
-        .ok_or_else(|| "cortex-service could not locate the tools directory".to_string())?;
+        .ok_or_else(|| "membrane resident could not locate the tools directory".to_string())?;
     let config_path = tools.join("lib/memory/runtime.json");
     let config: RuntimeConfig = serde_json::from_slice(
         &std::fs::read(&config_path)
@@ -256,7 +255,7 @@ fn runtime_from_exe_at_workspace(
     )
     .map_err(|error| format!("parse {}: {error}", config_path.display()))?;
     if config.schema_version != 1
-        || config.service_id != "cortex-local-v1"
+        || config.service_id != "membrane-local-v1"
         || config.host != "127.0.0.1"
         || config.port < 1024
     {
@@ -286,36 +285,18 @@ pub(crate) fn runtime_from_exe(exe: &Path) -> Result<Runtime, String> {
     runtime_from_exe_at_workspace(exe, workspace.as_deref())
 }
 
-/// MBR-102 entrypoint: supervisor-child launch with an explicit lease path. When the supervisor
-/// passes a lease, the runtime validates the signature before starting. With no lease the
-/// runtime falls back to the legacy `run_service` behavior.
-pub fn run_service_from(lease: Option<&std::path::Path>) -> Result<(), String> {
-    run_service_with_lifecycle(lease, LifecycleControl::default())
+/// Headless supervisor-child entrypoint. Inherited stdio mode binds an authenticated lifecycle
+/// capability before startup; explicit headless mode remains available for local diagnostics.
+pub fn run_service_from() -> Result<(), String> {
+    run_service_with_lifecycle(LifecycleControl::default())
 }
 
 /// Starts a lifecycle-managed resident with its snapshot capability held only
 /// in memory. The lifecycle dispatcher validates the inherited channel before
 /// constructing this control object.
 pub fn run_service_with_lifecycle(
-    lease: Option<&std::path::Path>,
     lifecycle: LifecycleControl,
 ) -> Result<(), String> {
-    if let Some(lease_path) = lease {
-        // Validate the lease file is present and parses before handing off to the supervisor
-        // machinery. The full lease authority check belongs to the supervisor itself; here we
-        // only confirm the file is well-formed enough to start.
-        let bytes = std::fs::read(lease_path)
-            .map_err(|error| format!("read supervisor lease {}: {error}", lease_path.display()))?;
-        if bytes.is_empty() {
-            return Err(format!(
-                "supervisor lease {} is empty",
-                lease_path.display()
-            ));
-        }
-        // The lease is opaque to the runtime at this layer; the supervisor owns the format.
-        // Store the path so downstream consumers (serve.rs) can pick it up if needed.
-        std::env::set_var("MEMBRANE_SUPERVISOR_LEASE", lease_path);
-    }
     install_lifecycle_control(lifecycle)?;
     run_service()
 }
@@ -329,8 +310,8 @@ pub fn run_service() -> Result<(), String> {
         &std::env::current_exe().map_err(|error| format!("resolve service binary: {error}"))?,
     )?;
     std::env::set_var("CORTEX_DB", &runtime.db);
-    std::env::set_var("CORTEX_PORT", runtime.port.to_string());
-    std::env::set_var("CORTEX_API_TOKEN_FILE", &runtime.token);
+    std::env::set_var("MEMBRANE_PORT", runtime.port.to_string());
+    std::env::set_var("MEMBRANE_API_TOKEN_FILE", &runtime.token);
     std::env::set_var("ORT_DYLIB_PATH", &runtime.ort);
     std::env::set_var("HF_HOME", &runtime.hf_home);
     std::env::set_var("HF_HUB_OFFLINE", "1");
@@ -361,9 +342,9 @@ pub fn run_service() -> Result<(), String> {
         crate::installation_manifest::build_active_manifest(&identity, &claim, workspace_root);
     crate::installation_manifest::publish_active_manifest(active_manifest)
         .map_err(|error| format!("publish installation manifest: {error}"))?;
-    std::env::set_var("CORTEX_INSTALLATION_ID", &identity.installation_id);
-    std::env::set_var("CORTEX_SERVICE_INSTANCE_ID", &claim.service_instance_id);
-    cortex::serve::run(
+    std::env::set_var("MEMBRANE_INSTALLATION_ID", &identity.installation_id);
+    std::env::set_var("MEMBRANE_SERVICE_INSTANCE_ID", &claim.service_instance_id);
+    crate::serve::run(
         runtime
             .db
             .to_str()
@@ -405,7 +386,7 @@ mod tests {
     fn build_info_exposes_source_commit_and_tree_identity_fields() {
         let info = build_info();
         assert_eq!(info["product_version"], env!("CARGO_PKG_VERSION"));
-        assert!(info.get("cortex_source_commit").is_some());
+        assert!(info.get("membrane_source_commit").is_some());
         assert!(info.get("source_tree_sha256").is_some());
         assert!(info.get("release_generation").is_some());
         assert!(info.get("target").is_some());
@@ -420,10 +401,10 @@ mod tests {
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(
             config_dir.join("runtime.json"),
-            r#"{"schemaVersion":1,"serviceId":"cortex-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"membrane-local-v1","host":"127.0.0.1","port":47851}"#,
         )
         .unwrap();
-        let runtime = runtime_from_exe(&bin.join("cortex-service.exe")).unwrap();
+        let runtime = runtime_from_exe(&bin.join("membrane.exe")).unwrap();
         assert_eq!(runtime.port, 47851);
         assert_eq!(
             runtime.db,
@@ -444,17 +425,17 @@ mod tests {
         let workspace = temp.path().join("workspace");
         let bin = workspace.join("tools/bin");
         let config_dir = workspace.join("tools/lib/memory");
-        let relocated = temp.path().join("resident/cortex-service");
+        let relocated = temp.path().join("resident/membrane");
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::create_dir_all(relocated.parent().unwrap()).unwrap();
         std::fs::write(&relocated, b"fixture").unwrap();
         std::fs::write(
             config_dir.join("runtime.json"),
-            r#"{"schemaVersion":1,"serviceId":"cortex-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"membrane-local-v1","host":"127.0.0.1","port":47851}"#,
         )
         .unwrap();
-        symlink(&relocated, bin.join("cortex-service")).unwrap();
+        symlink(&relocated, bin.join("membrane")).unwrap();
 
         let runtime = runtime_from_exe_at_workspace(&relocated, Some(&workspace)).unwrap();
         assert_eq!(runtime.port, 47851);

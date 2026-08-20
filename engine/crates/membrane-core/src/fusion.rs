@@ -237,6 +237,7 @@ mod tests {
         ContextCandidateSetV1 {
             schema_version: 1,
             trace_id: "fixture".to_string(),
+            indexed_at: "fixture".to_string(),
             task: "fixture".to_string(),
             mode: "fixture".to_string(),
             provider: provider.to_string(),

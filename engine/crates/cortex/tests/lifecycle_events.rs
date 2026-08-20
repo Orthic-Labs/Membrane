@@ -1,4 +1,4 @@
-use cortex::{
+use membrane_runtime::{
     MemDb, MemoryEventContext, MemoryLifecycleEventV1, MemoryLifecycleInputV1, MemoryPriorityError,
     MemoryStore,
 };

@@ -10,7 +10,9 @@ await mkdir(join(workspace, "tools", "lib", "memory"), { recursive: true });
 await mkdir(join(workspace, "tools", ".cache", "memory"), { recursive: true });
 await writeFile(join(workspace, "tools", "lib", "memory", "runtime.json"), JSON.stringify({
   schemaVersion: 1,
-  serviceId: "cortex-local-v1",
+  serviceId: "membrane-local-v1",
+  installationId: "installation-test",
+  serviceInstanceId: "instance-test",
   host: "127.0.0.1",
   port: 47851,
 }), "utf8");
@@ -46,20 +48,32 @@ assert.equal(resolved.tokenGeneration, 2);
 
 const env = installationEnv(resolved);
 assert.equal(env.WORKSPACE_ROOT, workspace);
-assert.equal(env.CORTEX_PORT, "47851");
+assert.equal(env.MEMBRANE_PORT, "47851");
 assert.equal(env.CORTEX_DB, resolved.db);
-assert.equal(env.CORTEX_API_TOKEN_FILE, registryToken);
+assert.equal(env.MEMBRANE_API_TOKEN_FILE, registryToken);
+assert.equal(env.MEMBRANE_INSTALLATION_ID, "installation-test");
+assert.equal(env.MEMBRANE_SERVICE_INSTANCE_ID, "instance-test");
 
 process.env.CORTEX_PORT = "49123";
 process.env.CORTEX_DB = "/tmp/override.db";
 process.env.CORTEX_API_TOKEN_FILE = "/tmp/override.token";
+// Retired resident transport names are ignored; only durable-store CORTEX_DB
+// remains active under its historical name.
+const legacyOnly = await installationBindingFor(binding);
+assert.equal(legacyOnly.port, 47851);
+assert.equal(legacyOnly.db, "/tmp/override.db");
+assert.equal(legacyOnly.tokenPath, registryToken);
+process.env.MEMBRANE_PORT = "49124";
+process.env.MEMBRANE_API_TOKEN_FILE = "/tmp/membrane-override.token";
 const overridden = await installationBindingFor(binding);
-assert.equal(overridden.port, 49123);
+assert.equal(overridden.port, 49124);
 assert.equal(overridden.db, "/tmp/override.db");
-assert.equal(overridden.tokenPath, "/tmp/override.token");
+assert.equal(overridden.tokenPath, "/tmp/membrane-override.token");
 delete process.env.CORTEX_PORT;
 delete process.env.CORTEX_DB;
 delete process.env.CORTEX_API_TOKEN_FILE;
+delete process.env.MEMBRANE_PORT;
+delete process.env.MEMBRANE_API_TOKEN_FILE;
 
 // F09 case 1: tools/lib/memory/runtime.json absent anywhere on the path from binding.root ->
 // this is the ONLY legitimate silent-fallback case (not-installed-yet, tests, dry runs).
@@ -79,7 +93,7 @@ assert.equal(bareResolved.db, join(bareRepo, "tools", ".cache", "memory", "corte
 const invalidPortRoot = await mkdtemp(join(tmpdir(), "membrane-binding-invalid-port-"));
 await mkdir(join(invalidPortRoot, "tools", "lib", "memory"), { recursive: true });
 await writeFile(join(invalidPortRoot, "tools", "lib", "memory", "runtime.json"), JSON.stringify({
-  schemaVersion: 1, serviceId: "cortex-local-v1", host: "127.0.0.1", port: 70,
+  schemaVersion: 1, serviceId: "membrane-local-v1", host: "127.0.0.1", port: 70,
 }), "utf8");
 const invalidPortRepo = join(invalidPortRoot, "membrane-repo");
 await mkdir(invalidPortRepo, { recursive: true });
@@ -103,7 +117,7 @@ await assert.rejects(
 const nonLoopbackRoot = await mkdtemp(join(tmpdir(), "membrane-binding-non-loopback-"));
 await mkdir(join(nonLoopbackRoot, "tools", "lib", "memory"), { recursive: true });
 await writeFile(join(nonLoopbackRoot, "tools", "lib", "memory", "runtime.json"), JSON.stringify({
-  schemaVersion: 1, serviceId: "cortex-local-v1", host: "10.0.0.5", port: 47851,
+  schemaVersion: 1, serviceId: "membrane-local-v1", host: "10.0.0.5", port: 47851,
 }), "utf8");
 const nonLoopbackRepo = join(nonLoopbackRoot, "membrane-repo");
 await mkdir(nonLoopbackRepo, { recursive: true });

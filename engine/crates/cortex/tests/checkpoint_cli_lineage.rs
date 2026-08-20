@@ -11,53 +11,28 @@ fn checkpoint_cli_round_trip_preserves_lineage_resolves_docs_and_stays_session_o
     let document = temp.path().join("runbook.md");
     let markdown = "# P4 Runbook\n\nResume exact CLI lineage proof.\n";
     fs::write(&document, markdown).unwrap();
-
-    let outline = Command::new(bin)
-        .args([
-            "doc",
-            "outline",
-            "--repo",
-            temp.path().to_str().unwrap(),
-            "--path",
-            document.to_str().unwrap(),
-            "--json",
-        ])
-        .output()
-        .unwrap();
-    assert!(
-        outline.status.success(),
-        "outline stderr: {}",
-        String::from_utf8_lossy(&outline.stderr)
+    // Guide owns document resolution; Cortex consumes only its source-bound
+    // result while this test exercises Cortex's durable checkpoint boundary.
+    let source_ref = "doc://repo/worktree/runbook.md";
+    let outline = membrane_runtime::guide::outline::build_outline(
+        source_ref,
+        markdown,
+        "comrak-0.54.0",
     );
-    let outline: serde_json::Value = serde_json::from_slice(&outline.stdout).unwrap();
-    let source_ref = outline["sourceRef"].as_str().unwrap();
-    let content_hash = outline["contentHash"].as_str().unwrap();
-    let anchor_id = outline["sections"][0]["anchorId"].as_str().unwrap();
-
-    let read = Command::new(bin)
-        .env("WORKSPACE_ROOT", temp.path())
-        .args([
-            "doc",
-            "read",
-            "--source-ref",
-            source_ref,
-            "--anchor",
-            anchor_id,
-            "--expected-hash",
-            content_hash,
-        ])
-        .output()
-        .unwrap();
-    assert!(
-        read.status.success(),
-        "read stderr: {}",
-        String::from_utf8_lossy(&read.stderr)
-    );
-    let read: serde_json::Value = serde_json::from_slice(&read.stdout).unwrap();
-    assert_eq!(read["sourceRef"], source_ref);
-    assert_eq!(read["contentHash"], content_hash);
-    assert_eq!(read["anchorId"], anchor_id);
-    assert_eq!(read["content"], markdown);
+    let content_hash = outline.content_hash;
+    let anchor_id = outline.sections[0].anchor_id.clone();
+    let read = membrane_runtime::guide::outline::read_section(
+        source_ref,
+        markdown,
+        &anchor_id,
+        &content_hash,
+        12_000,
+    )
+    .unwrap();
+    assert_eq!(read.source_ref, source_ref);
+    assert_eq!(read.content_hash, content_hash);
+    assert_eq!(read.anchor_id, anchor_id);
+    assert_eq!(read.content, markdown);
 
     let checkpoint_id = "checkpoint/p4-cli/100";
     let installation_id = "550e8400-e29b-41d4-a716-446655440000";

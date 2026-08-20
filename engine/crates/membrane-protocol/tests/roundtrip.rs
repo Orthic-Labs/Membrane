@@ -109,19 +109,19 @@ fn canonical_digests_are_pinned() {
     let expected: &[(&str, &str)] = &[
         (
             "ScopeGrantV1",
-            "sha256:81e111edd4aac62e02bb8651d3c867cfb465d4bf58f78b69e27b6228f6f4a9c1",
+            "sha256:21a54f593f194de52b30ebbde911aea78025c403becfbd62ae34ed1969bf43dd",
         ),
         (
             "ContextCandidateSetV1",
-            "sha256:efd6e981bbb8d19e480dc14eb39c66e533004f9b057939b0be484d3065e829eb",
+            "sha256:12d6903c2883200da371fdaf8f2f6b6ccefbf6542ca3da480fb70124a3512a8f",
         ),
         (
             "ContextPacketV1",
-            "sha256:e56b76f42c821e8c039b2a7d21825eb86f347b4b1ee81dbf126fa7b2ea005d0c",
+            "sha256:fb56e8e59a99fa364c6acbfaf327140415fd19e78520a655c9b0aeacd478350a",
         ),
         (
             "ContextReceiptV1",
-            "sha256:d4295ac3369d1a01b88f95d4ea017a106e23b84a416b5f6fecc8e7821a8507a8",
+            "sha256:ed0d9ac5a641bd90e87aab6e949f0a207214cd43c4e75d6d31b5d2758c853ca2",
         ),
         (
             "KnowledgeEmissionV1",

@@ -1,14 +1,13 @@
 """Contract tests for source and generated workspace packages.
 
-Run source package tests with ``PYTHONDONTWRITEBYTECODE=1 python3 -m pytest membrane/install/tests``.
-Run generated-package tests with
-``PYTHONDONTWRITEBYTECODE=1 MEMBRANE_WORKSPACE_TEST_ROOT=membrane/dist/install/workspace python3 -m pytest membrane/install/tests``.
+Run source & generated package tests with Python on Mac.
 """
 from __future__ import annotations
 
 import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 
 
@@ -19,12 +18,17 @@ def _load(name: str):
     spec = importlib.util.spec_from_file_location(name, PACKAGE_ROOT / f"{name}.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    previous = sys.dont_write_bytecode
+    sys.dont_write_bytecode = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.dont_write_bytecode = previous
     return module
 
 
 def test_runtime_package_has_only_current_modules():
-    assert (PACKAGE_ROOT / "cortex_service.py").is_file()
+    assert (PACKAGE_ROOT / "membrane_shims.py").is_file()
     assert (PACKAGE_ROOT / "version_gate.py").is_file()
     assert not (PACKAGE_ROOT / ("crypt" + "_service.py")).exists()
     assert not (PACKAGE_ROOT / ("orthic" + "_manifest.py")).exists()
@@ -32,14 +36,22 @@ def test_runtime_package_has_only_current_modules():
     assert not any(path.name.startswith("test_") for path in PACKAGE_ROOT.rglob("*.py"))
 
 
-def test_cortex_service_render_contract():
-    module = _load("cortex_service")
-    body = module.render_cortex_shim(
-        "C:/tools/cortex.exe", "C:/db/cortex-engine.db", "C:/ort.dll", "C:/hf", "runc",
-        cortex_port=47851, cmd_format=True, win=True,
+def test_membrane_push_shim_render_contract():
+    module = _load("membrane_shims")
+    body = module.render_membrane_shim(
+        "/tools/bin/membrane", "runc",
     )
-    assert "MEMBRANE_CATALOG=C:/db/catalog.db" in body
-    assert "cortex.exe" in body
+    assert 'exec "/tools/bin/membrane" cli push runc' in body
+    assert "cortex" not in body
+
+
+def test_cortex_shim_render_contract():
+    module = _load("membrane_shims")
+    body = module.render_cortex_shim(
+        "/tools/cortex", "/db/cortex-engine.db", "/ort.dylib", "/hf",
+    )
+    assert 'MEMBRANE_CATALOG="${MEMBRANE_CATALOG:-/db/catalog.db}"' in body
+    assert "cortex" in body
 
 
 def test_version_gate_contract(tmp_path):

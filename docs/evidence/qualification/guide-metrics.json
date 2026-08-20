@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "axis": "guide",
+  "status": "fixture-entrypoint-defined",
+  "entrypoint": "membrane-runtime::guide",
+  "metrics": ["anchor_resolution", "hash_staleness", "incremental_sync", "recall_determinism", "projection_rebuild"]
+}

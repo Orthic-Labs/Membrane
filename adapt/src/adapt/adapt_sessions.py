@@ -592,10 +592,6 @@ def parse_command_code_session(
                    _messages_for_turns(turns)) if turns else None
 
 
-# Compatibility for the original adapter API used by local callers and tests.
-parse_commandcode_session = parse_command_code_session
-
-
 def parse_cline_session(
     path: Path, *, max_turns: int | None = MAX_TURNS_PER_SESSION
 ) -> Session | None:

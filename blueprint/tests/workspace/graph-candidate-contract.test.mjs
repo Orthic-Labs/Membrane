@@ -5,16 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { findWorkspaceRoot } from "../_workspace-root.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = findWorkspaceRoot(HERE, { required: false });
 const BLUEPRINT = path.resolve(HERE, "../..");
 const CLI = path.join(BLUEPRINT, "scripts/blueprint.mjs");
 const FIXTURE = path.join(BLUEPRINT, "evals/fixture-repos/typescript-commerce");
-const SCHEMA = ROOT ? path.join(ROOT, "tools/lib/context-contracts.schema.json") : null;
+const SCHEMA = path.join(BLUEPRINT, "schemas/context-candidate-set.v1.schema.json");
 import { validateJsonSchema } from "../python-test-runtime.mjs";
-const workspaceSkip = ROOT ? false : "requires parent monorepo context contracts";
+const workspaceSkip = false;
 
 test("graph candidates CLI validates as ContextCandidateSet v1", { skip: workspaceSkip }, () => {
   const repo = path.join(os.tmpdir(), `blueprint-candidate-contract-${process.pid}-${Date.now()}`);
@@ -32,13 +30,7 @@ test("graph candidates CLI validates as ContextCandidateSet v1", { skip: workspa
     assert.equal(generated.status, 0, generated.stderr || generated.stdout);
     const generatedPayload = JSON.parse(generated.stdout);
     assert.equal(generatedPayload.candidates.length > 0, true);
-    assert.equal(
-      Number.isFinite(generatedPayload?._diagnostics?.stageElapsedMs?.repo_code_scan),
-      true,
-      "candidate CLI must emit a content-free repo scan duration",
-    );
-    assert.equal(generatedPayload._diagnostics.stageElapsedMs.repo_code_scan >= 0, true);
-    const result = validateJsonSchema(JSON.parse(fs.readFileSync(SCHEMA, "utf8")), generatedPayload, "#/$defs/ContextCandidateSet");
+    const result = validateJsonSchema(JSON.parse(fs.readFileSync(SCHEMA, "utf8")), generatedPayload);
     assert.equal(result.valid, true, JSON.stringify(result.errors));
   } finally {
     fs.rmSync(repo, { recursive: true, force: true });

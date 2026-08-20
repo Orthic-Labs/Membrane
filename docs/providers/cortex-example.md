@@ -38,7 +38,7 @@ docs/examples/providers/cortex_example/
 From the repository root:
 
 ```sh
-cargo run --manifest-path docs/examples/providers/cortex_example/Cargo.toml --bin cortex_example
+rightkit cargo run --manifest-path docs/examples/providers/cortex_example/Cargo.toml --bin cortex_example
 ```
 
 The binary exits 0 if every Cortex fixture in `membrane-testkit` passes

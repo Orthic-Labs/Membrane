@@ -44,9 +44,9 @@ def _load(mod_name: str):
 
 
 def _snapshot_from_serve() -> dict[str, Any]:
-    port = os.environ.get("CORTEX_PORT") or "47851"
+    port = os.environ.get("MEMBRANE_PORT") or "47851"
     token = ""
-    token_file = os.environ.get("CORTEX_API_TOKEN_FILE", "")
+    token_file = os.environ.get("MEMBRANE_API_TOKEN_FILE", "")
     try:
         if token_file and os.path.exists(token_file):
             with open(token_file, "r", encoding="utf-8") as handle:

@@ -26,7 +26,7 @@ use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{any, get};
 use axum::Router;
-use cortex_core::planner::{
+use crate::pull::planner::{
     plan as plan_context, ContextCandidateSetV1, PlannerError, PlannerInput,
 };
 use serde_json::{json, Value};
@@ -199,7 +199,7 @@ fn analysis_response(directory: &std::path::Path) -> (u16, String) {
 }
 
 fn configured_analysis_directory() -> std::path::PathBuf {
-    std::env::var_os("CORTEX_DAILY_ANALYSIS_DIR")
+    std::env::var_os("MEMBRANE_DAILY_ANALYSIS_DIR")
         .map(std::path::PathBuf::from)
         .or_else(|| {
             std::env::var_os("WORKSPACE_ROOT")
@@ -219,7 +219,7 @@ fn configured_workspace_root() -> std::path::PathBuf {
 }
 
 fn configured_anchor_directory() -> std::path::PathBuf {
-    std::env::var_os("CORTEX_ANCHOR_DIR")
+    std::env::var_os("MEMBRANE_ANCHOR_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| configured_workspace_root().join("tools/.cache/runc"))
 }
@@ -363,7 +363,7 @@ fn expand_anchor_response(body: &str, anchor_directory: &std::path::Path) -> (u1
     let Some(anchor) = value.get("anchor").and_then(Value::as_str) else {
         return (400, json!({"error":"anchor required"}).to_string());
     };
-    let digest = match crate::identifier::AnchorRef::parse(anchor) {
+    let digest = match crate::guide::identifier::AnchorRef::parse(anchor) {
         Ok(reference) => reference.digest(),
         Err(_) => return (400, json!({"error":"invalid anchor"}).to_string()),
     };
@@ -421,9 +421,9 @@ struct AppState {
     /// Rolling latency tracker for `/plan_context` requests. Bounded ring; the
     /// p50/p95 appears in `/health` so an operator can see service overhead
     /// without exposing request bodies.
-    planner_latency: Arc<crate::planner_metrics::PlannerLatency>,
+    planner_latency: Arc<crate::pull::metrics::PlannerLatency>,
     /// Snapshot of the most recent fallback observed by `/plan_context`.
-    planner_last_fallback: Arc<crate::planner_metrics::LastFallback>,
+    planner_last_fallback: Arc<crate::pull::metrics::LastFallback>,
     /// Counter of receipts that the planner emitted with an unparsable schema
     /// (defensive: the planner is pure and shouldn't ever emit broken JSON,
     /// but we count rather than fail open). Exposed via `/health`.
@@ -924,8 +924,8 @@ pub(crate) fn configured_api_token(db_path: &std::path::Path) -> Result<String, 
         .unwrap_or_else(|| std::path::Path::new("."))
         .join("api-token");
     configured_api_token_from_sources(
-        std::env::var_os("CORTEX_API_TOKEN"),
-        std::env::var_os("CORTEX_API_TOKEN_FILE").map(std::path::PathBuf::from),
+        std::env::var_os("MEMBRANE_API_TOKEN"),
+        std::env::var_os("MEMBRANE_API_TOKEN_FILE").map(std::path::PathBuf::from),
         &fallback,
     )
 }
@@ -938,7 +938,7 @@ fn configured_api_token_from_sources(
     if let Some(raw) = raw {
         let token = raw.to_string_lossy().trim().to_string();
         if token.is_empty() {
-            return Err("CORTEX_API_TOKEN is set but empty".to_string());
+            return Err("MEMBRANE_API_TOKEN is set but empty".to_string());
         }
         validate_api_token(&token)?;
         return Ok(token);
@@ -952,7 +952,7 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
         Ok(token) => return Ok(token),
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
             return Err(format!(
-                "read CORTEX_API_TOKEN_FILE {}: {error}",
+                "read MEMBRANE_API_TOKEN_FILE {}: {error}",
                 path.display()
             ));
         }
@@ -965,7 +965,7 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
     if let Some(parent) = parent {
         std::fs::create_dir_all(parent).map_err(|error| {
             format!(
-                "create CORTEX_API_TOKEN_FILE directory {}: {error}",
+                "create MEMBRANE_API_TOKEN_FILE directory {}: {error}",
                 parent.display()
             )
         })?;
@@ -1014,12 +1014,12 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
         Ok(()) => Ok(token),
         Err(_) if path.exists() => read_token_file(path).map_err(|error| {
             format!(
-                "read concurrently-created CORTEX_API_TOKEN_FILE {}: {error}",
+                "read concurrently-created MEMBRANE_API_TOKEN_FILE {}: {error}",
                 path.display()
             )
         }),
         Err(error) => Err(format!(
-            "atomically publish CORTEX_API_TOKEN_FILE {}: {error}",
+            "atomically publish MEMBRANE_API_TOKEN_FILE {}: {error}",
             path.display()
         )),
     }
@@ -1285,10 +1285,10 @@ fn authorized(headers: &HeaderMap, expected: Option<&str>) -> bool {
     secure_eq(actual.as_bytes(), expected.as_bytes())
 }
 
-fn orthic_capability_authorized(headers: &HeaderMap) -> bool {
+fn membrane_capability_authorized(headers: &HeaderMap) -> bool {
     crate::service::lifecycle_control().snapshot_authorized(
         headers
-            .get("x-orthic-capability")
+            .get("x-membrane-capability")
             .and_then(|value| value.to_str().ok()),
     )
 }
@@ -1483,10 +1483,10 @@ async fn dispatch(
     }
     let path = uri.path();
     if method == Method::GET && path == "/snapshot" {
-        if !orthic_capability_authorized(&headers) {
-            return reject(StatusCode::UNAUTHORIZED, "valid Orthic capability required");
+        if !membrane_capability_authorized(&headers) {
+            return reject(StatusCode::UNAUTHORIZED, "valid Membrane capability required");
         }
-        return match orthic_snapshot_v2() {
+        return match membrane_snapshot_v2() {
             Ok(value) => json_response(StatusCode::OK, value.to_string()),
             Err(reason) => reject(StatusCode::SERVICE_UNAVAILABLE, &reason),
         };
@@ -1514,7 +1514,7 @@ async fn dispatch(
         );
     }
     if method == Method::GET && matches!(path, "/" | "/index.html") {
-        let html = DASHBOARD_HTML.replace("__CORTEX_API_TOKEN_JSON__", "null");
+        let html = DASHBOARD_HTML.replace("__MEMBRANE_API_TOKEN_JSON__", "null");
         return (
             [
                 (header::CONTENT_TYPE, "text/html; charset=utf-8"),
@@ -2040,8 +2040,8 @@ fn build_router_inner(
             format!("http://127.0.0.1:{port}"),
             format!("http://localhost:{port}"),
         ]),
-        planner_latency: Arc::new(crate::planner_metrics::PlannerLatency::new()),
-        planner_last_fallback: Arc::new(crate::planner_metrics::LastFallback::new()),
+        planner_latency: Arc::new(crate::pull::metrics::PlannerLatency::new()),
+        planner_last_fallback: Arc::new(crate::pull::metrics::LastFallback::new()),
         planner_schema_error_count: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         workers: Arc::new(WorkerAdmission::new(
             max_concurrent_requests,
@@ -2170,8 +2170,8 @@ pub fn route_with_catalog_for_tests(
         store,
         Some(catalog),
         None,
-        &crate::planner_metrics::PlannerLatency::new(),
-        &crate::planner_metrics::LastFallback::new(),
+        &crate::pull::metrics::PlannerLatency::new(),
+        &crate::pull::metrics::LastFallback::new(),
         &std::sync::atomic::AtomicU64::new(0),
         method,
         url,
@@ -2187,8 +2187,8 @@ pub fn route_with_catalog_for_tests(
 pub fn route_with_catalog_and_metrics_for_tests(
     store: &MemoryStore,
     catalog: &ContextCatalog,
-    latency: &crate::planner_metrics::PlannerLatency,
-    fallback: &crate::planner_metrics::LastFallback,
+    latency: &crate::pull::metrics::PlannerLatency,
+    fallback: &crate::pull::metrics::LastFallback,
     schema_errors: &std::sync::atomic::AtomicU64,
     method: &str,
     url: &str,
@@ -2396,7 +2396,7 @@ static RESIDENT_GATEWAY: std::sync::OnceLock<
     std::sync::Mutex<
         Option<(
             std::path::PathBuf,
-            crate::federation_worker::ResidentGateway,
+            crate::pull::federation_worker::ResidentGateway,
         )>,
     >,
 > = std::sync::OnceLock::new();
@@ -2406,12 +2406,12 @@ const FEDERATE_MAX_WAIT_MS: u64 = 2_000;
 const FEDERATE_MIN_WAIT_MS: u64 = 100;
 
 fn resolve_federation_script() -> Option<std::path::PathBuf> {
-    let configured = std::env::var("CORTEX_FEDERATION_SCRIPT").unwrap_or_default();
+    let configured = std::env::var("MEMBRANE_FEDERATION_SCRIPT").unwrap_or_default();
     if !configured.trim().is_empty() {
         let path = std::path::PathBuf::from(configured.trim());
         return path.is_file().then_some(path);
     }
-    crate::federation::find_federation_gateway(&configured_workspace_root())
+    crate::pull::federation::find_federation_gateway(&configured_workspace_root())
 }
 
 fn federate_route_response(body: &str) -> (u16, String) {
@@ -2468,7 +2468,7 @@ fn federate_route_response(body: &str) -> (u16, String) {
     if stale {
         *guard = Some((
             script.clone(),
-            crate::federation_worker::ResidentGateway::new(script),
+            crate::pull::federation_worker::ResidentGateway::new(script),
         ));
     }
     let (_, gateway) = guard.as_mut().expect("gateway just initialized");
@@ -2491,9 +2491,9 @@ fn federate_route_response(body: &str) -> (u16, String) {
     };
     let gateway_process_ms = started.elapsed().as_secs_f64() * 1000.0;
     let restarts = gateway.worker_restarts;
-    let envelope = crate::federation::envelope_from_ccs(
+    let envelope = crate::pull::federation::envelope_from_ccs(
         &line,
-        crate::federation::EnvelopeInput {
+        crate::pull::federation::EnvelopeInput {
             max_tokens,
             packet_char_budget_override: value
                 .get("packetCharBudget")
@@ -2566,9 +2566,9 @@ fn bounded_utf8(value: &str, max_bytes: usize) -> String {
 }
 
 /// Projects legacy Hub v1 state into the closed, content-free
-/// `orthic.snapshot.v2` shape. Legacy items are deliberately summarized rather
+/// `membrane.snapshot.v2` shape. Legacy items are deliberately summarized rather
 /// than forwarded: their arbitrary maps are not legal v2 snapshot content.
-fn orthic_snapshot_v2() -> Result<Value, String> {
+fn membrane_snapshot_v2() -> Result<Value, String> {
     let live = crate::hub_inputs::live_inputs_from_local_service();
     let facade = crate::hub::HubFacadeV1::new(hub_stream_from_live_probe(live.is_some()));
     let observed_at_unix_ms = now_unix_ms();
@@ -3805,19 +3805,6 @@ fn route_with_context_ingest_lease(
         let context = event_context(&v, "curate");
         match store.dream_now_observed(&today, &context) {
             Ok(status) => {
-                store.log_transform(
-                    &crate::time::now_iso(),
-                    "curate",
-                    Some(
-                        &serde_json::json!({
-                            "quarantined_count": status.quarantined_count,
-                        })
-                        .to_string(),
-                    ),
-                    status.consolidated_count,
-                    status.pruned_count,
-                    None,
-                );
                 (
                     200,
                     serde_json::json!({
@@ -4007,7 +3994,7 @@ fn route_with_context_ingest_lease(
         // a genuine freshness verdict would reintroduce that latency. Passing `None` here is the
         // honest choice per F11's contract: the candidate set's own freshness is unverifiable at
         // this call site, so `stale` reports that honestly instead of the old hardcoded `false`.
-        let mut payload = match crate::federation::memory_candidates_payload_for_descriptor(
+        let mut payload = match crate::pull::federation::memory_candidates_payload_for_descriptor(
             store,
             task,
             &descriptor,
@@ -4045,16 +4032,7 @@ fn route_with_context_ingest_lease(
         let text = v.get("text").and_then(|x| x.as_str()).unwrap_or("");
         let rate = v.get("rate").and_then(|x| x.as_f64()).unwrap_or(0.5) as f32;
         let no_onnx = v.get("no_onnx").and_then(|x| x.as_bool()).unwrap_or(false);
-        let scope = v.get("scope").and_then(|x| x.as_str());
-        let out = crate::compress::compress_with_options(text, rate, no_onnx);
-        store.log_transform(
-            &crate::time::now_iso(),
-            "compress",
-            scope,
-            text.chars().count(),
-            out.chars().count(),
-            None,
-        );
+        let out = crate::push::compress::compress_with_options(text, rate, no_onnx);
         (200, serde_json::json!({ "out": out }).to_string())
     } else {
         (404, "{\"error\":\"unknown\"}".to_string())
@@ -4075,8 +4053,8 @@ fn route_full(
     store: &MemoryStore,
     catalog: Option<&ContextCatalog>,
     context_ingest_lease: Option<&crate::context_telemetry::ContextIngestLease>,
-    planner_latency: &crate::planner_metrics::PlannerLatency,
-    planner_last_fallback: &crate::planner_metrics::LastFallback,
+    planner_latency: &crate::pull::metrics::PlannerLatency,
+    planner_last_fallback: &crate::pull::metrics::LastFallback,
     planner_schema_error_count: &std::sync::atomic::AtomicU64,
     method: &str,
     url: &str,
@@ -4117,8 +4095,8 @@ fn route_full(
 fn health_response(
     store: &MemoryStore,
     catalog: Option<&ContextCatalog>,
-    planner_latency: &crate::planner_metrics::PlannerLatency,
-    planner_last_fallback: &crate::planner_metrics::LastFallback,
+    planner_latency: &crate::pull::metrics::PlannerLatency,
+    planner_last_fallback: &crate::pull::metrics::LastFallback,
     planner_schema_error_count: &std::sync::atomic::AtomicU64,
 ) -> (u16, String) {
     health_response_with_workers(
@@ -4134,8 +4112,8 @@ fn health_response(
 fn health_response_with_workers(
     store: &MemoryStore,
     catalog: Option<&ContextCatalog>,
-    planner_latency: &crate::planner_metrics::PlannerLatency,
-    planner_last_fallback: &crate::planner_metrics::LastFallback,
+    planner_latency: &crate::pull::metrics::PlannerLatency,
+    planner_last_fallback: &crate::pull::metrics::LastFallback,
     planner_schema_error_count: &std::sync::atomic::AtomicU64,
     workers: Option<&WorkerAdmission>,
 ) -> (u16, String) {
@@ -4193,8 +4171,8 @@ fn health_response_with_workers(
 
 fn planner_route(
     catalog: Option<&ContextCatalog>,
-    planner_latency: &crate::planner_metrics::PlannerLatency,
-    planner_last_fallback: &crate::planner_metrics::LastFallback,
+    planner_latency: &crate::pull::metrics::PlannerLatency,
+    planner_last_fallback: &crate::pull::metrics::LastFallback,
     planner_schema_error_count: &std::sync::atomic::AtomicU64,
     method: &str,
     url: &str,
@@ -4360,8 +4338,8 @@ fn planner_post_scope_grants(catalog: &ContextCatalog, v: &Value) -> (u16, Strin
 #[allow(clippy::type_complexity)]
 fn planner_post_plan_context(
     catalog: &ContextCatalog,
-    planner_latency: &crate::planner_metrics::PlannerLatency,
-    planner_last_fallback: &crate::planner_metrics::LastFallback,
+    planner_latency: &crate::pull::metrics::PlannerLatency,
+    planner_last_fallback: &crate::pull::metrics::LastFallback,
     planner_schema_error_count: &std::sync::atomic::AtomicU64,
     v: &Value,
 ) -> (u16, String) {
@@ -4710,7 +4688,7 @@ pub fn run(
     let runtime_receipt_path = runtime_receipt
         .persist()
         .map_err(|error| error.to_string())?;
-    std::env::set_var("CORTEX_RUNTIME_RECEIPT", &runtime_receipt_path);
+    std::env::set_var("MEMBRANE_RUNTIME_RECEIPT", &runtime_receipt_path);
     crate::runtime_receipt::publish_current(runtime_receipt);
     eprintln!(
         "cortex serve on 127.0.0.1:{port} db={} catalog={}",
@@ -5160,8 +5138,8 @@ mod tests {
         let response = health_response(
             &MemoryStore::new(),
             None,
-            &crate::planner_metrics::PlannerLatency::new(),
-            &crate::planner_metrics::LastFallback::new(),
+            &crate::pull::metrics::PlannerLatency::new(),
+            &crate::pull::metrics::LastFallback::new(),
             &std::sync::atomic::AtomicU64::new(0),
         );
         let payload: serde_json::Value = serde_json::from_str(&response.1).unwrap();
@@ -5173,7 +5151,7 @@ mod tests {
             payload["releaseGeneration"],
             format!(
                 "sha256:{}",
-                option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                option_env!("MEMBRANE_SOURCE_TREE_SHA256").unwrap_or("unknown")
             )
         );
         assert_ne!(payload["serviceGeneration"], payload["releaseGeneration"]);
@@ -5333,13 +5311,13 @@ mod tests {
         assert!(payload.get("body").is_none());
     }
 
-    /// Serializes access to process-global `CORTEX_PORT`
+    /// Serializes access to process-global `MEMBRANE_PORT`
     /// env vars that `hub_inputs::live_inputs_from_local_service` reads, the same
     /// pattern `hub_inputs.rs`'s own test module uses for its env-touching tests.
     static HUB_ROUTE_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// Binds a background TCP listener that answers exactly one `GET /health`
-    /// with the given JSON body, mimicking the local cortex-service well enough
+    /// with the given JSON body, mimicking the local Membrane resident well enough
     /// for `hub_inputs::live_inputs_from_local_service` to parse it as healthy.
     /// Returns the bound port; the listener thread exits after serving one request.
     fn spawn_mock_health_server(health_json: &'static str) -> u16 {
@@ -5371,7 +5349,7 @@ mod tests {
 
         // Unreachable: pick a port nothing is listening on.
         unsafe {
-            std::env::set_var("CORTEX_PORT", "1");
+            std::env::set_var("MEMBRANE_PORT", "1");
         }
         let (code_down, body_down) = route_for_tests(&store, "GET", "/hub/capabilities", "");
         assert_eq!(code_down, 200, "body: {body_down}");
@@ -5383,11 +5361,11 @@ mod tests {
             r#"{"ok":true,"catalog":{"status":"ok"},"database":{"status":"ok"},"dailyAnalysis":{"status":"fresh","alert":false}}"#,
         );
         unsafe {
-            std::env::set_var("CORTEX_PORT", port.to_string());
+            std::env::set_var("MEMBRANE_PORT", port.to_string());
         }
         let (code_up, body_up) = route_for_tests(&store, "GET", "/hub/capabilities", "");
         unsafe {
-            std::env::remove_var("CORTEX_PORT");
+            std::env::remove_var("MEMBRANE_PORT");
         }
         assert_eq!(code_up, 200, "body: {body_up}");
         let payload_up: serde_json::Value = serde_json::from_str(&body_up).unwrap();
@@ -5408,7 +5386,7 @@ mod tests {
         let store = MemoryStore::new();
 
         unsafe {
-            std::env::set_var("CORTEX_PORT", "1");
+            std::env::set_var("MEMBRANE_PORT", "1");
         }
         let (code_down, body_down) = route_for_tests(&store, "GET", "/hub/snapshot", "");
         assert_eq!(code_down, 200, "body: {body_down}");
@@ -5428,11 +5406,11 @@ mod tests {
             r#"{"ok":true,"catalog":{"status":"ok"},"database":{"status":"ok"},"dailyAnalysis":{"status":"fresh","alert":false}}"#,
         );
         unsafe {
-            std::env::set_var("CORTEX_PORT", port.to_string());
+            std::env::set_var("MEMBRANE_PORT", port.to_string());
         }
         let (code_up, body_up) = route_for_tests(&store, "GET", "/hub/snapshot", "");
         unsafe {
-            std::env::remove_var("CORTEX_PORT");
+            std::env::remove_var("MEMBRANE_PORT");
         }
         assert_eq!(code_up, 200, "body: {body_up}");
         let payload_up: serde_json::Value = serde_json::from_str(&body_up).unwrap();
@@ -5444,15 +5422,15 @@ mod tests {
     }
 
     #[test]
-    fn orthic_snapshot_is_closed_v2_while_hub_snapshot_stays_v1() {
+    fn membrane_snapshot_is_closed_v2_while_hub_snapshot_stays_v1() {
         let _guard = HUB_ROUTE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         unsafe {
-            std::env::set_var("CORTEX_PORT", "1");
+            std::env::set_var("MEMBRANE_PORT", "1");
         }
 
-        let snapshot = orthic_snapshot_v2().unwrap();
+        let snapshot = membrane_snapshot_v2().unwrap();
         unsafe {
-            std::env::remove_var("CORTEX_PORT");
+            std::env::remove_var("MEMBRANE_PORT");
         }
 
         assert_eq!(snapshot["schemaVersion"], 2);
@@ -5629,8 +5607,8 @@ mod tests {
             .unwrap();
         let html = String::from_utf8(html.to_vec()).unwrap();
         assert!(!html.contains("top-secret"));
-        assert!(html.contains("let CORTEX_API_TOKEN = dashboardToken();"));
-        assert!(!html.contains("__CORTEX_API_TOKEN_JSON__"));
+        assert!(html.contains("let MEMBRANE_API_TOKEN = dashboardToken();"));
+        assert!(!html.contains("__MEMBRANE_API_TOKEN_JSON__"));
         assert!(html.contains("new URLSearchParams(location.hash.slice(1))"));
         assert!(html
             .contains("history.replaceState(null, '', `${location.pathname}${location.search}`)"));

@@ -26,7 +26,7 @@ pub fn plane_of(mode: &MembraneMode) -> membrane_runtime::Plane {
         MembraneMode::Install => membrane_runtime::Plane::Application,
         MembraneMode::Uninstall => membrane_runtime::Plane::Application,
         MembraneMode::MigrateLegacy => membrane_runtime::Plane::Application,
-        // The supervisor's resident child is the Control plane.
+        // Resident child is the Control plane.
         MembraneMode::SupervisorChild => membrane_runtime::Plane::Control,
     }
 }
@@ -59,7 +59,7 @@ pub fn dispatch(invocation: &ParsedInvocation) -> DispatchOutcome {
         MembraneMode::Cli => dispatch_cli(&invocation.cli_tail),
         MembraneMode::StdioMcp => dispatch_stdio_mcp(),
         MembraneMode::LoopbackApi => dispatch_loopback_api(invocation.port),
-        MembraneMode::SupervisorChild => dispatch_supervisor_child(invocation.lease.as_deref()),
+        MembraneMode::SupervisorChild => dispatch_supervisor_child(),
         MembraneMode::Install => match invocation.install.as_ref() {
             Some(invocation) => dispatch_install(invocation),
             // The parser refuses to construct a `ParsedInvocation` whose
@@ -112,7 +112,7 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
         } else {
             "hub.snapshot"
         };
-        // MBR: read live state from the local cortex-service's /health endpoint
+        // MBR: read live state from local Membrane resident's /health endpoint
         // instead of hardcoding "Offline" regardless of whether the service is
         // up. Falls back to the honest unavailable facade on any failure.
         let inputs =
@@ -198,13 +198,13 @@ fn dispatch_loopback_api(port: u16) -> DispatchOutcome {
     }
 }
 
-fn dispatch_supervisor_child(lease: Option<&std::path::Path>) -> DispatchOutcome {
+fn dispatch_supervisor_child() -> DispatchOutcome {
     let lifecycle = match consume_lifecycle_channel() {
         Ok(channel) => channel,
         Err(error) => return DispatchOutcome::UserError(error),
     };
     let Some(channel) = lifecycle else {
-        return match membrane_runtime::service::run_service_from(lease) {
+        return match membrane_runtime::service::run_service_from() {
             Ok(()) => DispatchOutcome::Ok,
             Err(error) => classify_runtime_error(error),
         };
@@ -233,7 +233,7 @@ fn dispatch_supervisor_child(lease: Option<&std::path::Path>) -> DispatchOutcome
         }
     });
     let _monitor = monitor_lifecycle_channel(channel.clone(), control.clone());
-    let service = membrane_runtime::service::run_service_with_lifecycle(lease, control.clone());
+    let service = membrane_runtime::service::run_service_with_lifecycle(control.clone());
     if let Err(error) = service {
         let _ = channel.failed();
         return classify_runtime_error(error);
@@ -495,7 +495,7 @@ fn now_unix_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Runtime errors are mostly user-visible (bad arguments, missing runtime, lease rejection), so
+/// Runtime errors are mostly user-visible (bad arguments, missing runtime, lifecycle rejection), so
 /// the binary surfaces them as `UserError`. The string is the same one the runtime already
 /// printed in legacy mode; we keep the wording identical so scripts that grep for it keep
 /// working.

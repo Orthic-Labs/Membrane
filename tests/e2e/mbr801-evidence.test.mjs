@@ -12,12 +12,12 @@ function fixture(root, platform, commit = 'a'.repeat(40), generation = 'release-
   const path = join(dir, 'receipt.json'); writeFileSync(path, JSON.stringify(receipt)); return path;
 }
 
-test('passes only matching complete Mac and Windows receipts', () => {
-  const root = mkdtempSync(join(tmpdir(), 'mbr801-')); const macos = fixture(root, 'macos'); const windows = fixture(root, 'windows');
-  const result = verifyMbr801Evidence({ macos, windows, commit: 'a'.repeat(40), releaseGeneration: 'release-1' });
+test('passes only a matching complete Mac receipt', () => {
+  const root = mkdtempSync(join(tmpdir(), 'mbr801-')); const macos = fixture(root, 'macos');
+  const result = verifyMbr801Evidence({ macos, commit: 'a'.repeat(40), releaseGeneration: 'release-1' });
   assert.equal(result.status, 'passed'); assert.equal(result.platforms.macos.status, 'passed');
 });
 test('fails closed on stale generation, duplicate traces, or missing archive', () => {
-  const root = mkdtempSync(join(tmpdir(), 'mbr801-')); const macos = fixture(root, 'macos'); const windows = fixture(root, 'windows', 'a'.repeat(40), 'old');
-  assert.equal(verifyMbr801Evidence({ macos, windows, commit: 'a'.repeat(40), releaseGeneration: 'release-1' }).status, 'open');
+  const root = mkdtempSync(join(tmpdir(), 'mbr801-')); const macos = fixture(root, 'macos', 'a'.repeat(40), 'old');
+  assert.equal(verifyMbr801Evidence({ macos, commit: 'a'.repeat(40), releaseGeneration: 'release-1' }).status, 'open');
 });

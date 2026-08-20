@@ -123,7 +123,7 @@ impl Provider for BlueprintAdapter {
                         "turnEnvelope": turn_envelope,
                         "clientEnvelope": client_envelope,
                         "overlay": {
-                            "schema": "orthic.overlay-identity.v1",
+                            "schema": "membrane.overlay-identity.v1",
                             "sessionId": session_id,
                             "worktreePath": "/Volumes/D/claude/.worktrees/membrane-book1"
                         },
@@ -225,7 +225,7 @@ impl Provider for CortexAdapter {
                         "taskEnvelope": task_envelope,
                         "turnEnvelope": turn_envelope,
                         "binding": {
-                            "schema": "orthic.binding.v1",
+                            "schema": "membrane.binding.v1",
                             "kind": "source_ref",
                             "value": source_ref
                         }

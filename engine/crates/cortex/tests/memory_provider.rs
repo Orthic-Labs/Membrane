@@ -2,14 +2,14 @@
 //!
 //! These tests exercise the public API the planner will consume. The new
 //! `memory_provider` is owned by Membrane runtime & re-exported through
-//! Cortex API as `cortex::memory_provider`.
+//! Cortex API as `membrane_runtime::memory_provider`.
 
-use cortex::memdb::MemDb;
-use cortex::memory_provider::{
+use membrane_runtime::memdb::MemDb;
+use membrane_runtime::memory_provider::{
     produce_candidate_set, ContextCandidateSet, INSTRUCTION_POLICY, LAYER, PROVIDER_NAME,
     SOURCE_KIND, TRUST_CLASS,
 };
-use cortex::store::MemoryStore;
+use membrane_runtime::store::MemoryStore;
 
 fn store() -> MemoryStore {
     MemoryStore::open(MemDb::open_in_memory())

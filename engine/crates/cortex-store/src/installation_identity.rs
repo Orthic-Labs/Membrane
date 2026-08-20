@@ -51,10 +51,10 @@ impl InstallationPaths {
     pub fn for_workspace(workspace_root: &Path) -> Self {
         let defaults = Self::defaults_for_workspace(workspace_root);
         Self {
-            identity: std::env::var_os("CORTEX_INSTALLATION_FILE")
+            identity: std::env::var_os("MEMBRANE_INSTALLATION_FILE")
                 .map(PathBuf::from)
                 .unwrap_or(defaults.identity),
-            mirror: std::env::var_os("CORTEX_MIRROR")
+            mirror: std::env::var_os("MEMBRANE_MIRROR")
                 .map(PathBuf::from)
                 .unwrap_or(defaults.mirror),
         }
@@ -739,7 +739,7 @@ pub fn prepare_service_start(
     workspace_root: &Path,
 ) -> Result<(InstallationIdentity, StartupClaim), InstallationIdentityError> {
     let paths = InstallationPaths::for_workspace(workspace_root);
-    let legacy_labels = std::env::var("CORTEX_LEGACY_MACHINE_LABEL")
+    let legacy_labels = std::env::var("MEMBRANE_LEGACY_MACHINE_LABEL")
         .ok()
         .into_iter()
         .collect::<Vec<_>>();

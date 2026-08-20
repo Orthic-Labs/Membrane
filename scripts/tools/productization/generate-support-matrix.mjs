@@ -54,7 +54,11 @@ function platformConformance(platform, receiptPath, expected) {
     commit: expected.commit,
     releaseGeneration: expected.releaseGeneration,
   });
-  const result = verification.platforms[platform];
+  // The current qualification authority may intentionally expose only the
+  // supported target (macOS). Keep this derived matrix total and honest for
+  // retained, unavailable platform rows rather than dereferencing a missing
+  // authority result.
+  const result = verification.platforms[platform] ?? { status: "open", reason: `${platform} receipt unavailable` };
   if (result.status !== "passed") {
     const reason = result.reason === "not checked"
       ? "no current commit/release-generation to verify against (release evidence not yet published)"

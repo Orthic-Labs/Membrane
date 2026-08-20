@@ -53,7 +53,7 @@ def _daemon_endpoint() -> str:
         return explicit
     if sys.platform == "win32":
         suffix = hashlib.sha256(str(Path.home()).encode()).hexdigest()[:16]
-        return rf"\\.\pipe\orthic-blueprint-{suffix}"
+        return rf"\\.\pipe\membrane-blueprint-{suffix}"
     return str(Path.home() / ".blueprint" / "blueprint.sock")
 
 
@@ -104,8 +104,9 @@ def _read_daemon_request(
     return response
 
 
-def _read_daemon_frame(repo_root: Path, task: str, cap: int, generation: str | None) -> dict[str, Any]:
-    return _read_daemon_request(repo_root, "orient", {"task": task, "limit": cap}, generation)
+def _read_daemon_recall(repo_root: Path, task: str, cap: int, generation: str | None) -> dict[str, Any]:
+    """Read the canonical generation-bound RecallCircuit from Blueprint."""
+    return _read_daemon_request(repo_root, "recall", {"task": task, "limit": cap}, generation)
 
 
 def manifest_digest(repo_root: Path) -> str:
@@ -133,7 +134,7 @@ def _produce(repo_root: Path, task: str, max_tokens: int, observability: dict[st
             return cached, expected_generation, []
     started = time.monotonic()
     try:
-        response = _read_daemon_frame(repo_root, task, cap, expected_generation)
+        response = _read_daemon_recall(repo_root, task, cap, expected_generation)
     except (TimeoutError, socket.timeout):
         return [], "blueprint-timeout", [_warning("provider_timeout", f"Blueprint daemon exceeded {BLUEPRINT_TIMEOUT_S:.2f}s deadline")]
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:

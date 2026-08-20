@@ -15,7 +15,6 @@ BUDGETED = ADAPT_DIR / "eval" / "run_budgeted_delivery_hybrid.py"
 CORE_BUILDER = ADAPT_DIR / "eval" / "build_budgeted_core_digest.py"
 CONTROL_AUDIT = ADAPT_DIR / "eval" / "audit_delivery_controls.py"
 ALIAS_RETRIEVAL = ADAPT_DIR / "eval" / "run_evidence_alias_retrieval.py"
-ALIAS_HYBRID = ADAPT_DIR / "eval" / "run_alias_hybrid.py"
 
 import pytest
 
@@ -276,21 +275,3 @@ def test_alias_enrichment_is_bounded_deduplicated_and_non_mutating():
     assert source[0]["rule"] == "Canonical."
     assert enriched[0]["retrieval_aliases"] == ["rough user wording", "second ph"]
     assert enriched[0]["rule"].endswith("rough user wording | second ph")
-
-
-def test_alias_hybrid_combines_only_paired_a_t_g_answers():
-    module = _load(ALIAS_HYBRID, "run_alias_hybrid_test")
-    cases = [{"case_id": "one"}, {"case_id": "two"}]
-    primary = {"answers": [
-        {"arm": arm, "case_id": case_id, "answer": f"{arm}-{case_id}"}
-        for arm in ("A", "T", "D") for case_id in ("one", "two")
-    ]}
-    arm_g = {"answers": [
-        {"arm": "G", "case_id": case_id, "answer": f"G-{case_id}"}
-        for case_id in ("one", "two")
-    ]}
-
-    combined = module.combine_answers(primary, arm_g, cases)
-
-    assert len(combined["answers"]) == 6
-    assert {row["arm"] for row in combined["answers"]} == {"A", "T", "G"}

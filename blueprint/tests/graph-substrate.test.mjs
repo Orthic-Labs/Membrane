@@ -100,6 +100,7 @@ test("static graph candidate set conforms to ContextCandidateSet v1 shape", () =
 
   assert.equal(candidates.schemaVersion, 1);
   assert.equal(candidates.provider, "blueprint-static");
+  assert.equal(typeof candidates.indexedAt, "string");
   assert.deepEqual(candidates.providerCeiling, { maxCandidates: 3, maxEstimatedTokens: 8000 });
   assert.equal(candidates.candidates[0].layer, 3);
   assert.equal(candidates.candidates[0].sourceKind, "repo_code");

@@ -8,7 +8,6 @@ service:
 |---|---|---|
 | macOS | LaunchAgent | `~/Library/LaunchAgents/io.membrane.blueprint.plist` |
 | Linux | systemd `--user` | `~/.config/systemd/user/blueprint.service` |
-| Windows | per-user scheduled task | `%LOCALAPPDATA%\Membrane\Blueprint\blueprint-task.xml` |
 
 ## Commands
 
@@ -32,7 +31,6 @@ All commands support `--json`.
   explicit.
 - One repository failure degrades that repo only; it never stops the other
   actors.
-- No visible Windows console is left open (the task runs PowerShell hidden).
 
 ## Verification
 

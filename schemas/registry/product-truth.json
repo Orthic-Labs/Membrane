@@ -9,10 +9,53 @@
     "cursor_windsurf",
     "generic_mcp"
   ],
+  "axes": [
+    "pull",
+    "push",
+    "cortex",
+    "blueprint",
+    "guide",
+    "adapt"
+  ],
+  "axisDefinitions": [
+    {
+      "description": "Retrieves, admits, fuses, and publishes task-relevant evidence.",
+      "id": "pull",
+      "label": "Pull"
+    },
+    {
+      "description": "Performs faithful, reversible reduction of information already in flight.",
+      "id": "push",
+      "label": "Push"
+    },
+    {
+      "description": "Owns governed durable-memory admission, lifecycle, and retrieval; it is not a resident service authority.",
+      "id": "cortex",
+      "label": "Cortex"
+    },
+    {
+      "description": "Owns repository truth, evidence generations, and drift/change observation.",
+      "id": "blueprint",
+      "label": "Blueprint"
+    },
+    {
+      "description": "Navigates indexed document sections with hash-bound references.",
+      "id": "guide",
+      "label": "Guide"
+    },
+    {
+      "description": "Mines experience into governed proposals and never writes durable truth directly.",
+      "id": "adapt",
+      "label": "Adapt"
+    }
+  ],
+  "cortexScope": "durable-memory-only",
+  "currentTarget": "macOS",
   "generatedFrom": [
     "mcp/server.mjs",
     "docs/membrane/capability-matrix.v1.json"
   ],
+  "residentServiceAuthority": "hub",
   "schema": "membrane.product-truth.v1",
   "toolCount": 10,
   "tools": [

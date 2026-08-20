@@ -5,9 +5,8 @@
   "identifier": "com.membrane.hub",
   "build": { "beforeBuildCommand": "pnpm build", "frontendDist": "../dist" },
   "bundle": {
-    "externalBin": ["binaries/cortex", "binaries/cortex-service", "binaries/membrane"],
+    "externalBin": ["binaries/cortex", "binaries/membrane"],
     "resources": ["runtime"],
-    "windows": { "nsis": { "template": "windows/installer.nsi" } },
     "macOS": { "signingIdentity": "Developer ID Application: Adrian D'souza (6KLGD3LLKF)" },
     "icon": [
       "../assets/Membrane-Icon-Pack/Drop-in/32x32.png",
@@ -19,11 +18,6 @@
   },
   "app": {
     "macOSPrivateApi": true,
-    "withGlobalTauri": false,
-    "windows": [{
-      "label": "hub", "url": "popover.html", "title": "Membrane", "width": 304, "height": 290,
-      "resizable": false, "visible": false, "decorations": false, "transparent": true, "shadow": false,
-      "alwaysOnTop": true, "skipTaskbar": true
-    }]
+    "withGlobalTauri": false
   }
 }

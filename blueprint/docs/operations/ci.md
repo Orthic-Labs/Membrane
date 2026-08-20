@@ -2,9 +2,9 @@
 
 Blueprint runs three workflows on pull requests and pushes to `main`:
 
-## `ci` — cross-platform tests
+## `ci` — macOS tests
 
-Matrix: Ubuntu, macOS, Windows × Node 22.22.3, 24.x. Runs:
+Matrix: macOS × Node 22.22.3, 24.x. Runs:
 
 1. `pnpm test` (fast Node suite)
 2. `pnpm test:random` (randomized test order)
@@ -22,26 +22,20 @@ Runs on graph/schema/tests/evals changes:
 
 ## `package` — clean tarball
 
-Runs `node scripts/test-package.mjs` on all three OSes: dry-run allowlist,
-real tarball extraction, production dependency install, help, and MCP
-handshake outside the monorepo.
+Runs `node scripts/test-package.mjs` on macOS: dry-run allowlist, real tarball
+extraction, production dependency install, help, and MCP handshake outside
+monorepo.
 
 ## Required branch-protection checks
 
 Gate `main` on the exact job names:
 
-- `ci / test (ubuntu-latest, 22.22.3)`
-- `ci / test (ubuntu-latest, 24.x)`
 - `ci / test (macos-latest, 22.22.3)`
 - `ci / test (macos-latest, 24.x)`
-- `ci / test (windows-latest, 22.22.3)`
-- `ci / test (windows-latest, 24.x)`
 - `qualification / qualification`
 - `qualification / schema`
 - `qualification / security`
-- `package / clean-tarball (ubuntu-latest)`
 - `package / clean-tarball (macos-latest)`
-- `package / clean-tarball (windows-latest)`
 
 No workflow may publish. Release publishing happens only in the
 release-candidate / release workflows behind protected environments.

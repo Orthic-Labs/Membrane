@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "contracts": [
-    {"name":"ContextCandidateSetV1","version":1,"file":"context-candidate-set-v1.schema.json","stability":"stable"},
+    {"name":"ContextCandidateSetV1","version":1,"file":"context-candidate-set.v1.schema.json","stability":"stable"},
     {"name":"OrientationDecisionV1","version":1,"file":"blueprint-admission-v1.schema.json","stability":"stable"},
     {"name":"RepositoryNeighborhoodV1","version":1,"file":"repository-neighborhood-v1.schema.json","stability":"compatibility"},
     {"name":"RepositorySubgraphSliceV1","version":1,"file":"repository-subgraph-slice-v1.schema.json","stability":"stable"},

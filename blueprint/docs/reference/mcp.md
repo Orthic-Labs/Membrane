@@ -42,7 +42,7 @@ idempotent, no tool requires user approval to invoke.
 - **Output schema:** admission decision per
   `schemas/blueprint-admission-v1.schema.json`
   (BlueprintAdmissionDecisionV1), with the embedded candidate set per
-  `schemas/context-candidate-set-v1.schema.json` (ContextCandidateSetV1). The
+  `schemas/context-candidate-set.v1.schema.json` (ContextCandidateSetV1). The
   live envelope adds `generationId`, `freshnessReceipt`, and `omissions`, and
   carries a `claimBoundary` block when the CX-B3 capability is present
   (`{ status, cleanClaimAllowed, safeClaims[], prohibitedClaims[], gaps[] }`).

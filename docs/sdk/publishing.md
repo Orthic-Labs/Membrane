@@ -20,7 +20,7 @@ release implementation.
 
 `engine/crates/membrane-provider-sdk/tests/downstream_fixture.rs` packages &
 extracts both crates, then creates a standalone consumer package. Its
-integration test runs `cargo check --offline` against those extracted,
+integration test runs `rightkit cargo check --offline` against those extracted,
 versioned dependencies, proving a fresh downstream provider compiles without
 workspace-only imports.
 

@@ -20,16 +20,15 @@ Compilation fails when the registry digest and generated snapshot differ. The co
 2. Regenerate the parser snapshot from the typed registry:
 
 ```sh
-cd engine
-MEMBRANE_REGENERATE_CLI=1 cargo run -p membrane --bin cli-parity -- --generate > crates/membrane/src/generated_cli_subcommands.rs
+MEMBRANE_REGENERATE_CLI=1 rightkit cargo run --manifest-path engine/Cargo.toml -p membrane --bin cli-parity -- --generate > engine/crates/membrane/src/generated_cli_subcommands.rs
 ```
 
 3. Inspect the generated operation arms, flags, defaults, and help comments.
 4. Run the parity report, then the focused build check:
 
 ```sh
-cargo run -p membrane --bin cli-parity
-cargo check -p membrane -p membrane-protocol
+rightkit cargo run --manifest-path engine/Cargo.toml -p membrane --bin cli-parity
+rightkit cargo check --manifest-path engine/Cargo.toml -p membrane -p membrane-protocol
 ```
 
 Do not hand-edit `generated_cli_subcommands.rs`. The fixed banner marks it as generated output.
@@ -48,10 +47,10 @@ A drift-free report has equal `total_ops` and `reachable` values and empty `miss
 
 ## Running the checker
 
-From `engine/`:
+From repository root:
 
 ```sh
-cargo run -p membrane --bin cli-parity
+rightkit cargo run --manifest-path engine/Cargo.toml -p membrane --bin cli-parity
 ```
 
 The binary reads the canonical operation index, compares it with the hardcoded clap-derived snapshot, prints JSON to standard output, and exits 0 when drift-free. It exits 1 for any missing operation, extra subcommand, flag/default mismatch, unreadable index, or malformed index.

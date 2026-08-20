@@ -13,9 +13,7 @@
     "repairPath": "repairInterruptedMigration(dbPath, fromVersion)"
   },
   "platformCompatibility": {
-    "macos": { "arch": ["arm64", "x64"], "filesystem": "case-insensitive-by-default" },
-    "linux": { "arch": ["x64", "arm64"], "filesystem": "case-sensitive" },
-    "windows": { "arch": ["x64", "arm64"], "filesystem": "case-insensitive", "paths": ["UNC", "junctions"] }
+    "macos": { "arch": ["arm64", "x64"], "filesystem": "case-insensitive-by-default" }
   },
   "languageDepth": {
     "tier_a": ["javascript", "typescript", "tsx", "python", "rust", "go", "java", "kotlin", "csharp", "c", "cpp", "objective-c"],
@@ -27,9 +25,9 @@
   "grammarManifestDigest": "sha256:...",
   "artifacts": [
     {
-      "name": "blueprint-linux-x64.tar.gz",
-      "platform": "linux",
-      "arch": "x64",
+      "name": "blueprint-darwin-arm64.tar.gz",
+      "platform": "darwin",
+      "arch": "arm64",
       "sha256": "...",
       "size": 0,
       "signed": false,

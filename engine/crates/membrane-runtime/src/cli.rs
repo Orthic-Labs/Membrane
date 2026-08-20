@@ -1,9 +1,9 @@
-//! Cortex CLI — serve the memory contract, or migrate a markdown corpus into the engine.
+//! Membrane CLI — serve the memory contract, or migrate a markdown corpus into the engine.
 //! Real BGE embeddings need `--features fastembed` + `$ORT_DYLIB_PATH`.
 
 use clap::{Parser, Subcommand};
-use cortex::scope::{normalize_scope, path_to_scope};
-use cortex::{CheckpointV1, MemDb, MemoryStore};
+use crate::scope::{normalize_scope, path_to_scope};
+use crate::{CheckpointV1, MemDb, MemoryStore};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -56,9 +56,8 @@ fn home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-/// Resolve the WORKSPACE root (where `tools/skills` lives) for `skill-read`, independent of the
-/// current repo: explicit `--root`, else `$WORKSPACE_ROOT`, else derived from the deployed binary
-/// location `<workspace>/tools/bin/cortex.exe`. Falls back to cwd.
+/// Resolve WORKSPACE root (where `tools/skills` lives) for `skill-read`, independent of current
+/// repo: explicit `--root`, else `$WORKSPACE_ROOT`, else deployed Membrane binary location.
 fn skill_workspace_root(root: Option<String>) -> PathBuf {
     if let Some(r) = root.filter(|r| !r.trim().is_empty()) {
         return PathBuf::from(r);
@@ -67,7 +66,7 @@ fn skill_workspace_root(root: Option<String>) -> PathBuf {
         return PathBuf::from(r);
     }
     if let Ok(exe) = std::env::current_exe() {
-        // <workspace>/tools/bin/cortex.exe -> up 3 = <workspace>
+        // <workspace>/tools/bin/membrane.exe -> up 3 = <workspace>
         if let Some(ws) = exe
             .parent()
             .and_then(|p| p.parent())
@@ -82,7 +81,7 @@ fn skill_workspace_root(root: Option<String>) -> PathBuf {
 }
 
 fn skill_event_client() -> &'static str {
-    match std::env::var("CORTEX_CLIENT")
+    match std::env::var("MEMBRANE_CLIENT")
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase()
@@ -106,7 +105,7 @@ fn emit_skill_resolved(ws: &Path, name: &str, body_hash: &str, source: &str, byt
         .unwrap_or_else(|| ws.join("tools/.cache/metrics/membrane-skill-events.jsonl"));
     let row = serde_json::json!({
         "schema_version": 1,
-        "ts": cortex::time::now_iso(),
+        "ts": crate::time::now_iso(),
         "event": "skill_resolved",
         "skill_id": format!("skills:{name}"),
         "resource_class": "skill_md",
@@ -207,7 +206,7 @@ fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
     }
     Err(format!(
         "skill-read {name}: not on disk under {skills_dir:?} and not in the engine store \
-         (run `cortex reindex` on the authoring machine to ingest skills)"
+         (run `membrane cli reindex` on the authoring machine to ingest skills)"
     ))
 }
 
@@ -261,7 +260,7 @@ fn deployed_runtime_from_exe(exe: &Path) -> Option<DeployedRuntime> {
     let config: RuntimeConfig =
         serde_json::from_slice(&std::fs::read(tools.join("lib/memory/runtime.json")).ok()?).ok()?;
     if config.schema_version != 1
-        || config.service_id != "cortex-local-v1"
+        || config.service_id != "membrane-local-v1"
         || config.host != "127.0.0.1"
         || config.port < 1024
     {
@@ -309,9 +308,9 @@ fn resolve_service_port(
 
 #[derive(Parser)]
 #[command(
-    name = "cortex",
+    name = "membrane",
     version,
-    about = "Productizable memory engine (SQLite + quantized vectors + tiers)"
+    about = "Membrane — Pull, Push, Cortex, Blueprint, Guide, and Adapt runtime"
 )]
 struct Cli {
     #[arg(long, global = true)]
@@ -330,7 +329,7 @@ enum InstallationCmd {
 }
 
 #[derive(Subcommand)]
-enum DocCmd {
+enum GuideCmd {
     /// Parse one Markdown document into its stable DocOutlineV1 contract.
     Outline {
         #[arg(long)]
@@ -350,6 +349,17 @@ enum DocCmd {
         expected_hash: String,
         #[arg(long)]
         continuation_cursor: Option<String>,
+    },
+    /// Reconcile Markdown registrations into Guide's rebuildable index.
+    Sync {
+        #[arg(long)]
+        repo: PathBuf,
+    },
+    /// Recall hash-bound document pointers from Guide's local index.
+    Recall {
+        query: String,
+        #[arg(short, default_value_t = 6)]
+        k: usize,
     },
 }
 
@@ -397,6 +407,108 @@ enum HygieneCmd {
 }
 
 #[derive(Subcommand)]
+enum PullCmd {
+    PlanContext {
+        #[arg(long)]
+        candidate_set: PathBuf,
+        #[arg(long, default_value_t = 2000)]
+        max_tokens: usize,
+        #[arg(long, value_parser = parse_packet_char_budget)]
+        packet_char_budget: Option<usize>,
+        #[arg(long)]
+        packet_char_budget_model: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        accepted_receipt_versions: Vec<u32>,
+    },
+    Federate {
+        #[arg(long)]
+        task: String,
+        #[arg(long)]
+        repo: PathBuf,
+        #[arg(long, default_value_t = 4096)]
+        max_tokens: usize,
+        #[arg(long, value_parser = parse_packet_char_budget)]
+        packet_char_budget: Option<usize>,
+        #[arg(long)]
+        packet_char_budget_model: Option<String>,
+        #[arg(long, default_value = "claude")]
+        client: String,
+        #[arg(long)]
+        session: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        anchors: Vec<String>,
+        #[arg(long)]
+        scope_grant_id: Option<String>,
+        #[arg(long)]
+        federation_script: Option<PathBuf>,
+        #[arg(long, value_delimiter = ',')]
+        accepted_receipt_versions: Vec<u32>,
+    },
+    MemoryCandidates {
+        #[arg(long)]
+        task: String,
+        #[arg(long)]
+        repo: PathBuf,
+        #[arg(long)]
+        scope: Option<String>,
+        #[arg(long, default_value_t = 40)]
+        max_candidates: usize,
+        #[arg(long)]
+        scope_grant_id: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum PushCmd {
+    Runc {
+        #[arg(long, default_value_t = 20)]
+        head: usize,
+        #[arg(long, default_value_t = 20)]
+        tail: usize,
+        #[arg(long)]
+        spill_dir: Option<String>,
+        #[arg(long)]
+        opportunity: Option<String>,
+        #[arg(last = true, required = true)]
+        cmd: Vec<String>,
+    },
+    Skel {
+        #[arg(long)]
+        budget: Option<usize>,
+        #[arg(long)]
+        opportunity: Option<String>,
+        file: PathBuf,
+    },
+    Compress {
+        #[arg(long)]
+        budget: Option<usize>,
+        #[arg(long, default_value_t = 0.5)]
+        rate: f32,
+        #[arg(long)]
+        no_onnx: bool,
+        #[arg(long)]
+        opportunity: Option<String>,
+        file: Option<PathBuf>,
+    },
+    Prep {
+        out_dir: PathBuf,
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+        #[arg(long, default_value_t = 0.5)]
+        rate: f32,
+        #[arg(long)]
+        budget: Option<usize>,
+        #[arg(long, default_value_t = 800)]
+        min_bytes: usize,
+    },
+    Restore {
+        anchor: String,
+        #[arg(long)]
+        spill_dir: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
 enum Cmd {
     /// Print immutable build/source identity as JSON.
     BuildInfo,
@@ -405,20 +517,15 @@ enum Cmd {
         #[command(subcommand)]
         command: InstallationCmd,
     },
-    /// Document-navigation contracts. These commands do not open the memory DB.
-    Doc {
+    /// Guide document-navigation contracts. These commands do not open Cortex's memory DB.
+    Guide {
         #[command(subcommand)]
-        command: DocCmd,
+        command: GuideCmd,
     },
     /// Machine-local checkpoint verbs; no checkpoint enters ordinary semantic recall.
     Checkpoint {
         #[command(subcommand)]
         command: CheckpointCmd,
-    },
-    /// Reconcile Markdown registrations into the shadow Doc Spine.
-    DocsSync {
-        #[arg(long)]
-        repo: PathBuf,
     },
     /// Run versioned read-only health checks against the current schema.
     Doctor {
@@ -471,43 +578,14 @@ enum Cmd {
         #[arg(short, default_value_t = 20)]
         k: usize,
     },
-    /// Skeletonize a code file (signatures only).
-    Skel {
-        /// Maximum lexical tokens; degrades signature -> public -> path stub.
-        #[arg(long)]
-        budget: Option<usize>,
-        #[arg(long)]
-        opportunity: Option<String>,
-        file: PathBuf,
+    /// Pull/Push commands are namespaced so Cortex remains durable-memory-only.
+    Push {
+        #[command(subcommand)]
+        command: PushCmd,
     },
-    /// Compress prose (rate = fraction to KEEP).
-    Compress {
-        /// Maximum lexical tokens. Protected spans may exceed it rather than be dropped.
-        #[arg(long)]
-        budget: Option<usize>,
-        #[arg(long, default_value_t = 0.5)]
-        rate: f32,
-        /// Force the heuristic compressor even if `llmlingua-onnx` is enabled.
-        #[arg(long)]
-        no_onnx: bool,
-        /// Exact recommendation opportunity that caused this transform.
-        #[arg(long)]
-        opportunity: Option<String>,
-        /// Optional input file; otherwise reads stdin.
-        file: Option<PathBuf>,
-    },
-    /// Prepare files under an output dir and print the JSON manifest.
-    Prep {
-        out_dir: PathBuf,
-        #[arg(required = true)]
-        files: Vec<PathBuf>,
-        #[arg(long, default_value_t = 0.5)]
-        rate: f32,
-        /// Total lexical-token target for transformed entries.
-        #[arg(long)]
-        budget: Option<usize>,
-        #[arg(long, default_value_t = 800)]
-        min_bytes: usize,
+    Pull {
+        #[command(subcommand)]
+        command: PullCmd,
     },
     /// Run one dream consolidation pass now (L8 curation).
     Curate {
@@ -672,140 +750,9 @@ enum Cmd {
         #[arg(default_value = "cortex-export")]
         dir: PathBuf,
     },
-    /// Report token savings: recall (full-corpus vs injected chars) + per-verb transform savings
-    /// + curate counts, summed since logging started. Tokens are estimated at ~4 chars/token.
+    /// Report durable-memory recall savings & curation counts. Tokens are estimated at ~4
+    /// chars/token; Push transform observations are emitted through Push telemetry.
     Metrics,
-    /// Record a content-free recommendation denominator for runc/skel/compress adoption.
-    TransformOpportunity {
-        #[arg(long)]
-        verb: String,
-        #[arg(long)]
-        opportunity: String,
-        #[arg(long)]
-        source: String,
-        #[arg(long)]
-        reason: String,
-        #[arg(long)]
-        client: String,
-        #[arg(long)]
-        session: String,
-        #[arg(long)]
-        turn: String,
-        #[arg(long)]
-        trace: String,
-    },
-    /// Execute a command via a platform shell, print head/tail-capped output, and preserve exit code.
-    ///
-    /// Usage: `cortex runc --head 20 --tail 20 -- <cmd...>`
-    Runc {
-        #[arg(long, default_value_t = 20)]
-        head: usize,
-        #[arg(long, default_value_t = 20)]
-        tail: usize,
-        /// Directory to write spill logs to (only when output is truncated).
-        #[arg(long)]
-        spill_dir: Option<String>,
-        /// Exact recommendation opportunity that caused this transform.
-        #[arg(long)]
-        opportunity: Option<String>,
-        /// Command (captured after `--`).
-        #[arg(last = true, required = true)]
-        cmd: Vec<String>,
-    },
-    /// Recover an exact runc spill by its content-addressed anchor.
-    Expand {
-        anchor: String,
-        #[arg(long)]
-        spill_dir: PathBuf,
-    },
-    /// Membrane planner admission slice. Reads a ContextCandidateSet v1
-    /// (JSON file path or stdin when omitted), runs the deterministic
-    /// pure-in-process admission, emits a bounded ContextPacket v1 plus a
-    /// content-free ContextReceipt v2 per candidate. No DB or repo access.
-    ///
-    /// Usage: `cortex plan-context --candidate-set <path> --max-tokens <n>`
-    PlanContext {
-        #[arg(long)]
-        candidate_set: PathBuf,
-        #[arg(long, default_value_t = 2000)]
-        max_tokens: usize,
-        /// Optional lower packet-character ceiling for the active model.
-        #[arg(long, value_parser = parse_packet_char_budget)]
-        packet_char_budget: Option<usize>,
-        /// Model identity associated with --packet-char-budget.
-        #[arg(long)]
-        packet_char_budget_model: Option<String>,
-        /// Optional accepted receipt versions; defaults to [2].
-        #[arg(long, value_delimiter = ',')]
-        accepted_receipt_versions: Vec<u32>,
-    },
-    /// Membrane federation gateway entry. The SOLE owner of provider
-    /// fan-out + admission. Reads task, repository root, client/session
-    /// identity, token budget, explicit anchors, and an optional ScopeGrant
-    /// reference; runs all providers (Blueprint, Audit, Architect, Cortex,
-    /// Git, live files, rules, anchors) in parallel; emits a content-free
-    /// ContextPacket v1 plus per-candidate ContextReceipt v2 envelopes.
-    ///
-    /// The gateway is provider-neutral: clients never construct
-    /// ContextCandidateSet objects themselves; they submit only task, repo,
-    /// identity, and scope. The dispatcher is this binary. The Rust shell
-    /// delegates federation work to the Python gateway at
-    /// `engine/federation/gateway.py`, runs the existing deterministic
-    /// in-process admission on the assembled CCS, and prints the final
-    /// envelope to stdout.
-    ///
-    /// Usage: `cortex federate --task T --repo R --max-tokens N --client C
-    ///                   --session S [--anchors a,b] [--scope-grant-id G]
-    ///                   [--federation-script <path>]`
-    Federate {
-        #[arg(long)]
-        task: String,
-        #[arg(long)]
-        repo: PathBuf,
-        #[arg(long, default_value_t = 4096)]
-        max_tokens: usize,
-        /// Optional lower packet-character ceiling for the active model.
-        #[arg(long, value_parser = parse_packet_char_budget)]
-        packet_char_budget: Option<usize>,
-        /// Model identity associated with --packet-char-budget.
-        #[arg(long)]
-        packet_char_budget_model: Option<String>,
-        #[arg(long, default_value = "claude")]
-        client: String,
-        #[arg(long)]
-        session: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        anchors: Vec<String>,
-        #[arg(long)]
-        scope_grant_id: Option<String>,
-        /// Override the federation Python script path. Defaults to the
-        /// first `engine/federation/gateway.py` found walking up from --repo.
-        #[arg(long)]
-        federation_script: Option<PathBuf>,
-        /// Optional accepted receipt versions; defaults to [2].
-        #[arg(long, value_delimiter = ',')]
-        accepted_receipt_versions: Vec<u32>,
-    },
-    /// Membrane Cortex durable-memory candidate provider. Pure in-process
-    /// read of eligible MemoryEntry rows normalised into ContextCandidateSet
-    /// v1 records (Layer 7, sourceKind "memory", trustClass "agent_verified").
-    /// The federation gateway calls this as a subprocess; clients never call
-    /// it directly. Use `cortex federate` for the public path.
-    ///
-    /// Usage: `cortex memory-candidates --task T --repo R --scope <root>
-    ///                  [--max-candidates N] [--scope-grant-id G]`
-    MemoryCandidates {
-        #[arg(long)]
-        task: String,
-        #[arg(long)]
-        repo: PathBuf,
-        #[arg(long)]
-        scope: Option<String>,
-        #[arg(long, default_value_t = 40)]
-        max_candidates: usize,
-        #[arg(long)]
-        scope_grant_id: Option<String>,
-    },
 }
 
 fn open(db: &str) -> Result<MemoryStore, String> {
@@ -1299,7 +1246,7 @@ fn hygiene_report(db_path: &str) -> Result<serde_json::Value, String> {
         .map(|count| count as usize)
         .sum();
     Ok(serde_json::json!({
-        "schema":"orthic.hygiene-audit.v1",
+        "schema":"membrane.hygiene-audit.v1",
         "status": if issue_count == 0 { "clean" } else { "issues" },
         "issue_count": issue_count,
         "findings": findings
@@ -1313,7 +1260,7 @@ fn explain_memory(db_path: &str, id: &str) -> Result<serde_json::Value, String> 
         "SELECT id,tier,scope_id,score,created_at,updated_at,access_count,inject_count,content_hash,embed_model,source_ids,artifact_family,producer,record_type,authority,influence_class,lifecycle_state,effective_from_ms,effective_until_ms,expires_at_ms,review_after_ms,superseded_by,priority_class,confidence,confidence_basis FROM memories WHERE id=?1",
         [id],
         |row| Ok(serde_json::json!({
-            "schema":"orthic.memory-explain.v1",
+            "schema":"membrane.memory-explain.v1",
             "id":row.get::<_,String>(0)?, "tier":row.get::<_,String>(1)?, "scope_id":row.get::<_,String>(2)?, "score":row.get::<_,f64>(3)?,
             "created_at":row.get::<_,String>(4)?, "updated_at":row.get::<_,String>(5)?, "access_count":row.get::<_,i64>(6)?, "inject_count":row.get::<_,i64>(7)?,
             "content_hash":row.get::<_,Option<String>>(8)?, "embed_model":row.get::<_,Option<String>>(9)?, "source_ids":row.get::<_,String>(10)?,
@@ -1419,14 +1366,14 @@ fn import_markdown_tree(store: &MemoryStore, dir: &Path) -> Result<usize, String
     Ok(imported)
 }
 
-fn cli_event_context() -> cortex::store::MemoryEventContext {
-    cortex::store::MemoryEventContext::from_environment("cli")
+fn cli_event_context() -> crate::store::MemoryEventContext {
+    crate::store::MemoryEventContext::from_environment("cli")
 }
 
 fn put_event_context(
     session: Option<&str>,
     trace: Option<&str>,
-) -> cortex::store::MemoryEventContext {
+) -> crate::store::MemoryEventContext {
     let mut context = cli_event_context();
     if let Some(session) = session {
         context = context.with_session(session);
@@ -1479,23 +1426,23 @@ fn trust_scan_content(content: &str) -> Option<&'static str> {
 fn resolve_doc_read_path(
     root: &Path,
     relative: &str,
-) -> Result<PathBuf, cortex::outline::DocReadError> {
+) -> Result<PathBuf, crate::guide::outline::DocReadError> {
     let relative = Path::new(relative);
     if relative
         .components()
         .any(|component| !matches!(component, std::path::Component::Normal(_)))
     {
-        return Err(cortex::outline::DocReadError::Deny);
+        return Err(crate::guide::outline::DocReadError::Deny);
     }
     let root = root
         .canonicalize()
-        .map_err(|_| cortex::outline::DocReadError::Deny)?;
+        .map_err(|_| crate::guide::outline::DocReadError::Deny)?;
     let path = root.join(relative);
     let path = path
         .canonicalize()
-        .map_err(|_| cortex::outline::DocReadError::SourceMissing)?;
+        .map_err(|_| crate::guide::outline::DocReadError::SourceMissing)?;
     if !path.starts_with(&root) {
-        return Err(cortex::outline::DocReadError::Deny);
+        return Err(crate::guide::outline::DocReadError::Deny);
     }
     Ok(path)
 }
@@ -1524,9 +1471,9 @@ fn quarantine_untrusted_put(db: &str, memory_id: &str, scope: &str, content: &st
 #[allow(clippy::too_many_arguments)]
 fn record_cli_external(
     store: &MemoryStore,
-    context: &cortex::store::MemoryEventContext,
+    context: &crate::store::MemoryEventContext,
     operation: &str,
-    stage: cortex::store::ExternalLifecycleStage,
+    stage: crate::store::ExternalLifecycleStage,
     status: &str,
     reason_code: &str,
     memory_id: Option<&str>,
@@ -1552,25 +1499,25 @@ fn record_cli_external(
 fn store_failure_stage(
     error: &str,
 ) -> (
-    cortex::store::ExternalLifecycleStage,
+    crate::store::ExternalLifecycleStage,
     &'static str,
     &'static str,
 ) {
     if error.contains("attribution") {
         (
-            cortex::store::ExternalLifecycleStage::Validation,
+            crate::store::ExternalLifecycleStage::Validation,
             "failed",
             "invalid_attribution",
         )
     } else if error.contains("embed") || error.contains("writes disabled") {
         (
-            cortex::store::ExternalLifecycleStage::Embedding,
+            crate::store::ExternalLifecycleStage::Embedding,
             "unavailable",
             "embedding_unavailable",
         )
     } else {
         (
-            cortex::store::ExternalLifecycleStage::Commit,
+            crate::store::ExternalLifecycleStage::Commit,
             "failed",
             "commit_failed",
         )
@@ -1586,30 +1533,30 @@ fn get_failure_shape(error: &str) -> (&'static str, &'static str, usize) {
 }
 
 fn service_api_token() -> Result<Option<String>, String> {
-    if let Some(raw) = std::env::var_os("CORTEX_API_TOKEN") {
+    if let Some(raw) = std::env::var_os("MEMBRANE_API_TOKEN") {
         let token = raw.to_string_lossy().trim().to_string();
         if token.is_empty() {
-            return Err("CORTEX_API_TOKEN is set but empty".to_string());
+            return Err("MEMBRANE_API_TOKEN is set but empty".to_string());
         }
         if token.contains(['\r', '\n']) {
-            return Err("CORTEX_API_TOKEN contains a newline".to_string());
+            return Err("MEMBRANE_API_TOKEN contains a newline".to_string());
         }
         return Ok(Some(token));
     }
     let deployed = current_deployed_runtime();
-    if let Some(path) = std::env::var_os("CORTEX_API_TOKEN_FILE")
+    if let Some(path) = std::env::var_os("MEMBRANE_API_TOKEN_FILE")
         .map(PathBuf::from)
         .or_else(|| deployed.map(|runtime| runtime.token_file))
     {
         let token = std::fs::read_to_string(&path)
-            .map_err(|error| format!("read CORTEX_API_TOKEN_FILE {}: {error}", path.display()))?
+            .map_err(|error| format!("read MEMBRANE_API_TOKEN_FILE {}: {error}", path.display()))?
             .trim()
             .to_string();
         if token.is_empty() {
-            return Err(format!("CORTEX_API_TOKEN_FILE {} is empty", path.display()));
+            return Err(format!("MEMBRANE_API_TOKEN_FILE {} is empty", path.display()));
         }
         if token.contains(['\r', '\n']) {
-            return Err("CORTEX_API_TOKEN_FILE contains a newline".to_string());
+            return Err("MEMBRANE_API_TOKEN_FILE contains a newline".to_string());
         }
         return Ok(Some(token));
     }
@@ -2526,7 +2473,7 @@ fn try_service_post_with_idempotency_key(
 }
 
 fn current_service_port() -> u16 {
-    let canonical_port = std::env::var("CORTEX_PORT").ok();
+    let canonical_port = std::env::var("MEMBRANE_PORT").ok();
     let deployed = current_deployed_runtime();
     resolve_service_port(
         None,
@@ -2691,117 +2638,7 @@ fn parse_http_response(reader: &mut impl Read) -> Result<ServiceResponse, String
     })
 }
 
-/// Best-effort transform_log write from a CLI verb. FAIL-OPEN by construction: if the DB can't be
-/// opened (missing dir, locked, unwritable) the transform still succeeds — a metrics write must
-/// never break the transform it measures. Scope is the cwd's project slug.
-fn log_transform_best_effort(
-    db: &str,
-    verb: &str,
-    before: usize,
-    after: usize,
-    meta: Option<&str>,
-    opportunity: Option<&str>,
-) {
-    if let Ok(mem) = MemDb::open(db) {
-        let scope = std::env::current_dir()
-            .ok()
-            .map(|p| path_to_scope(&p.to_string_lossy()));
-        let context = cli_event_context();
-        let attribution = cortex::store::operation_attribution_for_store(Some(Path::new(db)));
-        if let (Ok(attribution), Some(session_id), Some(turn_id), Some(trace_id)) = (
-            attribution,
-            context.session_id.as_deref(),
-            context.turn_id.as_deref(),
-            context.trace_id.as_deref(),
-        ) {
-            if let Some(opportunity_uid) = opportunity {
-                if mem
-                    .log_transform_for_opportunity(
-                        &cortex::time::now_iso(),
-                        verb,
-                        scope.as_deref(),
-                        before,
-                        after,
-                        meta,
-                        opportunity_uid,
-                    )
-                    .is_ok()
-                {
-                    return;
-                }
-            }
-            mem.log_transform_with_identity(
-                &cortex::time::now_iso(),
-                verb,
-                scope.as_deref(),
-                before,
-                after,
-                meta,
-                &attribution.installation_id,
-                &attribution.service_instance_id,
-                &context.surface,
-                session_id,
-                turn_id,
-                trace_id,
-            );
-        }
-    }
-}
-
-fn valid_opportunity_token(value: &str, max_len: usize) -> bool {
-    !value.is_empty()
-        && value.len() <= max_len
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b':' | b'-'))
-}
-
 #[allow(clippy::too_many_arguments)]
-fn record_transform_opportunity(
-    db: &str,
-    verb: &str,
-    opportunity_uid: &str,
-    source: &str,
-    reason: &str,
-    client: &str,
-    session: &str,
-    turn: &str,
-    trace: &str,
-) -> Result<(), String> {
-    if !matches!(verb, "runc" | "skel" | "compress") {
-        return Err("transform opportunity verb must be runc, skel, or compress".into());
-    }
-    for (name, value, max_len) in [
-        ("opportunity", opportunity_uid, 160usize),
-        ("source", source, 80usize),
-        ("reason", reason, 160usize),
-        ("client", client, 80usize),
-        ("session", session, 160usize),
-        ("turn", turn, 160usize),
-        ("trace", trace, 160usize),
-    ] {
-        if !valid_opportunity_token(value, max_len) {
-            return Err(format!("invalid content-free {name} token"));
-        }
-    }
-    let mem = MemDb::open(db).map_err(|error| error.to_string())?;
-    let attribution = cortex::store::operation_attribution_for_store(Some(Path::new(db)))?;
-    mem.log_transform_opportunity(
-        &cortex::time::now_iso(),
-        opportunity_uid,
-        verb,
-        source,
-        reason,
-        &attribution.installation_id,
-        &attribution.service_instance_id,
-        client,
-        session,
-        turn,
-        trace,
-    )
-    .map_err(|error| error.to_string())
-}
-
 fn ingest_dir(store: &MemoryStore, dir: &Path, scope: &str) -> usize {
     let mut n = 0;
     if let Ok(rd) = std::fs::read_dir(dir) {
@@ -2837,10 +2674,10 @@ fn collect_md(dir: &Path, out: &mut Vec<PathBuf>) {
 fn build_info() -> serde_json::Value {
     serde_json::json!({
         "product_version": env!("CARGO_PKG_VERSION"),
-        "cortex_source_commit": option_env!("CORTEX_SOURCE_COMMIT").unwrap_or("unknown"),
-        "source_tree_sha256": option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown"),
-        "release_generation": cortex::release_identity::release_generation(),
-        "target": cortex::release_identity::target_triple(),
+        "membrane_source_commit": option_env!("MEMBRANE_SOURCE_COMMIT").unwrap_or("unknown"),
+        "source_tree_sha256": option_env!("MEMBRANE_SOURCE_TREE_SHA256").unwrap_or("unknown"),
+        "release_generation": crate::release_identity::release_generation(),
+        "target": crate::release_identity::target_triple(),
     })
 }
 
@@ -2849,19 +2686,281 @@ fn command_requires_db(command: &Cmd) -> bool {
         command,
         Cmd::BuildInfo
             | Cmd::Installation { .. }
-            | Cmd::Doc { .. }
-            | Cmd::Federate { .. }
-            | Cmd::MemoryCandidates { .. }
+            | Cmd::Guide { .. }
+            | Cmd::Pull { .. }
+            | Cmd::Push { .. }
     )
+}
+
+fn run_pull(command: PullCmd) -> Result<(), String> {
+    match command {
+        PullCmd::PlanContext {
+            candidate_set,
+            max_tokens,
+            packet_char_budget,
+            packet_char_budget_model,
+            accepted_receipt_versions,
+        } => crate::pull::cli::run(
+            candidate_set,
+            max_tokens,
+            packet_char_budget,
+            packet_char_budget_model,
+            accepted_receipt_versions,
+        )
+        .map_err(|error| error.to_string()),
+        PullCmd::Federate {
+            task,
+            repo,
+            max_tokens,
+            packet_char_budget,
+            packet_char_budget_model,
+            client,
+            session,
+            anchors,
+            scope_grant_id,
+            federation_script,
+            accepted_receipt_versions,
+        } => crate::pull::federation::run_federate(
+            task,
+            repo,
+            max_tokens,
+            packet_char_budget,
+            packet_char_budget_model,
+            client,
+            session,
+            anchors,
+            scope_grant_id,
+            federation_script,
+            accepted_receipt_versions,
+        )
+        .map_err(|error| error.to_string()),
+        PullCmd::MemoryCandidates {
+            task,
+            repo,
+            scope,
+            max_candidates,
+            scope_grant_id,
+        } => crate::pull::federation::run_memory_candidates(
+            task,
+            repo,
+            scope,
+            max_candidates,
+            scope_grant_id,
+        )
+        .map_err(|error| error.to_string()),
+    }
+}
+
+fn run_push(command: PushCmd) -> Result<(), String> {
+    match command {
+        PushCmd::Skel {
+            file,
+            budget,
+            opportunity,
+        } => {
+            let src = std::fs::read_to_string(&file).map_err(|error| {
+                crate::push::telemetry::record(
+                    "skel",
+                    0,
+                    0,
+                    Some("status=error;kind=input_read"),
+                    opportunity.as_deref(),
+                );
+                error.to_string()
+            })?;
+            let (out, meta) = if let Some(budget) = budget {
+                let result = crate::push::skel::skeletonize_to_budget(&file, &src, budget);
+                (
+                    result.text,
+                    format!(
+                        "status=ok;budget_tok={budget};output_tok={};budget_met={};level={}",
+                        result.output_tokens, result.budget_met, result.level
+                    ),
+                )
+            } else {
+                (crate::push::skel::skeletonize(&file, &src), "status=ok".to_string())
+            };
+            let drop_meta = crate::push::compress::drop_manifest_meta(
+                &crate::push::compress::drop_manifest(&src, &out),
+            );
+            let meta = format!("{meta};{drop_meta}");
+            crate::push::telemetry::record(
+                "skel",
+                src.chars().count(),
+                out.chars().count(),
+                Some(&meta),
+                opportunity.as_deref(),
+            );
+            print!("{out}");
+            Ok(())
+        }
+        PushCmd::Compress {
+            budget,
+            rate,
+            no_onnx,
+            opportunity,
+            file,
+        } => {
+            let mut input = String::new();
+            match file {
+                Some(path) => {
+                    input = std::fs::read_to_string(path).map_err(|error| {
+                        crate::push::telemetry::record(
+                            "compress",
+                            0,
+                            0,
+                            Some("status=error;kind=input_read"),
+                            opportunity.as_deref(),
+                        );
+                        error.to_string()
+                    })?;
+                }
+                None => {
+                    std::io::stdin()
+                        .read_to_string(&mut input)
+                        .map_err(|error| error.to_string())?;
+                }
+            }
+            let (out, meta) = if let Some(budget) = budget {
+                let result = crate::push::compress::compress_to_budget_with_options(
+                    &input, budget, no_onnx,
+                );
+                (
+                    result.text,
+                    format!(
+                        "status=ok;budget_tok={budget};output_tok={};protected_tok={};budget_met={}",
+                        result.output_tokens, result.protected_tokens, result.budget_met
+                    ),
+                )
+            } else {
+                (
+                    crate::push::compress::compress_with_options(&input, rate, no_onnx),
+                    "status=ok".to_string(),
+                )
+            };
+            let drop_meta = crate::push::compress::drop_manifest_meta(
+                &crate::push::compress::drop_manifest(&input, &out),
+            );
+            let meta = format!("{meta};{drop_meta}");
+            crate::push::telemetry::record(
+                "compress",
+                input.chars().count(),
+                out.chars().count(),
+                Some(&meta),
+                opportunity.as_deref(),
+            );
+            print!("{out}");
+            Ok(())
+        }
+        PushCmd::Prep {
+            out_dir,
+            files,
+            rate,
+            budget,
+            min_bytes,
+        } => {
+            let manifest = crate::push::prep::prep_files_with_budget(
+                &out_dir, &files, rate, min_bytes, budget,
+            );
+            for (verb, before, after, metadata) in crate::push::prep::transform_rows(&manifest) {
+                crate::push::telemetry::record(verb.as_str(), before, after, metadata, None);
+            }
+            println!(
+                "{}",
+                serde_json::to_string(&manifest).map_err(|error| error.to_string())?
+            );
+            Ok(())
+        }
+        PushCmd::Runc {
+            head,
+            tail,
+            spill_dir,
+            opportunity,
+            cmd,
+        } => {
+            let directory = spill_dir.map(PathBuf::from).unwrap_or_else(|| {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| home())
+                    .join(".cache")
+                    .join("runc")
+            });
+            let command_line = cmd.join(" ");
+            let result = crate::push::runc::run_capped(&command_line, head, tail, &directory)
+                .map_err(|error| {
+                    crate::push::telemetry::record(
+                        "runc",
+                        0,
+                        0,
+                        Some("status=error;kind=spawn"),
+                        opportunity.as_deref(),
+                    );
+                    error
+                })?;
+            let before = result
+                .spill_path
+                .as_deref()
+                .and_then(|path| std::fs::metadata(path).ok())
+                .map(|metadata| metadata.len() as usize)
+                .unwrap_or_else(|| result.capped.chars().count());
+            let status = if result.exit_code == 0 { "ok" } else { "error" };
+            let metadata = format!("status={status};exit_code={}", result.exit_code);
+            crate::push::telemetry::record(
+                "runc",
+                before,
+                result.capped.chars().count(),
+                Some(&metadata),
+                opportunity.as_deref(),
+            );
+            print!("{}", result.capped);
+            if let Some(path) = &result.spill_path {
+                println!("\n[spill] {}", path.to_string_lossy());
+            } else {
+                println!();
+            }
+            if let Some(marker) = &result.recovery_marker {
+                println!(
+                    "[recovery] {}",
+                    serde_json::to_string(marker).map_err(|error| error.to_string())?
+                );
+            }
+            println!("[anchor] {}", result.anchor);
+            if let Some(path) = result.spill_path {
+                eprintln!("runc: exit={} full={}", result.exit_code, path.display());
+            } else {
+                eprintln!("runc: exit={} full=<unavailable>", result.exit_code);
+            }
+            std::process::exit(result.exit_code);
+        }
+        PushCmd::Restore { anchor, spill_dir } => {
+            let digest = crate::guide::identifier::AnchorRef::parse(&anchor)
+                .map_err(|error| format!("invalid anchor: {error}"))?
+                .digest();
+            let root = spill_dir
+                .canonicalize()
+                .map_err(|error| format!("anchor store unavailable: {error}"))?;
+            let file = root
+                .join(format!("{digest}.log"))
+                .canonicalize()
+                .map_err(|_| "anchor not found".to_string())?;
+            if !file.starts_with(&root) || !file.is_file() {
+                return Err("anchor not found".into());
+            }
+            print!(
+                "{}",
+                std::fs::read_to_string(file).map_err(|_| "anchor unreadable")?
+            );
+            Ok(())
+        }
+    }
 }
 
 fn run_installation(command: &InstallationCmd) -> Result<(), String> {
     let workspace_root = skill_workspace_root(None);
-    let paths = cortex::installation_identity::InstallationPaths::for_workspace(&workspace_root);
+    let paths = crate::installation_identity::InstallationPaths::for_workspace(&workspace_root);
     match command {
         InstallationCmd::Rotate { reason } => {
             let identity =
-                cortex::installation_identity::rotate_installation(&paths.identity, reason)
+                crate::installation_identity::rotate_installation(&paths.identity, reason)
                     .map_err(|error| error.to_string())?;
             println!(
                 "{}",
@@ -2931,7 +3030,7 @@ fn replay_queries<R: Read>(
                 return Err(format!("replay line {} has empty row_id/query", index + 1));
             }
             let scope = normalize_scope(&row.scope);
-            let chain = cortex::scope_chain(&scope, &scopes);
+            let chain = crate::scope_chain(&scope, &scopes);
             let ranked_ids = store
                 .recall_scored(&row.query, k, &chain)
                 .into_iter()
@@ -2963,9 +3062,9 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
     if let Cmd::SkillRead { name, root } = &cli.cmd {
         return run_skill_read(name.clone(), root.clone());
     }
-    if let Cmd::Doc { command } = &cli.cmd {
+    if let Cmd::Guide { command } = &cli.cmd {
         return match command {
-            DocCmd::Outline { repo, path, json } => {
+            GuideCmd::Outline { repo, path, json } => {
                 let markdown = std::fs::read_to_string(path)
                     .map_err(|error| format!("read document {}: {error}", path.display()))?;
                 let relative = path
@@ -2976,7 +3075,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 let source_ref =
                     format!("doc://repo/worktree/{}", relative.trim_start_matches('/'));
                 let outline =
-                    cortex::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
+                    crate::guide::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
                 if !json {
                     return Err("doc outline requires --json".to_owned());
                 }
@@ -2986,18 +3085,18 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 );
                 Ok(())
             }
-            DocCmd::Read {
+            GuideCmd::Read {
                 source_ref,
                 anchor,
                 expected_hash,
                 continuation_cursor,
             } => {
-                let relative = match cortex::identifier::WorktreeDocRef::parse(source_ref) {
+                let relative = match crate::guide::identifier::WorktreeDocRef::parse(source_ref) {
                     Ok(reference) => reference.relative_path(),
                     Err(_) => {
                         println!(
                             "{}",
-                            serde_json::json!({"error":cortex::outline::DocReadError::Deny.as_str()})
+                            serde_json::json!({"error":crate::guide::outline::DocReadError::Deny.as_str()})
                         );
                         return Ok(());
                     }
@@ -3018,12 +3117,12 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     Err(_) => {
                         println!(
                             "{}",
-                            serde_json::json!({"error":cortex::outline::DocReadError::SourceMissing.as_str()})
+                            serde_json::json!({"error":crate::guide::outline::DocReadError::SourceMissing.as_str()})
                         );
                         return Ok(());
                     }
                 };
-                match cortex::outline::read_section_with_cursor(
+                match crate::guide::outline::read_section_with_cursor(
                     source_ref,
                     &markdown,
                     anchor,
@@ -3039,67 +3138,32 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 }
                 Ok(())
             }
+            GuideCmd::Sync { repo } => {
+                let guide = crate::guide::GuideDb::open_default()?;
+                let report = crate::guide::doc_spine::sync(&guide, repo)?;
+                println!(
+                    "{}",
+                    serde_json::to_string(&report).map_err(|error| error.to_string())?
+                );
+                Ok(())
+            }
+            GuideCmd::Recall { query, k } => {
+                let guide = crate::guide::GuideDb::open_default()?;
+                let hits = crate::guide::doc_spine::recall(&guide, query, *k)?;
+                for hit in hits {
+                    println!(
+                        "{}",
+                        serde_json::to_string(&hit).map_err(|error| error.to_string())?
+                    );
+                }
+                Ok(())
+            }
         };
     }
-    if matches!(
-        cli.cmd,
-        Cmd::PlanContext { .. } | Cmd::Federate { .. } | Cmd::MemoryCandidates { .. }
-    ) {
+    if matches!(cli.cmd, Cmd::Pull { .. } | Cmd::Push { .. }) {
         return match cli.cmd {
-            Cmd::PlanContext {
-                candidate_set,
-                max_tokens,
-                packet_char_budget,
-                packet_char_budget_model,
-                accepted_receipt_versions,
-            } => cortex::plan_context::run(
-                candidate_set,
-                max_tokens,
-                packet_char_budget,
-                packet_char_budget_model,
-                accepted_receipt_versions,
-            )
-            .map_err(|e| e.to_string()),
-            Cmd::Federate {
-                task,
-                repo,
-                max_tokens,
-                packet_char_budget,
-                packet_char_budget_model,
-                client,
-                session,
-                anchors,
-                scope_grant_id,
-                federation_script,
-                accepted_receipt_versions,
-            } => cortex::federation::run_federate(
-                task,
-                repo,
-                max_tokens,
-                packet_char_budget,
-                packet_char_budget_model,
-                client,
-                session,
-                anchors,
-                scope_grant_id,
-                federation_script,
-                accepted_receipt_versions,
-            )
-            .map_err(|e| e.to_string()),
-            Cmd::MemoryCandidates {
-                task,
-                repo,
-                scope,
-                max_candidates,
-                scope_grant_id,
-            } => cortex::federation::run_memory_candidates(
-                task,
-                repo,
-                scope,
-                max_candidates,
-                scope_grant_id,
-            )
-            .map_err(|e| e.to_string()),
+            Cmd::Pull { command } => run_pull(command),
+            Cmd::Push { command } => run_push(command),
             _ => unreachable!(),
         };
     }
@@ -3113,12 +3177,12 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         deployed.as_ref().map(|runtime| runtime.db.as_path()),
     )?;
     match cli.cmd {
-        Cmd::BuildInfo | Cmd::Installation { .. } | Cmd::Doc { .. } => {
+        Cmd::BuildInfo | Cmd::Installation { .. } | Cmd::Guide { .. } => {
             unreachable!("handled before database resolution")
         }
         Cmd::Checkpoint { command } => {
             let store = MemoryStore::open(MemDb::open(&db).map_err(|error| error.to_string())?);
-            let now_ms = || cortex::time::now_millis() as i64;
+            let now_ms = || crate::time::now_millis() as i64;
             match command {
                 CheckpointCmd::Save { input } => {
                     let body = match input {
@@ -3155,7 +3219,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         "{}",
                         serde_json::json!({
                             "checkpoint": checkpoint,
-                            "source_resolutions": cortex::checkpoint::resolve_source_refs(&checkpoint, &root),
+                            "source_resolutions": crate::checkpoint::resolve_source_refs(&checkpoint, &root),
                         })
                     );
                 }
@@ -3192,18 +3256,8 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 }
             }
         }
-        Cmd::DocsSync { repo } => {
-            let report = cortex::doc_spine::sync(
-                &MemDb::open(&db).map_err(|error| error.to_string())?,
-                &repo,
-            )?;
-            println!(
-                "{}",
-                serde_json::to_string(&report).map_err(|error| error.to_string())?
-            );
-        }
         Cmd::BackoutSchemaV10 => {
-            let restored = cortex::memdb::backout_v10_to_v9(&db).map_err(|e| e.to_string())?;
+            let restored = crate::memdb::backout_v10_to_v9(&db).map_err(|e| e.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version": 9, "restored": restored})
@@ -3219,9 +3273,9 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             let allowed_external_refs =
                 external_refs.iter().map(String::as_str).collect::<Vec<_>>();
             let report =
-                cortex::doctor::run_with_policy(&db, &suppressed_codes, &allowed_external_refs)?;
+                crate::doctor::run_with_policy(&db, &suppressed_codes, &allowed_external_refs)?;
             if let Some(bundle) = bundle {
-                cortex::diagnostic_bundle::write(&bundle, Path::new(&db), &report)?;
+                crate::diagnostic_bundle::write(&bundle, Path::new(&db), &report)?;
             }
             if json {
                 println!(
@@ -3259,7 +3313,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 println!(
                     "{}",
                     serde_json::json!({
-                        "schema":"orthic.hygiene-clean-plan.v1",
+                        "schema":"membrane.hygiene-clean-plan.v1",
                         "applied":false,
                         "reversible":true,
                         "audit":report,
@@ -3270,21 +3324,21 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         },
         Cmd::Explain { id } => println!("{}", explain_memory(&db, &id)?),
         Cmd::BackoutSchemaV11 => {
-            let restored = cortex::memdb::backout_v11_to_v10(&db).map_err(|e| e.to_string())?;
+            let restored = crate::memdb::backout_v11_to_v10(&db).map_err(|e| e.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version": 10, "restored": restored})
             );
         }
         Cmd::BackoutSchemaV20 => {
-            cortex::memdb::backout_v20_to_v19(&db).map_err(|error| error.to_string())?;
+            crate::memdb::backout_v20_to_v19(&db).map_err(|error| error.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version": 19, "backed_out": true})
             );
         }
         Cmd::BackoutSchemaV23 => {
-            cortex::memdb::backout_v23_to_v22(&db).map_err(|error| error.to_string())?;
+            crate::memdb::backout_v23_to_v22(&db).map_err(|error| error.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version":22,"backed_out":true})
@@ -3296,7 +3350,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     .map_err(|error| error.to_string())?
                     .isolate_smoke_recalls(SMOKE_ISOLATION_EXPECTED, true)?
             } else {
-                cortex::memdb::inspect_smoke_recalls(&db, SMOKE_ISOLATION_EXPECTED)?
+                crate::memdb::inspect_smoke_recalls(&db, SMOKE_ISOLATION_EXPECTED)?
             };
             println!(
                 "{}",
@@ -3304,7 +3358,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             );
         }
         Cmd::Serve { port } => {
-            let canonical_port = std::env::var("CORTEX_PORT").ok();
+            let canonical_port = std::env::var("MEMBRANE_PORT").ok();
             let port = resolve_service_port(
                 port,
                 canonical_port.as_deref(),
@@ -3312,11 +3366,11 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             );
             let workspace_root = service_workspace_root(Path::new(&db));
             let (identity, claim) =
-                cortex::installation_identity::prepare_service_start(&workspace_root)
+                crate::installation_identity::prepare_service_start(&workspace_root)
                     .map_err(|error| format!("prepare installation identity: {error}"))?;
-            std::env::set_var("CORTEX_INSTALLATION_ID", &identity.installation_id);
-            std::env::set_var("CORTEX_SERVICE_INSTANCE_ID", &claim.service_instance_id);
-            cortex::serve::run(&db, port, &identity, &claim)?;
+            std::env::set_var("MEMBRANE_INSTALLATION_ID", &identity.installation_id);
+            std::env::set_var("MEMBRANE_SERVICE_INSTANCE_ID", &claim.service_instance_id);
+            crate::serve::run(&db, port, &identity, &claim)?;
         }
         Cmd::Migrate => {
             let store = open(&db)?;
@@ -3372,33 +3426,19 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             as_of_ms,
             include_expired,
         } => {
-            let document_hits = cortex::doc_spine::recall(
-                &MemDb::open(&db).map_err(|error| error.to_string())?,
-                &query,
-                k,
-            )?;
-            if !document_hits.is_empty() {
-                for hit in &document_hits {
-                    println!(
-                        "{}",
-                        serde_json::to_string(hit).map_err(|error| error.to_string())?
-                    );
-                }
-                return Ok(());
-            }
             let store = open(&db)?;
             // normalize_scope: CLI parity with serve (a lowercase-drive --scope must not
             // silently produce an empty chain — the 5th slug call-site, fixed 2026-07-05).
             let norm = scope.as_deref().map(normalize_scope);
             let chain = norm
                 .as_deref()
-                .map(|s| cortex::scope_chain(s, &store.scopes()))
+                .map(|s| crate::scope_chain(s, &store.scopes()))
                 .unwrap_or_default();
             let hits = store.recall_scored_at(
                 &query,
                 k,
                 &chain,
-                as_of_ms.unwrap_or_else(|| cortex::time::now_millis() as i64),
+                as_of_ms.unwrap_or_else(|| crate::time::now_millis() as i64),
                 include_expired,
             );
             if hits.is_empty()
@@ -3428,7 +3468,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             // source='cli' keeps human debugging out of the agent-effectiveness numbers.
             // NO record_injections: inject_count means "shown to an agent session".
             store.log_recall(
-                &cortex::time::now_iso(),
+                &crate::time::now_iso(),
                 norm.as_deref(),
                 query.chars().count(),
                 hits.len(),
@@ -3461,127 +3501,8 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 );
             }
         }
-        Cmd::Skel {
-            file,
-            budget,
-            opportunity,
-        } => {
-            let src = match std::fs::read_to_string(&file) {
-                Ok(src) => src,
-                Err(error) => {
-                    log_transform_best_effort(
-                        &db,
-                        "skel",
-                        0,
-                        0,
-                        Some("status=error;kind=input_read"),
-                        opportunity.as_deref(),
-                    );
-                    return Err(error.to_string());
-                }
-            };
-            let (out, meta) = if let Some(budget) = budget {
-                let result = cortex::skel::skeletonize_to_budget(&file, &src, budget);
-                let meta = format!(
-                    "status=ok;budget_tok={budget};output_tok={};budget_met={};level={}",
-                    result.output_tokens, result.budget_met, result.level
-                );
-                (result.text, meta)
-            } else {
-                (
-                    cortex::skel::skeletonize(&file, &src),
-                    "status=ok".to_string(),
-                )
-            };
-            let drop_meta =
-                cortex::compress::drop_manifest_meta(&cortex::compress::drop_manifest(&src, &out));
-            let meta = format!("{meta};{drop_meta}");
-            log_transform_best_effort(
-                &db,
-                "skel",
-                src.chars().count(),
-                out.chars().count(),
-                Some(&meta),
-                opportunity.as_deref(),
-            );
-            print!("{out}");
-        }
-        Cmd::Compress {
-            budget,
-            rate,
-            no_onnx,
-            opportunity,
-            file,
-        } => {
-            let mut input = String::new();
-            match file {
-                Some(p) => match std::fs::read_to_string(p) {
-                    Ok(value) => input = value,
-                    Err(error) => {
-                        log_transform_best_effort(
-                            &db,
-                            "compress",
-                            0,
-                            0,
-                            Some("status=error;kind=input_read"),
-                            opportunity.as_deref(),
-                        );
-                        return Err(error.to_string());
-                    }
-                },
-                None => {
-                    std::io::stdin()
-                        .read_to_string(&mut input)
-                        .map_err(|e| e.to_string())?;
-                }
-            }
-            let (out, meta) = if let Some(budget) = budget {
-                let result =
-                    cortex::compress::compress_to_budget_with_options(&input, budget, no_onnx);
-                let meta = format!(
-                    "status=ok;budget_tok={budget};output_tok={};protected_tok={};budget_met={}",
-                    result.output_tokens, result.protected_tokens, result.budget_met
-                );
-                (result.text, meta)
-            } else {
-                (
-                    cortex::compress::compress_with_options(&input, rate, no_onnx),
-                    "status=ok".to_string(),
-                )
-            };
-            let drop_meta = cortex::compress::drop_manifest_meta(&cortex::compress::drop_manifest(
-                &input, &out,
-            ));
-            let meta = format!("{meta};{drop_meta}");
-            log_transform_best_effort(
-                &db,
-                "compress",
-                input.chars().count(),
-                out.chars().count(),
-                Some(&meta),
-                opportunity.as_deref(),
-            );
-            print!("{out}");
-        }
-        Cmd::Prep {
-            out_dir,
-            files,
-            rate,
-            budget,
-            min_bytes,
-        } => {
-            let manifest =
-                cortex::prep::prep_files_with_budget(&out_dir, &files, rate, min_bytes, budget);
-            for (verb, before, after, meta) in cortex::prep::transform_rows(&manifest) {
-                log_transform_best_effort(&db, &verb, before, after, meta, None);
-            }
-            println!(
-                "{}",
-                serde_json::to_string(&manifest).unwrap_or_else(|_| "[]".into())
-            );
-        }
         Cmd::Curate { today } => {
-            let today = today.unwrap_or_else(|| cortex::time::now_iso().chars().take(10).collect());
+            let today = today.unwrap_or_else(|| crate::time::now_iso().chars().take(10).collect());
             let payload = serde_json::json!({ "today": today }).to_string();
             match try_service_post("/curate", &payload) {
                 Ok(Some(resp)) => {
@@ -3591,26 +3512,12 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 Ok(None) => {}
                 Err(e) => {
                     return Err(format!(
-                        "resident cortex service failed /curate; refusing direct DB fallback: {e}"
+                        "resident Membrane service failed /curate; refusing direct DB fallback: {e}"
                     ));
                 }
             }
             let store = open(&db)?;
             let status = store.dream_now(&today)?;
-            // curate rows repurpose before/after as consolidated/pruned counts (memdb schema note)
-            store.log_transform(
-                &cortex::time::now_iso(),
-                "curate",
-                Some(
-                    &serde_json::json!({
-                        "quarantined_count": status.quarantined_count,
-                    })
-                    .to_string(),
-                ),
-                status.consolidated_count,
-                status.pruned_count,
-                None,
-            );
             println!(
                 "{}",
                 serde_json::json!({
@@ -3634,7 +3541,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 Ok(None) => {}
                 Err(e) => {
                     return Err(format!(
-                        "resident cortex service failed /quarantine/list; refusing direct DB fallback: {e}"
+                        "resident Membrane service failed /quarantine/list; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -3651,7 +3558,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 Ok(None) => {}
                 Err(e) => {
                     return Err(format!(
-                        "resident cortex service failed /quarantine/restore; refusing direct DB fallback: {e}"
+                        "resident Membrane service failed /quarantine/restore; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -3682,7 +3589,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 Ok(None) => {}
                 Err(error) => {
                     return Err(format!(
-                        "resident cortex service failed /get; refusing direct DB fallback: {error}"
+                        "resident Membrane service failed /get; refusing direct DB fallback: {error}"
                     ));
                 }
             }
@@ -3699,7 +3606,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         &store,
                         &context,
                         "read",
-                        cortex::store::ExternalLifecycleStage::Provider,
+                        crate::store::ExternalLifecycleStage::Provider,
                         status,
                         reason,
                         Some(&id),
@@ -3735,16 +3642,16 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    return Err(format!("resident cortex service failed /feedback: {e}"));
+                    return Err(format!("resident Membrane service failed /feedback: {e}"));
                 }
             }
             let store = open(&db)?;
-            let rec = cortex::feedback::FeedbackRecord {
+            let rec = crate::feedback::FeedbackRecord {
                 trace_id: trace,
                 candidate_id: candidate,
                 content_sha256: sha,
-                outcome: cortex::feedback::parse_outcome(&outcome)?,
-                source: cortex::feedback::parse_source(&source),
+                outcome: crate::feedback::parse_outcome(&outcome)?,
+                source: crate::feedback::parse_source(&source),
                 verdict_ref,
                 scope_id: scope,
             };
@@ -3770,7 +3677,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 Ok(None) => {}
                 Err(error) => {
                     return Err(format!(
-                        "resident cortex service failed /context/close-unknown: {error}"
+                        "resident Membrane service failed /context/close-unknown: {error}"
                     ));
                 }
             }
@@ -3783,7 +3690,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             println!("{{\"ok\":true,\"closed\":{closed}}}");
         }
         Cmd::LearningRegister { input } => {
-            let request: cortex::store::LearningExperimentV1 =
+            let request: crate::store::LearningExperimentV1 =
                 serde_json::from_slice(&std::fs::read(input).map_err(|e| e.to_string())?)
                     .map_err(|e| e.to_string())?;
             let store = open(&db)?;
@@ -3840,7 +3747,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             supersedes,
         } => {
             let context = put_event_context(session.as_deref(), trace.as_deref());
-            let memory_id = format!("{}/{}", cortex::scope::normalize_scope(&scope), name);
+            let memory_id = format!("{}/{}", crate::scope::normalize_scope(&scope), name);
             let content = match file {
                 Some(p) => match std::fs::read_to_string(&p) {
                     Ok(content) => content,
@@ -3850,7 +3757,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                             &store,
                             &context,
                             "write",
-                            cortex::store::ExternalLifecycleStage::Validation,
+                            crate::store::ExternalLifecycleStage::Validation,
                             "unavailable",
                             "input_unavailable",
                             Some(&memory_id),
@@ -3871,7 +3778,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                             &store,
                             &context,
                             "write",
-                            cortex::store::ExternalLifecycleStage::Validation,
+                            crate::store::ExternalLifecycleStage::Validation,
                             "unavailable",
                             "input_unavailable",
                             Some(&memory_id),
@@ -3891,7 +3798,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     &store,
                     &context,
                     "write",
-                    cortex::store::ExternalLifecycleStage::Validation,
+                    crate::store::ExternalLifecycleStage::Validation,
                     "failed",
                     "empty_content",
                     Some(&memory_id),
@@ -3909,7 +3816,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     &store,
                     &context,
                     "write",
-                    cortex::store::ExternalLifecycleStage::Validation,
+                    crate::store::ExternalLifecycleStage::Validation,
                     "quarantined",
                     influence_class,
                     Some(&memory_id),
@@ -3922,7 +3829,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             }
             // Hand-typed scopes fork the corpus (the 2026-07-05 'heardright' mirror fork).
             // Refuse clearly invalid single-token scopes; allow proposed/global/cwd-slug/path.
-            if let Err(message) = cortex::scope::validate_write_scope(&scope) {
+            if let Err(message) = crate::scope::validate_write_scope(&scope) {
                 return Err(message);
             }
             if !matches!(authority.as_str(), "A0" | "A1" | "A2" | "A3" | "A4" | "A5") {
@@ -3935,7 +3842,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             // DB write would be invisible to recall until restart. Route through it when up.
             let payload = serde_json::json!({
                 "name": name, "content": content.trim(), "scope": scope, "tier": tier,
-                "client": std::env::var("CORTEX_CLIENT").unwrap_or_else(|_| "cli".into()),
+                "client": std::env::var("MEMBRANE_CLIENT").unwrap_or_else(|_| "cli".into()),
                 "artifactFamily": artifact_family,
                 "producer": producer,
                 "recordType": record_type,
@@ -3965,7 +3872,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         _ => cortex_core::MemoryTier::Semantic,
                     };
                     let store = open(&db)?;
-                    let lifecycle = cortex::store::MemoryLifecycleInputV1 {
+                    let lifecycle = crate::store::MemoryLifecycleInputV1 {
                         effective_from_ms,
                         effective_until_ms,
                         expires_at_ms,
@@ -4034,7 +3941,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                             &store,
                             &context,
                             "write",
-                            cortex::store::ExternalLifecycleStage::Embedding,
+                            crate::store::ExternalLifecycleStage::Embedding,
                             status,
                             "resident_service_unavailable",
                             Some(&memory_id),
@@ -4045,7 +3952,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         )?;
                     }
                     return Err(format!(
-                        "resident cortex service failed /put; refusing direct DB fallback: {e}"
+                        "resident Membrane service failed /put; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -4054,7 +3961,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             let context = cli_event_context();
             let payload = serde_json::json!({
                 "id": id,
-                "client": std::env::var("CORTEX_CLIENT").unwrap_or_else(|_| "cli".into()),
+                "client": std::env::var("MEMBRANE_CLIENT").unwrap_or_else(|_| "cli".into()),
             })
             .to_string();
             match try_service_post("/delete", &payload) {
@@ -4070,7 +3977,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                             &store,
                             &context,
                             "delete",
-                            cortex::store::ExternalLifecycleStage::Commit,
+                            crate::store::ExternalLifecycleStage::Commit,
                             if e.contains("timeout") {
                                 "timeout"
                             } else {
@@ -4085,7 +3992,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         )?;
                     }
                     return Err(format!(
-                        "resident cortex service failed /delete; refusing direct DB fallback: {e}"
+                        "resident Membrane service failed /delete; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -4097,7 +4004,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         &store,
                         &context,
                         "delete",
-                        cortex::store::ExternalLifecycleStage::Commit,
+                        crate::store::ExternalLifecycleStage::Commit,
                         "empty",
                         "target_not_found",
                         Some(&id),
@@ -4113,7 +4020,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         &store,
                         &context,
                         "delete",
-                        cortex::store::ExternalLifecycleStage::Commit,
+                        crate::store::ExternalLifecycleStage::Commit,
                         "failed",
                         "commit_failed",
                         Some(&id),
@@ -4137,7 +4044,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         &store,
                         &context,
                         "read",
-                        cortex::store::ExternalLifecycleStage::Provider,
+                        crate::store::ExternalLifecycleStage::Provider,
                         "failed",
                         "provider_failed",
                         None,
@@ -4153,7 +4060,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 &store,
                 &context,
                 "read",
-                cortex::store::ExternalLifecycleStage::Provider,
+                crate::store::ExternalLifecycleStage::Provider,
                 if rows.is_empty() { "empty" } else { "success" },
                 if rows.is_empty() {
                     "no_results"
@@ -4224,129 +4131,8 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             let store = open(&db)?;
             println!("{}", store.metrics_json());
         }
-        Cmd::TransformOpportunity {
-            verb,
-            opportunity,
-            source,
-            reason,
-            client,
-            session,
-            turn,
-            trace,
-        } => {
-            record_transform_opportunity(
-                &db,
-                &verb,
-                &opportunity,
-                &source,
-                &reason,
-                &client,
-                &session,
-                &turn,
-                &trace,
-            )?;
-            println!("{{\"opportunity_uid\":{opportunity:?},\"outcome\":\"recommended\"}}");
-        }
-        Cmd::Runc {
-            head,
-            tail,
-            spill_dir,
-            opportunity,
-            cmd,
-        } => {
-            let dir = spill_dir.map(PathBuf::from).unwrap_or_else(|| {
-                std::env::current_dir()
-                    .unwrap_or_else(|_| home())
-                    .join(".cache")
-                    .join("runc")
-            });
-            let cmd_str = cmd.join(" ");
-            let res = match cortex::runc::run_capped(&cmd_str, head, tail, &dir) {
-                Ok(result) => result,
-                Err(error) => {
-                    log_transform_best_effort(
-                        &db,
-                        "runc",
-                        0,
-                        0,
-                        Some("status=error;kind=spawn"),
-                        opportunity.as_deref(),
-                    );
-                    return Err(error);
-                }
-            };
-            // before = full output size (spill file when truncated, else the capped text IS full)
-            let before = res
-                .spill_path
-                .as_deref()
-                .and_then(|p| std::fs::metadata(p).ok())
-                .map(|m| m.len() as usize)
-                .unwrap_or_else(|| res.capped.chars().count());
-            let status = if res.exit_code == 0 { "ok" } else { "error" };
-            let meta = format!("status={status};exit_code={}", res.exit_code);
-            log_transform_best_effort(
-                &db,
-                "runc",
-                before,
-                res.capped.chars().count(),
-                Some(&meta),
-                opportunity.as_deref(),
-            );
-            print!("{}", res.capped);
-            let spill_display = res
-                .spill_path
-                .as_deref()
-                .map(|path| path.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "<unavailable>".into());
-            if let Some(p) = res.spill_path {
-                println!("\n[spill] {}", p.to_string_lossy());
-            } else {
-                println!();
-            }
-            if let Some(marker) = &res.recovery_marker {
-                println!(
-                    "[recovery] {}",
-                    serde_json::to_string(marker)
-                        .map_err(|error| format!("recovery marker encode failed: {error}"))?
-                );
-            }
-            println!("[anchor] {}", res.anchor);
-            eprintln!("runc: exit={} full={spill_display}", res.exit_code);
-            std::process::exit(res.exit_code);
-        }
-        Cmd::Expand { anchor, spill_dir } => {
-            let digest = cortex::identifier::AnchorRef::parse(&anchor)
-                .map_err(|error| match error {
-                    cortex::identifier::AnchorRefError::PrefixMismatch
-                    | cortex::identifier::AnchorRefError::CrossNamespace => {
-                        "invalid anchor: expected mr://anchor/<sha256>"
-                    }
-                    cortex::identifier::AnchorRefError::InvalidDigest
-                    | cortex::identifier::AnchorRefError::AliasCollision => "invalid anchor digest",
-                })?
-                .digest();
-            let root = spill_dir
-                .canonicalize()
-                .map_err(|error| format!("anchor store unavailable: {error}"))?;
-            let file = root.join(format!("{digest}.log"));
-            let file = file
-                .canonicalize()
-                .map_err(|_| "anchor not found".to_string())?;
-            if !file.starts_with(&root) || !file.is_file() {
-                return Err("anchor not found".into());
-            }
-            print!(
-                "{}",
-                std::fs::read_to_string(file).map_err(|_| "anchor unreadable")?
-            );
-        }
-        Cmd::PlanContext { .. } => {
-            // Handled in the early PlanContext branch above to bypass DB resolution.
-            unreachable!("PlanContext is handled before DB resolution")
-        }
-        Cmd::Federate { .. } | Cmd::MemoryCandidates { .. } => {
-            // Handled in the early Fed/MemCandidates branch above to bypass DB resolution.
-            unreachable!("Federate/MemoryCandidates are handled before DB resolution")
+        Cmd::Pull { .. } | Cmd::Push { .. } => {
+            unreachable!("Pull/Push are handled before DB resolution")
         }
     }
     Ok(())
@@ -4362,7 +4148,8 @@ mod tests {
 
     fn plan_context_cli_with_budget(value: &str) -> Result<super::Cli, clap::Error> {
         super::Cli::try_parse_from([
-            "cortex",
+            "membrane",
+            "pull",
             "plan-context",
             "--candidate-set",
             "fixture.json",
@@ -4372,46 +4159,39 @@ mod tests {
     }
 
     #[test]
-    fn doc_outline_cli_requires_explicit_json() {
+    fn guide_outline_cli_requires_explicit_json() {
         let parsed = super::Cli::try_parse_from([
-            "cortex", "doc", "outline", "--repo", "C:/repo", "--path", "guide.md", "--json",
+            "membrane", "guide", "outline", "--repo", "C:/repo", "--path", "guide.md", "--json",
         ])
-        .expect("doc outline arguments parse");
+        .expect("guide outline arguments parse");
         assert!(matches!(
             parsed.cmd,
-            super::Cmd::Doc {
-                command: super::DocCmd::Outline { json: true, .. }
+            super::Cmd::Guide {
+                command: super::GuideCmd::Outline { json: true, .. }
             }
         ));
     }
 
     #[test]
-    fn transform_cli_accepts_token_budgets() {
+    fn push_cli_accepts_token_budgets() {
         let compress =
-            super::Cli::try_parse_from(["cortex", "compress", "--budget", "128", "--no-onnx"])
+            super::Cli::try_parse_from(["membrane", "push", "compress", "--budget", "128", "--no-onnx"])
                 .unwrap();
         assert!(matches!(
             compress.cmd,
-            super::Cmd::Compress {
-                budget: Some(128),
-                no_onnx: true,
-                ..
-            }
+            super::Cmd::Push { command: super::PushCmd::Compress { budget: Some(128), no_onnx: true, .. } }
         ));
         let skel =
-            super::Cli::try_parse_from(["cortex", "skel", "--budget", "64", "src/lib.rs"]).unwrap();
+            super::Cli::try_parse_from(["membrane", "push", "skel", "--budget", "64", "src/lib.rs"]).unwrap();
         assert!(matches!(
             skel.cmd,
-            super::Cmd::Skel {
-                budget: Some(64),
-                ..
-            }
+            super::Cmd::Push { command: super::PushCmd::Skel { budget: Some(64), .. } }
         ));
     }
 
     #[test]
     fn hygiene_clean_is_explicitly_plan_only() {
-        let parsed = super::Cli::try_parse_from(["cortex", "hygiene", "clean", "--plan"])
+        let parsed = super::Cli::try_parse_from(["membrane", "hygiene", "clean", "--plan"])
             .expect("hygiene clean plan parses");
         assert!(matches!(
             parsed.cmd,
@@ -4419,7 +4199,7 @@ mod tests {
                 command: super::HygieneCmd::Clean { plan: true }
             }
         ));
-        let parsed = super::Cli::try_parse_from(["cortex", "hygiene", "clean"])
+        let parsed = super::Cli::try_parse_from(["membrane", "hygiene", "clean"])
             .expect("handler rejects mutation without plan");
         assert!(matches!(
             parsed.cmd,
@@ -4431,7 +4211,7 @@ mod tests {
 
     #[test]
     fn hygiene_storage_cli_parses() {
-        let parsed = super::Cli::try_parse_from(["cortex", "hygiene", "storage"])
+        let parsed = super::Cli::try_parse_from(["membrane", "hygiene", "storage"])
             .expect("hygiene storage parses");
         assert!(matches!(
             parsed.cmd,
@@ -4580,7 +4360,7 @@ mod tests {
     fn hygiene_audit_and_explain_are_content_free_and_not_age_based() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("hygiene.db");
-        let db = cortex::MemDb::open(&path).unwrap();
+        let db = crate::MemDb::open(&path).unwrap();
         {
             let conn = db.lock();
             for id in ["global/old-preference", "global/duplicate"] {
@@ -4630,7 +4410,7 @@ mod tests {
     #[test]
     fn export_import_defaults_and_round_trip_content_scope() {
         let review = super::Cli::try_parse_from([
-            "cortex",
+            "membrane",
             "vault-export",
             "--output",
             "review.json",
@@ -4640,12 +4420,12 @@ mod tests {
         assert!(
             matches!(review.cmd, super::Cmd::VaultExport { ref output, ref format, include_content: true } if output == Path::new("review.json") && format == "json")
         );
-        let export = super::Cli::try_parse_from(["cortex", "export"]).unwrap();
+        let export = super::Cli::try_parse_from(["membrane", "export"]).unwrap();
         assert!(matches!(
             export.cmd,
             super::Cmd::Export { ref dir } if dir == std::path::Path::new("cortex-export")
         ));
-        let import = super::Cli::try_parse_from(["cortex", "import"]).unwrap();
+        let import = super::Cli::try_parse_from(["membrane", "import"]).unwrap();
         assert!(matches!(
             import.cmd,
             super::Cmd::Import { ref dir } if dir == std::path::Path::new("cortex-export")
@@ -4653,7 +4433,7 @@ mod tests {
 
         let temp = tempfile::tempdir().unwrap();
         let source =
-            cortex::MemoryStore::open(cortex::MemDb::open(temp.path().join("source.db")).unwrap());
+            crate::MemoryStore::open(crate::MemDb::open(temp.path().join("source.db")).unwrap());
         source
             .try_put(
                 "preference",
@@ -4665,7 +4445,7 @@ mod tests {
         let tree = temp.path().join("export");
         assert_eq!(source.export_md(&tree), 1);
         let target =
-            cortex::MemoryStore::open(cortex::MemDb::open(temp.path().join("target.db")).unwrap());
+            crate::MemoryStore::open(crate::MemDb::open(temp.path().join("target.db")).unwrap());
         assert_eq!(super::import_markdown_tree(&target, &tree).unwrap(), 1);
         assert_eq!(
             target.get_full("scope-a/preference").unwrap().0,
@@ -4675,7 +4455,8 @@ mod tests {
 
     fn federate_cli_with_budget(value: &str) -> Result<super::Cli, clap::Error> {
         super::Cli::try_parse_from([
-            "cortex",
+            "membrane",
+            "pull",
             "federate",
             "--task",
             "test",
@@ -4689,7 +4470,7 @@ mod tests {
     #[test]
     fn put_cli_accepts_write_and_correlation_attribution() {
         let parsed = super::Cli::try_parse_from([
-            "cortex",
+            "membrane",
             "put",
             "fixture",
             "--artifact-family",
@@ -4757,7 +4538,7 @@ mod tests {
     #[test]
     fn put_event_context_applies_available_session_and_trace() {
         let actual = super::put_event_context(Some("session-opaque"), Some("tool-use-opaque"));
-        let expected = cortex::store::MemoryEventContext::new("cli")
+        let expected = crate::store::MemoryEventContext::new("cli")
             .with_session("session-opaque")
             .with_trace("tool-use-opaque")
             .with_turn("tool-use-opaque");
@@ -4781,18 +4562,18 @@ mod tests {
         let expected = 9_007_199_254_740_991usize;
 
         let plan = plan_context_cli_with_budget(MAX_SAFE_PACKET_CHAR_BUDGET).unwrap();
-        let super::Cmd::PlanContext {
+        let super::Cmd::Pull { command: super::PullCmd::PlanContext {
             packet_char_budget, ..
-        } = plan.cmd
+        }} = plan.cmd
         else {
             panic!("expected plan-context command");
         };
         assert_eq!(packet_char_budget, Some(expected));
 
         let federate = federate_cli_with_budget(MAX_SAFE_PACKET_CHAR_BUDGET).unwrap();
-        let super::Cmd::Federate {
+        let super::Cmd::Pull { command: super::PullCmd::Federate {
             packet_char_budget, ..
-        } = federate.cmd
+        }} = federate.cmd
         else {
             panic!("expected federate command");
         };
@@ -4801,18 +4582,18 @@ mod tests {
 
     #[test]
     fn isolate_smoke_recalls_cli_is_dry_run_by_default_and_expected_count_is_not_overridable() {
-        let parsed = super::Cli::try_parse_from(["cortex", "isolate-smoke-recalls"]).unwrap();
+        let parsed = super::Cli::try_parse_from(["membrane", "isolate-smoke-recalls"]).unwrap();
         let super::Cmd::IsolateSmokeRecalls { apply } = parsed.cmd else {
             panic!("expected isolate-smoke-recalls command");
         };
         assert!(!apply);
 
         assert!(
-            super::Cli::try_parse_from(["cortex", "isolate-smoke-recalls", "--expected", "2"])
+            super::Cli::try_parse_from(["membrane", "isolate-smoke-recalls", "--expected", "2"])
                 .is_err()
         );
         let parsed =
-            super::Cli::try_parse_from(["cortex", "isolate-smoke-recalls", "--apply"]).unwrap();
+            super::Cli::try_parse_from(["membrane", "isolate-smoke-recalls", "--apply"]).unwrap();
         let super::Cmd::IsolateSmokeRecalls { apply } = parsed.cmd else {
             panic!("expected isolate-smoke-recalls command");
         };
@@ -4822,7 +4603,7 @@ mod tests {
     #[test]
     fn installation_rotate_cli_requires_explicit_clone_reason_and_no_database() {
         let parsed =
-            super::Cli::try_parse_from(["cortex", "installation", "rotate", "--reason", "clone"])
+            super::Cli::try_parse_from(["membrane", "installation", "rotate", "--reason", "clone"])
                 .unwrap();
         assert!(!super::command_requires_db(&parsed.cmd));
         let super::Cmd::Installation {
@@ -4832,7 +4613,7 @@ mod tests {
             panic!("expected installation rotate command");
         };
         assert_eq!(reason, "clone");
-        assert!(super::Cli::try_parse_from(["cortex", "installation", "rotate"]).is_err());
+        assert!(super::Cli::try_parse_from(["membrane", "installation", "rotate"]).is_err());
     }
 
     #[test]
@@ -4863,11 +4644,11 @@ mod tests {
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(
             config_dir.join("runtime.json"),
-            r#"{"schemaVersion":1,"serviceId":"cortex-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"membrane-local-v1","host":"127.0.0.1","port":47851}"#,
         )
         .unwrap();
 
-        let runtime = super::deployed_runtime_from_exe(&bin.join("cortex.exe")).unwrap();
+        let runtime = super::deployed_runtime_from_exe(&bin.join("membrane.exe")).unwrap();
         assert_eq!(runtime.port, 47851);
         assert_eq!(
             runtime.db,
@@ -4890,12 +4671,12 @@ mod tests {
 
         for body in [
             r#"{"schemaVersion":1,"serviceId":"other-service","host":"127.0.0.1","port":47851}"#,
-            r#"{"schemaVersion":1,"serviceId":"cortex-local-v1","host":"0.0.0.0","port":47851}"#,
-            r#"{"schemaVersion":2,"serviceId":"cortex-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"membrane-local-v1","host":"0.0.0.0","port":47851}"#,
+            r#"{"schemaVersion":2,"serviceId":"membrane-local-v1","host":"127.0.0.1","port":47851}"#,
             "not-json",
         ] {
             std::fs::write(config_dir.join("runtime.json"), body).unwrap();
-            assert!(super::deployed_runtime_from_exe(&bin.join("cortex.exe")).is_none());
+            assert!(super::deployed_runtime_from_exe(&bin.join("membrane.exe")).is_none());
         }
     }
 
@@ -4927,7 +4708,7 @@ mod tests {
 
     #[test]
     fn replay_queries_rank_real_snapshot_entries_without_logging() {
-        let store = cortex::MemoryStore::open(cortex::MemDb::open_in_memory());
+        let store = crate::MemoryStore::open(crate::MemDb::open_in_memory());
         store.put(
             "worker-deploy",
             "deploy the cloudflare worker safely",
@@ -4958,7 +4739,7 @@ mod tests {
             info["release_generation"],
             format!(
                 "sha256:{}",
-                option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                option_env!("MEMBRANE_SOURCE_TREE_SHA256").unwrap_or("unknown")
             )
         );
     }
@@ -4967,12 +4748,12 @@ mod tests {
     fn build_info_exposes_the_native_release_target_triple() {
         let info = super::build_info();
 
-        assert_eq!(info["target"], cortex::release_identity::target_triple());
+        assert_eq!(info["target"], crate::release_identity::target_triple());
         assert_ne!(info["target"], "unknown");
     }
 
     #[test]
-    fn metadata_and_federation_commands_do_not_require_a_database() {
+    fn metadata_and_axis_commands_do_not_require_a_database() {
         assert!(!super::command_requires_db(&super::Cmd::BuildInfo));
         assert!(!super::command_requires_db(&super::Cmd::Installation {
             command: super::InstallationCmd::Rotate {
@@ -4980,26 +4761,37 @@ mod tests {
             },
         }));
         assert!(super::command_requires_db(&super::Cmd::Metrics));
-        assert!(super::command_requires_db(&super::Cmd::PlanContext {
-            candidate_set: std::path::PathBuf::from("/tmp/x.json"),
-            max_tokens: 100,
-            packet_char_budget: None,
-            packet_char_budget_model: None,
-            accepted_receipt_versions: vec![2],
+        assert!(!super::command_requires_db(&super::Cmd::Pull {
+            command: super::PullCmd::PlanContext {
+                candidate_set: std::path::PathBuf::from("/tmp/x.json"),
+                max_tokens: 100,
+                packet_char_budget: None,
+                packet_char_budget_model: None,
+                accepted_receipt_versions: vec![2],
+            },
+        }));
+        assert!(!super::command_requires_db(&super::Cmd::Push {
+            command: super::PushCmd::Runc {
+                head: 1,
+                tail: 1,
+                spill_dir: None,
+                opportunity: None,
+                cmd: vec!["true".into()],
+            },
         }));
     }
 
     #[test]
     fn cli_lifecycle_helper_records_typed_empty_and_unavailable_terminals() {
-        let store = cortex::MemoryStore::open(cortex::MemDb::open_in_memory());
-        let context = cortex::store::MemoryEventContext::new("cli")
+        let store = crate::MemoryStore::open(crate::MemDb::open_in_memory());
+        let context = crate::store::MemoryEventContext::new("cli")
             .with_session("background")
             .with_trace("unknown");
         super::record_cli_external(
             &store,
             &context,
             "read",
-            cortex::store::ExternalLifecycleStage::Provider,
+            crate::store::ExternalLifecycleStage::Provider,
             "empty",
             "no_results",
             None,
@@ -5013,7 +4805,7 @@ mod tests {
             &store,
             &context,
             "write",
-            cortex::store::ExternalLifecycleStage::Embedding,
+            crate::store::ExternalLifecycleStage::Embedding,
             "unavailable",
             "resident_service_unavailable",
             Some("global/item"),
@@ -5057,7 +4849,7 @@ mod tests {
         assert_eq!(
             super::store_failure_stage("memory write attribution is invalid"),
             (
-                cortex::store::ExternalLifecycleStage::Validation,
+                crate::store::ExternalLifecycleStage::Validation,
                 "failed",
                 "invalid_attribution",
             )
@@ -5065,7 +4857,7 @@ mod tests {
         assert_eq!(
             super::store_failure_stage("configured embedder unavailable"),
             (
-                cortex::store::ExternalLifecycleStage::Embedding,
+                crate::store::ExternalLifecycleStage::Embedding,
                 "unavailable",
                 "embedding_unavailable",
             )
@@ -5073,7 +4865,7 @@ mod tests {
         assert_eq!(
             super::store_failure_stage("memory commit failed"),
             (
-                cortex::store::ExternalLifecycleStage::Commit,
+                crate::store::ExternalLifecycleStage::Commit,
                 "failed",
                 "commit_failed",
             )
@@ -5625,14 +5417,14 @@ mod tests {
     fn cross_process_lock_child_helper() {
         use std::io::{Read as _, Write as _};
 
-        let Some(directory) = std::env::var_os("CORTEX_TEST_LOCK_HELPER_DIR") else {
+        let Some(directory) = std::env::var_os("MEMBRANE_TEST_LOCK_HELPER_DIR") else {
             return;
         };
         let _lock =
             super::acquire_pending_lock(&std::path::PathBuf::from(directory), "cross-process")
                 .unwrap();
         let mut stdout = std::io::stdout().lock();
-        writeln!(stdout, "CORTEX_LOCK_READY").unwrap();
+        writeln!(stdout, "MEMBRANE_LOCK_READY").unwrap();
         stdout.flush().unwrap();
         drop(stdout);
         let mut release = [0_u8; 1];
@@ -5652,7 +5444,7 @@ mod tests {
             .arg("--ignored")
             .arg("--nocapture")
             .arg("--test-threads=1")
-            .env("CORTEX_TEST_LOCK_HELPER_DIR", directory.path())
+            .env("MEMBRANE_TEST_LOCK_HELPER_DIR", directory.path())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -5690,7 +5482,7 @@ mod tests {
             let line = line_receiver
                 .recv_timeout(remaining)
                 .expect("child exited before reporting lock readiness");
-            if line.contains("CORTEX_LOCK_READY") {
+            if line.contains("MEMBRANE_LOCK_READY") {
                 break;
             }
         }
@@ -6100,22 +5892,22 @@ mod tests {
         );
         assert_eq!(
             super::resolve_doc_read_path(root.path(), "../guide.md").unwrap_err(),
-            cortex::outline::DocReadError::Deny
+            crate::guide::outline::DocReadError::Deny
         );
         assert_eq!(
             super::resolve_doc_read_path(root.path(), "docs/missing.md").unwrap_err(),
-            cortex::outline::DocReadError::SourceMissing
+            crate::guide::outline::DocReadError::SourceMissing
         );
     }
 }
 
 pub fn run_cli() {
     let result = std::thread::Builder::new()
-        .name("cortex-cli".into())
+        .name("membrane-cli".into())
         .stack_size(16 * 1024 * 1024)
         .spawn(run_main)
-        .map_err(|error| format!("start cortex CLI: {error}"))
-        .and_then(|thread| thread.join().map_err(|_| "cortex CLI panicked".to_string()))
+        .map_err(|error| format!("start Membrane CLI: {error}"))
+        .and_then(|thread| thread.join().map_err(|_| "Membrane CLI panicked".to_string()))
         .and_then(|result| result);
     if let Err(error) = result {
         eprintln!("{error}");
@@ -6123,9 +5915,8 @@ pub fn run_cli() {
     }
 }
 
-/// MBR-102 entrypoint: run the CLI with an explicit argv. The membrane binary forwards the
-/// `cli` subcommand tail here, so the runtime does not see the legacy `cortex` argv shape and
-/// the legacy `cortex` binary keeps working from its own argv.
+/// MBR-102 entrypoint: run the CLI with an explicit argv. The Membrane binary forwards the
+/// canonical `cli` subcommand tail here.
 pub fn run_cli_from(argv: &[&str]) -> Result<(), String> {
     let argv: Vec<String> = argv.iter().map(|arg| arg.to_string()).collect();
     std::thread::Builder::new()
@@ -6136,6 +5927,72 @@ pub fn run_cli_from(argv: &[&str]) -> Result<(), String> {
         .join()
         .map_err(|_| "membrane CLI panicked".to_string())
         .and_then(|result| result)
+}
+
+/// Cortex projection of CLI: durable-memory verbs only. Pull, Push, Guide,
+/// Blueprint, Adapt, & orchestration stay addressable through Membrane.
+pub const CORTEX_DURABLE_COMMANDS: &[&str] = &[
+    "checkpoint",
+    "close-unknown",
+    "curate",
+    "delete",
+    "explain",
+    "export",
+    "export-md",
+    "feedback",
+    "get",
+    "graph",
+    "hygiene",
+    "import",
+    "installation",
+    "isolate-smoke-recalls",
+    "learning-qualify",
+    "learning-receipt",
+    "learning-register",
+    "list",
+    "migrate",
+    "put",
+    "quarantine-list",
+    "quarantine-restore",
+    "recall",
+    "replay",
+    "reindex",
+    "ingest-skills",
+    "skill-read",
+    "vault-export",
+    "backout-schema-v10",
+    "backout-schema-v11",
+    "backout-schema-v20",
+    "backout-schema-v23",
+];
+
+/// Run Cortex's durable-memory CLI projection after rejecting every other
+/// Membrane axis at its entry boundary.
+pub fn run_cortex_durable_cli_from(argv: &[&str]) -> Result<(), String> {
+    let mut index = 1;
+    let command = loop {
+        let Some(argument) = argv.get(index).copied() else {
+            break None;
+        };
+        if argument == "--db" {
+            index += 2;
+            continue;
+        }
+        if argument.starts_with("--db=") {
+            index += 1;
+            continue;
+        }
+        break Some(argument);
+    };
+    let Some(command) = command else {
+        return Err("durable-memory command required".into());
+    };
+    if !CORTEX_DURABLE_COMMANDS.contains(&command) {
+        return Err(format!(
+            "unsupported command `{command}`; use membrane for Pull, Push, Guide, Blueprint, Adapt, & service orchestration"
+        ));
+    }
+    run_cli_from(argv)
 }
 
 fn secret_value_looks_credible(value: &str) -> bool {

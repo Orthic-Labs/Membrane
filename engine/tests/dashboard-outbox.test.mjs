@@ -16,7 +16,7 @@ function dashboardOutboxSource() {
   const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
   assert.ok(script, 'dashboard must contain a script block');
   const outbox = script
-    .replace('__CORTEX_API_TOKEN_JSON__', 'null')
+    .replace('__MEMBRANE_API_TOKEN_JSON__', 'null')
     .split('let current = null;')[0];
   assert.ok(outbox.includes('async function apiPut'), 'dashboard outbox source must be extractable');
   return `${outbox}\n;globalThis.__outbox = {

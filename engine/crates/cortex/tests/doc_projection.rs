@@ -1,8 +1,8 @@
-use cortex::doc_projection::{
+use membrane_runtime::guide::doc_projection::{
     project_markdown, replace_doc_projections, DocumentProjectionStoreInputV1,
     H2ReplayGateReceiptV1, ProjectionConfig, ProjectionKind, TokenCounter,
 };
-use cortex::MemDb;
+use membrane_runtime::guide::GuideDb;
 
 struct Words;
 
@@ -148,7 +148,7 @@ fn oversized_h1_cascades_to_child_heading_then_paragraphs_without_splitting_fenc
 
 #[test]
 fn projection_store_persists_lexical_whole_document_and_provenance() {
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     let input = DocumentProjectionStoreInputV1 {
         parent_doc_id: "doc:runbook".into(),
         source_content_hash: "sha256:content-v1".into(),
@@ -168,7 +168,7 @@ fn projection_store_persists_lexical_whole_document_and_provenance() {
 
     let conn = db.lock();
     let mut statement = conn
-        .prepare("SELECT kind, parent_doc_id, content, token_count, anchor_id, collapsed_to_parent, source_content_hash, source_revision, index_generation FROM doc_projections ORDER BY kind")
+        .prepare("SELECT kind, parent_doc_id, content, token_count, anchor_id, collapsed_to_parent, source_content_hash, source_revision, index_generation FROM guide_doc_projections ORDER BY kind")
         .unwrap();
     let rows = statement
         .query_map([], |row| {
@@ -200,7 +200,7 @@ fn projection_store_persists_lexical_whole_document_and_provenance() {
 
 #[test]
 fn projection_store_replaces_stale_parent_rows_atomically() {
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     let initial = DocumentProjectionStoreInputV1 {
         parent_doc_id: "doc:guide".into(),
         source_content_hash: "sha256:old".into(),
@@ -232,7 +232,7 @@ fn projection_store_replaces_stale_parent_rows_atomically() {
 
     let conn = db.lock();
     let rows = conn
-        .prepare("SELECT kind, anchor_id, source_content_hash, source_revision, index_generation FROM doc_projections WHERE parent_doc_id=?1 ORDER BY kind")
+        .prepare("SELECT kind, anchor_id, source_content_hash, source_revision, index_generation FROM guide_doc_projections WHERE parent_doc_id=?1 ORDER BY kind")
         .unwrap()
         .query_map(["doc:guide"], |row| {
             Ok((
@@ -270,7 +270,7 @@ fn projection_store_replaces_stale_parent_rows_atomically() {
 
 #[test]
 fn projection_store_rolls_back_stale_removal_when_replacement_is_invalid() {
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     let initial = DocumentProjectionStoreInputV1 {
         parent_doc_id: "doc:atomic".into(),
         source_content_hash: "sha256:old".into(),
@@ -295,7 +295,7 @@ fn projection_store_rolls_back_stale_removal_when_replacement_is_invalid() {
 
     let conn = db.lock();
     let rows = conn
-        .prepare("SELECT kind, source_content_hash, source_revision, index_generation FROM doc_projections WHERE parent_doc_id=?1 ORDER BY kind")
+        .prepare("SELECT kind, source_content_hash, source_revision, index_generation FROM guide_doc_projections WHERE parent_doc_id=?1 ORDER BY kind")
         .unwrap()
         .query_map(["doc:atomic"], |row| {
             Ok((
@@ -329,7 +329,7 @@ fn projection_store_rolls_back_stale_removal_when_replacement_is_invalid() {
 
 #[test]
 fn projection_store_preserves_section_parent_provenance() {
-    let db = MemDb::open_in_memory();
+    let db = GuideDb::open_in_memory();
     let input = DocumentProjectionStoreInputV1 {
         parent_doc_id: "doc:parent".into(),
         source_content_hash: "sha256:source".into(),
@@ -350,7 +350,7 @@ fn projection_store_preserves_section_parent_provenance() {
     let conn = db.lock();
     let (parent_doc_id, anchor_id, collapsed_to_parent): (String, String, Option<String>) = conn
         .query_row(
-            "SELECT parent_doc_id, anchor_id, collapsed_to_parent FROM doc_projections WHERE kind='section' AND anchor_id='sec:child:1'",
+            "SELECT parent_doc_id, anchor_id, collapsed_to_parent FROM guide_doc_projections WHERE kind='section' AND anchor_id='sec:child:1'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )

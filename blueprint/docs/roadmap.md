@@ -11,7 +11,7 @@ multi-channel publication remain in progress.
 |---|---|---|
 | N-2 store migration + repair | D50 | ✅ |
 | Performance envelopes (small / medium / large) | D50 | ✅ |
-| Cross-platform path compatibility (macOS, Linux, Windows) | D50 | ✅ |
+| Path compatibility checks (Mac release target) | D50 | ✅ |
 | Hostile-repository security suite | D51 | ✅ |
 | Plugin trust boundary (no escalation) | D51 | ✅ |
 | Deterministic soak + fault injection | D52 | ✅ |

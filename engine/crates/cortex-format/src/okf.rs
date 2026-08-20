@@ -57,26 +57,10 @@ pub struct OkfBundle {
     pub graph: BTreeMap<String, Vec<OkfLink>>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct OkfEmitOptions {
-    pub compress: bool,
-    pub rate: f32,
-}
-
-impl Default for OkfEmitOptions {
-    fn default() -> Self {
-        Self {
-            compress: false,
-            rate: 0.5,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OkfBundleStats {
     pub out_dir: PathBuf,
     pub files: usize,
-    pub compressed: bool,
 }
 
 pub fn parse_bundle(dir: impl AsRef<Path>) -> Result<OkfBundle, OkfError> {
@@ -128,7 +112,6 @@ pub fn parse_bundle(dir: impl AsRef<Path>) -> Result<OkfBundle, OkfError> {
 pub fn emit_bundle(
     out_dir: impl AsRef<Path>,
     concepts: &[OkfConcept],
-    options: OkfEmitOptions,
 ) -> Result<OkfBundleStats, OkfError> {
     let out_dir = out_dir.as_ref();
     fs::create_dir_all(out_dir).map_err(|err| io_error(out_dir, err))?;
@@ -136,7 +119,7 @@ pub fn emit_bundle(
     for concept in concepts {
         validate_concept_name(&concept.name)?;
         let path = out_dir.join(format!("{}.md", concept.name));
-        let content = render_concept(concept, &path, options)?;
+        let content = render_concept(concept, &path)?;
         fs::write(&path, content).map_err(|err| io_error(&path, err))?;
     }
 
@@ -146,43 +129,9 @@ pub fn emit_bundle(
     Ok(OkfBundleStats {
         out_dir: out_dir.to_path_buf(),
         files: concepts.len() + 1,
-        compressed: options.compress,
     })
 }
 
-pub fn compress_prose(text: &str, rate: f32) -> String {
-    let rate = rate.clamp(0.0, 1.0);
-    if rate >= 0.999 {
-        return text.to_string();
-    }
-
-    let lines = text.split('\n').collect::<Vec<_>>();
-    let mut out = Vec::with_capacity(lines.len());
-    let mut in_frontmatter = lines.first().is_some_and(|line| line.trim() == "---");
-    let mut in_fence = false;
-
-    for (idx, line) in lines.iter().enumerate() {
-        let fence_line = line.trim_start().starts_with("```");
-        let preserve = in_frontmatter || in_fence || fence_line || line_is_structural(line);
-
-        if preserve {
-            out.push((*line).to_string());
-        } else {
-            out.push(compress_prose_line(line, rate));
-        }
-
-        if in_frontmatter && idx > 0 && line.trim() == "---" {
-            in_frontmatter = false;
-            continue;
-        }
-
-        if fence_line && !in_frontmatter {
-            in_fence = !in_fence;
-        }
-    }
-
-    out.join("\n")
-}
 
 fn parse_markdown_concept(path: &Path) -> Result<OkfConcept, OkfError> {
     let content = fs::read_to_string(path).map_err(|err| io_error(path, err))?;
@@ -350,17 +299,12 @@ fn split_related_section(body: &str) -> (String, Vec<OkfLink>) {
 fn render_concept(
     concept: &OkfConcept,
     path: &Path,
-    options: OkfEmitOptions,
 ) -> Result<String, OkfError> {
     if concept.kind.trim().is_empty() {
         return Err(OkfError::MissingType(path.to_path_buf()));
     }
 
-    let body = if options.compress {
-        compress_prose(&concept.body, options.rate)
-    } else {
-        concept.body.clone()
-    };
+    let body = concept.body.clone();
 
     let mut out = String::new();
     out.push_str(&render_frontmatter(concept));
@@ -476,137 +420,6 @@ fn extract_markdown_links(text: &str) -> Vec<OkfLink> {
     links
 }
 
-fn line_is_structural(line: &str) -> bool {
-    line.trim().is_empty()
-        || line.starts_with('#')
-        || line.starts_with('|')
-        || line.starts_with('>')
-        || line.starts_with("    ")
-        || line.starts_with('\t')
-        || line.starts_with("- [")
-        || line.starts_with("* [")
-        || line.starts_with("---")
-}
-
-fn compress_prose_line(line: &str, rate: f32) -> String {
-    let mut out = String::new();
-    let mut prose = String::new();
-    let mut index = 0;
-
-    while index < line.len() {
-        if let Some((end, span)) = protected_span_at(line, index) {
-            out.push_str(&compress_run(&prose, rate));
-            prose.clear();
-            out.push_str(span);
-            index = end;
-            continue;
-        }
-
-        let ch = line[index..].chars().next().expect("valid char boundary");
-        prose.push(ch);
-        index += ch.len_utf8();
-    }
-
-    out.push_str(&compress_run(&prose, rate));
-    out
-}
-
-#[allow(clippy::manual_strip)]
-fn protected_span_at(line: &str, start: usize) -> Option<(usize, &str)> {
-    let rest = &line[start..];
-
-    if rest.starts_with('`') {
-        if let Some(end_rel) = rest[1..].find('`') {
-            let end = start + end_rel + 2;
-            return Some((end, &line[start..end]));
-        }
-    }
-
-    if rest.starts_with('[') {
-        if let Some(link) = markdown_link_at(line, start) {
-            return Some(link);
-        }
-    }
-
-    if rest.starts_with("http://") || rest.starts_with("https://") {
-        let end = start + rest.find(char::is_whitespace).unwrap_or(rest.len());
-        return Some((end, &line[start..end]));
-    }
-
-    let ch = rest.chars().next()?;
-    if ch.is_whitespace() {
-        return None;
-    }
-
-    let end = start + rest.find(char::is_whitespace).unwrap_or(rest.len());
-    let token = &line[start..end];
-    if is_source_span(token) {
-        return Some((end, token));
-    }
-
-    None
-}
-
-fn markdown_link_at(line: &str, start: usize) -> Option<(usize, &str)> {
-    let rest = &line[start..];
-    let close = start + 1 + rest[1..].find(']')?;
-    if !line[close + 1..].starts_with('(') {
-        return None;
-    }
-    let target_start = close + 2;
-    let target_end = target_start + line[target_start..].find(')')?;
-    Some((target_end + 1, &line[start..target_end + 1]))
-}
-
-fn is_source_span(token: &str) -> bool {
-    let token =
-        token.trim_matches(|ch: char| matches!(ch, ',' | ';' | '.' | ')' | '(' | '"' | '\'' | ']'));
-    let lower = token.to_ascii_lowercase();
-    if has_path_line_suffix(&lower) {
-        return true;
-    }
-
-    const EXTENSIONS: &[&str] = &[
-        ".rs", ".py", ".ts", ".tsx", ".js", ".mjs", ".md", ".json", ".toml", ".yaml", ".yml",
-        ".sh", ".rb", ".go", ".java", ".cpp", ".hpp", ".h", ".c",
-    ];
-    EXTENSIONS
-        .iter()
-        .any(|extension| lower.ends_with(extension))
-}
-
-fn has_path_line_suffix(token: &str) -> bool {
-    let Some(colon) = token.rfind(':') else {
-        return false;
-    };
-    !token[colon + 1..].is_empty()
-        && token[colon + 1..].chars().all(|ch| ch.is_ascii_digit())
-        && token[..colon].contains('.')
-}
-
-fn compress_run(run: &str, rate: f32) -> String {
-    let words = run.split_whitespace().collect::<Vec<_>>();
-    if words.len() < 8 {
-        return run.to_string();
-    }
-
-    let leading = run.len() - run.trim_start_matches(char::is_whitespace).len();
-    let trailing = run.len() - run.trim_end_matches(char::is_whitespace).len();
-    let keep = ((words.len() as f32) * rate).ceil().max(1.0) as usize;
-    let compressed = words
-        .iter()
-        .take(keep.min(words.len()))
-        .copied()
-        .collect::<Vec<_>>()
-        .join(" ");
-
-    format!(
-        "{}{}{}",
-        &run[..leading],
-        compressed,
-        &run[run.len() - trailing..]
-    )
-}
 
 fn validate_concept_name(name: &str) -> Result<(), OkfError> {
     if name.trim().is_empty()
@@ -655,7 +468,6 @@ mod tests {
         let stats = emit_bundle(
             dir.path(),
             &[overview.clone(), details.clone()],
-            OkfEmitOptions::default(),
         )
         .unwrap();
         assert_eq!(stats.files, 3);
@@ -699,32 +511,5 @@ mod tests {
         assert!(matches!(err, OkfError::MissingType(path) if path.ends_with("missing-type.md")));
     }
 
-    #[test]
-    fn okf_compression_preserves_markdown_structure_and_source_spans() {
-        let input = r#"---
-type: guide
-description: This frontmatter sentence should remain completely unchanged even though it is long.
----
-# Heading
 
-This prose sentence has several compressible words around `inline code`, [a link](target.md), src/lib.rs:42, and https://example.com/path.
-
-```rust
-fn main() {
-    println!("keep code");
-}
-```
-"#;
-
-        let compressed = compress_prose(input, 0.35);
-
-        assert!(compressed.contains("description: This frontmatter sentence should remain completely unchanged even though it is long."));
-        assert!(compressed.contains("# Heading"));
-        assert!(compressed.contains("`inline code`"));
-        assert!(compressed.contains("[a link](target.md)"));
-        assert!(compressed.contains("src/lib.rs:42"));
-        assert!(compressed.contains("https://example.com/path"));
-        assert!(compressed.contains("println!(\"keep code\");"));
-        assert!(compressed.len() < input.len());
-    }
 }

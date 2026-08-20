@@ -22,6 +22,7 @@ for line in iter(sys.stdin.readline, ''):
     ccs = {
         "schemaVersion": 1,
         "traceId": "rc-fed-fixture",
+        "indexedAt": "2026-07-26T00:00:00Z",
         "task": req.get("task", ""),
         "mode": "verify",
         "provider": "federated",
@@ -52,9 +53,9 @@ static TEST_SLOT: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn with_fixture_env<T>(script: &Path, run: impl FnOnce() -> T) -> T {
     let _serialized = TEST_SLOT.lock().unwrap_or_else(|error| error.into_inner());
-    std::env::set_var("CORTEX_FEDERATION_SCRIPT", script);
+    std::env::set_var("MEMBRANE_FEDERATION_SCRIPT", script);
     let result = run();
-    std::env::remove_var("CORTEX_FEDERATION_SCRIPT");
+    std::env::remove_var("MEMBRANE_FEDERATION_SCRIPT");
     result
 }
 
@@ -62,7 +63,7 @@ fn with_fixture_env<T>(script: &Path, run: impl FnOnce() -> T) -> T {
 fn federate_route_returns_envelope_with_transport_telemetry() {
     let dir = tempfile::tempdir().unwrap();
     let script = fixture_worker(dir.path());
-    let store = cortex::MemoryStore::new();
+    let store = membrane_runtime::MemoryStore::new();
     let body = serde_json::json!({
         "task": "route probe",
         "repo": dir.path(),
@@ -72,7 +73,7 @@ fn federate_route_returns_envelope_with_transport_telemetry() {
     .to_string();
 
     let (status, payload) = with_fixture_env(&script, || {
-        cortex::serve::route_for_tests(&store, "POST", "/federate", &body)
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/federate", &body)
     });
 
     assert_eq!(status, 200, "{payload}");
@@ -91,7 +92,7 @@ fn federate_route_returns_envelope_with_transport_telemetry() {
 fn federate_route_second_call_reuses_the_worker() {
     let dir = tempfile::tempdir().unwrap();
     let script = fixture_worker(dir.path());
-    let store = cortex::MemoryStore::new();
+    let store = membrane_runtime::MemoryStore::new();
     let body = serde_json::json!({
         "task": "warm reuse",
         "repo": dir.path(),
@@ -100,8 +101,8 @@ fn federate_route_second_call_reuses_the_worker() {
     .to_string();
 
     let (first, second) = with_fixture_env(&script, || {
-        let first = cortex::serve::route_for_tests(&store, "POST", "/federate", &body);
-        let second = cortex::serve::route_for_tests(&store, "POST", "/federate", &body);
+        let first = membrane_runtime::serve::route_for_tests(&store, "POST", "/federate", &body);
+        let second = membrane_runtime::serve::route_for_tests(&store, "POST", "/federate", &body);
         (first, second)
     });
 
@@ -121,8 +122,8 @@ fn federate_route_second_call_reuses_the_worker() {
 
 #[test]
 fn federate_route_missing_fields_are_400_and_dead_worker_is_502() {
-    let store = cortex::MemoryStore::new();
-    let (status, _) = cortex::serve::route_for_tests(&store, "POST", "/federate", "{}");
+    let store = membrane_runtime::MemoryStore::new();
+    let (status, _) = membrane_runtime::serve::route_for_tests(&store, "POST", "/federate", "{}");
     assert_eq!(status, 400);
 
     let dir = tempfile::tempdir().unwrap();
@@ -135,7 +136,7 @@ fn federate_route_missing_fields_are_400_and_dead_worker_is_502() {
     })
     .to_string();
     let (status, payload) = with_fixture_env(&script, || {
-        cortex::serve::route_for_tests(&store, "POST", "/federate", &body)
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/federate", &body)
     });
     assert_eq!(status, 502, "{payload}");
     assert!(payload.contains("resident federation failed"), "{payload}");

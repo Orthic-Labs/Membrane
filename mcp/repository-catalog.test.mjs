@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, realpath, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { buildRepositoryCatalog, catalogDigest, enrollRepositoryCatalog, hasExplicitChildGrant } from "./repository-catalog.mjs";
+import { buildRepositoryCatalog, catalogDigest, discoverRepositoryRoots, enrollRepositoryCatalog, hasExplicitChildGrant } from "./repository-catalog.mjs";
 import { readRegistry } from "./project-registry.mjs";
 
 // MBR-015: the unit tests below run against a SYNTHETIC fixture workspace so a
@@ -29,21 +29,34 @@ test("catalog discovers the workspace root plus every child repository (fixture,
   const catalog = await buildRepositoryCatalog(root);
   assert.equal(catalog.schema, "membrane.repository-catalog.v1");
   assert.equal(catalog.repositories.length, EXPECTED_TOTAL);
-  assert.equal(catalog.repositories.filter((entry) => entry.role === "workspace-root").length, 1);
-  assert.equal(catalog.repositories.filter((entry) => entry.role === "child-repository").length, CHILDREN.length);
+  assert.equal(catalog.repositories.filter((entry) => entry.repoId === catalog.workspace_id).length, 1);
+  assert.equal(catalog.repositories.filter((entry) => entry.repoId !== catalog.workspace_id).length, CHILDREN.length);
   assert.equal(catalog.catalog_digest, catalogDigest(catalog));
-  assert.equal(new Set(catalog.repositories.map((entry) => entry.repository_id)).size, EXPECTED_TOTAL);
-  assert.equal(new Set(catalog.repositories.map((entry) => entry.scope_id)).size, EXPECTED_TOTAL);
+  assert.equal(new Set(catalog.repositories.map((entry) => entry.repoId)).size, EXPECTED_TOTAL);
+  for (const entry of catalog.repositories) {
+    assert.equal(entry.origin, null, "repository origin is Blueprint-owned and unavailable here");
+    assert.equal(entry.sourceCommit, null, "repository HEAD is Blueprint-owned and unavailable here");
+    assert.equal(entry.identityStatus, "unknown");
+    assert.equal(entry.identityReason, "blueprint_repository_identity_unavailable");
+  }
+  for (const entry of catalog.repositories) for (const key of ["repository_id", "scope_id", "root", "role", "blueprint_graph", "grants"]) assert.equal(Object.hasOwn(entry, key), false, `retired catalog key: ${key}`);
+  await cleanup();
+});
+test("catalog ignores .gitmodules paths without a live Git repository", async () => {
+  const { root, cleanup } = await fixtureWorkspace([]);
+  await writeFile(join(root, ".gitmodules"), "[submodule \"phantom\"]\n\tpath = phantom\n", "utf8");
+  const discovered = await discoverRepositoryRoots(root);
+  assert.deepEqual(discovered.map(({ relativeRoot }) => relativeRoot), ["."]);
   await cleanup();
 });
 test("child graph access requires an explicit root grant (fixture)", async () => {
   const { root, cleanup } = await fixtureWorkspace(CHILDREN);
   const catalog = await buildRepositoryCatalog(root);
-  const rootEntry = catalog.repositories.find((entry) => entry.role === "workspace-root");
-  const child = catalog.repositories.find((entry) => entry.role === "child-repository");
-  assert.equal(hasExplicitChildGrant(catalog, rootEntry.repository_id, child.repository_id), false);
-  assert.equal(hasExplicitChildGrant(catalog, rootEntry.repository_id, child.repository_id, [child.repository_id]), true);
-  assert.equal(hasExplicitChildGrant(catalog, child.repository_id, rootEntry.repository_id, [child.repository_id]), false);
+  const rootEntry = catalog.repositories.find((entry) => entry.repoId === catalog.workspace_id);
+  const child = catalog.repositories.find((entry) => entry.repoId !== catalog.workspace_id);
+  assert.equal(hasExplicitChildGrant(catalog, rootEntry.repoId, child.repoId), false);
+  assert.equal(hasExplicitChildGrant(catalog, rootEntry.repoId, child.repoId, [child.repoId]), true);
+  assert.equal(hasExplicitChildGrant(catalog, child.repoId, rootEntry.repoId, [child.repoId]), false);
   await cleanup();
 });
 
@@ -54,9 +67,9 @@ test("catalog enrollment binds every repository to one digest without implicit c
   const result = await enrollRepositoryCatalog(root, { registryPath: registry, dryRun: true });
   assert.equal(result.bindings.length, EXPECTED_TOTAL);
   assert.ok(result.bindings.every((binding) => binding.repository_catalog_digest === result.catalog.catalog_digest));
-  const rootId = result.catalog.repositories.find((entry) => entry.role === "workspace-root").repository_id;
+  const rootId = result.catalog.repositories.find((entry) => entry.repoId === result.catalog.workspace_id).repoId;
   assert.deepEqual(result.bindings.find((binding) => binding.repository_id === rootId).grant_policy.child_repository_ids, []);
-  const applied = await enrollRepositoryCatalog(root, { registryPath: registry, childGrants: result.catalog.repositories.filter((entry) => entry.role === "child-repository").map((entry) => entry.repository_id) });
+  const applied = await enrollRepositoryCatalog(root, { registryPath: registry, childGrants: result.catalog.repositories.filter((entry) => entry.repoId !== result.catalog.workspace_id).map((entry) => entry.repoId) });
   const stored = await readRegistry(registry);
   assert.equal(applied.bindings.length, EXPECTED_TOTAL);
   assert.equal(Object.keys(stored.bindings).length, EXPECTED_TOTAL);
@@ -75,8 +88,8 @@ test("catalog enrollment binds every repository to one digest without implicit c
 test("ambient workspace discovery is sibling-independent and reports the real count when present", async () => {
   const ambient = await realpath(new URL("../../", import.meta.url));
   const catalog = await buildRepositoryCatalog(ambient);
-  const childCount = catalog.repositories.filter((entry) => entry.role === "child-repository").length;
-  assert.equal(catalog.repositories.filter((entry) => entry.role === "workspace-root").length, 1);
+  const childCount = catalog.repositories.filter((entry) => entry.repoId !== catalog.workspace_id).length;
+  assert.equal(catalog.repositories.filter((entry) => entry.repoId === catalog.workspace_id).length, 1);
   if (childCount >= 20) {
     // Full workspace present: 21 repos total (20 children + workspace root).
     assert.equal(catalog.repositories.length, 21);
@@ -85,6 +98,6 @@ test("ambient workspace discovery is sibling-independent and reports the real co
     // Clean checkout of Membrane alone: only this repo is discoverable, and the
     // catalog must still be self-consistent (stable digest, unique identities).
     assert.equal(catalog.catalog_digest, catalogDigest(catalog));
-    assert.equal(new Set(catalog.repositories.map((entry) => entry.repository_id)).size, catalog.repositories.length);
+    assert.equal(new Set(catalog.repositories.map((entry) => entry.repoId)).size, catalog.repositories.length);
   }
 });

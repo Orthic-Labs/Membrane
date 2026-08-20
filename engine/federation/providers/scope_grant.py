@@ -1,116 +1,56 @@
-"""ScopeGrant lookup — reads from the central context catalog.
+"""ScopeGrant boundary for the Membrane federation gateway.
 
-The catalog is a separate SQLite file at `<context-home>/catalog.db`. The
-Rust `cortex` service owns the authoritative grant store; this module
-reads from the same store via a small SQL helper.
-
-The gateway treats cross-root evidence as conditional on an active grant;
-ungranted cross-root candidates are filtered out before they reach the
-planner (which would reject them anyway with `cross_root`).
+Blueprint owns repository truth, Cortex owns durable knowledge, and the
+Membrane resident service owns grant storage, lifecycle, and transport. This
+adapter therefore accepts a service-owned lookup callback and only performs
+request-context validation; it never opens either subsystem's storage.
 """
 from __future__ import annotations
 
-import os
-import sqlite3
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 
-class CatalogPathError(ValueError):
-    """Typed pre-I/O rejection for ambiguous catalog bindings."""
+GrantLookup = Callable[[Path, str], Mapping[str, Any] | None]
 
 
-def _absolute(binding: str, value: str | None) -> Path | None:
-    if not value:
-        return None
-    path = Path(value)
-    if not path.is_absolute():
-        raise CatalogPathError(
-            f"catalog path binding {binding} must be absolute: {value}"
-        )
-    return path
+def lookup(
+    repo_root: Path,
+    grant_id: str,
+    *,
+    transport: GrantLookup | None = None,
+) -> dict[str, Any] | None:
+    """Ask the Membrane service adapter for one grant.
 
-
-def _catalog_path() -> Path:
-    explicit = _absolute(
-        "MEMBRANE_CATALOG", os.environ.get("MEMBRANE_CATALOG")
-    )
-    if explicit:
-        return explicit
-    context_home = _absolute("CONTEXT_HOME", os.environ.get("CONTEXT_HOME"))
-    if context_home:
-        return context_home / "catalog.db"
-    cortex_db = _absolute("CORTEX_DB", os.environ.get("CORTEX_DB"))
-    if cortex_db:
-        return cortex_db.parent / "catalog.db"
-    workspace = _absolute("WORKSPACE_ROOT", os.environ.get("WORKSPACE_ROOT"))
-    if workspace:
-        return workspace / "tools" / ".cache" / "memory" / "catalog.db"
-    raise CatalogPathError(
-        "catalog path is unbound: set MEMBRANE_CATALOG, CONTEXT_HOME, "
-        "CORTEX_DB, or WORKSPACE_ROOT"
-    )
-
-
-def lookup(repo_root: Path, grant_id: str) -> dict | None:
-    """Return the grant row if active; None if missing, expired, or revoked.
-
-    The grant row carries ALL the binding fields needed for client-side
-    validation: client, task_id, session_id, manifest_digest,
-    repository_ids. Callers must call `validate(grant, request_context)`
-    before trusting the grant to authorise cross-root evidence.
+    Transport is deliberately injected by the service owner. Without an
+    owner-provided transport, lookup fails closed and performs no I/O.
     """
-    path = _catalog_path()
-    if not path.exists():
+    if transport is None:
         return None
-    conn = None
-    try:
-        conn = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)
-        row = conn.execute(
-            "SELECT id, client, status, expires_at_unix, repository_ids, "
-            "task_id, session_id, manifest_digest, nonce "
-            "FROM scope_grants WHERE id = ?",
-            (grant_id,),
-        ).fetchone()
-    except sqlite3.Error:
+    grant = transport(repo_root, grant_id)
+    if grant is None:
         return None
-    finally:
-        if conn is not None:
-            conn.close()
-    if not row:
-        return None
-    (grant_id_v, client, status, expires_at_unix, repository_ids_csv,
-     task_id, session_id, manifest_digest, nonce) = row
-    import time
-    if status != "active" or expires_at_unix < int(time.time()):
-        return None
-    return {
-        "id": grant_id_v,
-        "client": client,
-        "status": status,
-        "expiresAtUnix": expires_at_unix,
-        "repositoryIds": [s for s in (repository_ids_csv or "").split(",") if s],
-        "taskId": task_id,
-        "sessionId": session_id,
-        "manifestDigest": manifest_digest,
-        "nonce": nonce,
-    }
+    if not isinstance(grant, Mapping):
+        raise TypeError("scope grant transport returned a non-object")
+    return dict(grant)
 
 
-def validate(grant: dict, *, request_client: str, request_repo_root: Path,
-            request_task: str, request_session: str,
-            request_manifest_digest: str | None = None) -> None:
-    """Fail-closed validation: throw PermissionError if the grant does
-    not bind to the exact request context.
+def validate(
+    grant: Mapping[str, Any],
+    *,
+    request_client: str,
+    request_repo_root: Path,
+    request_task: str,
+    request_session: str,
+    request_manifest_digest: str | None = None,
+) -> None:
+    """Fail-closed validation against the exact request context.
 
-    Per dispatch §G1 trust contract:
-    - `client` must match the requesting client identity.
-    - `task_id` must match the requesting task string.
-    - `session_id` must match the requesting session string.
-    - At least one entry in `repositoryIds` must equal the resolved
-      repo-root path (after canonicalisation).
-    - When `manifestDigest` is supplied by the request, the grant's
-      stored `manifestDigest` must match.
-    - `nonce` must be present (defence-in-depth).
+    Service transport owns grant status and expiry. This function validates
+    only immutable request bindings required by federation, including the
+    canonical ``repositoryRoot`` field; ``repositoryIds`` are identifiers,
+    not filesystem-path aliases.
     """
     if not grant.get("nonce"):
         raise PermissionError(
@@ -128,11 +68,19 @@ def validate(grant: dict, *, request_client: str, request_repo_root: Path,
         raise PermissionError(
             f"scope_grant_invalid: session_id={grant.get('sessionId')!r} != request={request_session!r}"
         )
-    repo_root_canon = str(request_repo_root.resolve())
-    bound_repos = grant.get("repositoryIds") or []
-    if not any(str(Path(p).resolve()) == repo_root_canon for p in bound_repos):
+    repository_root = grant.get("repositoryRoot")
+    if not isinstance(repository_root, str) or not repository_root:
         raise PermissionError(
-            f"scope_grant_invalid: repository_root={repo_root_canon!r} not in {bound_repos!r}"
+            f"scope_grant_invalid: {grant.get('id')!r} has no repositoryRoot"
+        )
+    if not Path(repository_root).is_absolute():
+        raise PermissionError(
+            f"scope_grant_invalid: repositoryRoot must be absolute: {repository_root!r}"
+        )
+    repo_root_canon = str(request_repo_root.resolve())
+    if str(Path(repository_root).resolve()) != repo_root_canon:
+        raise PermissionError(
+            f"scope_grant_invalid: repository_root={repo_root_canon!r} != grant={repository_root!r}"
         )
     if request_manifest_digest is not None:
         if grant.get("manifestDigest") != request_manifest_digest:

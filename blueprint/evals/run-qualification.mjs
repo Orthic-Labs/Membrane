@@ -1348,6 +1348,7 @@ function candidateFromSnapshot(snapshot) {
   return {
     schemaVersion: 1,
     traceId: "11111111-1111-4111-8111-111111111111",
+    indexedAt: new Date().toISOString(),
     task: "Resolve exact provider evidence",
     mode: "verify",
     provider: "blueprint",

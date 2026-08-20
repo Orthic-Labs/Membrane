@@ -2,10 +2,10 @@
 //! `contradicted` vetoes the entry, a cited verdict without a ref is rejected fail-closed, and the
 //! upsert is idempotent by `(trace_id, candidate_id)`.
 
-use cortex::context_telemetry::{parse_context_event, ContextEventBatch};
-use cortex::feedback::{FeedbackRecord, FeedbackSource};
-use cortex::memdb::MemDb;
-use cortex::store::{MemoryEventContext, MemoryStore};
+use membrane_runtime::context_telemetry::{parse_context_event, ContextEventBatch};
+use membrane_runtime::feedback::{FeedbackRecord, FeedbackSource};
+use membrane_runtime::memdb::MemDb;
+use membrane_runtime::store::{MemoryEventContext, MemoryStore};
 use cortex_core::{EffectivenessGate, Outcome};
 use sha2::{Digest, Sha256};
 

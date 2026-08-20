@@ -2182,7 +2182,6 @@ async function runGraphCommand(root, outDir, subcommand, args) {
     const query = String(args.query ?? args.task ?? args._.join(" ")).trim();
     const candidateSet = withFreshIndexedGraph(root, outDir, { expectedGeneration: args["expected-generation"], allowStale: Boolean(args["allow-stale"]) }, ({ db, meta }) => {
       const anchors = args.anchors ? String(args.anchors).split(",").map((path) => path.trim()).filter(Boolean) : [];
-      const repoCodeScanStarted = process.hrtime.bigint();
       const circuit = executeRecallCircuit(db, String(args.task ?? query), {
         generationId: meta.manifest.generationId,
         anchors,
@@ -2195,10 +2194,10 @@ async function runGraphCommand(root, outDir, subcommand, args) {
         repoId: args["repo-id"] ?? repositoryIdentity(root).repoId,
         repoRoot: root,
         receiptId: freshnessReceipt?.receiptId ?? null,
+        indexedAt: meta.manifest.generatedAt,
+        canonical: true,
       });
-      const repoCodeScanMs = Number(process.hrtime.bigint() - repoCodeScanStarted) / 1_000_000;
-      result._diagnostics = { stageElapsedMs: { repo_code_scan: Math.max(0, repoCodeScanMs) } };
-      return attach(result);
+      return result;
     });
     console.log(JSON.stringify(candidateSet, null, 2));
     return 0;
@@ -2561,6 +2560,8 @@ function recallPayload(root, outDir, args = {}) {
       ...identity,
       repoRoot: root,
       receiptId: args.freshnessReceipt?.receiptId ?? null,
+      indexedAt: meta.manifest.generatedAt,
+      canonical: true,
     });
   });
   const flows = Array.isArray(flowInventory.flows) ? flowInventory.flows : [];
@@ -2625,6 +2626,7 @@ function plannerProbeCandidateSet() {
   return {
     schemaVersion: 1,
     traceId: "blueprint-planner-probe",
+    indexedAt: "1970-01-01T00:00:00.000Z",
     task: "blueprint planner probe",
     mode: "survey",
     provider: "blueprint-static",

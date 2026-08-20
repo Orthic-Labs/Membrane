@@ -54,9 +54,11 @@ function grammarManifestDigest() {
 }
 
 export function buildCandidate({ out = null, platform = null, version = null, allowDirty = false, gitRoot = ROOT } = {}) {
+  if (process.platform !== "darwin") throw new Error("Blueprint release qualification currently targets macOS only");
   if (!allowDirty && isDirty(gitRoot)) throw new Error("release candidate requires a clean working tree (or pass --allow-dirty for dispatch verification)");
   if (version && version.replace(/^v/, "") !== pkg.version) throw new Error(`workflow version ${version} does not match package.json ${pkg.version}`);
   const targetPlatform = !platform || platform === "current" ? `${process.platform}-${process.arch}` : platform;
+  if (!targetPlatform.startsWith("darwin-")) throw new Error("Blueprint release candidates currently target macOS only");
   const outDir = out ?? join(ROOT, "release", "candidates", targetPlatform);
   let ancestor = resolve(outDir);
   while (!existsSync(ancestor)) { const parent = dirname(ancestor); if (parent === ancestor) throw new Error("unsafe candidate output"); ancestor = parent; }

@@ -9,7 +9,7 @@
 
 Node Single Executable Application packaging is **deferred** for the 1.0
 release. The 1.0 release uses the portable runtime bundle shipped by
-`scripts/release/stage-runtime.mjs` plus signed native installers (.pkg, .exe).
+`scripts/release/stage-runtime.mjs` plus signed native `.pkg` installer.
 
 ## What was measured
 
@@ -18,7 +18,7 @@ release. The 1.0 release uses the portable runtime bundle shipped by
   runtime peaks at ~110 MB on a fresh machine and the postinstall /
   uninstall flow becomes platform-specific.
 - The current portable runtime bundle (D14) is already zero-prerequisite
-  on macOS and Linux, and the per-user Windows installer (D18) is signed.
+  on macOS; future non-Mac targets require separate qualification.
   All three platforms already meet the runbook's "no system Node required"
   contract.
 
@@ -27,7 +27,7 @@ release. The 1.0 release uses the portable runtime bundle shipped by
 - A SEA build would be useful for sandboxed environments that disallow
   bundling a Node runtime (e.g. very locked-down base images).
 - A SEA build is also a prerequisite for moving the resident service to a
-  per-user launchd/Windows-Service executable that does not depend on the
+  per-user launchd executable that does not depend on the
   per-installation runtime bundle.
 - Neither is in scope for 1.0; both are recorded as a future option.
 

@@ -2,7 +2,7 @@
 //!
 //! `modes.rs` used to build `HubInputsV1::unavailable("source_not_connected")`
 //! unconditionally, so the popover showed "Offline" even while the local
-//! cortex-service was up and healthy. This module replaces that hardcoded
+//! Membrane resident was up and healthy. This module replaces that hardcoded
 //! facade with a real (best-effort) read of the local service's
 //! unauthenticated `GET /health` endpoint, mapped into the same
 //! `HubInputsV1` contract the facade already understands. Any failure to
@@ -19,7 +19,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const IO_TIMEOUT: Duration = Duration::from_millis(300);
 pub const DEFAULT_LOCAL_SERVICE_PORT: u16 = 47851;
 
-/// Best-effort live read of the local cortex-service's `/health` endpoint,
+/// Best-effort live read of local Membrane resident's `/health` endpoint,
 /// mapped into `HubInputsV1`. Returns `None` on any connection, I/O, or
 /// parse failure so the caller can fall back to the honest "unavailable"
 /// facade rather than show a fabricated state.
@@ -32,7 +32,7 @@ pub fn live_inputs_from_local_service() -> Option<HubInputsV1> {
 }
 
 fn local_service_port() -> Option<u16> {
-    local_service_port_from(std::env::var_os("CORTEX_PORT").as_deref())
+    local_service_port_from(std::env::var_os("MEMBRANE_PORT").as_deref())
 }
 
 fn local_service_port_from(canonical: Option<&std::ffi::OsStr>) -> Option<u16> {
@@ -104,7 +104,7 @@ fn inputs_from_health(
     let observed_at_unix_ms = now_unix_ms();
     let metadata = || HubMetadataV1 {
         resolver: Some("hub_inputs::live_inputs_from_local_service".into()),
-        source: Some("local_cortex_service".into()),
+        source: Some("local_membrane_resident".into()),
         evidence: Some("GET /health".into()),
         observed_at_unix_ms,
         cache_age_ms: 0,
@@ -150,7 +150,7 @@ fn inputs_from_health(
     };
 
     let providers_items = vec![
-        serde_json::json!({"service": "cortex-service", "ok": health["ok"]}),
+        serde_json::json!({"service": "membrane", "ok": health["ok"]}),
         serde_json::json!({"dailyAnalysis": daily_analysis_status}),
     ];
     let providers = if daily_analysis_ok {
@@ -204,20 +204,10 @@ fn inputs_from_health(
         cache_age_ms: 0,
     };
 
-    let repositories = match crate::sources_producer::build_sources_payload() {
-        Some(payload) => HubReadV1::Available {
-            items: vec![crate::sources_explorer::project_sources_explorer_json(
-                &payload,
-            )],
-            metadata: producer_metadata(
-                "hub_inputs::live_inputs_from_local_service",
-                "doc_artifacts",
-                "sqlite read of cortex-engine.db doc_artifacts",
-            ),
-        },
-        None => HubReadV1::Unavailable {
-            reason: "missing_input".into(),
-        },
+    // Guide's rebuildable index is not repository truth. Keep Hub's
+    // repositories surface closed until it consumes Blueprint's public seam.
+    let repositories = HubReadV1::Unavailable {
+        reason: "blueprint_seam_pending".into(),
     };
 
     let adapters = match crate::agent_adapter_producer::build_adapters_report() {
@@ -259,7 +249,7 @@ fn inputs_from_health(
                     metadata: producer_metadata(
                         "hub_inputs::live_inputs_from_local_service",
                         "memories",
-                        "sqlite read of cortex-engine.db memories/memory_quarantine/context_feedback/transform_opportunity_log",
+                        "sqlite read of cortex-engine.db memories/memory_quarantine/context_feedback",
                     ),
                 }
             }
@@ -347,7 +337,7 @@ mod tests {
         ));
         assert!(matches!(
             inputs.repositories,
-            HubReadV1::Unavailable { ref reason } if reason == "missing_input"
+            HubReadV1::Unavailable { ref reason } if reason == "blueprint_seam_pending"
         ));
         assert!(matches!(
             inputs.adapters,
@@ -516,23 +506,7 @@ mod tests {
         {
             let conn = rusqlite::Connection::open(&db_path).unwrap();
             conn.execute_batch(
-                "CREATE TABLE doc_artifacts (
-                    doc_id TEXT NOT NULL, repository_root TEXT NOT NULL, repository_id TEXT NOT NULL,
-                    revision TEXT NOT NULL, path TEXT NOT NULL, content_hash TEXT NOT NULL,
-                    parser_version TEXT NOT NULL, document_class TEXT NOT NULL,
-                    lifecycle_state TEXT NOT NULL DEFAULT 'active', trust_label TEXT NOT NULL,
-                    influence_class TEXT NOT NULL, sensitivity TEXT NOT NULL, generated INTEGER NOT NULL DEFAULT 0,
-                    index_generation INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL,
-                    title TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT '',
-                    keywords_json TEXT NOT NULL DEFAULT '[]', superseded_by TEXT
-                );
-                INSERT INTO doc_artifacts (doc_id, repository_root, repository_id, revision, path,
-                    content_hash, parser_version, document_class, lifecycle_state, trust_label,
-                    influence_class, sensitivity, index_generation, updated_at_ms, title, summary)
-                VALUES ('d1','/repo','repo-id','rev1','README.md','h1','v1','doc','active','trusted',
-                    'reference','public',3,1000,'Readme','A readme summary');
-
-                CREATE TABLE memory_identity (
+                r#"CREATE TABLE memory_identity (
                     memory_id TEXT PRIMARY KEY, artifact_id TEXT, origin_event_uid TEXT,
                     installation_id TEXT, client TEXT NOT NULL, session_id TEXT, turn_id TEXT,
                     trace_id TEXT, identity_status TEXT, created_at TEXT NOT NULL
@@ -551,14 +525,11 @@ mod tests {
                 );
                 INSERT INTO memories (id, lifecycle_state) VALUES ('m1','active');
                 CREATE TABLE memory_quarantine (id TEXT PRIMARY KEY);
-                CREATE TABLE transform_opportunity_log (
-                    opportunity_uid TEXT PRIMARY KEY, ts TEXT NOT NULL, outcome TEXT NOT NULL
-                );
                 CREATE TABLE context_feedback (
                     trace_id TEXT NOT NULL, candidate_id TEXT NOT NULL, outcome TEXT NOT NULL,
                     verified INTEGER NOT NULL, ts TEXT NOT NULL,
                     PRIMARY KEY (trace_id, candidate_id)
-                );",
+                );"#,
             )
             .unwrap();
         }
@@ -579,7 +550,10 @@ mod tests {
         }
         std::fs::remove_dir_all(&dir).ok();
 
-        assert!(matches!(inputs.repositories, HubReadV1::Available { .. }));
+        assert!(matches!(
+            inputs.repositories,
+            HubReadV1::Unavailable { ref reason } if reason == "blueprint_seam_pending"
+        ));
         assert!(matches!(inputs.adapters, HubReadV1::Available { .. }));
         assert!(matches!(inputs.sentinel, HubReadV1::Available { .. }));
     }

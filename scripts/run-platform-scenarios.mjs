@@ -9,7 +9,7 @@ import { runBenchmark } from "../mcp/e2e-benchmark.mjs";
 
 const SCENARIOS = [
   ["repository_orientation", "pwd"],
-  ["cross_repo_impact", "git submodule status membrane blueprint"],
+  ["cross_repo_impact", "git -C membrane rev-parse --show-toplevel && test ! -e membrane/.gitmodules && test -z \"$(git -C membrane ls-files -s | awk '$1 == 160000 { print $4 }')\""],
   ["preference_application", "rg -n 'Brief mode is a hard' AGENTS.md"],
   ["stale_graph_immediate_edit", "git status --short membrane"],
   ["contradiction", "git branch --show-current"],
@@ -27,12 +27,12 @@ const valueFor = (flag) => { const index = args.indexOf(flag); return index < 0 
 const has = (flag) => args.includes(flag);
 const workspaceRoot = resolve(valueFor("--workspace-root") || new URL("../../", import.meta.url).pathname);
 const evidenceRoot = resolve(valueFor("--evidence-root") || join(workspaceRoot, "tasks", "evidence", "membrane-competitor-parity-completion"));
-const platform = valueFor("--platform") || (process.platform === "win32" ? "windows" : "mac");
+const platform = valueFor("--platform") || "mac";
 const selected = valueFor("--scenario") ? SCENARIOS.filter(([name]) => name === valueFor("--scenario")) : SCENARIOS;
 const dbPath = process.env.MEMBRANE_EVENT_DB || join(workspaceRoot, "tools", ".cache", "memory", "cortex-engine.membrane-events.sqlite3");
 const memoryDb = process.env.CORTEX_DB || join(workspaceRoot, "tools", ".cache", "memory", "cortex-engine.db");
-const tokenPath = process.env.CORTEX_API_TOKEN_FILE || join(workspaceRoot, "tools", ".cache", "memory", "api-token");
-const cli = process.env.CORTEX_BIN || join(workspaceRoot, "tools", "bin", process.platform === "win32" ? "cortex.exe" : "cortex");
+const tokenPath = process.env.MEMBRANE_API_TOKEN_FILE || join(workspaceRoot, "tools", ".cache", "memory", "api-token");
+const cli = process.env.MEMBRANE_BIN || join(workspaceRoot, "tools", "bin", "membrane");
 
 function sha(value) { return createHash("sha256").update(value).digest("hex"); }
 function opaque(prefix, value, length = 64) { return `${prefix}-${sha(value).slice(0, length)}`; }
@@ -45,16 +45,16 @@ function atomicJson(path, value) {
 function fail(message) { throw new Error(message); }
 function command(commandName, commandArgs, timeout = 180_000, input) {
   return spawnSync(commandName, commandArgs, {
-    cwd: workspaceRoot, encoding: "utf8", timeout, windowsHide: true, input,
+    cwd: workspaceRoot, encoding: "utf8", timeout, input,
     env: {
       ...process.env,
       WORKSPACE_ROOT: workspaceRoot,
-      CORTEX_CLIENT: "claude_code",
+      MEMBRANE_CLIENT: "claude_code",
       MEMBRANE_POLICY_ENV_OVERRIDE: "1",
       MEMBRANE_CONTEXT_SOURCE: "smoke",
       MEMBRANE_MODE: "on",
       MEMBRANE_COHORTS: "off",
-      CORTEX_TELEMETRY_INGRESS: join(workspaceRoot, "tools", ".cache", "memory", "context-telemetry-ingress.jsonl"),
+      MEMBRANE_TELEMETRY_INGRESS: join(workspaceRoot, "tools", ".cache", "memory", "context-telemetry-ingress.jsonl"),
     },
   });
 }
@@ -137,10 +137,9 @@ async function runScenario(db, scenario, shellCommand) {
   const parsed = parseClaude(host.stdout);
   const output = String(parsed.result || "").trim();
   if (!output.startsWith(`branch=main scenario=${scenario} proof=`)) fail(`${scenario}: model output did not use required branch context`);
-  const python = process.platform === "win32" ? ["py", ["-3.11"]] : ["python3", []];
   const observer = command(
-    python[0],
-    [...python[1], join(workspaceRoot, "tools", "hooks", "tool_observer.py")],
+    "python3",
+    [join(workspaceRoot, "tools", "hooks", "membrane_host.py")],
     20_000,
     JSON.stringify({
       session_id: parsed.session_id,
@@ -155,7 +154,7 @@ async function runScenario(db, scenario, shellCommand) {
   const outcome = outcomeEvent(delivery, scenario);
   await postEvents([outcome]);
   const digest = /^[a-f0-9]{64}$/u.test(String(delivery.artifact_sha256 || "")) ? delivery.artifact_sha256 : "0".repeat(64);
-  const feedback = command(cli, ["--db", memoryDb, "feedback", "--trace", traceId, "--candidate", BRANCH_CANDIDATE, "--sha", digest, "--outcome", "used", "--source", "observed_action", "--scope", workspaceRoot], 20_000);
+  const feedback = command(cli, ["cli", "--db", memoryDb, "feedback", "--trace", traceId, "--candidate", BRANCH_CANDIDATE, "--sha", digest, "--outcome", "used", "--source", "observed_action", "--scope", workspaceRoot], 20_000);
   if (feedback.status !== 0) fail(`${scenario}: feedback failed: ${String(feedback.stderr).trim()}`);
   const eventRows = rows(db, "SELECT event_id,phase FROM context_event_log WHERE trace_id=? ORDER BY seq", traceId);
   const phases = new Set(eventRows.map((row) => row.phase));
@@ -168,12 +167,13 @@ async function runScenario(db, scenario, shellCommand) {
   return { scenario, trace_id: traceId, adapter: "claude_code", archive_path: archivePath, host_session_id: parsed.session_id || null, output_sha256: `sha256:${sha(output)}` };
 }
 
-if (!existsSync(dbPath) || !existsSync(tokenPath) || !existsSync(cli)) fail("platform scenario preflight failed");
+if (platform !== "mac") fail("platform scenarios are Mac-only");
 if (selected.length === 0) fail("unknown scenario");
 if (has("--dry-run")) {
   process.stdout.write(`${JSON.stringify({ schema: "membrane.platform-scenarios-plan.v1", platform, scenarios: selected.map(([name]) => name), mutations: 0 })}\n`);
   process.exit(0);
 }
+if (!existsSync(dbPath) || !existsSync(tokenPath) || !existsSync(cli)) fail("platform scenario preflight failed");
 const db = new DatabaseSync(dbPath);
 let traces;
 try {

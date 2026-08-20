@@ -11,7 +11,7 @@ test('MBR-508 store-side execution refuses to self-certify authority', () => {
   assert.match(source, /MissingAuthority/);
   assert.match(source, /authority_receipt_id\.trim\(\)\.is_empty\(\)/);
   // No verifier/verification logic lives in the execution module -- only the upstream
-  // planner (membrane_supervisor::maintenance) ever grants an authority_receipt_id.
+  // Membrane Hub's resident planner grants authority_receipt_id upstream.
   assert.doesNotMatch(source, /trait\s+\w*Verif/);
   assert.doesNotMatch(source, /fn\s+verify\(/);
 });

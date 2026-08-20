@@ -8,12 +8,9 @@
     "build": "node scripts/build-frontend.mjs",
     "test": "node --test tests/*.mjs",
     "rightkit:package:mac": "node scripts/build-mac-release.mjs",
-    "rightkit:prepackage:win": "node scripts/prepackage-windows.mjs",
-    "rightkit:package:win": "node scripts/build-windows-release.mjs",
     "runtime:inventory": "node scripts/runtime-inventory.mjs check",
     "release:doctor": "right-release doctor",
-    "release:build:mac": "right-release build --platform mac",
-    "release:build:win": "right-release build --platform win"
+    "release:build:mac": "right-release build --platform mac"
   },
   "dependencies": {
     "@rightkit/platform-ui": "0.1.0",

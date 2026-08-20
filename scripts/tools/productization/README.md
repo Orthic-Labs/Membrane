@@ -5,14 +5,14 @@ adds or modifies `.github/workflows/**` or any CI configuration; every entry is
 either a node script or a manual command runner.
 
 Membrane Hub is the sole runtime/build/release/install authority. These tools
-derive Membrane package, support, & product truth; they do not create an
-Orthic product manifest, add-on, installer, or compatibility lane.
+derive Membrane package, support, & product truth; they do not create a
+parallel manifest, add-on, installer, or compatibility lane.
 
 ## Entries in this directory
 
 | File | Owner task | Purpose |
 |---|---|---|
-| `generate-product-truth.mjs` | MBR-013 | Builds the canonical `schemas/registry/product-truth.json` artifact. |
+| `generate-product-truth.mjs` | MBR-013 | Builds canonical `schemas/registry/product-truth.json` plus generated product docs. |
 | `check-docs.mjs` | MBR-1001 | One-shot local gate that fails on stale generated docs or broken README links. |
 | `render-docs.mjs` | MBR-1001 | Renderers for the four generated product docs. |
 | `generate-client-matrix.mjs` | MBR-206 | Builds the MBR-206 client registry capabilities + support matrix. |
@@ -124,6 +124,16 @@ assert.equal(stableStringify(matrix), sameAgain);  // byte-stable
 - Every required envelope field is present (`id`, `displayName`,
   `transport`, `discoveryMethod`, `installCommand`, `honestLevel`,
   `authorityGrant`, `supportedOperations`, `schemaVersion`).
+
+## Product-boundary truth
+
+`docs/membrane/capability-matrix.v1.json` is the canonical capability input for
+the six axes (`pull`, `push`, `cortex`, `blueprint`, `guide`, `adapt`), current
+supported target (`macOS`), Cortex scope (`durable-memory-only`), and resident
+service authority (`hub`). `generate-product-truth.mjs` validates these
+declarations and renders them into `schemas/registry/product-truth.json`,
+`docs/product-truth.md`, and generated product docs. Drift or an incomplete
+declaration fails generation and `--check`.
 
 ## Book-mode note
 

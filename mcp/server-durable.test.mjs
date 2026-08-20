@@ -12,11 +12,10 @@ import { fileURLToPath } from "node:url";
 const server = fileURLToPath(new URL("./server.mjs", import.meta.url));
 const membraneRoot = fileURLToPath(new URL("../", import.meta.url));
 const engineRoot = fileURLToPath(new URL("../engine/", import.meta.url));
-const sourceCortex = join(engineRoot, "target", "debug", process.platform === "win32" ? "cortex.exe" : "cortex");
 
-async function currentCortex() {
-  if (process.env.CORTEX_TEST_BIN) return process.env.CORTEX_TEST_BIN;
-  const cargo = spawn("cargo", ["build", "--manifest-path", join(engineRoot, "Cargo.toml"), "--bin", "cortex", "--message-format=json-render-diagnostics"], {
+async function currentMembrane() {
+  if (process.env.MEMBRANE_TEST_BIN) return process.env.MEMBRANE_TEST_BIN;
+  const cargo = spawn("rightkit", ["cargo", "build", "--manifest-path", join(engineRoot, "Cargo.toml"), "--package", "membrane", "--bin", "membrane", "--message-format=json-render-diagnostics"], {
     cwd: membraneRoot,
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -26,25 +25,17 @@ async function currentCortex() {
   cargo.stdout.on("data", (chunk) => { stdout += chunk; });
   cargo.stderr.on("data", (chunk) => { stderr += chunk; });
   const [code] = await once(cargo, "close");
-  let builtCortex = null;
+  let builtMembrane = null;
   for (const line of stdout.split(/\r?\n/)) {
     try {
       const message = JSON.parse(line);
-      if (message.reason === "compiler-artifact" && message.target?.name === "cortex" && typeof message.executable === "string") builtCortex = message.executable;
+      if (message.reason === "compiler-artifact" && message.target?.name === "membrane" && typeof message.executable === "string") builtMembrane = message.executable;
     } catch { /* non-JSON Cargo output is irrelevant */ }
   }
-  if (code !== 0 || !builtCortex || !existsSync(builtCortex)) {
-    // The rebuild failed (e.g. RIGHT_RELEASE_CACHE_ROOT unset, or a broken shared build cache).
-    // Fall back to a previously built binary rather than failing outright — it is stale relative
-    // to source, but still a real Cortex build, so the test keeps exercising real behavior instead
-    // of going dark. Logged loudly so staleness is never silent.
-    if (existsSync(sourceCortex)) {
-      process.stderr.write(`server-durable.test.mjs: reusing stale Cortex build at ${sourceCortex} because rebuild failed: ${stderr}\n`);
-      return sourceCortex;
-    }
-    throw new Error(`current Cortex build failed: ${stderr}`);
+  if (code !== 0 || !builtMembrane || !existsSync(builtMembrane)) {
+    throw new Error(`current Membrane build failed: ${stderr}`);
   }
-  return builtCortex;
+  return builtMembrane;
 }
 
 async function rpc(messages, env) {
@@ -104,8 +95,17 @@ async function freePort() {
   });
 }
 
-async function startCortex(binary, db, port, env) {
-  const child = spawn(binary, ["--db", db, "serve", "--port", String(port)], { stdio: ["ignore", "ignore", "pipe"], windowsHide: true, env });
+async function startMembrane(binary, root, port, env) {
+  const child = spawn(binary, ["supervisor-child"], {
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true,
+    env: {
+      ...env,
+      MEMBRANE_PORT: String(port),
+      MEMBRANE_SERVICE_INSTANCE_ID: env.MEMBRANE_SERVICE_INSTANCE_ID || "test-service-instance",
+      WORKSPACE_ROOT: root,
+    },
+  });
   let stderr = "";
   child.stderr.on("data", (chunk) => { stderr += chunk; });
   for (let attempt = 0; attempt < 400; attempt += 1) {
@@ -116,10 +116,10 @@ async function startCortex(binary, db, port, env) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
   child.kill();
-  throw new Error(`isolated cortex service did not start: ${stderr}`);
+  throw new Error(`isolated membrane supervisor did not start: ${stderr}`);
 }
 
-async function stopCortex(child) {
+async function stopMembrane(child) {
   if (child.exitCode !== null || child.killed) return;
   child.kill();
   await Promise.race([once(child, "exit"), new Promise((resolve) => setTimeout(resolve, 1_000))]);
@@ -131,22 +131,38 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
   await mkdir(enrolled);
   const canonical = await realpath(enrolled);
   const registry = join(root, "registry.json");
-  const store = join(root, "cortex-engine.db");
-  const token = join(root, "api-token");
+  const tools = join(root, "tools");
+  const runtimeDirectory = join(tools, "lib", "memory");
+  const cacheDirectory = join(tools, ".cache", "memory");
+  const store = join(cacheDirectory, "cortex-engine.db");
+  const token = join(cacheDirectory, "api-token");
+  const port = await freePort();
+  await mkdir(join(tools, "bin"), { recursive: true });
+  await mkdir(runtimeDirectory, { recursive: true });
+  await mkdir(cacheDirectory, { recursive: true });
+  await writeFile(join(runtimeDirectory, "runtime.json"), JSON.stringify({
+    schemaVersion: 1,
+    serviceId: "membrane-local-v1",
+    host: "127.0.0.1",
+    port,
+    installationId: "test-installation",
+    serviceInstanceId: "test-service-instance",
+  }));
   await writeFile(registry, JSON.stringify({ schema_version: 1, bindings: { [canonical]: { repository_id: "repo-a", scope_id: "scope-a", provider_config: {}, grant_policy: { level: "write-proposed" } } } }));
   await writeFile(token, "test-token\n", { mode: 0o600 });
   const env = {
     ...process.env,
     MEMBRANE_PROJECT_REGISTRY: registry,
     CORTEX_DB: store,
-    CORTEX_API_TOKEN_FILE: token,
-    CORTEX_ALLOW_HASH: "1",
+    MEMBRANE_API_TOKEN_FILE: token,
+    MEMBRANE_INSTALLATION_ID: "test-installation",
+    MEMBRANE_SERVICE_INSTANCE_ID: "test-service-instance",
+    MEMBRANE_ALLOW_HASH: "1",
     WORKSPACE_ROOT: root,
   };
-  env.CORTEX_BIN = await currentCortex();
-  const port = await freePort();
-  env.CORTEX_PORT = String(port);
-  const resident = await startCortex(env.CORTEX_BIN, store, port, env);
+  const binary = await currentMembrane();
+  env.MEMBRANE_PORT = String(port);
+  const resident = await startMembrane(binary, root, port, env);
   let active = resident;
   const request = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
   const common = { repository: enrolled, caller: { root: enrolled, repositoryId: "repo-a", scopeId: "scope-a" } };
@@ -168,8 +184,8 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
     assert.equal(JSON.parse(lifecycleById[2].result.content[0].text).context.durable, true);
     assert.equal(JSON.parse(lifecycleById[3].result.content[0].text).fact.fact_id, "fact-a");
     assert.equal(JSON.parse(lifecycleById[4].result.content[0].text).scratchpad.items[0].note, "ephemeral");
-    await stopCortex(resident);
-    const restarted = await startCortex(env.CORTEX_BIN, store, port, env);
+    await stopMembrane(resident);
+    const restarted = await startMembrane(binary, root, port, env);
     active = restarted;
     const second = await rpc([
       request(6, "membrane_working_context", { ...common, operation: "load", sessionId: "session-a", taskId: "task-a", asOf: "2026-08-02T12:00:00Z" }),
@@ -203,7 +219,7 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
     assert.equal(citedFeedback.verified, true, "a resolvable cited verdict is verified and ranking-eligible");
     assert.ok(readFileSync(store).byteLength > 0);
   } finally {
-    await stopCortex(active);
+    await stopMembrane(active);
     await rm(root, { recursive: true, force: true });
   }
 });

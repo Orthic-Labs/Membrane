@@ -43,11 +43,11 @@ async function runPlatform(evidenceRoot, platform, overrides = {}) {
   });
 }
 
-test('resolvePlatform: explicit values win, otherwise falls back to process.platform', () => {
+test('resolvePlatform: only explicit macOS is accepted', () => {
   assert.equal(resolvePlatform('macos'), 'macos');
-  assert.equal(resolvePlatform('windows'), 'windows');
-  assert.equal(resolvePlatform(undefined), process.platform === 'win32' ? 'windows' : 'macos');
-  assert.equal(resolvePlatform('bogus'), process.platform === 'win32' ? 'windows' : 'macos');
+  assert.equal(resolvePlatform(undefined), 'macos');
+  assert.throws(() => resolvePlatform('windows'), /Mac-only/);
+  assert.throws(() => resolvePlatform('bogus'), /Mac-only/);
 });
 
 test('runInstalledPathHarness: unsupported task returns open without touching disk', async () => {
@@ -72,34 +72,19 @@ test('runInstalledPathHarness: macOS run completes all ten scenarios with unique
   assert.deepEqual(result.receipt.reasons, []);
 });
 
-test('runInstalledPathHarness: Windows run completes all ten scenarios with unique traces and a passed receipt', async () => {
-  const evidenceRoot = mkdtempSync(join(tmpdir(), 'mbr801-harness-'));
-  const result = await runPlatform(evidenceRoot, 'windows');
-  assert.equal(result.status, 'passed');
-  assert.equal(result.receipt.scenario_count, 10);
-  assert.equal(result.receipt.scenarios_passed, 10);
-  const traceIds = result.receipt.traces.map((trace) => trace.trace_id);
-  assert.equal(new Set(traceIds).size, 10, 'all ten trace IDs must be unique');
-});
-
-test('acceptance: macOS and Windows receipts from the same commit both verify as passed, with globally unique traces', async () => {
+test('acceptance: the Mac receipt verifies as passed', async () => {
   const evidenceRoot = mkdtempSync(join(tmpdir(), 'mbr801-harness-'));
   const macos = await runPlatform(evidenceRoot, 'macos');
-  const windows = await runPlatform(evidenceRoot, 'windows');
   assert.equal(macos.status, 'passed');
-  assert.equal(windows.status, 'passed');
 
   const macTraceIds = macos.receipt.traces.map((trace) => trace.trace_id);
-  const winTraceIds = windows.receipt.traces.map((trace) => trace.trace_id);
-  const allTraceIds = [...macTraceIds, ...winTraceIds];
-  assert.equal(new Set(allTraceIds).size, 20, 'all twenty trace IDs across both platforms must be unique');
+  assert.equal(new Set(macTraceIds).size, 10, 'all ten Mac trace IDs must be unique');
 
   const verification = verifyMbr801Evidence({
-    macos: macos.receiptPath, windows: windows.receiptPath, commit: COMMIT, releaseGeneration: RELEASE_GENERATION,
+    macos: macos.receiptPath, commit: COMMIT, releaseGeneration: RELEASE_GENERATION,
   });
   assert.equal(verification.status, 'passed');
   assert.equal(verification.platforms.macos.status, 'passed');
-  assert.equal(verification.platforms.windows.status, 'passed');
 });
 
 test('a scenario that fails to produce a trace fails the receipt closed', async () => {

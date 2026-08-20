@@ -1,5 +1,5 @@
 //! MBR-108: separation of concerns between the user-facing application plane, the
-//! lifecycle/control plane (supervisor, install, lease, restart), and the persistent data
+//! lifecycle/control plane (resident, install, lifecycle, restart), and persistent data
 //! plane (SQLite, snapshots, receipts).
 //!
 //! Each plane lives in its own failure domain. The Data plane never owns a network port. The
@@ -16,10 +16,10 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Plane {
     /// User-facing surface: CLI subcommands, stdio MCP, loopback HTTP API. Reads from the
-    /// Data plane through `MemoryStore`. Never opens SQLite or writes leases directly.
+    /// Data plane through `MemoryStore`. Never opens SQLite or writes lifecycle bindings directly.
     Application,
-    /// Lifecycle surface: supervisor-child launch, lease validation, lockfile management,
-    /// heartbeat publication. Owns the lease authority. Never opens SQLite itself; writes
+    /// Lifecycle surface: resident launch, frame validation, lockfile management, heartbeat
+    /// publication. Owns lifecycle authority. Never opens SQLite itself; writes
     /// heartbeat rows by going through the Data plane API.
     Control,
     /// Persistent storage surface: SQLite catalog, receipts, snapshot manifests. Never owns
@@ -44,7 +44,7 @@ pub struct PlaneBoundary {
     /// Lower-case plane name. Matches `Plane::as_str()` for the matching variant.
     pub name: &'static str,
     /// Whether this plane owns its own process (true) or runs as a tokio task under a single
-    /// supervisor (false). The Data plane is `false` today — it shares the supervisor-child
+    /// resident (false). The Data plane is `false` today — it shares the resident
     /// process — and the Application and Control planes are `true`.
     pub owns_process: bool,
     /// Source paths owned by this plane. The runtime enforces that only this plane may write
@@ -54,7 +54,7 @@ pub struct PlaneBoundary {
     /// plane reads from Data to validate heartbeat presence; the Data plane reads from none.
     pub reads_from: &'static [Plane],
     /// Planes this plane may write to. Only the Control plane writes to Data (heartbeats,
-    /// lease receipts). The Application plane writes nothing directly — it forwards through
+    /// lifecycle receipts). The Application plane writes nothing directly — it forwards through
     /// Control or Data.
     pub writes_to: &'static [Plane],
 }
@@ -79,11 +79,9 @@ pub const PLANE_BOUNDARIES: &[PlaneBoundary] = &[
         name: "control",
         owns_process: true,
         owns_files: &[
-            "engine/crates/membrane-supervisor/src/supervisor.rs",
-            "engine/crates/membrane-supervisor/src/resident.rs",
-            "engine/crates/membrane-supervisor/src/lease.rs",
-            "engine/crates/membrane-supervisor/src/lock.rs",
-            "engine/crates/membrane-supervisor/src/watcher.rs",
+            "engine/crates/membrane/src/modes.rs",
+            "engine/crates/membrane/src/dispatch.rs",
+            "engine/crates/membrane-protocol/src/lease.rs",
         ],
         reads_from: &[Plane::Data],
         writes_to: &[Plane::Data],
@@ -115,8 +113,8 @@ pub fn plane_for_path(path: &std::path::Path) -> Option<Plane> {
             match segment {
                 // Application plane: anything inside the runtime crate or the stdio MCP crate.
                 "membrane-runtime" | "membrane-mcp" => return Some(Plane::Application),
-                // Control plane: anything inside the supervisor crate.
-                "membrane-supervisor" => return Some(Plane::Control),
+                // Control plane: resident lifecycle implementation.
+                "membrane" => return Some(Plane::Control),
                 // Data plane: anything inside the cortex-store crate.
                 "cortex-store" => return Some(Plane::Data),
                 _ => {}
@@ -138,8 +136,8 @@ mod tests {
     }
 
     #[test]
-    fn plane_for_path_classifies_control_supervisor_files() {
-        let path = Path::new("/x/membrane-supervisor/src/supervisor.rs");
+    fn plane_for_path_classifies_control_resident_files() {
+        let path = Path::new("/x/membrane/src/modes.rs");
         assert_eq!(plane_for_path(path), Some(Plane::Control));
     }
 

@@ -74,6 +74,8 @@ def test_packet_shape_order_precedence_dedup_freshness_and_typed_degradation(tmp
     )
 
     assert list(packet) == FIXTURE["candidateSetKeys"]
+    assert packet["indexedAt"] == packet["freshness"]["indexedAt"]
+    assert packet["indexedAt"]
     assert [candidate["provider"] for candidate in packet["candidates"]] == [
         providers[0], *providers[2:]
     ]
@@ -86,6 +88,15 @@ def test_packet_shape_order_precedence_dedup_freshness_and_typed_degradation(tmp
     )
     assert all(warning["failureScope"] == "lane_local" for warning in warnings)
     assert "SECRET" not in json.dumps(packet)
+
+
+def test_packet_reconciles_empty_nested_indexed_at(tmp_path: Path):
+    freshness = _freshness()
+    freshness["indexedAt"] = ""
+    packet = gateway._merge_candidates([], freshness, tmp_path, "fixture", "trace-fixture", 4096)
+
+    assert packet["indexedAt"]
+    assert packet["indexedAt"] == packet["freshness"]["indexedAt"]
 
 
 def test_same_root_without_grant_fans_out(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -119,6 +130,8 @@ def test_invalid_grant_aborts_before_fanout(monkeypatch: pytest.MonkeyPatch, tmp
     )
 
     assert exit_code == 2
+    assert packet["indexedAt"] == packet["freshness"]["indexedAt"]
+    assert packet["indexedAt"]
     assert packet["candidates"] == []
     assert packet["omissions"][0]["severity"] == "blocker"
     assert packet["_membrane"]["abortReason"] == "scope_grant"

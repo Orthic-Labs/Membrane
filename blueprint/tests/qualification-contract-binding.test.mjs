@@ -21,7 +21,7 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 const SCHEMA = join(ROOT, "schemas", "context-candidate-set.v1.schema.json");
-const PINNED_SHA256 = "239dc2206c6d3541469f1f20338f3adb1749aa7643c39913ac9e41824d0a0506";
+const PINNED_SHA256 = "4d6bf47e42ba43d1b1501b443dd69c01468a6d59ff1b599349d4fb00891d06e1";
 const REPOS = join(ROOT, "evals", "fixture-repos");
 const TASKS = join(ROOT, "evals", "graph-tasks.jsonl");
 

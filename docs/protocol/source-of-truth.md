@@ -53,7 +53,7 @@ Golden fixtures under `schemas/operations/` (one per shape, `*.v1.golden.json`) 
 shared canonical instances. Both sides read the **same** files and assert the
 **same** canonical `sha256:` digest:
 
-- **Rust** — `cargo test -p membrane-protocol`. For each shape it
+- **Rust** — `rightkit cargo test --manifest-path engine/Cargo.toml -p membrane-protocol`. For each shape it
   (1) validates the fixture against its JSON Schema,
   (2) deserializes the fixture into the Rust type and re-serializes it,
       requiring byte-identical canonical form, and

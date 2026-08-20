@@ -2,8 +2,6 @@
   "schema": "membrane.release-platforms.v1",
   "platforms": {
     "mac-arm64": { "os": "macos", "arch": "arm64", "support": "supported" },
-    "mac-x64": { "os": "macos", "arch": "x64", "support": "supported" },
-    "windows-x64": { "os": "windows", "arch": "x64", "support": "supported" },
-    "windows-arm64": { "os": "windows", "arch": "arm64", "support": "conformance-only" }
+    "mac-x64": { "os": "macos", "arch": "x64", "support": "future-native" }
   }
 }

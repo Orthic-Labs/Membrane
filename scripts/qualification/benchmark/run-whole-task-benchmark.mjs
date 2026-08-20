@@ -5,14 +5,14 @@
 // Book-gate-time entrypoint referenced by docs/evaluation/whole-task-benchmark.md;
 // it never runs automatically, never downloads a dataset, and never reruns
 // the vector bakeoff. Every real-execution dependency (the corpus, the
-// commit-reveal holdout salt, the per-platform host receipts, the per-case
+// commit-reveal holdout salt, the Mac host receipt, the per-case
 // executor) is a required flag or an injectable option with no default that
 // fabricates a result — absent inputs degrade explicitly.
 //
 //     node scripts/qualification/benchmark/run-whole-task-benchmark.mjs \
 //       --corpus <path> --salt <salt> --holdout-commitment <sha256> \
 //       --release-generation <gen> --release-client <client> --release-service <service> \
-//       --host-receipt-macos <path> --host-receipt-windows <path>
+//       --hardware-macos <hardware> --host-receipt-macos <path>
 //
 // This CLI does not supply an `execute` function (it has no client/model to
 // drive); wire one programmatically via runWholeTaskBenchmark({ execute }) or
@@ -34,9 +34,7 @@ export function parseArgs(argv) {
     else if (arg === '--release-service') out.releaseService = argv[(i += 1)];
     else if (arg === '--model') (out.models ||= []).push(argv[(i += 1)]);
     else if (arg === '--hardware-macos') out.hardwareMacos = argv[(i += 1)];
-    else if (arg === '--hardware-windows') out.hardwareWindows = argv[(i += 1)];
     else if (arg === '--host-receipt-macos') out.hostReceiptMacos = argv[(i += 1)];
-    else if (arg === '--host-receipt-windows') out.hostReceiptWindows = argv[(i += 1)];
     else if (arg === '--publication-disposition') out.publicationDisposition = argv[(i += 1)];
     else if (arg === '--publication-approved') out.publicationApproved = argv[(i += 1)] === 'true';
   }
@@ -52,8 +50,8 @@ export async function runCli(argv, { execute } = {}) {
     holdoutFraction: Number.isFinite(args.holdoutFraction) ? args.holdoutFraction : undefined,
     release: { commit: args.releaseCommit, generation: args.releaseGeneration, client: args.releaseClient, service: args.releaseService },
     models: args.models,
-    hardware: { macos: args.hardwareMacos, windows: args.hardwareWindows },
-    hostReceiptPaths: { macos: args.hostReceiptMacos, windows: args.hostReceiptWindows },
+    hardware: { macos: args.hardwareMacos },
+    hostReceiptPaths: { macos: args.hostReceiptMacos },
     publication: { disposition: args.publicationDisposition || 'not-published', approved: args.publicationApproved === true },
     execute,
   });

@@ -169,7 +169,7 @@ let live;
 let cancelled;
 try {
   const { port } = lifecycleFederate.address();
-  live = await openRpc({ ...advisoryEnv, CORTEX_PORT: String(port), CORTEX_API_TOKEN: "test-token" });
+  live = await openRpc({ ...advisoryEnv, MEMBRANE_PORT: String(port), MEMBRANE_API_TOKEN: "test-token" });
   const caller = { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" };
   await live.request({ jsonrpc: "2.0", id: 300, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "mbr305", version: "1" } } });
   await live.request({ jsonrpc: "2.0", id: 301, method: "logging/setLevel", params: { level: "debug" } });
@@ -198,7 +198,7 @@ try {
   assert.match(toolError(emptyCursor), /working_context_page_cursor_invalid/);
   await live.close();
 
-  cancelled = await openRpc({ ...advisoryEnv, CORTEX_PORT: String(port), CORTEX_API_TOKEN: "test-token" });
+  cancelled = await openRpc({ ...advisoryEnv, MEMBRANE_PORT: String(port), MEMBRANE_API_TOKEN: "test-token" });
   await cancelled.request({ jsonrpc: "2.0", id: 308, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "mbr305-cancel", version: "1" } } });
   const cancellationStarted = Date.now();
   cancelled.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 309, method: "tools/call", params: { name: "membrane_context", arguments: { task: "wait for cancellation", repository: enrolledRoot, caller }, _meta: { progressToken: "mbr305-cancel-progress" } } })}\n`);
@@ -277,7 +277,7 @@ assert.equal(typeof feedback[0].result.content[0].text, "string");
 // hard failure -- advisory mode must NEVER convert it into a success shape.
 const corruptRoot = await mkdtemp(join(tmpdir(), "membrane-corrupt-binding-"));
 await mkdir(join(corruptRoot, "tools", "lib", "memory"), { recursive: true });
-await writeFile(join(corruptRoot, "tools", "lib", "memory", "runtime.json"), JSON.stringify({ schemaVersion: 1, serviceId: "cortex-local-v1", host: "127.0.0.1", port: 70 }), "utf8");
+await writeFile(join(corruptRoot, "tools", "lib", "memory", "runtime.json"), JSON.stringify({ schemaVersion: 1, serviceId: "membrane-local-v1", host: "127.0.0.1", port: 70 }), "utf8");
 const corruptEnrolled = join(corruptRoot, "enrolled");
 await mkdir(corruptEnrolled, { recursive: true });
 const corruptEnrolledCanonical = await realpath(corruptEnrolled);
@@ -353,20 +353,21 @@ await mkdir(join(grantedChildDir, ".git"), { recursive: true });
 await mkdir(join(ungrantedChildDir, ".git"), { recursive: true });
 const catalogWorkspaceCanonical = await realpath(catalogWorkspace);
 const catalog = await buildRepositoryCatalog(catalogWorkspace);
-const workspaceEntry = catalog.repositories.find((entry) => entry.role === "workspace-root");
-const grantedEntry = catalog.repositories.find((entry) => entry.root === "granted-child");
-const ungrantedEntry = catalog.repositories.find((entry) => entry.root === "ungranted-child");
+const catalogScope = (entry) => `scope-${entry.repoId.slice("repo-".length)}`;
+const workspaceEntry = catalog.repositories.find((entry) => entry.repoId === catalog.workspace_id);
+const grantedEntry = catalog.repositories.find((entry) => entry.rootBinding === grantedChildDir);
+const ungrantedEntry = catalog.repositories.find((entry) => entry.rootBinding === ungrantedChildDir);
 const catalogRegistry = join(catalogRoot, "registry.json");
 await writeFile(catalogRegistry, JSON.stringify({
   schema_version: 2,
   bindings: {
-    [catalogWorkspaceCanonical]: { repository_id: workspaceEntry.repository_id, scope_id: workspaceEntry.scope_id, provider_config: {}, grant_policy: { level: "write-proposed", child_repository_ids: [grantedEntry.repository_id] } },
-    [await realpath(grantedChildDir)]: { repository_id: grantedEntry.repository_id, scope_id: grantedEntry.scope_id, provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repository_id } },
-    [await realpath(ungrantedChildDir)]: { repository_id: ungrantedEntry.repository_id, scope_id: ungrantedEntry.scope_id, provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repository_id } },
+    [catalogWorkspaceCanonical]: { repository_id: workspaceEntry.repoId, scope_id: catalogScope(workspaceEntry), provider_config: {}, grant_policy: { level: "write-proposed", child_repository_ids: [grantedEntry.repoId] } },
+    [await realpath(grantedChildDir)]: { repository_id: grantedEntry.repoId, scope_id: catalogScope(grantedEntry), provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repoId } },
+    [await realpath(ungrantedChildDir)]: { repository_id: ungrantedEntry.repoId, scope_id: catalogScope(ungrantedEntry), provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repoId } },
   },
 }), "utf8");
 const catalogEnv = { MEMBRANE_PROJECT_REGISTRY: catalogRegistry, MEMBRANE_DURABILITY_MODE: "advisory", CORTEX_BIN: bogusCortex };
-const workspaceCaller = { root: catalogWorkspace, repositoryId: workspaceEntry.repository_id, scopeId: workspaceEntry.scope_id };
+const workspaceCaller = { root: catalogWorkspace, repositoryId: workspaceEntry.repoId, scopeId: catalogScope(workspaceEntry) };
 const grantedAccess = await rpc([{
   jsonrpc: "2.0", id: 44, method: "tools/call",
   params: { name: "membrane_feedback", arguments: { repository: grantedChildDir, caller: workspaceCaller, receiptId: "receipt-granted-child", outcome: "used" } },
@@ -380,7 +381,7 @@ assert.equal(ungrantedAccess[0].result.isError, true, "an ungranted child reposi
 assert.match(toolError(ungrantedAccess[0]), /cross_root_binding_denied/);
 const revokedAccess = await rpc([{
   jsonrpc: "2.0", id: 46, method: "tools/call",
-  params: { name: "membrane_feedback", arguments: { repository: catalogWorkspace, caller: { root: grantedChildDir, repositoryId: grantedEntry.repository_id, scopeId: grantedEntry.scope_id }, receiptId: "receipt-child-cannot-reach-parent", outcome: "used" } },
+  params: { name: "membrane_feedback", arguments: { repository: catalogWorkspace, caller: { root: grantedChildDir, repositoryId: grantedEntry.repoId, scopeId: catalogScope(grantedEntry) }, receiptId: "receipt-child-cannot-reach-parent", outcome: "used" } },
 }], catalogEnv);
 assert.equal(revokedAccess[0].result.isError, true, "a child repository must not gain reverse access to its parent workspace");
 assert.match(toolError(revokedAccess[0]), /cross_root_binding_denied/);
@@ -528,7 +529,7 @@ try {
     { jsonrpc: "2.0", id: 26, method: "tools/call", params: { name: "membrane_context", arguments: { task: "negative budget", repository: enrolledRoot, caller: virtualCaller, budget: -1 }, _meta: modernMeta } },
     { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "membrane_checkpoint_load", arguments: { repository: enrolledRoot, caller: virtualCaller, id: "checkpoint-1", asOfMs: -1 }, _meta: modernMeta } },
     { jsonrpc: "2.0", id: 28, method: "tools/call", params: { name: "membrane_checkpoint_load", arguments: { repository: enrolledRoot, caller: virtualCaller, id: "checkpoint-1", asOfMs: "yesterday" }, _meta: modernMeta } },
-  ], { MEMBRANE_PROJECT_REGISTRY: registry, CORTEX_PORT: String(port), CORTEX_API_TOKEN: "test-token" });
+  ], { MEMBRANE_PROJECT_REGISTRY: registry, MEMBRANE_PORT: String(port), MEMBRANE_API_TOKEN: "test-token" });
   const invalidById = new Map(invalidCalls.map((row) => [row.id, row]));
   for (const id of [23, 24, 25, 26, 27, 28]) {
     assert.equal(invalidById.get(id).result.isError, true, `invalid request ${id} returns an invalid-params tool result`);
@@ -545,7 +546,7 @@ try {
         _meta: { ...modernMeta, traceparent: "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future", tracestate: "membrane=server", baggage: "tenant=repo-a" },
       },
     },
-  ], { MEMBRANE_PROJECT_REGISTRY: registry, CORTEX_PORT: String(port), CORTEX_API_TOKEN: "test-token" });
+  ], { MEMBRANE_PROJECT_REGISTRY: registry, MEMBRANE_PORT: String(port), MEMBRANE_API_TOKEN: "test-token" });
   const tracedById = new Map(tracedContext.map((row) => [row.id, row]));
   assert.deepEqual(tracedById.get(21).result.structuredContent.trace, {
     traceparent: "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future", tracestate: "membrane=server", baggage: "tenant=repo-a",
@@ -587,15 +588,15 @@ const wsCaller = { root: workspaceCanonical, repositoryId: "ws-repo", scopeId: "
 // MBR-004 bounded routing: select the workspace root and the child explicitly so
 // the task still fans out to the first child; a no-match task would abstain.
 const wsFixtureCatalog = await buildRepositoryCatalog(workspaceCanonical);
-const wsRootEntry = wsFixtureCatalog.repositories.find((entry) => entry.role === "workspace-root");
-const wsChildEntry = wsFixtureCatalog.repositories.find((entry) => entry.role === "child-repository");
+const wsRootEntry = wsFixtureCatalog.repositories.find((entry) => entry.repoId === wsFixtureCatalog.workspace_id);
+const wsChildEntry = wsFixtureCatalog.repositories.find((entry) => entry.repoId !== wsFixtureCatalog.workspace_id);
 const workspaceContext = await rpc([{
   jsonrpc: "2.0", id: 70, method: "tools/call",
   params: {
     name: "membrane_context",
-    arguments: { task: "inspect", repository: workspaceCanonical, caller: wsCaller, scope: "workspace", explicitRepositoryIds: [wsRootEntry?.repository_id, wsChildEntry?.repository_id].filter(Boolean) },
+    arguments: { task: "inspect", repository: workspaceCanonical, caller: wsCaller, scope: "workspace", explicitRepositoryIds: [wsRootEntry?.repoId, wsChildEntry?.repoId].filter(Boolean) },
   },
-}], { MEMBRANE_PROJECT_REGISTRY: workspaceRegistry, CORTEX_PORT: String(deadCortexPort), CORTEX_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" });
+}], { MEMBRANE_PROJECT_REGISTRY: workspaceRegistry, MEMBRANE_PORT: String(deadCortexPort), MEMBRANE_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" });
 const workspaceRow = workspaceContext[0];
 assert.equal(workspaceRow.result.isError, false, `scope=workspace must reach the first child without ReferenceError: ${toolError(workspaceRow)}`);
 assert.doesNotMatch(toolError(workspaceRow), /ReferenceError/);
@@ -618,25 +619,25 @@ await mkdir(join(mbr2Root, "child", ".git"), { recursive: true });
 const mbr2Workspace = await realpath(mbr2Root);
 const mbr2Child = await realpath(join(mbr2Root, "child"));
 const mbr2Catalog = await buildRepositoryCatalog(mbr2Workspace);
-const mbr2WsEntry = mbr2Catalog.repositories.find((entry) => entry.role === "workspace-root");
-const mbr2ChildEntry = mbr2Catalog.repositories.find((entry) => entry.role === "child-repository");
+const mbr2WsEntry = mbr2Catalog.repositories.find((entry) => entry.repoId === mbr2Catalog.workspace_id);
+const mbr2ChildEntry = mbr2Catalog.repositories.find((entry) => entry.repoId !== mbr2Catalog.workspace_id);
 assert.ok(mbr2WsEntry && mbr2ChildEntry, "MBR-002 fixture catalog has a workspace root and one child");
 const mbr2Registry = join(mbr2Root, "registry.json");
 await writeFile(mbr2Registry, JSON.stringify({
   schema_version: 1,
   bindings: {
     [mbr2Workspace]: {
-      repository_id: mbr2WsEntry.repository_id, scope_id: mbr2WsEntry.scope_id, provider_config: {},
-      grant_policy: { level: "read-only", child_repository_ids: [mbr2ChildEntry.repository_id] },
+      repository_id: mbr2WsEntry.repoId, scope_id: catalogScope(mbr2WsEntry), provider_config: {},
+      grant_policy: { level: "read-only", child_repository_ids: [mbr2ChildEntry.repoId] },
     },
     [mbr2Child]: {
-      repository_id: mbr2ChildEntry.repository_id, scope_id: mbr2ChildEntry.scope_id, provider_config: {},
-      grant_policy: { level: "write-trusted", parent_repository_id: mbr2WsEntry.repository_id },
+      repository_id: mbr2ChildEntry.repoId, scope_id: catalogScope(mbr2ChildEntry), provider_config: {},
+      grant_policy: { level: "write-trusted", parent_repository_id: mbr2WsEntry.repoId },
     },
   },
 }), "utf8");
 const mbr2Env = { MEMBRANE_PROJECT_REGISTRY: mbr2Registry, MEMBRANE_DURABILITY_MODE: "advisory", CORTEX_BIN: "/nonexistent/membrane-test-cortex-binary" };
-const mbr2Caller = { root: mbr2Workspace, repositoryId: mbr2WsEntry.repository_id, scopeId: mbr2WsEntry.scope_id };
+const mbr2Caller = { root: mbr2Workspace, repositoryId: mbr2WsEntry.repoId, scopeId: catalogScope(mbr2WsEntry) };
 const mbr2Denied = await rpc([{
   jsonrpc: "2.0", id: 80, method: "tools/call",
   params: { name: "membrane_feedback", arguments: { repository: mbr2Child, caller: mbr2Caller, receiptId: "mbr2-child-feedback", outcome: "used" } },
@@ -655,41 +656,41 @@ const mbr3Workspace = await realpath(mbr3Root);
 const mbr3Granted = await realpath(join(mbr3Root, "granted"));
 const mbr3Ungranted = await realpath(join(mbr3Root, "ungranted"));
 const mbr3Catalog = await buildRepositoryCatalog(mbr3Workspace);
-const mbr3Ws = mbr3Catalog.repositories.find((entry) => entry.role === "workspace-root");
-const mbr3G = mbr3Catalog.repositories.find((entry) => entry.role === "child-repository" && entry.root === "granted");
-const mbr3U = mbr3Catalog.repositories.find((entry) => entry.role === "child-repository" && entry.root === "ungranted");
+const mbr3Ws = mbr3Catalog.repositories.find((entry) => entry.repoId === mbr3Catalog.workspace_id);
+const mbr3G = mbr3Catalog.repositories.find((entry) => entry.rootBinding === mbr3Granted);
+const mbr3U = mbr3Catalog.repositories.find((entry) => entry.rootBinding === mbr3Ungranted);
 assert.ok(mbr3Ws && mbr3G && mbr3U, "MBR-003 fixture catalog has root plus granted and ungranted children");
 const mbr3Registry = join(mbr3Root, "registry.json");
 await writeFile(mbr3Registry, JSON.stringify({
   schema_version: 1,
   bindings: {
     [mbr3Workspace]: {
-      repository_id: mbr3Ws.repository_id, scope_id: mbr3Ws.scope_id, provider_config: {},
-      grant_policy: { level: "write-trusted", child_repository_ids: [mbr3G.repository_id] },
+      repository_id: mbr3Ws.repoId, scope_id: catalogScope(mbr3Ws), provider_config: {},
+      grant_policy: { level: "write-trusted", child_repository_ids: [mbr3G.repoId] },
     },
     [mbr3Granted]: {
-      repository_id: mbr3G.repository_id, scope_id: mbr3G.scope_id, provider_config: {},
-      grant_policy: { level: "write-trusted", parent_repository_id: mbr3Ws.repository_id },
+      repository_id: mbr3G.repoId, scope_id: catalogScope(mbr3G), provider_config: {},
+      grant_policy: { level: "write-trusted", parent_repository_id: mbr3Ws.repoId },
     },
     [mbr3Ungranted]: {
-      repository_id: mbr3U.repository_id, scope_id: mbr3U.scope_id, provider_config: {},
-      grant_policy: { level: "write-trusted", parent_repository_id: mbr3Ws.repository_id },
+      repository_id: mbr3U.repoId, scope_id: catalogScope(mbr3U), provider_config: {},
+      grant_policy: { level: "write-trusted", parent_repository_id: mbr3Ws.repoId },
     },
   },
 }), "utf8");
-const mbr3Env = { MEMBRANE_PROJECT_REGISTRY: mbr3Registry, CORTEX_PORT: "65532", CORTEX_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" };
-const mbr3Caller = { root: mbr3Workspace, repositoryId: mbr3Ws.repository_id, scopeId: mbr3Ws.scope_id };
+const mbr3Env = { MEMBRANE_PROJECT_REGISTRY: mbr3Registry, MEMBRANE_PORT: "65532", MEMBRANE_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" };
+const mbr3Caller = { root: mbr3Workspace, repositoryId: mbr3Ws.repoId, scopeId: catalogScope(mbr3Ws) };
 const mbr3Scope = await rpc([{
   jsonrpc: "2.0", id: 90, method: "tools/call",
   params: {
     name: "membrane_context",
-    arguments: { task: "inspect ungranted", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace", explicitRepositoryIds: [mbr3Ws.repository_id, mbr3G.repository_id] },
+    arguments: { task: "inspect ungranted", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace", explicitRepositoryIds: [mbr3Ws.repoId, mbr3G.repoId] },
   },
 }], mbr3Env);
 assert.equal(mbr3Scope[0].result.isError, false, toolError(mbr3Scope[0]));
 const mbr3Fused = mbr3Scope[0].result.structuredContent.data;
 const mbr3ByRoot = new Map((mbr3Fused.repos || []).map((entry) => {
-  const root = entry.repoId === mbr3G.repository_id ? "granted" : (entry.repoId === mbr3U.repository_id ? "ungranted" : "root");
+  const root = entry.repoId === mbr3G.repoId ? "granted" : (entry.repoId === mbr3U.repoId ? "ungranted" : "root");
   return [root, entry];
 }));
 assert.ok(mbr3ByRoot.has("root"), "workspace root target is reached");
@@ -699,7 +700,7 @@ assert.ok(mbr3ByRoot.has("ungranted"), "ungranted sibling appears as a typed omi
 assert.deepEqual(mbr3ByRoot.get("ungranted").omissions, ["target_denied"], "ungranted sibling is omitted with a typed denial receipt");
 assert.equal(mbr3ByRoot.get("ungranted").candidates, 0, "ungranted sibling is never consulted for candidates");
 assert.ok(!mbr3ByRoot.get("ungranted").omissions.includes("planner_unavailable"), "ungranted sibling was never called");
-assert.ok(mbr3Fused.routing.selected.some((entry) => entry.repoId === mbr3U.repository_id && entry.evidence.includes("alias")), "catalog relevance selected ungranted sibling before independent authorization denied invocation");
+assert.ok(mbr3Fused.routing.selected.some((entry) => entry.repoId === mbr3U.repoId && entry.evidence.includes("alias")), "catalog relevance selected ungranted sibling before independent authorization denied invocation");
 
 // MBR-006 (R05): every workspace repository row carries a canonical generation
 // identity or a typed unknown reason -- generationId (never a revision hub
@@ -743,7 +744,7 @@ const mbr7Call = await rpc([{
     name: "membrane_context",
     arguments: {
       task: "do the thing", repository: mbr3Workspace, caller: mbr3Caller, scope: "workspace",
-      explicitRepositoryIds: [mbr3Ws.repository_id],
+      explicitRepositoryIds: [mbr3Ws.repoId],
       taskEnvelope: mbr7TaskEnvelope, turnEnvelope: mbr7TurnEnvelope, clientEnvelope: mbr7ClientEnvelope,
     },
   },

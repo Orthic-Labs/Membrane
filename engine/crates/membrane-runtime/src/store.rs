@@ -59,7 +59,7 @@ const PROTECTED_PRIORITY_BONUS: f32 = 0.04;
 
 fn protected_priority_bonus_enabled() -> bool {
     matches!(
-        std::env::var("CORTEX_PROTECTED_PRIORITY_BONUS")
+        std::env::var("MEMBRANE_PROTECTED_PRIORITY_BONUS")
             .ok()
             .as_deref()
             .map(str::trim),
@@ -72,12 +72,12 @@ fn protected_priority_bonus_enabled() -> bool {
 mod causal_promotion;
 
 /// Vector dispatch v2 (resident in-process f32 index) is default-on. Set
-/// `CORTEX_VECTOR_DISPATCH_V2` to `0`/`false`/`off`/`legacy` for an immediate
+/// `MEMBRANE_VECTOR_DISPATCH_V2` to `0`/`false`/`off`/`legacy` for an immediate
 /// fallback to the legacy scalar-A `retrieve_hybrid` routing (restored on next
 /// store open). Any other value, or unset, keeps v2 active.
 fn vector_dispatch_v2_enabled() -> bool {
     !matches!(
-        std::env::var("CORTEX_VECTOR_DISPATCH_V2")
+        std::env::var("MEMBRANE_VECTOR_DISPATCH_V2")
             .ok()
             .as_deref()
             .map(str::trim),
@@ -644,12 +644,12 @@ impl MemoryEventContext {
     /// variables. Missing values receive unique opaque fallbacks rather than collapsing unrelated
     /// invocations into one synthetic session.
     pub fn from_environment(fallback_surface: &str) -> Self {
-        let surface = std::env::var("CORTEX_CLIENT")
+        let surface = std::env::var("MEMBRANE_CLIENT")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| fallback_surface.to_string());
         let mut context = Self::new(&surface);
-        let session = std::env::var("CORTEX_SESSION_ID")
+        let session = std::env::var("MEMBRANE_SESSION_ID")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .or_else(|| {
@@ -661,7 +661,7 @@ impl MemoryEventContext {
         if let Some(session) = session.as_deref() {
             context = context.with_session(session);
         }
-        let trace = std::env::var("CORTEX_TRACE_ID")
+        let trace = std::env::var("MEMBRANE_TRACE_ID")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .or_else(|| new_uuid_v4().ok())
@@ -669,7 +669,7 @@ impl MemoryEventContext {
         if let Some(trace) = trace.as_deref() {
             context = context.with_trace(trace);
         }
-        let turn = std::env::var("CORTEX_TURN_ID")
+        let turn = std::env::var("MEMBRANE_TURN_ID")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .or_else(|| trace.clone());
@@ -1247,7 +1247,7 @@ fn log_memory_event(
 /// embeddings; otherwise the dependency-free hash embedder.
 ///
 /// FAIL-LOUD: when the binary was built WITH fastembed, a failed init ABORTS unless
-/// `CORTEX_ALLOW_HASH=1` explicitly opts into the degraded hash embedder. The old
+/// `MEMBRANE_ALLOW_HASH=1` explicitly opts into the degraded hash embedder. The old
 /// silent eprintln-and-continue fallback quietly filled the workspace DB with 256-dim
 /// hash vectors (467 of 512 rows by 2026-07-02) while recall looked healthy on the
 /// lexical channel — a corpus-corrupting failure mode, not a graceful degradation.
@@ -1281,8 +1281,8 @@ pub struct SkillsSnapshot {
 fn default_embedder() -> (Arc<dyn Embedder>, Option<String>, bool) {
     #[cfg(feature = "fastembed")]
     {
-        if std::env::var("CORTEX_ALLOW_HASH").as_deref() == Ok("1") {
-            let issue = "CORTEX_ALLOW_HASH=1 enabled hash embedder".to_string();
+        if std::env::var("MEMBRANE_ALLOW_HASH").as_deref() == Ok("1") {
+            let issue = "MEMBRANE_ALLOW_HASH=1 enabled hash embedder".to_string();
             eprintln!("[memory] {issue}");
             return (Arc::new(HashEmbedder::new()), Some(issue), true);
         }
@@ -1290,7 +1290,7 @@ fn default_embedder() -> (Arc<dyn Embedder>, Option<String>, bool) {
             Ok(f) => (Arc::new(f), None, true),
             Err(e) => {
                 let issue = format!(
-                    "fastembed init failed ({e}); memory writes disabled to avoid hash-vector corruption. Fix ORT_DYLIB_PATH/model cache, or set CORTEX_ALLOW_HASH=1 to accept degraded embeddings."
+                    "fastembed init failed ({e}); memory writes disabled to avoid hash-vector corruption. Fix ORT_DYLIB_PATH/model cache, or set MEMBRANE_ALLOW_HASH=1 to accept degraded embeddings."
                 );
                 eprintln!("[memory] {issue}");
                 (Arc::new(HashEmbedder::new()), Some(issue), false)
@@ -1725,11 +1725,11 @@ pub fn operation_attribution_for_store(
     let paths = crate::installation_identity::InstallationPaths::for_workspace(&workspace_root);
     let identity = crate::installation_identity::load_or_create_installation(&paths.identity, &[])
         .map_err(|error| format!("load operation installation identity: {error}"))?;
-    let service_instance_id = std::env::var("CORTEX_SERVICE_INSTANCE_ID")
+    let service_instance_id = std::env::var("MEMBRANE_SERVICE_INSTANCE_ID")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .map_or_else(new_uuid_v4, Ok)?;
-    let workspace_seed = std::env::var("CORTEX_WORKSPACE_ID")
+    let workspace_seed = std::env::var("MEMBRANE_WORKSPACE_ID")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| {
@@ -4649,7 +4649,7 @@ impl MemoryStore {
     }
 
     /// Record one recall's full-corpus-vs-injected-skeleton size for the savings report
-    /// (`cortex metrics`). Best-effort: never fails the recall it's measuring.
+    /// (`membrane cli metrics`). Best-effort: never fails the recall it's measuring.
     ///
     /// 2026-07-09 (add-now plan, Phase 1): `client`/`session_id`/`cwd_scope`/`hook_event`/
     /// `trace_id`/`client_visibility` are optional attribution fields — when None the DB
@@ -5196,7 +5196,7 @@ impl MemoryStore {
         Ok(receipt)
     }
 
-    /// Token-savings report for `cortex metrics`. `None` if nothing has been recalled yet.
+    /// Token-savings report for `membrane cli metrics`. `None` if nothing has been recalled yet.
     pub fn recall_metrics(&self) -> Option<crate::memdb::RecallMetrics> {
         self.db.recall_metrics()
     }
@@ -5259,7 +5259,7 @@ impl MemoryStore {
         Ok(new_count)
     }
 
-    /// Live-usage feed for the dashboard: recent recalls + transforms, newest first.
+    /// Live-usage feed for the dashboard: recent recalls, newest first.
     pub fn activity_json(&self, n: usize) -> serde_json::Value {
         let recalls: Vec<serde_json::Value> = self
             .db
@@ -5279,15 +5279,7 @@ impl MemoryStore {
                                    "admitted_hits": admitted})
             })
             .collect();
-        let transforms: Vec<serde_json::Value> = self
-            .db
-            .recent_transforms(n)
-            .into_iter()
-            .map(|(ts, verb, before, after)| {
-                serde_json::json!({"ts": ts, "verb": verb, "before": before, "after": after})
-            })
-            .collect();
-        serde_json::json!({ "recalls": recalls, "transforms": transforms })
+        serde_json::json!({ "recalls": recalls })
     }
 
     /// The active embedder's dimension — 768 = EmbeddingGemma, 384 = BGE, 256 = the degraded hash
@@ -5600,7 +5592,7 @@ impl MemoryStore {
             }
         };
         Ok(MemoryLifecycleReceiptV1 {
-            schema: "orthic.memory-lifecycle-receipt.v1",
+            schema: "membrane.memory-lifecycle-receipt.v1",
             operation: request.operation.clone(),
             memory_id: request.memory_id.clone(),
             status: status.into(),
@@ -5765,8 +5757,8 @@ impl MemoryStore {
             .unwrap_or_else(|e| e.into_inner()) = None;
     }
 
-    /// The metrics report (recall savings + per-verb transforms + curate counts) as JSON —
-    /// shared by `cortex metrics` and the serve `GET /metrics` route / dashboard.
+    /// The metrics report (recall savings + curate counts) as JSON —
+    /// shared by `membrane cli metrics` and the serve `GET /metrics` route / dashboard.
     pub fn metrics_json(&self) -> serde_json::Value {
         let mut out = match self.recall_metrics() {
             None => serde_json::json!({"recalls": 0, "note": "no recalls logged yet"}),
@@ -5782,23 +5774,6 @@ impl MemoryStore {
                 "since": m.first_ts, "through": m.last_ts,
             }),
         };
-        let mut transforms = serde_json::Map::new();
-        for t in self.transform_metrics() {
-            if t.verb == "curate" {
-                out["curate"] = serde_json::json!({
-                    "runs": t.runs, "merged": t.before_chars, "pruned": t.after_chars,
-                });
-            } else {
-                transforms.insert(
-                    t.verb.clone(),
-                    serde_json::json!({
-                        "runs": t.runs, "before_chars": t.before_chars,
-                        "after_chars": t.after_chars, "chars_saved": t.chars_saved(),
-                    }),
-                );
-            }
-        }
-        out["transforms"] = serde_json::Value::Object(transforms);
         // Effectiveness block (2026-07-05, §10.2 paired-metric protocol): the fetch-after-inject
         // rate is ADVISORY — a lower bound on usefulness, suppressed by preview sufficiency and
         // fetch friction. Kill/clear decisions pair it with the blind relevance spot-check.
@@ -6973,40 +6948,6 @@ impl MemoryStore {
         Ok((content, access_count))
     }
 
-    /// Record one transform's before/after size (per-layer savings, `cortex metrics`). Best-effort.
-    pub fn log_transform(
-        &self,
-        ts: &str,
-        verb: &str,
-        scope: Option<&str>,
-        before_chars: usize,
-        after_chars: usize,
-        meta: Option<&str>,
-    ) {
-        let context = MemoryEventContext::default();
-        let session_id = normalized_session(&context);
-        let trace_id = normalized_trace(&context, &format!("transform:{verb}:{ts}"));
-        let turn_id = normalized_turn(&context, &trace_id);
-        self.db.log_transform_with_identity(
-            ts,
-            verb,
-            scope,
-            before_chars,
-            after_chars,
-            meta,
-            &self.operation_attribution.installation_id,
-            &self.operation_attribution.service_instance_id,
-            &context.surface,
-            &session_id,
-            &turn_id,
-            &trace_id,
-        );
-    }
-
-    /// Per-verb transform savings for `cortex metrics`.
-    pub fn transform_metrics(&self) -> Vec<crate::memdb::TransformVerbMetrics> {
-        self.db.transform_metrics()
-    }
 }
 
 fn vault_review_markdown(report: &serde_json::Value) -> String {

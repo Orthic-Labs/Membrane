@@ -1,28 +1,30 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import addonConfig from "../../right-addon.config.mjs";
+import hubReleaseConfig from "../../apps/membrane-hub/right-release.config.mjs";
+import { RUNTIME_SPECS } from "../../apps/membrane-hub/scripts/runtime-inventory.mjs";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const sourcePaths = [
-  "right-addon.config.mjs", "package.json", "pnpm-lock.yaml", "engine",
-  "dist/install/assets/membrane-tab-icon.png", "LICENSE", "docs/legal/EULA.txt", "docs/legal/PRIVACY.md", "docs/legal/THIRD-PARTY-NOTICES.txt",
+  "apps/membrane-hub/right-release.config.mjs",
+  "apps/membrane-hub/scripts/runtime-inventory.mjs",
+  "apps/membrane-hub/scripts/release-assets.mjs",
+  "apps/membrane-hub/scripts/write-release-manifest.mjs",
 ];
 const dirty = execFileSync("git", ["-C", repoRoot, "status", "--porcelain", "--", ...sourcePaths], { encoding: "utf8" }).trim();
-const roleBuilds = Object.values(addonConfig.targets).flatMap(({ build }) => build.args);
-const releaseFiles = Object.values(addonConfig.targets).flatMap(({ files }) => files.flatMap(({ name, source }) => [name, source]));
+const configText = readFileSync(new URL("../../apps/membrane-hub/right-release.config.mjs", import.meta.url), "utf8");
+const releaseSources = [configText, JSON.stringify(RUNTIME_SPECS)];
 
-assert.equal(addonConfig.schema, 1, "add-on config schema must be 1");
-assert.equal(addonConfig.kind, "headless-addon", "release identity requires a headless add-on");
-assert.equal(addonConfig.addon, "membrane", "release identity requires membrane add-on");
-assert.equal(addonConfig.consumer.contract, "membrane-product-v1", "release identity must use the Membrane product contract");
-assert.equal(addonConfig.consumer.productId, "membrane", "release identity requires Membrane product ID");
-assert.deepEqual(addonConfig.consumer.serviceStop, ["SIGTERM"], "add-on consumer stop contract drifted");
-assert.ok(roleBuilds.includes("membrane"), "add-on must build membrane command role");
-assert.ok(roleBuilds.includes("cortex-service"), "add-on must build cortex-service service role");
-assert.ok(!roleBuilds.some((value) => /crypt|orthic/i.test(value)), "release identity cannot build retired Crypt or Orthic roles");
-assert.ok(!releaseFiles.some((value) => /crypt|orthic/i.test(value)), "release identity cannot package retired Crypt or Orthic assets");
-assert.equal(dirty, "", `release identity requires clean add-on sources:\n${dirty}`);
+assert.equal(hubReleaseConfig.schema, 1, "Hub release config schema must be 1");
+assert.equal(hubReleaseConfig.app, "membrane-hub", "Membrane Hub must own release config");
+assert.deepEqual(Object.keys(hubReleaseConfig.targets), ["mac"], "current release identity is Mac-only");
+assert.ok(hubReleaseConfig.targets?.mac?.signed, "Hub Mac target must be signed");
+assert.ok(hubReleaseConfig.targets.mac.artifacts.some((path) => /Membrane Hub_.*\.dmg$/.test(path)), "Hub Mac installer artifact missing");
+assert.deepEqual(RUNTIME_SPECS.filter(({ delivery }) => delivery === "externalBin").map(({ component }) => component).sort(), ["cortex", "membrane"], "Hub sidecar identity drifted");
+assert.ok(!releaseSources.some((value) => /cortex-service|crypt-service|orthic(?:[_-]manifest)?/i.test(value)), "Hub release identity contains retired runtime assets");
+assert.ok(!releaseSources.some((value) => /windows|win32|\.exe\b/i.test(value)), "Hub release identity contains out-of-scope Windows assets");
+assert.equal(dirty, "", `release identity requires clean Hub release sources:\n${dirty}`);
 
-console.log(`release identity OK: ${addonConfig.addon}@${addonConfig.version} command=membrane service=cortex-service`);
+console.log("release identity OK: Membrane Hub release config + Mac runtime inventory");

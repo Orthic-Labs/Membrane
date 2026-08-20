@@ -17,13 +17,12 @@ function fixture() {
   make(join(root, "dist", "install", "workspace-manifest.json"), `${JSON.stringify({ schemaVersion: "membrane-install-workspace-v1", packageVersion: "1.0.0", source: "membrane/install/workspace", generated: "source-to-dist", runtime, files, packageSha256 })}\n`);
   make(join(root, "src-tauri", "runtime", "blueprint", "bin", "blueprint"));
   make(join(root, "src-tauri", "runtime", "blueprint", "lib", "node"));
-  for (const name of ["membrane-aarch64-apple-darwin", "cortex-service-aarch64-apple-darwin", "cortex-aarch64-apple-darwin"]) make(join(root, name));
+  for (const name of ["membrane-aarch64-apple-darwin", "cortex-aarch64-apple-darwin"]) make(join(root, name));
   return { root, make, runtime: join(root, "src-tauri", "runtime") };
 }
 function specs() {
   return [
     { id: "membrane-command", component: "membrane", delivery: "externalBin", path: "membrane-{target}" },
-    { id: "cortex-service", component: "cortex-service", delivery: "externalBin", path: "cortex-service-{target}" },
     { id: "cortex-cli", component: "cortex", delivery: "externalBin", path: "cortex-{target}" },
     { id: "cortex-contract", component: "cortex", axis: "cortex", delivery: "resource", path: "cortex.txt" },
     { id: "blueprint-runtime", component: "blueprint", axis: "blueprint", delivery: "preStagedResource", path: "src-tauri/runtime/blueprint", tree: true },
@@ -38,12 +37,30 @@ function specs() {
 
 test("runtime closure records generated Blueprint, compiled sidecars & six axes", () => {
   const ids = new Set(RUNTIME_SPECS.map((spec) => spec.id));
-  for (const id of ["membrane-command", "cortex-service", "blueprint-runtime", "pull-contract", "push-contract", "guide-contract", "adapt-contract", "runtime-schemas", "host-adapters", "install-workspace", "install-workspace-manifest", "hub-icons"]) assert.ok(ids.has(id), id);
+  for (const id of ["membrane-command", "cortex-cli", "blueprint-runtime", "pull-contract", "push-contract", "guide-contract", "adapt-contract", "runtime-schemas", "host-adapters", "install-workspace", "install-workspace-manifest", "hub-icons"]) assert.ok(ids.has(id), id);
   assert.equal(RUNTIME_SPECS.find((spec) => spec.id === "blueprint-runtime").delivery, "preStagedResource");
   for (const forbidden of ["cortex-store/src", "membrane-runtime/src/pull", "membrane-runtime/src/push", "../../blueprint/src", "../../adapt/src/adapt"]) assert.ok(!RUNTIME_SPECS.some((spec) => spec.path.includes(forbidden)), forbidden);
   const tauri = readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8");
   assert.match(tauri, /"resources": \["runtime"\]/);
-  assert.match(tauri, /"externalBin": \["binaries\/cortex", "binaries\/cortex-service", "binaries\/membrane"\]/);
+  assert.match(tauri, /"externalBin": \["binaries\/cortex", "binaries\/membrane"\]/);
+  assert.doesNotMatch(tauri, /cortex-service/);
+  const supervisor = readFileSync(new URL("../src-tauri/src/supervisor.rs", import.meta.url), "utf8");
+  const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+  assert.match(supervisor, /arg\("supervisor-child"\)/);
+  assert.match(supervisor, /ResidentLeaseV1/);
+  assert.match(supervisor, /ResidentHelloV1/);
+  assert.match(supervisor, /MEMBRANE_LIFECYCLE_STDIO/);
+  assert.doesNotMatch(supervisor, /MEMBRANE_OWNER_PIPE/);
+  assert.doesNotMatch(readFileSync(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8"), /membrane-supervisor/);
+  assert.match(main, /bundled_binary\("membrane"\)/);
+  assert.doesNotMatch(`${supervisor}\n${main}`, /cortex-service/);
+  const probes = readFileSync(new URL("../scripts/runtime-inventory.mjs", import.meta.url), "utf8");
+  assert.match(probes, /serviceId: "membrane-local-v1"/);
+  assert.match(probes, /MEMBRANE_PORT/);
+  assert.match(probes, /MEMBRANE_LIFECYCLE_STDIO/);
+  assert.doesNotMatch(probes, /MEMBRANE_OWNER_PIPE/);
+  assert.doesNotMatch(probes, /CORTEX_(?:PORT|API_TOKEN_FILE|INSTALLATION_ID|SERVICE_INSTANCE_ID)/);
+  assert.doesNotMatch(probes, /win32|windows|\.exe\b|blueprint\.cmd/);
   const stager = readFileSync(new URL("../scripts/stage-runtime.mjs", import.meta.url), "utf8");
   assert.match(stager, /blueprint\/scripts\/release\/stage-runtime\.mjs/);
   assert.match(stager, /writeRuntimeInventory/);
@@ -65,20 +82,20 @@ test("runtime inventory hashes generated runtime, install manifest & rejects mis
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("unpacked artifact requires executable bootstrap, Cortex, Blueprint & Hub probes", async () => {
+test("unpacked artifact requires executable bootstrap, Membrane supervisor health, Blueprint & Hub probes", async () => {
   const { root, make, runtime } = fixture(); const sidecars = join(root, "sidecars");
   try {
     writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "aarch64-apple-darwin" });
-    for (const name of ["membrane", "cortex-service", "cortex"]) make(join(sidecars, name));
+    for (const name of ["membrane", "cortex"]) make(join(sidecars, name));
     assert.match(readFileSync(new URL("../scripts/runtime-inventory.mjs", import.meta.url), "utf8"), /function nativeUnpackedProbes/);
     const called = [];
-    await verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: Object.fromEntries(["bootstrapImport", "cortexService", "blueprintRecall", "hubSnapshot"].map((name) => [name, async () => { called.push(name); return true; }])) });
-    assert.deepEqual(called, ["bootstrapImport", "cortexService", "blueprintRecall", "hubSnapshot"]);
+    await verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: Object.fromEntries(["bootstrapImport", "membraneSupervisorHealth", "blueprintRecall", "hubSnapshot"].map((name) => [name, async () => { called.push(name); return true; }])) });
+    assert.deepEqual(called, ["bootstrapImport", "membraneSupervisorHealth", "blueprintRecall", "hubSnapshot"]);
     make(join(sidecars, "Membrane Hub"));
-    await verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, cortexService: () => true, blueprintRecall: () => true, hubSnapshot: () => true } });
+    await verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, membraneSupervisorHealth: () => true, blueprintRecall: () => true, hubSnapshot: () => true } });
     make(join(sidecars, "cortex-debug"));
-    await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, cortexService: () => true, blueprintRecall: () => true, hubSnapshot: () => true } }), /unexpected unpacked sidecar/);
+    await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, membraneSupervisorHealth: () => true, blueprintRecall: () => true, hubSnapshot: () => true } }), /unexpected unpacked sidecar/);
     rmSync(join(sidecars, "cortex-debug"));
-    make(join(sidecars, "crypt-service")); await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, cortexService: () => true, blueprintRecall: () => true, hubSnapshot: () => true } }), /retired unpacked sidecar/);
+    make(join(sidecars, "crypt-service")); await assert.rejects(() => verifyUnpackedArtifact({ runtimeDir: runtime, sidecarDir: sidecars, probes: { bootstrapImport: () => true, membraneSupervisorHealth: () => true, blueprintRecall: () => true, hubSnapshot: () => true } }), /retired unpacked sidecar/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

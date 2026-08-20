@@ -28,7 +28,7 @@ fn every_mode_round_trips_through_parse_mode() {
             Vec::<String>::new(),
         ),
         (
-            vec!["membrane", "supervisor-child", "--lease", "/tmp/lease.json"],
+            vec!["membrane", "supervisor-child"],
             MembraneMode::SupervisorChild,
             Vec::<String>::new(),
         ),

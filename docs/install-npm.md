@@ -3,7 +3,7 @@
 > See also: [installation/](installation/) for the manifest/IPC handshake contract and stable-roots reference.
 
 `@membrane/membrane` is a thin loader for a native Membrane command/service
-pair. It selects its platform package, validates artifact bytes against its
+pair on macOS. It selects its Darwin platform package, validates artifact bytes against its
 recorded digest and signature metadata, then exposes native dispatch. Missing
 metadata, unsupported hosts, digest drift, or failed signature verification
 fail closed before dispatch.

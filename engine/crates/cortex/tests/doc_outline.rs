@@ -1,8 +1,8 @@
-use cortex::outline::build_outline;
-use cortex::outline::build_outline_page;
-use cortex::outline::read_section;
-use cortex::outline::read_section_with_cursor;
-use cortex::outline::DocReadError;
+use membrane_runtime::guide::outline::build_outline;
+use membrane_runtime::guide::outline::build_outline_page;
+use membrane_runtime::guide::outline::read_section;
+use membrane_runtime::guide::outline::read_section_with_cursor;
+use membrane_runtime::guide::outline::DocReadError;
 
 #[test]
 fn outline_preserves_frontmatter_fenced_headings_and_duplicate_anchors() {

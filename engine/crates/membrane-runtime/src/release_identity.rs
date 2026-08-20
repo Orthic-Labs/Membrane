@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 pub fn release_generation() -> String {
     format!(
         "sha256:{}",
-        option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown")
+        option_env!("MEMBRANE_SOURCE_TREE_SHA256").unwrap_or("unknown")
     )
 }
 
@@ -64,7 +64,7 @@ mod tests {
             release_generation(),
             format!(
                 "sha256:{}",
-                option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                option_env!("MEMBRANE_SOURCE_TREE_SHA256").unwrap_or("unknown")
             )
         );
     }

@@ -1,4 +1,4 @@
-use cortex::doc_shadow::{
+use membrane_runtime::guide::doc_shadow::{
     evaluate_frozen_shadow_replay, evaluate_shadow_replay, select_doc_candidates_for_shadow,
     DocCandidateFreshnessV1, DocCandidateProviderCandidateV1, DocCandidateProviderPolicyV1,
     DocTaskClassV1, DocumentClass, FrozenShadowReplayReceiptV1, ReplayCandidateV1,
@@ -152,7 +152,7 @@ fn frozen_replay_receipt_round_trips_cases_and_report() {
     let restored: FrozenShadowReplayReceiptV1 =
         serde_json::from_str(&serialized).expect("receipt deserializes");
     assert_eq!(restored, receipt);
-    assert_eq!(restored.schema_version, "cortex.doc_shadow_receipt.v1");
+    assert_eq!(restored.schema_version, "guide.doc_shadow_receipt.v1");
     assert_eq!(
         restored.report.disposition,
         ShadowReplayDisposition::ShadowOnly

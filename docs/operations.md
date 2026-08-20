@@ -14,20 +14,20 @@ node scripts/tools/productization/check-docs.mjs --check               # full ga
 
 The gate fails on a broken README link, a stale generated doc, a wrong claimed
 tool count (source truth: ten), or a stale platform status
-(source truth: macOS + Windows).
+(source truth: macOS).
 
 ## Running the product
 
 ```sh
 pnpm install        # Node >= 20, pnpm 11
 pnpm test           # MCP server + client + install-binding suites
-cargo build --workspace                          # Cortex engine
-cargo test --workspace --features fastembed      # with real ONNX embeddings
+rightkit cargo build --manifest-path engine/Cargo.toml --workspace  # Cortex engine
+rightkit cargo test --manifest-path engine/Cargo.toml --workspace --features fastembed  # with real ONNX embeddings
 ```
 
 ## Platform status
 
-Supported platforms are **macOS and Windows** (tier 1). Linux is tier-2 best-effort.
+The sole supported current target is **macOS** (tier 1). Other targets are not current supported targets.
 
 ## Hub alerts & reasons
 

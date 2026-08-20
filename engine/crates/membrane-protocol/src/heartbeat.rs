@@ -94,7 +94,7 @@ pub struct AdapterHeartbeatV1 {
     /// Self-declared status. The supervisor MAY upgrade or downgrade this
     /// during [`summarize_status`] but never below the truth the adapter
     /// asserted — see the staleness rules in
-    /// `membrane_supervisor::heartbeat`.
+    /// Membrane resident lifecycle heartbeat.
     pub status: AdapterStatus,
     /// RFC 3339 / ISO 8601 UTC instant at which the heartbeat was minted.
     /// The supervisor compares this against `now()` to compute staleness.

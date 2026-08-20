@@ -40,11 +40,9 @@ test("E2 promotion is ordered and rejects caller booleans", () => {
 
 test("E2 context enforcement requires hash-bound Tier 1 receipts", () => {
   const mac = artifact("mac", "mac_host_passed");
-  const windows = artifact("windows", "windows_host_passed");
-  assert.throws(() => advanceRollout("advisory", "context_enforced", { artifacts: { mac } }), /windows/);
-  const tampered = { ...windows, sha256: `sha256:${"0".repeat(64)}` };
-  assert.throws(() => advanceRollout("advisory", "context_enforced", { artifacts: { mac, windows: tampered } }), /digest mismatch/);
-  assert.equal(advanceRollout("advisory", "context_enforced", { artifacts: { mac, windows } }).to, "context_enforced");
+  assert.equal(advanceRollout("advisory", "context_enforced", { artifacts: { mac } }).to, "context_enforced");
+  const tampered = { ...mac, sha256: `sha256:${"0".repeat(64)}` };
+  assert.throws(() => advanceRollout("advisory", "context_enforced", { artifacts: { mac: tampered } }), /digest mismatch/);
 });
 
 test("E2 rejects a qualification artifact with no commit binding", () => {

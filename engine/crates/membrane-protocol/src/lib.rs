@@ -61,7 +61,10 @@ pub use installation::{
     canonical_data_root, ApiSchemaV1, ComponentV1, HandshakeError, InstallationManifestV1,
     MANIFEST_SCHEMA_VERSION, PROTOCOL_SCHEMA_VERSION,
 };
-pub use lease::{ComponentLeaseV1, COMPONENT_LEASE_SCHEMA_VERSION};
+pub use lease::{
+    ResidentEndpointV1, ResidentHelloV1, ResidentLeaseV1, ResidentLifecycleFrameV1,
+    RESIDENT_LEASE_SCHEMA_VERSION,
+};
 pub use observable_event::{
     ObservableEventKindV1, ObservableEventV1, OBSERVABLE_EVENT_SCHEMA_VERSION,
 };

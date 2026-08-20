@@ -2,12 +2,12 @@
 
 **Status:** derived system map · non-normative  
 **Date:** 2026-08-20  
-**Parent system:** Membrane  
+**Parent system:** Membrane
 **Authority:** this file summarizes canonical Membrane doctrine & Blueprint SSOT. If it conflicts with either authority, that authority wins.
 
 ## 1. System rule
 
-> **Membrane is the parent context system. Blueprint, Cortex, Guide, Adapt, and Push are its five named subsystems.**
+> **Membrane is the parent context system. Pull, Push, Cortex, Blueprint, Guide, and Adapt are its six named subsystems.**
 
 Planner, provider adapters, host adapters, MCP, supervisor/updater, and Hub integration are Membrane core/modules/surfaces. They are not peer semantic subsystems.
 
@@ -17,11 +17,12 @@ A subsystem may retain its own process, package, protocol, or store. Being under
 
 | Subsystem | The question it answers | Owns | Does not own |
 |---|---|---|---|
+| **Pull** | What current evidence is sufficient for this task? | bounded acquisition, eligibility, fusion, attention admission, packet publication, receipts | durable knowledge, repository truth, reduction mechanics |
 | **Blueprint** | What is true in this repository? | repository observation, evidence graph, generations, source identity, RecallCircuit, truth/drift/change intelligence, own SQLite/service/watcher | final context policy, durable knowledge, host enforcement |
 | **Cortex** | What do we durably know? | governed durable knowledge, admission-before-write, conflict/supersession, temporal/lifecycle semantics, memory retrieval, own SQLite | repository truth, document index, final attention policy, reduction |
 | **Guide** | Where in the documents is the relevant material? | document/section index, stable anchors, hash-bound references, document navigation, rebuildable index store | source-document authority, document truth, durable knowledge, final admission |
 | **Adapt** | What should we have learned? | transcript/event mining, Taste/Insights-style learning, evidence-backed proposals | any canonical truth store, direct durable writes, final context policy |
-| **Push** | How can flowing context be reduced faithfully? | reversible transform mechanics, content-addressed artifacts, protected-span verification, token/byte accounting | ranking, final admission, durable knowledge |
+| **Push** | How can flowing context be reduced faithfully? | reversible transform mechanics, content-addressed artifacts, protected-span verification, token/byte accounting, host telemetry | ranking, final admission, durable knowledge, Cortex storage |
 
 ## 3. Membrane core
 
@@ -67,8 +68,8 @@ hosts / MCP / Hub integration
             ↓
       Membrane core planner
        ↙      ↓       ↘
-Blueprint  Cortex    Guide
-                   ↘
+Pull planner  Blueprint  Cortex  Guide
+                    ↘      ↓
                     Push executes selected representation
 
 Adapt ── proposals ──→ Cortex admission

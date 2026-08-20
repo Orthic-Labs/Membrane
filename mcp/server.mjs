@@ -198,7 +198,7 @@ function takeRate(binding, action) {
   rateWindows.set(key, hits);
 }
 // Live filesystem re-derivation, not a trusted stored digest: the catalog is rebuilt from the
-// caller's OWN root on every check, so repository_id/role come from what actually exists on
+// caller's OWN root on every check, so binding identity comes from what actually exists on
 // disk right now. Fails closed (returns false) whenever the caller carries no explicit
 // child_repository_ids grant, or the catalog cannot be rebuilt at all.
 async function hasCatalogChildGrant(callerBinding, targetBinding) {
@@ -608,7 +608,7 @@ async function callTool(name, args, trace = {}, lifecycle) {
       const fused = { ok: true, scope: "workspace", repos: [], totalCandidates: 0, totalOmissions: 0, routing: routing.receipt };
       const trace = { traceparent: args.traceparent, tracestate: args.tracestate, baggage: args.baggage };
       const workspaceGrants = binding.grant_policy?.child_repository_ids;
-      const catalogRootId = repos.find((entry) => entry.role === "workspace-root")?.repository_id;
+      const catalogRootId = repos.find((entry) => entry.repoId === catalog.workspace_id)?.repoId;
       const workspaceEnvelope = requestEnvelopeFor(args);
       // MBR-003 authorizes EVERY target independently (same primitive as direct
       // calls). MBR-005 (SN-NODE-04 / R04) bounds the whole fan-out by ONE
@@ -619,18 +619,18 @@ async function callTool(name, args, trace = {}, lifecycle) {
       const lane = deadlineSignal(deadlineMs, lifecycle?.signal);
       const abortRow = (entry, reason) => {
         const r = reason || terminalReason(lane.signal) || "cancelled";
-        const row = { repoId: entry.repository_id, basis: "aborted", generationId: null, manifestDigest: null, sourceCommit: "", identityStatus: "unknown", identityReason: "generation_identity_unavailable", candidates: 0, omissions: [r] };
+        const row = { repoId: entry.repoId, basis: "aborted", generationId: null, manifestDigest: null, sourceCommit: "", identityStatus: "unknown", identityReason: "generation_identity_unavailable", candidates: 0, omissions: [r] };
         if (r === "deadline_exceeded") row.timeoutReceipt = timeoutReceipt("server.fan-out", deadlineMs);
         return { row, omissions: 1, candidates: 0 };
       };
-      const deniedRow = (entry) => ({ row: { repoId: entry.repository_id, basis: "denied", generationId: null, manifestDigest: null, sourceCommit: "", identityStatus: "unknown", identityReason: "generation_identity_unavailable", candidates: 0, omissions: ["target_denied"] }, omissions: 1, candidates: 0 });
+      const deniedRow = (entry) => ({ row: { repoId: entry.repoId, basis: "denied", generationId: null, manifestDigest: null, sourceCommit: "", identityStatus: "unknown", identityReason: "generation_identity_unavailable", candidates: 0, omissions: ["target_denied"] }, omissions: 1, candidates: 0 });
       await lifecycle?.checkpoint("provider_dispatch", 30);
       const results = await runBoundedOrdered(selected, WORKSPACE_CONCURRENCY, async (entry) => {
         if (lane.signal.aborted) return abortRow(entry);
-        const targetRoot = resolve(binding.root, entry.root === "." ? "." : entry.root);
+        const targetRoot = entry.rootBinding;
         let targetBinding;
         try { targetBinding = await bindingFor(targetRoot); } catch { return deniedRow(entry); }
-        const hasGrant = hasExplicitChildGrant(catalog, catalogRootId, entry.repository_id, workspaceGrants);
+        const hasGrant = hasExplicitChildGrant(catalog, catalogRootId, entry.repoId, workspaceGrants);
         const effectiveLevel = await canReachTarget({
           callerBinding: binding,
           targetBinding,
@@ -642,13 +642,13 @@ async function callTool(name, args, trace = {}, lifecycle) {
       const request = { task: args.task, repo: targetRoot, maxTokens: perRepoBudget, intent: args.intent, session: args.session, anchors: args.anchors, scopeGrantId: args.scopeGrantId, scopeDescriptor: binding.scope_descriptor, taskEnvelope: workspaceEnvelope.taskEnvelope, turnEnvelope: workspaceEnvelope.turnEnvelope, clientEnvelope: workspaceEnvelope.clientEnvelope, overlay: workspaceEnvelope.overlay, ...trace };
         const out = await run(process.execPath, [CLIENT, "--input", "-"], JSON.stringify(request), { ...await bindingEnv(binding), WORKSPACE_ROOT: targetRoot, MEMBRANE_DEADLINE_AT_MS: String(deadlineMs) }, lane.signal);
         const reason = terminalReason(lane.signal);
-        if (reason) return { row: { repoId: entry.repository_id, basis: "aborted", generationId: null, candidates: 0, omissions: [reason] }, omissions: 1, candidates: 0 };
+        if (reason) return { row: { repoId: entry.repoId, basis: "aborted", generationId: null, candidates: 0, omissions: [reason] }, omissions: 1, candidates: 0 };
         const packet = text(out.stdout.trim() || "");
         const degraded = Boolean(packet?.degradationReason && packet.degradationReason !== "none");
         const identity = repositoryIdentity(packet, entry);
         return {
           row: {
-            repoId: entry.repository_id,
+            repoId: entry.repoId,
             ...identity,
             candidates: (packet?.packet?.blocks || []).length,
             omissions: degraded ? [packet.degradationReason] : [],

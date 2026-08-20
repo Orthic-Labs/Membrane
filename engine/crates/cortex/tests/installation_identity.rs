@@ -1,4 +1,4 @@
-use cortex::installation_identity::{
+use membrane_runtime::installation_identity::{
     assert_installation_not_quarantined, load_or_create_installation, rotate_installation,
     start_and_publish, InstallationIdentity,
 };

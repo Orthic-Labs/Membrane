@@ -167,7 +167,7 @@ def _free_port() -> int:
 
 
 def _run(binary: Path, db: Path, port: int, args: list[str]) -> str:
-    env = {**os.environ, "CORTEX_PORT": str(port)}
+    env = {**os.environ, "MEMBRANE_PORT": str(port)}
     result = subprocess.run(
         [str(binary), "--db", str(db), *args],
         env=env,
@@ -218,7 +218,7 @@ def _start_service(binary: Path, db: Path, port: int, env: dict[str, str]) -> su
     service.kill()
     service.wait(timeout=5)
     stderr = service.stderr.read().strip() if service.stderr else ""
-    raise RuntimeError(f"isolated Cortex service did not start: {stderr}")
+    raise RuntimeError(f"isolated Membrane durable-memory resident did not start: {stderr}")
 
 
 def _stop_service(service: subprocess.Popen) -> None:
@@ -255,13 +255,13 @@ def test_real_persistence_readback_and_next_use(
     workspace_root = learning.workspace_runtime.workspace_root()
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace_root))
     monkeypatch.setenv("CONTEXT_HOME", str(tmp_path))
-    monkeypatch.setenv("CORTEX_API_TOKEN_FILE", str(token_file))
+    monkeypatch.setenv("MEMBRANE_API_TOKEN_FILE", str(token_file))
     monkeypatch.setenv("CORTEX_ALLOW_HASH", "1")
     if sys.platform == "darwin":
         runtime = tmp_path / "libonnxruntime.dylib"
         shutil.copy2(binary.parent / "libonnxruntime.dylib", runtime)
         monkeypatch.setenv("ORT_DYLIB_PATH", str(runtime))
-    monkeypatch.setenv("CORTEX_PORT", str(port))
+    monkeypatch.setenv("MEMBRANE_PORT", str(port))
     env = {
         **os.environ,
     }

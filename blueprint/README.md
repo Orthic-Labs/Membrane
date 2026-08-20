@@ -101,8 +101,8 @@ Parser depth varies by language (lexical fallback is broader than AST coverage).
 Blueprint is **source-available**, not open source. Its proprietary core is covered
 by the [Orthic Labs Source Use License v1.0](LICENSE), which permits internal and
 evaluation use. Damned Ventures LLC may publish Blueprint through owner-authorized
-channels, including npm, GitHub Releases, its Homebrew tap and Scoop bucket, and
-WinGet. That publication does not grant licensees a general right to redistribute,
+channels, including npm, GitHub Releases, and its Homebrew tap. That publication
+does not grant licensees a general right to redistribute,
 mirror, modify, or repackage proprietary core.
 
 The SDK (`sdk/`), schemas (`schemas/`), and examples (`examples/`) are licensed

@@ -34,7 +34,7 @@ class AdaptPersistenceError(RuntimeError):
 
 
 def _token_file() -> Path:
-    configured = os.environ.get("CORTEX_API_TOKEN_FILE", "").strip()
+    configured = os.environ.get("MEMBRANE_API_TOKEN_FILE", "").strip()
     if configured:
         return Path(configured)
     db = Path(os.environ.get(
@@ -44,7 +44,7 @@ def _token_file() -> Path:
 
 
 def _base_url() -> str:
-    return f"http://127.0.0.1:{workspace_runtime.cortex_port(os.environ)}"
+    return f"http://127.0.0.1:{workspace_runtime.membrane_port(os.environ)}"
 
 
 def _normalize_scope(scope: str) -> str:

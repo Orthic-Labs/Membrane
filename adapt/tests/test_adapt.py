@@ -166,7 +166,7 @@ def test_commandcode_parser_extracts_flat_role_messages(tmp_path):
             "content": [{"type": "text", "text": "assistant content is excluded"}],
         },
     ]
-    session = ts.parse_commandcode_session(_write(tmp_path / "command.jsonl", rows))
+    session = ts.parse_command_code_session(_write(tmp_path / "command.jsonl", rows))
 
     assert session is not None
     assert session.tool == "command-code"

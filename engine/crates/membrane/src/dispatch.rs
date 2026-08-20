@@ -5,8 +5,9 @@
 
 use crate::generate_cli_subcommands;
 use clap::{Arg, Command as ClapCommand, Parser, Subcommand};
-use serde::Deserialize;
 use std::ffi::OsString;
+
+use membrane_protocol::{ResidentHelloV1 as LifecycleHelloV1, ResidentLifecycleFrameV1};
 
 const GENERATED_CLI_SUBCOMMANDS: &str = include_str!("generated_cli_subcommands.rs");
 
@@ -48,8 +49,7 @@ pub enum MembraneMode {
     StdioMcp,
     /// Long-running HTTP service bound to 127.0.0.1 only. Loopback API for the Hub and CLI.
     LoopbackApi,
-    /// The supervisor's resident child: owns the engine DB and accepts lease tokens from
-    /// `LoopbackApi` clients.
+    /// Resident child: owns engine DB & exchanges lifecycle frames over inherited stdio.
     SupervisorChild,
     /// MBR-203: transactional install. Runs an install plan against a scratch
     /// `MEMBRANE_ROOT` and only on `commit` renames the scratch root to the
@@ -128,20 +128,13 @@ struct StdioArgs {
 
 #[derive(Debug, clap::Args)]
 struct LoopbackArgs {
-    /// Port for the loopback API. The dispatcher only validates the port range; the runtime
-    /// binds it. Must be ≥ 1024 to keep the supervisor's lease authority unprivileged.
+    /// Port for loopback API. Dispatcher validates range; runtime binds it.
     #[arg(long, default_value_t = 47851)]
     port: u16,
 }
 
 #[derive(Debug, clap::Args)]
-struct SupervisorArgs {
-    /// Path to the supervisor lease file handed to the resident child at start. The runtime
-    /// reads this and refuses to serve if the lease is missing, stale, or signed by a different
-    /// build.
-    #[arg(long)]
-    lease: Option<std::path::PathBuf>,
-}
+struct SupervisorArgs {}
 
 /// MBR-203: install subcommand arguments. The binary accepts an optional
 /// `--plan` JSON; when omitted, it executes a default plan with the five
@@ -209,8 +202,6 @@ pub struct ParsedInvocation {
     pub framing: String,
     /// For `LoopbackApi`, the port to bind.
     pub port: u16,
-    /// For `SupervisorChild`, the lease path if the supervisor provided one.
-    pub lease: Option<std::path::PathBuf>,
     /// MBR-203: for `Install` mode, the scratch root, target root, optional
     /// plan path, and dry-run flag. `None` for every other mode.
     pub install: Option<InstallInvocation>,
@@ -287,7 +278,6 @@ fn parse_registry_operation(args: &[OsString]) -> Option<Result<ParsedInvocation
                     .collect(),
                 framing: String::new(),
                 port: 0,
-                lease: None,
                 install: None,
                 uninstall: None,
                 migration: None,
@@ -303,6 +293,26 @@ where
 {
     // `clap` insists on consuming argv; we rebuild a Vec so error messages stay clean.
     let collected: Vec<OsString> = args.into_iter().map(Into::into).collect();
+    // Pull & Push are first-class Membrane commands. They bypass the transport
+    // mode parser while retaining one runtime CLI implementation.
+    if matches!(
+        collected.get(1).and_then(|value| value.to_str()),
+        Some("pull" | "push")
+    ) {
+        return Ok(ParsedInvocation {
+            mode: MembraneMode::Cli,
+            cli_tail: collected
+                .iter()
+                .skip(1)
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect(),
+            framing: String::new(),
+            port: 0,
+            install: None,
+            uninstall: None,
+            migration: None,
+        });
+    }
     if let Some(operation) = parse_registry_operation(&collected) {
         return operation;
     }
@@ -313,7 +323,6 @@ where
             cli_tail: args.passthrough,
             framing: String::new(),
             port: 0,
-            lease: None,
             install: None,
             uninstall: None,
             migration: None,
@@ -330,7 +339,6 @@ where
                 cli_tail: Vec::new(),
                 framing: args.framing,
                 port: 0,
-                lease: None,
                 install: None,
                 uninstall: None,
                 migration: None,
@@ -339,7 +347,7 @@ where
         Command::LoopbackApi(args) => {
             if args.port < 1024 {
                 return Err(format!(
-                    "loopback-api port {} is privileged; the supervisor refuses ports < 1024",
+                    "loopback-api port {} is privileged; Membrane refuses ports < 1024",
                     args.port
                 ));
             }
@@ -348,18 +356,16 @@ where
                 cli_tail: Vec::new(),
                 framing: String::new(),
                 port: args.port,
-                lease: None,
                 install: None,
                 uninstall: None,
                 migration: None,
             }
         }
-        Command::SupervisorChild(args) => ParsedInvocation {
+        Command::SupervisorChild(_args) => ParsedInvocation {
             mode: MembraneMode::SupervisorChild,
             cli_tail: Vec::new(),
             framing: String::new(),
             port: 0,
-            lease: args.lease,
             install: None,
             uninstall: None,
             migration: None,
@@ -369,7 +375,6 @@ where
             cli_tail: Vec::new(),
             framing: String::new(),
             port: 0,
-            lease: None,
             install: Some(InstallInvocation {
                 scratch_root: args.scratch_root,
                 target_root: args.target_root,
@@ -384,7 +389,6 @@ where
             cli_tail: Vec::new(),
             framing: String::new(),
             port: 0,
-            lease: None,
             install: None,
             uninstall: Some(UninstallInvocation {
                 receipt_root: args.receipt_root,
@@ -398,7 +402,6 @@ where
             cli_tail: Vec::new(),
             framing: String::new(),
             port: 0,
-            lease: None,
             install: None,
             uninstall: None,
             migration: Some(MigrationInvocation {
@@ -408,21 +411,6 @@ where
         },
     };
     Ok(invocation)
-}
-
-/// Typed hello frame. A lifecycle peer may not widen this binding with ignored fields.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct LifecycleHelloV1 {
-    kind: String,
-    lifecycle_version: u8,
-    fence: u64,
-    installation_id: String,
-    product_id: String,
-    instance_id: String,
-    artifact_digest: String,
-    declared_data_root: String,
-    secret: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -479,7 +467,7 @@ impl LifecycleChannel {
             LifecycleCommand::OwnershipLoss => "ownership_loss",
             LifecycleCommand::ParentEof => return Ok(()),
         };
-        emit_lifecycle_frame(serde_json::json!({"kind":"ack","command":command,"fence":self.fence}))
+        emit_lifecycle_frame(serde_json::json!({"kind":"ack","command":command,"fence":self.fence,"capability":self.capability}))
     }
 
     pub fn failed(&self) -> Result<(), String> {
@@ -489,13 +477,7 @@ impl LifecycleChannel {
     }
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct LifecycleCommandFrame {
-    kind: String,
-    command: String,
-    fence: u64,
-}
+type LifecycleCommandFrame = ResidentLifecycleFrameV1;
 
 fn emit_lifecycle_frame(frame: serde_json::Value) -> Result<(), String> {
     use std::io::Write;
@@ -510,7 +492,7 @@ fn emit_lifecycle_frame(frame: serde_json::Value) -> Result<(), String> {
 
 /// Consume and bind hello before a resident begins startup. Ordinary launches have no channel.
 pub fn consume_lifecycle_channel() -> Result<Option<LifecycleChannel>, String> {
-    if std::env::var("ORTHIC_LIFECYCLE_STDIO").as_deref() != Ok("1") {
+    if std::env::var("MEMBRANE_LIFECYCLE_STDIO").as_deref() != Ok("1") {
         return Ok(None);
     }
     use std::io::BufRead;
@@ -541,7 +523,7 @@ pub fn consume_lifecycle_channel() -> Result<Option<LifecycleChannel>, String> {
     }
     let channel = LifecycleChannel {
         fence: hello.fence,
-        capability: hello.secret,
+        capability: hello.capability,
     };
     emit_lifecycle_frame(
         serde_json::json!({"kind":"register","state":"starting","fence":channel.fence}),
@@ -573,11 +555,14 @@ fn validate_lifecycle_hello_shape(hello: &LifecycleHelloV1) -> Result<(), String
     {
         return Err("lifecycle declaredDataRoot invalid".into());
     }
-    if !is_hex64(&hello.secret) {
-        return Err("lifecycle secret must be exactly 64 lowercase hex characters".into());
-    }
-    if !is_sha256_digest(&hello.artifact_digest) {
+    if !is_sha256_digest(&hello.artifact_digest)
+        || !is_sha256_digest(&hello.release_generation)
+        || !is_sha256_digest(&hello.instance_id)
+    {
         return Err("lifecycle artifact digest invalid".into());
+    }
+    if !is_hex64(&hello.capability) || hello.capability.len() != 64 {
+        return Err("lifecycle capability must be exactly 64 lowercase hex characters".into());
     }
     Ok(())
 }
@@ -642,12 +627,17 @@ pub fn monitor_lifecycle_channel(
                     return;
                 }
             };
-            if frame.kind != "command" || frame.fence != channel.fence() {
+            if frame.kind != "command"
+                || frame.fence != channel.fence()
+                || frame.capability.as_deref() != Some(channel.capability())
+            {
                 control.fail("lifecycle command fence mismatch");
                 return;
             }
-            let command = match frame.command.as_str() {
-                "drain" | "stop" | "update_handoff" | "ownership_loss" => frame.command,
+            let command = match frame.command.as_deref() {
+                Some("drain") | Some("stop") | Some("update_handoff") | Some("ownership_loss") => {
+                    frame.command.clone().unwrap_or_default()
+                }
                 _ => {
                     control.fail("lifecycle command unsupported");
                     return;
@@ -668,6 +658,15 @@ mod tests {
         let inv = parse_mode(["membrane", "cli", "doctor", "--strict"].iter().copied()).unwrap();
         assert_eq!(inv.mode, MembraneMode::Cli);
         assert_eq!(inv.cli_tail, vec!["doctor", "--strict"]);
+    }
+
+    #[test]
+    fn pull_and_push_are_first_class_cli_tails() {
+        for axis in ["pull", "push"] {
+            let inv = parse_mode(["membrane", axis, "status"].iter().copied()).unwrap();
+            assert_eq!(inv.mode, MembraneMode::Cli);
+            assert_eq!(inv.cli_tail, vec![axis, "status"]);
+        }
     }
 
     #[test]
@@ -703,18 +702,11 @@ mod tests {
     }
 
     #[test]
-    fn supervisor_child_accepts_lease_path() {
-        let inv = parse_mode(
-            ["membrane", "supervisor-child", "--lease", "/var/run/lease"]
-                .iter()
-                .copied(),
-        )
-        .unwrap();
+    fn supervisor_child_has_no_filesystem_lease_argument() {
+        let inv = parse_mode(["membrane", "supervisor-child"].iter().copied()).unwrap();
         assert_eq!(inv.mode, MembraneMode::SupervisorChild);
-        assert_eq!(
-            inv.lease.as_deref().unwrap(),
-            std::path::Path::new("/var/run/lease")
-        );
+        assert!(parse_mode(["membrane", "supervisor-child", "--retired-binding", "/tmp/x"])
+            .is_err());
     }
 
     #[test]
@@ -736,10 +728,11 @@ mod tests {
             "fence": 1,
             "installationId": "installation-1",
             "productId": "membrane",
-            "instanceId": "instance-1",
+            "instanceId": format!("sha256:{}", "c".repeat(64)),
+            "releaseGeneration": format!("sha256:{}", "d".repeat(64)),
             "artifactDigest": format!("sha256:{}", "a".repeat(64)),
             "declaredDataRoot": "/tmp/membrane",
-            "secret": "b".repeat(64),
+            "capability": "b".repeat(64),
         })
     }
 
@@ -755,7 +748,7 @@ mod tests {
         for (field, value) in [
             ("fence", serde_json::json!(0)),
             ("productId", serde_json::json!("blueprint")),
-            ("secret", serde_json::json!("A".repeat(64))),
+            ("capability", serde_json::json!("A".repeat(64))),
             ("artifactDigest", serde_json::json!("sha256:short")),
         ] {
             let mut invalid = valid_hello();

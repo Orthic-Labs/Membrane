@@ -15,7 +15,7 @@ def test_freshness_uses_workspace_default_token_file(monkeypatch, tmp_path: Path
     token_file = workspace / "tools" / ".cache" / "memory" / "api-token"
     token_file.parent.mkdir(parents=True)
     token_file.write_text("default-token\n", encoding="utf-8")
-    monkeypatch.delenv("CORTEX_API_TOKEN_FILE", raising=False)
+    monkeypatch.delenv("MEMBRANE_API_TOKEN_FILE", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
 
     # The route validates a source-barrier receipt, so the payload must carry an

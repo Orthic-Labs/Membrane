@@ -678,6 +678,7 @@ export function createContextCandidateSet(generation, options = {}) {
     repoRoot: options.repoRoot ?? generation.repoRoot ?? null,
     receiptId: options.receiptId ?? null,
     traceId: options.traceId ?? randomUUID(),
+    indexedAt: generation.manifest.generatedAt,
     task: String(options.task ?? options.query ?? "Blueprint graph retrieval"),
     mode: options.mode ?? "survey",
     provider: generation.provider.id,

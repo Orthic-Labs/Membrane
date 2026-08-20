@@ -12,14 +12,13 @@
 // parameter with a default that performs the real, installed-path work. The
 // defaults require a live installed host (cortex CLI, event-log database,
 // running Membrane service, signed release-evidence manifest) and are meant
-// to run manually at the Book gate on macOS and Windows — never during task
+// to run manually at the Book gate on macOS — never during task
 // implementation and never as part of an automated pipeline. See
 // docs/evaluation/mbr801-run-harness.md.
 //
 // The Book gate invokes:
 //
 //     node scripts/qualification/run.mjs --task MBR-801 --platform macos --release-manifest <path>
-//     node scripts/qualification/run.mjs --task MBR-801 --platform windows --release-manifest <path>
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -53,8 +52,9 @@ function atomicJson(path, value) {
 }
 
 export function resolvePlatform(explicit) {
-  if (explicit === "macos" || explicit === "windows") return explicit;
-  return process.platform === "win32" ? "windows" : "macos";
+  if (explicit !== undefined && explicit !== "macos") throw new Error("Mac-only qualification accepts --platform macos");
+  if (process.platform !== "darwin") throw new Error("Mac-only qualification must run on macOS");
+  return "macos";
 }
 
 function defaultGitCommit(workspaceRoot) {
@@ -77,7 +77,7 @@ export async function defaultResolveHostIdentity() {
 // Proves the harness is exercising a signed, installed build by delegating to
 // the existing release-evidence verifier (scripts/release/verify-release-evidence.mjs),
 // which independently checks artifact hashes, ed25519 + platform-trust
-// (apple-notary / windows-authenticode) signatures, and installed platform
+// (Apple notarization) signatures, and installed platform
 // receipts. Requires a real release-evidence manifest produced by the signed
 // release pipeline; this function performs no build or signing itself.
 export async function defaultVerifySignedBuild({ releaseManifestPath }) {
@@ -112,7 +112,7 @@ export async function defaultScenarioRunner({ scenario, platform, workspaceRoot,
   const result = spawnSync(process.execPath, [
     runnerPath,
     "--scenario", scenario,
-    "--platform", platform === "macos" ? "mac" : "windows",
+    "--platform", "mac",
     "--workspace-root", workspaceRoot,
     "--evidence-root", evidenceRoot,
   ], { encoding: "utf8", timeout: 300_000 });

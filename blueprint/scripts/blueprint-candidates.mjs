@@ -34,7 +34,6 @@ const outDir = args.out ?? ".agent";
 const task = String(args.task ?? args.query ?? "").trim();
 const limit = Math.max(1, Math.min(256, Number(args.limit ?? 40) || 40));
 
-const started = process.hrtime.bigint();
 const db = openStoreReadOnly(join(root, outDir, "graph", "graph.db"));
 try {
   const envelope = readManifestEnvelope(db);
@@ -54,18 +53,10 @@ try {
   });
   const candidateSet = recallCircuitToCandidateSet(circuit, {
     provider: envelope.provider,
-    repoRoot: root,
-    receiptId: null,
+    indexedAt: envelope.generatedAt ?? new Date().toISOString(),
+    canonical: true,
   });
-  const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6;
-  console.log(JSON.stringify({
-    ...candidateSet,
-    // The caller (peer's blueprint provider) needs the generation id for its
-    // cache key and return contract. Reporting it here removes the separate
-    // `graph status` probe, which paid the full CLI module graph per packet.
-    generationId,
-    _diagnostics: { stageElapsedMs: { repo_code_scan: elapsedMs } },
-  }));
+  console.log(JSON.stringify(candidateSet));
 } finally {
   closeStore(db);
 }

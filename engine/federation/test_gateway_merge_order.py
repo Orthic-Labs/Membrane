@@ -74,8 +74,8 @@ class _ImmediateExecutor:
 @functools.lru_cache(maxsize=1)
 def _planner_binary() -> Path:
     override = (
-        os.environ.get("CORTEX_BIN", "").strip()
-        or os.environ.get("CORTEX_TEST_BIN", "").strip()
+        os.environ.get("MEMBRANE_BIN", "").strip()
+        or os.environ.get("MEMBRANE_TEST_BIN", "").strip()
     )
     if override:
         binary = Path(override)
@@ -135,8 +135,8 @@ def _semantic_candidate_set(ccs: dict) -> dict:
 
 
 def test_planner_fallback_builds_cortex_cli_through_rightkit(monkeypatch, tmp_path: Path):
-    monkeypatch.delenv("CORTEX_BIN", raising=False)
-    monkeypatch.delenv("CORTEX_TEST_BIN", raising=False)
+    monkeypatch.delenv("MEMBRANE_BIN", raising=False)
+    monkeypatch.delenv("MEMBRANE_TEST_BIN", raising=False)
     monkeypatch.setitem(globals(), "ROOT", tmp_path)
     expected = tmp_path / "managed-target" / "debug" / (
         "cortex.exe" if os.name == "nt" else "cortex"

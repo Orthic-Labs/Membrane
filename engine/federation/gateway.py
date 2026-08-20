@@ -61,8 +61,8 @@ _LANE_FAILURE_KINDS = frozenset({
     "stale_snapshot", "generation_mismatch", "cancellation_budget_drop", "circuit_open",
 })
 def _resolve_release_manifest() -> Path:
-    """Locate current workspace's Cortex release manifest."""
-    override = os.environ.get("CORTEX_RELEASE_MANIFEST", "").strip()
+    """Locate current workspace's Membrane release manifest."""
+    override = os.environ.get("MEMBRANE_RELEASE_MANIFEST", "").strip()
     if override:
         return Path(override)
     workspace = next(
@@ -225,11 +225,20 @@ def _trace_id() -> str:
     return f"rc-fed-{int(time.time() * 1000):x}-{uuid.uuid4().hex[:8]}"
 
 
+def _canonical_indexed_at(value: Any) -> str:
+    """Return one non-empty timestamp for a candidate-set packet."""
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate:
+            return candidate
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
 def _freshness_token(repo_root: Path) -> str:
-    raw = os.environ.get("CORTEX_API_TOKEN", "").strip()
+    raw = os.environ.get("MEMBRANE_API_TOKEN", "").strip()
     if raw:
         return raw
-    override = os.environ.get("CORTEX_API_TOKEN_FILE", "").strip()
+    override = os.environ.get("MEMBRANE_API_TOKEN_FILE", "").strip()
     candidates = [Path(override)] if override else []
     workspace = os.environ.get("WORKSPACE_ROOT", "").strip()
     if workspace:
@@ -268,7 +277,7 @@ def _fetch_freshness_verdict(repo_root: Path, session: str | None = None) -> dic
     produced here rather than by any real staleness. A caller with no session still needs a
     verdict, so an explicit anonymous marker is sent instead of omitting the field.
     """
-    port = os.environ.get("CORTEX_PORT") or "47851"
+    port = os.environ.get("MEMBRANE_PORT") or "47851"
     token = _freshness_token(repo_root)
     body = json.dumps(
         {
@@ -937,9 +946,10 @@ def _merge_candidates(
         )
 
     provider_tag = "federated"
+    indexed_at = _canonical_indexed_at(freshness.get("indexedAt"))
     freshness_payload = {
         "revision": trace_id,
-        "indexedAt": freshness["indexedAt"],
+        "indexedAt": indexed_at,
         "stale": bool(freshness.get("stale", False)),
     }
     for field in (
@@ -963,6 +973,7 @@ def _merge_candidates(
     return {
         "schemaVersion": 1,
         "traceId": trace_id,
+        "indexedAt": indexed_at,
         "task": task,
         "mode": "verify",
         "provider": provider_tag,
@@ -1012,15 +1023,17 @@ def assemble_candidate_set(
             repo_root, scope_grant_id, client=client, task=task, session=session
         )
     except PermissionError as exc:
+        indexed_at = _canonical_indexed_at(None)
         err_envelope = {
             "schemaVersion": 1,
             "traceId": trace_id,
+            "indexedAt": indexed_at,
             "task": task,
             "mode": "verify",
             "provider": "federated",
             "freshness": {
                 "revision": trace_id,
-                "indexedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "indexedAt": indexed_at,
                 "stale": False,
             },
             "providerCeiling": {"maxCandidates": 256, "maxEstimatedTokens": max_tokens},

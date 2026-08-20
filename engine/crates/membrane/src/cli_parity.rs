@@ -141,18 +141,15 @@ pub fn generate_cli_subcommands(operations: &[OperationSpec]) -> String {
     source.push_str("    ]),\n");
 
     for spec in operations {
-        let help = spec.help.replace(['\r', '\n'], " ");
         source.push_str(&format!(
-            "    {:?} => Some(vec![ // {}\n",
-            cli_subcommand_name(spec.id),
-            help
+            "    {:?} => Some(vec![\n",
+            cli_subcommand_name(spec.id)
         ));
         for parameter in spec.parameters {
             source.push_str(&format!(
-                "        ({:?}.to_string(), {:?}.to_string()), // {}\n",
+                "        ({:?}.to_string(), {:?}.to_string()),\n",
                 format!("--{}", parameter.name),
-                parameter.default.unwrap_or_default(),
-                parameter.help.replace(['\r', '\n'], " ")
+                parameter.default.unwrap_or_default()
             ));
         }
         source.push_str("    ]),\n");

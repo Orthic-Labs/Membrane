@@ -8,8 +8,8 @@ test('parseArgs reads every documented flag', () => {
     '--corpus', '/tmp/corpus.json', '--salt', 's3cr3t-value', '--holdout-commitment', 'a'.repeat(64),
     '--holdout-fraction', '0.2', '--release-commit', 'b'.repeat(40), '--release-generation', 'g1',
     '--release-client', 'claude_code', '--release-service', 'membrane-hub', '--model', 'model-a', '--model', 'model-b',
-    '--hardware-macos', 'Apple', '--hardware-windows', 'x64', '--host-receipt-macos', '/tmp/mac.json',
-    '--host-receipt-windows', '/tmp/win.json', '--publication-disposition', 'internal-only', '--publication-approved', 'true',
+    '--hardware-macos', 'Apple', '--host-receipt-macos', '/tmp/mac.json',
+    '--publication-disposition', 'internal-only', '--publication-approved', 'true',
   ]);
   assert.equal(args.corpusPath, '/tmp/corpus.json');
   assert.equal(args.salt, 's3cr3t-value');

@@ -92,21 +92,21 @@ function buildRequest(event, root) {
   };
 }
 
-// Plan 2.5: the resident Cortex service already owns federation on loopback.
+// Plan 2.5: the resident Membrane service already owns federation on loopback.
 // Spawning `node client.mjs` per prompt paid a cold Node start inside a
 // 1500 ms budget, which is what produced the observed `packet: null` /
 // `providerStatus: unavailable` failures under load (defect 28) — the work
-// was fine, the spawn just did not finish in time. Call the service directly
-// and keep the spawn as the fallback for hosts with no resident service.
+// was fine, the spawn just did not finish in time. Call the service directly;
+// service loss is an explicit typed degradation.
 function residentPort() {
-  return String(process.env.CORTEX_PORT || '47851');
+  return String(process.env.MEMBRANE_PORT || '47851');
 }
 
 function residentToken(root) {
-  const raw = String(process.env.CORTEX_API_TOKEN || '').trim();
+  const raw = String(process.env.MEMBRANE_API_TOKEN || '').trim();
   if (raw) return raw;
   const candidates = [];
-  const override = String(process.env.CORTEX_API_TOKEN_FILE || '').trim();
+  const override = String(process.env.MEMBRANE_API_TOKEN_FILE || '').trim();
   if (override) candidates.push(override);
   const workspace = String(process.env.WORKSPACE_ROOT || '').trim();
   if (workspace) candidates.push(path.join(workspace, 'tools', '.cache', 'memory', 'api-token'));
@@ -127,7 +127,8 @@ function residentToken(root) {
 }
 
 // Ask the resident service for a packet. Returns null when the service is not
-// reachable so the caller can fall back rather than fail the turn.
+// reachable; callers must surface typed degradation rather than select context
+// through another production implementation.
 function runResident(request, root) {
   const token = residentToken(root);
   if (!token) return null;
@@ -171,6 +172,8 @@ function runClient(request, root, options = {}) {
     // seam for byte-equivalence tests and is never used by installed hooks.
     return { state: 'degraded', reason: 'membrane_service_unavailable', request };
   }
+  // Explicit client injection is retained only as a deterministic fixture seam
+  // for byte-equivalence tests. Installed hooks never pass this option.
   const client = options.client;
   if (!client) return { state: 'degraded', reason: 'membrane_client_missing', request };
   const result = childProcess.spawnSync(process.execPath, [client, '--input', '-'], {

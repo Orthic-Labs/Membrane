@@ -7,17 +7,17 @@
 2. From the clean primary checkout, run RightRelease locally with explicit
    `patch` lane. Build, signing, notarization, hardening, and sealing finish
    before any upload.
-3. Exercise sealed macOS and Windows installers on clean hosts through
+3. Exercise sealed macOS installer on clean host through
    install → init → query → MCP → update → rollback → uninstall. Missing or
    failing receipts stop publication.
 4. Generate compatibility, catalog, checksums, SBOM, provenance, and signed
    updater metadata from sealed bytes under ignored `.right-release/` output.
    Generate channel manifests from immutable GitHub Release assets.
 5. Publish and redownload-verify immutable bytes in order: GitHub Release,
-   npm OIDC, MCP Registry, Membrane Homebrew tap, Scoop, then WinGet.
+   npm OIDC, MCP Registry, then Membrane Homebrew tap.
 
-Apple and Azure signing are provisioned workspace capabilities owned by
-RightRelease. Product workflows do not implement signing or carry secrets.
+Apple signing is provisioned workspace capability owned by RightRelease.
+Product workflows do not implement signing or carry secrets.
 RightGit owns public CI and npm OIDC publication.
 
 ## Candidates (non-publishable)
@@ -44,7 +44,7 @@ artifacts.
 
 ## Signing and publishing
 
-RightRelease owns signed macOS/Windows artifacts. RightGit owns public CI and
+RightRelease owns signed macOS artifacts. RightGit owns public CI and
 npm OIDC. `release-candidate.yml` may assemble non-publishable candidates but
 never signs or publishes.
 
@@ -52,18 +52,17 @@ never signs or publishes.
 
 The sealed release gate chain (D53) no longer cites the deleted
 in-repo signing workflow (removed at `ec7253d`) and its jobs
-(`macos-sign-and-notarize`, `windows-sign`) which violate
-the signing doctrine fixed by CU-17/CU-18. Per D-18:
+(`macos-sign-and-notarize`) which violates
+signing doctrine fixed by CU-17. Per D-18:
 
 - **CU-13** satisfies SBOM / checksums / provenance via
   `scripts/release/check-release.mjs`, `checksums.mjs`, `sbom.mjs` (present at
   HEAD; see `scripts/release/verify-release.mjs` check).
-- **CU-17 / CU-18** satisfy macOS / Windows signing via `right-release`
-  invoked from the primary checkout — no in-repo signing workflow, no
-  Apple/Azure secrets in `.github/workflows/*.yml`.
-- **Clean-host verification** is the `clean-host-smoke` matrix already
-  present in CU-17/CU-18 (`PKG install → {blueprint,watch,MCP,update,uninstall}`
-  on macOS; `%LOCALAPPDATA%\Membrane\Blueprint` round-trip on Windows).
+- **CU-17** satisfies macOS signing via `right-release` invoked from the
+  primary checkout — no in-repo signing workflow, no Apple secrets in
+  `.github/workflows/*.yml`.
+- **Clean-host verification** is the macOS `clean-host-smoke` sequence
+  (`PKG install → {blueprint,watch,MCP,update,uninstall}`).
 
 Orchestration lives in `.github/workflows/release-candidate.yml` (extended
 by v4-U53, not a resurrected in-repo signing workflow): it runs
@@ -76,7 +75,7 @@ deleted workflow is cited and no in-repo signing job exists.
 
 Evidence is `.agent/dispatch/state.json` D53 entry:
 `release seal via .github/workflows/release-candidate.yml orchestrating
-CU-13 + CU-17/CU-18 + clean-host install verification; no in-repo signing
+CU-13 + CU-17 + clean-host install verification; no in-repo signing
 workflow per EC v4 D-18`.
 
 Verify locally:

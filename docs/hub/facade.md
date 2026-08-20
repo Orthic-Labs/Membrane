@@ -11,7 +11,7 @@ plus `hub.delivery.get/trace` (backed by CU-11's live `delivery_trace_view.rs` w
 
 ## Transport
 
-No HTTP transport here — that is CU-H03's scope. This crate produces data structures a transport layer calls into. The facade's public function signatures match what CU-H03's HTTP handlers call (checked via `cargo check -p membrane-runtime`).
+No HTTP transport here — that is CU-H03's scope. This crate produces data structures a transport layer calls into. The facade's public function signatures match what CU-H03's HTTP handlers call (checked via `rightkit cargo check --manifest-path engine/Cargo.toml -p membrane-runtime`).
 
 ## Generation
 

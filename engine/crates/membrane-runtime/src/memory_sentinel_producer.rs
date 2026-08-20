@@ -13,9 +13,8 @@
 //! - `lifecycle.expired` mirrors the same time-bound expiry expression
 //!   `store.rs::metrics_json` already uses (`effective_until_ms` /
 //!   `expires_at_ms` at or before "now").
-//! - `proposals` are `transform_opportunity_log` rows with
-//!   `outcome = 'recommended'` (a transform proposed but not yet resolved) —
-//!   IDs only (`opportunity_uid`), never memory content.
+//! - `proposals` has no durable source in Cortex; it remains empty until a
+//!   governed proposal store is established outside durable memory.
 //! - `contradictions` are distinct `context_feedback.candidate_id` values
 //!   with a verified `outcome = 'contradicted'` — IDs only.
 //! - `scratchpad`, `working`, and `taskCriteria` have no durable, queryable
@@ -69,18 +68,6 @@ pub(crate) fn build_sentinel_report_from(conn: &rusqlite::Connection) -> Option<
         .query_row("SELECT COUNT(*) FROM memory_quarantine", [], |r| r.get(0))
         .ok()?;
 
-    let mut proposal_stmt = conn
-        .prepare(
-            "SELECT opportunity_uid FROM transform_opportunity_log
-             WHERE outcome = 'recommended' ORDER BY ts DESC LIMIT ?1",
-        )
-        .ok()?;
-    let proposal_ids: Vec<String> = proposal_stmt
-        .query_map([MAX_ITEMS as i64], |r| r.get(0))
-        .ok()?
-        .collect::<Result<Vec<_>, _>>()
-        .ok()?;
-
     let mut contradiction_stmt = conn
         .prepare(
             "SELECT DISTINCT candidate_id FROM context_feedback
@@ -101,7 +88,7 @@ pub(crate) fn build_sentinel_report_from(conn: &rusqlite::Connection) -> Option<
             "superseded": superseded,
             "expired": expired,
         },
-        "proposals": proposal_ids,
+        "proposals": [],
         "contradictions": contradiction_ids,
         // scratchpad/working/taskCriteria intentionally omitted: no durable
         // store backs them yet (see module doc comment).
@@ -132,9 +119,6 @@ mod tests {
                 effective_until_ms INTEGER, expires_at_ms INTEGER
             );
             CREATE TABLE memory_quarantine (id TEXT PRIMARY KEY);
-            CREATE TABLE transform_opportunity_log (
-                opportunity_uid TEXT PRIMARY KEY, ts TEXT NOT NULL, outcome TEXT NOT NULL
-            );
             CREATE TABLE context_feedback (
                 trace_id TEXT NOT NULL, candidate_id TEXT NOT NULL, outcome TEXT NOT NULL,
                 verified INTEGER NOT NULL, ts TEXT NOT NULL,
@@ -166,7 +150,6 @@ mod tests {
         conn.execute_batch(
             "INSERT INTO memories (id, lifecycle_state) VALUES ('m1','active'),('m2','active'),('m3','superseded');
              INSERT INTO memory_quarantine (id) VALUES ('m4');
-             INSERT INTO transform_opportunity_log (opportunity_uid, ts, outcome) VALUES ('op1','2026-08-01T00:00:00Z','recommended');
              INSERT INTO context_feedback (trace_id, candidate_id, outcome, verified, ts) VALUES ('t1','m1','contradicted',1,'2026-08-01T00:00:00Z');",
         )
         .unwrap();
@@ -174,7 +157,7 @@ mod tests {
         assert_eq!(report["lifecycle"]["active"], 2);
         assert_eq!(report["lifecycle"]["superseded"], 1);
         assert_eq!(report["lifecycle"]["demoted"], 1);
-        assert_eq!(report["proposals"][0], "op1");
+        assert!(report["proposals"].as_array().unwrap().is_empty());
         assert_eq!(report["contradictions"][0], "m1");
         assert_eq!(report["evidence"]["valid"], true);
     }

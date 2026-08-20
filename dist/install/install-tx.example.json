@@ -13,9 +13,9 @@
       "rollback": "rm -f /tmp/membrane-scratch/manifest/manifest.json"
     },
     {
-      "stage": "MintLease",
-      "action": "echo 'lease' > /tmp/membrane-scratch/supervisor/lease.json",
-      "rollback": "rm -rf /tmp/membrane-scratch/supervisor"
+      "stage": "StartResident",
+      "action": "MEMBRANE_LIFECYCLE_STDIO=1 membrane supervisor-child < /tmp/membrane-scratch/lifecycle.in > /tmp/membrane-scratch/lifecycle.out 2> /tmp/membrane-scratch/lifecycle.err & echo $! > /tmp/membrane-scratch/membrane.pid",
+      "rollback": "kill -TERM $(cat /tmp/membrane-scratch/membrane.pid) 2>/dev/null || true; rm -f /tmp/membrane-scratch/membrane.pid"
     },
     {
       "stage": "PublishReceipt",

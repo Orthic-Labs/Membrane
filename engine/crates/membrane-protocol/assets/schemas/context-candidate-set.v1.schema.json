@@ -1,101 +1,275 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://membrane/schemas/context-candidate-set.v1.schema.json",
-  "title": "ContextCandidateSetV1",
-  "description": "MBR-101: the federated set of candidates fed to the deterministic admission planner. Canonical Rust source of truth: engine/crates/membrane-protocol/src/types.rs (ContextCandidateSetV1). Mirrors the shapes parsed by cortex-core::planner.",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["schemaVersion", "traceId", "task", "mode", "provider", "freshness", "providerCeiling", "candidates", "omissions"],
-  "properties": {
-    "schemaVersion": { "type": "integer", "const": 1 },
-    "traceId": { "type": "string", "minLength": 1 },
-    "task": { "type": "string", "minLength": 1 },
-    "mode": { "type": "string", "minLength": 1 },
-    "provider": { "type": "string", "minLength": 1 },
-    "freshness": { "$ref": "#/$defs/freshness" },
-    "providerCeiling": { "$ref": "#/$defs/providerCeiling" },
-    "candidates": { "type": "array", "items": { "$ref": "#/$defs/candidate" } },
-    "omissions": { "type": "array", "items": { "$ref": "#/$defs/omission" } }
-  },
   "$defs": {
-    "graphState": {
-      "type": "string",
-      "enum": ["clean", "dirty_overlay", "stale_snapshot", "missing_snapshot", "partial_reindex", "concurrent_update", "indeterminate"]
-    },
-    "freshnessClass": {
-      "type": "string",
-      "enum": ["current", "committed_snapshot", "dirty_overlay", "stale_snapshot", "unknown"]
-    },
-    "releaseGenerationStatus": {
-      "type": "string",
-      "enum": ["matched", "mismatch", "unavailable"]
+    "candidate": {
+      "additionalProperties": false,
+      "properties": {
+        "baseCommit": {
+          "type": "string"
+        },
+        "estimatedTokens": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exact": {
+          "type": "boolean"
+        },
+        "freshnessClass": {
+          "$ref": "#/$defs/freshnessClass"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "instructionPolicy": {
+          "type": "string"
+        },
+        "layer": {
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "overlayDigest": {
+          "type": "string"
+        },
+        "protected": {
+          "type": "boolean"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "providerScore": {
+          "type": "number"
+        },
+        "recoverable": {
+          "type": "boolean"
+        },
+        "resolver": {
+          "type": "string"
+        },
+        "scoreComponents": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        },
+        "snapshotId": {
+          "type": "string"
+        },
+        "sourceHash": {
+          "type": "string"
+        },
+        "sourceKind": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "sourceRef": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "trustClass": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "layer",
+        "sourceKind",
+        "sourceRef",
+        "sourceHash",
+        "trustClass",
+        "instructionPolicy",
+        "providerScore",
+        "estimatedTokens",
+        "protected",
+        "exact",
+        "recoverable",
+        "resolver",
+        "text"
+      ],
+      "type": "object"
     },
     "freshness": {
-      "type": "object",
       "additionalProperties": false,
-      "required": ["revision", "indexedAt", "stale"],
       "properties": {
-        "revision": { "type": "string" },
-        "indexedAt": { "type": "string", "format": "date-time" },
-        "stale": { "type": "boolean" },
-        "graphState": { "$ref": "#/$defs/graphState" },
-        "snapshotId": { "type": "string" },
-        "baseCommit": { "type": "string" },
-        "overlayDigest": { "type": "string" },
-        "expectedReleaseGeneration": { "type": "string" },
-        "observedReleaseGeneration": { "type": "string" },
-        "releaseGenerationStatus": { "$ref": "#/$defs/releaseGenerationStatus" }
-      }
-    },
-    "providerCeiling": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["maxCandidates", "maxEstimatedTokens"],
-      "properties": {
-        "maxCandidates": { "type": "integer", "minimum": 0 },
-        "maxEstimatedTokens": { "type": "integer", "minimum": 0 }
-      }
-    },
-    "candidate": {
-      "type": "object",
-      "additionalProperties": false,
+        "baseCommit": {
+          "type": "string"
+        },
+        "expectedReleaseGeneration": {
+          "type": "string"
+        },
+        "graphState": {
+          "$ref": "#/$defs/graphState"
+        },
+        "indexedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "observedReleaseGeneration": {
+          "type": "string"
+        },
+        "overlayDigest": {
+          "type": "string"
+        },
+        "releaseGenerationStatus": {
+          "$ref": "#/$defs/releaseGenerationStatus"
+        },
+        "revision": {
+          "type": "string"
+        },
+        "snapshotId": {
+          "type": "string"
+        },
+        "stale": {
+          "type": "boolean"
+        }
+      },
       "required": [
-        "id", "layer", "sourceKind", "sourceRef", "sourceHash", "trustClass",
-        "instructionPolicy", "providerScore", "estimatedTokens", "protected",
-        "exact", "recoverable", "resolver", "text"
+        "revision",
+        "indexedAt",
+        "stale"
       ],
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "layer": { "type": "integer", "minimum": 0, "maximum": 255 },
-        "provider": { "type": "string" },
-        "sourceKind": { "type": "string", "minLength": 1 },
-        "sourceRef": { "type": "string" },
-        "sourceHash": { "type": "string" },
-        "trustClass": { "type": "string", "minLength": 1 },
-        "instructionPolicy": { "type": "string" },
-        "providerScore": { "type": "number" },
-        "scoreComponents": { "type": "object", "additionalProperties": { "type": "number" } },
-        "baseCommit": { "type": "string" },
-        "overlayDigest": { "type": "string" },
-        "freshnessClass": { "$ref": "#/$defs/freshnessClass" },
-        "snapshotId": { "type": "string" },
-        "estimatedTokens": { "type": "integer", "minimum": 0 },
-        "protected": { "type": "boolean" },
-        "exact": { "type": "boolean" },
-        "recoverable": { "type": "boolean" },
-        "resolver": { "type": "string" },
-        "text": { "type": "string" }
-      }
+      "type": "object"
+    },
+    "freshnessClass": {
+      "enum": [
+        "current",
+        "committed_snapshot",
+        "dirty_overlay",
+        "stale_snapshot",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "graphState": {
+      "enum": [
+        "clean",
+        "dirty_overlay",
+        "stale_snapshot",
+        "missing_snapshot",
+        "partial_reindex",
+        "concurrent_update",
+        "indeterminate"
+      ],
+      "type": "string"
     },
     "omission": {
-      "type": "object",
       "additionalProperties": false,
-      "required": ["id", "reason"],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "layer": { "type": ["integer", "null"], "minimum": 0, "maximum": 255 },
-        "reason": { "type": "string" }
-      }
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "layer": {
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "providerCeiling": {
+      "additionalProperties": false,
+      "properties": {
+        "maxCandidates": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxEstimatedTokens": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "maxCandidates",
+        "maxEstimatedTokens"
+      ],
+      "type": "object"
+    },
+    "releaseGenerationStatus": {
+      "enum": [
+        "matched",
+        "mismatch",
+        "unavailable"
+      ],
+      "type": "string"
     }
-  }
+  },
+  "$id": "https://membrane/schemas/context-candidate-set.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "MBR-101: the federated set of candidates fed to the deterministic admission planner. Blueprint owns this repository-truth contract; Membrane root and Rust assets are generated projections consumed by cortex-core::planner.",
+  "properties": {
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/candidate"
+      },
+      "type": "array"
+    },
+    "freshness": {
+      "$ref": "#/$defs/freshness"
+    },
+    "indexedAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "mode": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "omissions": {
+      "items": {
+        "$ref": "#/$defs/omission"
+      },
+      "type": "array"
+    },
+    "provider": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "providerCeiling": {
+      "$ref": "#/$defs/providerCeiling"
+    },
+    "schemaVersion": {
+      "const": 1,
+      "type": "integer"
+    },
+    "task": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "traceId": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "traceId",
+    "indexedAt",
+    "task",
+    "mode",
+    "provider",
+    "freshness",
+    "providerCeiling",
+    "candidates",
+    "omissions"
+  ],
+  "title": "ContextCandidateSetV1",
+  "type": "object",
+  "x-blueprint-source": "blueprint/schemas/context-candidate-set.v1.schema.json",
+  "x-blueprint-source-hash": "sha256:ba0144af538f52473210417c1e2eb307c78e1da94e70b6360e2aa7ba61efc0e4",
+  "x-blueprint-generator": "scripts/generate-host-contracts.mjs"
 }

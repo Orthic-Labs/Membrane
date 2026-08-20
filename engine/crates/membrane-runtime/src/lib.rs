@@ -1,11 +1,7 @@
-//! Cortex — the productizable memory engine: SQLite + quantized vectors + cognitive tiers +
-//! hybrid retriever + effectiveness gate + dream consolidation, with multi-project `scope_id`
-//! isolation. CodeRight (the product) and the workspace both CONSUME this crate; neither owns the
-//! engine. Self-contained and publishable (depends only on cortex-core primitives).
+//! Membrane runtime — one implementation surface for Pull, Push, Cortex,
+//! Blueprint, Guide, and Adapt. Cortex durable storage remains isolated from
+//! Pull acquisition and Push reduction.
 
-extern crate self as cortex;
-
-pub mod admission_policy;
 pub mod agent_adapter_producer;
 pub mod agent_adapter_view;
 pub mod cache_prefix;
@@ -13,46 +9,33 @@ pub mod catalog;
 pub mod checkpoint;
 pub mod cli;
 pub mod code_batch;
-pub mod compress;
-pub mod compression_provider;
 pub mod delivery_trace_view;
 pub mod diagnostic_bundle;
 pub mod digest;
-pub mod doc_candidate_provider;
-pub mod doc_projection;
-pub mod doc_shadow;
-pub mod doc_spine;
 pub mod doctor;
-pub mod federation;
-pub mod federation_worker;
 pub mod feedback;
 pub mod fleet;
 pub mod freshness;
 pub mod hub;
 pub mod hub_inputs;
 pub mod hub_readonly_db;
-pub mod identifier;
 pub mod installation_manifest;
 pub mod mcp_http;
 pub mod memory_provider;
 pub mod memory_sentinel_producer;
 pub mod memory_sentinel_view;
 pub mod notifications;
-pub mod outline;
+pub mod guide;
 pub mod paths;
-pub mod plan_context;
 pub mod planes;
-pub mod planner_metrics;
-pub mod prep;
+pub mod pull;
 pub mod provenance;
 pub mod receipt;
 pub mod release_identity;
-pub mod runc;
 pub mod runtime_receipt;
 pub mod scratchpad;
 pub mod serve;
 pub mod service;
-pub mod skel;
 pub mod source_resolution;
 pub mod sources_explorer;
 pub mod sources_producer;
@@ -64,10 +47,11 @@ pub use provenance::{
     capture_working_tree, observe, record_provenance, ProvenanceError, ProvenanceRowV1,
     WorkingTreeSnapshotV1, PROVENANCE_ROW_SCHEMA_VERSION, WORKING_TREE_SNAPSHOT_SCHEMA_VERSION,
 };
-pub mod truncate;
+pub mod push;
 pub mod working_context;
 
-// Re-export OKF utilities so consumers import from one crate (`cortex`) during unification.
+// Re-export OKF persistence-format utilities through Membrane. Push compression
+// has its own protected-span authority and does not call cortex-format codecs.
 pub use cortex_format::okf;
 pub use working_context::{
     render_working_context, select_working_context, verify_envelope, WorkingContextBudgetV1,
@@ -76,10 +60,6 @@ pub use working_context::{
     WORKING_CONTEXT_SELECTION_SCHEMA_VERSION,
 };
 
-pub use admission_policy::{
-    admit, AdmissionDecision, AdmissionError, AdmissionRequest, Authority, InstructionPolicy,
-    Origin, ProtectedSpan, ProtectedSpanKind, QuarantineStatus,
-};
 pub use checkpoint::{
     CheckpointError, CheckpointSourceRefV1, CheckpointSourceResolutionV1, CheckpointV1,
 };

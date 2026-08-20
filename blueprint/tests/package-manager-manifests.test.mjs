@@ -19,25 +19,10 @@ test("Homebrew template uses immutable release URL and exact hash", () => {
   assert.ok(!formula.includes("latest"), "never points at latest");
 });
 
-test("WinGet manifests carry the stable package ID", () => {
-  for (const file of ["release/winget/Membrane.Blueprint.version.template.json", "release/winget/Membrane.Blueprint.installer.template.json", "release/winget/Membrane.Blueprint.locale.template.json"]) {
-    const manifest = JSON.parse(read(file));
-    assert.equal(manifest.PackageIdentifier, "Membrane.Blueprint");
-  }
-});
-
-test("Scoop manifest has 64bit URL and hash", () => {
-  const scoop = JSON.parse(read("release/scoop/blueprint.json.template"));
-  assert.equal(scoop._template, true);
-  assert.ok(scoop.architecture["64bit"].url.endsWith("blueprint-__VERSION__.tgz"));
-  assert.equal(scoop.architecture["64bit"].hash, "__NPM_TARBALL_SHA256__");
-  assert.deepEqual(scoop.bin, ["blueprint.cmd", "blueprint-mcp.cmd"]);
-});
-
-test("Linux archive metadata honors XDG paths", () => {
-  const linux = JSON.parse(read("release/linux/blueprint-archive.json"));
-  assert.ok(linux.xdg.config.includes("XDG_CONFIG_HOME"));
-  assert.ok(linux.xdg.data.includes("XDG_DATA_HOME"));
+test("Mac Homebrew is only native package-manager surface", () => {
+  assert.ok(existsSync(join(ROOT, "release/homebrew/blueprint.rb.template")));
+  assert.equal(existsSync(join(ROOT, "release/scoop/blueprint.json.template")), false);
+  assert.equal(existsSync(join(ROOT, "release/winget/Membrane.Blueprint.version.template.json")), false);
 });
 
 test("MCP server.json launches blueprint mcp serve from npm", () => {
@@ -60,7 +45,7 @@ test("all manifests reference versioned identities, not latest", () => {
 });
 
 test("tracked release tree contains templates, never final instances", () => {
-  for (const path of ["release/catalog.json", "release/compatibility.json", "release/homebrew/blueprint.rb", "release/scoop/blueprint.json", "release/winget/Membrane.Blueprint.version.json", "release/winget/Membrane.Blueprint.installer.json", "release/winget/Membrane.Blueprint.locale.json"]) {
+  for (const path of ["release/catalog.json", "release/compatibility.json", "release/homebrew/blueprint.rb"]) {
     assert.equal(existsSync(join(ROOT, path)), false, path);
   }
   assert.equal(JSON.parse(read("release/catalog.template.json")).publishable, false);

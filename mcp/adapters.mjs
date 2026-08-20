@@ -37,7 +37,7 @@ export function requestContext(name, request, { root = process.cwd(), client = C
   }
 }
 
-// MBR-207 pure status classifier. Mirrors `membrane-supervisor::heartbeat`:
+// MBR-207 pure status classifier. Mirrors Membrane resident heartbeat:
 // stale wins when the lastSeen gap is larger than `stalenessMs`; a non-zero
 // receipt.count wins over a self-declared `installed`; a heartbeat without
 // receipts can never stay `installed` and is coerced to `active`.

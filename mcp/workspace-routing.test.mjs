@@ -3,7 +3,7 @@ import test from "node:test";
 import { MAX_WORKSPACE_TARGETS, selectWorkspaceTargets, mapBounded } from "./workspace-routing.mjs";
 
 function repo(id, aliases = []) {
-  return { repoId: id, repository_id: id, aliases };
+  return { repoId: id, aliases };
 }
 
 const catalog = {

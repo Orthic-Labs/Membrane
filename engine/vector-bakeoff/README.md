@@ -1,6 +1,7 @@
 # Cortex Vector Backend Bake-off
 
-One committed generator, config, dependency locks, harness, and receipt contract run independently on macOS and Windows. Arms are serialized per host; both hosts may run simultaneously.
+One committed generator, config, dependency locks, harness, & receipt contract
+run on macOS.
 
 ## Prerequisites
 
@@ -11,54 +12,25 @@ One committed generator, config, dependency locks, harness, and receipt contract
 
 `protoc` is resolved from committed `protoc-bin-vendored` locks; no host install is used. Every backend has an isolated `Cargo.lock`, preventing stable/alpha sqlite symbols or Lance dependencies from sharing one binary.
 
-## Windows: pull & smoke
-
-From `D:\Claude`:
-
-```powershell
-git pull --ff-only origin main
-git submodule update --init --recursive membrane
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\membrane\engine\vector-bakeoff\run.ps1 smoke
-```
-
-`run.ps1` starts Python hidden, waits, then prints captured output. Results land under `membrane\engine\vector-bakeoff\.results\smoke-windows-*`.
-
-Full Round 1:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\membrane\engine\vector-bakeoff\run.ps1 round1
-```
-
 ## macOS: smoke & Round 1
 
 From `/Volumes/D/claude`:
 
 ```bash
-membrane/engine/vector-bakeoff/run.sh smoke
-membrane/engine/vector-bakeoff/run.sh round1
+cd membrane
+engine/vector-bakeoff/run.sh smoke
+engine/vector-bakeoff/run.sh round1
 ```
 
-Results land under `membrane/engine/vector-bakeoff/.results/<mode>-<host>`.
+Results land under `engine/vector-bakeoff/.results/<mode>-mac`.
 
 ## Resume & force
 
 Runs resume by default only when executable-input digest and result SHA-256 both match. Changed fixture, config, source, lock, or launcher bytes invalidate saved runner results.
 
 ```bash
-membrane/engine/vector-bakeoff/run.sh smoke --force
+engine/vector-bakeoff/run.sh smoke --force
 ```
-
-## Compare hosts
-
-Copy or mount both complete result directories, then run:
-
-```bash
-membrane/engine/vector-bakeoff/run.sh compare \
-  /path/to/mac/receipt.json \
-  /path/to/windows/receipt.json
-```
-
-Comparison rejects input/config/manifest/matrix/fixture drift and requires identical candidate IDs for exact arms A, B, C1, C2, and D. ANN arms E, F, and research-only G preserve independent host metrics because index training may differ.
 
 ## Arm map
 

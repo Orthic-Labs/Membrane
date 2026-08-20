@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// U53: release seal verification — wires CU-13, CU-17/CU-18, checksum/manifest verification
+// U53: release seal verification — wires CU-13, CU-17, checksum/manifest verification
 // Validates that the release orchestration sequence is correct and no immutable-release.yml is cited.
 
 import { existsSync, readFileSync } from "node:fs";
@@ -40,8 +40,8 @@ if (rcContent.includes("immutable-release.yml")) fail("release-candidate.yml sho
 console.log("✓ release-candidate.yml lints and does not recreate deleted workflow");
 
 // Check that right-release is the only signing invocation (no in-repo signing jobs)
-if (rcContent.includes("macos-sign-and-notarize") || rcContent.includes("windows-sign")) {
-  fail("release-candidate.yml must not contain in-repo signing jobs; CU-17/18 use right-release");
+if (rcContent.includes("macos-sign-and-notarize")) {
+  fail("release-candidate.yml must not contain in-repo signing jobs; CU-17 uses right-release");
 }
 console.log("✓ no in-repo signing jobs");
 

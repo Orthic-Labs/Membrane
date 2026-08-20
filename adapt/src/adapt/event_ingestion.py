@@ -1,6 +1,6 @@
 """Paged, resumable Membrane -> Adapt event ingestion boundary (plan C14 / L2).
 
-The resident Cortex service exposes the two query routes used here. ``HttpEventTransport``
+Membrane resident service exposes Cortex durable-memory query routes used here. ``HttpEventTransport``
 adapts those routes to the transport protocol, while ``query_by_id`` retrieves the
 surrounding content for a taste candidate without widening Taste's origin-scoped query.
 
@@ -44,20 +44,20 @@ class EventTransport(Protocol):
     def query_for_insights(self, query: dict[str, Any]) -> dict[str, Any]: ...
 
 
-def _cortex_base_url() -> str:
-    port = os.environ.get("CORTEX_PORT") or str(DEFAULT_PORT)
+def _membrane_base_url() -> str:
+    port = os.environ.get("MEMBRANE_PORT") or str(DEFAULT_PORT)
     return f"http://127.0.0.1:{port}"
 
 
 def _token_path() -> Path:
-    return Path(os.environ.get("CORTEX_API_TOKEN_FILE", str(TOKEN_PATH)))
+    return Path(os.environ.get("MEMBRANE_API_TOKEN_FILE", str(TOKEN_PATH)))
 
 
 class HttpEventTransport:
-    """Bearer-authenticated client for Cortex's observable-event query routes."""
+    """Bearer-authenticated client for Membrane's Cortex observable-event query routes."""
 
     def __init__(self, *, base_url: str | None = None, token_file: Path | None = None, timeout: float = 30.0) -> None:
-        self.base_url = (base_url or _cortex_base_url()).rstrip("/")
+        self.base_url = (base_url or _membrane_base_url()).rstrip("/")
         self.token_file = token_file or _token_path()
         self.timeout = timeout
 
@@ -65,9 +65,9 @@ class HttpEventTransport:
         try:
             token = self.token_file.read_text(encoding="utf-8").strip()
         except OSError as exc:
-            raise EventIngestionError("Cortex API token is unavailable") from exc
+            raise EventIngestionError("Membrane API token is unavailable") from exc
         if not token:
-            raise EventIngestionError("Cortex API token is empty")
+            raise EventIngestionError("Membrane API token is empty")
         request = urllib.request.Request(
             f"{self.base_url}{path}", data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, method="POST",
@@ -77,13 +77,13 @@ class HttpEventTransport:
                 status = response.status
                 result = json.loads(response.read().decode())
         except urllib.error.HTTPError as exc:
-            raise EventIngestionError(f"Cortex event query rejected with HTTP {exc.code}") from exc
+            raise EventIngestionError(f"Membrane event query rejected with HTTP {exc.code}") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise EventIngestionError("Cortex event service is unavailable") from exc
+            raise EventIngestionError("Membrane event service is unavailable") from exc
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise EventIngestionError("Cortex event response is not valid JSON") from exc
+            raise EventIngestionError("Membrane event response is not valid JSON") from exc
         if status != 200 or not isinstance(result, dict):
-            raise EventIngestionError("Cortex event response is malformed")
+            raise EventIngestionError("Membrane event response is malformed")
         return result
 
     def query_for_taste(self, query: dict[str, Any]) -> dict[str, Any]:

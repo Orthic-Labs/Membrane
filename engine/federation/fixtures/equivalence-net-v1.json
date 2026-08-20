@@ -3,6 +3,7 @@
   "candidateSetKeys": [
     "schemaVersion",
     "traceId",
+    "indexedAt",
     "task",
     "mode",
     "provider",

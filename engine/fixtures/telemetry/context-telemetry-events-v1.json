@@ -47,7 +47,7 @@
       ]
     }
   ],
-  "expected_canonical_sha256": "93d70b5223e56aa87a6e40167305ef0949482a8737c5100cb1665b39dd77d376",
+  "expected_canonical_sha256": "ca318e81c22bd8934dfbafddd0ec655c5618189eaed2ef77bf157f9e57e23e35",
   "invalid_events": [
     {"name": "unsupported_schema", "patch": {"schema_version": 2}},
     {"name": "unknown_provider", "patch": {"provider": "memrigth"}},

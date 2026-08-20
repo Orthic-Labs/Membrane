@@ -58,10 +58,12 @@ Rust crates:
 
 binaries:
   cortex
-  cortex-service
+  membrane supervisor-child
 
 environment:
-  CORTEX_*
+  MEMBRANE_PORT
+  MEMBRANE_API_TOKEN
+  MEMBRANE_API_TOKEN_FILE
 
 store:
   cortex-engine.db
@@ -88,4 +90,4 @@ store:
 - [ ] Lifecycle is deterministic/versioned/reversible where possible.
 - [ ] Dream is undoable and never creates authority.
 - [ ] Backup/restore preserves logical identities, lineage, and recall equivalence.
-- [ ] Canonical runtime uses `cortex*`, `CORTEX_*`, and `cortex-engine.db` exclusively.
+- [ ] Canonical runtime uses `cortex`, `membrane supervisor-child`, `MEMBRANE_*`, and `cortex-engine.db` exclusively.

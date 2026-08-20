@@ -25,20 +25,20 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { splitCorpus, verifySplit } from './holdout.mjs';
 import { BAKEOFF_REFERENCE, verifyBakeoffReference } from './bakeoff-reference.mjs';
-import { verifyWholeTaskBenchmark } from '../../scripts/qualification/verify-whole-task-benchmark.mjs';
+import { verifyWholeTaskBenchmark } from '../../../scripts/qualification/verify-whole-task-benchmark.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const WORKSPACE_ROOT = resolve(HERE, '../..');
+const WORKSPACE_ROOT = resolve(HERE, '../../..');
 export const DEFAULT_CORPUS_PATH = resolve(HERE, 'corpus.fixture.json');
 
-// A per-platform receipt for THIS harness (mirrors MBR-801's
-// docs/evidence/qualification/mbr801/{macos,windows}/receipt.json pattern): real
+// A Mac receipt for THIS harness (mirrors MBR-801's
+// docs/evidence/qualification/mbr801/macos/receipt.json pattern): real
 // hostname/arch, a caller-supplied release generation, and a `measured`
 // flag the caller sets only after cases actually ran on that machine. This
 // never fabricates measurement — it records identity for a platform the
 // caller asserts (via `measured`) it actually exercised.
 export function writeHostReceipt({ evidenceRoot, platform, releaseGeneration, measured = true, now = () => new Date().toISOString() }) {
-  if (platform !== 'macos' && platform !== 'windows') throw new Error('platform must be macos or windows');
+  if (platform !== 'macos') throw new Error('Mac-only benchmark accepts platform macos');
   if (typeof releaseGeneration !== 'string' || !releaseGeneration) throw new Error('releaseGeneration is required');
   const receipt = {
     schema: 'membrane.mbr804-host-receipt.v1',
@@ -96,10 +96,10 @@ function summarizeMetric(values, unit) {
  * @param {number} [options.holdoutFraction] fraction of the corpus withheld as holdout (default 0.3)
  * @param {{commit?:string, generation:string, client:string, service:string}} [options.release]
  * @param {string[]} [options.models]
- * @param {{macos:string, windows:string}} [options.hardware]
+ * @param {{macos:string}} [options.hardware]
  * @param {(ctx:{ case:object, group:'visible'|'holdout' }) => Promise<object>|object} [options.execute]
  *   caller-supplied per-case executor; returns { success, contextError?:{unauthorized?,stale?,missedAuthoritative?}, latencyMs, tokens, cacheHit, costUsd }
- * @param {{macos?:string, windows?:string}} [options.hostReceiptPaths] paths to real, already-written per-platform receipts (see writeHostReceipt); both required for a "complete" receipt
+ * @param {{macos?:string}} [options.hostReceiptPaths] path to a real, already-written Mac receipt (see writeHostReceipt)
  * @param {{disposition:'not-published'|'internal-only'|'published', approved:boolean}} [options.publication]
  * @param {() => string} [options.now]
  * @param {string} [options.workspaceRoot]
@@ -130,9 +130,8 @@ export async function runWholeTaskBenchmark(options = {}) {
 
   const isFixtureCorpusEarly = corpus.fixture === true;
   const macHost = loadHostReceipt(hostReceiptPaths.macos);
-  const winHost = loadHostReceipt(hostReceiptPaths.windows);
-  if (!isFixtureCorpusEarly && (!macHost || !winHost)) {
-    return degrade('host-receipts-not-configured', { missing: [!macHost && 'macos', !winHost && 'windows'].filter(Boolean) });
+  if (!isFixtureCorpusEarly && !macHost) {
+    return degrade('host-receipts-not-configured', { missing: ['macos'] });
   }
 
   const caseIds = corpus.cases.map((c) => c.id);
@@ -195,7 +194,7 @@ export async function runWholeTaskBenchmark(options = {}) {
       release: { commit: commit || '0'.repeat(40), generation: release.generation || 'unset', client: release.client || 'unset', service: release.service || 'unset' },
       corpus: { id: corpus.id, version: corpus.version, sha256: sha256OfCorpus(corpusPath), cases: corpus.cases.length, fixture: isFixtureCorpus },
       models: models.length ? models : ['unset'],
-      hardware: { macos: hardware.macos || 'unset', windows: hardware.windows || 'unset' },
+      hardware: { macos: hardware.macos || 'unset' },
       controls,
     },
     holdout: { protocol: 'commit-reveal-sha256-bucket', saltCommitment: split.saltCommitment, holdoutFraction: split.holdoutFraction, splitSha256: split.splitSha256, visibleCount: split.visible.length, holdoutCount: split.holdout.length },
@@ -204,16 +203,13 @@ export async function runWholeTaskBenchmark(options = {}) {
       input: bakeoffPath('input', workspaceRoot), input_sha256: bakeoff.checks[1].actual,
       receipt: bakeoffPath('receipt', workspaceRoot), receipt_sha256: bakeoff.checks[2].actual,
       immutable: true, arms: bakeoff.arms, declared: bakeoff.declared,
-      // Both existing per-host bakeoff receipts, consumed read-only for
-      // cross-host consistency (see bakeoff-reference.mjs) — never rerun.
+      // Existing Mac bakeoff receipt, consumed read-only — never rerun.
       hostReceiptsConsumed: {
         macos: { path: bakeoffPath('hosts.macos', workspaceRoot), sha256: bakeoff.checks[3].actual },
-        windows: { path: bakeoffPath('hosts.windows', workspaceRoot), sha256: bakeoff.checks[4].actual },
       },
     },
     hosts: {
       macos: macHost ? { receipt: macHost.path, receipt_sha256: macHost.sha256, release: macHost.content.release, hardware: macHost.content.hardware, status: macHost.content.status } : { receipt: 'unset', receipt_sha256: '0'.repeat(64), release: 'unset', hardware: 'unset', status: 'missing' },
-      windows: winHost ? { receipt: winHost.path, receipt_sha256: winHost.sha256, release: winHost.content.release, hardware: winHost.content.hardware, status: winHost.content.status } : { receipt: 'unset', receipt_sha256: '0'.repeat(64), release: 'unset', hardware: 'unset', status: 'missing' },
     },
     metrics,
     failures,
@@ -244,7 +240,6 @@ function bakeoffPath(key, workspaceRoot) {
     input: BAKEOFF_REFERENCE.artifacts.input.path,
     receipt: BAKEOFF_REFERENCE.artifacts.receipt.path,
     'hosts.macos': BAKEOFF_REFERENCE.hosts.macos.path,
-    'hosts.windows': BAKEOFF_REFERENCE.hosts.windows.path,
   };
   return resolve(workspaceRoot, lookup[key]);
 }

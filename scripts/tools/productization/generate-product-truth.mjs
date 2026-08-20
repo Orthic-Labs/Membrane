@@ -35,6 +35,7 @@ const MATRIX = join(REPO_ROOT, "docs", "membrane", "capability-matrix.v1.json");
 const MANIFEST = join(REPO_ROOT, "docs", "design", "MEMBRANE-CURRENT-STATE-MANIFEST.json");
 
 const TRUTH_SCHEMA = "membrane.product-truth.v1";
+const AXIS_IDS = ["pull", "push", "cortex", "blueprint", "guide", "adapt"];
 
 // Number words the README prose may use for the tool count claim.
 const NUMBER_WORDS = { six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
@@ -46,13 +47,49 @@ function canonicalJson(value) {
   }
   return JSON.stringify(value);
 }
+
+/** Validate the canonical six-axis and runtime-boundary declarations. */
+function capabilityDeclarations(matrix) {
+  const axes = matrix.axes;
+  if (!Array.isArray(axes) || axes.length !== AXIS_IDS.length) {
+    throw new Error(`capability matrix must declare exactly six axes: ${AXIS_IDS.join(", ")}`);
+  }
+  const ids = axes.map((axis) => axis?.id);
+  if (ids.some((id, index) => id !== AXIS_IDS[index])) {
+    throw new Error(`capability matrix axes must be ordered ${AXIS_IDS.join(", ")}`);
+  }
+  for (const axis of axes) {
+    if (!axis || typeof axis.label !== "string" || typeof axis.description !== "string") {
+      throw new Error(`capability matrix axis ${axis?.id ?? "unknown"} is incomplete`);
+    }
+  }
+  if (matrix.current_target !== "macOS") {
+    throw new Error("capability matrix current_target must be macOS");
+  }
+  if (matrix.cortex_scope !== "durable-memory-only") {
+    throw new Error("capability matrix cortex_scope must be durable-memory-only");
+  }
+  if (matrix.resident_service_authority !== "hub") {
+    throw new Error("capability matrix resident_service_authority must be hub");
+  }
+  return {
+    axes: AXIS_IDS,
+    axisDefinitions: axes,
+    currentTarget: matrix.current_target,
+    cortexScope: matrix.cortex_scope,
+    residentServiceAuthority: matrix.resident_service_authority,
+  };
+}
+
 /** Compute the product truth from live source. Deterministic — no timestamps. */
 export async function computeProductTruth() {
   const tools = TOOLS.map((tool) => tool.name).sort();
   const matrix = JSON.parse(await readFile(MATRIX, "utf8"));
   const adapters = Object.keys(matrix.hosts || {}).sort();
+  const declarations = capabilityDeclarations(matrix);
   return {
     schema: TRUTH_SCHEMA,
+    ...declarations,
     toolCount: tools.length,
     tools,
     adapterCount: adapters.length,
@@ -95,6 +132,11 @@ export function renderGeneratedDocs(truth, platforms) {
 export function renderManifest(manifestText, truth, platforms) {
   const manifest = JSON.parse(manifestText);
   manifest.productTruth = {
+    axes: truth.axes,
+    axisDefinitions: truth.axisDefinitions,
+    currentTarget: truth.currentTarget,
+    cortexScope: truth.cortexScope,
+    residentServiceAuthority: truth.residentServiceAuthority,
     mcpToolCount: truth.toolCount,
     mcpTools: truth.tools,
     adapterCount: truth.adapterCount,
@@ -112,6 +154,7 @@ export function renderManifest(manifestText, truth, platforms) {
 function renderTruthDoc(truth) {
   const toolLines = truth.tools.map((name) => `- \`${name}\``).join("\n");
   const adapterLines = truth.adapters.map((name) => `- \`${name}\``).join("\n");
+  const axisLines = truth.axisDefinitions.map(({ id, label, description }) => `| **${label}** | \`${id}\` | ${description} |`).join("\n");
   return [
     "# Membrane product truth (generated)",
     "",
@@ -125,6 +168,14 @@ function renderTruthDoc(truth) {
     `## Client adapters (${truth.adapterCount})`,
     "",
     adapterLines,
+    "",
+    "## Six axes",
+    "",
+    "| Axis | ID | Responsibility |",
+    "|---|---|---|",
+    axisLines,
+    "",
+    `Current supported target: **${truth.currentTarget}**. Cortex scope: **${truth.cortexScope}**. Resident service authority: **${truth.residentServiceAuthority}** (Membrane Hub).`,
     "",
   ].join("\n");
 }

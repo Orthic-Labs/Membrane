@@ -151,6 +151,7 @@ pub mod reasons {
 pub struct ContextCandidateSet {
     pub schemaVersion: u32,
     pub traceId: String,
+    pub indexedAt: String,
     pub task: String,
     pub mode: String,
     pub provider: String,
@@ -160,9 +161,7 @@ pub struct ContextCandidateSet {
     pub omissions: Vec<Omission>,
 }
 
-/// Provider-local mirror of `ContextCandidateSet.freshness`. Compact, no
-/// timestamps inside the provider — the planner attaches `indexedAt` after
-/// admission.
+/// Provider-local mirror of `ContextCandidateSet.freshness`.
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Freshness {
@@ -237,18 +236,18 @@ fn is_demoted(entry: &MemoryEntry) -> bool {
 }
 
 /// Build the scope-chain `Vec<String>` for `scope` given the scopes actually
-/// present in the store. Wraps `cortex::scope::scope_chain` so callers
+/// present in the store. Wraps `crate::scope::scope_chain` so callers
 /// don't have to pre-fetch the scope list.
-fn scope_chain_for(store: &::cortex::MemoryStore, scope: &str) -> Vec<String> {
+fn scope_chain_for(store: &crate::store::MemoryStore, scope: &str) -> Vec<String> {
     let existing = store.scopes();
-    ::cortex::scope::scope_chain(scope, &existing)
+    crate::scope::scope_chain(scope, &existing)
 }
 
 /// Step 1 — gather every entry, classify by scope, then collapse
 /// dedup-key groups onto the highest-scoring survivor. Loser ids become
 /// the survivor's `superseded_ids` provenance AND are recorded as
 /// `Superseded` omissions so receipts see both sides of the collapse.
-fn consider_entries(store: &::cortex::MemoryStore, scope_chain: &[String]) -> Vec<Considered> {
+fn consider_entries(store: &crate::store::MemoryStore, scope_chain: &[String]) -> Vec<Considered> {
     let allowed: BTreeSet<&str> = scope_chain.iter().map(String::as_str).collect();
 
     // Pull the full snapshot through the existing public API. `entries` is
@@ -470,7 +469,7 @@ fn build_candidates(
 ///   the caller has no repo root to offer, that is itself an unverifiable condition — `stale`
 ///   honestly reports `true` rather than falling back to `false` (F11).
 pub fn produce_candidate_set(
-    store: &::cortex::MemoryStore,
+    store: &crate::store::MemoryStore,
     task: &str,
     scope: &str,
     max_candidates: usize,
@@ -526,15 +525,17 @@ pub fn produce_candidate_set(
         !crate::freshness::evaluate_repository_freshness(store, root.to_path_buf()).stable
     });
 
+    let indexed_at = crate::time::now_iso();
     ContextCandidateSet {
         schemaVersion: 1,
         traceId: trace_id,
+        indexedAt: indexed_at.clone(),
         task: task.to_string(),
         mode: "verify".into(),
         provider: PROVIDER_NAME.into(),
         freshness: Freshness {
             revision: "memory-v1".into(),
-            indexedAt: String::new(),
+            indexedAt: indexed_at,
             stale,
         },
         providerCeiling: ProviderCeiling {
@@ -572,8 +573,8 @@ mod tests {
     //! planner will see.
     use super::*;
 
-    fn store() -> ::cortex::MemoryStore {
-        ::cortex::MemoryStore::open(::cortex::MemDb::open_in_memory())
+    fn store() -> crate::store::MemoryStore {
+        crate::store::MemoryStore::open(crate::MemDb::open_in_memory())
     }
 
     #[test]

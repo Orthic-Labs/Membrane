@@ -1,13 +1,13 @@
 #![recursion_limit = "256"]
 
-use cortex::context_telemetry::{
+use membrane_runtime::context_telemetry::{
     append_context_events_on, canonical_event_bytes, parse_context_event,
     truncate_sealed_context_segment, validate_context_event, verify_context_event_integrity,
     ContextEventBatch, ContextTelemetryError, OperationAttribution,
 };
-use cortex::installation_identity::{InstallationIdentity, StartupClaim};
-use cortex::memdb::{backout_v12_to_v11, backout_v13_to_v12, LATEST_SCHEMA_VERSION};
-use cortex::{MemDb, MemoryStore};
+use membrane_runtime::installation_identity::{InstallationIdentity, StartupClaim};
+use membrane_runtime::memdb::{backout_v12_to_v11, backout_v13_to_v12, LATEST_SCHEMA_VERSION};
+use membrane_runtime::{MemDb, MemoryStore};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use sha2::Digest;
@@ -301,7 +301,7 @@ fn route_with_startup(
     claim: &StartupClaim,
     body: &str,
 ) -> (u16, String) {
-    cortex::serve::route_for_tests_with_startup_claim(
+    membrane_runtime::serve::route_for_tests_with_startup_claim(
         store,
         identity,
         claim,
@@ -329,7 +329,7 @@ fn bounded_unknown_closure_links_each_unresolved_delivery_once() {
     let body = serde_json::to_string(&json!({"events": [delivery]})).unwrap();
     assert_eq!(route_with_startup(&store, &identity, &claim, &body).0, 201);
     let request = r#"{"observed_since":"2026-07-20T07:59:00Z","observed_through":"2026-07-20T08:01:00Z","max_deliveries":10}"#;
-    let (code, body) = cortex::serve::route_for_tests_with_startup_claim(
+    let (code, body) = membrane_runtime::serve::route_for_tests_with_startup_claim(
         &store,
         &identity,
         &claim,
@@ -359,7 +359,7 @@ fn bounded_unknown_closure_links_each_unresolved_delivery_once() {
     assert_eq!(target, delivery_id);
     drop(conn);
 
-    let (code, body) = cortex::serve::route_for_tests_with_startup_claim(
+    let (code, body) = membrane_runtime::serve::route_for_tests_with_startup_claim(
         &store,
         &identity,
         &claim,
@@ -393,7 +393,7 @@ fn unknown_closure_rejects_a_saturated_delivery_cap_without_partial_write() {
     assert_eq!(route_with_startup(&store, &identity, &claim, &body).0, 201);
 
     let request = r#"{"observed_since":"2026-07-20T07:59:00Z","observed_through":"2026-07-20T08:01:00Z","max_deliveries":1}"#;
-    let (code, body) = cortex::serve::route_for_tests_with_startup_claim(
+    let (code, body) = membrane_runtime::serve::route_for_tests_with_startup_claim(
         &store,
         &identity,
         &claim,
@@ -452,7 +452,7 @@ fn checked_in_registry_matches_canonical_parent_workspace_registry() {
     let local_sha = format!("{:x}", sha2::Sha256::digest(&local_normalized));
     assert_eq!(
         local_sha,
-        "5905654bd1db4cfab4e48582ad3db5e3deed4665400500474d1bc760a8758df3"
+        "03ab73429cb56a826d900a8aa7f2124c705759bc5aa268d761d6f7a74ee099ce"
     );
 
     let parent_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -546,7 +546,6 @@ fn latest_schema_has_content_free_ledger_tables_and_indexes() {
         "context_event_measurement",
         "context_event_link",
         "context_ingest_checkpoint",
-        "transform_opportunity_log",
     ] {
         let present: i64 = conn
             .query_row(
@@ -558,14 +557,16 @@ fn latest_schema_has_content_free_ledger_tables_and_indexes() {
         assert_eq!(present, 1, "missing {table}");
     }
 
-    let opportunity_column: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM pragma_table_info('transform_log') WHERE name='opportunity_uid'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(opportunity_column, 1);
+    for retired in ["transform_log", "transform_opportunity_log"] {
+        let present: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                [retired],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(present, 0, "retired table {retired} must be absent");
+    }
 
     let event_columns: Vec<String> = conn
         .prepare("SELECT name FROM pragma_table_info('context_event_log') ORDER BY cid")
@@ -920,7 +921,7 @@ fn telemetry_endpoint_requires_an_active_startup_lease() {
     let store = MemoryStore::open(MemDb::open_in_memory());
     let body = json!({"events": [local_event("evt-no-lease", FIRST_SERVICE_ID)]}).to_string();
     let (status, _) =
-        cortex::serve::route_for_tests(&store, "POST", "/v1/telemetry/events:batch", &body);
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/v1/telemetry/events:batch", &body);
     assert_eq!(status, 503);
     assert_eq!(
         store
@@ -1066,7 +1067,7 @@ fn operation_store() -> MemoryStore {
 
 #[test]
 fn manual_put_get_delete_dual_write_complete_canonical_attribution() {
-    use cortex::store::MemoryEventContext;
+    use membrane_runtime::store::MemoryEventContext;
     use cortex_core::MemoryTier;
 
     let store = operation_store();
@@ -1186,7 +1187,7 @@ fn manual_put_get_delete_dual_write_complete_canonical_attribution() {
 
 #[test]
 fn memory_batch_dual_write_preserves_each_items_family_producer_and_session() {
-    use cortex::store::{MemoryBatchItem, MemoryBatchRequest};
+    use membrane_runtime::store::{MemoryBatchItem, MemoryBatchRequest};
 
     let store = operation_store();
     let request = MemoryBatchRequest {
@@ -1205,7 +1206,7 @@ fn memory_batch_dual_write_preserves_each_items_family_producer_and_session() {
             turn_id: "adapt-turn-7".into(),
             trace_id: "adapt-trace-7".into(),
             source_ids: vec!["source-event-1".into()],
-            lifecycle: cortex::store::MemoryLifecycleInputV1::default(),
+            lifecycle: membrane_runtime::store::MemoryLifecycleInputV1::default(),
         }],
     };
     store.try_put_batch(&request).unwrap();
@@ -1215,13 +1216,13 @@ fn memory_batch_dual_write_preserves_each_items_family_producer_and_session() {
             "Updated without changing its artifact family.",
             "D--Claude",
             cortex_core::MemoryTier::Semantic,
-            &cortex::store::MemoryEventContext::new("claude")
+            &membrane_runtime::store::MemoryEventContext::new("claude")
                 .with_session("adapt-job-7")
                 .with_trace("adapt-trace-7"),
         )
         .unwrap();
 
-    let context = cortex::store::MemoryEventContext::new("claude")
+    let context = membrane_runtime::store::MemoryEventContext::new("claude")
         .with_session("adapt-job-7")
         .with_trace("adapt-trace-7");
     store
@@ -1275,7 +1276,7 @@ fn memory_batch_dual_write_preserves_each_items_family_producer_and_session() {
 
 #[test]
 fn canonical_telemetry_failure_rolls_back_legacy_event_and_memory_mutation() {
-    use cortex::store::MemoryEventContext;
+    use membrane_runtime::store::MemoryEventContext;
     use cortex_core::MemoryTier;
 
     let store = operation_store();
@@ -1310,7 +1311,7 @@ fn canonical_telemetry_failure_rolls_back_legacy_event_and_memory_mutation() {
 
 #[test]
 fn feedback_write_emits_content_free_canonical_event() {
-    use cortex::feedback::{FeedbackRecord, FeedbackSource};
+    use membrane_runtime::feedback::{FeedbackRecord, FeedbackSource};
     use cortex_core::Outcome;
 
     let store = operation_store();

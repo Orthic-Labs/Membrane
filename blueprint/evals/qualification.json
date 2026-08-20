@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "schemaHash": "ea447d1cb3bb75b9bc510aec877bc5b1",
-  "qualificationFingerprint": "45c1b085d8d954420a8753ea7e90485c",
-  "generatedAt": "2026-08-20T16:18:44.428Z",
+  "schemaHash": "d867600e7415db04a269bb929337e113",
+  "qualificationFingerprint": "5e1a8ff846e4563afb01bcfe6500a970",
+  "generatedAt": "2026-08-20T18:37:59.519Z",
   "budgetApproval": "approved",
   "proposedBudgets": {
     "coldStartMs": 1000,
@@ -21,37 +21,37 @@
         "checks": {
           "coldStartMs": {
             "state": "passed",
-            "value": 371.574,
+            "value": 147.016,
             "maximum": 1000
           },
           "providerFullMs": {
             "state": "passed",
-            "value": 371.574,
+            "value": 147.016,
             "maximum": 300000
           },
           "incrementalEditMs": {
             "state": "passed",
-            "value": 202.036,
+            "value": 53.006,
             "maximum": 5000
           },
           "queryP95Ms": {
             "state": "passed",
-            "value": 2.234,
+            "value": 0.995,
             "maximum": 1000
           },
           "peakRssBytes": {
             "state": "passed",
-            "value": 28540928,
+            "value": 36257792,
             "maximum": 4294967296
           },
           "indexBytes": {
             "state": "passed",
-            "value": 226617,
+            "value": 226224,
             "maximum": 536870912
           },
           "fullBlueprintGenerationMs": {
             "state": "passed",
-            "value": 93190.815,
+            "value": 12435.567,
             "maximum": 600000
           }
         }
@@ -62,26 +62,26 @@
     {
       "path": "/Volumes/D/claude/membrane/blueprint",
       "state": "measured",
-      "sourceStateHash": "45353e604517e2031ffdb8751f6040aa",
-      "sourceHead": "12a1e80e5438e454ace57a0c808f22457ebba80e",
+      "sourceStateHash": "f206f5affc8bc802189f23eda4a56721",
+      "sourceHead": "b4c43e11ab23209e66512eb1a847607ac319b37a",
       "provider": "blueprint-static",
       "providerVersion": "repo-local-deterministic-v4",
       "providerChecksum": null,
-      "coldStartMs": 371.574,
-      "providerFullMs": 371.574,
-      "unchangedRefreshMs": 202.036,
-      "incrementalEditMs": 202.036,
-      "queryP95Ms": 2.234,
+      "coldStartMs": 147.016,
+      "providerFullMs": 147.016,
+      "unchangedRefreshMs": 53.006,
+      "incrementalEditMs": 53.006,
+      "queryP95Ms": 0.995,
       "querySamples": [
-        1.557,
-        1.606,
-        0.855,
-        2.064,
-        2.234
+        0.687,
+        0.641,
+        0.995,
+        0.463,
+        0.402
       ],
-      "indexBytes": 226617,
-      "peakRssBytes": 28540928,
-      "fullBlueprintGenerationMs": 93190.815,
+      "indexBytes": 226224,
+      "peakRssBytes": 36257792,
+      "fullBlueprintGenerationMs": 12435.567,
       "fullBlueprintGenerationState": "measured_isolated_build",
       "incrementalEditState": "measured_no_op_refresh",
       "indexJsonlBytes": null,
@@ -194,9 +194,9 @@
         "operability": true
       },
       "metrics": {
-        "fullMs": 13.169,
-        "incrementalMs": 1.973,
-        "queryP95Ms": 13.169,
+        "fullMs": 3.87,
+        "incrementalMs": 0.545,
+        "queryP95Ms": 3.87,
         "peakRssBytes": null,
         "indexBytes": 0,
         "measurementBoundary": "repo_local_static_scan"
@@ -205,8 +205,7 @@
         {
           "id": "mixed-cross-doc-brief",
           "kind": "cross_code_document",
-          "state": "failed",
-          "reason": "evidence_mismatch",
+          "state": "passed",
           "evidence": [
             {
               "path": "README.md",
@@ -251,14 +250,7 @@
             "docs/START-HERE.md",
             "src/refresh.ts"
           ],
-          "missingEvidence": [
-            {
-              "path": "src/refresh.ts",
-              "startLine": 1,
-              "endLine": 5,
-              "contentHash": "f20ee29ec199ae78ceb34728c4d5e996"
-            }
-          ],
+          "missingEvidence": [],
           "missingNodes": [],
           "missingEdges": [],
           "falseEvidence": [],
@@ -1849,26 +1841,26 @@
         {
           "path": "/Volumes/D/claude/membrane/blueprint",
           "state": "measured",
-          "sourceStateHash": "45353e604517e2031ffdb8751f6040aa",
-          "sourceHead": "12a1e80e5438e454ace57a0c808f22457ebba80e",
+          "sourceStateHash": "f206f5affc8bc802189f23eda4a56721",
+          "sourceHead": "b4c43e11ab23209e66512eb1a847607ac319b37a",
           "provider": "blueprint-static",
           "providerVersion": "repo-local-deterministic-v4",
           "providerChecksum": null,
-          "coldStartMs": 371.574,
-          "providerFullMs": 371.574,
-          "unchangedRefreshMs": 202.036,
-          "incrementalEditMs": 202.036,
-          "queryP95Ms": 2.234,
+          "coldStartMs": 147.016,
+          "providerFullMs": 147.016,
+          "unchangedRefreshMs": 53.006,
+          "incrementalEditMs": 53.006,
+          "queryP95Ms": 0.995,
           "querySamples": [
-            1.557,
-            1.606,
-            0.855,
-            2.064,
-            2.234
+            0.687,
+            0.641,
+            0.995,
+            0.463,
+            0.402
           ],
-          "indexBytes": 226617,
-          "peakRssBytes": 28540928,
-          "fullBlueprintGenerationMs": 93190.815,
+          "indexBytes": 226224,
+          "peakRssBytes": 36257792,
+          "fullBlueprintGenerationMs": 12435.567,
           "fullBlueprintGenerationState": "measured_isolated_build",
           "incrementalEditState": "measured_no_op_refresh",
           "indexJsonlBytes": null,

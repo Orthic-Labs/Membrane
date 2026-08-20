@@ -48,7 +48,9 @@ test("barrier-all returns independent receipts and candidate identities", () => 
     assert.equal(candidateA.receiptId, null);
     const cliCandidate = spawnSync(process.execPath, [join(ROOT, "scripts/blueprint.mjs"), "candidates", "--repo-id", "explicit-repo", "--query", "placeOrder", "--json"], { cwd: repoA, encoding: "utf8" });
     assert.equal(cliCandidate.status, 0, cliCandidate.stderr);
-    assert.equal(JSON.parse(cliCandidate.stdout).repoId, "explicit-repo");
+    const cliPayload = JSON.parse(cliCandidate.stdout);
+    assert.equal(Object.hasOwn(cliPayload, "repoId"), false);
+    assert.equal(cliPayload.provider, "blueprint-static");
   } finally {
     rmSync(repoA, { recursive: true, force: true });
     rmSync(repoB, { recursive: true, force: true });

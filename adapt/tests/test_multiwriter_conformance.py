@@ -47,8 +47,8 @@ def _evidence() -> dict:
             "files": implementation_files,
             "aggregate_sha256": aggregate,
         },
-        "installed_service": {
-            "binary_role": "service",
+        "installed_resident": {
+            "binary_role": "membrane",
             "binary_sha256": _sha(b"binary"),
             "release_manifest_sha256": _sha(b"release"),
             "release_generation": "sha256:" + _sha(b"tree"),
@@ -153,10 +153,10 @@ def test_discovery_counts_exclude_active_codex_task_from_pending(
 
 def test_defaults_accept_private_candidate_binding(tmp_path: Path, monkeypatch):
     conformance = _module()
-    binary = tmp_path / "cortex-service.exe"
+    binary = tmp_path / "membrane"
     release = tmp_path / "candidate-release.json"
-    monkeypatch.setenv("CORTEX_CONFORMANCE_BINARY", str(binary))
-    monkeypatch.setenv("CORTEX_CONFORMANCE_RELEASE_MANIFEST", str(release))
+    monkeypatch.setenv("MEMBRANE_CONFORMANCE_BINARY", str(binary))
+    monkeypatch.setenv("MEMBRANE_CONFORMANCE_RELEASE_MANIFEST", str(release))
 
     defaults = conformance._defaults(tmp_path)
 
@@ -169,7 +169,7 @@ def test_defaults_accept_private_candidate_binding(tmp_path: Path, monkeypatch):
     [
         (lambda value: value["canonical_pool"].update({"sha256": "f" * 64}), "receipt hash"),
         (lambda value: value["implementation"]["files"][0].update({"sha256": "e" * 64}), "receipt hash"),
-        (lambda value: value["installed_service"].update({"batch_route_capable": False}), "receipt hash"),
+        (lambda value: value["installed_resident"].update({"batch_route_capable": False}), "receipt hash"),
         (lambda value: value["scheduler"].update({"disabled": False}), "receipt hash"),
     ],
 )
@@ -266,7 +266,7 @@ def test_stale_or_overlong_receipt_is_rejected():
     [
         ("scheduler", "cortex-daily"),
         ("mirror", "append-only"),
-        ("installed_service", "batch route"),
+        ("installed_resident", "batch route"),
         ("focused_tests", "focused tests"),
     ],
 )
@@ -277,7 +277,7 @@ def test_issue_fails_closed_when_required_gate_is_not_green(field, match):
         evidence[field]["disabled"] = False
     elif field == "mirror":
         evidence[field]["append_only"] = False
-    elif field == "installed_service":
+    elif field == "installed_resident":
         evidence[field]["batch_route_capable"] = False
     else:
         evidence[field]["passed"] = False
@@ -327,28 +327,28 @@ def test_source_hashes_are_repo_relative_and_deterministic(tmp_path):
     assert evidence["aggregate_sha256"] == conformance.aggregate_file_sha256(evidence["files"])
 
 
-def test_service_probe_binds_release_asset_hash_and_nonmutating_batch_route(tmp_path):
+def test_resident_probe_binds_release_asset_hash_and_nonmutating_batch_route(tmp_path):
     conformance = _module()
-    binary = tmp_path / "cortex-service.exe"
+    binary = tmp_path / "membrane"
     binary.write_bytes(b"resident")
     release_path = tmp_path / "release.json"
     release = {
         "release_generation": "sha256:" + _sha(b"source-tree"),
         "assets": [{
-            "os": "windows",
-            "arch": "x86_64",
+            "os": "macos",
+            "arch": "aarch64",
             "name": binary.name,
-            "role": "service",
+            "role": "membrane",
             "sha256": _sha(binary.read_bytes()),
         }],
     }
     release_path.write_text(json.dumps(release), encoding="utf-8")
 
-    evidence = conformance.service_evidence(
+    evidence = conformance.resident_evidence(
         binary_path=binary,
         release_manifest_path=release_path,
-        os_name="windows",
-        arch="x86_64",
+        os_name="macos",
+        arch="aarch64",
         probe=lambda: {
             "release_generation": release["release_generation"],
             "service_generation": "sha256:" + _sha(b"boot"),
@@ -363,20 +363,20 @@ def test_service_probe_binds_release_asset_hash_and_nonmutating_batch_route(tmp_
     bad_release["assets"][0]["sha256"] = "0" * 64
     release_path.write_text(json.dumps(bad_release), encoding="utf-8")
     with pytest.raises(conformance.ConformanceError, match="release asset"):
-        conformance.service_evidence(
+        conformance.resident_evidence(
             binary_path=binary,
             release_manifest_path=release_path,
-            os_name="windows",
-            arch="x86_64",
+            os_name="macos",
+            arch="aarch64",
             probe=lambda: {},
         )
 
     release_path.write_text("[]", encoding="utf-8")
     with pytest.raises(conformance.ConformanceError, match="release manifest"):
-        conformance.service_evidence(
+        conformance.resident_evidence(
             binary_path=binary,
             release_manifest_path=release_path,
-            os_name="windows",
-            arch="x86_64",
+            os_name="macos",
+            arch="aarch64",
             probe=lambda: {},
         )

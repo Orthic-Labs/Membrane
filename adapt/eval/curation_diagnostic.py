@@ -79,7 +79,7 @@ def _free_port() -> int:
 
 def _start_service(cortex: Path, db: Path, port: int) -> subprocess.Popen:
     env = __import__("os").environ.copy()
-    env["CORTEX_PORT"] = str(port)
+    env["MEMBRANE_PORT"] = str(port)
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     return subprocess.Popen(
         [str(cortex), "--db", str(db), "serve", "--port", str(port)],
@@ -111,7 +111,7 @@ def _stop_service(svc: subprocess.Popen) -> None:
 def _run(cortex: Path, db: Path, port: int, cmd: list[str],
          timeout: float = 30.0) -> tuple[int, str, str]:
     env = __import__("os").environ.copy()
-    env["CORTEX_PORT"] = str(port)
+    env["MEMBRANE_PORT"] = str(port)
     res = subprocess.run([str(cortex), "--db", str(db), *cmd],
                          text=True, encoding="utf-8",
                          capture_output=True, check=False, env=env,

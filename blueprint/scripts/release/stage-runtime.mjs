@@ -2,7 +2,7 @@
 // D14: stage a portable runtime bundle. Builds from the tested npm tarball,
 // installs production dependencies into a staging directory, copies the
 // runner Node LTS executable, app files, schemas, grammars, and
-// platform-specific watcher assets. The launcher computes its own install
+// macOS watcher assets. The launcher computes its own install
 // root and invokes the bundled runtime — never global Node/npm/cwd.
 
 import { execFileSync } from "node:child_process";
@@ -22,6 +22,7 @@ function nodeBinary() {
 }
 
 export function stageRuntime({ out = null } = {}) {
+  if (process.platform !== "darwin") throw new Error("Blueprint release packaging currently targets macOS only");
   const outDir = resolve(out ?? join(ROOT, "release", "runtime", `${process.platform}-${process.arch}`));
   if (existsSync(outDir) && (!statSync(outDir).isDirectory() || readdirSync(outDir).length)) {
     throw new Error(`output must be an empty directory: ${outDir}`);
@@ -62,21 +63,14 @@ export function stageRuntime({ out = null } = {}) {
 
   // 4. Bundled Node runtime.
   const nodeSrc = nodeBinary();
-  const nodeDst = join(libDir, process.platform === "win32" ? "node.exe" : "node");
+  const nodeDst = join(libDir, "node");
   copyFileSync(nodeSrc, nodeDst);
-  if (process.platform === "win32") {
-    // Windows needs the DLLs alongside the exe.
-    const dir = dirname(nodeSrc);
-    for (const name of readdirSync(dir)) {
-      if (name.endsWith(".dll")) copyFileSync(join(dir, name), join(libDir, name));
-    }
-  }
 
   // 5. Launchers.
   const launcherSrc = join(ROOT, "release", "launchers");
-  for (const name of readdirSync(launcherSrc)) {
+  for (const name of ["blueprint", "blueprint-mcp"]) {
     copyFileSync(join(launcherSrc, name), join(binDir, name));
-    if (name !== "blueprint.cmd") chmodSync(join(binDir, name), 0o755);
+    chmodSync(join(binDir, name), 0o755);
   }
 
   // 6. License + notices + readme.
@@ -88,7 +82,7 @@ export function stageRuntime({ out = null } = {}) {
 
   return {
     root: outDir,
-    layout: ["bin/blueprint", "bin/blueprint.cmd", "bin/blueprint-mcp", "lib/node", "app/package", "app/package/node_modules", "app/grammars", "app/schemas", "LICENSE", "THIRD_PARTY_NOTICES", "README.txt"],
+    layout: ["bin/blueprint", "bin/blueprint-mcp", "lib/node", "app/package", "app/package/node_modules", "app/grammars", "app/schemas", "LICENSE", "THIRD_PARTY_NOTICES", "README.txt"],
     version: pkg.version,
     platform: `${process.platform}-${process.arch}`,
   };

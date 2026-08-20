@@ -1,6 +1,6 @@
 use std::{collections::HashSet, fs, path::Path};
 
-use cortex::doc_shadow::{evaluate_frozen_shadow_replay, ShadowReplayCaseV1, ShadowReplayReportV1};
+use membrane_runtime::guide::doc_shadow::{evaluate_frozen_shadow_replay, ShadowReplayCaseV1, ShadowReplayReportV1};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -145,7 +145,7 @@ fn frozen_doc_spine_shadow_replay_corpus_v1_is_deterministic_shadow_only_and_saf
     }
 
     let receipt = evaluate_frozen_shadow_replay(manifest.cases.clone());
-    assert_eq!(receipt.schema_version, "cortex.doc_shadow_receipt.v1");
+    assert_eq!(receipt.schema_version, "guide.doc_shadow_receipt.v1");
     assert_eq!(receipt.report, manifest.expected_report);
     assert_eq!(receipt.report.displacement_count, 0);
     assert_eq!(receipt.report.superseded_leakage_count, 0);

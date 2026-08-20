@@ -1,7 +1,7 @@
 //! One content-free freshness verdict for every Membrane consumer.
 //!
-//! The evaluator uses an epoch sandwich: snapshot/skills epoch A, a self-stable
-//! bounded working-tree overlay, then epoch B. A verdict is returned only when
+//! The evaluator uses an epoch sandwich: snapshot/skills epoch A, bounded overlay
+//! evidence, then epoch B. A verdict is returned only when
 //! both epochs match. This prevents callers from observing a commit, Blueprint
 //! reindex, or skills ingest assembled from different moments in time.
 
@@ -9,24 +9,18 @@ use crate::MemoryStore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::{Component, Path, PathBuf};
-use std::process::{Command, ExitStatus, Stdio};
-use std::sync::{mpsc, Arc, Mutex, OnceLock};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+#[cfg(windows)]
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const FRESHNESS_SCHEMA_VERSION: u32 = 1;
 pub const MAX_FRESHNESS_ATTEMPTS: usize = 3;
 pub const MAX_RETURNED_OVERLAY_ENTRIES: usize = 64;
-const MAX_OVERLAY_FILES: usize = 512;
-const MAX_OVERLAY_BYTES: u64 = 64 * 1024 * 1024;
 const BLUEPRINT_FRAME_BYTES: usize = 16 * 1024;
 const BLUEPRINT_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
-const MAX_GIT_STATUS_BYTES: u64 = 8 * 1024 * 1024;
-const MAX_GIT_TEXT_BYTES: u64 = 64 * 1024;
-const GIT_CHILD_TIMEOUT: Duration = Duration::from_secs(2);
-const CHILD_POLL_INTERVAL: Duration = Duration::from_millis(5);
 const FIRST_AFTER_IDLE_THRESHOLD: Duration = Duration::from_secs(5 * 60);
 
 /// Commits the sealed generation may lag HEAD before the graph is called stale.
@@ -34,13 +28,6 @@ const FIRST_AFTER_IDLE_THRESHOLD: Duration = Duration::from_secs(5 * 60);
 /// Plan 1.2: staleness is "behind HEAD by more than N", default 1. Treating any
 /// difference as stale made an actively-committed worktree permanently alarmed.
 const MAX_GENERATION_COMMIT_LAG: u32 = 1;
-
-/// Paths whose churn must never influence a freshness verdict.
-///
-/// These are agent- and index-owned directories that change constantly as a
-/// side effect of normal operation. Counting them as overlay entries made the
-/// graph look dirty because the graph had just been rebuilt (plan 1.2).
-const IGNORED_OVERLAY_PREFIXES: &[&str] = &[".agent/", ".blueprint/", "memory-mirror/"];
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -208,7 +195,7 @@ pub fn source_barrier_receipt(
         GraphState::MissingSnapshot | GraphState::Indeterminate => "blocked",
     };
     serde_json::json!({
-        "schema": "orthic.source-barrier-receipt.v1",
+        "schema": "membrane.source-barrier-receipt.v1",
         "repository_id": repository_id,
         "barrier_clock": 0,
         "applied_graph_clock": 0,
@@ -646,23 +633,29 @@ impl<'a> FilesystemFreshnessProbe<'a> {
 
 impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
     fn read_epoch(&mut self) -> Result<FreshnessEpoch, String> {
-        let head_commit = git_text(&self.repo_root, &["rev-parse", "HEAD"])?;
         let status = self
             .blueprint_endpoint
             .as_deref()
             .map(|endpoint| read_blueprint_status_at(endpoint, &self.repo_root))
-            .unwrap_or_else(|| read_blueprint_status(&self.repo_root))
-            .ok();
+            .unwrap_or_else(|| read_blueprint_status(&self.repo_root))?;
+        let head_commit = json_string(
+            &status,
+            &[
+                &["result", "repository", "revision"],
+                &["result", "manifest", "generationId"],
+            ],
+        );
         let manifest = status
-            .as_ref()
-            .and_then(|value| value.get("result"))
+            .get("result")
             .and_then(|value| value.get("manifest"));
-        let blueprint_generation = status.as_ref().and_then(|value| {
-            json_string(
-                value,
-                &[&["generation"], &["result", "manifest", "generationId"]],
-            )
-        });
+        let blueprint_generation = json_string(
+            &status,
+            &[
+                &["generation"],
+                &["result", "generation"],
+                &["result", "manifest", "generationId"],
+            ],
+        );
         let base_commit = manifest
             .and_then(|value| json_string(value, &[&["baseCommit"], &["repo", "baseCommit"]]));
         let manifest_digest = manifest.and_then(|value| {
@@ -676,21 +669,21 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
         let graph_body_generation = blueprint_generation.clone();
 
         Ok(FreshnessEpoch {
-            head_commit: Some(head_commit.clone()),
+            head_commit,
             base_commit: base_commit.clone(),
             manifest_digest,
             blueprint_generation,
             graph_manifest_generation,
             graph_body_generation,
-            commit_distance: base_commit
-                .as_deref()
-                .and_then(|base| commit_distance(&self.repo_root, base, &head_commit)),
+            // Commit distance is repository truth owned by Blueprint. This endpoint does not
+            // expose a comparable commit pair, so retain typed unknown rather than invoking Git.
+            commit_distance: None,
             skills_generation: Some(self.store.skills_generation()?),
         })
     }
 
     fn read_overlay(&mut self) -> Result<OverlayObservation, String> {
-        read_stable_overlay(&self.repo_root)
+        Err("Blueprint overlay evidence unavailable".to_string())
     }
 }
 
@@ -704,7 +697,7 @@ fn blueprint_daemon_endpoint() -> Result<PathBuf, String> {
             std::env::var("USERPROFILE").map_err(|_| "USERPROFILE is unavailable".to_string())?;
         let suffix = format!("{:x}", Sha256::digest(home.as_bytes()));
         return Ok(PathBuf::from(format!(
-            r"\\.\pipe\orthic-blueprint-{}",
+            r"\\.\pipe\membrane-blueprint-{}",
             &suffix[..16]
         )));
     }
@@ -854,439 +847,12 @@ fn json_string(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
     })
 }
 
-fn read_stable_overlay(repo_root: &Path) -> Result<OverlayObservation, String> {
-    let before_started = Instant::now();
-    let before = git_status(repo_root)?;
-    let mut git_status_elapsed_ms = elapsed_ms(before_started);
-    if before.limit_exceeded {
-        return Ok(overlay_limit_exceeded(git_status_elapsed_ms));
-    }
-    let mut status_paths = parse_status(&before.bytes)?;
-    // A nested Git repository is a separate freshness scope. Git reports an untracked nested
-    // repository as one directory even with `--untracked-files=all`; omit it from this repo's
-    // overlay so callers can request that canonical child root independently.
-    status_paths.retain(|(path, _)| {
-        let absolute = repo_root.join(path);
-        !(absolute.is_dir() && absolute.join(".git").exists())
-    });
-    // Plan 1.2: known-churn paths never trip staleness. Their contents change
-    // as a side effect of indexing and memory mirroring, so including them let
-    // a freshly rebuilt graph report its own output as a dirty worktree.
-    status_paths.retain(|(path, _)| {
-        let normalized = path.replace('\\', "/");
-        !IGNORED_OVERLAY_PREFIXES
-            .iter()
-            .any(|prefix| normalized.starts_with(prefix))
-    });
-    if status_paths.len() > MAX_OVERLAY_FILES {
-        return Ok(OverlayObservation {
-            stable: false,
-            entries: Vec::new(),
-            limit_exceeded: true,
-            stage_elapsed_ms: git_status_stage(git_status_elapsed_ms),
-        });
-    }
-    // Decide the cumulative byte cap from metadata before reading file bodies. Over-limit dirty
-    // trees need only an indeterminate verdict; hashing up to 64 MiB first made freshness latency
-    // depend on unrelated build artifacts and could outlive the HTTP request.
-    if !overlay_within_byte_limit(repo_root, &status_paths)? {
-        return Ok(overlay_limit_exceeded(git_status_elapsed_ms));
-    }
-
-    let mut total_bytes = 0u64;
-    let mut entries = Vec::with_capacity(status_paths.len());
-    let mut stable = true;
-    for (path, status) in status_paths {
-        let absolute = safe_join(repo_root, &path)?;
-        let (content_hash, len, unchanged) = hash_overlay_path(&absolute, &status)?;
-        total_bytes = total_bytes.saturating_add(len);
-        if total_bytes > MAX_OVERLAY_BYTES {
-            return Ok(OverlayObservation {
-                stable: false,
-                entries: Vec::new(),
-                limit_exceeded: true,
-                stage_elapsed_ms: git_status_stage(git_status_elapsed_ms),
-            });
-        }
-        stable &= unchanged;
-        entries.push(OverlayEntry {
-            path,
-            status,
-            content_hash,
-        });
-    }
-    let after_started = Instant::now();
-    let after = git_status(repo_root)?;
-    git_status_elapsed_ms = git_status_elapsed_ms.saturating_add(elapsed_ms(after_started));
-    if after.limit_exceeded {
-        return Ok(overlay_limit_exceeded(git_status_elapsed_ms));
-    }
-    stable &= before.bytes == after.bytes;
-    entries.sort();
-    Ok(OverlayObservation {
-        stable,
-        entries,
-        limit_exceeded: false,
-        stage_elapsed_ms: git_status_stage(git_status_elapsed_ms),
-    })
-}
-
-fn overlay_limit_exceeded(git_status_elapsed_ms: u64) -> OverlayObservation {
-    OverlayObservation {
-        stable: false,
-        entries: Vec::new(),
-        limit_exceeded: true,
-        stage_elapsed_ms: git_status_stage(git_status_elapsed_ms),
-    }
-}
-
 fn elapsed_ms(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
-
-fn git_status_stage(elapsed_ms: u64) -> BTreeMap<String, u64> {
-    BTreeMap::from([("git_status".to_string(), elapsed_ms)])
-}
-
-struct GitStatusOutput {
-    bytes: Vec<u8>,
-    limit_exceeded: bool,
-}
-
-fn git_status(repo_root: &Path) -> Result<GitStatusOutput, String> {
-    let mut command = hidden_command("git");
-    command.arg("-C").arg(repo_root).args([
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-    ]);
-    let output = bounded_child_output(
-        &mut command,
-        GIT_CHILD_TIMEOUT,
-        MAX_GIT_STATUS_BYTES,
-        "git status",
-    )?;
-    if output.limit_exceeded {
-        return Ok(GitStatusOutput {
-            bytes: Vec::new(),
-            limit_exceeded: true,
-        });
-    }
-    if !output.status.success() {
-        return Err("git status failed".to_string());
-    }
-    Ok(GitStatusOutput {
-        bytes: output.stdout,
-        limit_exceeded: false,
-    })
-}
-
-/// Commits `head` is ahead of `base`, or `None` when it cannot be measured.
-///
-/// Plan 1.1/1.2: freshness is a read-through proof, so the lag is measured from
-/// git at verdict time rather than copied from a sealed field. Shallow clones,
-/// unrelated histories, and pruned commits all fail here and yield `None`,
-/// which the classifier treats as unknown lag (stale), never as current.
-fn commit_distance(repo_root: &Path, base: &str, head: &str) -> Option<u32> {
-    if base == head {
-        return Some(0);
-    }
-    let range = format!("{base}..{head}");
-    git_text(repo_root, &["rev-list", "--count", &range])
-        .ok()?
-        .parse::<u32>()
-        .ok()
-}
-
-fn git_text(repo_root: &Path, args: &[&str]) -> Result<String, String> {
-    let mut command = hidden_command("git");
-    command.arg("-C").arg(repo_root).args(args);
-    let output = bounded_child_output(&mut command, GIT_CHILD_TIMEOUT, MAX_GIT_TEXT_BYTES, "git")?;
-    if output.limit_exceeded {
-        return Err("git output exceeded its byte limit".to_string());
-    }
-    if !output.status.success() {
-        return Err("git failed".to_string());
-    }
-    let value =
-        String::from_utf8(output.stdout).map_err(|_| "git output is not UTF-8".to_string())?;
-    let value = value.trim();
-    if value.is_empty() {
-        Err("git returned an empty value".to_string())
-    } else {
-        Ok(value.to_string())
-    }
-}
-
-#[derive(Debug)]
-struct BoundedChildOutput {
-    status: ExitStatus,
-    stdout: Vec<u8>,
-    limit_exceeded: bool,
-}
-
-fn bounded_child_output(
-    command: &mut Command,
-    timeout: Duration,
-    max_stdout_bytes: u64,
-    label: &str,
-) -> Result<BoundedChildOutput, String> {
-    command.stdout(Stdio::piped()).stderr(Stdio::null());
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("{label} unavailable: {error}"))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| format!("{label} output unavailable"))?;
-    let (reader_tx, reader_rx) = mpsc::sync_channel(1);
-    let reader = std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let result = stdout
-            .take(max_stdout_bytes.saturating_add(1))
-            .read_to_end(&mut bytes)
-            .map(|_| bytes);
-        let _ = reader_tx.send(result);
-    });
-    let started = Instant::now();
-    let mut status = None;
-    let mut stdout_result = None;
-
-    loop {
-        if stdout_result.is_none() {
-            match reader_rx.try_recv() {
-                Ok(result) => stdout_result = Some(result),
-                Err(mpsc::TryRecvError::Empty) => {}
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!("{label} output reader stopped"));
-                }
-            }
-        }
-
-        if let Some(Ok(bytes)) = stdout_result.as_ref() {
-            if bytes.len() as u64 > max_stdout_bytes {
-                let _ = child.kill();
-                let terminated = child
-                    .wait()
-                    .map_err(|error| format!("{label} termination failed: {error}"))?;
-                let _ = reader.join();
-                return Ok(BoundedChildOutput {
-                    status: terminated,
-                    stdout: bytes.clone(),
-                    limit_exceeded: true,
-                });
-            }
-        }
-        if stdout_result.as_ref().is_some_and(Result::is_err) {
-            let error = stdout_result
-                .take()
-                .expect("checked child output result")
-                .expect_err("checked child output error");
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = reader.join();
-            return Err(format!("{label} unavailable: {error}"));
-        }
-
-        if status.is_none() {
-            status = child
-                .try_wait()
-                .map_err(|error| format!("{label} wait failed: {error}"))?;
-        }
-        if let Some(status) = status {
-            if let Some(stdout_result) = stdout_result.take() {
-                let _ = reader.join();
-                let stdout =
-                    stdout_result.map_err(|error| format!("{label} unavailable: {error}"))?;
-                return Ok(BoundedChildOutput {
-                    status,
-                    stdout,
-                    limit_exceeded: false,
-                });
-            }
-        }
-
-        if started.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!("{label} timed out"));
-        }
-        std::thread::sleep(CHILD_POLL_INTERVAL);
-    }
-}
-
-fn hidden_command(program: &str) -> Command {
-    // `mut` is load-bearing only under `cfg(windows)` below.
-    #[allow(unused_mut)]
-    let mut command = Command::new(program);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x0800_0000);
-    }
-    command
-}
-
-fn parse_status(raw: &[u8]) -> Result<Vec<(String, String)>, String> {
-    let records = raw
-        .split(|byte| *byte == 0)
-        .filter(|record| !record.is_empty())
-        .collect::<Vec<_>>();
-    let mut index = 0usize;
-    let mut paths = BTreeMap::<String, String>::new();
-    while index < records.len() {
-        let record = records[index];
-        if record.len() < 4 || record[2] != b' ' {
-            return Err("git status returned an invalid record".to_string());
-        }
-        let code = &record[..2];
-        let path = normalize_git_path(&record[3..])?;
-        let status =
-            std::str::from_utf8(code).map_err(|_| "git status code is not UTF-8".to_string())?;
-        if !is_internal_snapshot_path(&path) {
-            paths.insert(path, status.to_string());
-        }
-        if code.iter().any(|byte| matches!(*byte, b'R' | b'C')) {
-            index += 1;
-            if index >= records.len() {
-                return Err("git status rename record is incomplete".to_string());
-            }
-            let other = normalize_git_path(records[index])?;
-            if code.contains(&b'R') && !is_internal_snapshot_path(&other) {
-                paths.insert(other, "D ".to_string());
-            }
-        }
-        index += 1;
-    }
-    Ok(paths.into_iter().collect())
-}
-
-fn normalize_git_path(bytes: &[u8]) -> Result<String, String> {
-    let path = std::str::from_utf8(bytes)
-        .map_err(|_| "git status path is not UTF-8".to_string())?
-        .replace('\\', "/");
-    if path.is_empty()
-        || path.chars().any(|character| character.is_control())
-        || Path::new(&path).is_absolute()
-        || Path::new(&path).components().any(|component| {
-            matches!(
-                component,
-                Component::ParentDir | Component::RootDir | Component::Prefix(_)
-            )
-        })
-    {
-        return Err("git status path escaped the repository".to_string());
-    }
-    Ok(path)
-}
-
-fn is_internal_snapshot_path(path: &str) -> bool {
-    path == ".agent"
-        || path.starts_with(".agent/")
-        || path == ".blueprint"
-        || path.starts_with(".blueprint/")
-}
-
-fn safe_join(repo_root: &Path, relative: &str) -> Result<PathBuf, String> {
-    let joined = repo_root.join(relative);
-    if joined.starts_with(repo_root) {
-        Ok(joined)
-    } else {
-        Err("overlay path escaped the repository".to_string())
-    }
-}
-
-fn overlay_within_byte_limit(
-    repo_root: &Path,
-    status_paths: &[(String, String)],
-) -> Result<bool, String> {
-    let mut total_bytes = 0u64;
-    for (path, status) in status_paths {
-        let absolute = safe_join(repo_root, path)?;
-        let len = if status.contains('D') && !absolute.exists() {
-            0
-        } else {
-            let metadata = std::fs::symlink_metadata(&absolute)
-                .map_err(|error| format!("overlay metadata unavailable: {error}"))?;
-            if metadata.file_type().is_symlink() {
-                std::fs::read_link(&absolute)
-                    .map_err(|error| format!("overlay symlink unavailable: {error}"))?
-                    .as_os_str()
-                    .len() as u64
-            } else if metadata.is_file() {
-                metadata.len()
-            } else {
-                return Err("overlay entry is not a regular file".to_string());
-            }
-        };
-        total_bytes = total_bytes.saturating_add(len);
-        if total_bytes > MAX_OVERLAY_BYTES {
-            return Ok(false);
-        }
-    }
-    Ok(true)
-}
-
-fn hash_overlay_path(path: &Path, status: &str) -> Result<(String, u64, bool), String> {
-    if status.contains('D') && !path.exists() {
-        return Ok((digest_bytes(b"deleted"), 0, true));
-    }
-    let before = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("overlay metadata unavailable: {error}"))?;
-    if before.file_type().is_symlink() {
-        let target = std::fs::read_link(path)
-            .map_err(|error| format!("overlay symlink unavailable: {error}"))?;
-        let after = std::fs::symlink_metadata(path)
-            .map_err(|error| format!("overlay metadata unavailable: {error}"))?;
-        return Ok((
-            digest_bytes(target.to_string_lossy().as_bytes()),
-            target.as_os_str().len() as u64,
-            same_metadata(&before, &after),
-        ));
-    }
-    if !before.is_file() {
-        return Err("overlay entry is not a regular file".to_string());
-    }
-    if before.len() > MAX_OVERLAY_BYTES {
-        return Ok((String::new(), before.len(), false));
-    }
-    let mut file =
-        File::open(path).map_err(|error| format!("overlay file unavailable: {error}"))?;
-    file.seek(SeekFrom::Start(0))
-        .map_err(|error| format!("overlay file unavailable: {error}"))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 32 * 1024];
-    loop {
-        let read = file
-            .read(&mut buffer)
-            .map_err(|error| format!("overlay file unavailable: {error}"))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-    let after = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("overlay metadata unavailable: {error}"))?;
-    Ok((
-        format!("sha256:{:x}", hasher.finalize()),
-        before.len(),
-        same_metadata(&before, &after),
-    ))
-}
-
-fn same_metadata(before: &std::fs::Metadata, after: &std::fs::Metadata) -> bool {
-    before.len() == after.len()
-        && before.modified().ok() == after.modified().ok()
-        && before.file_type() == after.file_type()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
 
     struct SequenceProbe {
         epochs: Vec<Result<FreshnessEpoch, String>>,
@@ -1301,106 +867,6 @@ mod tests {
         fn read_overlay(&mut self) -> Result<OverlayObservation, String> {
             self.overlays.remove(0)
         }
-    }
-
-    fn child_fixture_command(mode: &str) -> Command {
-        let executable = std::env::current_exe().expect("current test executable");
-        let mut command = hidden_command(executable.to_str().expect("UTF-8 test executable path"));
-        command
-            .args([
-                "--exact",
-                "freshness::tests::bounded_child_fixture",
-                "--nocapture",
-            ])
-            .env("CORTEX_FRESHNESS_CHILD_FIXTURE", mode);
-        command
-    }
-
-    #[test]
-    fn bounded_child_fixture() {
-        let Ok(mode) = std::env::var("CORTEX_FRESHNESS_CHILD_FIXTURE") else {
-            return;
-        };
-        match mode.as_str() {
-            "normal" => {
-                std::io::stdout()
-                    .write_all(b"fixture-normal-output")
-                    .unwrap();
-                std::io::stdout().flush().unwrap();
-            }
-            "oversized" => {
-                std::io::stdout().write_all(&vec![b'x'; 8 * 1024]).unwrap();
-                std::io::stdout().flush().unwrap();
-            }
-            "output_hang" => {
-                std::io::stdout().write_all(b"fixture-before-hang").unwrap();
-                std::io::stdout().flush().unwrap();
-                std::thread::sleep(Duration::from_secs(30));
-            }
-            "silent_hang" => std::thread::sleep(Duration::from_secs(30)),
-            other => panic!("unknown child fixture mode: {other}"),
-        }
-    }
-
-    #[test]
-    fn bounded_child_kills_a_silent_process_at_the_deadline() {
-        let started = Instant::now();
-        let error = bounded_child_output(
-            &mut child_fixture_command("silent_hang"),
-            Duration::from_millis(100),
-            1024,
-            "fixture",
-        )
-        .unwrap_err();
-
-        assert!(error.contains("timed out"));
-        assert!(started.elapsed() < Duration::from_secs(2));
-    }
-
-    #[test]
-    fn bounded_child_kills_a_process_that_writes_then_hangs() {
-        let started = Instant::now();
-        let error = bounded_child_output(
-            &mut child_fixture_command("output_hang"),
-            Duration::from_millis(100),
-            1024,
-            "fixture",
-        )
-        .unwrap_err();
-
-        assert!(error.contains("timed out"));
-        assert!(started.elapsed() < Duration::from_secs(2));
-    }
-
-    #[test]
-    fn bounded_child_stops_reading_and_kills_on_the_output_cap() {
-        let output = bounded_child_output(
-            &mut child_fixture_command("oversized"),
-            Duration::from_secs(2),
-            64,
-            "fixture",
-        )
-        .unwrap();
-
-        assert!(output.limit_exceeded);
-        assert!(output.stdout.len() <= 65);
-    }
-
-    #[test]
-    fn bounded_child_returns_normal_output_and_exit_status() {
-        let output = bounded_child_output(
-            &mut child_fixture_command("normal"),
-            Duration::from_secs(2),
-            4096,
-            "fixture",
-        )
-        .unwrap();
-
-        assert!(!output.limit_exceeded);
-        assert!(output.status.success());
-        assert!(String::from_utf8(output.stdout)
-            .unwrap()
-            .contains("fixture-normal-output"));
     }
 
     #[test]
@@ -1423,43 +889,10 @@ mod tests {
             verdict.release_generation,
             format!(
                 "sha256:{}",
-                option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                option_env!("MEMBRANE_SOURCE_TREE_SHA256").unwrap_or("unknown")
             )
         );
         assert_ne!(verdict.service_generation, verdict.release_generation);
-    }
-
-    #[test]
-    fn parser_excludes_blueprint_outputs_and_names_statuses() {
-        let raw = b" M src/lib.rs\0?? new.txt\0 M .agent/graph/graph.json\0";
-        assert_eq!(
-            parse_status(raw).unwrap(),
-            vec![
-                ("new.txt".to_string(), "??".to_string()),
-                ("src/lib.rs".to_string(), " M".to_string()),
-            ]
-        );
-    }
-
-    #[test]
-    fn rename_status_hashes_the_new_path_and_marks_the_missing_old_path_deleted() {
-        let raw = b"R  src/new.rs\0src/old.rs\0";
-        assert_eq!(
-            parse_status(raw).unwrap(),
-            vec![
-                ("src/new.rs".to_string(), "R ".to_string()),
-                ("src/old.rs".to_string(), "D ".to_string()),
-            ]
-        );
-    }
-
-    #[test]
-    fn copy_status_does_not_rehash_the_unchanged_source_path() {
-        let raw = b"C  src/copy.rs\0src/original.rs\0";
-        assert_eq!(
-            parse_status(raw).unwrap(),
-            vec![("src/copy.rs".to_string(), "C ".to_string())]
-        );
     }
 
     /// Build an epoch whose generation is coherent but sits `distance` commits
@@ -1534,27 +967,6 @@ mod tests {
     }
 
     #[test]
-    fn cumulative_overlay_limit_is_detected_from_metadata_before_hashing() {
-        let directory = tempfile::tempdir().unwrap();
-        let first = directory.path().join("first.bin");
-        let second = directory.path().join("second.bin");
-        File::create(&first)
-            .unwrap()
-            .set_len(40 * 1024 * 1024)
-            .unwrap();
-        File::create(&second)
-            .unwrap()
-            .set_len(30 * 1024 * 1024)
-            .unwrap();
-        let paths = vec![
-            ("first.bin".to_string(), "??".to_string()),
-            ("second.bin".to_string(), "??".to_string()),
-        ];
-
-        assert!(!overlay_within_byte_limit(directory.path(), &paths).unwrap());
-    }
-
-    #[test]
     fn coordinator_returns_immediately_while_repository_refresh_runs_off_path() {
         let coordinator = FreshnessCoordinator::default();
         let root = PathBuf::from("coordinator-off-path-fixture");
@@ -1602,21 +1014,6 @@ mod tests {
             );
             std::thread::yield_now();
         }
-    }
-
-    #[test]
-    fn within_limit_overlay_and_deleted_paths_pass_metadata_preflight() {
-        let directory = tempfile::tempdir().unwrap();
-        File::create(directory.path().join("small.bin"))
-            .unwrap()
-            .set_len(1024)
-            .unwrap();
-        let paths = vec![
-            ("small.bin".to_string(), " M".to_string()),
-            ("deleted.bin".to_string(), " D".to_string()),
-        ];
-
-        assert!(overlay_within_byte_limit(directory.path(), &paths).unwrap());
     }
 
     #[test]

@@ -14,7 +14,8 @@ lives in `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOC
 | MCP server | `mcp/server.mjs` | ten tools over stdio; dual-era MCP discovery |
 | Client adapters | `docs/membrane/capability-matrix.v1.json` | seven host adapters, per-host honest capability levels |
 | Federation gateway | loopback `POST /federate` | parallel provider fan-out behind the context tool |
-| Cortex engine | `engine/` | durable memory: Rust CLI plus loopback service over SQLite |
+| Cortex durable memory | `engine/` | governed durable-memory store, lifecycle, and retrieval; no resident service authority |
+| Membrane Hub | `apps/membrane-hub/` | sole resident service, process-lifecycle, install, update, and release authority |
 | Cross-provider budget | `mcp/context-renderer-lib.cjs` + `engine/crates/membrane-core/` | one attention budget with explicit lanes; every receipt carries a reconciliation |
 
 ## Interfaces
@@ -58,7 +59,7 @@ at `engine/crates/membrane-protocol/src/types.rs` (`BudgetLaneKind`,
 
 ## Platform status
 
-Supported platforms are **macOS and Windows** (tier 1). Linux is tier-2 best-effort.
+The sole supported current target is **macOS** (tier 1). Other targets are not current supported targets.
 
 ## Derived from
 
@@ -77,7 +78,7 @@ Adding a fourth plane is a breaking change to the contract.
 | Plane | Owns | Reads from | Writes to |
 |---|---|---|---|
 | Application | CLI subcommands, stdio MCP, loopback HTTP API, MCP routing | Data | — |
-| Control | supervisor-child, leases, lockfile, heartbeat publication, restart policy | Data | Data |
+| Control | supervisor-child, lifecycle frames, lockfile, heartbeat publication | Data | Data |
 | Data | SQLite catalog, receipts, snapshot manifests, heartbeat rows, installation identity | — | — |
 
 Rules:
@@ -85,7 +86,7 @@ Rules:
 - The Data plane never owns a network port. A path under `engine/crates/cortex-store/`
   MUST NOT import a transport crate.
 - The Control plane never opens SQLite directly. Lease, lockfile, and heartbeat
-  writes go through the typed Data-plane API exposed by `membrane_supervisor`.
+  writes go through typed Data-plane APIs exposed by Membrane runtime.
 - The Application plane never writes to disk except via the Control or Data
   plane. `membrane_runtime::serve` and `membrane_runtime::cli` only emit
   typed receipts; they never call `std::fs` directly outside the receipts
@@ -103,7 +104,7 @@ The typed contract lives at `engine/crates/membrane-runtime/src/planes.rs`
 fixture is `schemas/registry/plane-boundaries.v1.golden.json`; the runtime
 classifies a source file into a plane by the crate segment that owns it
 (`membrane-runtime` / `membrane-mcp` → Application,
-`membrane-supervisor` → Control, `cortex-store` → Data).
+`membrane` resident lifecycle → Control, `cortex-store` → Data).
 
 Forbid list (enforced by review at book-end):
 

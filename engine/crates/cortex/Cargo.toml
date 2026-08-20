@@ -3,15 +3,11 @@ name = "cortex"
 version = "0.1.1"
 edition.workspace = true
 license-file.workspace = true
-description = "Cortex CLI and service for Membrane runtime."
+description = "Cortex durable-memory CLI for Membrane."
 
 [[bin]]
 name = "cortex"
 path = "src/main.rs"
-
-[[bin]]
-name = "cortex-service"
-path = "src/cortex_service_main.rs"
 
 [dependencies]
 membrane-runtime = { path = "../membrane-runtime" }

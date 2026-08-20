@@ -14,7 +14,7 @@ permissions:
   contents: read
 jobs:
   qualification:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -32,7 +32,7 @@ jobs:
       - run: node scripts/benchmark-retrieval.mjs --check-contract
       - run: pnpm test:all
   schema:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -46,7 +46,7 @@ jobs:
       - run: node --test tests/contracts-v1.test.mjs
       - run: node scripts/grammars/inventory.mjs --check || true
   security:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -61,7 +61,7 @@ jobs:
       - name: Hostile-repository and secret-egress suite
         run: pnpm test:security
   hardening:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -77,7 +77,7 @@ jobs:
       - run: node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/blueprint-soak.json
       - run: test ! -s /tmp/blueprint-soak.json && exit 1 || node -e "const r=require('/tmp/blueprint-soak.json'); if (r.summary.crashes>0) { console.error('soak crashes:', r.findings); process.exit(1);} console.log('soak summary:', JSON.stringify(r.summary));"
   ax-conformance:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

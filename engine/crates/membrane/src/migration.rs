@@ -9,11 +9,6 @@ const LEGACY_LAYOUTS: [(&str, &str); 2] = [
     ("workspace-cache", "tools/.cache/memory"),
     ("home-cortex", ".claude/cortex"),
 ];
-const PID_FILES: [&str; 3] = [
-    "supervisor.pid",
-    "cortex-service.pid",
-    "membrane-supervisor.pid",
-];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,14 +63,6 @@ fn migrate_with_receipt_writer(
     }
     if found.is_empty() {
         return Err("no recognized legacy installation layout".into());
-    }
-    for (_, path) in &found {
-        if PID_FILES.iter().any(|name| path.join(name).exists()) {
-            return Err(format!(
-                "legacy supervisor marker present under {}; stop legacy daemon first",
-                path.display()
-            ));
-        }
     }
     std::fs::create_dir(&target).map_err(|error| format!("create target: {error}"))?;
     let mut layouts: Vec<String> = Vec::new();
@@ -196,20 +183,6 @@ mod tests {
         }
         assert!(!source.join("tools/.cache/memory").exists());
         assert!(!source.join(".claude/cortex").exists());
-    }
-    #[test]
-    fn active_legacy_marker_refuses_before_any_data_moves() {
-        let temp = tempfile::tempdir().unwrap();
-        let source = temp.path().join("source");
-        let target = temp.path().join("target");
-        let dir = source.join("tools/.cache/memory");
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("supervisor.pid"), "42").unwrap();
-        assert!(migrate(&source, &target)
-            .unwrap_err()
-            .contains("stop legacy daemon"));
-        assert!(dir.exists());
-        assert!(!target.exists());
     }
     #[test]
     fn nested_target_refuses_before_mutation() {

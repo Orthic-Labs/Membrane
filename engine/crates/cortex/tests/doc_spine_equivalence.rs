@@ -1,4 +1,7 @@
-use cortex::{doc_spine, MemDb};
+use membrane_runtime::{
+    guide::{doc_spine, GuideDb},
+    MemDb,
+};
 
 #[test]
 fn unchanged_sync_preserves_logical_artifact_and_projection_semantics() {
@@ -8,9 +11,10 @@ fn unchanged_sync_preserves_logical_artifact_and_projection_semantics() {
         "---\nclass: runbook\ninfluence: procedure\n---\n# Runbook\n",
     )
     .unwrap();
-    let db = MemDb::open_in_memory();
+    let guide = GuideDb::open_in_memory();
+    let cortex = MemDb::open_in_memory();
 
-    let first = doc_spine::sync(&db, temp.path()).unwrap();
+    let first = doc_spine::sync(&guide, temp.path()).unwrap();
     let first_row: (
         String,
         String,
@@ -21,13 +25,13 @@ fn unchanged_sync_preserves_logical_artifact_and_projection_semantics() {
         String,
         String,
         i64,
-    ) = db
+    ) = guide
         .lock()
         .query_row(
             "SELECT a.doc_id, a.content_hash, a.parser_version, a.lifecycle_state, \
                     a.document_class, a.influence_class, p.kind, p.source_revision, \
                     p.index_generation \
-             FROM doc_artifacts a JOIN doc_projections p ON p.parent_doc_id = a.doc_id \
+             FROM guide_doc_artifacts a JOIN guide_doc_projections p ON p.parent_doc_id = a.doc_id \
              WHERE a.path='runbook.md'",
             [],
             |r| {
@@ -46,7 +50,7 @@ fn unchanged_sync_preserves_logical_artifact_and_projection_semantics() {
         )
         .unwrap();
 
-    let second = doc_spine::sync(&db, temp.path()).unwrap();
+    let second = doc_spine::sync(&guide, temp.path()).unwrap();
     let second_row: (
         String,
         String,
@@ -57,13 +61,13 @@ fn unchanged_sync_preserves_logical_artifact_and_projection_semantics() {
         String,
         String,
         i64,
-    ) = db
+    ) = guide
         .lock()
         .query_row(
             "SELECT a.doc_id, a.content_hash, a.parser_version, a.lifecycle_state, \
                     a.document_class, a.influence_class, p.kind, p.source_revision, \
                     p.index_generation \
-             FROM doc_artifacts a JOIN doc_projections p ON p.parent_doc_id = a.doc_id \
+             FROM guide_doc_artifacts a JOIN guide_doc_projections p ON p.parent_doc_id = a.doc_id \
              WHERE a.path='runbook.md'",
             [],
             |r| {
@@ -108,7 +112,7 @@ fn unchanged_sync_preserves_logical_artifact_and_projection_semantics() {
         )
     );
     assert!(second_row.8 > first_row.8);
-    let durable: i64 = db
+    let durable: i64 = cortex
         .lock()
         .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))
         .unwrap();

@@ -141,15 +141,15 @@ const dashboardToken = () => {
   try { return normalizeDashboardToken(sessionStorage.getItem(DASHBOARD_TOKEN_KEY) || ''); }
   catch { return null; }
 };
-let CORTEX_API_TOKEN = dashboardToken();
-const renderAuthState = () => { $('#auth-state').textContent = CORTEX_API_TOKEN ? 'token set for this session' : 'token required'; };
+let MEMBRANE_API_TOKEN = dashboardToken();
+const renderAuthState = () => { $('#auth-state').textContent = MEMBRANE_API_TOKEN ? 'token set for this session' : 'token required'; };
 function setDashboardToken() {
   const supplied = window.prompt('Paste the Cortex API token. Leave blank to clear this browser session.');
   if (supplied === null) return;
   if (/[\r\n]/.test(supplied)) return window.alert('API token must not contain a newline.');
-  CORTEX_API_TOKEN = normalizeDashboardToken(supplied);
+  MEMBRANE_API_TOKEN = normalizeDashboardToken(supplied);
   try {
-    if (CORTEX_API_TOKEN) sessionStorage.setItem(DASHBOARD_TOKEN_KEY, CORTEX_API_TOKEN);
+    if (MEMBRANE_API_TOKEN) sessionStorage.setItem(DASHBOARD_TOKEN_KEY, MEMBRANE_API_TOKEN);
     else sessionStorage.removeItem(DASHBOARD_TOKEN_KEY);
   } catch {}
   renderAuthState();
@@ -163,7 +163,7 @@ const DEFAULT_PUT_RETRY_MS = 25;
 const MAX_PUT_RETRY_MS = 2000;
 const api = (p, b) => {
   const headers = {};
-  if (CORTEX_API_TOKEN) headers.Authorization = `Bearer ${CORTEX_API_TOKEN}`;
+  if (MEMBRANE_API_TOKEN) headers.Authorization = `Bearer ${MEMBRANE_API_TOKEN}`;
   if (b) headers['Content-Type'] = 'application/json';
   return fetch(p, b ? {method:'POST', headers, body:JSON.stringify(b)} : {headers}).then(r => r.json());
 };
@@ -252,7 +252,7 @@ const sha256Hex = async value => {
   const hash = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
 };
-const putIdentity = async (requestBody, apiToken = CORTEX_API_TOKEN) => {
+const putIdentity = async (requestBody, apiToken = MEMBRANE_API_TOKEN) => {
   const principal = apiToken == null ? ['anonymous'] : ['token', apiToken];
   const [authFingerprint, bodyFingerprint] = await Promise.all([
     sha256Hex(JSON.stringify(['cortex-dashboard-auth-v1', ...principal])),
@@ -261,7 +261,7 @@ const putIdentity = async (requestBody, apiToken = CORTEX_API_TOKEN) => {
   const digest = await sha256Hex(JSON.stringify(['cortex-dashboard-put-v3', authFingerprint, bodyFingerprint]));
   return {digest, authFingerprint, bodyFingerprint};
 };
-const putDigest = async (requestBody, apiToken = CORTEX_API_TOKEN) =>
+const putDigest = async (requestBody, apiToken = MEMBRANE_API_TOKEN) =>
   (await putIdentity(requestBody, apiToken)).digest;
 const retryablePutStatus = status => status === 408 || status === 429 || (status >= 500 && status < 600);
 const putRetryDelay = value => {
@@ -279,7 +279,7 @@ const putResult = async response => {
   try { return JSON.parse(text); }
   catch { return {error: text}; }
 };
-async function apiPut(body, apiToken = CORTEX_API_TOKEN, now = Date.now()) {
+async function apiPut(body, apiToken = MEMBRANE_API_TOKEN, now = Date.now()) {
   const requestBody = JSON.stringify(body);
   const identity = await putIdentity(requestBody, apiToken), entry = await reservePendingPut(identity, now);
   const headers = {'Content-Type':'application/json', 'Idempotency-Key':entry.key};

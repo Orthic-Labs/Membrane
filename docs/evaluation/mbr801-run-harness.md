@@ -4,8 +4,7 @@
 harness" the Book 2 gate invokes as:
 
 ```bash
-node scripts/qualification/run.mjs --task MBR-801 --platform macos   --release-manifest <path/to/release-evidence.json> --event-db <path>
-node scripts/qualification/run.mjs --task MBR-801 --platform windows --release-manifest <path/to/release-evidence.json> --event-db <path>
+node scripts/qualification/run.mjs --task MBR-801 --platform macos --release-manifest <path/to/release-evidence.json> --event-db <path>
 ```
 
 ## What it exercises
@@ -15,7 +14,7 @@ For the running platform it:
 1. Proves the build under test is a **signed, installed** build by
    delegating to `scripts/release/verify-release-evidence.mjs` against a
    real release-evidence manifest (artifact hash, ed25519 signature,
-   apple-notary/windows-authenticode platform trust, installed platform
+   Apple notarization platform trust, installed platform
    receipts).
 2. Resolves the **real client, model, and host** identity running the
    harness (`CORTEX_CLIENT`, `MEMBRANE_QUALIFICATION_MODEL`, machine
@@ -46,14 +45,13 @@ Every real-execution dependency — signed-build verification, host-identity
 resolution, scenario execution, and benchmark aggregation — is an injectable
 parameter of `runInstalledPathHarness(options)`, each defaulting to the real,
 installed-path implementation described above. `tests/e2e/mbr801-run-harness.test.mjs`
-injects deterministic fakes for both `macos` and `windows` platform runs and
+injects deterministic fakes for a `macos` platform run and
 proves:
 
-- all ten scenarios complete with a unique trace ID on each platform,
-- the twenty trace IDs across both platforms are globally unique,
+- all ten scenarios complete with unique trace IDs,
 - the resulting receipts, fed straight into the existing
-  `verifyMbr801Evidence` validator, verify as `"passed"` for both platforms
-  under one shared commit and release generation,
+  `verifyMbr801Evidence` validator, verify as `"passed"` under one current
+  commit and release generation,
 - a missing trace, a duplicate trace, an unsigned build, or an incomplete
   benchmark each fails the receipt closed with a specific reason.
 
@@ -70,5 +68,5 @@ harness:
   `scripts/run-platform-scenarios.mjs` expects.
 
 These preconditions are why this harness is invoked manually at the Book
-gate on user-controlled macOS and Windows machines, never during task
+gate on a user-controlled macOS machine, never during task
 implementation and never from an automated pipeline.

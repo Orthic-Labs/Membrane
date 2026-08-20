@@ -5,11 +5,11 @@
   "request": {
     "scope": "workspace",
     "taskEnvelope": {
-      "schema": "orthic.task-envelope.v1",
+      "schema": "membrane.task-envelope.v1",
       "taskId": "task-mbr-104-cortex-cp"
     },
     "turnEnvelope": {
-      "schema": "orthic.turn-envelope.v1",
+      "schema": "membrane.turn-envelope.v1",
       "turnId": "turn-1",
       "sessionId": "session-mbr-104-cortex",
       "sequence": 1
@@ -28,11 +28,11 @@
       "durable": true,
       "bytes": 22,
       "taskEnvelope": {
-        "schema": "orthic.task-envelope.v1",
+        "schema": "membrane.task-envelope.v1",
         "taskId": "task-mbr-104-cortex-cp"
       },
       "turnEnvelope": {
-        "schema": "orthic.turn-envelope.v1",
+        "schema": "membrane.turn-envelope.v1",
         "turnId": "turn-1",
         "sessionId": "session-mbr-104-cortex",
         "sequence": 1

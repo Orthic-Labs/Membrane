@@ -1,4 +1,4 @@
-"""Taste apply — reviewed manifest → Cortex (zero LLM calls)."""
+"""Taste apply — reviewed manifest → Membrane Cortex persistence (zero LLM calls)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -38,7 +38,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
       - batch_id must match a journal discovered entry with the same sessions
       - only ``accepted`` records are written
       - state advances only after the authenticated batch receipt is complete
-      - failed batches leave persistence atomic at the Cortex service boundary
+      - failed batches leave persistence atomic at Membrane's Cortex boundary
     """
     try:
         m = manifest.apply_time_validate(manifest_path)

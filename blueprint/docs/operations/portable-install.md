@@ -8,9 +8,7 @@ system Node, no npm, and no network.
 
 ```text
 blueprint/
-  bin/blueprint           POSIX launcher (macOS/Linux)
-  bin/blueprint.cmd       Windows command launcher
-  bin/blueprint.ps1       Windows PowerShell launcher
+  bin/blueprint           macOS launcher
   bin/blueprint-mcp       MCP server launcher
   lib/node             Bundled Node LTS
   app/package/         Application files
@@ -29,8 +27,7 @@ node scripts/release/stage-runtime.mjs --out /tmp/blueprint-runtime
 node scripts/release/build-runtime-bundle.mjs --out /tmp/blueprint-runtime-archive
 ```
 
-The release-candidate workflow matrix builds macOS arm64/x64, Windows x64,
-and Linux x64/arm64 archives.
+The release-candidate workflow builds macOS arm64/x64 archives.
 
 ## Verify without system Node
 

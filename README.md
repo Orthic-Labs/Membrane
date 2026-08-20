@@ -6,15 +6,19 @@
 ![local-first](https://img.shields.io/badge/data%20plane-local--first-df6428?style=flat-square&labelColor=111318)
 ![MCP](https://img.shields.io/badge/surface-MCP%20·%20hooks%20·%20CLI-df6428?style=flat-square&labelColor=111318)
 
-## Three motions
+## Six axes
 
 | Motion | What it does |
 |---|---|
 | **Push** | Shrinks information already flowing through the agent workflow — command output, file reads, prose |
 | **Pull** | Retrieves only what is relevant to the current task, from every source that might hold it |
-| **Persist** | Keeps durable decisions, preferences, and lessons useful across sessions and machines |
+| **Cortex / Persist** | Keeps governed durable decisions, preferences, and lessons useful across sessions and machines |
+| **Blueprint** | Owns repository truth, evidence generations, and drift/change observation |
+| **Guide** | Navigates indexed document sections with hash-bound references |
+| **Adapt** | Mines experience into governed proposals; never writes durable truth directly |
 
-All three share one context economy: compression, retrieval, curation, and assembly draw on the same budgets and the same telemetry, instead of each being a separate bolt-on.
+All six share one context economy while retaining separate ownership, tests,
+metrics, and improvement paths.
 
 ## How a packet is assembled
 
@@ -52,11 +56,16 @@ The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `Cont
 
 ## Inside
 
-- **Cortex** — the durable-memory engine: a Rust CLI plus loopback HTTP service over SQLite, with a quantized vector store and hybrid retriever.
+- **Pull** — bounded acquisition, eligibility, fusion, admission, and packet publication.
+- **Push** — faithful reduction for command output, file reads, source/provider payloads, and delegated evidence.
+- **Cortex / Persist** — the durable-memory engine: a Rust CLI plus loopback HTTP service over SQLite, with a quantized vector store and hybrid retriever.
+- **Blueprint** — repository truth and evidence graph.
+- **Guide** — hash-bound document navigation.
+- **Adapt** — governed experience-to-knowledge proposals.
 - **MCP server** — ten tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_blueprint`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_working_context`, `membrane_temporal_fact`, `membrane_scratchpad`, `membrane_feedback`), serving both the 2025-03-26 and 2026-07-28 MCP discovery eras. The generated source of truth for this surface is [docs/product-truth.md](docs/product-truth.md).
 - **Federation gateway** — a supervised resident worker behind `POST /federate` that fans out to providers in parallel.
 - **Prompt hooks** — per-host recall planners (Claude and Codex) that route candidates through admission on every prompt.
-- **Orthic Hub add-on** — this repository produces Membrane's portable command, service, icon, and legal inputs for Orthic Hub. Orthic owns its desktop installer; Membrane retains no desktop release lane.
+- **Membrane Hub** — sole runtime, desktop build, release, installer, updater, service-supervision, icon, & legal-asset authority.
 
 ## Running it
 
@@ -64,11 +73,14 @@ The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `Cont
 pnpm install        # Node >= 20, pnpm 11
 pnpm test           # MCP server + client + install-binding suites
 
-cargo build --workspace                          # Cortex engine
-cargo test --workspace --features fastembed      # with real ONNX embeddings
+rightkit cargo build --workspace                 # Membrane engine
+rightkit cargo test --workspace --features fastembed # Cortex/Persist embeddings
 ```
 
-Day-to-day surfaces are the installed shims: `cortex recall`, `cortex federate`, `cortex plan-context`, `cortex curate`, plus the compression trio `runc` (command output), `skel` (file skeletonization), and `compress` (prose).
+Day-to-day surfaces are the installed Membrane CLI: `membrane cli pull plan-context`,
+`membrane cli pull federate`, `membrane cli push runc`, `membrane cli push skel`,
+`membrane cli push compress`, `membrane cli push restore`, and Cortex durable-memory
+commands such as `membrane cli recall` and `membrane cli curate`.
 
 ## Recent
 

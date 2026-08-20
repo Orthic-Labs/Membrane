@@ -47,7 +47,7 @@ test("channel is disabled by offline and by BLUEPRINT_NO_UPDATE_CHECK", () => {
 
 test("install owner detection returns a source checkout here", () => {
   const owner = detectInstallOwner();
-  assert.ok(["source", "npm", "homebrew", "winget", "portable"].includes(owner.owner));
+  assert.ok(["source", "npm", "homebrew", "portable"].includes(owner.owner));
 });
 
 test("update manifest validates against UpdateManifestV1", () => {
@@ -59,7 +59,7 @@ test("update manifest validates against UpdateManifestV1", () => {
       version: "0.3.0",
       commit: "a".repeat(40),
       publishedAt: "2026-08-05T10:10:02.050Z",
-      artifacts: [{ name: "blueprint-linux-x64.tar.gz", platform: "linux", arch: "x64", sha256: "deadbeef", size: 1024, signed: false, sbom: "SBOM.spdx.json" }],
+      artifacts: [{ name: "blueprint-darwin-arm64.tar.gz", platform: "darwin", arch: "arm64", sha256: "deadbeef", size: 1024, signed: false, sbom: "SBOM.spdx.json" }],
       signatureAlgorithm: "Ed25519", keyId: "test-key", signature: "sig-1",
     };
     const path = join(dir, "manifest.json");

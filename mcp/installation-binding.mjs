@@ -7,6 +7,7 @@ const DEFAULT_DB = join("tools", ".cache", "memory", "cortex-engine.db");
 const DEFAULT_TOKEN = join("tools", ".cache", "memory", "api-token");
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_PORT = 47851;
+const SERVICE_ID = "membrane-local-v1";
 
 async function exists(path) {
   try {
@@ -34,17 +35,22 @@ async function readRuntime(path) {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) {
     throw new Error("installation binding unavailable: runtime port is invalid");
   }
-  if (raw.serviceId && raw.serviceId !== "cortex-local-v1") {
+  if (raw.serviceId !== SERVICE_ID) {
     throw new Error("installation binding unavailable: runtime serviceId mismatch");
   }
   if (raw.host && raw.host !== DEFAULT_HOST) {
     throw new Error("installation binding unavailable: runtime host must be loopback");
   }
-  return { host: raw.host || DEFAULT_HOST, port };
+  return {
+    host: raw.host || DEFAULT_HOST,
+    port,
+    installationId: typeof raw.installationId === "string" ? raw.installationId : "",
+    serviceInstanceId: typeof raw.serviceInstanceId === "string" ? raw.serviceInstanceId : "",
+  };
 }
 
 function envPort() {
-  const raw = process.env.CORTEX_PORT?.trim();
+  const raw = process.env.MEMBRANE_PORT?.trim();
   if (!raw) return undefined;
   const port = Number(raw);
   return Number.isInteger(port) && port >= 1024 && port <= 65535 ? port : undefined;
@@ -56,7 +62,7 @@ function envDb(workspaceRoot) {
 }
 
 function tokenPathFor(binding, workspaceRoot, registryPath) {
-  const envFile = process.env.CORTEX_API_TOKEN_FILE?.trim();
+  const envFile = process.env.MEMBRANE_API_TOKEN_FILE?.trim();
   if (envFile) return envFile;
   if (binding.token_grant?.path) return binding.token_grant.path;
   return defaultTokenPath(binding.root, registryPath) || join(workspaceRoot, DEFAULT_TOKEN);
@@ -73,6 +79,8 @@ function finishBinding(binding, workspaceRoot, runtime, registryPath) {
     endpoint: `http://${runtime.host}:${port}`,
     db,
     tokenPath,
+    installationId: runtime.installationId || process.env.MEMBRANE_INSTALLATION_ID || "",
+    serviceInstanceId: runtime.serviceInstanceId || process.env.MEMBRANE_SERVICE_INSTANCE_ID || "",
     tokenGeneration: binding.token_grant?.generation ?? null,
     repositoryCatalogDigest: binding.repository_catalog_digest ?? null,
   };
@@ -101,9 +109,11 @@ export async function installationBindingFor(binding, { registryPath } = {}) {
 export function installationEnv(bindingRecord) {
   return {
     WORKSPACE_ROOT: bindingRecord.workspaceRoot,
-    CORTEX_PORT: String(bindingRecord.port),
+    MEMBRANE_PORT: String(bindingRecord.port),
     CORTEX_DB: bindingRecord.db,
-    CORTEX_API_TOKEN_FILE: bindingRecord.tokenPath,
+    MEMBRANE_API_TOKEN_FILE: bindingRecord.tokenPath,
+    MEMBRANE_INSTALLATION_ID: bindingRecord.installationId || "",
+    MEMBRANE_SERVICE_INSTANCE_ID: bindingRecord.serviceInstanceId || "",
     MEMBRANE_REPOSITORY_CATALOG_DIGEST: bindingRecord.repositoryCatalogDigest || "",
   };
 }

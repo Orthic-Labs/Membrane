@@ -1,4 +1,4 @@
-use cortex::{MemDb, MemoryStore};
+use membrane_runtime::{MemDb, MemoryStore};
 use serde_json::{json, Value};
 
 fn lifecycle_rows(store: &MemoryStore) -> Vec<(String, String, String, String, Option<String>)> {
@@ -89,7 +89,7 @@ fn memories_batch_commits_every_item_and_returns_truthful_receipts() {
     );
 
     let (status, payload) =
-        cortex::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body);
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body);
     assert_eq!(status, 201, "{payload}");
     let receipt: Value = serde_json::from_str(&payload).unwrap();
     assert_eq!(receipt["batch_id"], "architect-report-1");
@@ -147,12 +147,12 @@ fn identical_retry_is_noop_and_conflicting_batch_id_is_atomic_409() {
         ],
     );
     assert_eq!(
-        cortex::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body).0,
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body).0,
         201
     );
 
     let (retry_status, retry_payload) =
-        cortex::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body);
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body);
     assert_eq!(retry_status, 200, "{retry_payload}");
     let retry: Value = serde_json::from_str(&retry_payload).unwrap();
     assert_eq!(retry["inserted"], 0);
@@ -166,7 +166,7 @@ fn identical_retry_is_noop_and_conflicting_batch_id_is_atomic_409() {
         ],
     );
     let (conflict_status, conflict_payload) =
-        cortex::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &changed);
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &changed);
     assert_eq!(conflict_status, 409, "{conflict_payload}");
     let conn = store.db().lock();
     assert_eq!(
@@ -200,7 +200,7 @@ fn generic_put_persists_validated_write_attribution_and_rejects_family_typos() {
         "recordType": "preference"
     })
     .to_string();
-    let (status, payload) = cortex::serve::route_for_tests(&store, "POST", "/put", &body);
+    let (status, payload) = membrane_runtime::serve::route_for_tests(&store, "POST", "/put", &body);
     assert_eq!(status, 200, "{payload}");
 
     let dimensions: (String, String, String) = store.db().lock().query_row(
@@ -230,7 +230,7 @@ fn generic_put_persists_validated_write_attribution_and_rejects_family_typos() {
     })
     .to_string();
     assert_eq!(
-        cortex::serve::route_for_tests(&store, "POST", "/put", &typo).0,
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/put", &typo).0,
         400
     );
     assert_eq!(
@@ -264,7 +264,7 @@ fn generic_put_round_trips_camel_case_lifecycle_input() {
     })
     .to_string();
     assert_eq!(
-        cortex::serve::route_for_tests(&store, "POST", "/put", &body).0,
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/put", &body).0,
         200
     );
     let row: (i64, i64, i64, i64, String, f64, String) = store.db().lock().query_row(
@@ -283,7 +283,7 @@ fn generic_put_round_trips_camel_case_lifecycle_input() {
             "reviewed evidence".into()
         )
     );
-    let get = cortex::serve::route_for_tests(
+    let get = membrane_runtime::serve::route_for_tests(
         &store,
         "POST",
         "/get",
@@ -307,7 +307,7 @@ fn batch_lifecycle_input_persists_and_omitted_update_preserves_values() {
     fields.insert("confidence".into(), json!(0.8));
     fields.insert("confidenceBasis".into(), json!("reviewed evidence"));
     assert_eq!(
-        cortex::serve::route_for_tests(
+        membrane_runtime::serve::route_for_tests(
             &store,
             "POST",
             "/v1/memories:batch",
@@ -333,7 +333,7 @@ fn batch_lifecycle_input_persists_and_omitted_update_preserves_values() {
     );
 
     assert_eq!(
-        cortex::serve::route_for_tests(
+        membrane_runtime::serve::route_for_tests(
             &store,
             "POST",
             "/v1/memories:batch",
@@ -360,7 +360,7 @@ fn batch_lifecycle_input_persists_and_omitted_update_preserves_values() {
 fn batch_lifecycle_supersession_transitions_old_row_in_same_transaction() {
     let store = MemoryStore::open(MemDb::open_in_memory());
     assert_eq!(
-        cortex::serve::route_for_tests(
+        membrane_runtime::serve::route_for_tests(
             &store,
             "POST",
             "/v1/memories:batch",
@@ -379,7 +379,7 @@ fn batch_lifecycle_supersession_transitions_old_row_in_same_transaction() {
         .unwrap()
         .insert("effectiveFromMs".into(), json!(123));
     assert_eq!(
-        cortex::serve::route_for_tests(
+        membrane_runtime::serve::route_for_tests(
             &store,
             "POST",
             "/v1/memories:batch",
@@ -414,7 +414,7 @@ fn lifecycle_route_rejects_bad_confidence_and_priority_without_writes() {
         r#"{"name":"bad-priority","content":"body","scope":"D--Claude","priorityClass":"pinned"}"#,
     ] {
         let store = MemoryStore::open(MemDb::open_in_memory());
-        let response = cortex::serve::route_for_tests(&store, "POST", "/put", body);
+        let response = membrane_runtime::serve::route_for_tests(&store, "POST", "/put", body);
         assert_eq!(response.0, 400, "{}", response.1);
         assert_eq!(
             store
@@ -432,7 +432,7 @@ fn lifecycle_route_rejects_bad_confidence_and_priority_without_writes() {
 fn batch_supersession_log_failure_rolls_back_new_and_old_rows() {
     let store = MemoryStore::open(MemDb::open_in_memory());
     assert_eq!(
-        cortex::serve::route_for_tests(
+        membrane_runtime::serve::route_for_tests(
             &store,
             "POST",
             "/v1/memories:batch",
@@ -450,7 +450,7 @@ fn batch_supersession_log_failure_rolls_back_new_and_old_rows() {
         .as_object_mut()
         .unwrap()
         .insert("supersedes".into(), json!("D--Claude/old-rule"));
-    let response = cortex::serve::route_for_tests(
+    let response = membrane_runtime::serve::route_for_tests(
         &store,
         "POST",
         "/v1/memories:batch",
@@ -492,7 +492,7 @@ fn invalid_middle_item_rejects_whole_batch_before_embedding_or_commit() {
     );
 
     let (status, payload) =
-        cortex::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body);
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body);
     assert_eq!(status, 400, "{payload}");
     assert_eq!(
         store
@@ -513,22 +513,22 @@ fn http_put_get_list_delete_emit_complete_linked_lifecycles_with_opaque_identity
     let put =
         format!(r#"{{"name":"edge","content":"Durable body.","scope":"global",{attribution}}}"#);
     assert_eq!(
-        cortex::serve::route_for_tests(&store, "POST", "/put", &put).0,
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/put", &put).0,
         200
     );
     let get = format!(r#"{{"id":"global/edge",{attribution}}}"#);
     assert_eq!(
-        cortex::serve::route_for_tests(&store, "POST", "/get", &get).0,
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/get", &get).0,
         200
     );
     let list = format!(r#"{{"scope":"global",{attribution}}}"#);
     assert_eq!(
-        cortex::serve::route_for_tests(&store, "POST", "/list", &list).0,
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/list", &list).0,
         200
     );
     let delete = format!(r#"{{"id":"global/edge",{attribution}}}"#);
     assert_eq!(
-        cortex::serve::route_for_tests(&store, "POST", "/delete", &delete).0,
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/delete", &delete).0,
         200
     );
 
@@ -581,7 +581,7 @@ fn http_validation_missing_targets_and_empty_lists_close_with_typed_terminals() 
     ];
     for (path, body, expected) in cases {
         assert_eq!(
-            cortex::serve::route_for_tests(&store, "POST", path, body).0,
+            membrane_runtime::serve::route_for_tests(&store, "POST", path, body).0,
             expected,
             "{path}"
         );
@@ -620,20 +620,20 @@ fn memories_batch_accounts_success_duplicate_conflict_and_invalid_envelope() {
         vec![item("one", "one", "First."), item("two", "two", "Second.")],
     );
     assert_eq!(
-        cortex::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body).0,
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body).0,
         201
     );
     assert_eq!(
-        cortex::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body).0,
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &body).0,
         200
     );
     let conflict = request("accounted-batch", vec![item("one", "one", "Changed.")]);
     assert_eq!(
-        cortex::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &conflict).0,
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/v1/memories:batch", &conflict).0,
         409
     );
     assert_eq!(
-        cortex::serve::route_for_tests(&store, "POST", "/v1/memories:batch", "{").0,
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/v1/memories:batch", "{").0,
         400
     );
 
@@ -666,7 +666,7 @@ fn http_put_commit_failure_rolls_back_memory_and_records_failed_terminal() {
              BEGIN SELECT RAISE(ABORT, 'forced external commit failure'); END;",
         )
         .unwrap();
-    let (status, _) = cortex::serve::route_for_tests(
+    let (status, _) = membrane_runtime::serve::route_for_tests(
         &store,
         "POST",
         "/put",
@@ -706,7 +706,7 @@ fn http_get_provider_failure_is_not_reported_as_an_empty_result() {
         )
         .unwrap();
 
-    let (status, _) = cortex::serve::route_for_tests(
+    let (status, _) = membrane_runtime::serve::route_for_tests(
         &store,
         "POST",
         "/get",
@@ -749,7 +749,7 @@ fn http_list_provider_failure_is_not_reported_as_an_empty_result() {
         .unwrap();
 
     let (status, _) =
-        cortex::serve::route_for_tests(&store, "POST", "/list", r#"{"scope":"global"}"#);
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/list", r#"{"scope":"global"}"#);
     assert_eq!(status, 500);
 
     let conn = store.db().lock();

@@ -32,19 +32,18 @@ submit correct, honest, and mechanically checked against the real repo state.
    `tests/mcp-registry/verify-server-json.test.mjs`). This is the correct,
    current state: no MCP Registry namespace reservation and no npm publish
    have happened. Reserving `io.github.orthic-labs/membrane` in the actual
-   MCP Registry, and running `npm publish` for `@membrane/membrane` and its six
-   platform packages, are the deliberately separate, credentialed, manual
+   MCP Registry, and running `npm publish` for `@membrane/membrane` and its two
+   macOS platform packages, are deliberately separate, credentialed, manual
    actions this task's hard rules forbid it from performing or automating.
-3. **Native artifact evidence** — for each of the six `dist/npm/platforms/**`
-   packages (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`,
-   `win32-arm64`, `win32-x64`), `server.json`'s `nativeArtifacts` entry names
+3. **Native artifact evidence** — for each of two `dist/npm/platforms/**`
+   packages (`darwin-arm64`, `darwin-x64`), `server.json`'s `nativeArtifacts` entry names
    the matching package and version. Every `sha256`, `signature`, and
    `platformReceipt` field is `null` today — declared placeholders, not
    plausible-looking fakes — because no signed native artifact has been
    produced by this checkout's release pipeline (MBR-901–MBR-906) yet. When
    `requirePublished` is true, the verifier requires a real
    `sha256:<64-hex>` digest, an `ed25519` signature bound to that digest, and
-   (for `darwin-*`/`win32-*`) a platform receipt id, before it will accept
+   (for `darwin-*`) a platform receipt id, before it will accept
    the artifact as installable.
 4. **Tool contract coverage (new in this task)** — `server.json`'s `tools`
    array. See below.

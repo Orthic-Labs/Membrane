@@ -16,16 +16,12 @@ export function validateReceipt(receipt) {
   if (!safeId(receipt.receiptId) || !commit(receipt.commit) || !digest(receipt.releaseGeneration) || typeof receipt.version !== "string" || !/^v?\d+\.\d+\.\d+$/.test(receipt.version)) fail("receipt identity invalid");
   closed(receipt.artifact, ["name", "sha256"], "artifact");
   if (!digest(receipt.artifact?.sha256) || typeof receipt.artifact?.name !== "string" || !receipt.artifact.name) fail("artifact identity invalid");
-  if (!['macos', 'windows'].includes(receipt.platform)) fail("platform invalid");
+  if (receipt.platform !== "macos") fail("platform invalid: current release target is macos");
   if (!['source-ready', 'clean-vm'].includes(receipt.mode)) fail("mode invalid");
   if (receipt.platform === "macos") {
     closed(receipt.trust, ["codesign", "notarization", "staple", "gatekeeper"], "macOS trust");
     const { codesign, notarization, staple, gatekeeper } = receipt.trust ?? {};
     if (![codesign, notarization, staple, gatekeeper].every(passed)) fail("macOS trust receipt incomplete");
-  } else {
-    closed(receipt.trust, ["authenticode", "publicTrust", "rfc3161"], "Windows trust");
-    const { authenticode, publicTrust, rfc3161 } = receipt.trust ?? {};
-    if (![authenticode, publicTrust, rfc3161].every(passed)) fail("Windows trust receipt incomplete");
   }
   closed(receipt.lifecycle, ["install", "startup", "update", "uninstall"], "lifecycle");
   for (const gate of ["install", "startup", "update", "uninstall"]) if (!passed(receipt.lifecycle?.[gate])) fail(`lifecycle receipt incomplete: ${gate}`);

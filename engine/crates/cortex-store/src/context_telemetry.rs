@@ -507,8 +507,8 @@ pub struct ObservableEventBatchV1 {
 
 impl ObservableEventV1 {
     pub fn validate(&self) -> Result<(), ContextTelemetryError> {
-        if self.schema != "orthic.observable-event.v1" {
-            return Err(invalid("schema", "must be orthic.observable-event.v1"));
+        if self.schema != "membrane.observable-event.v1" {
+            return Err(invalid("schema", "must be membrane.observable-event.v1"));
         }
         for (field, value) in [
             ("installation_id", &self.installation_id),
@@ -2581,7 +2581,7 @@ fn ingress_sidecar(path: &Path, suffix: &str) -> PathBuf {
 }
 
 pub fn default_prompt_telemetry_ingress(db_path: &Path) -> PathBuf {
-    std::env::var_os("CORTEX_TELEMETRY_INGRESS")
+    std::env::var_os("MEMBRANE_TELEMETRY_INGRESS")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -3548,14 +3548,14 @@ mod lifecycle_intent_tests {
         assert_eq!(
             ids,
             [
-                "evt-7977050ea9a29d6e10a375dc6d39a9aa775c2c29557ace81792ba008c16a04e0",
-                "evt-ea9cdc262a03158f70a9370b956121b55c6dd9e38e5d5eebe48f1aecad6e1325",
-                "evt-0de7089ba5c659a1103c06cdc18d8dce9d825bc43df14e038d66fede07282a27",
-                "evt-ec5b3728a309e75b6d465bb90ca6c3ee59a2c7c074f1a9fa502bc0cca7e430b5",
-                "evt-31e4ef552d15a1116456a73e9b3e32e8f832fba5684e603129b52467d3d3f6bb",
-                "evt-bc59ead3a971ed33e3086ce1ca37ce6230f9b1ff1cbe81ca0c3854c2d09c1909",
-                "evt-a5ab37e5399f9ebca19accb2c1c086a9afab6e81ce0f411d7c46d53c0e85c32f",
-                "evt-3f15212c58ba7daea57788147b7a0ce0a30655be5851eca7036609d4999a7b83",
+                "evt-d3159b517928b28a9acafdfeb5e613c3ad74bcd65f2b5078670fc097fd3c1126",
+                "evt-d9a3366422f82914bb85d53e962e173eccf0323ffa834c179e323b829a641f9b",
+                "evt-a676a7213c328091cc83359a34e194c7a5079e2df4a2227e0fe0e039ab59e53d",
+                "evt-751c80eafc310afe42045cac5891f0ca89e04f112c2faf3b2edea673d41846ec",
+                "evt-a9a04fee4f1cd34f963583a2c134bb0ef6df70750a2838ae4a2fa364ce9f75d3",
+                "evt-ccb2f75fa9ea16991dfd48f038f88951feed0bebe8c7ace0812881c41f350e0a",
+                "evt-4e25759535b62cfc78bfe48db086d487b92d914b52c0bef2035e4b136b500b56",
+                "evt-b98b02421fba6afb3e2f1f2a203607867211bfd613daf32c18b5579603676cd2",
             ]
         );
         assert!(batch
@@ -3719,7 +3719,7 @@ mod lifecycle_intent_tests {
     #[test]
     fn observable_event_v1_validates_frozen_shape() {
         let event = ObservableEventV1 {
-            schema: "orthic.observable-event.v1".to_string(),
+            schema: "membrane.observable-event.v1".to_string(),
             installation_id: "installation-a".to_string(),
             client_id: "claude_code".to_string(),
             session_id: "session-a".to_string(),
@@ -3780,7 +3780,7 @@ mod lifecycle_intent_tests {
         let temporary = tempfile::tempdir().unwrap();
         let ingress = temporary.path().join("observable.jsonl");
         let event = serde_json::json!({
-            "schema": "orthic.observable-event.v1",
+            "schema": "membrane.observable-event.v1",
             "installation_id": "installation-a",
             "client_id": "claude_code",
             "session_id": "session-a",
@@ -3834,7 +3834,7 @@ mod lifecycle_intent_tests {
         ts: &str,
     ) -> ObservableEventV1 {
         ObservableEventV1 {
-            schema: "orthic.observable-event.v1".to_string(),
+            schema: "membrane.observable-event.v1".to_string(),
             installation_id: "installation-a".to_string(),
             client_id: "claude_code".to_string(),
             session_id: session_id.to_string(),

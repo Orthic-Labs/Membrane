@@ -1,9 +1,9 @@
-# Add-on release evidence
+# Membrane Hub release evidence
 
-`scripts/release/evidence/sbom.mjs` hashes root `pnpm-lock.yaml` plus
-`engine/Cargo.lock`: exact resolved graphs for Membrane's portable add-on.
-`scripts/release/evidence/manifest.mjs` records this SBOM, source provenance,
-and declared add-on toolchain beside an immutable sealed release record.
+Membrane Hub owns release evidence. Its `right-release.config.mjs`,
+`scripts/release-assets.mjs`, `scripts/write-release-manifest.mjs`, &
+`runtime-inventory.json` bind signed Hub artifacts to exact Membrane runtime
+bytes.
 
-It never builds, signs, uploads, or publishes. Missing artifact, signature,
-platform-trust, install, test, or event-history receipts remain explicit gaps.
+Root SBOM support may describe dependencies, but it never defines a parallel
+product release or installer authority.

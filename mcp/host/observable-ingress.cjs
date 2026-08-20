@@ -6,7 +6,7 @@ const { validateObservableEvent } = require('./observable-event.cjs');
 
 const MAX_RECORD_BYTES = 256 * 1024;
 
-// Canonical workspace runtime config (host/port identity for the cortex-local-v1 service).
+// Canonical workspace runtime config (host/port identity for the membrane-local-v1 service).
 // Mirrors tools/lib/memory/runtime_config.py's identity check. Read-only reference — never edited here.
 const RUNTIME_CONFIG_PATH = path.join(__dirname, '..', '..', '..', 'tools', 'lib', 'memory', 'runtime.json');
 
@@ -25,16 +25,16 @@ function setCachedDefaultTargetForTest(value) {
   cachedDefaultTarget = value;
 }
 
-// Validates the config file identifies itself as the real cortex-local-v1 runtime config, the same
+// Validates the config file identifies itself as the real membrane-local-v1 runtime config, the same
 // identity check runtime_config.py performs before trusting its contents. Throws on any mismatch;
 // callers treat a throw as "config unresolvable".
 function resolveRuntimeConfigIdentity(configPath) {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  if (config.schemaVersion !== 1 || config.serviceId !== 'cortex-local-v1') {
-    throw new Error('invalid cortex runtime config identity');
+  if (config.schemaVersion !== 1 || config.serviceId !== 'membrane-local-v1') {
+    throw new Error('invalid membrane runtime config identity');
   }
   if (config.host !== '127.0.0.1') {
-    throw new Error('cortex runtime host must remain loopback-only');
+    throw new Error('membrane runtime host must remain loopback-only');
   }
   return config;
 }
@@ -64,7 +64,7 @@ function cachedResolveDefaultIngressTarget() {
 function appendObservableEvent(event) {
   validateObservableEvent(event);
 
-  const explicitTarget = process.env.CORTEX_TELEMETRY_INGRESS;
+  const explicitTarget = process.env.MEMBRANE_TELEMETRY_INGRESS;
   let target = explicitTarget;
   let requireDrainEvidence = false;
 

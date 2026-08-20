@@ -17,10 +17,6 @@ path = "src/main.rs"
 name = "cli-parity"
 path = "src/bin/cli-parity.rs"
 
-[[bin]]
-name = "membrane-compact"
-path = "src/bin/membrane-compact.rs"
-
 [dependencies]
 membrane-mcp = { path = "../membrane-mcp" }
 membrane-runtime = { path = "../membrane-runtime" }

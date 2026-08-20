@@ -24,7 +24,7 @@ const childIdentity = {
   dataRoot: "/tmp/membrane",
 };
 
-test("orthic lifecycle rejects unauthenticated transport & non-exact fences", async () => {
+test("Membrane lifecycle rejects unauthenticated transport & non-exact fences", async () => {
   assert.throws(() => createLifecycleChannel({ channel: {}, identity: childIdentity, fence: 7 }), /not_authenticated/);
   const lifecycle = createLifecycleChannel({ channel: inheritedChannel(), identity: childIdentity, fence: 7 });
   await assert.rejects(lifecycle.command("drain", 6), /stale_fence/);
@@ -32,7 +32,7 @@ test("orthic lifecycle rejects unauthenticated transport & non-exact fences", as
   assert.equal(lifecycle.fence, 7);
 });
 
-test("orthic lifecycle parent loss performs bounded drain then stop", async () => {
+test("Membrane lifecycle parent loss performs bounded drain then stop", async () => {
   const channel = inheritedChannel();
   const calls = [];
   const lifecycle = createLifecycleChannel({

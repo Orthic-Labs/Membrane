@@ -42,8 +42,8 @@ try {
       windowsHide: true,
       env: {
         ...process.env,
-        CORTEX_PORT: String(port),
-        CORTEX_API_TOKEN: "test-token",
+        MEMBRANE_PORT: String(port),
+        MEMBRANE_API_TOKEN: "test-token",
         WORKSPACE_ROOT: process.cwd(),
       },
     });

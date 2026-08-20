@@ -9,10 +9,10 @@ the runtime itself placed.
 
 | Root     | Purpose                                          | Survives update | Survives uninstall |
 |----------|--------------------------------------------------|-----------------|--------------------|
-| `config` | durable settings, lease file, supervisor.json    | yes             | no (re-installed)  |
-| `data`   | persistent memory DB, checkpoints, supervisor state | yes          | **yes** (user data) |
+| `config` | durable settings, Hub lifecycle configuration   | yes             | no (re-installed)  |
+| `data`   | persistent memory DB, checkpoints               | yes             | **yes** (user data) |
 | `cache`  | regenerable caches (fastembed, downloaded models) | yes            | no                 |
-| `log`    | append-only logs from resident and supervisor     | yes             | no                 |
+| `log`    | append-only logs from resident and Hub           | yes             | no                 |
 
 The `data` root is the only one that holds user data the user expects
 to survive uninstall. The other three are runtime-owned and may be
@@ -23,19 +23,16 @@ re-created by the next install.
 Every root resolves through `membrane_runtime::paths` so the runtime,
 the installer, and the `doctor paths` command agree byte-for-byte.
 
-| Root   | Linux (XDG)                                | macOS                                          | Windows                  |
-|--------|--------------------------------------------|------------------------------------------------|--------------------------|
-| config | `$XDG_CONFIG_HOME/membrane` (or `~/.config`) | `~/Library/Application Support/Membrane`       | `%APPDATA%\Membrane`     |
-| data   | `$XDG_DATA_HOME/membrane` (or `~/.local/share`) | `~/Library/Application Support/Membrane`   | `%LOCALAPPDATA%\Membrane`|
-| cache  | `$XDG_CACHE_HOME/membrane` (or `~/.cache`) | `~/Library/Caches/Membrane`                    | `%LOCALAPPDATA%\Membrane`|
-| log    | `$XDG_STATE_HOME/membrane/log` (or `~/.local/state`) | `~/Library/Logs/Membrane`             | `%LOCALAPPDATA%\Membrane`|
+| Root   | macOS                                          |
+|--------|------------------------------------------------|
+| config | `~/Library/Application Support/Membrane`       |
+| data   | `~/Library/Application Support/Membrane`       |
+| cache  | `~/Library/Caches/Membrane`                    |
+| log    | `~/Library/Logs/Membrane`                      |
 
-On macOS the `config` and `data` roots collapse onto the same
-`~/Library/Application Support/Membrane` tree because macOS does not
-distinguish "config" from "data" in user-visible terms. On Windows the
-three non-config roots collapse onto `%LOCALAPPDATA%\Membrane`. The
-runtime still treats them as separate logical roots so cache eviction
-never touches data.
+On macOS `config` and `data` roots collapse onto same
+`~/Library/Application Support/Membrane` tree. Runtime still treats them
+as separate logical roots so cache eviction never touches data.
 
 ## Environment overrides
 

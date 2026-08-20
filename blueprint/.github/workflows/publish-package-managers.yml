@@ -5,17 +5,13 @@ on:
       tag:
         description: 'Existing GitHub Release tag to publish'
         required: true
-      submit:
-        description: 'Submit WinGet PR to microsoft/winget-pkgs (true) or validate/output-only (false)'
-        required: false
-        default: 'false'
   release:
     types: [published]
 permissions:
   contents: read
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     environment: release
     permissions:
       contents: write
@@ -46,10 +42,8 @@ jobs:
           gh release upload "$RELEASE_TAG" "release-assets/$ASSET" --repo "$GITHUB_REPOSITORY" --clobber
           SHA="$(sha256sum "release-assets/$ASSET" | cut -d' ' -f1)"
           sed -e "s/__VERSION__/$VERSION/g" -e "s/__NPM_TARBALL_SHA256__/$SHA/g" release/homebrew/blueprint.rb.template > generated/blueprint.rb
-          VERSION="$VERSION" SHA="$SHA" node -e "const f=require('fs'),p='release/scoop/blueprint.json.template',o=JSON.parse(f.readFileSync(p));delete o._template;f.writeFileSync('generated/blueprint.json',JSON.stringify(o,null,2).replaceAll('__VERSION__',process.env.VERSION).replaceAll('__NPM_TARBALL_SHA256__',process.env.SHA)+'\n')"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           ruby -c generated/blueprint.rb
-          node -e "JSON.parse(require('fs').readFileSync('generated/blueprint.json','utf8'))"
       - run: node -e "JSON.parse(require('fs').readFileSync('server.json','utf8'))"
       - name: Checkout Homebrew tap
         uses: actions/checkout@v5
@@ -69,71 +63,3 @@ jobs:
           branch: blueprint-${{ steps.release.outputs.version }}
           title: "blueprint ${{ steps.release.outputs.version }}"
           delete-branch: true
-      - name: Checkout Scoop bucket
-        uses: actions/checkout@v5
-        with:
-          repository: Orthic-Labs/scoop-bucket
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: scoop-bucket
-      - run: |
-          mkdir -p scoop-bucket/bucket
-          cp generated/blueprint.json scoop-bucket/bucket/blueprint.json
-      - name: Open Scoop bucket PR
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: scoop-bucket
-          branch: blueprint-${{ steps.release.outputs.version }}
-          title: "blueprint ${{ steps.release.outputs.version }}"
-          delete-branch: true
-
-  # WinGet is fail-closed: no provisioned publication token, no job.
-  winget-token:
-    runs-on: ubuntu-latest
-    environment: release
-    outputs:
-      available: ${{ steps.probe.outputs.available }}
-    steps:
-      - id: probe
-        env:
-          TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
-        run: echo "available=${TOKEN:+true}" >> "$GITHUB_OUTPUT"
-
-  winget:
-    needs: [winget-token]
-    runs-on: windows-latest
-    environment: release
-    if: ${{ needs.winget-token.outputs.available == 'true' }}
-    steps:
-      - name: Install wingetcreate
-        run: dotnet tool install --global Microsoft.WingetCreate
-      - name: Validate WinGet manifests (output-only)
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $tag = '${{ github.event.release.tag_name || inputs.tag }}'
-          $release = gh release view $tag --repo Orthic-Labs/Blueprint --json assets | ConvertFrom-Json
-          $installer = $release.assets | Where-Object { $_.name -like 'Blueprint_*_x64-setup.exe' } | Select-Object -First 1
-          if (-not $installer) { throw 'GitHub Release missing Blueprint installer artifact' }
-          $version = $tag.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+') { throw "unresolved catalog version: $version" }
-          $url = $installer.url
-          $out = "${{ runner.temp }}\winget"
-          wingetcreate update OrthicLabs.Blueprint --version $version --urls $url --output $out
-          Get-ChildItem $out -Filter 'OrthicLabs.Blueprint.*' | ForEach-Object { wingetcreate validate $_.FullName }
-      - name: Submit WinGet PR to microsoft/winget-pkgs
-        if: ${{ inputs.submit == 'true' }}
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_CREATE_GITHUB_TOKEN }}
-        run: |
-          $tag = '${{ github.event.release.tag_name || inputs.tag }}'
-          $release = gh release view $tag --repo Orthic-Labs/Blueprint --json assets | ConvertFrom-Json
-          $installer = $release.assets | Where-Object { $_.name -like 'Blueprint_*_x64-setup.exe' } | Select-Object -First 1
-          if (-not $installer) { throw 'GitHub Release missing Blueprint installer artifact' }
-          $version = $tag.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+') { throw "unresolved catalog version: $version" }
-          $url = $installer.url
-          wingetcreate update OrthicLabs.Blueprint --version $version --urls $url --submit --token $env:WINGET_CREATE_GITHUB_TOKEN

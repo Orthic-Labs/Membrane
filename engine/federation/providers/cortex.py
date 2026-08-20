@@ -51,9 +51,9 @@ def _ccs_from_serve(task: str, scope: str, max_candidates: int, scope_descriptor
     parsed CCS dict, or None if the serve is unreachable/errors so the caller cold-spawns. This is
     the on-mode latency fix: the cold `cortex memory-candidates` CLI reloads fastembed (~3.6s) and
     blew the hook timeout; the serve embedder is already loaded."""
-    port = os.environ.get("CORTEX_PORT") or "47851"
+    port = os.environ.get("MEMBRANE_PORT") or "47851"
     token = ""
-    token_file = os.environ.get("CORTEX_API_TOKEN_FILE", "")
+    token_file = os.environ.get("MEMBRANE_API_TOKEN_FILE", "")
     try:
         if token_file and os.path.exists(token_file):
             with open(token_file, "r", encoding="utf-8") as handle:
@@ -82,11 +82,11 @@ def _ccs_from_serve(task: str, scope: str, max_candidates: int, scope_descriptor
 
 
 def _default_bin() -> str:
-    """Resolve the cortex binary. Bare `cortex` is a shim that Python's subprocess cannot
+    """Resolve durable Cortex binary. Bare `cortex` is a shim that Python's subprocess cannot
     resolve in the gateway's interpreter on Windows (no PATHEXT/.cmd resolution) — that silently
-    returned 0 memory candidates. Default to the real workspace binary; an explicit CORTEX_BIN
-    env still wins. cortex.py -> providers -> federation -> cortex -> tools -> <workspace>."""
-    env = os.environ.get("CORTEX_BIN")
+    returned 0 memory candidates. Default to the real workspace binary; an explicit MEMBRANE_BIN
+    env still wins. cortex.py -> providers -> federation -> Membrane -> tools -> <workspace>."""
+    env = os.environ.get("MEMBRANE_BIN")
     if env:
         return env
     workspace = Path(__file__).resolve().parents[4]

@@ -6,10 +6,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { CAPABILITY_MATRIX_DIGEST, HOST_CAPABILITY_MATRIX } from "../mcp/host/capability-matrix.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const SCHEMA = join(ROOT, "schemas", "registry", "context-candidate-set.v1.schema.json");
+const BLUEPRINT_SCHEMA = join(ROOT, "blueprint", "schemas", "context-candidate-set.v1.schema.json");
+const ROOT_SCHEMA = join(ROOT, "schemas", "context-candidate-set.v1.schema.json");
+const RUST_SCHEMA = join(ROOT, "engine", "crates", "membrane-protocol", "assets", "schemas", "context-candidate-set.v1.schema.json");
+const REGISTRY_SCHEMA = join(ROOT, "schemas", "registry", "context-candidate-set.v1.schema.json");
 const PROJECTION = join(ROOT, "schemas", "registry", "context-candidate-set.v1.projection.json");
 const RUST_PROJECTION = join(ROOT, "schemas", "registry", "context-candidate-set.v1.rust.json");
 const MATRIX = join(ROOT, "mcp", "host", "capability-matrix.v1.json");
+const BLUEPRINT_SOURCE = "blueprint/schemas/context-candidate-set.v1.schema.json";
+const GENERATOR = "scripts/generate-host-contracts.mjs";
 
 function hash(text) { return `sha256:${createHash("sha256").update(text).digest("hex")}`; }
 function stable(value) {
@@ -21,11 +26,26 @@ function readJson(path) { return JSON.parse(readFileSync(path, "utf8")); }
 function output(value) { return `${JSON.stringify(value, null, 2)}\n`; }
 
 export function expectedArtifacts() {
-  const schemaText = output(stable(readJson(SCHEMA)));
+  const schema = stable(readJson(BLUEPRINT_SCHEMA));
+  const schemaText = output(schema);
   const sourceHash = hash(schemaText);
+  const projection = {
+    ...schema,
+    "x-blueprint-source": BLUEPRINT_SOURCE,
+    "x-blueprint-source-hash": sourceHash,
+    "x-blueprint-generator": GENERATOR,
+  };
+  const registry = {
+    ...projection,
+    $id: "https://membrane/schemas/registry/context-candidate-set.v1.schema.json",
+    title: "MembraneContextCandidateSetV1",
+  };
   return {
-    [PROJECTION]: output({ $schema: "https://json-schema.org/draft/2020-12/schema", $id: "https://membrane/schemas/projections/context-candidate-set.v1.json", title: "MembraneContextCandidateSetV1Projection", source: "schemas/registry/context-candidate-set.v1.schema.json", sourceHash, projection: "json", schemaVersion: 1 }),
-    [RUST_PROJECTION]: output({ schemaVersion: 1, source: "schemas/registry/context-candidate-set.v1.schema.json", sourceHash, projection: "rust", required: ["schemaVersion", "traceId", "indexedAt"] }),
+    [ROOT_SCHEMA]: output(projection),
+    [RUST_SCHEMA]: output(projection),
+    [REGISTRY_SCHEMA]: output(registry),
+    [PROJECTION]: output({ $schema: "https://json-schema.org/draft/2020-12/schema", $id: "https://membrane/schemas/projections/context-candidate-set.v1.json", title: "MembraneContextCandidateSetV1Projection", source: BLUEPRINT_SOURCE, sourceHash, generator: GENERATOR, projection: "json", schemaVersion: 1 }),
+    [RUST_PROJECTION]: output({ schemaVersion: 1, source: BLUEPRINT_SOURCE, sourceHash, generator: GENERATOR, projection: "rust", required: ["schemaVersion", "traceId", "indexedAt"] }),
     [MATRIX]: output(stable({ ...HOST_CAPABILITY_MATRIX, sourceHash: CAPABILITY_MATRIX_DIGEST })),
   };
 }

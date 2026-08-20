@@ -83,9 +83,10 @@ the digest so a future change to either side is caught immediately.
 
 ## What is not in this contract
 
-- **Lease authority** — the supervisor-child mode's signed lease is a
-  separate authority (see `service::run_service_from`). The manifest is
-  a peer-presentation contract, not a lease.
+- **Lifecycle authority** — Hub's inherited-stdio `ResidentHelloV1` handshake
+  is separate from installation-manifest presentation. The manifest is a
+  peer-presentation contract; lifecycle control uses exact fence and
+  capability frames.
 - **Per-request scope grant** — the `ScopeGrantV1` shape is the
   per-task authority. The manifest is installation-scoped, the grant is
   task-scoped.

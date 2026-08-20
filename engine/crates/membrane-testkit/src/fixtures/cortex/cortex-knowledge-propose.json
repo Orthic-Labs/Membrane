@@ -5,11 +5,11 @@
   "request": {
     "scope": "workspace",
     "taskEnvelope": {
-      "schema": "orthic.task-envelope.v1",
+      "schema": "membrane.task-envelope.v1",
       "taskId": "task-mbr-104-cortex"
     },
     "turnEnvelope": {
-      "schema": "orthic.turn-envelope.v1",
+      "schema": "membrane.turn-envelope.v1",
       "turnId": "turn-1",
       "sessionId": "session-mbr-104-cortex",
       "sequence": 1
@@ -29,17 +29,17 @@
       "status": "stored",
       "durable": true,
       "taskEnvelope": {
-        "schema": "orthic.task-envelope.v1",
+        "schema": "membrane.task-envelope.v1",
         "taskId": "task-mbr-104-cortex"
       },
       "turnEnvelope": {
-        "schema": "orthic.turn-envelope.v1",
+        "schema": "membrane.turn-envelope.v1",
         "turnId": "turn-1",
         "sessionId": "session-mbr-104-cortex",
         "sequence": 1
       },
       "binding": {
-        "schema": "orthic.binding.v1",
+        "schema": "membrane.binding.v1",
         "kind": "source_ref",
         "value": "engine/crates/membrane-provider-sdk/src/lib.rs:1-87"
       }

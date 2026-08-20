@@ -139,8 +139,8 @@ fn skill_read_serves_from_engine_without_skills_directory() {
     git(&["config", "user.name", "t"]);
     git(&["add", "-A"]);
     {
-        let memdb = cortex::MemDb::open(&db).unwrap();
-        let store = cortex::MemoryStore::try_open(memdb).unwrap();
+        let memdb = membrane_runtime::MemDb::open(&db).unwrap();
+        let store = membrane_runtime::MemoryStore::try_open(memdb).unwrap();
         let (ingested, _, _) = store.ingest_skills(&repo);
         assert_eq!(ingested, 1, "the tracked skill must ingest into the engine");
     }
@@ -204,8 +204,8 @@ fn ingest_skills_prunes_a_skill_deleted_from_git_but_never_an_absent_tree() {
     git(&["config", "user.name", "t"]);
     git(&["add", "-A"]);
 
-    let memdb = cortex::MemDb::open(&db).unwrap();
-    let store = cortex::MemoryStore::try_open(memdb).unwrap();
+    let memdb = membrane_runtime::MemDb::open(&db).unwrap();
+    let store = membrane_runtime::MemoryStore::try_open(memdb).unwrap();
     assert_eq!(store.ingest_skills(&repo), (2, 0, 0));
     assert!(store.skill_from_db("ghost").is_some());
 

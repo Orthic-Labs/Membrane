@@ -123,48 +123,6 @@ CREATE TABLE IF NOT EXISTS smoke_recall_isolation_ledger (
     non_target_digest TEXT NOT NULL,
     isolation_reason  TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS transform_log (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts           TEXT NOT NULL,
-    verb         TEXT NOT NULL,      -- skel|compress|prep:<kind>|runc|curate
-    scope        TEXT,
-    before_chars INTEGER NOT NULL,   -- curate rows repurpose this as consolidated_count
-    after_chars  INTEGER NOT NULL,   -- curate rows repurpose this as pruned_count
-    meta         TEXT,               -- e.g. unit=tok for prep:compress rows
-    event_uid            TEXT,
-    installation_id      TEXT,
-    service_instance_id  TEXT,
-    client               TEXT NOT NULL DEFAULT 'legacy',
-    session_id           TEXT,
-    turn_id              TEXT,
-    trace_id             TEXT,
-    opportunity_uid      TEXT,
-    identity_status      TEXT NOT NULL DEFAULT 'legacy_unattributed'
-        CHECK (identity_status IN ('observed', 'legacy_unattributed'))
-);
-CREATE TABLE IF NOT EXISTS transform_opportunity_log (
-    opportunity_uid      TEXT PRIMARY KEY,
-    ts                   TEXT NOT NULL,
-    verb                 TEXT NOT NULL CHECK (verb IN ('runc', 'skel', 'compress')),
-    source               TEXT NOT NULL,
-    reason_code          TEXT NOT NULL,
-    outcome              TEXT NOT NULL DEFAULT 'recommended'
-        CHECK (outcome IN ('recommended', 'used', 'error')),
-    resolved_at          TEXT,
-    resolved_event_uid   TEXT,
-    installation_id      TEXT NOT NULL,
-    service_instance_id  TEXT NOT NULL,
-    client               TEXT NOT NULL,
-    session_id           TEXT NOT NULL,
-    turn_id              TEXT NOT NULL,
-    trace_id             TEXT NOT NULL,
-    identity_status      TEXT NOT NULL DEFAULT 'observed'
-        CHECK (identity_status = 'observed')
-);
-CREATE INDEX IF NOT EXISTS idx_transform_opportunity_decision
-    ON transform_opportunity_log(client, session_id, turn_id, trace_id);
-CREATE INDEX IF NOT EXISTS idx_transform_opportunity_outcome
-    ON transform_opportunity_log(verb, outcome, ts);
 CREATE TABLE IF NOT EXISTS deletions (
     id         TEXT PRIMARY KEY,     -- memory id (scope-qualified) whose row was deleted
     deleted_at TEXT NOT NULL         -- ISO; lets cross-machine sync propagate deletions
@@ -260,7 +218,7 @@ CREATE TABLE IF NOT EXISTS memory_quarantine (
 
 /// Current durable Cortex schema contract. External migration tests must not
 /// duplicate this value, because a promoted schema version changes atomically.
-pub const LATEST_SCHEMA_VERSION: i64 = 23;
+pub const LATEST_SCHEMA_VERSION: i64 = 24;
 const SMOKE_ISOLATION_MIGRATION_ID: &str = "rc-2.3-smoke-spotcheck-production-v1";
 const SMOKE_ISOLATION_REASON: &str = "legacy_production_smoke_spotcheck";
 const SMOKE_RECALL_PREDICATE: &str =
@@ -371,45 +329,6 @@ fn backfill_legacy_memory_identity(conn: &mut Connection) -> rusqlite::Result<()
     tx.commit()
 }
 
-fn backfill_legacy_transform_identity(conn: &mut Connection) -> rusqlite::Result<()> {
-    let missing = {
-        let mut statement = conn.prepare(
-            "SELECT id FROM transform_log
-             WHERE event_uid IS NULL OR session_id IS NULL OR turn_id IS NULL OR trace_id IS NULL
-             ORDER BY id",
-        )?;
-        let rows = statement
-            .query_map([], |row| row.get::<_, i64>(0))?
-            .collect::<rusqlite::Result<Vec<_>>>()?;
-        rows
-    };
-    if missing.is_empty() {
-        return Ok(());
-    }
-    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    for id in missing {
-        let seed = format!("transform:{id}");
-        tx.execute(
-            "UPDATE transform_log
-             SET event_uid=COALESCE(event_uid, ?2),
-                 client=CASE WHEN trim(client)='' THEN 'legacy' ELSE client END,
-                 session_id=COALESCE(session_id, ?3),
-                 turn_id=COALESCE(turn_id, ?4),
-                 trace_id=COALESCE(trace_id, ?5),
-                 identity_status='legacy_unattributed'
-             WHERE id=?1",
-            rusqlite::params![
-                id,
-                opaque_legacy_identity("legacy-transform.", &seed),
-                opaque_legacy_identity("session-", &seed),
-                opaque_legacy_identity("turn-", &seed),
-                opaque_legacy_identity("trace-", &seed),
-            ],
-        )?;
-    }
-    tx.commit()
-}
-
 fn backfill_legacy_recall_identity(conn: &mut Connection) -> rusqlite::Result<()> {
     for (table, event_prefix) in [
         ("recall_log", "legacy-recall."),
@@ -456,13 +375,13 @@ fn backfill_legacy_recall_identity(conn: &mut Connection) -> rusqlite::Result<()
     Ok(())
 }
 
-fn transform_event_uid() -> Option<String> {
+fn event_uid() -> Option<String> {
     let mut bytes = [0u8; 16];
     getrandom::getrandom(&mut bytes).ok()?;
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     Some(format!(
-        "transform.{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        "event.{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
         bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
         bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
     ))
@@ -1168,57 +1087,9 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                     ],
                 )?;
             }
-            16 => {
-                tx.execute_batch(
-                    "CREATE TABLE IF NOT EXISTS transform_log (
-                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                         ts TEXT NOT NULL,
-                         verb TEXT NOT NULL,
-                         scope TEXT,
-                         before_chars INTEGER NOT NULL,
-                         after_chars INTEGER NOT NULL,
-                         meta TEXT
-                     );",
-                )?;
-                add_column(&tx, "transform_log", "event_uid", "TEXT")?;
-                add_column(&tx, "transform_log", "installation_id", "TEXT")?;
-                add_column(&tx, "transform_log", "service_instance_id", "TEXT")?;
-                add_column(
-                    &tx,
-                    "transform_log",
-                    "client",
-                    "TEXT NOT NULL DEFAULT 'legacy'",
-                )?;
-                add_column(&tx, "transform_log", "session_id", "TEXT")?;
-                add_column(&tx, "transform_log", "turn_id", "TEXT")?;
-                add_column(&tx, "transform_log", "trace_id", "TEXT")?;
-                add_column(
-                    &tx,
-                    "transform_log",
-                    "identity_status",
-                    "TEXT NOT NULL DEFAULT 'legacy_unattributed'",
-                )?;
-                tx.execute_batch(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS idx_transform_event_uid
-                         ON transform_log(event_uid) WHERE event_uid IS NOT NULL;
-                     CREATE INDEX IF NOT EXISTS idx_transform_decision
-                         ON transform_log(client, session_id, turn_id, trace_id);",
-                )?;
-                require_columns(
-                    &tx,
-                    "transform_log",
-                    &[
-                        "event_uid",
-                        "installation_id",
-                        "service_instance_id",
-                        "client",
-                        "session_id",
-                        "turn_id",
-                        "trace_id",
-                        "identity_status",
-                    ],
-                )?;
-            }
+            // Schema v16 was the retired Cortex transform ledger. Keep its version step
+            // inert so old databases can advance without recreating that authority.
+            16 => {}
             17 => {
                 tx.execute_batch(
                     "CREATE TABLE IF NOT EXISTS recall_log (
@@ -1276,59 +1147,8 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                          ON recall_log_smoke(client, session_id, turn_id, trace_id);",
                 )?;
             }
-            18 => {
-                add_column(&tx, "transform_log", "opportunity_uid", "TEXT")?;
-                tx.execute_batch(
-                    "CREATE TABLE IF NOT EXISTS transform_opportunity_log (
-                         opportunity_uid TEXT PRIMARY KEY,
-                         ts TEXT NOT NULL,
-                         verb TEXT NOT NULL CHECK (verb IN ('runc', 'skel', 'compress')),
-                         source TEXT NOT NULL,
-                         reason_code TEXT NOT NULL,
-                         outcome TEXT NOT NULL DEFAULT 'recommended'
-                             CHECK (outcome IN ('recommended', 'used', 'error')),
-                         resolved_at TEXT,
-                         resolved_event_uid TEXT,
-                         installation_id TEXT NOT NULL,
-                         service_instance_id TEXT NOT NULL,
-                         client TEXT NOT NULL,
-                         session_id TEXT NOT NULL,
-                         turn_id TEXT NOT NULL,
-                         trace_id TEXT NOT NULL,
-                         identity_status TEXT NOT NULL DEFAULT 'observed'
-                             CHECK (identity_status = 'observed')
-                     );
-                     CREATE INDEX IF NOT EXISTS idx_transform_opportunity_decision
-                         ON transform_opportunity_log(client, session_id, turn_id, trace_id);
-                     CREATE INDEX IF NOT EXISTS idx_transform_opportunity_outcome
-                         ON transform_opportunity_log(verb, outcome, ts);
-                     CREATE INDEX IF NOT EXISTS idx_transform_opportunity_join
-                         ON transform_log(opportunity_uid)
-                         WHERE opportunity_uid IS NOT NULL;",
-                )?;
-                require_columns(&tx, "transform_log", &["opportunity_uid"])?;
-                require_columns(
-                    &tx,
-                    "transform_opportunity_log",
-                    &[
-                        "opportunity_uid",
-                        "ts",
-                        "verb",
-                        "source",
-                        "reason_code",
-                        "outcome",
-                        "resolved_at",
-                        "resolved_event_uid",
-                        "installation_id",
-                        "service_instance_id",
-                        "client",
-                        "session_id",
-                        "turn_id",
-                        "trace_id",
-                        "identity_status",
-                    ],
-                )?;
-            }
+            // Schema v18 was the retired transform-opportunity ledger; do not recreate it.
+            18 => {}
             19 => {
                 add_column(&tx, "memories", "authority", "TEXT NOT NULL DEFAULT 'A2'")?;
                 add_column(
@@ -1469,6 +1289,14 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
                      CREATE INDEX idx_learning_target_memory ON learning_update_target(memory_id);",
                 )?;
             }
+            24 => {
+                // Retire transform ledgers from databases that predate Push telemetry.
+                // No rows are copied: these tables are not durable-memory records.
+                tx.execute_batch(
+                    "DROP TABLE IF EXISTS transform_opportunity_log;
+                     DROP TABLE IF EXISTS transform_log;",
+                )?;
+            }
             _ => unreachable!(),
         }
         tx.pragma_update(None, "user_version", next)?;
@@ -1478,12 +1306,28 @@ fn migrate(conn: &mut Connection) -> rusqlite::Result<()> {
     Ok(())
 }
 
+fn backout_v24_to_v23(path: &Path) -> rusqlite::Result<()> {
+    let mut conn = Connection::open(path)?;
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version < 24 {
+        return Ok(());
+    }
+    if version != 24 {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    // v24 only retires Push transform ledgers; lowering the marker must not recreate them.
+    tx.pragma_update(None, "user_version", 23)?;
+    tx.commit()
+}
+
 /// Transactionally return a schema-v20 database to its v19-compatible shape.
 ///
 /// This removes only v20 lifecycle columns; row contents and all v19 metadata remain intact.
 /// Unknown newer schemas fail closed rather than risking a partial downgrade.
 pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
     let path = path.as_ref();
+    backout_v24_to_v23(path)?;
     backout_v23_to_v22(path)?;
     backout_v22_to_v21(path)?;
     backout_v21_to_v20(path)?;
@@ -1610,6 +1454,13 @@ fn backout_v20_if_present(path: &Path) -> rusqlite::Result<()> {
             backout_v21_to_v20(path)?;
             backout_v20_to_v19(path)
         }
+        24 => {
+            backout_v24_to_v23(path)?;
+            backout_v23_to_v22(path)?;
+            backout_v22_to_v21(path)?;
+            backout_v21_to_v20(path)?;
+            backout_v20_to_v19(path)
+        }
         _ => Err(rusqlite::Error::InvalidQuery),
     }
 }
@@ -1630,15 +1481,6 @@ fn backout_identity_metadata_to_v14(path: &Path) -> rusqlite::Result<()> {
              ALTER TABLE memory_quarantine DROP COLUMN influence_class;",
         )?;
     }
-    if version >= 18 {
-        tx.execute_batch(
-            "DROP INDEX IF EXISTS idx_transform_opportunity_decision;
-             DROP INDEX IF EXISTS idx_transform_opportunity_outcome;
-             DROP INDEX IF EXISTS idx_transform_opportunity_join;
-             DROP TABLE IF EXISTS transform_opportunity_log;
-             ALTER TABLE transform_log DROP COLUMN opportunity_uid;",
-        )?;
-    }
     if version >= 17 {
         tx.execute_batch(
             "DROP INDEX IF EXISTS idx_recall_event_uid;
@@ -1655,20 +1497,6 @@ fn backout_identity_metadata_to_v14(path: &Path) -> rusqlite::Result<()> {
              ALTER TABLE recall_log_smoke DROP COLUMN service_instance_id;
              ALTER TABLE recall_log_smoke DROP COLUMN turn_id;
              ALTER TABLE recall_log_smoke DROP COLUMN identity_status;",
-        )?;
-    }
-    if version >= 16 {
-        tx.execute_batch(
-            "DROP INDEX IF EXISTS idx_transform_event_uid;
-             DROP INDEX IF EXISTS idx_transform_decision;
-             ALTER TABLE transform_log DROP COLUMN event_uid;
-             ALTER TABLE transform_log DROP COLUMN installation_id;
-             ALTER TABLE transform_log DROP COLUMN service_instance_id;
-             ALTER TABLE transform_log DROP COLUMN client;
-             ALTER TABLE transform_log DROP COLUMN session_id;
-             ALTER TABLE transform_log DROP COLUMN turn_id;
-             ALTER TABLE transform_log DROP COLUMN trace_id;
-             ALTER TABLE transform_log DROP COLUMN identity_status;",
         )?;
     }
     tx.execute_batch(
@@ -2129,7 +1957,6 @@ impl MemDb {
         )?;
         migrate(&mut conn)?;
         backfill_legacy_memory_identity(&mut conn)?;
-        backfill_legacy_transform_identity(&mut conn)?;
         backfill_legacy_recall_identity(&mut conn)?;
         let event_path = resolve_event_db_path(path);
         let event_conn = extract_event_ledger(&mut conn, &event_path)?;
@@ -2155,8 +1982,6 @@ impl MemDb {
             .ok();
         migrate(&mut conn).expect("migrate in-memory memdb");
         backfill_legacy_memory_identity(&mut conn).expect("backfill in-memory memory identity");
-        backfill_legacy_transform_identity(&mut conn)
-            .expect("backfill in-memory transform identity");
         backfill_legacy_recall_identity(&mut conn).expect("backfill in-memory recall identity");
         let conn = Arc::new(Mutex::new(conn));
         Self {
@@ -2375,9 +2200,7 @@ impl MemDb {
         service_instance_id: Option<&str>,
         turn_id: Option<&str>,
     ) -> Result<(), String> {
-        let event_uid = transform_event_uid()
-            .map(|value| value.replacen("transform.", "recall.", 1))
-            .ok_or_else(|| "generate recall event uid".to_string())?;
+        let event_uid = event_uid().ok_or_else(|| "generate recall event uid".to_string())?;
         let identity_status = if installation_id.is_some()
             && service_instance_id.is_some()
             && session_id.is_some()
@@ -2699,205 +2522,6 @@ impl MemDb {
         })
     }
 
-    /// Record one transform invocation so per-layer savings are measurable instead of assumed.
-    /// Best-effort: a logging failure must never break the transform it's measuring.
-    pub fn log_transform(
-        &self,
-        ts: &str,
-        verb: &str,
-        scope: Option<&str>,
-        before_chars: usize,
-        after_chars: usize,
-        meta: Option<&str>,
-    ) {
-        let conn = self.lock();
-        let _ = conn.execute(
-            "INSERT INTO transform_log (ts, verb, scope, before_chars, after_chars, meta) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                ts,
-                verb,
-                scope,
-                before_chars as i64,
-                after_chars as i64,
-                meta
-            ],
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn log_transform_with_identity(
-        &self,
-        ts: &str,
-        verb: &str,
-        scope: Option<&str>,
-        before_chars: usize,
-        after_chars: usize,
-        meta: Option<&str>,
-        installation_id: &str,
-        service_instance_id: &str,
-        client: &str,
-        session_id: &str,
-        turn_id: &str,
-        trace_id: &str,
-    ) {
-        let Some(event_uid) = transform_event_uid() else {
-            return;
-        };
-        let conn = self.lock();
-        let _ = conn.execute(
-            "INSERT INTO transform_log
-             (ts, verb, scope, before_chars, after_chars, meta, event_uid,
-              installation_id, service_instance_id, client, session_id, turn_id,
-              trace_id, identity_status)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, 'observed')",
-            rusqlite::params![
-                ts,
-                verb,
-                scope,
-                before_chars as i64,
-                after_chars as i64,
-                meta,
-                event_uid,
-                installation_id,
-                service_instance_id,
-                client,
-                session_id,
-                turn_id,
-                trace_id,
-            ],
-        );
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn log_transform_opportunity(
-        &self,
-        ts: &str,
-        opportunity_uid: &str,
-        verb: &str,
-        source: &str,
-        reason_code: &str,
-        installation_id: &str,
-        service_instance_id: &str,
-        client: &str,
-        session_id: &str,
-        turn_id: &str,
-        trace_id: &str,
-    ) -> rusqlite::Result<()> {
-        let conn = self.lock();
-        conn.execute(
-            "INSERT OR IGNORE INTO transform_opportunity_log
-             (opportunity_uid, ts, verb, source, reason_code, outcome,
-              installation_id, service_instance_id, client, session_id, turn_id,
-              trace_id, identity_status)
-             VALUES (?1, ?2, ?3, ?4, ?5, 'recommended', ?6, ?7, ?8, ?9, ?10, ?11, 'observed')",
-            rusqlite::params![
-                opportunity_uid,
-                ts,
-                verb,
-                source,
-                reason_code,
-                installation_id,
-                service_instance_id,
-                client,
-                session_id,
-                turn_id,
-                trace_id,
-            ],
-        )?;
-        Ok(())
-    }
-
-    pub fn log_transform_for_opportunity(
-        &self,
-        ts: &str,
-        verb: &str,
-        scope: Option<&str>,
-        before_chars: usize,
-        after_chars: usize,
-        meta: Option<&str>,
-        opportunity_uid: &str,
-    ) -> rusqlite::Result<()> {
-        let Some(event_uid) = transform_event_uid() else {
-            return Err(rusqlite::Error::InvalidQuery);
-        };
-        let mut conn = self.lock();
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let identity: (String, String, String, String, String, String) = tx.query_row(
-            "SELECT installation_id, service_instance_id, client, session_id, turn_id, trace_id
-             FROM transform_opportunity_log
-             WHERE opportunity_uid=?1 AND verb=?2",
-            rusqlite::params![opportunity_uid, verb],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                ))
-            },
-        )?;
-        tx.execute(
-            "INSERT INTO transform_log
-             (ts, verb, scope, before_chars, after_chars, meta, event_uid,
-              installation_id, service_instance_id, client, session_id, turn_id,
-              trace_id, opportunity_uid, identity_status)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 'observed')",
-            rusqlite::params![
-                ts,
-                verb,
-                scope,
-                before_chars as i64,
-                after_chars as i64,
-                meta,
-                event_uid,
-                identity.0,
-                identity.1,
-                identity.2,
-                identity.3,
-                identity.4,
-                identity.5,
-                opportunity_uid,
-            ],
-        )?;
-        let outcome = if meta.unwrap_or_default().starts_with("status=error") {
-            "error"
-        } else {
-            "used"
-        };
-        tx.execute(
-            "UPDATE transform_opportunity_log
-             SET outcome=?2, resolved_at=?3, resolved_event_uid=?4
-             WHERE opportunity_uid=?1",
-            rusqlite::params![opportunity_uid, outcome, ts, event_uid],
-        )?;
-        tx.commit()
-    }
-
-    /// Per-verb aggregation of the transform log (empty if nothing has been logged).
-    pub fn transform_metrics(&self) -> Vec<TransformVerbMetrics> {
-        let conn = self.lock();
-        let mut stmt = match conn.prepare(
-            "SELECT verb, COUNT(*), COALESCE(SUM(before_chars),0), COALESCE(SUM(after_chars),0) \
-             FROM transform_log GROUP BY verb ORDER BY verb",
-        ) {
-            Ok(s) => s,
-            Err(_) => return Vec::new(),
-        };
-        stmt.query_map([], |row| {
-            Ok(TransformVerbMetrics {
-                verb: row.get(0)?,
-                runs: row.get::<_, i64>(1)? as u64,
-                before_chars: row.get::<_, i64>(2)? as u64,
-                after_chars: row.get::<_, i64>(3)? as u64,
-            })
-        })
-        .map(|rows| rows.flatten().collect())
-        .unwrap_or_default()
-    }
-
     /// Effectiveness snapshot over the memories table: corpus size, distinct entries ever
     /// injected (serve path bumps inject_count), and distinct injected entries later fetched in
     /// full (`get` bumps access_count). The fetch rate is a LOWER BOUND on usefulness — preview
@@ -2940,22 +2564,6 @@ impl MemDb {
                     candidate_hits: r.get(6)?,
                     admitted_hits: r.get(7)?,
                 })
-            })
-            .map(|rows| rows.flatten().collect())
-        })
-        .unwrap_or_default()
-    }
-
-    /// Most recent transform-log rows, newest first.
-    pub fn recent_transforms(&self, n: usize) -> Vec<(String, String, i64, i64)> {
-        let conn = self.lock();
-        conn.prepare(
-            "SELECT ts, verb, before_chars, after_chars FROM transform_log \
-             ORDER BY ts DESC LIMIT ?1",
-        )
-        .and_then(|mut st| {
-            st.query_map([n as i64], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
             })
             .map(|rows| rows.flatten().collect())
         })
@@ -3095,20 +2703,6 @@ impl RecallMetrics {
     /// Rough token estimate at ~4 chars/token (no tokenizer dependency, intentionally approximate).
     pub fn tokens_saved(&self) -> i64 {
         self.chars_saved() / 4
-    }
-}
-
-/// One verb's aggregated transform savings (`cortex metrics` transforms block).
-pub struct TransformVerbMetrics {
-    pub verb: String,
-    pub runs: u64,
-    pub before_chars: u64,
-    pub after_chars: u64,
-}
-
-impl TransformVerbMetrics {
-    pub fn chars_saved(&self) -> i64 {
-        self.before_chars as i64 - self.after_chars as i64
     }
 }
 
@@ -3457,6 +3051,55 @@ mod tests {
             .unwrap(),
             0
         );
+        for retired in ["transform_log", "transform_opportunity_log"] {
+            assert_eq!(
+                conn.query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [retired],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+                0,
+                "retired transform table {retired} must not exist",
+            );
+        }
+    }
+
+    #[test]
+    fn v24_migration_drops_retired_transform_ledgers() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("retired-transform-ledgers.db");
+        let db = MemDb::open(&path).unwrap();
+        drop(db);
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE transform_log (id INTEGER PRIMARY KEY);
+                 CREATE TABLE transform_opportunity_log (id INTEGER PRIMARY KEY);
+                 PRAGMA user_version=23;",
+            )
+            .unwrap();
+        drop(connection);
+
+        let db = MemDb::open(&path).unwrap();
+        let connection = db.lock();
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, LATEST_SCHEMA_VERSION);
+        for retired in ["transform_log", "transform_opportunity_log"] {
+            assert_eq!(
+                connection
+                    .query_row(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                        [retired],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .unwrap(),
+                0,
+                "v24 must remove {retired}",
+            );
+        }
     }
 
     #[test]
@@ -3663,210 +3306,6 @@ mod tests {
         )
         .unwrap();
         assert_eq!(after_backout, before);
-    }
-
-    #[test]
-    fn transform_log_records_and_aggregates() {
-        let db = MemDb::open_in_memory();
-        db.log_transform(
-            "2026-07-02T00:00:00Z",
-            "skel",
-            Some("D--Claude"),
-            1000,
-            200,
-            None,
-        );
-        db.log_transform(
-            "2026-07-02T00:00:01Z",
-            "skel",
-            Some("D--Claude"),
-            500,
-            100,
-            None,
-        );
-        db.log_transform("2026-07-02T00:00:02Z", "curate", None, 3, 5, None);
-        let m = db.transform_metrics();
-        assert_eq!(m.len(), 2);
-        let skel = m.iter().find(|v| v.verb == "skel").expect("skel row");
-        assert_eq!(
-            (skel.runs, skel.before_chars, skel.after_chars),
-            (2, 1500, 300)
-        );
-        assert_eq!(skel.chars_saved(), 1200);
-        let curate = m.iter().find(|v| v.verb == "curate").expect("curate row");
-        assert_eq!((curate.before_chars, curate.after_chars), (3, 5));
-    }
-
-    #[test]
-    fn transform_log_records_complete_observed_identity() {
-        let db = MemDb::open_in_memory();
-        db.log_transform_with_identity(
-            "2026-07-21T00:00:00Z",
-            "skel",
-            Some("D--Claude"),
-            1000,
-            200,
-            None,
-            "047e84c2-0c46-4a73-a0fc-41e9a3d25d10",
-            "service-047e84c2",
-            "codex",
-            "session-codex-1",
-            "turn-codex-1",
-            "trace-codex-1",
-        );
-        let row: (
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-            String,
-        ) = db
-            .lock()
-            .query_row(
-                "SELECT event_uid, installation_id, service_instance_id, client,
-                        session_id, turn_id, trace_id, identity_status
-                 FROM transform_log WHERE verb='skel'",
-                [],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                        row.get(5)?,
-                        row.get(6)?,
-                        row.get(7)?,
-                    ))
-                },
-            )
-            .unwrap();
-        assert!(row.0.starts_with("transform."));
-        assert_eq!(row.1, "047e84c2-0c46-4a73-a0fc-41e9a3d25d10");
-        assert_eq!(row.2, "service-047e84c2");
-        assert_eq!(row.3, "codex");
-        assert_eq!(row.4, "session-codex-1");
-        assert_eq!(row.5, "turn-codex-1");
-        assert_eq!(row.6, "trace-codex-1");
-        assert_eq!(row.7, "observed");
-    }
-
-    #[test]
-    fn transform_opportunity_is_a_denominator_and_links_exact_execution() {
-        let db = MemDb::open_in_memory();
-        let opportunity_uid = "opportunity.runc.test-1";
-        db.log_transform_opportunity(
-            "2026-07-21T00:00:00Z",
-            opportunity_uid,
-            "runc",
-            "brief-bash",
-            "broad-read",
-            "047e84c2-0c46-4a73-a0fc-41e9a3d25d10",
-            "service-047e84c2",
-            "codex",
-            "session-codex-1",
-            "turn-recommendation-1",
-            "trace-recommendation-1",
-        )
-        .unwrap();
-
-        db.log_transform_for_opportunity(
-            "2026-07-21T00:00:01Z",
-            "runc",
-            Some("D--Claude"),
-            1000,
-            200,
-            Some("status=ok"),
-            opportunity_uid,
-        )
-        .unwrap();
-
-        let row: (String, String, String, String, String, String) = db
-            .lock()
-            .query_row(
-                "SELECT o.outcome, o.client, o.session_id, o.turn_id,
-                        t.opportunity_uid, t.event_uid
-                 FROM transform_opportunity_log o
-                 JOIN transform_log t USING (opportunity_uid)
-                 WHERE o.opportunity_uid=?1",
-                [opportunity_uid],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                        row.get(5)?,
-                    ))
-                },
-            )
-            .unwrap();
-        assert_eq!(row.0, "used");
-        assert_eq!(row.1, "codex");
-        assert_eq!(row.2, "session-codex-1");
-        assert_eq!(row.3, "turn-recommendation-1");
-        assert_eq!(row.4, opportunity_uid);
-        assert!(row.5.starts_with("transform."));
-    }
-
-    #[test]
-    fn reopen_backfills_legacy_transform_identity_without_fabricating_installation() {
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("legacy-transform.db");
-        let db = MemDb::open(&path).unwrap();
-        db.log_transform(
-            "2026-07-01T00:00:00Z",
-            "compress",
-            Some("D--Claude"),
-            500,
-            250,
-            None,
-        );
-        drop(db);
-
-        let reopened = MemDb::open(&path).unwrap();
-        let row: (
-            String,
-            Option<String>,
-            Option<String>,
-            String,
-            String,
-            String,
-            String,
-            String,
-        ) = reopened
-            .lock()
-            .query_row(
-                "SELECT event_uid, installation_id, service_instance_id, client,
-                            session_id, turn_id, trace_id, identity_status
-                     FROM transform_log WHERE verb='compress'",
-                [],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                        row.get(5)?,
-                        row.get(6)?,
-                        row.get(7)?,
-                    ))
-                },
-            )
-            .unwrap();
-        assert!(row.0.starts_with("legacy-transform."));
-        assert_eq!(row.1, None);
-        assert_eq!(row.2, None);
-        assert_eq!(row.3, "legacy");
-        assert!(row.4.starts_with("session-"));
-        assert!(row.5.starts_with("turn-"));
-        assert!(row.6.starts_with("trace-"));
-        assert_eq!(row.7, "legacy_unattributed");
     }
 
     #[test]

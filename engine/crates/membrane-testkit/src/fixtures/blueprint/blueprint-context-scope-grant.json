@@ -5,17 +5,17 @@
   "request": {
     "scope": "workspace",
     "taskEnvelope": {
-      "schema": "orthic.task-envelope.v1",
+      "schema": "membrane.task-envelope.v1",
       "taskId": "task-mbr-104-blueprint-context"
     },
     "turnEnvelope": {
-      "schema": "orthic.turn-envelope.v1",
+      "schema": "membrane.turn-envelope.v1",
       "turnId": "turn-1",
       "sessionId": "session-mbr-104-blueprint",
       "sequence": 1
     },
     "clientEnvelope": {
-      "schema": "orthic.client-envelope.v1",
+      "schema": "membrane.client-envelope.v1",
       "clientId": "blueprint-adapter",
       "adapterVersion": "0.1.0"
     }
@@ -31,22 +31,22 @@
         "status": "active"
       },
       "taskEnvelope": {
-        "schema": "orthic.task-envelope.v1",
+        "schema": "membrane.task-envelope.v1",
         "taskId": "task-mbr-104-blueprint-context"
       },
       "turnEnvelope": {
-        "schema": "orthic.turn-envelope.v1",
+        "schema": "membrane.turn-envelope.v1",
         "turnId": "turn-1",
         "sessionId": "session-mbr-104-blueprint",
         "sequence": 1
       },
       "clientEnvelope": {
-        "schema": "orthic.client-envelope.v1",
+        "schema": "membrane.client-envelope.v1",
         "clientId": "blueprint-adapter",
         "adapterVersion": "0.1.0"
       },
       "overlay": {
-        "schema": "orthic.overlay-identity.v1",
+        "schema": "membrane.overlay-identity.v1",
         "sessionId": "session-mbr-104-blueprint",
         "worktreePath": "/Volumes/D/claude/.worktrees/membrane-book1"
       },

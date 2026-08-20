@@ -19,7 +19,7 @@ def _load():
 
 def test_default_bin_resolves_workspace_binary_when_present():
     mod = _load()
-    os.environ.pop("CORTEX_BIN", None)
+    os.environ.pop("MEMBRANE_BIN", None)
     workspace = Path(__file__).resolve().parents[4]
     exe = workspace / "tools" / "bin" / ("cortex.exe" if os.name == "nt" else "cortex")
     resolved = mod._default_bin()
@@ -31,11 +31,11 @@ def test_default_bin_resolves_workspace_binary_when_present():
 
 def test_explicit_env_wins():
     mod = _load()
-    os.environ["CORTEX_BIN"] = "/custom/cortex"
+    os.environ["MEMBRANE_BIN"] = "/custom/cortex"
     try:
         assert mod._default_bin() == "/custom/cortex"
     finally:
-        os.environ.pop("CORTEX_BIN", None)
+        os.environ.pop("MEMBRANE_BIN", None)
 
 
 def test_produce_with_observability_allowlists_content_free_stage_timing(monkeypatch, tmp_path):

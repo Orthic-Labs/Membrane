@@ -7,16 +7,19 @@ boundary.
 
 ## Workspace mode (what actually runs today)
 
-Binaries: `cortex` / `cortex-service`.
+Binaries: `membrane` / `cortex`. `membrane supervisor-child` is the sole
+resident-service artifact; `cortex` is Cortex's durable-memory CLI.
 
 Resolved by `deployed_runtime_from_exe()` in
 `engine/crates/membrane-runtime/src/cli.rs:242-278`, which recognizes
 **only** a tree shaped:
 
-- `<root>/tools/bin/{cortex,cortex-service}`
-- `<root>/tools/lib/memory/runtime.json` (`serviceId: "cortex-local-v1"`)
+- `<root>/tools/bin/{membrane,cortex}`
+- `<root>/tools/lib/memory/runtime.json` (`serviceId: "membrane-local-v1"`)
 - `<root>/tools/.cache/memory/{cortex-engine.db,api-token}`
 - `<root>/tools/.cache/fastembed`
+
+Resident transport uses `MEMBRANE_PORT` & `MEMBRANE_API_TOKEN_FILE`.
 
 Root is declared via `WORKSPACE_ROOT` / `MEMBRANE_WORKSPACE_ROOT`. Any tree
 not shaped exactly this way is not recognized as a deployed workspace
@@ -43,7 +46,7 @@ Treat both as open gaps, not silent no-ops.
 
 ## Product mode (real, in progress, not yet deployed)
 
-Binaries: `membrane` / `membrane-supervisor`.
+Binaries: `membrane`; its `supervisor-child` mode is Hub's resident service.
 
 Paths are OS-standard per-user locations, not a workspace tree:
 
@@ -51,14 +54,14 @@ Paths are OS-standard per-user locations, not a workspace tree:
 - Linux: XDG base dirs
 - Windows: `%APPDATA%`
 
-Assets live in `membrane/install/{macos,linux,windows}`. Service label:
-`com.membrane.supervisor`.
+Assets live in `membrane/install/{macos,linux,windows}`. Membrane Hub owns
+resident lifecycle; no second product-service label or binary exists.
 
 This is **MBR-201 / MBR-203 / MBR-208** — active, not abandoned. Its install
 assets exist and ship, but product mode is not yet the deployed runtime
-anywhere; workspace mode is what machines actually run today. See
-[`docs/operations/supervisor.md`](supervisor.md) for the supervisor/resident
-process split and why they never collapse into one process, and
+ anywhere; workspace mode is what machines actually run today. See
+[`docs/operations/resident-lifecycle.md`](resident-lifecycle.md) for inherited-stdio
+resident lifecycle frames, and
 [`docs/installation/contract.md`](../installation/contract.md) for the
 per-mode installation manifest contract that both topologies must satisfy.
 
@@ -69,5 +72,5 @@ The canonical on-disk layout for each mode (workspace: the `tools/bin` +
 OS-standard per-user paths) is a **versioned Membrane-owned contract**, not
 an implicit convention someone can shift by moving a file. Changing either
 shape is a contract change, not a refactor — it must update
-`deployed_runtime_from_exe()` (workspace) or the supervisor's path
-resolution (product) and this document together.
+`deployed_runtime_from_exe()` (workspace) or Hub resident path resolution
+(product) and this document together.

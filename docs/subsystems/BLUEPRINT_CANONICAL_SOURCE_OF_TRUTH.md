@@ -3,7 +3,7 @@
 **Status:** Canonical · final architecture · implementation authority  
 **Repository:** `Orthic-Labs/Membrane`  
 **Subsystem path:** `blueprint/`
-**Package:** `@orthic-labs/blueprint`
+**Package:** `@membrane/blueprint`
 **Date:** 2026-08-19  
 **Authority:** this file supersedes every other Blueprint architecture or implementation plan.
 
@@ -1861,7 +1861,7 @@ It must consume canonical RecallCircuit + truth findings.
 
 ## 24.7 Phantom seam dependency
 
-No Blueprint rule may claim a missing `docs/plans/orthic/SEAM-CONTRACT.md` is a required local dependency.
+No Blueprint rule may claim a retired phantom seam-contract path is a required local dependency.
 
 Blueprint's side of every consumer seam is specified in-repo.
 

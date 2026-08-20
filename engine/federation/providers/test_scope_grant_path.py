@@ -1,82 +1,51 @@
 from pathlib import Path
-import sqlite3
 
 import pytest
 
 from federation.providers import scope_grant
 
 
-VARS = (
-    "MEMBRANE_CATALOG",
-    "CONTEXT_HOME",
-    "CORTEX_DB",
-    "WORKSPACE_ROOT",
-)
+def test_lookup_requires_service_transport_and_performs_no_local_io(tmp_path: Path) -> None:
+    assert scope_grant.lookup(tmp_path, "sg-missing") is None
 
 
-def bind(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
-    for name in VARS:
-        monkeypatch.delenv(name, raising=False)
-    for name, value in values.items():
-        monkeypatch.setenv(name, value)
+def test_lookup_delegates_to_service_transport_without_aliases(tmp_path: Path) -> None:
+    observed = {}
+
+    def transport(repo_root: Path, grant_id: str) -> dict:
+        observed.update(repo_root=repo_root, grant_id=grant_id)
+        return {"id": grant_id, "repositoryRoot": str(repo_root)}
+
+    grant = scope_grant.lookup(tmp_path, "sg-service", transport=transport)
+    assert grant == {"id": "sg-service", "repositoryRoot": str(tmp_path)}
+    assert observed == {"repo_root": tmp_path, "grant_id": "sg-service"}
 
 
-def test_catalog_path_uses_canonical_precedence(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    explicit = tmp_path / "explicit" / "catalog.db"
-    context = tmp_path / "context"
-    memory = tmp_path / "memory" / "cortex-engine.db"
-    workspace = tmp_path / "workspace"
-    bind(
-        monkeypatch,
-        MEMBRANE_CATALOG=str(explicit),
-        CONTEXT_HOME=str(context),
-        CORTEX_DB=str(memory),
-        WORKSPACE_ROOT=str(workspace),
+def test_validate_binds_canonical_repository_root_not_repository_id(tmp_path: Path) -> None:
+    grant = {
+        "id": "sg-service",
+        "client": "mcp",
+        "taskId": "inspect handler",
+        "sessionId": "session-1",
+        "repositoryRoot": str(tmp_path),
+        "repositoryIds": ["repo-stable-id"],
+        "manifestDigest": "sha256:" + "a" * 64,
+        "nonce": "nonce-12345678",
+    }
+    scope_grant.validate(
+        grant,
+        request_client="mcp",
+        request_repo_root=tmp_path,
+        request_task="inspect handler",
+        request_session="session-1",
+        request_manifest_digest=grant["manifestDigest"],
     )
-    assert scope_grant._catalog_path() == explicit
 
-    bind(monkeypatch, CONTEXT_HOME=str(context))
-    assert scope_grant._catalog_path() == context / "catalog.db"
-    bind(monkeypatch, CORTEX_DB=str(memory))
-    assert scope_grant._catalog_path() == memory.parent / "catalog.db"
-    bind(monkeypatch, WORKSPACE_ROOT=str(workspace))
-    assert scope_grant._catalog_path() == workspace / "tools/.cache/memory/catalog.db"
-
-
-def test_catalog_path_rejects_relative_and_unbound_before_io(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    bind(monkeypatch, MEMBRANE_CATALOG="catalog.db")
-    with pytest.raises(scope_grant.CatalogPathError, match="must be absolute"):
-        scope_grant._catalog_path()
-
-    bind(monkeypatch)
-    with pytest.raises(scope_grant.CatalogPathError, match="catalog path is unbound"):
-        scope_grant._catalog_path()
-
-
-def test_lookup_is_read_only_and_never_creates_missing_catalog(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    missing = tmp_path / "missing" / "catalog.db"
-    bind(monkeypatch, MEMBRANE_CATALOG=str(missing))
-    assert scope_grant.lookup(tmp_path, "sg-missing") is None
-    assert not missing.exists()
-    assert not missing.parent.exists()
-
-    catalog = tmp_path / "catalog.db"
-    with sqlite3.connect(catalog) as conn:
-        conn.execute(
-            "CREATE TABLE scope_grants ("
-            "id TEXT PRIMARY KEY, client TEXT, status TEXT, expires_at_unix INTEGER, "
-            "repository_ids TEXT, task_id TEXT, session_id TEXT, "
-            "manifest_digest TEXT, nonce TEXT)"
+    with pytest.raises(PermissionError, match="repository_root"):
+        scope_grant.validate(
+            {**grant, "repositoryRoot": str(tmp_path / "other")},
+            request_client="mcp",
+            request_repo_root=tmp_path,
+            request_task="inspect handler",
+            request_session="session-1",
         )
-    before = catalog.read_bytes()
-    bind(monkeypatch, MEMBRANE_CATALOG=str(catalog))
-    assert scope_grant.lookup(tmp_path, "sg-missing") is None
-    assert catalog.read_bytes() == before
-    assert not Path(str(catalog) + "-wal").exists()
-    assert not Path(str(catalog) + "-shm").exists()

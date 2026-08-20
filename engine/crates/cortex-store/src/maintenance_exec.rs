@@ -1,16 +1,15 @@
 //! MBR-508: crash-safe, bounded execution of previously-planned Cortex maintenance.
 //!
-//! `membrane_supervisor::maintenance` decides *whether* a maintenance request may run: it
+//! Membrane lifecycle decides *whether* a maintenance request may run: it
 //! checks a caller-supplied authority receipt through a trusted verifier, refuses
 //! self-certification, and bounds budget and deadline. It never opens storage. This module is
 //! the store-side complement: it executes an already-planned, already-bounded operation
 //! (consolidation, contradiction detection, index maintenance, or proposal creation) against the
 //! Cortex SQLite store, and nothing else.
 //!
-//! [`BoundedMaintenanceOperation`] mirrors `membrane_supervisor::maintenance::MaintenanceOperation`
+//! [`BoundedMaintenanceOperation`] mirrors Membrane's bounded maintenance operation
 //! by contract, not by crate dependency: `cortex-store` is already a dependency of
-//! `membrane-runtime`, which `membrane-supervisor` also depends on, so a `cortex-store` ->
-//! `membrane-supervisor` edge would create a cycle. A host that already holds a planned
+//! `membrane-runtime`, so a `cortex-store` -> resident edge would create a cycle. A host that already holds a planned
 //! operation copies its five fields into a `BoundedMaintenanceOperation` before calling
 //! [`MemDb::execute_bounded_maintenance`].
 //!
@@ -52,7 +51,7 @@ pub enum MaintenanceExecKind {
 }
 
 /// A previously planned, budget/deadline-bounded unit of work. Construct this only from a
-/// `membrane_supervisor::maintenance::MaintenanceOperation` that a trusted planner already
+/// Membrane maintenance operation that a trusted planner already
 /// returned; this type carries no verification logic of its own and none is added later.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

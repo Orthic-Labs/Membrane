@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "axis": "push",
+  "status": "fixture-entrypoint-defined",
+  "entrypoint": "membrane push",
+  "metrics": ["protected_span_retention", "byte_token_balance", "restore_success", "telemetry_isolation"]
+}

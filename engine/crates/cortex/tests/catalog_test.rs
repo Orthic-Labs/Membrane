@@ -10,14 +10,14 @@
 //!   - /health surfaces planner metrics without repository content
 //!   - frozen-fixture p95 service overhead <= 50 ms above in-process admission
 
-use cortex::catalog::{
+use membrane_runtime::catalog::{
     record_receipt, resolve_catalog_path_from, CatalogPathError, ContextCatalog, GrantStatus,
     CATALOG_SCHEMA_VERSION,
 };
-use cortex::memdb::MemDb;
-use cortex::planner_metrics::{LastFallback, PlannerLatency};
-use cortex::serve::{route_with_catalog_and_metrics_for_tests, route_with_catalog_for_tests};
-use cortex::store::MemoryStore;
+use membrane_runtime::memdb::MemDb;
+use membrane_runtime::pull::metrics::{LastFallback, PlannerLatency};
+use membrane_runtime::serve::{route_with_catalog_and_metrics_for_tests, route_with_catalog_for_tests};
+use membrane_runtime::store::MemoryStore;
 use rusqlite::Connection;
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -96,6 +96,7 @@ fn candidate_set(candidates: Vec<serde_json::Value>) -> serde_json::Value {
     json!({
         "schemaVersion": 1,
         "traceId": "trace-catalog-test",
+        "indexedAt": "2026-07-12T00:00:00Z",
         "task": "admit a few candidates",
         "mode": "verify",
         "provider": "blueprint",
@@ -210,7 +211,7 @@ fn catalog_path_resolver_rejects_relative_and_unbound_paths_before_io() {
 fn scope_grant_issuance_and_lookup_round_trip() {
     let catalog = new_catalog();
     issue_grant(&catalog, "sg-1");
-    let grant = cortex::catalog::lookup_grant(&catalog, "sg-1")
+    let grant = membrane_runtime::catalog::lookup_grant(&catalog, "sg-1")
         .unwrap()
         .expect("grant must persist");
     assert_eq!(grant.client, "claude-mm");
@@ -223,20 +224,20 @@ fn scope_grant_issuance_and_lookup_round_trip() {
 fn scope_grant_revoke_blocks_subsequent_plan_context() {
     let catalog = new_catalog();
     issue_grant(&catalog, "sg-revoke");
-    assert!(cortex::catalog::revoke_scope_grant(&catalog, "sg-revoke").unwrap());
-    let grant = cortex::catalog::lookup_grant(&catalog, "sg-revoke")
+    assert!(membrane_runtime::catalog::revoke_scope_grant(&catalog, "sg-revoke").unwrap());
+    let grant = membrane_runtime::catalog::lookup_grant(&catalog, "sg-revoke")
         .unwrap()
         .unwrap();
     assert_eq!(grant.status, GrantStatus::Revoked);
     assert!(!grant.permits());
     // Idempotent revoke.
-    assert!(!cortex::catalog::revoke_scope_grant(&catalog, "sg-revoke").unwrap());
+    assert!(!membrane_runtime::catalog::revoke_scope_grant(&catalog, "sg-revoke").unwrap());
 }
 
 #[test]
 fn scope_grant_with_elapsed_ttl_is_observed_as_expired() {
     let catalog = new_catalog();
-    let mut grant = cortex::catalog::issue_scope_grant(
+    let mut grant = membrane_runtime::catalog::issue_scope_grant(
         &catalog,
         "sg-ttl",
         "claude-mm",
@@ -256,7 +257,7 @@ fn scope_grant_with_elapsed_ttl_is_observed_as_expired() {
 #[test]
 fn unknown_grant_lookup_returns_none() {
     let catalog = new_catalog();
-    let found = cortex::catalog::lookup_grant(&catalog, "sg-nope").unwrap();
+    let found = membrane_runtime::catalog::lookup_grant(&catalog, "sg-nope").unwrap();
     assert!(found.is_none());
 }
 
@@ -301,9 +302,9 @@ fn plan_context_admits_candidates_and_persists_content_free_receipts() {
     assert_eq!(v["packet"]["budget"]["configuredPacketCharBudget"], 321);
     assert!(v["packet"]["budget"]["effectivePacketCharBudget"].is_null());
 
-    let receipts_count = cortex::catalog::count_receipts(&catalog).unwrap();
+    let receipts_count = membrane_runtime::catalog::count_receipts(&catalog).unwrap();
     assert!(receipts_count >= 2, "receipts persisted: {receipts_count}");
-    let events_count = cortex::catalog::count_events(&catalog).unwrap();
+    let events_count = membrane_runtime::catalog::count_events(&catalog).unwrap();
     assert!(
         events_count >= 1,
         "retrieval event persisted: {events_count}"
@@ -404,6 +405,7 @@ fn plan_context_rejects_unknown_schema_version() {
         "candidate_set": {
             "schemaVersion": 99,
             "traceId": "trace",
+            "indexedAt": "2026-07-12T00:00:00Z",
             "task": "task",
             "mode": "verify",
             "provider": "blueprint",
@@ -634,7 +636,7 @@ fn plan_context_records_receipt_with_synthesised_bytes_sha() {
         "deadbeef",
     )
     .unwrap();
-    let count = cortex::catalog::count_receipts_for_trace(&catalog, "trace-0").unwrap();
+    let count = membrane_runtime::catalog::count_receipts_for_trace(&catalog, "trace-0").unwrap();
     assert_eq!(count, 1);
 }
 
@@ -673,7 +675,7 @@ fn scope_grant_persists_in_catalog_not_cortex_db() {
         route_with_catalog_for_tests(&store, &catalog, "POST", "/list", r#"{"scope":"global"}"#);
     assert_eq!(status, 200);
     assert!(!payload.contains("sg-cross"));
-    let grant = cortex::catalog::lookup_grant(&catalog, "sg-cross")
+    let grant = membrane_runtime::catalog::lookup_grant(&catalog, "sg-cross")
         .unwrap()
         .expect("grant present");
     assert_eq!(grant.id, "sg-cross");

@@ -1,11 +1,12 @@
 {
   "schemaVersion": 2,
   "residentBinary": "/usr/local/bin/membrane",
-  "leasePath": "/Users/example/Library/Application Support/Membrane/supervisor/lease.json",
-  "endpointPath": "/Users/example/Library/Application Support/Membrane/supervisor/endpoint.json",
-  "statusPath": "/Users/example/Library/Application Support/Membrane/supervisor/status.json",
-  "pidLockPath": "/Users/example/Library/Application Support/Membrane/supervisor/supervisor.pid",
-  "loopbackPort": 47851,
+  "lifecycle": {
+    "transport": "inherited-stdio",
+    "env": "MEMBRANE_LIFECYCLE_STDIO",
+    "protocol": "ResidentHelloV1",
+    "version": 1
+  },
   "restartPolicy": {
     "maxRestarts": 5,
     "windowSeconds": 60,

@@ -14,13 +14,11 @@ ignored `.right-release/` output and published as a release asset.
 - A torn migration is recoverable via
   `repairInterruptedMigration(dbPath, fromVersion)`.
 
-## Platform matrix
+## Mac release target
 
 | Platform | Arch | Filesystem notes |
 |---|---|---|
 | macOS | arm64, x64 | Case-insensitive by default |
-| Linux | x64, arm64 | Case-sensitive |
-| Windows | x64, arm64 | Case-insensitive; UNC and junction paths supported |
 
 ## Language depth tiers
 

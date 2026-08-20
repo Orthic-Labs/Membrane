@@ -79,6 +79,16 @@ test("checkpoint summaries redact secret-bearing lines before Cortex", async () 
   assert.equal(JSON.parse(inputs[0]).summary, "safe\n[redacted sensitive summary line]\nsafe too");
 });
 
+test("installed operations degrade typed without an injected Cortex subprocess seam", async () => {
+  const { root, file } = fixture();
+  const ops = createWorkspaceMemoryOperations({ rootFor: () => root, contextAdapter: {}, probeStatus: async () => false });
+  await dispatchMembraneHookEvent({ event: "PreCompact", cwd: root, session_id: "no-subprocess" }, ops);
+  const compact = await dispatchMembraneHookEvent({ event: "PostCompact", cwd: root, session_id: "no-subprocess" }, ops);
+  assert.equal(compact.results.find(({ id }) => id === "membrane.memory-post-compact").output.reason, "continuity_service_unavailable");
+  const ingest = await dispatchMembraneHookEvent({ event: "PostToolUse", cwd: root, tool_name: "Write", tool_input: { file_path: file } }, ops);
+  assert.equal(ingest.results.find(({ id }) => id === "membrane.memory-ingest").output.reason, "memory_service_unavailable");
+});
+
 test("SessionStart performs health only & never starts or kicks Cortex", async () => {
   const { root } = fixture(); const calls = [];
   const result = await runHook({ hook_event_name: "SessionStart", cwd: root }, { operations: operations(root, calls) });
