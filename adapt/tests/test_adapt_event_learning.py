@@ -27,7 +27,7 @@ def _event(
     event_id: str = "event-e2e",
 ) -> dict:
     return {
-        "schema": "orthic.observable-event.v1",
+        "schema": "membrane.observable-event.v1",
         "installation_id": "install-e2e",
         "client_id": "codex",
         "session_id": "session-e2e",

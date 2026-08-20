@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://orthic.labs/membrane/adapt/value-set.schema.json",
+  "$id": "https://membrane.local/adapt/value-set.schema.json",
   "title": "Adapt value-set: paired real historical prompts",
   "description": "Frozen dataset for Gate 0 (Adapt 4-arm retrieval+behavior A/B). Each row pairs a real historical prompt with (a) expected applicable rule ids from the current adapt pool, (b) category tag, (c) provenance hash. Pure domain labels, reviewer-owned.",
   "type": "object",
