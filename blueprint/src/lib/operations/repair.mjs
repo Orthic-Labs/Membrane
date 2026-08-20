@@ -1,4 +1,4 @@
-// D11: non-destructive repair plans. `cortex doctor --repair-plan --json`
+// D11: non-destructive repair plans. `blueprint doctor --repair-plan --json`
 // returns ordered repair actions; `--apply-repair` requires explicit
 // confirmation unless `--yes`. Every action is reversible or explicitly
 // non-reversible.
@@ -23,27 +23,27 @@ export function buildRepairPlan({ root, outDir = ".agent", graphState = "unknown
   // before trusting freshness.
   if (missingMap || corruptMap || corruptStore) {
     actions.push(action("rebuild-graph", {
-      command: `cortex build --out ${outDir}`,
+      command: `blueprint build --out ${outDir}`,
       reversible: false,
       details: { reason: "graph artifacts missing or corrupt" },
     }));
   } else if (staleGraph) {
     actions.push(action("rebuild-graph", {
-      command: `cortex build --out ${outDir}`,
+      command: `blueprint build --out ${outDir}`,
       reversible: false,
       details: { reason: "graph stale relative to source" },
     }));
   }
   if (eventGap) {
     actions.push(action("reconcile-watcher", {
-      command: `cortex-watch reconcile --root ${root}`,
+      command: `blueprint-watch reconcile --root ${root}`,
       reversible: true,
       details: { reason: "watcher continuity not proven" },
     }));
   }
   if (missingDocs) {
     actions.push(action("regenerate-docs", {
-      command: `cortex build --out ${outDir} --no-readme-link`,
+      command: `blueprint build --out ${outDir} --no-readme-link`,
       reversible: true,
       details: { reason: "generated docs missing or stale" },
     }));

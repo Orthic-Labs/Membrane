@@ -16,7 +16,7 @@ import { MCP_COMPATIBILITY, HOSTS, mcpConfigForHost } from "../src/mcp/compatibi
 import { HOOK_POLICY_MODES, HOOK_POLICIES, policyBehavior } from "../src/lib/init/host-configs.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const SERVER = join(ROOT, "scripts/cortex-mcp.mjs");
+const SERVER = join(ROOT, "scripts/blueprint-mcp.mjs");
 const FIXTURE = join(ROOT, "evals", "fixture-repos", "typescript-commerce");
 const AUDIT_DIR = join(ROOT, ".audit", "cx-b1");
 
@@ -31,7 +31,7 @@ async function startServer({ repo }) {
     cwd: repo,
     stderr: "pipe",
   });
-  const client = new Client({ name: "cortex-resources-acceptance", version: "1.0.0" }, { capabilities: {} });
+  const client = new Client({ name: "blueprint-resources-acceptance", version: "1.0.0" }, { capabilities: {} });
   await client.connect(transport);
   return { client, transport };
 }
@@ -43,9 +43,9 @@ test("resources are URI-addressable and paginated", () => {
     assert.equal(resource.uri, uri);
     assert.ok(resource.schemaVersion);
   }
-  const claims = resourceForUri("cortex://claims", { limit: 10 });
+  const claims = resourceForUri("blueprint://claims", { limit: 10 });
   assert.equal(claims.pagination.limit, 10);
-  const unknown = resourceForUri("cortex://nope");
+  const unknown = resourceForUri("blueprint://nope");
   assert.equal(unknown.error.code, "resource_not_found");
 });
 
@@ -54,7 +54,7 @@ test("prompts reference tools, not embedded prose", () => {
   for (const prompt of PROMPTS) {
     assert.ok(prompt.toolRefs.length > 0, `${prompt.name} must reference tools`);
     for (const ref of prompt.toolRefs) {
-      assert.match(ref, /^cortex_/);
+      assert.match(ref, /^blueprint_/);
     }
   }
   assert.ok(promptByName("debug"));
@@ -70,7 +70,7 @@ test("compatibility matrix covers current and legacy SDK majors", () => {
 // every data resource plus the AX P14 effects resource, and every prompt from
 // mcp/prompts.mjs. Counts come from the handshake, never from source reads.
 test("live server registers >=8 resources and all 6 prompts, effects resource readable", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-mcp-res-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-mcp-res-"));
   ensureAuditDir();
   let client;
   try {
@@ -88,10 +88,10 @@ test("live server registers >=8 resources and all 6 prompts, effects resource re
     for (const uri of RESOURCE_URIS) {
       assert.ok(liveUris.has(uri), `resource ${uri} must be registered on the live server`);
     }
-    assert.ok(liveUris.has("cortex://effects"), "cortex://effects must be registered");
+    assert.ok(liveUris.has("blueprint://effects"), "blueprint://effects must be registered");
     for (const resource of resources.resources) {
       assert.ok(resource.name, `resource ${resource.uri} must carry a name`);
-      assert.match(resource.uri, /^cortex:\/\//, `resource uri ${resource.uri} must use the cortex:// scheme`);
+      assert.match(resource.uri, /^blueprint:\/\//, `resource uri ${resource.uri} must use the blueprint:// scheme`);
     }
 
     const livePromptNames = new Set(prompts.prompts.map((prompt) => prompt.name));
@@ -109,8 +109,8 @@ test("live server registers >=8 resources and all 6 prompts, effects resource re
     }
 
     // AX P14: the effects resource must enumerate the six registered tools.
-    const effects = await client.readResource({ uri: "cortex://effects" });
-    const effectsText = effects.contents.find((block) => block.uri === "cortex://effects")?.text ?? effects.contents[0]?.text ?? "";
+    const effects = await client.readResource({ uri: "blueprint://effects" });
+    const effectsText = effects.contents.find((block) => block.uri === "blueprint://effects")?.text ?? effects.contents[0]?.text ?? "";
     const effectsPayload = JSON.parse(effectsText);
     const effectKeys = Object.keys(effectsPayload.tools ?? effectsPayload).sort();
     assert.deepEqual(effectKeys, Object.keys(TOOL_EFFECTS).sort());
@@ -124,7 +124,7 @@ test("live server registers >=8 resources and all 6 prompts, effects resource re
       promptNames: [...livePromptNames].sort(),
       effectsResource: true,
       transport: "stdio",
-      server: "scripts/cortex-mcp.mjs",
+      server: "scripts/blueprint-mcp.mjs",
     }, null, 2));
   } finally {
     if (client) await client.close().catch(() => {});
@@ -147,7 +147,7 @@ test("hook policies have explicit fail-open/fail-closed and recovery", () => {
   assert.equal(HOOK_POLICIES.advisory.failClosed, false);
   assert.equal(HOOK_POLICIES["orient-before-read"].failClosed, true);
   assert.equal(HOOK_POLICIES["task-grants"].failClosed, true);
-  assert.match(policyBehavior("orient-before-read").recoveryCommand, /cortex orient/);
-  assert.match(policyBehavior("task-grants").recoveryCommand, /cortex grant issue/);
+  assert.match(policyBehavior("orient-before-read").recoveryCommand, /blueprint orient/);
+  assert.match(policyBehavior("task-grants").recoveryCommand, /blueprint grant issue/);
   assert.equal(policyBehavior("advisory").recoveryCommand, null);
 });

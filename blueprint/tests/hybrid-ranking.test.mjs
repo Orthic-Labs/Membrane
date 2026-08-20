@@ -17,14 +17,14 @@ test("semantic provider is candidate-only and disabled by default", async () => 
   assert.equal(semanticCandidateProvider.authority, "candidate-only");
 });
 
-test("semantic provider is opt-in via CORTEX_SEMANTIC=1", () => {
-  const previous = process.env.CORTEX_SEMANTIC;
-  process.env.CORTEX_SEMANTIC = "1";
+test("semantic provider is opt-in via BLUEPRINT_SEMANTIC=1", () => {
+  const previous = process.env.BLUEPRINT_SEMANTIC;
+  process.env.BLUEPRINT_SEMANTIC = "1";
   try {
     assert.equal(semanticEnabled(), true);
   } finally {
-    if (previous === undefined) delete process.env.CORTEX_SEMANTIC;
-    else process.env.CORTEX_SEMANTIC = previous;
+    if (previous === undefined) delete process.env.BLUEPRINT_SEMANTIC;
+    else process.env.BLUEPRINT_SEMANTIC = previous;
   }
 });
 

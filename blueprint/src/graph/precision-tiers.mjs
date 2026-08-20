@@ -1,4 +1,4 @@
-// Provider PRECISION tier vocabulary (cortex B4).
+// Provider PRECISION tier vocabulary (blueprint B4).
 //
 // A precision tier is a property of a PROVIDER (what class of analysis it can
 // possibly achieve), distinct from EDGE_CONFIDENCE_TIERS (graph/confidence-tiers.mjs),
@@ -9,7 +9,7 @@
 // Ordered MOST -> LEAST precise:
 //   COMPILER — backed by a real compiler/type-checker/indexer (SCIP or
 //              equivalent). Symbol resolution reflects actual bindings, not
-//              a name-match heuristic. Requires an index to exist; cortex
+//              a name-match heuristic. Requires an index to exist; blueprint
 //              never vendors or invokes a SCIP indexer itself (graph/scip-provider.mjs
 //              only READS an index if the repo already produced one).
 //   AST      — backed by a real parser (tree-sitter). Structural relationships
@@ -33,7 +33,7 @@ export const PRECISION_TIER_ORDER = Object.freeze([
 
 export const PRECISION_TIER_DESCRIPTIONS = Object.freeze({
   [PRECISION_TIERS.COMPILER]:
-    "Compiler/indexer-backed (SCIP or equivalent) symbol resolution. Reads an externally produced index; cortex never vendors or runs an indexer itself.",
+    "Compiler/indexer-backed (SCIP or equivalent) symbol resolution. Reads an externally produced index; blueprint never vendors or runs an indexer itself.",
   [PRECISION_TIERS.AST]:
     "Real-parser (tree-sitter) structural extraction. Containment/definition edges are exact; cross-reference resolution is still name-match heuristic.",
   [PRECISION_TIERS.LEXICAL]:

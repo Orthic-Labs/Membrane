@@ -1,1 +1,1 @@
-export { CortexRepositoryWorker, RepositoryActor } from "../../watchman/repo-actor.mjs";
+export { BlueprintRepositoryWorker, RepositoryActor } from "../../watchman/repo-actor.mjs";

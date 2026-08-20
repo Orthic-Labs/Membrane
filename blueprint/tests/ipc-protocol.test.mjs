@@ -12,7 +12,7 @@ import { createDaemonServer } from "../src/service/server.mjs";
 import { DaemonClient } from "../src/service/client.mjs";
 import { daemonEndpoint, temporaryDaemonEndpoint } from "../src/service/paths.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
-import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { RootRegistry } from "../src/lib/application/root-registry.mjs";
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -54,7 +54,7 @@ test("protocol envelopes round-trip", () => {
   assert.equal(cancel.method, "cancel");
   assert.equal(cancel.input.targetRequestId, "r1");
   const pipe = daemonEndpoint({ platform: "win32", identity: "local-user" });
-  assert.match(pipe, /^\\\\\.\\pipe\\orthic-cortex-[a-f0-9]{16}$/);
+  assert.match(pipe, /^\\\\\.\\pipe\\orthic-blueprint-[a-f0-9]{16}$/);
   assert.equal(pipe, daemonEndpoint({ platform: "win32", identity: "local-user" }));
 });
 
@@ -82,12 +82,12 @@ test("client close destroys its socket without waiting for peer EOF", async () =
 });
 
 test("daemon serves a search over the shared service", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-daemon-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-daemon-"));
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
-  const endpoint = temporaryDaemonEndpoint("cortex");
+  const endpoint = temporaryDaemonEndpoint("blueprint");
   const registry = new RootRegistry([{ root: repo, repoId: "repo-1" }]);
-  const service = createCortexApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
+  const service = createBlueprintApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
   const daemon = createDaemonServer({ service, endpoint });
   try {
     await daemon.listen();
@@ -104,7 +104,7 @@ test("daemon serves a search over the shared service", async () => {
 });
 
 test("unknown method returns method_unknown", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-u");
+  const endpoint = temporaryDaemonEndpoint("blueprint-u");
   const daemon = createDaemonServer({ endpoint });
   try {
     await daemon.listen();
@@ -119,7 +119,7 @@ test("unknown method returns method_unknown", async () => {
 });
 
 test("cancellation settles its exact pending request once & aborts work", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-c");
+  const endpoint = temporaryDaemonEndpoint("blueprint-c");
   let release;
   let signal;
   let calls = 0;
@@ -158,7 +158,7 @@ test("protocol version validation rejects absent and mismatched envelopes", () =
 });
 
 test("daemon rejects missing and mismatched protocol versions before invoking its service", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-version-request");
+  const endpoint = temporaryDaemonEndpoint("blueprint-version-request");
   let calls = 0;
   const daemon = createDaemonServer({ endpoint, service: { status: async () => { calls += 1; return { generationId: "g" }; } } });
   let socket;
@@ -178,7 +178,7 @@ test("daemon rejects missing and mismatched protocol versions before invoking it
 });
 
 test("daemon close waits for controlled work to settle before releasing ownership", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-close-waits");
+  const endpoint = temporaryDaemonEndpoint("blueprint-close-waits");
   let release;
   const daemon = createDaemonServer({ endpoint, service: { status: () => new Promise((resolve) => { release = resolve; }) } });
   let socket;
@@ -202,7 +202,7 @@ test("daemon close waits for controlled work to settle before releasing ownershi
 });
 
 test("client rejects a mismatched response version and reconnects for its next request", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-version-response");
+  const endpoint = temporaryDaemonEndpoint("blueprint-version-response");
   let connections = 0;
   const server = createServer((socket) => {
     socket.setEncoding("utf8");
@@ -233,7 +233,7 @@ test("client rejects a mismatched response version and reconnects for its next r
 });
 
 test("client rejects terminal sockets and reconnects after pending work is lost", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-terminal-retry");
+  const endpoint = temporaryDaemonEndpoint("blueprint-terminal-retry");
   let connections = 0;
   const server = createServer((socket) => {
     socket.setEncoding("utf8");
@@ -265,7 +265,7 @@ test("client returns typed write and cancel failures", async () => {
 });
 
 test("client sends cancels with the shared protocol version", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-client-cancel");
+  const endpoint = temporaryDaemonEndpoint("blueprint-client-cancel");
   let received;
   const server = createServer((socket) => {
     socket.setEncoding("utf8");
@@ -287,7 +287,7 @@ test("client sends cancels with the shared protocol version", async () => {
 });
 
 test("client discards a destroyed cached socket before reconnecting", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-destroyed-cache");
+  const endpoint = temporaryDaemonEndpoint("blueprint-destroyed-cache");
   const server = createServer((socket) => {
     socket.setEncoding("utf8");
     socket.once("data", (line) => {
@@ -317,7 +317,7 @@ test("deadline validation accepts only an integer in its shared range", () => {
 });
 
 test("deadline settles a request once despite late completion", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-deadline");
+  const endpoint = temporaryDaemonEndpoint("blueprint-deadline");
   let release;
   let socket;
   const daemon = createDaemonServer({ endpoint, service: { status: () => new Promise((resolve) => { release = resolve; }) } });
@@ -339,7 +339,7 @@ test("deadline settles a request once despite late completion", async () => {
 });
 
 test("daemon rejects every malformed deadline with deadline_invalid", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-deadline-invalid");
+  const endpoint = temporaryDaemonEndpoint("blueprint-deadline-invalid");
   const daemon = createDaemonServer({ endpoint });
   let socket;
   try {
@@ -361,7 +361,7 @@ test("daemon rejects every malformed deadline with deadline_invalid", async () =
 });
 
 test("total daemon capacity rejects a 257th active request", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-total-capacity");
+  const endpoint = temporaryDaemonEndpoint("blueprint-total-capacity");
   const releases = [];
   const daemon = createDaemonServer({ endpoint, service: { status: () => new Promise((resolve) => releases.push(resolve)) } });
   const clients = [];
@@ -388,7 +388,7 @@ test("total daemon capacity rejects a 257th active request", async () => {
 });
 
 test("daemon parses multiple valid frames larger than 8KiB from one chunk", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-frames");
+  const endpoint = temporaryDaemonEndpoint("blueprint-frames");
   const daemon = createDaemonServer({ endpoint, service: { status: async () => ({ generationId: "g" }) } });
   let socket;
   try {
@@ -409,7 +409,7 @@ test("daemon parses multiple valid frames larger than 8KiB from one chunk", asyn
 });
 
 test("oversized terminated frames receive a typed error & close", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-frame-line");
+  const endpoint = temporaryDaemonEndpoint("blueprint-frame-line");
   const daemon = createDaemonServer({ endpoint });
   let socket;
   try {
@@ -425,7 +425,7 @@ test("oversized terminated frames receive a typed error & close", async () => {
 });
 
 test("cancelled work retains per-socket capacity until its promise exits", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-capacity");
+  const endpoint = temporaryDaemonEndpoint("blueprint-capacity");
   const releases = [];
   const daemon = createDaemonServer({ endpoint, service: { status: () => new Promise((resolve) => releases.push(resolve)) } });
   let socket;
@@ -454,7 +454,7 @@ test("cancelled work retains per-socket capacity until its promise exits", async
 });
 
 test("socket close aborts its active work", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-close-abort");
+  const endpoint = temporaryDaemonEndpoint("blueprint-close-abort");
   let signal;
   let release;
   const daemon = createDaemonServer({ endpoint, service: { status: (_input, options) => {
@@ -478,7 +478,7 @@ test("socket close aborts its active work", async () => {
 });
 
 test("oversized unterminated frames receive a typed error & close", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-frame");
+  const endpoint = temporaryDaemonEndpoint("blueprint-frame");
   const daemon = createDaemonServer({ endpoint });
   let socket;
   try {

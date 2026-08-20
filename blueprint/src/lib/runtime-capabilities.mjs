@@ -2,7 +2,7 @@
 //
 // `engines.node` in package.json pins the supported range, but engines is
 // advisory — pnpm warns, then runs anyway on an older runtime. A user who
-// runs `cortex build` on Node 20 would see the WASM hash-wasm dependency
+// runs `blueprint build` on Node 20 would see the WASM hash-wasm dependency
 // load OK but `node:sqlite` (DatabaseSync) throw ERR_UNKNOWN_BUILTIN_MODULE
 // with no actionable message. Emitting `unsupported_node_runtime` on startup
 // gives the failure a code, a codex-style breadcrumb, and a clear remediation

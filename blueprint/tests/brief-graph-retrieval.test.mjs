@@ -7,12 +7,12 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CORTEX = path.resolve(HERE, "..");
-const CLI = path.join(CORTEX, "scripts/cortex.mjs");
-const FIXTURE = path.join(CORTEX, "evals/fixture-repos/typescript-commerce");
+const BLUEPRINT = path.resolve(HERE, "..");
+const CLI = path.join(BLUEPRINT, "scripts/blueprint.mjs");
+const FIXTURE = path.join(BLUEPRINT, "evals/fixture-repos/typescript-commerce");
 
 test("task brief uses graph retrieval for read-first code paths", () => {
-  const repo = path.join(os.tmpdir(), `cortex-brief-graph-${process.pid}-${Date.now()}`);
+  const repo = path.join(os.tmpdir(), `blueprint-brief-graph-${process.pid}-${Date.now()}`);
   fs.cpSync(FIXTURE, repo, { recursive: true });
   try {
     const result = spawnSync(process.execPath, [CLI, "brief", "--task", "change placeOrder behavior", "--out", ".agent"], {

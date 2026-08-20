@@ -19,7 +19,7 @@ import { classifyMutablePath, assertSafeMutableStorePath, openStore, closeStore 
 import { validateSnapshot } from "../src/lib/orthic-snapshot.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts", "cortex.mjs");
+const CLI = join(ROOT, "scripts", "blueprint.mjs");
 
 function deferred() {
   let resolvePromise;
@@ -38,7 +38,7 @@ function temporaryRepository(name) {
 }
 
 test("build fingerprint is server-derived from source, sidecars, output, and normalized options", () => {
-  const root = temporaryRepository("cortex-build-fingerprint");
+  const root = temporaryRepository("blueprint-build-fingerprint");
   try {
     const base = buildFingerprint({ root, outDir: ".agent", options: { limit: 5, fingerprint: "caller-a" } });
     const spoofed = buildFingerprint({ root, outDir: ".agent", options: { limit: 5, fingerprint: "caller-b" } });
@@ -48,7 +48,7 @@ test("build fingerprint is server-derived from source, sidecars, output, and nor
     assert.notEqual(buildFingerprint({ root, outDir: ".agent", options: { limit: 6 } }).fingerprint, base.fingerprint);
     writeFileSync(join(root, "README.md"), "# Fixture\n");
     const beforeGeneratedOutput = buildFingerprint({ root, outDir: ".agent", options: { limit: 5 } });
-    writeFileSync(join(root, "README.md"), "# Fixture\n\n<!-- cortex:docs:start -->\ngenerated pointer\n<!-- cortex:docs:end -->\n");
+    writeFileSync(join(root, "README.md"), "# Fixture\n\n<!-- blueprint:docs:start -->\ngenerated pointer\n<!-- blueprint:docs:end -->\n");
     assert.equal(buildFingerprint({ root, outDir: ".agent", options: { limit: 5 } }).fingerprint, beforeGeneratedOutput.fingerprint);
     mkdirSync(join(root, ".agent"), { recursive: true });
     writeFileSync(join(root, ".agent", "config.json"), "{\"ignoredPrefixes\":[]}\n");
@@ -61,7 +61,7 @@ test("build fingerprint is server-derived from source, sidecars, output, and nor
 });
 
 test("equivalent builds join while differing fingerprints run FIFO without overlap", async () => {
-  const root = temporaryRepository("cortex-build-queue");
+  const root = temporaryRepository("blueprint-build-queue");
   const gates = new Map([[1, deferred()], [2, deferred()], [3, deferred()]]);
   const starts = [];
   let active = 0;
@@ -100,7 +100,7 @@ test("equivalent builds join while differing fingerprints run FIFO without overl
 });
 
 test("waiter cancellation detaches without stopping a shared or current build", async () => {
-  const root = temporaryRepository("cortex-build-cancel");
+  const root = temporaryRepository("blueprint-build-cancel");
   const currentGate = deferred();
   const queuedGate = deferred();
   const starts = [];
@@ -139,7 +139,7 @@ test("waiter cancellation detaches without stopping a shared or current build", 
 });
 
 test("cancelled queued waiter is removed without cancelling current build", async () => {
-  const root = temporaryRepository("cortex-build-queued-cancel");
+  const root = temporaryRepository("blueprint-build-queued-cancel");
   const gate = deferred();
   const starts = [];
   const singleflight = createBuildSingleflight({ runner: async (identity) => {
@@ -164,8 +164,8 @@ test("cancelled queued waiter is removed without cancelling current build", asyn
 });
 
 test("daemon build route accepts build deadline & confines root through enrollment", async () => {
-  const root = temporaryRepository("cortex-build-ipc");
-  const endpoint = temporaryDaemonEndpoint("cortex-build-ipc");
+  const root = temporaryRepository("blueprint-build-ipc");
+  const endpoint = temporaryDaemonEndpoint("blueprint-build-ipc");
   const observed = [];
   const builds = {
     async build(input) { observed.push(input); return { exitCode: 0, stdout: "built\n", stderr: "", fingerprint: "derived" }; },
@@ -191,7 +191,7 @@ test("daemon build route accepts build deadline & confines root through enrollme
   }
 });
 
-test("cortex service status --json returns Hub-owned envelope", () => {
+test("blueprint service status --json returns Hub-owned envelope", () => {
   const result = spawnSync(process.execPath, [CLI, "service", "status", "--json"], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
@@ -200,7 +200,7 @@ test("cortex service status --json returns Hub-owned envelope", () => {
   assert.equal(payload.target, null);
 });
 
-test("cortex service install --dry-run does not register OS service", () => {
+test("blueprint service install --dry-run does not register OS service", () => {
   const result = spawnSync(process.execPath, [CLI, "service", "install", "--dry-run", "--json"], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
@@ -208,8 +208,8 @@ test("cortex service install --dry-run does not register OS service", () => {
   assert.ok(Array.isArray(payload.serviceStart));
 });
 
-test("cortex service install writes only its Orthic product manifest", () => {
-  const home = mkdtempSync(join(tmpdir(), "cortex-install-home-"));
+test("blueprint service install writes only its Orthic product manifest", () => {
+  const home = mkdtempSync(join(tmpdir(), "blueprint-install-home-"));
   try {
     const result = spawnSync(process.execPath, [CLI, "service", "install", "--root", ROOT, "--json"], {
       encoding: "utf8", env: { ...process.env, HOME: home, USERPROFILE: home },
@@ -218,16 +218,16 @@ test("cortex service install writes only its Orthic product manifest", () => {
     const payload = JSON.parse(result.stdout);
     assert.equal(payload.target, null);
     assert.equal(payload.installed, true);
-    assert.equal(payload.manifest, join(home, ".orthic", "hub", "products.d", "cortex.json"));
+    assert.equal(payload.manifest, join(home, ".orthic", "hub", "products.d", "blueprint.json"));
   } finally {
     rmSync(home, { recursive: true, force: true });
   }
 });
 
-test("cortex service run starts in foreground and exits when Hub owner pipe closes", async () => {
-  const home = mkdtempSync(join(tmpdir(), "cortex-service-home-"));
+test("blueprint service run starts in foreground and exits when Hub owner pipe closes", async () => {
+  const home = mkdtempSync(join(tmpdir(), "blueprint-service-home-"));
   try {
-    const manifestPath = join(home, ".orthic", "hub", "products.d", "cortex.json");
+    const manifestPath = join(home, ".orthic", "hub", "products.d", "blueprint.json");
     const { manifest } = writeProductManifest({ installRoot: ROOT, outPath: manifestPath });
     const child = spawn(process.execPath, [CLI, "service", "run", "--json"], { cwd: ROOT, env: { ...process.env, HOME: home, USERPROFILE: home, ORTHIC_HUB_CHILD: "1" }, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
@@ -250,12 +250,12 @@ test("cortex service run starts in foreground and exits when Hub owner pipe clos
     });
     assert.ok(stdout.includes("running") || stdout.includes("foreground"), "service run must print running state");
     const payload = JSON.parse(stdout.trim().split(/\r?\n/)[0]);
-    assert.ok(Number.isInteger(payload.watcherPid) && payload.watcherPid > 0, "service run must own a Cortex watcher child");
+    assert.ok(Number.isInteger(payload.watcherPid) && payload.watcherPid > 0, "service run must own a Blueprint watcher child");
     assert.doesNotThrow(() => process.kill(payload.watcherPid, 0), "watcher child must be alive while service runs");
     const response = await fetch(`http://${payload.statusEndpoint.host}:${payload.statusEndpoint.port}/snapshot`, { headers: { [manifest.statusEndpoint.authHeader]: manifest.statusEndpoint.authToken } });
     assert.equal(response.status, 200);
     const snapshot = await response.json();
-    assert.equal(snapshot.productId, "cortex");
+    assert.equal(snapshot.productId, "blueprint");
     assert.ok(Number.isInteger(snapshot.observedAtUnixMs));
     const exited = new Promise((resolve) => child.on("exit", (code) => resolve(code)));
     child.stdin.end();
@@ -270,7 +270,7 @@ test("cortex service run starts in foreground and exits when Hub owner pipe clos
   }
 });
 
-test("cortex service start/stop are forbidden per D-S03", () => {
+test("blueprint service start/stop are forbidden per D-S03", () => {
   for (const cmd of ["start", "stop"]) {
     const result = spawnSync(process.execPath, [CLI, "service", cmd, "--json"], { encoding: "utf8" });
     const payload = JSON.parse(result.stdout || result.stderr || "{}");
@@ -291,7 +291,7 @@ test("one repo failure does not stop other actors", async () => {
   assert.equal(summary.repos, 2);
 });
 
-test("cortex service uninstall --json works without a live service", () => {
+test("blueprint service uninstall --json works without a live service", () => {
   const result = spawnSync(process.execPath, [CLI, "service", "uninstall", "--json"], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
@@ -303,7 +303,7 @@ test("build identity: Hub protocol/lease/endpoint/instance/fence never enter man
     schemaVersion: 1,
     provider: { id: "lexical", version: "repo-local-v1" },
     counts: { nodes: 3, edges: 2 },
-    repo: { rootName: "cortex", sourceHash: "xxh128:abc", fileCount: 1 },
+    repo: { rootName: "blueprint", sourceHash: "xxh128:abc", fileCount: 1 },
   };
   const clean = computeManifestDigest(base, null);
   const contaminated = computeManifestDigest({
@@ -321,7 +321,7 @@ test("build identity: Hub protocol/lease/endpoint/instance/fence never enter man
 });
 
 test("mutable store paths: synced/shared refused typed, local/unknown proceeds", () => {
-  const synced = classifyMutablePath("/Users/adrian/Dropbox/cortex/.agent/graph/graph.db", { probeMount: () => "local" });
+  const synced = classifyMutablePath("/Users/adrian/Dropbox/blueprint/.agent/graph/graph.db", { probeMount: () => "local" });
   assert.equal(synced.classification, "synced");
   assert.throws(
     () => assertSafeMutableStorePath("/Users/adrian/Dropbox/repo/.agent/graph.db", { probeMount: () => "local" }),
@@ -332,7 +332,7 @@ test("mutable store paths: synced/shared refused typed, local/unknown proceeds",
   assert.throws(() => assertSafeMutableStorePath("//server/share/repo/.agent/graph.db", { probeMount: () => "unavailable" }), { code: "shared_store_path_refused" });
   const memory = classifyMutablePath(":memory:");
   assert.equal(memory.classification, "local");
-  const local = classifyMutablePath("/tmp/cortex-fixture/.agent/graph/graph.db", { probeMount: () => "local" });
+  const local = classifyMutablePath("/tmp/blueprint-fixture/.agent/graph/graph.db", { probeMount: () => "local" });
   assert.ok(["local", "unknown"].includes(local.classification), `local path misclassified as ${local.classification}`);
   assert.throws(
     () => openStore("/Users/adrian/Dropbox/repo/.agent/graph/graph.db", { mutablePathPolicy: "refuse", probeMount: () => "local" }),
@@ -343,7 +343,7 @@ test("mutable store paths: synced/shared refused typed, local/unknown proceeds",
 test("snapshot bounds reject oversized content-free payloads", () => {
   const snap = {
     schemaVersion: 1,
-    productId: "cortex",
+    productId: "blueprint",
     observedAtUnixMs: 1,
     sections: { graph: { state: "available", reason: "x".repeat(500) } },
   };

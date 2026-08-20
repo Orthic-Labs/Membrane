@@ -18,13 +18,13 @@ import { openStore, closeStore, loadGeneration } from "../src/graph/store-sqlite
 import { indexedImpact, indexedNeighbors, indexedPath } from "../src/graph/traverse-store.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CORTEX = path.resolve(HERE, "..");
-const FIXTURE = path.join(CORTEX, "evals/fixture-repos/typescript-commerce");
-const CLI = path.join(CORTEX, "scripts/cortex.mjs");
-const STATIC_PROVIDER = path.join(CORTEX, "src/graph/static-provider.mjs");
+const BLUEPRINT = path.resolve(HERE, "..");
+const FIXTURE = path.join(BLUEPRINT, "evals/fixture-repos/typescript-commerce");
+const CLI = path.join(BLUEPRINT, "scripts/blueprint.mjs");
+const STATIC_PROVIDER = path.join(BLUEPRINT, "src/graph/static-provider.mjs");
 
 function copyFixture() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-index-first-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-index-first-"));
   fs.cpSync(FIXTURE, dir, { recursive: true });
   return dir;
 }

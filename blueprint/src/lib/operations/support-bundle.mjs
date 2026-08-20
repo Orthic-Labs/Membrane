@@ -55,7 +55,7 @@ export function buildSupportBundle({
 
   const summary = {
     schemaVersion: 1,
-    product: "cortex",
+    product: "blueprint",
     createdAt: new Date().toISOString(),
     repoRoot: redactPath(root, root),
     records: SUPPORT_BUNDLE_ALLOWLIST,

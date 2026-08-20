@@ -53,7 +53,7 @@ test("canonical schema hash is stable and all v1 fixtures validate", { skip: wor
 });
 
 
-test("Cortex fixture freezes Layer 3 evidence and the provider safety ceiling", { skip: workspaceSkip }, () => {
+test("Blueprint fixture freezes Layer 3 evidence and the provider safety ceiling", { skip: workspaceSkip }, () => {
   const payload = readJson(path.join(FIXTURES, "context-candidate-set-v1.json"));
   const candidate = payload.candidates[0];
 

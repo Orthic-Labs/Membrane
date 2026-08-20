@@ -1,4 +1,4 @@
-// Per-edge confidence TIER vocabulary (cortex B3).
+// Per-edge confidence TIER vocabulary (blueprint B3).
 //
 // Every edge emitted by any graph provider (graph/static-provider.mjs,
 // graph/treesitter-provider.mjs, graph/scip-provider.mjs) carries a

@@ -48,7 +48,7 @@ export function resolveShippedSigningKey(shippedKeys, privateKeyPem) {
 // while the installed root is moved aside (restored in finally), then full
 // apply + rollback against the provisioned ephemeral root or the untouched
 // shipped root, with store evidence checked at every step.
-export async function runUpdateTrustLifecycle({ cortex, packageRoot, repo, app, prior, update, manifestPath, manifest, ephemeralKeys, useShippedRoot, shippedKeys, shippedRootPath, signingKeyPem } = {}) {
+export async function runUpdateTrustLifecycle({ blueprint, packageRoot, repo, app, prior, update, manifestPath, manifest, ephemeralKeys, useShippedRoot, shippedKeys, shippedRootPath, signingKeyPem } = {}) {
   const stages = { updateTrustMissing: false, updateApply: false, rollback: false };
   const graph = join(repo, ".agent", "graph", "graph.db");
   let db = new DatabaseSync(graph); db.exec("CREATE TABLE IF NOT EXISTS clean_host_update_proof (value TEXT); DELETE FROM clean_host_update_proof; INSERT INTO clean_host_update_proof VALUES ('before')"); db.close();
@@ -61,7 +61,7 @@ export async function runUpdateTrustLifecycle({ cortex, packageRoot, repo, app, 
   const shippedRootExisted = existsSync(shippedRootPath);
   if (shippedRootExisted) renameSync(shippedRootPath, trustRootBackup);
   try {
-    const missingTrust = spawnSync(process.execPath, [cortex, "update", "apply", "--manifest", manifestPath, "--artifact", update, "--artifact-name", "local", "--app-dir", app, "--prior-dir", prior, "--repo-root", repo, "--json"], { cwd: repo, encoding: "utf8" });
+    const missingTrust = spawnSync(process.execPath, [blueprint, "update", "apply", "--manifest", manifestPath, "--artifact", update, "--artifact-name", "local", "--app-dir", app, "--prior-dir", prior, "--repo-root", repo, "--json"], { cwd: repo, encoding: "utf8" });
     const missingTrustReason = missingTrust.status === 0 ? null : JSON.parse(missingTrust.stdout).reason;
     if (missingTrustReason !== "update_trust_root_missing") throw new Error(`installed update did not fail closed with update_trust_root_missing (${missingTrustReason ?? "applied"}): ${missingTrust.stderr || missingTrust.stdout}`);
     stages.updateTrustMissing = true;
@@ -88,12 +88,12 @@ export async function runUpdateTrustLifecycle({ cortex, packageRoot, repo, app, 
     writeFileSync(shippedRootPath, JSON.stringify({ schemaVersion: 1, keys: [{ keyId: "ephemeral", algorithm: "Ed25519", publicKey: ephemeralKeys.publicKey.export({ type: "spki", format: "pem" }) }] }));
   }
   writeFileSync(manifestPath, JSON.stringify(manifest));
-  const apply = JSON.parse(runNode(cortex, ["update", "apply", "--manifest", manifestPath, "--artifact", update, "--artifact-name", "local", "--app-dir", app, "--prior-dir", prior, "--repo-root", repo, "--json"], { cwd: repo }));
+  const apply = JSON.parse(runNode(blueprint, ["update", "apply", "--manifest", manifestPath, "--artifact", update, "--artifact-name", "local", "--app-dir", app, "--prior-dir", prior, "--repo-root", repo, "--json"], { cwd: repo }));
   if (!apply.ok) throw new Error(`installed update apply failed: ${apply.reason}`);
   if (readFileSync(join(app, "version.txt"), "utf8") !== "after\n") throw new Error("staged update did not apply");
   db = new DatabaseSync(graph); db.exec("UPDATE clean_host_update_proof SET value = 'after'"); db.close();
   stages.updateApply = true;
-  const rolled = JSON.parse(runNode(cortex, ["update", "rollback", "--app-dir", app, "--prior-dir", prior, "--repo-root", repo, "--json"], { cwd: repo }));
+  const rolled = JSON.parse(runNode(blueprint, ["update", "rollback", "--app-dir", app, "--prior-dir", prior, "--repo-root", repo, "--json"], { cwd: repo }));
   if (!rolled.ok || readFileSync(join(app, "version.txt"), "utf8") !== "before\n") throw new Error("packaged rollback did not restore prior app");
   db = new DatabaseSync(graph); const restored = db.prepare("SELECT value FROM clean_host_update_proof").get().value; db.close();
   if (restored !== "before") throw new Error("packaged rollback did not restore store");
@@ -108,7 +108,7 @@ export async function runCleanHostSmoke({ candidate } = {}) {
   if (!verified.ok) throw new Error(`candidate verification failed: ${verified.problems.join("; ")}`);
   const tarballs = verified.compatibility.artifacts.filter((artifact) => artifact.name.endsWith(".tgz"));
   if (tarballs.length !== 1) throw new Error("candidate must contain one npm tarball");
-  const temp = mkdtempSync(join(tmpdir(), "cortex-clean-host-"));
+  const temp = mkdtempSync(join(tmpdir(), "blueprint-clean-host-"));
   const stages = { verify: true, init: false, query: false, mcp: false, updateCheck: false, updateTrustMissing: false, updateApply: false, rollback: false, uninstall: false };
   try {
     const prefix = join(temp, "prefix");
@@ -128,19 +128,19 @@ export async function runCleanHostSmoke({ candidate } = {}) {
     const repo = join(temp, "repo");
     mkdirSync(repo);
     run("git", ["init", "-q", repo]);
-    writeFileSync(join(repo, "CORTEX-AGENT.md"), "# original\n", "utf8");
+    writeFileSync(join(repo, "BLUEPRINT-AGENT.md"), "# original\n", "utf8");
     writeFileSync(join(repo, "releaseProof.mjs"), "export function releaseProof() { return true; }\n", "utf8");
     run("git", ["-C", repo, "add", "releaseProof.mjs"]);
-    const cortex = join(packageRoot, "scripts", "cortex.mjs");
-    const mcp = join(packageRoot, "scripts", "cortex-mcp.mjs");
-    JSON.parse(runNode(cortex, ["init", "--host", "generic", "--mcp", "off", "--watch", "off", "--json"], { cwd: repo }));
+    const blueprint = join(packageRoot, "scripts", "blueprint.mjs");
+    const mcp = join(packageRoot, "scripts", "blueprint-mcp.mjs");
+    JSON.parse(runNode(blueprint, ["init", "--host", "generic", "--mcp", "off", "--watch", "off", "--json"], { cwd: repo }));
     stages.init = true;
-    const query = JSON.parse(runNode(cortex, ["search", "--query", "release", "--json"], { cwd: repo }));
+    const query = JSON.parse(runNode(blueprint, ["search", "--query", "release", "--json"], { cwd: repo }));
     const queryEvidence = validateQueryEvidence(query);
     stages.query = true;
     await verifyMcpInitialize({ script: mcp, root: repo });
     stages.mcp = true;
-    JSON.parse(runNode(cortex, ["update", "check", "--offline", "--json"], { cwd: repo }));
+    JSON.parse(runNode(blueprint, ["update", "check", "--offline", "--json"], { cwd: repo }));
     stages.updateCheck = true;
     const { treeDigest } = await import(pathToFileURL(join(packageRoot, "src", "lib", "update", "manifest.mjs")));
     const app = join(repo, "app"), prior = join(repo, "app.prior");
@@ -148,20 +148,20 @@ export async function runCleanHostSmoke({ candidate } = {}) {
     mkdirSync(app); mkdirSync(update);
     writeFileSync(join(app, "version.txt"), "before\n");
     writeFileSync(join(update, "version.txt"), "after\n");
-    writeFileSync(join(app, "package.json"), JSON.stringify({ name: "@orthic-labs/cortex-target", version: "0.2.0" }));
-    writeFileSync(join(update, "package.json"), JSON.stringify({ name: "@orthic-labs/cortex-target", version: "0.3.0" }));
+    writeFileSync(join(app, "package.json"), JSON.stringify({ name: "@orthic-labs/blueprint-target", version: "0.2.0" }));
+    writeFileSync(join(update, "package.json"), JSON.stringify({ name: "@orthic-labs/blueprint-target", version: "0.3.0" }));
     const keys = generateKeyPairSync("ed25519"), manifestPath = join(temp, "manifest.json");
-    const manifest = { schemaVersion: 1, channel: "stable", version: "0.3.0", commit: "a".repeat(40), publishedAt: "2026-08-08T00:00:00Z", artifacts: [{ name: "local", packageName: "@orthic-labs/cortex-target", platform: process.platform, arch: process.arch, sha256: treeDigest(update) }], signatureAlgorithm: "Ed25519", keyId: "ephemeral", signature: "" };
+    const manifest = { schemaVersion: 1, channel: "stable", version: "0.3.0", commit: "a".repeat(40), publishedAt: "2026-08-08T00:00:00Z", artifacts: [{ name: "local", packageName: "@orthic-labs/blueprint-target", platform: process.platform, arch: process.arch, sha256: treeDigest(update) }], signatureAlgorithm: "Ed25519", keyId: "ephemeral", signature: "" };
     const shippedRootPath = join(packageRoot, "src", "lib", "update", "trusted-update-keys.json");
     const lifecycle = await runUpdateTrustLifecycle({
-      cortex, packageRoot, repo, app, prior, update, manifestPath, manifest,
+      blueprint, packageRoot, repo, app, prior, update, manifestPath, manifest,
       ephemeralKeys: keys, useShippedRoot, shippedKeys, shippedRootPath,
       signingKeyPem: process.env.UPDATE_SIGNING_KEY_PEM,
     });
     Object.assign(stages, lifecycle.stages);
     if (lifecycle.rootUntouched) { trustRoot.rootUntouched = true; trustRoot.keyId = lifecycle.keyId; }
-    const uninstalled = JSON.parse(runNode(cortex, ["uninstall", "--root", repo, "--json"], { cwd: repo }));
-    if (!uninstalled.ok || readFileSync(join(repo, "CORTEX-AGENT.md"), "utf8") !== "# original\n") throw new Error("uninstall did not restore host file");
+    const uninstalled = JSON.parse(runNode(blueprint, ["uninstall", "--root", repo, "--json"], { cwd: repo }));
+    if (!uninstalled.ok || readFileSync(join(repo, "BLUEPRINT-AGENT.md"), "utf8") !== "# original\n") throw new Error("uninstall did not restore host file");
     stages.uninstall = true;
     return { schemaVersion: 1, ok: true, stages, trustRoot, queryEvidence, storeEvidence: { before: "before", after: "after", restored: lifecycle.restored } };
   } finally {

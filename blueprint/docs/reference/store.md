@@ -1,6 +1,6 @@
-# Cortex SQLite graph store
+# Blueprint SQLite graph store
 
-The persistent layer for a Cortex repository. One `graph.db` per enrolled repo,
+The persistent layer for a Blueprint repository. One `graph.db` per enrolled repo,
 under `.agent/graph/`. Everything the CLI, MCP, SDK, hooks, and the resident
 service read goes through `graph/store-sqlite.mjs` — there is no parallel
 "cache DB" and no graph.json.
@@ -25,7 +25,7 @@ service read goes through `graph/store-sqlite.mjs` — there is no parallel
 `repairInterruptedMigration(dbPath, fromVersion)` restores the pre-migration
 backup and re-runs migrate(). It returns `{ restored: true, fromVersion }` or a
 typed `{ restored: false, reason }` when no backup exists — it never throws
-into a repair plan. `cortex doctor` surfaces a missing repair path as a finding.
+into a repair plan. `blueprint doctor` surfaces a missing repair path as a finding.
 
 ## Platform path compatibility
 

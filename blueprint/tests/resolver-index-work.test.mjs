@@ -47,7 +47,7 @@ function legacyCallEdges(files, nodes, edges) {
 }
 
 test("resolver index preserves legacy call output with materially fewer candidate inspections", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-resolver-index-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-resolver-index-"));
   try {
     execFileSync("git", ["init", "-q"], { cwd: root });
     const targets = Array.from({ length: 96 }, (_, index) => `export function target${String(index).padStart(3, "0")}() { return ${index}; }`);

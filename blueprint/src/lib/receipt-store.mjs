@@ -1,7 +1,7 @@
 // Host-owned orientation receipt store — data, not enforcement.
 //
 // Receipts live outside the agent-writable repository tree by default
-// (~/.agent/receipts or CORTEX_RECEIPT_STORE). The store records
+// (~/.agent/receipts or BLUEPRINT_RECEIPT_STORE). The store records
 // orientation decisions keyed by session / task / repo / generation; it does
 // not block tools or classify shell commands.
 
@@ -119,7 +119,7 @@ export function checkScopeGrant({ repoRoot, generationId, taskId, path: requeste
 }
 
 export function defaultReceiptStoreDir() {
-  const fromEnv = process.env.CORTEX_RECEIPT_STORE;
+  const fromEnv = process.env.BLUEPRINT_RECEIPT_STORE;
   if (fromEnv && String(fromEnv).trim()) return resolve(String(fromEnv).trim());
   return join(homedir(), ".agent", "receipts");
 }
@@ -271,7 +271,7 @@ export function buildOrientationReceipt(fields) {
   const issuedAt = fields.issuedAt ?? new Date().toISOString();
   return {
     schemaVersion: RECEIPT_SCHEMA_VERSION,
-    kind: "cortex_orientation_receipt",
+    kind: "blueprint_orientation_receipt",
     receiptId: fields.receiptId ?? randomUUID(),
     status: fields.status ?? "active",
     sessionId: String(fields.sessionId ?? ""),

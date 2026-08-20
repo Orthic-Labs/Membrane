@@ -1,7 +1,7 @@
 # Windows signing
 
 RightKit `right-release` owns Windows installer construction, Azure Trusted
-Signing, signature verification, hardening, sealing, and publication. Cortex
+Signing, signature verification, hardening, sealing, and publication. Blueprint
 does not carry signing credentials or reproduce that pipeline in GitHub Actions.
 
 From the clean primary checkout, build without uploading:

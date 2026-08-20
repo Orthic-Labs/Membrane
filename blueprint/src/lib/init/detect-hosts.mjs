@@ -1,4 +1,4 @@
-// D08: deterministic host detection for `cortex init`. Explicit flag wins;
+// D08: deterministic host detection for `blueprint init`. Explicit flag wins;
 // then existing host config files; then installed command probes; otherwise
 // generic. Never installs more than the selected host set.
 
@@ -11,8 +11,8 @@ export const HOSTS = Object.freeze(["claude-code", "codex", "cursor", "generic"]
 const HOST_CONFIG_PATHS = Object.freeze({
   "claude-code": [".claude/settings.json", "CLAUDE.md", ".mcp.json"],
   codex: ["AGENTS.md", ".codex/config.toml"],
-  cursor: [".cursor/rules/cortex.mdc", ".cursor/mcp.json"],
-  generic: ["CORTEX-AGENT.md"],
+  cursor: [".cursor/rules/blueprint.mdc", ".cursor/mcp.json"],
+  generic: ["BLUEPRINT-AGENT.md"],
 });
 
 const HOST_COMMANDS = Object.freeze({

@@ -2,9 +2,9 @@
 
 RightKit `right-release` owns private updater keys, local signing, and rotation.
 Never generate, inspect, print, store, or pass private signing material through
-Cortex source, commands, logs, manifests, or GitHub Actions.
+Blueprint source, commands, logs, manifests, or GitHub Actions.
 
-Cortex carries public trust roots only in
+Blueprint carries public trust roots only in
 `lib/update/trusted-update-keys.json`. A public update is publishable only when
 its sealed manifest is signed by a provisioned RightRelease key accepted by that
 root. Missing or mismatched trust fails closed.

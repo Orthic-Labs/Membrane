@@ -1,0 +1,1105 @@
+{
+  "schema": "blueprint-storage-benchmark-report-v1",
+  "command": "node scripts/benchmark-storage.mjs --fixture-files 5000 --samples 5",
+  "source": {
+    "commit": "590593de3e3708ab7081b5c2b7a9617310a35426",
+    "root": "/Volumes/D/claude/blueprint",
+    "worktree": "dirty"
+  },
+  "fixture": {
+    "id": "synthetic-blueprint-storage-5000-v1",
+    "fixtureVersion": 1,
+    "seed": "blueprint-storage-v1",
+    "files": 5000,
+    "updatePaths": 100,
+    "contentSha256": "3ba536f4464afffae5387921c1ca07829588a70317004f41fbedfabc7bf9edc3"
+  },
+  "host": {
+    "hostname": "Adrians-MacBook-Air.local",
+    "platform": "darwin",
+    "arch": "arm64",
+    "release": "25.5.0",
+    "node": "v26.5.0",
+    "sqlite": "3.53.3"
+  },
+  "samples": 5,
+  "metrics": {
+    "coldBuild": {
+      "samples": [
+        {
+          "elapsedMs": 4635.3835,
+          "peakRssBytes": 379699200,
+          "stdout": "built .agent/map.json docs=0 claims=0 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_blueprint=incomplete next=phase2",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)"
+        },
+        {
+          "elapsedMs": 4470.623875,
+          "peakRssBytes": 447053824,
+          "stdout": "built .agent/map.json docs=0 claims=0 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_blueprint=incomplete next=phase2",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)"
+        },
+        {
+          "elapsedMs": 4583.194375000001,
+          "peakRssBytes": 409124864,
+          "stdout": "built .agent/map.json docs=0 claims=0 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_blueprint=incomplete next=phase2",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)"
+        },
+        {
+          "elapsedMs": 4923.226415999998,
+          "peakRssBytes": 403423232,
+          "stdout": "built .agent/map.json docs=0 claims=0 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_blueprint=incomplete next=phase2",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)"
+        },
+        {
+          "elapsedMs": 7085.495292,
+          "peakRssBytes": 333398016,
+          "stdout": "built .agent/map.json docs=0 claims=0 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_blueprint=incomplete next=phase2",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)"
+        }
+      ],
+      "p95Ms": 7085.495292,
+      "peakRssBytes": 447053824
+    },
+    "noChange": {
+      "samples": [
+        {
+          "elapsedMs": 6682.6782909999965,
+          "peakRssBytes": 395018240,
+          "stdout": "built .agent/map.json docs=0 claims=0 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_blueprint=incomplete next=phase2",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)"
+        },
+        {
+          "elapsedMs": 7213.404875,
+          "peakRssBytes": 385466368,
+          "stdout": "built .agent/map.json docs=0 claims=0 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_blueprint=incomplete next=phase2",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)"
+        },
+        {
+          "elapsedMs": 4435.549791999998,
+          "peakRssBytes": 447315968,
+          "stdout": "built .agent/map.json docs=0 claims=0 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_blueprint=incomplete next=phase2",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)"
+        },
+        {
+          "elapsedMs": 4526.646457999996,
+          "peakRssBytes": 447348736,
+          "stdout": "built .agent/map.json docs=0 claims=0 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_blueprint=incomplete next=phase2",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)"
+        },
+        {
+          "elapsedMs": 5148.664917000002,
+          "peakRssBytes": 449937408,
+          "stdout": "built .agent/map.json docs=0 claims=0 manifest=.agent/manifest.json product=docs/product.md architecture=docs/architecture.md phase1_ready full_blueprint=incomplete next=phase2",
+          "rssProbe": "ps -o rss= -p <pid> (10ms interval)"
+        }
+      ],
+      "p95Ms": 7213.404875,
+      "peakRssBytes": 449937408
+    },
+    "oneFileDelta": {
+      "samples": [
+        {
+          "elapsedMs": 290.8602499999979,
+          "applied": true,
+          "peakRssBytes": 78348288
+        },
+        {
+          "elapsedMs": 258.17662500000006,
+          "applied": true,
+          "peakRssBytes": 101728256
+        },
+        {
+          "elapsedMs": 251.6163749999978,
+          "applied": true,
+          "peakRssBytes": 113082368
+        },
+        {
+          "elapsedMs": 243.98558399999456,
+          "applied": true,
+          "peakRssBytes": 138887168
+        },
+        {
+          "elapsedMs": 274.0650830000013,
+          "applied": true,
+          "peakRssBytes": 152289280
+        }
+      ],
+      "p95Ms": 290.8602499999979,
+      "peakRssBytes": 152289280
+    },
+    "residentExactLookup": {
+      "state": "not_configured",
+      "samples": [],
+      "p95Ms": null,
+      "embeddedControl": {
+        "elapsedMs": 0.25279100000625476,
+        "rows": 2,
+        "label": "not a resident-daemon measurement"
+      }
+    },
+    "fixed100FileUpdate": {
+      "files": 100,
+      "elapsedMs": 30696.686125,
+      "samples": [
+        {
+          "elapsedMs": 256.57708300000377,
+          "applied": true,
+          "peakRssBytes": 155025408
+        },
+        {
+          "elapsedMs": 260.55049999999756,
+          "applied": true,
+          "peakRssBytes": 157679616
+        },
+        {
+          "elapsedMs": 260.6371670000008,
+          "applied": true,
+          "peakRssBytes": 160301056
+        },
+        {
+          "elapsedMs": 273.17033300000185,
+          "applied": true,
+          "peakRssBytes": 163119104
+        },
+        {
+          "elapsedMs": 255.56404099999781,
+          "applied": true,
+          "peakRssBytes": 165888000
+        },
+        {
+          "elapsedMs": 271.74320799999987,
+          "applied": true,
+          "peakRssBytes": 168509440
+        },
+        {
+          "elapsedMs": 248.20754199999647,
+          "applied": true,
+          "peakRssBytes": 170655744
+        },
+        {
+          "elapsedMs": 354.38770799999475,
+          "applied": true,
+          "peakRssBytes": 174882816
+        },
+        {
+          "elapsedMs": 379.92320800000016,
+          "applied": true,
+          "peakRssBytes": 177586176
+        },
+        {
+          "elapsedMs": 351.8503750000018,
+          "applied": true,
+          "peakRssBytes": 180142080
+        },
+        {
+          "elapsedMs": 330.98829199999454,
+          "applied": true,
+          "peakRssBytes": 182747136
+        },
+        {
+          "elapsedMs": 288.0931669999991,
+          "applied": true,
+          "peakRssBytes": 185401344
+        },
+        {
+          "elapsedMs": 464.25945800000045,
+          "applied": true,
+          "peakRssBytes": 187940864
+        },
+        {
+          "elapsedMs": 218.95970800000214,
+          "applied": true,
+          "peakRssBytes": 190562304
+        },
+        {
+          "elapsedMs": 253.75666700000147,
+          "applied": true,
+          "peakRssBytes": 193167360
+        },
+        {
+          "elapsedMs": 288.60175000000163,
+          "applied": true,
+          "peakRssBytes": 195788800
+        },
+        {
+          "elapsedMs": 316.5975000000035,
+          "applied": true,
+          "peakRssBytes": 187039744
+        },
+        {
+          "elapsedMs": 285.5171249999985,
+          "applied": true,
+          "peakRssBytes": 154812416
+        },
+        {
+          "elapsedMs": 297.19729099999677,
+          "applied": true,
+          "peakRssBytes": 153845760
+        },
+        {
+          "elapsedMs": 292.76862500000425,
+          "applied": true,
+          "peakRssBytes": 155058176
+        },
+        {
+          "elapsedMs": 268.288916000005,
+          "applied": true,
+          "peakRssBytes": 157171712
+        },
+        {
+          "elapsedMs": 467.1267500000031,
+          "applied": true,
+          "peakRssBytes": 155746304
+        },
+        {
+          "elapsedMs": 285.78479200000584,
+          "applied": true,
+          "peakRssBytes": 159301632
+        },
+        {
+          "elapsedMs": 251.60958299999766,
+          "applied": true,
+          "peakRssBytes": 163872768
+        },
+        {
+          "elapsedMs": 279.1075419999979,
+          "applied": true,
+          "peakRssBytes": 165953536
+        },
+        {
+          "elapsedMs": 263.59304199999315,
+          "applied": true,
+          "peakRssBytes": 168001536
+        },
+        {
+          "elapsedMs": 306.658958,
+          "applied": true,
+          "peakRssBytes": 169771008
+        },
+        {
+          "elapsedMs": 221.07012499999837,
+          "applied": true,
+          "peakRssBytes": 171098112
+        },
+        {
+          "elapsedMs": 292.7958329999965,
+          "applied": true,
+          "peakRssBytes": 173064192
+        },
+        {
+          "elapsedMs": 295.0516249999928,
+          "applied": true,
+          "peakRssBytes": 175292416
+        },
+        {
+          "elapsedMs": 274.36133299999346,
+          "applied": true,
+          "peakRssBytes": 177012736
+        },
+        {
+          "elapsedMs": 396.9310419999965,
+          "applied": true,
+          "peakRssBytes": 171294720
+        },
+        {
+          "elapsedMs": 368.8739579999965,
+          "applied": true,
+          "peakRssBytes": 172294144
+        },
+        {
+          "elapsedMs": 301.2350000000006,
+          "applied": true,
+          "peakRssBytes": 172605440
+        },
+        {
+          "elapsedMs": 270.99795799999265,
+          "applied": true,
+          "peakRssBytes": 172670976
+        },
+        {
+          "elapsedMs": 307.9044169999979,
+          "applied": true,
+          "peakRssBytes": 172670976
+        },
+        {
+          "elapsedMs": 188.3522920000105,
+          "applied": true,
+          "peakRssBytes": 172687360
+        },
+        {
+          "elapsedMs": 251.31929100000707,
+          "applied": true,
+          "peakRssBytes": 172916736
+        },
+        {
+          "elapsedMs": 262.1264999999985,
+          "applied": true,
+          "peakRssBytes": 172916736
+        },
+        {
+          "elapsedMs": 386.85050000000047,
+          "applied": true,
+          "peakRssBytes": 172916736
+        },
+        {
+          "elapsedMs": 329.0559579999972,
+          "applied": true,
+          "peakRssBytes": 172916736
+        },
+        {
+          "elapsedMs": 326.03445799999463,
+          "applied": true,
+          "peakRssBytes": 172916736
+        },
+        {
+          "elapsedMs": 308.0553749999963,
+          "applied": true,
+          "peakRssBytes": 172916736
+        },
+        {
+          "elapsedMs": 273.94604199999594,
+          "applied": true,
+          "peakRssBytes": 172916736
+        },
+        {
+          "elapsedMs": 272.2465830000001,
+          "applied": true,
+          "peakRssBytes": 168476672
+        },
+        {
+          "elapsedMs": 332.05241699999897,
+          "applied": true,
+          "peakRssBytes": 169607168
+        },
+        {
+          "elapsedMs": 243.61912499999744,
+          "applied": true,
+          "peakRssBytes": 170098688
+        },
+        {
+          "elapsedMs": 291.31079200000386,
+          "applied": true,
+          "peakRssBytes": 170098688
+        },
+        {
+          "elapsedMs": 251.10149999998976,
+          "applied": true,
+          "peakRssBytes": 170098688
+        },
+        {
+          "elapsedMs": 235.03237499999523,
+          "applied": true,
+          "peakRssBytes": 170098688
+        },
+        {
+          "elapsedMs": 307.9332499999873,
+          "applied": true,
+          "peakRssBytes": 170082304
+        },
+        {
+          "elapsedMs": 261.0490829999908,
+          "applied": true,
+          "peakRssBytes": 170082304
+        },
+        {
+          "elapsedMs": 273.64870900000096,
+          "applied": true,
+          "peakRssBytes": 170262528
+        },
+        {
+          "elapsedMs": 292.6428329999908,
+          "applied": true,
+          "peakRssBytes": 170262528
+        },
+        {
+          "elapsedMs": 289.06166599999415,
+          "applied": true,
+          "peakRssBytes": 170262528
+        },
+        {
+          "elapsedMs": 263.892583000008,
+          "applied": true,
+          "peakRssBytes": 170262528
+        },
+        {
+          "elapsedMs": 270.649207999988,
+          "applied": true,
+          "peakRssBytes": 170262528
+        },
+        {
+          "elapsedMs": 268.7891670000099,
+          "applied": true,
+          "peakRssBytes": 170262528
+        },
+        {
+          "elapsedMs": 230.19583399999829,
+          "applied": true,
+          "peakRssBytes": 170262528
+        },
+        {
+          "elapsedMs": 311.0694169999915,
+          "applied": true,
+          "peakRssBytes": 170262528
+        },
+        {
+          "elapsedMs": 193.4413329999952,
+          "applied": true,
+          "peakRssBytes": 170295296
+        },
+        {
+          "elapsedMs": 400.92983300000196,
+          "applied": true,
+          "peakRssBytes": 170295296
+        },
+        {
+          "elapsedMs": 234.14729100000113,
+          "applied": true,
+          "peakRssBytes": 168951808
+        },
+        {
+          "elapsedMs": 391.9944589999941,
+          "applied": true,
+          "peakRssBytes": 145440768
+        },
+        {
+          "elapsedMs": 617.9972080000007,
+          "applied": true,
+          "peakRssBytes": 137691136
+        },
+        {
+          "elapsedMs": 395.79366599999776,
+          "applied": true,
+          "peakRssBytes": 120602624
+        },
+        {
+          "elapsedMs": 400.8440830000036,
+          "applied": true,
+          "peakRssBytes": 125140992
+        },
+        {
+          "elapsedMs": 396.4861660000024,
+          "applied": true,
+          "peakRssBytes": 127467520
+        },
+        {
+          "elapsedMs": 546.3912920000002,
+          "applied": true,
+          "peakRssBytes": 130662400
+        },
+        {
+          "elapsedMs": 231.5779579999944,
+          "applied": true,
+          "peakRssBytes": 133300224
+        },
+        {
+          "elapsedMs": 239.4596670000028,
+          "applied": true,
+          "peakRssBytes": 135872512
+        },
+        {
+          "elapsedMs": 358.8283750000119,
+          "applied": true,
+          "peakRssBytes": 138051584
+        },
+        {
+          "elapsedMs": 343.6519580000022,
+          "applied": true,
+          "peakRssBytes": 140640256
+        },
+        {
+          "elapsedMs": 233.65033299999777,
+          "applied": true,
+          "peakRssBytes": 143376384
+        },
+        {
+          "elapsedMs": 248.14595800000825,
+          "applied": true,
+          "peakRssBytes": 145948672
+        },
+        {
+          "elapsedMs": 238.46474999999919,
+          "applied": true,
+          "peakRssBytes": 148504576
+        },
+        {
+          "elapsedMs": 233.19891599999391,
+          "applied": true,
+          "peakRssBytes": 155009024
+        },
+        {
+          "elapsedMs": 245.26829199999338,
+          "applied": true,
+          "peakRssBytes": 156745728
+        },
+        {
+          "elapsedMs": 229.3405000000057,
+          "applied": true,
+          "peakRssBytes": 159072256
+        },
+        {
+          "elapsedMs": 231.57612499999232,
+          "applied": true,
+          "peakRssBytes": 161464320
+        },
+        {
+          "elapsedMs": 237.40495799999917,
+          "applied": true,
+          "peakRssBytes": 162185216
+        },
+        {
+          "elapsedMs": 184.49520800000755,
+          "applied": true,
+          "peakRssBytes": 162381824
+        },
+        {
+          "elapsedMs": 213.13354100000288,
+          "applied": true,
+          "peakRssBytes": 162381824
+        },
+        {
+          "elapsedMs": 230.9404169999907,
+          "applied": true,
+          "peakRssBytes": 162381824
+        },
+        {
+          "elapsedMs": 233.20958399999654,
+          "applied": true,
+          "peakRssBytes": 160694272
+        },
+        {
+          "elapsedMs": 244.374708000003,
+          "applied": true,
+          "peakRssBytes": 161398784
+        },
+        {
+          "elapsedMs": 405.4128330000094,
+          "applied": true,
+          "peakRssBytes": 161595392
+        },
+        {
+          "elapsedMs": 241.04066699999385,
+          "applied": true,
+          "peakRssBytes": 161595392
+        },
+        {
+          "elapsedMs": 271.12641599999915,
+          "applied": true,
+          "peakRssBytes": 161824768
+        },
+        {
+          "elapsedMs": 290.49829200000386,
+          "applied": true,
+          "peakRssBytes": 162938880
+        },
+        {
+          "elapsedMs": 240.37374999999884,
+          "applied": true,
+          "peakRssBytes": 163692544
+        },
+        {
+          "elapsedMs": 279.390790999998,
+          "applied": true,
+          "peakRssBytes": 167247872
+        },
+        {
+          "elapsedMs": 234.57924999999523,
+          "applied": true,
+          "peakRssBytes": 169803776
+        },
+        {
+          "elapsedMs": 235.16420800000196,
+          "applied": true,
+          "peakRssBytes": 169836544
+        },
+        {
+          "elapsedMs": 223.5546250000043,
+          "applied": true,
+          "peakRssBytes": 170524672
+        },
+        {
+          "elapsedMs": 235.062208000003,
+          "applied": true,
+          "peakRssBytes": 170524672
+        },
+        {
+          "elapsedMs": 232.19383299999754,
+          "applied": true,
+          "peakRssBytes": 170524672
+        },
+        {
+          "elapsedMs": 254.14545799999905,
+          "applied": true,
+          "peakRssBytes": 170524672
+        },
+        {
+          "elapsedMs": 233.84054200000537,
+          "applied": true,
+          "peakRssBytes": 170524672
+        },
+        {
+          "elapsedMs": 233.39908400000422,
+          "applied": true,
+          "peakRssBytes": 170524672
+        }
+      ]
+    },
+    "walBlockedReader": {
+      "state": "growth_observed",
+      "beforeBytes": 0,
+      "afterBytes": 4853392,
+      "growthBytes": 4853392,
+      "checkpoint": {
+        "busy": 0,
+        "log": 1178,
+        "checkpointed": 0
+      },
+      "write": {
+        "elapsedMs": 91.68045800000255,
+        "applied": true,
+        "peakRssBytes": 172900352
+      }
+    },
+    "allocation": {
+      "state": "available",
+      "rows": [
+        {
+          "name": "idx_symbol_terms_symbol",
+          "bytes": 16064512,
+          "pages": 3922
+        },
+        {
+          "name": "symbol_terms",
+          "bytes": 16003072,
+          "pages": 3907
+        },
+        {
+          "name": "fact_owner",
+          "bytes": 8671232,
+          "pages": 2117
+        },
+        {
+          "name": "edges",
+          "bytes": 6852608,
+          "pages": 1673
+        },
+        {
+          "name": "symbols",
+          "bytes": 4624384,
+          "pages": 1129
+        },
+        {
+          "name": "sqlite_autoindex_fact_owner_1",
+          "bytes": 3096576,
+          "pages": 756
+        },
+        {
+          "name": "files",
+          "bytes": 2572288,
+          "pages": 628
+        },
+        {
+          "name": "node_provider",
+          "bytes": 2174976,
+          "pages": 531
+        },
+        {
+          "name": "idx_fact_owner_repo_root",
+          "bytes": 2113536,
+          "pages": 516
+        },
+        {
+          "name": "symbol_search_content",
+          "bytes": 2084864,
+          "pages": 509
+        },
+        {
+          "name": "sqlite_autoindex_edges_1",
+          "bytes": 1519616,
+          "pages": 371
+        },
+        {
+          "name": "idx_fact_owner_provider_path",
+          "bytes": 1495040,
+          "pages": 365
+        },
+        {
+          "name": "idx_edges_gen_target_kind",
+          "bytes": 1466368,
+          "pages": 358
+        },
+        {
+          "name": "idx_fact_owner_generation",
+          "bytes": 1372160,
+          "pages": 335
+        },
+        {
+          "name": "idx_fact_owner_path",
+          "bytes": 1241088,
+          "pages": 303
+        },
+        {
+          "name": "sqlite_autoindex_node_provider_1",
+          "bytes": 1150976,
+          "pages": 281
+        },
+        {
+          "name": "idx_edges_gen_source_kind",
+          "bytes": 1142784,
+          "pages": 279
+        },
+        {
+          "name": "sqlite_autoindex_symbols_1",
+          "bytes": 868352,
+          "pages": 212
+        },
+        {
+          "name": "idx_node_provider_provider_path",
+          "bytes": 860160,
+          "pages": 210
+        },
+        {
+          "name": "idx_edges_target",
+          "bytes": 860160,
+          "pages": 210
+        },
+        {
+          "name": "generation_leaf",
+          "bytes": 663552,
+          "pages": 162
+        },
+        {
+          "name": "symbol_search_data",
+          "bytes": 606208,
+          "pages": 148
+        },
+        {
+          "name": "file_state",
+          "bytes": 589824,
+          "pages": 144
+        },
+        {
+          "name": "idx_edges_source",
+          "bytes": 565248,
+          "pages": 138
+        },
+        {
+          "name": "idx_symbols_generation",
+          "bytes": 552960,
+          "pages": 135
+        },
+        {
+          "name": "idx_edges_generation",
+          "bytes": 544768,
+          "pages": 133
+        },
+        {
+          "name": "idx_fact_owner_domain",
+          "bytes": 524288,
+          "pages": 128
+        },
+        {
+          "name": "idx_symbols_path",
+          "bytes": 516096,
+          "pages": 126
+        },
+        {
+          "name": "idx_edges_tier",
+          "bytes": 278528,
+          "pages": 68
+        },
+        {
+          "name": "idx_files_generation",
+          "bytes": 270336,
+          "pages": 66
+        },
+        {
+          "name": "idx_generation_leaf_parent",
+          "bytes": 266240,
+          "pages": 65
+        },
+        {
+          "name": "sqlite_autoindex_generation_leaf_1",
+          "bytes": 253952,
+          "pages": 62
+        },
+        {
+          "name": "sqlite_autoindex_files_1",
+          "bytes": 253952,
+          "pages": 62
+        },
+        {
+          "name": "sqlite_autoindex_file_state_1",
+          "bytes": 253952,
+          "pages": 62
+        },
+        {
+          "name": "idx_edges_kind",
+          "bytes": 188416,
+          "pages": 46
+        },
+        {
+          "name": "symbol_search_docsize",
+          "bytes": 139264,
+          "pages": 34
+        },
+        {
+          "name": "idx_files_node_ordinal",
+          "bytes": 61440,
+          "pages": 15
+        },
+        {
+          "name": "sqlite_schema",
+          "bytes": 20480,
+          "pages": 5
+        },
+        {
+          "name": "watch_state",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "vectors",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "symbol_search_idx",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "symbol_search_config",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_sequence",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_watch_state_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_vectors_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_provider_ranks_2",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_provider_ranks_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_named_snapshot_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_meta_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_generation_receipt_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_generation_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_event_journal_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_documents_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_document_supersession_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_dependency_index_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_claims_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_claim_code_edges_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_artifact_state_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "sqlite_autoindex_annotation_nodes_1",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "provider_ranks",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "named_snapshot",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "meta",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_vectors_model",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_vectors_generation",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_named_snapshot_generation",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_generation_receipt_created",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_event_journal_applied",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_documents_path",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_documents_generation",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_document_supersession_generation",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_dep_source",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_claims_generation",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_claims_document",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_claim_code_edges_kind",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_claim_code_edges_generation",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_claim_code_edges_claim",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "idx_annotation_nodes_generation_ordinal",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "generation_receipt",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "generation",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "event_journal",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "documents",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "document_supersession",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "dependency_index",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "claims",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "claim_code_edges",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "artifact_state",
+          "bytes": 4096,
+          "pages": 1
+        },
+        {
+          "name": "annotation_nodes",
+          "bytes": 4096,
+          "pages": 1
+        }
+      ]
+    },
+    "databaseBytes": 83156992,
+    "walBytesAfterQuiescentCheckpoint": 0
+  }
+}

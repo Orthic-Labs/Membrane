@@ -1,13 +1,13 @@
 // Forge-consumable orientation evidence — typed blob derived from receipts.
 //
-// Cortex emits evidence; Forge attests and gates signoff. This module
+// Blueprint emits evidence; Forge attests and gates signoff. This module
 // does not enforce signoff — it only shapes the record Forge can consume.
 
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync, renameSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-export const ORIENTATION_EVIDENCE_KIND = "cortex_orientation";
+export const ORIENTATION_EVIDENCE_KIND = "blueprint_orientation";
 export const ORIENTATION_EVIDENCE_SCHEMA_VERSION = 1;
 
 function stableStringify(value) {
@@ -58,7 +58,7 @@ export function buildOrientationEvidence(receipt, options = {}) {
   return {
     schemaVersion: ORIENTATION_EVIDENCE_SCHEMA_VERSION,
     kind: ORIENTATION_EVIDENCE_KIND,
-    locator: `cortex://receipt/${receipt.receiptId}`,
+    locator: `blueprint://receipt/${receipt.receiptId}`,
     content_hash: contentHash,
     invalidation_key: `${manifestDigest}:${overlayRevision}`,
     trust_class: "host_attested",
@@ -92,5 +92,5 @@ export function writeOrientationEvidenceFile(receipt, outPath, options = {}) {
  * Default evidence filename for a receipt under a directory.
  */
 export function defaultEvidencePath(dir, receiptId) {
-  return join(resolve(dir), `cortex-orientation-${receiptId}.json`);
+  return join(resolve(dir), `blueprint-orientation-${receiptId}.json`);
 }

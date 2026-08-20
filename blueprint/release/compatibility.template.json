@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "publishable": false,
-  "product": "Cortex",
+  "product": "Blueprint",
   "version": "0.2.0",
   "commit": "FULL_GIT_SHA",
   "sourceDateEpoch": 0,
@@ -27,7 +27,7 @@
   "grammarManifestDigest": "sha256:...",
   "artifacts": [
     {
-      "name": "cortex-linux-x64.tar.gz",
+      "name": "blueprint-linux-x64.tar.gz",
       "platform": "linux",
       "arch": "x64",
       "sha256": "...",

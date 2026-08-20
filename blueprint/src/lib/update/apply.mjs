@@ -34,7 +34,7 @@ export function stageUpdate({ fromDir, toDir, backup }) {
   return stagingDir;
 }
 
-function swapJournalPath(appDir) { return join(dirname(appDir), ".cortex-swap-journal.json"); }
+function swapJournalPath(appDir) { return join(dirname(appDir), ".blueprint-swap-journal.json"); }
 export function durableJson(path, value) {
   mkdirSync(dirname(path), { recursive: true });
   const temp = `${path}.tmp-${process.pid}-${Date.now()}`;

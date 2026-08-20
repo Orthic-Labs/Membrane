@@ -21,12 +21,12 @@ export function detectInstallOwner() {
     return { owner: "npm", command: `npm update -g ${pkg}`, root: globalRoot };
   }
   // Homebrew: /opt/homebrew or /usr/local Cellar paths.
-  if (/Cellar|cortex\/(\d+\.\d+)/.test(self) && existsSync(join(self, "..", "..", "..", "Homebrew"))) {
-    return { owner: "homebrew", command: "brew upgrade cortex", root: self };
+  if (/Cellar|blueprint\/(\d+\.\d+)/.test(self) && existsSync(join(self, "..", "..", "..", "Homebrew"))) {
+    return { owner: "homebrew", command: "brew upgrade blueprint", root: self };
   }
   // WinGet: %LOCALAPPDATA%\Microsoft\WinGet\Packages
   if (process.platform === "win32" && self.includes("WinGet")) {
-    return { owner: "winget", command: "winget upgrade OrthicLabs.Cortex", root: self };
+    return { owner: "winget", command: "winget upgrade OrthicLabs.Blueprint", root: self };
   }
   // Portable archive / native installer: identifiable by our own launcher layout.
   if (existsSync(join(self, "lib", process.platform === "win32" ? "node.exe" : "node")) && existsSync(join(self, "app", "package"))) {
@@ -37,7 +37,7 @@ export function detectInstallOwner() {
 
 export function channelEnabled(channel, { offline = false } = {}) {
   if (offline) return false;
-  if (process.env.CORTEX_NO_UPDATE_CHECK === "1") return false;
+  if (process.env.BLUEPRINT_NO_UPDATE_CHECK === "1") return false;
   return CHANNELS.includes(channel);
 }
 

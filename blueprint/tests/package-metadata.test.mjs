@@ -9,19 +9,19 @@ const ROOT = join(import.meta.dirname, "..");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 
 test("package identity fields are consistent", () => {
-  assert.equal(pkg.name, "@orthic-labs/cortex");
+  assert.equal(pkg.name, "@orthic-labs/blueprint");
   assert.equal(pkg.version, "0.2.0");
-  assert.equal(pkg.repository.url, "git+https://github.com/Orthic-Labs/Cortex.git");
-  assert.equal(pkg.homepage, "https://github.com/Orthic-Labs/Cortex#readme");
-  assert.equal(pkg.bugs.url, "https://github.com/Orthic-Labs/Cortex/issues");
-  assert.equal(pkg.mcpName, "io.github.Orthic-Labs/cortex");
+  assert.equal(pkg.repository.url, "git+https://github.com/Orthic-Labs/Blueprint.git");
+  assert.equal(pkg.homepage, "https://github.com/Orthic-Labs/Blueprint#readme");
+  assert.equal(pkg.bugs.url, "https://github.com/Orthic-Labs/Blueprint/issues");
+  assert.equal(pkg.mcpName, "io.github.Orthic-Labs/blueprint");
 });
 
 test("all required bins are declared", () => {
-  for (const bin of ["cortex", "orthic-cortex", "cortex-watch", "cortex-mcp", "cortex-install"]) {
+  for (const bin of ["blueprint", "orthic-blueprint", "blueprint-watch", "blueprint-mcp", "blueprint-install"]) {
     assert.ok(pkg.bin?.[bin], `missing bin ${bin}`);
   }
-  assert.equal(pkg.bin.cortex, pkg.bin["orthic-cortex"], "orthic-cortex is a collision-safe alias");
+  assert.equal(pkg.bin.blueprint, pkg.bin["orthic-blueprint"], "orthic-blueprint is a collision-safe alias");
 });
 
 test("exports include schemas, contracts, and service", () => {

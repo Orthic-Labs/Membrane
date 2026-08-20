@@ -11,9 +11,9 @@ import test from "node:test";
 const ROOT = join(import.meta.dirname, "..");
 
 test("Inno Setup installer targets per-user install and user PATH", () => {
-  const iss = readFileSync(join(ROOT, "release/windows/Cortex.iss"), "utf8");
+  const iss = readFileSync(join(ROOT, "release/windows/Blueprint.iss"), "utf8");
   assert.ok(iss.includes("PrivilegesRequired=lowest"));
-  assert.ok(iss.includes("{localappdata}\\Orthic\\Cortex"));
+  assert.ok(iss.includes("{localappdata}\\Orthic\\Blueprint"));
   assert.ok(iss.includes("RegWriteExpandStringValue(HKCU, 'Environment', 'Path'"));
 });
 
@@ -37,7 +37,7 @@ test("verify-signatures checks exe/dll/msi recursively", () => {
 });
 
 test("installer records uninstall metadata and optional user task", () => {
-  const iss = readFileSync(join(ROOT, "release/windows/Cortex.iss"), "utf8");
+  const iss = readFileSync(join(ROOT, "release/windows/Blueprint.iss"), "utf8");
   assert.ok(iss.includes("uninsdeletekey"));
   assert.ok(iss.includes("schtasks /Create"));
 });

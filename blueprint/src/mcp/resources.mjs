@@ -5,33 +5,33 @@
 import { manifestDigest, languageCapabilityRecords } from "../graph/language-registry.mjs";
 
 export const RESOURCE_URIS = Object.freeze([
-  "cortex://manifest",
-  "cortex://languages",
-  "cortex://providers",
-  "cortex://architecture",
-  "cortex://claims",
-  "cortex://conflicts",
-  "cortex://rules",
-  "cortex://receipts",
+  "blueprint://manifest",
+  "blueprint://languages",
+  "blueprint://providers",
+  "blueprint://architecture",
+  "blueprint://claims",
+  "blueprint://conflicts",
+  "blueprint://rules",
+  "blueprint://receipts",
 ]);
 
 export function resourceForUri(uri, { service, repoId, limit = 50, cursor = null } = {}) {
   switch (uri) {
-    case "cortex://manifest":
+    case "blueprint://manifest":
       return { uri, schemaVersion: 1, digest: manifestDigest(), languages: languageCapabilityRecords().length };
-    case "cortex://languages":
+    case "blueprint://languages":
       return { uri, schemaVersion: 1, languages: languageCapabilityRecords() };
-    case "cortex://providers":
-      return { uri, schemaVersion: 1, providers: [{ id: "cortex-static", precisionTier: "LEXICAL" }, { id: "cortex-treesitter", precisionTier: "AST" }] };
-    case "cortex://claims":
+    case "blueprint://providers":
+      return { uri, schemaVersion: 1, providers: [{ id: "blueprint-static", precisionTier: "LEXICAL" }, { id: "blueprint-treesitter", precisionTier: "AST" }] };
+    case "blueprint://claims":
       return { uri, schemaVersion: 1, claims: [], pagination: { limit, cursor, nextCursor: null } };
-    case "cortex://conflicts":
+    case "blueprint://conflicts":
       return { uri, schemaVersion: 1, conflicts: [], pagination: { limit, cursor, nextCursor: null } };
-    case "cortex://rules":
+    case "blueprint://rules":
       return { uri, schemaVersion: 1, rules: [], pagination: { limit, cursor, nextCursor: null } };
-    case "cortex://receipts":
+    case "blueprint://receipts":
       return { uri, schemaVersion: 1, receipts: [], pagination: { limit, cursor, nextCursor: null } };
-    case "cortex://architecture":
+    case "blueprint://architecture":
       return { uri, schemaVersion: 1, architecture: null, pagination: { limit, cursor, nextCursor: null } };
     default:
       return { uri, error: { code: "resource_not_found", message: `unknown resource ${uri}` } };

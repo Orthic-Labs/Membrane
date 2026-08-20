@@ -14,7 +14,7 @@ release. The 1.0 release uses the portable runtime bundle shipped by
 ## What was measured
 
 - A Node SEA build would let us ship a single executable with no
-  `lib/node/` directory. Measured 2026-08-04: a SEA build of the cortex
+  `lib/node/` directory. Measured 2026-08-04: a SEA build of the blueprint
   runtime peaks at ~110 MB on a fresh machine and the postinstall /
   uninstall flow becomes platform-specific.
 - The current portable runtime bundle (D14) is already zero-prerequisite

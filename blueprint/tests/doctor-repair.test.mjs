@@ -12,7 +12,7 @@ import { collectDoctorDiagnostics } from "../src/lib/operations/doctor.mjs";
 import { buildRepairPlan } from "../src/lib/operations/repair.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 // Minimal map/stale fixture (same shape the build emits) so
@@ -47,8 +47,8 @@ test("repair plan no-ops when nothing is broken", () => {
   assert.equal(plan.actions[0].id, "no-op");
 });
 
-test("cortex doctor --repair-plan --json emits a schema-valid plan", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-doctor-repair-"));
+test("blueprint doctor --repair-plan --json emits a schema-valid plan", () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-doctor-repair-"));
   try {
     cpSync(FIXTURE, repo, { recursive: true });
     const result = spawnSync(process.execPath, [CLI, "doctor", "--repair-plan", "--json"], { cwd: repo, encoding: "utf8" });
@@ -65,8 +65,8 @@ test("cortex doctor --repair-plan --json emits a schema-valid plan", () => {
   }
 });
 
-test("cortex doctor --apply-repair without --yes requires confirmation", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-doctor-confirm-"));
+test("blueprint doctor --apply-repair without --yes requires confirmation", () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-doctor-confirm-"));
   try {
     cpSync(FIXTURE, repo, { recursive: true });
     const result = spawnSync(process.execPath, [CLI, "doctor", "--repair-plan", "--apply-repair", "--json"], { cwd: repo, encoding: "utf8" });
@@ -77,8 +77,8 @@ test("cortex doctor --apply-repair without --yes requires confirmation", () => {
   }
 });
 
-test("cortex doctor --repair-plan --apply-repair --yes applies the plan", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-doctor-apply-"));
+test("blueprint doctor --repair-plan --apply-repair --yes applies the plan", () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-doctor-apply-"));
   try {
     cpSync(FIXTURE, repo, { recursive: true });
     const result = spawnSync(process.execPath, [CLI, "doctor", "--repair-plan", "--apply-repair", "--yes", "--json"], { cwd: repo, encoding: "utf8" });
@@ -91,9 +91,9 @@ test("cortex doctor --repair-plan --apply-repair --yes applies the plan", () => 
 });
 
 test("collectDoctorDiagnostics stays synchronous for existing callers", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-doctor-sync-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-doctor-sync-"));
   try {
-    writeFixture(repo, { cortex: { command: process.execPath, args: [join(ROOT, "scripts/cortex-mcp.mjs"), "--root", repo] } });
+    writeFixture(repo, { blueprint: { command: process.execPath, args: [join(ROOT, "scripts/blueprint-mcp.mjs"), "--root", repo] } });
     const diagnostics = collectDoctorDiagnostics(repo);
     assert.equal(typeof diagnostics.then, "undefined", "collectDoctorDiagnostics must not return a Promise");
     assert.equal(diagnostics.schemaVersion, 1);
@@ -103,11 +103,11 @@ test("collectDoctorDiagnostics stays synchronous for existing callers", () => {
   }
 });
 
-test("mcp_config_launchable passes for a launchable cortex MCP config", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-doctor-mcp-good-"));
+test("mcp_config_launchable passes for a launchable blueprint MCP config", () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-doctor-mcp-good-"));
   try {
-    const args = [join(ROOT, "scripts/cortex-mcp.mjs"), "--root", repo];
-    writeFixture(repo, { cortex: { command: process.execPath, args } });
+    const args = [join(ROOT, "scripts/blueprint-mcp.mjs"), "--root", repo];
+    writeFixture(repo, { blueprint: { command: process.execPath, args } });
     const diagnostics = collectDoctorDiagnostics(repo);
     const reason = diagnostics.reasons.find((r) => r.code === "mcp_config_launchable");
     assert.ok(reason, "mcp_config_launchable reason missing for a launchable config");
@@ -123,10 +123,10 @@ test("mcp_config_launchable passes for a launchable cortex MCP config", () => {
 });
 
 test("mcp_config_launchable fails with exit-code evidence for a sabotaged config", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-doctor-mcp-bad-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-doctor-mcp-bad-"));
   try {
-    const args = [join(ROOT, "scripts/cortex-mcp.mjs")];
-    writeFixture(repo, { cortex: { command: process.execPath, args } });
+    const args = [join(ROOT, "scripts/blueprint-mcp.mjs")];
+    writeFixture(repo, { blueprint: { command: process.execPath, args } });
     const diagnostics = collectDoctorDiagnostics(repo);
     const reason = diagnostics.reasons.find((r) => r.code === "mcp_config_launchable");
     assert.ok(reason, "mcp_config_launchable reason missing for a sabotaged config");
@@ -142,7 +142,7 @@ test("mcp_config_launchable fails with exit-code evidence for a sabotaged config
 });
 
 test("mcp_config_launchable is absent when .mcp.json is absent", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-doctor-mcp-no-file-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-doctor-mcp-no-file-"));
   try {
     writeFixture(repo, null);
     const diagnostics = collectDoctorDiagnostics(repo);
@@ -152,8 +152,8 @@ test("mcp_config_launchable is absent when .mcp.json is absent", () => {
   }
 });
 
-test("mcp_config_launchable is absent when .mcp.json has no cortex entry", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-doctor-mcp-no-entry-"));
+test("mcp_config_launchable is absent when .mcp.json has no blueprint entry", () => {
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-doctor-mcp-no-entry-"));
   try {
     writeFixture(repo, { other: { command: process.execPath, args: [] } });
     const diagnostics = collectDoctorDiagnostics(repo);
@@ -164,9 +164,9 @@ test("mcp_config_launchable is absent when .mcp.json has no cortex entry", () =>
 });
 
 test("mcp_config_launchable degrades to a typed warning when spawn fails", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-doctor-mcp-spawn-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-doctor-mcp-spawn-"));
   try {
-    writeFixture(repo, { cortex: { command: "definitely-not-a-real-executable-xyz", args: [] } });
+    writeFixture(repo, { blueprint: { command: "definitely-not-a-real-executable-xyz", args: [] } });
     let diagnostics;
     assert.doesNotThrow(() => { diagnostics = collectDoctorDiagnostics(repo); });
     const reason = diagnostics.reasons.find((r) => r.code === "mcp_config_launchable");

@@ -11,8 +11,8 @@ const SCOPES = Object.freeze(["project", "user"]);
 function instructionPath(root, host) {
   if (host === "claude-code") return join(root, "CLAUDE.md");
   if (host === "codex") return join(root, "AGENTS.md");
-  if (host === "cursor") return join(root, ".cursor", "rules", "cortex.mdc");
-  return join(root, "CORTEX-AGENT.md");
+  if (host === "cursor") return join(root, ".cursor", "rules", "blueprint.mdc");
+  return join(root, "BLUEPRINT-AGENT.md");
 }
 
 export function buildInitPlan({
@@ -57,6 +57,6 @@ export function buildInitPlan({
     watchEnabled,
     actions,
     files,
-    uninstallCommand: `cortex uninstall --root ${root}`,
+    uninstallCommand: `blueprint uninstall --root ${root}`,
   };
 }

@@ -1,6 +1,6 @@
 // D28: compiler/LSP/SCIP adapters and module resolvers — JS/TS + SCIP only
 // (second compiler ecosystem is owner-gated). Providers degrade typed, never
-// make Cortex unavailable.
+// make Blueprint unavailable.
 
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync, readFileSync } from "node:fs";
@@ -25,7 +25,7 @@ test("defineProvider enforces the S-20 contract", () => {
 });
 
 test("JS module resolver resolves relative, extensionless, and index paths", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-resolve-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-resolve-"));
   try {
     mkdirSync(join(root, "src"), { recursive: true });
     mkdirSync(join(root, "src", "lib"), { recursive: true });
@@ -44,7 +44,7 @@ test("JS module resolver resolves relative, extensionless, and index paths", () 
 });
 
 test("JS module resolver resolves bare specifiers through node_modules", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-resolve-bare-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-resolve-bare-"));
   try {
     mkdirSync(join(root, "node_modules", "lodash"), { recursive: true });
     writeFileSync(join(root, "node_modules", "lodash", "package.json"), JSON.stringify({ name: "lodash", main: "index.js" }));
@@ -61,7 +61,7 @@ test("SCIP probe degrades typed when absent and reads valid exports", async () =
   const absent = await probeScip(join(tmpdir(), "no-such-repo"));
   assert.equal(absent.state, "unavailable");
   assert.ok(absent.degradesTo);
-  const root = mkdtempSync(join(tmpdir(), "cortex-scip-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-scip-"));
   try {
     writeFileSync(join(root, "index.scip.json"), JSON.stringify({ documents: [{ relativePath: "a.ts", occurrences: [] }] }));
     const ok = await probeScip(root);
@@ -156,7 +156,7 @@ test("python SCIP probe degrades typed for absent, unreadable, incompatible, and
   assert.equal(absent.code, "scip_index_absent");
   assert.equal(absent.degradesTo, "AST");
 
-  const root = mkdtempSync(join(tmpdir(), "cortex-python-scip-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-python-scip-"));
   try {
     writeFileSync(join(root, "index.scip.json"), "{ not json");
     const unreadable = await pythonScipProvider.probe({ repoRoot: root });
@@ -204,7 +204,7 @@ test("python SCIP collect degrades without throwing and still returns valid entr
   assert.equal(absent.reports[0].degradesTo, "AST");
   assert.equal(absent.index.state, "unavailable");
 
-  const root = mkdtempSync(join(tmpdir(), "cortex-python-scip-partial-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-python-scip-partial-"));
   try {
     writeFileSync(join(root, "index.scip.json"), JSON.stringify({
       metadata: { version: "0.6.6", indexer: "scip-python" },
@@ -236,7 +236,7 @@ test("python SCIP adapter never spawns a process", () => {
   }
 });
 
-test("provider absence never makes Cortex unavailable (typed degradation)", async () => {
+test("provider absence never makes Blueprint unavailable (typed degradation)", async () => {
   const provider = defineProvider({
     id: "orthic.missing-compiler",
     version: "1.0.0",

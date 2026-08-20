@@ -14,7 +14,7 @@ import test from "node:test";
 
 import {
   loadTasks,
-  makeCortexStaticProvider,
+  makeBlueprintStaticProvider,
   qualifyProvider,
 } from "../evals/run-qualification.mjs";
 
@@ -35,9 +35,9 @@ test("pinned candidate contract is an exact-digest released artifact", () => {
   assert.ok(schema.$defs.candidate && schema.$defs.omission && schema.$defs.freshness);
 });
 
-test("cortex-static passes contract and portability gates against the pinned contract", async () => {
+test("blueprint-static passes contract and portability gates against the pinned contract", async () => {
   const tasks = loadTasks(TASKS).filter((task) => task.qualificationClass === "mandatory_structural");
-  const provider = makeCortexStaticProvider({ schemaPath: SCHEMA });
+  const provider = makeBlueprintStaticProvider({ schemaPath: SCHEMA });
   try {
     const report = await qualifyProvider(provider, tasks, REPOS);
     assert.equal(report.status, "passed");

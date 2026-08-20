@@ -10,10 +10,10 @@ import { buildInitPlan } from "../src/lib/init/plan.mjs";
 import { readWatchConfig, writeWatchConfig } from "../watchman/supervisor.mjs";
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "cortex-onboarding-repo-"));
-  const home = mkdtempSync(join(tmpdir(), "cortex-onboarding-home-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-onboarding-repo-"));
+  const home = mkdtempSync(join(tmpdir(), "blueprint-onboarding-home-"));
   mkdirSync(join(root, ".git"));
-  writeFileSync(join(root, "CORTEX-AGENT.md"), "# Existing\n");
+  writeFileSync(join(root, "BLUEPRINT-AGENT.md"), "# Existing\n");
   return { root, home, watch: join(home, "watch.json") };
 }
 
@@ -31,7 +31,7 @@ test("onboarding enrolls only after explicit watch selection and uninstalls reve
     const removed = uninstallInit({ root, watchConfigPath: watch });
     assert.equal(removed.ok, true, removed.error);
     assert.deepEqual(readWatchConfig(watch).repos, []);
-    assert.equal(readFileSync(join(root, "CORTEX-AGENT.md"), "utf8"), "# Existing\n");
+    assert.equal(readFileSync(join(root, "BLUEPRINT-AGENT.md"), "utf8"), "# Existing\n");
     assert.equal(createHash("sha256").update(readFileSync(trust)).digest("hex"), trustBefore);
   } finally { rmSync(root, { recursive: true, force: true }); rmSync(home, { recursive: true, force: true }); }
 });

@@ -13,7 +13,7 @@ import {
 
 test("receipt store defaults outside the repo tree", () => {
   const dir = defaultReceiptStoreDir();
-  assert.ok(!dir.includes(`${join("cortex", ".agent")}`));
+  assert.ok(!dir.includes(`${join("blueprint", ".agent")}`));
   assert.match(dir, /\.agent[/\\]receipts$/);
 });
 

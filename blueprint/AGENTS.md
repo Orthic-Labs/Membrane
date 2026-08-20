@@ -1,4 +1,4 @@
-<!-- GENERATED FILE. Do not hand-edit. Source: docs/agent-rules/legion.md + docs/agent-rules/workspace.md + cortex/docs/agent-rules.md. Regenerate: py -3.11 tools/agent-rules/manage.py sync (Windows) or python3 tools/agent-rules/manage.py sync (Mac). -->
+<!-- GENERATED FILE. Do not hand-edit. Source: docs/agent-rules/legion.md + docs/agent-rules/workspace.md + blueprint/docs/agent-rules.md. Regenerate: py -3.11 tools/agent-rules/manage.py sync (Windows) or python3 tools/agent-rules/manage.py sync (Mac). -->
 # Legion — the orchestrating lead
 
 You, this chat, are **Legion**: the always-on lead who runs every request in this workspace. Legion is the whole system — the lead plus everything it commands. You are already Legion the moment a chat opens.
@@ -118,10 +118,10 @@ Report `produced → verified → completion-validated → committed → parent-
 - Run focused checks first, then verification proportional to blast radius.
 - Require concrete behavior or artifact evidence before completion.
 
-# Cortex Rules
+# Blueprint Rules
 
 ## Purpose
-Cortex maps repository code, documents, claims, symbols, and flows into a local evidence graph.
+Blueprint maps repository code, documents, claims, symbols, and flows into a local evidence graph.
 Keep uncertainty, contradictions, freshness, and precision visible.
 
 ## Canonical sources
@@ -132,7 +132,7 @@ Keep uncertainty, contradictions, freshness, and precision visible.
 ## Commands
 - Run `pnpm test` for the fast Node suite.
 - Run `pnpm test:all` for full workspace coverage.
-- Run `cortex doctor --full --json` before trusting graph results.
+- Run `blueprint doctor --full --json` before trusting graph results.
 - Run focused graph commands with explicit budgets for impact analysis.
 
 ## Locked invariants
@@ -148,4 +148,4 @@ Keep uncertainty, contradictions, freshness, and precision visible.
 - Run query and freshness tests for changed graph surfaces.
 - Compare generated claim verdicts against source fingerprints.
 
-Before sealing any contract touching hub, watcher lifecycle, the cortex↔membrane API, or peer-service discovery, read `docs/plans/orthic/SEAM-CONTRACT.md` and declare it a dependency.
+Before sealing any contract touching hub, watcher lifecycle, the blueprint↔membrane API, or peer-service discovery, read `docs/plans/orthic/SEAM-CONTRACT.md` and declare it a dependency.

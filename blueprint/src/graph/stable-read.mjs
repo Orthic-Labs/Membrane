@@ -5,7 +5,7 @@ import { contentDigest } from "./generation-identity.mjs";
 // enforced exactly this bound for as long as they have existed
 // (sources/_shared.mjs, sources/live-overlay.mjs, sources/task-anchor.mjs,
 // graph/static-provider.mjs); the incremental watcher path was the one reader
-// that never did, which is why `cortex build` succeeded on a tree whose
+// that never did, which is why `blueprint build` succeeded on a tree whose
 // watcher crashed. Reading an arbitrarily large file is not merely slow: past
 // ~512 MB the mandatory Buffer→utf8 conversion throws
 // "Cannot create a string longer than 0x1fffffe8 characters", and that throw

@@ -74,8 +74,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: node --test tests/store-migrations.test.mjs tests/store-rollback.test.mjs tests/performance-envelopes.test.mjs tests/cross-platform-paths.test.mjs
       - run: node --test tests/soak-contract.test.mjs tests/daemon-recovery.test.mjs tests/freshness-regressions.test.mjs
-      - run: node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/cortex-soak.json
-      - run: test ! -s /tmp/cortex-soak.json && exit 1 || node -e "const r=require('/tmp/cortex-soak.json'); if (r.summary.crashes>0) { console.error('soak crashes:', r.findings); process.exit(1);} console.log('soak summary:', JSON.stringify(r.summary));"
+      - run: node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/blueprint-soak.json
+      - run: test ! -s /tmp/blueprint-soak.json && exit 1 || node -e "const r=require('/tmp/blueprint-soak.json'); if (r.summary.crashes>0) { console.error('soak crashes:', r.findings); process.exit(1);} console.log('soak summary:', JSON.stringify(r.summary));"
   ax-conformance:
     runs-on: ubuntu-latest
     steps:

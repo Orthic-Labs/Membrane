@@ -6,7 +6,7 @@ import test from "node:test";
 import { adoptFileAtomically } from "../src/graph/atomic-store-adoption.mjs";
 
 test("fresh store replaces prior file only after validation", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cortex-adopt-"));
+  const dir = mkdtempSync(join(tmpdir(), "blueprint-adopt-"));
   try {
     const target = join(dir, "graph.db"), source = join(dir, "fresh.db");
     writeFileSync(target, "old");
@@ -18,7 +18,7 @@ test("fresh store replaces prior file only after validation", () => {
 });
 
 test("failed validation restores prior file", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cortex-adopt-"));
+  const dir = mkdtempSync(join(tmpdir(), "blueprint-adopt-"));
   try {
     const target = join(dir, "graph.db"), source = join(dir, "fresh.db");
     writeFileSync(target, "old");

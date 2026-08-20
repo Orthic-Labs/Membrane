@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "provider": "cortex-treesitter",
+  "provider": "blueprint-treesitter",
   "version": "1.0.0",
   "precisionTier": "AST",
   "languages": ["javascript", "typescript", "python", "rust"],

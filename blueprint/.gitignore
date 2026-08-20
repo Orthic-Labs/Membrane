@@ -10,10 +10,10 @@ node_modules/
 .agent/
 .right-release/
 release/candidates/
-apps/cortex-tray/src-tauri/icons/
-apps/cortex-tray/dist/
-apps/cortex-tray/src-tauri/gen/
-apps/cortex-tray/src-tauri/target/
+apps/blueprint-tray/src-tauri/icons/
+apps/blueprint-tray/dist/
+apps/blueprint-tray/src-tauri/gen/
+apps/blueprint-tray/src-tauri/target/
 .blueprint/
 .agent-test*/
 /repos/

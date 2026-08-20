@@ -7,7 +7,7 @@
 // Adapters run in a fixed, deterministic order:
 //   1. task-anchor        — explicit user-named paths/symbols/ranges
 //   2. dirty-files        — `git status` + per-file diffs vs HEAD
-//   3. graph-resolve      — exact path/symbol resolution via Cortex
+//   3. graph-resolve      — exact path/symbol resolution via Blueprint
 //   4. git-metadata       — branch/commit/upstream/worktree summary
 //   5. rules-documents    — AGENTS.md + .claude/rules + .codex/rules
 //   6. live-overlay       — mtime/hash drift against the graph generation

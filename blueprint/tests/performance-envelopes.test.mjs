@@ -16,13 +16,13 @@ import { stableRead } from "../src/graph/stable-read.mjs";
 import { syncToCurrentSource } from "../src/graph/barrier.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const ENVELOPES = JSON.parse(readFileSync(join(ROOT, "evals/performance-envelopes.json"), "utf8"));
 
 function repoClassFixture(className) {
   const entry = ENVELOPES.repoClasses[className];
   if (!entry?.fixture) return null;
-  const repo = mkdtempSync(join(tmpdir(), `cortex-envelope-${className}-`));
+  const repo = mkdtempSync(join(tmpdir(), `blueprint-envelope-${className}-`));
   cpSync(join(ROOT, entry.fixture), repo, { recursive: true });
   return repo;
 }

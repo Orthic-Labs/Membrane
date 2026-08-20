@@ -28,7 +28,7 @@ const NETWORK_APIS = [
 ];
 
 const ALLOWED = [
-  // Update checks are opt-in, channel-gated, and disabled by CORTEX_NO_UPDATE_CHECK=1.
+  // Update checks are opt-in, channel-gated, and disabled by BLUEPRINT_NO_UPDATE_CHECK=1.
   "src/lib/update/channel.mjs",
   "src/lib/update/manifest.mjs",
   "src/lib/update/apply.mjs",

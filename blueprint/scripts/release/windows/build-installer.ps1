@@ -16,16 +16,16 @@ $Staged = Join-Path $PSScriptRoot "..\..\release\windows\staged"
 if (Test-Path $Staged) { Remove-Item -Recurse -Force $Staged }
 Copy-Item -Recurse $Staging $Staged
 
-# cortex-task.xml was removed per EC v4 U15 (D-S03/D-17: OS templates deleted).
-# Do not copy a missing template — Hub owns lifecycle via `cortex service run`.
-if (Test-Path (Join-Path $PSScriptRoot "..\..\service\templates\cortex-task.xml")) {
-  Copy-Item -Force (Join-Path $PSScriptRoot "..\..\service\templates\cortex-task.xml") (Join-Path $Staged "cortex-task.xml")
+# blueprint-task.xml was removed per EC v4 U15 (D-S03/D-17: OS templates deleted).
+# Do not copy a missing template — Hub owns lifecycle via `blueprint service run`.
+if (Test-Path (Join-Path $PSScriptRoot "..\..\service\templates\blueprint-task.xml")) {
+  Copy-Item -Force (Join-Path $PSScriptRoot "..\..\service\templates\blueprint-task.xml") (Join-Path $Staged "blueprint-task.xml")
 }
 
 # Compile with ISCC if present.
 $Iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
 if (-not (Test-Path $Iscc)) { throw "Inno Setup not found at $Iscc" }
-& $Iscc (Join-Path $PSScriptRoot "..\..\release\windows\Cortex.iss") "/O$OutDir"
+& $Iscc (Join-Path $PSScriptRoot "..\..\release\windows\Blueprint.iss") "/O$OutDir"
 if ($LASTEXITCODE -ne 0) { throw "ISCC failed: $LASTEXITCODE" }
 
 Write-Host "Installer built in $OutDir"

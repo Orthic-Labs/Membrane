@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Phase 7.6 — retrieval benchmark.
 //
-// This script measures the actual retrieval quality of every strategy Cortex
+// This script measures the actual retrieval quality of every strategy Blueprint
 // has shipped (lexical, graph-walk, hybrid), on a corpus of REAL workspace
 // failures. It is the measurement that gates Phase 7.6's "embeddings without a
 // measured win" rule: until this harness records a measured win, semantic
@@ -39,7 +39,7 @@ import { buildGraphGeneration, readGeneration, graphNeighbors, queryGraph } from
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(SCRIPT_DIR, "..");
 const CORPUS_PATH = join(REPO_ROOT, "evals", "retrieval-corpus", "corpus.v1.json");
-export function resolveReportDir(value = process.env.CORTEX_RETRIEVAL_REPORT_DIR) { return resolve(value || join(REPO_ROOT, "evals", "retrieval-corpus", "reports")); }
+export function resolveReportDir(value = process.env.BLUEPRINT_RETRIEVAL_REPORT_DIR) { return resolve(value || join(REPO_ROOT, "evals", "retrieval-corpus", "reports")); }
 const REPORT_DIR = resolveReportDir();
 const FIXTURES_ROOT = join(REPO_ROOT, "evals", "fixture-repos");
 
@@ -51,7 +51,7 @@ const DEFAULT_LIMIT = 10;
 function loadCorpus() {
   const text = readFileSync(CORPUS_PATH, "utf8");
   const parsed = JSON.parse(text);
-  if (parsed.schema !== "cortex-retrieval-corpus-v1") {
+  if (parsed.schema !== "blueprint-retrieval-corpus-v1") {
     throw new Error(`unsupported corpus schema: ${parsed.schema}`);
   }
   return parsed;
@@ -63,7 +63,7 @@ function loadCorpus() {
 // case that targets it. Building is the expensive step (full source scan + parse
 // + import/call resolution); running 30 cases against one store is cheap.
 function buildRepoGraph(repoName) {
-  const work = mkdtempSync(join(tmpdir(), `cortex-bench-${repoName}-`));
+  const work = mkdtempSync(join(tmpdir(), `blueprint-bench-${repoName}-`));
   cpSync(join(FIXTURES_ROOT, repoName), work, { recursive: true });
   const generation = buildGraphGeneration(work, { outDir: ".agent", persist: true });
   return { work, generation };
@@ -369,7 +369,7 @@ async function run() {
   }
   const report = {
     schemaVersion: 1,
-    schema: "cortex-retrieval-report-v1",
+    schema: "blueprint-retrieval-report-v1",
     runAt: new Date().toISOString(),
     corpusPath: CORPUS_PATH,
     corpusSize: corpus.cases.length,
@@ -406,7 +406,7 @@ async function run() {
 function printHumanSummary(report) {
   const head = (label) => label.padEnd(28);
   console.log("");
-  console.log(`Cortex retrieval benchmark — ${report.runAt}`);
+  console.log(`Blueprint retrieval benchmark — ${report.runAt}`);
   console.log(`corpus: ${report.corpusSize} cases from ${report.corpusPath}`);
   console.log("");
   console.log(`${head("strategy")} hitRate   mrr    abstained_correct junk_on_no_gold abstained_on_pos  avgMs`);

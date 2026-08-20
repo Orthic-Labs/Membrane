@@ -8,10 +8,10 @@ import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const FIXTURE_VERSION = 1;
-export const FIXTURE_SEED = "cortex-storage-v1";
+export const FIXTURE_SEED = "blueprint-storage-v1";
 export const DEFAULT_FIXTURE_FILES = 550;
 export const LARGE_FIXTURE_FILES = 5000;
-export const FIXTURE_MARKER = ".cortex-benchmark-fixture.json";
+export const FIXTURE_MARKER = ".blueprint-benchmark-fixture.json";
 
 function sourceFor(index) {
   const group = String(Math.floor(index / 25)).padStart(3, "0");
@@ -33,7 +33,7 @@ export function fixtureIdentity(files) {
     hash.update("\0");
   }
   return Object.freeze({
-    id: `synthetic-cortex-storage-${files}-v${FIXTURE_VERSION}`,
+    id: `synthetic-blueprint-storage-${files}-v${FIXTURE_VERSION}`,
     fixtureVersion: FIXTURE_VERSION,
     seed: FIXTURE_SEED,
     files,

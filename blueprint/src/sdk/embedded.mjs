@@ -1,11 +1,11 @@
 // D32: SDK embedded read-only client — calls the application service
 // directly without a daemon (read-only; writes require daemon ownership).
 
-import { createCortexApplicationService } from "../lib/application/service.mjs";
+import { createBlueprintApplicationService } from "../lib/application/service.mjs";
 
-export class EmbeddedCortexClient {
+export class EmbeddedBlueprintClient {
   constructor({ rootRegistry = null, allowEmbeddedRoot = true, outDir = ".agent" } = {}) {
-    this.service = createCortexApplicationService({ rootRegistry, allowEmbeddedRoot, outDir });
+    this.service = createBlueprintApplicationService({ rootRegistry, allowEmbeddedRoot, outDir });
   }
 
   async status(input = {}) { return this.service.status(input); }

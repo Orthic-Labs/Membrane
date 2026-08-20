@@ -52,31 +52,31 @@ function probeMcpLaunchability(command, args) {
 }
 
 // CX-B2: mcp_config_launchable. Applies only when root/.mcp.json parses and
-// has mcpServers.cortex; returns null otherwise. Pass when the recorded
+// has mcpServers.blueprint; returns null otherwise. Pass when the recorded
 // command+args is still alive after the liveness window; fail when it exits
 // early (evidence carries the exact command, JSON args, and exit code); spawn
 // or malformed-config problems become typed warnings and never throw.
 function mcpConfigLaunchable(root) {
   const config = readJson(join(root, ".mcp.json"), null);
-  const entry = config?.mcpServers?.cortex;
+  const entry = config?.mcpServers?.blueprint;
   if (!entry || typeof entry !== "object") return null;
   const command = entry.command;
   const args = Array.isArray(entry.args) ? entry.args : [];
   if (typeof command !== "string" || command.length === 0) {
-    return { status: "warning", message: "MCP server config for cortex is invalid: command is missing or not a string, so launchability cannot be checked." };
+    return { status: "warning", message: "MCP server config for blueprint is invalid: command is missing or not a string, so launchability cannot be checked." };
   }
   let probe;
   try { probe = probeMcpLaunchability(command, args); } catch (error) {
     return { status: "warning", message: `MCP launchability probe could not run: ${String(error?.message ?? error)}` };
   }
-  if (probe.spawnError) return { status: "warning", message: `MCP server config for cortex could not be spawn-checked: ${probe.spawnError}` };
-  if (probe.alive) return { status: "pass", command, args, message: `MCP server config for cortex stayed alive through the ${MCP_LIVENESS_MS} ms liveness window.` };
+  if (probe.spawnError) return { status: "warning", message: `MCP server config for blueprint could not be spawn-checked: ${probe.spawnError}` };
+  if (probe.alive) return { status: "pass", command, args, message: `MCP server config for blueprint stayed alive through the ${MCP_LIVENESS_MS} ms liveness window.` };
   return {
     status: "fail",
     command,
     args,
     exitCode: probe.code,
-    message: `MCP server config for cortex is not launchable: spawned command "${command}" with args ${JSON.stringify(args)} and it exited early with exit code ${probe.code} before the ${MCP_LIVENESS_MS} ms liveness window; expected the server to stay alive waiting on stdio.`,
+    message: `MCP server config for blueprint is not launchable: spawned command "${command}" with args ${JSON.stringify(args)} and it exited early with exit code ${probe.code} before the ${MCP_LIVENESS_MS} ms liveness window; expected the server to stay alive waiting on stdio.`,
   };
 }
 
@@ -92,7 +92,7 @@ export function collectDoctorDiagnostics(root, outDir = ".agent", { full = false
       artifacts: { map: `${outDir}/map.json`, graph: `${outDir}/graph/graph.db` },
       errors: [`${outDir}/map.json missing; run build first`],
       warnings: [],
-      reasons: [{ code: "missing_map", severity: "blocker", message: "Cortex map.json is not present; planner cannot retrieve candidates." }],
+      reasons: [{ code: "missing_map", severity: "blocker", message: "Blueprint map.json is not present; planner cannot retrieve candidates." }],
       capabilities: graphCapabilities(),
     };
   }
@@ -109,7 +109,7 @@ export function collectDoctorDiagnostics(root, outDir = ".agent", { full = false
       artifacts: { map: `${outDir}/map.json`, graph: `${outDir}/graph/graph.db` },
       errors: [String(error?.message ?? error)],
       warnings: [],
-      reasons: [{ code: "corrupt_map", severity: "blocker", message: "Cortex map.json could not be parsed." }],
+      reasons: [{ code: "corrupt_map", severity: "blocker", message: "Blueprint map.json could not be parsed." }],
       capabilities: graphCapabilities(),
     };
   }
@@ -142,8 +142,8 @@ export function collectDoctorDiagnostics(root, outDir = ".agent", { full = false
   }
   const graph = graphStatus(root, outDir);
   if (graph.state === "stale") {
-    warnings.push(graph.providerMismatch ? "graph manifest was built by an older Cortex provider and must be rebuilt" : "graph manifest source hash is stale relative to current files");
-    reasons.push({ code: "stale_graph", severity: "blocker", providerMismatch: Boolean(graph.providerMismatch), message: graph.providerMismatch ? "graph provider version does not match the installed Cortex extractor; rebuild required." : "graph manifest sourceHash does not match current source tree; rebuild required." });
+    warnings.push(graph.providerMismatch ? "graph manifest was built by an older Blueprint provider and must be rebuilt" : "graph manifest source hash is stale relative to current files");
+    reasons.push({ code: "stale_graph", severity: "blocker", providerMismatch: Boolean(graph.providerMismatch), message: graph.providerMismatch ? "graph provider version does not match the installed Blueprint extractor; rebuild required." : "graph manifest sourceHash does not match current source tree; rebuild required." });
   }
   return {
     schemaVersion: 1,

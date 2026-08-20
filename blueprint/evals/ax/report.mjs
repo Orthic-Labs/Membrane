@@ -18,7 +18,7 @@ const REPORT_DIR_REL = [".audit", "cx-b7"];
 export const UNPROVEN_BANNER = [
   "## UNPROVEN",
   "",
-  "Cortex's end-to-end behavioral AX is formally UNPROVEN. The stub driver is",
+  "Blueprint's end-to-end behavioral AX is formally UNPROVEN. The stub driver is",
   "harness validation only: a stub pass proves the harness runs the scenarios",
   "and enforces final-environment-before-claims, it does NOT prove that a real",
   "agent achieves the scenario goals. No real-agent (claude) matrix has been",

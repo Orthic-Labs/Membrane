@@ -1,0 +1,24 @@
+# TEMPLATE_ONLY: RightRelease renders this into sealed output; never publish this file.
+# Homebrew formula installs exact npm release bytes from owner-controlled GitHub assets.
+
+class Blueprint < Formula
+  desc "Local evidence-backed repository map"
+  homepage "https://github.com/Orthic-Labs/Blueprint#readme"
+  url "https://github.com/Orthic-Labs/Blueprint/releases/download/v__VERSION__/blueprint-__VERSION__.tgz"
+  sha256 "__NPM_TARBALL_SHA256__"
+  license :cannot_represent
+  version "__VERSION__"
+
+  depends_on :macos
+  depends_on "node"
+
+  def install
+    libexec.install Dir["*"]
+    bin.install_symlink libexec/"scripts/blueprint.mjs" => "blueprint"
+    bin.install_symlink libexec/"scripts/blueprint-mcp.mjs" => "blueprint-mcp"
+  end
+
+  test do
+    assert_match "Blueprint", shell_output("#{bin}/blueprint --help")
+  end
+end

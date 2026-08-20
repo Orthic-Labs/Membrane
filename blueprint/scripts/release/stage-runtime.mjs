@@ -34,7 +34,7 @@ export function stageRuntime({ out = null } = {}) {
   mkdirSync(libDir, { recursive: true });
 
   // 1. Build the npm tarball and extract it as the app payload.
-  const temp = mkdtempSync(join(tmpdir(), "cortex-runtime-stage-"));
+  const temp = mkdtempSync(join(tmpdir(), "blueprint-runtime-stage-"));
   try {
   execFileSync(process.execPath, npmCliArgs(["pack", "--pack-destination", temp]), { cwd: ROOT, stdio: "ignore" });
   const tarball = readdirSync(temp).find((name) => name.endsWith(".tgz"));
@@ -76,7 +76,7 @@ export function stageRuntime({ out = null } = {}) {
   const launcherSrc = join(ROOT, "release", "launchers");
   for (const name of readdirSync(launcherSrc)) {
     copyFileSync(join(launcherSrc, name), join(binDir, name));
-    if (name !== "cortex.cmd") chmodSync(join(binDir, name), 0o755);
+    if (name !== "blueprint.cmd") chmodSync(join(binDir, name), 0o755);
   }
 
   // 6. License + notices + readme.
@@ -88,7 +88,7 @@ export function stageRuntime({ out = null } = {}) {
 
   return {
     root: outDir,
-    layout: ["bin/cortex", "bin/cortex.cmd", "bin/cortex-mcp", "lib/node", "app/package", "app/package/node_modules", "app/grammars", "app/schemas", "LICENSE", "THIRD_PARTY_NOTICES", "README.txt"],
+    layout: ["bin/blueprint", "bin/blueprint.cmd", "bin/blueprint-mcp", "lib/node", "app/package", "app/package/node_modules", "app/grammars", "app/schemas", "LICENSE", "THIRD_PARTY_NOTICES", "README.txt"],
     version: pkg.version,
     platform: `${process.platform}-${process.arch}`,
   };

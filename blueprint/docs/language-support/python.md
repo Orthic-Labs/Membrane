@@ -13,14 +13,14 @@ edges. The base tier never claims compiler precision.
 
 Python additionally supports compiler-backed exact definitions, references,
 and types — but **only** when the repository supplies a pre-generated,
-committed SCIP JSON index. Cortex never produces that index itself; it only
+committed SCIP JSON index. Blueprint never produces that index itself; it only
 reads a portable SCIP JSON export
 (`{ documents: [{ relativePath, occurrences: [{ symbol, roles, range }] }] }`)
 via `graph/scip-provider.mjs`.
 
 The index is located, in order:
 
-1. `CORTEX_SCIP_INDEX` environment variable (explicit path),
+1. `BLUEPRINT_SCIP_INDEX` environment variable (explicit path),
 2. `index.scip.json` at the repository root,
 3. `.agent/index.scip.json`.
 
@@ -29,14 +29,14 @@ The index is located, in order:
 The index is generated **out-of-band** on the contributor machine with the
 scip-python indexer (version **0.6.6**, as recorded in
 `evals/scip-answer-keys.json`) and then exported to the portable JSON shape
-Cortex reads. The conversion command is the same one the eval harness uses:
+Blueprint reads. The conversion command is the same one the eval harness uses:
 
 ```sh
 scip print --json <index.scip> > index.scip.json
 ```
 
 Commit the resulting JSON at the repository root (`index.scip.json`) or in
-`.agent/` (`.agent/index.scip.json`), or point `CORTEX_SCIP_INDEX` at it.
+`.agent/` (`.agent/index.scip.json`), or point `BLUEPRINT_SCIP_INDEX` at it.
 Eval answer keys are regenerated with
 `evals/generate-scip-answer-keys.mjs` (`--tasks --out --scip-cli --index repo=path`).
 
@@ -46,7 +46,7 @@ Python interpreter — not during graph generation and not during evals.
 ## Degradation (typed, honest)
 
 - **No index** — `probeScip` reports `state: "unavailable"` with reason
-  `no SCIP index found (set CORTEX_SCIP_INDEX, or place index.scip.json / .agent/index.scip.json at repo root)`;
+  `no SCIP index found (set BLUEPRINT_SCIP_INDEX, or place index.scip.json / .agent/index.scip.json at repo root)`;
   the graph degrades to the AST tier.
 - **Unreadable JSON** — `state: "unavailable"` with the parse error as the
   reason; same AST fallback.

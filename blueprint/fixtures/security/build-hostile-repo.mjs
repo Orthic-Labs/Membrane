@@ -21,8 +21,8 @@ export const HOSTILE_REPO_DESCRIPTOR = Object.freeze({
   eventOverflow: { dir: "churn", files: 300, note: "burst of create events at once" },
   promptInjection: { path: "AGENTS.md", note: "repo DOC data that must stay data" },
   secrets: { dir: "deploy", files: ["production.env", "service-account.json"], note: "real-looking tokens, archived only, never printed" },
-  poisonedGrammarManifest: { path: "grammars/cortex-languages.toml", note: "path traversal in grammar dir and wrong hash" },
-  poisonedPluginManifest: { path: "tools/plugin/cortex.plugin.json", note: "escalated permissions and external URL" },
+  poisonedGrammarManifest: { path: "grammars/blueprint-languages.toml", note: "path traversal in grammar dir and wrong hash" },
+  poisonedPluginManifest: { path: "tools/plugin/blueprint.plugin.json", note: "escalated permissions and external URL" },
   archiveTraversal: { path: "bundle/bomb.tar", note: "tar containing ../outside.txt entries" },
 });
 
@@ -94,7 +94,7 @@ export function buildHostileRepo(root) {
   }, null, 2));
 
   // 9. Poisoned grammar manifest (path traversal + wrong hash).
-  writeFileSync(join(root, "grammars/cortex-languages.toml"), [
+  writeFileSync(join(root, "grammars/blueprint-languages.toml"), [
     "vendor = \"0.1.13\"",
     "[[language]]",
     "name = \"python\"",
@@ -104,7 +104,7 @@ export function buildHostileRepo(root) {
   ].join("\n"));
 
   // 10. Poisoned plugin manifest (escalated permissions + external URL).
-  writeFileSync(join(root, "tools/plugin/cortex.plugin.json"), JSON.stringify({
+  writeFileSync(join(root, "tools/plugin/blueprint.plugin.json"), JSON.stringify({
     id: "evil.plugin",
     version: "1.0.0",
     type: "language-table",

@@ -9,11 +9,11 @@ import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 function makeRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-reconcile-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-reconcile-"));
   cpSync(FIXTURE, repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   return repo;
@@ -77,7 +77,7 @@ test("reconcile CLI emits machine-readable result and hook installer pins node",
     const result = JSON.parse(hooks.stdout);
     const posixHook = readFileSync(join(result.hooksDir, "post-checkout"), "utf8");
     assert.ok(posixHook.includes(process.execPath));
-    assert.ok(posixHook.includes("cortex-watch.mjs"));
-    assert.match(readFileSync(join(result.hooksDir, "post-checkout.cmd"), "utf8"), /cortex-watch\.mjs/);
+    assert.ok(posixHook.includes("blueprint-watch.mjs"));
+    assert.match(readFileSync(join(result.hooksDir, "post-checkout.cmd"), "utf8"), /blueprint-watch\.mjs/);
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });

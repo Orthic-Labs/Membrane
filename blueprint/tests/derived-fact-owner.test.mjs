@@ -3,7 +3,7 @@ import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { CortexRepositoryWorker } from "../src/graph/watchman.mjs";
+import { BlueprintRepositoryWorker } from "../src/graph/watchman.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { closeStore, getGenerationEnvelope, listDerivedFactOwners, openStore } from "../src/graph/store-sqlite.mjs";
 
@@ -23,7 +23,7 @@ function makeRepo(prefix) {
 }
 
 test("full build stamps every fact_owner row with the generation and repo that produced it", () => {
-  const repo = makeRepo("cortex-owner-full-");
+  const repo = makeRepo("blueprint-owner-full-");
   try {
     buildGraphGeneration(repo, { outDir: ".agent", persist: true });
     const db = openStore(join(repo, ".agent/graph/graph.db"));
@@ -42,7 +42,7 @@ test("full build stamps every fact_owner row with the generation and repo that p
 });
 
 test("incremental delta re-attributes only the touched file's facts to the new generation", async () => {
-  const repo = makeRepo("cortex-owner-delta-");
+  const repo = makeRepo("blueprint-owner-delta-");
   try {
     buildGraphGeneration(repo, { outDir: ".agent", persist: true });
     const dbPath = join(repo, ".agent/graph/graph.db");
@@ -62,7 +62,7 @@ test("incremental delta re-attributes only the touched file's facts to the new g
 
     const path = join(repo, "src/service.ts");
     writeFileSync(path, `${readFileSync(path, "utf8")}\nexport const ownerDeltaCheck = true;\n`);
-    const result = await new CortexRepositoryWorker({ root: repo }).ingest("src/service.ts");
+    const result = await new BlueprintRepositoryWorker({ root: repo }).ingest("src/service.ts");
     assert.equal(result.applied, true);
 
     const after = openStore(dbPath);

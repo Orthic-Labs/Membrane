@@ -7,7 +7,7 @@ import { contentDigest } from "../src/graph/generation-identity.mjs";
 import { stableRead } from "../src/graph/stable-read.mjs";
 
 test("stableRead returns exact bytes, digest, identity, and stats", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cortex-stable-read-"));
+  const dir = mkdtempSync(join(tmpdir(), "blueprint-stable-read-"));
   const path = join(dir, "sample.ts");
   const bytes = Buffer.from("export const exact = 'bytes';\n", "utf8");
   writeFileSync(path, bytes);

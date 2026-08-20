@@ -18,7 +18,7 @@ if (missing.length) {
 
 const before = new Map(GENERATED.map((path) => [path, readFileSync(join(ROOT, path), "utf8")]));
 
-const build = spawnSync(process.execPath, [join(ROOT, "scripts", "cortex.mjs"), "build", "--out", ".agent", "--no-readme-link"], {
+const build = spawnSync(process.execPath, [join(ROOT, "scripts", "blueprint.mjs"), "build", "--out", ".agent", "--no-readme-link"], {
   cwd: ROOT,
   encoding: "utf8",
   timeout: 300000,

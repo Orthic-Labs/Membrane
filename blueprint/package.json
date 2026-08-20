@@ -1,17 +1,17 @@
 {
-  "name": "@orthic-labs/cortex",
+  "name": "@orthic-labs/blueprint",
   "version": "0.2.0",
-  "description": "Cortex: local evidence-backed repository map \u2014 documents, claims, code graph (Neurons/Synapses/Circuits), and orientation admission library.",
+  "description": "Blueprint: local evidence-backed repository map \u2014 documents, claims, code graph (Neurons/Synapses/Circuits), and orientation admission library.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "packageManager": "pnpm@11.18.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Orthic-Labs/Cortex.git"
+    "url": "git+https://github.com/Orthic-Labs/Blueprint.git"
   },
-  "homepage": "https://github.com/Orthic-Labs/Cortex#readme",
+  "homepage": "https://github.com/Orthic-Labs/Blueprint#readme",
   "bugs": {
-    "url": "https://github.com/Orthic-Labs/Cortex/issues"
+    "url": "https://github.com/Orthic-Labs/Blueprint/issues"
   },
   "keywords": [
     "code-graph",
@@ -26,16 +26,16 @@
   "publishConfig": {
     "access": "public"
   },
-  "mcpName": "io.github.Orthic-Labs/cortex",
+  "mcpName": "io.github.Orthic-Labs/blueprint",
   "engines": {
     "node": ">=22.22.3"
   },
   "bin": {
-    "cortex": "./scripts/cortex.mjs",
-    "orthic-cortex": "./scripts/cortex.mjs",
-    "cortex-watch": "./scripts/cortex-watch.mjs",
-    "cortex-mcp": "./scripts/cortex-mcp.mjs",
-    "cortex-install": "./scripts/cortex-install.mjs"
+    "blueprint": "./scripts/blueprint.mjs",
+    "orthic-blueprint": "./scripts/blueprint.mjs",
+    "blueprint-watch": "./scripts/blueprint-watch.mjs",
+    "blueprint-mcp": "./scripts/blueprint-mcp.mjs",
+    "blueprint-install": "./scripts/blueprint-install.mjs"
   },
   "files": [
     "scripts/",
@@ -80,7 +80,7 @@
     "bench:retrieval": "node scripts/benchmark-retrieval.mjs",
     "test:hardening": "node --test tests/store-migrations.test.mjs tests/store-rollback.test.mjs tests/performance-envelopes.test.mjs tests/cross-platform-paths.test.mjs",
     "test:security": "node --test \"tests/security/**/*.test.mjs\" tests/mcp-root-confinement.test.mjs tests/plugin-boundary.test.mjs tests/support-bundle-redaction.test.mjs",
-    "soak": "node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/cortex-soak.json"
+    "soak": "node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/blueprint-soak.json"
   },
   "dependencies": {
     "@rightkit/hooks": "0.1.0",

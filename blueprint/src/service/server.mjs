@@ -7,7 +7,7 @@ import { connect, createServer } from "node:net";
 import { randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { createCortexApplicationService } from "../lib/application/service.mjs";
+import { createBlueprintApplicationService } from "../lib/application/service.mjs";
 import { RootRegistry } from "../lib/application/root-registry.mjs";
 import { createBuildSingleflight } from "./build-singleflight.mjs";
 import { PROTOCOL_VERSION, decodeLine, encodeResponse, METHODS, validateDeadlineMs, validateProtocolVersion } from "./protocol.mjs";
@@ -107,7 +107,7 @@ function releaseUnixLock(lock) {
 export function createDaemonServer({ service = null, endpoint = null, registryEntries = [], rootRegistry = null, buildSingleflight = null } = {}) {
   const registry = rootRegistry ?? (service || registryEntries.length === 0 ? null : new RootRegistry(registryEntries));
   const queueRegistry = rootRegistry ?? (registryEntries.length > 0 ? new RootRegistry(registryEntries) : null);
-  const appService = service ?? createCortexApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
+  const appService = service ?? createBlueprintApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
   const builds = buildSingleflight ?? createBuildSingleflight();
   const socketPath = endpoint ?? daemonEndpoint();
   const isWindows = process.platform === "win32";

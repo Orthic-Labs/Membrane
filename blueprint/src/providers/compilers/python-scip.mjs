@@ -213,7 +213,7 @@ function degradationReport(probe) {
 }
 
 function probeScipIndex(context = {}) {
-  const explicit = context.scipIndexPath ?? process.env.CORTEX_SCIP_INDEX ?? null;
+  const explicit = context.scipIndexPath ?? process.env.BLUEPRINT_SCIP_INDEX ?? null;
   const indexPath = explicit && isAbsolute(explicit)
     ? explicit
     : findScipIndex(context.repoRoot ?? process.cwd(), { scipIndexPath: explicit });
@@ -224,7 +224,7 @@ function probeScipIndex(context = {}) {
       provider: PROVIDER_ID,
       precisionTier: PRECISION_TIERS.COMPILER,
       degradesTo: DEGRADES_TO,
-      reason: "no SCIP index found (set CORTEX_SCIP_INDEX or pass scipIndexPath, or place index.scip.json / .agent/index.scip.json at the repo root)",
+      reason: "no SCIP index found (set BLUEPRINT_SCIP_INDEX or pass scipIndexPath, or place index.scip.json / .agent/index.scip.json at the repo root)",
     };
   }
   let parsed;

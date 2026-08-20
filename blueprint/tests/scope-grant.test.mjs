@@ -8,8 +8,8 @@ import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { checkScopeGrant, issueScopeGrant } from "../src/lib/receipt-store.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
-const INSTALLER = join(ROOT, "scripts/cortex-install.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
+const INSTALLER = join(ROOT, "scripts/blueprint-install.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 function run(repo, args, input) {
@@ -19,7 +19,7 @@ function install(repo, args) {
   return spawnSync(process.execPath, [INSTALLER, ...args], { cwd: repo, encoding: "utf8" });
 }
 function makeRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-grant-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-grant-"));
   cpSync(FIXTURE, repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   return repo;

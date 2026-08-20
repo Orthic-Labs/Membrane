@@ -7,10 +7,10 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { RootRegistry } from "../src/lib/application/root-registry.mjs";
-import { CortexError } from "../src/lib/application/errors.mjs";
+import { BlueprintError } from "../src/lib/application/errors.mjs";
 
 function makeRepo(name = "repo-a") {
-  const root = mkdtempSync(join(tmpdir(), `cortex-registry-${name}-`));
+  const root = mkdtempSync(join(tmpdir(), `blueprint-registry-${name}-`));
   mkdirSync(join(root, ".git"), { recursive: true });
   writeFileSync(join(root, "README.md"), `# ${name}\n`);
   return realpathSync.native(root);
@@ -66,7 +66,7 @@ test("unregistered root raises root_not_enrolled", () => {
     const registry = new RootRegistry([{ root }]);
     assert.throws(
       () => registry.resolve({ repoRoot: other }),
-      (error) => error instanceof CortexError && error.code === "root_not_enrolled",
+      (error) => error instanceof BlueprintError && error.code === "root_not_enrolled",
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -84,7 +84,7 @@ test("repoId and root pointing at different enrollments raise root_escape", () =
     ]);
     assert.throws(
       () => registry.resolve({ repoId: "repo-a", repoRoot: b }),
-      (error) => error instanceof CortexError && error.code === "root_escape",
+      (error) => error instanceof BlueprintError && error.code === "root_escape",
     );
   } finally {
     rmSync(a, { recursive: true, force: true });
@@ -98,7 +98,7 @@ test("disabled entries are never resolved", () => {
     const registry = new RootRegistry([{ root, repoId: "repo-1", enabled: false }]);
     assert.throws(
       () => registry.resolve({ repoId: "repo-1" }),
-      (error) => error instanceof CortexError && error.code === "root_not_enrolled",
+      (error) => error instanceof BlueprintError && error.code === "root_not_enrolled",
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -138,7 +138,7 @@ test("symlink escape is not enrolled", () => {
     // The symlinked path resolves outside the enrolled root -> not enrolled.
     assert.throws(
       () => registry.resolve({ repoRoot: link }),
-      (error) => error instanceof CortexError && error.code === "root_not_enrolled",
+      (error) => error instanceof BlueprintError && error.code === "root_not_enrolled",
     );
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -166,7 +166,7 @@ test("nested repositories are distinct enrollments", () => {
 
 test("different worktrees of one repo are separate entries", () => {
   const main = makeRepo("main");
-  const wt = realpathSync.native(mkdtempSync(join(tmpdir(), "cortex-wt-")));
+  const wt = realpathSync.native(mkdtempSync(join(tmpdir(), "blueprint-wt-")));
   mkdirSync(join(wt, ".git"), { recursive: true });
   writeFileSync(join(wt, "README.md"), "# wt\n");
   try {
@@ -178,7 +178,7 @@ test("different worktrees of one repo are separate entries", () => {
     // A worktree does not inherit the main repo's enrollment.
     assert.throws(
       () => registry.resolve({ repoId: "repo-wt", repoRoot: main }),
-      (error) => error instanceof CortexError && error.code === "root_escape",
+      (error) => error instanceof BlueprintError && error.code === "root_escape",
     );
   } finally {
     rmSync(main, { recursive: true, force: true });

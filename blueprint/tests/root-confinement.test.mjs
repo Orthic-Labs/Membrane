@@ -7,19 +7,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { RootRegistry } from "../src/lib/application/root-registry.mjs";
-import { CortexError } from "../src/lib/application/errors.mjs";
+import { BlueprintError } from "../src/lib/application/errors.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 
 const FIXTURE = join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce");
 
 function enrolledService() {
-  const root = mkdtempSync(join(tmpdir(), "cortex-confine-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-confine-"));
   cpSync(FIXTURE, root, { recursive: true });
   buildGraphGeneration(root, { outDir: ".agent", persist: true });
   const registry = new RootRegistry([{ root, repoId: "repo-1" }]);
-  const service = createCortexApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
+  const service = createBlueprintApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
   return { root, service };
 }
 
@@ -27,7 +27,7 @@ async function expectRootError(promise, code) {
   try {
     await promise;
   } catch (error) {
-    assert.ok(error instanceof CortexError, `expected CortexError, got ${error}`);
+    assert.ok(error instanceof BlueprintError, `expected BlueprintError, got ${error}`);
     assert.equal(error.code, code);
     return error;
   }
@@ -36,7 +36,7 @@ async function expectRootError(promise, code) {
 
 test("registry mode rejects an arbitrary repoRoot", async () => {
   const { root, service } = enrolledService();
-  const elsewhere = mkdtempSync(join(tmpdir(), "cortex-elsewhere-"));
+  const elsewhere = mkdtempSync(join(tmpdir(), "blueprint-elsewhere-"));
   try {
     const error = await expectRootError(service.search({ repoRoot: elsewhere, query: "placeOrder" }), "root_not_enrolled");
     // No directory listing leaks in the error.
@@ -59,12 +59,12 @@ test("registry mode resolves by enrolled repoId", async () => {
 
 test("repoId with mismatched root fails closed", async () => {
   const { root, service } = enrolledService();
-  const elsewhere = mkdtempSync(join(tmpdir(), "cortex-elsewhere2-"));
+  const elsewhere = mkdtempSync(join(tmpdir(), "blueprint-elsewhere2-"));
   try {
     try {
       await service.search({ repoId: "repo-1", repoRoot: elsewhere, query: "placeOrder" });
     } catch (error) {
-      assert.ok(error instanceof CortexError, `expected CortexError, got ${error}`);
+      assert.ok(error instanceof BlueprintError, `expected BlueprintError, got ${error}`);
       assert.ok(error.code === "root_escape" || error.code === "root_not_enrolled", `got ${error.code}`);
       return;
     }
@@ -77,7 +77,7 @@ test("repoId with mismatched root fails closed", async () => {
 
 test("symlink escape never resolves to the linked directory", async () => {
   const { root, service } = enrolledService();
-  const outside = mkdtempSync(join(tmpdir(), "cortex-outside-"));
+  const outside = mkdtempSync(join(tmpdir(), "blueprint-outside-"));
   mkdirSync(join(outside, ".git"), { recursive: true });
   try {
     const link = join(root, "confine-link");
@@ -90,11 +90,11 @@ test("symlink escape never resolves to the linked directory", async () => {
 });
 
 test("embedded mode still accepts an explicit repoRoot", async () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-embedded-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-embedded-"));
   cpSync(FIXTURE, root, { recursive: true });
   buildGraphGeneration(root, { outDir: ".agent", persist: true });
   try {
-    const service = createCortexApplicationService({ allowEmbeddedRoot: true });
+    const service = createBlueprintApplicationService({ allowEmbeddedRoot: true });
     const result = await service.search({ repoRoot: root, query: "placeOrder", limit: 5 });
     assert.ok(Array.isArray(result.results));
   } finally {
@@ -104,7 +104,7 @@ test("embedded mode still accepts an explicit repoRoot", async () => {
 
 test("registry mode without any matching repo raises root_not_enrolled", async () => {
   const { service } = enrolledService();
-  const nowhere = mkdtempSync(join(tmpdir(), "cortex-nowhere-"));
+  const nowhere = mkdtempSync(join(tmpdir(), "blueprint-nowhere-"));
   try {
     await expectRootError(service.status({ repoRoot: nowhere }), "root_not_enrolled");
   } finally {

@@ -4,9 +4,9 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-const CORTEX = join(import.meta.dirname, "..");
-const CLI = join(CORTEX, "scripts", "cortex.mjs");
-const LARGE_REPO = process.env.CORTEX_LARGE_REPO;
+const BLUEPRINT = join(import.meta.dirname, "..");
+const CLI = join(BLUEPRINT, "scripts", "blueprint.mjs");
+const LARGE_REPO = process.env.BLUEPRINT_LARGE_REPO;
 
 test("large Git file listings build without recursive-walk fallback", { skip: !LARGE_REPO }, () => {
   const result = spawnSync(process.execPath, [CLI, "build", "--out", ".agent", "--check"], {

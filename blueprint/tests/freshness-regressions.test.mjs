@@ -9,15 +9,15 @@ import { applyFileDelta, clearDomainPending, DOC_PROVIDER, markDomainPending, re
 import { computeFullLedger, updateLeafChain } from "../src/graph/merkle-ledger.mjs";
 import { buildGraphGeneration, parseFileFacts } from "../src/graph/static-provider.mjs";
 import { closeStore, listFileMetadata, openStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
-import { CortexRepositoryWorker, RepositoryActor } from "../src/graph/watchman.mjs";
+import { BlueprintRepositoryWorker, RepositoryActor } from "../src/graph/watchman.mjs";
 import { normalizeEvents } from "../watchman/adapter.mjs";
 import { reconcile } from "../watchman/reconcile.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
-function makeRepo(prefix = "cortex-freshness-") {
+function makeRepo(prefix = "blueprint-freshness-") {
   const repo = mkdtempSync(join(tmpdir(), prefix));
   cpSync(FIXTURE, repo, { recursive: true });
   return repo;
@@ -42,7 +42,7 @@ function canonicalGraphRows(db) {
 }
 
 test("full production build records lexical and Tree-sitter fact ownership", () => {
-  const repo = makeRepo("cortex-provider-owner-");
+  const repo = makeRepo("blueprint-provider-owner-");
   try {
     const built = run(repo, ["build", "--out", ".agent"]);
     assert.equal(built.status, 0, built.stderr);
@@ -56,13 +56,13 @@ test("full production build records lexical and Tree-sitter fact ownership", () 
 });
 
 test("same-content watcher event advances durable clocks without changing generation", async () => {
-  const repo = makeRepo("cortex-noop-clock-");
+  const repo = makeRepo("blueprint-noop-clock-");
   try {
     buildGraphGeneration(repo, { outDir: ".agent", persist: true });
     const db = openStore(dbPath(repo));
     const before = db.prepare("SELECT value FROM generation WHERE key='manifest'").get().value;
     closeStore(db);
-    const result = await new CortexRepositoryWorker({ root: repo }).ingest("src/service.ts");
+    const result = await new BlueprintRepositoryWorker({ root: repo }).ingest("src/service.ts");
     const afterDb = openStore(dbPath(repo));
     try {
       assert.equal(result.applied, true);
@@ -75,7 +75,7 @@ test("same-content watcher event advances durable clocks without changing genera
 });
 
 test("same-basename move normalizes to one rename event", () => {
-  const root = makeRepo("cortex-rename-normalize-");
+  const root = makeRepo("blueprint-rename-normalize-");
   try {
     mkdirSync(join(root, "moved"), { recursive: true });
     const events = normalizeEvents(root, [
@@ -88,7 +88,7 @@ test("same-basename move normalizes to one rename event", () => {
 });
 
 test("snapshot reconcile journals one atomic rename", async () => {
-  const repo = makeRepo("cortex-reconcile-rename-");
+  const repo = makeRepo("blueprint-reconcile-rename-");
   try {
     assert.equal(run(repo, ["build", "--out", ".agent"]).status, 0);
     mkdirSync(join(repo, "moved"), { recursive: true });
@@ -116,7 +116,7 @@ test("snapshot reconcile journals one atomic rename", async () => {
 });
 
 test("snapshot reconcile durably acknowledges same-content event", async () => {
-  const repo = makeRepo("cortex-reconcile-noop-");
+  const repo = makeRepo("blueprint-reconcile-noop-");
   try {
     assert.equal(run(repo, ["build", "--out", ".agent"]).status, 0);
     const source = join(repo, "src/service.ts");
@@ -144,12 +144,12 @@ test("snapshot reconcile durably acknowledges same-content event", async () => {
 });
 
 test("journal rename removes old path, owners, state, and Merkle leaf", async () => {
-  const repo = makeRepo("cortex-rename-journal-");
+  const repo = makeRepo("blueprint-rename-journal-");
   try {
     buildGraphGeneration(repo, { outDir: ".agent", persist: true });
     mkdirSync(join(repo, "moved"), { recursive: true });
     renameSync(join(repo, "src/service.ts"), join(repo, "moved/service.ts"));
-    const result = await new CortexRepositoryWorker({ root: repo }).ingest("src/service.ts", "rename", "moved/service.ts");
+    const result = await new BlueprintRepositoryWorker({ root: repo }).ingest("src/service.ts", "rename", "moved/service.ts");
     assert.equal(result.applied, true);
     const db = openStore(dbPath(repo));
     try {
@@ -164,7 +164,7 @@ test("journal rename removes old path, owners, state, and Merkle leaf", async ()
 });
 
 test("document delete removes derived claims, queue rows, owners, state, and leaf", () => {
-  const repo = makeRepo("cortex-doc-delete-");
+  const repo = makeRepo("blueprint-doc-delete-");
   try {
     mkdirSync(join(repo, "docs"), { recursive: true });
     writeFileSync(join(repo, "docs/SECOND.md"), "# Secondary\n\nThe service is implemented in `src/service.ts`.\n");
@@ -187,8 +187,8 @@ test("document delete removes derived claims, queue rows, owners, state, and lea
 });
 
 test("document rename rehydrates owners, state, leaf, and artifacts at new path", async () => {
-  const repo = makeRepo("cortex-doc-rename-");
-  const coldRepo = makeRepo("cortex-doc-rename-cold-");
+  const repo = makeRepo("blueprint-doc-rename-");
+  const coldRepo = makeRepo("blueprint-doc-rename-cold-");
   try {
     mkdirSync(join(repo, "docs"), { recursive: true });
     const content = "# Secondary\n\nThe service is implemented in `src/service.ts`.\n";
@@ -199,7 +199,7 @@ test("document rename rehydrates owners, state, leaf, and artifacts at new path"
     mkdirSync(join(coldRepo, "docs/moved"), { recursive: true });
     writeFileSync(join(coldRepo, "docs/moved/SECOND.md"), content);
     assert.equal(run(coldRepo, ["build", "--out", ".agent"]).status, 0);
-    const result = await new CortexRepositoryWorker({ root: repo }).ingest("docs/SECOND.md", "rename", "docs/moved/SECOND.md");
+    const result = await new BlueprintRepositoryWorker({ root: repo }).ingest("docs/SECOND.md", "rename", "docs/moved/SECOND.md");
     assert.equal(result.applied, true);
     const claims = JSON.parse(readFileSync(join(repo, ".agent/claims.json"), "utf8"));
     const queue = JSON.parse(readFileSync(join(repo, ".agent/queue.json"), "utf8"));
@@ -231,7 +231,7 @@ test("document rename rehydrates owners, state, leaf, and artifacts at new path"
 });
 
 test("document artifact write failure restores every JSON artifact and SQLite row", () => {
-  const repo = makeRepo("cortex-doc-atomic-");
+  const repo = makeRepo("blueprint-doc-atomic-");
   try {
     mkdirSync(join(repo, "docs"), { recursive: true });
     const relativePath = "docs/SECOND.md";
@@ -333,8 +333,8 @@ test("ordinary actor path cannot call whole-repository source scan", () => {
 });
 
 test("production Tree-sitter modify removes stale facts and equals a cold build", async () => {
-  const deltaRepo = makeRepo("cortex-ast-delta-");
-  const coldRepo = makeRepo("cortex-ast-cold-");
+  const deltaRepo = makeRepo("blueprint-ast-delta-");
+  const coldRepo = makeRepo("blueprint-ast-cold-");
   try {
     const helper = "export function importedHelper(value: number) { return value + 1; }\n";
     writeFileSync(join(deltaRepo, "src/helper.ts"), helper);
@@ -346,7 +346,7 @@ test("production Tree-sitter modify removes stale facts and equals a cold build"
     const beforeDb = openStore(dbPath(deltaRepo));
     const staleFacts = beforeDb.prepare("SELECT fact_id,provider_id FROM fact_owner WHERE source_path='src/service.ts' AND fact_kind_detail!='file'").all();
     closeStore(beforeDb);
-    await new CortexRepositoryWorker({ root: deltaRepo }).ingest("src/service.ts");
+    await new BlueprintRepositoryWorker({ root: deltaRepo }).ingest("src/service.ts");
     assert.equal(run(coldRepo, ["build", "--out", ".agent"]).status, 0);
     const deltaDb = openStore(dbPath(deltaRepo));
     const coldDb = openStore(dbPath(coldRepo));
@@ -363,7 +363,7 @@ test("production Tree-sitter modify removes stale facts and equals a cold build"
 });
 
 test("10k-file actor delta reads only changed path content", async () => {
-  const repo = makeRepo("cortex-read-bound-");
+  const repo = makeRepo("blueprint-read-bound-");
   try {
     buildGraphGeneration(repo, { outDir: ".agent", persist: true });
     const db = openStore(dbPath(repo));
@@ -377,7 +377,7 @@ test("10k-file actor delta reads only changed path content", async () => {
     closeStore(db);
     writeFileSync(join(repo, "src/config.ts"), "export const boundedRead = true;\n");
     let reads = 0;
-    const worker = new CortexRepositoryWorker({
+    const worker = new BlueprintRepositoryWorker({
       root: repo,
       readStable: (path) => { reads += 1; return stableRead(path); },
     });
@@ -401,7 +401,7 @@ test("pending domains clear selectively after successful work", () => {
 });
 
 test("WAL readers observe old or new complete delta state, never a mixed generation", () => {
-  const repo = makeRepo("cortex-wal-delta-");
+  const repo = makeRepo("blueprint-wal-delta-");
   try {
     buildGraphGeneration(repo, { outDir: ".agent", persist: true });
     const path = join(repo, "src/service.ts");
@@ -441,7 +441,7 @@ test("WAL readers observe old or new complete delta state, never a mixed generat
 });
 
 test("restart drains journal row appended before process death exactly once", async () => {
-  const repo = makeRepo("cortex-restart-drain-");
+  const repo = makeRepo("blueprint-restart-drain-");
   let actor;
   try {
     buildGraphGeneration(repo, { outDir: ".agent", persist: true });
@@ -467,7 +467,7 @@ test("restart drains journal row appended before process death exactly once", as
 });
 
 test("35k-file no-change reconcile stays below hard five-second ceiling", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-reconcile-35k-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-reconcile-35k-"));
   try {
     const db = openStore(":memory:");
     const insertState = db.prepare(`INSERT INTO file_state(path,content_digest,size,mtime_ms,file_identity,last_event_seq,applied_clock)

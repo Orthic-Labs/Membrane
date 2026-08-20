@@ -2,7 +2,7 @@
 
 ## Relationship vocabulary
 
-Cortex emits typed edges from the shared vocabulary:
+Blueprint emits typed edges from the shared vocabulary:
 
 `INHERITS`, `IMPLEMENTS`, `MIXES_IN`, `USES`, `TESTS`, `COVERS`, `GENERATES`,
 plus the existing `IMPORTS`, `CALLS`, `CONTAINS`, `REFERENCES`, `DEFINES`,

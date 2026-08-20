@@ -45,8 +45,8 @@ function sampleGeneration() {
       { id: "edge:CONTAINS:file:a.ts->symbol:a.ts::foo", kind: "CONTAINS", source: "file:a.ts", target: "symbol:a.ts::foo", confidence: 1, resolved: true, evidence: [] },
     ],
     fileReports: [
-      { path: "a.ts", language: "typescript", provider: "cortex-treesitter", parseStatus: "ok", errorNodeCount: 0 },
-      { path: "b.ts", language: "typescript", provider: "cortex-treesitter", parseStatus: "ok", errorNodeCount: 0 },
+      { path: "a.ts", language: "typescript", provider: "blueprint-treesitter", parseStatus: "ok", errorNodeCount: 0 },
+      { path: "b.ts", language: "typescript", provider: "blueprint-treesitter", parseStatus: "ok", errorNodeCount: 0 },
     ],
   };
 }
@@ -147,7 +147,7 @@ test("annotation nodes round-trip full payload in ordinal order outside symbols"
   const db = openStore(":memory:");
   const annotations = [
     { id: "comment:a.ts:1", kind: "comment", labels: ["Comment"], name: null, qualifiedName: null, path: "a.ts", confidence: 0.5, evidence: null, text: null, provider: null, factProvider: null },
-    { id: "comment:a.ts:2", kind: "comment", labels: ["Comment"], name: null, qualifiedName: null, path: "a.ts", confidence: 1, evidence: [{ path: "a.ts", startLine: 4, endLine: 4, contentHash: "h-a" }], text: "// retained", provider: { id: "cortex-treesitter" } },
+    { id: "comment:a.ts:2", kind: "comment", labels: ["Comment"], name: null, qualifiedName: null, path: "a.ts", confidence: 1, evidence: [{ path: "a.ts", startLine: 4, endLine: 4, contentHash: "h-a" }], text: "// retained", provider: { id: "blueprint-treesitter" } },
   ];
   const generation = { ...sampleGeneration(), manifest: { generationId: "gen-comments" }, nodes: [...sampleGeneration().nodes, ...annotations] };
   try {
@@ -440,7 +440,7 @@ test("blastRadius on a node with no dependents returns just the seed at depth 0"
 });
 
 test("store is regenerable: a fresh openStore on a new file has zero rows until populated", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cortex-store-sqlite-"));
+  const dir = mkdtempSync(join(tmpdir(), "blueprint-store-sqlite-"));
   const dbPath = join(dir, "graph.sqlite");
   try {
     const db = openStore(dbPath);

@@ -38,9 +38,9 @@ function validReceipt(overrides = {}) {
 function writeCatalog(dir) {
   const catalog = {
     schemaVersion: 1,
-    product: "Cortex",
+    product: "Blueprint",
     version: "0.2.0",
-    artifacts: [{ name: "cortex-darwin-arm64.tar.gz", platform: "darwin", arch: "arm64", sha256: "a".repeat(64) }],
+    artifacts: [{ name: "blueprint-darwin-arm64.tar.gz", platform: "darwin", arch: "arm64", sha256: "a".repeat(64) }],
   };
   writeFileSync(join(dir, "catalog.json"), `${JSON.stringify(catalog, null, 2)}\n`);
   return join(dir, "catalog.json");
@@ -118,7 +118,7 @@ test("native receipt verifier CLI exits nonzero for a missing receipt and zero f
 });
 
 test("release store contracts match current runtime schema", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-schema-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-schema-"));
   try {
     const candidate = buildCandidate({ out, allowDirty: true });
     assert.equal(candidate.compatibility.contracts.store, SCHEMA_VERSION);
@@ -133,12 +133,12 @@ test("release store contracts match current runtime schema", () => {
 });
 
 test("candidate build emits compatibility, checksums, SBOM, catalog, and update manifest", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-"));
   try {
     const result = buildCandidate({ out, allowDirty: true });
     assert.ok(result.compatibility);
     assert.equal(result.compatibility.schemaVersion, 1);
-    assert.equal(result.compatibility.product, "Cortex");
+    assert.equal(result.compatibility.product, "Blueprint");
     assert.ok(result.compatibility.commit.length === 40);
     for (const file of ["compatibility.json", "checksums.txt", "SBOM.spdx.json", "artifact-catalog.json", "update-manifest.json", "THIRD_PARTY_NOTICES"]) {
       assert.ok(existsSync(join(out, file)), `missing ${file}`);
@@ -149,7 +149,7 @@ test("candidate build emits compatibility, checksums, SBOM, catalog, and update 
 });
 
 test("candidate update manifest is a signable UpdateManifestV1 bound to the artifacts", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-manifest-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-manifest-"));
   try {
     buildCandidate({ out, allowDirty: true });
     const manifest = loadUpdateManifest(join(out, "update-manifest.json"));
@@ -174,7 +174,7 @@ test("candidate update manifest is a signable UpdateManifestV1 bound to the arti
 });
 
 test("candidate verification fails on an absent or tampered update manifest", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-manifest-bad-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-manifest-bad-"));
   try {
     buildCandidate({ out, allowDirty: true });
     const manifestPath = join(out, "update-manifest.json");
@@ -193,12 +193,12 @@ test("candidate verification fails on an absent or tampered update manifest", ()
 });
 
 test("candidate inventories one installable npm tarball", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-tarball-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-tarball-"));
   try {
     const result = buildCandidate({ out, allowDirty: true });
     const tarballs = result.compatibility.artifacts.filter((artifact) => artifact.name.endsWith(".tgz"));
     assert.equal(tarballs.length, 1);
-    assert.equal(result.compatibility.packageName, "@orthic-labs/cortex");
+    assert.equal(result.compatibility.packageName, "@orthic-labs/blueprint");
     assert.equal(result.compatibility.platform, `${process.platform}-${process.arch}`);
     assert.ok(existsSync(join(out, tarballs[0].name)));
     assert.equal(verifyCandidate(out).ok, true);
@@ -208,7 +208,7 @@ test("candidate inventories one installable npm tarball", () => {
 });
 
 test("candidate verification rejects an unlisted extra file", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-extra-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-extra-"));
   try {
     buildCandidate({ out, allowDirty: true });
     writeFileSync(join(out, "extra.bin"), "unexpected");
@@ -217,7 +217,7 @@ test("candidate verification rejects an unlisted extra file", () => {
 });
 
 test("candidate build rejects a nonempty output directory", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-nonempty-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-nonempty-"));
   try {
     writeFileSync(join(out, "leftover.txt"), "leftover");
     assert.throws(() => buildCandidate({ out, allowDirty: true }), /empty output/);
@@ -233,7 +233,7 @@ test("candidate build rejects any repository output outside release candidates",
 });
 
 test("candidate verification rejects duplicate checksum names", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-duplicate-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-duplicate-"));
   try {
     buildCandidate({ out, allowDirty: true });
     const checksums = join(out, "checksums.txt");
@@ -243,7 +243,7 @@ test("candidate verification rejects duplicate checksum names", () => {
 });
 
 test("candidate verification rejects a tarball symlink entry", (t) => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-tar-symlink-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-tar-symlink-"));
   try {
     const candidate = buildCandidate({ out, allowDirty: true }), tarball = candidate.compatibility.artifacts.find((artifact) => artifact.name.endsWith(".tgz")).name;
     const stage = join(out, "tar-stage"); mkdirSync(join(stage, "package"), { recursive: true });
@@ -259,7 +259,7 @@ test("candidate verification rejects a tarball symlink entry", (t) => {
 });
 
 test("candidate verification passes for a fresh build", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-verify-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-verify-"));
   try {
     buildCandidate({ out, allowDirty: true });
     const result = verifyCandidate(out);
@@ -271,7 +271,7 @@ test("candidate verification passes for a fresh build", () => {
 });
 
 test("candidate verification fails on a tampered checksum", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-tamper-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-tamper-"));
   try {
     buildCandidate({ out, allowDirty: true });
     const checksumsPath = join(out, "checksums.txt");
@@ -288,13 +288,13 @@ test("candidate verification fails on a tampered checksum", () => {
 test("candidate build rejects a dirty tree", () => {
   // Fixture-scoped: a fresh temp git repo, dirtied only by this test, so the
   // guard no longer depends on the live worktree's state.
-  const fixture = mkdtempSync(join(tmpdir(), "cortex-rc-dirty-fixture-"));
+  const fixture = mkdtempSync(join(tmpdir(), "blueprint-rc-dirty-fixture-"));
   const repo = join(fixture, "repo");
   mkdirSync(repo);
   try {
     execFileSync("git", ["init", "-b", "main"], { cwd: repo, stdio: "ignore" });
     execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: repo, stdio: "ignore" });
-    execFileSync("git", ["config", "user.name", "cortex tests"], { cwd: repo, stdio: "ignore" });
+    execFileSync("git", ["config", "user.name", "blueprint tests"], { cwd: repo, stdio: "ignore" });
     writeFileSync(join(repo, "file.txt"), "clean\n");
     execFileSync("git", ["add", "file.txt"], { cwd: repo, stdio: "ignore" });
     execFileSync("git", ["commit", "-m", "fixture baseline"], { cwd: repo, stdio: "ignore" });
@@ -306,7 +306,7 @@ test("candidate build rejects a dirty tree", () => {
 });
 
 test("candidate CLI accepts omitted optional version", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-rc-cli-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-rc-cli-"));
   try {
     const script = join(import.meta.dirname, "..", "scripts", "release", "build-candidate.mjs");
     const result = spawnSync(process.execPath, [script, "--allow-dirty", "--platform", "current", "--out", out], { encoding: "utf8" });

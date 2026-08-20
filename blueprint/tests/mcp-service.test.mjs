@@ -11,7 +11,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const SERVER = join(ROOT, "scripts/cortex-mcp.mjs");
+const SERVER = join(ROOT, "scripts/blueprint-mcp.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 function payload(response) {
@@ -23,7 +23,7 @@ function payload(response) {
 
 async function withServer(repo, fn) {
   const transport = new StdioClientTransport({ command: process.execPath, args: [SERVER, "--root", repo], cwd: repo, stderr: "pipe" });
-  const client = new Client({ name: "cortex-test", version: "1.0.0" }, { capabilities: {} });
+  const client = new Client({ name: "blueprint-test", version: "1.0.0" }, { capabilities: {} });
   try {
     await client.connect(transport);
     return await fn(client);
@@ -33,7 +33,7 @@ async function withServer(repo, fn) {
 }
 
 function buildRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-mcp-service-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-mcp-service-"));
   cpSync(FIXTURE, repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   return repo;
@@ -45,7 +45,7 @@ test("MCP exposes exactly six task-shaped tools", async () => {
     await withServer(repo, async (client) => {
       const tools = await client.listTools();
       const names = tools.tools.map((tool) => tool.name).sort();
-      assert.deepEqual(names, ["cortex_doc_truth", "cortex_expand", "cortex_impact", "cortex_orient", "cortex_search", "cortex_status"]);
+      assert.deepEqual(names, ["blueprint_doc_truth", "blueprint_expand", "blueprint_impact", "blueprint_orient", "blueprint_search", "blueprint_status"]);
       // No tool accepts an unrestricted repoRoot.
       for (const tool of tools.tools) {
         const schema = tool.inputSchema ?? {};
@@ -58,11 +58,11 @@ test("MCP exposes exactly six task-shaped tools", async () => {
   }
 });
 
-test("cortex_orient returns generation context with receipt", async () => {
+test("blueprint_orient returns generation context with receipt", async () => {
   const repo = buildRepo();
   try {
     await withServer(repo, async (client) => {
-      const result = payload(await client.callTool({ name: "cortex_orient", arguments: { task: "placeOrder" } }));
+      const result = payload(await client.callTool({ name: "blueprint_orient", arguments: { task: "placeOrder" } }));
       assert.equal(result.schemaVersion, 1);
       assert.equal(result.action, "allow");
       assert.ok(result.generationId);
@@ -73,11 +73,11 @@ test("cortex_orient returns generation context with receipt", async () => {
   }
 });
 
-test("cortex_search returns bounded results", async () => {
+test("blueprint_search returns bounded results", async () => {
   const repo = buildRepo();
   try {
     await withServer(repo, async (client) => {
-      const result = payload(await client.callTool({ name: "cortex_search", arguments: { query: "placeOrder", limit: 5 } }));
+      const result = payload(await client.callTool({ name: "blueprint_search", arguments: { query: "placeOrder", limit: 5 } }));
       assert.equal(result.kind, "search");
       assert.ok(Array.isArray(result.results));
       assert.ok(result.results.length <= 5);
@@ -88,13 +88,13 @@ test("cortex_search returns bounded results", async () => {
   }
 });
 
-test("cortex_expand returns a bounded evidence slice", async () => {
+test("blueprint_expand returns a bounded evidence slice", async () => {
   const repo = buildRepo();
   try {
     await withServer(repo, async (client) => {
-      const search = payload(await client.callTool({ name: "cortex_search", arguments: { query: "placeOrder", limit: 1 } }));
+      const search = payload(await client.callTool({ name: "blueprint_search", arguments: { query: "placeOrder", limit: 1 } }));
       const anchor = search.results[0].id;
-      const result = payload(await client.callTool({ name: "cortex_expand", arguments: { anchor, depth: 1, budget: 2000 } }));
+      const result = payload(await client.callTool({ name: "blueprint_expand", arguments: { anchor, depth: 1, budget: 2000 } }));
       assert.ok(result.nodes || result.neurons);
       assert.ok(result.edges || result.synapses);
     });
@@ -103,13 +103,13 @@ test("cortex_expand returns a bounded evidence slice", async () => {
   }
 });
 
-test("cortex_impact returns affected edges", async () => {
+test("blueprint_impact returns affected edges", async () => {
   const repo = buildRepo();
   try {
     await withServer(repo, async (client) => {
-      const search = payload(await client.callTool({ name: "cortex_search", arguments: { query: "placeOrder", limit: 1 } }));
+      const search = payload(await client.callTool({ name: "blueprint_search", arguments: { query: "placeOrder", limit: 1 } }));
       const anchor = search.results[0].id;
-      const result = payload(await client.callTool({ name: "cortex_impact", arguments: { anchor, depth: 2, budget: 2000 } }));
+      const result = payload(await client.callTool({ name: "blueprint_impact", arguments: { anchor, depth: 2, budget: 2000 } }));
       assert.ok(result);
     });
   } finally {
@@ -117,11 +117,11 @@ test("cortex_impact returns affected edges", async () => {
   }
 });
 
-test("cortex_doc_truth lists claims", async () => {
+test("blueprint_doc_truth lists claims", async () => {
   const repo = buildRepo();
   try {
     await withServer(repo, async (client) => {
-      const result = payload(await client.callTool({ name: "cortex_doc_truth", arguments: { limit: 50 } }));
+      const result = payload(await client.callTool({ name: "blueprint_doc_truth", arguments: { limit: 50 } }));
       assert.equal(result.schemaVersion, 1);
       assert.ok(Array.isArray(result.claims));
     });
@@ -130,11 +130,11 @@ test("cortex_doc_truth lists claims", async () => {
   }
 });
 
-test("cortex_status reports repository state", async () => {
+test("blueprint_status reports repository state", async () => {
   const repo = buildRepo();
   try {
     await withServer(repo, async (client) => {
-      const result = payload(await client.callTool({ name: "cortex_status", arguments: {} }));
+      const result = payload(await client.callTool({ name: "blueprint_status", arguments: {} }));
       assert.equal(result.schemaVersion, 1);
       assert.ok(result.repository);
       assert.ok("state" in result);
@@ -150,11 +150,11 @@ test("errors preserve structured codes and set isError", async () => {
     await withServer(repo, async (client) => {
       // Schema-level validation errors surface as SDK errors (non-JSON).
       await assert.rejects(
-        client.callTool({ name: "cortex_search", arguments: { query: "" } }),
+        client.callTool({ name: "blueprint_search", arguments: { query: "" } }),
         (error) => error?.code === -32602,
       );
       // Service-level errors surface as JSON envelopes with stable codes.
-      const missing = await client.callTool({ name: "cortex_expand", arguments: { anchor: "no-such-symbol-xyz", depth: 1 } });
+      const missing = await client.callTool({ name: "blueprint_expand", arguments: { anchor: "no-such-symbol-xyz", depth: 1 } });
       assert.equal(missing.isError, true);
       const parsed = JSON.parse(missing.content.find((block) => block.type === "text")?.text);
       assert.equal(parsed.error.code, "anchor_not_found");
@@ -179,12 +179,12 @@ test("stale barrier is surfaced as an error with allowStale opt-out", async () =
     }
     await withServer(repo, async (client) => {
       // The barrier cannot catch up within the service timeout -> stale_blocked.
-      const blocked = await client.callTool({ name: "cortex_search", arguments: { query: "placeOrder" } });
+      const blocked = await client.callTool({ name: "blueprint_search", arguments: { query: "placeOrder" } });
       assert.equal(blocked.isError, true);
       const parsed = JSON.parse(blocked.content.find((block) => block.type === "text")?.text);
       assert.equal(parsed.error.code, "stale_blocked");
       // allowStale serves from the last complete generation.
-      const allowed = await client.callTool({ name: "cortex_search", arguments: { query: "placeOrder", allowStale: true, limit: 5 } });
+      const allowed = await client.callTool({ name: "blueprint_search", arguments: { query: "placeOrder", allowStale: true, limit: 5 } });
       assert.ok(!allowed.isError);
     });
   } finally {
@@ -197,7 +197,7 @@ test("egress is redacted for secret-shaped values", async () => {
   try {
     await withServer(repo, async (client) => {
       // status exposes environment-adjacent fields; force a secret-shaped value via a probe.
-      const result = payload(await client.callTool({ name: "cortex_status", arguments: {} }));
+      const result = payload(await client.callTool({ name: "blueprint_status", arguments: {} }));
       assert.ok(result);
     });
   } finally {

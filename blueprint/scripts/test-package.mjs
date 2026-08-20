@@ -13,7 +13,7 @@ import { verifyMcpInitialize } from "./release/mcp-client-smoke.mjs";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 
-const requiredBins = ["cortex", "orthic-cortex", "cortex-watch", "cortex-mcp", "cortex-install"];
+const requiredBins = ["blueprint", "orthic-blueprint", "blueprint-watch", "blueprint-mcp", "blueprint-install"];
 for (const name of requiredBins) {
   if (!pkg.bin?.[name]) throw new Error(`package missing bin ${name}`);
 }
@@ -42,7 +42,7 @@ const unexpected = entry.files
 if (unexpected.length) fail(`tarball contains files outside the allowlist: ${unexpected.join(", ")}`);
 
 // 2. Extract a real tarball into a temp dir and install production deps.
-const temp = mkdtempSync(join(tmpdir(), "cortex-test-package-"));
+const temp = mkdtempSync(join(tmpdir(), "blueprint-test-package-"));
 try {
   execFileSync(process.execPath, npmCliArgs(["pack", "--pack-destination", temp]), { cwd: ROOT, stdio: "ignore" });
   const tarball = join(temp, entry.filename);
@@ -60,12 +60,12 @@ try {
   if (install.status !== 0) fail(`prod install failed: ${install.stderr || install.stdout}`);
 
   // 4. Help, status, and MCP handshake from the extracted package.
-  const help = spawnSync(process.execPath, [join(packageDir, "scripts", "cortex.mjs"), "--help"], { cwd: packageDir, encoding: "utf8" });
+  const help = spawnSync(process.execPath, [join(packageDir, "scripts", "blueprint.mjs"), "--help"], { cwd: packageDir, encoding: "utf8" });
   if (help.status !== 0) fail(`help failed: ${help.stderr}`);
-  if (!/Cortex — repository truth and evidence map/.test(help.stdout)) fail("help is not branded Cortex");
+  if (!/Blueprint — repository truth and evidence map/.test(help.stdout)) fail("help is not branded Blueprint");
 
   try {
-    await verifyMcpInitialize({ script: join(packageDir, "scripts", "cortex-mcp.mjs"), root: packageDir });
+    await verifyMcpInitialize({ script: join(packageDir, "scripts", "blueprint-mcp.mjs"), root: packageDir });
   } catch (error) {
     fail(`MCP handshake failed: ${error.message}`);
   }

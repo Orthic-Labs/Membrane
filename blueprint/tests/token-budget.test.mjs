@@ -144,7 +144,7 @@ test("truncationReceipt: only emitted when retained bytes are strictly less than
   const original = resolveTokens("abcdefghij", { startLine: 1, endLine: 1 }); // 10 bytes
   const retained = resolveTokens("abcd", { startLine: 1, endLine: 1 }); // 4 bytes
   const receipt = truncationReceipt(retained, original, { reason: "byte_cap" });
-  assert.equal(receipt.schema, "cortex.truncation.v1");
+  assert.equal(receipt.schema, "blueprint.truncation.v1");
   assert.equal(receipt.retainedBytes, 4);
   assert.equal(receipt.originalBytes, 10);
   assert.equal(receipt.retainedTokens, 1); // 4 / 3.5 ~ 1.14 -> rounds to 1
@@ -194,7 +194,7 @@ test("applyTrimToSymbol: byte cap causes the receipt to fire, snap-to-symbol sti
   assert.ok(out.endLine < lines.length, `expected endLine strictly less than total`);
   // Receipt MUST exist because the byte cap dropped content.
   assert.ok(out.receipt, "truncation receipt must be present when byte cap drops content");
-  assert.equal(out.receipt.schema, "cortex.truncation.v1");
+  assert.equal(out.receipt.schema, "blueprint.truncation.v1");
   assert.ok(out.receipt.retainedBytes <= 200);
   assert.ok(out.receipt.originalBytes > out.receipt.retainedBytes);
   // symbolBoundary flag reflects whether the snap moved the input span.
@@ -218,7 +218,7 @@ test("applyTrimToSymbol: under the byte cap, no receipt is emitted and text is p
 test("createContextCandidateSet: every candidate carries BOTH slice-time and resolution-time fields", () => {
   // Single-symbol generation so the candidate set is bounded by graph node
   // count, and the slice-time budgets are predictable.
-  const repo = mkdtempSync(join(tmpdir(), "cortex-budget-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-budget-"));
   try {
     writeFileSync(join(repo, "lib.js"), "export const answer = 42;\n");
     const generation = buildGraphGeneration(repo, { persist: false });
@@ -258,7 +258,7 @@ test("createContextCandidateSet: slice-time and resolution-time slots are indepe
   // already read. The new fields `actualTokens` and `truncation` are
   // ADDITIVE — never a rename. If a future migration renames the wire
   // field, this test fails fast and forces an explicit decision.
-  const repo = mkdtempSync(join(tmpdir(), "cortex-budget-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-budget-"));
   try {
     writeFileSync(join(repo, "lib.js"), "export const x = 1;\n");
     const generation = buildGraphGeneration(repo, { persist: false });
@@ -287,7 +287,7 @@ test("graph-resolve: resolution emits both budgets and a symbol-boundary receipt
   // artificially-tiny cap. The candidate must carry the byte cap receipt
   // AND the symbol-boundary flag must reflect that trim-to-symbol snapped
   // the input span.
-  const repo = mkdtempSync(join(tmpdir(), "cortex-gresolve-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-gresolve-"));
   try {
     let body = "";
     body += "export function bigSymbol() {\n";
@@ -321,7 +321,7 @@ test("graph-resolve: resolution emits both budgets and a symbol-boundary receipt
       "both budgets must be independent slots on the candidate");
     // Truncation receipt MUST be present because we forced a byte cap.
     assert.ok(sym.truncation, "truncation receipt must be present after byte cap");
-    assert.equal(sym.truncation.schema, "cortex.truncation.v1");
+    assert.equal(sym.truncation.schema, "blueprint.truncation.v1");
     assert.ok(sym.truncation.retainedBytes <= 200);
     assert.ok(sym.truncation.originalBytes > sym.truncation.retainedBytes);
     // The symbol-boundary flag is true iff the input span was snapped —
@@ -336,7 +336,7 @@ test("graph-resolve: when no truncation occurs, receipt is null but both budgets
   // Small file, no cap -> no receipt. Both budgets still present and
   // distinct (because resolution uses bytes-based estimation while slice
   // uses line-count), so the candidate SET is honest about provenance.
-  const repo = mkdtempSync(join(tmpdir(), "cortex-gresolve2-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-gresolve2-"));
   try {
     writeFileSync(join(repo, "tiny.ts"), "export const one = 1;\n");
     const generation = buildGraphGeneration(repo, { persist: false });

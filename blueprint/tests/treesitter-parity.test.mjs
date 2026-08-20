@@ -40,40 +40,40 @@ function canonicalize(result) {
 }
 
 async function legacyExtract(filePath, table) {
-  const previous = process.env.CORTEX_AST_ENGINE;
-  process.env.CORTEX_AST_ENGINE = "legacy";
+  const previous = process.env.BLUEPRINT_AST_ENGINE;
+  process.env.BLUEPRINT_AST_ENGINE = "legacy";
   try {
     const result = await extractFile({ path: filePath, text: readFileSync(filePath, "utf8") });
     return canonicalize(result);
   } finally {
-    if (previous === undefined) delete process.env.CORTEX_AST_ENGINE;
-    else process.env.CORTEX_AST_ENGINE = previous;
+    if (previous === undefined) delete process.env.BLUEPRINT_AST_ENGINE;
+    else process.env.BLUEPRINT_AST_ENGINE = previous;
   }
 }
 
 async function genericExtract(filePath) {
-  const previous = process.env.CORTEX_AST_ENGINE;
-  process.env.CORTEX_AST_ENGINE = "generic";
+  const previous = process.env.BLUEPRINT_AST_ENGINE;
+  process.env.BLUEPRINT_AST_ENGINE = "generic";
   try {
     const result = await extractFile({ path: filePath, text: readFileSync(filePath, "utf8") });
     assert.equal(result.generic, true, "production generic path must stay selected");
-    assert.ok(result.nodes.slice(1).every((node) => node.provider === "cortex-treesitter" && node.grammarHash && node.precisionTier === "AST"));
-    assert.ok(result.edges.every((edge) => edge.provider === "cortex-treesitter" && edge.grammarHash && edge.precisionTier === "AST"));
+    assert.ok(result.nodes.slice(1).every((node) => node.provider === "blueprint-treesitter" && node.grammarHash && node.precisionTier === "AST"));
+    assert.ok(result.edges.every((edge) => edge.provider === "blueprint-treesitter" && edge.grammarHash && edge.precisionTier === "AST"));
     return canonicalize(result);
   } finally {
-    if (previous === undefined) delete process.env.CORTEX_AST_ENGINE;
-    else process.env.CORTEX_AST_ENGINE = previous;
+    if (previous === undefined) delete process.env.BLUEPRINT_AST_ENGINE;
+    else process.env.BLUEPRINT_AST_ENGINE = previous;
   }
 }
 
 test("generic engine is selected by default", () => {
-  const previous = process.env.CORTEX_AST_ENGINE;
-  delete process.env.CORTEX_AST_ENGINE;
+  const previous = process.env.BLUEPRINT_AST_ENGINE;
+  delete process.env.BLUEPRINT_AST_ENGINE;
   try {
     assert.equal(genericEngineEnabled(), true);
   } finally {
-    if (previous === undefined) delete process.env.CORTEX_AST_ENGINE;
-    else process.env.CORTEX_AST_ENGINE = previous;
+    if (previous === undefined) delete process.env.BLUEPRINT_AST_ENGINE;
+    else process.env.BLUEPRINT_AST_ENGINE = previous;
   }
 });
 
@@ -96,16 +96,16 @@ for (const [name, table, fixture] of [
 
 test("tsx legacy and generic engines agree on full canonical projection", async () => {
   const file = { path: "src/Widget.tsx", text: "import React from 'react'; export interface Props { title: string } export function Widget({ title }: Props) { return <main>{title}</main>; }" };
-  const previous = process.env.CORTEX_AST_ENGINE;
+  const previous = process.env.BLUEPRINT_AST_ENGINE;
   try {
-    process.env.CORTEX_AST_ENGINE = "legacy";
+    process.env.BLUEPRINT_AST_ENGINE = "legacy";
     const legacy = canonicalize(await extractFile(file));
-    process.env.CORTEX_AST_ENGINE = "generic";
+    process.env.BLUEPRINT_AST_ENGINE = "generic";
     const generic = canonicalize(await extractFile(file));
     assert.equal(tsxTable.id, "tsx");
     assert.deepEqual(generic, legacy);
   } finally {
-    if (previous === undefined) delete process.env.CORTEX_AST_ENGINE;
-    else process.env.CORTEX_AST_ENGINE = previous;
+    if (previous === undefined) delete process.env.BLUEPRINT_AST_ENGINE;
+    else process.env.BLUEPRINT_AST_ENGINE = previous;
   }
 });

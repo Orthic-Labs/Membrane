@@ -19,12 +19,12 @@ import { resolveReportDir } from "../scripts/benchmark-retrieval.mjs";
 const HERE = join(import.meta.dirname, "..");
 const CORPUS = join(HERE, "evals/retrieval-corpus/corpus.v1.json");
 const SCRIPT = join(HERE, "scripts/benchmark-retrieval.mjs");
-const REPORT_DIR = mkdtempSync(join(tmpdir(), "cortex-retrieval-benchmark-"));
+const REPORT_DIR = mkdtempSync(join(tmpdir(), "blueprint-retrieval-benchmark-"));
 
 test.after(() => rmSync(REPORT_DIR, { recursive: true, force: true }));
 
 function runBenchmark() {
-  const proc = execFileSync(process.execPath, [SCRIPT], { encoding: "utf8", timeout: 600000, env: { ...process.env, CORTEX_RETRIEVAL_REPORT_DIR: REPORT_DIR } });
+  const proc = execFileSync(process.execPath, [SCRIPT], { encoding: "utf8", timeout: 600000, env: { ...process.env, BLUEPRINT_RETRIEVAL_REPORT_DIR: REPORT_DIR } });
   const latestPath = join(REPORT_DIR, "latest.json");
   assert.ok(existsSync(latestPath), `expected ${latestPath} to be written`);
   const report = JSON.parse(readFileSync(latestPath, "utf8"));
@@ -35,7 +35,7 @@ test("empty report directory resolves to default", () => assert.equal(resolveRep
 
 test("corpus is loaded, has at least 20 cases, and includes the no-gold class", () => {
   const corpus = JSON.parse(readFileSync(CORPUS, "utf8"));
-  assert.equal(corpus.schema, "cortex-retrieval-corpus-v1");
+  assert.equal(corpus.schema, "blueprint-retrieval-corpus-v1");
   assert.ok(corpus.cases.length >= 20, `corpus has ${corpus.cases.length} cases, want >= 20`);
   const classes = new Set(corpus.cases.map((c) => c.class));
   assert.ok(classes.has("no-gold"), "no-gold class is required by the abstention contract");
@@ -55,7 +55,7 @@ test("corpus is loaded, has at least 20 cases, and includes the no-gold class", 
 
 test("benchmark runs end-to-end and writes the report", () => {
   const { report } = runBenchmark();
-  assert.equal(report.schema, "cortex-retrieval-report-v1");
+  assert.equal(report.schema, "blueprint-retrieval-report-v1");
   assert.ok(Array.isArray(report.strategies) && report.strategies.includes("lexical"));
   assert.ok(Array.isArray(report.perCase) && report.perCase.length >= 20);
   assert.ok(report.summary.lexical, "lexical strategy summary present");

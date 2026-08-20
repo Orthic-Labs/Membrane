@@ -6,8 +6,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 const ROOT = join(import.meta.dirname, "..");
-const INSTALLER = join(ROOT, "scripts/cortex-install.mjs");
-const SERVER = join(ROOT, "scripts/cortex-mcp.mjs");
+const INSTALLER = join(ROOT, "scripts/blueprint-install.mjs");
+const SERVER = join(ROOT, "scripts/blueprint-mcp.mjs");
 
 function run(repo, args) {
   return spawnSync(process.execPath, [INSTALLER, ...args], { cwd: repo, encoding: "utf8" });
@@ -20,7 +20,7 @@ function assertSnapshot(paths, before) {
 }
 
 test("installer is idempotent and uninstall restores project files byte-for-byte", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-installer-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-installer-"));
   try {
     assert.equal(spawnSync("git", ["init", "-q"], { cwd: repo }).status, 0);
     const hook = join(repo, ".git", "hooks", "post-checkout");
@@ -37,13 +37,13 @@ test("installer is idempotent and uninstall restores project files byte-for-byte
 
     const installed = run(repo, ["--host", "claude-code", "--project", "--redirect"]);
     assert.equal(installed.status, 0, installed.stderr);
-    assert.equal((readFileSync(claude, "utf8").match(/<!-- cortex:start -->/g) ?? []).length, 1);
-    assert.equal(JSON.parse(readFileSync(mcp, "utf8")).mcpServers.cortex.args.at(-1), SERVER);
+    assert.equal((readFileSync(claude, "utf8").match(/<!-- blueprint:start -->/g) ?? []).length, 1);
+    assert.equal(JSON.parse(readFileSync(mcp, "utf8")).mcpServers.blueprint.args.at(-1), SERVER);
     assert.match(readFileSync(settings, "utf8"), /Read\|Grep\|Glob/);
     const denied = spawnSync(process.execPath, [INSTALLER, "--redirect-check", "--root", repo], { input: JSON.stringify({ session_id: "s1" }), encoding: "utf8" });
     assert.equal(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision, "deny");
     mkdirSync(join(repo, ".agent", "graph"), { recursive: true });
-    writeFileSync(join(repo, ".agent", "graph", "cortex-orient-session-s1.marker"), "1\n");
+    writeFileSync(join(repo, ".agent", "graph", "blueprint-orient-session-s1.marker"), "1\n");
     const allowed = spawnSync(process.execPath, [INSTALLER, "--redirect-check", "--root", repo], { input: JSON.stringify({ session_id: "s1" }), encoding: "utf8" });
     assert.equal(JSON.parse(allowed.stdout).hookSpecificOutput.permissionDecision, "allow");
     const afterFirst = snapshot(tracked.concat([join(repo, ".git", "hooks", "post-checkout.cmd")]));
@@ -58,10 +58,10 @@ test("installer is idempotent and uninstall restores project files byte-for-byte
 });
 
 test("installer uninstall restores non-UTF8 host bytes", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-installer-bytes-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-installer-bytes-"));
   try {
     assert.equal(spawnSync("git", ["init", "-q"], { cwd: repo }).status, 0);
-    const file = join(repo, "CORTEX-AGENT.md");
+    const file = join(repo, "BLUEPRINT-AGENT.md");
     const original = Buffer.from([0, 255, 10, 128, 65]);
     writeFileSync(file, original);
     assert.equal(run(repo, ["--host", "generic", "--project"]).status, 0);
@@ -71,22 +71,22 @@ test("installer uninstall restores non-UTF8 host bytes", () => {
 });
 
 test("installer state validator rejects corrupt and escaping restore plans", async () => {
-  const module = await import("../scripts/cortex-install.mjs");
+  const module = await import("../scripts/blueprint-install.mjs");
   assert.equal(typeof module.validateInstallState, "function");
   if (typeof module.validateInstallState !== "function") return;
-  const root = mkdtempSync(join(tmpdir(), "cortex-installer-state-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-installer-state-"));
   try {
     assert.throws(() => module.validateInstallState(root, { version: 1, files: { [join(root, "..", "escape")]: { exists: false } } }), /state_invalid/);
     assert.throws(() => module.validateInstallState(root, { version: 1, files: { [root]: { exists: false } } }), /state_invalid/);
     assert.throws(() => module.validateInstallState(root, { version: 1, files: { [join(root, "corrupt")]: { exists: true, bytes: "*" } } }), /state_invalid/);
     assert.throws(() => module.validateInstallState(root, { version: 1, files: { [join(root, "random.txt")]: { exists: false, installed: "a".repeat(64) } } }), /state_invalid/);
-    assert.throws(() => module.validateInstallState(root, { version: 1, files: { [join(root, "CORTEX-AGENT.md")]: { exists: false } } }), /state_invalid/);
-    assert.doesNotThrow(() => module.validateInstallState(root, { version: 1, files: { [join(root, "CORTEX-AGENT.md")]: { exists: true, bytes: "", content: "", installed: "a".repeat(64) } } }));
+    assert.throws(() => module.validateInstallState(root, { version: 1, files: { [join(root, "BLUEPRINT-AGENT.md")]: { exists: false } } }), /state_invalid/);
+    assert.doesNotThrow(() => module.validateInstallState(root, { version: 1, files: { [join(root, "BLUEPRINT-AGENT.md")]: { exists: true, bytes: "", content: "", installed: "a".repeat(64) } } }));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("installer rejects an external core.hooksPath before writes", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-installer-hooks-")), outside = mkdtempSync(join(tmpdir(), "cortex-external-hooks-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-installer-hooks-")), outside = mkdtempSync(join(tmpdir(), "blueprint-external-hooks-"));
   try {
     assert.equal(spawnSync("git", ["init", "-q"], { cwd: repo }).status, 0);
     assert.equal(spawnSync("git", ["config", "core.hooksPath", outside], { cwd: repo }).status, 0);
@@ -97,10 +97,10 @@ test("installer rejects an external core.hooksPath before writes", () => {
 });
 
 test("invalid MCP JSON leaves every installation target unchanged", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-installer-invalid-mcp-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-installer-invalid-mcp-"));
   try {
     assert.equal(spawnSync("git", ["init", "-q"], { cwd: repo }).status, 0);
-    const files = [join(repo, "CLAUDE.md"), join(repo, ".mcp.json"), join(repo, ".claude", "settings.json"), join(repo, ".git", "hooks", "post-checkout"), join(repo, ".agent", "graph", "cortex-install-state.json")];
+    const files = [join(repo, "CLAUDE.md"), join(repo, ".mcp.json"), join(repo, ".claude", "settings.json"), join(repo, ".git", "hooks", "post-checkout"), join(repo, ".agent", "graph", "blueprint-install-state.json")];
     mkdirSync(join(repo, ".claude"), { recursive: true }); writeFileSync(files[0], "original\n"); writeFileSync(files[1], "{invalid"); writeFileSync(files[2], "{}\n"); writeFileSync(files[3], "#!/bin/sh\necho original\n");
     const before = snapshot(files), result = run(repo, ["--host", "claude-code", "--project", "--redirect"]);
     assert.notEqual(result.status, 0); assertSnapshot(files, before);
@@ -109,10 +109,10 @@ test("invalid MCP JSON leaves every installation target unchanged", () => {
 
 test("installer rejects MCP and settings symlinks before writes", (t) => {
   for (const name of [".mcp.json", "settings.json"]) {
-    const repo = mkdtempSync(join(tmpdir(), "cortex-installer-link-")), outside = mkdtempSync(join(tmpdir(), "cortex-installer-link-outside-"));
+    const repo = mkdtempSync(join(tmpdir(), "blueprint-installer-link-")), outside = mkdtempSync(join(tmpdir(), "blueprint-installer-link-outside-"));
     try {
       assert.equal(spawnSync("git", ["init", "-q"], { cwd: repo }).status, 0);
-      const mcp = join(repo, ".mcp.json"), settings = join(repo, ".claude", "settings.json"), files = [join(repo, "CLAUDE.md"), mcp, settings, join(repo, ".git", "hooks", "post-checkout"), join(repo, ".agent", "graph", "cortex-install-state.json")];
+      const mcp = join(repo, ".mcp.json"), settings = join(repo, ".claude", "settings.json"), files = [join(repo, "CLAUDE.md"), mcp, settings, join(repo, ".git", "hooks", "post-checkout"), join(repo, ".agent", "graph", "blueprint-install-state.json")];
       mkdirSync(join(repo, ".claude"), { recursive: true }); writeFileSync(files[0], "original\n"); writeFileSync(mcp, "{}\n"); writeFileSync(settings, "{}\n"); writeFileSync(files[3], "#!/bin/sh\necho original\n");
       const target = name === ".mcp.json" ? mcp : settings, external = join(outside, name); writeFileSync(external, "{}\n"); rmSync(target); try { symlinkSync(external, target, "file"); } catch { t.skip("file symlink privilege unavailable"); return; }
       const before = snapshot(files), result = run(repo, ["--host", "claude-code", "--project", "--redirect"]);

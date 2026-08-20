@@ -30,14 +30,14 @@ function throwIfAborted(signal) {
   if (signal?.aborted) fail("request_cancelled", "request cancelled");
 }
 
-export function createCortexApplicationService({
+export function createBlueprintApplicationService({
   outDir = ".agent",
   rootRegistry = null,
   allowEmbeddedRoot = true,
 } = {}) {
   const resolveRoot = (input = {}) => {
     if (rootRegistry) return rootRegistry.resolve(input);
-    if (!allowEmbeddedRoot) fail("root_not_enrolled", "No enrolled Cortex repository matches this request.");
+    if (!allowEmbeddedRoot) fail("root_not_enrolled", "No enrolled Blueprint repository matches this request.");
     return resolve(input.repoRoot ?? process.cwd());
   };
 
@@ -55,7 +55,7 @@ export function createCortexApplicationService({
     }
     throwIfAborted(signal);
     if (receipt.barrierResult !== "caught_up" && !input.allowStale) {
-      fail("stale_blocked", "Cortex freshness barrier did not catch up.", { receipt });
+      fail("stale_blocked", "Blueprint freshness barrier did not catch up.", { receipt });
     }
     const db = openStoreReadOnly(dbPath);
     try {

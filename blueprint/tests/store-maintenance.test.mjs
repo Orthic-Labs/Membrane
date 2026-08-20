@@ -8,7 +8,7 @@ import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { adoptRebuiltGeneration, closeStore, maintainStore, openStore, resetWatchStateAfterRebuild } from "../src/graph/store-sqlite.mjs";
 
 test("store maintenance checkpoints WAL and bounds applied watcher history", () => {
-  const db = openStore(join(mkdtempSync(join(tmpdir(), "cortex-store-maintenance-")), "graph.db"));
+  const db = openStore(join(mkdtempSync(join(tmpdir(), "blueprint-store-maintenance-")), "graph.db"));
   try {
     const insert = db.prepare("INSERT INTO event_journal(observed_ms,event_kind,path,rename_to,source_clock,applied) VALUES (1,'modify',?,NULL,?,1)");
     for (let index = 0; index < 5; index += 1) insert.run(`src/${index}.ts`, index + 1);
@@ -20,7 +20,7 @@ test("store maintenance checkpoints WAL and bounds applied watcher history", () 
 });
 
 test("rebuild adoption removes stale watcher journal and state atomically", () => {
-  const db = openStore(join(mkdtempSync(join(tmpdir(), "cortex-store-rebuild-reset-")), "graph.db"));
+  const db = openStore(join(mkdtempSync(join(tmpdir(), "blueprint-store-rebuild-reset-")), "graph.db"));
   try {
     db.prepare("INSERT INTO event_journal(observed_ms,event_kind,path,rename_to,source_clock,applied) VALUES (1,'modify','node_modules/noise.js',NULL,1,0)").run();
     db.prepare("INSERT INTO watch_state(key,value) VALUES ('source_clock','1')").run();
@@ -31,7 +31,7 @@ test("rebuild adoption removes stale watcher journal and state atomically", () =
 });
 
 test("fresh generation bulk-load clears FTS once instead of once per symbol", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-store-bulk-search-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-store-bulk-search-"));
   writeFileSync(join(root, "many.mjs"), Array.from({ length: 200 }, (_, index) => `export function symbol${index}() { return ${index}; }`).join("\n"));
   const db = openStore(join(root, "graph.db"));
   let searchDeletes = 0;

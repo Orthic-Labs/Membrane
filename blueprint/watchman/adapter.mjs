@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { SCAN_EXCLUSIONS } from "../src/graph/static-provider.mjs";
 
 const EVENT_TYPES = new Set(["create", "update", "delete"]);
-const PROBE_PREFIX = "cortex-watch-probe-";
+const PROBE_PREFIX = "blueprint-watch-probe-";
 const PROBE_DEADLINE_MS = 30_000;
 const PROBE_CADENCE_MS = 1_000;
 

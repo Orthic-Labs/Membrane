@@ -10,7 +10,7 @@ import { DaemonClient } from "../src/service/client.mjs";
 import { temporaryDaemonEndpoint } from "../src/service/paths.mjs";
 
 test("daemon restart re-binds the endpoint", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-restart");
+  const endpoint = temporaryDaemonEndpoint("blueprint-restart");
   const first = createDaemonServer({ endpoint });
   try {
     await first.listen();
@@ -41,7 +41,7 @@ test("daemon restart re-binds the endpoint", async () => {
 });
 
 test("connecting to a stale endpoint fails fast with a typed error", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-stale");
+  const endpoint = temporaryDaemonEndpoint("blueprint-stale");
   const client = new DaemonClient({ endpoint });
   try {
     await client.connect();
@@ -52,7 +52,7 @@ test("connecting to a stale endpoint fails fast with a typed error", async () =>
 });
 
 test("unix daemon quarantines dead lock owners and rejects a live rival", { skip: process.platform === "win32" }, async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-lock");
+  const endpoint = temporaryDaemonEndpoint("blueprint-lock");
   const lockPath = `${endpoint}.lock`;
   mkdirSync(lockPath, { recursive: true });
   writeFileSync(`${lockPath}/owner.json`, JSON.stringify({ pid: 99999999, token: "dead-owner" }));
@@ -71,7 +71,7 @@ test("unix daemon quarantines dead lock owners and rejects a live rival", { skip
 });
 
 test("unix lock owner-write failure removes only its newly-created empty lock", { skip: process.platform === "win32" }, () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-lock-write");
+  const endpoint = temporaryDaemonEndpoint("blueprint-lock-write");
   const lockPath = `${endpoint}.lock`;
   assert.throws(() => acquireUnixLock(endpoint, { writeOwner: () => { throw new Error("owner write failed"); } }), { code: "endpoint_locked" });
   assert.equal(existsSync(lockPath), false);

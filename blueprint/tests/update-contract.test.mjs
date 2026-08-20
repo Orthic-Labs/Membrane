@@ -17,7 +17,7 @@ import { signUpdateManifest } from "../scripts/release/sign-update-manifest.mjs"
 import { deriveUpdateKeyId } from "../scripts/release/generate-update-keys.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts", "cortex.mjs");
+const CLI = join(ROOT, "scripts", "blueprint.mjs");
 
 // Minimal schema-valid UpdateManifestV1 body. signatureAlgorithm, keyId, and
 // signature are intentionally omitted: the frozen contract requires the
@@ -33,15 +33,15 @@ test("channels are stable, beta, nightly", () => {
   assert.deepEqual(CHANNELS, ["stable", "beta", "nightly"]);
 });
 
-test("channel is disabled by offline and by CORTEX_NO_UPDATE_CHECK", () => {
+test("channel is disabled by offline and by BLUEPRINT_NO_UPDATE_CHECK", () => {
   assert.equal(channelEnabled("stable", { offline: true }), false);
-  const previous = process.env.CORTEX_NO_UPDATE_CHECK;
-  process.env.CORTEX_NO_UPDATE_CHECK = "1";
+  const previous = process.env.BLUEPRINT_NO_UPDATE_CHECK;
+  process.env.BLUEPRINT_NO_UPDATE_CHECK = "1";
   try {
     assert.equal(channelEnabled("stable", { offline: false }), false);
   } finally {
-    if (previous === undefined) delete process.env.CORTEX_NO_UPDATE_CHECK;
-    else process.env.CORTEX_NO_UPDATE_CHECK = previous;
+    if (previous === undefined) delete process.env.BLUEPRINT_NO_UPDATE_CHECK;
+    else process.env.BLUEPRINT_NO_UPDATE_CHECK = previous;
   }
 });
 
@@ -51,7 +51,7 @@ test("install owner detection returns a source checkout here", () => {
 });
 
 test("update manifest validates against UpdateManifestV1", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cortex-update-manifest-"));
+  const dir = mkdtempSync(join(tmpdir(), "blueprint-update-manifest-"));
   try {
     const manifest = {
       schemaVersion: 1,
@@ -59,7 +59,7 @@ test("update manifest validates against UpdateManifestV1", () => {
       version: "0.3.0",
       commit: "a".repeat(40),
       publishedAt: "2026-08-05T10:10:02.050Z",
-      artifacts: [{ name: "cortex-linux-x64.tar.gz", platform: "linux", arch: "x64", sha256: "deadbeef", size: 1024, signed: false, sbom: "SBOM.spdx.json" }],
+      artifacts: [{ name: "blueprint-linux-x64.tar.gz", platform: "linux", arch: "x64", sha256: "deadbeef", size: 1024, signed: false, sbom: "SBOM.spdx.json" }],
       signatureAlgorithm: "Ed25519", keyId: "test-key", signature: "sig-1",
     };
     const path = join(dir, "manifest.json");
@@ -87,7 +87,7 @@ test("downgrade and replay are rejected", () => {
 });
 
 test("store backup copies the database before update", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-update-backup-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-update-backup-"));
   try {
     mkdirSync(join(root, ".agent", "graph"), { recursive: true });
     const db = new DatabaseSync(join(root, ".agent", "graph", "graph.db")); db.exec("CREATE TABLE state (value TEXT)"); db.close();
@@ -99,7 +99,7 @@ test("store backup copies the database before update", () => {
   }
 });
 
-test("cortex update check --json reports owner and channel", () => {
+test("blueprint update check --json reports owner and channel", () => {
   const result = spawnSync(process.execPath, [CLI, "update", "check", "--channel", "stable", "--json"], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
@@ -108,7 +108,7 @@ test("cortex update check --json reports owner and channel", () => {
   assert.equal(payload.channel, "stable");
 });
 
-test("cortex update apply for source owner requires a signed manifest path", () => {
+test("blueprint update apply for source owner requires a signed manifest path", () => {
   const result = spawnSync(process.execPath, [CLI, "update", "apply", "--json"], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);
@@ -120,7 +120,7 @@ test("Ed25519 manifest verification trusts only a pinned key-id map", async () =
   assert.equal(typeof module.canonicalManifestPayload, "function");
   assert.equal(typeof module.verifySignedManifest, "function");
   if (typeof module.canonicalManifestPayload !== "function" || typeof module.verifySignedManifest !== "function") return;
-  const dir = mkdtempSync(join(tmpdir(), "cortex-update-key-"));
+  const dir = mkdtempSync(join(tmpdir(), "blueprint-update-key-"));
   try {
     const keys = generateKeyPairSync("ed25519");
     const manifest = { schemaVersion: 1, channel: "stable", version: "0.3.0", commit: "a".repeat(40), publishedAt: "2026-08-08T00:00:00Z", artifacts: [], signatureAlgorithm: "Ed25519", keyId: "ephemeral", signature: "" };
@@ -135,7 +135,7 @@ test("Ed25519 manifest verification trusts only a pinned key-id map", async () =
 
 test("trusted key root accepts only a unique strict key list", async () => {
   const { loadTrustedUpdateKeys } = await import("../src/lib/update/manifest.mjs");
-  const dir = mkdtempSync(join(tmpdir(), "cortex-trust-root-"));
+  const dir = mkdtempSync(join(tmpdir(), "blueprint-trust-root-"));
   try {
     const path = join(dir, "trusted-update-keys.json");
     writeFileSync(path, JSON.stringify({ schemaVersion: 1, keys: [{ keyId: "release-1", algorithm: "Ed25519", publicKey: "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----" }] }));

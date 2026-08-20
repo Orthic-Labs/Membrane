@@ -1,6 +1,6 @@
 # Deferred surfaces
 
-Cortex 1.0 ships the local evidence-backed repository index. The surfaces
+Blueprint 1.0 ships the local evidence-backed repository index. The surfaces
 below are measured, documented, and **not** part of the 1.0 release seal.
 Each has a decision record under `release/decisions/` and a reversal
 condition. The compatibility claim (`release/compatibility.json`,
@@ -23,7 +23,7 @@ the seal intentionally excludes.
 Notes:
 
 - **Node SEA** — 1.0 uses the portable runtime bundle (`scripts/release/stage-runtime.mjs`) plus signed `.pkg`/`.exe`. SEA measured 2026-08-04 at ~110 MB and adds platform-specific postinstall; not needed for 1.0's "no system Node required" contract (D14). Future use: sandboxed base images, per-user launchd/Service executable.
-- **Rust crate** — core ships as Node ESM + `node:sqlite` + WASM grammars. A placeholder crate would invite low-quality bindings that take ownership from the typed SDK (`CortexClient`, `EmbeddedCortexClient`). A real crate would be a multi-quarter ABI reproduction — separate product, not a release surface (runbook do-not-absorb list).
+- **Rust crate** — core ships as Node ESM + `node:sqlite` + WASM grammars. A placeholder crate would invite low-quality bindings that take ownership from the typed SDK (`BlueprintClient`, `EmbeddedBlueprintClient`). A real crate would be a multi-quarter ABI reproduction — separate product, not a release surface (runbook do-not-absorb list).
 - **Remote / team mode** — federation envelope (`graph/federation/`, D35) exists but is not enabled by default and not connected to a hosted service. 1.0 is local-only; repository content never leaves the machine. Self-hosted federation is supported; managed offering is deferred.
 - **Plugin marketplace** — contracts (`sdk/providers.mjs`) and trust boundary (`permissions.filesystem/network/process` ≤ `repo-read/none/none`, D51) ship in 1.0, but curated catalog / automatic discovery does not. Licensing: independent plugins may use Apache-2.0 SDK/schemas/examples, must not copy core.
 

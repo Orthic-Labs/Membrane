@@ -1,7 +1,7 @@
 // Adapter 2 — Current dirty files and diffs.
 //
 // Reads `git status --porcelain` and `git diff` to surface the working-tree
-// overlay that Cortex (a generation artifact) does not know about yet.
+// overlay that Blueprint (a generation artifact) does not know about yet.
 // Per the dispatch overlay ownership: G1 detects, G3 ranks, G5 (this lane)
 // produces typed candidates; this adapter never ranks — `providerScore`
 // is a uniform 0.95 for tracked-overlay files and 0.7 for untracked files.

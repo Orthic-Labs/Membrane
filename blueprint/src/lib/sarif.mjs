@@ -23,12 +23,12 @@ export function toSarif(findings, toolVersion) {
     version: "2.1.0",
     $schema: "https://json.schemastore.org/sarif-2.1.0.json",
     runs: [{
-      tool: { driver: { name: "Cortex", version: toolVersion, rules: uniqueRules(findings) } },
+      tool: { driver: { name: "Blueprint", version: toolVersion, rules: uniqueRules(findings) } },
       results: findings.map((finding) => ({
         ruleId: finding.ruleId,
         level: ({ error: "error", warning: "warning", info: "note" })[finding.severity] ?? "warning",
         message: { text: finding.message },
-        partialFingerprints: { cortexFinding: finding.fingerprint },
+        partialFingerprints: { blueprintFinding: finding.fingerprint },
         locations: [{ physicalLocation: {
           artifactLocation: { uri: finding.path },
           region: { startLine: finding.startLine ?? 1, endLine: finding.endLine ?? finding.startLine ?? 1 },

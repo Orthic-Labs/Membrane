@@ -1,4 +1,4 @@
-// SQLite graph store — the single persisted generation store for Cortex.
+// SQLite graph store — the single persisted generation store for Blueprint.
 // Build-time providers produce the generation-shaped input; this store persists
 // its envelope and relational rows, and indexed queries read it without loading
 // the whole graph into JavaScript.
@@ -234,7 +234,7 @@ export function openStore(dbPath = ":memory:", options = {}) {
     db.exec("PRAGMA journal_mode = WAL;");
     // WAL permits one writer at a time; without a busy_timeout a second writer gets an
     // immediate SQLITE_BUSY instead of queueing. That is exactly how the fleet watcher died
-    // in production: an actor's initialize raced a concurrent `cortex build` (or the context
+    // in production: an actor's initialize raced a concurrent `blueprint build` (or the context
     // hook) on the same repo's graph.db and threw "database is locked" — serial tests never
     // exercise the race. Five seconds did NOT cover it: on 2026-08-03 a repo under a
     // concurrent release build still threw "database is locked" out of markGap() with the
@@ -315,7 +315,7 @@ export function repairInterruptedMigration(dbPath, fromVersion) {
  * they pinned and decide for themselves.
  *
  * Concurrency contract: the store is WAL, so a reader opened here sees the last
- * COMMITTED generation while `cortex build` writes, and never a torn
+ * COMMITTED generation while `blueprint build` writes, and never a torn
  * envelope — saveGeneration writes rows and envelope inside transactions.
  */
 export function openStoreReadOnly(dbPath) {
@@ -472,7 +472,7 @@ const MIGRATIONS = [
   // earns its complexity somewhere past ~500k vectors. Do not "optimise" this into
   // a native dependency without re-measuring and confirming Windows support.
   //
-  // Embeddings are OFF by default and nothing in cortex generates them yet.
+  // Embeddings are OFF by default and nothing in blueprint generates them yet.
   // This table exists so the capability is ready the moment it is turned on; every
   // function here must behave correctly on an empty table.
   (db) => {
@@ -2404,7 +2404,7 @@ export function blastRadius(db, options = {}) {
 // ---------------------------------------------------------------------------
 // Optional embedding layer.
 //
-// Nothing in cortex generates embeddings today, and they stay off by default:
+// Nothing in blueprint generates embeddings today, and they stay off by default:
 // lexical search plus graph traversal handles most retrieval. These functions only
 // persist and search vectors that some other component supplies, and every one of
 // them behaves correctly on an empty table.

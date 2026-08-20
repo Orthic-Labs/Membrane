@@ -86,7 +86,7 @@ export function freezeTaskEvidence(tasksPath, options = {}) {
   for (const task of selected) {
     task.qualificationClass = STRUCTURAL_TASKS.has(task.id)
       ? "mandatory_structural"
-      : task.kind === "semantic_lookup" ? "semantic_optional" : "cortex_integration";
+      : task.kind === "semantic_lookup" ? "semantic_optional" : "blueprint_integration";
     task.expectedEdges = EXPECTED_EDGES[task.id] ?? [];
     task.expectedEvidence = task.expectedEvidence.map((evidence) => ({
       ...evidence,

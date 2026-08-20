@@ -12,10 +12,10 @@ import test from "node:test";
 import { buildHostileRepo, SECRET_ENTRIES } from "../../fixtures/security/build-hostile-repo.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 
 function makeHostileRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-hostile-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-hostile-"));
   buildHostileRepo(repo);
   return repo;
 }

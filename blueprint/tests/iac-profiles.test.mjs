@@ -66,7 +66,7 @@ test("Kubernetes facts extract kinds from manifests", () => {
 });
 
 test("profileFile and extractProfileFacts work from disk", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-iac-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-iac-"));
   try {
     writeFileSync(join(root, "main.tf"), "resource \"aws_s3_bucket\" \"data\" {}\n");
     assert.equal(profileFile("main.tf"), "terraform");

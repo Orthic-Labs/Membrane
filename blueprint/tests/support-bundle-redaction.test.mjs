@@ -18,7 +18,7 @@ const KNOWN_SECRETS = [
 ];
 
 test("support bundle contains only allowlisted records", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-bundle-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-bundle-"));
   try {
     const { path, files } = buildSupportBundle({ root, outDir: ".agent", destination: join(root, ".agent", "bundle") });
     for (const file of SUPPORT_BUNDLE_ALLOWLIST) {
@@ -31,7 +31,7 @@ test("support bundle contains only allowlisted records", () => {
 });
 
 test("no known secret appears in the bundle", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-bundle-secret-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-bundle-secret-"));
   try {
     const { path } = buildSupportBundle({
       root,
@@ -62,7 +62,7 @@ test("no known secret appears in the bundle", () => {
 });
 
 test("absolute home paths are rewritten", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-bundle-home-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-bundle-home-"));
   try {
     const { path } = buildSupportBundle({
       root,
@@ -91,7 +91,7 @@ test("support bundle logs redact the full secret class, not a stale subset", () 
   // were historically absent from the bundle's own log redaction: Anthropic
   // `sk-ant-` keys, Slack `xox*` tokens, bare JWTs, and URL-password
   // connection strings. None may survive into a bundle log file.
-  const root = mkdtempSync(join(tmpdir(), "cortex-bundle-drift-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-bundle-drift-"));
   try {
     const slackToken = ["xoxb", "1234567890", "abcdefghijklmnop"].join("-");
     const driftSecrets = [

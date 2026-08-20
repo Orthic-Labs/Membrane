@@ -10,7 +10,7 @@ function pidAlive(pid) {
   try { process.kill(Number(pid), 0); return true; } catch { return false; }
 }
 
-function readFleetStatus(configPath = join(homedir(), ".cortex", "watch.json")) {
+function readFleetStatus(configPath = join(homedir(), ".blueprint", "watch.json")) {
   if (!existsSync(configPath)) return { repos: [] };
   const config = JSON.parse(readFileSync(configPath, "utf8"));
   const repos = [];
@@ -41,6 +41,6 @@ export function serviceStatus({ target = null, fleetStatus = readFleetStatus } =
     pid: active?.pid ?? null,
     target: null,
     enrolledRepos,
-    foreground: "cortex service run",
+    foreground: "blueprint service run",
   };
 }

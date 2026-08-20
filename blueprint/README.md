@@ -1,6 +1,6 @@
-<img src=".github/banner.svg" alt="Cortex — An evidence-backed map of code and docs." width="100%">
+<img src=".github/banner.svg" alt="Blueprint — An evidence-backed map of code and docs." width="100%">
 
-**Every repository tells two stories: what the docs claim and what the code does. Cortex maps both into one local, evidence-backed graph, so people and agents can find what is true, stale, contradictory, or still unknown — before changing the system.**
+**Every repository tells two stories: what the docs claim and what the code does. Blueprint maps both into one local, evidence-backed graph, so people and agents can find what is true, stale, contradictory, or still unknown — before changing the system.**
 
 <sub>Nodes, edges, and flows are branded <b>Neurons</b>, <b>Synapses</b>, and <b>Circuits</b>.</sub>
 
@@ -40,39 +40,39 @@ The store is Node's built-in `node:sqlite` — no database server, no native pac
 ## Asking it questions
 
 ```sh
-cortex                       # orient in the current repo
-cortex "add rate limiting"   # orient around a task
-cortex doctor --full --json  # health + coverage
+blueprint                       # orient in the current repo
+blueprint "add rate limiting"   # orient around a task
+blueprint doctor --full --json  # health + coverage
 ```
 
 | Query | Answers |
 |---|---|
-| `cortex graph search <term>` | where is this symbol/concept |
-| `cortex graph neighbors <node>` | what touches it |
-| `cortex graph path <a> <b>` | how are these connected |
-| `cortex graph impact <node>` | what breaks if this changes |
-| `cortex graph architecture` | component structure, from evidence |
-| `cortex graph doc-truth` | which doc claims hold against source |
-| `cortex graph mermaid` | render the graph as a diagram |
+| `blueprint graph search <term>` | where is this symbol/concept |
+| `blueprint graph neighbors <node>` | what touches it |
+| `blueprint graph path <a> <b>` | how are these connected |
+| `blueprint graph impact <node>` | what breaks if this changes |
+| `blueprint graph architecture` | component structure, from evidence |
+| `blueprint graph doc-truth` | which doc claims hold against source |
+| `blueprint graph mermaid` | render the graph as a diagram |
 
-Beyond queries: `cortex phase2 plan|seal` (incremental verification), `cortex grant issue|check` (task-scoped path grants with TTL), `cortex neighborhood <anchor>` (bounded, token-budgeted graph slices), `cortex orient` (decision-only admission API returning `allow | continue | block | noop`), and a resident watch daemon (`cortex-watch`) that keeps freshness barriers warm across enrolled repos.
+Beyond queries: `blueprint phase2 plan|seal` (incremental verification), `blueprint grant issue|check` (task-scoped path grants with TTL), `blueprint neighborhood <anchor>` (bounded, token-budgeted graph slices), `blueprint orient` (decision-only admission API returning `allow | continue | block | noop`), and a resident watch daemon (`blueprint-watch`) that keeps freshness barriers warm across enrolled repos.
 
 ## Trust model
 
 Repository content is untrusted data, never agent instruction. Secrets are redacted from outputs. Reads are confined to repository scope. Current code and executable proof outrank plans and historical documents. For federation, cross-repo graphs are never raw-merged — each repo's slices stay independently scoped by `repoId`.
 
-## Cortex on Cortex
+## Blueprint on Blueprint
 
-This repo maps itself. Run `cortex doctor --full --json` for current file, document, claim, code-reference, stale-claim, & missing-reference counts; no snapshot count is treated as durable documentation.
+This repo maps itself. Run `blueprint doctor --full --json` for current file, document, claim, code-reference, stale-claim, & missing-reference counts; no snapshot count is treated as durable documentation.
 
 ## Quick start
 
 Install and run from npm (no source checkout needed):
 
 ```sh
-npx -y @orthic-labs/cortex init    # enroll Cortex in the current repository
-cortex status                       # freshness + coverage
-cortex search "placeOrder"          # query the graph
+npx -y @orthic-labs/blueprint init    # enroll Blueprint in the current repository
+blueprint status                       # freshness + coverage
+blueprint search "placeOrder"          # query the graph
 ```
 
 From a source checkout:
@@ -84,7 +84,7 @@ python3 -m pip install -r build/requirements-test.txt   # for the full workspace
 pnpm run test:all
 ```
 
-Bins: `cortex`, `cortex-watch`, `cortex-mcp` (MCP server), `cortex-install`.
+Bins: `blueprint`, `blueprint-watch`, `blueprint-mcp` (MCP server), `blueprint-install`.
 
 ## Recent
 
@@ -98,9 +98,9 @@ Parser depth varies by language (lexical fallback is broader than AST coverage).
 
 ## License
 
-Cortex is **source-available**, not open source. Its proprietary core is covered
+Blueprint is **source-available**, not open source. Its proprietary core is covered
 by the [Orthic Labs Source Use License v1.0](LICENSE), which permits internal and
-evaluation use. Damned Ventures LLC may publish Cortex through owner-authorized
+evaluation use. Damned Ventures LLC may publish Blueprint through owner-authorized
 channels, including npm, GitHub Releases, its Homebrew tap and Scoop bucket, and
 WinGet. That publication does not grant licensees a general right to redistribute,
 mirror, modify, or repackage proprietary core.
@@ -113,10 +113,10 @@ Trademarks: see [TRADEMARKS.md](docs/TRADEMARKS.md).
 ---
 
 <sub><b><a href="https://orthic-labs.github.io">Orthic Labs</a></b> — local-first infrastructure for AI-assisted development.<br>
-<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Cortex">Cortex</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
+<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Blueprint">Blueprint</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
 
-<!-- cortex:docs:start -->
+<!-- blueprint:docs:start -->
 ## Repository truth docs
 - [Product overview](docs/product.md) — what this is and does (generated, code-grounded)
 - [Architecture](docs/architecture.md) — components, flows, interfaces (generated, code-grounded)
-<!-- cortex:docs:end -->
+<!-- blueprint:docs:end -->

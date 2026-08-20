@@ -1,4 +1,4 @@
 #!/bin/sh
 # D17: postinstall — the package install must NOT enroll repositories or
-# install host hooks without a later explicit `cortex init`.
+# install host hooks without a later explicit `blueprint init`.
 exit 0

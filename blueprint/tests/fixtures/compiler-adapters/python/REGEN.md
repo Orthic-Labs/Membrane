@@ -14,14 +14,14 @@ The fixture exercises the adapter contract:
   calls `item.total()` — a **cross-document** reference resolved by exact
   SCIP symbol identity, with no name-match heuristic.
 - `main.py` imports `pkg.service` and calls `pkg.service.line_total()`.
-- `scip-python python cortex-python-adapter-fixture 1 pkg/service` (the
+- `scip-python python blueprint-python-adapter-fixture 1 pkg/service` (the
   module descriptor referenced from `main.py`) intentionally has **no
   definition anywhere in the index**, so the adapter must report it
   UNRESOLVED rather than speculating.
 
-## Manual commands (out-of-band; Cortex never runs these)
+## Manual commands (out-of-band; Blueprint never runs these)
 
-Cortex only READS a committed index and never invokes an indexer or
+Blueprint only READS a committed index and never invokes an indexer or
 interpreter. Regenerating this fixture happens on a contributor machine with
 the pinned toolchain from `evals/scip-answer-keys.json` (scip-python 0.6.6,
 scip CLI 0.9.0):
@@ -29,9 +29,9 @@ scip CLI 0.9.0):
 ```sh
 # 1. Index the fixture repo out-of-band (a real scip-python run would need
 #    the project's actual package/version identity, e.g. a pyproject.toml).
-npx @sourcegraph/scip-python index . --project-name=cortex-python-fixture
+npx @sourcegraph/scip-python index . --project-name=blueprint-python-fixture
 
-# 2. Export the binary index to the portable JSON shape Cortex reads.
+# 2. Export the binary index to the portable JSON shape Blueprint reads.
 scip print --json index.scip > index.scip.json
 ```
 

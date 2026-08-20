@@ -6,7 +6,7 @@
   "budgetApproval": "pending",
   "proposedBudgets": {
     "coldStartMs": 1000,
-    "fullCortexGenerationMs": 600000,
+    "fullBlueprintGenerationMs": 600000,
     "providerFullMs": 300000,
     "incrementalEditMs": 5000,
     "queryP95Ms": 1000,
@@ -80,7 +80,7 @@
               "lexicalScore": 4
             },
             {
-              "path": "config/cortex.json",
+              "path": "config/blueprint.json",
               "startLine": 1,
               "endLine": 2,
               "contentHash": "266e6c209e4da19d0f71d63e7b9b152f",
@@ -99,14 +99,14 @@
           "evidenceRefs": [
             "src/refresh.ts",
             "docs/START-HERE.md",
-            "config/cortex.json",
+            "config/blueprint.json",
             "README.md"
           ],
           "missingEvidence": [],
           "missingNodes": [],
           "missingEdges": [],
           "falseEvidence": [],
-          "qualificationClass": "cortex_integration"
+          "qualificationClass": "blueprint_integration"
         },
         {
           "id": "semantic-python-context",
@@ -524,7 +524,7 @@
           "missingNodes": [],
           "missingEdges": [],
           "falseEvidence": [],
-          "qualificationClass": "cortex_integration"
+          "qualificationClass": "blueprint_integration"
         },
         {
           "id": "ts-symbol-definition",
@@ -644,11 +644,11 @@
       "realRepositories": []
     },
     {
-      "id": "cortex-static",
+      "id": "blueprint-static",
       "status": "passed",
       "probe": {
         "available": true,
-        "kind": "cortex-static",
+        "kind": "blueprint-static",
         "version": "repo-local-deterministic-v0",
         "license": "workspace-owned",
         "persistence": "regenerable",
@@ -775,7 +775,7 @@
               "rank": 1
             },
             {
-              "path": "config/cortex.json",
+              "path": "config/blueprint.json",
               "startLine": 1,
               "endLine": 2,
               "contentHash": "266e6c209e4da19d0f71d63e7b9b152f",
@@ -799,7 +799,7 @@
           "evidenceRefs": [
             "README.md",
             "src/refresh.ts",
-            "config/cortex.json",
+            "config/blueprint.json",
             "docs/START-HERE.md",
             "src/refresh.ts"
           ],
@@ -807,7 +807,7 @@
           "missingNodes": [],
           "missingEdges": [],
           "falseEvidence": [],
-          "qualificationClass": "cortex_integration"
+          "qualificationClass": "blueprint_integration"
         },
         {
           "id": "semantic-python-context",
@@ -2110,7 +2110,7 @@
           "missingNodes": [],
           "missingEdges": [],
           "falseEvidence": [],
-          "qualificationClass": "cortex_integration"
+          "qualificationClass": "blueprint_integration"
         },
         {
           "id": "ts-symbol-definition",
@@ -2465,12 +2465,12 @@
       "realRepositories": []
     },
     {
-      "id": "cortex-treesitter",
+      "id": "blueprint-treesitter",
       "status": "passed",
       "probe": {
         "available": true,
-        "kind": "cortex-treesitter",
-        "version": "cortex-treesitter@standalone-v1",
+        "kind": "blueprint-treesitter",
+        "version": "blueprint-treesitter@standalone-v1",
         "license": "workspace-owned",
         "persistence": "regenerable",
         "nativeDependencies": [],
@@ -2610,14 +2610,14 @@
               "rank": 1
             },
             {
-              "path": "config/cortex.json",
+              "path": "config/blueprint.json",
               "startLine": 1,
               "endLine": 2,
               "contentHash": "266e6c209e4da19d0f71d63e7b9b152f",
               "rank": 2
             },
             {
-              "path": "config/cortex.json",
+              "path": "config/blueprint.json",
               "startLine": 1,
               "endLine": 1,
               "contentHash": "266e6c209e4da19d0f71d63e7b9b152f",
@@ -2641,8 +2641,8 @@
           "evidenceRefs": [
             "README.md",
             "src/refresh.ts",
-            "config/cortex.json",
-            "config/cortex.json",
+            "config/blueprint.json",
+            "config/blueprint.json",
             "docs/START-HERE.md",
             "src/refresh.ts"
           ],
@@ -2650,7 +2650,7 @@
           "missingNodes": [],
           "missingEdges": [],
           "falseEvidence": [],
-          "qualificationClass": "cortex_integration"
+          "qualificationClass": "blueprint_integration"
         },
         {
           "id": "semantic-python-context",
@@ -8721,7 +8721,7 @@
           "missingNodes": [],
           "missingEdges": [],
           "falseEvidence": [],
-          "qualificationClass": "cortex_integration"
+          "qualificationClass": "blueprint_integration"
         },
         {
           "id": "ts-symbol-definition",
@@ -10454,7 +10454,7 @@
         "peakRssBytes": null,
         "indexBytes": 0,
         "providerIndexMs": 0,
-        "measurementBoundary": "provider_only_not_complete_cortex_generation"
+        "measurementBoundary": "provider_only_not_complete_blueprint_generation"
       },
       "tasks": [
         {
@@ -10462,7 +10462,7 @@
           "kind": "cross_code_document",
           "state": "unavailable",
           "reason": "missing_binary",
-          "qualificationClass": "cortex_integration"
+          "qualificationClass": "blueprint_integration"
         },
         {
           "id": "semantic-python-context",
@@ -10525,7 +10525,7 @@
           "kind": "doc_contradiction",
           "state": "unavailable",
           "reason": "missing_binary",
-          "qualificationClass": "cortex_integration"
+          "qualificationClass": "blueprint_integration"
         },
         {
           "id": "ts-symbol-definition",
@@ -10551,7 +10551,7 @@
       "probe": {
         "available": false,
         "reason": "missing_export",
-        "exportPath": "/Volumes/D/claude/cortex/evals/fixture-repos/.agent/graph.json"
+        "exportPath": "/Volumes/D/claude/blueprint/evals/fixture-repos/.agent/graph.json"
       },
       "qualificationSuites": {
         "execution": {
@@ -10586,7 +10586,7 @@
           "kind": "cross_code_document",
           "state": "unavailable",
           "reason": "missing_export",
-          "qualificationClass": "cortex_integration"
+          "qualificationClass": "blueprint_integration"
         },
         {
           "id": "semantic-python-context",
@@ -10649,7 +10649,7 @@
           "kind": "doc_contradiction",
           "state": "unavailable",
           "reason": "missing_export",
-          "qualificationClass": "cortex_integration"
+          "qualificationClass": "blueprint_integration"
         },
         {
           "id": "ts-symbol-definition",

@@ -25,11 +25,11 @@ function makeRepo(prefix, { build = true } = {}) {
 }
 
 function tempConfigPath() {
-  return join(mkdtempSync(join(tmpdir(), "cortex-watch-config-")), "watch.json");
+  return join(mkdtempSync(join(tmpdir(), "blueprint-watch-config-")), "watch.json");
 }
 
 test("a never-enrolled-and-built repo reports unwatched, not current", () => {
-  const repo = makeRepo("cortex-fleet-unwatched-", { build: false });
+  const repo = makeRepo("blueprint-fleet-unwatched-", { build: false });
   const configPath = tempConfigPath();
   try {
     writeWatchConfig({ repos: [{ root: repo, enabled: true }] }, configPath);
@@ -42,7 +42,7 @@ test("a never-enrolled-and-built repo reports unwatched, not current", () => {
 });
 
 test("a built-but-never-watched repo reports unwatched with a distinct reason", () => {
-  const repo = makeRepo("cortex-fleet-neverwatched-");
+  const repo = makeRepo("blueprint-fleet-neverwatched-");
   const configPath = tempConfigPath();
   try {
     writeWatchConfig({ repos: [{ root: repo, enabled: true }] }, configPath);
@@ -53,7 +53,7 @@ test("a built-but-never-watched repo reports unwatched with a distinct reason", 
 });
 
 test("a dead watcher pid reports unwatched with watcher_process_dead, not current", () => {
-  const repo = makeRepo("cortex-fleet-dead-");
+  const repo = makeRepo("blueprint-fleet-dead-");
   const configPath = tempConfigPath();
   try {
     const db = openStore(join(repo, ".agent/graph/graph.db"));
@@ -69,7 +69,7 @@ test("a dead watcher pid reports unwatched with watcher_process_dead, not curren
 });
 
 test("an event gap reports degraded with the recorded error, not current", () => {
-  const repo = makeRepo("cortex-fleet-gap-");
+  const repo = makeRepo("blueprint-fleet-gap-");
   const configPath = tempConfigPath();
   try {
     const db = openStore(join(repo, ".agent/graph/graph.db"));
@@ -86,7 +86,7 @@ test("an event gap reports degraded with the recorded error, not current", () =>
 });
 
 test("a thrown watcher callback becomes visible as degraded status", async () => {
-  const repo = makeRepo("cortex-fleet-callback-failure-");
+  const repo = makeRepo("blueprint-fleet-callback-failure-");
   const configPath = tempConfigPath();
   let actorRef;
   let onEvents;
@@ -121,7 +121,7 @@ test("a thrown watcher callback becomes visible as degraded status", async () =>
 });
 
 test("pending unapplied events report stale, not current", () => {
-  const repo = makeRepo("cortex-fleet-pending-");
+  const repo = makeRepo("blueprint-fleet-pending-");
   const configPath = tempConfigPath();
   try {
     const db = openStore(join(repo, ".agent/graph/graph.db"));
@@ -137,7 +137,7 @@ test("pending unapplied events report stale, not current", () => {
 });
 
 test("a live, caught-up watcher reports current", async () => {
-  const repo = makeRepo("cortex-fleet-current-");
+  const repo = makeRepo("blueprint-fleet-current-");
   const configPath = tempConfigPath();
   const supervisor = new WatchSupervisor({ configPath });
   try {
@@ -154,7 +154,7 @@ test("a live, caught-up watcher reports current", async () => {
 });
 
 test("a stopped supervisor's repos go back to unwatched — no stale 'current' claim survives shutdown", async () => {
-  const repo = makeRepo("cortex-fleet-stopped-");
+  const repo = makeRepo("blueprint-fleet-stopped-");
   const configPath = tempConfigPath();
   const supervisor = new WatchSupervisor({ configPath });
   try {
@@ -167,8 +167,8 @@ test("a stopped supervisor's repos go back to unwatched — no stale 'current' c
 });
 
 test("one repository's actor failing to start does not stall the others (child isolation)", async () => {
-  const goodRepo = makeRepo("cortex-fleet-good-");
-  const brokenRoot = join(tmpdir(), "cortex-fleet-does-not-exist-" + Math.random().toString(36).slice(2));
+  const goodRepo = makeRepo("blueprint-fleet-good-");
+  const brokenRoot = join(tmpdir(), "blueprint-fleet-does-not-exist-" + Math.random().toString(36).slice(2));
   const configPath = tempConfigPath();
   const supervisor = new WatchSupervisor({ configPath });
   try {
@@ -189,8 +189,8 @@ test("one repository's actor failing to start does not stall the others (child i
 });
 
 test("a multi-repo supervisor watches each repo independently: an edit in one does not touch another's graph", async () => {
-  const repoA = makeRepo("cortex-fleet-multi-a-");
-  const repoB = makeRepo("cortex-fleet-multi-b-");
+  const repoA = makeRepo("blueprint-fleet-multi-a-");
+  const repoB = makeRepo("blueprint-fleet-multi-b-");
   const configPath = tempConfigPath();
   const supervisor = new WatchSupervisor({ configPath });
   try {
@@ -213,7 +213,7 @@ test("a multi-repo supervisor watches each repo independently: an edit in one do
 // output) from the parent's own subscription — the child already has its
 // own actor for that.
 test("a parent repo's actor ignores its enrolled child's subtree and its own .agent output (fleet scope)", async () => {
-  const parent = makeRepo("cortex-fleet-scope-parent-");
+  const parent = makeRepo("blueprint-fleet-scope-parent-");
   const child = join(parent, "child-repo");
   cpSync(FIXTURE, child, { recursive: true });
   buildGraphGeneration(child, { outDir: ".agent", persist: true });
@@ -262,7 +262,7 @@ test("a parent repo's actor ignores its enrolled child's subtree and its own .ag
 // exactly one full reconcile, and never let status claim "current" while
 // that gap is still open.
 test("an overflow marks the actor stale(event_overflow), runs exactly one reconcile, and never reports current mid-gap", async () => {
-  const repo = makeRepo("cortex-fleet-overflow-");
+  const repo = makeRepo("blueprint-fleet-overflow-");
   const configPath = tempConfigPath();
   let gapReconcileCalls = 0;
   let releaseReconcile;
@@ -325,7 +325,7 @@ test("an overflow marks the actor stale(event_overflow), runs exactly one reconc
 // dead. This must fail before the fix (repoStatus had no way to see the
 // live in-process actor at all) and pass after.
 test("a stale dead pid in state does not shadow the live supervisor's own running actor (G6: false-dead fix)", async () => {
-  const repo = makeRepo("cortex-fleet-falsedead-");
+  const repo = makeRepo("blueprint-fleet-falsedead-");
   const configPath = tempConfigPath();
   const supervisor = new WatchSupervisor({ configPath });
   try {
@@ -356,8 +356,8 @@ test("a stale dead pid in state does not shadow the live supervisor's own runnin
 // report an honest not-watched state even if some stale, dead owner stamp
 // happens to sit in its watch_state.
 test("a repo the live supervisor has never started stays honestly unwatched (G6: true signal preserved)", async () => {
-  const watched = makeRepo("cortex-fleet-g6owned-");
-  const neverStarted = makeRepo("cortex-fleet-g6neverowned-");
+  const watched = makeRepo("blueprint-fleet-g6owned-");
+  const neverStarted = makeRepo("blueprint-fleet-g6neverowned-");
   const configPath = tempConfigPath();
   const supervisor = new WatchSupervisor({ configPath });
   try {
@@ -400,8 +400,8 @@ test("a repo the live supervisor has never started stays honestly unwatched (G6:
 // instance must read alive; the un-re-owned one must not inherit the old
 // instance's claim even though its pid check alone would say "alive".
 test("repos re-owned by a new supervisor instance read alive; un-re-owned ones do not inherit the old instance's claim (G6: restart semantics)", async () => {
-  const repoA = makeRepo("cortex-fleet-restart-a-");
-  const repoB = makeRepo("cortex-fleet-restart-b-");
+  const repoA = makeRepo("blueprint-fleet-restart-a-");
+  const repoB = makeRepo("blueprint-fleet-restart-b-");
   const configPath = tempConfigPath();
   const oldSupervisor = new WatchSupervisor({ configPath });
   const newSupervisor = new WatchSupervisor({
@@ -444,8 +444,8 @@ test("repos re-owned by a new supervisor instance read alive; un-re-owned ones d
 // D2 soak fix: one repo's malformed graph.db must degrade only that repo's
 // row, never blank status for the other enrolled repos.
 test("one repo's corrupted graph.db reports degraded/store_unreadable without blanking the fleet (status isolation)", () => {
-  const good = makeRepo("cortex-fleet-good-status-");
-  const bad = makeRepo("cortex-fleet-corrupt-");
+  const good = makeRepo("blueprint-fleet-good-status-");
+  const bad = makeRepo("blueprint-fleet-corrupt-");
   const configPath = tempConfigPath();
   try {
     writeFileSync(join(bad, ".agent/graph/graph.db"), "not a sqlite file, definitely garbage bytes");
@@ -473,8 +473,8 @@ test("one repo's corrupted graph.db reports degraded/store_unreadable without bl
 // from the top, repeated restarts could never converge. Modelled here with one
 // actor that never finishes starting: the others must still start.
 test("one slow actor start does not starve the rest of the fleet (G6b: serial startup)", async () => {
-  const slowRepo = makeRepo("cortex-fleet-slow-");
-  const others = [makeRepo("cortex-fleet-fast-a-"), makeRepo("cortex-fleet-fast-b-"), makeRepo("cortex-fleet-fast-c-")];
+  const slowRepo = makeRepo("blueprint-fleet-slow-");
+  const others = [makeRepo("blueprint-fleet-fast-a-"), makeRepo("blueprint-fleet-fast-b-"), makeRepo("blueprint-fleet-fast-c-")];
   const configPath = tempConfigPath();
   const started = [];
   let releaseSlow;

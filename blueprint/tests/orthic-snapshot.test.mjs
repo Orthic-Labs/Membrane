@@ -7,7 +7,7 @@ import { SNAPSHOT_SCHEMA_VERSION, buildSnapshot, startSnapshotServer, validateSn
 test("snapshot builds with required fields", () => {
   const snap = buildSnapshot({ root: process.cwd(), outDir: ".agent" });
   assert.equal(snap.schemaVersion, SNAPSHOT_SCHEMA_VERSION);
-  assert.equal(snap.productId, "cortex");
+  assert.equal(snap.productId, "blueprint");
   assert.ok(snap.observedAtUnixMs);
   assert.ok(snap.sections);
   assert.ok(snap.sections.watcher);
@@ -41,7 +41,7 @@ test("production snapshot server authenticates loopback requests", async () => {
     assert.equal(withAuth.status, 200);
     const body = await withAuth.json();
     assert.equal(body.schemaVersion, SNAPSHOT_SCHEMA_VERSION);
-    assert.equal(body.productId, "cortex");
+    assert.equal(body.productId, "blueprint");
     assert.ok(Number.isInteger(body.observedAtUnixMs));
   } finally {
     await server.close();

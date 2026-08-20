@@ -118,7 +118,7 @@ function fleetStatus(fleet) {
  */
 export async function runSoak({ seed = 1, durationEvents = 500, repoCount = 3, workspaceDir } = {}) {
   const startedAt = Date.now();
-  const work = resolve(workspaceDir ?? join("/tmp", `cortex-soak-${randomUUID()}`));
+  const work = resolve(workspaceDir ?? join("/tmp", `blueprint-soak-${randomUUID()}`));
   rmSync(work, { recursive: true, force: true });
   mkdirSync(work, { recursive: true });
 
@@ -199,7 +199,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
   const seed = Number(argv.seed ?? 1);
   const duration = Number(argv["duration-events"] ?? 500);
   const repos = Number(argv.repos ?? 3);
-  const reportPath = String(argv.report ?? "/tmp/cortex-soak.json");
+  const reportPath = String(argv.report ?? "/tmp/blueprint-soak.json");
   const keepWorkspace = Boolean(argv["keep-workspace"]);
   const { report, work } = await runSoak({ seed, durationEvents: duration, repoCount: repos });
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);

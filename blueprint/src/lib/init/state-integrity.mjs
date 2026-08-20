@@ -9,8 +9,8 @@ function canonical(value) {
   return value;
 }
 function keyDir() {
-  if (platform() === "win32") return join(process.env.LOCALAPPDATA ?? homedir(), "Orthic", "Cortex", "state-keys");
-  return join(process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "orthic", "cortex", "state-keys");
+  if (platform() === "win32") return join(process.env.LOCALAPPDATA ?? homedir(), "Orthic", "Blueprint", "state-keys");
+  return join(process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"), "orthic", "blueprint", "state-keys");
 }
 function keyPath(root, stateKeyDir = keyDir(), namespace = "install") {
   const canonicalRoot = realpathSync(root);

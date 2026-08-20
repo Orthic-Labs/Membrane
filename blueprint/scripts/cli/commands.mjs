@@ -2,19 +2,19 @@
 // application service; write/build paths stay in the main CLI until D30.
 // Graph subcommands remain as aliases.
 
-import { createCortexApplicationService } from "../../src/lib/application/service.mjs";
+import { createBlueprintApplicationService } from "../../src/lib/application/service.mjs";
 import { applyInitPlan, uninstallInit } from "../../src/lib/init/apply.mjs";
 import { buildInitPlan } from "../../src/lib/init/plan.mjs";
 import { recoverPendingUpdate } from "../../src/lib/update/apply.mjs";
 import { join } from "node:path";
 import { createDaemonServer } from "../../src/service/server.mjs";
 import { readWatchConfig } from "../../watchman/supervisor.mjs";
-import { startCortexMcpServer } from "../cortex-mcp.mjs";
+import { startBlueprintMcpServer } from "../blueprint-mcp.mjs";
 import { EXIT, parseArgs } from "./args.mjs";
 import { machineError, printResult, renderArchitecture, renderDocTruth, renderExpand, renderImpact, renderSearch, renderStatus } from "./render.mjs";
 
 function serviceFor(args) {
-  return createCortexApplicationService({
+  return createBlueprintApplicationService({
     outDir: String(args.out ?? ".agent"),
     allowEmbeddedRoot: true,
   });
@@ -84,7 +84,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       const explorer = await startLocalExplorer({ root, outDir, service });
       const payload = { schemaVersion: 1, state: "listening", url: explorer.url };
       if (args.json || args["no-open"]) printResult(payload, args);
-      else console.log(`Open Cortex Explorer: ${explorer.url}`);
+      else console.log(`Open Blueprint Explorer: ${explorer.url}`);
       const durationMs = Number(args["duration-ms"] ?? 0);
       if (durationMs > 0) {
         await new Promise((resolve) => setTimeout(resolve, durationMs));
@@ -139,7 +139,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         return EXIT.OK;
       }
       if (subcommand === "start" || subcommand === "stop" || subcommand === "restart") {
-        printResult(machineError("os_registration_forbidden", "OS service control forbidden per D-S03 — use cortex service run; Hub owns lifecycle"), args, { stderr: true });
+        printResult(machineError("os_registration_forbidden", "OS service control forbidden per D-S03 — use blueprint service run; Hub owns lifecycle"), args, { stderr: true });
         return EXIT.INTERNAL;
       }
       if (subcommand === "run") {
@@ -160,16 +160,16 @@ async function runFacadeCommand(command, args, { root, outDir }) {
           endpoint = await startSnapshotServer({ root, port: manifest.statusEndpoint.port, authHeader: manifest.statusEndpoint.authHeader, authToken: manifest.statusEndpoint.authToken });
           daemon = createDaemonServer({ registryEntries: readWatchConfig().repos });
           daemonAddress = await daemon.listen();
-          // Cortex, not any peer, owns its watcher. Keep it attached to this
+          // Blueprint, not any peer, owns its watcher. Keep it attached to this
           // foreground service so Hub termination also stops the watcher.
-          watcher = spawn(process.execPath, [resolve(root, "scripts", "cortex-watch.mjs"), "start"], {
+          watcher = spawn(process.execPath, [resolve(root, "scripts", "blueprint-watch.mjs"), "start"], {
             cwd: root,
-            env: { ...process.env, CORTEX_SERVICE_CHILD: "1" },
+            env: { ...process.env, BLUEPRINT_SERVICE_CHILD: "1" },
             stdio: ["pipe", "ignore", "pipe"],
           });
           watcher.once("error", () => {});
           await new Promise((resolve) => setTimeout(resolve, 150));
-          if (watcher.exitCode !== null) throw new Error("cortex_watcher_unavailable");
+          if (watcher.exitCode !== null) throw new Error("blueprint_watcher_unavailable");
         } catch (error) {
           watcher?.kill("SIGTERM");
           await daemon?.close().catch(() => {});
@@ -177,7 +177,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
           printResult(machineError("snapshot_server_failed", String(error?.message ?? error)), args, { stderr: true });
           return EXIT.INTERNAL;
         }
-        const payload = { schemaVersion: 1, state: "running", mode: "foreground", pid: process.pid, watcherPid: watcher.pid, serviceStart: [process.execPath, "scripts/cortex.mjs", "service", "run"], daemonEndpoint: daemonAddress.endpoint, statusEndpoint: { host: endpoint.host, port: endpoint.port, authHeader: endpoint.authHeader } };
+        const payload = { schemaVersion: 1, state: "running", mode: "foreground", pid: process.pid, watcherPid: watcher.pid, serviceStart: [process.execPath, "scripts/blueprint.mjs", "service", "run"], daemonEndpoint: daemonAddress.endpoint, statusEndpoint: { host: endpoint.host, port: endpoint.port, authHeader: endpoint.authHeader } };
         console.log(JSON.stringify(payload));
         // Keep event loop alive — signal listeners alone don't ref the loop, so Node would exit with 13 (unsettled top-level await)
         const keepAlive = setInterval(() => {}, 1000);
@@ -201,11 +201,11 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         const { homedir } = await import("node:os");
         const { readFileSync, existsSync } = await import("node:fs");
         const { join } = await import("node:path");
-        const logPath = join(homedir(), ".cortex", "logs", "service.log");
+        const logPath = join(homedir(), ".blueprint", "logs", "service.log");
         printResult({ path: logPath, tail: existsSync(logPath) ? readFileSync(logPath, "utf8").split(/\r?\n/).slice(-40).join("\n") : "" }, args);
         return EXIT.OK;
       }
-      printResult(machineError("usage", `cortex service ${subcommand} is not a known subcommand`), args, { stderr: true });
+      printResult(machineError("usage", `blueprint service ${subcommand} is not a known subcommand`), args, { stderr: true });
       return EXIT.USAGE;
     }
     case "update": {
@@ -222,7 +222,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
           channel,
           enabled,
           currentVersion: "0.2.0",
-          reason: !enabled ? (offline ? "offline" : process.env.CORTEX_NO_UPDATE_CHECK === "1" ? "disabled_by_env" : "disabled") : "enabled",
+          reason: !enabled ? (offline ? "offline" : process.env.BLUEPRINT_NO_UPDATE_CHECK === "1" ? "disabled_by_env" : "disabled") : "enabled",
           updateCommand: owner.command,
         }, args);
         return EXIT.OK;
@@ -267,7 +267,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         printResult({ schemaVersion: 1, owner, action: "rollback", note: "rollback restores the prior app version and compatible store backup" }, args);
         return EXIT.OK;
       }
-      printResult(machineError("usage", `cortex update ${subcommand} is not a known subcommand`), args, { stderr: true });
+      printResult(machineError("usage", `blueprint update ${subcommand} is not a known subcommand`), args, { stderr: true });
       return EXIT.USAGE;
     }
     case "languages": {
@@ -280,9 +280,9 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       const { parseRules } = await import("../../src/lib/rules/parser.mjs");
       const { evaluateRules } = await import("../../src/lib/rules/evaluate.mjs");
       const { readFileSync, existsSync } = await import("node:fs");
-      const rulesPath = join(root, "cortex.rules.yml");
+      const rulesPath = join(root, "blueprint.rules.yml");
       if (!existsSync(rulesPath)) {
-        printResult(machineError("rules_missing", "cortex.rules.yml not found in repository root"), args, { stderr: true });
+        printResult(machineError("rules_missing", "blueprint.rules.yml not found in repository root"), args, { stderr: true });
         return EXIT.USAGE;
       }
       const parsed = parseRules(readFileSync(rulesPath, "utf8"));
@@ -296,19 +296,19 @@ async function runFacadeCommand(command, args, { root, outDir }) {
         printResult({ schemaVersion: 1, command: subcommand, ruleCount: parsed.rules.length }, args);
         return EXIT.OK;
       }
-      printResult(machineError("usage", `cortex rules ${subcommand} is not a known subcommand`), args, { stderr: true });
+      printResult(machineError("usage", `blueprint rules ${subcommand} is not a known subcommand`), args, { stderr: true });
       return EXIT.USAGE;
     }
     case "mcp":
-      // CX-B1: `cortex mcp serve --root <repo>` starts the stdio server from
-      // scripts/cortex-mcp.mjs in-process; the CLI process becomes the server.
+      // CX-B1: `blueprint mcp serve --root <repo>` starts the stdio server from
+      // scripts/blueprint-mcp.mjs in-process; the CLI process becomes the server.
       {
         const subcommand = String(args._[0] ?? args.subcommand ?? "");
         if (subcommand === "serve") {
-          await startCortexMcpServer({ root: args.root ?? root });
+          await startBlueprintMcpServer({ root: args.root ?? root });
           return EXIT.OK;
         }
-        printResult(machineError("usage", `cortex mcp ${subcommand} is not a known subcommand; use cortex mcp serve --root <repo>`), args, { stderr: true });
+        printResult(machineError("usage", `blueprint mcp ${subcommand} is not a known subcommand; use blueprint mcp serve --root <repo>`), args, { stderr: true });
         return EXIT.USAGE;
       }
     default:

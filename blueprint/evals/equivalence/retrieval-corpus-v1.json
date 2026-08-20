@@ -1,5 +1,5 @@
 {
-  "schema": "cortex-retrieval-equivalence-corpus-v1",
+  "schema": "blueprint-retrieval-equivalence-corpus-v1",
   "description": "Frozen portable symbol-term retrieval contract before storage optimization.",
   "generations": [
     {

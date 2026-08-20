@@ -1,8 +1,8 @@
-# Cortex Research
+# Blueprint Research
 
 This directory is **research input only**. Nothing here is product documentation
 or implementation authority — see `docs/architecture.md` and the repo-root
-`README.md` for what Cortex actually does. This corpus is Cortex-only; it is not
+`README.md` for what Blueprint actually does. This corpus is Blueprint-only; it is not
 a shared paper pool with Membrane.
 
 ## Layout

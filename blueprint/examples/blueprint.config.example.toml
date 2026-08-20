@@ -1,0 +1,14 @@
+# Blueprint peer discovery config (D-14, SEAM D-S11) — vendor-neutral
+# Copy to blueprint.config.toml and edit. No hardcoded product name survives in code
+# outside config defaults; discovery is env/config-driven.
+
+[peers]
+# peer = "/absolute/path/to/bin"
+# Example:
+# crypt = "/Users/you/bin/crypt"
+# my-peer = "/usr/local/bin/my-peer"
+
+# Env overrides (highest priority):
+# CRYPT_BIN (legacy compat, still works)
+# BLUEPRINT_PEER_BIN_<NAME> e.g. BLUEPRINT_PEER_BIN_CRYPT=/path/to/crypt
+# BLUEPRINT_PEER_BIN=/path/to/peer

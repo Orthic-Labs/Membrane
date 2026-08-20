@@ -1,6 +1,6 @@
 // B2.2 hard gate — incremental indexing and freshness.
 //
-// The plan (docs/plans/2026-07-10-cortex-code-graph-visual-explorer-impl.md
+// The plan (docs/plans/2026-07-10-blueprint-code-graph-visual-explorer-impl.md
 // §8) named this file as B2's gate and it was never written, so B2 shipped
 // ungated. These tests pin the two correctness properties the incremental path
 // depends on:
@@ -330,13 +330,13 @@ test("first physical winner owns provenance, FTS, and ranks while duplicate lose
   const file = { id: "file:src/a.ts", kind: "file", labels: ["File"], name: "a.ts", qualifiedName: "src/a.ts", path: "src/a.ts", confidence: 1, evidence: [{ path: "src/a.ts", contentHash: "before" }] };
   const lexical = { id: "shared", kind: "symbol", labels: ["Function"], name: "lexicalWinner", qualifiedName: "lexicalWinner", path: "src/a.ts", confidence: 1, evidence: [] };
   const loser = { ...lexical, kind: "comment", name: null, qualifiedName: null, text: "loser" };
-  const unique = { ...lexical, id: "tree-unique", name: "treeUnique", qualifiedName: "treeUnique", factProvider: { id: "cortex-treesitter", version: "t1" } };
+  const unique = { ...lexical, id: "tree-unique", name: "treeUnique", qualifiedName: "treeUnique", factProvider: { id: "blueprint-treesitter", version: "t1" } };
   try {
     saveGeneration(db, { manifest: { generationId: "before", counts: { nodes: 1, edges: 0 } }, provider: { id: "lexical", version: "l1" }, nodes: [file], edges: [] }, { populateState: true });
     const beforeGeneration = getGenerationEnvelope(db).manifest.generationId;
     applyFileDelta(db, { eventKind: "modify", path: "src/a.ts", contentDigest: "after", sourceClock: 1, factBatches: [
-      { provider: { id: "cortex-static", version: "l1" }, parsed: { nodes: [{ ...file, evidence: [{ path: "src/a.ts", contentHash: "after" }] }, lexical], edges: [] } },
-      { provider: { id: "cortex-treesitter", version: "t1" }, parsed: { nodes: [{ ...file, evidence: [{ path: "src/a.ts", contentHash: "after" }] }, loser, unique], edges: [] } },
+      { provider: { id: "blueprint-static", version: "l1" }, parsed: { nodes: [{ ...file, evidence: [{ path: "src/a.ts", contentHash: "after" }] }, lexical], edges: [] } },
+      { provider: { id: "blueprint-treesitter", version: "t1" }, parsed: { nodes: [{ ...file, evidence: [{ path: "src/a.ts", contentHash: "after" }] }, loser, unique], edges: [] } },
     ] });
     assert.equal(db.prepare("SELECT kind FROM symbols WHERE id='shared'").get().kind, "symbol");
     assert.equal(db.prepare("SELECT 1 FROM annotation_nodes WHERE id='shared'").get(), undefined);

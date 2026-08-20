@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": { "type": "integer", "const": 1 },
-    "productId": { "type": "string", "enum": ["cortex", "membrane"] },
+    "productId": { "type": "string", "enum": ["blueprint", "membrane"] },
     "observedAtUnixMs": { "type": "integer", "minimum": 0 },
     "sections": {
       "type": "object",

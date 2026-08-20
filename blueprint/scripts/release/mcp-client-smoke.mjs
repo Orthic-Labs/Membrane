@@ -10,7 +10,7 @@ export async function verifyMcpInitialize({ script, root, cwd = root, timeoutMs 
   });
   let stderr = "";
   transport.stderr?.on("data", (chunk) => { stderr += chunk.toString(); });
-  const client = new Client({ name: "cortex-smoke", version: "1.0.0" }, { capabilities: {} });
+  const client = new Client({ name: "blueprint-smoke", version: "1.0.0" }, { capabilities: {} });
   let timer;
   try {
     const result = await Promise.race([

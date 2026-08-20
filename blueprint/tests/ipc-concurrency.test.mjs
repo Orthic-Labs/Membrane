@@ -11,7 +11,7 @@ import { createDaemonServer } from "../src/service/server.mjs";
 import { DaemonClient } from "../src/service/client.mjs";
 import { temporaryDaemonEndpoint } from "../src/service/paths.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
-import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { RootRegistry } from "../src/lib/application/root-registry.mjs";
 
 function controlledFreshnessService({ onFreshness = () => {}, onStatus = () => {} } = {}) {
@@ -54,12 +54,12 @@ function abortableRelease(releases, signal) {
 }
 
 test("concurrent clients get consistent responses", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-ipc-conc-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-ipc-conc-"));
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
-  const endpoint = temporaryDaemonEndpoint("cortex-conc");
+  const endpoint = temporaryDaemonEndpoint("blueprint-conc");
   const registry = new RootRegistry([{ root: repo, repoId: "repo-1" }]);
-  const service = createCortexApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
+  const service = createBlueprintApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
   const daemon = createDaemonServer({ service, endpoint });
   try {
     await daemon.listen();
@@ -77,15 +77,15 @@ test("concurrent clients get consistent responses", async () => {
 });
 
 test("a failing repo returns typed errors without starving others", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-ipc-fail-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-ipc-fail-"));
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
-  const endpoint = temporaryDaemonEndpoint("cortex-fail");
+  const endpoint = temporaryDaemonEndpoint("blueprint-fail");
   const registry = new RootRegistry([
     { root: repo, repoId: "repo-1" },
     { root: join(tmpdir(), "missing-repo"), repoId: "repo-missing" },
   ]);
-  const service = createCortexApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
+  const service = createBlueprintApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
   const daemon = createDaemonServer({ service, endpoint });
   try {
     await daemon.listen();
@@ -106,12 +106,12 @@ test("a failing repo returns typed errors without starving others", async () => 
 });
 
 test("injected real application service serializes same-root freshness without duplicate registry entries", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-ipc-injected-real-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-ipc-injected-real-"));
   const canonicalRepo = realpathSync.native(repo);
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
-  const endpoint = temporaryDaemonEndpoint("cortex-injected-real");
-  const realService = createCortexApplicationService({ rootRegistry: new RootRegistry([{ root: repo, repoId: "repo" }]), allowEmbeddedRoot: false });
+  const endpoint = temporaryDaemonEndpoint("blueprint-injected-real");
+  const realService = createBlueprintApplicationService({ rootRegistry: new RootRegistry([{ root: repo, repoId: "repo" }]), allowEmbeddedRoot: false });
   const started = [];
   const releases = [];
   const service = {
@@ -146,9 +146,9 @@ test("injected real application service serializes same-root freshness without d
 });
 
 test("daemon serializes freshness sessions for one canonical root while another root proceeds", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-root-fifo");
-  const firstRoot = join(tmpdir(), "cortex-root-fifo-a");
-  const secondRoot = join(tmpdir(), "cortex-root-fifo-b");
+  const endpoint = temporaryDaemonEndpoint("blueprint-root-fifo");
+  const firstRoot = join(tmpdir(), "blueprint-root-fifo-a");
+  const secondRoot = join(tmpdir(), "blueprint-root-fifo-b");
   const started = [];
   const releases = [];
   const service = controlledFreshnessService({
@@ -187,8 +187,8 @@ test("daemon serializes freshness sessions for one canonical root while another 
 });
 
 test("daemon allows same-root traversal work after its freshness sessions open", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-traversal-concurrency");
-  const root = join(tmpdir(), "cortex-traversal-concurrency");
+  const endpoint = temporaryDaemonEndpoint("blueprint-traversal-concurrency");
+  const root = join(tmpdir(), "blueprint-traversal-concurrency");
   const started = [];
   const releases = [];
   const service = controlledFreshnessService({
@@ -215,8 +215,8 @@ test("daemon allows same-root traversal work after its freshness sessions open",
 });
 
 test("daemon queues repository aliases on their shared canonical root", async () => {
-  const endpoint = temporaryDaemonEndpoint("cortex-alias-fifo");
-  const root = join(tmpdir(), "cortex-alias-fifo");
+  const endpoint = temporaryDaemonEndpoint("blueprint-alias-fifo");
+  const root = join(tmpdir(), "blueprint-alias-fifo");
   const started = [];
   const releases = [];
   const service = controlledFreshnessService({

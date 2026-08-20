@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "schema": "cortex-retrieval-corpus-v1",
+  "schema": "blueprint-retrieval-corpus-v1",
   "description": "Real retrieval failures sourced from the workspace. Every gold answer is a path+region (or {abstained:true}). Class identifies how the failure was observed: 'specific-symbol' (find the exact symbol), 'specific-file' (find the file), 'misleading-lexical' (the obvious lexical match is wrong), 'no-gold' (nothing relevant exists, must abstain), 'region' (find a region/line). Gold rationale is included for every case.",
   "abstention": {
     "shape": { "abstained": true, "reason": "no_relevant_seed" },

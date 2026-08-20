@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Orthic-Labs/Cortex/release/receipt.schema.json",
+  "$id": "https://github.com/Orthic-Labs/Blueprint/release/receipt.schema.json",
   "type": "object",
   "required": ["schemaVersion", "version", "commit", "channels"],
   "properties": {

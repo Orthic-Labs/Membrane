@@ -28,7 +28,7 @@ function seedCorpus(db) {
   const [current, ...residue] = corpus.generations;
   saveGeneration(db, {
     manifest: { generationId: current.id },
-    provider: { id: "cortex-static", version: "retrieval-corpus-v1" },
+    provider: { id: "blueprint-static", version: "retrieval-corpus-v1" },
     nodes: current.symbols.map(symbolNode),
     edges: [],
   });
@@ -71,7 +71,7 @@ function score(outputs) {
 }
 
 test("frozen portable retrieval corpus preserves ordered identities, omissions, and generation binding", () => {
-  assert.equal(corpus.schema, "cortex-retrieval-equivalence-corpus-v1");
+  assert.equal(corpus.schema, "blueprint-retrieval-equivalence-corpus-v1");
   const db = openStore(":memory:");
   try {
     seedCorpus(db);

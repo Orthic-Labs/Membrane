@@ -7,7 +7,7 @@ import { fixtureFilePath, fixtureIdentity, generateBenchmarkFixture } from "../s
 import { REPORT_SCHEMA, validateStorageReport } from "../scripts/benchmark-storage.mjs";
 
 test("storage benchmark fixture generator is deterministic and marked", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cortex-bench-fixture-"));
+  const dir = mkdtempSync(join(tmpdir(), "blueprint-bench-fixture-"));
   try {
     const identity = generateBenchmarkFixture({ outDir: dir, files: 12 });
     assert.deepEqual(identity, fixtureIdentity(12));

@@ -9,7 +9,7 @@ import { openStore, openStoreReadOnly, closeStore } from "../src/graph/store-sql
 // writer/writer race into an instant "database is locked" throw. Serial tests can never catch
 // the race itself, so this pins the configuration that makes racers queue instead of die.
 test("writable and read-only stores both wait out contention instead of failing instantly", () => {
-  const dir = mkdtempSync(join(tmpdir(), "cortex-busy-"));
+  const dir = mkdtempSync(join(tmpdir(), "blueprint-busy-"));
   const dbPath = join(dir, "graph.db");
   // Writers wait longer than readers on purpose: a blocked reader can retry cheaply,
   // while a blocked writer loses a whole build generation.

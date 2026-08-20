@@ -4,7 +4,7 @@
 // execution, no network, no installs, no destruction, safe to repeat, and
 // safe for a host to run without asking the user first.
 export const TOOL_EFFECTS = Object.freeze({
-  cortex_orient: Object.freeze({
+  blueprint_orient: Object.freeze({
     reads: ["repository-graph"],
     writes: [],
     executesProjectCode: false,
@@ -14,7 +14,7 @@ export const TOOL_EFFECTS = Object.freeze({
     idempotent: true,
     approval: "not_required",
   }),
-  cortex_search: Object.freeze({
+  blueprint_search: Object.freeze({
     reads: ["repository-graph"],
     writes: [],
     executesProjectCode: false,
@@ -24,7 +24,7 @@ export const TOOL_EFFECTS = Object.freeze({
     idempotent: true,
     approval: "not_required",
   }),
-  cortex_expand: Object.freeze({
+  blueprint_expand: Object.freeze({
     reads: ["repository-graph"],
     writes: [],
     executesProjectCode: false,
@@ -34,7 +34,7 @@ export const TOOL_EFFECTS = Object.freeze({
     idempotent: true,
     approval: "not_required",
   }),
-  cortex_impact: Object.freeze({
+  blueprint_impact: Object.freeze({
     reads: ["repository-graph"],
     writes: [],
     executesProjectCode: false,
@@ -44,7 +44,7 @@ export const TOOL_EFFECTS = Object.freeze({
     idempotent: true,
     approval: "not_required",
   }),
-  cortex_doc_truth: Object.freeze({
+  blueprint_doc_truth: Object.freeze({
     reads: ["repository-graph", "repository-documents"],
     writes: [],
     executesProjectCode: false,
@@ -54,7 +54,7 @@ export const TOOL_EFFECTS = Object.freeze({
     idempotent: true,
     approval: "not_required",
   }),
-  cortex_status: Object.freeze({
+  blueprint_status: Object.freeze({
     reads: ["repository-graph"],
     writes: [],
     executesProjectCode: false,

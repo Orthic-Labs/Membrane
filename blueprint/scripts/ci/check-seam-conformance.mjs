@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// U61: SEAM-CONTRACT §8 conformance for cortex — vendor-neutral naming, manifest shape, watcher single-ownership
+// U61: SEAM-CONTRACT §8 conformance for blueprint — vendor-neutral naming, manifest shape, watcher single-ownership
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
@@ -38,8 +38,8 @@ try {
   else { console.error(`✗ grep-gate ${MEMBRANE} error: ${e.message}`); failed = true; }
 }
 
-check("grep-gate: no hardcoded crypt outside config-default in scripts/cortex.mjs", () => {
-  const src = readFileSync(join(ROOT, "scripts/cortex.mjs"), "utf8");
+check("grep-gate: no hardcoded crypt outside config-default in scripts/blueprint.mjs", () => {
+  const src = readFileSync(join(ROOT, "scripts/blueprint.mjs"), "utf8");
   const lines = src.split("\n");
   // Config-default contexts: peer = "crypt" or service: "crypt" or comment
   const bad = [];
@@ -59,7 +59,7 @@ check("grep-gate: no hardcoded crypt outside config-default in scripts/cortex.mj
 
 check("manifest shape validates", () => {
   const localSchemaPath = join(ROOT, "schemas/orthic-product-manifest-v1.schema.json");
-  // The released contract is pinned into Cortex at publish time. Never read a
+  // The released contract is pinned into Blueprint at publish time. Never read a
   // sibling checkout: its presence/version is mutable and would make CI
   // silently validate against an unrelated source tree.
   if (!existsSync(localSchemaPath)) throw new Error("pinned manifest schema missing");
@@ -83,9 +83,9 @@ check("snapshot shape validates", () => {
 });
 
 const MEM_WORD = "mem" + "brane";
-check(`watcher single-ownership: no ${MEM_WORD} in cortex-watch.mjs / watchman/`, () => {
+check(`watcher single-ownership: no ${MEM_WORD} in blueprint-watch.mjs / watchman/`, () => {
   try {
-    const out = execFileSync("grep", ["-rn", MEM_WORD, "scripts/cortex-watch.mjs", "watchman/"], { encoding: "utf8", cwd: ROOT });
+    const out = execFileSync("grep", ["-rn", MEM_WORD, "scripts/blueprint-watch.mjs", "watchman/"], { encoding: "utf8", cwd: ROOT });
     if (out.trim()) throw new Error(`found ${MEM_WORD} in watcher:\n${out.slice(0, 300)}`);
     console.log(`✓ watcher single-ownership: zero ${MEM_WORD}`);
   } catch (e) {
@@ -94,9 +94,9 @@ check(`watcher single-ownership: no ${MEM_WORD} in cortex-watch.mjs / watchman/`
   }
 });
 
-check("cortex graph manifest --json shape (if graph exists)", () => {
+check("blueprint graph manifest --json shape (if graph exists)", () => {
   const out = (() => {
-    try { return run("node", ["scripts/cortex.mjs", "graph", "manifest", "--json"], { stdio: "pipe" }); } catch (e) { return e.stdout ?? ""; }
+    try { return run("node", ["scripts/blueprint.mjs", "graph", "manifest", "--json"], { stdio: "pipe" }); } catch (e) { return e.stdout ?? ""; }
   })();
   if (!out) { console.log("  (no graph — skipping manifest shape check)"); return; }
   try {
@@ -113,7 +113,7 @@ check("build identity: Hub protocol/lease/endpoint/instance/fence never enter ma
     schemaVersion: 1,
     provider: { id: "lexical", version: "repo-local-v1" },
     counts: { nodes: 3, edges: 2 },
-    repo: { rootName: "cortex", sourceHash: "xxh128:abc", fileCount: 1 },
+    repo: { rootName: "blueprint", sourceHash: "xxh128:abc", fileCount: 1 },
   };
   const clean = computeManifestDigest(base, null);
   const contaminated = computeManifestDigest({
@@ -134,13 +134,13 @@ check("build identity: Hub protocol/lease/endpoint/instance/fence never enter ma
 });
 
 check("mutable state path: synced/shared storage is refused typed, local proceeds", () => {
-  const synced = classifyMutablePath("/Users/adrian/Dropbox/cortex/.agent/graph/graph.db", { probeMount: () => "local" });
+  const synced = classifyMutablePath("/Users/adrian/Dropbox/blueprint/.agent/graph/graph.db", { probeMount: () => "local" });
   if (synced.classification !== "synced") throw new Error(`expected synced, got ${synced.classification}`);
   const shared = classifyMutablePath("\\\\server\\share\\repo\\.agent\\graph.db", { platform: "win32", probeMount: () => "unavailable" });
   if (shared.classification !== "shared") throw new Error(`expected shared, got ${shared.classification}`);
   try { assertSafeMutableStorePath("/Users/adrian/Dropbox/repo/.agent/graph.db", { probeMount: () => "local" }); throw new Error("expected refusal"); }
   catch (e) { if (e.code !== "synced_store_path_refused") throw e; }
-  const local = classifyMutablePath("/tmp/cortex-fixture/.agent/graph/graph.db", { probeMount: () => "local" });
+  const local = classifyMutablePath("/tmp/blueprint-fixture/.agent/graph/graph.db", { probeMount: () => "local" });
   if (local.classification === "synced" || local.classification === "shared") throw new Error(`local path misclassified as ${local.classification}`);
 });
 

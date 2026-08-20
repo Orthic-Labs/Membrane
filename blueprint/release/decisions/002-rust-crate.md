@@ -7,7 +7,7 @@
 
 ## Decision
 
-Cortex does **not** publish a public Rust crate. The core is shipped as a
+Blueprint does **not** publish a public Rust crate. The core is shipped as a
 Node module (ESM + native `node:sqlite` and WASM grammars). A Rust client
 is out of scope for 1.0.
 
@@ -16,7 +16,7 @@ is out of scope for 1.0.
 - A Rust crate would give us tighter control over memory layout, faster
   parse for the large-class envelope budgets, and a more natural story
   for shipping CLI-only tools.
-- Cortex's primary public surface is a local CLI/MCP/SDK that runs in
+- Blueprint's primary public surface is a local CLI/MCP/SDK that runs in
   the user's existing language toolchain. The feature gap is on the
   language-server / query side, not on the implementation side.
 - A Rust rewrite of the core would, in the runbook's own do-not-absorb
@@ -27,7 +27,7 @@ is out of scope for 1.0.
 
 - A placeholder crate invites low-quality bindings that take ownership
   of the contract surface from the Node SDK. The SDK already provides
-  the typed client (`CortexClient`, `EmbeddedCortexClient`).
+  the typed client (`BlueprintClient`, `EmbeddedBlueprintClient`).
 - A real Rust crate would be a multi-quarter project requiring a
   full ABI-equivalent reproduction of the current evidence engine
   (SQLite store + Merkle ledger + parser walker). That is a separate

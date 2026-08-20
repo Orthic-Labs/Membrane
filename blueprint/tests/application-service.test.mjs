@@ -8,16 +8,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { seedStore, readEnvelope, writeEnvelope, mutateManifest } from "./_store-helpers.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
-import { CortexError } from "../src/lib/application/errors.mjs";
+import { BlueprintError } from "../src/lib/application/errors.mjs";
 import { syncToCurrentSource } from "../src/graph/barrier.mjs";
 
 const FIXTURE = join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce");
 
 function tempRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-service-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-service-"));
   cpSync(FIXTURE, repo, { recursive: true });
   return repo;
 }
@@ -28,11 +28,11 @@ function builtRepo() {
   return repo;
 }
 
-async function expectCortexError(promise, code) {
+async function expectBlueprintError(promise, code) {
   try {
     await promise;
   } catch (error) {
-    assert.ok(error instanceof CortexError, `expected CortexError, got ${error.constructor?.name ?? error}`);
+    assert.ok(error instanceof BlueprintError, `expected BlueprintError, got ${error.constructor?.name ?? error}`);
     assert.equal(error.code, code);
     return error;
   }
@@ -42,7 +42,7 @@ async function expectCortexError(promise, code) {
 test("status works on a built graph and reports repository identity", async () => {
   const repo = builtRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     const result = await service.status({ repoRoot: repo });
     assert.equal(result.schemaVersion, 1);
     assert.ok(result.repository);
@@ -55,8 +55,8 @@ test("status works on a built graph and reports repository identity", async () =
 test("missing graph raises graph_missing for search", async () => {
   const repo = tempRepo();
   try {
-    const service = createCortexApplicationService();
-    await expectCortexError(service.search({ repoRoot: repo, query: "placeOrder" }), "graph_missing");
+    const service = createBlueprintApplicationService();
+    await expectBlueprintError(service.search({ repoRoot: repo, query: "placeOrder" }), "graph_missing");
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -65,7 +65,7 @@ test("missing graph raises graph_missing for search", async () => {
 test("search returns generation-pinned results on a fresh graph", async () => {
   const repo = builtRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     const result = await service.search({ repoRoot: repo, query: "placeOrder", limit: 5 });
     assert.equal(result.schemaVersion, 1);
     assert.equal(result.kind, "search");
@@ -92,8 +92,8 @@ test("stale barrier rejection raises stale_blocked unless allowStale", async () 
     } finally {
       closeStore(db);
     }
-    const service = createCortexApplicationService();
-    await expectCortexError(service.search({ repoRoot: repo, query: "placeOrder", timeoutMs: 80 }), "stale_blocked");
+    const service = createBlueprintApplicationService();
+    await expectBlueprintError(service.search({ repoRoot: repo, query: "placeOrder", timeoutMs: 80 }), "stale_blocked");
     // allowStale bypasses the barrier rejection.
     const result = await service.search({ repoRoot: repo, query: "placeOrder", allowStale: true, timeoutMs: 80, limit: 5 });
     assert.ok(Array.isArray(result.results));
@@ -114,8 +114,8 @@ test("freshness work aborts with request_cancelled", async () => {
     } finally { closeStore(db); }
     const controller = new AbortController();
     controller.abort();
-    const service = createCortexApplicationService();
-    await expectCortexError(service.search({ repoRoot: repo, query: "placeOrder", timeoutMs: 100 }, { signal: controller.signal }), "request_cancelled");
+    const service = createBlueprintApplicationService();
+    await expectBlueprintError(service.search({ repoRoot: repo, query: "placeOrder", timeoutMs: 100 }, { signal: controller.signal }), "request_cancelled");
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -152,8 +152,8 @@ test("generation pin mismatch raises generation_mismatch", async () => {
   try {
     const manifest = readEnvelope(repo, "manifest");
     const current = manifest.generationId;
-    const service = createCortexApplicationService();
-    await expectCortexError(service.search({ repoRoot: repo, query: "placeOrder", generation: "xxh128:not-the-current" }), "generation_mismatch");
+    const service = createBlueprintApplicationService();
+    await expectBlueprintError(service.search({ repoRoot: repo, query: "placeOrder", generation: "xxh128:not-the-current" }), "generation_mismatch");
     const ok = await service.search({ repoRoot: repo, query: "placeOrder", generation: current, limit: 5 });
     assert.ok(Array.isArray(ok.results));
   } finally {
@@ -164,7 +164,7 @@ test("generation pin mismatch raises generation_mismatch", async () => {
 test("resolve returns a node with generation and receipt", async () => {
   const repo = builtRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     const search = await service.search({ repoRoot: repo, query: "placeOrder", limit: 20 });
     assert.ok(search.results.length > 0, "expected at least one result");
     const nodeId = search.results[0].id;
@@ -180,8 +180,8 @@ test("resolve returns a node with generation and receipt", async () => {
 test("resolve of an unknown node raises node_not_found", async () => {
   const repo = builtRepo();
   try {
-    const service = createCortexApplicationService();
-    await expectCortexError(service.resolve({ repoRoot: repo, nodeId: "symbol:does-not-exist" }), "node_not_found");
+    const service = createBlueprintApplicationService();
+    await expectBlueprintError(service.resolve({ repoRoot: repo, nodeId: "symbol:does-not-exist" }), "node_not_found");
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -191,8 +191,8 @@ test("search on a seeded generation without building works read-only", async () 
   const repo = tempRepo();
   try {
     seedStore(repo, {
-      manifest: { generationId: "xxh128:seed-1", provider: "cortex-static" },
-      provider: { id: "cortex-static", version: "0.2.0", precisionTier: "LEXICAL" },
+      manifest: { generationId: "xxh128:seed-1", provider: "blueprint-static" },
+      provider: { id: "blueprint-static", version: "0.2.0", precisionTier: "LEXICAL" },
       nodes: [
         {
           id: "symbol:src/service.ts:placeOrder",
@@ -209,7 +209,7 @@ test("search on a seeded generation without building works read-only", async () 
       edges: [],
       anchors: [],
     });
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     const result = await service.search({ repoRoot: repo, query: "placeOrder", limit: 5 });
     assert.ok(Array.isArray(result.results));
   } finally {

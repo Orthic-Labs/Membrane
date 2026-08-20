@@ -9,15 +9,15 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 function buildRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-queries-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-queries-"));
   cpSync(FIXTURE, repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   return repo;
@@ -36,7 +36,7 @@ function cliJson(repo, args) {
 test("orient service result matches CLI orient semantics", async () => {
   const repo = buildRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     const serviceResult = await service.orient({ repoRoot: repo, query: "placeOrder", limit: 10 });
     const cliResult = cliJson(repo, ["graph", "candidates", "--query", "placeOrder", "--limit", "10", "--json"]);
     assert.equal(serviceResult.schemaVersion, 1);
@@ -55,7 +55,7 @@ test("orient service result matches CLI orient semantics", async () => {
 test("search service result matches CLI graph search for the same generation", async () => {
   const repo = buildRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     const serviceResult = await service.search({ repoRoot: repo, query: "placeOrder", limit: 5 });
     const cliResult = cliJson(repo, ["graph", "search", "--query", "placeOrder", "--limit", "5", "--json"]);
     assert.equal(serviceResult.generationId, cliResult.generationId ?? cliResult.manifest?.generationId ?? serviceResult.generationId);
@@ -77,7 +77,7 @@ test("search service result matches CLI graph search for the same generation", a
 test("expand service result matches CLI graph neighbors payload", async () => {
   const repo = buildRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     const search = await service.search({ repoRoot: repo, query: "placeOrder", limit: 20 });
     assert.ok(search.results.length > 0, "no search results");
     const anchor = search.results[0].id;
@@ -94,7 +94,7 @@ test("expand service result matches CLI graph neighbors payload", async () => {
 test("impact service result matches CLI graph impact payload", async () => {
   const repo = buildRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     const search = await service.search({ repoRoot: repo, query: "placeOrder", limit: 20 });
     assert.ok(search.results.length > 0);
     const anchor = search.results[0].id;
@@ -111,7 +111,7 @@ test("impact service result matches CLI graph impact payload", async () => {
 test("architecture service result matches CLI graph architecture payload", async () => {
   const repo = buildRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     const serviceResult = await service.architecture({ repoRoot: repo, budget: 2000 });
     const cliResult = cliJson(repo, ["graph", "architecture", "--budget", "2000", "--json"]);
     assert.ok(serviceResult);
@@ -126,7 +126,7 @@ test("architecture service result matches CLI graph architecture payload", async
 test("documentTruth service result lists claims with receipts", async () => {
   const repo = buildRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     const result = await service.documentTruth({ repoRoot: repo, limit: 200 });
     assert.equal(result.schemaVersion, 1);
     assert.ok(result.generationId);
@@ -141,7 +141,7 @@ test("documentTruth service result lists claims with receipts", async () => {
 test("expand with an ambiguous anchor raises anchor_ambiguous", async () => {
   const repo = buildRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     // A name shared by exactly two symbols is ambiguous by contract.
     const { openStore, closeStore } = await import("../src/graph/store-sqlite.mjs");
     const dbPath = join(repo, ".agent", "graph", "graph.db");
@@ -153,7 +153,7 @@ test("expand with an ambiguous anchor raises anchor_ambiguous", async () => {
       insert.run("symbol:a.ts:dup", JSON.stringify(["Function"]), "dup", "a.dup", "src/a.ts", generationId);
       insert.run("symbol:b.ts:dup", JSON.stringify(["Function"]), "dup", "b.dup", "src/b.ts", generationId);
       db.prepare("INSERT OR REPLACE INTO symbol_search (id, generation_id, name, qualified_name, path) VALUES ('symbol:a.ts:dup', ?, 'dup', 'a.dup', 'src/a.ts'), ('symbol:b.ts:dup', ?, 'dup', 'b.dup', 'src/b.ts')").run(generationId, generationId);
-      db.prepare("INSERT OR REPLACE INTO generation (key, value) VALUES ('manifest', ?)").run(JSON.stringify({ generationId, provider: "cortex-static" }));
+      db.prepare("INSERT OR REPLACE INTO generation (key, value) VALUES ('manifest', ?)").run(JSON.stringify({ generationId, provider: "blueprint-static" }));
     } finally {
       closeStore(db);
     }
@@ -169,7 +169,7 @@ test("expand with an ambiguous anchor raises anchor_ambiguous", async () => {
 test("expand with a nonexistent anchor raises anchor_not_found", async () => {
   const repo = buildRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     await assert.rejects(
       () => service.expand({ repoRoot: repo, anchor: "no-such-symbol-xyz", depth: 1 }),
       (error) => error.code === "anchor_not_found",

@@ -1,5 +1,5 @@
 // D20: language registry — one source of truth for language capability
-// records, extension routing, and manifest digest. Exposes `cortex languages
+// records, extension routing, and manifest digest. Exposes `blueprint languages
 // --json` data and retains lexical fallback for unknown extensions.
 
 import { createHash } from "node:crypto";

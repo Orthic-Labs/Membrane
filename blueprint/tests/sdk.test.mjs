@@ -7,27 +7,27 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { CortexClient, EmbeddedCortexClient, PROTOCOL_VERSION } from "../src/sdk/index.mjs";
+import { BlueprintClient, EmbeddedBlueprintClient, PROTOCOL_VERSION } from "../src/sdk/index.mjs";
 import { definePlugin, PLUGIN_TYPES } from "../src/sdk/providers.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { createDaemonServer } from "../src/service/server.mjs";
 import { temporaryDaemonEndpoint } from "../src/service/paths.mjs";
-import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { RootRegistry } from "../src/lib/application/root-registry.mjs";
 import examplePlugin from "../examples/providers/example-language-plugin.mjs";
 
 test("SDK exposes typed client classes and protocol version", () => {
-  assert.equal(typeof CortexClient, "function");
-  assert.equal(typeof EmbeddedCortexClient, "function");
+  assert.equal(typeof BlueprintClient, "function");
+  assert.equal(typeof EmbeddedBlueprintClient, "function");
   assert.equal(PROTOCOL_VERSION, 1);
 });
 
 test("embedded client searches a built repo read-only", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-sdk-embedded-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-sdk-embedded-"));
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   try {
-    const client = new EmbeddedCortexClient({ allowEmbeddedRoot: true });
+    const client = new EmbeddedBlueprintClient({ allowEmbeddedRoot: true });
     const result = await client.search({ repoRoot: repo, query: "placeOrder", limit: 5 });
     assert.equal(result.kind, "search");
     assert.ok(result.results.length > 0);
@@ -38,16 +38,16 @@ test("embedded client searches a built repo read-only", async () => {
 });
 
 test("daemon client talks to the resident daemon", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-sdk-daemon-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-sdk-daemon-"));
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
-  const endpoint = temporaryDaemonEndpoint("cortex-sdk");
+  const endpoint = temporaryDaemonEndpoint("blueprint-sdk");
   const registry = new RootRegistry([{ root: repo, repoId: "repo-1" }]);
-  const service = createCortexApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
+  const service = createBlueprintApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
   const daemon = createDaemonServer({ service, endpoint });
   try {
     await daemon.listen();
-    const client = new CortexClient({ endpoint });
+    const client = new BlueprintClient({ endpoint });
     const result = await client.search({ repoId: "repo-1", query: "placeOrder", limit: 5 });
     assert.ok(result.results.length > 0);
     await client.close();

@@ -6,7 +6,7 @@
   "traceId": "trace-01",
   "task": "add rate limiting",
   "mode": "orient",
-  "provider": "cortex-static",
+  "provider": "blueprint-static",
   "freshness": {
     "state": "current",
     "generationId": "xxh128:2fd5ec67fb43606ccc985aa3d1fcb1d7",

@@ -34,7 +34,7 @@ for (const lang of LANGUAGES) {
     const fixture = join(FIXTURES, lang, `basic.${extension}`);
     const tree = record.parser.parse(readFileSync(fixture, "utf8"));
     try {
-      const result = walkTable({ table, tree, filePath: `basic.${extension}`, providerId: "cortex-treesitter", precisionTier: "AST" });
+      const result = walkTable({ table, tree, filePath: `basic.${extension}`, providerId: "blueprint-treesitter", precisionTier: "AST" });
       for (const node of result.nodes) {
         assert.ok(node.evidence?.length > 0, `${lang}: node without evidence`);
       }

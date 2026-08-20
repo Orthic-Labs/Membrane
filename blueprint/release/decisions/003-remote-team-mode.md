@@ -7,7 +7,7 @@
 
 ## Decision
 
-Cortex 1.0 is **local-only**. There is no hosted Cortex service, no
+Blueprint 1.0 is **local-only**. There is no hosted Blueprint service, no
 team-mode federation of stores, and no remote tenant boundary. The
 federation contracts (D35) exist in code as a typed envelope; they are
 **not** enabled by default and not connected to a hosted service.
@@ -28,7 +28,7 @@ federation contracts (D35) exist in code as a typed envelope; they are
   a sketch. A self-hosted federation server is a supported configuration
   for teams that want it; the deferred surface is the managed offering.
 - The CLI `--host` flag, MCP server's allowlist, and SDK's
-  `EmbeddedCortexClient` all run on a single machine. None of them is
+  `EmbeddedBlueprintClient` all run on a single machine. None of them is
   an obstacle to a future hosted mode.
 
 ## Reversal conditions

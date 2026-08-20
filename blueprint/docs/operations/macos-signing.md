@@ -2,7 +2,7 @@
 
 RightKit `right-release` owns macOS packaging, Developer ID signing,
 notarization, stapling, verification, hardening, sealing, and publication.
-Cortex does not carry signing credentials or reproduce that pipeline in CI.
+Blueprint does not carry signing credentials or reproduce that pipeline in CI.
 
 From the clean primary checkout, build without uploading:
 

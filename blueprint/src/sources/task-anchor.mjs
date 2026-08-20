@@ -19,7 +19,7 @@
 //   - bare trailing tokens like ".ts", ".mjs", ".md" that the path
 //     regex would otherwise miss
 //
-// This adapter does NOT call into Cortex; it only inspects the task
+// This adapter does NOT call into Blueprint; it only inspects the task
 // string and the filesystem. Symbol resolution is handled by `graph-resolve.mjs`.
 
 import { existsSync, statSync } from "node:fs";

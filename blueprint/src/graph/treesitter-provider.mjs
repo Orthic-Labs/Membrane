@@ -1,7 +1,7 @@
 // Tree-sitter AST code provider — AST precision layer wired into the live graph
 // build via graph/static-provider.mjs#augmentGenerationWithTreeSitter (opt-out
-// with CORTEX_TREESITTER=0). Selected provider (manifest.provider =
-// "cortex-treesitter") for 10 extensions; lexical layer remains fallback for
+// with BLUEPRINT_TREESITTER=0). Selected provider (manifest.provider =
+// "blueprint-treesitter") for 10 extensions; lexical layer remains fallback for
 // the other ~26 extensions. Node/edge shapes mirror static-provider.mjs's
 // output exactly (see "OUTPUT SHAPE" below), extended only with additive fields.
 //
@@ -447,7 +447,7 @@ function symbolNode(kind, file, name, qualifiedName, startRow, endRow, labels, c
 }
 
 // `tier` is REQUIRED — every AST-provider edge must be derived from how it
-// was actually resolved (cortex B3), never a hardcoded default. CONTAINS
+// was actually resolved (blueprint B3), never a hardcoded default. CONTAINS
 // and DEFINES are exact structural facts straight from the parse tree, so
 // their call sites always pass EXACT_RESOLUTION.
 function edgeRecord(kind, sourceId, targetId, evidence, tier = EDGE_CONFIDENCE_TIERS.EXACT_RESOLUTION) {
@@ -891,7 +891,7 @@ function countErrorNodes(rootNode) {
 }
 
 export function genericEngineEnabled() {
-  return process.env.CORTEX_AST_ENGINE !== "legacy";
+  return process.env.BLUEPRINT_AST_ENGINE !== "legacy";
 }
 
 export async function loadLanguageTable(languageId) {
@@ -1210,7 +1210,7 @@ export async function buildTreeSitterGraph(files) {
       const constNode = report.nodes.find((n) => n.qualifiedName === target.name || n.name === target.name);
       if (!constNode) continue;
       // String-literal-to-filename match — a heuristic, not a resolved
-      // binding (cortex B3).
+      // binding (blueprint B3).
       const tier = EDGE_CONFIDENCE_TIERS.CROSS_FILE_HEURISTIC;
       edges.push({
         id: `edge:CONFIGURES:${constNode.id}->file:${match}`,
@@ -1237,7 +1237,7 @@ export async function buildTreeSitterGraph(files) {
       const importedMatches = eligible.filter((c) => imported.has(c.path) && c.id !== call.sourceId);
       const uniqueFallback = eligible.length === 1 && eligible[0].id !== call.sourceId ? eligible : [];
       // Tier DERIVED from which resolution strategy actually matched
-      // (cortex B3) — same-file name match is bounded; import-linked or
+      // (blueprint B3) — same-file name match is bounded; import-linked or
       // repo-wide-unique match crosses file boundaries on a heuristic.
       const [resolvedTargets, tier] = sameFile.length > 0
         ? [sameFile, EDGE_CONFIDENCE_TIERS.SAME_FILE_LEXICAL]
@@ -1254,7 +1254,7 @@ export async function buildTreeSitterGraph(files) {
       }
       // Ambiguous call: 2+ OTHER (non-self) candidates share this name and
       // none could be preferred. Tag UNRESOLVED and keep it — never silently
-      // drop, never guess a candidate (cortex B3). Excludes self so a
+      // drop, never guess a candidate (blueprint B3). Excludes self so a
       // recursive call (a function calling itself, correctly unresolved to
       // "no OTHER candidate") isn't misreported as ambiguity.
       const otherEligible = eligible.filter((c) => c.id !== call.sourceId);

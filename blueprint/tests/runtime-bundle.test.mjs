@@ -16,7 +16,7 @@ const LAUNCHERS = join(ROOT, "release", "launchers");
 const runtimeName = process.platform === "win32" ? "lib/node.exe" : "lib/node";
 
 function stagedBundle() {
-  const out = mkdtempSync(join(tmpdir(), "cortex-runtime-test-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-runtime-test-"));
   const result = stageRuntime({ out });
   return { out, result };
 }
@@ -24,7 +24,7 @@ function stagedBundle() {
 test("stageRuntime produces the S-12 layout", () => {
   const { out, result } = stagedBundle();
   try {
-    for (const path of ["bin/cortex", "bin/cortex.cmd", "bin/cortex-mcp", runtimeName, "app/package/scripts/cortex.mjs", "app/schemas", "LICENSE", "README.txt"]) {
+    for (const path of ["bin/blueprint", "bin/blueprint.cmd", "bin/blueprint-mcp", runtimeName, "app/package/scripts/blueprint.mjs", "app/schemas", "LICENSE", "README.txt"]) {
       assert.ok(existsSync(join(out, path)), `missing ${path}`);
     }
     assert.equal(result.version, "0.2.0");
@@ -36,7 +36,7 @@ test("stageRuntime produces the S-12 layout", () => {
 });
 
 test("stageRuntime rejects a nonempty output without modifying it", () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-runtime-test-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-runtime-test-"));
   const sentinel = join(out, "sentinel.txt");
   try {
     writeFileSync(sentinel, "preserve");
@@ -50,11 +50,11 @@ test("stageRuntime rejects a nonempty output without modifying it", () => {
 test("launchers are present and executable", () => {
   const { out } = stagedBundle();
   try {
-    for (const name of ["cortex", "cortex.cmd", "cortex.ps1", "cortex-mcp"]) {
+    for (const name of ["blueprint", "blueprint.cmd", "blueprint.ps1", "blueprint-mcp"]) {
       assert.ok(existsSync(join(LAUNCHERS, name)), `missing launcher ${name}`);
     }
     if (process.platform !== "win32") {
-      for (const name of ["cortex", "cortex-mcp"]) {
+      for (const name of ["blueprint", "blueprint-mcp"]) {
         const mode = statSync(join(out, "bin", name)).mode;
         assert.ok(mode & 0o111, `staged ${name} not executable`);
       }
@@ -68,17 +68,17 @@ test("bundled launcher runs help without system Node on PATH", () => {
   if (process.platform === "win32") {
     const { out } = stagedBundle();
     try {
-      const result = spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", `call "${join(out, "bin", "cortex.cmd")}" --help`], { env: { ...process.env, PATH: "" }, encoding: "utf8", windowsVerbatimArguments: true });
+      const result = spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", `call "${join(out, "bin", "blueprint.cmd")}" --help`], { env: { ...process.env, PATH: "" }, encoding: "utf8", windowsVerbatimArguments: true });
       assert.equal(result.status, 0, result.stderr || result.stdout);
-      assert.match(result.stdout, /Cortex — repository truth and evidence map/);
+      assert.match(result.stdout, /Blueprint — repository truth and evidence map/);
     } finally { rmSync(out, { recursive: true, force: true }); }
     return;
   }
   const { out } = stagedBundle();
   try {
-    const result = spawnSync(join(out, "bin", "cortex"), ["--help"], { env: { ...process.env, PATH: "/usr/bin:/bin" }, encoding: "utf8" });
+    const result = spawnSync(join(out, "bin", "blueprint"), ["--help"], { env: { ...process.env, PATH: "/usr/bin:/bin" }, encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /Cortex — repository truth and evidence map/);
+    assert.match(result.stdout, /Blueprint — repository truth and evidence map/);
   } finally {
     rmSync(out, { recursive: true, force: true });
   }

@@ -1,6 +1,6 @@
 # Continuous integration
 
-Cortex runs three workflows on pull requests and pushes to `main`:
+Blueprint runs three workflows on pull requests and pushes to `main`:
 
 ## `ci` — cross-platform tests
 

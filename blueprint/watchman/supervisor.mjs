@@ -10,7 +10,7 @@ import { reconcile as defaultReconcile } from "./reconcile.mjs";
 // of a 19-repo fleet; unbounded startup would run 19 full reconciles at once.
 export const CONCURRENT_ACTOR_STARTS = 4;
 
-export function defaultConfigPath() { return resolve(homedir(), ".cortex", "watch.json"); }
+export function defaultConfigPath() { return resolve(homedir(), ".blueprint", "watch.json"); }
 
 export function readWatchConfig(configPath = defaultConfigPath()) {
   if (!existsSync(configPath)) return { version: 1, repos: [] };
@@ -39,7 +39,7 @@ export const FRESHNESS = Object.freeze({
 // Reads a repo's state without ever mutating it: a read-only handle skips
 // migrate() (never upgrades another process's schema mid-flight) and never
 // takes a write lock, so a status poll can never contend with an actor's own
-// writes or a concurrent `cortex build` on the same 19 databases (D3). Errors
+// writes or a concurrent `blueprint build` on the same 19 databases (D3). Errors
 // from a corrupt store (e.g. "database disk image is malformed") are caught
 // per repo — one bad store must never blank the other 18 repos' status (D2).
 //
@@ -83,7 +83,7 @@ function repoStatus(root, outDir = ".agent", live = {}) {
       try { process.kill(pid, 0); pidAlive = true; } catch {}
       if (pidAlive) {
         // A bare status reader that has never itself reload()ed/start()ed
-        // (no `live.instanceId` — e.g. the `cortex-watch status` CLI, which
+        // (no `live.instanceId` — e.g. the `blueprint-watch status` CLI, which
         // constructs a fresh WatchSupervisor purely to read state) has no
         // ownership claim of its own and defers entirely to the plain
         // pid-alive signal, exactly as before this fix. Only a supervisor

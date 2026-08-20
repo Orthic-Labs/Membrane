@@ -47,7 +47,7 @@ for (const lang of LANGUAGES) {
       return;
     }
     try {
-      const result = walkTable({ table, tree, filePath: `basic.${ext}`, providerId: "cortex-treesitter", precisionTier: "AST" });
+      const result = walkTable({ table, tree, filePath: `basic.${ext}`, providerId: "blueprint-treesitter", precisionTier: "AST" });
       for (const node of result.nodes) {
         assert.ok(node.evidence?.length > 0, `${lang}: node without evidence`);
       }

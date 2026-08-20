@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// CX-B7 MCP conformance runner: spawns the real scripts/cortex-mcp.mjs server over
+// CX-B7 MCP conformance runner: spawns the real scripts/blueprint-mcp.mjs server over
 // stdio and speaks MCP JSON-RPC directly — initialize, tools/list, resources/list,
 // prompts/list, a read-only capability probe, then per-tool probes (valid args,
 // missing required, unknown field). Results must be schema-valid or typed stable-code
@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 const RUNNER_PATH = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(RUNNER_PATH), "..", "..");
-const SERVER_SCRIPT = "scripts/cortex-mcp.mjs";
+const SERVER_SCRIPT = "scripts/blueprint-mcp.mjs";
 const PROTOCOL_VERSION = "2025-03-26";
 const DEFAULT_TIMEOUT_MS = 60000;
 const OMIT = Symbol("omit");
@@ -133,7 +133,7 @@ function semanticValue(name, type, schema, anchor) {
   switch (name) {
     case "query":
     case "task": return "conformance";
-    case "anchor": return anchor ?? "file:scripts/cortex-mcp.mjs";
+    case "anchor": return anchor ?? "file:scripts/blueprint-mcp.mjs";
     case "limit": return 5;
     case "depth": return 1;
     case "budget": return 2000;
@@ -387,7 +387,7 @@ async function main() {
     const initializeResponse = await rpc.request("initialize", {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
-      clientInfo: { name: "cortex-conformance-runner", version: "1.0.0" },
+      clientInfo: { name: "blueprint-conformance-runner", version: "1.0.0" },
     });
     if (initializeResponse.error) {
       report.session.initialize = { status: "fail", error: { code: initializeResponse.error.code, message: initializeResponse.error.message } };
@@ -411,7 +411,7 @@ async function main() {
     report.session.prompts = promptsResponse.error ? { advertised: false, list: { status: "error", code: promptsResponse.error.code, message: promptsResponse.error.message } } : { advertised: true, list: { status: "ok", count: (promptsResponse.result?.prompts ?? []).length } };
 
     // capability probe via a read-only tool
-    const readOnlyTool = report.session.tools.find((tool) => tool.name === "cortex_status")
+    const readOnlyTool = report.session.tools.find((tool) => tool.name === "blueprint_status")
       ?? report.session.tools.find((tool) => !(tool.inputSchema?.required ?? []).length)
       ?? report.session.tools[0];
     if (readOnlyTool) {
@@ -423,8 +423,8 @@ async function main() {
 
     // resolve an anchor for expand/impact valid-args probes
     let anchor = null;
-    if (report.session.tools.some((tool) => tool.name === "cortex_search")) {
-      const classification = classifyResponse(await rpc.request("tools/call", { name: "cortex_search", arguments: { query: "cortex-mcp", limit: 5 } }));
+    if (report.session.tools.some((tool) => tool.name === "blueprint_search")) {
+      const classification = classifyResponse(await rpc.request("tools/call", { name: "blueprint_search", arguments: { query: "blueprint-mcp", limit: 5 } }));
       if (classification.kind === "success") {
         const results = tryParseJson(classification.sample)?.results ?? [];
         if (results.length) anchor = String(results[0].id ?? "");

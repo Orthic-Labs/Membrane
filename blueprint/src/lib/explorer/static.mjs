@@ -2,8 +2,8 @@ import { extname } from "node:path";
 
 const HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Cortex Explorer</title><link rel="stylesheet" href="/explorer.css"></head>
-<body><header><div><b>Cortex</b><span id="freshness">connecting</span></div><nav>
+<title>Blueprint Explorer</title><link rel="stylesheet" href="/explorer.css"></head>
+<body><header><div><b>Blueprint</b><span id="freshness">connecting</span></div><nav>
 <button data-view="architecture">Architecture</button><button data-view="search">Search</button><button id="orb">Orb: off</button></nav></header>
 <main><aside><form id="search"><input id="query" aria-label="Search evidence" placeholder="symbol, route, claim…"><button>Search</button></form><div id="results"></div></aside>
 <section><canvas id="canvas" aria-label="Evidence graph"></canvas><div id="empty">Loading architecture…</div></section>

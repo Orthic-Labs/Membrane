@@ -1,6 +1,6 @@
-Cortex for Windows
+Blueprint for Windows
 
-- Per-user installer (Inno Setup): installs to %LOCALAPPDATA%\Orthic\Cortex,
+- Per-user installer (Inno Setup): installs to %LOCALAPPDATA%\Orthic\Blueprint,
   adds a user PATH entry, records uninstall metadata.
 - The watcher can be registered as a per-user background scheduled task
   (optional, hidden console).

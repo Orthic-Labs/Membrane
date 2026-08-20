@@ -7,7 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.resolve(HERE, "../scripts/cortex.mjs");
+const CLI = path.resolve(HERE, "../scripts/blueprint.mjs");
 
 function write(repo, relativePath, body) {
   const target = path.join(repo, relativePath);
@@ -15,8 +15,8 @@ function write(repo, relativePath, body) {
   fs.writeFileSync(target, body);
 }
 
-test("superseded and archived docs remain mapped but leave live Cortex inputs", () => {
-  const repo = path.join(os.tmpdir(), `cortex-superseded-${process.pid}-${Date.now()}`);
+test("superseded and archived docs remain mapped but leave live Blueprint inputs", () => {
+  const repo = path.join(os.tmpdir(), `blueprint-superseded-${process.pid}-${Date.now()}`);
   fs.mkdirSync(repo, { recursive: true });
   try {
     write(repo, "README.md", "# Current product\n\nThe current product is implemented.\n");
@@ -89,7 +89,7 @@ test("superseded and archived docs remain mapped but leave live Cortex inputs", 
 });
 
 test("an inline superseded note does not retire an otherwise current document", () => {
-  const repo = path.join(os.tmpdir(), `cortex-inline-superseded-${process.pid}-${Date.now()}`);
+  const repo = path.join(os.tmpdir(), `blueprint-inline-superseded-${process.pid}-${Date.now()}`);
   fs.mkdirSync(repo, { recursive: true });
   try {
     write(
@@ -118,7 +118,7 @@ test("an inline superseded note does not retire an otherwise current document", 
 });
 
 test("malformed top-level supersession banners stay current and surface an invalid marker", () => {
-  const repo = path.join(os.tmpdir(), `cortex-malformed-superseded-${process.pid}-${Date.now()}`);
+  const repo = path.join(os.tmpdir(), `blueprint-malformed-superseded-${process.pid}-${Date.now()}`);
   fs.mkdirSync(repo, { recursive: true });
   try {
     write(
@@ -167,7 +167,7 @@ test("malformed top-level supersession banners stay current and surface an inval
 });
 
 test("a supersession marker cannot hide claims through a path outside the repository", () => {
-  const parent = path.join(os.tmpdir(), `cortex-superseded-escape-${process.pid}-${Date.now()}`);
+  const parent = path.join(os.tmpdir(), `blueprint-superseded-escape-${process.pid}-${Date.now()}`);
   const repo = path.join(parent, "repo");
   fs.mkdirSync(repo, { recursive: true });
   try {
@@ -203,7 +203,7 @@ test("a supersession marker cannot hide claims through a path outside the reposi
 });
 
 test("an absolute supersession target is rejected before filesystem containment checks", () => {
-  const parent = path.join(os.tmpdir(), `cortex-superseded-absolute-${process.pid}-${Date.now()}`);
+  const parent = path.join(os.tmpdir(), `blueprint-superseded-absolute-${process.pid}-${Date.now()}`);
   const repo = path.join(parent, "repo");
   const outside = path.join(parent, "outside.md").replaceAll("\\", "/");
   fs.mkdirSync(repo, { recursive: true });
@@ -234,7 +234,7 @@ test("an absolute supersession target is rejected before filesystem containment 
 });
 
 test("a symlinked supersession target cannot escape the repository", (t) => {
-  const parent = path.join(os.tmpdir(), `cortex-superseded-symlink-${process.pid}-${Date.now()}`);
+  const parent = path.join(os.tmpdir(), `blueprint-superseded-symlink-${process.pid}-${Date.now()}`);
   const repo = path.join(parent, "repo");
   fs.mkdirSync(path.join(repo, "docs"), { recursive: true });
   try {

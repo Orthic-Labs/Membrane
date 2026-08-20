@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import {
   applyBudgetApproval,
   loadTasks,
-  makeCortexStaticProvider,
+  makeBlueprintStaticProvider,
   makeFallbackProvider,
   normalizeGitNexusContext,
   qualifyProvider,
@@ -30,14 +30,14 @@ import { findWorkspaceRoot } from "../_workspace-root.mjs";
 
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CORTEX = path.resolve(HERE, "../..");
+const BLUEPRINT = path.resolve(HERE, "../..");
 const ROOT = findWorkspaceRoot(HERE, { required: false });
-const TASKS = path.join(CORTEX, "evals/graph-tasks.jsonl");
-const REPOS = path.join(CORTEX, "evals/fixture-repos");
+const TASKS = path.join(BLUEPRINT, "evals/graph-tasks.jsonl");
+const REPOS = path.join(BLUEPRINT, "evals/fixture-repos");
 const SCHEMA = ROOT ? path.join(ROOT, "tools/lib/context-contracts.schema.json") : null;
 const workspaceSkip = ROOT ? false : "requires parent monorepo context contracts";
 
-test("GitNexus context is normalized into exact Cortex evidence", { skip: workspaceSkip }, () => {
+test("GitNexus context is normalized into exact Blueprint evidence", { skip: workspaceSkip }, () => {
   const normalized = normalizeGitNexusContext({
     status: "found",
     symbol: { uid: "Method:src/service.ts:OrderService.placeOrder#1", name: "placeOrder", kind: "Method", filePath: "src/service.ts", startLine: 5, endLine: 8 },
@@ -104,9 +104,9 @@ test("fallback measures lexical semantic retrieval instead of reporting blanket 
   assert.equal(report.semantic.macroRecallAt10, 1);
 });
 
-test("cortex-static earns mandatory structural evidence without external provider state", { skip: workspaceSkip }, async () => {
+test("blueprint-static earns mandatory structural evidence without external provider state", { skip: workspaceSkip }, async () => {
   const tasks = loadTasks(TASKS).filter((item) => item.qualificationClass === "mandatory_structural");
-  const report = await qualifyProvider(makeCortexStaticProvider({ schemaPath: SCHEMA }), tasks, REPOS);
+  const report = await qualifyProvider(makeBlueprintStaticProvider({ schemaPath: SCHEMA }), tasks, REPOS);
 
   assert.equal(report.status, "passed");
   assert.equal(report.gates.correctness, true);
@@ -264,8 +264,8 @@ test("selection is blocked unless one provider passes every mandatory gate and b
 });
 
 test("budget approval can be applied to provider reports", { skip: workspaceSkip }, () => {
-  const report = { id: "cortex-static", budgetApproval: "pending" };
-  assert.deepEqual(applyBudgetApproval([report], "approved"), [{ id: "cortex-static", budgetApproval: "approved" }]);
+  const report = { id: "blueprint-static", budgetApproval: "pending" };
+  assert.deepEqual(applyBudgetApproval([report], "approved"), [{ id: "blueprint-static", budgetApproval: "approved" }]);
   assert.deepEqual(applyBudgetApproval([report], "pending"), [report]);
 });
 

@@ -1,11 +1,11 @@
 # Updates
 
-`cortex update` is channel-aware and signed:
+`blueprint update` is channel-aware and signed:
 
 ```sh
-cortex update check    --channel stable|beta|nightly [--offline] [--json]
-cortex update apply    --channel stable|beta|nightly [--offline] [--json]
-cortex update rollback [--json]
+blueprint update check    --channel stable|beta|nightly [--offline] [--json]
+blueprint update apply    --channel stable|beta|nightly [--offline] [--json]
+blueprint update rollback [--json]
 ```
 
 ## Install-owner detection
@@ -13,8 +13,8 @@ cortex update rollback [--json]
 | Owner | Behavior |
 |---|---|
 | npm / pnpm | Prints `npm update -g <pkg>`; never self-replaces. |
-| Homebrew | Prints `brew upgrade cortex`; never self-replaces. |
-| WinGet | Prints `winget upgrade OrthicLabs.Cortex`; never self-replaces. |
+| Homebrew | Prints `brew upgrade blueprint`; never self-replaces. |
+| WinGet | Prints `winget upgrade OrthicLabs.Blueprint`; never self-replaces. |
 | Portable / native | Requires a signed release manifest and matching checksum before staging. |
 
 ## Safety rules
@@ -29,7 +29,7 @@ cortex update rollback [--json]
 ## Offline and opt-out
 
 - `--offline` disables update checks.
-- `CORTEX_NO_UPDATE_CHECK=1` disables update checks entirely.
+- `BLUEPRINT_NO_UPDATE_CHECK=1` disables update checks entirely.
 - Update checks never run during ordinary indexing or querying.
 
 ## Network endpoints

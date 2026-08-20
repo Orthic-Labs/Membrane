@@ -34,11 +34,11 @@ for (const lang of LANGUAGES) {
     const fixture = join(FIXTURES, lang, `basic.${ext}`);
     const tree = record.parser.parse(readFileSync(fixture, "utf8"));
     try {
-      const result = walkTable({ table, tree, filePath: `basic.${ext}`, providerId: "cortex-treesitter", precisionTier: "AST" });
+      const result = walkTable({ table, tree, filePath: `basic.${ext}`, providerId: "blueprint-treesitter", precisionTier: "AST" });
       // Every emitted node carries evidence and provider.
       for (const node of result.nodes) {
         assert.ok(node.evidence?.length > 0, `${lang}: node without evidence`);
-        assert.equal(node.provider, "cortex-treesitter");
+        assert.equal(node.provider, "blueprint-treesitter");
         assert.equal(node.precisionTier, "AST");
       }
     } finally {

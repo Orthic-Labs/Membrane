@@ -27,7 +27,7 @@ function findNode(nodes, qualifiedName) {
 }
 
 test("provider identity and capability surface are well-formed", () => {
-  assert.equal(PROVIDER.id, "cortex-treesitter");
+  assert.equal(PROVIDER.id, "blueprint-treesitter");
   assert.ok(PROVIDER.version);
   const caps = graphCapabilities();
   assert.equal(caps.provider.id, PROVIDER.id);
@@ -424,7 +424,7 @@ test("catalog table and grammar misses remain typed", async () => {
 });
 
 test("augmentation includes catalog-only Go and Ruby files", async () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-catalog-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-catalog-"));
   try {
     mkdirSync(join(root, "pkg"));
     mkdirSync(join(root, "lib"));

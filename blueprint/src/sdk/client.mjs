@@ -3,7 +3,7 @@
 import { DaemonClient } from "../service/client.mjs";
 import { validateContractResult } from "../lib/contracts/validate.mjs";
 
-export class CortexClient {
+export class BlueprintClient {
   constructor({ endpoint = null, contract = null } = {}) {
     this.client = new DaemonClient({ endpoint });
     this.contract = contract;
@@ -12,7 +12,7 @@ export class CortexClient {
   async #call(method, input) {
     const response = await this.client.request({ method, input });
     if (!response.ok) {
-      const error = new Error(response.error?.message ?? "cortex request failed");
+      const error = new Error(response.error?.message ?? "blueprint request failed");
       error.code = response.error?.code ?? "internal_error";
       throw error;
     }

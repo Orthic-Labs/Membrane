@@ -73,7 +73,7 @@ export function buildSnapshot({ root = process.cwd(), outDir = ".agent", now = D
   const observedAtUnixMs = now instanceof Date ? now.getTime() : Number(now);
   return {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
-    productId: "cortex",
+    productId: "blueprint",
     observedAtUnixMs: Number.isFinite(observedAtUnixMs) && observedAtUnixMs >= 0 ? Math.trunc(observedAtUnixMs) : Date.now(),
     sections: {
       graph: graphSection(root, outDir),
@@ -124,7 +124,7 @@ export async function startSnapshotServer({ root = process.cwd(), outDir = ".age
 export function validateSnapshot(snapshot) {
   const errors = [];
   if (snapshot.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) errors.push(`schemaVersion must be ${SNAPSHOT_SCHEMA_VERSION}`);
-  if (snapshot.productId !== "cortex") errors.push("productId must be cortex");
+  if (snapshot.productId !== "blueprint") errors.push("productId must be blueprint");
   if (!Number.isInteger(snapshot.observedAtUnixMs) || snapshot.observedAtUnixMs < 0) errors.push("observedAtUnixMs required");
   if (!snapshot.sections || typeof snapshot.sections !== "object") errors.push("sections required");
   const sectionEntries = Object.entries(snapshot.sections ?? {});

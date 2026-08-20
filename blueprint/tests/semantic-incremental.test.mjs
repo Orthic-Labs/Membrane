@@ -8,11 +8,11 @@ import { claimEvidenceFingerprint, buildIncrementalPhase2Plan } from "../src/lib
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 function makeRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-semantic-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-semantic-"));
   cpSync(FIXTURE, repo, { recursive: true });
   return repo;
 }

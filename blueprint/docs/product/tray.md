@@ -1,8 +1,8 @@
-# Cortex tray
+# Blueprint tray
 
 Status: implemented and tested on the Tauri build contract; not yet published.
 
-Tray is a separate desktop surface. It starts and stops Cortex service,
+Tray is a separate desktop surface. It starts and stops Blueprint service,
 opens authenticated loopback explorer, reports freshness, and never writes
 graph storage directly.
 

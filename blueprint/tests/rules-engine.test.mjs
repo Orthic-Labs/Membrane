@@ -11,7 +11,7 @@ import { evaluateRules, pathMatches } from "../src/lib/rules/evaluate.mjs";
 import { isExceptionValid, suppressedByException } from "../src/lib/rules/exceptions.mjs";
 import { changedSlice } from "../src/lib/rules/baseline.mjs";
 
-const EXAMPLE = join(import.meta.dirname, "..", "examples", "cortex.rules.yml");
+const EXAMPLE = join(import.meta.dirname, "..", "examples", "blueprint.rules.yml");
 
 test("DSL parses the S-22 example", () => {
   const parsed = parseRules(readFileSync(EXAMPLE, "utf8"));

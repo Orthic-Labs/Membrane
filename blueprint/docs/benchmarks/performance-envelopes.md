@@ -1,6 +1,6 @@
 # Performance envelopes
 
-Every repository class that Cortex claims to serve has a machine-readable
+Every repository class that Blueprint claims to serve has a machine-readable
 budget table in `evals/performance-envelopes.json`. The table is the single
 source of truth for what "acceptable performance" means per class; the test in
 `tests/performance-envelopes.test.mjs` enforces it with a **4× CI slack
@@ -11,10 +11,10 @@ gate.
 
 | Envelope | Meaning |
 |---|---|
-| `coldBuildMs` | `cortex build` on a fresh checkout to a sealed generation |
+| `coldBuildMs` | `blueprint build` on a fresh checkout to a sealed generation |
 | `incrementalUpdateMs` | one-file delta ingest and journal drain |
 | `noopBarrierMs` | `syncToCurrentSource` on a store with no pending events |
-| `searchImpactMs` | `cortex orient --json` freshness barrier + canned query |
+| `searchImpactMs` | `blueprint orient --json` freshness barrier + canned query |
 | `mcpResponseMs` | equivalent read path as served to MCP/UI (status) |
 | `rssMb` | peak process RSS during the measured paths |
 | `dbSizeMb` | on-disk `graph.db` size for the seeded fixture |

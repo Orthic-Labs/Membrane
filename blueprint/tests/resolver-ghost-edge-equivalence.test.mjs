@@ -49,8 +49,8 @@ function coldComparable(generation) {
 
 for (const fixture of corpus.cases) {
   test(`resolver equivalence: ${fixture.id}`, () => {
-    const incrementalRoot = makeRepo(`cortex-ghost-${fixture.id}-incremental-`, fixture.initial);
-    const coldRoot = makeRepo(`cortex-ghost-${fixture.id}-cold-`, fixture.initial);
+    const incrementalRoot = makeRepo(`blueprint-ghost-${fixture.id}-incremental-`, fixture.initial);
+    const coldRoot = makeRepo(`blueprint-ghost-${fixture.id}-cold-`, fixture.initial);
     try {
       const initial = buildGraphGeneration(incrementalRoot, { outDir: ".agent", persist: true });
       const noOp = buildGraphGeneration(incrementalRoot, { outDir: ".agent", persist: true });

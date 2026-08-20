@@ -31,7 +31,7 @@ test("SARIF export is stable and schema-valid", () => {
 test("Mermaid export is bounded and deterministic", () => {
   // Mermaid rendering comes from the graph CLI; assert the bounded contract
   // here by verifying the deterministic graphMermaid output shape is intact.
-  const generation = { provider: { id: "cortex-static" }, nodes: [{ id: "file:a.ts", kind: "file", path: "a.ts" }], edges: [] };
+  const generation = { provider: { id: "blueprint-static" }, nodes: [{ id: "file:a.ts", kind: "file", path: "a.ts" }], edges: [] };
   const mermaid = graphMermaid(generation, { view: "architecture", limit: 10 });
   assert.ok(typeof mermaid === "string" || Array.isArray(mermaid) || mermaid?.edges || mermaid?.text);
 });

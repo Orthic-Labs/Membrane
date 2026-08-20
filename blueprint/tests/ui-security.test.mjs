@@ -10,7 +10,7 @@ import test from "node:test";
 import { startExplorerServer } from "../src/lib/http-server.mjs";
 import { createSessionToken, verifySessionToken } from "../src/lib/session-token.mjs";
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
-import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { RootRegistry } from "../src/lib/application/root-registry.mjs";
 
 function apiGet(url, token) {
@@ -31,11 +31,11 @@ test("session tokens are unguessable and timing-safe verified", () => {
 });
 
 test("explorer serves service endpoints with token auth", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-explorer-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-explorer-"));
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   const registry = new RootRegistry([{ root: repo, repoId: "repo-1" }]);
-  const service = createCortexApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
+  const service = createBlueprintApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
   const server = await startExplorerServer({ service, repoId: "repo-1", serveAsset: (req, res) => res.end("ui") });
   try {
     const token = server.url.split("#token=")[1];
@@ -69,11 +69,11 @@ test("explorer serves service endpoints with token auth", async () => {
 });
 
 test("explorer binds loopback only", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-explorer-loop-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-explorer-loop-"));
   cpSync(join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce"), repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   const registry = new RootRegistry([{ root: repo, repoId: "repo-1" }]);
-  const service = createCortexApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
+  const service = createBlueprintApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
   const server = await startExplorerServer({ service, repoId: "repo-1", serveAsset: () => {} });
   try {
     const url = new URL(server.url);

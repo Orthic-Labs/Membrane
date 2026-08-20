@@ -32,8 +32,8 @@ test("the fault sequence is deterministic for the same seed", () => {
 });
 
 test("two soak runs with the same seed produce the same summary", async () => {
-  const ws1 = mkdtempSync(join(tmpdir(), "cortex-soak-det-"));
-  const ws2 = mkdtempSync(join(tmpdir(), "cortex-soak-det-"));
+  const ws1 = mkdtempSync(join(tmpdir(), "blueprint-soak-det-"));
+  const ws2 = mkdtempSync(join(tmpdir(), "blueprint-soak-det-"));
   try {
     const { report: r1 } = await runSoak({ seed: 7, durationEvents: 50, repoCount: 3, workspaceDir: ws1 });
     const { report: r2 } = await runSoak({ seed: 7, durationEvents: 50, repoCount: 3, workspaceDir: ws2 });
@@ -111,7 +111,7 @@ test("applyFault throws on an unrecognised kind, by design", async () => {
 });
 
 test("the soak's report is well-formed machine-readable JSON", async () => {
-  const workspace = mkdtempSync(join(tmpdir(), "cortex-soak-json-"));
+  const workspace = mkdtempSync(join(tmpdir(), "blueprint-soak-json-"));
   try {
     const { report } = await runSoak({ seed: 1, durationEvents: 50, repoCount: 3, workspaceDir: workspace });
     assert.equal(report.schemaVersion, 1);

@@ -15,8 +15,8 @@ import { parseFileFacts } from "../src/graph/static-provider.mjs";
 import { stableRead } from "../src/graph/stable-read.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const CLI = join(ROOT, "scripts", "cortex.mjs");
-export const REPORT_SCHEMA = "cortex-storage-benchmark-report-v1";
+const CLI = join(ROOT, "scripts", "blueprint.mjs");
+export const REPORT_SCHEMA = "blueprint-storage-benchmark-report-v1";
 
 function p95(values) {
   if (!values.length) return null;
@@ -105,7 +105,7 @@ export function validateStorageReport(report) {
 
 export async function runStorageBenchmark({ fixtureFiles = 550, samples = 5, reportPath = null, fixtureDir = null, keepFixture = false, residentLookupCommand = null } = {}) {
   if (!Number.isInteger(samples) || samples < 1) throw new Error("samples must be a positive integer");
-  const repo = fixtureDir ? resolve(fixtureDir) : mkdtempSync(join(os.tmpdir(), "cortex-storage-bench-"));
+  const repo = fixtureDir ? resolve(fixtureDir) : mkdtempSync(join(os.tmpdir(), "blueprint-storage-bench-"));
   let generated = false;
   try {
     const fixture = generateBenchmarkFixture({ outDir: repo, files: fixtureFiles, force: Boolean(fixtureDir) });
@@ -176,7 +176,7 @@ export async function runStorageBenchmark({ fixtureFiles = 550, samples = 5, rep
 }
 
 function parseArgs(argv) {
-  const result = { fixtureFiles: 550, samples: 5, reportPath: null, fixtureDir: null, keepFixture: false, residentLookupCommand: process.env.CORTEX_RESIDENT_LOOKUP_HOOK ?? null };
+  const result = { fixtureFiles: 550, samples: 5, reportPath: null, fixtureDir: null, keepFixture: false, residentLookupCommand: process.env.BLUEPRINT_RESIDENT_LOOKUP_HOOK ?? null };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--fixture-files") result.fixtureFiles = Number(argv[++index]);

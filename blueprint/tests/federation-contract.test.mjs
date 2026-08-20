@@ -9,11 +9,11 @@ import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 import { writeWatchConfig } from "../watchman/supervisor.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const WATCH = join(ROOT, "scripts/cortex-watch.mjs");
+const WATCH = join(ROOT, "scripts/blueprint-watch.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 function makeRepo(label) {
-  const repo = mkdtempSync(join(tmpdir(), `cortex-federation-${label}-`));
+  const repo = mkdtempSync(join(tmpdir(), `blueprint-federation-${label}-`));
   cpSync(FIXTURE, repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   return repo;
@@ -22,12 +22,12 @@ function makeRepo(label) {
 test("barrier-all returns independent receipts and candidate identities", () => {
   const repoA = makeRepo("a");
   const repoB = makeRepo("b");
-  const home = mkdtempSync(join(tmpdir(), "cortex-federation-home-"));
+  const home = mkdtempSync(join(tmpdir(), "blueprint-federation-home-"));
   try {
     const db = openStore(join(repoA, ".agent/graph/graph.db"));
     try { db.prepare("INSERT INTO watch_state(key,value) VALUES ('event_gap','1') ON CONFLICT(key) DO UPDATE SET value='1'").run(); }
     finally { closeStore(db); }
-    writeWatchConfig({ repos: [{ root: repoA, enabled: true }, { root: repoB, enabled: true }] }, join(home, ".cortex", "watch.json"));
+    writeWatchConfig({ repos: [{ root: repoA, enabled: true }, { root: repoB, enabled: true }] }, join(home, ".blueprint", "watch.json"));
     const result = spawnSync(process.execPath, [WATCH, "barrier-all", "--json"], {
       env: { ...process.env, HOME: home, USERPROFILE: home },
       encoding: "utf8",
@@ -46,7 +46,7 @@ test("barrier-all returns independent receipts and candidate identities", () => 
     assert.equal(candidateA.repoRoot, canonicalA);
     assert.equal(candidateB.repoRoot, canonicalB);
     assert.equal(candidateA.receiptId, null);
-    const cliCandidate = spawnSync(process.execPath, [join(ROOT, "scripts/cortex.mjs"), "candidates", "--repo-id", "explicit-repo", "--query", "placeOrder", "--json"], { cwd: repoA, encoding: "utf8" });
+    const cliCandidate = spawnSync(process.execPath, [join(ROOT, "scripts/blueprint.mjs"), "candidates", "--repo-id", "explicit-repo", "--query", "placeOrder", "--json"], { cwd: repoA, encoding: "utf8" });
     assert.equal(cliCandidate.status, 0, cliCandidate.stderr);
     assert.equal(JSON.parse(cliCandidate.stdout).repoId, "explicit-repo");
   } finally {

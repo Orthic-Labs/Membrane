@@ -34,7 +34,7 @@ for (const lang of LANGUAGES) {
     const fixture = join(FIXTURES, lang, `basic.${ext}`);
     const tree = record.parser.parse(readFileSync(fixture, "utf8"));
     try {
-      const result = walkTable({ table, tree, filePath: `basic.${lang}`, providerId: "cortex-treesitter", precisionTier: "AST" });
+      const result = walkTable({ table, tree, filePath: `basic.${lang}`, providerId: "blueprint-treesitter", precisionTier: "AST" });
       for (const node of result.nodes) {
         assert.ok(node.evidence?.length > 0, `${lang}: node without evidence`);
       }
@@ -49,7 +49,7 @@ test("dynamic-language ambiguous calls stay unresolved", async () => {
   const record = await loadLanguageRecord(table.id);
   const tree = record.parser.parse(readFileSync(join(FIXTURES, "ruby", "basic.rb"), "utf8"));
   try {
-    const result = walkTable({ table, tree, filePath: "basic.rb", providerId: "cortex-treesitter", precisionTier: "AST" });
+    const result = walkTable({ table, tree, filePath: "basic.rb", providerId: "blueprint-treesitter", precisionTier: "AST" });
     // Ruby dynamic dispatch never fabricates a resolved CALLS target.
     for (const edge of result.edges.filter((e) => e.kind === "CALLS")) {
       assert.equal(edge.confidenceTier, "UNRESOLVED");

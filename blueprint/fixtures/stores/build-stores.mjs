@@ -10,7 +10,7 @@
 //
 // The seed is generated with the REAL saveGeneration() at a capped schema
 // version (openStore upToVersion), so fixture stores are byte-identical to
-// what a real past-version cortex would have written — not hand-rolled tables.
+// what a real past-version blueprint would have written — not hand-rolled tables.
 
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -30,7 +30,7 @@ function seedGeneration(version) {
   const prefix = `v${version}`;
   return {
     schemaVersion: version,
-    provider: { id: "cortex-treesitter", version: "9.9.9" },
+    provider: { id: "blueprint-treesitter", version: "9.9.9" },
     manifest: { generationId: `gen-${prefix}`, complete: true, repo: "fixture-stores" },
     repoRoot: "/fixture/stores",
       nodes: [
@@ -44,8 +44,8 @@ function seedGeneration(version) {
       { id: `edge:${prefix}:import:b->a`, kind: "IMPORT", source: "file:b.ts", target: "file:a.ts", confidence: 1, resolved: true, evidence: [] },
     ],
     fileReports: [
-      { path: "a.ts", language: "typescript", provider: "cortex-treesitter", parseStatus: "ok", errorNodeCount: 0 },
-      { path: "b.ts", language: "typescript", provider: "cortex-treesitter", parseStatus: "ok", errorNodeCount: 0 },
+      { path: "a.ts", language: "typescript", provider: "blueprint-treesitter", parseStatus: "ok", errorNodeCount: 0 },
+      { path: "b.ts", language: "typescript", provider: "blueprint-treesitter", parseStatus: "ok", errorNodeCount: 0 },
     ],
   };
 }
@@ -70,13 +70,13 @@ export function buildFixtureStores(outDir) {
     saveGeneration(db, seedGeneration(version));
     if (version === 16) {
       db.exec(`DELETE FROM provider_ranks;
-        INSERT INTO provider_ranks(provider_id,rank) VALUES ('cortex-static',7),('lexical',3),('cortex-treesitter',9),('custom',20);
+        INSERT INTO provider_ranks(provider_id,rank) VALUES ('blueprint-static',7),('lexical',3),('blueprint-treesitter',9),('custom',20);
         UPDATE files SET node_ordinal=10;
         UPDATE symbols SET node_ordinal=CASE WHEN path='a.ts' THEN 30 ELSE 40 END;
         UPDATE annotation_nodes SET node_ordinal=50;
         UPDATE symbols SET extra=json_set(COALESCE(extra,'{}'),'$.factProvider.id','custom') WHERE path='b.ts';`);
       db.prepare(`INSERT INTO fact_owner(fact_id,fact_kind,source_path,source_digest,provider_id,provider_version,freshness_domain,fact_kind_detail,generation_id,repo_root)
-        VALUES ('comment:a.ts:1','node','a.ts','xxh128:h-a-v16','cortex-treesitter','9.9.9','structural','comment','gen-v16','/fixture/stores'),
+        VALUES ('comment:a.ts:1','node','a.ts','xxh128:h-a-v16','blueprint-treesitter','9.9.9','structural','comment','gen-v16','/fixture/stores'),
           ('doc:claim:v16','node','docs/v16.md','xxh128:doc','doctruth','1','doc','claim','gen-v16','/fixture/stores')`).run();
     }
     closeStore(db);

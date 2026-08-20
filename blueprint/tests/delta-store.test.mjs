@@ -13,7 +13,7 @@ import { canonicalProviderId } from "../src/graph/provider-identity.mjs";
 const FIXTURE = join(import.meta.dirname, "..", "evals/fixture-repos/typescript-commerce");
 
 function makeRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-delta-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-delta-"));
   cpSync(FIXTURE, repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   return repo;
@@ -156,8 +156,8 @@ test("path byte order & inTransaction misuse stay typed", () => {
   assert.deepEqual(["ä.ts", "a.ts", "A.ts"].sort(compareRepoPaths), ["A.ts", "a.ts", "ä.ts"]);
   assert.equal(normalizeRepoPath("./dir\\e\u0301.ts"), "dir/é.ts");
   assert.notEqual(compareRepoPaths("é.ts", "e\u0301.ts"), 0, "raw UTF-8 tie-break makes comparator total");
-  assert.equal(canonicalProviderId("cortex-static"), "lexical");
-  assert.equal(canonicalProviderId("cortex-treesitter"), "treesitter");
+  assert.equal(canonicalProviderId("blueprint-static"), "lexical");
+  assert.equal(canonicalProviderId("blueprint-treesitter"), "treesitter");
   assert.equal(canonicalProviderId("my-treesitter-adapter"), "my-treesitter-adapter");
   const repo = makeRepo(), db = openDb(repo);
   try { assert.throws(() => applyFileDelta(db, readDelta(repo, "src/service.ts"), { inTransaction: true }), (error) => error.code === "delta_transaction_required"); }

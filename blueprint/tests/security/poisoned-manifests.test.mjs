@@ -10,7 +10,7 @@ import test from "node:test";
 import { buildHostileRepo } from "../../fixtures/security/build-hostile-repo.mjs";
 
 function makeHostileRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-poison-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-poison-"));
   buildHostileRepo(repo);
   return repo;
 }
@@ -21,7 +21,7 @@ test("a poisoned grammar manifest is rejected: traversal path and bogus hash", (
     // The grammar inventory loader must refuse a grammar entry whose path
     // escapes the vendor dir and whose hash is not a real digest.
     const { validateGrammarManifest } = loadInventory();
-    const result = validateGrammarManifest(join(repo, "grammars", "cortex-languages.toml"));
+    const result = validateGrammarManifest(join(repo, "grammars", "blueprint-languages.toml"));
     assert.equal(result.ok, false, "traversal grammar path is rejected");
     const joined = (result.reasons ?? []).join(" ");
     assert.ok(/traversal|outside|escape|hash/i.test(joined), `rejection names the traversal/hash problem: ${joined}`);

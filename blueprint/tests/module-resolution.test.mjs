@@ -6,7 +6,7 @@ import test from "node:test";
 import { pythonProjectInfo, resolvePythonModule } from "../src/providers/modules/python-resolver.mjs";
 
 function withRepo(run) {
-  const root = mkdtempSync(join(tmpdir(), "cortex-pyresolve-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-pyresolve-"));
   const write = (relative, content = "") => {
     const target = join(root, relative);
     mkdirSync(join(target, ".."), { recursive: true });
@@ -128,7 +128,7 @@ test("python-resolver: stdlib & third-party remain unresolved", () => withRepo((
 
 test("python-resolver: ignores site-packages outside repository", () => withRepo((repo) => {
   const from = repo.write("app.py");
-  const outside = mkdtempSync(join(tmpdir(), "cortex-pyresolve-outside-"));
+  const outside = mkdtempSync(join(tmpdir(), "blueprint-pyresolve-outside-"));
   try {
     mkdirSync(join(outside, "site-packages/numpy"), { recursive: true });
     writeFileSync(join(outside, "site-packages/numpy/__init__.py"), "");

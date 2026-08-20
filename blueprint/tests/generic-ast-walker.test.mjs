@@ -44,7 +44,7 @@ test("walker emits function nodes with evidence and confidence", () => {
     functions: [{ nodeTypes: ["function_declaration"], name: { field: "name" }, labels: ["Function"], container: "file" }],
   });
   const fn = node("function_declaration", { text: "function foo() {}", children: [node("identifier", { fieldName: "name", text: "foo" })], row: 2 });
-  const result = walkTable({ table, tree: fakeTree(node("program", { children: [fn] })), filePath: "src/a.t", providerId: "cortex-treesitter", precisionTier: "AST" });
+  const result = walkTable({ table, tree: fakeTree(node("program", { children: [fn] })), filePath: "src/a.t", providerId: "blueprint-treesitter", precisionTier: "AST" });
   assert.equal(result.nodes.length, 1);
   assert.equal(result.nodes[0].name, "foo");
   assert.equal(result.nodes[0].evidence[0].startLine, 3);
@@ -113,15 +113,15 @@ test("nested same-name generic functions retain distinct qualified IDs", () => {
   assert.deepEqual(result.nodes.map((item) => item.qualifiedName), ["same", "same.same", "same#3-2"]);
 });
 
-test("CORTEX_AST_ENGINE=legacy retains explicit compatibility mode", () => {
+test("BLUEPRINT_AST_ENGINE=legacy retains explicit compatibility mode", () => {
   assert.equal(genericEngineEnabled(), true);
-  const previous = process.env.CORTEX_AST_ENGINE;
-  process.env.CORTEX_AST_ENGINE = "legacy";
+  const previous = process.env.BLUEPRINT_AST_ENGINE;
+  process.env.BLUEPRINT_AST_ENGINE = "legacy";
   try {
     assert.equal(genericEngineEnabled(), false);
   } finally {
-    if (previous === undefined) delete process.env.CORTEX_AST_ENGINE;
-    else process.env.CORTEX_AST_ENGINE = previous;
+    if (previous === undefined) delete process.env.BLUEPRINT_AST_ENGINE;
+    else process.env.BLUEPRINT_AST_ENGINE = previous;
   }
 });
 

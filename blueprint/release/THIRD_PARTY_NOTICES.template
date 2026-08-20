@@ -1,4 +1,4 @@
-Cortex includes third-party components under their own licenses.
+Blueprint includes third-party components under their own licenses.
 
 Runtime dependencies (from package.json):
 - @modelcontextprotocol/sdk — MIT

@@ -5,15 +5,15 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MANIFEST_SCHEMA_VERSION = 1;
-const PRODUCT_ID = "cortex";
+const PRODUCT_ID = "blueprint";
 const DEFAULT_SNAPSHOT_PORT = 43127;
 
-function snapshotPort(value = process.env.CORTEX_SNAPSHOT_PORT) {
+function snapshotPort(value = process.env.BLUEPRINT_SNAPSHOT_PORT) {
   const port = Number(value ?? DEFAULT_SNAPSHOT_PORT);
   return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : DEFAULT_SNAPSHOT_PORT;
 }
 
-function snapshotToken(value = process.env.CORTEX_SNAPSHOT_TOKEN) {
+function snapshotToken(value = process.env.BLUEPRINT_SNAPSHOT_TOKEN) {
   return typeof value === "string" && value.length > 0 ? value : randomBytes(32).toString("base64url");
 }
 
@@ -23,16 +23,16 @@ export function buildProductManifest({ installRoot = resolve(dirname(fileURLToPa
   const root = resolve(installRoot);
   // D-S03: Hub spawns as child — serviceStart is foreground argv
   // The Hub admits only launch argv whose executable resolves inside the
-  // product install root. `cortex.mjs` is shipped as an executable launcher.
-  const launcher = join(root, "scripts", process.platform === "win32" ? "cortex.cmd" : "cortex.mjs");
+  // product install root. `blueprint.mjs` is shipped as an executable launcher.
+  const launcher = join(root, "scripts", process.platform === "win32" ? "blueprint.cmd" : "blueprint.mjs");
   const serviceStart = [launcher, "service", "run", "--root", root];
   const serviceStop = [launcher, "service", "stop"];
   const statusEndpoint = { host: "127.0.0.1", port: snapshotPort(), authHeader: "Authorization", authToken: snapshotToken() };
-  const icon = join(root, "assets", "icon", "cortex-tab.png");
+  const icon = join(root, "assets", "icon", "blueprint-tab.png");
   return {
     schemaVersion: MANIFEST_SCHEMA_VERSION,
     productId: PRODUCT_ID,
-    displayName: "Cortex",
+    displayName: "Blueprint",
     productVersion: ver,
     hubCompatRange: ">=0.1.0",
     installRoot: root,
@@ -44,7 +44,7 @@ export function buildProductManifest({ installRoot = resolve(dirname(fileURLToPa
 }
 
 export function manifestPath() {
-  return join(homedir(), ".orthic", "hub", "products.d", "cortex.json");
+  return join(homedir(), ".orthic", "hub", "products.d", "blueprint.json");
 }
 
 export function writeProductManifest({ installRoot, version, outPath = manifestPath() } = {}) {
@@ -57,7 +57,7 @@ export function writeProductManifest({ installRoot, version, outPath = manifestP
 export function validateProductManifest(manifest) {
   const errors = [];
   if (manifest.schemaVersion !== 1) errors.push("schemaVersion must be 1");
-  if (manifest.productId !== "cortex") errors.push("productId must be cortex");
+  if (manifest.productId !== "blueprint") errors.push("productId must be blueprint");
   if (!manifest.displayName) errors.push("displayName required");
   if (!manifest.productVersion) errors.push("productVersion required");
   if (!manifest.hubCompatRange) errors.push("hubCompatRange required");

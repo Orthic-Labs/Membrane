@@ -1,8 +1,8 @@
-# Installing Cortex
+# Installing Blueprint
 
-`cortex init` enrolls Cortex into a repository and, optionally, into the
+`blueprint init` enrolls Blueprint into a repository and, optionally, into the
 agents that work in it. Everything it does is reversible with
-`cortex uninstall`; the plan is visible before anything is written via
+`blueprint uninstall`; the plan is visible before anything is written via
 `--dry-run --json`.
 
 ## Flags
@@ -23,7 +23,7 @@ agents that work in it. Everything it does is reversible with
 
 1. Explicit `--host` wins.
 2. Otherwise, existing host config files (`.claude/settings.json`,
-   `CLAUDE.md`, `.mcp.json`, `AGENTS.md`, `.cursor/rules/cortex.mdc`, …).
+   `CLAUDE.md`, `.mcp.json`, `AGENTS.md`, `.cursor/rules/blueprint.mdc`, …).
 3. Otherwise, installed command probes (`claude`, `codex`, `cursor`).
 4. Otherwise, `generic`.
 
@@ -32,16 +32,16 @@ Never more than the selected host set is installed.
 ## What apply does
 
 - Writes a managed, reversible instruction block into each host's
-  instruction file (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/cortex.mdc`,
-  or `CORTEX-AGENT.md`).
-- Optionally merges a `cortex` entry into `.mcp.json`.
+  instruction file (`CLAUDE.md`, `AGENTS.md`, `.cursor/rules/blueprint.mdc`,
+  or `BLUEPRINT-AGENT.md`).
+- Optionally merges a `blueprint` entry into `.mcp.json`.
 - Optionally enrolls the resident watcher.
 - Optionally installs hooks.
 - Builds the generation (`.agent/`), runs `status`, runs one orient query,
-  and prints `cortex uninstall` plus `cortex doctor --repair-plan`.
+  and prints `blueprint uninstall` plus `blueprint doctor --repair-plan`.
 
 ## Reversibility
 
-`cortex uninstall` restores every touched host file byte-for-byte using the
+`blueprint uninstall` restores every touched host file byte-for-byte using the
 installer state captured at apply time. Repository graph data in `.agent/`
 is preserved unless `--purge-data` is explicit.

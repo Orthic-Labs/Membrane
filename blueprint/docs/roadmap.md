@@ -1,6 +1,6 @@
 # Roadmap
 
-Cortex 0.2.x implements the local evidence-backed repository index and its
+Blueprint 0.2.x implements the local evidence-backed repository index and its
 qualification, hardening, security, and release-policy gates. No 1.0 release
 is evidenced. Explorer, tray, desktop onboarding, final qualification, and
 multi-channel publication remain in progress.
@@ -47,7 +47,7 @@ multi-channel publication remain in progress.
 - **The language depth matrix.** Tier A/B/C labels (see
   `release/compatibility.template.json` `languageDepth`) are the public claim, not
   the raw grammar count.
-- **The do-not-absorb list.** "Do not turn Cortex into general user memory
+- **The do-not-absorb list.** "Do not turn Blueprint into general user memory
   or final cross-layer context admission" (Membrane/Crypt boundary) and the
   other eight items in §8 of the runbook remain stable through 1.x.
 

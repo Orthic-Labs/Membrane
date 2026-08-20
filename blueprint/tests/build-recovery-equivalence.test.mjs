@@ -8,7 +8,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import corpus from "../evals/equivalence/recovery-corpus-v1.json" with { type: "json" };
-import { createCortexApplicationService } from "../src/lib/application/service.mjs";
+import { createBlueprintApplicationService } from "../src/lib/application/service.mjs";
 import { adoptFileAtomically } from "../src/graph/atomic-store-adoption.mjs";
 import { closeStore, openStore, openStoreReadOnly, readManifestEnvelope } from "../src/graph/store-sqlite.mjs";
 import { createSnapshot } from "../src/graph/snapshots.mjs";
@@ -23,7 +23,7 @@ function caseFor(id) {
 }
 
 function builtRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-recovery-equivalence-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-recovery-equivalence-"));
   cpSync(FIXTURE, repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   return repo;
@@ -33,7 +33,7 @@ test("cancelled service request is typed and leaves an independent reader usable
   const scenario = caseFor("cancelled-service-request-is-typed-and-isolated");
   const repo = builtRepo();
   try {
-    const service = createCortexApplicationService();
+    const service = createBlueprintApplicationService();
     const controller = new AbortController();
     controller.abort();
     await assert.rejects(

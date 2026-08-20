@@ -1,6 +1,6 @@
 # Contributing
 
-Cortex is source-available under the Orthic Labs Source Use License v1.0 (see
+Blueprint is source-available under the Orthic Labs Source Use License v1.0 (see
 `LICENSE`); components under `sdk/`, `schemas/`, and `examples/` are
 Apache-2.0 (see `LICENSES/README.md`).
 

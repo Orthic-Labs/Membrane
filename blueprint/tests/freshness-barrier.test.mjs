@@ -9,11 +9,11 @@ import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 function makeRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-barrier-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-barrier-"));
   cpSync(FIXTURE, repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   return repo;

@@ -1,4 +1,4 @@
-# Cortex competitor index
+# Blueprint competitor index
 
 > Note: this corpus is not vendored in this repository — `repos/` is
 > gitignored and exists only in local research checkouts.

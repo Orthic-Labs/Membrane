@@ -1,6 +1,6 @@
 // D26: custom-language plugins — repo-confined config, hash validation,
 // route-conflict rejection, and a tiny custom DSL that loads without editing
-// Cortex source.
+// Blueprint source.
 
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
@@ -16,12 +16,12 @@ function sha256Hex(input) {
 }
 
 test("custom language loads from a repo-confined config", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-custom-lang-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-custom-lang-"));
   try {
     mkdirSync(join(root, "tools", "grammars"), { recursive: true });
     const wasm = Buffer.from("custom-grammar-bytes");
     writeFileSync(join(root, "tools", "grammars", "tree-sitter-mydsl.wasm"), wasm);
-    writeFileSync(join(root, "cortex.languages.toml"), [
+    writeFileSync(join(root, "blueprint.languages.toml"), [
       "version = 1",
       "",
       "[[languages]]",
@@ -43,12 +43,12 @@ test("custom language loads from a repo-confined config", () => {
 });
 
 test("built-in id and extension routes are rejected", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-custom-conflict-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-custom-conflict-"));
   try {
     mkdirSync(join(root, "tools"), { recursive: true });
     const wasm = Buffer.from("x");
     writeFileSync(join(root, "tools", "g.wasm"), wasm);
-    writeFileSync(join(root, "cortex.languages.toml"), [
+    writeFileSync(join(root, "blueprint.languages.toml"), [
       "version = 1",
       "[[languages]]",
       'id = "typescript"',
@@ -64,12 +64,12 @@ test("built-in id and extension routes are rejected", () => {
 });
 
 test("absolute path and hash mismatch are rejected", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-custom-reject-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-custom-reject-"));
   try {
     mkdirSync(join(root, "tools"), { recursive: true });
     const wasm = Buffer.from("y");
     writeFileSync(join(root, "tools", "g.wasm"), wasm);
-    writeFileSync(join(root, "cortex.languages.toml"), [
+    writeFileSync(join(root, "blueprint.languages.toml"), [
       "version = 1",
       "[[languages]]",
       'id = "evil"',
@@ -85,7 +85,7 @@ test("absolute path and hash mismatch are rejected", () => {
 });
 
 test("absent config yields no custom languages", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-custom-absent-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-custom-absent-"));
   try {
     const result = loadCustomLanguages({ root });
     assert.equal(result.languages.length, 0);

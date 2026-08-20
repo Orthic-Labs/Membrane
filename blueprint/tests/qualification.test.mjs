@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 function run(repo, args) {
@@ -14,7 +14,7 @@ function run(repo, args) {
 }
 
 test("doctor reports PR11 operational checks and ordinary deltas do not rebuild", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-qualification-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-qualification-"));
   try {
     cpSync(FIXTURE, repo, { recursive: true });
     assert.equal(run(repo, ["build", "--out", ".agent"]).status, 0);

@@ -1,4 +1,4 @@
-// D51: secret egress. The known-secret corpus must never appear in any Cortex
+// D51: secret egress. The known-secret corpus must never appear in any Blueprint
 // egress surface — CLI stdout/stderr, MCP tool output, support bundles, doctor
 // output, or search results. Repository secrets stay in the repository.
 
@@ -11,7 +11,7 @@ import test from "node:test";
 import { buildHostileRepo, SECRET_ENTRIES } from "../../fixtures/security/build-hostile-repo.mjs";
 
 const ROOT = join(import.meta.dirname, "..", "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const CORPUS = JSON.parse(readFileSync(join(ROOT, "fixtures/security/secret-corpus.json"), "utf8"));
 
 const CORPUS_SECRETS = [
@@ -20,7 +20,7 @@ const CORPUS_SECRETS = [
 ];
 
 function makeHostileRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-honeyrepo-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-honeyrepo-"));
   buildHostileRepo(repo);
   return repo;
 }

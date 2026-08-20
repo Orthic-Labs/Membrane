@@ -26,8 +26,8 @@ test("repositoryIdentity derives repoId from host/owner/repo, not from the absol
   // Two clones of the SAME remote repo at different absolute paths MUST
   // produce the same repoId. This is the regression the path-derived
   // xxh128(root+origin) form had.
-  const rootA = mkdtempSync(join(tmpdir(), "cortex-identity-a-"));
-  const rootB = mkdtempSync(join(tmpdir(), "cortex-identity-b-"));
+  const rootA = mkdtempSync(join(tmpdir(), "blueprint-identity-a-"));
+  const rootB = mkdtempSync(join(tmpdir(), "blueprint-identity-b-"));
   const origin = "https://example.com/acme/widgets.git";
   try {
     initFakeRepo(rootA, origin);
@@ -49,7 +49,7 @@ test("repositoryIdentity derives repoId from host/owner/repo, not from the absol
 });
 
 test("repositoryIdentity synthesizes a stable local id for repos without a remote", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-identity-local-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-identity-local-"));
   try {
     // No git remote configured.
     const id = repositoryIdentity(root);
@@ -68,12 +68,12 @@ test("repositoryIdentity synthesizes a stable local id for repos without a remot
   }
 });
 
-test("repositoryIdentity honours CORTEX_LOCAL_REPO_ID as a stable local identity override", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-identity-env-"));
-  const previous = process.env.CORTEX_LOCAL_REPO_ID;
+test("repositoryIdentity honours BLUEPRINT_LOCAL_REPO_ID as a stable local identity override", () => {
+  const root = mkdtempSync(join(tmpdir(), "blueprint-identity-env-"));
+  const previous = process.env.BLUEPRINT_LOCAL_REPO_ID;
   try {
     initFakeRepo(root, "https://example.com/acme/widgets.git");
-    process.env.CORTEX_LOCAL_REPO_ID = "synthetic-tenant";
+    process.env.BLUEPRINT_LOCAL_REPO_ID = "synthetic-tenant";
     const idA = repositoryIdentity(root);
     const idB = repositoryIdentity(root);
     assert.equal(idA.repoId, idB.repoId);
@@ -81,8 +81,8 @@ test("repositoryIdentity honours CORTEX_LOCAL_REPO_ID as a stable local identity
     // fallback path; with an origin present the host/owner/repo id wins.
     assert.notEqual(idA.repoId, `xxh128:${Buffer.from("synthetic-tenant").toString("hex")}`);
   } finally {
-    if (previous === undefined) delete process.env.CORTEX_LOCAL_REPO_ID;
-    else process.env.CORTEX_LOCAL_REPO_ID = previous;
+    if (previous === undefined) delete process.env.BLUEPRINT_LOCAL_REPO_ID;
+    else process.env.BLUEPRINT_LOCAL_REPO_ID = previous;
     rmSync(root, { recursive: true, force: true });
   }
 });

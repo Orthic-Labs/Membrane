@@ -1,6 +1,6 @@
 # Behavioral AX (CX-B7)
 
-CX-B7 is Cortex's Phase-D behavioral agent-experience harness: it runs the
+CX-B7 is Blueprint's Phase-D behavioral agent-experience harness: it runs the
 scenario corpus in `evals/ax/scenarios` (12 JSON-compatible YAML files, per
 the AX audit standard §6.7) repeatedly and reports `pass^k` per §7.2. It is
 the executable complement to the static conformance suite (`evals/ax/

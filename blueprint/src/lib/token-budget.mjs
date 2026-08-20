@@ -1,6 +1,6 @@
-// Phase 7.4 — Two-budget tokens for cortex.
+// Phase 7.4 — Two-budget tokens for blueprint.
 //
-// Until now every cortex candidate carried a SINGLE `estimatedTokens` field
+// Until now every blueprint candidate carried a SINGLE `estimatedTokens` field
 // computed from metadata at slice time (line-count proxy). That number is a
 // cheap upper bound suitable for assembly-time budgeting, but it is NOT the
 // token cost of actually resolving the candidate to source. The plan
@@ -175,7 +175,7 @@ export function truncationReceipt(retained, original, options = {}) {
     throw new Error("truncationReceipt called when no truncation occurred — caller bug");
   }
   return {
-    schema: "cortex.truncation.v1",
+    schema: "blueprint.truncation.v1",
     retainedBytes,
     originalBytes,
     retainedLines: retained.lines ?? 0,

@@ -47,7 +47,7 @@ export async function runParserBenchmark({ languages = null, corpus = {} } = {})
     hardware: `${process.platform}-${process.arch}`,
     os: process.platform,
     node: process.version,
-    provider: "cortex-treesitter",
+    provider: "blueprint-treesitter",
     grammarVersion: "tree-sitter-wasms@0.1.13",
     rows,
   };

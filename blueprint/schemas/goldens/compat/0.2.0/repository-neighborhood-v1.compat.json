@@ -32,7 +32,7 @@
       "target": "symbol:graph/traverse-store.mjs:indexedQueryGeneration",
       "confidenceTier": "EXACT_RESOLUTION",
       "resolved": true,
-      "provider": "cortex-static"
+      "provider": "blueprint-static"
     }
   ],
   "circuits": [

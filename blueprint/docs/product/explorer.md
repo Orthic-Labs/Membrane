@@ -2,7 +2,7 @@
 
 Status: implemented and tested; not yet published.
 
-`cortex explore` starts a loopback-only, read-only HTTP server with a static
+`blueprint explore` starts a loopback-only, read-only HTTP server with a static
 UI. It binds to `127.0.0.1`, uses an unguessable session token (held in
 memory only, never logged), and shuts down with the CLI. Standalone CLI prints
 the authenticated URL for the user to open; it never exposes the token through

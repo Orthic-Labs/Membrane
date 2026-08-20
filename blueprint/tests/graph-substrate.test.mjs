@@ -22,11 +22,11 @@ import { mutateManifest } from "./_store-helpers.mjs";
 import { closeStore, openStore, saveGeneration, searchGenerationSymbols, readManifestEnvelope } from "../src/graph/store-sqlite.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CORTEX = path.resolve(HERE, "..");
-const REPO = path.join(CORTEX, "evals/fixture-repos/typescript-commerce");
+const BLUEPRINT = path.resolve(HERE, "..");
+const REPO = path.join(BLUEPRINT, "evals/fixture-repos/typescript-commerce");
 
 test("source scan includes evaluation code but excludes nested fixture repositories", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-evals-scan-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-evals-scan-"));
   try {
     fs.mkdirSync(path.join(root, "evals", "fixture-repos", "sample"), { recursive: true });
     fs.writeFileSync(path.join(root, "evals", "run.mjs"), "export const run = true;\n");
@@ -40,13 +40,13 @@ test("source scan includes evaluation code but excludes nested fixture repositor
 });
 
 test("document map excludes nested fixture repositories", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-map-fixtures-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-map-fixtures-"));
   try {
     fs.mkdirSync(path.join(root, "docs"), { recursive: true });
     fs.mkdirSync(path.join(root, "evals", "fixture-repos", "sample"), { recursive: true });
     fs.writeFileSync(path.join(root, "docs", "current.md"), "# Current\n\nImplemented now.\n");
     fs.writeFileSync(path.join(root, "evals", "fixture-repos", "sample", "fixture.md"), "# Fixture\n\nImplemented only in fixture.\n");
-    const result = spawnSync(process.execPath, [path.join(CORTEX, "scripts", "cortex.mjs"), "build", "--out", ".agent"], {
+    const result = spawnSync(process.execPath, [path.join(BLUEPRINT, "scripts", "blueprint.mjs"), "build", "--out", ".agent"], {
       cwd: root,
       encoding: "utf8",
     });
@@ -62,14 +62,14 @@ test("document map excludes nested fixture repositories", () => {
 test("static graph substrate builds a complete generation with exact evidence", () => {
   const generation = buildGraphGeneration(REPO);
 
-  assert.equal(generation.provider.id, "cortex-static");
+  assert.equal(generation.provider.id, "blueprint-static");
   assert.match(generation.manifest.generationId, /^xxh128:[a-f0-9]{32}$/);
   assert.equal(generation.manifest.complete, true);
   assert.ok(generation.nodes.some((node) => node.kind === "symbol" && node.qualifiedName === "OrderService.placeOrder"));
   assert.ok(generation.edges.some((edge) => edge.kind === "CALLS" && edge.source.includes("registerOrderRoute") && edge.target?.includes("OrderService.placeOrder")));
   assert.ok(generation.edges.some((edge) => edge.kind === "IMPORTS" && edge.source === "file:src/routes.ts" && edge.target === "file:src/service.ts"));
   // Resolved edges (target !== null) must always point at two real nodes.
-  // Unresolved edges (cortex B3 — tagged UNRESOLVED, never silently
+  // Unresolved edges (blueprint B3 — tagged UNRESOLVED, never silently
   // dropped) intentionally carry target: null and are exempt from this check.
   const resolvedEdges = generation.edges.filter((edge) => edge.target !== null);
   assert.ok(resolvedEdges.length > 0);
@@ -99,7 +99,7 @@ test("static graph candidate set conforms to ContextCandidateSet v1 shape", () =
   });
 
   assert.equal(candidates.schemaVersion, 1);
-  assert.equal(candidates.provider, "cortex-static");
+  assert.equal(candidates.provider, "blueprint-static");
   assert.deepEqual(candidates.providerCeiling, { maxCandidates: 3, maxEstimatedTokens: 8000 });
   assert.equal(candidates.candidates[0].layer, 3);
   assert.equal(candidates.candidates[0].sourceKind, "repo_code");
@@ -109,7 +109,7 @@ test("static graph candidate set conforms to ContextCandidateSet v1 shape", () =
 test("graph status distinguishes missing, fresh, and stale generations", () => {
   const outDir = path.join(
     os.tmpdir(),
-    `cortex-status-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    `blueprint-status-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   );
   fs.rmSync(outDir, { recursive: true, force: true });
 
@@ -131,7 +131,7 @@ test("graph status distinguishes missing, fresh, and stale generations", () => {
 });
 
 test("persisted second pass preserves same-source commit observation", () => {
-  const outDir = path.join(os.tmpdir(), `cortex-observation-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const outDir = path.join(os.tmpdir(), `blueprint-observation-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   try {
     const seeded = buildGraphGeneration(REPO);
     seeded.sourceObservation = { head: "a".repeat(40), dirty: false, statusDigest: "xxh128:seed" };
@@ -152,7 +152,7 @@ test("persisted second pass preserves same-source commit observation", () => {
 });
 
 test("source scan reports directory-budget truncation", () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-dir-cap-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-dir-cap-"));
   try {
     fs.mkdirSync(path.join(repo, "a"));
     fs.mkdirSync(path.join(repo, "b"));
@@ -168,7 +168,7 @@ test("source scan reports directory-budget truncation", () => {
 });
 
 test("source scan excludes Git-ignored paths while preserving tracked files", () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-gitignore-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-gitignore-"));
   try {
     assert.equal(spawnSync("git", ["init", "--quiet"], { cwd: repo }).status, 0);
     fs.writeFileSync(path.join(repo, ".gitignore"), [
@@ -221,7 +221,7 @@ test("source scan excludes Git-ignored paths while preserving tracked files", ()
 });
 
 test("configured ignored prefixes exclude tracked volatile files from build and freshness rescans", () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-configured-ignore-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-configured-ignore-"));
   const outDir = ".agent";
   try {
     assert.equal(spawnSync("git", ["init", "--quiet"], { cwd: repo }).status, 0);
@@ -262,7 +262,7 @@ test("ignored-prefix normalization rejects absolute and traversal input", () => 
 });
 
 test("graph status is indeterminate when freshness traversal hits a directory cap", () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-status-cap-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-status-cap-"));
   const outDir = path.join(repo, ".agent");
   try {
     fs.mkdirSync(path.join(repo, "a"));
@@ -282,7 +282,7 @@ test("graph status is indeterminate when freshness traversal hits a directory ca
 });
 
 test("source scan bounds oversized directories and reports the skipped subtree", () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-entry-cap-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-entry-cap-"));
   try {
     fs.writeFileSync(path.join(repo, "a.ts"), "export const a = 1;\n");
     fs.writeFileSync(path.join(repo, "b.ts"), "export const b = 1;\n");
@@ -298,7 +298,7 @@ test("source scan bounds oversized directories and reports the skipped subtree",
 });
 
 test("limited source scan selects paths deterministically in lexical order", () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-order-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-order-"));
   try {
     for (const name of ["z", "a", "m"]) {
       fs.mkdirSync(path.join(repo, name));
@@ -315,7 +315,7 @@ test("limited source scan selects paths deterministically in lexical order", () 
 });
 
 test("limited source scan stops traversal after satisfying the file budget", () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-early-stop-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-early-stop-"));
   try {
     fs.mkdirSync(path.join(repo, "a"));
     fs.writeFileSync(path.join(repo, "a", "a.ts"), "export const a = 1;\n");
@@ -335,7 +335,7 @@ test("limited source scan stops traversal after satisfying the file budget", () 
 test("doc-code truth joins are typed and evidence-backed without polluting graph edges", () => {
   const generation = {
     schemaVersion: 1,
-    provider: { id: "cortex-static" },
+    provider: { id: "blueprint-static" },
     nodes: [
       {
         id: "file:src/store.ts",
@@ -392,7 +392,7 @@ test("static graph mermaid output is bounded and deterministic", () => {
   const mermaid = graphMermaid(generation, { view: "neighbors", nodeId: "symbol:src/service.ts::OrderService.placeOrder", limit: 6 });
 
   assert.match(mermaid, /^flowchart LR/);
-  assert.match(mermaid, /%% provider: cortex-static/);
+  assert.match(mermaid, /%% provider: blueprint-static/);
   assert.match(mermaid, /OrderService\.placeOrder/);
   assert.ok(mermaid.split("\n").filter((line) => /^\s+n\d+\["/.test(line)).length <= 6);
 });

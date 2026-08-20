@@ -10,7 +10,7 @@ import { evaluateRules } from "../src/lib/rules/evaluate.mjs";
 import { toSarif } from "../src/lib/sarif.mjs";
 import { ledgerLink } from "../src/lib/run-ledger.mjs";
 
-export async function runAction({ workspace = process.env.GITHUB_WORKSPACE ?? process.cwd(), rulesPath = "cortex.rules.yml", version = "0.2.0", isFork = false } = {}) {
+export async function runAction({ workspace = process.env.GITHUB_WORKSPACE ?? process.cwd(), rulesPath = "blueprint.rules.yml", version = "0.2.0", isFork = false } = {}) {
   const rulesFile = join(workspace, rulesPath);
   if (!existsSync(rulesFile)) return { status: "skipped", reason: "no rules file" };
   const parsed = parseRules(readFileSync(rulesFile, "utf8"));
@@ -18,9 +18,9 @@ export async function runAction({ workspace = process.env.GITHUB_WORKSPACE ?? pr
   // report the parsed inventory deterministically.
   const findings = [];
   const sarif = toSarif(findings, version);
-  const sarifPath = join(workspace, "cortex.sarif");
+  const sarifPath = join(workspace, "blueprint.sarif");
   writeFileSync(sarifPath, JSON.stringify(sarif, null, 2));
-  const ledgerKey = isFork ? "fork-readonly" : (process.env.CORTEX_LEDGER_KEY ?? "local-dev");
+  const ledgerKey = isFork ? "fork-readonly" : (process.env.BLUEPRINT_LEDGER_KEY ?? "local-dev");
   const ledger = ledgerLink({ key: ledgerKey, version, commit: process.env.GITHUB_SHA ?? "local", generationId: null, providerDigests: {}, ruleDigests: {}, inputs: { rules: parsed.rules.length }, outputs: { findings: findings.length }, artifactHashes: {} });
   return { status: "completed", ruleCount: parsed.rules.length, findings: findings.length, sarifPath, ledgerDigest: ledger.digest };
 }

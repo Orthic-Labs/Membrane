@@ -22,7 +22,7 @@ import { backupStore } from "../src/lib/update/apply.mjs";
 import { rollback } from "../src/lib/update/rollback.mjs";
 
 function fixtureSetup() {
-  const dir = mkdtempSync(join(tmpdir(), "cortex-rollback-"));
+  const dir = mkdtempSync(join(tmpdir(), "blueprint-rollback-"));
   const stores = buildFixtureStores(join(dir, "stores"));
   return { dir, stores };
 }
@@ -82,7 +82,7 @@ test("update-chain rollback restores a migrated store to its prior line with dat
     const priorDir = join(updateRoot, "prior");
     mkdirSync(appDir, { recursive: true });
     mkdirSync(priorDir, { recursive: true });
-    writeFileSync(join(appDir, "cortex"), "current");
+    writeFileSync(join(appDir, "blueprint"), "current");
 
     const result = rollback({ appDir, priorDir, storeBackup: storeBackup.path, root: updateRoot });
     assert.equal(result.ok, true, `rollback failed: ${result.problems?.join(", ")}`);

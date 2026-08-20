@@ -11,11 +11,11 @@ export function buildSbom({ root, version, commit, packages = [] }) {
     spdxVersion: "SPDX-2.3",
     dataLicense: "CC0-1.0",
     SPDXID: "SPDXRef-DOCUMENT",
-    name: `cortex-${version}`,
-    documentNamespace: `https://orthic-labs.github.io/spdx/cortex-${version}-${String(commit).slice(0, 12)}`,
-    creationInfo: { created: new Date().toISOString(), creators: ["Tool: cortex sbom builder"] },
+    name: `blueprint-${version}`,
+    documentNamespace: `https://orthic-labs.github.io/spdx/blueprint-${version}-${String(commit).slice(0, 12)}`,
+    creationInfo: { created: new Date().toISOString(), creators: ["Tool: blueprint sbom builder"] },
     packages: [
-      { name: "cortex", SPDXID: "SPDXRef-Package-Cortex", versionInfo: version, downloadLocation: "NOASSERTION", filesAnalyzed: false },
+      { name: "blueprint", SPDXID: "SPDXRef-Package-Blueprint", versionInfo: version, downloadLocation: "NOASSERTION", filesAnalyzed: false },
       ...packages,
     ],
   };

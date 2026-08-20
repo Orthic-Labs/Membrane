@@ -12,11 +12,11 @@ import test from "node:test";
 import { EXIT } from "../scripts/cli/args.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 function buildRepo() {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-cli-contract-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-cli-contract-"));
   cpSync(FIXTURE, repo, { recursive: true });
   const build = spawnSync(process.execPath, [CLI, "graph", "build", "--out", ".agent"], { cwd: repo, encoding: "utf8" });
   assert.equal(build.status, 0, build.stderr || build.stdout);
@@ -33,10 +33,10 @@ function parseJsonStderr(result) {
   return JSON.parse(start >= 0 ? stderr.slice(start + 1) : stderr);
 }
 
-test("help prints branded Cortex usage and exits 0", () => {
+test("help prints branded Blueprint usage and exits 0", () => {
   const result = run(process.cwd(), ["--help"]);
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /Cortex — repository truth and evidence map/);
+  assert.match(result.stdout, /Blueprint — repository truth and evidence map/);
 });
 
 test("facade status --json returns stable keys", () => {

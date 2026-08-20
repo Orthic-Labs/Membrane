@@ -10,7 +10,7 @@ import { RESOURCE_URIS } from "../src/mcp/resources.mjs";
 import { PROMPTS } from "../src/mcp/prompts.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const SERVER = join(ROOT, "scripts/cortex-mcp.mjs");
+const SERVER = join(ROOT, "scripts/blueprint-mcp.mjs");
 const AUDIT_DIR = join(ROOT, ".audit", "cx-b1");
 const PROMPT_NAMES = [...new Set(PROMPTS.map((prompt) => prompt.name))].sort();
 const FIXTURE = join(ROOT, "evals", "fixture-repos", "typescript-commerce");
@@ -24,11 +24,11 @@ test("MCP direct entry survives a symlinked script path", async () => {
     symlinkSync(ROOT, linkedRoot, process.platform === "win32" ? "junction" : "dir");
     const transport = new StdioClientTransport({
       command: process.execPath,
-      args: [join(linkedRoot, "scripts", "cortex-mcp.mjs"), "--root", FIXTURE],
+      args: [join(linkedRoot, "scripts", "blueprint-mcp.mjs"), "--root", FIXTURE],
       cwd: FIXTURE,
       stderr: "pipe",
     });
-    client = new Client({ name: "cortex-symlink-entry", version: "1.0.0" }, { capabilities: {} });
+    client = new Client({ name: "blueprint-symlink-entry", version: "1.0.0" }, { capabilities: {} });
     await client.connect(transport);
     assert.equal((await client.listTools()).tools.length, 6);
   } finally {
@@ -37,16 +37,16 @@ test("MCP direct entry survives a symlinked script path", async () => {
   }
 });
 
-test("cortex_status output schema accepts first-use missing-graph state", async () => {
+test("blueprint_status output schema accepts first-use missing-graph state", async () => {
   ensureAuditDir();
   const repo = mkdtempSync(join(AUDIT_DIR, "missing-graph-"));
   const { client, transport } = await startServer({ repo });
   try {
-    const status = await client.callTool({ name: "cortex_status", arguments: {} });
+    const status = await client.callTool({ name: "blueprint_status", arguments: {} });
     assert.notEqual(status.isError, true);
     assert.equal(status.structuredContent.state, "missing");
     assert.equal(status.structuredContent.manifest, undefined);
-    const schema = (await client.listTools()).tools.find((tool) => tool.name === "cortex_status").outputSchema;
+    const schema = (await client.listTools()).tools.find((tool) => tool.name === "blueprint_status").outputSchema;
     assert.deepEqual(schema.required.sort(), ["claimBoundary", "manifestPath", "repository", "schemaVersion", "state"].sort());
   } finally {
     await client.close().catch(() => {});
@@ -70,7 +70,7 @@ async function startServer({ repo, args = [], env = {} } = {}) {
   });
   let serverStderr = "";
   transport.stderr?.on("data", (chunk) => { serverStderr += chunk.toString(); });
-  const client = new Client({ name: "cortex-acceptance", version: "1.0.0" }, { capabilities: {} });
+  const client = new Client({ name: "blueprint-acceptance", version: "1.0.0" }, { capabilities: {} });
   try {
     await client.connect(transport);
   } catch (error) {
@@ -88,10 +88,10 @@ function payload(response) {
 
 // Lifecycle chain, per CX-B1 §2: spawned -> initialized -> capabilities
 // listed -> tool_called -> structured_result_returned -> process_exited_clean.
-// Every response below comes from the real scripts/cortex-mcp.mjs process
+// Every response below comes from the real scripts/blueprint-mcp.mjs process
 // over stdio JSON-RPC via the SDK client; nothing is mocked or hand-authored.
 test("live handshake: initialize -> list -> call -> close (6 tools, >=8 resources, 6 prompts)", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-mcp-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-mcp-"));
   ensureAuditDir();
   let transport;
   let client;
@@ -108,7 +108,7 @@ test("live handshake: initialize -> list -> call -> close (6 tools, >=8 resource
     const resources = await client.listResources();
     const prompts = await client.listPrompts();
     const names = tools.tools.map((tool) => tool.name).sort();
-    assert.deepEqual(names, ["cortex_doc_truth", "cortex_expand", "cortex_impact", "cortex_orient", "cortex_search", "cortex_status"]);
+    assert.deepEqual(names, ["blueprint_doc_truth", "blueprint_expand", "blueprint_impact", "blueprint_orient", "blueprint_search", "blueprint_status"]);
     assert.ok(resources.resources.length >= 8, `expected >=8 resources, got ${resources.resources.length}`);
     assert.equal(prompts.prompts.length, 6);
     assert.deepEqual(prompts.prompts.map((prompt) => prompt.name).sort(), PROMPT_NAMES);
@@ -121,10 +121,10 @@ test("live handshake: initialize -> list -> call -> close (6 tools, >=8 resource
       assert.equal(tool.annotations?.idempotentHint, true, `${tool.name} must be idempotent`);
       assert.equal(tool.annotations?.openWorldHint, false, `${tool.name} must be closed-world`);
     }
-    const oriented = payload(await client.callTool({ name: "cortex_orient", arguments: { task: "placeOrder" } }));
+    const oriented = payload(await client.callTool({ name: "blueprint_orient", arguments: { task: "placeOrder" } }));
     assert.equal(oriented.action, "allow");
     assert.ok(oriented.freshnessReceipt?.receiptId);
-    const search = payload(await client.callTool({ name: "cortex_search", arguments: { query: "placeOrder", limit: 5 } }));
+    const search = payload(await client.callTool({ name: "blueprint_search", arguments: { query: "placeOrder", limit: 5 } }));
     assert.ok(Array.isArray(search.results));
     assert.ok(search.freshnessReceipt?.receiptId);
     writeFileSync(join(AUDIT_DIR, "handshake.json"), JSON.stringify({
@@ -139,7 +139,7 @@ test("live handshake: initialize -> list -> call -> close (6 tools, >=8 resource
       registeredPromptNames: PROMPT_NAMES,
       structuredContentSeen: true,
       transport: "stdio",
-      server: "scripts/cortex-mcp.mjs",
+      server: "scripts/blueprint-mcp.mjs",
     }, null, 2));
   } finally {
     if (client) await client.close().catch(() => {});
@@ -157,19 +157,19 @@ test("live handshake: initialize -> list -> call -> close (6 tools, >=8 resource
 });
 
 const TOOL_ARGS = {
-  cortex_orient: { task: "placeOrder" },
-  cortex_search: { query: "placeOrder", limit: 5 },
-  cortex_expand: { anchor: "src/service.ts", depth: 1, budget: 512 },
-  cortex_impact: { anchor: "src/service.ts", depth: 1, budget: 512 },
-  cortex_doc_truth: { limit: 5 },
-  cortex_status: {},
+  blueprint_orient: { task: "placeOrder" },
+  blueprint_search: { query: "placeOrder", limit: 5 },
+  blueprint_expand: { anchor: "src/service.ts", depth: 1, budget: 512 },
+  blueprint_impact: { anchor: "src/service.ts", depth: 1, budget: 512 },
+  blueprint_doc_truth: { limit: 5 },
+  blueprint_status: {},
 };
 
 // S3 probe + S4 bulk: every tool must return structuredContent that validates
 // against its advertised outputSchema, plus text content carrying the same
 // redacted payload. Coverage data is written to .audit/cx-b1/tools.json.
 test("all six tools return schema-valid structuredContent", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-mcp-tools-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-mcp-tools-"));
   ensureAuditDir();
   let client;
   const evidence = {};
@@ -189,7 +189,7 @@ test("all six tools return schema-valid structuredContent", async () => {
       const text = result.content.find((block) => block.type === "text")?.text;
       assert.ok(text, `${tool.name} must return text content`);
       assert.deepEqual(JSON.parse(text), result.structuredContent, `${tool.name} text must serialize the same redacted payload`);
-      if (tool.name === "cortex_orient" || tool.name === "cortex_status") {
+      if (tool.name === "blueprint_orient" || tool.name === "blueprint_status") {
         assert.deepEqual(Object.keys(result.structuredContent.claimBoundary).sort(), ["cleanClaimAllowed", "gaps", "prohibitedClaims", "safeClaims", "status"]);
         assert.equal(result.structuredContent.claimBoundary.status, "clear");
         assert.equal(result.structuredContent.claimBoundary.cleanClaimAllowed, true);
@@ -206,7 +206,7 @@ test("all six tools return schema-valid structuredContent", async () => {
 // S5 negatives: strict input rejection, typed errors with a stable code and no
 // stack, and malformed-generation typing. Written to .audit/cx-b1/negatives.json.
 test("negative cases: strict inputs, typed errors, redaction", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-mcp-neg-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-mcp-neg-"));
   ensureAuditDir();
   let client;
   const evidence = {};
@@ -219,17 +219,17 @@ test("negative cases: strict inputs, typed errors, redaction", async () => {
     // The SDK surfaces input-validation failures as a JSON-RPC error, so the
     // call must reject rather than silently strip the unknown field.
     await assert.rejects(
-      client.callTool({ name: "cortex_status", arguments: { notARealField: "x" } }),
+      client.callTool({ name: "blueprint_status", arguments: { notARealField: "x" } }),
       (error) => {
         assert.ok(error instanceof Error, "rejection must be an Error");
-        assert.match(String(error.message), /Invalid arguments for tool cortex_status/, "rejection must be an input-validation error");
+        assert.match(String(error.message), /Invalid arguments for tool blueprint_status/, "rejection must be an input-validation error");
         return true;
       },
     );
     evidence.unknownArgument = { rejected: true };
 
     // (b) nonexistent repoId -> typed error with a stable code, no stack.
-    const missing = await client.callTool({ name: "cortex_status", arguments: { repoId: "does-not-exist-anywhere" } });
+    const missing = await client.callTool({ name: "blueprint_status", arguments: { repoId: "does-not-exist-anywhere" } });
     assert.equal(missing.isError, true);
     const missingPayload = JSON.parse(missing.content.find((block) => block.type === "text")?.text ?? "{}");
     assert.ok(["root_not_enrolled", "root_escape"].includes(missingPayload.error?.code), `unexpected code ${missingPayload.error?.code}`);
@@ -239,7 +239,7 @@ test("negative cases: strict inputs, typed errors, redaction", async () => {
 
     // (c) malformed generation string -> typed error (generation_mismatch).
     // The generation check runs inside openFreshnessSession, which search uses.
-    const malformed = await client.callTool({ name: "cortex_search", arguments: { query: "placeOrder", generation: "not-a-real-generation" } });
+    const malformed = await client.callTool({ name: "blueprint_search", arguments: { query: "placeOrder", generation: "not-a-real-generation" } });
     assert.equal(malformed.isError, true);
     const malformedPayload = JSON.parse(malformed.content.find((block) => block.type === "text")?.text ?? "{}");
     assert.equal(malformedPayload.error?.code, "generation_mismatch");
@@ -249,7 +249,7 @@ test("negative cases: strict inputs, typed errors, redaction", async () => {
     // redacted in BOTH structuredContent and content text.
     const secret = "github_pat_abcdefghijklmnopqrstuvwxyz0123456789ABCD";
     const revealed = await client.callTool({
-      name: "cortex_search",
+      name: "blueprint_search",
       arguments: { query: `placeOrder ${secret}`, limit: 5 },
     });
     assert.ok(!revealed.isError);

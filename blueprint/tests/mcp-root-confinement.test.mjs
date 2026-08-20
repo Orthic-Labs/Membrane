@@ -12,20 +12,20 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { buildGraphGeneration } from "../src/graph/static-provider.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const SERVER = join(ROOT, "scripts/cortex-mcp.mjs");
+const SERVER = join(ROOT, "scripts/blueprint-mcp.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 test("tool inputs cannot select an arbitrary repoRoot", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-mcp-confine-"));
-  const elsewhere = mkdtempSync(join(tmpdir(), "cortex-mcp-elsewhere-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-mcp-confine-"));
+  const elsewhere = mkdtempSync(join(tmpdir(), "blueprint-mcp-elsewhere-"));
   cpSync(FIXTURE, repo, { recursive: true });
   buildGraphGeneration(repo, { outDir: ".agent", persist: true });
   const transport = new StdioClientTransport({ command: process.execPath, args: [SERVER, "--root", repo], cwd: repo, stderr: "pipe" });
-  const client = new Client({ name: "cortex-test", version: "1.0.0" }, { capabilities: {} });
+  const client = new Client({ name: "blueprint-test", version: "1.0.0" }, { capabilities: {} });
   try {
     await client.connect(transport);
     await assert.rejects(
-      client.callTool({ name: "cortex_status", arguments: { repoRoot: elsewhere } }),
+      client.callTool({ name: "blueprint_status", arguments: { repoRoot: elsewhere } }),
       (error) => error?.code === -32602,
     );
   } finally {

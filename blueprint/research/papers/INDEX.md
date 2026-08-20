@@ -1,6 +1,6 @@
 # Paper corpus
 
-Reference papers behind Cortex's graph, retrieval, and incremental-build design.
+Reference papers behind Blueprint's graph, retrieval, and incremental-build design.
 Research input only — not product documentation and not implementation authority.
 
 36 papers, converted from their source PDFs to markdown (pymupdf4llm).

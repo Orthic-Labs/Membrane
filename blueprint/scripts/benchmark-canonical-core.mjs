@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Canonical-core benchmark: measure Cortex against its tracked repository core,
+// Canonical-core benchmark: measure Blueprint against its tracked repository core,
 // never against a generated fixture or the live checkout's .agent output.
 
 import { createHash } from "node:crypto";
@@ -10,7 +10,7 @@ import { dirname, join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
 
-export const REPORT_SCHEMA = "cortex-canonical-core-benchmark-report-v1";
+export const REPORT_SCHEMA = "blueprint-canonical-core-benchmark-report-v1";
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const EXCLUDED_PREFIXES = [".agent/", "vendor-research/", "evals/fixture-repos/", "evals/performance-fixtures/", "evals/performance-baselines/", "coverage/", "dist/", "out/", ".cache/"];
 // Current static-provider instrumentation may depend on a concurrently-added
@@ -52,7 +52,7 @@ function measurementContentSha256(snapshot, paths) {
 
 function copyTrackedCore(inventory) {
   const started = performance.now();
-  const snapshot = mkdtempSync(join(os.tmpdir(), "cortex-canonical-core-"));
+  const snapshot = mkdtempSync(join(os.tmpdir(), "blueprint-canonical-core-"));
   for (const path of inventory.files) {
     const target = join(snapshot, path);
     mkdirSync(dirname(target), { recursive: true });
@@ -71,15 +71,15 @@ function copyTrackedCore(inventory) {
   // touching source history or live checkout state.
   execFileSync("git", ["init", "-q"], { cwd: snapshot, stdio: "ignore" });
   execFileSync("git", ["add", "--", "."], { cwd: snapshot, stdio: "ignore" });
-  execFileSync("git", ["-c", "user.name=Cortex benchmark", "-c", "user.email=benchmark@localhost", "commit", "-qm", "canonical-core-snapshot"], { cwd: snapshot, stdio: "ignore" });
+  execFileSync("git", ["-c", "user.name=Blueprint benchmark", "-c", "user.email=benchmark@localhost", "commit", "-qm", "canonical-core-snapshot"], { cwd: snapshot, stdio: "ignore" });
   return { snapshot, overlayPaths, measuredContentSha256: measurementContentSha256(snapshot, [...new Set([...inventory.files, ...overlayPaths])]), elapsedMs: performance.now() - started };
 }
 
 async function runBuild(snapshot, args) {
   const started = performance.now();
-  const command = ["scripts/cortex.mjs", "build", "--out", ".agent", ...args];
+  const command = ["scripts/blueprint.mjs", "build", "--out", ".agent", ...args];
   const timingsPath = join(snapshot, `.benchmark-stage-timings-${process.pid}-${Date.now()}.json`);
-  const child = spawn(process.execPath, command, { cwd: snapshot, env: { ...process.env, CORTEX_LOCAL_BUILD: "1", CORTEX_BENCHMARK_TIMINGS_PATH: timingsPath }, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, command, { cwd: snapshot, env: { ...process.env, BLUEPRINT_LOCAL_BUILD: "1", BLUEPRINT_BENCHMARK_TIMINGS_PATH: timingsPath }, stdio: ["ignore", "pipe", "pipe"] });
   let stdout = "", stderr = "", peakRssBytes = 0;
   child.stdout.on("data", (chunk) => { stdout += chunk; }); child.stderr.on("data", (chunk) => { stderr += chunk; });
   const sampleRss = () => {
@@ -93,7 +93,7 @@ async function runBuild(snapshot, args) {
   let stageTimings = { state: "missing" };
   try {
     const parsed = JSON.parse(readFileSync(timingsPath, "utf8"));
-    stageTimings = { state: parsed.schema === "cortex-build-stage-timings-v1" ? "measured" : "invalid", records: parsed.records ?? [], unobservedStages: [{ stage: "graph_persistence", reason: "CLI owns SQLite publication outside static-provider boundary" }] };
+    stageTimings = { state: parsed.schema === "blueprint-build-stage-timings-v1" ? "measured" : "invalid", records: parsed.records ?? [], unobservedStages: [{ stage: "graph_persistence", reason: "CLI owns SQLite publication outside static-provider boundary" }] };
   } catch { /* output is optional outside benchmark instrumentation */ }
   rmSync(timingsPath, { force: true });
   return { elapsedMs: performance.now() - started, peakRssBytes, stdout: stdout.trim(), stderr: stderr.trim(), command: [process.execPath, ...command].join(" "), rssProbe: "ps -o rss= -p <pid> (10ms interval)", stageTimings };
@@ -135,7 +135,7 @@ export async function runCanonicalCoreBenchmark({ samples = 1, reportPath = null
       source,
       inventory: { selection: "git ls-files --cached -z; explicit core exclusions", selectedFiles: inventory.files.length, trackedFiles: inventory.trackedFileCount, excludedFiles: inventory.excludedFileCount, selectionSha256: inventory.selectionSha256, trackedContentSha256: inventory.trackedContentSha256, exclusions: EXCLUDED_PREFIXES },
       isolation: { temporarySnapshot: true, snapshotMethod: "copy HEAD-selected tracked files + explicit measurement overlay + temporary git index + node_modules symlink", snapshotPreparationMs: copied.elapsedMs, overlayPaths: copied.overlayPaths, measuredContentSha256: copied.measuredContentSha256, liveAgentMutated: false },
-      commands: { inventory: "git ls-files --cached -z", snapshot: "git init -q; git add -- .; git -c user.name=Cortex\\ benchmark -c user.email=benchmark@localhost commit -qm canonical-core-snapshot", smoke: smoke[0].command, coldBuild: coldBuild.map((item) => item.command), noChangeBuild: noChangeBuild.map((item) => item.command) },
+      commands: { inventory: "git ls-files --cached -z", snapshot: "git init -q; git add -- .; git -c user.name=Blueprint\\ benchmark -c user.email=benchmark@localhost commit -qm canonical-core-snapshot", smoke: smoke[0].command, coldBuild: coldBuild.map((item) => item.command), noChangeBuild: noChangeBuild.map((item) => item.command) },
       host: { hostname: os.hostname(), platform: process.platform, arch: process.arch, release: os.release(), node: process.version, git: toolVersion("git"), pnpm: toolVersion("pnpm") },
       samples,
       metrics: {

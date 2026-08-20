@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 
 import { createAdmission, DECISION_ACTIONS } from "../src/lib/admission.mjs";
-import { CortexError } from "../src/lib/application/errors.mjs";
+import { BlueprintError } from "../src/lib/application/errors.mjs";
 import { createReceiptStore } from "../src/lib/receipt-store.mjs";
 
 const CLAIM_BOUNDARY_KEYS = ["cleanClaimAllowed", "gaps", "prohibitedClaims", "safeClaims", "status"];
@@ -20,14 +20,14 @@ function makeIsolatedAdmission(overrides = {}) {
       manifestDigest: "sha256:manifest-fixed",
       generatedAt: "gen:fixed",
     },
-    provider: { id: "cortex-static" },
+    provider: { id: "blueprint-static" },
     sourceObservation: { dirty: false },
     nodes: [],
     edges: [],
   };
   const candidateSet = {
     schemaVersion: 1,
-    provider: "cortex-static",
+    provider: "blueprint-static",
     freshness: { revision: "xxh128:gen-fixed", manifestDigest: "sha256:manifest-fixed" },
     candidates: [
       {
@@ -90,7 +90,7 @@ test("orient blocks when graph is missing — decision only, no hooks", async ()
     });
     assert.equal(result.action, "block");
     assert.equal(result.reasonCode, "missing_graph");
-    assert.match(result.nextAction, /cortex build/);
+    assert.match(result.nextAction, /blueprint build/);
     assert.ok(DECISION_ACTIONS.includes(result.action));
     assert.equal(result.schemaVersion, 1);
   } finally {
@@ -114,11 +114,11 @@ test("orient issues a host receipt and Forge evidence file", async () => {
     assert.ok(result.receiptId);
     assert.ok(result.allowedScopes.includes("src/a.ts"));
     assert.ok(result.allowedScopes.includes("src/b.ts"));
-    assert.equal(result.evidence.kind, "cortex_orientation");
-    assert.equal(result.evidence.locator, `cortex://receipt/${result.receiptId}`);
+    assert.equal(result.evidence.kind, "blueprint_orientation");
+    assert.equal(result.evidence.locator, `blueprint://receipt/${result.receiptId}`);
     assert.ok(result.evidencePath);
     const onDisk = JSON.parse(readFileSync(result.evidencePath, "utf8"));
-    assert.equal(onDisk.kind, "cortex_orientation");
+    assert.equal(onDisk.kind, "blueprint_orientation");
     assert.equal(result.receipt.generationId, "xxh128:gen-fixed");
     assert.equal(result.receipt.sessionId, "sess-1");
 
@@ -481,17 +481,17 @@ test("status early branches carry a restricted claimBoundary", async () => {
 
 // CX-B3 errors lane: required code mappings plus preserved legacy fields.
 
-test("CortexError carries required metadata for mapped codes", () => {
+test("BlueprintError carries required metadata for mapped codes", () => {
   const required = [
-    { code: "stale_blocked", retryable: true, nextOperation: "cortex_orient" },
-    { code: "generation_mismatch", retryable: true, nextOperation: "cortex_orient" },
-    { code: "missing_generation", retryable: true, nextOperation: "cortex build" },
-    { code: "missing_graph", retryable: true, nextOperation: "cortex build" },
-    { code: "root_not_enrolled", retryable: false, nextOperation: "cortex init" },
+    { code: "stale_blocked", retryable: true, nextOperation: "blueprint_orient" },
+    { code: "generation_mismatch", retryable: true, nextOperation: "blueprint_orient" },
+    { code: "missing_generation", retryable: true, nextOperation: "blueprint build" },
+    { code: "missing_graph", retryable: true, nextOperation: "blueprint build" },
+    { code: "root_not_enrolled", retryable: false, nextOperation: "blueprint init" },
   ];
   for (const { code, retryable, nextOperation } of required) {
-    const error = new CortexError(code, `message for ${code}`, { marker: code });
-    assert.ok(error instanceof CortexError, `${code} instanceof CortexError`);
+    const error = new BlueprintError(code, `message for ${code}`, { marker: code });
+    assert.ok(error instanceof BlueprintError, `${code} instanceof BlueprintError`);
     assert.equal(error.code, code);
     assert.equal(typeof error.retryable, "boolean", `${code} retryable boolean`);
     assert.equal(error.retryable, retryable, `${code} retryable value`);
@@ -504,14 +504,14 @@ test("CortexError carries required metadata for mapped codes", () => {
   }
 });
 
-test("CortexError preserves legacy fields and defaults for unmapped codes", () => {
-  const error = new CortexError("stale_blocked", "Cortex freshness barrier did not catch up.", { receipt: { id: 1 } });
-  assert.equal(error.name, "CortexError");
+test("BlueprintError preserves legacy fields and defaults for unmapped codes", () => {
+  const error = new BlueprintError("stale_blocked", "Blueprint freshness barrier did not catch up.", { receipt: { id: 1 } });
+  assert.equal(error.name, "BlueprintError");
   assert.equal(error.code, "stale_blocked");
-  assert.equal(error.message, "Cortex freshness barrier did not catch up.");
+  assert.equal(error.message, "Blueprint freshness barrier did not catch up.");
   assert.deepEqual(error.details, { receipt: { id: 1 } });
 
-  const unmapped = new CortexError("no_such_code", "m");
+  const unmapped = new BlueprintError("no_such_code", "m");
   assert.equal(unmapped.code, "no_such_code");
   assert.equal(unmapped.retryable, false);
   assert.equal(unmapped.remediation, null);

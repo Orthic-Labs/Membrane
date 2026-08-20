@@ -1,44 +1,44 @@
 {
   "schemaVersion": 1,
   "publishable": false,
-  "product": "Cortex",
+  "product": "Blueprint",
   "version": "__VERSION__",
   "commit": "__COMMIT__",
   "hubAppVersion": "__HUB_APP_VERSION__",
   "hubInstallerChecksum": "__HUB_INSTALLER_CHECKSUM__",
   "artifacts": [
     {
-      "name": "cortex-darwin-arm64.tar.gz",
+      "name": "blueprint-darwin-arm64.tar.gz",
       "platform": "darwin",
       "arch": "arm64",
       "sha256": "__DARWIN_ARM64_SHA256__"
     },
     {
-      "name": "cortex-darwin-x64.tar.gz",
+      "name": "blueprint-darwin-x64.tar.gz",
       "platform": "darwin",
       "arch": "x64",
       "sha256": "__DARWIN_X64_SHA256__"
     },
     {
-      "name": "cortex-windows-x64.zip",
+      "name": "blueprint-windows-x64.zip",
       "platform": "windows",
       "arch": "x64",
       "sha256": "__WINDOWS_X64_SHA256__"
     },
     {
-      "name": "Cortex-__VERSION__-Setup.exe",
+      "name": "Blueprint-__VERSION__-Setup.exe",
       "platform": "windows",
       "arch": "x64",
       "sha256": "__WINDOWS_INSTALLER_SHA256__"
     },
     {
-      "name": "cortex-linux-x64.tar.gz",
+      "name": "blueprint-linux-x64.tar.gz",
       "platform": "linux",
       "arch": "x64",
       "sha256": "__LINUX_X64_SHA256__"
     },
     {
-      "name": "cortex-linux-arm64.tar.gz",
+      "name": "blueprint-linux-arm64.tar.gz",
       "platform": "linux",
       "arch": "arm64",
       "sha256": "__LINUX_ARM64_SHA256__"

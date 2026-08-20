@@ -1,6 +1,6 @@
-// Compiler/indexer-grade (SCIP) precision tier — cortex B4.
+// Compiler/indexer-grade (SCIP) precision tier — blueprint B4.
 //
-// cortex NEVER vendors, installs, or invokes a SCIP indexer binary. This
+// blueprint NEVER vendors, installs, or invokes a SCIP indexer binary. This
 // module only READS an index if the repo already produced one out-of-band
 // (scip-typescript, scip-python, rust-analyzer's scip backend, ...) and
 // exported it to a portable JSON shape (e.g. `scip print --json`, or any
@@ -17,14 +17,14 @@ import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "./confidence-tiers.mjs";
 import { PRECISION_TIERS } from "./precision-tiers.mjs";
 
 export const PROVIDER = {
-  id: "cortex-scip",
+  id: "blueprint-scip",
   version: "index-optional-v1",
   license: "workspace-owned",
 };
 
 export function findScipIndex(repoRoot, options = {}) {
   const root = resolve(repoRoot);
-  const explicit = options.scipIndexPath ?? process.env.CORTEX_SCIP_INDEX ?? null;
+  const explicit = options.scipIndexPath ?? process.env.BLUEPRINT_SCIP_INDEX ?? null;
   const candidates = explicit
     ? [resolve(root, explicit)]
     : [
@@ -47,7 +47,7 @@ export function probeScip(repoRoot, options = {}) {
       provider: PROVIDER,
       precisionTier: PRECISION_TIERS.COMPILER,
       state: "unavailable",
-      reason: "no SCIP index found (set CORTEX_SCIP_INDEX, or place index.scip.json / .agent/index.scip.json at repo root)",
+      reason: "no SCIP index found (set BLUEPRINT_SCIP_INDEX, or place index.scip.json / .agent/index.scip.json at repo root)",
       degradesTo: PRECISION_TIERS.AST,
     };
   }

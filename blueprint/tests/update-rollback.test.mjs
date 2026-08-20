@@ -15,7 +15,7 @@ import * as manifestModule from "../src/lib/update/manifest.mjs";
 import { isConfinedPath, resolvePhysicalPath } from "../src/lib/path-confinement.mjs";
 
 function fixtureRoot() {
-  const root = mkdtempSync(join(tmpdir(), "cortex-rollback-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-rollback-"));
   mkdirSync(join(root, "app"), { recursive: true });
   mkdirSync(join(root, "app-v2"), { recursive: true });
   mkdirSync(join(root, ".agent", "graph"), { recursive: true });
@@ -94,7 +94,7 @@ test("apply recovery restores a journaled last working app", () => {
     const appDir = join(root, "app"), priorDir = join(root, "app-prior");
     mkdirSync(priorDir); writeFileSync(join(priorDir, "version.txt"), "v1");
     rmSync(appDir, { recursive: true });
-    writeFileSync(join(root, ".cortex-swap-journal.json"), JSON.stringify({ appDir, priorDir }));
+    writeFileSync(join(root, ".blueprint-swap-journal.json"), JSON.stringify({ appDir, priorDir }));
     assert.equal(recoverInterruptedSwap({ appDir, priorDir }).recovered, true);
     assert.equal(readFileSync(join(appDir, "version.txt"), "utf8"), "v1");
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -111,7 +111,7 @@ test("local signed update rejects a signer absent from shipped trust root", () =
     if (typeof manifestModule.canonicalManifestPayload !== "function") return;
     manifest.signature = sign(null, Buffer.from(manifestModule.canonicalManifestPayload(manifest)), keys.privateKey).toString("base64");
     const manifestPath = join(root, "manifest.json"); writeFileSync(manifestPath, JSON.stringify(manifest));
-    const cli = join(import.meta.dirname, "..", "scripts", "cortex.mjs");
+    const cli = join(import.meta.dirname, "..", "scripts", "blueprint.mjs");
     const apply = spawnSync(process.execPath, [cli, "update", "apply", "--manifest", manifestPath, "--artifact", artifact, "--artifact-name", "local", "--app-dir", join(root, "app"), "--prior-dir", join(root, "prior"), "--repo-root", root, "--json"], { encoding: "utf8" });
     assert.notEqual(apply.status, 0, apply.stderr); assert.equal(JSON.parse(apply.stdout).reason, "untrusted_key_id");
     assert.equal(readFileSync(join(root, "app", "version.txt"), "utf8"), "v1");
@@ -119,7 +119,7 @@ test("local signed update rejects a signer absent from shipped trust root", () =
 });
 
 test("local update rejects a symlinked app target before trust lookup", () => {
-  const root = fixtureRoot(), outside = mkdtempSync(join(tmpdir(), "cortex-outside-"));
+  const root = fixtureRoot(), outside = mkdtempSync(join(tmpdir(), "blueprint-outside-"));
   try {
     rmSync(join(root, "app"), { recursive: true });
     try { symlinkSync(outside, join(root, "app"), "junction"); } catch { return; }
@@ -130,7 +130,7 @@ test("local update rejects a symlinked app target before trust lookup", () => {
 });
 
 test("update receipt integrity uses a separate external key namespace", async () => {
-  const root = fixtureRoot(), keyDir = mkdtempSync(join(tmpdir(), "cortex-update-keys-"));
+  const root = fixtureRoot(), keyDir = mkdtempSync(join(tmpdir(), "blueprint-update-keys-"));
   try {
     const integrity = await import("../src/lib/init/state-integrity.mjs");
     const receipt = integrity.sealLocalState(root, { version: "0.3.0", commit: "a".repeat(40) }, { namespace: "update", stateKeyDir: keyDir });
@@ -186,7 +186,7 @@ test("rollback returns a structured failure for missing path arguments instead o
 });
 
 test("rollback rejects a retained app outside its repository root", () => {
-  const root = fixtureRoot(), outside = mkdtempSync(join(tmpdir(), "cortex-outside-prior-"));
+  const root = fixtureRoot(), outside = mkdtempSync(join(tmpdir(), "blueprint-outside-prior-"));
   try {
     writeFileSync(join(outside, "version.txt"), "outside");
     const result = rollback({ appDir: join(root, "app"), priorDir: outside, root });
@@ -223,7 +223,7 @@ test("prepared apply recovery keeps pre-state before retiring prior", async () =
 });
 
 test("path confinement follows a symlinked repo root but rejects symlink escape", () => {
-  const base = mkdtempSync(join(tmpdir(), "cortex-confine-"));
+  const base = mkdtempSync(join(tmpdir(), "blueprint-confine-"));
   try {
     const real = join(base, "real");
     mkdirSync(join(real, "sub"), { recursive: true });
@@ -243,7 +243,7 @@ test("path confinement follows a symlinked repo root but rejects symlink escape"
     assert.equal(isConfinedPath(real, join(real, "alias", "file.txt")), true);
 
     // A symlink (or junction) target resolving outside the root is rejected.
-    const outside = mkdtempSync(join(tmpdir(), "cortex-confine-out-"));
+    const outside = mkdtempSync(join(tmpdir(), "blueprint-confine-out-"));
     try {
       symlinkSync(outside, join(real, "escape"), "dir");
       assert.equal(isConfinedPath(real, join(real, "escape", "secret.txt")), false);

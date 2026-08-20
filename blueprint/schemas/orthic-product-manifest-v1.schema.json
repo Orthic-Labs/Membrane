@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "properties": {
     "schemaVersion": { "type": "integer", "const": 1 },
-    "productId": { "type": "string", "enum": ["cortex", "membrane"] },
+    "productId": { "type": "string", "enum": ["blueprint", "membrane"] },
     "displayName": { "type": "string", "minLength": 1 },
     "productVersion": { "type": "string", "minLength": 1 },
     "hubCompatRange": { "type": "string", "minLength": 1 },

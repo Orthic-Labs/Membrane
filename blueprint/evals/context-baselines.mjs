@@ -44,7 +44,7 @@ function runTask(repo, task, anchor) {
   const fullPack = files.map((file) => `\n// ${relative(repo, file)}\n${readFileSync(file, "utf8")}`).join("\n");
   let neighborhood = "";
   try {
-    neighborhood = execFileSync(process.execPath, [join(ROOT, "scripts/cortex.mjs"), "neighborhood", anchor, "--budget-tokens", "800", "--json"], { cwd: repo, encoding: "utf8", timeout: 5000 });
+    neighborhood = execFileSync(process.execPath, [join(ROOT, "scripts/blueprint.mjs"), "neighborhood", anchor, "--budget-tokens", "800", "--json"], { cwd: repo, encoding: "utf8", timeout: 5000 });
   } catch (error) {
     neighborhood = String(error.stdout ?? "");
   }
@@ -53,18 +53,18 @@ function runTask(repo, task, anchor) {
     anchor,
     grep: { tokens: tokens(grepText), correct: grepText.length > 0 },
     fullPack: { tokens: tokens(fullPack), correct: fullPack.length > 0 },
-    cortexNeighborhood: { tokens: tokens(neighborhood), correct: neighborhood.length > 0 },
+    blueprintNeighborhood: { tokens: tokens(neighborhood), correct: neighborhood.length > 0 },
   };
 }
 
 const byRepo = new Map();
-for (const [repoName] of TASKS) if (!byRepo.has(repoName)) byRepo.set(repoName, mkdtempSync(join(tmpdir(), "cortex-baseline-")));
+for (const [repoName] of TASKS) if (!byRepo.has(repoName)) byRepo.set(repoName, mkdtempSync(join(tmpdir(), "blueprint-baseline-")));
 const results = [];
 try {
   for (const [repoName, repo] of byRepo) {
     const source = join(FIXTURES, repoName);
     if (!readdirSync(repo).length) cpSync(source, repo, { recursive: true });
-    execFileSync(process.execPath, [join(ROOT, "scripts/cortex.mjs"), "build", "--out", ".agent"], { cwd: repo, stdio: "ignore", timeout: 120000 });
+    execFileSync(process.execPath, [join(ROOT, "scripts/blueprint.mjs"), "build", "--out", ".agent"], { cwd: repo, stdio: "ignore", timeout: 120000 });
   }
   for (const [repoName, task, anchor] of TASKS) {
     const repo = byRepo.get(repoName);

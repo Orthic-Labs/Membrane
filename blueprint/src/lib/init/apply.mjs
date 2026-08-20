@@ -12,12 +12,12 @@ import { buildInitPlan } from "./plan.mjs";
 import { removeInstallStateKey, sealInstallState, verifyInstallState } from "./state-integrity.mjs";
 import { isConfinedPath, resolvePhysicalPath } from "../path-confinement.mjs";
 
-const START = "<!-- cortex:start -->";
-const END = "<!-- cortex:end -->";
+const START = "<!-- blueprint:start -->";
+const END = "<!-- blueprint:end -->";
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
-const CORTEX_SCRIPT = join(SCRIPT_DIR, "..", "..", "..", "scripts", "cortex.mjs");
+const BLUEPRINT_SCRIPT = join(SCRIPT_DIR, "..", "..", "..", "scripts", "blueprint.mjs");
 
-function statePath(root) { return join(root, ".agent", "graph", "cortex-install-state.json"); }
+function statePath(root) { return join(root, ".agent", "graph", "blueprint-install-state.json"); }
 function loadState(root) {
   if (!isConfinedPath(root, statePath(root))) throw new Error("state_invalid");
   if (!existsSync(statePath(root))) return { version: 1, files: {} };
@@ -47,7 +47,7 @@ function allowedTarget(root, path) {
   const target = resolvePhysicalPath(path);
   if (!target) return false;
   const base = realpathSync(root);
-  return new Set(["CLAUDE.md", "AGENTS.md", "CORTEX-AGENT.md", ".mcp.json", join(".cursor", "rules", "cortex.mdc"), join(".claude", "settings.json")].map((name) => join(base, name))).has(target);
+  return new Set(["CLAUDE.md", "AGENTS.md", "BLUEPRINT-AGENT.md", ".mcp.json", join(".cursor", "rules", "blueprint.mdc"), join(".claude", "settings.json")].map((name) => join(base, name))).has(target);
 }
 function recordInstalled(state, path) {
   state.files[path].installed = createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -58,7 +58,7 @@ function removeBlock(content) {
   return content.replace(new RegExp(`\\n?${escapedStart}[\\s\\S]*?${escapedEnd}\\n?`, "g"), "\n").replace(/^\n+$/, "");
 }
 function mergeBlock(content) {
-  const block = `${START}\n## Cortex Graph\nBefore reading repository files, call \`cortex_orient\` with current repository root. Use \`cortex_expand\` for bounded context and \`cortex_search\` for queries.\n${END}`;
+  const block = `${START}\n## Blueprint Graph\nBefore reading repository files, call \`blueprint_orient\` with current repository root. Use \`blueprint_expand\` for bounded context and \`blueprint_search\` for queries.\n${END}`;
   const without = removeBlock(content);
   return `${without.trimEnd()}${without.trimEnd() ? "\n\n" : ""}${block}\n`;
 }
@@ -132,7 +132,7 @@ export function applyInitPlan({ root = process.cwd(), plan = null, build = true,
             ...value,
             mcpServers: {
               ...(value.mcpServers ?? {}),
-              cortex: { command: process.execPath, args: [join(SCRIPT_DIR, "..", "..", "..", "scripts", "cortex-mcp.mjs"), "--root", root] },
+              blueprint: { command: process.execPath, args: [join(SCRIPT_DIR, "..", "..", "..", "scripts", "blueprint-mcp.mjs"), "--root", root] },
             },
           }));
         } else {
@@ -146,7 +146,7 @@ export function applyInitPlan({ root = process.cwd(), plan = null, build = true,
       } else if (action.kind === "service" && action.id === "enroll-watch") {
         state.watch = { added: enrollWatch(root, watchConfigPath) };
       } else if (action.kind === "command" && action.id === "build-generation" && build) {
-        execFileSync(process.execPath, [CORTEX_SCRIPT, "graph", "build", "--out", ".agent"], { cwd: root, stdio: "ignore" });
+        execFileSync(process.execPath, [BLUEPRINT_SCRIPT, "graph", "build", "--out", ".agent"], { cwd: root, stdio: "ignore" });
         buildRan.ran = true;
       }
       completed.push(action.id);

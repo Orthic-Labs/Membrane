@@ -23,7 +23,7 @@ test("installService dry-run returns foreground argv, no OS target", () => {
   assert.ok(result.forbidden || result.body.includes("D-S03") || result.body.includes("Hub-owned"));
 });
 
-test("foregroundRunArgs returns cortex service run target", () => {
+test("foregroundRunArgs returns blueprint service run target", () => {
   const args = foregroundRunArgs();
   assert.ok(Array.isArray(args));
   assert.ok(args.join(" ").includes("service run"));
@@ -39,7 +39,7 @@ test("serviceStatus returns Hub-owned shape, no OS registration", () => {
   assert.equal(status.platform, process.platform);
   assert.equal(status.registered, false);
   assert.equal(status.target, null);
-  assert.equal(status.foreground, "cortex service run");
+  assert.equal(status.foreground, "blueprint service run");
 });
 
 test("uninstallService without purge preserves data", () => {
@@ -50,7 +50,7 @@ test("uninstallService without purge preserves data", () => {
 });
 
 test("uninstallService with purge lists the data dir", () => {
-  const tempData = mkdtempSync(join(tmpdir(), "cortex-purge-target-"));
+  const tempData = mkdtempSync(join(tmpdir(), "blueprint-purge-target-"));
   try {
     const result = uninstallService({ purgeData: true, dataDir: tempData });
     assert.ok(result.purged.length > 0);

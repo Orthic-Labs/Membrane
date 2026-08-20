@@ -1,6 +1,6 @@
 # Security Policy
 
-Cortex is a local, evidence-backed repository index. Its threat model assumes
+Blueprint is a local, evidence-backed repository index. Its threat model assumes
 an **untrusted repository tree** standing next to the trusted CLI, service, and
 SDK: hostile files, docs, stores, and manifests must never execute, exfiltrate,
 or escalate.

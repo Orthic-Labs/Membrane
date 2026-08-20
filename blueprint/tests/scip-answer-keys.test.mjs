@@ -5,10 +5,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 
-const CORTEX = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const TASKS = readFileSync(path.join(CORTEX, "evals/graph-tasks.jsonl"), "utf8")
+const BLUEPRINT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const TASKS = readFileSync(path.join(BLUEPRINT, "evals/graph-tasks.jsonl"), "utf8")
   .split(/\r?\n/).filter(Boolean).map(JSON.parse);
-const ANSWERS = JSON.parse(readFileSync(path.join(CORTEX, "evals/scip-answer-keys.json"), "utf8"));
+const ANSWERS = JSON.parse(readFileSync(path.join(BLUEPRINT, "evals/scip-answer-keys.json"), "utf8"));
 
 
 test("every SCIP-authored task has a non-empty generated answer key", () => {

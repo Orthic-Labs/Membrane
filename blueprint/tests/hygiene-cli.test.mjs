@@ -7,7 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CLI = path.resolve(HERE, "../scripts/cortex.mjs");
+const CLI = path.resolve(HERE, "../scripts/blueprint.mjs");
 
 function run(repo, args) {
   return spawnSync(process.execPath, [CLI, ...args], { cwd: repo, encoding: "utf8" });
@@ -24,10 +24,10 @@ function findAuditCollector() {
   }
 }
 
-test("Cortex hygiene facts are cached, generation-bound, and become stale with the graph", {
+test("Blueprint hygiene facts are cached, generation-bound, and become stale with the graph", {
   skip: findAuditCollector() ? false : "requires workspace Audit collector",
 }, () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-hygiene-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-hygiene-"));
   try {
     fs.mkdirSync(path.join(repo, "src"));
     fs.writeFileSync(path.join(repo, "src", "large.ts"), [
@@ -103,7 +103,7 @@ test("Cortex hygiene facts are cached, generation-bound, and become stale with t
 });
 
 test("standalone hygiene reports a missing Audit collector as unavailable", () => {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-hygiene-standalone-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-hygiene-standalone-"));
   try {
     fs.mkdirSync(path.join(repo, "src"));
     fs.writeFileSync(path.join(repo, "src", "index.ts"), "export const value = 1;\n");
@@ -111,7 +111,7 @@ test("standalone hygiene reports a missing Audit collector as unavailable", () =
     const result = spawnSync(process.execPath, [CLI, "hygiene", "refresh", "--out", ".agent", "--json"], {
       cwd: repo,
       encoding: "utf8",
-      env: { ...process.env, CORTEX_AUDIT_FACT_COLLECTOR: path.join(repo, "missing-collector.mjs") },
+      env: { ...process.env, BLUEPRINT_AUDIT_FACT_COLLECTOR: path.join(repo, "missing-collector.mjs") },
     });
     assert.equal(result.status, 2, result.stderr || result.stdout);
     const payload = JSON.parse(result.stdout);

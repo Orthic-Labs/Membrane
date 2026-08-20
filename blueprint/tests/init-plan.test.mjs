@@ -12,7 +12,7 @@ import { buildInitPlan } from "../src/lib/init/plan.mjs";
 import { detectHosts } from "../src/lib/init/detect-hosts.mjs";
 
 test("buildInitPlan is side-effect free", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-init-plan-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-init-plan-"));
   try {
     const before = new Set(readdirSync(root));
     const plan = buildInitPlan({ root, host: "generic", scope: "project", mcp: "off", watch: "off", hooks: "none" });
@@ -21,14 +21,14 @@ test("buildInitPlan is side-effect free", () => {
     assert.equal(plan.schemaVersion, 1);
     assert.deepEqual(plan.hosts, ["generic"]);
     assert.ok(plan.actions.some((a) => a.id === "build-generation"));
-    assert.ok(plan.uninstallCommand.includes("cortex uninstall"));
+    assert.ok(plan.uninstallCommand.includes("blueprint uninstall"));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
 
 test("explicit host wins over detection", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-init-host-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-init-host-"));
   try {
     writeFileSync(join(root, "CLAUDE.md"), "# claude\n");
     const plan = buildInitPlan({ root, host: "cursor", scope: "project" });
@@ -39,10 +39,10 @@ test("explicit host wins over detection", () => {
 });
 
 test("auto host detects from existing config files", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-init-auto-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-init-auto-"));
   try {
     mkdirSync(join(root, ".cursor", "rules"), { recursive: true });
-    writeFileSync(join(root, ".cursor", "rules", "cortex.mdc"), "# cursor\n");
+    writeFileSync(join(root, ".cursor", "rules", "blueprint.mdc"), "# cursor\n");
     const hosts = detectHosts({ explicit: "auto", root });
     assert.ok(hosts.includes("cursor"), `expected cursor, got ${hosts}`);
   } finally {
@@ -51,7 +51,7 @@ test("auto host detects from existing config files", () => {
 });
 
 test("auto host falls back to generic with no configs", (t) => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-init-generic-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-init-generic-"));
   try {
     const hosts = detectHosts({ explicit: "auto", root });
     // If a host CLI is installed on this machine, detection legitimately finds it.
@@ -68,7 +68,7 @@ test("auto host falls back to generic with no configs", (t) => {
 });
 
 test("mcp auto enables only for claude-code; explicit on/off respected", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-init-mcp-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-init-mcp-"));
   try {
     const generic = buildInitPlan({ root, host: "generic", scope: "project", mcp: "auto" });
     assert.equal(generic.mcpEnabled, false);
@@ -83,7 +83,7 @@ test("mcp auto enables only for claude-code; explicit on/off respected", () => {
 });
 
 test("hooks level is carried in the plan", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-init-hooks-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-init-hooks-"));
   try {
     const plan = buildInitPlan({ root, host: "generic", scope: "project", hooks: "git" });
     const hooksAction = plan.actions.find((a) => a.kind === "hooks");
@@ -94,7 +94,7 @@ test("hooks level is carried in the plan", () => {
 });
 
 test("plan shape is fixed per S-07", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-init-shape-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-init-shape-"));
   try {
     const plan = buildInitPlan({ root, host: "claude-code", scope: "project", mcp: "on", watch: "off", hooks: "all" });
     assert.equal(plan.schemaVersion, 1);

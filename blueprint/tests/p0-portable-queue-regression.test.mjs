@@ -9,12 +9,12 @@ import { fileURLToPath } from "node:url";
 import { bootstrapFromTracked } from "../src/graph/bootstrap.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CORTEX = path.resolve(HERE, "..");
-const CLI = path.join(CORTEX, "scripts/cortex.mjs");
-const FIXTURE = path.join(CORTEX, "evals/fixture-repos/typescript-commerce");
+const BLUEPRINT = path.resolve(HERE, "..");
+const CLI = path.join(BLUEPRINT, "scripts/blueprint.mjs");
+const FIXTURE = path.join(BLUEPRINT, "evals/fixture-repos/typescript-commerce");
 
 function copyFixture(prefix) {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), `cortex-${prefix}-`));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), `blueprint-${prefix}-`));
   fs.cpSync(FIXTURE, repo, { recursive: true });
   return repo;
 }

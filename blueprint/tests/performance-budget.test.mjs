@@ -7,10 +7,10 @@ import test from "node:test";
 import { syncToCurrentSource } from "../src/graph/barrier.mjs";
 import { issueScopeGrant, checkScopeGrant } from "../src/lib/receipt-store.mjs";
 import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
-import { CortexRepositoryWorker } from "../watchman/repo-actor.mjs";
+import { BlueprintRepositoryWorker } from "../watchman/repo-actor.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 function run(repo, args) {
@@ -30,7 +30,7 @@ async function elapsedAsync(fn) {
 }
 
 test("PR11 performance budgets stay within four-times CI slack", async () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-performance-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-performance-"));
   try {
     cpSync(FIXTURE, repo, { recursive: true });
     assert.equal(run(repo, ["build", "--out", ".agent"]).status, 0);
@@ -46,7 +46,7 @@ test("PR11 performance budgets stay within four-times CI slack", async () => {
 
     const source = join(repo, "src/service.ts");
     writeFileSync(source, `${readFileSync(source, "utf8")}\nexport const performanceProbe = true;\n`);
-    const delta = await elapsedAsync(() => new CortexRepositoryWorker({ root: repo }).ingest("src/service.ts"));
+    const delta = await elapsedAsync(() => new BlueprintRepositoryWorker({ root: repo }).ingest("src/service.ts"));
     assert.equal(delta.value.applied, true);
     const orient = elapsed(() => run(repo, ["orient", "--query", "placeOrder", "--json"]));
     assert.equal(orient.value.status, 0, orient.value.stderr);

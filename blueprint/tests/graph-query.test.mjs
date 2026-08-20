@@ -7,12 +7,12 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const CORTEX = path.resolve(HERE, "..");
-const CLI = path.join(CORTEX, "scripts/cortex.mjs");
-const FIXTURE = path.join(CORTEX, "evals/fixture-repos/typescript-commerce");
+const BLUEPRINT = path.resolve(HERE, "..");
+const CLI = path.join(BLUEPRINT, "scripts/blueprint.mjs");
+const FIXTURE = path.join(BLUEPRINT, "evals/fixture-repos/typescript-commerce");
 
 function copyFixture() {
-  const dir = path.join(os.tmpdir(), `cortex-graph-query-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const dir = path.join(os.tmpdir(), `blueprint-graph-query-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   fs.cpSync(FIXTURE, dir, { recursive: true });
   return dir;
 }
@@ -51,13 +51,13 @@ test("graph query primitives return typed, evidence-backed JSON", () => {
     assert.ok(impact.impacted.some((node) => node.id === "symbol:src/service.ts::OrderService.placeOrder"));
 
     const candidates = run(["graph", "candidates", "--query", "placeOrder", "--out", ".agent", "--limit", "2"], repo);
-    assert.equal(candidates.provider, "cortex-static");
+    assert.equal(candidates.provider, "blueprint-static");
     assert.equal(candidates.candidates[0].sourceKind, "repo_code");
 
     const build = spawnSync(process.execPath, [CLI, "build", "--out", ".agent"], { cwd: repo, encoding: "utf8" });
     assert.equal(build.status, 0, build.stderr || build.stdout);
     const docTruth = run(["graph", "doc-truth", "--out", ".agent"], repo);
-    assert.equal(docTruth.provider, "cortex-treesitter");
+    assert.equal(docTruth.provider, "blueprint-treesitter");
     assert.ok(Array.isArray(docTruth.joins));
     assert.ok(docTruth.sourceDocMap.docs >= 1);
 
@@ -67,7 +67,7 @@ test("graph query primitives return typed, evidence-backed JSON", () => {
     assert.match(mermaid.stdout, /OrderService\.placeOrder/);
 
     const planner = run(["graph", "planner-status", "--query", "placeOrder", "--out", ".agent", "--limit", "2"], repo);
-    assert.equal(planner.provider, "cortex-treesitter");
+    assert.equal(planner.provider, "blueprint-treesitter");
     assert.ok(["ready", "missing_command", "unavailable", "broken"].includes(planner.planner.state));
     // A "ready" verdict must be earned by actually round-tripping a ContextPacket
     // through `crypt plan-context`, not by grepping help text (the old probe).

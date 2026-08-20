@@ -6,7 +6,7 @@
   "publishedAt": "2026-08-05T10:10:02.050Z",
   "artifacts": [
     {
-      "name": "cortex-linux-x64.tar.gz",
+      "name": "blueprint-linux-x64.tar.gz",
       "platform": "linux",
       "arch": "x64",
       "sha256": "deadbeef",

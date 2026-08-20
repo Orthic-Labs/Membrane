@@ -53,7 +53,7 @@ test("CROSS_STACK_EDGES vocabulary is complete", () => {
 });
 
 test("polyglot fixture traces client→route→handler→queue→consumer→DB", () => {
-  const root = mkdtempSync(join(tmpdir(), "cortex-stack-"));
+  const root = mkdtempSync(join(tmpdir(), "blueprint-stack-"));
   try {
     const ui = "fetch('/api/orders');";
     const api = "app.post('/api/orders', createOrder);";

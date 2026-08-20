@@ -1,7 +1,7 @@
-# Cortex Rules
+# Blueprint Rules
 
 ## Purpose
-Cortex maps repository code, documents, claims, symbols, and flows into a local evidence graph.
+Blueprint maps repository code, documents, claims, symbols, and flows into a local evidence graph.
 Keep uncertainty, contradictions, freshness, and precision visible.
 
 ## Canonical sources
@@ -12,7 +12,7 @@ Keep uncertainty, contradictions, freshness, and precision visible.
 ## Commands
 - Run `pnpm test` for the fast Node suite.
 - Run `pnpm test:all` for full workspace coverage.
-- Run `cortex doctor --full --json` before trusting graph results.
+- Run `blueprint doctor --full --json` before trusting graph results.
 - Run focused graph commands with explicit budgets for impact analysis.
 
 ## Locked invariants
@@ -28,4 +28,4 @@ Keep uncertainty, contradictions, freshness, and precision visible.
 - Run query and freshness tests for changed graph surfaces.
 - Compare generated claim verdicts against source fingerprints.
 
-Before sealing any contract touching hub, watcher lifecycle, the cortex↔membrane API, or peer-service discovery, read `docs/plans/orthic/SEAM-CONTRACT.md` and declare it a dependency.
+Before sealing any contract touching hub, watcher lifecycle, the blueprint↔membrane API, or peer-service discovery, read `docs/plans/orthic/SEAM-CONTRACT.md` and declare it a dependency.

@@ -1,12 +1,12 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "cortex",
+  "name": "blueprint",
   "version": "0.2.0",
-  "description": "Cortex: local evidence-backed repository map — documents, claims, code graph (Neurons/Synapses/Circuits), and orientation admission library.",
-  "homepage": "https://github.com/Orthic-Labs/Cortex#readme",
+  "description": "Blueprint: local evidence-backed repository map — documents, claims, code graph (Neurons/Synapses/Circuits), and orientation admission library.",
+  "homepage": "https://github.com/Orthic-Labs/Blueprint#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Orthic-Labs/Cortex.git"
+    "url": "git+https://github.com/Orthic-Labs/Blueprint.git"
   },
   "license": "SEE LICENSE IN LICENSE",
   "keywords": [

@@ -15,12 +15,12 @@ import {
 import { PARSED_LANGUAGE_EXTENSIONS } from "../src/graph/language-extractors.mjs";
 import { languageCapabilityRecords } from "../src/graph/language-registry.mjs";
 
-const CORTEX = path.resolve(import.meta.dirname, "..");
+const BLUEPRINT = path.resolve(import.meta.dirname, "..");
 const CATALOG_EXTENSIONS = languageCapabilityRecords().flatMap((record) => record.extensions);
 const EXPECTED_PARSED_EXTENSIONS = [...new Set([...PARSED_LANGUAGE_EXTENSIONS, ...CATALOG_EXTENSIONS])].sort();
 
 function withLanguageFixture(run) {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-languages-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-languages-"));
   try {
     fs.mkdirSync(path.join(repo, "python"));
     fs.writeFileSync(path.join(repo, "python", "service.py"), [
@@ -69,7 +69,7 @@ function withLanguageFixture(run) {
 }
 
 function withFiles(files, run) {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-stack-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-stack-"));
   try {
     for (const [relativePath, contents] of Object.entries(files)) {
       const absolutePath = path.join(repo, relativePath);
@@ -349,7 +349,7 @@ test("capabilities enumerate every parsed language in the tracked workspace stac
   assert.deepEqual(graphCapabilities().languageCoverage.parsedExtensions, EXPECTED_PARSED_EXTENSIONS);
 });
 
-test("catalog extensions and current Cortex sources have complete capability accounting", () => {
+test("catalog extensions and current Blueprint sources have complete capability accounting", () => {
   const catalogFiles = Object.fromEntries(CATALOG_EXTENSIONS.map((extension) => [`src/sample.${extension}`, "fixture\n"]));
   withFiles(catalogFiles, (repo) => {
     const outDir = path.join(repo, ".agent");
@@ -357,7 +357,7 @@ test("catalog extensions and current Cortex sources have complete capability acc
     assert.deepEqual(graphStatus(repo, outDir).capabilities.unsupportedExtensions, []);
   });
 
-  const current = sourceCapabilityCoverage(scanSourcesPublic(CORTEX).files);
+  const current = sourceCapabilityCoverage(scanSourcesPublic(BLUEPRINT).files);
   assert.deepEqual(current, { unsupportedExtensions: [], unsupportedFileCount: 0 });
 });
 

@@ -18,5 +18,5 @@ export const semanticCandidateProvider = Object.freeze({
 });
 
 export function semanticEnabled() {
-  return process.env.CORTEX_SEMANTIC === "1";
+  return process.env.BLUEPRINT_SEMANTIC === "1";
 }

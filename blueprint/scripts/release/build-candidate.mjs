@@ -118,10 +118,10 @@ export function buildCandidate({ out = null, platform = null, version = null, al
   // Produce non-self-referential payloads before their final inventory.
   const sbom = {
     spdxVersion: "SPDX-2.3", dataLicense: "CC0-1.0", SPDXID: "SPDXRef-DOCUMENT",
-    name: `cortex-${pkg.version}`,
-    documentNamespace: `https://orthic-labs.github.io/spdx/cortex-${pkg.version}-${commit.slice(0, 12)}`,
-    creationInfo: { created: new Date().toISOString(), creators: ["Tool: cortex release candidate builder"] },
-    packages: [{ name: pkg.name, SPDXID: "SPDXRef-Package-Cortex", versionInfo: pkg.version, downloadLocation: "NOASSERTION", filesAnalyzed: false }],
+    name: `blueprint-${pkg.version}`,
+    documentNamespace: `https://orthic-labs.github.io/spdx/blueprint-${pkg.version}-${commit.slice(0, 12)}`,
+    creationInfo: { created: new Date().toISOString(), creators: ["Tool: blueprint release candidate builder"] },
+    packages: [{ name: pkg.name, SPDXID: "SPDXRef-Package-Blueprint", versionInfo: pkg.version, downloadLocation: "NOASSERTION", filesAnalyzed: false }],
   };
   writeFileSync(join(outDir, "SBOM.spdx.json"), `${JSON.stringify(sbom, null, 2)}\n`);
   writeFileSync(join(outDir, "THIRD_PARTY_NOTICES"), readFileSync(join(ROOT, "release", "THIRD_PARTY_NOTICES.template"), "utf8"));
@@ -132,7 +132,7 @@ export function buildCandidate({ out = null, platform = null, version = null, al
 
   const compatibility = {
     schemaVersion: 1,
-    product: "Cortex",
+    product: "Blueprint",
     packageName: pkg.name,
     platform: targetPlatform,
     version: pkg.version,
@@ -150,7 +150,7 @@ export function buildCandidate({ out = null, platform = null, version = null, al
 
   const catalog = {
     schemaVersion: 1,
-    product: "Cortex",
+    product: "Blueprint",
     version: pkg.version,
     commit,
     platform: targetPlatform,

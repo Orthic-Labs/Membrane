@@ -16,10 +16,10 @@ test("SARIF maps findings with stable rules and severities", () => {
     { ruleId: "r2", severity: "warning", message: "warn", fingerprint: "fp2", path: "src/b.ts" },
   ], "0.2.0");
   assert.equal(sarif.version, "2.1.0");
-  assert.equal(sarif.runs[0].tool.driver.name, "Cortex");
+  assert.equal(sarif.runs[0].tool.driver.name, "Blueprint");
   assert.equal(sarif.runs[0].results.length, 2);
   assert.equal(sarif.runs[0].results[0].level, "error");
-  assert.equal(sarif.runs[0].results[0].partialFingerprints.cortexFinding, "fp1");
+  assert.equal(sarif.runs[0].results[0].partialFingerprints.blueprintFinding, "fp1");
   assert.equal(sarif.runs[0].results[0].locations[0].physicalLocation.region.startLine, 3);
   assert.equal(sarif.runs[0].results[0].properties.generationId, "g1");
   assert.equal(sarif.runs[0].tool.driver.rules[0].defaultConfiguration.level, "error");
@@ -47,9 +47,9 @@ test("run ledger rejects broken chains", () => {
 });
 
 test("Action runs read-only on forks and writes SARIF + ledger", async () => {
-  const workspace = mkdtempSync(join(tmpdir(), "cortex-action-"));
+  const workspace = mkdtempSync(join(tmpdir(), "blueprint-action-"));
   try {
-    writeFileSync(join(workspace, "cortex.rules.yml"), [
+    writeFileSync(join(workspace, "blueprint.rules.yml"), [
       "version: 1",
       "rules:",
       "  - id: ui-must-not-import-db",
@@ -64,8 +64,8 @@ test("Action runs read-only on forks and writes SARIF + ledger", async () => {
     const result = await runAction({ workspace, isFork: true });
     assert.equal(result.status, "completed");
     assert.equal(result.ruleCount, 1);
-    assert.ok(existsSync(join(workspace, "cortex.sarif")));
-    const sarif = JSON.parse(readFileSync(join(workspace, "cortex.sarif"), "utf8"));
+    assert.ok(existsSync(join(workspace, "blueprint.sarif")));
+    const sarif = JSON.parse(readFileSync(join(workspace, "blueprint.sarif"), "utf8"));
     assert.equal(sarif.version, "2.1.0");
     assert.ok(result.ledgerDigest);
   } finally {

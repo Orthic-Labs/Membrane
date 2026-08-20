@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "schema": "cortex-retrieval-report-v1",
+  "schema": "blueprint-retrieval-report-v1",
   "runAt": "2026-08-09T23:57:57.163Z",
-  "corpusPath": "D:\\Claude\\cortex\\evals\\retrieval-corpus\\corpus.v1.json",
+  "corpusPath": "D:\\Claude\\blueprint\\evals\\retrieval-corpus\\corpus.v1.json",
   "corpusSize": 30,
   "corpusClassCounts": {
     "specific-symbol": 12,
@@ -2805,8 +2805,8 @@
             "source": "graph"
           },
           {
-            "id": "file:config/cortex.json",
-            "path": "config/cortex.json",
+            "id": "file:config/blueprint.json",
+            "path": "config/blueprint.json",
             "kind": "file",
             "abstained": false,
             "reason": null,

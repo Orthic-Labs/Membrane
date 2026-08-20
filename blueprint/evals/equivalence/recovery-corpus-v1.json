@@ -1,5 +1,5 @@
 {
-  "schema": "cortex-recovery-equivalence-corpus-v1",
+  "schema": "blueprint-recovery-equivalence-corpus-v1",
   "cases": [
     {
       "id": "cancelled-service-request-is-typed-and-isolated",

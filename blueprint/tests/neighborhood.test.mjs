@@ -8,7 +8,7 @@ import { buildNeighborhood } from "../src/graph/neighborhood.mjs";
 import { buildGraphGeneration, readGeneration } from "../src/graph/static-provider.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 const SCHEMA = join(ROOT, "schemas/repository-neighborhood-v1.schema.json");
 import { validateJsonSchema } from "./python-test-runtime.mjs";
@@ -52,14 +52,14 @@ test("anchors survive budget 1 and PageRank output is deterministic", () => {
   // subgraph" rather than as a hop omission (it was never in the candidate
   // set to begin with).
   assert.deepEqual(first.omissions, [
-    { reason: "budget", count: 2, recovery: "raise --budget-tokens | cortex neighborhood <path>" },
-    { reason: "hops", count: 1, recovery: "cortex neighborhood <path>" },
-    { reason: "unresolved", count: 1, recovery: "cortex neighborhood <path>" },
+    { reason: "budget", count: 2, recovery: "raise --budget-tokens | blueprint neighborhood <path>" },
+    { reason: "hops", count: 1, recovery: "blueprint neighborhood <path>" },
+    { reason: "unresolved", count: 1, recovery: "blueprint neighborhood <path>" },
   ]);
 });
 
 test("neighborhood CLI emits a barrier receipt and schema-valid output", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-neighborhood-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-neighborhood-"));
   try {
     cpSync(FIXTURE, repo, { recursive: true });
     buildGraphGeneration(repo, { outDir: ".agent", persist: true });
@@ -80,7 +80,7 @@ test("neighborhood CLI emits a barrier receipt and schema-valid output", () => {
 test("admission preserves an attached neighborhood", async () => {
   const { createAdmission } = await import("../src/lib/admission.mjs");
   const generation = handFixture();
-  const storeDir = mkdtempSync(join(tmpdir(), "cortex-neighborhood-admission-"));
+  const storeDir = mkdtempSync(join(tmpdir(), "blueprint-neighborhood-admission-"));
   const admission = createAdmission({
     storeDir,
     readGeneration: () => generation,

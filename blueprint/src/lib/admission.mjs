@@ -1,4 +1,4 @@
-// Cortex admission — decision-only library.
+// Blueprint admission — decision-only library.
 //
 // Operations: orient / expand / status / revoke.
 // Returns a neutral decision contract Crypt (or any host) can consume.
@@ -192,9 +192,9 @@ export function createAdmission(options = {}) {
     if (!status || status.state === "missing" || status.state === "incomplete") {
       return decision({
         action: "block",
-        reason: "No complete Cortex graph generation is available for orientation.",
+        reason: "No complete Blueprint graph generation is available for orientation.",
         reasonCode: "missing_graph",
-        nextAction: `cortex build --out ${outDir}`,
+        nextAction: `blueprint build --out ${outDir}`,
         omissions: [{ reason: "missing_graph" }],
         claimBoundary: claimBoundaryFor({
           permitClean: false,
@@ -211,7 +211,7 @@ export function createAdmission(options = {}) {
         action: "block",
         reason: "Graph store could not load a sealed generation for orientation.",
         reasonCode: "missing_generation",
-        nextAction: `cortex build --out ${outDir}`,
+        nextAction: `blueprint build --out ${outDir}`,
         claimBoundary: claimBoundaryFor({
           permitClean: false,
           state: status.state,
@@ -315,7 +315,7 @@ export function createAdmission(options = {}) {
       candidateSet,
       allowedScopes: allowedPaths,
       omissions: candidateSet.omissions ?? [],
-      nextAction: status.state === "stale" ? `cortex build --out ${outDir}` : null,
+      nextAction: status.state === "stale" ? `blueprint build --out ${outDir}` : null,
       evidence,
       evidencePath,
       receipt,
@@ -408,7 +408,7 @@ export function createAdmission(options = {}) {
         reason: "Graph generation missing; cannot expand from evidence.",
         reasonCode: "missing_generation",
         receiptId,
-        nextAction: `cortex build --out ${outDir}`,
+        nextAction: `blueprint build --out ${outDir}`,
       });
     }
     if (receipt.generationId && receipt.generationId !== generation.manifest.generationId) {

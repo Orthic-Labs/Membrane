@@ -1,11 +1,11 @@
-Cortex — portable runtime bundle
+Blueprint — portable runtime bundle
 
-This directory contains a self-contained Cortex installation:
+This directory contains a self-contained Blueprint installation:
 
-  bin/cortex           POSIX launcher (macOS/Linux)
-  bin/cortex.cmd       Windows command launcher
-  bin/cortex.ps1       Windows PowerShell launcher
-  bin/cortex-mcp       MCP server launcher
+  bin/blueprint           POSIX launcher (macOS/Linux)
+  bin/blueprint.cmd       Windows command launcher
+  bin/blueprint.ps1       Windows PowerShell launcher
+  bin/blueprint-mcp       MCP server launcher
   lib/node             Bundled Node LTS runtime (no system Node required)
   app/package          Application files
   app/node_modules     Production dependencies
@@ -15,5 +15,5 @@ This directory contains a self-contained Cortex installation:
   THIRD_PARTY_NOTICES  Third-party notices
   README.txt           This file
 
-Run `bin/cortex --help` to verify the install. No system Node, npm, or
+Run `bin/blueprint --help` to verify the install. No system Node, npm, or
 network is required.

@@ -30,7 +30,7 @@ test("distribution.xml, postinstall, and uninstall.sh exist", () => {
 
 test("postinstall does not enroll repositories", () => {
   const postinstall = readFileSync(join(ROOT, "release/macos/postinstall"), "utf8");
-  assert.ok(postinstall.includes("cortex init"));
+  assert.ok(postinstall.includes("blueprint init"));
 });
 
 test("verify-only mode checks signatures without signing", () => {

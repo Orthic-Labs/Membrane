@@ -9,7 +9,7 @@ import { buildProductManifest, validateProductManifest, writeProductManifest } f
 test("manifest builds with required SEAM §4.1 fields", () => {
   const manifest = buildProductManifest({ installRoot: process.cwd() });
   assert.equal(manifest.schemaVersion, 1);
-  assert.equal(manifest.productId, "cortex");
+  assert.equal(manifest.productId, "blueprint");
   assert.ok(manifest.displayName);
   assert.ok(manifest.productVersion);
   assert.ok(manifest.hubCompatRange);
@@ -22,11 +22,11 @@ test("manifest builds with required SEAM §4.1 fields", () => {
   assert.equal(manifest.statusEndpoint.authHeader, "Authorization");
   assert.ok(manifest.statusEndpoint.authToken);
   assert.ok(manifest.icon);
-  assert.ok(manifest.icon.replaceAll("\\", "/").includes("assets/icon/cortex-tab.png"));
+  assert.ok(manifest.icon.replaceAll("\\", "/").includes("assets/icon/blueprint-tab.png"));
   assert.ok(manifest.icon.startsWith(manifest.installRoot));
   assert.ok(manifest.serviceStart[0].startsWith(manifest.installRoot));
   assert.equal(existsSync(manifest.serviceStart[0]), true);
-  assert.equal(manifest.serviceStart[0].endsWith(process.platform === "win32" ? "cortex.cmd" : "cortex.mjs"), true);
+  assert.equal(manifest.serviceStart[0].endsWith(process.platform === "win32" ? "blueprint.cmd" : "blueprint.mjs"), true);
 });
 
 test("manifest validates against schema", async () => {
@@ -58,14 +58,14 @@ test("manifest path-resolution mirrors Hub check", () => {
 });
 
 test("writeProductManifest writes to temp location", () => {
-  const tmp = mkdtempSync(join(tmpdir(), "cortex-manifest-"));
-  const out = join(tmp, "cortex.json");
+  const tmp = mkdtempSync(join(tmpdir(), "blueprint-manifest-"));
+  const out = join(tmp, "blueprint.json");
   try {
     const { manifest, path } = writeProductManifest({ installRoot: process.cwd(), outPath: out });
     assert.equal(path, out);
     assert.ok(existsSync(out));
     const loaded = JSON.parse(readFileSync(out, "utf8"));
-    assert.equal(loaded.productId, "cortex");
+    assert.equal(loaded.productId, "blueprint");
     assert.equal(loaded.schemaVersion, 1);
   } finally {
     rmSync(tmp, { recursive: true, force: true });

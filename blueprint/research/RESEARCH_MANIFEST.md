@@ -1,4 +1,4 @@
-# Cortex Research Manifest
+# Blueprint Research Manifest
 
 Total papers: 36. Markdown converted from source PDFs (pymupdf4llm);
 the arXiv source linked in each file header is authoritative.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // D14: build a platform archive from a staged runtime bundle. Creates
-// cortex-<platform>-<arch>.tar.gz (macOS/Linux) or .zip (Windows) plus a
+// blueprint-<platform>-<arch>.tar.gz (macOS/Linux) or .zip (Windows) plus a
 // checksum, and registers it in the release catalog shape.
 
 import { execFileSync } from "node:child_process";
@@ -15,7 +15,7 @@ export function buildRuntimeArchive({ out = null, stage = null } = {}) {
   const outDir = out ?? join(staged, "..");
   const platform = process.platform;
   const arch = process.arch;
-  const archiveName = `cortex-${platform}-${arch}.${platform === "win32" ? "zip" : "tar.gz"}`;
+  const archiveName = `blueprint-${platform}-${arch}.${platform === "win32" ? "zip" : "tar.gz"}`;
   const archivePath = join(outDir, archiveName);
   const cwd = resolve(staged, "..");
   const dirName = basename(staged);

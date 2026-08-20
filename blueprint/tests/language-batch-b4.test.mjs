@@ -27,7 +27,7 @@ test("swift fixture parses with evidence-bearing nodes", async () => {
   const fixture = join(FIXTURES, "swift", "basic.swift");
   const tree = record.parser.parse(readFileSync(fixture, "utf8"));
   try {
-    const result = walkTable({ table, tree, filePath: "basic.swift", providerId: "cortex-treesitter", precisionTier: "AST" });
+    const result = walkTable({ table, tree, filePath: "basic.swift", providerId: "blueprint-treesitter", precisionTier: "AST" });
     for (const node of result.nodes) {
       assert.ok(node.evidence?.length > 0, "swift: node without evidence");
     }

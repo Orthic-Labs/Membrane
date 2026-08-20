@@ -12,7 +12,7 @@ import { verifyGrammars } from "../scripts/grammars/verify.mjs";
 import { languageByExtension, languageCapabilityRecords, manifestDigest } from "../src/graph/language-registry.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts", "cortex.mjs");
+const CLI = join(ROOT, "scripts", "blueprint.mjs");
 
 test("inventory finds exactly 36 grammars with hashes", () => {
   const inventory = inventoryGrammars();
@@ -60,7 +60,7 @@ test("capability records cover all 36 languages with tier and limits", () => {
   }
 });
 
-test("cortex languages --json works from the facade", () => {
+test("blueprint languages --json works from the facade", () => {
   const result = spawnSync(process.execPath, [CLI, "languages", "--json"], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
   const payload = JSON.parse(result.stdout);

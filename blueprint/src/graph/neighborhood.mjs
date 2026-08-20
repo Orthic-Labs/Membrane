@@ -280,9 +280,9 @@ export function buildNeighborhood(generation, anchors, { budgetTokens = 8000, re
     resolved: edge.resolved !== false,
   })).sort((left, right) => left.id.localeCompare(right.id));
   const omissions = [];
-  if (budgetOmissions) omissions.push({ reason: "budget", count: budgetOmissions, recovery: "raise --budget-tokens | cortex neighborhood <path>" });
-  if (hopOmissions) omissions.push({ reason: "hops", count: hopOmissions, recovery: "cortex neighborhood <path>" });
-  if (unresolved) omissions.push({ reason: "unresolved", count: unresolved, recovery: "cortex neighborhood <path>" });
+  if (budgetOmissions) omissions.push({ reason: "budget", count: budgetOmissions, recovery: "raise --budget-tokens | blueprint neighborhood <path>" });
+  if (hopOmissions) omissions.push({ reason: "hops", count: hopOmissions, recovery: "blueprint neighborhood <path>" });
+  if (unresolved) omissions.push({ reason: "unresolved", count: unresolved, recovery: "blueprint neighborhood <path>" });
   const selectedIds = neurons.map((neuron) => neuron.id);
   return {
     schemaVersion: 1,

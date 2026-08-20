@@ -1,7 +1,7 @@
 // Adapter 6 — Live files newer than the graph.
 //
 // Detects files whose working-tree mtime or content hash has moved past
-// the Cortex graph generation timestamp. Per dispatch overlay ownership:
+// the Blueprint graph generation timestamp. Per dispatch overlay ownership:
 // G1 detects, G3 ranks, G5 (this lane) produces typed candidates.
 //
 // Strategy:
@@ -19,7 +19,7 @@
 //   - `dirty-files` = `git status` overlay (tracked-status-aware)
 //   - `live-overlay` = mtime/hash drift against the graph generation,
 //     including untracked files not yet noticed by git, and files that
-//     moved past the most recent Cortex rebuild.
+//     moved past the most recent Blueprint rebuild.
 //
 // Both emit at Layer 1 with providerScore 0.85–0.95 depending on signal
 // strength. The planner picks one (or none) per file via its dedupe rule.
@@ -205,7 +205,7 @@ export function produce(task, scope) {
         endLine: body.lines,
         bodyHash: body.bodyHash,
         estimatedTokens: Math.max(1, body.lines),
-        resolver: `cortex graph overlay --check ${safe}`,
+        resolver: `blueprint graph overlay --check ${safe}`,
       }),
     );
   }
@@ -217,7 +217,7 @@ export const adapterInfo = {
   id: ADAPTER_ID,
   layer: ADAPTER_LAYER,
   provider: SCOPE_PROVIDER,
-  description: "Live files whose content or mtime has moved past the Cortex graph generation.",
+  description: "Live files whose content or mtime has moved past the Blueprint graph generation.",
 };
 
 export const _internals = { loadGenerationMeta, walkFiles, gitIgnored };

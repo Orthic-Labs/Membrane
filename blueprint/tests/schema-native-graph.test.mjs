@@ -7,7 +7,7 @@ import test from "node:test";
 import { buildGraphGeneration, graphCapabilities } from "../src/graph/static-provider.mjs";
 
 function withFiles(files, run) {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-schema-native-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-schema-native-"));
   try {
     for (const [relativePath, contents] of Object.entries(files)) {
       const absolutePath = path.join(repo, relativePath);

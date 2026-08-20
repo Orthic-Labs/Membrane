@@ -60,7 +60,7 @@ test("shipped signing key must be present in the shipped trust root or fail clea
 });
 
 test("clean-host rehearsal runs installed package stages", async () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-clean-host-candidate-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-clean-host-candidate-"));
   try {
     buildCandidate({ out, allowDirty: true });
     const { runCleanHostSmoke } = await import("../scripts/release/clean-host-smoke.mjs");
@@ -83,7 +83,7 @@ function readJson(path) { return JSON.parse(readFileSync(path, "utf8")); }
 function sha256File(path) { return createHash("sha256").update(readFileSync(path)).digest("hex"); }
 
 function repackWithShippedRoot(tarballPath, keys) {
-  const dir = join(tmpdir(), `cortex-clean-host-repack-${process.pid}-${Math.random().toString(36).slice(2)}`);
+  const dir = join(tmpdir(), `blueprint-clean-host-repack-${process.pid}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   const unpacked = join(dir, "unpacked");
   mkdirSync(unpacked, { recursive: true });
@@ -99,7 +99,7 @@ function repackWithShippedRoot(tarballPath, keys) {
 }
 
 test("clean-host rehearsal applies and rolls back against a shipped trust root without overwriting it", async () => {
-  const out = mkdtempSync(join(tmpdir(), "cortex-clean-host-candidate-"));
+  const out = mkdtempSync(join(tmpdir(), "blueprint-clean-host-candidate-"));
   try {
     buildCandidate({ out, allowDirty: true });
     const compatibilityPath = join(out, "compatibility.json");

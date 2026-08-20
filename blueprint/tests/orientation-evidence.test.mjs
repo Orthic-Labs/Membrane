@@ -16,7 +16,7 @@ import {
 test("candidateSetDigest is stable for equivalent candidate sets", () => {
   const a = {
     schemaVersion: 1,
-    provider: "cortex-static",
+    provider: "blueprint-static",
     freshness: { revision: "xxh128:1" },
     candidates: [
       { id: "symbol:a", sourceRef: "a.ts:1-2", sourceHash: "xxh128:aa", protected: true, exact: false },
@@ -43,7 +43,7 @@ test("buildOrientationEvidence matches Forge-consumable shape", () => {
   });
   const evidence = buildOrientationEvidence(receipt);
   assert.equal(evidence.kind, ORIENTATION_EVIDENCE_KIND);
-  assert.equal(evidence.locator, "cortex://receipt/rec-1");
+  assert.equal(evidence.locator, "blueprint://receipt/rec-1");
   assert.equal(evidence.content_hash, "sha256:candidates");
   assert.equal(evidence.invalidation_key, "sha256:manifest:2");
   assert.equal(evidence.trust_class, "host_attested");
@@ -64,7 +64,7 @@ test("writeOrientationEvidenceFile emits an attest-able JSON file", () => {
     assert.ok(existsSync(path));
     const onDisk = JSON.parse(readFileSync(path, "utf8"));
     assert.deepEqual(onDisk, evidence);
-    assert.equal(onDisk.kind, "cortex_orientation");
+    assert.equal(onDisk.kind, "blueprint_orientation");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

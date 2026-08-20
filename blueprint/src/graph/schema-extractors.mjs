@@ -62,7 +62,7 @@ function symbolNode(file, name, startLine, endLine, labels) {
 
 function referenceEdge(source, target) {
   // Text-pattern name match against another schema symbol — a heuristic that
-  // crosses file boundaries without a resolved binding (cortex B3).
+  // crosses file boundaries without a resolved binding (blueprint B3).
   const tier = EDGE_CONFIDENCE_TIERS.CROSS_FILE_HEURISTIC;
   return {
     id: `edge:REFERENCES:${source.id}->${target.id}`,

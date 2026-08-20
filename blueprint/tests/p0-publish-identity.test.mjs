@@ -28,7 +28,7 @@ test("saveGeneration is atomic: row failure rolls back envelope writes and stale
     const good = {
       schemaVersion: 1,
       manifest: { generationId: "gen-good", complete: true, counts: { nodes: 1, edges: 0 } },
-      provider: { id: "cortex-static" },
+      provider: { id: "blueprint-static" },
       nodes: [{
         id: "file:a.ts",
         kind: "file",
@@ -77,7 +77,7 @@ test("saveGeneration preserves prior generation for row, envelope, and stale-key
   const base = {
     schemaVersion: 1,
     manifest: { generationId: "gen-prior", complete: true, counts: { nodes: 1, edges: 0 } },
-    provider: { id: "cortex-static" },
+    provider: { id: "blueprint-static" },
     nodes: [{
       id: "file:prior.ts", kind: "file", labels: ["File"], name: "prior.ts", qualifiedName: "prior.ts",
       path: "prior.ts", confidence: 1, evidence: [{ path: "prior.ts", startLine: 1, endLine: 1, contentHash: "prior" }],

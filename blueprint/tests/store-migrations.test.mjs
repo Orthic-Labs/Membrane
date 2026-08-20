@@ -28,7 +28,7 @@ import {
 } from "../src/graph/store-sqlite.mjs";
 
 function withFixtureStores(fn) {
-  const dir = mkdtempSync(join(tmpdir(), "cortex-migrations-"));
+  const dir = mkdtempSync(join(tmpdir(), "blueprint-migrations-"));
   const stores = buildFixtureStores(join(dir, "stores"));
   try {
     return fn(stores);
@@ -44,7 +44,7 @@ test("N-1 (schema v16) fixture repairs dense order, canonical provenance, and ra
       assert.equal(getSchemaVersion(db), SCHEMA_VERSION, "schema upgraded to current");
       assert.equal(getGenerationEnvelope(db, "manifest").generationId, "gen-v16", "envelope preserved");
       assert.equal(getFile(db, "a.ts").content_hash, "h-a-v16", "file row preserved");
-      assert.equal(getFile(db, "a.ts").provider, "cortex-treesitter", "parser report provider preserved");
+      assert.equal(getFile(db, "a.ts").provider, "blueprint-treesitter", "parser report provider preserved");
       const symbols = listSymbolsByPath(db, "a.ts");
       assert.ok(symbols.some((s) => s.name === "v16Alpha"), "symbol rows preserved");
       assert.deepEqual(db.prepare("SELECT node_ordinal FROM files UNION ALL SELECT node_ordinal FROM symbols UNION ALL SELECT node_ordinal FROM annotation_nodes ORDER BY node_ordinal").all().map((row) => row.node_ordinal), [0,1,2,3,4]);
@@ -71,7 +71,7 @@ test("N-2 (schema v15) fixture preserves annotation interleave and reconstructs 
       assert.equal(getSchemaVersion(db), SCHEMA_VERSION, "schema upgraded to current");
       assert.equal(getGenerationEnvelope(db, "manifest").generationId, "gen-v15", "envelope preserved");
       assert.equal(getFile(db, "b.ts").content_hash, "h-b-v15", "file row preserved");
-      assert.equal(getFile(db, "b.ts").provider, "cortex-treesitter", "parser report provider preserved");
+      assert.equal(getFile(db, "b.ts").provider, "blueprint-treesitter", "parser report provider preserved");
       const symbols = listSymbolsByPath(db, "b.ts");
       assert.ok(symbols.some((s) => s.name === "v15Beta"), "symbol rows preserved");
       assert.equal(listEdges(db).length, 1, "edge rows preserved");
@@ -148,11 +148,11 @@ test("migrated alias batches replace canonical winners and delete every old-path
       const beforeGeneration = getGenerationEnvelope(db, "manifest").generationId;
       const file = { ...loadGeneration(db).nodes.find((node) => node.id === "file:a.ts"), name: "alias-updated", evidence: [{ path: "a.ts", contentHash: "after-alias" }] };
       const fresh = { id: "symbol:a.ts::freshAlias", kind: "symbol", labels: ["Function"], name: "freshAlias", qualifiedName: "freshAlias", path: "a.ts", confidence: 1, evidence: [] };
-      applyFileDelta(db, { eventKind: "modify", path: "a.ts", contentDigest: "after-alias", sourceClock: 1, factBatches: [{ provider: { id: "cortex-static", version: "2" }, parsed: { nodes: [file, fresh], edges: [] } }] });
+      applyFileDelta(db, { eventKind: "modify", path: "a.ts", contentDigest: "after-alias", sourceClock: 1, factBatches: [{ provider: { id: "blueprint-static", version: "2" }, parsed: { nodes: [file, fresh], edges: [] } }] });
       assert.equal(getFile(db, "a.ts").content_hash, "after-alias");
       assert.notEqual(getGenerationEnvelope(db, "manifest").generationId, beforeGeneration);
       assert.equal(db.prepare("SELECT provider_id FROM node_provider WHERE node_id=?").get(fresh.id).provider_id, "lexical");
-      applyFileDelta(db, { eventKind: "delete", path: "a.ts", sourceClock: 2, provider: { id: "cortex-static", version: "2" } });
+      applyFileDelta(db, { eventKind: "delete", path: "a.ts", sourceClock: 2, provider: { id: "blueprint-static", version: "2" } });
       assert.equal(db.prepare("SELECT COUNT(*) n FROM symbols WHERE path='a.ts'").get().n, 0);
       assert.equal(db.prepare("SELECT COUNT(*) n FROM node_provider WHERE source_path='a.ts'").get().n, 0);
       assert.equal(db.prepare("SELECT COUNT(*) n FROM fact_owner WHERE source_path='a.ts'").get().n, 0);

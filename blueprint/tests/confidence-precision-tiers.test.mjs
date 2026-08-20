@@ -21,7 +21,7 @@ import {
 import { buildTreeSitterGraph, PROVIDER as TREESITTER_PROVIDER } from "../src/graph/treesitter-provider.mjs";
 
 function withFiles(files, run) {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "cortex-tiers-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "blueprint-tiers-"));
   try {
     for (const [relativePath, contents] of Object.entries(files)) {
       const absolutePath = path.join(repo, relativePath);
@@ -58,7 +58,7 @@ test("isTierAtLeast compares tier certainty, not string equality", () => {
   assert.ok(isTierAtLeast(EDGE_CONFIDENCE_TIERS.SAME_FILE_LEXICAL, EDGE_CONFIDENCE_TIERS.CROSS_FILE_HEURISTIC));
 });
 
-test("cortex-static: resolved IMPORTS is EXACT_RESOLUTION, same-file CALLS is SAME_FILE_LEXICAL, cross-file import-linked CALLS is CROSS_FILE_HEURISTIC", () => {
+test("blueprint-static: resolved IMPORTS is EXACT_RESOLUTION, same-file CALLS is SAME_FILE_LEXICAL, cross-file import-linked CALLS is CROSS_FILE_HEURISTIC", () => {
   withFiles({
     "src/service.ts": [
       "export function localHelper() { return 1; }",
@@ -84,7 +84,7 @@ test("cortex-static: resolved IMPORTS is EXACT_RESOLUTION, same-file CALLS is SA
   });
 });
 
-test("cortex-static: unresolved relative import is tagged UNRESOLVED, target null, never dropped", () => {
+test("blueprint-static: unresolved relative import is tagged UNRESOLVED, target null, never dropped", () => {
   withFiles({
     "src/broken.ts": "import { missing } from './does-not-exist';\nexport function use() { return missing(); }\n",
   }, (repo) => {
@@ -99,7 +99,7 @@ test("cortex-static: unresolved relative import is tagged UNRESOLVED, target nul
   });
 });
 
-test("cortex-static: an ambiguous call (name exists in 2+ unrelated files, no import link) is tagged UNRESOLVED and kept, never guessed", () => {
+test("blueprint-static: an ambiguous call (name exists in 2+ unrelated files, no import link) is tagged UNRESOLVED and kept, never guessed", () => {
   withFiles({
     "src/one.ts": "export function sharedName() { return 1; }\n",
     "src/two.ts": "export function sharedName() { return 2; }\n",
@@ -116,7 +116,7 @@ test("cortex-static: an ambiguous call (name exists in 2+ unrelated files, no im
   });
 });
 
-test("cortex-static: every edge (resolved or not) carries a tier from the shared vocabulary", () => {
+test("blueprint-static: every edge (resolved or not) carries a tier from the shared vocabulary", () => {
   withFiles({
     "src/a.ts": "import './b';\nexport function fromA() { return fromB(); }\n",
     "src/b.ts": "export function fromB() { return 1; }\n",
@@ -142,7 +142,7 @@ test("filterEdgesByMinTier keeps only edges at least as certain as the floor", (
   });
 });
 
-test("cortex-treesitter: unresolved import and ambiguous call are tagged UNRESOLVED, never dropped", async () => {
+test("blueprint-treesitter: unresolved import and ambiguous call are tagged UNRESOLVED, never dropped", async () => {
   const files = [
     { path: "src/broken.ts", text: "import { missing } from './nope';\nexport function use() { return missing(); }\n" },
     { path: "src/one.ts", text: "export function sharedName() { return 1; }\n" },

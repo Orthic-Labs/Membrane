@@ -6,11 +6,11 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const ROOT = join(import.meta.dirname, "..");
-const CLI = join(ROOT, "scripts/cortex.mjs");
+const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
 test("read commands never open graph.db writable", () => {
-  const repo = mkdtempSync(join(tmpdir(), "cortex-read-only-"));
+  const repo = mkdtempSync(join(tmpdir(), "blueprint-read-only-"));
   cpSync(FIXTURE, repo, { recursive: true });
   try {
     const build = spawnSync(process.execPath, [CLI, "graph", "build", "--out", ".agent"], { cwd: repo, encoding: "utf8" });

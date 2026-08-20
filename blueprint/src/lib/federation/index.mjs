@@ -2,16 +2,16 @@
 // by repo ID and generation. Federation composes slices; it never raw-merges
 // stores. Cross-repo answers retain repository boundaries.
 
-import { CortexError } from "../application/errors.mjs";
+import { BlueprintError } from "../application/errors.mjs";
 
 export function composeFederatedSlices(slices = []) {
   const repos = [];
   for (const slice of slices) {
     if (!slice.repoId || !slice.generationId) {
-      throw new CortexError("slice_incomplete", "each federated slice needs repoId and generationId");
+      throw new BlueprintError("slice_incomplete", "each federated slice needs repoId and generationId");
     }
     if (repos.some((existing) => existing.repoId === slice.repoId && existing.generationId !== slice.generationId)) {
-      throw new CortexError("generation_ambiguity", `repo ${slice.repoId} contributed two generations`);
+      throw new BlueprintError("generation_ambiguity", `repo ${slice.repoId} contributed two generations`);
     }
     repos.push({ repoId: slice.repoId, generationId: slice.generationId, resultCount: slice.results?.length ?? 0 });
   }

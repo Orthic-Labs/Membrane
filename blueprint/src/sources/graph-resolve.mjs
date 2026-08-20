@@ -1,8 +1,8 @@
-// Adapter 3 — Exact paths and symbols via Cortex resolve.
+// Adapter 3 — Exact paths and symbols via Blueprint resolve.
 //
-// Resolves named paths and symbols against the existing Cortex graph.
+// Resolves named paths and symbols against the existing Blueprint graph.
 // This adapter does NOT regenerate the graph; it consumes a `generation`
-// (or lazily rebuilds via the portable contract) and uses Cortex's
+// (or lazily rebuilds via the portable contract) and uses Blueprint's
 // `resolveGraphNode` / `queryGraph` to produce exact candidates.
 //
 // Resolution rules:
@@ -15,7 +15,7 @@
 //     as the query (limit ≤ 5) and emit only those whose qualifiedName
 //     matches the token exactly.
 //
-// If no Cortex graph is available (no `.agent/manifest.json`, no
+// If no Blueprint graph is available (no `.agent/manifest.json`, no
 // `.agent/manifest.json`), this adapter emits a single omission with
 // reason `graph_unavailable` and returns. It does not synthesise candidates
 // from raw source scans — that is the live-overlay adapter's job.
@@ -176,7 +176,7 @@ const PATH_LIKE_RE =
 const RANGE_RE = /^(\d+)-(\d+)$/;
 
 function loadGeneration(repoRoot) {
-  // Cortex's native generation lives in the store. (The previous path here,
+  // Blueprint's native generation lives in the store. (The previous path here,
   // `.agent/graph.json`, was wrong even before the migration — the generation
   // was always at `.agent/graph/graph.json` — so this branch never fired and
   // every caller silently fell through to the bootstrap index.)
@@ -207,7 +207,7 @@ function loadGeneration(repoRoot) {
       if (path.endsWith("index.jsonl")) {
         const lines = readFileSync(path, "utf8").split(/\r?\n/).filter(Boolean);
         const nodes = lines.map((line) => JSON.parse(line));
-        return { nodes, edges: [], manifest: { generationId: "cortex-portable", provider: { id: "cortex-portable" }, generatedAt: null }, portable: true };
+        return { nodes, edges: [], manifest: { generationId: "blueprint-portable", provider: { id: "blueprint-portable" }, generatedAt: null }, portable: true };
       }
     } catch {
       continue;
@@ -325,7 +325,7 @@ export function produce(task, scope) {
             endLine,
             bodyHash: ev.contentHash ?? xxh3Hex(node.qualifiedName ?? item.symbol),
             estimatedTokens: Math.max(1, endLine - startLine + 1),
-            resolver: `cortex graph resolve --node ${node.id}`,
+            resolver: `blueprint graph resolve --node ${node.id}`,
             actualText: resolution?.text ?? null,
             originalText: resolution?.originalText ?? null,
             actualStartLine: resolution?.startLine ?? null,
@@ -362,7 +362,7 @@ export function produce(task, scope) {
           endLine,
           bodyHash: ev.contentHash ?? xxh3Hex(safe),
           estimatedTokens: Math.max(1, endLine - startLine + 1),
-          resolver: `cortex graph resolve --node ${fileNode.id}`,
+          resolver: `blueprint graph resolve --node ${fileNode.id}`,
         }),
       );
       used.add(fileNode.id);
@@ -408,7 +408,7 @@ export function produce(task, scope) {
           endLine,
           bodyHash: ev.contentHash ?? xxh3Hex(node.qualifiedName ?? token),
           estimatedTokens: Math.max(1, endLine - startLine + 1),
-          resolver: `cortex graph resolve --node ${node.id}`,
+          resolver: `blueprint graph resolve --node ${node.id}`,
         }),
       );
     }
@@ -421,7 +421,7 @@ export const adapterInfo = {
   id: ADAPTER_ID,
   layer: ADAPTER_LAYER,
   provider: SCOPE_PROVIDER,
-  description: "Exact path and symbol resolution through Cortex's static provider.",
+  description: "Exact path and symbol resolution through Blueprint's static provider.",
 };
 
 export const _internals = { findFileNode, findSymbolNode, lexTokens, pathAndSymbol, loadGeneration, resolveContentByPath };

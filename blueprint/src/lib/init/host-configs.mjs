@@ -15,9 +15,9 @@ export function policyBehavior(mode) {
     mode,
     failClosed: policy.failClosed,
     recoveryCommand: mode === "orient-before-read"
-      ? "cortex orient --session <id>"
+      ? "blueprint orient --session <id>"
       : mode === "task-grants"
-        ? "cortex grant issue --task <id> --paths <glob>"
+        ? "blueprint grant issue --task <id> --paths <glob>"
         : null,
   };
 }

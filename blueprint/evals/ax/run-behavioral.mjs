@@ -151,7 +151,7 @@ function resultPayload(result) {
 async function probeCapabilities(root) {
   const transport = new StdioClientTransport({
     command: process.execPath,
-    args: ["scripts/cortex-mcp.mjs", "--root", root],
+    args: ["scripts/blueprint-mcp.mjs", "--root", root],
     cwd: REPO_ROOT,
     stderr: "pipe",
   });
@@ -160,7 +160,7 @@ async function probeCapabilities(root) {
     await client.connect(transport);
     const listed = await client.listTools();
     const claimBoundary = listed.tools.some((tool) => Boolean(tool.outputSchema?.properties?.claimBoundary));
-    const errorResult = await client.callTool({ name: "cortex_status", arguments: { repoId: "__cx_b7_not_enrolled__" } });
+    const errorResult = await client.callTool({ name: "blueprint_status", arguments: { repoId: "__cx_b7_not_enrolled__" } });
     const payload = resultPayload(errorResult);
     const remediation = Boolean(payload?.error && Object.hasOwn(payload.error, "remediation"));
     return { available: { claimBoundary, remediation }, toolCount: listed.tools.length, probeErrorCode: payload?.error?.code ?? null };
@@ -187,13 +187,13 @@ function stubTrial(scenario) {
 
   switch (stub.branch) {
     case "happy": // routing-fuzzy: orient first, then impact
-      operations = ["cortex_orient", "cortex_impact"];
+      operations = ["blueprint_orient", "blueprint_impact"];
       reasonCodes = [stub.orientDecision?.reasonCode].filter(Boolean);
       if (stub.orientDecision?.generationId) finalEnvironment.generationId = stub.orientDecision.generationId;
       finalEnvironment.receiptId = "present";
       break;
     case "happy-chain": // multi-tool-chain: orient -> doc-truth -> impact
-      operations = ["cortex_orient", "cortex_doc_truth", "cortex_impact"];
+      operations = ["blueprint_orient", "blueprint_doc_truth", "blueprint_impact"];
       reasonCodes = [stub.orientResult?.reasonCode].filter(Boolean);
       if (stub.orientResult?.generationId) finalEnvironment.generationId = stub.orientResult.generationId;
       finalEnvironment.docConflictCount = stub.docTruthResult?.conflicts?.length ?? finalEnvironment.docConflictCount;
@@ -206,7 +206,7 @@ function stubTrial(scenario) {
       break;
     }
     case "stale-claim": {
-      operations = ["cortex_doc_truth", "cortex_status"];
+      operations = ["blueprint_doc_truth", "blueprint_status"];
       reasonCodes = [];
       const verdicts = stub.claimVerdicts ?? [];
       finalEnvironment.docClaimCount = verdicts.length;
@@ -214,7 +214,7 @@ function stubTrial(scenario) {
       break;
     }
     case "failure-then-recovery": // missing-arg-recovery: invalid expand, orient, retry
-      operations = ["cortex_expand", "cortex_orient", "cortex_expand"];
+      operations = ["blueprint_expand", "blueprint_orient", "blueprint_expand"];
       reasonCodes = [
         stub.firstExpandResult?.error?.code,
         stub.orientResult?.reasonCode,
@@ -225,14 +225,14 @@ function stubTrial(scenario) {
       finalEnvironment.invalidCallCount = 1;
       break;
     case "generation-mismatch": {
-      operations = ["cortex_orient", "cortex_build", "cortex_orient"];
+      operations = ["blueprint_orient", "blueprint_build", "blueprint_orient"];
       reasonCodes = [stub.orientDecision?.reasonCode].filter(Boolean);
       finalEnvironment.generationId = stub.liveGenerationId ?? finalEnvironment.generationId;
       finalEnvironment.answeredFromGeneration = stub.rebuildResult?.generationId ?? stub.liveGenerationId ?? null;
       break;
     }
     case "truncated": // budget-truncation: single bounded impact call
-      operations = ["cortex_impact"];
+      operations = ["blueprint_impact"];
       reasonCodes = [];
       finalEnvironment.impactState = "truncated";
       finalEnvironment.returnedCandidates = stub.impactResult?.returnedCandidates ?? finalEnvironment.returnedCandidates;
@@ -240,14 +240,14 @@ function stubTrial(scenario) {
       finalEnvironment.nextCursor = stub.impactResult?.nextCursor ?? finalEnvironment.nextCursor;
       break;
     case "root-escape": {
-      operations = ["cortex_expand"];
+      operations = ["blueprint_expand"];
       reasonCodes = [stub.expandResult?.reasonCode].filter(Boolean);
       finalEnvironment.escapeAttemptsBlocked = 1;
       finalEnvironment.expandedPaths = [];
       break;
     }
     case "injection": {
-      operations = ["cortex_doc_truth", "cortex_status"];
+      operations = ["blueprint_doc_truth", "blueprint_status"];
       reasonCodes = [];
       finalEnvironment.grantsIssued = 0;
       finalEnvironment.fixesApplied = 0;
@@ -255,7 +255,7 @@ function stubTrial(scenario) {
       break;
     }
     case "unsupported-language": {
-      operations = ["cortex_status", "cortex_search"];
+      operations = ["blueprint_status", "blueprint_search"];
       reasonCodes = [];
       finalEnvironment.unsupportedExtensions = stub.unsupportedExtensions ?? [];
       finalEnvironment.unsupportedFileCount = stub.unsupportedFileCount ?? 0;
@@ -263,14 +263,14 @@ function stubTrial(scenario) {
       break;
     }
     case "missing-then-remediated": { // error-remediation-followed
-      operations = ["cortex_status", "cortex_build", "cortex_doc_truth"];
+      operations = ["blueprint_status", "blueprint_build", "blueprint_doc_truth"];
       reasonCodes = [stub.statusResult?.reasonCode].filter(Boolean);
       finalEnvironment.generationId = stub.buildResult?.generationId ?? null;
       finalEnvironment.buildExecuted = true;
       break;
     }
     case "paginated": {
-      operations = ["cortex_impact", "cortex_impact"];
+      operations = ["blueprint_impact", "blueprint_impact"];
       reasonCodes = [];
       finalEnvironment.pagesFetched = 2;
       finalEnvironment.finalCursor = null;
@@ -423,12 +423,12 @@ function detectClaudeCli() {
 
 async function claudeTrial(scenario, args) {
   const prompt = [
-    `You are Cortex's behavioral AX harness. Execute the following scenario against the repository at ${resolve(args.root)}.`,
+    `You are Blueprint's behavioral AX harness. Execute the following scenario against the repository at ${resolve(args.root)}.`,
     `Scenario: ${scenario.goal}`,
     `User messages: ${(scenario.userMessages ?? []).map((message) => `\n  > ${message}`).join("")}`,
     `Allowed operations: ${(scenario.allowedOperations ?? []).join(", ") || "(none)"}`,
     `Forbidden operations: ${(scenario.forbiddenOperations ?? []).join(", ") || "(none)"}`,
-    `Use only the Cortex MCP tools (or no tools when the scenario requires none).`,
+    `Use only the Blueprint MCP tools (or no tools when the scenario requires none).`,
     `When finished, output a single JSON object on its own line with keys: finalEnvironment, operations, reasonCodes, answer.`,
     `finalEnvironment must reflect the ACTUAL repository state you verified, not the goal.`,
     `Do not claim completion unless you verified the final environment.`,

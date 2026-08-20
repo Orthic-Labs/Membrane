@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { applyFileDelta, DOC_PROVIDER, MAX_DEPENDENT_FILES, MAX_HOPS, STRUCTURAL_PROVIDER } from "../src/graph/delta-store.mjs";
 import { parseFileFacts } from "../src/graph/static-provider.mjs";
 import { buildIncrementalTreeSitterFacts, SUPPORTED_EXTENSIONS } from "../src/graph/treesitter-provider.mjs";
-import { extractDoc, isDoc, loadConfig } from "../scripts/cortex.mjs";
+import { extractDoc, isDoc, loadConfig } from "../scripts/blueprint.mjs";
 import { MAX_SOURCE_FILE_BYTES, stableRead } from "../src/graph/stable-read.mjs";
 import { collectDependents, closeStore, listFileMetadata, listSymbolMetadata, maintainStore, openStore, openStoreReadOnly } from "../src/graph/store-sqlite.mjs";
 import { eventsSince, isEligibleWatchPath, startWatch, writeSnapshot } from "./adapter.mjs";
@@ -209,8 +209,8 @@ export async function drainJournal(db, root, { force = true, maxDependentFiles =
 // callback, not as a normal create/update/delete event — normalizeEvents()
 // already filters non-EVENT_TYPES entries, so the synthetic `eventKind:
 // "overflow"` path in ingest() below is reachable only via direct/manual
-// injection (CortexRepositoryWorker's own "overflow" kind, and tests). Both
-// paths converge on the same typed reason so `cortex-watch status` reports
+// injection (BlueprintRepositoryWorker's own "overflow" kind, and tests). Both
+// paths converge on the same typed reason so `blueprint-watch status` reports
 // the real condition instead of an opaque wrapped error string.
 const OVERFLOW_ERROR_PATTERN = /dropped by the .*client|must be re-scanned|queue overflow/i;
 function isOverflowError(error) {
@@ -253,7 +253,7 @@ export class RepositoryActor extends EventEmitter {
     // (D3): every prior revision reopened a fresh DatabaseSync — which also
     // re-runs migrate()'s schema-version check — on every single ingest,
     // flush, and gap, multiplying open/close churn against the same file
-    // that `cortex build` and the status poller also touch concurrently.
+    // that `blueprint build` and the status poller also touch concurrently.
     this.db = null;
     // Coalesces gap-repair reconciles: a real overflow burst can re-fire the
     // gap callback repeatedly (that IS the overflow reported in production).
@@ -552,7 +552,7 @@ export class RepositoryActor extends EventEmitter {
   }
 }
 
-export class CortexRepositoryWorker {
+export class BlueprintRepositoryWorker {
   constructor(options) { this.actor = new RepositoryActor(options); }
   async ingest(path, eventKind = "modify", renameTo = null) {
     try { return await this.#ingestOnce(path, eventKind, renameTo); }

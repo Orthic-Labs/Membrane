@@ -1,0 +1,10 @@
+{
+  "schema": "blueprint-storage-fixture-corpus-v1",
+  "fixtureVersion": 1,
+  "seed": "blueprint-storage-v1",
+  "fixtures": [
+    { "id": "synthetic-blueprint-storage-550-v1", "files": 550, "updatePaths": 100 },
+    { "id": "synthetic-blueprint-storage-5000-v1", "files": 5000, "updatePaths": 100 }
+  ],
+  "notes": "Synthetic generated corpus from scripts/generate-benchmark-fixture.mjs. It is a deterministic performance gate, not a canonical Blueprint-core measurement."
+}

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://orthic.labs/schemas/ax-scenario-v1.json",
   "title": "AXScenarioV1",
-  "description": "CX-B7 decoupled scenario corpus: JSON-compatible YAML parsed as JSON with no YAML dependency. requires is a capability-name array (claimBoundary, remediation); fixture carries workspaceFixture, expectedGeneration, requiredProvider, stub, claimBoundary, remediation setup. Grounded in Cortex surfaces: six MCP tools, admission reason codes, graph states.",
+  "description": "CX-B7 decoupled scenario corpus: JSON-compatible YAML parsed as JSON with no YAML dependency. requires is a capability-name array (claimBoundary, remediation); fixture carries workspaceFixture, expectedGeneration, requiredProvider, stub, claimBoundary, remediation setup. Grounded in Blueprint surfaces: six MCP tools, admission reason codes, graph states.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "scenarioId", "version", "goal", "initialState", "userMessages", "allowedOperations", "forbiddenOperations", "requires", "fixture", "expected", "budgets", "security"],
@@ -14,10 +14,10 @@
     "initialState": {
       "type": "object",
       "additionalProperties": true,
-      "required": ["workspaceFixture", "cortex"],
+      "required": ["workspaceFixture", "blueprint"],
       "properties": {
         "workspaceFixture": { "type": "string", "minLength": 1 },
-        "cortex": {
+        "blueprint": {
           "type": "object",
           "additionalProperties": true,
           "required": ["state"],

@@ -1,4 +1,4 @@
-// D26: custom language configuration — cortex.languages.toml entries point
+// D26: custom language configuration — blueprint.languages.toml entries point
 // to repo-confined WASM, table/query file, hash, extensions, and capability
 // profile. Absolute paths, parent traversal, URLs, and built-in IDs/extensions
 // are rejected. Built-in language IDs and extensions cannot be overridden.
@@ -12,7 +12,7 @@ import { languageCapabilityRecords } from "../../graph/language-registry.mjs";
 export const CUSTOM_CONFIG_VERSION = 1;
 
 function parseToml(source) {
-  // Minimal deterministic TOML subset for cortex.languages.toml (tables of
+  // Minimal deterministic TOML subset for blueprint.languages.toml (tables of
   // scalars + arrays). The format is pinned; a full TOML parser is not needed.
   const root = {};
   let current = root;
@@ -44,7 +44,7 @@ function sha256Hex(input) {
   return createHash("sha256").update(input).digest("hex");
 }
 
-export function loadCustomLanguages({ root = process.cwd(), configPath = "cortex.languages.toml" } = {}) {
+export function loadCustomLanguages({ root = process.cwd(), configPath = "blueprint.languages.toml" } = {}) {
   const fullPath = resolve(root, configPath);
   if (!existsSync(fullPath)) return { version: CUSTOM_CONFIG_VERSION, languages: [], errors: [] };
   let parsed;

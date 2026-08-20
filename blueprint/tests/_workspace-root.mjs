@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 
 /**
  * Walk upward for the parent monorepo that owns shared context contracts.
- * Standalone Cortex checkouts do not have this tree — use `required: false`
+ * Standalone Blueprint checkouts do not have this tree — use `required: false`
  * and skip workspace-only tests instead of failing a clean package test run.
  */
 export function findWorkspaceRoot(start, { required = true } = {}) {

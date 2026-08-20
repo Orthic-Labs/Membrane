@@ -20,7 +20,7 @@ import { closeStore, openStore } from "../src/graph/store-sqlite.mjs";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
-function makeRepo(prefix = "cortex-paths-") {
+function makeRepo(prefix = "blueprint-paths-") {
   const repo = mkdtempSync(join(tmpdir(), prefix));
   cpSync(FIXTURE, repo, { recursive: true });
   return repo;
@@ -28,7 +28,7 @@ function makeRepo(prefix = "cortex-paths-") {
 
 test("a symlinked repo root resolves to the same canonical root as the real path", () => {
   const repo = makeRepo();
-  const linkRoot = mkdtempSync(join(tmpdir(), "cortex-pathlink-"));
+  const linkRoot = mkdtempSync(join(tmpdir(), "blueprint-pathlink-"));
   const link = join(linkRoot, "linked");
   try {
     symlinkSync(repo, link, "dir");
@@ -45,7 +45,7 @@ test("a symlinked repo root resolves to the same canonical root as the real path
 
 test("repository identity is stable across case variants on case-insensitive filesystems", () => {
   const repo = makeRepo();
-  const variantParent = mkdtempSync(join(tmpdir(), "cortex-casevariant-"));
+  const variantParent = mkdtempSync(join(tmpdir(), "blueprint-casevariant-"));
   try {
     // The invariant is on the CANONICAL root: every spelling and symlink that
     // realpaths to the same directory must yield the same root and identity.
@@ -75,11 +75,11 @@ test("repository identity is stable across case variants on case-insensitive fil
 
 test("root registry confines an explicit repoRoot to enrolled roots", () => {
   const repo = makeRepo();
-  const elsewhere = mkdtempSync(join(tmpdir(), "cortex-elsewhere-"));
+  const elsewhere = mkdtempSync(join(tmpdir(), "blueprint-elsewhere-"));
   try {
     const registry = new RootRegistry([{ root: repo }]);
     assert.equal(registry.resolve({ repoRoot: repo }), realpathSync.native(repo));
-    assert.throws(() => registry.resolve({ repoRoot: elsewhere }), /No enrolled Cortex repository/);
+    assert.throws(() => registry.resolve({ repoRoot: elsewhere }), /No enrolled Blueprint repository/);
     // A trailing separator variant must not change the identity.
     assert.equal(registry.resolve({ repoRoot: `${resolve(repo)}${sep}` }), realpathSync.native(repo));
   } finally {
