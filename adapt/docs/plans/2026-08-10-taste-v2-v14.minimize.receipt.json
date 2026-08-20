@@ -1,0 +1,9 @@
+{
+  "decision": "docs/plans/2026-08-10-taste-v2-v14.minimize.json",
+  "decision_id": "ec-morph-taste-v2-v14-minimize-r1",
+  "decision_sha256": "3e1166ee6ee62521ab3a342b97262679484cb70aab6b51a6c73498abe6588c4f",
+  "policy_sha256": "1f941eb00ec6974705bc299e4cae2a01c031c51fb699fff310882f86f1c321f7",
+  "schema": "minimize-decision-receipt.v1",
+  "selected_rung": "NATIVE",
+  "validator_sha256": "514f21acf463eed860ae4de30f68a6b1eb73c95b468aa2e2a936b400b7232651"
+}

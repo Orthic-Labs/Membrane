@@ -1,0 +1,11 @@
+{
+  "created_at": "2026-08-09T23:01:51.147131+00:00",
+  "expected_time_to_verified_b_ms": 4800000,
+  "route_path": "docs/plans/2026-08-10-taste-v2-v14.route.json",
+  "route_revision": 1,
+  "route_sha256": "0b34159ec693793b36f527d43a17f41927ba2511aba9d5e882466b49ad310b7f",
+  "schema": "goal-route.receipt.v2",
+  "selected_route_id": "R_BOUNDED_DIRECT_ATOMIC",
+  "validator_sha256": "2ca6dacbc8fdde8091bdf9a90d6f5eb1c9e656271f4630d06ea10d1ed546dae1",
+  "validator_version": "2.1.0"
+}

@@ -1,0 +1,46 @@
+{
+  "schema": "minimize-decision.v1",
+  "decision_id": "ec-morph-taste-v2-v14-minimize-r1",
+  "state_a": "Morph at 11dd93b has seven Seer failures, baseline 556/7, and a 566-file 1.471GB corpus with Codex at 68 files/259MB and a 200.6MB largest file.",
+  "state_b": "Only a validated direct atomic delivery route and its exact-byte receipts exist; no product or live-state change has occurred.",
+  "selected_rung": "NATIVE",
+  "prior_rungs": [
+    {
+      "rung": "NOT_BUILD",
+      "verdict": "REJECTED",
+      "evidence": "EC-MORPH-TASTE-V2 v1.4 explicitly requires four durable preflight artifacts."
+    },
+    {
+      "rung": "REUSE",
+      "verdict": "REJECTED",
+      "evidence": "No existing Morph-relative v1.4 decision or route artifact names this exact state vector, selected route, or revision."
+    },
+    {
+      "rung": "STDLIB",
+      "verdict": "REJECTED",
+      "evidence": "A hand-written JSON check would duplicate the workspace Minimize and GoalRoute validators."
+    }
+  ],
+  "allowed_new_files": [
+    "docs/plans/2026-08-10-taste-v2-v14.minimize.json",
+    "docs/plans/2026-08-10-taste-v2-v14.minimize.receipt.json",
+    "docs/plans/2026-08-10-taste-v2-v14.route.json",
+    "docs/plans/2026-08-10-taste-v2-v14.route.receipt.json"
+  ],
+  "allowed_new_dependencies": [],
+  "forbidden_work": [
+    "product source, test, configuration, AGENTS, or unrelated-file edits",
+    "network, live-state, database, token, or external-account access",
+    "manifest apply, commit, push, branch, worktree, spend, or publication"
+  ],
+  "source_refs": [
+    "AGENTS.md",
+    "morph/AGENTS.md",
+    ".claude/agents/alchemist.md",
+    "tools/skills/alchemist/SKILL.md",
+    "docs/rules/execution-preflight.md",
+    "tools/lib/minimize/minimize_gate.py",
+    "tools/lib/goalroute/GOALROUTE.md"
+  ],
+  "revision": 1
+}

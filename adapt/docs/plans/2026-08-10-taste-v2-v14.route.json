@@ -1,0 +1,219 @@
+{
+  "schema": "goal-route.v2",
+  "route_id": "ec-morph-taste-v2-v14-r1",
+  "purpose": "DELIVERY",
+  "routine": false,
+  "comparison_mode": "COMPARE",
+  "state_a": {
+    "description": "Morph commit 11dd93b has seven Seer FAILs, baseline 556/7, and a 566-file 1.471GB corpus; Codex occupies 68 files/259MB and its largest file is 200.6MB.",
+    "evidence": [
+      {
+        "locator": "forge://run/9caa36ed-c807-4cd4-b978-779f1e42cdb3/state",
+        "sha256": "d2bd5e3a82ddda89939ff37b5ef3b5cecc41cdc53e32883ee90f40dd0259841e",
+        "check": "git rev-parse 11dd93b^{commit} resolves to current Morph HEAD."
+      },
+      {
+        "locator": "docs/plans/2026-08-10-taste-v2-v14.minimize.json",
+        "sha256": "d2bd5e3a82ddda89939ff37b5ef3b5cecc41cdc53e32883ee90f40dd0259841e",
+        "check": "Frozen EC-MORPH-TASTE-V2 v1.4 state vector records seven Seer FAILs, 556/7 baseline, and supplied corpus metrics."
+      }
+    ]
+  },
+  "state_b": {
+    "description": "Direct v2 delivery reaches D18 through D24 all PASS with zero Seer findings, preserving provenance, lazy discovery, identity, atomic apply, conformance, integration, performance, and full checks.",
+    "proof": [
+      {
+        "command": "python3 morph.py --smoke",
+        "expected": "Exact future product entrypoint runs on three temporary sources and loopback-only fixture after repair; otherwise downstream smoke remains explicitly gated.",
+        "evidence_path": "forge://run/9caa36ed-c807-4cd4-b978-779f1e42cdb3/state"
+      },
+      {
+        "command": "python3 -m pytest -q",
+        "expected": "D18 through D24 pass and independent Seer reports zero findings.",
+        "evidence_path": "forge://run/9caa36ed-c807-4cd4-b978-779f1e42cdb3/state"
+      }
+    ]
+  },
+  "constraints": {
+    "authority": {
+      "rule": "EC-MORPH-TASTE-V2 v1.4 authorizes route/preflight artifacts only; no product edits occur in this unit.",
+      "evidence_locator": "docs/plans/2026-08-10-taste-v2-v14.minimize.json"
+    },
+    "safety": {
+      "rule": "S2 blast boundary: read-only local transcripts, temporary sources, and loopback fixture only; no live state or network.",
+      "evidence_locator": "docs/rules/execution-preflight.md"
+    },
+    "scope": {
+      "rule": "OWN exactly four plan artifacts under morph/docs/plans; preserve AGENTS and every unrelated path.",
+      "evidence_locator": "docs/plans/2026-08-10-taste-v2-v14.minimize.json"
+    },
+    "quality": {
+      "rule": "Workspace runtime /Volumes/D/claude/.venv-tools/bin/python is Python 3.9.6 with jsonschema 4.25.1 and Morph imports passing; validate Minimize receipt before GoalRoute receipt, retain future smoke gate, and do not fake product smoke.",
+      "evidence_locator": "docs/rules/execution-preflight.md"
+    },
+    "cost": {
+      "rule": "Zero dollars, no network, route ceiling 39 files and 4384 lines, nominal 75 minutes, expected 80 minutes.",
+      "evidence_locator": "docs/plans/2026-08-10-taste-v2-v14.minimize.json"
+    }
+  },
+  "candidates": [
+    {
+      "id": "R_SYMPTOM_PATCH",
+      "constraint_status": "FAIL",
+      "constraint_evidence": "docs/plans/2026-08-10-taste-v2-v14.minimize.json",
+      "steps": [
+        {
+          "id": "R_SYMPTOM_PATCH/S1",
+          "operation": "Patch visible Seer symptoms without schema, provenance, and identity root-cause sequence.",
+          "depends_on": [],
+          "min_wall_ms": 1800000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Some symptoms may change but D18-D24 and zero-finding target remains unproven."
+        }
+      ],
+      "probabilities_bps": { "retry": 1500, "terminal_failure": 500 },
+      "retry_cost_ms": 1200000,
+      "rework_cost_ms": 2400000,
+      "nominal_critical_path_ms": 1800000,
+      "expected_time_to_verified_b_ms": 2100000,
+      "cost_units": 0,
+      "risk_units": 10,
+      "rework_units": 10,
+      "status": "REJECTED",
+      "dominance_reason": "Infeasible: it cannot prove root provenance, identity, or D18-D24 conformance."
+      ,"evidence": ["docs/plans/2026-08-10-taste-v2-v14.minimize.json"]
+    },
+    {
+      "id": "R_ROOT_PARSER_REWRITE",
+      "constraint_status": "PASS",
+      "constraint_evidence": "docs/plans/2026-08-10-taste-v2-v14.minimize.json",
+      "steps": [
+        {
+          "id": "R_ROOT_PARSER_REWRITE/S1",
+          "operation": "Rewrite root transcript parser, then rebuild downstream v2 delivery surfaces and checks.",
+          "depends_on": [],
+          "min_wall_ms": 6660000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Potentially reaches target but exceeds 110-minute parser-rewrite bound before verification."
+        }
+      ],
+      "probabilities_bps": { "retry": 1500, "terminal_failure": 500 },
+      "retry_cost_ms": 1200000,
+      "rework_cost_ms": 2400000,
+      "nominal_critical_path_ms": 6660000,
+      "expected_time_to_verified_b_ms": 6960000,
+      "cost_units": 0,
+      "risk_units": 6,
+      "rework_units": 6,
+      "status": "REJECTED",
+      "dominance_reason": "Constraint-passing but slower than selected direct atomic route by 2,160,000ms expected time."
+      ,"evidence": ["docs/plans/2026-08-10-taste-v2-v14.minimize.json"]
+    },
+    {
+      "id": "R_BOUNDED_DIRECT_ATOMIC",
+      "constraint_status": "PASS",
+      "constraint_evidence": "docs/plans/2026-08-10-taste-v2-v14.minimize.json",
+      "steps": [
+        {
+          "id": "R_BOUNDED_DIRECT_ATOMIC/S1",
+          "operation": "Establish schema and provenance invariants.",
+          "depends_on": [],
+          "min_wall_ms": 900000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Provenance rules are explicit before source discovery."
+        },
+        {
+          "id": "R_BOUNDED_DIRECT_ATOMIC/S2",
+          "operation": "Implement stat-backed lazy transcript discovery.",
+          "depends_on": ["R_BOUNDED_DIRECT_ATOMIC/S1"],
+          "min_wall_ms": 1200000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Discovery reads only needed local transcript data."
+        },
+        {
+          "id": "R_BOUNDED_DIRECT_ATOMIC/S3",
+          "operation": "Apply identity checks and atomic apply boundary.",
+          "depends_on": ["R_BOUNDED_DIRECT_ATOMIC/S2"],
+          "min_wall_ms": 1200000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Only authenticated identity with atomic application can advance a manifest."
+        },
+        {
+          "id": "R_BOUNDED_DIRECT_ATOMIC/S4",
+          "operation": "Cut over v2 conformance surfaces.",
+          "depends_on": ["R_BOUNDED_DIRECT_ATOMIC/S3"],
+          "min_wall_ms": 900000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "D18-D24 conformance is wired to direct v2 behavior."
+        },
+        {
+          "id": "R_BOUNDED_DIRECT_ATOMIC/S5",
+          "operation": "Run integration, performance, and full checks, then independent Seer verification.",
+          "depends_on": ["R_BOUNDED_DIRECT_ATOMIC/S4"],
+          "min_wall_ms": 300000,
+          "kind": "ADVANCE_B",
+          "b_state_delta": "Verified target can report all D18-D24 pass with zero Seer findings."
+        }
+      ],
+      "probabilities_bps": { "retry": 1500, "terminal_failure": 500 },
+      "retry_cost_ms": 1200000,
+      "rework_cost_ms": 2400000,
+      "nominal_critical_path_ms": 4500000,
+      "expected_time_to_verified_b_ms": 4800000,
+      "cost_units": 0,
+      "risk_units": 3,
+      "rework_units": 2,
+      "status": "SELECTED",
+      "dominance_reason": "Shortest constraint-passing route: 75 nominal minutes + 3 retry minutes + 2 terminal-rework minutes = 80 expected minutes."
+      ,"evidence": ["docs/plans/2026-08-10-taste-v2-v14.minimize.json", "docs/rules/execution-preflight.md"]
+    }
+  ],
+  "selected_route_id": "R_BOUNDED_DIRECT_ATOMIC",
+  "selected_critical_path": [
+    "R_BOUNDED_DIRECT_ATOMIC/S1",
+    "R_BOUNDED_DIRECT_ATOMIC/S2",
+    "R_BOUNDED_DIRECT_ATOMIC/S3",
+    "R_BOUNDED_DIRECT_ATOMIC/S4",
+    "R_BOUNDED_DIRECT_ATOMIC/S5"
+  ],
+  "parallel_lanes": [],
+  "bottleneck": {
+    "step_id": "R_BOUNDED_DIRECT_ATOMIC/S2",
+    "bound_ms": 1200000,
+    "resource": "stat-backed lazy discovery must preserve transcript provenance before identity and atomic apply can proceed"
+  },
+  "deleted_work": [
+    {
+      "item": "Symptom-only Seer-failure patching",
+      "reason": "It cannot establish target invariants or prove D18-D24 conformance."
+    },
+    {
+      "item": "Root parser rewrite",
+      "reason": "A valid but over-110-minute route loses to direct atomic delivery on expected verified time."
+    }
+  ],
+  "deferred_work": [
+    {
+      "item": "Exact three-temporary-source plus loopback smoke",
+      "until": "Product repair completes; current code has not earned a smoke pass and this preflight must not fake one."
+    },
+    {
+      "item": "Manifest apply, live state, network, database, token, and external-account effects",
+      "until": "A separately authorized execution unit passes S2 preflight and direct-v2 smoke."
+    }
+  ],
+  "single_feasible_evidence": [],
+  "invalidation": {
+    "revision": 1,
+    "semantic_correction": "NONE",
+    "invalidates": [],
+    "source_fingerprint_sha256": "d2bd5e3a82ddda89939ff37b5ef3b5cecc41cdc53e32883ee90f40dd0259841e"
+  },
+  "forge": {
+    "required": true,
+    "run_id": "9caa36ed-c807-4cd4-b978-779f1e42cdb3",
+    "state_ref": "forge://run/9caa36ed-c807-4cd4-b978-779f1e42cdb3/state",
+    "checkpoint": "GOAL_ROUTE_V2",
+    "reason": "Seven Seer failures and a multi-step direct-v2 delivery route require Forge evidence binding."
+  }
+}

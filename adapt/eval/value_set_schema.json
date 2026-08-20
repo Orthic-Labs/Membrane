@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "D:/Claude/tools/pipelines/memory/adapt/eval/value_set_schema.json",
+  "title": "Adapt value-set: paired real historical prompts",
+  "description": "Frozen dataset for Gate 0 (Adapt 4-arm retrieval+behavior A/B). Each row pairs a real historical prompt with (a) expected applicable rule ids from the current adapt pool, (b) category tag, (c) provenance hash. Pure domain labels, reviewer-owned.",
+  "type": "object",
+  "required": ["schema_version", "created_at", "reviewer", "prompts"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0.0" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "reviewer": { "type": "string", "description": "Who hand-labeled this set" },
+    "prompts": {
+      "type": "array",
+      "minItems": 100,
+      "items": {
+        "type": "object",
+        "required": ["id", "prompt", "arm", "expected_applicable_rule_ids"],
+        "properties": {
+          "id": { "type": "string", "description": "Stable id for paired outcomes (Wilson etc.)" },
+          "prompt": { "type": "string", "minLength": 10 },
+          "source_session_id": { "type": "string" },
+          "arm": {
+            "type": "string",
+            "enum": ["preference_relevant", "unrelated_control"],
+            "description": "preference_relevant = should be affected by an accepted rule; unrelated_control = no rule applies"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["workflow", "verification", "safety", "architecture", "tooling", "code-style", "documentation", "model-routing"]
+          },
+          "expected_applicable_rule_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Namespaced adapt-* ids expected to inject; empty when arm=unrelated_control"
+          },
+          "expected_contraindicated_rule_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Rules that MUST NOT inject — used for intrusion scoring"
+          },
+          "reviewer_note": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  }
+}
