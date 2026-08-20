@@ -6,11 +6,9 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 
 from adapt import cross_machine
-from adapt import rollback
 from adapt.workspace_runtime import workspace_root
 
 STATE_DIR = Path.home() / ".claude" / "adapt"
@@ -26,14 +24,24 @@ def write_json_atomic(path: Path, value: dict) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
-def run_cortex(args: list[str]) -> bool:
-    binary = shutil.which("cortex")
-    if not binary: return False
-    command = list(args)
-    if command and command[0] == "put": command.extend(["--artifact-family", "adapt", "--producer", "adapt", "--record-type", "preference"])
-    try: return subprocess.run([binary, *command], capture_output=True, text=True, timeout=150).returncode == 0
-    except (OSError, subprocess.TimeoutExpired): return False
 def scanner_available() -> bool: return bool(shutil.which("gitleaks") or shutil.which("detect-secrets"))
+
+
+def cortex_db_path() -> Path | None:
+    """Locate read-only canonical-pool storage for manifest binding."""
+    runtime = workspace_root() / "tools" / "lib" / "memory" / "runtime.json"
+    if runtime.exists():
+        try:
+            config = json.loads(runtime.read_text(encoding="utf-8"))
+            value = config.get("db_path") or config.get("database_path")
+            if value:
+                candidate = Path(value)
+                if candidate.is_file():
+                    return candidate
+        except (OSError, ValueError):
+            pass
+    candidate = workspace_root() / "tools" / ".cache" / "memory" / "cortex-engine.db"
+    return candidate if candidate.is_file() else None
 
 
 def installation_file() -> Path:
@@ -54,7 +62,7 @@ def multiwriter_context(*, manifest_body: dict, required: bool = False) -> tuple
             )
         return None
     installation_id = cross_machine.load_installation_id(identity_path)
-    db_path = rollback._discover_db_path(manifest_body)
+    db_path = cortex_db_path()
     if db_path is None:
         raise cross_machine.CrossMachineAdaptError("canonical Cortex DB is unavailable")
     return installation_id, cross_machine.load_canonical_rules(db_path)

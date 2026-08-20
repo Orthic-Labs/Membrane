@@ -3,7 +3,7 @@
 Adrian's decision: "adapt has to be by machine and should be recorded with
 machine." `scope` (workspace-recall partition, IMMUTABLE_FIELDS in
 manifest.py / part of payload_sha256) is left untouched. `machine` and
-`machine_only` are new, optional, backward-compatible attribution fields —
+`machine_only` are new, optional attribution fields —
 NOT in REQUIRED_FIELDS, NOT part of the manifest candidate payload.
 """
 from __future__ import annotations
@@ -15,35 +15,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from adapt import preference_record as pr_mod
-
-
-def _legacy_dict_without_machine() -> dict:
-    """Shape of a pre-existing on-disk record — no machine/machine_only keys
-    at all, matching every record written before this change."""
-    return {
-        "schema_version": "1.2.0",
-        "id": "adapt-tooling-legacy-abc1234567",
-        "kind": "preference",
-        "rule": "Prefer JSONL for structured logs.",
-        "category": "tooling",
-        "scope": "D--Claude",
-        "confidence": 0.7,
-        "needs_review": False,
-        "evidence_count": 1,
-        "source_ids": ["s1"],
-        "created_at": "2026-01-01T00:00:00+00:00",
-        "updated_at": "2026-01-01T00:00:00+00:00",
-    }
-
-
-def test_legacy_record_without_machine_field_still_validates():
-    """A pre-existing record dict with no machine/machine_only keys
-    constructs fine — the field is optional and backward compatible."""
-    rec = pr_mod.PreferenceRecord(**_legacy_dict_without_machine())
-    assert rec.machine == ""
-    assert rec.machine_only is False
-    assert "machine" not in pr_mod.REQUIRED_FIELDS
-    assert "machine_only" not in pr_mod.REQUIRED_FIELDS
 
 
 def test_machine_absent_from_synthesis_still_validates():
@@ -187,15 +158,6 @@ def test_default_machine_id_falls_back_to_platform_hostname_when_no_file(tmp_pat
 
 
 # ----- AD2: rule lifecycle beyond accepted/rejected -----
-
-def test_legacy_two_value_status_records_remain_valid():
-    """Existing records with only status in {accepted, rejected} still
-    validate — lifecycle_state is a fully separate, optional axis."""
-    rec = pr_mod.PreferenceRecord(**_legacy_dict_without_machine())
-    assert rec.status in pr_mod.ALLOWED_STATUS
-    assert rec.lifecycle_state == "active"
-    assert "lifecycle_state" not in pr_mod.REQUIRED_FIELDS
-
 
 def test_lifecycle_state_defaults_to_active_for_new_record():
     rec = pr_mod.PreferenceRecord.from_synthesis(

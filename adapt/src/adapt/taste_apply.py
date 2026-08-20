@@ -3,10 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
-import sqlite3
 import sys
-import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -19,7 +16,6 @@ except ImportError:
 from adapt import preference_record  # noqa: E402
 from adapt import manifest  # noqa: E402
 from adapt import authority  # noqa: E402
-from adapt import rollback  # noqa: E402
 from adapt import adapt_persistence  # noqa: E402
 from adapt import workspace_runtime  # noqa: E402
 
@@ -34,42 +30,6 @@ def _runtime_hook(name: str, default):
     # Do not invoke Adapt facade's lazy legacy imports while applying Taste v2.
     return host.__dict__.get(name, default) if host else default
 
-def _preflight_apply_manifest() -> bool:
-    """Minimal preflight for `--apply-from-manifest`: cortex + scanner only.
-
-    The LLM lane is irrelevant — no provider calls happen on apply.
-    """
-    if not _runtime_hook("_scanner_available", runtime.scanner_available)():
-        print("error: scanner (detect-secrets/gitleaks) unavailable; "
-              "refusing manifest apply", file=sys.stderr)
-        return False
-    if not _runtime_hook("_run_cortex", runtime.run_cortex)(["--help"]):
-        print("error: cortex shim unavailable; refusing manifest apply",
-              file=sys.stderr)
-        return False
-    return True
-
-
-def _create_apply_safepoint(manifest_body: dict) -> Path:
-    """Create the mandatory pre-write Gate 4 safe-point."""
-    db_override = os.environ.get("ADAPT_SAFEPOINT_DB_OVERRIDE")
-    db_path = Path(db_override) if db_override else rollback._discover_db_path(manifest_body)
-    if not db_path or not db_path.exists():
-        raise RuntimeError(f"Cortex DB unavailable for safe-point: {db_path}")
-    out_override = os.environ.get("ADAPT_SAFEPOINT_DIR_OVERRIDE")
-    out_path = None
-    if out_override:
-        out_path = Path(out_override) / f"{manifest_body['batch_id']}.json"
-    return rollback.create_safe_point(
-        manifest_body,
-        db_path,
-        state_path=runtime.state_path(),
-        rules_path=runtime.rules_path(),
-        core_path=runtime.state_dir() / "core.json",
-        out_path=out_path,
-    )
-
-
 def apply_from_manifest(manifest_path: Path) -> int:
     """Apply a reviewed manifest. Zero LLM calls; atomic write across accepted records.
 
@@ -77,14 +37,17 @@ def apply_from_manifest(manifest_path: Path) -> int:
       - manifest schema-valid + payload_sha256-matches content
       - batch_id must match a journal discovered entry with the same sessions
       - only ``accepted`` records are written
-      - state advances only after every put succeeds
-      - on any put failure, partial writes are rolled back via cortex delete
-        and state does NOT advance
+      - state advances only after the authenticated batch receipt is complete
+      - failed batches leave persistence atomic at the Cortex service boundary
     """
     try:
-        m = manifest.load_and_validate(manifest_path)
+        m = manifest.apply_time_validate(manifest_path)
     except manifest.ManifestError as exc:
         print(f"error: manifest invalid: {exc}", file=sys.stderr)
+        return 2
+
+    if m.get("schema_version") != "1.3.0":
+        print("error: only manifest schema 1.3.0 is supported", file=sys.stderr)
         return 2
 
     batch_id = m["batch_id"]
@@ -93,26 +56,20 @@ def apply_from_manifest(manifest_path: Path) -> int:
               file=sys.stderr)
         return 2
 
-    is_multiwriter = m.get("schema_version") == "1.3.0"
     installation_id: str | None = None
     canonical_rules: dict | None = None
-    if is_multiwriter:
-        # Binding is deliberately first: no discovered payload, safe-point, or
-        # network write is consulted before installation/pool validation.
-        try:
-            installation_id, canonical_rules = _runtime_hook(
-                "_multiwriter_context", _multiwriter_context
-            )(
-                manifest_body=m, required=True
-            )
-            runtime.validate_multiwriter_binding(
-                m,
-                installation_id=installation_id,
-                canonical_rules=canonical_rules,
-            )
-        except runtime.CrossMachineAdaptError as exc:
-            print(f"error: refusing multiwriter manifest apply: {exc}", file=sys.stderr)
-            return 2
+    # Binding is deliberately first: no discovered payload or network write is
+    # consulted before installation/pool validation.
+    try:
+        installation_id, canonical_rules = _runtime_hook(
+            "_multiwriter_context", _multiwriter_context
+        )(manifest_body=m, required=True)
+        runtime.validate_multiwriter_binding(
+            m, installation_id=installation_id, canonical_rules=canonical_rules,
+        )
+    except runtime.CrossMachineAdaptError as exc:
+        print(f"error: refusing manifest apply: {exc}", file=sys.stderr)
+        return 2
 
     jrn = run_journal.RunJournal()
     discovered = jrn.cached_payload(batch_id, "discovered")
@@ -122,26 +79,19 @@ def apply_from_manifest(manifest_path: Path) -> int:
               file=sys.stderr)
         return 2
     session_refs = discovered.get("source_refs")
-    if not is_multiwriter and not session_refs:
-        session_refs = [{"source_id": value, "source_sha256": ""} for value in discovered.get("sessions", [])]
     if not session_refs:
         print("error: journal source_refs mismatch manifest", file=sys.stderr)
         return 2
-    if is_multiwriter:
-        try:
-            j_sessions = runtime.qualify_session_sources(session_refs, installation_id)
-        except (KeyError, ValueError, runtime.CrossMachineAdaptError) as exc:
-            print(f"error: journal source_refs cannot be qualified: {exc}", file=sys.stderr)
-            return 2
-        qualified_refs = [
-            {**ref, "source_id": source_id}
-            for ref, source_id in zip(session_refs, j_sessions)
-        ]
-        if m.get("source_refs") != qualified_refs:
-            print("error: journal source_refs mismatch manifest", file=sys.stderr)
-            return 2
-    else:
-        j_sessions = [ref["source_id"] for ref in session_refs]
+    try:
+        j_sessions = runtime.qualify_session_sources(session_refs, installation_id)
+    except (KeyError, ValueError, runtime.CrossMachineAdaptError) as exc:
+        print(f"error: journal source_refs cannot be qualified: {exc}", file=sys.stderr)
+        return 2
+    qualified_refs = [{**ref, "source_id": source_id}
+                      for ref, source_id in zip(session_refs, j_sessions)]
+    if m.get("source_refs") != qualified_refs:
+        print("error: journal source_refs mismatch manifest", file=sys.stderr)
+        return 2
     if m["source_session_ids"] != j_sessions:
         print("error: source_session_ids mismatch journal source_refs", file=sys.stderr)
         return 2
@@ -167,18 +117,11 @@ def apply_from_manifest(manifest_path: Path) -> int:
             print(f"  - {record_id}: {reason}", file=sys.stderr)
         return 2
 
-    # v1.3 persists through one authenticated API request, not Cortex CLI.
-    if not is_multiwriter and not _preflight_apply_manifest():
-        return 2
-
     print(f"adapt: applying manifest {manifest_path}")
     print(f"  batch_id={batch_id}, sessions={len(j_sessions)}, "
           f"accepted={len(accepted)}, rejected={len(rejected)}")
 
     # Parse the complete accepted set before any mutation.
-    out_dir = runtime.state_dir()
-    tmp_paths: list[Path] = []
-    written: list[tuple[str, str]] = []
     failed: list[tuple[str, str]] = []
     prepared: list[preference_record.PreferenceRecord] = []
     batch_receipt: dict | None = None
@@ -204,60 +147,24 @@ def apply_from_manifest(manifest_path: Path) -> int:
             continue
         prepared.append(pr)
 
-    if not failed and is_multiwriter:
+    if not failed:
         try:
-            safe_point = _runtime_hook("_create_apply_safepoint", _create_apply_safepoint)(m)
-            print(f"  safepoint={safe_point}")
-            if prepared:
-                batch_receipt = _runtime_hook(
-                    "persist_manifest_batch", adapt_persistence.persist_manifest_batch
-                )(
-                    prepared,
-                    manifest_batch_id=batch_id,
-                    installation_id=installation_id,
-                )
-                if batch_receipt.get("complete") is not True:
-                    raise adapt_persistence.AdaptPersistenceError("Cortex batch receipt is incomplete")
-        except (OSError, RuntimeError, ValueError, sqlite3.Error,
+            batch_receipt = _runtime_hook(
+                "persist_manifest_batch", adapt_persistence.persist_manifest_batch
+            )(
+                prepared,
+                manifest_batch_id=batch_id,
+                installation_id=installation_id,
+            )
+            if batch_receipt.get("complete") is not True:
+                raise adapt_persistence.AdaptPersistenceError("Cortex batch receipt is incomplete")
+        except (OSError, RuntimeError, ValueError,
                 adapt_persistence.AdaptPersistenceError) as exc:
             failed.append(("batch", str(exc)))
-    elif not failed and not is_multiwriter:
-        try:
-            safe_point = _runtime_hook("_create_apply_safepoint", _create_apply_safepoint)(m)
-        except (OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
-            print(f"error: refusing manifest apply; safe-point failed: {exc}", file=sys.stderr)
-            jrn.record(batch_id, "applied", applied=0, ok=False, failed=["safepoint"])
-            return 2
-        print(f"  safepoint={safe_point}")
-        out_dir.mkdir(parents=True, exist_ok=True)
-        for pr in prepared:
-            body = preference_record.to_cortex_content(pr)
-            with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False,
-                                             encoding="utf-8",
-                                             dir=str(out_dir)) as tmp:
-                tmp.write(body)
-                tmp_path = tmp.name
-            tmp_paths.append(Path(tmp_path))
-            ok = _runtime_hook("_run_cortex", runtime.run_cortex)(["put", pr.id, "--scope", pr.scope, "--file", tmp_path])
-            if ok:
-                written.append((pr.id, pr.scope))
-            else:
-                failed.append((pr.id, "cortex put failed"))
-                break
-
-    # Cleanup tmp files regardless of outcome.
-    for tp in tmp_paths:
-        try:
-            Path(tp).unlink(missing_ok=True)
-        except Exception:
-            pass
 
     if failed:
-        if not is_multiwriter:
-            for w, scope in written:
-                _runtime_hook("_run_cortex", runtime.run_cortex)(["delete", f"{scope}/{w}"])
         print(f"error: {len(failed)} write(s) failed; rolled back "
-              f"{len(written)} write(s); refusing state advance",
+              "atomically by Cortex; refusing state advance",
               file=sys.stderr)
         for name, why in failed:
             print(f"  - {name}: {why}", file=sys.stderr)
@@ -266,9 +173,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
         return 1
 
     state = runtime.load_json(runtime.state_path(), {"learned": {}})
-    learned_refs = zip(j_sessions, session_refs) if is_multiwriter else (
-        (ref["source_id"], ref) for ref in session_refs
-    )
+    learned_refs = zip(j_sessions, session_refs)
     for source_id, ref in learned_refs:
         if ref.get("source_sha256"):
             state.setdefault("learned", {})[source_id] = ref["source_sha256"]
@@ -310,12 +215,10 @@ def apply_from_manifest(manifest_path: Path) -> int:
         "ok": True,
         "names": (
             [record.id for record in prepared]
-            if is_multiwriter else [name for name, _scope in written]
         ),
     }
-    if is_multiwriter:
-        if batch_receipt is not None:
-            applied_payload["receipt"] = batch_receipt
+    if batch_receipt is not None:
+        applied_payload["receipt"] = batch_receipt
     jrn.record(batch_id, "applied", **applied_payload)
     jrn.record(batch_id, "committed", applied=len(accepted),
                sessions=j_sessions)

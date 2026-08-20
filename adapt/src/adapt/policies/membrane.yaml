@@ -1,6 +1,6 @@
 schema_version: "1.0.0"
-profile: orthic
-description: Orthic workspace-specific admission bans (retired workflows and routing).
+profile: membrane
+description: Membrane workspace-specific admission bans (retired workflows and routing).
 
 regex_bans:
   - id: retired-workflow-reference

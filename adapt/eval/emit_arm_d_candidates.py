@@ -172,7 +172,7 @@ def _emit_from_fixture(fx: dict, out_path: Path) -> dict:
                 r["human_note"] = f"admission-rejected: {raw['_rejection_reason']}"
 
     body = {
-        "schema_version": pr_mod.SCHEMA_VERSION,
+        "schema_version": pr_mod.DIRECT_MANIFEST_SCHEMA_VERSION,
         "batch_id": f"fixture-{dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S')}",
         "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "generator": "emit_arm_d_candidates.py (fixture-driven)",

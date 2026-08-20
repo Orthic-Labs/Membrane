@@ -9,7 +9,7 @@ from adapt import event_ingestion as ing
 
 def _row(event_id: str, origin: str = "user") -> dict:
     return {
-        "schema": "orthic.observable-event.v1",
+        "schema": "membrane.observable-event.v1",
         "installation_id": "install-1",
         "client_id": "codex",
         "session_id": "session-1",

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Self-test for orthic_transcripts (plan 5.1).
+"""Self-test for Membrane TranscriptEventV1 normalization.
 
 Run via:
-    python3 -m pytest tools/lib/orthic_transcripts/tests/ -q
+    python3 -m pytest continuity/transcript/tests/ -q
 or
-    python3 tools/lib/orthic_transcripts/tests/test_orthic_transcripts.py
+    python3 continuity/transcript/tests/test_transcript_event_v1.py
 """
 
 from __future__ import annotations
@@ -13,30 +13,33 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
-# tools/lib/orthic_transcripts/tests -> tools/lib/orthic_transcripts -> tools/lib -> tools -> repo_root
+# continuity/transcript/tests -> continuity/transcript -> continuity -> repo_root
 _REPO_ROOT = _HERE.parent.parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 # Fall back to direct package import when invoked from the repo root.
 try:
-    from tools.lib.orthic_transcripts import (  # type: ignore[import-not-found]
+    from continuity.transcript import (
         PARSER_DIGEST,
         PARSER_VERSION,
         TranscriptEventV1,
+        TranscriptUnavailable,
         parse,
         parse_source_events,
         resolve_session,
     )
 except ModuleNotFoundError:
     sys.path.insert(0, str(_HERE.parent.parent))
-    from orthic_transcripts import (  # type: ignore[no-redef]
+    from continuity.transcript import (
         PARSER_DIGEST,
         PARSER_VERSION,
         TranscriptEventV1,
+        TranscriptUnavailable,
         parse,
         parse_source_events,
         resolve_session,
@@ -144,8 +147,23 @@ for i in range(1, 8):
 
 
 class TestTranscriptParser(unittest.TestCase):
+
+    def test_missing_transcript_is_typed_unavailable(self):
+        with self.assertRaises(TranscriptUnavailable) as raised:
+            parse_source_events("/tmp/membrane-transcript-does-not-exist.jsonl")
+        self.assertEqual(raised.exception.code, "missing")
+
+    def test_inaccessible_transcript_is_typed_unavailable(self):
+        with tempfile.TemporaryDirectory(prefix="membrane-transcript-") as directory:
+            path = Path(directory) / "inaccessible.jsonl"
+            path.write_text("{}\n", encoding="utf-8")
+            with mock.patch("continuity.transcript._read_prefix_receipt",
+                            side_effect=PermissionError("test denied")):
+                with self.assertRaises(TranscriptUnavailable) as raised:
+                    parse_source_events(path)
+                self.assertEqual(raised.exception.code, "inaccessible")
     def test_shared_transcript_has_unique_event_ids(self):
-        with tempfile.TemporaryDirectory(prefix="orthic-") as directory:
+        with tempfile.TemporaryDirectory(prefix="membrane-") as directory:
             path = Path(directory) / "shared.jsonl"
             _write_transcript(path, SHARED_TRANSCRIPT)
             events = parse(transcriptPath=str(path))
@@ -154,7 +172,7 @@ class TestTranscriptParser(unittest.TestCase):
             self.assertEqual(len(ids), len(set(ids)))
 
     def test_each_event_has_byte_spans_and_flags(self):
-        with tempfile.TemporaryDirectory(prefix="orthic-") as directory:
+        with tempfile.TemporaryDirectory(prefix="membrane-") as directory:
             path = Path(directory) / "shared.jsonl"
             _write_transcript(path, SHARED_TRANSCRIPT)
             events = parse(transcriptPath=str(path))
@@ -166,7 +184,7 @@ class TestTranscriptParser(unittest.TestCase):
                     self.assertIsInstance(ev[flag], bool)
 
     def test_projections_share_event_ids(self):
-        with tempfile.TemporaryDirectory(prefix="orthic-") as directory:
+        with tempfile.TemporaryDirectory(prefix="membrane-") as directory:
             path = Path(directory) / "shared.jsonl"
             _write_transcript(path, SHARED_TRANSCRIPT)
             default = parse(transcriptPath=str(path))
@@ -179,7 +197,7 @@ class TestTranscriptParser(unittest.TestCase):
             self.assertEqual(insights_ids, default_ids)
 
     def test_prefix_receipt_shape(self):
-        with tempfile.TemporaryDirectory(prefix="orthic-") as directory:
+        with tempfile.TemporaryDirectory(prefix="membrane-") as directory:
             path = Path(directory) / "shared.jsonl"
             _write_transcript(path, SHARED_TRANSCRIPT)
             receipt = parse(transcriptPath=str(path), asPrefixReceipt=True)
@@ -192,7 +210,7 @@ class TestTranscriptParser(unittest.TestCase):
             self.assertEqual(receipt["parserDigest"], PARSER_DIGEST)
 
     def test_class_priority_admission_keeps_early_failure(self):
-        with tempfile.TemporaryDirectory(prefix="orthic-") as directory:
+        with tempfile.TemporaryDirectory(prefix="membrane-") as directory:
             path = Path(directory) / "class.jsonl"
             _write_transcript(path, CLASS_PRIORITY_TRANSCRIPT)
             events = parse(transcriptPath=str(path), projection="handoff")
@@ -226,7 +244,7 @@ class TestTranscriptParser(unittest.TestCase):
 
     def test_planning_tool_not_classified_as_mutation(self):
         """Plan 5.2 explicit fix: TodoWrite / update_plan must be decisions."""
-        with tempfile.TemporaryDirectory(prefix="orthic-") as directory:
+        with tempfile.TemporaryDirectory(prefix="membrane-") as directory:
             path = Path(directory) / "planning.jsonl"
             rows = [
                 {
@@ -260,7 +278,7 @@ class TestTranscriptParser(unittest.TestCase):
         identical (kind, call_id, occurrence, text) tuples; different text
         keeps the events distinct.
         """
-        with tempfile.TemporaryDirectory(prefix="orthic-") as directory:
+        with tempfile.TemporaryDirectory(prefix="membrane-") as directory:
             path = Path(directory) / "repeat.jsonl"
             rows = [
                 {
@@ -320,8 +338,8 @@ class TestTranscriptParser(unittest.TestCase):
         self.assertTrue(PARSER_DIGEST.startswith("sha256:"))
         self.assertEqual(len(PARSER_DIGEST), len("sha256:") + 64)
 
-    def test_aliased_entry_points(self):
-        with tempfile.TemporaryDirectory(prefix="orthic-") as directory:
+    def test_canonical_entry_point_matches_function(self):
+        with tempfile.TemporaryDirectory(prefix="membrane-") as directory:
             path = Path(directory) / "shared.jsonl"
             _write_transcript(path, SHARED_TRANSCRIPT)
             snake = parse(transcriptPath=str(path))
@@ -332,7 +350,7 @@ class TestTranscriptParser(unittest.TestCase):
             )
 
     def test_source_events_preserve_uncapped_original_sequence(self):
-        with tempfile.TemporaryDirectory(prefix="orthic-") as directory:
+        with tempfile.TemporaryDirectory(prefix="membrane-") as directory:
             path = Path(directory) / "source.jsonl"
             rows = [
                 {"type": "user", "sessionId": "source", "message": {"content": f"message {i}"}}

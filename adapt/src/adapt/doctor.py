@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Orthic Adapt Doctor — expose multiwriter conformance with honest scope.
+"""Membrane Adapt Doctor — expose multiwriter conformance with honest scope.
 
 Doctor today wraps the existing Adapt multi-installation conformance receipt
 surface (``multiwriter_conformance``): installation identity, canonical pool,
@@ -25,7 +25,7 @@ from adapt import multiwriter_conformance  # noqa: E402
 
 
 SCOPE = {
-    "product": "Orthic Adapt Doctor",
+    "product": "Membrane Adapt Doctor",
     "implemented": [
         "multiwriter_conformance issue",
         "multiwriter_conformance validate",
@@ -41,7 +41,7 @@ SCOPE = {
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Orthic Adapt Doctor — multiwriter conformance only. "
+            "Membrane Adapt Doctor — multiwriter conformance only. "
             "Cortex/Forge checks are not-yet."
         )
     )

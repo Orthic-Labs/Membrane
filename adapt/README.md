@@ -22,7 +22,7 @@ flowchart LR
     W --> R[scoped recall<br/>in future sessions]
 ```
 
-Mining never writes rules directly. It emits a review manifest; only an adjudicated manifest can be applied; and apply is transactional with rollback.
+Mining never writes rules directly. It emits a review manifest; only an adjudicated manifest can be applied; and apply is one authenticated, atomic Cortex batch.
 
 ## What gets refused
 
@@ -53,7 +53,7 @@ Only root-scoped standing preferences compile into the always-on core; everythin
 
 Every manifest candidate carries its source session identities, per-transcript SHA-256 hashes, a payload SHA-256, rule type, scope, authority effect, and evidence links. Apply refuses: pending records, an edited payload whose hash no longer matches, a changed canonical rule pool, source sessions from another installation, out-of-manifest evidence, and authority-quarantined candidates.
 
-And it's reversible: a run journal checkpoints every stage; safe resume reuses cached stages only while session identity still matches; apply captures snapshots first; rollback deletes only recorded IDs, restores snapshots, and runs `PRAGMA integrity_check` — no force flag bypasses a failed integrity proof.
+Run journals checkpoint every stage; safe resume reuses cached stages only while session identity still matches. Cortex owns atomicity; failed batches return typed errors without exposing a compatibility reversal path.
 
 ## Surfaces
 
@@ -123,5 +123,5 @@ Adapt requires shared workspace memory/session modules and installed Cortex; `wo
 
 ---
 
-<sub><b><a href="https://orthic-labs.github.io">Orthic Labs</a></b> — local-first infrastructure for AI-assisted development.<br>
-<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/engine/crates/cortex">Cortex</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
+<sub><b>Membrane</b> — local-first infrastructure for AI-assisted development.<br>
+<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/engine/crates/cortex">Cortex</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/adapt">Adapt</a></sub>

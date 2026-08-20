@@ -21,7 +21,7 @@ Helpers:
     is computed over. If anything edits this set after emission, the hash
     no longer matches and apply refuses.
   - ``payload_sha256(record)`` — the canonical hash.
-  - ``load_and_validate(path)`` — schema + invariant checks.
+  - ``apply_time_validate(path)`` — schema + invariant checks.
   - ``accepted_records(manifest)`` / ``rejected_records(manifest)``.
 """
 from __future__ import annotations
@@ -105,8 +105,8 @@ def candidate_payload(record: dict) -> dict:
         "evidence_count": int(record.get("evidence_count", 0)),
         "evidence_excerpt": record.get("evidence_excerpt", "") or "",
     }
-    # v1.0 records omitted these fields. Preserve their historical hashes;
-    # v1.1 records include both fields in the immutable signed payload.
+    # Authority fields are part of every current manifest candidate's
+    # immutable signed payload.
     if "record_type" in record:
         payload["record_type"] = record["record_type"]
     if "authority_effect" in record:
@@ -162,7 +162,9 @@ def validate_schema(path: Path) -> dict:
         )
     except jsonschema.ValidationError as exc:
         raise ManifestError(f"manifest schema check failed: {exc.message}") from exc
-    if raw.get("schema_version") in {"1.1.0", "1.3.0"}:
+    if raw.get("schema_version") != "1.3.0":
+        raise ManifestError("manifest schema check failed: only v1.3.0 is supported")
+    if raw.get("schema_version") == "1.3.0":
         for rec in raw.get("records", []):
             missing = [
                 field for field in ("record_type", "authority_effect")
@@ -170,8 +172,8 @@ def validate_schema(path: Path) -> dict:
             ]
             if missing:
                 raise ManifestError(
-                    "manifest schema check failed: v1.1.0 record "
-                    f"{rec.get('id', '<unknown>')} missing {', '.join(missing)}"
+                    "manifest schema check failed: record "
+                    f"{rec.get('id', '<unknown>')} missing required authority fields: {', '.join(missing)}"
                 )
     if raw.get("schema_version") == "1.3.0":
         missing = [rec.get("id", "<unknown>") for rec in raw.get("records", []) if not rec.get("evidenceContexts")]
@@ -257,11 +259,6 @@ def apply_time_validate(path: Path) -> dict:
             "to accepted/rejected before applying"
         )
     return raw
-
-
-# Backwards-compatible alias. adapt.apply_from_manifest + tests use this name.
-def load_and_validate(path: Path) -> dict:
-    return apply_time_validate(path)
 
 
 def accepted_records(manifest: dict) -> list[dict]:

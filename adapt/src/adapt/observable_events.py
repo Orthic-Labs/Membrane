@@ -20,7 +20,7 @@ REQUIRED = {
 
 
 def _validate(event: dict) -> None:
-    if not isinstance(event, dict) or event.get("schema") != "orthic.observable-event.v1":
+    if not isinstance(event, dict) or event.get("schema") != "membrane.observable-event.v1":
         raise ValueError("observable event schema is invalid")
     if set(event) - REQUIRED:
         raise ValueError("observable event contains unknown fields")

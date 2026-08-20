@@ -1,4 +1,4 @@
-# Orthic Adapt — parent workspace interface
+# Membrane Adapt — parent workspace interface
 
 Adapt lives at `membrane/adapt/` and consumes a small set of shared workspace
 services through one explicit boundary.

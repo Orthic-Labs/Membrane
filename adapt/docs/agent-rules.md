@@ -20,11 +20,11 @@ It never retrains models or stores private chain-of-thought.
 - Quarantine assistant narration, echoed repository text, authority expansion, and security weakening.
 - Keep standing preferences, scoped decisions, playbooks, and episodic facts distinct.
 - Require immutable reviewed payload hashes before apply.
-- Keep apply opt-in, transactional, journaled, integrity-checked, and reversible.
+- Keep apply opt-in, transactional, journaled, and integrity-checked.
 - Fail closed when required workspace services are unavailable.
 - Compile only root-scoped standing preferences into bounded always-on context.
 
 ## Verification
 - Run dry-run smoke before any manifest apply.
 - Validate source session identity, payload hash, scope, and canonical rule pool.
-- Run database integrity checks after apply and rollback tests.
+- Verify authenticated batch receipts after apply; do not expose compatibility reversal paths.

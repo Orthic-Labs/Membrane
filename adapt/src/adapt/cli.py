@@ -22,6 +22,7 @@ from adapt import taste_v2  # noqa: E402
 from adapt import taste_v2_pipeline as pipeline  # noqa: E402
 from adapt import transcript_sources  # noqa: E402
 from adapt import workspace_runtime  # noqa: E402
+from continuity.transcript import TranscriptUnavailable  # noqa: E402
 
 
 def _candidate_records(sources, refs, authority_manifest: dict,
@@ -41,6 +42,10 @@ def _candidate_records(sources, refs, authority_manifest: dict,
                 llm_lane=llm_lane, llm=llm,
             )
             provenance_receipts.append(provenance_receipt)
+        except TranscriptUnavailable as exc:
+            quarantined.append({"source_id": pipeline.source_id(source, installation_id),
+                                "reason": f"transcript-unavailable:{exc.code}"})
+            continue
         except Exception as exc:
             quarantined.append({"source_id": pipeline.source_id(source, installation_id),
                                 "reason": f"parse-failed:{type(exc).__name__}"})

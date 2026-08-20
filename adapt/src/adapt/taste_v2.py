@@ -5,7 +5,7 @@ Mission (plan 5.3, line 101):
     exact-span provenance -> Cortex -> surfaced via membrane_context.
 
 This module is the Phase 5.3 path. It replaces retired session mining by consuming shared
-TranscriptEventV1 substrate at ``adapt/orthic_transcripts`` and
+TranscriptEventV1 substrate at ``continuity.transcript`` and
 preserving the bounded surrounding context of every correction — the
 plan-named defect that the previous path dropped.
 
@@ -162,7 +162,7 @@ _FAILURE_CLASSIFICATIONS = frozenset({"unresolved_failure", "failed_verification
 TRANSPORT_GAP_NOTE: str = (
     "Taste candidates carry the source event's exact byte spans and bounded "
     "surrounding context. Direct TranscriptEventV1 input "
-    "(adapt/orthic_transcripts) is the canonical semantic source. "
+    "(continuity.transcript) is the canonical semantic source. "
     "ObservableEventV1 transport (adapt/observable_events.py) is permanently "
     "metadata-only for lineage and Insights; it never carries or resolves "
     "Taste text and cannot mint Taste candidates."

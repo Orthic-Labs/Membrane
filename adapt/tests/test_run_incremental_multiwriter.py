@@ -32,7 +32,7 @@ def _record(status: str) -> dict:
 
 def _manifest(records: list[dict], source_session_ids: list[str] | None = None) -> dict:
     return {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "batch_id": "batch-1",
         "source_session_ids": source_session_ids or ["install:12345678-1234-4234-9234-123456789abc:codex:" + "a" * 32],
         "created_at": "2026-07-20T08:00:00Z",

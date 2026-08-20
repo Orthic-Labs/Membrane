@@ -1,4 +1,4 @@
-# Synthetic transcript fixtures (plan 5.6 contract tests)
+# Synthetic transcript fixtures (Membrane continuity contract tests)
 
 These fixtures are structurally equivalent stand-ins for real, observed
 Claude Code and Codex CLI sessions. The original real captures were removed

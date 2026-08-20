@@ -4,7 +4,7 @@ import unittest
 
 def event(event_id, event_type, origin="host", complete=True):
     return {
-        "schema": "orthic.observable-event.v1", "installation_id": "i", "client_id": "claude_code",
+        "schema": "membrane.observable-event.v1", "installation_id": "i", "client_id": "claude_code",
         "session_id": "s", "task_id": "t", "turn_id": "u", "trace_id": "x", "event_id": event_id,
         "event_type": event_type, "origin": origin, "content_ref_or_digest": "sha256:" + "a" * 64,
         "timestamp": "2026-08-01T00:00:00Z", "completeness": {"packet": complete, "receipt": complete},

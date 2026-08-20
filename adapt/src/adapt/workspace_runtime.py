@@ -1,4 +1,4 @@
-"""Parent-workspace interface for Orthic Adapt / Adapt.
+"""Parent-workspace interface for Membrane Adapt.
 
 Adapt lives under ``membrane/adapt/`` but still needs a few workspace services.
 This module is the **only** import boundary for those deps.

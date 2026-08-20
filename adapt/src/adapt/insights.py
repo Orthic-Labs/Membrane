@@ -8,8 +8,8 @@ Honest scope, stated in-product (plan 5.5, line 103):
     "Only observable failure signals are detectable." (stated in-product,
     not just in a comment — see ``FailureCardV1.honestyLimit``.)
 
-The module consumes ``TranscriptEventV1`` rows from the vendored
-``adapt.orthic_transcripts`` parser (plan 5.1), runs every named detector
+The module consumes ``TranscriptEventV1`` rows from Membrane continuity
+Membrane ``continuity.transcript`` parser, runs every named detector
 against them, and emits one ``FailureCardV1`` per detected failure mode.
 There is no database, no apply path, no authority grant — detectors write
 to a dict, a caller can hand to a printer, a JSON file, or a CI log.
@@ -335,7 +335,7 @@ def _tool_call_pairs(events: list[dict[str, Any]]) -> dict[str, dict[str, dict[s
     """Map ``call_id`` -> ``{"call": ..., "result": ... | None}``.
 
     Pairs by ``(call_id, occurrence)`` — same key as the parser layer uses
-    (see adapt/orthic_transcripts/__init__.py:iter_events_for_host).
+    (see continuity/transcript/__init__.py:iter_events_for_host).
     """
     pairs: dict[str, dict[str, dict[str, Any]]] = defaultdict(
         lambda: {"call": None, "result": None}
@@ -1367,7 +1367,7 @@ def report(
     """Run the full pipeline and emit a JSON-serializable report.
 
     Accepts either an already-parsed events list (e.g. from
-    ``adapt.orthic_transcripts.parse``) or a string/Path to a Claude
+    ``continuity.transcript.parse``) or a string/Path to a Claude
     or Codex transcript JSONL — the latter will be parsed via the
     frozen prefix-receipt path.
     """
@@ -1566,18 +1566,18 @@ def _role_context_projection(path: str | Path, provenance: dict[str, Any] | None
 
 
 def _parse_through_layer(path: str | Path) -> list[dict[str, Any]]:
-    """Parse a transcript via Adapt's vendored ``TranscriptEventV1`` layer.
+    """Parse a transcript via Membrane's canonical ``TranscriptEventV1`` layer.
 
     Plan 5.1: callers MUST go through this layer so byte spans and event ids
     line up with the rest of the substrate — we do not reimplement the parser.
-    The parser lives at :mod:`adapt.orthic_transcripts`, owned by Adapt (see
-    that package's ``VENDORED.md``); imports never point back into Legion.
+    The parser lives at :mod:`continuity.transcript`, owned by Membrane;
+    imports never point back into Legion.
 
     Insights mines evidence, so it reads the uncapped canonical source events:
     ``parse`` applies the projection cap and would silently drop the earliest
     turns of a long transcript, understating provenance counts.
     """
-    from adapt.orthic_transcripts import parse_source_events
+    from continuity.transcript import parse_source_events
 
     return parse_source_events(Path(path))
 

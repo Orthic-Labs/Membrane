@@ -91,7 +91,7 @@ def _internal_context(text: str) -> bool:
 
 
 def event_provenance(event: dict[str, Any]) -> str:
-    """Classify one consumer-side event without changing frozen Orthic code."""
+    """Classify one consumer-side event without changing frozen parser code."""
     thread_source = str(event.get("threadSource") or event.get("thread_source") or "").casefold()
     flags = event.get("flags") if isinstance(event.get("flags"), dict) else {}
     if thread_source in {"subagent", "sidechain"} or flags.get("isSidechain"):

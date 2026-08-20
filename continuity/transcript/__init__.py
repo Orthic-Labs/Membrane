@@ -1,8 +1,7 @@
-"""orthic_transcripts — TranscriptEventV1 parser (plan 5.1).
+"""Membrane continuity — TranscriptEventV1 parser.
 
 Public surface:
-    parse(...)          — identical-name parser entry point (also exported as
-                          TranscriptEventV1 and transcriptEventV1 for JS shim).
+    parse(...)          — canonical TranscriptEventV1 parser entry point.
     resolve_session(...) — exact-match session resolver (substring bug fix).
     PARSER_DIGEST       — sha256 of the parser implementation bytes (binding
                           target for the frozen prefix receipt).
@@ -23,7 +22,17 @@ from .host_adapters import detect_host, iter_events_for_host
 # Re-export the host adapters' secret/secret-like constants.
 from .host_adapters import BASE64_BLOB, SECRET_PATTERNS  # noqa: F401
 
-PARSER_VERSION = "orthic.transcript-event.v1"
+PARSER_VERSION = "membrane.transcript-event.v1"
+
+
+class TranscriptUnavailable(RuntimeError):
+    """Typed fail-closed transcript omission/degradation."""
+
+    def __init__(self, code: str, path: Path, detail: str = "") -> None:
+        self.code = code
+        self.path = str(path)
+        self.detail = detail or code
+        super().__init__(f"transcript {code}: {path}")
 
 # Caps that mirror transcript-handoff.py's bounder so event text is the same
 # shape downstream consumers already understand.
@@ -376,7 +385,7 @@ def _parse_transcript(
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """Parse the transcript and return (events, prefix_receipt_or_none)."""
     if not path.is_file():
-        raise ValueError(f"transcript not found: {path}")
+        raise TranscriptUnavailable("missing", path)
 
     # Detect host if not specified. Host drives which adapter row→events
     # translation runs.
@@ -386,7 +395,10 @@ def _parse_transcript(
         raise ValueError(f"unsupported host: {host}")
 
     transcript_id = path.stem
-    receipt = _read_prefix_receipt(path, host, transcript_id)
+    try:
+        receipt = _read_prefix_receipt(path, host, transcript_id)
+    except PermissionError as exc:
+        raise TranscriptUnavailable("inaccessible", path, str(exc)) from exc
     session_id = receipt["sessionId"]
     parser_digest = receipt["parserDigest"]
 
@@ -600,40 +612,7 @@ def parse_source_events(
     return events
 
 
-def parse_or_empty(*args: Any, **kwargs: Any) -> Any:
-    """Same as ``parse`` but returns an empty list when the file is missing.
-
-    Test fixture discovery uses a write-then-read pattern; the first read can
-    legitimately miss. We only swallow ``FileNotFoundError`` — any other
-    error still propagates so the caller sees real bugs.
-    """
-    try:
-        return parse(*args, **kwargs)
-    except (FileNotFoundError, ValueError) as exc:
-        msg = str(exc)
-        if "not found" in msg or isinstance(exc, FileNotFoundError):
-            if kwargs.get("as_prefix_receipt") or kwargs.get("asPrefixReceipt"):
-                return {
-                    "host": "",
-                    "sessionId": "",
-                    "transcriptId": "",
-                    "prefixLength": 0,
-                    "prefixDigest": "",
-                    "parserDigest": PARSER_DIGEST,
-                    "parserVersion": PARSER_VERSION,
-                    "eventsObserved": 0,
-                }
-            return []
-        raise
-
-
-# JS-shim-friendly aliases. The dynamic import in e2e-7 looks for these names
-# in order: TranscriptEventV1, transcriptEventV1, parse.
 def TranscriptEventV1(*args: Any, **kwargs: Any) -> Any:
-    return parse(*args, **kwargs)
-
-
-def transcriptEventV1(*args: Any, **kwargs: Any) -> Any:
     return parse(*args, **kwargs)
 
 
@@ -667,28 +646,13 @@ def resolve_session(
     return None
 
 
-def resolveSession(*args: Any, **kwargs: Any) -> Any:
-    return resolve_session(*args, **kwargs)
-
-
-def resolveSessionId(*args: Any, **kwargs: Any) -> Any:
-    return resolve_session(*args, **kwargs)
-
-
-def matchTranscript(*args: Any, **kwargs: Any) -> Any:
-    return resolve_session(*args, **kwargs)
-
-
 __all__ = [
     "PARSER_DIGEST",
     "PARSER_VERSION",
+    "TranscriptUnavailable",
     "TranscriptEventV1",
-    "transcriptEventV1",
     "parse",
     "parse_source_events",
     "resolve_session",
-    "resolveSession",
-    "resolveSessionId",
-    "matchTranscript",
     "compact_text",
 ]

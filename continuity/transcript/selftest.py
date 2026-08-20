@@ -1,9 +1,9 @@
-"""Selftest entry point — run via `python3 -m orthic_transcripts.selftest`.
+"""Selftest entry point — run via `python3 -m continuity.transcript.selftest`.
 
-Re-exports the unittest TestCase from ``tests/test_orthic_transcripts.py``
+Re-exports the unittest TestCase from ``tests/test_transcript_event_v1.py``
 and runs it under ``unittest.main``. The package directory layout is
 
-    tools/lib/orthic_transcripts/
+    continuity/transcript/
         __init__.py
         host_adapters.py
         driver.py
@@ -11,7 +11,7 @@ and runs it under ``unittest.main``. The package directory layout is
         index.mjs
         tests/
             __init__.py
-            test_orthic_transcripts.py
+            test_transcript_event_v1.py
 """
 
 from __future__ import annotations

@@ -124,7 +124,7 @@ def resolve_manifest(manifest: dict, panel: dict) -> tuple[dict, dict]:
         "needs_review": sum(item["needs_review"] for item in decisions),
     }
     audit = {
-        "schema_version": "1.0.0",
+        "schema_version": "1.3.0",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "input_batch_id": manifest["batch_id"],
         "eligible_models": panel.get("eligible_models", []),

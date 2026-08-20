@@ -14,9 +14,9 @@ Both hosts are real, observed sessions from this machine, frozen as fixtures
 depend on live session files that are still being appended to.
 
 Run via:
-    python3 tools/lib/orthic_transcripts/tests/test_real_transcript_contract.py
+    python3 continuity/transcript/tests/test_real_transcript_contract.py
 or
-    python3 -m pytest tools/lib/orthic_transcripts/tests/ -q
+    python3 -m pytest continuity/transcript/tests/ -q
 """
 
 from __future__ import annotations
@@ -33,14 +33,14 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 try:
-    from tools.lib.orthic_transcripts import (  # type: ignore[import-not-found]
+    from continuity.transcript import (
         PARSER_DIGEST,
         PARSER_VERSION,
         parse,
     )
 except ModuleNotFoundError:
     sys.path.insert(0, str(_HERE.parent.parent))
-    from orthic_transcripts import (  # type: ignore[no-redef]
+    from continuity.transcript import (
         PARSER_DIGEST,
         PARSER_VERSION,
         parse,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Thin CLI driver invoked by tools/lib/orthic_transcripts/index.mjs.
+"""Thin CLI driver for Membrane continuity transcript normalization.
 
 Reads a JSON payload from stdin, dispatches to the requested operation, and
 prints a single JSON-encoded response on stdout. Stays hermetic and process-
@@ -20,10 +20,10 @@ from pathlib import Path
 # Allow running as a script from anywhere — the package directory is one
 # level up from this file.
 _HERE = Path(__file__).resolve().parent
-if str(_HERE.parent) not in sys.path:
-    sys.path.insert(0, str(_HERE.parent))
+if str(_HERE.parent.parent) not in sys.path:
+    sys.path.insert(0, str(_HERE.parent.parent))
 
-from orthic_transcripts import (  # noqa: E402  (path injection above)
+from continuity.transcript import (  # noqa: E402  (path injection above)
     PARSER_DIGEST,
     parse,
     resolve_session,

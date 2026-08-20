@@ -1,4 +1,4 @@
-"""Host adapters for Claude Code + Codex JSONL transcripts (plan 5.1).
+"""Host adapters for Claude Code + Codex JSONL transcripts.
 
 Each adapter takes a single JSONL row and returns a list of normalized event
 dicts. The events share a common shape so downstream projections can ingest

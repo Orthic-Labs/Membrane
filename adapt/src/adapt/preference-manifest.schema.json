@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://orthic.labs/membrane/adapt/preference-manifest.schema.json",
+  "$id": "https://membrane.local/adapt/preference-manifest.schema.json",
   "title": "Adapt preference manifest: adjudicated adaptation candidates",
   "description": "Output of `adapt --manifest`, resolved by automated calibrated-primary adjudication, and consumed by `adapt --apply-from-manifest`. Each record is explicit accepted/rejected; payload_sha256 detects content edits; the schema refuses pending statuses on apply.",
   "type": "object",
@@ -18,7 +18,7 @@
   "properties": {
     "schema_version": {
       "type": "string",
-      "enum": ["1.0.0", "1.1.0", "1.2.0", "1.3.0"]
+      "const": "1.3.0"
     },
     "batch_id": {
       "type": "string",

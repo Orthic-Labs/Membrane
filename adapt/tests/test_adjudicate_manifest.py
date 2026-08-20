@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import pytest
-from adapt import manifest
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "src/adapt/adjudicate_manifest.py"
@@ -36,20 +35,11 @@ def _record(record_id: str, *, status: str = "pending") -> dict:
 
 def _manifest(records: list[dict]) -> dict:
     return {
-        "schema_version": "1.2.0",
+        "schema_version": "1.3.0",
         "batch_id": "batch-1",
         "source_session_ids": ["session-1"],
         "created_at": "2026-07-14T00:00:00Z",
         "records": records,
-    }
-
-
-def test_historical_v12_payload_projection_omits_v13_provenance() -> None:
-    record = _record("adapt-verification-focused-tests-0123456789")
-    projection = manifest.candidate_payload(record)
-    assert set(projection) == {
-        "id", "rule", "category", "scope", "source_ids", "source_file_hashes",
-        "evidence_ids", "evidence_count", "evidence_excerpt",
     }
 
 
