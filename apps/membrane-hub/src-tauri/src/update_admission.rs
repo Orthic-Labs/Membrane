@@ -19,7 +19,7 @@
 //!   plugin verifies that signature against the embedded pubkey when it
 //!   later parses this manifest at update-check time; this module never
 //!   recomputes or independently re-derives that signature.
-//! - **Platform trust.** The `orthic.membrane.platform-acceptance.v1` receipt
+//! - **Platform trust.** The `membrane.platform-acceptance.v1` receipt
 //!   already defined by `scripts/release/verify-platform-artifacts.mjs` and
 //!   built per platform by `scripts/release/macos/contract.mjs` /
 //!   `scripts/release/windows/contract.mjs` (codesign + notarization + staple
@@ -64,7 +64,7 @@ pub struct RightKitUpdaterManifestEntry {
     pub url: String,
 }
 
-/// The `orthic.membrane.platform-acceptance.v1` receipt. Field names for the
+/// The `membrane.platform-acceptance.v1` receipt. Field names for the
 /// subset this module reads match
 /// `scripts/release/verify-platform-artifacts.mjs::validateReceipt` exactly.
 /// Unknown JSON fields (`lifecycle`, `environment`, `mode`, `receiptId`, ...)
@@ -83,7 +83,7 @@ pub struct PlatformAcceptanceArtifact {
     pub sha256: String,
 }
 
-const RECEIPT_SCHEMA: &str = "orthic.membrane.platform-acceptance.v1";
+const RECEIPT_SCHEMA: &str = "membrane.platform-acceptance.v1";
 const MACOS_TRUST_FIELDS: [&str; 4] = ["codesign", "notarization", "staple", "gatekeeper"];
 const WINDOWS_TRUST_FIELDS: [&str; 3] = ["authenticode", "publicTrust", "rfc3161"];
 
@@ -244,6 +244,13 @@ pub fn assess(
     membrane_updater::verify(&candidate, &verifier)
 }
 
+/// Update handoff is permitted only after full Membrane admission succeeds.
+/// Kept separate from installation so callers must make this decision before
+/// stopping an owned service.
+pub fn may_handoff(result: &Result<VerifiedUpdate, BlockedUpdate>) -> bool {
+    result.is_ok()
+}
+
 // --- Deterministic, unexecuted-at-task-time source tests -------------------
 //
 // Not run by this task (no `cargo test`, per this task's hard rules); left
@@ -299,7 +306,7 @@ mod tests {
     #[test]
     fn deserializes_a_full_real_platform_acceptance_receipt_ignoring_unmodeled_fields() {
         let json = r#"{
-            "schema": "orthic.membrane.platform-acceptance.v1",
+            "schema": "membrane.platform-acceptance.v1",
             "receiptId": "r-1",
             "mode": "clean-vm",
             "commit": "0000000000000000000000000000000000000a",

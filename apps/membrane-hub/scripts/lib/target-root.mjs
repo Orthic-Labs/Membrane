@@ -15,8 +15,8 @@ import path from "node:path";
 export function resolveManagedCargoTarget(manifestPath) {
   if (!manifestPath) throw new Error("resolveManagedCargoTarget requires a Cargo.toml manifest path");
   const result = spawnSync(
-    "cargo",
-    ["metadata", "--no-deps", "--offline", "--format-version", "1", "--manifest-path", manifestPath],
+    "rightkit",
+    ["cargo", "metadata", "--no-deps", "--offline", "--format-version", "1", "--manifest-path", manifestPath],
     { cwd: path.dirname(manifestPath), encoding: "utf8", windowsHide: true },
   );
   if (result.error) throw result.error;

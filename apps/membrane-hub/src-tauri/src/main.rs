@@ -4,7 +4,7 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -29,6 +29,7 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectStat
 mod hub_contract_tests;
 mod update_admission;
 mod workspace;
+mod supervisor;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CachedSnapshot {
@@ -43,7 +44,7 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const POLL_TIMEOUT: Duration = Duration::from_secs(2);
 const STARTUP_GRACE: Duration = Duration::from_secs(3);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(100);
-type ServiceState = Arc<Mutex<Option<Child>>>;
+type ServiceState = Arc<supervisor::Supervisor>;
 
 /// Two-Sentinels decision: `StartupGate` is deliberately NOT backed by
 /// `memory_sentinel_view`/`memory_sentinel_producer` (engine/crates/membrane-runtime).
@@ -207,7 +208,7 @@ fn bundled_binary(name: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(format!("{name}{suffix}")))
 }
 
-fn start_cortex_service() -> Result<Option<Child>, String> {
+fn cortex_service_supervisor() -> Result<supervisor::Supervisor, String> {
     let program = std::env::var_os("MEMBRANE_CORTEX_SERVICE")
         .map(PathBuf::from)
         .unwrap_or_else(|| bundled_binary("cortex-service"));
@@ -217,40 +218,11 @@ fn start_cortex_service() -> Result<Option<Child>, String> {
     let root = workspace::resolve()
         .map_err(|_| "workspace_root_unavailable")?
         .root;
-    let mut child = Command::new(program)
-        .env("MEMBRANE_OWNER_PIPE", "1")
-        .env("WORKSPACE_ROOT", root)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|_| "cortex_service_start_failed".to_string())?;
-    std::thread::sleep(Duration::from_millis(120));
-    if child
-        .try_wait()
-        .map_err(|_| "cortex_service_wait_failed")?
-        .is_some()
-    {
-        let mut stderr_output = String::new();
-        if let Some(mut stderr) = child.stderr.take() {
-            let _ = stderr.read_to_string(&mut stderr_output);
-        }
-        if stderr_output.to_lowercase().contains("already in use") {
-            eprintln!("cortex-service: port already in use, adopting existing owner");
-            return Ok(None);
-        }
-        return Err("cortex_service_start_failed".into());
-    }
-    Ok(Some(child))
+    Ok(supervisor::Supervisor::new(program, root))
 }
 
 fn stop_cortex_service(service: &ServiceState) {
-    if let Ok(mut guard) = service.lock() {
-        if let Some(mut child) = guard.take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    }
+    service.stop();
 }
 
 /// Menu-bar state. Every state shows the same Membrane hex-brain mark and
@@ -540,7 +512,6 @@ fn hide_popover(app: tauri::AppHandle) -> Result<(), String> {
 fn main() {
     tauri::Builder::default()
         .manage(Arc::new(Mutex::new(PathBuf::from("snapshot.json"))))
-        .manage(Arc::new(Mutex::new(None::<Child>)))
         .manage(Arc::new(StartupGate::new()))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(w) = app.get_webview_window("hub") {
@@ -638,16 +609,20 @@ fn main() {
             if let Ok(workspace) = workspace::resolve() {
                 std::env::set_var("WORKSPACE_ROOT", workspace.root);
             }
-            let child = start_cortex_service().map_err(std::io::Error::other)?;
-            *app.state::<ServiceState>()
-                .lock()
-                .map_err(|_| std::io::Error::other("service_state_unavailable"))? = child;
+            let supervisor = Arc::new(cortex_service_supervisor().map_err(std::io::Error::other)?);
+            if supervisor.start().map_err(std::io::Error::other)? != supervisor::ServiceStatus::Running {
+                return Err(std::io::Error::other("cortex_service_unavailable").into());
+            }
+            app.manage(supervisor.clone());
             let handle = app.handle().clone();
             let gate = app.state::<Arc<StartupGate>>().inner().clone();
             let program = std::env::var_os("MEMBRANE_COMMAND")
                 .map(PathBuf::from)
                 .unwrap_or_else(|| bundled_binary("membrane"));
             std::thread::spawn(move || loop {
+                if supervisor.supervise() != supervisor::ServiceStatus::Running {
+                    let _ = supervisor.start();
+                }
                 let current = if gate.active() {
                     initial_poll(&cache, &program, &gate)
                 } else {

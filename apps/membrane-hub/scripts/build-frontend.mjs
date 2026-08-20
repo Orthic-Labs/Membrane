@@ -52,11 +52,7 @@ console.log(
   `[membrane] release generation ${identity.releaseGeneration} `
   + `(commit ${identity.commit.slice(0, 8)}${identity.dirty ? ", working tree" : ""}, ${identity.fileCount} files)`,
 );
-const cargo = process.platform === "win32"
-  ? { program: process.env.ComSpec || "cmd.exe", prefix: ["/d", "/s", "/c", "cargo.cmd"] }
-  : { program: "cargo", prefix: [] };
-// rightkit-allow-cargo-target-dir: sets CARGO_TARGET_DIR for the spawned cargo child using the metadata-resolved engineTarget, not a location read
-const result = spawnSync(cargo.program, [...cargo.prefix, "build", "--manifest-path", engine, "--release", "--target", target, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "cortex-service", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CARGO_TARGET_DIR: engineTarget, CORTEX_SOURCE_COMMIT: identity.commit, CORTEX_SOURCE_TREE_SHA256: identity.sourceTreeSha256 } });
+const result = spawnSync("rightkit", ["cargo", "build", "--manifest-path", engine, "--release", "--target", target, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "cortex-service", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CORTEX_SOURCE_COMMIT: identity.commit, CORTEX_SOURCE_TREE_SHA256: identity.sourceTreeSha256 } });
 if (result.error) throw result.error;
 if (result.status !== 0) throw new Error(`Membrane sidecar build failed with exit ${result.status}`);
 // The consumer of the baked value is the workspace release manifest; writing it

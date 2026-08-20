@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { engineReleaseIdentity } from "./release-identity.mjs";
 import { resolveManagedCargoTarget } from "./lib/target-root.mjs";
 
-const APP="membrane-hub",VERSION="0.1.10",NAMES=["cortex","cortex-service","membrane"];
+const APP="membrane-hub",VERSION="0.1.11",NAMES=["cortex","cortex-service","membrane"];
 const ROLE={cortex:"cli","cortex-service":"service",membrane:"hubCommand"};
 const TARGET={mac:"aarch64-apple-darwin",win:"x86_64-pc-windows-msvc"},HOST={mac:"darwin-arm64",win:"win32-x64"};
 const KEYS=["commit","dirty","fileCount","sourceTreePath","sourceTreeSha256","releaseGeneration"];
