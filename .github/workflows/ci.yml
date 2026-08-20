@@ -24,6 +24,9 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
-      - run: corepack enable && corepack prepare pnpm@11.18.0 --activate
+          package-manager-cache: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
       - run: rustup toolchain install stable --profile minimal
       - run: bash ./scripts/ci/run-ci.sh
