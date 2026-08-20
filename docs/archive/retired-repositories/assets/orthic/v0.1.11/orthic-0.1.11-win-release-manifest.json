@@ -1,0 +1,121 @@
+{
+  "schema": 1,
+  "releaseId": "orthic-0.1.11-36fe4b3a",
+  "app": "orthic",
+  "version": "0.1.11",
+  "commit": "36fe4b3ac8c33d7a9021a86be8835bf2ad94a9b0",
+  "platform": "win",
+  "cacheKey": "4eb2b9da9484df0d",
+  "signing": {
+    "contract": "windows-raw-exe-authenticode-before-nsis-v1",
+    "pipeline": "d919eb9ac706aa2d",
+    "configSha256": "4f433a98530b659ed6ca7ee4d3195403157a396a41fde7d96bf53bb45ee82625",
+    "receiptInputs": [
+      "D:\\Claude\\orthic\\.right-release\\receipts\\windows-raw-exe.json",
+      "D:\\Claude\\orthic\\.right-release\\receipts\\windows-installer.json",
+      "D:\\Claude\\orthic\\.right-release\\receipts\\windows-embedding.json"
+    ],
+    "receipts": [
+      {
+        "file": "D:\\Claude\\orthic\\.right-release\\receipts\\windows-raw-exe.json",
+        "sha256": "d533334aacefb17ffd07ad4a5f943e901f8c975f10db172b5fa227a2350d8930"
+      },
+      {
+        "file": "D:\\Claude\\orthic\\.right-release\\receipts\\windows-installer.json",
+        "sha256": "0e24e89f2280afebcbb70fae55e9b98dc4fca9557fb4fddb540819628906b5ef"
+      },
+      {
+        "file": "D:\\Claude\\orthic\\.right-release\\receipts\\windows-embedding.json",
+        "sha256": "6364a7b9224e9ad424444323a354b92b2e3213d7e405b60aeaa3fbe1834da458"
+      }
+    ]
+  },
+  "files": [
+    {
+      "role": "installer+updater",
+      "name": "Orthic_0.1.11_x64-setup.exe",
+      "sha256": "7c69a5e6635501545fb6d8b1c8428fc198566d391bff9cb4576f13fa0ec8b9d0",
+      "sizeBytes": 10872960
+    },
+    {
+      "role": "updater-signature",
+      "name": "Orthic_0.1.11_x64-setup.exe.sig",
+      "sha256": "3c14f677d43080268f5daeae2635839a00c73ef5ac23c865b9a6c5be503806bc",
+      "sizeBytes": 416
+    }
+  ],
+  "routes": {
+    "patch": [
+      {
+        "role": "installer",
+        "name": "Orthic_0.1.11_x64-setup.exe",
+        "bucket": "public",
+        "key": "membrane/installers/windows/current/Membrane_x64-setup.exe"
+      },
+      {
+        "role": "installer",
+        "name": "Orthic_0.1.11_x64-setup.exe",
+        "bucket": "public",
+        "key": "cortex/installers/windows/current/Orthic_x64-setup.exe"
+      },
+      {
+        "role": "updater",
+        "name": "Orthic_0.1.11_x64-setup.exe",
+        "signature": "Orthic_0.1.11_x64-setup.exe.sig",
+        "bucket": "public",
+        "key": "membrane/installers/windows/current/Membrane_x64-setup.exe",
+        "platform": "windows-x86_64"
+      },
+      {
+        "role": "updater",
+        "name": "Orthic_0.1.11_x64-setup.exe",
+        "signature": "Orthic_0.1.11_x64-setup.exe.sig",
+        "bucket": "public",
+        "key": "cortex/installers/windows/current/Orthic_x64-setup.exe",
+        "platform": "windows-x86_64"
+      }
+    ],
+    "update": [
+      {
+        "role": "updater",
+        "name": "Orthic_0.1.11_x64-setup.exe",
+        "signature": "Orthic_0.1.11_x64-setup.exe.sig",
+        "bucket": "private",
+        "key": "membrane/updates/windows/current/Membrane_x64-setup.exe",
+        "platform": "windows-x86_64"
+      },
+      {
+        "role": "updater",
+        "name": "Orthic_0.1.11_x64-setup.exe",
+        "signature": "Orthic_0.1.11_x64-setup.exe.sig",
+        "bucket": "private",
+        "key": "cortex/updates/windows/current/Orthic_x64-setup.exe",
+        "platform": "windows-x86_64"
+      }
+    ]
+  },
+  "inputs": {
+    "orthic\\right-release.config.mjs": "4f433a98530b659ed6ca7ee4d3195403157a396a41fde7d96bf53bb45ee82625",
+    "orthic\\package.json": "d4098c0c734b75e26da79a1a881b80d7bad202a1cc28e47df87934fc5cc64e57",
+    "orthic\\pnpm-lock.yaml": "18590400f3a2b8b6051bf4f448f03406a23a7ef2d12b0591d6cce75a6329b35e",
+    "src-tauri\\Cargo.toml": "b6d00b4bc7ba25d34d058b9be948da80623d3738079230074bfe694a66422a1a",
+    "src-tauri\\Cargo.lock": "f38adf4279815e5dcd7240595cb60609c4bb7b1642020a65f114089a0a8d9978",
+    ".right-release/signing-identity.json": "6224016403acdb902d3751cb5efe0b8104e963ee5d32b096dfe97e0af39d099a"
+  },
+  "tools": {
+    "node": "v26.5.0",
+    "packageManager": "pnpm 11.18.0",
+    "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+    "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-pc-windows-msvc\nrelease: 1.97.1\nLLVM version: 22.1.6",
+    "rustHost": "x86_64-pc-windows-msvc",
+    "sccache": "sccache 0.17.0"
+  },
+  "checkpoints": [
+    "preflight_complete",
+    "build_complete",
+    "signed",
+    "hardened",
+    "sealed"
+  ],
+  "sealedAt": "2026-08-11T13:52:27.577Z"
+}

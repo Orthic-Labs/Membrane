@@ -1,0 +1,47 @@
+[
+  {
+    "branch": "claude/competitor-model-synthesis-sc2n4r",
+    "protected": false,
+    "protection": null
+  },
+  {
+    "branch": "claude/confident-ride-28ki0a",
+    "protected": false,
+    "protection": null
+  },
+  {
+    "branch": "dependabot/github_actions/actions/checkout-7",
+    "protected": false,
+    "protection": null
+  },
+  {
+    "branch": "dependabot/github_actions/actions/setup-python-7",
+    "protected": false,
+    "protection": null
+  },
+  {
+    "branch": "dependabot/github_actions/actions/upload-artifact-7",
+    "protected": false,
+    "protection": null
+  },
+  {
+    "branch": "dependabot/github_actions/peter-evans/create-pull-request-8",
+    "protected": false,
+    "protection": null
+  },
+  {
+    "branch": "dependabot/github_actions/pnpm/action-setup-6",
+    "protected": false,
+    "protection": null
+  },
+  {
+    "branch": "dependabot/npm_and_yarn/web-tree-sitter-0.26.12",
+    "protected": false,
+    "protection": null
+  },
+  {
+    "branch": "main",
+    "protected": false,
+    "protection": null
+  }
+]

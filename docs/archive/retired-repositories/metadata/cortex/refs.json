@@ -1,0 +1,62 @@
+[
+  {
+    "ref": "refs/heads/claude/competitor-model-synthesis-sc2n4r",
+    "objectSha": "f4a1b7fc95c34a5ba0475b881859ab607a610793",
+    "commitSha": "f4a1b7fc95c34a5ba0475b881859ab607a610793",
+    "localArchiveRef": "refs/archive/retired/cortex/heads/claude/competitor-model-synthesis-sc2n4r"
+  },
+  {
+    "ref": "refs/heads/claude/confident-ride-28ki0a",
+    "objectSha": "c483019384b61abba5e15c8f4d9079be49ce810f",
+    "commitSha": "c483019384b61abba5e15c8f4d9079be49ce810f",
+    "localArchiveRef": "refs/archive/retired/cortex/heads/claude/confident-ride-28ki0a"
+  },
+  {
+    "ref": "refs/heads/dependabot/github_actions/actions/checkout-7",
+    "objectSha": "fcb199a9313a15572b934020b909549f94a835d7",
+    "commitSha": "fcb199a9313a15572b934020b909549f94a835d7",
+    "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/github_actions/actions/checkout-7"
+  },
+  {
+    "ref": "refs/heads/dependabot/github_actions/actions/setup-python-7",
+    "objectSha": "2027acccf37b1b664035096d8db969d0ca470791",
+    "commitSha": "2027acccf37b1b664035096d8db969d0ca470791",
+    "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/github_actions/actions/setup-python-7"
+  },
+  {
+    "ref": "refs/heads/dependabot/github_actions/actions/upload-artifact-7",
+    "objectSha": "0b92f67a7ebd8e43d3bb601384cfbdf6c80bd501",
+    "commitSha": "0b92f67a7ebd8e43d3bb601384cfbdf6c80bd501",
+    "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/github_actions/actions/upload-artifact-7"
+  },
+  {
+    "ref": "refs/heads/dependabot/github_actions/peter-evans/create-pull-request-8",
+    "objectSha": "424e8831a03c8dcf7bc06c910d75095497f7adf8",
+    "commitSha": "424e8831a03c8dcf7bc06c910d75095497f7adf8",
+    "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/github_actions/peter-evans/create-pull-request-8"
+  },
+  {
+    "ref": "refs/heads/dependabot/github_actions/pnpm/action-setup-6",
+    "objectSha": "3d914c3e3abd5424945485d0826e38cff60b6040",
+    "commitSha": "3d914c3e3abd5424945485d0826e38cff60b6040",
+    "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/github_actions/pnpm/action-setup-6"
+  },
+  {
+    "ref": "refs/heads/dependabot/npm_and_yarn/web-tree-sitter-0.26.12",
+    "objectSha": "f995acb3241b5a9bec701f497e68454a2014b988",
+    "commitSha": "f995acb3241b5a9bec701f497e68454a2014b988",
+    "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/npm_and_yarn/web-tree-sitter-0.26.12"
+  },
+  {
+    "ref": "refs/heads/main",
+    "objectSha": "bd46965d6738657db6ed95afad1dc622ce1c5b95",
+    "commitSha": "bd46965d6738657db6ed95afad1dc622ce1c5b95",
+    "localArchiveRef": "refs/archive/retired/cortex/heads/main"
+  },
+  {
+    "ref": "refs/tags/archive/dispatch-d50-d53",
+    "objectSha": "72b38bd299a03b15a9992320f32876895af95b79",
+    "commitSha": "d9ed4eb5f89ea92f804cb18ed2010c2c73ef6402",
+    "localArchiveRef": "refs/archive/retired/cortex/tags/archive/dispatch-d50-d53"
+  }
+]

@@ -1,0 +1,14 @@
+[
+  {
+    "ref": "refs/heads/detached-work-2026-08-19",
+    "objectSha": "47ef4a6e155d089cf0383df457b19615d18b7ae3",
+    "commitSha": "47ef4a6e155d089cf0383df457b19615d18b7ae3",
+    "localArchiveRef": "refs/archive/retired/adapt/heads/detached-work-2026-08-19"
+  },
+  {
+    "ref": "refs/heads/main",
+    "objectSha": "5da31ea91362a3ab8fbfdab5fe90a9e0b92f76f0",
+    "commitSha": "5da31ea91362a3ab8fbfdab5fe90a9e0b92f76f0",
+    "localArchiveRef": "refs/archive/retired/adapt/heads/main"
+  }
+]

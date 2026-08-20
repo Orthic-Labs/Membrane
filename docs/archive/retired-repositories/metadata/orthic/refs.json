@@ -1,0 +1,14 @@
+[
+  {
+    "ref": "refs/heads/main",
+    "objectSha": "88d9564e36e4ee6989296232c4efa9298ee26466",
+    "commitSha": "88d9564e36e4ee6989296232c4efa9298ee26466",
+    "localArchiveRef": "refs/archive/retired/orthic/heads/main"
+  },
+  {
+    "ref": "refs/tags/v0.1.11",
+    "objectSha": "36fe4b3ac8c33d7a9021a86be8835bf2ad94a9b0",
+    "commitSha": "36fe4b3ac8c33d7a9021a86be8835bf2ad94a9b0",
+    "localArchiveRef": "refs/archive/retired/orthic/tags/v0.1.11"
+  }
+]

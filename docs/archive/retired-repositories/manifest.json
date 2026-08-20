@@ -1,0 +1,475 @@
+{
+  "schema": "membrane.retired-repository-archive.v1",
+  "generatedAt": "2026-08-20T15:01:43.404Z",
+  "membraneHead": "63e59e7354b7e0cb3c4c91f778334c9cbb76e79c",
+  "repositories": [
+    {
+      "repository": "Orthic-Labs/Cortex",
+      "remoteUrl": "git@github.com:Orthic-Labs/Cortex.git",
+      "archived": true,
+      "refs": [
+        {
+          "ref": "refs/heads/claude/competitor-model-synthesis-sc2n4r",
+          "objectSha": "f4a1b7fc95c34a5ba0475b881859ab607a610793",
+          "commitSha": "f4a1b7fc95c34a5ba0475b881859ab607a610793",
+          "localArchiveRef": "refs/archive/retired/cortex/heads/claude/competitor-model-synthesis-sc2n4r"
+        },
+        {
+          "ref": "refs/heads/claude/confident-ride-28ki0a",
+          "objectSha": "c483019384b61abba5e15c8f4d9079be49ce810f",
+          "commitSha": "c483019384b61abba5e15c8f4d9079be49ce810f",
+          "localArchiveRef": "refs/archive/retired/cortex/heads/claude/confident-ride-28ki0a"
+        },
+        {
+          "ref": "refs/heads/dependabot/github_actions/actions/checkout-7",
+          "objectSha": "fcb199a9313a15572b934020b909549f94a835d7",
+          "commitSha": "fcb199a9313a15572b934020b909549f94a835d7",
+          "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/github_actions/actions/checkout-7"
+        },
+        {
+          "ref": "refs/heads/dependabot/github_actions/actions/setup-python-7",
+          "objectSha": "2027acccf37b1b664035096d8db969d0ca470791",
+          "commitSha": "2027acccf37b1b664035096d8db969d0ca470791",
+          "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/github_actions/actions/setup-python-7"
+        },
+        {
+          "ref": "refs/heads/dependabot/github_actions/actions/upload-artifact-7",
+          "objectSha": "0b92f67a7ebd8e43d3bb601384cfbdf6c80bd501",
+          "commitSha": "0b92f67a7ebd8e43d3bb601384cfbdf6c80bd501",
+          "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/github_actions/actions/upload-artifact-7"
+        },
+        {
+          "ref": "refs/heads/dependabot/github_actions/peter-evans/create-pull-request-8",
+          "objectSha": "424e8831a03c8dcf7bc06c910d75095497f7adf8",
+          "commitSha": "424e8831a03c8dcf7bc06c910d75095497f7adf8",
+          "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/github_actions/peter-evans/create-pull-request-8"
+        },
+        {
+          "ref": "refs/heads/dependabot/github_actions/pnpm/action-setup-6",
+          "objectSha": "3d914c3e3abd5424945485d0826e38cff60b6040",
+          "commitSha": "3d914c3e3abd5424945485d0826e38cff60b6040",
+          "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/github_actions/pnpm/action-setup-6"
+        },
+        {
+          "ref": "refs/heads/dependabot/npm_and_yarn/web-tree-sitter-0.26.12",
+          "objectSha": "f995acb3241b5a9bec701f497e68454a2014b988",
+          "commitSha": "f995acb3241b5a9bec701f497e68454a2014b988",
+          "localArchiveRef": "refs/archive/retired/cortex/heads/dependabot/npm_and_yarn/web-tree-sitter-0.26.12"
+        },
+        {
+          "ref": "refs/heads/main",
+          "objectSha": "bd46965d6738657db6ed95afad1dc622ce1c5b95",
+          "commitSha": "bd46965d6738657db6ed95afad1dc622ce1c5b95",
+          "localArchiveRef": "refs/archive/retired/cortex/heads/main"
+        },
+        {
+          "ref": "refs/tags/archive/dispatch-d50-d53",
+          "objectSha": "72b38bd299a03b15a9992320f32876895af95b79",
+          "commitSha": "d9ed4eb5f89ea92f804cb18ed2010c2c73ef6402",
+          "localArchiveRef": "refs/archive/retired/cortex/tags/archive/dispatch-d50-d53"
+        }
+      ],
+      "counts": {
+        "branches": 9,
+        "tags": 1,
+        "issuesAndPulls": 9,
+        "issuesOnly": 0,
+        "pulls": 9,
+        "reviews": 0,
+        "reviewComments": 0,
+        "issueComments": 3,
+        "releases": 0,
+        "releaseAssets": 0,
+        "labels": 13,
+        "milestones": 0,
+        "repositoryProperties": 0
+      },
+      "files": [
+        {
+          "path": "metadata/cortex/repository.json",
+          "sha256": "b981c0d3913d34cf43162a88985f3e66ade107f225490fcf0e5f731e48170866",
+          "bytes": 7997
+        },
+        {
+          "path": "metadata/cortex/branches.json",
+          "sha256": "5a689a7e38fff69eae76dd411ab422ab82d4a84dca1fe2edecbd67a75a1a984a",
+          "bytes": 5307
+        },
+        {
+          "path": "metadata/cortex/tags.json",
+          "sha256": "5eb8a6160e7cdc1459aea262a6da8db3769b5171231103dd0cdbf9c230326d5b",
+          "bytes": 551
+        },
+        {
+          "path": "metadata/cortex/annotated-tags.json",
+          "sha256": "d8e20b2bf2134d76e8984874d78db535c1256be369688bf69551f31d8ba12e0e",
+          "bytes": 1433
+        },
+        {
+          "path": "metadata/cortex/branch-protections.json",
+          "sha256": "5cdddca2d6512c2c888b405d16843ab35282824e575d5cf2800be38a3bba1f64",
+          "bytes": 1035
+        },
+        {
+          "path": "metadata/cortex/rulesets.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/cortex/refs.json",
+          "sha256": "423b944ed57614dc1cf35b3e82c683c7e992404960aa7eba2ba74ec58f0cc7a4",
+          "bytes": 2951
+        },
+        {
+          "path": "metadata/cortex/issues.json",
+          "sha256": "09d4b8600e15ae1d942840a5c42e528ea78ce0bd3b071599b43e79322bdfd946",
+          "bytes": 113658
+        },
+        {
+          "path": "metadata/cortex/issue-comments.json",
+          "sha256": "343f6bc26791e4d904f76e89da98d036c90c6c099257abbe809a305c1d38d10f",
+          "bytes": 9048
+        },
+        {
+          "path": "metadata/cortex/pulls.json",
+          "sha256": "c497835f45b24e236e41504108af3e99b5d44a20752cefe93016678c94a05dee",
+          "bytes": 258203
+        },
+        {
+          "path": "metadata/cortex/reviews.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/cortex/pull-review-comments.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/cortex/releases.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/cortex/labels.json",
+          "sha256": "c482eb55c3555c87c416a7991e853c8e26f010ffb0855d5d6fbd72932d0dfc87",
+          "bytes": 3649
+        },
+        {
+          "path": "metadata/cortex/milestones.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/cortex/properties.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        }
+      ],
+      "assets": []
+    },
+    {
+      "repository": "Orthic-Labs/Adapt",
+      "remoteUrl": "git@github.com:Orthic-Labs/Adapt.git",
+      "archived": true,
+      "refs": [
+        {
+          "ref": "refs/heads/detached-work-2026-08-19",
+          "objectSha": "47ef4a6e155d089cf0383df457b19615d18b7ae3",
+          "commitSha": "47ef4a6e155d089cf0383df457b19615d18b7ae3",
+          "localArchiveRef": "refs/archive/retired/adapt/heads/detached-work-2026-08-19"
+        },
+        {
+          "ref": "refs/heads/main",
+          "objectSha": "5da31ea91362a3ab8fbfdab5fe90a9e0b92f76f0",
+          "commitSha": "5da31ea91362a3ab8fbfdab5fe90a9e0b92f76f0",
+          "localArchiveRef": "refs/archive/retired/adapt/heads/main"
+        }
+      ],
+      "counts": {
+        "branches": 2,
+        "tags": 0,
+        "issuesAndPulls": 0,
+        "issuesOnly": 0,
+        "pulls": 0,
+        "reviews": 0,
+        "reviewComments": 0,
+        "issueComments": 0,
+        "releases": 0,
+        "releaseAssets": 0,
+        "labels": 9,
+        "milestones": 0,
+        "repositoryProperties": 0
+      },
+      "files": [
+        {
+          "path": "metadata/adapt/repository.json",
+          "sha256": "41318bb17e53fce61c7901f381937650728338a76b1e371d95a671443debd5e6",
+          "bytes": 7895
+        },
+        {
+          "path": "metadata/adapt/branches.json",
+          "sha256": "c235a9c6150bf11b25ac58aa9252085d169f038ca372a839e37f83a3c37df406",
+          "bytes": 1071
+        },
+        {
+          "path": "metadata/adapt/tags.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/adapt/annotated-tags.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/adapt/branch-protections.json",
+          "sha256": "95ba8c11000ea80b4c010d13e46675d8c91438675724c80c659e6c7b493419d0",
+          "bytes": 179
+        },
+        {
+          "path": "metadata/adapt/rulesets.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/adapt/refs.json",
+          "sha256": "260f37fad93206428e2ddd8982777a8c017cf63d5b1a632ae7d3b7f8de851d60",
+          "bytes": 491
+        },
+        {
+          "path": "metadata/adapt/issues.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/adapt/issue-comments.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/adapt/pulls.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/adapt/reviews.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/adapt/pull-review-comments.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/adapt/releases.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/adapt/labels.json",
+          "sha256": "6ad8f4c3be144ab45975357d2836a1102a51bd2c282e75be935d4e0cd373e708",
+          "bytes": 2474
+        },
+        {
+          "path": "metadata/adapt/milestones.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/adapt/properties.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        }
+      ],
+      "assets": []
+    },
+    {
+      "repository": "Orthic-Labs/orthic",
+      "remoteUrl": "git@github.com:Orthic-Labs/orthic.git",
+      "archived": false,
+      "refs": [
+        {
+          "ref": "refs/heads/main",
+          "objectSha": "88d9564e36e4ee6989296232c4efa9298ee26466",
+          "commitSha": "88d9564e36e4ee6989296232c4efa9298ee26466",
+          "localArchiveRef": "refs/archive/retired/orthic/heads/main"
+        },
+        {
+          "ref": "refs/tags/v0.1.11",
+          "objectSha": "36fe4b3ac8c33d7a9021a86be8835bf2ad94a9b0",
+          "commitSha": "36fe4b3ac8c33d7a9021a86be8835bf2ad94a9b0",
+          "localArchiveRef": "refs/archive/retired/orthic/tags/v0.1.11"
+        }
+      ],
+      "counts": {
+        "branches": 1,
+        "tags": 1,
+        "issuesAndPulls": 0,
+        "issuesOnly": 0,
+        "pulls": 0,
+        "reviews": 0,
+        "reviewComments": 0,
+        "issueComments": 0,
+        "releases": 1,
+        "releaseAssets": 3,
+        "labels": 9,
+        "milestones": 0,
+        "repositoryProperties": 0
+      },
+      "files": [
+        {
+          "path": "metadata/orthic/repository.json",
+          "sha256": "21fefc53620798b3d5c432331286854027ab83a88a0f88456bb0829c82fc723e",
+          "bytes": 7717
+        },
+        {
+          "path": "metadata/orthic/branches.json",
+          "sha256": "de12fe92657564f184fac0ab94097793651162bbbbca464b190977eb32ed619f",
+          "bytes": 519
+        },
+        {
+          "path": "metadata/orthic/tags.json",
+          "sha256": "fbf649ef96f770c1a4588dff3e4a3d60efeb9b3333d22b897ff5935339901b3a",
+          "bytes": 475
+        },
+        {
+          "path": "metadata/orthic/annotated-tags.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/orthic/branch-protections.json",
+          "sha256": "9e1ed7faf52ef687fc4354947114451b755dfb19f673e730b21ce2b6654528fb",
+          "bytes": 81
+        },
+        {
+          "path": "metadata/orthic/rulesets.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/orthic/refs.json",
+          "sha256": "56889f62014428988b18e5c58a6457e648599220e74ffc38acdcce44ea1da639",
+          "bytes": 457
+        },
+        {
+          "path": "metadata/orthic/issues.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/orthic/issue-comments.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/orthic/pulls.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/orthic/reviews.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/orthic/pull-review-comments.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/orthic/releases.json",
+          "sha256": "4b61a71b558eb47bbe5ce84317146b5580bb7d6a437268919334617e9a20d266",
+          "bytes": 7891
+        },
+        {
+          "path": "metadata/orthic/labels.json",
+          "sha256": "02558fb3a09f291b24ce8eca859562c4bb40cabe6bd5a79bd6db24cda4df6d08",
+          "bytes": 2483
+        },
+        {
+          "path": "metadata/orthic/milestones.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        },
+        {
+          "path": "metadata/orthic/properties.json",
+          "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+          "bytes": 3
+        }
+      ],
+      "assets": [
+        {
+          "id": 510200442,
+          "name": "orthic-0.1.11-win-release-manifest.json",
+          "source": "https://github.com/Orthic-Labs/orthic/releases/download/v0.1.11/orthic-0.1.11-win-release-manifest.json",
+          "path": "assets/orthic/v0.1.11/orthic-0.1.11-win-release-manifest.json",
+          "bytes": 4496,
+          "sha256": "642342d13fbcdbbc3d787bfa344d3807c23ace457015ecf360a2acd9b63b1f9e"
+        },
+        {
+          "id": 510200445,
+          "name": "orthic-0.1.11-win-SHA256SUMS.txt",
+          "source": "https://github.com/Orthic-Labs/orthic/releases/download/v0.1.11/orthic-0.1.11-win-SHA256SUMS.txt",
+          "path": "assets/orthic/v0.1.11/orthic-0.1.11-win-SHA256SUMS.txt",
+          "bytes": 94,
+          "sha256": "e33b074d531caba795d7bd2e7e9707a1b43d17e773fb492a92651b2d195115a3"
+        },
+        {
+          "id": 510200441,
+          "name": "Orthic_0.1.11_x64-setup.exe",
+          "source": "https://github.com/Orthic-Labs/orthic/releases/download/v0.1.11/Orthic_0.1.11_x64-setup.exe",
+          "path": "assets/orthic/v0.1.11/Orthic_0.1.11_x64-setup.exe",
+          "bytes": 10872960,
+          "sha256": "7c69a5e6635501545fb6d8b1c8428fc198566d391bff9cb4576f13fa0ec8b9d0"
+        }
+      ]
+    }
+  ],
+  "projectInventory": {
+    "source": "https://github.com/orgs/Orthic-Labs/projects",
+    "method": "public organization projects HTML",
+    "open": 0,
+    "closed": 0,
+    "total": 0,
+    "publicLinkedItems": 0,
+    "authenticatedInventory": "unverified: current gh token lacks read:project; public organization inventory exposes zero projects",
+    "file": {
+      "path": "metadata/projects.json",
+      "sha256": "510f6ac29af303c9bcf2d296c92d08d76868a1460fe0757565d8f76dbf83a6a6",
+      "bytes": 312
+    }
+  },
+  "localOrthic": {
+    "head": "88d9564e36e4ee6989296232c4efa9298ee26466",
+    "originMain": "88d9564e36e4ee6989296232c4efa9298ee26466",
+    "status": [
+      "# branch.oid 88d9564e36e4ee6989296232c4efa9298ee26466",
+      "# branch.head main",
+      "# branch.upstream origin/main",
+      "# branch.ab +0 -0"
+    ],
+    "stagedPatch": {
+      "path": "local-inputs/orthic-staged.patch",
+      "sha256": "92ca9ce39d81ace3dae76f9b357be837e6e10c76447b0cdc056768ce7b77548a",
+      "bytes": 3666
+    },
+    "currentStagedPatch": {
+      "path": "local-inputs/orthic-current-staged.patch",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "unstagedPatch": {
+      "path": "local-inputs/orthic-unstaged.patch",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  },
+  "anchor": {
+    "commit": null,
+    "annotatedTag": null,
+    "finalRefreshRequiredAfterOrthicHardCut": true
+  }
+}

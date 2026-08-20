@@ -1,0 +1,155 @@
+[
+  {
+    "name": "claude/competitor-model-synthesis-sc2n4r",
+    "commit": {
+      "sha": "f4a1b7fc95c34a5ba0475b881859ab607a610793",
+      "url": "https://api.github.com/repos/Orthic-Labs/Cortex/commits/f4a1b7fc95c34a5ba0475b881859ab607a610793"
+    },
+    "protected": false,
+    "protection": {
+      "enabled": false,
+      "required_status_checks": {
+        "enforcement_level": "off",
+        "contexts": [],
+        "checks": []
+      }
+    },
+    "protection_url": "https://api.github.com/repos/Orthic-Labs/Cortex/branches/claude/competitor-model-synthesis-sc2n4r/protection"
+  },
+  {
+    "name": "claude/confident-ride-28ki0a",
+    "commit": {
+      "sha": "c483019384b61abba5e15c8f4d9079be49ce810f",
+      "url": "https://api.github.com/repos/Orthic-Labs/Cortex/commits/c483019384b61abba5e15c8f4d9079be49ce810f"
+    },
+    "protected": false,
+    "protection": {
+      "enabled": false,
+      "required_status_checks": {
+        "enforcement_level": "off",
+        "contexts": [],
+        "checks": []
+      }
+    },
+    "protection_url": "https://api.github.com/repos/Orthic-Labs/Cortex/branches/claude/confident-ride-28ki0a/protection"
+  },
+  {
+    "name": "dependabot/github_actions/actions/checkout-7",
+    "commit": {
+      "sha": "fcb199a9313a15572b934020b909549f94a835d7",
+      "url": "https://api.github.com/repos/Orthic-Labs/Cortex/commits/fcb199a9313a15572b934020b909549f94a835d7"
+    },
+    "protected": false,
+    "protection": {
+      "enabled": false,
+      "required_status_checks": {
+        "enforcement_level": "off",
+        "contexts": [],
+        "checks": []
+      }
+    },
+    "protection_url": "https://api.github.com/repos/Orthic-Labs/Cortex/branches/dependabot/github_actions/actions/checkout-7/protection"
+  },
+  {
+    "name": "dependabot/github_actions/actions/setup-python-7",
+    "commit": {
+      "sha": "2027acccf37b1b664035096d8db969d0ca470791",
+      "url": "https://api.github.com/repos/Orthic-Labs/Cortex/commits/2027acccf37b1b664035096d8db969d0ca470791"
+    },
+    "protected": false,
+    "protection": {
+      "enabled": false,
+      "required_status_checks": {
+        "enforcement_level": "off",
+        "contexts": [],
+        "checks": []
+      }
+    },
+    "protection_url": "https://api.github.com/repos/Orthic-Labs/Cortex/branches/dependabot/github_actions/actions/setup-python-7/protection"
+  },
+  {
+    "name": "dependabot/github_actions/actions/upload-artifact-7",
+    "commit": {
+      "sha": "0b92f67a7ebd8e43d3bb601384cfbdf6c80bd501",
+      "url": "https://api.github.com/repos/Orthic-Labs/Cortex/commits/0b92f67a7ebd8e43d3bb601384cfbdf6c80bd501"
+    },
+    "protected": false,
+    "protection": {
+      "enabled": false,
+      "required_status_checks": {
+        "enforcement_level": "off",
+        "contexts": [],
+        "checks": []
+      }
+    },
+    "protection_url": "https://api.github.com/repos/Orthic-Labs/Cortex/branches/dependabot/github_actions/actions/upload-artifact-7/protection"
+  },
+  {
+    "name": "dependabot/github_actions/peter-evans/create-pull-request-8",
+    "commit": {
+      "sha": "424e8831a03c8dcf7bc06c910d75095497f7adf8",
+      "url": "https://api.github.com/repos/Orthic-Labs/Cortex/commits/424e8831a03c8dcf7bc06c910d75095497f7adf8"
+    },
+    "protected": false,
+    "protection": {
+      "enabled": false,
+      "required_status_checks": {
+        "enforcement_level": "off",
+        "contexts": [],
+        "checks": []
+      }
+    },
+    "protection_url": "https://api.github.com/repos/Orthic-Labs/Cortex/branches/dependabot/github_actions/peter-evans/create-pull-request-8/protection"
+  },
+  {
+    "name": "dependabot/github_actions/pnpm/action-setup-6",
+    "commit": {
+      "sha": "3d914c3e3abd5424945485d0826e38cff60b6040",
+      "url": "https://api.github.com/repos/Orthic-Labs/Cortex/commits/3d914c3e3abd5424945485d0826e38cff60b6040"
+    },
+    "protected": false,
+    "protection": {
+      "enabled": false,
+      "required_status_checks": {
+        "enforcement_level": "off",
+        "contexts": [],
+        "checks": []
+      }
+    },
+    "protection_url": "https://api.github.com/repos/Orthic-Labs/Cortex/branches/dependabot/github_actions/pnpm/action-setup-6/protection"
+  },
+  {
+    "name": "dependabot/npm_and_yarn/web-tree-sitter-0.26.12",
+    "commit": {
+      "sha": "f995acb3241b5a9bec701f497e68454a2014b988",
+      "url": "https://api.github.com/repos/Orthic-Labs/Cortex/commits/f995acb3241b5a9bec701f497e68454a2014b988"
+    },
+    "protected": false,
+    "protection": {
+      "enabled": false,
+      "required_status_checks": {
+        "enforcement_level": "off",
+        "contexts": [],
+        "checks": []
+      }
+    },
+    "protection_url": "https://api.github.com/repos/Orthic-Labs/Cortex/branches/dependabot/npm_and_yarn/web-tree-sitter-0.26.12/protection"
+  },
+  {
+    "name": "main",
+    "commit": {
+      "sha": "bd46965d6738657db6ed95afad1dc622ce1c5b95",
+      "url": "https://api.github.com/repos/Orthic-Labs/Cortex/commits/bd46965d6738657db6ed95afad1dc622ce1c5b95"
+    },
+    "protected": false,
+    "protection": {
+      "enabled": false,
+      "required_status_checks": {
+        "enforcement_level": "off",
+        "contexts": [],
+        "checks": []
+      }
+    },
+    "protection_url": "https://api.github.com/repos/Orthic-Labs/Cortex/branches/main/protection"
+  }
+]
