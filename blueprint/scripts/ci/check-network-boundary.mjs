@@ -8,7 +8,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const SCAN_DIRS = ["scripts", "lib", "graph", "watchman", "sources"];
+const SCAN_DIRS = ["scripts", "src/lib", "src/graph", "src/watchman", "src/sources"];
 // The checker's own directory contains the API-name literals and must not
 // flag itself.
 const SELF_EXCLUDE = "scripts/ci/";

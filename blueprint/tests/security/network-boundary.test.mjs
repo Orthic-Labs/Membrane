@@ -11,7 +11,7 @@ test("POSIX inventory paths preserve literal backslashes", () => {
 
 test("Windows inventory paths normalize native separators", () => {
   assert.equal(
-    boundary.toInventoryPath("lib\\http-server.mjs", "\\"),
+    boundary.toInventoryPath("src\\lib\\http-server.mjs", "\\"),
     "src/lib/http-server.mjs",
   );
 });
