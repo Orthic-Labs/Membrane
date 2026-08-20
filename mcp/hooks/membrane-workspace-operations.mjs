@@ -11,7 +11,7 @@ import { request as httpRequest } from "node:http";
 import { typedStatus } from "./membrane-hook-runtime.mjs";
 
 const require = createRequire(import.meta.url);
-const DEFAULT_CONTEXT_ADAPTER = require("../mcp/host/context-adapter.cjs");
+const DEFAULT_CONTEXT_ADAPTER = require("../host/context-adapter.cjs");
 const SERVICE_LIFECYCLE = "hub-child";
 
 function workspaceRoot(event, env = process.env) {

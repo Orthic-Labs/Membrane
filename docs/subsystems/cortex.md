@@ -2,7 +2,7 @@
 
 **Status:** canonical subsystem doctrine · draft for adoption
 **Was:** MemRight → Crypt. `crypt*` binaries/env remain the compatibility facade until the rename lands.
-**Parent:** `docs/SYSTEM.md` · `MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md` §8
+**Parent:** `docs/subsystems/SYSTEM.md` · `MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md` §8
 
 ## Purpose
 Answer one question: **what do we durably know?** — decisions, preferences (taste), gotchas, procedures, observations, temporal facts, episodic session packets — each with evidence, scope, authority, validity, lifecycle, and supersession.

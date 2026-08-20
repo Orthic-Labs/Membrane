@@ -3,7 +3,7 @@
 **Status:** canonical subsystem doctrine · draft for adoption
 **Was:** "Markdown Doc Spine" / RMS D1–D4 (complete 2026-07-30, shadow-only)
 **Code today:** `engine/crates/membrane-runtime/src/{doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs`
-**Parent:** `docs/SYSTEM.md`
+**Parent:** `docs/subsystems/SYSTEM.md`
 
 ## Purpose
 Answer one question: **where in the markdown is it?** An index over markdown files — like a database index — so an agent (or anything) goes to the exact section instead of reading the file.

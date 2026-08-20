@@ -2,7 +2,7 @@
 
 **Status:** canonical subsystem doctrine · draft for adoption
 **Code today:** separate repo `/Volumes/D/claude/adapt` (Python) — to be subtree-merged as `adapt/`
-**Parent:** `docs/SYSTEM.md`
+**Parent:** `docs/subsystems/SYSTEM.md`
 
 ## Purpose
 Answer one question: **what should we have learned?** Turn experience (transcripts, observable events, outcomes) into *proposals* for durable knowledge. It is the only path by which experience becomes memory — and it goes through Cortex admission like everything else.

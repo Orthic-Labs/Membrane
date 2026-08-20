@@ -100,7 +100,7 @@ blueprint  → nothing in this tree
 
 ```
 membrane/
-  docs/SYSTEM.md                ← this file
+  docs/subsystems/SYSTEM.md               ← this file
   docs/subsystems/{planner,blueprint,cortex,spine,adapt,push,providers,hosts}.md
   blueprint/                    ← ex-Cortex repo (subtree), own package.json
   engine/crates/

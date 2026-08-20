@@ -2,7 +2,7 @@
 
 **Status:** canonical subsystem doctrine · draft for adoption
 **Code today:** `runc` / `skel` / `compress` inside the `crypt` crate; compress/spill store in `membrane-runtime` — **misplaced**
-**Parent:** `docs/SYSTEM.md` · Membrane doctrine §9
+**Parent:** `docs/subsystems/SYSTEM.md` · Membrane doctrine §9
 
 ## Purpose
 Answer one question: **how do we shrink what is already flowing to the agent without losing anything we might need back?**
