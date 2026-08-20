@@ -16,6 +16,17 @@ function run(command, args) {
 
 const python = process.platform === "win32" ? "py" : "python3";
 const pythonPrefix = process.platform === "win32" ? ["-3.11"] : [];
+run("rightkit", [
+  "cargo",
+  "build",
+  "--manifest-path",
+  "engine/Cargo.toml",
+  "-p",
+  "cortex",
+  "--bin",
+  "cortex",
+  "--locked",
+]);
 run(python, [
   ...pythonPrefix,
   "-m",
@@ -34,7 +45,8 @@ run("node", [
   "mcp/deadline.test.mjs",
   "mcp/delivery-serialization.test.mjs",
 ]);
-run("cargo", [
+run("rightkit", [
+  "cargo",
   "test",
   "--manifest-path",
   "engine/Cargo.toml",
@@ -46,7 +58,8 @@ run("cargo", [
   "doc_spine_equivalence",
   "--locked",
 ]);
-run("cargo", [
+run("rightkit", [
+  "cargo",
   "test",
   "--manifest-path",
   "engine/Cargo.toml",

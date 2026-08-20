@@ -9,6 +9,7 @@ import { createRequire } from "node:module";
 import { get as httpGet } from "node:http";
 import { request as httpRequest } from "node:http";
 import { typedStatus } from "./membrane-hook-runtime.mjs";
+import { createContinuityClient } from "../host/continuity.mjs";
 
 const require = createRequire(import.meta.url);
 const DEFAULT_CONTEXT_ADAPTER = require("../host/context-adapter.cjs");
@@ -196,6 +197,7 @@ function defaultProbeStatus(root) {
 
 function checkpointSnapshot(event, root) {
   const raw = event.payload;
+  const transcriptRef = raw.transcript_ref || raw.transcriptRef || (raw.transcript_id ? { id: String(raw.transcript_id), host: raw.client || "host" } : null);
   return {
     schema_version: 1,
     checkpoint_id: `checkpoint/${createHash("sha256").update(String(event.sessionId || "missing-session")).digest("hex").slice(0, 24)}/${Date.now()}`,
@@ -204,6 +206,7 @@ function checkpointSnapshot(event, root) {
     scope_id: root,
     created_at_ms: Date.now(),
     trigger: String(raw.trigger || "unknown"),
+    transcriptRef,
   };
 }
 
@@ -229,7 +232,8 @@ function ingestArgs(root, file, event) {
   return args;
 }
 
-export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, runCortex = defaultRunCortex, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable } = {}) {
+export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, runCortex = defaultRunCortex, continuityService, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable } = {}) {
+  const continuity = createContinuityClient({ service: continuityService });
   return Object.freeze({
     async status(event) {
       const healthy = await probeStatus(rootFor(event));
@@ -265,6 +269,21 @@ export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTE
       try { checkpoint = JSON.parse(readFileSync(path, "utf8")); } catch { return typedStatus("unavailable", "checkpoint_invalid"); }
       checkpoint.summary = redactSummary(event.payload.compact_summary);
       checkpoint.expires_at_ms = Date.now() + 86_400_000;
+      if (typeof continuityService === "function") {
+        const saved = await continuity.checkpoint({
+          id: checkpoint.checkpoint_id,
+          sessionId: checkpoint.session_id,
+          taskId: checkpoint.task_id,
+          transcriptRef: checkpoint.transcriptRef,
+          authority: { level: "A0", scope: checkpoint.scope_id },
+          trigger: checkpoint.trigger,
+          repository: root,
+        });
+        if (saved.state === "available") unlinkSync(path);
+        return typedStatus(saved.state === "available" ? "available" : "unavailable", saved.state === "available" ? "checkpoint_captured" : saved.reason, { continuity: true });
+      }
+      // Explicit runCortex remains only as an injected test seam for legacy
+      // fixture coverage. Installed hooks have no default subprocess path.
       const saved = await runCortex(root, ["checkpoint", "save"], JSON.stringify(checkpoint), context);
       if (saved) unlinkSync(path);
       return typedStatus(saved ? "available" : "unavailable", saved ? "checkpoint_captured" : "checkpoint_save_failed");

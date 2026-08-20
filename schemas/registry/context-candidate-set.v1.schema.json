@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/registry/context-candidate-set.v1.schema.json",
+  "title": "MembraneContextCandidateSetV1",
+  "description": "Membrane projection of Blueprint's context candidate contract. Blueprint owns repository truth; Membrane consumes this evidence envelope.",
+  "type": "object",
+  "required": ["schemaVersion", "traceId", "indexedAt", "task", "mode", "provider", "freshness", "providerCeiling", "candidates", "omissions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "traceId": { "type": "string", "minLength": 1 },
+    "indexedAt": { "type": "string", "format": "date-time" },
+    "repoId": { "type": ["string", "null"] },
+    "repoRoot": { "type": ["string", "null"] },
+    "receiptId": { "type": ["string", "null"] },
+    "task": { "type": "string", "minLength": 1 },
+    "mode": { "type": "string", "minLength": 1 },
+    "provider": { "type": "string", "minLength": 1 },
+    "freshness": { "$ref": "#/$defs/freshness" },
+    "providerCeiling": { "type": "object" },
+    "candidates": { "type": "array", "items": { "type": "object" } },
+    "omissions": { "type": "array", "items": { "type": "object" } }
+  },
+  "$defs": {
+    "freshness": {
+      "type": "object",
+      "required": ["indexedAt"],
+      "properties": {
+        "indexedAt": { "type": "string", "format": "date-time" },
+        "revision": { "type": "string" },
+        "stale": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "x-blueprint-source": "blueprint/schemas/context-candidate-set-v1.schema.json"
+}

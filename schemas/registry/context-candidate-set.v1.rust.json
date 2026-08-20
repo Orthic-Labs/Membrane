@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "source": "schemas/registry/context-candidate-set.v1.schema.json",
+  "sourceHash": "sha256:b7ce524978ddab61805a62520422e171b15cf862236515a42cc776d56735e3a4",
+  "projection": "rust",
+  "required": [
+    "schemaVersion",
+    "traceId",
+    "indexedAt"
+  ]
+}

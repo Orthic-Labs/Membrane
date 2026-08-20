@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import copy
+import functools
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -69,28 +71,53 @@ class _ImmediateExecutor:
         return _ImmediateFuture(fn())
 
 
-def _planner_command(candidate_set: Path) -> list[str]:
-    override = os.environ.get("CORTEX_BIN", "").strip()
+@functools.lru_cache(maxsize=1)
+def _planner_binary() -> Path:
+    override = (
+        os.environ.get("CORTEX_BIN", "").strip()
+        or os.environ.get("CORTEX_TEST_BIN", "").strip()
+    )
     if override:
-        return [override, "plan-context", "--candidate-set", str(candidate_set), "--max-tokens", "4096"]
+        binary = Path(override)
+        if not binary.is_file():
+            raise FileNotFoundError(f"configured Cortex test binary is missing: {binary}")
+        return binary
 
     binary = ROOT / "membrane" / "engine" / "target" / "debug" / (
         "cortex.exe" if os.name == "nt" else "cortex"
     )
     if binary.is_file():
-        return [str(binary), "plan-context", "--candidate-set", str(candidate_set), "--max-tokens", "4096"]
+        return binary
 
+    rightkit = shutil.which("rightkit")
+    if not rightkit:
+        raise FileNotFoundError("Cortex planner binary is missing & RightKit is unavailable")
+    manifest = ROOT / "membrane" / "engine" / "Cargo.toml"
+    metadata = subprocess.run(
+        [rightkit, "cargo", "metadata", "--manifest-path", str(manifest), "--format-version", "1", "--no-deps"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=15 * 60,
+        check=True,
+    )
+    target = Path(json.loads(metadata.stdout)["target_directory"])
+    subprocess.run(
+        [rightkit, "cargo", "build", "--manifest-path", str(manifest), "-p", "cortex", "--bin", "cortex", "--locked"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=15 * 60,
+        check=True,
+    )
+    binary = target / "debug" / ("cortex.exe" if os.name == "nt" else "cortex")
+    if not binary.is_file():
+        raise FileNotFoundError(f"RightKit build completed without Cortex binary: {binary}")
+    return binary
+
+def _planner_command(candidate_set: Path) -> list[str]:
     return [
-        "cargo",
-        "run",
-        "--quiet",
-        "--manifest-path",
-        str(ROOT / "membrane" / "engine" / "Cargo.toml"),
-        "-p",
-        "cortex",
-        "--bin",
-        "cortex",
-        "--",
+        str(_planner_binary()),
         "plan-context",
         "--candidate-set",
         str(candidate_set),
@@ -107,13 +134,29 @@ def _semantic_candidate_set(ccs: dict) -> dict:
     return semantic
 
 
-def test_planner_fallback_selects_cortex_cli_binary(monkeypatch, tmp_path: Path):
+def test_planner_fallback_builds_cortex_cli_through_rightkit(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("CORTEX_BIN", raising=False)
+    monkeypatch.delenv("CORTEX_TEST_BIN", raising=False)
     monkeypatch.setitem(globals(), "ROOT", tmp_path)
+    expected = tmp_path / "managed-target" / "debug" / (
+        "cortex.exe" if os.name == "nt" else "cortex"
+    )
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda command, **_kwargs: (
+            type("Result", (), {"stdout": json.dumps({"target_directory": str(tmp_path / "managed-target")})})()
+            if "metadata" in command
+            else (expected.parent.mkdir(parents=True, exist_ok=True), expected.touch(), type("Result", (), {"stdout": ""})())[2]
+        ),
+    )
+    monkeypatch.setattr(shutil, "which", lambda _name: "rightkit")
+    _planner_binary.cache_clear()
 
     command = _planner_command(tmp_path / "candidate-set.json")
 
-    assert command[command.index("--bin") + 1] == "cortex"
+    assert command[0] == str(expected)
+    _planner_binary.cache_clear()
 
 
 def test_completion_permutations_keep_precedence_receipts_and_packet_hash_stable(

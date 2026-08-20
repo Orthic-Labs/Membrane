@@ -82,11 +82,11 @@ function buildRequest(event, root) {
     maxTokens: Number.isInteger(event.max_tokens) ? event.max_tokens : 6420,
     anchors: Array.isArray(event.anchors) ? event.anchors.join(',') : String(event.anchors || ''),
     taskEnvelope: {
-      schema: 'orthic.task-envelope.v1', task_id: id, session_id: session,
+      schema: 'membrane.task-envelope.v1', task_id: id, session_id: session,
       repository_scope: [root], requested_deliverable: task,
     },
     turnEnvelope: {
-      schema: 'orthic.turn-envelope.v1', task_id: id, turn_id: String(event.turn_id || event.turnId || `${id}:turn`),
+      schema: 'membrane.turn-envelope.v1', task_id: id, turn_id: String(event.turn_id || event.turnId || `${id}:turn`),
       session_id: session, user_prompt_digest: digest(task),
     },
   };
@@ -165,8 +165,13 @@ function runClient(request, root, options = {}) {
   if (!options.client) {
     const resident = runResident(request, root);
     if (resident) return { state: 'context_enforced', request, payload: resident };
+    // Host adapters never spawn a second semantic recall implementation. The
+    // Hub-owned Membrane service is the only production seam; service loss is
+    // visible typed degradation. Explicit `options.client` remains a fixture
+    // seam for byte-equivalence tests and is never used by installed hooks.
+    return { state: 'degraded', reason: 'membrane_service_unavailable', request };
   }
-  const client = options.client || findClient(root);
+  const client = options.client;
   if (!client) return { state: 'degraded', reason: 'membrane_client_missing', request };
   const result = childProcess.spawnSync(process.execPath, [client, '--input', '-'], {
     cwd: root,

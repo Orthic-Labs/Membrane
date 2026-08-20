@@ -1,0 +1,34 @@
+{
+  "clients": {
+    "claude_code": {
+      "PostCompact": "native",
+      "PreCompact": "native",
+      "SessionStart": "native",
+      "Stop": "native",
+      "UserPromptSubmit": "native",
+      "delegated_agent_egress": "projection",
+      "tool_result_egress": "projection"
+    },
+    "codex": {
+      "PostCompact": "native",
+      "PreCompact": "native",
+      "SessionStart": "native",
+      "Stop": "projection",
+      "UserPromptSubmit": "native",
+      "delegated_agent_egress": "unavailable",
+      "tool_result_egress": "projection"
+    }
+  },
+  "levels": [
+    "native",
+    "projection",
+    "unavailable"
+  ],
+  "schema": "membrane.host-capability-matrix.v1",
+  "semantics": {
+    "native": "host exposes this lifecycle seam directly",
+    "projection": "Membrane receives the strongest available parent projection",
+    "unavailable": "Membrane emits typed degradation and does not claim delivery"
+  },
+  "sourceHash": "sha256:7313bd7d335fc52eee1a3ac1e48de28038b222d072dc64cf03dc13ed8f02d22e"
+}

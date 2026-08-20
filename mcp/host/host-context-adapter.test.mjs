@@ -40,8 +40,8 @@ test('packet delivery char count is bounded, packet-only, and content-free', () 
 test('host adapter emits bounded data-only delivery heartbeat for canonical request', { concurrency: false }, () => {
   const root = tmpdir();
   const request = adapter.buildRequest({ event: 'UserPromptSubmit', prompt: 'inspect current graph', session_id: 'session-1', turn_id: 'turn-1' }, root);
-  assert.equal(request.taskEnvelope.schema, 'orthic.task-envelope.v1');
-  assert.equal(request.turnEnvelope.schema, 'orthic.turn-envelope.v1');
+  assert.equal(request.taskEnvelope.schema, 'membrane.task-envelope.v1');
+  assert.equal(request.turnEnvelope.schema, 'membrane.turn-envelope.v1');
   const result = adapter.runClient(request, root, { client: fakeClient });
   assert.equal(result.state, 'context_enforced');
   const rendered = adapter.render(result);
