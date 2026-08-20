@@ -18,7 +18,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const SCHEMA = "orthic.membrane.sbom.v1";
+export const SCHEMA = "membrane.sbom.v1";
 
 const fail = (message) => { throw new Error(`FAIL CLOSED: ${message}`); };
 

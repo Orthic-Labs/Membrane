@@ -26,7 +26,7 @@ const receipt = (root, value, label) => {
 const json = (root, value, label) => { receipt(root, value, label); return JSON.parse(readFileSync(confined(root, value.path), "utf8")); };
 
 export function verifyReleaseEvidence(manifest, root = process.cwd()) {
-  if (!manifest || manifest.schema !== "orthic.membrane.release-evidence.v1") fail("unsupported schema");
+  if (!manifest || manifest.schema !== "membrane.release-evidence.v1") fail("unsupported schema");
   const release = manifest.release || {};
   if (!/^v\d+\.\d+\.\d+$/.test(field(release, "tag"))) fail("tag must be immutable semver");
   if (!HEX40.test(field(release, "commit")) || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(field(release, "tree"))) fail("release source identity invalid");

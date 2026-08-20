@@ -9,7 +9,7 @@ test('parseArgs reads --benchmark and --dataset-root', () => {
 
 test('runReport with no flags degrades every benchmark explicitly (no dataset configured, nothing downloaded)', async () => {
   const report = await runReport([]);
-  assert.equal(report.schema, 'orthic.memory-benchmark-run-report.v1');
+  assert.equal(report.schema, 'membrane.memory-benchmark-run-report.v1');
   assert.equal(report.results.length, 3);
   assert.ok(report.results.every(r => r.status === 'degraded' && r.reason === 'dataset-root-not-configured'));
 });

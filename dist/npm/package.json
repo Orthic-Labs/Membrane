@@ -1,5 +1,5 @@
 {
-  "name": "@orthic/membrane",
+  "name": "@membrane/membrane",
   "mcpName": "io.github.orthic-labs/membrane",
   "version": "0.0.0-source",
   "description": "Thin platform bootstrap for the Membrane native runtime",
@@ -10,11 +10,11 @@
   "engines": { "node": ">=20" },
   "files": ["index.mjs", "bin/membrane.mjs", "package.json"],
   "optionalDependencies": {
-    "@orthic/membrane-darwin-arm64": "0.0.0-source",
-    "@orthic/membrane-darwin-x64": "0.0.0-source",
-    "@orthic/membrane-linux-arm64": "0.0.0-source",
-    "@orthic/membrane-linux-x64": "0.0.0-source",
-    "@orthic/membrane-win32-arm64": "0.0.0-source",
-    "@orthic/membrane-win32-x64": "0.0.0-source"
+    "@membrane/membrane-darwin-arm64": "0.0.0-source",
+    "@membrane/membrane-darwin-x64": "0.0.0-source",
+    "@membrane/membrane-linux-arm64": "0.0.0-source",
+    "@membrane/membrane-linux-x64": "0.0.0-source",
+    "@membrane/membrane-win32-arm64": "0.0.0-source",
+    "@membrane/membrane-win32-x64": "0.0.0-source"
   }
 }

@@ -29,8 +29,8 @@ import { pathToFileURL } from "node:url";
 import { HEX40, HEX64, TAG, releaseId as computeReleaseId } from "../identity.mjs";
 import { verifyOciRelease } from "../verify-oci-release.mjs";
 
-const RELEASE_GENERATION_SCHEMA = "orthic.membrane.release-generation.v1";
-const OCI_SCHEMA = "orthic.membrane.oci-release.v1";
+const RELEASE_GENERATION_SCHEMA = "membrane.release-generation.v1";
+const OCI_SCHEMA = "membrane.oci-release.v1";
 
 const fail = (message) => { throw new Error(`FAIL CLOSED: ${message}`); };
 

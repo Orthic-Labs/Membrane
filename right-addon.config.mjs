@@ -17,7 +17,7 @@ export default {
     exclude: ["**/target/**", "**/tests/**"],
   },
   consumer: {
-    contract: "orthic-product-v1",
+    contract: "membrane-product-v1",
     productId: "membrane",
     displayName: "Membrane",
     hubCompatRange: ">=0.1.11 <0.2.0",

@@ -5,7 +5,7 @@
   "additionalProperties": false,
   "required": ["schema", "receiptId", "mode", "commit", "releaseGeneration", "version", "platform", "artifact", "trust", "lifecycle", "environment"],
   "properties": {
-    "schema": { "const": "orthic.membrane.platform-acceptance.v1" },
+    "schema": { "const": "membrane.platform-acceptance.v1" },
     "receiptId": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
     "mode": { "enum": ["source-ready", "clean-vm"] },
     "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },

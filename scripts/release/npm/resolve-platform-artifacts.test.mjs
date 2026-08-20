@@ -39,7 +39,7 @@ function writeFixtureGeneration(repoRoot, targets) {
   const file = releaseGenerationPath({ repoRoot, releaseId: RELEASE_ID });
   mkdirSync(resolve(file, ".."), { recursive: true });
   const plan = {
-    schema: "orthic.membrane.release-generation.v1",
+    schema: "membrane.release-generation.v1",
     product: "Membrane",
     vector_dispatch: "CORTEX_VECTOR_DISPATCH_V2",
     publish: false,

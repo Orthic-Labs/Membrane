@@ -11,7 +11,7 @@ test("OCI contract stays unavailable & non-publishing", () => assert.deepEqual(v
 test("OCI contract rejects release-ready mutation", () => assert.throws(() => verifyOciRelease({ ...manifest, state: "ready" }), /FAIL CLOSED/));
 test("ready OCI contract requires every hash-bound release proof", () => {
   const root = mkdtempSync(join(tmpdir(), "membrane-oci-")); const proof = name => { writeFileSync(join(root, name), name); return { path: name, sha256: createHash("sha256").update(name).digest("hex") }; };
-  const ready = { ...manifest, state: "ready", image: `ghcr.io/orthic/membrane@sha256:${"a".repeat(64)}`, base: `cgr.dev/chainguard/static@sha256:${"b".repeat(64)}`, identity: { tag: "v1.2.3", commit: "c".repeat(40), release_generation: "d".repeat(64), artifact_sha256: "e".repeat(64) }, evidence: Object.fromEntries(["sbom", "ed25519", "cosign", "rootlessHealth", "secretScan"].map(name => [name, proof(name)])) };
+  const ready = { ...manifest, state: "ready", image: `ghcr.io/membrane/membrane@sha256:${"a".repeat(64)}`, base: `cgr.dev/chainguard/static@sha256:${"b".repeat(64)}`, identity: { tag: "v1.2.3", commit: "c".repeat(40), release_generation: "d".repeat(64), artifact_sha256: "e".repeat(64) }, evidence: Object.fromEntries(["sbom", "ed25519", "cosign", "rootlessHealth", "secretScan"].map(name => [name, proof(name)])) };
   assert.equal(verifyOciRelease(ready, root).state, "ready"); ready.evidence.sbom.sha256 = "f".repeat(64); assert.throws(() => verifyOciRelease(ready, root), /hash mismatch/);
 });
 test("Containerfile fixes non-root, digest base & a real headless healthcheck", () => {

@@ -14,7 +14,7 @@ const fail = (message) => { throw new Error(`FAIL CLOSED: ${message}`); };
 const SHA256 = /^[0-9a-f]{64}$/;
 const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const ROLES = new Set(["command", "service", "icon", "license", "eula", "privacy", "third-party-notices"]);
-export const RELEASE_EVIDENCE_SCHEMA = "orthic.membrane.release-evidence.v1";
+export const RELEASE_EVIDENCE_SCHEMA = "membrane.release-evidence.v1";
 
 function exact(value, keys, label) {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).sort().join("\0") !== [...keys].sort().join("\0")) fail(`${label} has unsupported fields`);
@@ -63,14 +63,14 @@ export function buildProvenance({ repoRoot, commit }) {
   const raw = git(repoRoot, ["show", "-s", `--format=${["%H", "%T", "%P", "%an <%ae>", "%aI", "%cn <%ce>", "%cI", "%s"].join(fieldSep)}`, commit]);
   const [hash, tree, parents, author, authorDate, committer, committerDate, subject] = raw.split(fieldSep);
   if (hash !== commit) fail(`git show returned commit ${hash}, expected ${commit}`);
-  return { schema: "orthic.membrane.provenance.v1", commit: hash, tree, parents: parents ? parents.split(" ").filter(Boolean) : [], author, authorDate, committer, committerDate, subject };
+  return { schema: "membrane.provenance.v1", commit: hash, tree, parents: parents ? parents.split(" ").filter(Boolean) : [], author, authorDate, committer, committerDate, subject };
 }
 
 export function buildToolchain({ repoRoot }) {
   const pkg = JSON.parse(readFileSync(resolve(repoRoot, "package.json"), "utf8"));
   const cargo = readFileSync(resolve(repoRoot, "engine/Cargo.toml"), "utf8");
   return {
-    schema: "orthic.membrane.toolchain.v1",
+    schema: "membrane.toolchain.v1",
     node: { engines: pkg.engines ?? null, packageManager: pkg.packageManager ?? null },
     addon: { packageManager: pkg.packageManager ?? null, checks: ["test", "test:all"] },
     rust: { edition: cargo.match(/\nedition = "([^"]+)"/)?.[1] ?? null, rustToolchainToml: existsSync(resolve(repoRoot, "rust-toolchain.toml")) },
@@ -90,7 +90,7 @@ export function buildAddonEvidence({ repoRoot, manifestPath, sbomLockfiles = DEF
     { kind: "tests", reason: "release-evidence.v1 requires >=1 real test receipt; no release test receipt was supplied" },
     { kind: "signatures", reason: "sealed component signing is verified, but no detached release-evidence signature receipt was supplied" },
     { kind: "platform_trust", reason: `no platform-trust receipt was supplied for ${addon.manifest.platform}` },
-    { kind: "install_receipts", reason: "no installed Orthic package receipt was supplied" },
+    { kind: "install_receipts", reason: "no installed Membrane package receipt was supplied" },
     { kind: "event_history", reason: "no sealed-vs-legacy event-history receipt was supplied" },
   );
   return {

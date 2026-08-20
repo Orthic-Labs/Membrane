@@ -1,9 +1,9 @@
 {
-  "schema": "orthic.membrane.oci-release.v1",
+  "schema": "membrane.oci-release.v1",
   "state": "unavailable",
   "publish": false,
-  "image": "registry.invalid/orthic/membrane",
-  "base": "ghcr.io/orthic/membrane-runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "image": "registry.invalid/membrane/membrane",
+  "base": "ghcr.io/membrane/membrane-runtime@sha256:0000000000000000000000000000000000000000000000000000000000000000",
   "identity": {
     "tag": "UNAVAILABLE",
     "commit": "0000000000000000000000000000000000000000",

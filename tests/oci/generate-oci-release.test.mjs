@@ -22,7 +22,7 @@ const VERSION = "1.2.3";
 const TAG = "v1.2.3";
 const APP = "membrane-hub";
 const BASE = `cgr.dev/chainguard/static@sha256:${"d".repeat(64)}`;
-const IMAGE = `ghcr.io/orthic/membrane@sha256:${"e".repeat(64)}`;
+const IMAGE = `ghcr.io/membrane/membrane@sha256:${"e".repeat(64)}`;
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -39,7 +39,7 @@ function tempRepoRoot() {
 
 function writeReleaseGeneration(root, overrides = {}) {
   const doc = {
-    schema: "orthic.membrane.release-generation.v1",
+    schema: "membrane.release-generation.v1",
     product: "Membrane",
     vector_dispatch: "CORTEX_VECTOR_DISPATCH_V2",
     publish: false,
@@ -127,7 +127,7 @@ test("buildOciRelease fails closed when a required evidence file is missing", ()
 test("buildOciRelease fails closed on a non-digest-pinned --image", () => {
   const root = tempRepoRoot();
   const genPath = writeReleaseGeneration(root);
-  const options = { ...fullOptions(root, genPath), image: "ghcr.io/orthic/membrane:latest" };
+  const options = { ...fullOptions(root, genPath), image: "ghcr.io/membrane/membrane:latest" };
   assert.throws(() => buildOciRelease(options), /digest-pinned/);
 });
 
@@ -148,13 +148,13 @@ test("writeOciRelease writes dist/packaging/oci/release.v1.json, is idempotent, 
   // A genuinely different ready release (new binary content) for the SAME
   // already-recorded ready release must be refused, not silently overwritten.
   writeFileSync(options.binaryPath, "different-binary-bytes");
-  assert.throws(() => writeOciRelease(options), /already records a different ready dist/release/);
+  assert.throws(() => writeOciRelease(options), /already records a different ready release/);
 });
 
 test("leaves an existing unavailable release.v1.json alone when generation fails", () => {
   const root = tempRepoRoot();
   const releasePath = resolve(root, "packaging", "oci", "release.v1.json");
-  const unavailable = { schema: "orthic.membrane.oci-release.v1", state: "unavailable", publish: false, image: "registry.invalid/orthic/membrane", base: BASE, identity: { tag: "UNAVAILABLE", commit: "0".repeat(40), release_generation: "0".repeat(64), artifact_sha256: "0".repeat(64) }, evidence: { sbom: null, ed25519: null, cosign: null, rootlessHealth: null, secretScan: null } };
+  const unavailable = { schema: "membrane.oci-release.v1", state: "unavailable", publish: false, image: "registry.invalid/membrane/membrane", base: BASE, identity: { tag: "UNAVAILABLE", commit: "0".repeat(40), release_generation: "0".repeat(64), artifact_sha256: "0".repeat(64) }, evidence: { sbom: null, ed25519: null, cosign: null, rootlessHealth: null, secretScan: null } };
   writeFileSync(releasePath, `${JSON.stringify(unavailable, null, 2)}\n`);
 
   const options = fullOptions(root, resolve(root, "docs", "evidence", "releases", "does-not-exist", "release-generation.json"));

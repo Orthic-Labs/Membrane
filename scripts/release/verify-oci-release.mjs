@@ -17,7 +17,7 @@ const evidence = (root, value, name) => {
 };
 
 export function verifyOciRelease(value, root = process.cwd()) {
-  if (value?.schema !== "orthic.membrane.oci-release.v1") fail("unsupported schema");
+  if (value?.schema !== "membrane.oci-release.v1") fail("unsupported schema");
   if (!['unavailable', 'ready'].includes(value.state) || value.publish !== false) fail("OCI source contract must remain non-publishing");
   if (!/^[a-z0-9./_-]+@sha256:[a-f0-9]{64}$/.test(text(value.base, "base"))) fail("base must be exact digest-pinned reference");
   const identity = value.identity || {};

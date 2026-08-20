@@ -29,10 +29,10 @@ function verifyReceipt(path, platform, expected) {
 export function verifyMbr801Evidence(input) {
   const expected = { commit: input?.commit, releaseGeneration: input?.releaseGeneration };
   if (!/^[0-9a-f]{40}$/.test(expected.commit || '') || typeof expected.releaseGeneration !== 'string' || !expected.releaseGeneration) {
-    return { schema: 'orthic.mbr801-evidence-validation.v1', status: 'open', reason: 'expected current commit and release generation are required', platforms: { macos: fail('not checked'), windows: fail('not checked') } };
+    return { schema: 'membrane.mbr801-evidence-validation.v1', status: 'open', reason: 'expected current commit and release generation are required', platforms: { macos: fail('not checked'), windows: fail('not checked') } };
   }
   const platforms = { macos: verifyReceipt(input.macos, 'macos', expected), windows: verifyReceipt(input.windows, 'windows', expected) };
-  return { schema: 'orthic.mbr801-evidence-validation.v1', status: platforms.macos.status === 'passed' && platforms.windows.status === 'passed' ? 'passed' : 'open', platforms };
+  return { schema: 'membrane.mbr801-evidence-validation.v1', status: platforms.macos.status === 'passed' && platforms.windows.status === 'passed' ? 'passed' : 'open', platforms };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

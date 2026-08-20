@@ -11,7 +11,7 @@ export function verifyMemoryBenchmark(input) {
     for (const group of ['retrieval', 'admission', 'product']) {
       if (!result.metrics[group] || Object.keys(result.metrics[group]).length === 0) return fail(`${group} metrics are required`);
     }
-    return { schema: 'orthic.memory-benchmark-verification.v1', status: 'passed', benchmark: result.benchmark, componentUnderTest: result.componentUnderTest, role: result.role, identity: result.identity, metrics: result.metrics };
+    return { schema: 'membrane.memory-benchmark-verification.v1', status: 'passed', benchmark: result.benchmark, componentUnderTest: result.componentUnderTest, role: result.role, identity: result.identity, metrics: result.metrics };
   } catch (error) { return fail(error.message); }
 }
 

@@ -12,7 +12,7 @@ const closed = (value, keys, label) => {
 
 export function validateReceipt(receipt) {
   closed(receipt, ["schema", "receiptId", "mode", "commit", "releaseGeneration", "version", "platform", "artifact", "trust", "lifecycle", "environment"], "receipt");
-  if (!receipt || receipt.schema !== "orthic.membrane.platform-acceptance.v1") fail("receipt schema invalid");
+  if (!receipt || receipt.schema !== "membrane.platform-acceptance.v1") fail("receipt schema invalid");
   if (!safeId(receipt.receiptId) || !commit(receipt.commit) || !digest(receipt.releaseGeneration) || typeof receipt.version !== "string" || !/^v?\d+\.\d+\.\d+$/.test(receipt.version)) fail("receipt identity invalid");
   closed(receipt.artifact, ["name", "sha256"], "artifact");
   if (!digest(receipt.artifact?.sha256) || typeof receipt.artifact?.name !== "string" || !receipt.artifact.name) fail("artifact identity invalid");
@@ -35,7 +35,7 @@ export function validateReceipt(receipt) {
 }
 
 export function verifyPair(contract, receipt) {
-  if (contract?.schema !== "orthic.membrane.platform-acceptance.v1") fail("contract schema invalid");
+  if (contract?.schema !== "membrane.platform-acceptance.v1") fail("contract schema invalid");
   validateReceipt(receipt);
   for (const key of ["commit", "releaseGeneration", "version", "platform"]) if (contract[key] !== receipt[key]) fail(`contract mismatch: ${key}`);
   if (contract.artifact?.sha256 !== receipt.artifact.sha256 || contract.artifact?.name !== receipt.artifact.name) fail("contract mismatch: artifact");

@@ -23,7 +23,7 @@ export async function runReport(argv) {
   const targets = benchmark ? [benchmark] : BENCHMARKS;
   const results = [];
   for (const target of targets) results.push(await runMemoryBenchmark({ benchmark: target, datasetRoot }));
-  return { schema: 'orthic.memory-benchmark-run-report.v1', results };
+  return { schema: 'membrane.memory-benchmark-run-report.v1', results };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

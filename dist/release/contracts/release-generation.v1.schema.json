@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "orthic.membrane.release-generation.v1",
+  "$id": "membrane.release-generation.v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "product", "vector_dispatch", "publish", "release", "targets"],
   "properties": {
-    "schema": { "const": "orthic.membrane.release-generation.v1" },
+    "schema": { "const": "membrane.release-generation.v1" },
     "product": { "type": "string", "minLength": 1 },
     "vector_dispatch": { "const": "CORTEX_VECTOR_DISPATCH_V2" },
     "publish": { "const": false },

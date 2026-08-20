@@ -13,8 +13,10 @@ async function json(path) { return JSON.parse(await readFile(path, "utf8")); }
 /** Validate source metadata. Published installation requires independent registry evidence. */
 export async function verifyMcpRegistry({ directory = root, requirePublished = true } = {}) {
   const [server, npm] = await Promise.all([json(resolve(directory, "server.json")), json(resolve(directory, "dist/npm/package.json"))]);
+  // MCP Registry namespace remains GitHub-authority-bound to the live
+  // Orthic-Labs/Membrane remote; package identities below are Membrane-owned.
   const expectedName = "io.github.orthic-labs/membrane";
-  const expectedPackage = "@orthic/membrane";
+  const expectedPackage = "@membrane/membrane";
   const expectedRepository = "https://github.com/orthic-labs/membrane";
   if (server.name !== expectedName || server.npm?.mcpName !== expectedName || npm.mcpName !== expectedName) fail("server name and npm mcpName must match official name");
   if (npm.name !== expectedPackage || server.npm?.package !== expectedPackage) fail("npm package identity mismatch");

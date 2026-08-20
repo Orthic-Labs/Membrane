@@ -178,7 +178,7 @@ export function buildReceipt({ evidenceRoot, platform, commit, releaseGeneration
   const status = reasons.length === 0 ? "passed" : "incomplete";
   const scenariosPassed = traces.filter((trace) => nonEmptyString(trace.trace_id) && ["provider", "delivery", "outcome"].every((gate) => trace.gates?.[gate] === "passed")).length;
   const receipt = {
-    schema: "orthic.mbr801-installed-receipt.v1", platform, status, commit, release_generation: releaseGeneration,
+    schema: "membrane.mbr801-installed-receipt.v1", platform, status, commit, release_generation: releaseGeneration,
     installed_execution: installedExecution === true, signature_status: signatureStatus, artifact_sha256: artifactSha256,
     client, model, host, scenario_count: SCENARIOS.length, scenarios_passed: scenariosPassed,
     traces, benchmark: benchmark ?? { status: "blocked_incomplete_path" }, generated_at: generatedAt, reasons,

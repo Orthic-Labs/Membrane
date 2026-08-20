@@ -1,5 +1,7 @@
 // MBR-907: full verification of server.json, the MCP Registry metadata
-// this repo would submit under the reserved `io.github.orthic-labs/membrane`
+// this repo would submit under the GitHub-authority-bound
+// `io.github.orthic-labs/membrane` namespace; package identities remain
+// Membrane-owned.
 // namespace.
 //
 // This module composes, rather than re-implements, two independent checks:

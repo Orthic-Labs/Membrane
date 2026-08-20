@@ -9,7 +9,7 @@ const source = await readFile(new URL("../../server.json", import.meta.url), "ut
 
 async function fixture(change) {
   const directory = await mkdtemp(join(tmpdir(), "membrane-mcp-registry-"));
-  await cp(new URL("../../npm", import.meta.url), join(directory, "npm"), { recursive: true });
+  await cp(new URL("../../dist/npm", import.meta.url), join(directory, "dist/npm"), { recursive: true });
   const server = JSON.parse(source); change(server);
   await writeFile(join(directory, "server.json"), JSON.stringify(server));
   return directory;
@@ -18,7 +18,7 @@ async function fixture(change) {
 test("source metadata binds official MCP identity and pinned install route", async () => {
   const result = await verifyMcpRegistry({ directory: new URL("../..", import.meta.url).pathname, requirePublished: false });
   assert.equal(result.name, "io.github.orthic-labs/membrane");
-  assert.equal(result.install, "npm:@orthic/membrane@0.0.0-source");
+  assert.equal(result.install, "npm:@membrane/membrane@0.0.0-source");
 });
 
 test("unverified namespace or artifacts fail closed for installation", async () => {
@@ -26,11 +26,11 @@ test("unverified namespace or artifacts fail closed for installation", async () 
 });
 
 test("identity and native artifact tampering are rejected", async () => {
-  const directory = await fixture(server => { server.nativeArtifacts["linux-x64"].package = "@orthic/other"; });
+  const directory = await fixture(server => { server.nativeArtifacts["linux-x64"].package = "@membrane/other"; });
   await assert.rejects(() => verifyMcpRegistry({ directory, requirePublished: false }), /native package map mismatch/);
 });
 
 test("publication flags cannot substitute for namespace and artifact proof", async () => {
   const directory = await fixture(server => { server.publication.namespaceStatus = "published"; server.publication.artifactStatus = "published"; });
-  await assert.rejects(() => verifyMcpRegistry({ directory }), /unpublished|artifact docs/evidence/);
+  await assert.rejects(() => verifyMcpRegistry({ directory }), /unpublished|artifact|published namespace receipt/);
 });

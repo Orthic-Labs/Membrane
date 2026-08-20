@@ -1,7 +1,7 @@
 # Qualification evidence
 
 Store real MBR-801 installed-path conformance receipts under `mbr801/<platform>/receipt.json`
-(schema `orthic.mbr801-installed-receipt.v1`), produced by `node scripts/qualification/run.mjs`
+(schema `membrane.mbr801-installed-receipt.v1`), produced by `node scripts/qualification/run.mjs`
 and validated by `scripts/qualification/verify-mbr801-evidence.mjs`. `tools/productization/generate-support-matrix.mjs`
 (MBR-808) derives the published support-tier matrix (`docs/support-matrix.md`,
 `docs/support-matrix.json`, the README support-tier block, and `server.json`'s

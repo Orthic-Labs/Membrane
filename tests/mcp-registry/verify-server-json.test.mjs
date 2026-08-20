@@ -10,7 +10,7 @@ const source = await readFile(new URL("../../server.json", import.meta.url), "ut
 
 async function fixture(change) {
   const directory = await mkdtemp(join(tmpdir(), "membrane-mcp-registry-server-json-"));
-  await cp(new URL("../../npm", import.meta.url), join(directory, "npm"), { recursive: true });
+  await cp(new URL("../../dist/npm", import.meta.url), join(directory, "dist/npm"), { recursive: true });
   const server = JSON.parse(source);
   change(server);
   await writeFile(join(directory, "server.json"), JSON.stringify(server));

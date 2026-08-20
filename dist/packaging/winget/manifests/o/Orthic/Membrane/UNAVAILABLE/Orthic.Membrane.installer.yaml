@@ -1,4 +1,4 @@
-PackageIdentifier: "Orthic.Membrane"
+PackageIdentifier: "Membrane.Membrane"
 PackageVersion: "0.0.0-unavailable"
 MinimumOSVersion: "10.0.17763.0"
 InstallerType: "nsis"

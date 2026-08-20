@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "orthic.membrane.release-evidence.v1",
+  "$id": "membrane.release-evidence.v1",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "release", "artifact", "sbom", "provenance", "toolchain", "tests", "signatures", "platform_trust", "compatibility", "install_receipts", "event_history"],
   "properties": {
-    "schema": { "const": "orthic.membrane.release-evidence.v1" },
+    "schema": { "const": "membrane.release-evidence.v1" },
     "release": { "$ref": "#/$defs/release" },
     "artifact": { "$ref": "#/$defs/file" },
     "sbom": { "$ref": "#/$defs/file" },

@@ -1,5 +1,5 @@
 {
-  "schema": "orthic.membrane.release-platforms.v1",
+  "schema": "membrane.release-platforms.v1",
   "platforms": {
     "mac-arm64": { "os": "macos", "arch": "arm64", "support": "supported" },
     "mac-x64": { "os": "macos", "arch": "x64", "support": "supported" },

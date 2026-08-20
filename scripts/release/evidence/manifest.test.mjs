@@ -25,7 +25,7 @@ function writeSealedAddon(dir, commit) {
     const content = `${role}:${name}`; writeFileSync(join(dir, name), content);
     return { role, name, sha256: sha(content), sizeBytes: Buffer.byteLength(content), executable, signing: executable ? { contract: "fixture", status: "verified" } : null };
   });
-  const manifest = { schema: 1, kind: "headless-addon", addon: "membrane", version: "0.1.0", commit, platform: "mac", targetTriple: "aarch64-apple-darwin", consumer: { contract: "orthic-product-v1" }, files: components, signedAt: "2026-08-11T00:00:00.000Z" };
+  const manifest = { schema: 1, kind: "headless-addon", addon: "membrane", version: "0.1.0", commit, platform: "mac", targetTriple: "aarch64-apple-darwin", consumer: { contract: "membrane-product-v1" }, files: components, signedAt: "2026-08-11T00:00:00.000Z" };
   const path = join(dir, "addon-manifest.json"); writeFileSync(path, `${JSON.stringify(manifest)}\n`);
   return path;
 }
@@ -74,7 +74,7 @@ test("assembled release evidence still verifies when every required receipt exis
     const commit = "b".repeat(40); const generation = "c".repeat(64); const artifact = file("addon-manifest.json");
     const trust = (kind) => ({ kind, identity: `${kind}-identity`, subject_sha256: artifact.sha256, receipt: file(`${kind}.receipt`) });
     const platformAcceptance = (os) => {
-      const base = { schema: "orthic.membrane.platform-acceptance.v1", receiptId: `${os}-1`, mode: "clean-vm", commit, releaseGeneration: generation, version: "1.2.3", platform: os, artifact: { name: `${os}.artifact`, sha256: "d".repeat(64) }, trust: os === "macos" ? { codesign: "pass", notarization: "pass", staple: "pass", gatekeeper: "pass" } : { authenticode: "pass", publicTrust: "pass", rfc3161: "pass" }, lifecycle: { install: "pass", startup: "pass", update: "pass", uninstall: "pass" }, environment: { clean: true, machineDigest: "e".repeat(64), bypassWarnings: false } };
+      const base = { schema: "membrane.platform-acceptance.v1", receiptId: `${os}-1`, mode: "clean-vm", commit, releaseGeneration: generation, version: "1.2.3", platform: os, artifact: { name: `${os}.artifact`, sha256: "d".repeat(64) }, trust: os === "macos" ? { codesign: "pass", notarization: "pass", staple: "pass", gatekeeper: "pass" } : { authenticode: "pass", publicTrust: "pass", rfc3161: "pass" }, lifecycle: { install: "pass", startup: "pass", update: "pass", uninstall: "pass" }, environment: { clean: true, machineDigest: "e".repeat(64), bypassWarnings: false } };
       return { os, vector_dispatch: "CORTEX_VECTOR_DISPATCH_V2", contract: file(`${os}.contract`, JSON.stringify({ schema: base.schema, commit: base.commit, releaseGeneration: base.releaseGeneration, version: base.version, platform: base.platform, artifact: base.artifact })), receipt: file(`${os}.receipt`, JSON.stringify(base)) };
     };
     const manifest = assembleReleaseEvidenceManifest({ release: { tag: "v1.2.3", commit, tree: "d".repeat(40), generation, target: "mac-arm64", artifact_sha256: artifact.sha256, vector_dispatch: "CORTEX_VECTOR_DISPATCH_V2" }, artifact, sbom: file("sbom"), provenance: file("provenance"), toolchain: file("toolchain"), tests: [file("test")], signatures: [trust("ed25519")], platform_trust: trust("apple-notary"), compatibility: file("compatibility"), install_receipts: [platformAcceptance("macos"), platformAcceptance("windows")], event_history: { status: "sealed", receipt: file("history") } });
