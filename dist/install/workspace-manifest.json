@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "membrane-install-workspace-v1",
+  "packageVersion": "1.0.0",
+  "source": "membrane/install/workspace",
+  "generated": "source-to-dist",
+  "runtime": {
+    "python": ">=3.11",
+    "dependencies": []
+  },
+  "files": [
+    {
+      "path": "__init__.py",
+      "sha256": "054c4e70b11dd00ff9f212d32e7d028335c72d7506dc94da608f62fb81b2d27c",
+      "bytes": 279
+    },
+    {
+      "path": "cortex_service.py",
+      "sha256": "211e4c26bc7ccc792bcc5831be4679423fc8d6519bcd821ae9f4d07f497da23b",
+      "bytes": 2505
+    },
+    {
+      "path": "version_gate.py",
+      "sha256": "5ce1c35b7857a9d0295c5fd4ad8a8305b5ffcd6122362d1b5c96b72556f08527",
+      "bytes": 1990
+    }
+  ],
+  "packageSha256": "1ffeaf70063d3148d5ef25e40ee1f3f6062d3e080f03d37fd1242d7192f6d11b"
+}
