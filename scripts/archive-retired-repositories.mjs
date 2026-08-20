@@ -237,6 +237,16 @@ const projectInventory = await publicProjectInventory();
 const repositories = REPOSITORIES.map(exportRepository);
 const localOrthic = archiveLocalOrthic();
 const projectFile = writeJson(join(output, 'metadata', 'projects.json'), projectInventory);
+let existingAnchor = {
+  sourceCommit: null,
+  commit: null,
+  annotatedTag: null,
+  tagObject: null,
+  finalRefreshRequiredAfterOrthicHardCut: true,
+};
+try {
+  existingAnchor = JSON.parse(readFileSync(join(output, 'manifest.json'), 'utf8')).anchor ?? existingAnchor;
+} catch {}
 const manifest = {
   schema: 'membrane.retired-repository-archive.v1',
   generatedAt: new Date().toISOString(),
@@ -244,11 +254,7 @@ const manifest = {
   repositories,
   projectInventory: { ...projectInventory, file: projectFile },
   localOrthic,
-  anchor: {
-    commit: null,
-    annotatedTag: null,
-    finalRefreshRequiredAfterOrthicHardCut: true,
-  },
+  anchor: existingAnchor,
 };
 writeJson(join(output, 'manifest.json'), manifest);
 process.stdout.write(`${JSON.stringify({

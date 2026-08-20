@@ -468,8 +468,10 @@
     }
   },
   "anchor": {
-    "commit": null,
-    "annotatedTag": null,
+    "sourceCommit": "98dd986d295afe1731f6ba573072d8c1cb6f76a0",
+    "commit": "02b1d5c2b5bb3ee82320cce8977715bd9ae2e510",
+    "annotatedTag": "archive/retired-repositories-2026-08-20-initial",
+    "tagObject": "bc974e161a29e7d064105afd3aa6191c603938cf",
     "finalRefreshRequiredAfterOrthicHardCut": true
   }
 }
