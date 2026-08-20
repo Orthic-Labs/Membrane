@@ -14,7 +14,7 @@ The Membrane planner owns final context policy.
 
 Legacy source/runtime names may remain until the migration phases land. Legacy names are compatibility/history, not semantic ownership.
 
-## Canonical architecture sources
+## Canonical sources
 
 Read these before architecture or migration work:
 
