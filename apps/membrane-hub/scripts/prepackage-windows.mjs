@@ -9,5 +9,5 @@ function run(command, args) {
 }
 
 run("pnpm", ["run", "build"]);
-run("node", ["scripts/runtime-inventory.mjs", "write"]);
+run("node", ["scripts/stage-runtime.mjs"]);
 run("pnpm", ["exec", "tauri", "build", "--no-bundle"]);

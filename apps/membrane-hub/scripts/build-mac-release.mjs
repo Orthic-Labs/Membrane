@@ -31,7 +31,7 @@ const env = {
 
 run("node", ["scripts/write-release-manifest.mjs", "check", "--require-committed"], env);
 run("pnpm", ["run", "build"], env);
-run("node", ["scripts/runtime-inventory.mjs", "write"], env);
+run("node", ["scripts/stage-runtime.mjs"], env);
 run("pnpm", ["exec", "tauri", "build", "--bundles", "app,dmg"], env);
 run("node", ["scripts/release-assets.mjs", "check-built", "--platform", "mac"], env);
 run("node", ["scripts/release-assets.mjs", "finalize", "--platform", "mac"], env);
