@@ -5,7 +5,7 @@
 // holdout protocol in ./holdout.mjs, (3) the immutable, un-rerun vector
 // bakeoff reference in ./bakeoff-reference.mjs, and (4) a caller-supplied
 // `execute` function that performs the actual per-case run — this module
-// never invokes a client, model, or the Crypt engine itself. Every produced
+// never invokes a client, model, or the Cortex engine itself. Every produced
 // receipt is validated by the existing, unmodified
 // scripts/qualification/verify-whole-task-benchmark.mjs before being reported
 // as measured evidence.

@@ -81,26 +81,26 @@
     },
     {
       "id": "blueprint-code-doc-completeness",
-      "prompt": "Blueprint scanned 5,000 files, but its graph only has repo/doc/claim/code_ref nodes, contains/mentions-code edges, and its semantic code selector returns nothing. Can I call the whole repository understood? This is our three-family Crypt context engine.",
+      "prompt": "Blueprint scanned 5,000 files, but its graph only has repo/doc/claim/code_ref nodes, contains/mentions-code edges, and its task-shaped RecallCircuit returns nothing. Can I call the whole repository understood? This feeds our Membrane context system.",
       "expected_skill": "blueprint",
       "forbidden_skills": [],
-      "expected_behavior": "Refuses the completion claim; reports Blueprint PARTIAL/CODE-FELL-SHORT until code-symbol nodes, code relationships, and cross-code/document semantic task retrieval are covered. It preserves Crypt's Compaction/PUSH, Retrieval/PULL, and Curation/PERSIST product boundary instead of reducing it to recall.",
+      "expected_behavior": "Refuses the completion claim; reports Blueprint PARTIAL/CODE-FELL-SHORT until code-symbol nodes, code relationships, and cross-code/document task retrieval are covered. It preserves Membrane's acquisition, Push, and governed persistence boundaries instead of reducing the parent system to repository recall.",
       "severity": "error",
       "mode": "static",
       "assertions": [
         { "type": "required_text", "value": "code-symbol" },
-        { "type": "required_text", "value": "semantic" },
+        { "type": "required_text", "value": "RecallCircuit" },
         { "type": "required_text", "value": "PARTIAL" },
-        { "type": "required_text", "value": "Compaction/PUSH" },
-        { "type": "required_text", "value": "Curation/PERSIST" }
+        { "type": "required_text", "value": "Membrane" },
+        { "type": "required_text", "value": "governed persistence" }
       ]
     },
     {
       "id": "blueprint-separate-per-repo-boundary",
-      "prompt": "Is Blueprint a phase inside Crypt, or do I run it separately in every repo? Where does its graph belong?",
+      "prompt": "Is Blueprint a phase inside Cortex, or do I run it separately in every repo? Where does its graph belong?",
       "expected_skill": "blueprint",
       "forbidden_skills": [],
-      "expected_behavior": "States that Blueprint is installed globally but run from each repository root; its graph/cache is repo-local and regenerable. Blueprint supplies a bounded ContextCandidateSet, Crypt emits the final ContextPacket under one global budget, verified KnowledgeEmission may persist, and Crypt never stores the raw graph.",
+      "expected_behavior": "States that Blueprint is installed globally but run from each repository root; its graph/cache is repo-local and regenerable. Blueprint supplies a bounded ContextCandidateSet, Membrane emits the final ContextPacket under one global budget, verified KnowledgeEmission may enter Cortex admission, and Cortex never stores the raw graph.",
       "severity": "error",
       "mode": "static",
       "assertions": [

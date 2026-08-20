@@ -10,12 +10,12 @@
 //!    Parity with the reference Python llmlingua ≥ 0.90 word-Jaccard at the
 //!    default rate (0.5). See `spike/SPIKE-RESULT.md` for the full gate evidence.
 //!
-//! 2. **Deterministic heuristic** (always available) — `crypt_format::compress_prose`,
+//! 2. **Deterministic heuristic** (always available) — `cortex_format::compress_prose`,
 //!    a quality-degraded fallback. Selected when `--no-onnx` is set, when the
 //!    `llmlingua-onnx` feature isn't built, or when the ONNX assets are missing.
 //!
-//! Asset resolution: `$CRYPT_LLMLINGUA_MODEL` and `$CRYPT_LLMLINGUA_TOKENIZER`
-//! override the defaults (`crates/crypt/assets/llmlingua/`). The DLL is
+//! Asset resolution: `$CORTEX_LLMLINGUA_MODEL` and `$CORTEX_LLMLINGUA_TOKENIZER`
+//! override the defaults (`crates/cortex/assets/llmlingua/`). The DLL is
 //! loaded from `$ORT_DYLIB_PATH` (same pattern as the BGE/fastembed path).
 //!
 //! The core algorithm pieces — softmax-keep-prob, top-K + force-token selection,
@@ -234,7 +234,11 @@ pub fn build_recovery_marker(
 /// Exact restore verification: the recovered bytes must hash back to the
 /// marker's source digest. A marker whose expiry has passed is never accepted,
 /// and an unknown schema version fails closed.
-pub fn verify_recovery_marker(marker: &RecoveryMarkerV1, recovered: &[u8], now_millis: u64) -> bool {
+pub fn verify_recovery_marker(
+    marker: &RecoveryMarkerV1,
+    recovered: &[u8],
+    now_millis: u64,
+) -> bool {
     marker.schema_version == RECOVERY_MARKER_SCHEMA_VERSION
         && now_millis <= marker.expires_at_millis
         && marker.source_digest == crate::digest::digest_bytes(recovered)
@@ -496,7 +500,7 @@ pub fn compress_with_options(text: &str, rate: f32, no_onnx: bool) -> String {
                 Ok(out) => return out,
                 Err(err) => {
                     eprintln!(
-                        "[crypt] llmlingua-onnx unavailable ({err}); falling back to heuristic"
+                        "[cortex] llmlingua-onnx unavailable ({err}); falling back to heuristic"
                     );
                 }
             }
@@ -504,7 +508,7 @@ pub fn compress_with_options(text: &str, rate: f32, no_onnx: bool) -> String {
     }
 
     // Deterministic heuristic fallback (always available).
-    crypt_format::compress_prose(text, rate)
+    cortex_format::compress_prose(text, rate)
 }
 
 // ============================================================================
@@ -673,8 +677,8 @@ fn select_keep_indices(
 
 /// Pure asset-path resolver. Returns `(model_path, tokenizer_path, default_dir)`.
 ///
-/// `model_env` / `tokenizer_env` are the values of `$CRYPT_LLMLINGUA_MODEL`
-/// / `$CRYPT_LLMLINGUA_TOKENIZER`, or `None` if unset. Pulled out of
+/// `model_env` / `tokenizer_env` are the values of `$CORTEX_LLMLINGUA_MODEL`
+/// / `$CORTEX_LLMLINGUA_TOKENIZER`, or `None` if unset. Pulled out of
 /// `llmlingua_asset_paths` for testability (no env mutation in tests).
 ///
 /// `manifest_dir` is the crate root at build time (use `env!("CARGO_MANIFEST_DIR")`).
@@ -722,7 +726,7 @@ pub fn tokenizer_token_count(text: &str) -> Result<usize, String> {
 #[cfg(feature = "llmlingua-onnx")]
 fn llmlingua_tokenizer_path() -> Result<std::path::PathBuf, String> {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let tokenizer_env = std::env::var("CRYPT_LLMLINGUA_TOKENIZER").ok();
+    let tokenizer_env = std::env::var("CORTEX_LLMLINGUA_TOKENIZER").ok();
     let (_, tokenizer, _) = resolve_asset_paths(&manifest, None, tokenizer_env.as_deref());
     if !tokenizer.is_file() {
         return Err(format!("tokenizer not found at {}", tokenizer.display()));
@@ -733,14 +737,14 @@ fn llmlingua_tokenizer_path() -> Result<std::path::PathBuf, String> {
 #[cfg(feature = "llmlingua-onnx")]
 fn llmlingua_asset_paths() -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let model_env = std::env::var("CRYPT_LLMLINGUA_MODEL").ok();
-    let tok_env = std::env::var("CRYPT_LLMLINGUA_TOKENIZER").ok();
+    let model_env = std::env::var("CORTEX_LLMLINGUA_MODEL").ok();
+    let tok_env = std::env::var("CORTEX_LLMLINGUA_TOKENIZER").ok();
     let (model, _tokenizer, default_dir) =
         resolve_asset_paths(&manifest, model_env.as_deref(), tok_env.as_deref());
 
     if !model.is_file() {
         return Err(format!(
-            "model not found at {} (set $CRYPT_LLMLINGUA_MODEL, or populate {} from the spike export per crates/crypt/assets/llmlingua/README.md)",
+            "model not found at {} (set $CORTEX_LLMLINGUA_MODEL, or populate {} from the spike export per crates/cortex/assets/llmlingua/README.md)",
             model.display(),
             default_dir.display()
         ));
@@ -1000,19 +1004,19 @@ mod tests {
         // dir is populated. (Env mutation in parallel tests is racy; use a
         // marker that no other test uses.)
         let bogus = std::env::temp_dir()
-            .join("crypt-asset-test-DO-NOT-EXIST")
+            .join("cortex-asset-test-DO-NOT-EXIST")
             .join("model.onnx");
-        // SAFETY: this test is the only writer of `CRYPT_LLMLINGUA_MODEL`
+        // SAFETY: this test is the only writer of `CORTEX_LLMLINGUA_MODEL`
         // and it sets/restores it within the test body. cargo's default test
         // runner runs tests on multiple threads but writes to env vars here
         // are best-effort — other tests in this module don't read this var.
         // If running with `--test-threads=1` (CI), it's deterministic.
         unsafe {
-            std::env::set_var("CRYPT_LLMLINGUA_MODEL", &bogus);
+            std::env::set_var("CORTEX_LLMLINGUA_MODEL", &bogus);
         }
         let result = llmlingua_asset_paths();
         unsafe {
-            std::env::remove_var("CRYPT_LLMLINGUA_MODEL");
+            std::env::remove_var("CORTEX_LLMLINGUA_MODEL");
         }
         match result {
             Err(msg) => {
@@ -1229,18 +1233,10 @@ mod recovery_marker_tests {
 
     #[test]
     fn marker_rejects_overlap_and_out_of_bounds() {
-        assert!(build_recovery_marker(
-            b"abcdef",
-            "head_tail",
-            1,
-            4,
-            4,
-            &[],
-            "mr://anchor/x",
-            0,
-            0,
-        )
-        .is_err()); // head + tail overlap
+        assert!(
+            build_recovery_marker(b"abcdef", "head_tail", 1, 4, 4, &[], "mr://anchor/x", 0, 0,)
+                .is_err()
+        ); // head + tail overlap
         assert!(build_recovery_marker(
             b"abc",
             "head_tail",
@@ -1269,18 +1265,9 @@ mod recovery_marker_tests {
 
     #[test]
     fn marker_meta_is_content_free() {
-        let marker = build_recovery_marker(
-            b"abc",
-            "skeletonize",
-            1,
-            0,
-            0,
-            &[],
-            "mr://anchor/y",
-            0,
-            0,
-        )
-        .unwrap();
+        let marker =
+            build_recovery_marker(b"abc", "skeletonize", 1, 0, 0, &[], "mr://anchor/y", 0, 0)
+                .unwrap();
         let meta = recovery_marker_meta(&marker);
         assert!(meta.contains("transform=skeletonize"));
         assert!(meta.contains("dropped="));

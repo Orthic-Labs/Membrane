@@ -78,9 +78,7 @@ impl SupervisorState {
 pub enum CycleOutcome {
     /// The supervisor acquired the lock, published the lease, and (optionally) ran the
     /// resident to completion in a single shot (used by tests and one-shot CLI mode).
-    Completed {
-        resident_pid: Option<u32>,
-    },
+    Completed { resident_pid: Option<u32> },
     /// The supervisor refused to start because another supervisor is already running.
     RefusedAlreadyRunning { pid: u32 },
     /// The supervisor refused because its own preflight failed.

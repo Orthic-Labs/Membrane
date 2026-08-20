@@ -26,13 +26,11 @@ def test_doctor_without_args_prints_scope_and_usage(capsys):
     assert "adapt doctor" in out.err
 
 
-def test_workspace_runtime_stubs_crypt_port(monkeypatch):
-    monkeypatch.setenv("ADAPT_WORKSPACE_STUBS", "1")
-    monkeypatch.setenv("CRYPT_PORT", "41234")
-    assert workspace_runtime.crypt_port() == 41234
+def test_workspace_runtime_cortex_port(monkeypatch):
+    monkeypatch.setenv("CORTEX_PORT", "41234")
+    assert workspace_runtime.cortex_port() == 41234
 
 
-def test_workspace_runtime_stubs_session_inventory(monkeypatch):
-    monkeypatch.setenv("ADAPT_WORKSPACE_STUBS", "1")
+def test_workspace_runtime_session_inventory():
     inv = workspace_runtime.context_session_inventory()
     assert inv.infer_candidate_client("codex", Path("x.jsonl")) == "codex"

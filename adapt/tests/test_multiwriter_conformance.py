@@ -31,8 +31,8 @@ def _sha(value: bytes = b"x") -> str:
 
 def _evidence() -> dict:
     implementation_files = [
-        {"path": "adapt/adapt.py", "sha256": _sha(b"adapt")},
-        {"path": "adapt/cross_machine.py", "sha256": _sha(b"cross")},
+        {"path": "membrane/adapt/adapt.py", "sha256": _sha(b"adapt")},
+        {"path": "membrane/adapt/src/adapt/cross_machine.py", "sha256": _sha(b"cross")},
     ]
     aggregate = _sha(json.dumps(
         implementation_files,
@@ -75,7 +75,7 @@ def _evidence() -> dict:
             "events": 1880,
         },
         "scheduler": {
-            "name": "crypt-daily",
+            "name": "cortex-daily",
             "disabled": True,
             "state": "disabled",
         },
@@ -153,10 +153,10 @@ def test_discovery_counts_exclude_active_codex_task_from_pending(
 
 def test_defaults_accept_private_candidate_binding(tmp_path: Path, monkeypatch):
     conformance = _module()
-    binary = tmp_path / "crypt-service.exe"
+    binary = tmp_path / "cortex-service.exe"
     release = tmp_path / "candidate-release.json"
-    monkeypatch.setenv("CRYPT_CONFORMANCE_BINARY", str(binary))
-    monkeypatch.setenv("CRYPT_CONFORMANCE_RELEASE_MANIFEST", str(release))
+    monkeypatch.setenv("CORTEX_CONFORMANCE_BINARY", str(binary))
+    monkeypatch.setenv("CORTEX_CONFORMANCE_RELEASE_MANIFEST", str(release))
 
     defaults = conformance._defaults(tmp_path)
 
@@ -264,7 +264,7 @@ def test_stale_or_overlong_receipt_is_rejected():
 @pytest.mark.parametrize(
     ("field", "match"),
     [
-        ("scheduler", "crypt-daily"),
+        ("scheduler", "cortex-daily"),
         ("mirror", "append-only"),
         ("installed_service", "batch route"),
         ("focused_tests", "focused tests"),
@@ -329,7 +329,7 @@ def test_source_hashes_are_repo_relative_and_deterministic(tmp_path):
 
 def test_service_probe_binds_release_asset_hash_and_nonmutating_batch_route(tmp_path):
     conformance = _module()
-    binary = tmp_path / "crypt-service.exe"
+    binary = tmp_path / "cortex-service.exe"
     binary.write_bytes(b"resident")
     release_path = tmp_path / "release.json"
     release = {

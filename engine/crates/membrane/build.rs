@@ -3,7 +3,8 @@ use std::{env, fs, path::PathBuf};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest dir"));
-    let index = manifest_dir.join("../../../schemas/registry/operations/operations-index.v1.golden.json");
+    let index =
+        manifest_dir.join("../../../schemas/registry/operations/operations-index.v1.golden.json");
     println!("cargo:rerun-if-changed={}", index.display());
 
     let value: serde_json::Value =

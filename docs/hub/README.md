@@ -8,7 +8,7 @@ go to the resource doc you need.
 - [actions.md](actions.md) — post-v1 action request builders (restart, reconcile, token rotation, etc.)
 - [agents-adapters.md](agents-adapters.md) — `agent-adapters.v1` client/device projection
 - [delivery-trace.md](delivery-trace.md) — `delivery-trace.v1` per-trace projection
-- [memory-sentinel.md](memory-sentinel.md) — Crypt memory-lifecycle read model
+- [memory-sentinel.md](memory-sentinel.md) — Cortex memory-lifecycle read model
 - [notifications.md](notifications.md) — sparse notification state (MBR-711)
 - [sources-explorer.md](sources-explorer.md) — `sources-explorer.v1` repository/provider projection
 

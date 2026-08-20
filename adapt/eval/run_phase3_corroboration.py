@@ -511,7 +511,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "within_ceilings": (
             planned_calls <= args.max_provider_calls and planned_chars <= args.max_input_chars
         ),
-        "live_crypt_writes": 0,
+        "live_cortex_writes": 0,
         "live_state_writes": 0,
     }
     if args.dry_run:
@@ -559,7 +559,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "ledger": panel["ledger"],
         "provider_failures": panel["failures"],
         **aggregate,
-        "side_effects": {"crypt_calls": 0, "live_state_writes": 0},
+        "side_effects": {"cortex_calls": 0, "live_state_writes": 0},
     }
     report["content_sha256"] = _sha(report)
     _write_json_atomic(args.out / "results.json", report)

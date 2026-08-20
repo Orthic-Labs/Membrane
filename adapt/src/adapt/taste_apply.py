@@ -1,4 +1,4 @@
-"""Taste apply — reviewed manifest → Crypt (zero LLM calls)."""
+"""Taste apply — reviewed manifest → Cortex (zero LLM calls)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -35,7 +35,7 @@ def _runtime_hook(name: str, default):
     return host.__dict__.get(name, default) if host else default
 
 def _preflight_apply_manifest() -> bool:
-    """Minimal preflight for `--apply-from-manifest`: crypt + scanner only.
+    """Minimal preflight for `--apply-from-manifest`: cortex + scanner only.
 
     The LLM lane is irrelevant — no provider calls happen on apply.
     """
@@ -43,8 +43,8 @@ def _preflight_apply_manifest() -> bool:
         print("error: scanner (detect-secrets/gitleaks) unavailable; "
               "refusing manifest apply", file=sys.stderr)
         return False
-    if not _runtime_hook("_run_crypt", runtime.run_crypt)(["--help"]):
-        print("error: crypt shim unavailable; refusing manifest apply",
+    if not _runtime_hook("_run_cortex", runtime.run_cortex)(["--help"]):
+        print("error: cortex shim unavailable; refusing manifest apply",
               file=sys.stderr)
         return False
     return True
@@ -55,7 +55,7 @@ def _create_apply_safepoint(manifest_body: dict) -> Path:
     db_override = os.environ.get("ADAPT_SAFEPOINT_DB_OVERRIDE")
     db_path = Path(db_override) if db_override else rollback._discover_db_path(manifest_body)
     if not db_path or not db_path.exists():
-        raise RuntimeError(f"Crypt DB unavailable for safe-point: {db_path}")
+        raise RuntimeError(f"Cortex DB unavailable for safe-point: {db_path}")
     out_override = os.environ.get("ADAPT_SAFEPOINT_DIR_OVERRIDE")
     out_path = None
     if out_override:
@@ -78,7 +78,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
       - batch_id must match a journal discovered entry with the same sessions
       - only ``accepted`` records are written
       - state advances only after every put succeeds
-      - on any put failure, partial writes are rolled back via crypt delete
+      - on any put failure, partial writes are rolled back via cortex delete
         and state does NOT advance
     """
     try:
@@ -167,7 +167,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
             print(f"  - {record_id}: {reason}", file=sys.stderr)
         return 2
 
-    # v1.3 persists through one authenticated API request, not Crypt CLI.
+    # v1.3 persists through one authenticated API request, not Cortex CLI.
     if not is_multiwriter and not _preflight_apply_manifest():
         return 2
 
@@ -217,7 +217,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
                     installation_id=installation_id,
                 )
                 if batch_receipt.get("complete") is not True:
-                    raise adapt_persistence.AdaptPersistenceError("Crypt batch receipt is incomplete")
+                    raise adapt_persistence.AdaptPersistenceError("Cortex batch receipt is incomplete")
         except (OSError, RuntimeError, ValueError, sqlite3.Error,
                 adapt_persistence.AdaptPersistenceError) as exc:
             failed.append(("batch", str(exc)))
@@ -231,18 +231,18 @@ def apply_from_manifest(manifest_path: Path) -> int:
         print(f"  safepoint={safe_point}")
         out_dir.mkdir(parents=True, exist_ok=True)
         for pr in prepared:
-            body = preference_record.to_crypt_content(pr)
+            body = preference_record.to_cortex_content(pr)
             with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False,
                                              encoding="utf-8",
                                              dir=str(out_dir)) as tmp:
                 tmp.write(body)
                 tmp_path = tmp.name
             tmp_paths.append(Path(tmp_path))
-            ok = _runtime_hook("_run_crypt", runtime.run_crypt)(["put", pr.id, "--scope", pr.scope, "--file", tmp_path])
+            ok = _runtime_hook("_run_cortex", runtime.run_cortex)(["put", pr.id, "--scope", pr.scope, "--file", tmp_path])
             if ok:
                 written.append((pr.id, pr.scope))
             else:
-                failed.append((pr.id, "crypt put failed"))
+                failed.append((pr.id, "cortex put failed"))
                 break
 
     # Cleanup tmp files regardless of outcome.
@@ -255,7 +255,7 @@ def apply_from_manifest(manifest_path: Path) -> int:
     if failed:
         if not is_multiwriter:
             for w, scope in written:
-                _runtime_hook("_run_crypt", runtime.run_crypt)(["delete", f"{scope}/{w}"])
+                _runtime_hook("_run_cortex", runtime.run_cortex)(["delete", f"{scope}/{w}"])
         print(f"error: {len(failed)} write(s) failed; rolled back "
               f"{len(written)} write(s); refusing state advance",
               file=sys.stderr)

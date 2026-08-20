@@ -16,7 +16,7 @@ This script:
     successful validation, so the harness grades against an immutable record
 
 Run from workspace root:
-  py -3.11 tools/pipelines/memory/adapt/eval/build_value_set.py <value_set.json>
+  py -3.11 membrane/adapt/eval/build_value_set.py <value_set.json>
 """
 from __future__ import annotations
 
@@ -41,14 +41,14 @@ def _load_schema() -> dict:
 
 
 def _fetch_current_rule_ids() -> set[str]:
-    """Read live Crypt rows of the form D--Claude/adapt-<slug>."""
+    """Read live Cortex rows of the form D--Claude/adapt-<slug>."""
     try:
         out = subprocess.check_output(
-            [str(WS / "tools" / "bin" / "crypt.exe"), "list"],
+            [str(WS / "tools" / "bin" / "cortex.exe"), "list"],
             text=True, timeout=15,
         )
     except Exception as exc:
-        sys.stderr.write(f"warning: could not list crypt ({exc}); "
+        sys.stderr.write(f"warning: could not list cortex ({exc}); "
                          f"skipping rule-id existence checks\n")
         return set()
     return {line.split()[-1].split("/")[-1] for line in out.splitlines()
@@ -97,7 +97,7 @@ def main() -> int:
         sys.stderr.write(f"warning: arm imbalance (relevant={relevant}, "
                          f"control={control}); plan target is ≥50 each\n")
 
-    # Validate expected-rule-id existence against current Crypt pool.
+    # Validate expected-rule-id existence against current Cortex pool.
     current_ids = _fetch_current_rule_ids()
     dead_refs: list[tuple[str, str]] = []
     for p in prompts:
@@ -109,7 +109,7 @@ def main() -> int:
                 dead_refs.append((p["id"], rid))
     if dead_refs:
         sys.stderr.write(f"warning: {len(dead_refs)} prompt(s) reference "
-                         f"rule ids not in current Crypt pool:\n")
+                         f"rule ids not in current Cortex pool:\n")
         for pid, rid in dead_refs[:20]:
             sys.stderr.write(f"  - prompt {pid} -> {rid}\n")
 

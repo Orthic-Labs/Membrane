@@ -228,7 +228,7 @@ def test_unclassified_record_is_not_exported_as_standing_instruction():
         source_ids=("s1",),
     )
 
-    body = preference_record.to_crypt_content(record)
+    body = preference_record.to_cortex_content(record)
 
     assert "not a standing instruction" in body
     assert "treat as a standing preference" not in body

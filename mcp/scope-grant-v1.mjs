@@ -6,7 +6,7 @@ import { join } from "node:path";
 export const SCOPE_GRANT_TTL_SECONDS = 300;
 export const SCOPE_GRANT_SOURCE_BYTES_MAX = 32 * 1024;
 export const SCOPE_GRANT_FILES_MAX = 16;
-export const SCOPE_GRANT_ISSUER = "rightcontext-gateway";
+export const SCOPE_GRANT_ISSUER = "membrane-gateway";
 export const SCOPE_GRANT_ALGORITHM = "Ed25519";
 export const SCOPE_GRANT_DOMAIN = "rightstudio.scope-grant.v1\0";
 const DEFAULT_STATE_ROOT = process.platform === "win32"
@@ -97,7 +97,7 @@ export function mintScopeGrantV1({ binding, args, packet, freshness, signingKey,
     anchors: args.anchors || "",
     budget: args.budget ?? null,
   };
-  const cryptAdmitted = (packet.blocks || []).some((block) => block?.provider === "crypt");
+  const cortexAdmitted = (packet.blocks || []).some((block) => block?.provider === "cortex");
   const issuedAt = new Date(now).toISOString();
   const grant = {
     schemaVersion: 1,
@@ -123,8 +123,8 @@ export function mintScopeGrantV1({ binding, args, packet, freshness, signingKey,
     sourceReadBytesMax: SCOPE_GRANT_SOURCE_BYTES_MAX,
     uniqueFilesMax: readPaths.length,
     resultsMax: readPaths.length,
-    cryptStatus: cryptAdmitted ? "available" : "degraded",
-    degraded: !cryptAdmitted,
+    cortexStatus: cortexAdmitted ? "available" : "degraded",
+    degraded: !cortexAdmitted,
     signatureAlgorithm: SCOPE_GRANT_ALGORITHM,
     keyId: key.keyId,
   };
@@ -148,7 +148,7 @@ export function validateScopeGrantV1(grant, { binding, args, packet, freshness, 
   const immutableFields = [
     "schemaVersion", "issuer", "client", "taskId", "sessionId", "repositoryId", "repositoryRoot", "blueprintGeneration",
     "blueprintFreshness", "requestHash", "contextPacketHash", "manifestDigest", "sourceReadBytesMax",
-    "uniqueFilesMax", "resultsMax", "cryptStatus", "degraded",
+    "uniqueFilesMax", "resultsMax", "cortexStatus", "degraded",
   ];
   return immutableFields.every((field) => grant[field] === expected[field]) &&
     JSON.stringify(grant.repositoryIds) === JSON.stringify(expected.repositoryIds) &&

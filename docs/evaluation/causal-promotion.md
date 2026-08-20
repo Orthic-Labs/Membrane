@@ -47,10 +47,10 @@ Qualified application rechecks every target content hash, applies all bounded de
 ## CLI
 
 ```sh
-crypt --db memory.db learning-register --input experiment.json
-crypt --db memory.db learning-qualify EXPERIMENT_ID
-crypt --db memory.db learning-receipt EXPERIMENT_ID
-crypt --db memory.db backout-schema-v23
+cortex --db memory.db learning-register --input experiment.json
+cortex --db memory.db learning-qualify EXPERIMENT_ID
+cortex --db memory.db learning-receipt EXPERIMENT_ID
+cortex --db memory.db backout-schema-v23
 ```
 
 Backout removes only v23 learning tables plus feedback qualification marker, returning schema v22.

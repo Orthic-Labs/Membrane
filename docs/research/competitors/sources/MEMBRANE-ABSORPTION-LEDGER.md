@@ -47,7 +47,7 @@ The standing rule comes from the passes themselves (`m3.md` §7):
 Nothing below Tier 0 should ship before this tier is green. Four of the eight documents open with this instruction; the fifth spends its first section arguing for it.
 
 ### 1. Context-quality fixture corpus, frozen baseline, and a regression gate
-**Floor (8/8)** · `tests/context-quality/` · `crypt-core/src/eval_gate.rs`
+**Floor (8/8)** · `tests/context-quality/` · `cortex-core/src/eval_gate.rs`
 
 ~20 cases covering exact symbol lookup, stale-memory conflict, anchor survival, dirty worktree overlay, provider timeout, duplicate-across-providers, oversized result needing compression, superseded fact, cross-scope isolation, and the no-relevant-context case. Each records required evidence, **forbidden** evidence, expected authority ordering, token ceiling, expected degradation, and expected receipt properties.
 
@@ -81,12 +81,12 @@ Adopt one canonical implementation guide, stamp the August 12 plan *Superseded b
 One carrier holding request, trace, session, task, parent-task, repository, worktree/overlay, and provider-invocation ids — set once at entry, read downstream, with no id in scope without being declared. This is exactly the B-3 defect ("envelopes do not survive the live path"), and it independently pays for triageable federation failures.
 
 ### 7. Single canonical writer with lease, heartbeat, and operation-id-scoped recovery
-**Floor (26/60)** · `crypt-store` · `mcp/host/delivery-ledger-store.cjs`
+**Floor (26/60)** · `cortex-store` · `mcp/host/delivery-ledger-store.cjs`
 
 Membrane currently has two writers over shared state. Serialize through one connection-owning path with typed refusals (`OwnershipRequired`, `QueueOverloaded`, `WriteDeadlineExceeded`, `CommandConflict`), and clear a stale lock only when the caller supplies the exact operation id — not by PID. The stale-PID pattern is the corpus's most-repeated operational bug, and **B-5 is one instance of it**.
 
 ### 8. Two-class durability
-**Bet** · `crypt-store`
+**Bet** · `cortex-store`
 
 Keep `synchronous = NORMAL` for reconstructable derived writes; raise to `FULL` inside a Drop-guarded transaction for authored, irreplaceable writes that return success to the caller. Rare in the corpus and exactly right — it strengthens delivery proof without paying fsync on every projection.
 
@@ -106,10 +106,10 @@ A ceiling that is not asserted in a test is a suggestion. Pair with grep-checkab
 
 ## Tier 1 — Retrieval: candidate generation and ranking
 
-All four consolidations independently name the lexical arm as Membrane's clearest retrieval weakness. **Verified:** the production lexical path is keyword-exact ×2 plus substring occurrences plus a stored score. The only FTS5 in the tree is in `engine/crates/crypt/tests/doc_recall_index_contract.rs`.
+All four consolidations independently name the lexical arm as Membrane's clearest retrieval weakness. **Verified:** the production lexical path is keyword-exact ×2 plus substring occurrences plus a stored score. The only FTS5 in the tree is in `engine/crates/cortex/tests/doc_recall_index_contract.rs`.
 
 ### 11. A real sparse lexical index — FTS5/BM25 with identifier-aware tokenization
-**Floor (4/4 consolidations)** · `crypt-store/src/lexical.rs` (new)
+**Floor (4/4 consolidations)** · `cortex-store/src/lexical.rs` (new)
 
 BM25 scoring, field weighting, phrase and exact bonuses, document-frequency statistics, scope and authority filters, incremental update. Tokenize `snake_case`, `camelCase`, `PascalCase`, `kebab-case`, paths, and `module::names`, so `ContextCandidateSet` yields *context / candidate / set / ContextCandidateSet*.
 
@@ -118,12 +118,12 @@ Keep the current scorer as a deterministic fallback when FTS is unavailable or c
 Deciding criteria between SQLite FTS5 and an in-process Rust index are quality, resident memory, incremental update cost, warm latency, binary complexity, and failure surface — not familiarity. Do not introduce Tantivy, Elasticsearch, or Qdrant for this.
 
 ### 12. Retrieval channel registry, not an ever-growing ranking function
-**Floor** · `crypt-core/src/retrieval/`
+**Floor** · `cortex-core/src/retrieval/`
 
 One trait, one file per channel: `exact`, `lexical`, `semantic`, `temporal`, `relation`, `working`. Not all channels run for every query. Turning any optional channel off must not break retrieval, and each must be independently ablatable in evaluation — otherwise Membrane accumulates ranking mechanisms nobody dares remove.
 
 ### 13. Deterministic query-intent classification — no model in the hot path
-**Candidate** · `crypt-core/src/query_intent.rs` (new)
+**Candidate** · `cortex-core/src/query_intent.rs` (new)
 
 Signals: paths, identifiers, stack traces, quoted strings, error codes, git hashes, dates, and the words *why / when / previous / decision / changed*. Emit weights, not a brittle single label. Intent decides which channels get budget and how much — **never source authority**. Record it in the receipt.
 
@@ -135,7 +135,7 @@ First-fit lets one high-scoring hit eat the budget. Place every candidate at its
 > Ranked #1 in one register, reinforced as "the most production-considered design of any repo in this list" in a second, independently surfaced in a third, contradicted by none. Membrane's four lanes are exactly the structure the algorithm assumes. **This is the single highest-confidence item in the entire exercise.**
 
 ### 15. Weighted RRF with per-channel provenance and deterministic tie-breaks
-**Floor (18/60)** · `crypt-core/src/ranking.rs`
+**Floor (18/60)** · `cortex-core/src/ranking.rs`
 
 Keep RRF — heterogeneous score scales make raw-score fusion dangerous. Add three details other teams paid for in bugs:
 
@@ -154,7 +154,7 @@ Keep relevance, freshness, authority, veracity, effectiveness, exactness, scope 
 - **policy score** — should this be admitted?
 - **utility** — is it worth its token cost?
 
-All four consolidations flag collapsing these into one number as the change that would destroy Membrane's strongest architectural property. A cosine from Crypt, a graph score from Blueprint, a rule priority, and a Git freshness signal are not on one calibrated scale.
+All four consolidations flag collapsing these into one number as the change that would destroy Membrane's strongest architectural property. A cosine from Cortex, a graph score from Blueprint, a rule priority, and a Git freshness signal are not on one calibrated scale.
 
 ### 17. Exact-evidence pinning — ordering-only, still vetoable
 **Candidate**
@@ -187,7 +187,7 @@ Ten near-identical memories are worse than five complementary pieces of evidence
 The largest cluster of genuine gaps. Membrane persists emissions and the pipeline stops there: **nothing in the pipeline is permitted to decide "this doesn't deserve to be remembered" and say so.** The best cleanup strategy is refusing bad memories before they enter durable storage.
 
 ### 21. An explicit admission pipeline before persistence
-**Floor (4/4 consolidations)** · `crypt-core/src/admission.rs` (new)
+**Floor (4/4 consolidations)** · `cortex-core/src/admission.rs` (new)
 
 Schema validity → scope validity → secret/PII policy → epistemic classification → novelty → near-duplicate → contradiction → durability/utility, yielding `ADMIT | MERGE | SUPERSEDE | QUARANTINE | REJECT` plus a receipt. Rules decide the obvious cases; a model touches only the ambiguous ones, off the latency-critical path.
 
@@ -208,7 +208,7 @@ A one-line contract change with outsized effect on signal-to-noise. It composes 
 Twenty-eight of sixty competitors make the writing agent validate its own output before finishing. Membrane accepts emissions without a conformance check. A write path with no self-validation cannot supply the evidence-backed claims §11 requires.
 
 ### 24. Deterministic guards on every model-authored mutation; ties go to quarantine
-**Floor** · `crypt-core/src/dream.rs`
+**Floor** · `cortex-core/src/dream.rs`
 
 Dream consolidation currently trusts its model pass outright. Add pure decidable checks before any UPSERT — non-empty, size ceiling, identifier-tolerant sentence counting so `files.generation` and `3.5x` do not split, reference resolution by set membership. Retry once, then write a typed failure stamp **inside the same transaction** as the summary write.
 
@@ -224,7 +224,7 @@ Do not rewrite canonical memory content because its retrieval value changed. Put
 Canonical content stays auditable and diffable; the sidecar is rebuildable and recalibratable without corrupting truth.
 
 ### 26. Decay with retrieval reinforcement, archive never delete
-**Floor (4/4 passes · 14/60)** · `crypt-core/src/lifecycle.rs` (new)
+**Floor (4/4 passes · 14/60)** · `cortex-core/src/lifecycle.rs` (new)
 
 Two design rules recur across fourteen implementations:
 
@@ -238,7 +238,7 @@ Encode retention as a pure function in `membrane-core` and assert monotonicity i
 > `docs/research/synthesis/INDEX.md` names the Ebbinghaus forgetting curve as "the one policy Membrane lacks today." Quoted verbatim and verified. This is the fourth pass to raise it; it should not survive another planning cycle unresolved.
 
 ### 27. Bounded asymptotic reinforcement, and recall separated from usefulness
-**Candidate** · `crypt-core/src/effectiveness.rs`
+**Candidate** · `cortex-core/src/effectiveness.rs`
 
 Use `c ← c + α(1 − c)` with α ≈ 0.1. It is monotone, capped at 1.0, cannot overshoot, and its behavior at any hit count is legible without simulation.
 
@@ -315,7 +315,7 @@ Two invariants: **an inferred fact must never silently override an explicit one*
 > This is the mechanism behind "fresh code evidence outranks stale documents and memory" for the case where the memory was *inferred*. Today there is no way to tell.
 
 ### 36. Append-only bitemporal supersession with `as_of` queries
-**Floor (4/4 passes · 20/60)** · `crypt-store/src/temporal.rs`
+**Floor (4/4 passes · 20/60)** · `cortex-store/src/temporal.rs`
 
 Membrane's temporal fact model is already one of the strongest parts of the implementation — **extend it, do not build a second one beside it.**
 
@@ -379,7 +379,7 @@ Related rule from the same source: **presence cannot contradict.** A stored clai
 > Citation-by-construction plus verification-at-reconciliation is a claim almost nobody in this field can make.
 
 ### 42. Code-anchor fingerprinting with five-way drift classification
-**Candidate** · `crypt-store` anchor plane + an anchor-audit tool
+**Candidate** · `cortex-store` anchor plane + an anchor-audit tool
 
 Store a comment-free AST signature hashed over the anchored span, so reformatting does not drift but a literal `3 → 8` does. Audit classifies each anchor `missing_file | missing_symbol | ambiguous_symbol | unsupported_language | drifted`, and reports drift **only when a baseline exists**, never assumed. Wire results into receipts so the renderer can demote or tag drifted entries during reconciliation.
 
@@ -406,7 +406,7 @@ Emit a not-found verdict **only** when the memory's own binding proves the searc
 **You cannot claim a fact is stale unless you can prove you indexed the domain it lives in.** This is the soundness rule that keeps a partial index from fabricating divergences, and the honest form of §2's abstention requirement. Pair with surfacing coverage blind spots and liveness as first-class receipt fields, so a degraded packet advertises its degradation rather than requiring the caller to infer it.
 
 ### 45. Embedding provenance — one column, and a question stops being unanswerable
-**Bet · cheapest high-value item in the corpus** · `crypt-store`
+**Bet · cheapest high-value item in the corpus** · `cortex-store`
 
 Record the hash of the text the embedding was **actually computed from**, alongside the row's current content hash. The problem statement from the source is the clearest in the corpus: *a vector left over from earlier content is byte-identical to a correct one, so a mis-embedded row is undetectable; `embedding IS NOT NULL` says only that something was embedded, never what.*
 
@@ -417,7 +417,7 @@ Combined with keying embeddings by provider, model, and dimensions, a row can th
 ### 46. Content-addressed identity — key derived data by its invalidation key
 **Floor (27/60)**
 
-Derive an `identity_hash` over a canonicalized projection excluding timestamps and the id itself, enforced in `crypt-store` with reject-or-match semantics. Re-mining the same corpus then reproduces the same ids, caching keys perfectly, and dedup is free.
+Derive an `identity_hash` over a canonicalized projection excluding timestamps and the id itself, enforced in `cortex-store` with reject-or-match semantics. Re-mining the same corpus then reproduces the same ids, caching keys perfectly, and dedup is free.
 
 Key every model-derived artifact (summaries, projections, embeddings) by `(source_id, content_hash, prompt_version)`. **The primary key *is* the reason to recompute**, which makes every derivation pass churn-skippable, self-invalidating, and free on cold start.
 
@@ -577,7 +577,7 @@ Recorded so the next pass does not re-import these under new names. All four con
 | Bandit-driven adaptive compression policy | Genuinely clever, unfalsifiable without a large local corpus, and it makes rendering **nondeterministic** — colliding head-on with prompt-cache stability (#55) | Revisit only after cache stability is measured |
 | LLM deciding add/update/delete; model-generated executable code | Membrane's admission is machinery-driven with receipts, and that is the point. The executable-code path (generated Python `exec`'d with escalating-temperature retry) is rejected on **safety** by two independent passes regardless of measurement | Model *proposes*; deterministic policy decides. #24 and #33 are the mechanisms |
 | Duplicating Blueprint — a second parser stack, symbol engine, dependency graph, or global code index | At least a quarter of the most attractive competitor features are code-intelligence features. Membrane is the consumer and planner; Blueprint owns code semantics | Stable anchors, evidence validation, blind-spot reporting, source fingerprints — consumed through the provider contract |
-| Markdown-as-database round-trip | Its own analysis names it an anti-pattern; it forces two divergent memory semantics because the engine re-parses its own rendering | **Export, not storage.** Crypt stays the typed source of truth; the Hub renders it read-only. Rendering stays strictly one-directional. Recorded as *confirmation* of Membrane's approach, not absorption |
+| Markdown-as-database round-trip | Its own analysis names it an anti-pattern; it forces two divergent memory semantics because the engine re-parses its own rendering | **Export, not storage.** Cortex stays the typed source of truth; the Hub renders it read-only. Rendering stays strictly one-directional. Recorded as *confirmation* of Membrane's approach, not absorption |
 | Observer/observed directional memory | The deepest conceptual shift in the set, and plainly right for a multi-agent memory product — but Membrane's boundary is a repository, not a social graph | The narrow version: a received claim is "peer P asserts X", not "X". Revisit only if team sync (Phase 6) makes divergent views a real requirement |
 | Network-proxy interception; hosted/server architecture; agent frameworks, PTYs, autonomous coding loops, multi-agent chat, browser automation, generic planning engines | Different products with different threat models. **Steal mechanisms, not scope** | — |
 | Streamable-HTTP transports; Cloudflare Workers, Vercel serverless, Durable Objects; npm-first as the primary channel | S-7 deferred behind measured need; §4 fixes the target at one signed native binary; npm stays a bootstrapper | The internal discipline: separate entry paths and startup concerns behind one shipped artifact |

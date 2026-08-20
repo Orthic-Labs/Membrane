@@ -179,7 +179,7 @@ def preference_classification_reason(item: dict) -> str | None:
 
 SYNTH_SYSTEM = """You maintain durable coding-AGENT preferences for an operator.
 
-INPUT: JSON with `existing_rules` (every current rule in Crypt, regardless of category)
+INPUT: JSON with `existing_rules` (every current rule in Cortex, regardless of category)
 and `new_observations` from the extraction pass. New observations use one of these 8 categories:
   workflow, verification, safety, architecture, tooling, code-style, documentation, model-routing
 

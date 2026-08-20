@@ -52,7 +52,10 @@ impl CrossProviderBudget {
             } else {
                 0
             };
-            lanes.insert(lane.as_str().to_string(), LaneAllocation::new(*lane, max_for_lane));
+            lanes.insert(
+                lane.as_str().to_string(),
+                LaneAllocation::new(*lane, max_for_lane),
+            );
         }
         Self {
             max_tokens,
@@ -112,9 +115,9 @@ impl CrossProviderBudget {
     /// Walk the lanes in the contract order. The map iterates alphabetically,
     /// but reconciliation must follow [`BUDGET_LANE_KINDS`] order.
     pub fn ordered_lanes(&self) -> impl Iterator<Item = &LaneAllocation> {
-        BUDGET_LANE_KINDS.iter().filter_map(move |lane| {
-            self.lanes.get(lane.as_str())
-        })
+        BUDGET_LANE_KINDS
+            .iter()
+            .filter_map(move |lane| self.lanes.get(lane.as_str()))
     }
 
     /// Reserve headroom (`max_tokens - selected_tokens`), clamped to zero.

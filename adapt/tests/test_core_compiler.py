@@ -92,7 +92,7 @@ def test_compile_core_scanner_block_prevents_provider_call(monkeypatch, tmp_path
     assert called == [] and not (tmp_path / "core.json").exists()
 
 
-def test_adapt_compile_core_cli_is_an_early_non_crypt_path(monkeypatch, tmp_path):
+def test_adapt_compile_core_cli_is_an_early_non_cortex_path(monkeypatch, tmp_path):
     out = tmp_path / "core.json"
     monkeypatch.setattr(sys, "argv", [
         "adapt.py", "--compile-core", str(out), "--lane", "minimax",

@@ -41,7 +41,7 @@ function writeReleaseGeneration(root, overrides = {}) {
   const doc = {
     schema: "orthic.membrane.release-generation.v1",
     product: "Membrane",
-    vector_dispatch: "CRYPT_VECTOR_DISPATCH_V2",
+    vector_dispatch: "CORTEX_VECTOR_DISPATCH_V2",
     publish: false,
     release: {
       app: APP, version: VERSION, tag: TAG, commit: COMMIT, tree: TREE,

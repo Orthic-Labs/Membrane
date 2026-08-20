@@ -30,7 +30,7 @@ Companion code mirrors were local, gitignored clones; see
 | `papers/core/agent_architectures/darwin-godel-machine_2505.22954.pdf` | Darwin Gödel Machine: Open-Ended Evolution of Self-Improving Agents | [2505.22954](https://arxiv.org/abs/2505.22954) | Not memory — self-improving agents; harness territory |
 | `papers/core/agent_architectures/automated-design-agentic-systems_2408.08435.pdf` | Automated Design of Agentic Systems | [2408.08435](https://arxiv.org/abs/2408.08435) | Not memory — meta agent design |
 | `papers/core/agent_architectures/omni-epic_2405.15568.pdf` | OMNI-EPIC: Open-endedness via Models of Human Notions of Interestingness with Environments Programmed in Code | [2405.15568](https://arxiv.org/abs/2405.15568) | Not memory — open-ended environment generation |
-| `papers/core/surveys/ontology-embedding-survey_2406.10964.pdf` | Ontology Embedding: A Survey of Methods, Applications and Resources | [2406.10964](https://arxiv.org/abs/2406.10964) | Moderate — structured knowledge beyond flat vectors; could inform Crypt storage organization |
+| `papers/core/surveys/ontology-embedding-survey_2406.10964.pdf` | Ontology Embedding: A Survey of Methods, Applications and Resources | [2406.10964](https://arxiv.org/abs/2406.10964) | Moderate — structured knowledge beyond flat vectors; could inform Cortex storage organization |
 
 ## B — Added: canonical memory-architecture papers
 

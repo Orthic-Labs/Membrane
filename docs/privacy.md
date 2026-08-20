@@ -140,12 +140,12 @@ uninstall verb:
 
 ```sh
 # Removes the data root entirely, including provenance.jsonl.
-crypt uninstall
+cortex uninstall
 # or, in the workspace:
-tools/bin/crypt uninstall
+tools/bin/cortex uninstall
 ```
 
-The install verb (`crypt install`) does **not** delete the journal; an
+The install verb (`cortex install`) does **not** delete the journal; an
 install preserves the trail across upgrades. The `observe` verb emits
 a row but does not act on the journal.
 

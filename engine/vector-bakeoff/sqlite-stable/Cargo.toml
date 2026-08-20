@@ -7,7 +7,7 @@ publish = false
 [workspace]
 
 [dependencies]
-crypt-core = { path = "../../crates/crypt-core" }
+cortex-core = { path = "../../crates/cortex-core" }
 rusqlite = { version = "=0.40.1", features = ["bundled"] }
 serde_json = "1.0.145"
 sqlite-vec-stable = { package = "sqlite-vec", version = "=0.1.9" }

@@ -98,13 +98,6 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
     // it would have seen from a direct invocation. `tail` is empty when the user typed
     // `membrane cli` with no subcommand; the runtime prints help and returns Ok.
     //
-    // MBR-107: stamp the canonical product-surface notice on first invocation so
-    // operators see a single structured log line telling them the legacy `crypt`
-    // binary is a compatibility facade. Subsequent calls in this process are silent
-    // (guarded inside `membrane_runtime::vocabulary::emit_facade_notice_once`).
-    let _ = membrane_runtime::vocabulary::emit_facade_notice_once(
-        membrane_runtime::vocabulary::ProductSurface::Membrane,
-    );
     // MBR-106: intercept `cli doctor paths` before forwarding to the runtime so
     // the existing `cli doctor --json` surface is untouched. The runtime still
     // owns every other `cli ...` invocation; the binary only adds the new
@@ -119,7 +112,7 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
         } else {
             "hub.snapshot"
         };
-        // MBR: read live state from the local crypt-service's /health endpoint
+        // MBR: read live state from the local cortex-service's /health endpoint
         // instead of hardcoding "Offline" regardless of whether the service is
         // up. Falls back to the honest unavailable facade on any failure.
         let inputs =

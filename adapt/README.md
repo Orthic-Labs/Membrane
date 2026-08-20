@@ -18,7 +18,7 @@ flowchart LR
     E --> S[deterministic extraction +<br/>LLM recall proposals]
     S --> A[authority checks<br/>origin quarantine]
     A --> M[immutable review manifest<br/>accepted / rejected / pending]
-    M --> G[conformance gate] --> W[transactional<br/>Crypt apply]
+    M --> G[conformance gate] --> W[transactional<br/>Cortex apply]
     W --> R[scoped recall<br/>in future sessions]
 ```
 
@@ -59,7 +59,7 @@ And it's reversible: a run journal checkpoints every stage; safe resume reuses c
 
 | Surface | Role | Status |
 |---|---|---|
-| **Taste** | durable preferences → Crypt | ships |
+| **Taste** | durable preferences → Cortex | ships |
 | **Doctor** | multiwriter conformance receipts (`issue` / `validate`) | ships; Blueprint/Forge checks not yet |
 | **Insights** | failure/waste mining + token spend | report-only; writes nothing |
 
@@ -119,9 +119,9 @@ Writes are opt-in (`--apply`); smoke & manifest generation stay dry-run. LLM pro
 
 ## Current limits
 
-A standalone checkout depends on parent-workspace memory/session modules and an installed Crypt (`workspace_runtime.py` is the single import boundary; offline stubs exist but are barred from live applies). Model-assisted extraction needs a configured lane. Lexical contradiction detection catches direct polarity conflicts, not every semantic conflict. Doctor does not yet cover Blueprint or Forge.
+Adapt requires shared workspace memory/session modules and installed Cortex; `workspace_runtime.py` is its single import boundary. Model-assisted extraction needs a configured lane. Lexical contradiction detection catches direct polarity conflicts, not every semantic conflict. Doctor does not yet cover Blueprint or Forge.
 
 ---
 
 <sub><b><a href="https://orthic-labs.github.io">Orthic Labs</a></b> — local-first infrastructure for AI-assisted development.<br>
-<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Cortex">Cortex</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/Adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
+<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/engine/crates/cortex">Cortex</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>

@@ -13,7 +13,8 @@ const RESOURCES_INDEX: &str =
     include_str!("../../../../schemas/registry/resources/resources-index.v1.json");
 const INSTALLATION_MANIFEST: &str =
     include_str!("../../../../schemas/registry/resources/installation-manifest.v1.json");
-const LEASE_STATUS: &str = include_str!("../../../../schemas/registry/resources/lease-status.v1.json");
+const LEASE_STATUS: &str =
+    include_str!("../../../../schemas/registry/resources/lease-status.v1.json");
 const OPERATION_REGISTRY: &str =
     include_str!("../../../../schemas/registry/resources/operation-registry.v1.json");
 

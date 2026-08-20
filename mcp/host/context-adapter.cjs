@@ -92,21 +92,21 @@ function buildRequest(event, root) {
   };
 }
 
-// Plan 2.5: the resident Crypt service already owns federation on loopback.
+// Plan 2.5: the resident Cortex service already owns federation on loopback.
 // Spawning `node client.mjs` per prompt paid a cold Node start inside a
 // 1500 ms budget, which is what produced the observed `packet: null` /
 // `providerStatus: unavailable` failures under load (defect 28) — the work
 // was fine, the spawn just did not finish in time. Call the service directly
 // and keep the spawn as the fallback for hosts with no resident service.
 function residentPort() {
-  return String(process.env.CRYPT_PORT || process.env.WORKSPACE_MEMORY_PORT || '47851');
+  return String(process.env.CORTEX_PORT || '47851');
 }
 
 function residentToken(root) {
-  const raw = String(process.env.CRYPT_API_TOKEN || '').trim();
+  const raw = String(process.env.CORTEX_API_TOKEN || '').trim();
   if (raw) return raw;
   const candidates = [];
-  const override = String(process.env.CRYPT_API_TOKEN_FILE || '').trim();
+  const override = String(process.env.CORTEX_API_TOKEN_FILE || '').trim();
   if (override) candidates.push(override);
   const workspace = String(process.env.WORKSPACE_ROOT || '').trim();
   if (workspace) candidates.push(path.join(workspace, 'tools', '.cache', 'memory', 'api-token'));

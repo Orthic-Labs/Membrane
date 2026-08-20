@@ -1,6 +1,6 @@
 """Admission policy + controlled taxonomy for adapt.
 
-A rule becomes a Crypt row only if it passes `admit()`. The synthetic
+A rule becomes a Cortex row only if it passes `admit()`. The synthetic
 classifier is asked to output a category; anything outside the taxonomy is
 remapped to `misc-review` so curation can act on it manually rather than have
 the model invent duplicates (the audit-* triplet problem observed in the 81-row
@@ -151,7 +151,7 @@ def admit(
     authority_root: Path | None = None,
     stored_rules: list[dict] | None = None,
 ) -> tuple[bool, str]:
-    """Decide whether to admit an action's rule to Crypt.
+    """Decide whether to admit an action's rule to Cortex.
 
     Returns (admitted, reason). Reasons:
       "ok" — admitted.

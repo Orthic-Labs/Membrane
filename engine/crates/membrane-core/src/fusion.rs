@@ -5,7 +5,8 @@
 //! completion order is never an input to selection.
 
 use membrane_protocol::{
-    canonical_json_of, CandidateV1, ContextCandidateSetV1, FreshnessClass, FusionDecisionV1, FusionReceiptV1,
+    canonical_json_of, CandidateV1, ContextCandidateSetV1, FreshnessClass, FusionDecisionV1,
+    FusionReceiptV1,
 };
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
@@ -48,10 +49,10 @@ struct RankedCandidate {
 fn provider_candidate_order(left: &CandidateV1, right: &CandidateV1) -> Ordering {
     trust_rank(&left.trust_class)
         .cmp(&trust_rank(&right.trust_class))
-        .then_with(|| freshness_rank(left.freshness_class).cmp(&freshness_rank(right.freshness_class)))
-        .then_with(|| right
-        .provider_score
-        .total_cmp(&left.provider_score))
+        .then_with(|| {
+            freshness_rank(left.freshness_class).cmp(&freshness_rank(right.freshness_class))
+        })
+        .then_with(|| right.provider_score.total_cmp(&left.provider_score))
         .then_with(|| left.id.cmp(&right.id))
         .then_with(|| left.source_hash.cmp(&right.source_hash))
         .then_with(|| left.source_ref.cmp(&right.source_ref))
@@ -88,10 +89,11 @@ const fn freshness_rank(value: Option<FreshnessClass>) -> u8 {
 fn fusion_order(left: &RankedCandidate, right: &RankedCandidate) -> Ordering {
     trust_rank(&left.candidate.trust_class)
         .cmp(&trust_rank(&right.candidate.trust_class))
-        .then_with(|| freshness_rank(left.candidate.freshness_class).cmp(&freshness_rank(right.candidate.freshness_class)))
-        .then_with(|| left.provider_rank
-        .cmp(&right.provider_rank)
-        )
+        .then_with(|| {
+            freshness_rank(left.candidate.freshness_class)
+                .cmp(&freshness_rank(right.candidate.freshness_class))
+        })
+        .then_with(|| left.provider_rank.cmp(&right.provider_rank))
         .then_with(|| left.candidate.id.cmp(&right.candidate.id))
         .then_with(|| left.provider.cmp(&right.provider))
         .then_with(|| left.candidate.source_hash.cmp(&right.candidate.source_hash))
@@ -280,7 +282,10 @@ mod tests {
             set("diagnostic", vec![candidate("d1", 0.9, "hash-d1")]),
         ];
         let bounds = FusionBounds {
-            provider_quotas: BTreeMap::from([("blueprint".to_string(), 2), ("memory".to_string(), 2)]),
+            provider_quotas: BTreeMap::from([
+                ("blueprint".to_string(), 2),
+                ("memory".to_string(), 2),
+            ]),
             rrf_k: 60,
             max_items: 3,
         };
@@ -321,21 +326,72 @@ mod tests {
 
     #[test]
     fn canonical_authority_and_freshness_precede_score_for_every_permutation() {
-        let classes = ["user_direct", "local_trusted", "workspace_tracked", "workspace_generated", "agent_verified", "remote_untrusted"];
-        let sets = classes.iter().enumerate().map(|(index, class)| {
-            let mut value = candidate(class, 1.0 - index as f64 / 10.0, class);
-            value.trust_class = (*class).into();
-            if *class == "workspace_tracked" { value.freshness_class = Some(FreshnessClass::StaleSnapshot); }
-            set(class, vec![value])
-        }).collect::<Vec<_>>();
-        let bounds = FusionBounds { max_items: 6, ..FusionBounds::default() };
+        let classes = [
+            "user_direct",
+            "local_trusted",
+            "workspace_tracked",
+            "workspace_generated",
+            "agent_verified",
+            "remote_untrusted",
+        ];
+        let sets = classes
+            .iter()
+            .enumerate()
+            .map(|(index, class)| {
+                let mut value = candidate(class, 1.0 - index as f64 / 10.0, class);
+                value.trust_class = (*class).into();
+                if *class == "workspace_tracked" {
+                    value.freshness_class = Some(FreshnessClass::StaleSnapshot);
+                }
+                set(class, vec![value])
+            })
+            .collect::<Vec<_>>();
+        let bounds = FusionBounds {
+            max_items: 6,
+            ..FusionBounds::default()
+        };
         let expected = fuse(&sets, bounds.clone());
-        assert_eq!(expected.candidates.iter().map(|value| value.id.as_str()).collect::<Vec<_>>(), classes);
-        for a in 0..sets.len() { for b in 0..sets.len() { for c in 0..sets.len() { for d in 0..sets.len() { for e in 0..sets.len() { for f in 0..sets.len() {
-            if [a, b, c, d, e, f].iter().collect::<std::collections::BTreeSet<_>>().len() == sets.len() {
-                assert_eq!(fuse(&[sets[a].clone(), sets[b].clone(), sets[c].clone(), sets[d].clone(), sets[e].clone(), sets[f].clone()], bounds.clone()), expected);
+        assert_eq!(
+            expected
+                .candidates
+                .iter()
+                .map(|value| value.id.as_str())
+                .collect::<Vec<_>>(),
+            classes
+        );
+        for a in 0..sets.len() {
+            for b in 0..sets.len() {
+                for c in 0..sets.len() {
+                    for d in 0..sets.len() {
+                        for e in 0..sets.len() {
+                            for f in 0..sets.len() {
+                                if [a, b, c, d, e, f]
+                                    .iter()
+                                    .collect::<std::collections::BTreeSet<_>>()
+                                    .len()
+                                    == sets.len()
+                                {
+                                    assert_eq!(
+                                        fuse(
+                                            &[
+                                                sets[a].clone(),
+                                                sets[b].clone(),
+                                                sets[c].clone(),
+                                                sets[d].clone(),
+                                                sets[e].clone(),
+                                                sets[f].clone()
+                                            ],
+                                            bounds.clone()
+                                        ),
+                                        expected
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
             }
-        }}}}}}
+        }
         assert!(trust_rank("unrecognized") > trust_rank("remote_untrusted"));
     }
 }

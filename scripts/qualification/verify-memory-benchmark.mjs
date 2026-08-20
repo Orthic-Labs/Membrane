@@ -6,7 +6,7 @@ const fail = reason => ({ status: 'open', reason });
 export function verifyMemoryBenchmark(input) {
   try {
     const result = adaptMemoryBenchmark(input);
-    if (result.componentUnderTest !== 'crypt-memory') return fail('componentUnderTest must be crypt-memory');
+    if (result.componentUnderTest !== 'cortex-memory') return fail('componentUnderTest must be cortex-memory');
     if (input?.attribution || input?.marketingClaim || input?.membraneScore !== undefined || input?.managedScore !== undefined) return fail('Membrane or managed score attribution is forbidden');
     for (const group of ['retrieval', 'admission', 'product']) {
       if (!result.metrics[group] || Object.keys(result.metrics[group]).length === 0) return fail(`${group} metrics are required`);

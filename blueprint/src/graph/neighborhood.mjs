@@ -1,26 +1,18 @@
-import { EDGE_CONFIDENCE_TIERS, tierConfidence } from "./confidence-tiers.mjs";
+import { EDGE_CONFIDENCE_TIERS } from "./confidence-tiers.mjs";
 
-const DAMPING = 0.85;
-const ITERATIONS = 20;
 const MAX_HOPS = 2;
-
-// Edge kinds where the relationship carries an explicit direction
-// (IMPORTS -> IMPORTS_EXACT = source imports target; CALLS = source calls
-// target; TESTS = source tests target; CONFIGURES = source configures target).
-// These are the only edge kinds that should be walked in the FORWARD direction
-// when computing hops. Other kinds (CONTAINS, DEFINES, REFERENCES) are
-// structural and either flow upstream (CONTAINS) or are symmetric (REFERENCES) —
-// walking them backwards muddies the dependency graph with file-internal
-// relationships that have nothing to do with impact.
 const DIRECTIONAL_KINDS = new Set(["IMPORTS", "CALLS", "TESTS", "CONFIGURES"]);
 const UNDIRECTIONAL_KINDS = new Set(["CONTAINS", "REFERENCES", "DEFINES", "DOCS_LINK"]);
+const TIER_RANK = Object.freeze({ EXACT_RESOLUTION: 0, SAME_FILE_LEXICAL: 1, CROSS_FILE_HEURISTIC: 2, UNRESOLVED: 3 });
 
-function nodePath(node) { return String(node?.path ?? ""); }
 function nodeSpan(node) {
   const evidence = Array.isArray(node?.evidence) ? node.evidence[0] : null;
   return [Number(evidence?.startLine ?? 1), Number(evidence?.endLine ?? evidence?.startLine ?? 1)];
 }
-function nodeCost(node) { return Math.max(1, Math.ceil(JSON.stringify({ id: node.id, name: node.name, path: node.path, span: nodeSpan(node) }).length / 4)); }
+
+function nodeCost(node) {
+  return Math.max(1, Math.ceil(JSON.stringify({ id: node?.id, name: node?.name, path: node?.path, span: nodeSpan(node) }).length / 4));
+}
 
 function resolveAnchors(generation, anchors) {
   const nodes = generation.nodes ?? [];
@@ -33,108 +25,7 @@ function resolveAnchors(generation, anchors) {
   });
 }
 
-// Phase 7.2 — PageRank over the LOCAL subgraph.
-//
-// The prior implementation scored every node in the generation with the
-// per-iteration dangling-mass loop running O(sources x nodes) per pass. With
-// thousands of nodes that turns a 20-iteration power method into a hot path
-// that doesn't actually answer "what's near this anchor" — it ranks the whole
-// repo.
-//
-// This version:
-//   1. Expands the local subgraph first (BFS up to `localRadius` hops from the
-//      anchors, walking the directional edges forward and the structural edges
-//      in both directions).
-//   2. Runs PageRank ONLY on the local subgraph.
-//   3. Accumulates dangling mass ONCE per iteration, not once per source.
-//      Same ranking on the same fixture, ~Nx fewer operations on a local
-//      subgraph of N nodes.
-//
-// Behavior-preserving claim: the public `pageRank` export's output equals the
-// legacy implementation on any input where the local subgraph equals the full
-// generation (no anchors outside the local set), and is meaningfully different
-// (and arguably correct — the legacy one was ranking unrelated repo corners)
-// elsewhere. `pageRankLegacyImpl` is kept here as the regression fixture.
-export function pageRank(nodes, edges, anchorIds) {
-  const ids = nodes.map((node) => node.id);
-  const index = new Map(ids.map((id, position) => [id, position]));
-  const outgoing = nodes.map(() => []);
-  for (const edge of edges) {
-    const source = index.get(edge.source);
-    const target = index.get(edge.target);
-    if (source === undefined || target === undefined || edge.resolved === false) continue;
-    outgoing[source].push(target);
-  }
-  const personalization = new Set(anchorIds.map((id) => index.get(id)).filter((id) => id !== undefined));
-  const uniform = personalization.size ? 1 / personalization.size : 1 / Math.max(1, nodes.length);
-  let scores = nodes.map(() => 1 / Math.max(1, nodes.length));
-  for (let iteration = 0; iteration < ITERATIONS; iteration += 1) {
-    const next = nodes.map(() => (1 - DAMPING) * (personalization.size ? 0 : uniform));
-    if (personalization.size) for (const position of personalization) next[position] += (1 - DAMPING) * uniform;
-    // Phase 7.2 fix: dangling mass is accumulated ONCE per iteration. The
-    // prior implementation re-summed it inside every source loop, which was
-    // O(sources x nodes) per pass and did not change the result. Same final
-    // scores, ~N times fewer multiplications on a local subgraph of N nodes.
-    let danglingTotal = 0;
-    for (let source = 0; source < outgoing.length; source += 1) {
-      const targets = outgoing[source];
-      if (!targets.length) danglingTotal += scores[source];
-    }
-    const danglingShare = DAMPING * danglingTotal / Math.max(1, next.length);
-    for (let position = 0; position < next.length; position += 1) next[position] += danglingShare;
-    for (let source = 0; source < outgoing.length; source += 1) {
-      const targets = outgoing[source];
-      if (!targets.length) continue;
-      const share = scores[source] / targets.length;
-      for (const target of targets) next[target] += DAMPING * share;
-    }
-    scores = next;
-  }
-  return new Map(nodes.map((node, position) => [node.id, scores[position]]));
-}
-
-// Regression fixture: keeps the legacy per-source dangling-mass loop so the
-// dangling-mass test can prove behavior preservation on a fixture where the
-// local subgraph equals the whole generation. Not exported through the
-// module's public surface; the test imports it directly.
-export function pageRankLegacyImpl(nodes, edges, anchorIds) {
-  const ids = nodes.map((node) => node.id);
-  const index = new Map(ids.map((id, position) => [id, position]));
-  const outgoing = nodes.map(() => []);
-  for (const edge of edges) {
-    const source = index.get(edge.source);
-    const target = index.get(edge.target);
-    if (source === undefined || target === undefined || edge.resolved === false) continue;
-    outgoing[source].push(target);
-  }
-  const personalization = new Set(anchorIds.map((id) => index.get(id)).filter((id) => id !== undefined));
-  const uniform = personalization.size ? 1 / personalization.size : 1 / Math.max(1, nodes.length);
-  let scores = nodes.map(() => 1 / Math.max(1, nodes.length));
-  for (let iteration = 0; iteration < ITERATIONS; iteration += 1) {
-    const next = nodes.map(() => (1 - DAMPING) * (personalization.size ? 0 : uniform));
-    if (personalization.size) for (const position of personalization) next[position] += (1 - DAMPING) * uniform;
-    for (let source = 0; source < outgoing.length; source += 1) {
-      const targets = outgoing[source];
-      const share = scores[source] / Math.max(1, targets.length);
-      if (!targets.length) {
-        for (let position = 0; position < next.length; position += 1) next[position] += DAMPING * share / Math.max(1, next.length);
-      } else for (const target of targets) next[target] += DAMPING * share;
-    }
-    scores = next;
-  }
-  return new Map(nodes.map((node, position) => [node.id, scores[position]]));
-}
-
-// Edge weight: how strongly this edge propagates rank during PageRank. An
-// EXACT_RESOLUTION import or call is a verified dependency and gets full
-// weight; a CROSS_FILE_HEURISTIC connection (string-literal-to-filename,
-// repo-wide unique-name fallback) gets half weight — it's still real signal
-// but the caller can never prove it's the right resolution; an UNRESOLVED
-// edge has no target and contributes zero mass (already filtered by the
-// `edge.resolved === false` guard above, but kept defensive here).
-//
-// Falls back to a neutral 0.5 weight when the tier is unknown so a schema
-// change that adds a tier does not silently zero out every edge.
+// Wire weight is an evidence-tier projection, never a ranking signal.
 function edgeWeight(edge) {
   if (edge.resolved === false) return 0;
   const tier = edge.confidenceTier;
@@ -146,6 +37,15 @@ function edgeWeight(edge) {
     case EDGE_CONFIDENCE_TIERS.UNRESOLVED: return 0;
     default: return 0.5;
   }
+}
+
+function nodeEvidenceRank(nodeId, edges) {
+  let rank = 4;
+  for (const edge of edges) {
+    if (edge.source !== nodeId && edge.target !== nodeId) continue;
+    rank = Math.min(rank, TIER_RANK[edge.confidenceTier] ?? 4);
+  }
+  return rank;
 }
 
 // Phase 7.2 — expand the LOCAL subgraph around the anchors.
@@ -226,11 +126,7 @@ export function buildNeighborhood(generation, anchors, { budgetTokens = 8000, re
   const resolvedAnchors = resolveAnchors(generation, anchors);
   const anchorIds = resolvedAnchors.map((anchor) => anchor.node?.id).filter(Boolean);
 
-  // Phase 7.2 — expand the local subgraph and run ranking ONLY on it. The
-  // whole-generation PageRank was the most expensive call in this module and
-  // did not actually answer "what is near the anchor" — it ranked the entire
-  // repo. A hop-limited local expansion keeps the budget honest: ranks now
-  // describe relevance inside the answer set, not popularity across the tree.
+  // Expand only bounded local evidence.
   const localDistances = localSubgraphHops(allNodes, allEdges, anchorIds, { localRadius });
   const localNodeIds = [...localDistances.keys()];
   const localNodes = localNodeIds
@@ -239,7 +135,6 @@ export function buildNeighborhood(generation, anchors, { budgetTokens = 8000, re
   const localNodeSet = new Set(localNodeIds);
   const localEdges = allEdges.filter((edge) => localNodeSet.has(edge.source) && localNodeSet.has(edge.target));
 
-  const scores = localNodes.length ? pageRank(localNodes, localEdges, anchorIds) : new Map();
   // `distances` is still useful for the budget hop gate — keep it as a Map
   // the rest of the function reads. Anchors are at distance 0; everything
   // outside the local subgraph is Infinity.
@@ -255,7 +150,9 @@ export function buildNeighborhood(generation, anchors, { budgetTokens = 8000, re
   let usedTokens = anchorIds.reduce((sum, id) => sum + nodeCost(localNodes.find((node) => node.id === id) ?? allNodes.find((node) => node.id === id)), 0);
   const ranked = localNodes
     .filter((node) => !selected.has(node.id) && (distances.get(node.id) ?? Infinity) <= maxHops)
-    .sort((left, right) => (scores.get(right.id) - scores.get(left.id)) || left.id.localeCompare(right.id));
+    .sort((left, right) => nodeEvidenceRank(left.id, localEdges) - nodeEvidenceRank(right.id, localEdges)
+      || (distances.get(left.id) ?? Infinity) - (distances.get(right.id) ?? Infinity)
+      || left.id.localeCompare(right.id));
   let budgetOmissions = 0;
   for (const node of ranked) {
     const cost = nodeCost(node);
@@ -268,8 +165,11 @@ export function buildNeighborhood(generation, anchors, { budgetTokens = 8000, re
   const neurons = [...selected]
     .map((id) => localNodes.find((node) => node.id === id) ?? allNodes.find((node) => node.id === id))
     .filter(Boolean)
-    .sort((left, right) => (anchorIds.includes(left.id) ? -1 : anchorIds.includes(right.id) ? 1 : (scores.get(right.id) - scores.get(left.id)) || left.id.localeCompare(right.id)))
-    .map((node) => ({ id: node.id, kind: node.kind, path: node.path, span: nodeSpan(node), score: scores.get(node.id) ?? 0 }));
+    .sort((left, right) => (anchorIds.includes(left.id) ? -1 : anchorIds.includes(right.id) ? 1
+      : nodeEvidenceRank(left.id, localEdges) - nodeEvidenceRank(right.id, localEdges)
+        || (distances.get(left.id) ?? Infinity) - (distances.get(right.id) ?? Infinity)
+        || left.id.localeCompare(right.id)))
+    .map((node) => ({ id: node.id, kind: node.kind, path: node.path, span: nodeSpan(node), evidenceTier: nodeEvidenceRank(node.id, localEdges) }));
   const synapses = localEdges.filter((edge) => selected.has(edge.source) && selected.has(edge.target)).map((edge) => ({
     id: edge.id,
     kind: edge.kind,
@@ -300,4 +200,4 @@ export function buildNeighborhood(generation, anchors, { budgetTokens = 8000, re
   };
 }
 
-export { DAMPING, ITERATIONS, MAX_HOPS, DIRECTIONAL_KINDS, UNDIRECTIONAL_KINDS, edgeWeight };
+export { MAX_HOPS, DIRECTIONAL_KINDS, UNDIRECTIONAL_KINDS, edgeWeight };

@@ -6,7 +6,7 @@
 
 ## Standing constraints (apply to every item)
 
-- Gate discipline is law: cohort/receipt machinery for anything behavior-changing; frozen runs never resumed; `crypt-daily` stays disabled until its own gate closes. Read-only lanes may schedule independently.
+- Gate discipline is law: cohort/receipt machinery for anything behavior-changing; frozen runs never resumed; `cortex-daily` stays disabled until its own gate closes. Read-only lanes may schedule independently.
 - One preregistered experiment contract per experiment. The live cohort contract is **40% reduction / five-point quality margin** (`docs/MEMBRANE-STATE.md` daily-analysis section); the synthesis's 20%/1 pp is a *different* contract. Never blend after results arrive.
 - Every published number labeled: measured / calculated / estimated / counterfactual / vendor-reported.
 - Content-free telemetry contract unchanged (no prompts, paths, bodies in canonical ledgers).
@@ -21,7 +21,7 @@ Membrane is **the engine half of a two-repo system, not a standalone product**. 
 |---|---|---|
 | `context-value-daily.py` | `/Volumes/D/claude/tools/pipelines/memory/` (65 `.py` files in that dir) | present |
 | hooks (`recall_planner.py` etc.) | `/Volumes/D/claude/tools/hooks/` (44 `.py` files) | present |
-| `tools/crypt/` + `tools.crypt.*` package | **retired** — those crates are now `membrane/engine/crates/crypt*` | do not restore; a stale pre-migration path |
+| `tools/cortex/` + `tools.cortex.*` package | **retired** — those crates are now `membrane/engine/crates/cortex*` | do not restore; a stale pre-migration path |
 | `lib/context-telemetry-registry.json` | canonical at `/Volumes/D/claude/tools/lib/` (9,730 B) | membrane's untracked copy is a **3,754 B stub** — see B0.2 |
 | `pytest` | not installed | `python3 -m pip install pytest` — a dependency, not a blocker |
 
@@ -33,12 +33,12 @@ The plan items create concrete artifacts through these commands and hooks; they 
 
 | Item | Creation path | Primary output |
 |---|---|---|
-| B0 | `cargo test --manifest-path engine/Cargo.toml -p crypt --test context_telemetry --test freshness_test` | registry/graph adapters and state manifest |
-| B1 | `cd /Volumes/D/claude && uv run --with pytest --with jsonschema python tools/pipelines/memory/context-value-daily.py --db "$CRYPT_DB" --output tools/.cache/metrics/context-value-daily/$(date -u +%F).json` | content-free token census JSON; `daily-sync.sh`/`context-observatory.sh` schedule it read-only |
-| B2/B4 | `cd /Volumes/D/claude && uv run --with pytest --with jsonschema python tools/pipelines/memory/daily-analysis.py --db "$CRYPT_DB" --output-dir tools/.cache/metrics/daily-analysis --days 1` | advisory budget crossings and cache-break diagnostics in JSON + Markdown |
-| B3 | enable `CRYPT_PUSH_MODE=shadow` or `on` for an approved cohort, then let `tools/hooks/post_tool_push.py` receive PostToolUse JSON | reversible spill files, audit JSONL, and opportunity-ledger receipts |
-| B5 | `crypt feedback ...` / existing post-turn terminal scan | `context_feedback` rows and utility-adjusted recall |
-| B6 | `crypt put ...`, `tools/hooks/ingest_memory.py`, and signed `sync.py` mirror events | accepted memories, content-free A0 quarantine records, and signature-verified mirror receipts |
+| B0 | `cargo test --manifest-path engine/Cargo.toml -p cortex --test context_telemetry --test freshness_test` | registry/graph adapters and state manifest |
+| B1 | `cd /Volumes/D/claude && uv run --with pytest --with jsonschema python tools/pipelines/memory/context-value-daily.py --db "$CORTEX_DB" --output tools/.cache/metrics/context-value-daily/$(date -u +%F).json` | content-free token census JSON; `daily-sync.sh`/`context-observatory.sh` schedule it read-only |
+| B2/B4 | `cd /Volumes/D/claude && uv run --with pytest --with jsonschema python tools/pipelines/memory/daily-analysis.py --db "$CORTEX_DB" --output-dir tools/.cache/metrics/daily-analysis --days 1` | advisory budget crossings and cache-break diagnostics in JSON + Markdown |
+| B3 | enable `CORTEX_PUSH_MODE=shadow` or `on` for an approved cohort, then let `tools/hooks/post_tool_push.py` receive PostToolUse JSON | reversible spill files, audit JSONL, and opportunity-ledger receipts |
+| B5 | `cortex feedback ...` / existing post-turn terminal scan | `context_feedback` rows and utility-adjusted recall |
+| B6 | `cortex put ...`, `tools/hooks/ingest_memory.py`, and signed `sync.py` mirror events | accepted memories, content-free A0 quarantine records, and signature-verified mirror receipts |
 | B7 | SessionEnd JSON into `tools/hooks/session_end_packet.py`, then `session-packet-policy.sh` | review-required Episodic packet, archive, and expiry tombstone under `tools/.cache/memory/session-packets/` |
 | B8 | daily report `operator_proposals`, then `recommendation_inbox.append_decision(...)` | proposal-only inbox and append-only human decisions |
 | B9 | `uv run --with pytest python tools/pipelines/memory/gap_evals.py`, `context-evals.sh`, and `context-observatory.sh` | deterministic eval results plus separately locked read-only and mutating receipts |
@@ -50,8 +50,8 @@ All write paths are fail-open only for observability failures; memory admission,
 ### B0 — Truth boundary + fix the broken build (P0)
 
 1. **Current-state contract:** one dated manifest separating installed/live vs source-only vs historical vs planned claims; binds source commit, installed generation, analyzer version, coverage, the chosen experiment contract, rollback. (02 §4 row 1.)
-2. **Telemetry-registry build boundary:** `engine/crates/crypt/src/context_telemetry.rs:130` `include_str!`s `lib/context-telemetry-registry.json`. An untracked **stub** (3,754 B) now sits there and will compile, but it is not the canonical registry (`/Volumes/D/claude/tools/lib/…`, 9,730 B) — a narrowed registry silently weakens the allowlist that rejects unregistered providers/families/phases, so telemetry validation would be laxer than production. **Replace the stub with the canonical file, commit it, and add a test asserting byte-equality (or a recorded SHA-256) against `tools/lib/` so drift fails loudly.** *Task chip filed: "Fix membrane telemetry-registry build boundary."*
-3. **Blueprint graph.db adapter — contract now DELIVERED and verified (2026-07-26).** Blueprint shipped the envelope surface membrane requested; measured here at **85–94 ms warm** (3 runs, membrane's own store), inside the 900 ms hook. Fix both readers — `engine/federation/providers/blueprint.py:86-87` and `engine/crates/crypt/src/freshness.rs:538/634` + fixtures `tests/freshness_test.rs:313-323` — against this pinned contract; keep legacy `manifest.json`/`graph.json` paths as fallback for older repos; preserve the sealed-generation rule. *Task chip filed: "Morph membrane to Blueprint's graph.db store."*
+2. **Telemetry-registry build boundary:** `engine/crates/cortex/src/context_telemetry.rs:130` `include_str!`s `lib/context-telemetry-registry.json`. An untracked **stub** (3,754 B) now sits there and will compile, but it is not the canonical registry (`/Volumes/D/claude/tools/lib/…`, 9,730 B) — a narrowed registry silently weakens the allowlist that rejects unregistered providers/families/phases, so telemetry validation would be laxer than production. **Replace the stub with the canonical file, commit it, and add a test asserting byte-equality (or a recorded SHA-256) against `tools/lib/` so drift fails loudly.** *Task chip filed: "Fix membrane telemetry-registry build boundary."*
+3. **Blueprint graph.db adapter — contract now DELIVERED and verified (2026-07-26).** Blueprint shipped the envelope surface membrane requested; measured here at **85–94 ms warm** (3 runs, membrane's own store), inside the 900 ms hook. Fix both readers — `engine/federation/providers/blueprint.py:86-87` and `engine/crates/cortex/src/freshness.rs:538/634` + fixtures `tests/freshness_test.rs:313-323` — against this pinned contract; keep legacy `manifest.json`/`graph.json` paths as fallback for older repos; preserve the sealed-generation rule. *Task chip filed: "Morph membrane to Blueprint's graph.db store."*
 
    **Pinned envelope** (`blueprint graph manifest`, store `.agent/graph/graph.db`, `storeSchemaVersion: 3`) — verified keys: `schemaVersion`, `storePath`, `storeSchemaVersion`, `generationId`, `provider{id,version,license,precisionTier}`, `lexicalProvider`, `providerComposition{selected,layers[]}`, `complete`, `counts{nodes,edges,joins,supersedes}`, `repo`, `repoRoot`, `fileLimit`, `sourceObservation{head,dirty,statusDigest}`.
 
@@ -67,7 +67,7 @@ All write paths are fail-open only for observability failures; memory admission,
 
 Not a greenfield "observatory" — finish what exists (01 §G2, corrected): the cohort analyzer already joins provider tokens to hook delivery with cached/non-cached separation; `dashboard.html:310` reads `provider_tokens`.
 
-1. Schedule the read-only analysis/census lane independently of `crypt-daily` (02 §4 "separate schedules by risk").
+1. Schedule the read-only analysis/census lane independently of `cortex-daily` (02 §4 "separate schedules by risk").
 2. Extend the schema-v3 turn census (`tools/pipelines/memory/context-value-daily.py`) to aggregate per session/model/day/client from local Claude/ClaudeMM/Codex transcripts: input, output, cache-read, cache-creation tokens; $ at known prices; cache-hit ratio; top-N tool-result sinks; files read ≥N×; subagent share. Missing sources stay `unavailable`, never zero.
 3. Daily operator report (markdown + existing hosted dashboard tile), every ratio with denominator + coverage rate.
 
@@ -93,11 +93,11 @@ Deterministic first: post-turn transcript scan for delivered IDs/paths/symbols w
 
 ### B6 — Trust hardening BEFORE session ingestion (P2 — Sol's reorder, adopted)
 
-Additive migrations: `authority` (A0–A5) + `influence_class` columns; injection/secret scan at `crypt put`/Morph intake; provenance-based quarantine; Ed25519 signing of mirror ops; recall `insufficient_confidence` abstention. **Done when:** instruction-escalation and cross-scope suites return zero unauthorized influence; forged/replayed sync ops fail; quarantined data cannot become instruction. (01 §G8, 02 §4 row 7.)
+Additive migrations: `authority` (A0–A5) + `influence_class` columns; injection/secret scan at `cortex put`/Morph intake; provenance-based quarantine; Ed25519 signing of mirror ops; recall `insufficient_confidence` abstention. **Done when:** instruction-escalation and cross-scope suites return zero unauthorized influence; forged/replayed sync ops fail; quarantined data cannot become instruction. (01 §G8, 02 §4 row 7.)
 
 ### B7 — Session packets into the existing episodic tier (P3)
 
-`MemoryTier::Episodic` exists (`crypt-core/src/types.rs`) — fill it. SessionEnd hook → archive-first, schema-validated packet (goal, decisions, open work, dead ends, verification, exact identifiers, repo revision, lineage, raw refs) as a typed memory family; promotion to semantic/procedural stays a separate reviewed action; packets expire/demote by policy. **Done when:** packet generation fails closed; a cold session resumes a held-out task with fewer re-reads at non-inferior quality. (01 §G9 corrected, 02 §4 row 8.)
+`MemoryTier::Episodic` exists (`cortex-core/src/types.rs`) — fill it. SessionEnd hook → archive-first, schema-validated packet (goal, decisions, open work, dead ends, verification, exact identifiers, repo revision, lineage, raw refs) as a typed memory family; promotion to semantic/procedural stays a separate reviewed action; packets expire/demote by policy. **Done when:** packet generation fails closed; a cold session resumes a held-out task with fewer re-reads at non-inferior quality. (01 §G9 corrected, 02 §4 row 8.)
 
 ### B8 — Recommendation inbox (P3)
 

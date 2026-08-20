@@ -10,7 +10,7 @@
     "taskId", "sessionId", "issuedAt", "expiresAt", "status", "nonce", "manifestDigest",
     "repositoryId", "repositoryRoot", "blueprintGeneration", "blueprintFreshness", "requestHash",
     "contextPacketHash", "readPaths", "sourceReadBytesMax", "uniqueFilesMax", "resultsMax",
-    "cryptStatus", "degraded", "signatureAlgorithm", "keyId", "signature"
+    "cortexStatus", "degraded", "signatureAlgorithm", "keyId", "signature"
   ],
   "properties": {
     "schemaVersion": { "type": "integer", "const": 1 },
@@ -48,7 +48,7 @@
     "sourceReadBytesMax": { "type": "integer", "minimum": 0 },
     "uniqueFilesMax": { "type": "integer", "minimum": 0 },
     "resultsMax": { "type": "integer", "minimum": 0 },
-    "cryptStatus": { "type": "string", "enum": ["available", "degraded"] },
+    "cortexStatus": { "type": "string", "enum": ["available", "degraded"] },
     "degraded": { "type": "boolean" },
     "signatureAlgorithm": { "type": "string", "const": "Ed25519" },
     "keyId": { "type": "string", "minLength": 1, "pattern": "^scope-grant-ed25519-v1:[a-f0-9]{32}$" },

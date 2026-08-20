@@ -2,23 +2,22 @@
 
 Start here. This folder is organized around reader intent, not history.
 
-## Architecture and migration authorities
+## Architecture authorities
 
-Exactly three architecture/planning documents are normative for the current convergence:
+Exactly two documents are normative:
 
 - [MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md](subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md) — Membrane architecture/implementation authority.
-- [subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md](subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md) — pre-merge Blueprint authority; moves with Blueprint to `blueprint/docs/` during the monorepo migration.
-- [plans/2026-08-19-monorepo-merge-and-subsystem-rename.md](subsystems/2026-08-19-monorepo-merge-and-subsystem-rename.md) — physical merge/name migration authority only.
+- [BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md](subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md) — Blueprint repository-truth authority.
 
 Derived navigation/reference docs live under [subsystems/](subsystems/):
 
 - [SYSTEM.md](subsystems/SYSTEM.md) — Membrane parent-system map.
-- [blueprint.md](subsystems/blueprint.md) — durable-knowledge reference.
+- [cortex.md](subsystems/cortex.md) — durable-knowledge reference.
 - [guide.md](subsystems/guide.md) — document-navigation/index reference.
 - [adapt.md](subsystems/adapt.md) — learning/proposal reference.
 - [push.md](subsystems/push.md) — reversible-reduction reference.
 
-Derived subsystem docs cannot override the three authorities above.
+Derived subsystem docs cannot override these authorities.
 
 ## Generated (code-grounded, never hand-edit)
 
@@ -30,7 +29,7 @@ Regenerate with the current productization tooling under `scripts/tools/producti
 - [protocol.md](protocol.md) — landed MCP/tool contract and behavior.
 - [product-truth.md](product-truth.md) — raw derived facts backing the generated docs.
 
-Generated/runtime docs may continue to contain legacy `Blueprint`, `Crypt`, or `Spine` implementation names until the corresponding code migration lands. Do not hand-edit them to pretend implementation has moved.
+Generated/runtime docs use final greenfield identities: Blueprint for repository truth, Cortex for durable knowledge, Guide for document navigation, Adapt for learning, & Push for reduction.
 
 ## Get started
 
@@ -47,15 +46,11 @@ Generated/runtime docs may continue to contain legacy `Blueprint`, `Crypt`, or `
 - [hub/](hub/) — Hub integration/facade material.
 - [agent-rules.md](agent-rules.md) — rules for agents working in this repository.
 - [cli/](cli/), [clients/](clients/), [sdk/](sdk/), [providers/](providers/), [reference/](reference/)
-- [compatibility/](compatibility/), [compression/](compression/), [evaluation/](evaluation/), [benchmarks/](benchmarks/)
-- [installation/](installation/), [migrations/](migrations/), [operations/](operations/), [protocol/](protocol/)
+- [compatibility/release-channels.md](compatibility/release-channels.md), [compression/](compression/), [evaluation/](evaluation/), [benchmarks/](benchmarks/)
+- [installation/](installation/), [operations/](operations/), [protocol/](protocol/)
 - [security/](security/), [legal/](legal/), [troubleshooting/](troubleshooting/), [workflows/](workflows/)
-- [fleet/](fleet/), [team/](team/), [membrane/](membrane/), [runs/](runs/), [release/](release/)
+- [fleet/](fleet/), [team/](team/), [membrane/](membrane/), [release/](release/)
 
-## Design, history and provenance
+## Design & research
 
-Design rationale, architecture history, research, and point-in-time state remain evidence/provenance. They are not parallel implementation authorities.
-
-## Plans
-
-The active Blueprint/Blueprint monorepo/name migration is the canonical migration plan linked above. Other plans remain scoped work/provenance and cannot override the canonical doctrines.
+Current security/product decisions live under [design/](design/). Research & historical evidence stay under [research/](research/) & never override subsystem authorities.

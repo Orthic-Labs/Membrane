@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "D:/Claude/tools/pipelines/memory/adapt/preference-manifest.schema.json",
+  "$id": "https://orthic.labs/membrane/adapt/preference-manifest.schema.json",
   "title": "Adapt preference manifest: adjudicated adaptation candidates",
   "description": "Output of `adapt --manifest`, resolved by automated calibrated-primary adjudication, and consumed by `adapt --apply-from-manifest`. Each record is explicit accepted/rejected; payload_sha256 detects content edits; the schema refuses pending statuses on apply.",
   "type": "object",
@@ -33,7 +33,7 @@
     "canonical_pool_sha256": {
       "type": "string",
       "pattern": "^[a-f0-9]{64}$",
-      "description": "Digest of the canonical Crypt Adapt pool used during synthesis."
+      "description": "Digest of the canonical Cortex Adapt pool used during synthesis."
     },
     "source_session_ids": {
       "type": "array",
@@ -102,7 +102,7 @@
     "records": {
       "type": "array",
       "minItems": 0,
-      "description": "May be empty when a successfully mined batch yields no durable candidates; apply commits the bound sessions without writing Crypt rows.",
+      "description": "May be empty when a successfully mined batch yields no durable candidates; apply commits the bound sessions without writing Cortex rows.",
       "items": {
         "type": "object",
         "required": ["id", "rule", "category", "scope", "status", "payload_sha256"],

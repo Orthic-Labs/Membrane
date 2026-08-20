@@ -3,8 +3,8 @@
 
 class Blueprint < Formula
   desc "Local evidence-backed repository map"
-  homepage "https://github.com/Orthic-Labs/Blueprint#readme"
-  url "https://github.com/Orthic-Labs/Blueprint/releases/download/v__VERSION__/blueprint-__VERSION__.tgz"
+  homepage "https://github.com/Orthic-Labs/Membrane#readme"
+  url "https://github.com/Orthic-Labs/Membrane/releases/download/v__VERSION__/blueprint-__VERSION__.tgz"
   sha256 "__NPM_TARBALL_SHA256__"
   license :cannot_represent
   version "__VERSION__"

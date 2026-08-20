@@ -193,7 +193,20 @@ mod tests {
         let report = json!({"traceId":"t","packet":d.clone(),"hostDelivery":d.clone(),"eventStore":d.clone(),"outcome":d});
         let view = project_delivery_trace(&report);
         let names: Vec<_> = view.phases.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, ["task","providers","candidates","admission","render","hostDelivery","evidence","outcome","feedback"]);
+        assert_eq!(
+            names,
+            [
+                "task",
+                "providers",
+                "candidates",
+                "admission",
+                "render",
+                "hostDelivery",
+                "evidence",
+                "outcome",
+                "feedback"
+            ]
+        );
     }
 
     #[test]

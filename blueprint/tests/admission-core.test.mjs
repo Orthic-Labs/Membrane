@@ -232,7 +232,7 @@ test("generation mismatch blocks orient", async () => {
   }
 });
 
-test("createAdmission store is injectable for Crypt-style hosts", () => {
+test("createAdmission store is injectable for Cortex-style hosts", () => {
   const storeDir = mkdtempSync(join(tmpdir(), "bp-host-store-"));
   try {
     const store = createReceiptStore({ storeDir });

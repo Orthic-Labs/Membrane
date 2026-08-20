@@ -125,7 +125,7 @@ assert.deepEqual(rows[2].result.resources, [{ uri: "membrane://protocol/v1", nam
 assert.match(rows[3].result.contents[0].text, /federate/i);
 assert.doesNotMatch(rows[3].result.contents[0].text, /plan_context/i);
 const blueprintToolset = await rpc([{ jsonrpc: "2.0", id: 5, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["blueprint"] } } }]);
-assert.deepEqual(blueprintToolset[0].result.tools.map((tool) => tool.name).sort(), ["membrane_context", "membrane_blueprint", "membrane_source_read"]);
+assert.deepEqual(blueprintToolset[0].result.tools.map((tool) => tool.name).sort(), ["membrane_blueprint", "membrane_context", "membrane_source_read"]);
 const invalidToolset = await rpc([{ jsonrpc: "2.0", id: 6, method: "tools/list", params: { _meta: { "membrane.toolsets.v1": ["blueprint", "blueprint"] } } }]);
 assert.deepEqual(invalidToolset[0].result.tools.map((tool) => tool.name), ["membrane_context"]);
 for (const tool of rows[1].result.tools) {
@@ -169,7 +169,7 @@ let live;
 let cancelled;
 try {
   const { port } = lifecycleFederate.address();
-  live = await openRpc({ ...advisoryEnv, CRYPT_PORT: String(port), CRYPT_API_TOKEN: "test-token" });
+  live = await openRpc({ ...advisoryEnv, CORTEX_PORT: String(port), CORTEX_API_TOKEN: "test-token" });
   const caller = { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" };
   await live.request({ jsonrpc: "2.0", id: 300, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "mbr305", version: "1" } } });
   await live.request({ jsonrpc: "2.0", id: 301, method: "logging/setLevel", params: { level: "debug" } });
@@ -198,7 +198,7 @@ try {
   assert.match(toolError(emptyCursor), /working_context_page_cursor_invalid/);
   await live.close();
 
-  cancelled = await openRpc({ ...advisoryEnv, CRYPT_PORT: String(port), CRYPT_API_TOKEN: "test-token" });
+  cancelled = await openRpc({ ...advisoryEnv, CORTEX_PORT: String(port), CORTEX_API_TOKEN: "test-token" });
   await cancelled.request({ jsonrpc: "2.0", id: 308, method: "initialize", params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "mbr305-cancel", version: "1" } } });
   const cancellationStarted = Date.now();
   cancelled.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 309, method: "tools/call", params: { name: "membrane_context", arguments: { task: "wait for cancellation", repository: enrolledRoot, caller }, _meta: { progressToken: "mbr305-cancel-progress" } } })}\n`);
@@ -231,13 +231,6 @@ const legacySession = await rpc([
 assert.match(legacySession[0].result.instructions, /federated context/i);
 assert.equal(legacySession[1].result.isError, true);
 assert.match(toolError(legacySession[1]), /durable feedback write failed/i);
-
-const retiredAlias = await rpc([{
-  jsonrpc: "2.0", id: 32, method: "tools/call",
-  params: { name: "rightcontext_feedback", arguments: { repository: enrolledRoot, caller: { root: enrolledRoot, repositoryId: "repo-a", scopeId: "scope-a" }, receiptId: "retired-alias", outcome: "used" } },
-}], { MEMBRANE_PROJECT_REGISTRY: registry });
-assert.equal(retiredAlias[0].error.code, -32602);
-assert.match(retiredAlias[0].error.message, /rightcontext_feedback not found/i);
 
 const denied = await rpc([{
   jsonrpc: "2.0", id: 4, method: "tools/call",
@@ -284,7 +277,7 @@ assert.equal(typeof feedback[0].result.content[0].text, "string");
 // hard failure -- advisory mode must NEVER convert it into a success shape.
 const corruptRoot = await mkdtemp(join(tmpdir(), "membrane-corrupt-binding-"));
 await mkdir(join(corruptRoot, "tools", "lib", "memory"), { recursive: true });
-await writeFile(join(corruptRoot, "tools", "lib", "memory", "runtime.json"), JSON.stringify({ schemaVersion: 1, serviceId: "crypt-local-v1", host: "127.0.0.1", port: 70 }), "utf8");
+await writeFile(join(corruptRoot, "tools", "lib", "memory", "runtime.json"), JSON.stringify({ schemaVersion: 1, serviceId: "cortex-local-v1", host: "127.0.0.1", port: 70 }), "utf8");
 const corruptEnrolled = join(corruptRoot, "enrolled");
 await mkdir(corruptEnrolled, { recursive: true });
 const corruptEnrolledCanonical = await realpath(corruptEnrolled);
@@ -310,7 +303,7 @@ assert.match(toolError(unresolvableProposal[0]), /binding could not be resolved 
 
 // F09: a genuine store-write failure IS eligible for advisory downgrade -- but only when the
 // BINDING itself says so (grant_policy.durability), independent of the process-wide env var.
-const bogusCrypt = "/nonexistent/membrane-test-crypt-binary";
+const bogusCortex = "/nonexistent/membrane-test-cortex-binary";
 const perBindingRoot = await mkdtemp(join(tmpdir(), "membrane-per-binding-advisory-"));
 const perBindingEnrolled = join(perBindingRoot, "enrolled");
 await mkdir(perBindingEnrolled, { recursive: true });
@@ -324,7 +317,7 @@ const perBindingCaller = { root: perBindingEnrolled, repositoryId: "repo-per-bin
 const perBindingFeedback = await rpc([{
   jsonrpc: "2.0", id: 42, method: "tools/call",
   params: { name: "membrane_feedback", arguments: { repository: perBindingEnrolled, caller: perBindingCaller, receiptId: "receipt-per-binding", outcome: "used" } },
-}], { MEMBRANE_PROJECT_REGISTRY: perBindingRegistry, CRYPT_BIN: bogusCrypt }); // no MEMBRANE_DURABILITY_MODE env at all
+}], { MEMBRANE_PROJECT_REGISTRY: perBindingRegistry, CORTEX_BIN: bogusCortex }); // no MEMBRANE_DURABILITY_MODE env at all
 const perBindingReceipt = JSON.parse(perBindingFeedback[0].result.content[0].text);
 assert.equal(perBindingFeedback[0].result.isError, false, toolError(perBindingFeedback[0]));
 assert.equal(perBindingReceipt.status, "accepted_advisory", "grant_policy.durability=advisory downgrades a store-write failure without the env var");
@@ -343,7 +336,7 @@ await writeFile(perBindingDurableRegistry, JSON.stringify({
 const perBindingDurableFeedback = await rpc([{
   jsonrpc: "2.0", id: 43, method: "tools/call",
   params: { name: "membrane_feedback", arguments: { repository: perBindingDurableEnrolled, caller: { root: perBindingDurableEnrolled, repositoryId: "repo-per-binding-durable", scopeId: "scope-per-binding-durable" }, receiptId: "receipt-per-binding-durable", outcome: "used" } },
-}], { MEMBRANE_PROJECT_REGISTRY: perBindingDurableRegistry, MEMBRANE_DURABILITY_MODE: "advisory", CRYPT_BIN: bogusCrypt });
+}], { MEMBRANE_PROJECT_REGISTRY: perBindingDurableRegistry, MEMBRANE_DURABILITY_MODE: "advisory", CORTEX_BIN: bogusCortex });
 assert.equal(perBindingDurableFeedback[0].result.isError, true, "grant_policy.durability=durable must never be masked by the process-wide advisory env override");
 assert.match(toolError(perBindingDurableFeedback[0]), /durable feedback write failed/i);
 
@@ -372,7 +365,7 @@ await writeFile(catalogRegistry, JSON.stringify({
     [await realpath(ungrantedChildDir)]: { repository_id: ungrantedEntry.repository_id, scope_id: ungrantedEntry.scope_id, provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repository_id } },
   },
 }), "utf8");
-const catalogEnv = { MEMBRANE_PROJECT_REGISTRY: catalogRegistry, MEMBRANE_DURABILITY_MODE: "advisory", CRYPT_BIN: bogusCrypt };
+const catalogEnv = { MEMBRANE_PROJECT_REGISTRY: catalogRegistry, MEMBRANE_DURABILITY_MODE: "advisory", CORTEX_BIN: bogusCortex };
 const workspaceCaller = { root: catalogWorkspace, repositoryId: workspaceEntry.repository_id, scopeId: workspaceEntry.scope_id };
 const grantedAccess = await rpc([{
   jsonrpc: "2.0", id: 44, method: "tools/call",
@@ -535,7 +528,7 @@ try {
     { jsonrpc: "2.0", id: 26, method: "tools/call", params: { name: "membrane_context", arguments: { task: "negative budget", repository: enrolledRoot, caller: virtualCaller, budget: -1 }, _meta: modernMeta } },
     { jsonrpc: "2.0", id: 27, method: "tools/call", params: { name: "membrane_checkpoint_load", arguments: { repository: enrolledRoot, caller: virtualCaller, id: "checkpoint-1", asOfMs: -1 }, _meta: modernMeta } },
     { jsonrpc: "2.0", id: 28, method: "tools/call", params: { name: "membrane_checkpoint_load", arguments: { repository: enrolledRoot, caller: virtualCaller, id: "checkpoint-1", asOfMs: "yesterday" }, _meta: modernMeta } },
-  ], { MEMBRANE_PROJECT_REGISTRY: registry, CRYPT_PORT: String(port), CRYPT_API_TOKEN: "test-token" });
+  ], { MEMBRANE_PROJECT_REGISTRY: registry, CORTEX_PORT: String(port), CORTEX_API_TOKEN: "test-token" });
   const invalidById = new Map(invalidCalls.map((row) => [row.id, row]));
   for (const id of [23, 24, 25, 26, 27, 28]) {
     assert.equal(invalidById.get(id).result.isError, true, `invalid request ${id} returns an invalid-params tool result`);
@@ -552,7 +545,7 @@ try {
         _meta: { ...modernMeta, traceparent: "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future", tracestate: "membrane=server", baggage: "tenant=repo-a" },
       },
     },
-  ], { MEMBRANE_PROJECT_REGISTRY: registry, CRYPT_PORT: String(port), CRYPT_API_TOKEN: "test-token" });
+  ], { MEMBRANE_PROJECT_REGISTRY: registry, CORTEX_PORT: String(port), CORTEX_API_TOKEN: "test-token" });
   const tracedById = new Map(tracedContext.map((row) => [row.id, row]));
   assert.deepEqual(tracedById.get(21).result.structuredContent.trace, {
     traceparent: "01-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01-future", tracestate: "membrane=server", baggage: "tenant=repo-a",
@@ -564,9 +557,7 @@ try {
   assert.equal(federateHeaders.tracestate, "membrane=server");
   assert.equal(federateHeaders.baggage, "tenant=repo-a");
   assert.equal(federateHeaders["x-membrane-trace"], "4bf92f3577b34da6a3ce929d0e0e4736");
-  assert.equal(federateHeaders["x-rightcontext-trace"], "4bf92f3577b34da6a3ce929d0e0e4736");
   assert.equal(federateHeaders["x-membrane-version"], "membrane-mcp/1");
-  assert.equal(federateHeaders["x-rightcontext-version"], "rightcontext-mcp/1");
   assert.equal(federateHits, 1, "only valid context calls invoke the planner forge");
 } finally {
   await new Promise((resolve) => federate.close(resolve));
@@ -591,7 +582,7 @@ await writeFile(workspaceRegistry, JSON.stringify({
 }), "utf8");
 // A loopback port with no listener so the per-child federation clients fail fast
 // and deterministically (they emit a typed fallback envelope rather than hanging).
-const deadCryptPort = 65533;
+const deadCortexPort = 65533;
 const wsCaller = { root: workspaceCanonical, repositoryId: "ws-repo", scopeId: "ws-scope" };
 // MBR-004 bounded routing: select the workspace root and the child explicitly so
 // the task still fans out to the first child; a no-match task would abstain.
@@ -604,7 +595,7 @@ const workspaceContext = await rpc([{
     name: "membrane_context",
     arguments: { task: "inspect", repository: workspaceCanonical, caller: wsCaller, scope: "workspace", explicitRepositoryIds: [wsRootEntry?.repository_id, wsChildEntry?.repository_id].filter(Boolean) },
   },
-}], { MEMBRANE_PROJECT_REGISTRY: workspaceRegistry, CRYPT_PORT: String(deadCryptPort), CRYPT_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" });
+}], { MEMBRANE_PROJECT_REGISTRY: workspaceRegistry, CORTEX_PORT: String(deadCortexPort), CORTEX_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" });
 const workspaceRow = workspaceContext[0];
 assert.equal(workspaceRow.result.isError, false, `scope=workspace must reach the first child without ReferenceError: ${toolError(workspaceRow)}`);
 assert.doesNotMatch(toolError(workspaceRow), /ReferenceError/);
@@ -644,7 +635,7 @@ await writeFile(mbr2Registry, JSON.stringify({
     },
   },
 }), "utf8");
-const mbr2Env = { MEMBRANE_PROJECT_REGISTRY: mbr2Registry, MEMBRANE_DURABILITY_MODE: "advisory", CRYPT_BIN: "/nonexistent/membrane-test-crypt-binary" };
+const mbr2Env = { MEMBRANE_PROJECT_REGISTRY: mbr2Registry, MEMBRANE_DURABILITY_MODE: "advisory", CORTEX_BIN: "/nonexistent/membrane-test-cortex-binary" };
 const mbr2Caller = { root: mbr2Workspace, repositoryId: mbr2WsEntry.repository_id, scopeId: mbr2WsEntry.scope_id };
 const mbr2Denied = await rpc([{
   jsonrpc: "2.0", id: 80, method: "tools/call",
@@ -686,7 +677,7 @@ await writeFile(mbr3Registry, JSON.stringify({
     },
   },
 }), "utf8");
-const mbr3Env = { MEMBRANE_PROJECT_REGISTRY: mbr3Registry, CRYPT_PORT: "65532", CRYPT_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" };
+const mbr3Env = { MEMBRANE_PROJECT_REGISTRY: mbr3Registry, CORTEX_PORT: "65532", CORTEX_API_TOKEN: "test-token", MEMBRANE_DURABILITY_MODE: "advisory" };
 const mbr3Caller = { root: mbr3Workspace, repositoryId: mbr3Ws.repository_id, scopeId: mbr3Ws.scope_id };
 const mbr3Scope = await rpc([{
   jsonrpc: "2.0", id: 90, method: "tools/call",

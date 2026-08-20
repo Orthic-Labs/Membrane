@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // membrane/mcp/client.mjs — Membrane G5 Lane F provider-neutral MCP thin client.
 //
-// Thin client: authenticates to the workspace loopback Crypt service at
-// http://127.0.0.1:${CRYPT_PORT}/federate with the workspace bearer
+// Thin client: authenticates to the workspace loopback Cortex service at
+// http://127.0.0.1:${CORTEX_PORT}/federate with the workspace bearer
 // token, POSTs a task/repository federation request, surfaces receipt
 // IDs + degradation state to the caller, and emits a typed fallback event
 // when the planner is unavailable or any provider has gone away.
@@ -13,9 +13,9 @@
 // translates transport shape only — JSON envelope in, packet + receipts
 // out — exactly as dispatch G5 Lane F requires.
 //
-// Authentication contract (mirrors tools/codex-brief-plugin/.../crypt-start.cjs):
-//   1. $CRYPT_PORT env var if set, else 47851.
-//   2. $CRYPT_API_TOKEN env var if set, else $CRYPT_API_TOKEN_FILE
+// Authentication contract (mirrors tools/codex-brief-plugin/.../cortex-start.cjs):
+//   1. $CORTEX_PORT env var if set, else 47851.
+//   2. $CORTEX_API_TOKEN env var if set, else $CORTEX_API_TOKEN_FILE
 //      (default tools/.cache/memory/api-token) — same path the workspace
 //      hooks use. The token is read once per process; it is NEVER echoed,
 //      printed, written to a log row, or embedded in any output line.
@@ -45,22 +45,18 @@ import { performance } from "node:perf_hooks";
 const DEFAULT_PORT = 47851;
 const REQUEST_TIMEOUT_MS = 1500;
 const MAX_BODY_BYTES = 1 << 20; // 1 MiB — same cap the workspace hook uses
-// Public transport id. Legacy `rightcontext-mcp/1` remains accepted by older
-// consumers; this client emits Membrane names as primary and RightContext as alias.
 const TRANSPORT_VERSION = "membrane-mcp/1";
-const TRANSPORT_VERSION_ALIAS = "rightcontext-mcp/1";
 const PLANNER_PROVIDER = "membrane-planner";
-const PLANNER_PROVIDER_ALIAS = "rightcontext-planner";
 const MODE_DEFAULT = "shadow"; // gate state until G5 parity is green
 
 function readToken() {
   // Resolution order matches the workspace hook recipe:
-  //   1. CRYPT_API_TOKEN env var (raw, used directly; never logged).
-  //   2. CRYPT_API_TOKEN_FILE env var or default tools/.cache/memory/api-token.
+  //   1. CORTEX_API_TOKEN env var (raw, used directly; never logged).
+  //   2. CORTEX_API_TOKEN_FILE env var or default tools/.cache/memory/api-token.
   // The token is held in closure; it never enters any log or output row.
-  const envTok = process.env.CRYPT_API_TOKEN;
+  const envTok = process.env.CORTEX_API_TOKEN;
   if (envTok && envTok.trim().length > 0) return envTok.trim();
-  const fileEnv = process.env.CRYPT_API_TOKEN_FILE;
+  const fileEnv = process.env.CORTEX_API_TOKEN_FILE;
   const candidates = [];
   if (fileEnv && fileEnv.trim().length > 0) candidates.push(fileEnv.trim());
   const ws = process.env.WORKSPACE_ROOT || (process.platform === "win32" ? "D:/Claude" : `${process.env.HOME}/claude`);
@@ -80,7 +76,7 @@ function readToken() {
 }
 
 function readPort() {
-  const raw = process.env.CRYPT_PORT;
+  const raw = process.env.CORTEX_PORT;
   if (raw && raw.trim().length > 0) {
     const n = Number(raw.trim());
     if (Number.isInteger(n) && n >= 1024 && n <= 65535) return n;
@@ -209,14 +205,10 @@ function postPlanner({ host, port, path, body, token, traceId, deadlineAtMs }) {
           "content-type": "application/json; charset=utf-8",
           "content-length": String(json.byteLength),
           "accept": "application/json",
-          // Tag the call so /metrics and /health surface the third client.
-          // Membrane is public; RightContext headers remain as compatibility aliases.
+          // Tag call so /metrics & /health surface MCP client.
           "x-membrane-client": "mcp",
           "x-membrane-version": TRANSPORT_VERSION,
           "x-membrane-trace": traceId,
-          "x-rightcontext-client": "mcp",
-          "x-rightcontext-version": TRANSPORT_VERSION_ALIAS,
-          "x-rightcontext-trace": traceId,
           ...(trace.traceparent ? { traceparent: trace.traceparent } : {}),
           ...(trace.tracestate ? { tracestate: trace.tracestate } : {}),
           ...(trace.baggage ? { baggage: trace.baggage } : {}),
@@ -296,7 +288,7 @@ async function main() {
       process.stdout.write(
         [
           "mcp-client.mjs — Membrane MCP thin client (G5 Lane F)",
-          `Public provider=${PLANNER_PROVIDER}; legacy alias=${PLANNER_PROVIDER_ALIAS}`,
+          `Provider=${PLANNER_PROVIDER}`,
           "",
           "Usage:",
           "  node mcp-client.mjs --input <path|-> [--max-tokens N]",

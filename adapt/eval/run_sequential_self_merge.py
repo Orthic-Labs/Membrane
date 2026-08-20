@@ -1001,7 +1001,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.initial_taste else None
         ),
         "initial_rule_count": len(initial_state),
-        "live_crypt_writes": 0,
+        "live_cortex_writes": 0,
         "live_state_writes": 0,
     }
     if args.dry_run:
@@ -1044,7 +1044,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "prompt_sha256": hashlib.sha256(system.encode("utf-8")).hexdigest(),
         "preflight": preflight,
         **result,
-        "side_effects": {"crypt_calls": 0, "live_state_writes": 0},
+        "side_effects": {"cortex_calls": 0, "live_state_writes": 0},
     }
     report["content_sha256"] = _hash_json(report)
     _write_json(args.out / "results.json", report)

@@ -5,11 +5,11 @@ Clients (Claude, Codex, MCP) submit only (task, repo_root, client, session,
 max_tokens, anchors, scope_grant_id); the gateway invokes each provider
 adapter in parallel, merges their ContextCandidateSet v1 entries into one
 canonical CCS, and writes that CCS to stdout. The Rust dispatcher
-(`crypt federate`) then runs the existing deterministic admission and
+(`cortex federate`) then runs the existing deterministic admission and
 emits the final planner envelope.
 
 Provider payload formats and SQLite details never enter client adapters.
-Crypt durable storage is never modified by this module.
+Cortex durable storage is never modified by this module.
 """
 
 __all__ = [

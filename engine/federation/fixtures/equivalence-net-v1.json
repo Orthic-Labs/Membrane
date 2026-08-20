@@ -10,13 +10,13 @@
     "providerCeiling",
     "candidates",
     "omissions",
-    "_rightcontext"
+    "_membrane"
   ],
   "providerOrder": [
     "blueprint",
     "audit",
     "architect",
-    "crypt",
+    "cortex",
     "git",
     "live",
     "rules",

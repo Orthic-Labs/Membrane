@@ -38,7 +38,7 @@ function withEnv(overrides, fn) {
   }
 }
 
-test('the real workspace runtime.json resolves the crypt-local-v1 identity (path convention still matches production)', () => {
+test('the real workspace runtime.json resolves the cortex-local-v1 identity (path convention still matches production)', () => {
   const resolved = resolveDefaultIngressTarget();
   assert.equal(resolved.ok, true);
   assert.match(resolved.target, /context-telemetry-ingress\.jsonl$/);
@@ -47,12 +47,12 @@ test('the real workspace runtime.json resolves the crypt-local-v1 identity (path
   assert.equal(path.basename(RUNTIME_CONFIG_PATH), 'runtime.json');
 });
 
-test('default path is used (and honored) when CRYPT_TELEMETRY_INGRESS is unset and the resolved db file exists', () => {
-  withEnv({ CRYPT_TELEMETRY_INGRESS: undefined }, () => {
+test('default path is used (and honored) when CORTEX_TELEMETRY_INGRESS is unset and the resolved db file exists', () => {
+  withEnv({ CORTEX_TELEMETRY_INGRESS: undefined }, () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-default-ingress-'));
-    const dbPath = path.join(directory, 'crypt-engine.db');
+    const dbPath = path.join(directory, 'cortex-engine.db');
     fs.writeFileSync(dbPath, ''); // simulate: the resident service has initialized its db
-    withEnv({ CRYPT_DB: dbPath }, () => {
+    withEnv({ CORTEX_DB: dbPath }, () => {
       const event = sampleEvent({ traceId: 'trace-default-ok' });
       const result = appendObservableEvent(event);
       assert.deepEqual(result, { status: 'persisted', target: 'membrane_prompt_ingress' });
@@ -65,10 +65,10 @@ test('default path is used (and honored) when CRYPT_TELEMETRY_INGRESS is unset a
 });
 
 test('resolved-but-service-not-running reports a distinct honest reason, never a false persisted', () => {
-  withEnv({ CRYPT_TELEMETRY_INGRESS: undefined }, () => {
+  withEnv({ CORTEX_TELEMETRY_INGRESS: undefined }, () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-no-db-'));
-    const dbPath = path.join(directory, 'crypt-engine.db'); // deliberately never created
-    withEnv({ CRYPT_DB: dbPath }, () => {
+    const dbPath = path.join(directory, 'cortex-engine.db'); // deliberately never created
+    withEnv({ CORTEX_DB: dbPath }, () => {
       const result = appendObservableEvent(sampleEvent({ traceId: 'trace-no-service' }));
       assert.deepEqual(result, { status: 'unavailable', reason: 'telemetry_ingress_drain_service_not_running' });
       assert.equal(fs.existsSync(path.join(directory, 'context-telemetry-ingress.jsonl')), false);
@@ -77,11 +77,11 @@ test('resolved-but-service-not-running reports a distinct honest reason, never a
   });
 });
 
-test('explicit CRYPT_TELEMETRY_INGRESS still overrides the default path, bypassing the drain-evidence gate', () => {
+test('explicit CORTEX_TELEMETRY_INGRESS still overrides the default path, bypassing the drain-evidence gate', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-explicit-override-'));
   const target = path.join(directory, 'events.jsonl');
   const missingDbPath = path.join(directory, 'never-created.db'); // proves override needs no drain evidence
-  withEnv({ CRYPT_TELEMETRY_INGRESS: target, CRYPT_DB: missingDbPath }, () => {
+  withEnv({ CORTEX_TELEMETRY_INGRESS: target, CORTEX_DB: missingDbPath }, () => {
     const event = sampleEvent({ traceId: 'trace-explicit' });
     assert.deepEqual(appendObservableEvent(event), { status: 'persisted', target: 'membrane_prompt_ingress' });
     const record = JSON.parse(fs.readFileSync(target, 'utf8'));
@@ -106,9 +106,9 @@ test('unresolvable config (malformed JSON) returns ok:false', () => {
 test('unresolvable config (wrong serviceId / schemaVersion / host identity) returns ok:false for each mismatch', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-bad-identity-'));
   const cases = [
-    { schemaVersion: 1, serviceId: 'not-crypt-local-v1', host: '127.0.0.1', port: 47851 },
-    { schemaVersion: 2, serviceId: 'crypt-local-v1', host: '127.0.0.1', port: 47851 },
-    { schemaVersion: 1, serviceId: 'crypt-local-v1', host: '0.0.0.0', port: 47851 },
+    { schemaVersion: 1, serviceId: 'not-cortex-local-v1', host: '127.0.0.1', port: 47851 },
+    { schemaVersion: 2, serviceId: 'cortex-local-v1', host: '127.0.0.1', port: 47851 },
+    { schemaVersion: 1, serviceId: 'cortex-local-v1', host: '0.0.0.0', port: 47851 },
   ];
   cases.forEach((config, index) => {
     const configPath = path.join(directory, `runtime-${index}.json`);
@@ -123,7 +123,7 @@ test('unresolvable default resolution surfaces through appendObservableEvent as 
   resetIngressResolutionCache();
   _internal._setCachedDefaultTargetForTest({ ok: false });
   try {
-    withEnv({ CRYPT_TELEMETRY_INGRESS: undefined }, () => {
+    withEnv({ CORTEX_TELEMETRY_INGRESS: undefined }, () => {
       // withEnv resets the cache too, so re-poison it after that reset.
       _internal._setCachedDefaultTargetForTest({ ok: false });
       const result = appendObservableEvent(sampleEvent({ traceId: 'trace-unresolvable' }));

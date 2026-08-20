@@ -38,7 +38,7 @@ pub const MCP_HTTP_PATH: &str = "/mcp";
 
 /// Carries the caller's claimed installation id. Distinct from
 /// `installation_manifest::HANDSHAKE_HEADER`, which carries a full manifest
-/// for the unrelated Crypt loopback API handshake.
+/// for the unrelated Cortex loopback API handshake.
 pub const INSTALLATION_HEADER: &str = "x-membrane-installation-id";
 
 /// Carries the caller's claimed per-boot session binding (see
@@ -226,7 +226,7 @@ pub fn run_mcp_streamable_http(port: u16, policy: HttpAdmissionPolicy) -> Result
 
 /// MBR-306: resident convenience entrypoint. Sources installation id, host
 /// binding, and bearer token from the same resident identity and credential
-/// path the loopback Crypt API already uses
+/// path the loopback Cortex API already uses
 /// (`crate::service::runtime_from_exe`, `crate::serve::configured_api_token`)
 /// rather than minting a parallel credential, and binds the per-boot session
 /// binding to `StartupClaim::service_instance_id`.

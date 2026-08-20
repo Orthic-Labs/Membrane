@@ -33,10 +33,18 @@ def _write_correction(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
         "type": "user", "uuid": "u1", "sessionId": "s1",
-        "cwd": "/Volumes/D/claude/adapt", "timestamp": "2026-01-01T00:00:00Z",
+        "cwd": "/Volumes/D/claude/membrane/adapt", "timestamp": "2026-01-01T00:00:00Z",
         "message": {"role": "user", "content":
                     "No, that's wrong. Always run focused tests before reporting completion."},
     }) + "\n", encoding="utf-8")
+
+
+def _bind_multiwriter(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        cli.taste_runtime,
+        "multiwriter_context",
+        lambda **_kwargs: ("08c7ef55-8f6b-4ef1-b234-22232b8ea832", {}),
+    )
 
 
 def test_real_parser_false_flags_admit_and_truthy_unsafe_flags_reject(tmp_path: Path) -> None:
@@ -58,6 +66,7 @@ def test_cli_manifest_writer_is_v13_with_hashed_evidence_contexts(
     _write_correction(home / ".claude" / "projects" / "project" / "session.jsonl")
     output = tmp_path / "manifest.json"
     _isolate_home(monkeypatch, home)
+    _bind_multiwriter(monkeypatch)
     monkeypatch.setattr(run_journal, "JOURNAL_FILE", tmp_path / "journal.jsonl")
     monkeypatch.setattr(sys, "argv", ["adapt.py", "--incremental", "--deterministic-only",
                                       "--manifest", str(output)])
@@ -159,6 +168,7 @@ def test_cli_manifest_writer_quarantines_unsupported_via_select_sources(
     unsupported.write_text(json.dumps({"payload": {"session_id": "noise"}}) + "\n", encoding="utf-8")
     output = tmp_path / "manifest.json"
     _isolate_home(monkeypatch, home)
+    _bind_multiwriter(monkeypatch)
     monkeypatch.setattr(run_journal, "JOURNAL_FILE", tmp_path / "journal.jsonl")
     monkeypatch.setattr(sys, "argv", ["adapt.py", "--incremental", "--deterministic-only",
                                       "--manifest", str(output)])
@@ -242,6 +252,7 @@ def test_cli_llm_failure_abandons_without_manifest(
     }) + "\n", encoding="utf-8")
     output = tmp_path / "pending.json"
     _isolate_home(monkeypatch, home)
+    _bind_multiwriter(monkeypatch)
     monkeypatch.setattr(run_journal, "JOURNAL_FILE", tmp_path / "journal.jsonl")
     monkeypatch.setattr(cli.adapt_llm, "lane_available", lambda _lane: True)
     monkeypatch.setattr(

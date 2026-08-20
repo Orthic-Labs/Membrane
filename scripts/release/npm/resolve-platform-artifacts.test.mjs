@@ -41,7 +41,7 @@ function writeFixtureGeneration(repoRoot, targets) {
   const plan = {
     schema: "orthic.membrane.release-generation.v1",
     product: "Membrane",
-    vector_dispatch: "CRYPT_VECTOR_DISPATCH_V2",
+    vector_dispatch: "CORTEX_VECTOR_DISPATCH_V2",
     publish: false,
     release: {
       app: APP, version: VERSION, tag: `v${VERSION}`, commit: COMMIT, tree: "b".repeat(40),

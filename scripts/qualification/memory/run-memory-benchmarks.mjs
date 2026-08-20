@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // MBR-805 CLI harness. Wires benchmark selection and a local dataset path to
 // the runner in benchmarks/memory/runner.mjs. It never downloads a dataset
-// and never invokes the Crypt engine; absent a dataset root (or an executor,
+// and never invokes the Cortex engine; absent a dataset root (or an executor,
 // which this CLI does not supply) it reports an explicit degrade per
 // benchmark rather than fabricating a result.
 import { runMemoryBenchmark } from '../../../tests/benchmarks/memory/runner.mjs';

@@ -12,8 +12,7 @@ try:
     from adapt import workspace_runtime
     TOOLS_LIB = workspace_runtime.workspace_root() / "tools" / "lib"
 except Exception:
-    # Nested historical layout: tools/pipelines/memory/adapt → parents[2] == tools
-    TOOLS_LIB = HERE.parents[2] / "lib"
+    TOOLS_LIB = HERE
 if str(TOOLS_LIB) not in sys.path:
     sys.path.insert(0, str(TOOLS_LIB))
 

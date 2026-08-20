@@ -8,7 +8,7 @@ import {
 
 // MBR-012 qualification fixture: multi-byte UTF-8 (é = 2 bytes, ☕ = 3 bytes).
 // The expected values are ALSO pinned in the Rust mirror test
-// (crypt-store/src/context_telemetry.rs) so the two implementations are proven
+// (cortex-store/src/context_telemetry.rs) so the two implementations are proven
 // to agree byte-for-byte.
 const FIXTURE = "Membrane café ☕";
 const EXPECTED = {

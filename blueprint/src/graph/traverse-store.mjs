@@ -7,6 +7,7 @@ import {
   hydrateEdgesByIds,
   hydrateNodesByIds,
   listEdgeCore,
+  searchGenerationSymbols,
   traversalNeighbors,
 } from "./store-sqlite.mjs";
 
@@ -74,27 +75,37 @@ export function indexedQueryGeneration(db, query, options = {}) {
   const limit = Math.max(1, Number(options.limit ?? 20));
   const poolLimit = Math.max(limit * 3, limit + 20);
   const ids = [];
-  const addRows = (table, idColumn, kind) => {
-    const clauses = [];
-    const params = [];
-    for (const term of terms) {
-      clauses.push("lower(COALESCE(name, '') || ' ' || COALESCE(qualified_name, '') || ' ' || path) LIKE ?");
-      params.push(`%${term}%`);
-    }
-    const where = clauses.length ? `WHERE ${clauses.join(" OR ")}` : "";
-    const rows = db.prepare(`SELECT ${idColumn} AS id, ? AS kind FROM ${table} ${where} ORDER BY rowid LIMIT ?`)
-      .all(kind, ...params, poolLimit);
-    ids.push(...rows.map((row) => row.id));
-  };
-  addRows("files", "node_id", "file");
-  addRows("symbols", "id", "symbol");
-  for (const anchor of options.anchors ?? []) {
-    const row = db.prepare("SELECT node_id AS id FROM files WHERE path = ?").get(String(anchor).replaceAll("\\", "/"));
+  const generationId = meta?.manifest?.generationId ?? "";
+  const exactPath = String(query).trim().replaceAll("\\", "/");
+  if (exactPath) {
+    const row = db.prepare("SELECT node_id AS id FROM files WHERE generation_id = ? AND path = ?")
+      .get(generationId, exactPath);
     if (row?.id) ids.push(row.id);
   }
-  const nodes = hydrateNodesByIds(db, ids)
+  if (terms.length) {
+    const clauses = terms.map(() => "lower(path) LIKE ?");
+    ids.push(...db.prepare(`SELECT node_id AS id FROM files
+      WHERE generation_id = ? AND (${clauses.join(" OR ")})
+      ORDER BY path, node_id LIMIT ?`)
+      .all(generationId, ...terms.map((term) => `%${term}%`), poolLimit)
+      .map((row) => row.id));
+  }
+  if (terms.length === 1) {
+    ids.push(...db.prepare(`SELECT id FROM symbols
+      WHERE generation_id = ? AND (name = ? OR qualified_name = ?)
+      ORDER BY confidence DESC, path, id LIMIT ?`)
+      .all(generationId, terms[0], terms[0], poolLimit)
+      .map((row) => row.id));
+  }
+  ids.push(...searchGenerationSymbols(db, generationId, terms, poolLimit).map((row) => row.id));
+  for (const anchor of options.anchors ?? []) {
+    const row = db.prepare("SELECT node_id AS id FROM files WHERE generation_id = ? AND path = ?")
+      .get(generationId, String(anchor).replaceAll("\\", "/"));
+    if (row?.id) ids.push(row.id);
+  }
+  const nodes = hydrateNodesByIds(db, [...new Set(ids)])
     .map((node) => ({ node, score: scalarNodeScore(node, terms) }))
-    .filter((item) => item.score > 0 || (options.anchors ?? []).includes(item.node.path))
+    .filter((item) => item.score > 0 || item.node.path === exactPath || (options.anchors ?? []).includes(item.node.path))
     .sort((a, b) => b.score - a.score || a.node.id.localeCompare(b.node.id))
     .slice(0, poolLimit)
     .map((item) => item.node);

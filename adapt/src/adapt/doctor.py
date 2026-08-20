@@ -3,7 +3,7 @@
 
 Doctor today wraps the existing Adapt multi-installation conformance receipt
 surface (``multiwriter_conformance``): installation identity, canonical pool,
-implementation/test hashes, Crypt service probe, transcript discovery
+implementation/test hashes, Cortex service probe, transcript discovery
 counts, and the append-only mirror boundary.
 
 Net-new / not-yet (do not pretend these exist):

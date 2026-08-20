@@ -84,7 +84,7 @@ const probes = {
 };
 
 const suites = {
-  crypt: [process.execPath, ["--test", join(membraneRoot, "mcp/server-durable.test.mjs")], workspaceRoot],
+  cortex: [process.execPath, ["--test", join(membraneRoot, "mcp/server-durable.test.mjs")], workspaceRoot],
   "membrane-host": [process.execPath, ["--test", join(membraneRoot, "mcp/client.test.mjs"), join(membraneRoot, "mcp/adapters.test.mjs")], workspaceRoot],
   // root-child-scope's fix lives in repository-catalog.mjs ("child graph access requires an
   // explicit root grant"), not project-registry.mjs — the original suite list omitted it, so
@@ -110,7 +110,7 @@ function runSuite(owner) {
     env: {
       ...process.env,
       CI: "1",
-      CRYPT_TEST_BIN: process.env.CRYPT_TEST_BIN || join(membraneRoot, "engine/target/debug", process.platform === "win32" ? "crypt.exe" : "crypt"),
+      CORTEX_TEST_BIN: process.env.CORTEX_TEST_BIN || join(membraneRoot, "engine/target/debug", process.platform === "win32" ? "cortex.exe" : "cortex"),
     },
   });
   const output = `${result.stdout || ""}${result.stderr || ""}`;

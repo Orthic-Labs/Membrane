@@ -2,7 +2,7 @@
 
 Mission (plan 5.3, line 101):
     corrections + locked decisions become durable scoped rules with
-    exact-span provenance -> Crypt -> surfaced via membrane_context.
+    exact-span provenance -> Cortex -> surfaced via membrane_context.
 
 This module is the Phase 5.3 path. It replaces retired session mining by consuming shared
 TranscriptEventV1 substrate at ``adapt/orthic_transcripts`` and
@@ -184,12 +184,12 @@ class TasteV2Error(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
-# TasteCandidateV1 — the output shape Crypt will eventually store.
+# TasteCandidateV1 — the output shape Cortex will eventually store.
 # ---------------------------------------------------------------------------
 
 VALID_LIFECYCLE_STATES: frozenset[str] = frozenset({
     "candidate",   # freshly mined; not yet accepted by curation.
-    "active",      # admitted to Crypt.
+    "active",      # admitted to Cortex.
     "retired",     # manually withdrawn.
     "deprecated",  # superseded by a newer rule.
     "superseded",  # replaced by an explicit successor.

@@ -207,12 +207,12 @@ fn bundled_binary(name: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(format!("{name}{suffix}")))
 }
 
-fn start_crypt_service() -> Result<Option<Child>, String> {
-    let program = std::env::var_os("MEMBRANE_CRYPT_SERVICE")
+fn start_cortex_service() -> Result<Option<Child>, String> {
+    let program = std::env::var_os("MEMBRANE_CORTEX_SERVICE")
         .map(PathBuf::from)
-        .unwrap_or_else(|| bundled_binary("crypt-service"));
+        .unwrap_or_else(|| bundled_binary("cortex-service"));
     if !program.is_file() {
-        return Err("crypt_service_missing".into());
+        return Err("cortex_service_missing".into());
     }
     let root = workspace::resolve()
         .map_err(|_| "workspace_root_unavailable")?
@@ -224,11 +224,11 @@ fn start_crypt_service() -> Result<Option<Child>, String> {
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|_| "crypt_service_start_failed".to_string())?;
+        .map_err(|_| "cortex_service_start_failed".to_string())?;
     std::thread::sleep(Duration::from_millis(120));
     if child
         .try_wait()
-        .map_err(|_| "crypt_service_wait_failed")?
+        .map_err(|_| "cortex_service_wait_failed")?
         .is_some()
     {
         let mut stderr_output = String::new();
@@ -236,15 +236,15 @@ fn start_crypt_service() -> Result<Option<Child>, String> {
             let _ = stderr.read_to_string(&mut stderr_output);
         }
         if stderr_output.to_lowercase().contains("already in use") {
-            eprintln!("crypt-service: port already in use, adopting existing owner");
+            eprintln!("cortex-service: port already in use, adopting existing owner");
             return Ok(None);
         }
-        return Err("crypt_service_start_failed".into());
+        return Err("cortex_service_start_failed".into());
     }
     Ok(Some(child))
 }
 
-fn stop_crypt_service(service: &ServiceState) {
+fn stop_cortex_service(service: &ServiceState) {
     if let Ok(mut guard) = service.lock() {
         if let Some(mut child) = guard.take() {
             let _ = child.kill();
@@ -525,7 +525,7 @@ fn startup_setting(app: tauri::AppHandle) -> Result<bool, String> {
 
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle, service: tauri::State<'_, ServiceState>) {
-    stop_crypt_service(&service);
+    stop_cortex_service(&service);
     app.exit(0);
 }
 
@@ -638,7 +638,7 @@ fn main() {
             if let Ok(workspace) = workspace::resolve() {
                 std::env::set_var("WORKSPACE_ROOT", workspace.root);
             }
-            let child = start_crypt_service().map_err(std::io::Error::other)?;
+            let child = start_cortex_service().map_err(std::io::Error::other)?;
             *app.state::<ServiceState>()
                 .lock()
                 .map_err(|_| std::io::Error::other("service_state_unavailable"))? = child;

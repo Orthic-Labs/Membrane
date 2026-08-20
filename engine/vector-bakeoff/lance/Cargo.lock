@@ -3489,7 +3489,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "crypt-core"
+name = "cortex-core"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -5429,7 +5429,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 name = "vector-bakeoff-common"
 version = "0.1.0"
 dependencies = [
- "crypt-core",
+ "cortex-core",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -5444,7 +5444,7 @@ dependencies = [
  "futures",
  "hashbrown 0.17.1",
  "lancedb",
- "crypt-core",
+ "cortex-core",
  "serde_json",
  "tokio",
  "vector-bakeoff-common",

@@ -8,6 +8,6 @@ No function here opens storage, changes an index, creates a proposal, creates a 
 
 ## Store-side execution
 
-`crypt-store::maintenance_exec` executes a planned, bounded operation against the Crypt SQLite store. It never certifies authority: a missing `authorityReceiptId` is refused before any transaction opens, and the module has no verification logic of its own — only the upstream planner's `plan_maintenance` call ever grants that field.
+`cortex-store::maintenance_exec` executes a planned, bounded operation against the Cortex SQLite store. It never certifies authority: a missing `authorityReceiptId` is refused before any transaction opens, and the module has no verification logic of its own — only the upstream planner's `plan_maintenance` call ever grants that field.
 
 `MemDb::execute_bounded_maintenance` runs every offered unit inside one `IMMEDIATE` transaction and commits only when the whole job completes within budget & deadline without cancellation. Any cancellation, deadline expiry, budget exhaustion, or unit failure drops the transaction uncommitted instead, so SQLite rolls it back — including across a hard crash, since an uncommitted transaction's frames are never checkpointed into the main database file. A bounded maintenance job is therefore all-or-nothing: the store is never observed holding a partially-applied job, and a job that does not fit its bound can simply be retried as a smaller request. Every invocation that passes the authority check returns a content-free `MaintenanceExecReceipt` recording the outcome for audit.

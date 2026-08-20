@@ -110,12 +110,7 @@ impl LaneAccounting {
     }
 
     /// Record one block against this lane.
-    pub fn record(
-        &mut self,
-        selected_tokens: u32,
-        delivered_tokens: u32,
-        delivered_chars: u32,
-    ) {
+    pub fn record(&mut self, selected_tokens: u32, delivered_tokens: u32, delivered_chars: u32) {
         self.selected_tokens = self.selected_tokens.saturating_add(selected_tokens);
         self.delivered_tokens = self.delivered_tokens.saturating_add(delivered_tokens);
         self.delivered_chars = self.delivered_chars.saturating_add(delivered_chars);

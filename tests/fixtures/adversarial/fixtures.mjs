@@ -45,7 +45,7 @@ export function makeScopeGrantWorld() {
   const packet = {
     blocks: [
       { provider: "blueprint", sourceRef: "src/app.ts:4-18" },
-      { provider: "crypt", sourceRef: "memory:local" },
+      { provider: "cortex", sourceRef: "memory:local" },
     ],
   };
   return { trusted, forged, binding, args, freshness, packet, now: FIXED_NOW };

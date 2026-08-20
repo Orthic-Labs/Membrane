@@ -131,12 +131,10 @@ function runCommand(command, commandArgs, cwd, timeout = 20 * 60_000) {
 }
 function runServiceManagerCheck(platform) {
   if (platform === "mac") {
-    const current = runCommand("launchctl", ["print", `gui/${process.getuid()}/com.adrian.crypt-serve`], workspaceRoot, 10_000);
-    return current.status === 0 ? current : runCommand("launchctl", ["print", `gui/${process.getuid()}/com.adrian.crypt-serve`], workspaceRoot, 10_000);
+    return runCommand("launchctl", ["print", `gui/${process.getuid()}/com.adrian.cortex-serve`], workspaceRoot, 10_000);
   }
   const powershell = join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-  const current = runCommand(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Get-ScheduledTask -TaskName 'crypt-serve' | Select-Object TaskName,State | ConvertTo-Json -Compress"], workspaceRoot, 10_000);
-  return current.status === 0 ? current : runCommand(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Get-ScheduledTask -TaskName 'crypt-serve' | Select-Object TaskName,State | ConvertTo-Json -Compress"], workspaceRoot, 10_000);
+  return runCommand(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "Get-ScheduledTask -TaskName 'cortex-serve' | Select-Object TaskName,State | ConvertTo-Json -Compress"], workspaceRoot, 10_000);
 }
 function runPlatformPhase(platform) {
   const source = currentEvidence().source;
@@ -149,16 +147,13 @@ function runPlatformPhase(platform) {
     };
   }
   const suffix = platform === "windows" ? ".exe" : "";
-  const cliPath = join(workspaceRoot, "tools", "bin", `crypt${suffix}`);
-  const currentServicePath = join(workspaceRoot, "tools", "bin", `crypt-service${suffix}`);
-  const servicePath = existsSync(currentServicePath)
-    ? currentServicePath
-    : join(workspaceRoot, "tools", "bin", `crypt-service${suffix}`);
+  const cliPath = join(workspaceRoot, "tools", "bin", `cortex${suffix}`);
+  const servicePath = join(workspaceRoot, "tools", "bin", `cortex-service${suffix}`);
   const installed = runCommand(cliPath, ["build-info"], workspaceRoot, 10_000);
   const serviceIdentityCheck = runCommand(servicePath, ["build-info"], workspaceRoot, 10_000);
   const health = runCommand("curl", ["--fail", "--silent", "--show-error", "--max-time", "5", "http://127.0.0.1:47851/health"], workspaceRoot, 10_000);
   const service = runServiceManagerCheck(platform);
-  const primaryDb = process.env.CRYPT_DB || join(workspaceRoot, "tools", ".cache", "memory", "crypt-engine.db");
+  const primaryDb = process.env.CORTEX_DB || join(workspaceRoot, "tools", ".cache", "memory", "cortex-engine.db");
   const eventsDb = process.env.MEMBRANE_EVENT_DB || eventDbPath(primaryDb);
   const hostEvents = runCommand("sqlite3", ["-json", eventsDb, "SELECT client, COUNT(*) AS events, MAX(ts) AS latest_ts FROM context_event_log WHERE client IN ('claude_code', 'codex', 'ccx') GROUP BY client ORDER BY client"], workspaceRoot, 10_000);
   const identity = parseJsonOutput(installed);
@@ -166,8 +161,8 @@ function runPlatformPhase(platform) {
   const healthJson = parseJsonOutput(health);
   const hostCoverage = parseJsonOutput(hostEvents) || [];
   const expectedCommit = git(membraneRoot, ["rev-parse", "HEAD"]);
-  const engineCurrent = identity?.crypt_source_commit
-    ? spawnSync("git", ["diff", "--quiet", identity.crypt_source_commit, "HEAD", "--", "engine"], { cwd: membraneRoot }).status === 0
+  const engineCurrent = identity?.cortex_source_commit
+    ? spawnSync("git", ["diff", "--quiet", identity.cortex_source_commit, "HEAD", "--", "engine"], { cwd: membraneRoot }).status === 0
     : false;
   const coveredClients = new Set(hostCoverage.filter((row) => Number(row.events) > 0).map((row) => row.client));
   const rollback = loadHostArtifact(platform, "rollback", identity?.release_generation);
@@ -185,7 +180,7 @@ function runPlatformPhase(platform) {
     : parseJsonOutput(service)?.State === 4 || /"State":"Running"/.test(service.output_tail);
   const identityMatch = source?.status === "source_passed"
     && sameSourceFingerprint(source.fingerprint, base.fingerprint)
-    && (identity?.crypt_source_commit === expectedCommit || engineCurrent)
+    && (identity?.cortex_source_commit === expectedCommit || engineCurrent)
     && identity?.release_generation === serviceIdentity?.release_generation
     && healthJson?.releaseGeneration === identity?.release_generation
     && serviceRunning
@@ -219,9 +214,9 @@ function sourceSuites(ids) {
   if (ids.includes("C16")) add("sync", join(root, ".venv-tools", "bin", "python"), ["-m", "unittest", "tools.pipelines.memory.test_sync"], root);
   if (ids.includes("C14")) add("adapt", "node", [join(membraneRoot, "scripts", "run-adapt-installed-current.mjs")], root);
   if (ids.some((id) => /^F1[5-8]$/.test(id))) add("forge", "pnpm", ["--dir", join(root, "forge"), "test"], root);
-  if (ids.some((id) => ["F07", "F08", "F09", "F10", "F11", "F18", "F19", "F20", "C01", "C04", "C05", "C06", "C07", "C13"].includes(id))) add("engine", "cargo", ["check", "--manifest-path", join(membraneRoot, "engine", "Cargo.toml"), "--workspace", "--all-targets"], root);
-  if (ids.some((id) => ["F03", "F04", "F11", "C02", "C04", "C05", "C06", "C07"].includes(id))) add("blueprint", "pnpm", ["--dir", join(root, "blueprint"), "test:all"], root);
-  if (ids.some((id) => ["F05", "F12", "C14"].includes(id))) add("adapt", join(root, ".venv-tools", "bin", "python"), ["-m", "pytest", join(root, "adapt")], root);
+  if (ids.some((id) => ["F07", "F08", "F09", "F10", "F11", "F18", "F19", "F20", "C01", "C04", "C05", "C06", "C07", "C13"].includes(id))) add("engine", "rightkit", ["cargo", "check", "--manifest-path", join(membraneRoot, "engine", "Cargo.toml"), "--workspace", "--all-targets"], root);
+  if (ids.some((id) => ["F03", "F04", "F11", "C02", "C04", "C05", "C06", "C07"].includes(id))) add("blueprint", "pnpm", ["--dir", join(membraneRoot, "blueprint"), "test:all"], root);
+  if (ids.some((id) => ["F05", "F12", "C14"].includes(id))) add("adapt", join(root, ".venv-tools", "bin", "python"), ["-m", "pytest", join(membraneRoot, "adapt")], root);
   return suites;
 }
 
@@ -290,8 +285,8 @@ if (phase === "baseline") {
   }).map(([name]) => name);
   const generationMatch = evidence.mac?.identity?.release_generation
     && evidence.mac.identity.release_generation === evidence.windows?.identity?.release_generation;
-  const sourceCommitMatch = evidence.mac?.identity?.crypt_source_commit
-    && evidence.mac.identity.crypt_source_commit === evidence.windows?.identity?.crypt_source_commit;
+  const sourceCommitMatch = evidence.mac?.identity?.cortex_source_commit
+    && evidence.mac.identity.cortex_source_commit === evidence.windows?.identity?.cortex_source_commit;
   const passed = invalid.length === 0 && generationMatch && sourceCommitMatch;
   result = {
     ...base,

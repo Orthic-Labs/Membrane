@@ -217,7 +217,7 @@ async fn query_table(
             {
                 candidates.push(Candidate {
                     id: row.id,
-                    cosine: crypt_core::cosine(&row.embedding, &query.embedding),
+                    cosine: cortex_core::cosine(&row.embedding, &query.embedding),
                     content_hash: hex(&row.content_hash),
                 });
             }

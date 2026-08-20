@@ -242,7 +242,7 @@ function digest(value) {
  *              so it can never disagree with the byte count.
  *   - sha256 : hex digest of the exact UTF-8 bytes.
  *
- * The Rust mirror `crypt_store::context_telemetry::canonical_delivery_metrics`
+ * The Rust mirror `cortex_store::context_telemetry::canonical_delivery_metrics`
  * implements the identical conventions and is pinned to the same fixture.
  */
 function canonicalDeliveryMetrics(text) {

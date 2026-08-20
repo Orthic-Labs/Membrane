@@ -1,9 +1,9 @@
-//! Crypt CLI — serve the memory contract, or migrate a markdown corpus into the engine.
+//! Cortex CLI — serve the memory contract, or migrate a markdown corpus into the engine.
 //! Real BGE embeddings need `--features fastembed` + `$ORT_DYLIB_PATH`.
 
 use clap::{Parser, Subcommand};
-use crypt::scope::{normalize_scope, path_to_scope};
-use crypt::{CheckpointV1, MemDb, MemoryStore};
+use cortex::scope::{normalize_scope, path_to_scope};
+use cortex::{CheckpointV1, MemDb, MemoryStore};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -58,7 +58,7 @@ fn home() -> PathBuf {
 
 /// Resolve the WORKSPACE root (where `tools/skills` lives) for `skill-read`, independent of the
 /// current repo: explicit `--root`, else `$WORKSPACE_ROOT`, else derived from the deployed binary
-/// location `<workspace>/tools/bin/crypt.exe`. Falls back to cwd.
+/// location `<workspace>/tools/bin/cortex.exe`. Falls back to cwd.
 fn skill_workspace_root(root: Option<String>) -> PathBuf {
     if let Some(r) = root.filter(|r| !r.trim().is_empty()) {
         return PathBuf::from(r);
@@ -67,7 +67,7 @@ fn skill_workspace_root(root: Option<String>) -> PathBuf {
         return PathBuf::from(r);
     }
     if let Ok(exe) = std::env::current_exe() {
-        // <workspace>/tools/bin/crypt.exe -> up 3 = <workspace>
+        // <workspace>/tools/bin/cortex.exe -> up 3 = <workspace>
         if let Some(ws) = exe
             .parent()
             .and_then(|p| p.parent())
@@ -82,7 +82,7 @@ fn skill_workspace_root(root: Option<String>) -> PathBuf {
 }
 
 fn skill_event_client() -> &'static str {
-    match std::env::var("CRYPT_CLIENT")
+    match std::env::var("CORTEX_CLIENT")
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase()
@@ -100,13 +100,13 @@ fn skill_event_client() -> &'static str {
 /// Best-effort, content-free evidence that a skill body was actually returned. Catalog display and
 /// metadata verification do not call this function; only successful disk/engine body reads do.
 fn emit_skill_resolved(ws: &Path, name: &str, body_hash: &str, source: &str, bytes: usize) {
-    let target = std::env::var_os("RIGHTCONTEXT_SKILL_EVENT_PATH")
+    let target = std::env::var_os("MEMBRANE_SKILL_EVENT_PATH")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| ws.join("tools/.cache/metrics/rightcontext-skill-events.jsonl"));
+        .unwrap_or_else(|| ws.join("tools/.cache/metrics/membrane-skill-events.jsonl"));
     let row = serde_json::json!({
         "schema_version": 1,
-        "ts": crypt::time::now_iso(),
+        "ts": cortex::time::now_iso(),
         "event": "skill_resolved",
         "skill_id": format!("skills:{name}"),
         "resource_class": "skill_md",
@@ -165,7 +165,7 @@ fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
     // machine that has it). The engine `skills` table is the PORTABILITY store — it travels with
     // the DB, so a session/machine WITHOUT the skills directory (no checkout, no symlink) still
     // loads skills. This ordering has no staleness window: authoring edits are picked up
-    // immediately where the files exist; the engine row (refreshed by `crypt reindex`) serves
+    // immediately where the files exist; the engine row (refreshed by `cortex reindex`) serves
     // everywhere else.
     let ws = skill_workspace_root(root);
     let skills_dir = ws.join("tools/skills");
@@ -189,7 +189,7 @@ fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
         return Ok(());
     }
     // No disk copy — serve from the engine store.
-    if let Ok(db) = resolve_db(None, std::env::var("CRYPT_DB").ok(), None) {
+    if let Ok(db) = resolve_db(None, std::env::var("CORTEX_DB").ok(), None) {
         if let Ok(memdb) = crate::MemDb::open(&db) {
             if let Ok(store) = MemoryStore::try_open(memdb) {
                 if let Some((body, _stored_sha)) = store.skill_from_db(&name) {
@@ -207,12 +207,12 @@ fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
     }
     Err(format!(
         "skill-read {name}: not on disk under {skills_dir:?} and not in the engine store \
-         (run `crypt reindex` on the authoring machine to ingest skills)"
+         (run `cortex reindex` on the authoring machine to ingest skills)"
     ))
 }
 
-/// FAIL-LOUD DB resolution (2026-07-05): `--db` flag, else `CRYPT_DB`, else an error with the
-/// exact fix. The old implicit `~/.crypt/memory.db` fallback silently forked the corpus — a
+/// FAIL-LOUD DB resolution (2026-07-05): `--db` flag, else `CORTEX_DB`, else an error with the
+/// exact fix. The old implicit `~/.cortex/memory.db` fallback silently forked the corpus — a
 /// bare CLI call talked to a stale ghost DB while serve wrote the canonical one (`metrics`
 /// reported 0 recalls against 774 real). Same treatment as the embedder's fail-loud precedent.
 fn resolve_db(
@@ -223,9 +223,9 @@ fn resolve_db(
     flag.or(env)
         .or_else(|| deployed.map(|path| path.to_string_lossy().into_owned()))
         .ok_or_else(|| {
-            "no database specified: set CRYPT_DB or pass --db. \
-         (workspace canonical: <WORKSPACE_ROOT>/tools/.cache/memory/crypt-engine.db; \
-         the implicit ~/.crypt/memory.db fallback was removed 2026-07-05 — it silently \
+            "no database specified: set CORTEX_DB or pass --db. \
+         (workspace canonical: <WORKSPACE_ROOT>/tools/.cache/memory/cortex-engine.db; \
+         the implicit ~/.cortex/memory.db fallback was removed 2026-07-05 — it silently \
          forked the corpus)"
                 .to_string()
         })
@@ -261,7 +261,7 @@ fn deployed_runtime_from_exe(exe: &Path) -> Option<DeployedRuntime> {
     let config: RuntimeConfig =
         serde_json::from_slice(&std::fs::read(tools.join("lib/memory/runtime.json")).ok()?).ok()?;
     if config.schema_version != 1
-        || config.service_id != "crypt-local-v1"
+        || config.service_id != "cortex-local-v1"
         || config.host != "127.0.0.1"
         || config.port < 1024
     {
@@ -276,7 +276,7 @@ fn deployed_runtime_from_exe(exe: &Path) -> Option<DeployedRuntime> {
     };
     Some(DeployedRuntime {
         port: config.port,
-        db: tools.join(".cache/memory/crypt-engine.db"),
+        db: tools.join(".cache/memory/cortex-engine.db"),
         token_file: tools.join(".cache/memory/api-token"),
         ort: bin.join(ort_name),
         hf_home: tools.join(".cache/fastembed"),
@@ -299,19 +299,17 @@ fn apply_deployed_runtime_defaults(runtime: &DeployedRuntime) {
 fn resolve_service_port(
     explicit: Option<u16>,
     canonical_env: Option<&str>,
-    compatibility_env: Option<&str>,
     deployed: Option<u16>,
 ) -> u16 {
     explicit
         .or_else(|| canonical_env.and_then(|port| port.parse().ok()))
-        .or_else(|| compatibility_env.and_then(|port| port.parse().ok()))
         .or(deployed)
         .unwrap_or(47851)
 }
 
 #[derive(Parser)]
 #[command(
-    name = "crypt",
+    name = "cortex",
     version,
     about = "Productizable memory engine (SQLite + quantized vectors + tiers)"
 )]
@@ -535,7 +533,7 @@ enum Cmd {
         apply: bool,
     },
     /// Fetch a memory's FULL content by id and record the fetch as a use — the effectiveness
-    /// signal behind the injected previews (`full: crypt get <id>`).
+    /// signal behind the injected previews (`full: cortex get <id>`).
     Get { id: String },
     /// Record per-candidate recall feedback (the feedback rail). `--outcome`
     /// used|ignored|contradicted; `--source` observed_action|cited_verdict|advisory (default
@@ -655,9 +653,9 @@ enum Cmd {
     /// Export the whole store as a canonical-scoped markdown tree (audit + sync medium).
     /// The DB stays authoritative; these files are generated FROM it.
     ExportMd { dir: String },
-    /// Export the whole store to `crypt-export/` unless another directory is supplied.
+    /// Export the whole store to `cortex-export/` unless another directory is supplied.
     Export {
-        #[arg(default_value = "crypt-export")]
+        #[arg(default_value = "cortex-export")]
         dir: PathBuf,
     },
     /// Export a deterministic review queue; content is omitted unless explicitly requested.
@@ -669,9 +667,9 @@ enum Cmd {
         #[arg(long)]
         include_content: bool,
     },
-    /// Import a canonical Crypt Markdown export from `crypt-export/` by default.
+    /// Import a canonical Cortex Markdown export from `cortex-export/` by default.
     Import {
-        #[arg(default_value = "crypt-export")]
+        #[arg(default_value = "cortex-export")]
         dir: PathBuf,
     },
     /// Report token savings: recall (full-corpus vs injected chars) + per-verb transform savings
@@ -698,7 +696,7 @@ enum Cmd {
     },
     /// Execute a command via a platform shell, print head/tail-capped output, and preserve exit code.
     ///
-    /// Usage: `crypt runc --head 20 --tail 20 -- <cmd...>`
+    /// Usage: `cortex runc --head 20 --tail 20 -- <cmd...>`
     Runc {
         #[arg(long, default_value_t = 20)]
         head: usize,
@@ -725,7 +723,7 @@ enum Cmd {
     /// pure-in-process admission, emits a bounded ContextPacket v1 plus a
     /// content-free ContextReceipt v2 per candidate. No DB or repo access.
     ///
-    /// Usage: `crypt plan-context --candidate-set <path> --max-tokens <n>`
+    /// Usage: `cortex plan-context --candidate-set <path> --max-tokens <n>`
     PlanContext {
         #[arg(long)]
         candidate_set: PathBuf,
@@ -744,7 +742,7 @@ enum Cmd {
     /// Membrane federation gateway entry. The SOLE owner of provider
     /// fan-out + admission. Reads task, repository root, client/session
     /// identity, token budget, explicit anchors, and an optional ScopeGrant
-    /// reference; runs all providers (Blueprint, Audit, Architect, Crypt,
+    /// reference; runs all providers (Blueprint, Audit, Architect, Cortex,
     /// Git, live files, rules, anchors) in parallel; emits a content-free
     /// ContextPacket v1 plus per-candidate ContextReceipt v2 envelopes.
     ///
@@ -756,7 +754,7 @@ enum Cmd {
     /// in-process admission on the assembled CCS, and prints the final
     /// envelope to stdout.
     ///
-    /// Usage: `crypt federate --task T --repo R --max-tokens N --client C
+    /// Usage: `cortex federate --task T --repo R --max-tokens N --client C
     ///                   --session S [--anchors a,b] [--scope-grant-id G]
     ///                   [--federation-script <path>]`
     Federate {
@@ -788,13 +786,13 @@ enum Cmd {
         #[arg(long, value_delimiter = ',')]
         accepted_receipt_versions: Vec<u32>,
     },
-    /// Membrane Crypt durable-memory candidate provider. Pure in-process
+    /// Membrane Cortex durable-memory candidate provider. Pure in-process
     /// read of eligible MemoryEntry rows normalised into ContextCandidateSet
     /// v1 records (Layer 7, sourceKind "memory", trustClass "agent_verified").
     /// The federation gateway calls this as a subprocess; clients never call
-    /// it directly. Use `crypt federate` for the public path.
+    /// it directly. Use `cortex federate` for the public path.
     ///
-    /// Usage: `crypt memory-candidates --task T --repo R --scope <root>
+    /// Usage: `cortex memory-candidates --task T --repo R --scope <root>
     ///                  [--max-candidates N] [--scope-grant-id G]`
     MemoryCandidates {
         #[arg(long)]
@@ -1129,7 +1127,7 @@ fn storage_hygiene_report(db_path: &str) -> Result<serde_json::Value, String> {
         };
     }
     Ok(
-        serde_json::json!({"schema":"crypt.hygiene-storage.v1","configured_path":main,"configured_binding_evidence":"explicit --db, CRYPT_DB, or deployed runtime binding","classification_enum":["active","recoverable","stale","orphan_candidate","quarantined"],"classification_availability":{"quarantined":{"status":"unavailable","code":"quarantine_receipt_unavailable"}},"read_only":true,"files":files,"sqlite":probe,"process_open_handle_evidence":process_evidence}),
+        serde_json::json!({"schema":"cortex.hygiene-storage.v1","configured_path":main,"configured_binding_evidence":"explicit --db, CORTEX_DB, or deployed runtime binding","classification_enum":["active","recoverable","stale","orphan_candidate","quarantined"],"classification_availability":{"quarantined":{"status":"unavailable","code":"quarantine_receipt_unavailable"}},"read_only":true,"files":files,"sqlite":probe,"process_open_handle_evidence":process_evidence}),
     )
 }
 
@@ -1415,20 +1413,20 @@ fn import_markdown_tree(store: &MemoryStore, dir: &Path) -> Result<usize, String
             .rsplit('/')
             .next()
             .ok_or_else(|| "import id invalid".to_string())?;
-        store.try_put(name, &content, &scope, crypt_core::MemoryTier::Semantic)?;
+        store.try_put(name, &content, &scope, cortex_core::MemoryTier::Semantic)?;
         imported += 1;
     }
     Ok(imported)
 }
 
-fn cli_event_context() -> crypt::store::MemoryEventContext {
-    crypt::store::MemoryEventContext::from_environment("cli")
+fn cli_event_context() -> cortex::store::MemoryEventContext {
+    cortex::store::MemoryEventContext::from_environment("cli")
 }
 
 fn put_event_context(
     session: Option<&str>,
     trace: Option<&str>,
-) -> crypt::store::MemoryEventContext {
+) -> cortex::store::MemoryEventContext {
     let mut context = cli_event_context();
     if let Some(session) = session {
         context = context.with_session(session);
@@ -1481,23 +1479,23 @@ fn trust_scan_content(content: &str) -> Option<&'static str> {
 fn resolve_doc_read_path(
     root: &Path,
     relative: &str,
-) -> Result<PathBuf, crypt::outline::DocReadError> {
+) -> Result<PathBuf, cortex::outline::DocReadError> {
     let relative = Path::new(relative);
     if relative
         .components()
         .any(|component| !matches!(component, std::path::Component::Normal(_)))
     {
-        return Err(crypt::outline::DocReadError::Deny);
+        return Err(cortex::outline::DocReadError::Deny);
     }
     let root = root
         .canonicalize()
-        .map_err(|_| crypt::outline::DocReadError::Deny)?;
+        .map_err(|_| cortex::outline::DocReadError::Deny)?;
     let path = root.join(relative);
     let path = path
         .canonicalize()
-        .map_err(|_| crypt::outline::DocReadError::SourceMissing)?;
+        .map_err(|_| cortex::outline::DocReadError::SourceMissing)?;
     if !path.starts_with(&root) {
-        return Err(crypt::outline::DocReadError::Deny);
+        return Err(cortex::outline::DocReadError::Deny);
     }
     Ok(path)
 }
@@ -1526,9 +1524,9 @@ fn quarantine_untrusted_put(db: &str, memory_id: &str, scope: &str, content: &st
 #[allow(clippy::too_many_arguments)]
 fn record_cli_external(
     store: &MemoryStore,
-    context: &crypt::store::MemoryEventContext,
+    context: &cortex::store::MemoryEventContext,
     operation: &str,
-    stage: crypt::store::ExternalLifecycleStage,
+    stage: cortex::store::ExternalLifecycleStage,
     status: &str,
     reason_code: &str,
     memory_id: Option<&str>,
@@ -1554,25 +1552,25 @@ fn record_cli_external(
 fn store_failure_stage(
     error: &str,
 ) -> (
-    crypt::store::ExternalLifecycleStage,
+    cortex::store::ExternalLifecycleStage,
     &'static str,
     &'static str,
 ) {
     if error.contains("attribution") {
         (
-            crypt::store::ExternalLifecycleStage::Validation,
+            cortex::store::ExternalLifecycleStage::Validation,
             "failed",
             "invalid_attribution",
         )
     } else if error.contains("embed") || error.contains("writes disabled") {
         (
-            crypt::store::ExternalLifecycleStage::Embedding,
+            cortex::store::ExternalLifecycleStage::Embedding,
             "unavailable",
             "embedding_unavailable",
         )
     } else {
         (
-            crypt::store::ExternalLifecycleStage::Commit,
+            cortex::store::ExternalLifecycleStage::Commit,
             "failed",
             "commit_failed",
         )
@@ -1588,30 +1586,30 @@ fn get_failure_shape(error: &str) -> (&'static str, &'static str, usize) {
 }
 
 fn service_api_token() -> Result<Option<String>, String> {
-    if let Some(raw) = std::env::var_os("CRYPT_API_TOKEN") {
+    if let Some(raw) = std::env::var_os("CORTEX_API_TOKEN") {
         let token = raw.to_string_lossy().trim().to_string();
         if token.is_empty() {
-            return Err("CRYPT_API_TOKEN is set but empty".to_string());
+            return Err("CORTEX_API_TOKEN is set but empty".to_string());
         }
         if token.contains(['\r', '\n']) {
-            return Err("CRYPT_API_TOKEN contains a newline".to_string());
+            return Err("CORTEX_API_TOKEN contains a newline".to_string());
         }
         return Ok(Some(token));
     }
     let deployed = current_deployed_runtime();
-    if let Some(path) = std::env::var_os("CRYPT_API_TOKEN_FILE")
+    if let Some(path) = std::env::var_os("CORTEX_API_TOKEN_FILE")
         .map(PathBuf::from)
         .or_else(|| deployed.map(|runtime| runtime.token_file))
     {
         let token = std::fs::read_to_string(&path)
-            .map_err(|error| format!("read CRYPT_API_TOKEN_FILE {}: {error}", path.display()))?
+            .map_err(|error| format!("read CORTEX_API_TOKEN_FILE {}: {error}", path.display()))?
             .trim()
             .to_string();
         if token.is_empty() {
-            return Err(format!("CRYPT_API_TOKEN_FILE {} is empty", path.display()));
+            return Err(format!("CORTEX_API_TOKEN_FILE {} is empty", path.display()));
         }
         if token.contains(['\r', '\n']) {
-            return Err("CRYPT_API_TOKEN_FILE contains a newline".to_string());
+            return Err("CORTEX_API_TOKEN_FILE contains a newline".to_string());
         }
         return Ok(Some(token));
     }
@@ -1687,7 +1685,7 @@ fn pending_put_directory(db: &str) -> PathBuf {
     Path::new(db)
         .parent()
         .unwrap_or_else(|| Path::new("."))
-        .join(".crypt-pending-put")
+        .join(".cortex-pending-put")
 }
 
 fn pending_put_path(db: &str, digest: &str) -> PathBuf {
@@ -1724,7 +1722,7 @@ fn auth_principal_digest(api_token: Option<&str>) -> String {
 
     let principal = api_token.unwrap_or("loopback-without-api-token").as_bytes();
     let mut hasher = Sha256::new();
-    hasher.update(b"crypt-cli-auth-principal-v1");
+    hasher.update(b"cortex-cli-auth-principal-v1");
     hasher.update((principal.len() as u64).to_be_bytes());
     hasher.update(principal);
     format!("{:x}", hasher.finalize())
@@ -2528,13 +2526,11 @@ fn try_service_post_with_idempotency_key(
 }
 
 fn current_service_port() -> u16 {
-    let canonical_port = std::env::var("CRYPT_PORT").ok();
-    let compatibility_port = std::env::var("WORKSPACE_MEMORY_PORT").ok();
+    let canonical_port = std::env::var("CORTEX_PORT").ok();
     let deployed = current_deployed_runtime();
     resolve_service_port(
         None,
         canonical_port.as_deref(),
-        compatibility_port.as_deref(),
         deployed.as_ref().map(|runtime| runtime.port),
     )
 }
@@ -2711,7 +2707,7 @@ fn log_transform_best_effort(
             .ok()
             .map(|p| path_to_scope(&p.to_string_lossy()));
         let context = cli_event_context();
-        let attribution = crypt::store::operation_attribution_for_store(Some(Path::new(db)));
+        let attribution = cortex::store::operation_attribution_for_store(Some(Path::new(db)));
         if let (Ok(attribution), Some(session_id), Some(turn_id), Some(trace_id)) = (
             attribution,
             context.session_id.as_deref(),
@@ -2721,7 +2717,7 @@ fn log_transform_best_effort(
             if let Some(opportunity_uid) = opportunity {
                 if mem
                     .log_transform_for_opportunity(
-                        &crypt::time::now_iso(),
+                        &cortex::time::now_iso(),
                         verb,
                         scope.as_deref(),
                         before,
@@ -2735,7 +2731,7 @@ fn log_transform_best_effort(
                 }
             }
             mem.log_transform_with_identity(
-                &crypt::time::now_iso(),
+                &cortex::time::now_iso(),
                 verb,
                 scope.as_deref(),
                 before,
@@ -2789,9 +2785,9 @@ fn record_transform_opportunity(
         }
     }
     let mem = MemDb::open(db).map_err(|error| error.to_string())?;
-    let attribution = crypt::store::operation_attribution_for_store(Some(Path::new(db)))?;
+    let attribution = cortex::store::operation_attribution_for_store(Some(Path::new(db)))?;
     mem.log_transform_opportunity(
-        &crypt::time::now_iso(),
+        &cortex::time::now_iso(),
         opportunity_uid,
         verb,
         source,
@@ -2841,10 +2837,10 @@ fn collect_md(dir: &Path, out: &mut Vec<PathBuf>) {
 fn build_info() -> serde_json::Value {
     serde_json::json!({
         "product_version": env!("CARGO_PKG_VERSION"),
-        "crypt_source_commit": option_env!("CRYPT_SOURCE_COMMIT").unwrap_or("unknown"),
-        "source_tree_sha256": option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown"),
-        "release_generation": crypt::release_identity::release_generation(),
-        "target": crypt::release_identity::target_triple(),
+        "cortex_source_commit": option_env!("CORTEX_SOURCE_COMMIT").unwrap_or("unknown"),
+        "source_tree_sha256": option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown"),
+        "release_generation": cortex::release_identity::release_generation(),
+        "target": cortex::release_identity::target_triple(),
     })
 }
 
@@ -2861,11 +2857,11 @@ fn command_requires_db(command: &Cmd) -> bool {
 
 fn run_installation(command: &InstallationCmd) -> Result<(), String> {
     let workspace_root = skill_workspace_root(None);
-    let paths = crypt::installation_identity::InstallationPaths::for_workspace(&workspace_root);
+    let paths = cortex::installation_identity::InstallationPaths::for_workspace(&workspace_root);
     match command {
         InstallationCmd::Rotate { reason } => {
             let identity =
-                crypt::installation_identity::rotate_installation(&paths.identity, reason)
+                cortex::installation_identity::rotate_installation(&paths.identity, reason)
                     .map_err(|error| error.to_string())?;
             println!(
                 "{}",
@@ -2935,7 +2931,7 @@ fn replay_queries<R: Read>(
                 return Err(format!("replay line {} has empty row_id/query", index + 1));
             }
             let scope = normalize_scope(&row.scope);
-            let chain = crypt::scope_chain(&scope, &scopes);
+            let chain = cortex::scope_chain(&scope, &scopes);
             let ranked_ids = store
                 .recall_scored(&row.query, k, &chain)
                 .into_iter()
@@ -2980,7 +2976,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 let source_ref =
                     format!("doc://repo/worktree/{}", relative.trim_start_matches('/'));
                 let outline =
-                    crypt::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
+                    cortex::outline::build_outline(&source_ref, &markdown, "comrak-0.54.0");
                 if !json {
                     return Err("doc outline requires --json".to_owned());
                 }
@@ -2996,12 +2992,12 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 expected_hash,
                 continuation_cursor,
             } => {
-                let relative = match crypt::identifier::WorktreeDocRef::parse(source_ref) {
+                let relative = match cortex::identifier::WorktreeDocRef::parse(source_ref) {
                     Ok(reference) => reference.relative_path(),
                     Err(_) => {
                         println!(
                             "{}",
-                            serde_json::json!({"error":crypt::outline::DocReadError::Deny.as_str()})
+                            serde_json::json!({"error":cortex::outline::DocReadError::Deny.as_str()})
                         );
                         return Ok(());
                     }
@@ -3022,12 +3018,12 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     Err(_) => {
                         println!(
                             "{}",
-                            serde_json::json!({"error":crypt::outline::DocReadError::SourceMissing.as_str()})
+                            serde_json::json!({"error":cortex::outline::DocReadError::SourceMissing.as_str()})
                         );
                         return Ok(());
                     }
                 };
-                match crypt::outline::read_section_with_cursor(
+                match cortex::outline::read_section_with_cursor(
                     source_ref,
                     &markdown,
                     anchor,
@@ -3056,7 +3052,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 packet_char_budget,
                 packet_char_budget_model,
                 accepted_receipt_versions,
-            } => crypt::plan_context::run(
+            } => cortex::plan_context::run(
                 candidate_set,
                 max_tokens,
                 packet_char_budget,
@@ -3076,7 +3072,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 scope_grant_id,
                 federation_script,
                 accepted_receipt_versions,
-            } => crypt::federation::run_federate(
+            } => cortex::federation::run_federate(
                 task,
                 repo,
                 max_tokens,
@@ -3096,7 +3092,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 scope,
                 max_candidates,
                 scope_grant_id,
-            } => crypt::federation::run_memory_candidates(
+            } => cortex::federation::run_memory_candidates(
                 task,
                 repo,
                 scope,
@@ -3113,7 +3109,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
     }
     let db = resolve_db(
         cli.db,
-        std::env::var("CRYPT_DB").ok(),
+        std::env::var("CORTEX_DB").ok(),
         deployed.as_ref().map(|runtime| runtime.db.as_path()),
     )?;
     match cli.cmd {
@@ -3122,7 +3118,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         }
         Cmd::Checkpoint { command } => {
             let store = MemoryStore::open(MemDb::open(&db).map_err(|error| error.to_string())?);
-            let now_ms = || crypt::time::now_millis() as i64;
+            let now_ms = || cortex::time::now_millis() as i64;
             match command {
                 CheckpointCmd::Save { input } => {
                     let body = match input {
@@ -3159,7 +3155,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         "{}",
                         serde_json::json!({
                             "checkpoint": checkpoint,
-                            "source_resolutions": crypt::checkpoint::resolve_source_refs(&checkpoint, &root),
+                            "source_resolutions": cortex::checkpoint::resolve_source_refs(&checkpoint, &root),
                         })
                     );
                 }
@@ -3197,7 +3193,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             }
         }
         Cmd::DocsSync { repo } => {
-            let report = crypt::doc_spine::sync(
+            let report = cortex::doc_spine::sync(
                 &MemDb::open(&db).map_err(|error| error.to_string())?,
                 &repo,
             )?;
@@ -3207,7 +3203,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             );
         }
         Cmd::BackoutSchemaV10 => {
-            let restored = crypt::memdb::backout_v10_to_v9(&db).map_err(|e| e.to_string())?;
+            let restored = cortex::memdb::backout_v10_to_v9(&db).map_err(|e| e.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version": 9, "restored": restored})
@@ -3223,9 +3219,9 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             let allowed_external_refs =
                 external_refs.iter().map(String::as_str).collect::<Vec<_>>();
             let report =
-                crypt::doctor::run_with_policy(&db, &suppressed_codes, &allowed_external_refs)?;
+                cortex::doctor::run_with_policy(&db, &suppressed_codes, &allowed_external_refs)?;
             if let Some(bundle) = bundle {
-                crypt::diagnostic_bundle::write(&bundle, Path::new(&db), &report)?;
+                cortex::diagnostic_bundle::write(&bundle, Path::new(&db), &report)?;
             }
             if json {
                 println!(
@@ -3274,21 +3270,21 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
         },
         Cmd::Explain { id } => println!("{}", explain_memory(&db, &id)?),
         Cmd::BackoutSchemaV11 => {
-            let restored = crypt::memdb::backout_v11_to_v10(&db).map_err(|e| e.to_string())?;
+            let restored = cortex::memdb::backout_v11_to_v10(&db).map_err(|e| e.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version": 10, "restored": restored})
             );
         }
         Cmd::BackoutSchemaV20 => {
-            crypt::memdb::backout_v20_to_v19(&db).map_err(|error| error.to_string())?;
+            cortex::memdb::backout_v20_to_v19(&db).map_err(|error| error.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version": 19, "backed_out": true})
             );
         }
         Cmd::BackoutSchemaV23 => {
-            crypt::memdb::backout_v23_to_v22(&db).map_err(|error| error.to_string())?;
+            cortex::memdb::backout_v23_to_v22(&db).map_err(|error| error.to_string())?;
             println!(
                 "{}",
                 serde_json::json!({"schema_version":22,"backed_out":true})
@@ -3300,7 +3296,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     .map_err(|error| error.to_string())?
                     .isolate_smoke_recalls(SMOKE_ISOLATION_EXPECTED, true)?
             } else {
-                crypt::memdb::inspect_smoke_recalls(&db, SMOKE_ISOLATION_EXPECTED)?
+                cortex::memdb::inspect_smoke_recalls(&db, SMOKE_ISOLATION_EXPECTED)?
             };
             println!(
                 "{}",
@@ -3308,21 +3304,19 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             );
         }
         Cmd::Serve { port } => {
-            let canonical_port = std::env::var("CRYPT_PORT").ok();
-            let compatibility_port = std::env::var("WORKSPACE_MEMORY_PORT").ok();
+            let canonical_port = std::env::var("CORTEX_PORT").ok();
             let port = resolve_service_port(
                 port,
                 canonical_port.as_deref(),
-                compatibility_port.as_deref(),
                 deployed.as_ref().map(|runtime| runtime.port),
             );
             let workspace_root = service_workspace_root(Path::new(&db));
             let (identity, claim) =
-                crypt::installation_identity::prepare_service_start(&workspace_root)
+                cortex::installation_identity::prepare_service_start(&workspace_root)
                     .map_err(|error| format!("prepare installation identity: {error}"))?;
-            std::env::set_var("CRYPT_INSTALLATION_ID", &identity.installation_id);
-            std::env::set_var("CRYPT_SERVICE_INSTANCE_ID", &claim.service_instance_id);
-            crypt::serve::run(&db, port, &identity, &claim)?;
+            std::env::set_var("CORTEX_INSTALLATION_ID", &identity.installation_id);
+            std::env::set_var("CORTEX_SERVICE_INSTANCE_ID", &claim.service_instance_id);
+            cortex::serve::run(&db, port, &identity, &claim)?;
         }
         Cmd::Migrate => {
             let store = open(&db)?;
@@ -3378,7 +3372,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             as_of_ms,
             include_expired,
         } => {
-            let document_hits = crypt::doc_spine::recall(
+            let document_hits = cortex::doc_spine::recall(
                 &MemDb::open(&db).map_err(|error| error.to_string())?,
                 &query,
                 k,
@@ -3398,13 +3392,13 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             let norm = scope.as_deref().map(normalize_scope);
             let chain = norm
                 .as_deref()
-                .map(|s| crypt::scope_chain(s, &store.scopes()))
+                .map(|s| cortex::scope_chain(s, &store.scopes()))
                 .unwrap_or_default();
             let hits = store.recall_scored_at(
                 &query,
                 k,
                 &chain,
-                as_of_ms.unwrap_or_else(|| crypt::time::now_millis() as i64),
+                as_of_ms.unwrap_or_else(|| cortex::time::now_millis() as i64),
                 include_expired,
             );
             if hits.is_empty()
@@ -3434,7 +3428,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             // source='cli' keeps human debugging out of the agent-effectiveness numbers.
             // NO record_injections: inject_count means "shown to an agent session".
             store.log_recall(
-                &crypt::time::now_iso(),
+                &cortex::time::now_iso(),
                 norm.as_deref(),
                 query.chars().count(),
                 hits.len(),
@@ -3487,7 +3481,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 }
             };
             let (out, meta) = if let Some(budget) = budget {
-                let result = crypt::skel::skeletonize_to_budget(&file, &src, budget);
+                let result = cortex::skel::skeletonize_to_budget(&file, &src, budget);
                 let meta = format!(
                     "status=ok;budget_tok={budget};output_tok={};budget_met={};level={}",
                     result.output_tokens, result.budget_met, result.level
@@ -3495,12 +3489,12 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 (result.text, meta)
             } else {
                 (
-                    crypt::skel::skeletonize(&file, &src),
+                    cortex::skel::skeletonize(&file, &src),
                     "status=ok".to_string(),
                 )
             };
             let drop_meta =
-                crypt::compress::drop_manifest_meta(&crypt::compress::drop_manifest(&src, &out));
+                cortex::compress::drop_manifest_meta(&cortex::compress::drop_manifest(&src, &out));
             let meta = format!("{meta};{drop_meta}");
             log_transform_best_effort(
                 &db,
@@ -3543,7 +3537,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             }
             let (out, meta) = if let Some(budget) = budget {
                 let result =
-                    crypt::compress::compress_to_budget_with_options(&input, budget, no_onnx);
+                    cortex::compress::compress_to_budget_with_options(&input, budget, no_onnx);
                 let meta = format!(
                     "status=ok;budget_tok={budget};output_tok={};protected_tok={};budget_met={}",
                     result.output_tokens, result.protected_tokens, result.budget_met
@@ -3551,12 +3545,13 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 (result.text, meta)
             } else {
                 (
-                    crypt::compress::compress_with_options(&input, rate, no_onnx),
+                    cortex::compress::compress_with_options(&input, rate, no_onnx),
                     "status=ok".to_string(),
                 )
             };
-            let drop_meta =
-                crypt::compress::drop_manifest_meta(&crypt::compress::drop_manifest(&input, &out));
+            let drop_meta = cortex::compress::drop_manifest_meta(&cortex::compress::drop_manifest(
+                &input, &out,
+            ));
             let meta = format!("{meta};{drop_meta}");
             log_transform_best_effort(
                 &db,
@@ -3576,8 +3571,8 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             min_bytes,
         } => {
             let manifest =
-                crypt::prep::prep_files_with_budget(&out_dir, &files, rate, min_bytes, budget);
-            for (verb, before, after, meta) in crypt::prep::transform_rows(&manifest) {
+                cortex::prep::prep_files_with_budget(&out_dir, &files, rate, min_bytes, budget);
+            for (verb, before, after, meta) in cortex::prep::transform_rows(&manifest) {
                 log_transform_best_effort(&db, &verb, before, after, meta, None);
             }
             println!(
@@ -3586,7 +3581,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             );
         }
         Cmd::Curate { today } => {
-            let today = today.unwrap_or_else(|| crypt::time::now_iso().chars().take(10).collect());
+            let today = today.unwrap_or_else(|| cortex::time::now_iso().chars().take(10).collect());
             let payload = serde_json::json!({ "today": today }).to_string();
             match try_service_post("/curate", &payload) {
                 Ok(Some(resp)) => {
@@ -3596,7 +3591,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 Ok(None) => {}
                 Err(e) => {
                     return Err(format!(
-                        "resident crypt service failed /curate; refusing direct DB fallback: {e}"
+                        "resident cortex service failed /curate; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -3604,7 +3599,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             let status = store.dream_now(&today)?;
             // curate rows repurpose before/after as consolidated/pruned counts (memdb schema note)
             store.log_transform(
-                &crypt::time::now_iso(),
+                &cortex::time::now_iso(),
                 "curate",
                 Some(
                     &serde_json::json!({
@@ -3639,7 +3634,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 Ok(None) => {}
                 Err(e) => {
                     return Err(format!(
-                        "resident crypt service failed /quarantine/list; refusing direct DB fallback: {e}"
+                        "resident cortex service failed /quarantine/list; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -3656,7 +3651,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 Ok(None) => {}
                 Err(e) => {
                     return Err(format!(
-                        "resident crypt service failed /quarantine/restore; refusing direct DB fallback: {e}"
+                        "resident cortex service failed /quarantine/restore; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -3670,12 +3665,12 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 Ok(Some(response)) => {
                     let value: serde_json::Value =
                         serde_json::from_str(&response).map_err(|error| {
-                            format!("resident crypt /get returned invalid JSON: {error}")
+                            format!("resident cortex /get returned invalid JSON: {error}")
                         })?;
                     let content = value
                         .get("content")
                         .and_then(|item| item.as_str())
-                        .ok_or_else(|| "resident crypt /get returned no content".to_string())?;
+                        .ok_or_else(|| "resident cortex /get returned no content".to_string())?;
                     if let Some(access_count) =
                         value.get("access_count").and_then(|item| item.as_u64())
                     {
@@ -3687,7 +3682,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 Ok(None) => {}
                 Err(error) => {
                     return Err(format!(
-                        "resident crypt service failed /get; refusing direct DB fallback: {error}"
+                        "resident cortex service failed /get; refusing direct DB fallback: {error}"
                     ));
                 }
             }
@@ -3704,7 +3699,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         &store,
                         &context,
                         "read",
-                        crypt::store::ExternalLifecycleStage::Provider,
+                        cortex::store::ExternalLifecycleStage::Provider,
                         status,
                         reason,
                         Some(&id),
@@ -3740,16 +3735,16 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    return Err(format!("resident crypt service failed /feedback: {e}"));
+                    return Err(format!("resident cortex service failed /feedback: {e}"));
                 }
             }
             let store = open(&db)?;
-            let rec = crypt::feedback::FeedbackRecord {
+            let rec = cortex::feedback::FeedbackRecord {
                 trace_id: trace,
                 candidate_id: candidate,
                 content_sha256: sha,
-                outcome: crypt::feedback::parse_outcome(&outcome)?,
-                source: crypt::feedback::parse_source(&source),
+                outcome: cortex::feedback::parse_outcome(&outcome)?,
+                source: cortex::feedback::parse_source(&source),
                 verdict_ref,
                 scope_id: scope,
             };
@@ -3775,7 +3770,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 Ok(None) => {}
                 Err(error) => {
                     return Err(format!(
-                        "resident crypt service failed /context/close-unknown: {error}"
+                        "resident cortex service failed /context/close-unknown: {error}"
                     ));
                 }
             }
@@ -3788,7 +3783,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             println!("{{\"ok\":true,\"closed\":{closed}}}");
         }
         Cmd::LearningRegister { input } => {
-            let request: crypt::store::LearningExperimentV1 =
+            let request: cortex::store::LearningExperimentV1 =
                 serde_json::from_slice(&std::fs::read(input).map_err(|e| e.to_string())?)
                     .map_err(|e| e.to_string())?;
             let store = open(&db)?;
@@ -3845,7 +3840,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             supersedes,
         } => {
             let context = put_event_context(session.as_deref(), trace.as_deref());
-            let memory_id = format!("{}/{}", crypt::scope::normalize_scope(&scope), name);
+            let memory_id = format!("{}/{}", cortex::scope::normalize_scope(&scope), name);
             let content = match file {
                 Some(p) => match std::fs::read_to_string(&p) {
                     Ok(content) => content,
@@ -3855,7 +3850,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                             &store,
                             &context,
                             "write",
-                            crypt::store::ExternalLifecycleStage::Validation,
+                            cortex::store::ExternalLifecycleStage::Validation,
                             "unavailable",
                             "input_unavailable",
                             Some(&memory_id),
@@ -3876,7 +3871,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                             &store,
                             &context,
                             "write",
-                            crypt::store::ExternalLifecycleStage::Validation,
+                            cortex::store::ExternalLifecycleStage::Validation,
                             "unavailable",
                             "input_unavailable",
                             Some(&memory_id),
@@ -3896,7 +3891,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     &store,
                     &context,
                     "write",
-                    crypt::store::ExternalLifecycleStage::Validation,
+                    cortex::store::ExternalLifecycleStage::Validation,
                     "failed",
                     "empty_content",
                     Some(&memory_id),
@@ -3914,7 +3909,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     &store,
                     &context,
                     "write",
-                    crypt::store::ExternalLifecycleStage::Validation,
+                    cortex::store::ExternalLifecycleStage::Validation,
                     "quarantined",
                     influence_class,
                     Some(&memory_id),
@@ -3927,7 +3922,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             }
             // Hand-typed scopes fork the corpus (the 2026-07-05 'heardright' mirror fork).
             // Refuse clearly invalid single-token scopes; allow proposed/global/cwd-slug/path.
-            if let Err(message) = crypt::scope::validate_write_scope(&scope) {
+            if let Err(message) = cortex::scope::validate_write_scope(&scope) {
                 return Err(message);
             }
             if !matches!(authority.as_str(), "A0" | "A1" | "A2" | "A3" | "A4" | "A5") {
@@ -3940,7 +3935,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             // DB write would be invisible to recall until restart. Route through it when up.
             let payload = serde_json::json!({
                 "name": name, "content": content.trim(), "scope": scope, "tier": tier,
-                "client": std::env::var("CRYPT_CLIENT").unwrap_or_else(|_| "cli".into()),
+                "client": std::env::var("CORTEX_CLIENT").unwrap_or_else(|_| "cli".into()),
                 "artifactFamily": artifact_family,
                 "producer": producer,
                 "recordType": record_type,
@@ -3965,12 +3960,12 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 }
                 Ok(IdempotentPutOutcome::DirectFallback(handle)) => {
                     let tier = match tier.as_str() {
-                        "working" => crypt_core::MemoryTier::Working,
-                        "episodic" => crypt_core::MemoryTier::Episodic,
-                        _ => crypt_core::MemoryTier::Semantic,
+                        "working" => cortex_core::MemoryTier::Working,
+                        "episodic" => cortex_core::MemoryTier::Episodic,
+                        _ => cortex_core::MemoryTier::Semantic,
                     };
                     let store = open(&db)?;
-                    let lifecycle = crypt::store::MemoryLifecycleInputV1 {
+                    let lifecycle = cortex::store::MemoryLifecycleInputV1 {
                         effective_from_ms,
                         effective_until_ms,
                         expires_at_ms,
@@ -4039,7 +4034,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                             &store,
                             &context,
                             "write",
-                            crypt::store::ExternalLifecycleStage::Embedding,
+                            cortex::store::ExternalLifecycleStage::Embedding,
                             status,
                             "resident_service_unavailable",
                             Some(&memory_id),
@@ -4050,7 +4045,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         )?;
                     }
                     return Err(format!(
-                        "resident crypt service failed /put; refusing direct DB fallback: {e}"
+                        "resident cortex service failed /put; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -4059,7 +4054,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             let context = cli_event_context();
             let payload = serde_json::json!({
                 "id": id,
-                "client": std::env::var("CRYPT_CLIENT").unwrap_or_else(|_| "cli".into()),
+                "client": std::env::var("CORTEX_CLIENT").unwrap_or_else(|_| "cli".into()),
             })
             .to_string();
             match try_service_post("/delete", &payload) {
@@ -4075,7 +4070,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                             &store,
                             &context,
                             "delete",
-                            crypt::store::ExternalLifecycleStage::Commit,
+                            cortex::store::ExternalLifecycleStage::Commit,
                             if e.contains("timeout") {
                                 "timeout"
                             } else {
@@ -4090,7 +4085,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         )?;
                     }
                     return Err(format!(
-                        "resident crypt service failed /delete; refusing direct DB fallback: {e}"
+                        "resident cortex service failed /delete; refusing direct DB fallback: {e}"
                     ));
                 }
             }
@@ -4102,7 +4097,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         &store,
                         &context,
                         "delete",
-                        crypt::store::ExternalLifecycleStage::Commit,
+                        cortex::store::ExternalLifecycleStage::Commit,
                         "empty",
                         "target_not_found",
                         Some(&id),
@@ -4118,7 +4113,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         &store,
                         &context,
                         "delete",
-                        crypt::store::ExternalLifecycleStage::Commit,
+                        cortex::store::ExternalLifecycleStage::Commit,
                         "failed",
                         "commit_failed",
                         Some(&id),
@@ -4142,7 +4137,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                         &store,
                         &context,
                         "read",
-                        crypt::store::ExternalLifecycleStage::Provider,
+                        cortex::store::ExternalLifecycleStage::Provider,
                         "failed",
                         "provider_failed",
                         None,
@@ -4158,7 +4153,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                 &store,
                 &context,
                 "read",
-                crypt::store::ExternalLifecycleStage::Provider,
+                cortex::store::ExternalLifecycleStage::Provider,
                 if rows.is_empty() { "empty" } else { "success" },
                 if rows.is_empty() {
                     "no_results"
@@ -4266,7 +4261,7 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
                     .join("runc")
             });
             let cmd_str = cmd.join(" ");
-            let res = match crypt::runc::run_capped(&cmd_str, head, tail, &dir) {
+            let res = match cortex::runc::run_capped(&cmd_str, head, tail, &dir) {
                 Ok(result) => result,
                 Err(error) => {
                     log_transform_best_effort(
@@ -4320,14 +4315,14 @@ fn run_main_with_argv(argv: Vec<String>) -> Result<(), String> {
             std::process::exit(res.exit_code);
         }
         Cmd::Expand { anchor, spill_dir } => {
-            let digest = crypt::identifier::AnchorRef::parse(&anchor)
+            let digest = cortex::identifier::AnchorRef::parse(&anchor)
                 .map_err(|error| match error {
-                    crypt::identifier::AnchorRefError::PrefixMismatch
-                    | crypt::identifier::AnchorRefError::CrossNamespace => {
+                    cortex::identifier::AnchorRefError::PrefixMismatch
+                    | cortex::identifier::AnchorRefError::CrossNamespace => {
                         "invalid anchor: expected mr://anchor/<sha256>"
                     }
-                    crypt::identifier::AnchorRefError::InvalidDigest
-                    | crypt::identifier::AnchorRefError::AliasCollision => "invalid anchor digest",
+                    cortex::identifier::AnchorRefError::InvalidDigest
+                    | cortex::identifier::AnchorRefError::AliasCollision => "invalid anchor digest",
                 })?
                 .digest();
             let root = spill_dir
@@ -4367,7 +4362,7 @@ mod tests {
 
     fn plan_context_cli_with_budget(value: &str) -> Result<super::Cli, clap::Error> {
         super::Cli::try_parse_from([
-            "crypt",
+            "cortex",
             "plan-context",
             "--candidate-set",
             "fixture.json",
@@ -4379,7 +4374,7 @@ mod tests {
     #[test]
     fn doc_outline_cli_requires_explicit_json() {
         let parsed = super::Cli::try_parse_from([
-            "crypt", "doc", "outline", "--repo", "C:/repo", "--path", "guide.md", "--json",
+            "cortex", "doc", "outline", "--repo", "C:/repo", "--path", "guide.md", "--json",
         ])
         .expect("doc outline arguments parse");
         assert!(matches!(
@@ -4393,7 +4388,7 @@ mod tests {
     #[test]
     fn transform_cli_accepts_token_budgets() {
         let compress =
-            super::Cli::try_parse_from(["crypt", "compress", "--budget", "128", "--no-onnx"])
+            super::Cli::try_parse_from(["cortex", "compress", "--budget", "128", "--no-onnx"])
                 .unwrap();
         assert!(matches!(
             compress.cmd,
@@ -4404,7 +4399,7 @@ mod tests {
             }
         ));
         let skel =
-            super::Cli::try_parse_from(["crypt", "skel", "--budget", "64", "src/lib.rs"]).unwrap();
+            super::Cli::try_parse_from(["cortex", "skel", "--budget", "64", "src/lib.rs"]).unwrap();
         assert!(matches!(
             skel.cmd,
             super::Cmd::Skel {
@@ -4416,7 +4411,7 @@ mod tests {
 
     #[test]
     fn hygiene_clean_is_explicitly_plan_only() {
-        let parsed = super::Cli::try_parse_from(["crypt", "hygiene", "clean", "--plan"])
+        let parsed = super::Cli::try_parse_from(["cortex", "hygiene", "clean", "--plan"])
             .expect("hygiene clean plan parses");
         assert!(matches!(
             parsed.cmd,
@@ -4424,7 +4419,7 @@ mod tests {
                 command: super::HygieneCmd::Clean { plan: true }
             }
         ));
-        let parsed = super::Cli::try_parse_from(["crypt", "hygiene", "clean"])
+        let parsed = super::Cli::try_parse_from(["cortex", "hygiene", "clean"])
             .expect("handler rejects mutation without plan");
         assert!(matches!(
             parsed.cmd,
@@ -4436,7 +4431,7 @@ mod tests {
 
     #[test]
     fn hygiene_storage_cli_parses() {
-        let parsed = super::Cli::try_parse_from(["crypt", "hygiene", "storage"])
+        let parsed = super::Cli::try_parse_from(["cortex", "hygiene", "storage"])
             .expect("hygiene storage parses");
         assert!(matches!(
             parsed.cmd,
@@ -4585,7 +4580,7 @@ mod tests {
     fn hygiene_audit_and_explain_are_content_free_and_not_age_based() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("hygiene.db");
-        let db = crypt::MemDb::open(&path).unwrap();
+        let db = cortex::MemDb::open(&path).unwrap();
         {
             let conn = db.lock();
             for id in ["global/old-preference", "global/duplicate"] {
@@ -4635,7 +4630,7 @@ mod tests {
     #[test]
     fn export_import_defaults_and_round_trip_content_scope() {
         let review = super::Cli::try_parse_from([
-            "crypt",
+            "cortex",
             "vault-export",
             "--output",
             "review.json",
@@ -4645,32 +4640,32 @@ mod tests {
         assert!(
             matches!(review.cmd, super::Cmd::VaultExport { ref output, ref format, include_content: true } if output == Path::new("review.json") && format == "json")
         );
-        let export = super::Cli::try_parse_from(["crypt", "export"]).unwrap();
+        let export = super::Cli::try_parse_from(["cortex", "export"]).unwrap();
         assert!(matches!(
             export.cmd,
-            super::Cmd::Export { ref dir } if dir == std::path::Path::new("crypt-export")
+            super::Cmd::Export { ref dir } if dir == std::path::Path::new("cortex-export")
         ));
-        let import = super::Cli::try_parse_from(["crypt", "import"]).unwrap();
+        let import = super::Cli::try_parse_from(["cortex", "import"]).unwrap();
         assert!(matches!(
             import.cmd,
-            super::Cmd::Import { ref dir } if dir == std::path::Path::new("crypt-export")
+            super::Cmd::Import { ref dir } if dir == std::path::Path::new("cortex-export")
         ));
 
         let temp = tempfile::tempdir().unwrap();
         let source =
-            crypt::MemoryStore::open(crypt::MemDb::open(temp.path().join("source.db")).unwrap());
+            cortex::MemoryStore::open(cortex::MemDb::open(temp.path().join("source.db")).unwrap());
         source
             .try_put(
                 "preference",
                 "keep exact content",
                 "scope-a",
-                crypt_core::MemoryTier::Semantic,
+                cortex_core::MemoryTier::Semantic,
             )
             .unwrap();
         let tree = temp.path().join("export");
         assert_eq!(source.export_md(&tree), 1);
         let target =
-            crypt::MemoryStore::open(crypt::MemDb::open(temp.path().join("target.db")).unwrap());
+            cortex::MemoryStore::open(cortex::MemDb::open(temp.path().join("target.db")).unwrap());
         assert_eq!(super::import_markdown_tree(&target, &tree).unwrap(), 1);
         assert_eq!(
             target.get_full("scope-a/preference").unwrap().0,
@@ -4680,7 +4675,7 @@ mod tests {
 
     fn federate_cli_with_budget(value: &str) -> Result<super::Cli, clap::Error> {
         super::Cli::try_parse_from([
-            "crypt",
+            "cortex",
             "federate",
             "--task",
             "test",
@@ -4694,7 +4689,7 @@ mod tests {
     #[test]
     fn put_cli_accepts_write_and_correlation_attribution() {
         let parsed = super::Cli::try_parse_from([
-            "crypt",
+            "cortex",
             "put",
             "fixture",
             "--artifact-family",
@@ -4762,7 +4757,7 @@ mod tests {
     #[test]
     fn put_event_context_applies_available_session_and_trace() {
         let actual = super::put_event_context(Some("session-opaque"), Some("tool-use-opaque"));
-        let expected = crypt::store::MemoryEventContext::new("cli")
+        let expected = cortex::store::MemoryEventContext::new("cli")
             .with_session("session-opaque")
             .with_trace("tool-use-opaque")
             .with_turn("tool-use-opaque");
@@ -4806,18 +4801,18 @@ mod tests {
 
     #[test]
     fn isolate_smoke_recalls_cli_is_dry_run_by_default_and_expected_count_is_not_overridable() {
-        let parsed = super::Cli::try_parse_from(["crypt", "isolate-smoke-recalls"]).unwrap();
+        let parsed = super::Cli::try_parse_from(["cortex", "isolate-smoke-recalls"]).unwrap();
         let super::Cmd::IsolateSmokeRecalls { apply } = parsed.cmd else {
             panic!("expected isolate-smoke-recalls command");
         };
         assert!(!apply);
 
         assert!(
-            super::Cli::try_parse_from(["crypt", "isolate-smoke-recalls", "--expected", "2"])
+            super::Cli::try_parse_from(["cortex", "isolate-smoke-recalls", "--expected", "2"])
                 .is_err()
         );
         let parsed =
-            super::Cli::try_parse_from(["crypt", "isolate-smoke-recalls", "--apply"]).unwrap();
+            super::Cli::try_parse_from(["cortex", "isolate-smoke-recalls", "--apply"]).unwrap();
         let super::Cmd::IsolateSmokeRecalls { apply } = parsed.cmd else {
             panic!("expected isolate-smoke-recalls command");
         };
@@ -4827,7 +4822,7 @@ mod tests {
     #[test]
     fn installation_rotate_cli_requires_explicit_clone_reason_and_no_database() {
         let parsed =
-            super::Cli::try_parse_from(["crypt", "installation", "rotate", "--reason", "clone"])
+            super::Cli::try_parse_from(["cortex", "installation", "rotate", "--reason", "clone"])
                 .unwrap();
         assert!(!super::command_requires_db(&parsed.cmd));
         let super::Cmd::Installation {
@@ -4837,7 +4832,7 @@ mod tests {
             panic!("expected installation rotate command");
         };
         assert_eq!(reason, "clone");
-        assert!(super::Cli::try_parse_from(["crypt", "installation", "rotate"]).is_err());
+        assert!(super::Cli::try_parse_from(["cortex", "installation", "rotate"]).is_err());
     }
 
     #[test]
@@ -4868,13 +4863,16 @@ mod tests {
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(
             config_dir.join("runtime.json"),
-            r#"{"schemaVersion":1,"serviceId":"crypt-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"cortex-local-v1","host":"127.0.0.1","port":47851}"#,
         )
         .unwrap();
 
-        let runtime = super::deployed_runtime_from_exe(&bin.join("crypt.exe")).unwrap();
+        let runtime = super::deployed_runtime_from_exe(&bin.join("cortex.exe")).unwrap();
         assert_eq!(runtime.port, 47851);
-        assert_eq!(runtime.db, root.join("tools/.cache/memory/crypt-engine.db"));
+        assert_eq!(
+            runtime.db,
+            root.join("tools/.cache/memory/cortex-engine.db")
+        );
         assert_eq!(
             runtime.token_file,
             root.join("tools/.cache/memory/api-token")
@@ -4892,12 +4890,12 @@ mod tests {
 
         for body in [
             r#"{"schemaVersion":1,"serviceId":"other-service","host":"127.0.0.1","port":47851}"#,
-            r#"{"schemaVersion":1,"serviceId":"crypt-local-v1","host":"0.0.0.0","port":47851}"#,
-            r#"{"schemaVersion":2,"serviceId":"crypt-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"cortex-local-v1","host":"0.0.0.0","port":47851}"#,
+            r#"{"schemaVersion":2,"serviceId":"cortex-local-v1","host":"127.0.0.1","port":47851}"#,
             "not-json",
         ] {
             std::fs::write(config_dir.join("runtime.json"), body).unwrap();
-            assert!(super::deployed_runtime_from_exe(&bin.join("crypt.exe")).is_none());
+            assert!(super::deployed_runtime_from_exe(&bin.join("cortex.exe")).is_none());
         }
     }
 
@@ -4917,33 +4915,30 @@ mod tests {
             "deployed.db"
         );
         assert_eq!(
-            super::resolve_service_port(Some(47860), Some("47859"), Some("47858"), Some(47851)),
+            super::resolve_service_port(Some(47860), Some("47859"), Some(47851)),
             47860
         );
         assert_eq!(
-            super::resolve_service_port(None, Some("47859"), Some("47858"), Some(47851)),
+            super::resolve_service_port(None, Some("47859"), Some(47851)),
             47859
         );
-        assert_eq!(
-            super::resolve_service_port(None, None, None, Some(47851)),
-            47851
-        );
+        assert_eq!(super::resolve_service_port(None, None, Some(47851)), 47851);
     }
 
     #[test]
     fn replay_queries_rank_real_snapshot_entries_without_logging() {
-        let store = crypt::MemoryStore::open(crypt::MemDb::open_in_memory());
+        let store = cortex::MemoryStore::open(cortex::MemDb::open_in_memory());
         store.put(
             "worker-deploy",
             "deploy the cloudflare worker safely",
             "D--Claude",
-            crypt_core::MemoryTier::Semantic,
+            cortex_core::MemoryTier::Semantic,
         );
         store.put(
             "unrelated",
             "write product copy for a knife",
             "D--Claude",
-            crypt_core::MemoryTier::Semantic,
+            cortex_core::MemoryTier::Semantic,
         );
         let input =
             r#"{"row_id":"review-001","query":"cloudflare worker deployment","scope":"D--Claude"}"#;
@@ -4957,13 +4952,13 @@ mod tests {
     fn build_info_exposes_source_commit_and_tree_identity_fields() {
         let info = super::build_info();
         assert_eq!(info["product_version"], env!("CARGO_PKG_VERSION"));
-        assert!(info.get("crypt_source_commit").is_some());
+        assert!(info.get("cortex_source_commit").is_some());
         assert!(info.get("source_tree_sha256").is_some());
         assert_eq!(
             info["release_generation"],
             format!(
                 "sha256:{}",
-                option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown")
             )
         );
     }
@@ -4972,7 +4967,7 @@ mod tests {
     fn build_info_exposes_the_native_release_target_triple() {
         let info = super::build_info();
 
-        assert_eq!(info["target"], crypt::release_identity::target_triple());
+        assert_eq!(info["target"], cortex::release_identity::target_triple());
         assert_ne!(info["target"], "unknown");
     }
 
@@ -4996,15 +4991,15 @@ mod tests {
 
     #[test]
     fn cli_lifecycle_helper_records_typed_empty_and_unavailable_terminals() {
-        let store = crypt::MemoryStore::open(crypt::MemDb::open_in_memory());
-        let context = crypt::store::MemoryEventContext::new("cli")
+        let store = cortex::MemoryStore::open(cortex::MemDb::open_in_memory());
+        let context = cortex::store::MemoryEventContext::new("cli")
             .with_session("background")
             .with_trace("unknown");
         super::record_cli_external(
             &store,
             &context,
             "read",
-            crypt::store::ExternalLifecycleStage::Provider,
+            cortex::store::ExternalLifecycleStage::Provider,
             "empty",
             "no_results",
             None,
@@ -5018,7 +5013,7 @@ mod tests {
             &store,
             &context,
             "write",
-            crypt::store::ExternalLifecycleStage::Embedding,
+            cortex::store::ExternalLifecycleStage::Embedding,
             "unavailable",
             "resident_service_unavailable",
             Some("global/item"),
@@ -5062,7 +5057,7 @@ mod tests {
         assert_eq!(
             super::store_failure_stage("memory write attribution is invalid"),
             (
-                crypt::store::ExternalLifecycleStage::Validation,
+                cortex::store::ExternalLifecycleStage::Validation,
                 "failed",
                 "invalid_attribution",
             )
@@ -5070,7 +5065,7 @@ mod tests {
         assert_eq!(
             super::store_failure_stage("configured embedder unavailable"),
             (
-                crypt::store::ExternalLifecycleStage::Embedding,
+                cortex::store::ExternalLifecycleStage::Embedding,
                 "unavailable",
                 "embedding_unavailable",
             )
@@ -5078,7 +5073,7 @@ mod tests {
         assert_eq!(
             super::store_failure_stage("memory commit failed"),
             (
-                crypt::store::ExternalLifecycleStage::Commit,
+                cortex::store::ExternalLifecycleStage::Commit,
                 "failed",
                 "commit_failed",
             )
@@ -5630,14 +5625,14 @@ mod tests {
     fn cross_process_lock_child_helper() {
         use std::io::{Read as _, Write as _};
 
-        let Some(directory) = std::env::var_os("CRYPT_TEST_LOCK_HELPER_DIR") else {
+        let Some(directory) = std::env::var_os("CORTEX_TEST_LOCK_HELPER_DIR") else {
             return;
         };
         let _lock =
             super::acquire_pending_lock(&std::path::PathBuf::from(directory), "cross-process")
                 .unwrap();
         let mut stdout = std::io::stdout().lock();
-        writeln!(stdout, "CRYPT_LOCK_READY").unwrap();
+        writeln!(stdout, "CORTEX_LOCK_READY").unwrap();
         stdout.flush().unwrap();
         drop(stdout);
         let mut release = [0_u8; 1];
@@ -5657,7 +5652,7 @@ mod tests {
             .arg("--ignored")
             .arg("--nocapture")
             .arg("--test-threads=1")
-            .env("CRYPT_TEST_LOCK_HELPER_DIR", directory.path())
+            .env("CORTEX_TEST_LOCK_HELPER_DIR", directory.path())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
@@ -5695,7 +5690,7 @@ mod tests {
             let line = line_receiver
                 .recv_timeout(remaining)
                 .expect("child exited before reporting lock readiness");
-            if line.contains("CRYPT_LOCK_READY") {
+            if line.contains("CORTEX_LOCK_READY") {
                 break;
             }
         }
@@ -6105,22 +6100,22 @@ mod tests {
         );
         assert_eq!(
             super::resolve_doc_read_path(root.path(), "../guide.md").unwrap_err(),
-            crypt::outline::DocReadError::Deny
+            cortex::outline::DocReadError::Deny
         );
         assert_eq!(
             super::resolve_doc_read_path(root.path(), "docs/missing.md").unwrap_err(),
-            crypt::outline::DocReadError::SourceMissing
+            cortex::outline::DocReadError::SourceMissing
         );
     }
 }
 
 pub fn run_cli() {
     let result = std::thread::Builder::new()
-        .name("crypt-cli".into())
+        .name("cortex-cli".into())
         .stack_size(16 * 1024 * 1024)
         .spawn(run_main)
-        .map_err(|error| format!("start crypt CLI: {error}"))
-        .and_then(|thread| thread.join().map_err(|_| "crypt CLI panicked".to_string()))
+        .map_err(|error| format!("start cortex CLI: {error}"))
+        .and_then(|thread| thread.join().map_err(|_| "cortex CLI panicked".to_string()))
         .and_then(|result| result);
     if let Err(error) = result {
         eprintln!("{error}");
@@ -6129,8 +6124,8 @@ pub fn run_cli() {
 }
 
 /// MBR-102 entrypoint: run the CLI with an explicit argv. The membrane binary forwards the
-/// `cli` subcommand tail here, so the runtime does not see the legacy `crypt` argv shape and
-/// the legacy `crypt` binary keeps working from its own argv.
+/// `cli` subcommand tail here, so the runtime does not see the legacy `cortex` argv shape and
+/// the legacy `cortex` binary keeps working from its own argv.
 pub fn run_cli_from(argv: &[&str]) -> Result<(), String> {
     let argv: Vec<String> = argv.iter().map(|arg| arg.to_string()).collect();
     std::thread::Builder::new()

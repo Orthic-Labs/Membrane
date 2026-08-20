@@ -15,11 +15,11 @@ import {
   readIndexedMeta,
 } from "../../graph/traverse-store.mjs";
 import {
-  createContextCandidateSet,
   graphStatus,
   queryGraph,
   repositoryIdentity,
 } from "../../graph/static-provider.mjs";
+import { executeRecallCircuit, recallCircuitToCandidateSet } from "../../graph/recall-circuit.mjs";
 import { fail } from "./errors.mjs";
 
 function databasePath(root, outDir) {
@@ -160,11 +160,14 @@ export function createBlueprintApplicationService({
     async orient(input = {}, options = {}) {
       return withCurrentDb(input, ({ root, db, meta, receipt }) => {
         const query = String(input.query ?? input.task ?? "").trim();
-        const generation = indexedQueryGeneration(db, query, { limit: Number(input.limit ?? 40), anchors: input.anchors ?? [] });
-        const candidates = createContextCandidateSet(generation, {
-          task: String(input.task ?? query),
-          query,
-          maxCandidates: Number(input.limit ?? 40),
+        const circuit = executeRecallCircuit(db, String(input.task ?? query), {
+          generationId: meta.manifest.generationId,
+          anchors: input.anchors ?? [],
+          policy: input.policy,
+          limits: { maxPaths: Number(input.limit ?? 40) },
+        });
+        const candidates = recallCircuitToCandidateSet(circuit, {
+          provider: meta.provider,
           anchors: input.anchors ?? [],
           ...repositoryIdentity(root),
           repoRoot: root,
@@ -176,6 +179,7 @@ export function createBlueprintApplicationService({
           reasonCode: "oriented",
           generationId: meta.manifest.generationId,
           candidateSet: candidates,
+          recallCircuit: circuit,
           freshnessReceipt: receipt,
           omissions: candidates.omissions ?? [],
         };

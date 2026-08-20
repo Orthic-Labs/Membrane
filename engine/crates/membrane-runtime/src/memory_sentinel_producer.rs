@@ -108,7 +108,7 @@ pub(crate) fn build_sentinel_report_from(conn: &rusqlite::Connection) -> Option<
         "evidence": {
             "state": "observed",
             "valid": true,
-            "reason": format!("sqlite read of crypt-engine.db succeeded ({total} memory rows scanned)"),
+            "reason": format!("sqlite read of cortex-engine.db succeeded ({total} memory rows scanned)"),
         },
         // No authoritative gate evaluation is wired for the sentinel view
         // specifically; report that plainly instead of fabricating a pass.
@@ -212,7 +212,9 @@ mod tests {
         // at all, so this producer cannot select memory text even by accident.
         let conn = Connection::open_in_memory().unwrap();
         seed(&conn);
-        let err = conn.execute("SELECT content FROM memories", []).unwrap_err();
+        let err = conn
+            .execute("SELECT content FROM memories", [])
+            .unwrap_err();
         assert!(err.to_string().contains("no such column"));
     }
 }

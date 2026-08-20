@@ -24,8 +24,7 @@ from adapt import transcript_sources
 
 STATE_DIR = Path.home() / ".claude" / "adapt"
 STATE_FILE = STATE_DIR / "state.json"
-# Same anchor as adapt.WORKSPACE_ROOT / preference_record._WORKSPACE_ROOT:
-# .../tools/pipelines/memory/adapt/<file> -> workspace root.
+# Same workspace anchor as Adapt persistence & preference records.
 _WORKSPACE_ROOT = workspace_root()
 
 MIN_TURN_CHARS = 10

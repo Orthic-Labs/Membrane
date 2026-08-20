@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 
-export const VECTOR_DISPATCH = "CRYPT_VECTOR_DISPATCH_V2";
+export const VECTOR_DISPATCH = "CORTEX_VECTOR_DISPATCH_V2";
 export const HEX40 = /^[0-9a-f]{40}$/;
 export const HEX64 = /^[0-9a-f]{64}$/;
 export const SEMVER = /^\d+\.\d+\.\d+$/;

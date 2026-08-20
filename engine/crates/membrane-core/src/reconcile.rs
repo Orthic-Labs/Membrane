@@ -18,9 +18,7 @@
 //! the renderer to know about membrane-core.
 
 use crate::budget::CrossProviderBudget;
-use crate::lane::{
-    LaneAccounting, BUDGET_LANE_KINDS,
-};
+use crate::lane::{LaneAccounting, BUDGET_LANE_KINDS};
 use membrane_protocol::{BlockV1, BudgetLaneKind, ContextPacketV1};
 use serde::{Deserialize, Serialize};
 

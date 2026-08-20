@@ -6,7 +6,7 @@
 //!
 //!   * `ScopeGrantV1`            — minted/validated by `mcp/scope-grant-v1.mjs`.
 //!   * `ContextCandidateSetV1`   — parsed by the admission planner
-//!                                 (`crypt-core::planner`) and emitted by federation.
+//!                                 (`cortex-core::planner`) and emitted by federation.
 //!   * `ContextPacketV1`         — the bounded packet the planner emits.
 //!   * `ContextReceiptV1`        — the content-free per-candidate receipt (planner
 //!                                 receipt body; `schemaVersion` is the receipt
@@ -44,7 +44,7 @@ pub struct ScopeGrantV1 {
     pub schema_version: u32,
     /// Unique grant id, `sgv1-<uuid>`.
     pub id: String,
-    /// Issuer principal; fixed to `rightcontext-gateway` by the minter.
+    /// Issuer principal; fixed to `membrane-gateway` by the minter.
     pub issuer: String,
     /// Issuing client; fixed to `mcp`.
     pub client: String,
@@ -79,8 +79,8 @@ pub struct ScopeGrantV1 {
     pub source_read_bytes_max: u32,
     pub unique_files_max: u32,
     pub results_max: u32,
-    /// `available` when a Crypt block was admitted, else `degraded`.
-    pub crypt_status: String,
+    /// `available` when a Cortex block was admitted, else `degraded`.
+    pub cortex_status: String,
     pub degraded: bool,
     /// Signature algorithm; fixed to `Ed25519`.
     pub signature_algorithm: String,

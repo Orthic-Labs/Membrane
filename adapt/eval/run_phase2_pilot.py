@@ -1,6 +1,6 @@
 """Run Adapt's sealed Phase 2 compiler bakeoff over a frozen pilot package.
 
-The runner never discovers sessions, opens Crypt, or writes Adapt state. It
+The runner never discovers sessions, opens Cortex, or writes Adapt state. It
 shares one cached extraction pass across a no-new-record control, current Adapt
 synthesis, and bounded complete-set synthesis. Raw prompts/responses stay in
 the ignored local output directory; committed evidence is content-free.
@@ -379,7 +379,7 @@ def build_preflight(
         "external_payloads": True,
         "thinking_mode": THINKING_MODE,
         "temperature": TEMPERATURE,
-        "live_crypt_writes": 0,
+        "live_cortex_writes": 0,
         "live_state_writes": 0,
     }
 
@@ -809,7 +809,7 @@ def _default_protected_paths() -> tuple[Path, ...]:
     return (
         state / "state.json",
         state / "rules.json",
-        REPO_ROOT / "tools" / ".cache" / "memory" / "crypt-engine.db",
+        REPO_ROOT / "tools" / ".cache" / "memory" / "cortex-engine.db",
     )
 
 
@@ -1128,7 +1128,7 @@ def execute_pilot(
             "bounded_full_set": _evaluate_arm(full_actions, observations, pilot),
         },
         "side_effects": {
-            "crypt_calls": 0,
+            "cortex_calls": 0,
             "live_state_writes": 0,
             "protected_hashes_unchanged": True,
         },
@@ -1177,7 +1177,7 @@ def main(argv: list[str] | None = None) -> int:
             f"input_chars<={preflight['planned_input_chars']}"
         )
         if not args.execute:
-            print("phase2 preflight only; no provider or Crypt calls")
+            print("phase2 preflight only; no provider or Cortex calls")
             return 0
         if not args.allow_external_lane:
             raise PilotError("--execute requires --allow-external-lane")

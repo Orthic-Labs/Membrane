@@ -92,7 +92,7 @@ def test_batched_replay_uses_one_replay_and_direct_sqlite_lookup(tmp_path, monke
         conn.execute("INSERT INTO memories VALUES ('D--Claude/m1', 'body one', 'D--Claude')")
     calls = []
 
-    def fake_run(_crypt, _db, _port, cmd, input_text=None):
+    def fake_run(_cortex, _db, _port, cmd, input_text=None):
         calls.append((cmd, input_text))
         return "\n".join([
             json.dumps({"row_id": "c1", "ranked_ids": ["D--Claude/m1"]}),
@@ -104,7 +104,7 @@ def test_batched_replay_uses_one_replay_and_direct_sqlite_lookup(tmp_path, monke
         {"case_id": "c1", "prompt": "one", "scope": "D--Claude"},
         {"case_id": "c2", "prompt": "two", "scope": "D--Claude"},
     ]
-    result = module.replay_all(Path("crypt"), db, 1234, rows, tmp_path / "in.jsonl")
+    result = module.replay_all(Path("cortex"), db, 1234, rows, tmp_path / "in.jsonl")
 
     assert len(calls) == 1
     assert calls[0][0][0] == "replay"

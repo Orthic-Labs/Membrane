@@ -12,7 +12,7 @@ def _setup_root(tmp_path: Path, *, with_binary=True, with_icon=True)->Path:
     (root/"tools/.cache/memory/api-token").write_text("test-token\n",encoding="utf-8")
     (root/"engine/crates/membrane").mkdir(parents=True,exist_ok=True)
     (root/"engine/crates/membrane/Cargo.toml").write_text('[package]\nname="membrane"\nversion="0.1.0"\n',encoding="utf-8")
-    if with_binary: (root/"tools/bin/crypt-service").write_text("#!bin",encoding="utf-8")
+    if with_binary: (root/"tools/bin/cortex-service").write_text("#!bin",encoding="utf-8")
     if with_icon:
         src=Path(__file__).parent.parent/"assets/membrane-tab-icon.png"
         data=src.read_bytes() if src.is_file() else b"fake"
@@ -36,7 +36,7 @@ def test_manifest_has_exact_field_set(tmp_path):
     assert data["productVersion"]=="0.1.0"
     assert data["hubCompatRange"]==">=0.1.11 <0.2.0"
     assert data["installRoot"]==str(root)
-    assert data["serviceStart"]==[str(root/"tools/bin/crypt-service")]
+    assert data["serviceStart"]==[str(root/"tools/bin/cortex-service")]
     assert data["serviceStop"]==["SIGTERM"]
     assert data["statusEndpoint"]["host"]=="127.0.0.1"
     assert data["statusEndpoint"]["port"]==47851
@@ -67,7 +67,7 @@ def test_serviceStart_and_icon_inside_installRoot(tmp_path):
 def test_workspace_layout_uses_nested_membrane_icon(tmp_path):
     root=tmp_path/"workspace"; root.mkdir()
     (root/"tools/bin").mkdir(parents=True)
-    (root/"tools/bin/crypt-service").write_text("#!bin",encoding="utf-8")
+    (root/"tools/bin/cortex-service").write_text("#!bin",encoding="utf-8")
     (root/"tools/.cache/memory").mkdir(parents=True)
     (root/"tools/.cache/memory/api-token").write_text("token",encoding="utf-8")
     (root/"membrane/install/assets").mkdir(parents=True)

@@ -33,7 +33,7 @@ It already has the difficult and differentiated part of the system:
 - resolver-backed source recovery;
 - resident services;
 - deterministic degradation;
-- separation between Membrane, Crypt, Blueprint, Audit, Architect and the surrounding host/runtime.
+- separation between Membrane, Cortex, Blueprint, Audit, Architect and the surrounding host/runtime.
 
 The competitor research overwhelmingly argues for **finishing and connecting these primitives**, not replacing them.
 
@@ -214,7 +214,7 @@ Membrane decides attention.
 These are not equivalent quantities:
 
 ```text
-Crypt vector cosine
+Cortex vector cosine
 Blueprint graph relevance
 Git freshness
 rule priority
@@ -248,14 +248,14 @@ Instead:
 8. global context admission
 ```
 
-## 2.4 SQLite/Crypt remains canonical durable truth
+## 2.4 SQLite/Cortex remains canonical durable truth
 
 Do not create competing writable knowledge stores.
 
 Recommended ownership:
 
 ```text
-SQLite / Crypt
+SQLite / Cortex
     canonical structured knowledge
 
 FTS5
@@ -361,7 +361,7 @@ Do not allow convenience features to collapse these boundaries.
 └──────────────────────────────────────────────────────────────────┘
           │              │              │              │
           ▼              ▼              ▼              ▼
-       Blueprint           Crypt       Live / Git     Docs / Artifacts
+       Blueprint           Cortex       Live / Git     Docs / Artifacts
    code semantics     knowledge     current facts   indexed evidence
                          │
                          ├── exact / anchor
@@ -605,7 +605,7 @@ Create canonical cases covering:
 ### Failure
 
 - Blueprint unavailable;
-- Crypt unavailable;
+- Cortex unavailable;
 - resolver unavailable;
 - provider timeout;
 - partial provider completion.
@@ -1059,7 +1059,7 @@ No mandatory network dependency.
 
 **Priority:** P2
 
-Canonical Crypt retrieval channels:
+Canonical Cortex retrieval channels:
 
 1. exact/anchor/entity/path;
 2. FTS5/BM25;
@@ -1935,7 +1935,7 @@ Do not immediately rewrite `MemoryEntry` and temporal storage.
 Example:
 
 ```text
-crypt_fts_v1:
+cortex_fts_v1:
     off
     shadow
     on
@@ -2199,7 +2199,7 @@ but:
 23. Strengthen DLP/redaction before persistence.
 24. Separate evidence authority from instructional influence.
 25. Add production FTS5/BM25.
-26. Turn Crypt retrieval into explicit bounded channels.
+26. Turn Cortex retrieval into explicit bounded channels.
 27. Add candidate/retrieval explanation traces.
 28. Preserve authority/freshness before relevance.
 29. Use rank-level fusion rather than arbitrary global raw-score arithmetic.
@@ -2249,7 +2249,7 @@ The document spine, memories, taste, gotchas, sessions and external evidence are
 
 Blueprint supplies repository semantics.
 
-Crypt supplies durable knowledge.
+Cortex supplies durable knowledge.
 
 Membrane controls the boundary between all available information and the model's finite attention.
 

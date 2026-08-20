@@ -1,4 +1,4 @@
-"""Rollback smoke for synthetic or adjudicated records on a copied Crypt DB."""
+"""Rollback smoke for synthetic or adjudicated records on a copied Cortex DB."""
 from __future__ import annotations
 
 import argparse
@@ -71,7 +71,7 @@ def _memory_ids(db: Path) -> set[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live-db", type=Path, default=runner.DEFAULT_LIVE_DB)
-    parser.add_argument("--crypt-bin", type=Path, default=runner.DEFAULT_CRYPT)
+    parser.add_argument("--cortex-bin", type=Path, default=runner.DEFAULT_CORTEX)
     parser.add_argument("--manifest", type=Path,
                         help="resolved production manifest to apply/retrieve/revert")
     parser.add_argument("--out", type=Path,
@@ -122,10 +122,9 @@ def main(argv: list[str] | None = None) -> int:
     expected_ids = {f"{record.scope}/{record.id}" for record in stored}
 
     port = runner._free_port()
-    service = runner._start_service(args.crypt_bin, copied_db, port)
+    service = runner._start_service(args.cortex_bin, copied_db, port)
     env_keys = {
-        "CRYPT_PORT": str(port),
-        "WORKSPACE_MEMORY_PORT": str(port),
+        "CORTEX_PORT": str(port),
         "ADAPT_SAFEPOINT_DB_OVERRIDE": str(copied_db),
         "ADAPT_SAFEPOINT_DIR_OVERRIDE": str(args.out / "safepoints"),
         "ADAPT_AUDIT_FILE_OVERRIDE": str(args.out / "audit.jsonl"),
@@ -160,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
             for row in replay_rows
         ), encoding="utf-8")
         replay_output = runner._run_via_port(
-            args.crypt_bin, copied_db, port,
+            args.cortex_bin, copied_db, port,
             ["replay", "--input", str(replay_input), "-k", "5"],
         )
         ranked = {
@@ -180,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         core.write_text("post-apply", encoding="utf-8")
         rc = rollback.revert(
             safe_point, apply=True, state_path=state, rules_path=rules,
-            core_path=core, crypt_bin=args.crypt_bin,
+            core_path=core, cortex_bin=args.cortex_bin,
         )
         if rc != 0:
             raise RuntimeError(f"rollback returned {rc}")

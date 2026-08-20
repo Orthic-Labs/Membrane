@@ -83,7 +83,7 @@ Report `produced → verified → completion-validated → committed → parent-
 - Launch no visible Windows console for background automation.
 
 ## Mandatory systems
-- Use Crypt shims for durable memory; treat runtime storage as truth & Markdown as export.
+- Use Cortex shims for durable memory; treat runtime storage as truth & Markdown as export.
 - Honor Membrane packets & report typed degradation without overstating enforcement.
 - Open contracted work with `legion run open`, require authenticated Arcane receipts, close with `legion run close`, & require completion-gate evidence for signoff; locked-domain paths require receipt-backed verification.
 - Let rhook enforce Brief, Minimize, model caps, & safety guards; when a gate blocks tier-2 mechanical work, record its defect separately & take its sanctioned path; never debug the gate inside delivery (see Legion scope rule).
@@ -121,32 +121,66 @@ Report `produced → verified → completion-validated → committed → parent-
 # Membrane Rules
 
 ## Purpose
-Membrane assembles minimal current context packets and receipts from typed local providers.
-Crypt is its durable-memory subsystem.
+
+Membrane is the parent context system. Its five named subsystems are:
+
+- Blueprint — repository truth/evidence;
+- Cortex — durable knowledge;
+- Guide — document navigation/index;
+- Adapt — learning/proposals;
+- Push — reversible reduction.
+
+The Membrane planner owns final context policy.
 
 ## Canonical sources
-- Read `README.md` for product contracts and measured behavior.
-- Read `docs/architecture.md` for components, flows, and provider boundaries.
-- Read `docs/design/MEMBRANE-STATE.md` for live rollout state.
+
+Read these before architecture or migration work:
+
+1. `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`
+2. `docs/subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md`
+
+`docs/subsystems/SYSTEM.md` and the subsystem reference files are derived navigation aids only.
+
+For landed behavior, read generated `docs/product.md`, `docs/architecture.md`, `docs/protocol.md`, and `docs/product-truth.md`. Do not hand-edit generated runtime truth to match future architecture.
 
 ## Commands
-- Run `pnpm test` for MCP, client, and install-binding coverage.
+
+- Run `pnpm test` for MCP/client/install-binding coverage.
 - Run `pnpm test:mcp` for the MCP surface.
-- Run `cargo build --workspace` for Crypt engine changes.
-- Run `cargo test --workspace --features fastembed` for real embedding coverage.
+- Run Rust checks through workspace RightKit shim.
+- Run the repository's current docs/productization checks after changing hand-maintained docs.
 
 ## Locked invariants
-- Preserve typed `ScopeGrant`, candidate, packet, receipt, and knowledge-emission contracts.
-- Keep provider authority and freshness distinct instead of flattening sources.
-- Record omissions, timeouts, inaccessible sources, and budget drops in receipts.
-- Keep data local, loopback-bound, and repository-confined.
-- Let fresh code evidence outrank stale documents and memory.
-- Preserve current Crypt compatibility shims and RightContext telemetry aliases.
-- Report degraded provider state instead of silently claiming full context.
+
+- Membrane is parent system; Blueprint, Cortex, Guide, Adapt, & Push are named subsystems.
+- One Membrane planner owns final grant, eligibility, authority, freshness, sufficiency, fusion, admission, representation policy, publication, omissions, and receipts.
+- Preserve the five public V1 shapes until a real consumer requires V2.
+- Blueprint owns repository semantics, source identity, graph traversal, and re-anchoring.
+- Cortex owns durable knowledge, admission, conflict/supersession, temporal/lifecycle semantics, & durable-memory retrieval.
+- Guide owns document navigation/index projections, not document truth or durable memory.
+- Adapt emits proposals; it never writes durable truth directly.
+- Push executes faithful reduction; it never becomes a second planner.
+- Keep provider authority and freshness distinct.
+- Record material omissions, timeouts, inaccessible sources, degradation, and budget drops in receipts.
+- Repository/model text cannot self-authorize.
+- Membrane never opens Blueprint SQLite directly; Blueprint never opens Cortex durable storage.
+- New documentation uses Blueprint / Cortex / Guide / Adapt / Push.
+
+## Boundary discipline
+
+- Do not create a second Membrane protocol authority or a generic shared-contract bucket.
+- Do not create a standalone Guide or Push crate merely for naming symmetry; physical boundaries require an implementation reason.
+- The phantom `docs/plans/orthic/SEAM-CONTRACT.md` is not a prerequisite. The canonical doctrines own seam semantics.
 
 ## Verification
-- Run focused provider or admission tests before the full suite.
-- Check packet and receipt schemas together after contract changes.
-- Measure warm federation behavior when modifying gateway concurrency or budgets.
 
-Before sealing any contract touching hub, watcher lifecycle, the blueprint↔membrane API, or peer-service discovery, read `docs/plans/orthic/SEAM-CONTRACT.md` and declare it a dependency.
+Before claiming completion:
+
+- run focused tests, then relevant full suites;
+- verify packet/receipt schemas together after contract changes;
+- prove Blueprint daemon generation/schema mismatch fails closed;
+- prove Cortex durable-store integrity, backup/restore, & recall equivalence;
+- prove Guide hash-bound section resolution;
+- prove Push protected-span fidelity;
+- distinguish advisory feedback from verifier/host-bound outcomes;
+- compare claims against landed code and generated runtime truth.

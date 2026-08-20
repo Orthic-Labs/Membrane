@@ -1,21 +1,21 @@
 # Vault review export
 
-`crypt vault-export` creates a deterministic, versioned review queue from Crypt's authoritative store. Export is read-only; SQLite remains authoritative, but reviewers need only generated JSON or Markdown.
+`cortex vault-export` creates a deterministic, versioned review queue from Cortex's authoritative store. Export is read-only; SQLite remains authoritative, but reviewers need only generated JSON or Markdown.
 
 ```sh
-crypt --db /path/to/memory.db vault-export --output vault-review.json
-crypt --db /path/to/memory.db vault-export --output vault-review.md --format markdown
+cortex --db /path/to/memory.db vault-export --output vault-review.json
+cortex --db /path/to/memory.db vault-export --output vault-review.md --format markdown
 ```
 
 Content is excluded by default. Add `--include-content` only for an explicitly approved local review artifact:
 
 ```sh
-crypt --db /path/to/memory.db vault-export --output private-review.md --format markdown --include-content
+cortex --db /path/to/memory.db vault-export --output private-review.md --format markdown --include-content
 ```
 
 ## Contract
 
-- `schemaVersion` is `1`; `kind` is `crypt.vault-review`.
+- `schemaVersion` is `1`; `kind` is `cortex.vault-review`.
 - Queue order is `reviewAfterMs` ascending with null last, protected priority first on equal dates, then bytewise memory ID.
 - Each row leads with content-free identity, hash, scope, lifecycle, expiry, review, supersession, priority, confidence, provenance, authority, event attribution, & verified review evidence.
 - Supersession is represented in both directions through `lifecycle.supersededBy` & `supersedes`.

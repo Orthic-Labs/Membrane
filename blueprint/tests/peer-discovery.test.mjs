@@ -4,25 +4,25 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-test("peerBinCandidates respects CRYPT_BIN and BLUEPRINT_PEER_BIN_* overrides", async () => {
+test("peerBinCandidates respects CORTEX_BIN and BLUEPRINT_PEER_BIN_* overrides", async () => {
   const mod = await import("../scripts/blueprint.mjs");
   // peerBinCandidates is not exported, test via env behavior indirectly
-  // Instead verify cryptBinCandidates alias still works and respects env
+  // Instead verify cortexBinCandidates alias still works and respects env
   const { existsSync } = await import("node:fs");
   assert.ok(existsSync("scripts/blueprint.mjs"));
 });
 
-test("peerBinCandidates vendor-neutral — no hardcoded crypt outside config-default", async () => {
+test("peerBinCandidates vendor-neutral — no hardcoded cortex outside config-default", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync("scripts/blueprint.mjs", "utf8");
-  // All "crypt" string occurrences should be in config-default context (peer = "crypt" or service name or comment)
-  // No hardcoded join(homedir(), "bin", "crypt") should remain
-  const hardcoded = src.match(/join\(homedir\(\), "bin", "crypt"\)/g) ?? [];
-  assert.equal(hardcoded.length, 0, "hardcoded crypt bin path remains");
+  // All "cortex" string occurrences should be in config-default context (peer = "cortex" or service name or comment)
+  // No hardcoded join(homedir(), "bin", "cortex") should remain
+  const hardcoded = src.match(/join\(homedir\(\), "bin", "cortex"\)/g) ?? [];
+  assert.equal(hardcoded.length, 0, "hardcoded cortex bin path remains");
   assert.match(src, /peerBinCandidates/);
-  assert.match(src, /CRYPT_BIN/);
-  // CRYPT_BIN must still be present for backwards compat
-  assert.match(src, /process\.env\.CRYPT_BIN/);
+  assert.match(src, /CORTEX_BIN/);
+  // CORTEX_BIN is the canonical explicit Cortex peer override.
+  assert.match(src, /process\.env\.CORTEX_BIN/);
 });
 
 test("blueprint.config.example.toml documents peer discovery", async () => {
@@ -31,7 +31,7 @@ test("blueprint.config.example.toml documents peer discovery", async () => {
   const toml = readFileSync("examples/blueprint.config.example.toml", "utf8");
   assert.match(toml, /\[peers\]/);
   assert.match(toml, /BLUEPRINT_PEER_BIN/);
-  assert.match(toml, /CRYPT_BIN/);
+  assert.match(toml, /CORTEX_BIN/);
 });
 
 test("_diagnostics field present, _membrane absent", async () => {

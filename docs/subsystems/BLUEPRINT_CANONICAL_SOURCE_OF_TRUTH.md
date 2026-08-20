@@ -2,15 +2,10 @@
 
 **Status:** Canonical · final architecture · implementation authority  
 **Repository:** `Orthic-Labs/Membrane`  
-**Subsystem path after monorepo migration:** `blueprint/`  
-**Standalone package:** `@orthic-labs/blueprint`  
-**Pre-merge evidence baseline:** former `Orthic-Labs/Blueprint` at `bd46965d6738657db6ed95afad1dc622ce1c5b95`  
-**Companion Membrane evidence baseline:** `Orthic-Labs/Membrane` at `50e6bb22ab7518a98d3b5bc730c6913d338c7d21`  
+**Subsystem path:** `blueprint/`
+**Package:** `@orthic-labs/blueprint`
 **Date:** 2026-08-19  
-**Companion migration authority:** `2026-08-19-monorepo-merge-and-subsystem-rename.md` for physical merge/name migration only  
-**Supersedes:** `BLUEPRINT_SOURCE_OF_TRUTH_REVISED.md`, `BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md`, and all earlier Blueprint/Blueprint absorption or implementation planning documents
-
-**Naming:** `Blueprint` is the repository truth/evidence subsystem formerly named `Blueprint`. The durable-knowledge subsystem formerly named `Crypt` is now named `Blueprint`. Historical wire tokens remain readable only where a frozen protocol requires them; they do not change semantic ownership.
+**Authority:** this file supersedes every other Blueprint architecture or implementation plan.
 
 ---
 
@@ -65,7 +60,7 @@ They retain separate:
 
 Membrane may consume Blueprint only through Blueprint-owned public protocol/service surfaces. `engine/**` and `mcp/**` do not import `blueprint/src/**`. Blueprint does not import Membrane engine internals.
 
-The sibling subsystem named Blueprint is Membrane's durable-knowledge engine. Blueprint does not read or write the Blueprint store and does not depend on Blueprint memory semantics.
+The sibling subsystem named Cortex is Membrane's durable-knowledge engine. Blueprint does not read or write the Cortex store and does not depend on Cortex memory semantics.
 
 > **Physical co-location does not imply semantic ownership.** Blueprint and Membrane share a repository so their seam can evolve atomically; they retain separate package, process, protocol, storage, testing, and responsibility boundaries.
 
@@ -1440,13 +1435,13 @@ CLI, MCP, SDK and daemon call it.
 
 Business/query policy is not copied into transport adapters.
 
-## 17.5 CLI and legacy candidate compatibility
+## 17.5 CLI candidate adapter
 
 CLI remains a supported human/machine adapter.
 
 `scripts/blueprint-recall.mjs` is a lean command-line adapter over the canonical recall behavior.
 
-`scripts/blueprint-candidates.mjs` remains only as a compatibility adapter and must flatten/translate RecallCircuit rather than maintain an independent candidate algorithm.
+`scripts/blueprint-candidates.mjs` flattens/translates RecallCircuit & owns no independent candidate algorithm.
 
 There is one recall implementation.
 
@@ -1461,13 +1456,7 @@ Membrane
 → RecallCircuit
 ```
 
-The subprocess path is the compatibility fallback for:
-
-- daemon unavailable;
-- version skew;
-- explicit standalone execution.
-
-The end state does not spawn a new Node process for every normal Blueprint query.
+Membrane never spawns a new Node process for normal Blueprint queries.
 
 The seam remains generation-pinned and fail-closed on mismatch.
 

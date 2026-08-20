@@ -42,8 +42,8 @@ try {
       windowsHide: true,
       env: {
         ...process.env,
-        CRYPT_PORT: String(port),
-        CRYPT_API_TOKEN: "test-token",
+        CORTEX_PORT: String(port),
+        CORTEX_API_TOKEN: "test-token",
         WORKSPACE_ROOT: process.cwd(),
       },
     });
@@ -71,9 +71,7 @@ try {
   assert.equal(requests[0].headers.tracestate, undefined);
   assert.equal(requests[0].headers.baggage, undefined);
   assert.equal(requests[0].headers["x-membrane-trace"], "session-fallback");
-  assert.equal(requests[0].headers["x-rightcontext-trace"], "session-fallback");
   assert.equal(requests[0].headers["x-membrane-version"], "membrane-mcp/1");
-  assert.equal(requests[0].headers["x-rightcontext-version"], "rightcontext-mcp/1");
   assert.deepEqual(requests[0].body.taskEnvelope, taskEnvelope);
   assert.deepEqual(requests[0].body.turnEnvelope, turnEnvelope);
 
@@ -92,7 +90,6 @@ try {
   assert.equal(requests[1].headers.baggage, validTrace.baggage);
   assert.equal(requests[1].headers.tracestate?.trim(), "1@system=foo \t, \t, vendor=bar");
   assert.equal(requests[1].headers["x-membrane-trace"], "4bf92f3577b34da6a3ce929d0e0e4736");
-  assert.equal(requests[1].headers["x-rightcontext-trace"], "4bf92f3577b34da6a3ce929d0e0e4736");
 
   const invalid = await runClient({ task: "invalid trace", repo: process.cwd(), session: "invalid-fallback", traceparent: "not-a-trace", tracestate: "x".repeat(513), baggage: "bad\nvalue" });
   assert.equal(invalid.code, 0, invalid.stderr);
@@ -187,14 +184,12 @@ try {
   assert.equal(requests[11].headers.traceparent, futureTraceparent);
   assert.equal(requests[11].headers.tracestate, "vendor=future");
   assert.equal(requests[11].headers["x-membrane-trace"], "4bf92f3577b34da6a3ce929d0e0e4736");
-  assert.equal(requests[11].headers["x-rightcontext-trace"], "4bf92f3577b34da6a3ce929d0e0e4736");
 
   const generated = await runClient({ task: "generated trace fallback", repo: process.cwd() });
   assert.equal(generated.code, 0, generated.stderr);
   assert.match(generated.parsed.traceId, /^mcp-[0-9a-f]+$/);
   assert.equal(requests[12].headers.traceparent, undefined);
   assert.equal(requests[12].headers["x-membrane-trace"], generated.parsed.traceId);
-  assert.equal(requests[12].headers["x-rightcontext-trace"], generated.parsed.traceId);
 
   // CU-10 / MBR-007 envelope continuity: clientEnvelope + overlay survive the client round-trip
   const clientEnv = { schema: "orthic.client-envelope.v1", clientId: "test-client", adapterVersion: "9.9.9" };

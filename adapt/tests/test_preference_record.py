@@ -94,13 +94,13 @@ def test_machine_field_present_in_manifest_candidate_but_not_payload():
     assert "machine_only" not in manifest_mod.candidate_payload(candidate)
 
 
-def test_to_crypt_content_includes_machine_line_only_when_set():
+def test_to_cortex_content_includes_machine_line_only_when_set():
     unset = pr_mod.PreferenceRecord.from_synthesis(
         {"action": "add", "name": "x", "category": "tooling",
          "rule": "Prefer JSONL for structured logs.", "confidence": 0.7},
         scope="D--Claude", source_ids=("s1",),
     )
-    assert "**Machine:**" not in pr_mod.to_crypt_content(unset)
+    assert "**Machine:**" not in pr_mod.to_cortex_content(unset)
 
     attributed = pr_mod.PreferenceRecord.from_synthesis(
         {"action": "add", "name": "x", "category": "tooling",
@@ -108,7 +108,7 @@ def test_to_crypt_content_includes_machine_line_only_when_set():
         scope="D--Claude", source_ids=("s1",),
         machine="adrian-mac", machine_only=True,
     )
-    body = pr_mod.to_crypt_content(attributed)
+    body = pr_mod.to_cortex_content(attributed)
     assert "**Machine:** adrian-mac (machine-only)" in body
 
 

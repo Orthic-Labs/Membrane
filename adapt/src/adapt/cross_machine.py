@@ -124,7 +124,7 @@ def load_canonical_rules(db_path: Path) -> dict[str, dict[str, Any]]:
     """Read the canonical Adapt pool from SQLite without mutating or embedding."""
     path = Path(db_path).resolve()
     if not path.is_file():
-        raise CrossMachineAdaptError(f"canonical Crypt DB is unavailable: {path}")
+        raise CrossMachineAdaptError(f"canonical Cortex DB is unavailable: {path}")
     uri = f"file:{path.as_posix()}?mode=ro"
     try:
         conn = sqlite3.connect(uri, uri=True)

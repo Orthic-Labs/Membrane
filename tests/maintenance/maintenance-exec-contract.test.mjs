@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const source = await readFile(
-  new URL('../../engine/crates/crypt-store/src/maintenance_exec.rs', import.meta.url),
+  new URL('../../engine/crates/cortex-store/src/maintenance_exec.rs', import.meta.url),
   'utf8',
 );
 

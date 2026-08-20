@@ -50,7 +50,7 @@ def test_gateway_types_every_provider_warning_as_lane_local(
         4096,
     )
 
-    warning = ccs["_rightcontext"]["providerWarnings"][0]
+    warning = ccs["_membrane"]["providerWarnings"][0]
     assert warning == {
         "provider": "git",
         "kind": warning_kind,
@@ -62,10 +62,10 @@ def test_gateway_types_every_provider_warning_as_lane_local(
 
 
 def test_gateway_exception_warning_is_typed_and_content_free():
-    warning = gateway._safe_emit_warning("crypt", TimeoutError("SECRET bearer detail"))
+    warning = gateway._safe_emit_warning("cortex", TimeoutError("SECRET bearer detail"))
 
     assert warning == {
-        "provider": "crypt",
+        "provider": "cortex",
         "kind": "provider_failure",
         "severity": "warning",
         "failureKind": "timeout",
@@ -98,16 +98,16 @@ def test_bounded_fanout_returns_healthy_lanes_without_waiting_for_slow_provider(
 def test_bounded_fanout_runs_blueprint_before_parallel_lanes():
     order = []
 
-    def crypt():
-        order.append("crypt")
-        return "crypt", [{"id": "crypt:one"}], []
+    def cortex():
+        order.append("cortex")
+        return "cortex", [{"id": "cortex:one"}], []
 
     def blueprint():
         order.append("blueprint")
         return "blueprint", [{"id": "blueprint:one"}], []
 
     results = gateway._collect_tasks_bounded(
-        [("crypt", crypt), ("blueprint", blueprint)], timeout_s=0.1
+        [("cortex", cortex), ("blueprint", blueprint)], timeout_s=0.1
     )
 
     assert order[0] == "blueprint"

@@ -1,9 +1,9 @@
-//! Crypt — the productizable memory engine: SQLite + quantized vectors + cognitive tiers +
+//! Cortex — the productizable memory engine: SQLite + quantized vectors + cognitive tiers +
 //! hybrid retriever + effectiveness gate + dream consolidation, with multi-project `scope_id`
 //! isolation. CodeRight (the product) and the workspace both CONSUME this crate; neither owns the
-//! engine. Self-contained and publishable (depends only on crypt-core primitives).
+//! engine. Self-contained and publishable (depends only on cortex-core primitives).
 
-extern crate self as crypt;
+extern crate self as cortex;
 
 pub mod admission_policy;
 pub mod agent_adapter_producer;
@@ -58,23 +58,17 @@ pub mod sources_explorer;
 pub mod sources_producer;
 pub mod store;
 pub mod team_policy;
-pub use crypt_store::db::{record_observable_event, StoreError};
-pub use crypt_store::{context_telemetry, installation_identity, memdb, scope, time};
+pub use cortex_store::db::{record_observable_event, StoreError};
+pub use cortex_store::{context_telemetry, installation_identity, memdb, scope, time};
 pub use provenance::{
     capture_working_tree, observe, record_provenance, ProvenanceError, ProvenanceRowV1,
     WorkingTreeSnapshotV1, PROVENANCE_ROW_SCHEMA_VERSION, WORKING_TREE_SNAPSHOT_SCHEMA_VERSION,
 };
 pub mod truncate;
-pub mod vocabulary;
 pub mod working_context;
 
-// Re-export OKF utilities so consumers import from one crate (`crypt`) during unification.
-pub use crypt_format::okf;
-pub use vocabulary::{
-    crypt_migration_notice_text, crypt_notice_emitted, emit_facade_notice_once,
-    format_notice_log_line, membrane_notice_emitted, membrane_product_surface_notice_text,
-    ProductSurface, CRYPT_FACADE_MIGRATION_NOTICE, MEMBRANE_PRODUCT_SURFACE_NOTICE,
-};
+// Re-export OKF utilities so consumers import from one crate (`cortex`) during unification.
+pub use cortex_format::okf;
 pub use working_context::{
     render_working_context, select_working_context, verify_envelope, WorkingContextBudgetV1,
     WorkingContextEnvelopeV1, WorkingContextError, WorkingContextSelectionV1,
@@ -89,8 +83,8 @@ pub use admission_policy::{
 pub use checkpoint::{
     CheckpointError, CheckpointSourceRefV1, CheckpointSourceResolutionV1, CheckpointV1,
 };
-pub use crypt_store::MemDb;
-pub use crypt_store::{
+pub use cortex_store::MemDb;
+pub use cortex_store::{
     TemporalFact, TemporalFactQuery, TemporalFactReceipt, TemporalFactStore, TemporalTransition,
 };
 pub use paths::{cache_root, config_root, data_root, log_root, Roots, PRODUCT_DIR_NAME};

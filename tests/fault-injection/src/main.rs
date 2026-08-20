@@ -122,8 +122,8 @@ fn main() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("not-a-dir");
     fs::write(&file, b"x").unwrap();
-    let db_err = crypt_store::memdb::MemDb::open(file.join("child")).is_err();
-    let db_recovered = crypt_store::memdb::MemDb::open_in_memory();
+    let db_err = cortex_store::memdb::MemDb::open(file.join("child")).is_err();
+    let db_recovered = cortex_store::memdb::MemDb::open_in_memory();
     let mut skew = ready();
     skew.schema_version = 99;
     let schema_recovered = ready().contract_error().is_none();
@@ -169,7 +169,7 @@ fn main() {
             if db_err
                 && matches!(
                     db_recovered.health_probe(),
-                    crypt_store::memdb::MemDbProbe::Ok
+                    cortex_store::memdb::MemDbProbe::Ok
                 )
             {
                 "degraded"
@@ -179,7 +179,7 @@ fn main() {
             if db_err
                 && matches!(
                     db_recovered.health_probe(),
-                    crypt_store::memdb::MemDbProbe::Ok
+                    cortex_store::memdb::MemDbProbe::Ok
                 )
             {
                 "database_unavailable"
@@ -187,7 +187,7 @@ fn main() {
                 "database_recovery_failed"
             },
             json!({"healthy":false,"dbError":db_err}),
-            json!({"ok":matches!(db_recovered.health_probe(), crypt_store::memdb::MemDbProbe::Ok),"status":"available"}),
+            json!({"ok":matches!(db_recovered.health_probe(), cortex_store::memdb::MemDbProbe::Ok),"status":"available"}),
         ),
         receipt(
             "schema-skew",

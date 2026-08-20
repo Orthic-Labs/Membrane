@@ -39,7 +39,7 @@ run("cargo", [
   "--manifest-path",
   "engine/Cargo.toml",
   "-p",
-  "crypt",
+  "cortex",
   "--test",
   "doc_spine",
   "--test",

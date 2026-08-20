@@ -5,7 +5,7 @@
   "result": {
     "kind": "error",
     "code": "proposal_durable_write_failed",
-    "message": "durable Crypt store rejected the proposal write",
+    "message": "durable Cortex store rejected the proposal write",
     "retryable": true,
     "details": { "repositoryId": "membrane", "scopeId": "scope-mbr-301" }
   }

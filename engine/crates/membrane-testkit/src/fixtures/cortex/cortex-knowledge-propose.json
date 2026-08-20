@@ -1,0 +1,48 @@
+{
+  "name": "cortex-knowledge-propose",
+  "operation": "membrane_knowledge_propose",
+  "description": "Cortex adapter returns a successful knowledge-propose envelope with a durable proposal id. Mirrors the shape of operations/operations/membrane-knowledge-propose.v1.golden.json.",
+  "request": {
+    "scope": "workspace",
+    "taskEnvelope": {
+      "schema": "orthic.task-envelope.v1",
+      "taskId": "task-mbr-104-cortex"
+    },
+    "turnEnvelope": {
+      "schema": "orthic.turn-envelope.v1",
+      "turnId": "turn-1",
+      "sessionId": "session-mbr-104-cortex",
+      "sequence": 1
+    },
+    "proposal": {
+      "emissionText": "MBR-104 conformance fixture: Cortex knowledge proposal.",
+      "sourceRefs": [
+        "engine/crates/membrane-provider-sdk/src/lib.rs:1-87"
+      ]
+    }
+  },
+  "expectedResponse": {
+    "kind": "success",
+    "data": {
+      "ok": true,
+      "proposalId": "prop-mbr-104-cortex",
+      "status": "stored",
+      "durable": true,
+      "taskEnvelope": {
+        "schema": "orthic.task-envelope.v1",
+        "taskId": "task-mbr-104-cortex"
+      },
+      "turnEnvelope": {
+        "schema": "orthic.turn-envelope.v1",
+        "turnId": "turn-1",
+        "sessionId": "session-mbr-104-cortex",
+        "sequence": 1
+      },
+      "binding": {
+        "schema": "orthic.binding.v1",
+        "kind": "source_ref",
+        "value": "engine/crates/membrane-provider-sdk/src/lib.rs:1-87"
+      }
+    }
+  }
+}

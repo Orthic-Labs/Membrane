@@ -1,14 +1,14 @@
-//! G5 Lane B — Crypt durable-memory provider.
+//! G5 Lane B — Cortex durable-memory provider.
 //!
 //! Converts eligible `MemoryEntry` rows in `MemoryStore` into v1
 //! `ContextCandidate` records (Layer 7) for the Membrane planner. The
 //! provider is in-process with the planner: it ONLY reads through the
 //! `MemoryStore` public API, never the filesystem, never the network, and
 //! never the bearer-token file. External clients still authenticate to the
-//! loopback service through the installed `crypt` shim.
+//! loopback service through the installed `cortex` shim.
 //!
 //! Validity, supersession, and scope discipline are enforced locally so the
-//! planner never has to know about Crypt's tier/prune/dream model:
+//! planner never has to know about Cortex's tier/prune/dream model:
 //!
 //! - **Validity** — entries with `score < 0.2 && access_count == 0` are
 //!   treated as `Demoted` (the same threshold `consolidate_dream_memories`
@@ -31,27 +31,27 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crypt_core::MemoryEntry;
+use cortex_core::MemoryEntry;
 
 /// Provider name used in `ContextCandidateSet.provider` and on every
 /// `Candidate.sourceRef`. Constant — the planner identifies this lane by it.
 pub const PROVIDER_NAME: &str = "memory";
 
-/// `ContextCandidate.layer` for Crypt candidates. Per the unified
+/// `ContextCandidate.layer` for Cortex candidates. Per the unified
 /// architecture (Eight-Layer Baseline), Layer 7 is the durable-memory lane.
 pub const LAYER: u8 = 7;
 
-/// `trustClass` for every Crypt candidate. Memories were captured under
+/// `trustClass` for every Cortex candidate. Memories were captured under
 /// `agent_verified` (the memorizer is a restricted Rust agent, not raw user
 /// text or remote untrusted input).
 pub const TRUST_CLASS: &str = "agent_verified";
 
-/// `instructionPolicy` for every Crypt candidate. Memory content is
+/// `instructionPolicy` for every Cortex candidate. Memory content is
 /// evidence (data), never instructions — `instructions_allowed` would let a
 /// captured body issue commands to the model, so it is locked off.
 pub const INSTRUCTION_POLICY: &str = "data_only";
 
-/// `sourceKind` for every Crypt candidate.
+/// `sourceKind` for every Cortex candidate.
 pub const SOURCE_KIND: &str = "memory";
 
 /// Threshold below which an entry is considered `Demoted` when it has never
@@ -94,7 +94,7 @@ pub struct ContextCandidate {
     pub artifactFamily: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub producer: Option<String>,
-    /// Crypt-specific provenance attached to every candidate. Carries the
+    /// Cortex-specific provenance attached to every candidate. Carries the
     /// durable identity and lifecycle signals the planner needs for receipts
     /// without exposing them as retrieval inputs. Lives in a separate field
     /// from the v1 schema's required keys — the planner stores it verbatim
@@ -103,7 +103,7 @@ pub struct ContextCandidate {
     pub provenance: CandidateProvenance,
 }
 
-/// Crypt-specific provenance. `superseded_ids` is non-empty when this
+/// Cortex-specific provenance. `superseded_ids` is non-empty when this
 /// entry is the surviving current equivalent of one or more older entries
 /// that the provider collapsed during supersession resolution.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -237,18 +237,18 @@ fn is_demoted(entry: &MemoryEntry) -> bool {
 }
 
 /// Build the scope-chain `Vec<String>` for `scope` given the scopes actually
-/// present in the store. Wraps `crypt::scope::scope_chain` so callers
+/// present in the store. Wraps `cortex::scope::scope_chain` so callers
 /// don't have to pre-fetch the scope list.
-fn scope_chain_for(store: &::crypt::MemoryStore, scope: &str) -> Vec<String> {
+fn scope_chain_for(store: &::cortex::MemoryStore, scope: &str) -> Vec<String> {
     let existing = store.scopes();
-    ::crypt::scope::scope_chain(scope, &existing)
+    ::cortex::scope::scope_chain(scope, &existing)
 }
 
 /// Step 1 — gather every entry, classify by scope, then collapse
 /// dedup-key groups onto the highest-scoring survivor. Loser ids become
 /// the survivor's `superseded_ids` provenance AND are recorded as
 /// `Superseded` omissions so receipts see both sides of the collapse.
-fn consider_entries(store: &::crypt::MemoryStore, scope_chain: &[String]) -> Vec<Considered> {
+fn consider_entries(store: &::cortex::MemoryStore, scope_chain: &[String]) -> Vec<Considered> {
     let allowed: BTreeSet<&str> = scope_chain.iter().map(String::as_str).collect();
 
     // Pull the full snapshot through the existing public API. `entries` is
@@ -470,7 +470,7 @@ fn build_candidates(
 ///   the caller has no repo root to offer, that is itself an unverifiable condition — `stale`
 ///   honestly reports `true` rather than falling back to `false` (F11).
 pub fn produce_candidate_set(
-    store: &::crypt::MemoryStore,
+    store: &::cortex::MemoryStore,
     task: &str,
     scope: &str,
     max_candidates: usize,
@@ -572,15 +572,15 @@ mod tests {
     //! planner will see.
     use super::*;
 
-    fn store() -> ::crypt::MemoryStore {
-        ::crypt::MemoryStore::open(::crypt::MemDb::open_in_memory())
+    fn store() -> ::cortex::MemoryStore {
+        ::cortex::MemoryStore::open(::cortex::MemDb::open_in_memory())
     }
 
     #[test]
     fn demoted_predicate_matches_dream_prune_rule() {
         let mut m = MemoryEntry {
             id: "x".into(),
-            tier: crypt_core::MemoryTier::Semantic,
+            tier: cortex_core::MemoryTier::Semantic,
             content: "x".into(),
             keywords: vec![],
             score: 0.19,
@@ -621,10 +621,10 @@ mod tests {
 
     #[test]
     fn trace_id_is_stable_and_does_not_leak_task_text() {
-        let a = trace_id_for("explore crypt engine", "D--Claude");
-        let b = trace_id_for("explore crypt engine", "D--Claude");
+        let a = trace_id_for("explore cortex engine", "D--Claude");
+        let b = trace_id_for("explore cortex engine", "D--Claude");
         assert_eq!(a, b);
-        let c = trace_id_for("explore crypt engine", "D--Claude-other");
+        let c = trace_id_for("explore cortex engine", "D--Claude-other");
         assert_ne!(a, c);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_eq!(a.len(), 64);

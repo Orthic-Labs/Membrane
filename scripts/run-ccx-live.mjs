@@ -74,7 +74,7 @@ const degraded = spawnSync(process.execPath, [contextHook], {
     ...process.env,
     ANTHROPIC_BASE_URL: "http://127.0.0.1:8801",
     MEMBRANE_CONTEXT_CLIENT: join(degradedDir, "missing-client.mjs"),
-    CRYPT_TELEMETRY_INGRESS: degradedIngress,
+    CORTEX_TELEMETRY_INGRESS: degradedIngress,
   },
 });
 const degradedOutput = parseLines(degraded.stdout || "")[0]?.hookSpecificOutput?.additionalContext || "";

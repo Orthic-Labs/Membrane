@@ -108,7 +108,7 @@ fn missing_control_or_chain_and_postregistration_never_promote() {
 #[rustfmt::skip]
 fn self_reported_verdict_and_hash_drift_fail_closed() {
     let (store, memory_id, _) = setup("experiment-drift", 1);
-    let mut forged = event('6', "control", "verdict", "verdict.recorded", "crypt", Some("task_succeeded"), None,
+    let mut forged = event('6', "control", "verdict", "verdict.recorded", "cortex", Some("task_succeeded"), None,
         vec![ContextEventLink { relation: "verdict_for".into(), target_event_id: format!("event-{}-outcome", "6".repeat(32)) }]);
     forged.producer = "codex".into();
     assert!(append_context_events_on(&store.db().lock_events(), &ContextEventBatch { events: vec![forged] }).is_err());

@@ -10,7 +10,7 @@ await mkdir(join(workspace, "tools", "lib", "memory"), { recursive: true });
 await mkdir(join(workspace, "tools", ".cache", "memory"), { recursive: true });
 await writeFile(join(workspace, "tools", "lib", "memory", "runtime.json"), JSON.stringify({
   schemaVersion: 1,
-  serviceId: "crypt-local-v1",
+  serviceId: "cortex-local-v1",
   host: "127.0.0.1",
   port: 47851,
 }), "utf8");
@@ -40,26 +40,26 @@ assert.equal(resolved.workspaceRoot, workspace);
 assert.equal(resolved.host, "127.0.0.1");
 assert.equal(resolved.port, 47851);
 assert.equal(resolved.endpoint, "http://127.0.0.1:47851");
-assert.equal(resolved.db, join(workspace, "tools", ".cache", "memory", "crypt-engine.db"));
+assert.equal(resolved.db, join(workspace, "tools", ".cache", "memory", "cortex-engine.db"));
 assert.equal(resolved.tokenPath, registryToken);
 assert.equal(resolved.tokenGeneration, 2);
 
 const env = installationEnv(resolved);
 assert.equal(env.WORKSPACE_ROOT, workspace);
-assert.equal(env.CRYPT_PORT, "47851");
-assert.equal(env.CRYPT_DB, resolved.db);
-assert.equal(env.CRYPT_API_TOKEN_FILE, registryToken);
+assert.equal(env.CORTEX_PORT, "47851");
+assert.equal(env.CORTEX_DB, resolved.db);
+assert.equal(env.CORTEX_API_TOKEN_FILE, registryToken);
 
-process.env.CRYPT_PORT = "49123";
-process.env.CRYPT_DB = "/tmp/override.db";
-process.env.CRYPT_API_TOKEN_FILE = "/tmp/override.token";
+process.env.CORTEX_PORT = "49123";
+process.env.CORTEX_DB = "/tmp/override.db";
+process.env.CORTEX_API_TOKEN_FILE = "/tmp/override.token";
 const overridden = await installationBindingFor(binding);
 assert.equal(overridden.port, 49123);
 assert.equal(overridden.db, "/tmp/override.db");
 assert.equal(overridden.tokenPath, "/tmp/override.token");
-delete process.env.CRYPT_PORT;
-delete process.env.CRYPT_DB;
-delete process.env.CRYPT_API_TOKEN_FILE;
+delete process.env.CORTEX_PORT;
+delete process.env.CORTEX_DB;
+delete process.env.CORTEX_API_TOKEN_FILE;
 
 // F09 case 1: tools/lib/memory/runtime.json absent anywhere on the path from binding.root ->
 // this is the ONLY legitimate silent-fallback case (not-installed-yet, tests, dry runs).
@@ -72,14 +72,14 @@ assert.equal(bareResolved.workspaceRoot, bareRepo);
 assert.equal(bareResolved.host, "127.0.0.1");
 assert.equal(bareResolved.port, 47851);
 assert.equal(bareResolved.endpoint, "http://127.0.0.1:47851");
-assert.equal(bareResolved.db, join(bareRepo, "tools", ".cache", "memory", "crypt-engine.db"));
+assert.equal(bareResolved.db, join(bareRepo, "tools", ".cache", "memory", "cortex-engine.db"));
 
 // F09 case 2: runtime.json IS present but fails validation -- must fail loudly, never fall back
 // to the phantom default endpoint (a stale/corrupt binding is a real production hazard).
 const invalidPortRoot = await mkdtemp(join(tmpdir(), "membrane-binding-invalid-port-"));
 await mkdir(join(invalidPortRoot, "tools", "lib", "memory"), { recursive: true });
 await writeFile(join(invalidPortRoot, "tools", "lib", "memory", "runtime.json"), JSON.stringify({
-  schemaVersion: 1, serviceId: "crypt-local-v1", host: "127.0.0.1", port: 70,
+  schemaVersion: 1, serviceId: "cortex-local-v1", host: "127.0.0.1", port: 70,
 }), "utf8");
 const invalidPortRepo = join(invalidPortRoot, "membrane-repo");
 await mkdir(invalidPortRepo, { recursive: true });
@@ -103,7 +103,7 @@ await assert.rejects(
 const nonLoopbackRoot = await mkdtemp(join(tmpdir(), "membrane-binding-non-loopback-"));
 await mkdir(join(nonLoopbackRoot, "tools", "lib", "memory"), { recursive: true });
 await writeFile(join(nonLoopbackRoot, "tools", "lib", "memory", "runtime.json"), JSON.stringify({
-  schemaVersion: 1, serviceId: "crypt-local-v1", host: "10.0.0.5", port: 47851,
+  schemaVersion: 1, serviceId: "cortex-local-v1", host: "10.0.0.5", port: 47851,
 }), "utf8");
 const nonLoopbackRepo = join(nonLoopbackRoot, "membrane-repo");
 await mkdir(nonLoopbackRepo, { recursive: true });

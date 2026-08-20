@@ -20,6 +20,7 @@
       "kind": "symbol",
       "path": "graph/traverse-store.mjs",
       "span": { "startLine": 10, "endLine": 40 },
+      "evidenceTier": 0,
       "score": 0.95,
       "name": "indexedQueryGeneration"
     }

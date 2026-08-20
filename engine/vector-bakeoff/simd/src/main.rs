@@ -8,7 +8,7 @@
 //! macOS uses Accelerate for B2; x86 Windows uses runtime-gated explicit AVX2/FMA
 //! intrinsics with a scalar fallback.
 
-use crypt_core::{cosine, QuantizedVector};
+use cortex_core::{cosine, QuantizedVector};
 use rayon::prelude::*;
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;

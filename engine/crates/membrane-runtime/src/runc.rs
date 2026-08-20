@@ -90,7 +90,7 @@ fn default_shell_argv() -> Vec<String> {
 }
 
 fn anchor_ttl_millis() -> u128 {
-    std::env::var("CRYPT_ANCHOR_TTL_MS")
+    std::env::var("CORTEX_ANCHOR_TTL_MS")
         .ok()
         .and_then(|value| value.parse::<u128>().ok())
         .filter(|value| *value > 0)
@@ -100,11 +100,11 @@ fn anchor_ttl_millis() -> u128 {
 /// Resolve the shell argv prefix used to execute `cmd`.
 ///
 /// Order:
-/// 1. `CRYPT_RUNC_SHELL` if set (split by whitespace into argv). If the value
+/// 1. `CORTEX_RUNC_SHELL` if set (split by whitespace into argv). If the value
 ///    has no explicit `-c`/`/C`, we append the platform default switch.
 /// 2. Platform default: POSIX `sh -c`, Windows Git Bash `bash -c`.
 pub fn resolve_shell_argv() -> Vec<String> {
-    if let Ok(raw) = std::env::var("CRYPT_RUNC_SHELL") {
+    if let Ok(raw) = std::env::var("CORTEX_RUNC_SHELL") {
         let mut argv = parse_shell_override(&raw);
         if argv.is_empty() {
             return default_shell_argv();
@@ -189,7 +189,14 @@ fn capture_ordered(
     stdout: impl Read + Send + 'static,
     stderr: impl Read + Send + 'static,
     spill_dir: &Path,
-) -> Result<(OrderedCapture, std::thread::JoinHandle<()>, std::thread::JoinHandle<()>), String> {
+) -> Result<
+    (
+        OrderedCapture,
+        std::thread::JoinHandle<()>,
+        std::thread::JoinHandle<()>,
+    ),
+    String,
+> {
     std::fs::create_dir_all(spill_dir)
         .map_err(|error| format!("spill_dir create failed: {error}"))?;
     let path = spill_dir.join(format!(
@@ -210,9 +217,8 @@ fn capture_ordered(
     let stdout_thread = std::thread::spawn(move || {
         read_capture_lane(stdout, "stdout", stdout_sequence, stdout_sender)
     });
-    let stderr_thread = std::thread::spawn(move || {
-        read_capture_lane(stderr, "stderr", sequence, sender)
-    });
+    let stderr_thread =
+        std::thread::spawn(move || read_capture_lane(stderr, "stderr", sequence, sender));
 
     let mut next_sequence = 0u64;
     let mut pending = BTreeMap::<u64, (&'static str, Vec<u8>)>::new();
@@ -224,16 +230,19 @@ fn capture_ordered(
     let mut failure = None;
     while finished < 2 {
         match receiver.recv() {
-            Ok(CaptureMessage::Chunk { sequence, lane, bytes }) => {
+            Ok(CaptureMessage::Chunk {
+                sequence,
+                lane,
+                bytes,
+            }) => {
                 pending.insert(sequence, (lane, bytes));
                 while let Some((_lane, bytes)) = pending.remove(&next_sequence) {
                     file.write_all(&bytes)
                         .map_err(|error| format!("ordered capture write failed: {error}"))?;
                     hasher.update(&bytes);
                     byte_count = byte_count.saturating_add(bytes.len());
-                    newline_count = newline_count.saturating_add(
-                        bytes.iter().filter(|byte| **byte == b'\n').count(),
-                    );
+                    newline_count = newline_count
+                        .saturating_add(bytes.iter().filter(|byte| **byte == b'\n').count());
                     ends_with_newline = bytes.last() == Some(&b'\n');
                     next_sequence = next_sequence.saturating_add(1);
                 }
@@ -256,13 +265,17 @@ fn capture_ordered(
     }
     file.flush()
         .map_err(|error| format!("ordered capture flush failed: {error}"))?;
-    Ok((OrderedCapture {
-        path,
-        byte_count,
-        newline_count,
-        ends_with_newline,
-        digest: format!("{:x}", hasher.finalize()),
-    }, stdout_thread, stderr_thread))
+    Ok((
+        OrderedCapture {
+            path,
+            byte_count,
+            newline_count,
+            ends_with_newline,
+            digest: format!("{:x}", hasher.finalize()),
+        },
+        stdout_thread,
+        stderr_thread,
+    ))
 }
 
 struct LineWindow {
@@ -343,8 +356,12 @@ impl LineWindow {
             .line_count
             .saturating_sub(self.head_limit.saturating_add(self.tail_limit));
         let display = |mut line: Vec<u8>| {
-            if line.last() == Some(&b'\n') { line.pop(); }
-            if line.last() == Some(&b'\r') { line.pop(); }
+            if line.last() == Some(&b'\n') {
+                line.pop();
+            }
+            if line.last() == Some(&b'\r') {
+                line.pop();
+            }
             String::from_utf8_lossy(&line).into_owned()
         };
         let mut lines = self.head.into_iter().map(display).collect::<Vec<_>>();
@@ -352,7 +369,13 @@ impl LineWindow {
         lines.extend(self.tail.into_iter().map(display));
         let rendered = lines.join("\n");
         let dropped_digest = format!("{:x}", self.dropped_hasher.finalize());
-        (rendered, dropped_digest, self.dropped_len, head_bytes, tail_bytes)
+        (
+            rendered,
+            dropped_digest,
+            self.dropped_len,
+            head_bytes,
+            tail_bytes,
+        )
     }
 }
 
@@ -377,9 +400,7 @@ fn hash_file_range(path: &Path, start: u64, length: usize) -> Result<String, Str
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-fn byte_preview(
-    capture: &OrderedCapture,
-) -> Result<(String, String, usize, usize, usize), String> {
+fn byte_preview(capture: &OrderedCapture) -> Result<(String, String, usize, usize, usize), String> {
     let head_bytes = capture.byte_count.min(MAX_PREVIEW_EDGE_BYTES);
     let tail_bytes = capture
         .byte_count
@@ -481,9 +502,11 @@ fn publish_spill(
     {
         let mut metadata_file = File::create(&metadata_temp)
             .map_err(|error| format!("anchor metadata create failed: {error}"))?;
-        metadata_file.write_all(record.to_string().as_bytes())
+        metadata_file
+            .write_all(record.to_string().as_bytes())
             .map_err(|error| format!("anchor metadata write failed: {error}"))?;
-        metadata_file.sync_all()
+        metadata_file
+            .sync_all()
             .map_err(|error| format!("anchor metadata sync failed: {error}"))?;
     }
     std::fs::rename(&metadata_temp, &metadata)
@@ -746,9 +769,9 @@ fn run_command_capped(
         .join()
         .map_err(|_| "stderr capture panicked".to_owned())?;
 
-    let total_lines = capture
-        .newline_count
-        .saturating_add(usize::from(capture.byte_count > 0 && !capture.ends_with_newline));
+    let total_lines = capture.newline_count.saturating_add(usize::from(
+        capture.byte_count > 0 && !capture.ends_with_newline,
+    ));
     let result = if total_lines > line_limit || capture.byte_count > MAX_INLINE_CAPTURE_BYTES {
         publish_spill(&capture, head, tail, spill_dir)
             .map(|(capped, path, digest, marker)| (capped, Some(path), digest, Some(marker)))
@@ -832,7 +855,7 @@ mod tests {
     use std::sync::{Mutex, MutexGuard};
 
     /// Every test in this module reads or writes the process-global
-    /// `CRYPT_RUNC_SHELL` env var. Rust runs tests concurrently within one
+    /// `CORTEX_RUNC_SHELL` env var. Rust runs tests concurrently within one
     /// binary, and `std::env::set_var` mutates the whole process, so without a
     /// shared lock the `shell_override_*` tests race the `run_capped_*` tests —
     /// the latter would read a `bash`-polluted value and run under the wrong
@@ -848,9 +871,9 @@ mod tests {
     #[test]
     fn default_shell_preserves_the_legacy_bash_contract() {
         let _guard = lock_env();
-        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
+        let prior = std::env::var_os("CORTEX_RUNC_SHELL");
         unsafe {
-            std::env::remove_var("CRYPT_RUNC_SHELL");
+            std::env::remove_var("CORTEX_RUNC_SHELL");
         }
         let argv = resolve_shell_argv();
         assert_eq!(argv.last().map(String::as_str), Some("-c"));
@@ -863,22 +886,22 @@ mod tests {
         );
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
-                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CORTEX_RUNC_SHELL", v),
+                None => std::env::remove_var("CORTEX_RUNC_SHELL"),
             }
         }
     }
 
-    /// `CRYPT_RUNC_SHELL` with just a program (no switch) — the resolver
+    /// `CORTEX_RUNC_SHELL` with just a program (no switch) — the resolver
     /// should append the platform-correct switch automatically.
     #[test]
     fn shell_override_program_only_appends_platform_switch() {
         let _guard = lock_env();
-        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
+        let prior = std::env::var_os("CORTEX_RUNC_SHELL");
         // SAFETY: `_guard` serializes all env-touching tests in this module, so
-        // this test owns `CRYPT_RUNC_SHELL` for its duration.
+        // this test owns `CORTEX_RUNC_SHELL` for its duration.
         unsafe {
-            std::env::set_var("CRYPT_RUNC_SHELL", "bash");
+            std::env::set_var("CORTEX_RUNC_SHELL", "bash");
         }
         let argv = resolve_shell_argv();
         if cfg!(windows) {
@@ -892,26 +915,26 @@ mod tests {
         }
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
-                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CORTEX_RUNC_SHELL", v),
+                None => std::env::remove_var("CORTEX_RUNC_SHELL"),
             }
         }
     }
 
-    /// `CRYPT_RUNC_SHELL` with both program and switch — use as-is.
+    /// `CORTEX_RUNC_SHELL` with both program and switch — use as-is.
     #[test]
     fn shell_override_program_and_switch_used_verbatim() {
         let _guard = lock_env();
-        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
+        let prior = std::env::var_os("CORTEX_RUNC_SHELL");
         unsafe {
-            std::env::set_var("CRYPT_RUNC_SHELL", "bash -c");
+            std::env::set_var("CORTEX_RUNC_SHELL", "bash -c");
         }
         let argv = resolve_shell_argv();
         assert_eq!(argv, vec!["bash".to_string(), "-c".to_string()]);
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
-                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CORTEX_RUNC_SHELL", v),
+                None => std::env::remove_var("CORTEX_RUNC_SHELL"),
             }
         }
     }
@@ -921,9 +944,9 @@ mod tests {
         let _guard = lock_env();
         // Pin the shell to the platform default so a leaked override from another
         // process can't change what runs here.
-        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
+        let prior = std::env::var_os("CORTEX_RUNC_SHELL");
         unsafe {
-            std::env::remove_var("CRYPT_RUNC_SHELL");
+            std::env::remove_var("CORTEX_RUNC_SHELL");
         }
         let dir = tempfile::tempdir().unwrap();
 
@@ -960,8 +983,8 @@ mod tests {
 
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
-                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CORTEX_RUNC_SHELL", v),
+                None => std::env::remove_var("CORTEX_RUNC_SHELL"),
             }
         }
     }
@@ -972,23 +995,26 @@ mod tests {
     #[test]
     fn run_capped_spill_metadata_carries_recovery_marker() {
         let _guard = lock_env();
-        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
+        let prior = std::env::var_os("CORTEX_RUNC_SHELL");
         unsafe {
-            std::env::remove_var("CRYPT_RUNC_SHELL");
+            std::env::remove_var("CORTEX_RUNC_SHELL");
         }
         let dir = tempfile::tempdir().unwrap();
         let long_cmd = "i=1; while [ $i -le 100 ]; do echo l$i; i=$((i+1)); done".to_string();
         let r = run_capped(&long_cmd, 3, 3, dir.path()).expect("run_capped ok");
         let spill = r.spill_path.as_ref().expect("spilled output");
-        let metadata: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(spill.with_extension("json")).unwrap(),
-        )
-        .unwrap();
+        let metadata: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(spill.with_extension("json")).unwrap())
+                .unwrap();
         let recovery = &metadata["recovery"];
         assert_eq!(recovery["transform"], "head_tail_spill");
         assert_eq!(recovery["transformVersion"], 1);
-        assert!(recovery["keptHeadBytes"].as_u64().is_some_and(|value| value > 0));
-        assert!(recovery["keptTailBytes"].as_u64().is_some_and(|value| value > 0));
+        assert!(recovery["keptHeadBytes"]
+            .as_u64()
+            .is_some_and(|value| value > 0));
+        assert!(recovery["keptTailBytes"]
+            .as_u64()
+            .is_some_and(|value| value > 0));
         assert_eq!(recovery["recoveryHandle"], metadata["anchor"]);
         assert_eq!(recovery["expiresAtMillis"], metadata["expiresAtMillis"]);
         assert_eq!(
@@ -1001,7 +1027,10 @@ mod tests {
         assert!(recovery["droppedBytesDigest"]
             .as_str()
             .is_some_and(|d| d.starts_with("sha256:")));
-        let marker = r.recovery_marker.as_ref().expect("canonical recovery marker");
+        let marker = r
+            .recovery_marker
+            .as_ref()
+            .expect("canonical recovery marker");
         let source = std::fs::read(spill).unwrap();
         let dropped_end = source.len().saturating_sub(marker.kept_tail_bytes);
         assert!(marker.kept_head_bytes <= dropped_end);
@@ -1013,8 +1042,8 @@ mod tests {
 
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
-                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CORTEX_RUNC_SHELL", v),
+                None => std::env::remove_var("CORTEX_RUNC_SHELL"),
             }
         }
     }
@@ -1023,9 +1052,9 @@ mod tests {
     #[test]
     fn run_capped_does_not_spill_when_output_fits() {
         let _guard = lock_env();
-        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
+        let prior = std::env::var_os("CORTEX_RUNC_SHELL");
         unsafe {
-            std::env::remove_var("CRYPT_RUNC_SHELL");
+            std::env::remove_var("CORTEX_RUNC_SHELL");
         }
         let dir = tempfile::tempdir().unwrap();
         let r = run_capped("echo hi", 100, 100, dir.path()).expect("run_capped ok");
@@ -1038,8 +1067,8 @@ mod tests {
 
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
-                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CORTEX_RUNC_SHELL", v),
+                None => std::env::remove_var("CORTEX_RUNC_SHELL"),
             }
         }
     }
@@ -1074,9 +1103,9 @@ mod tests {
     #[test]
     fn run_capped_freezes_stream_order_lossy_utf8_head_tail_and_exit_status() {
         let _guard = lock_env();
-        let prior = std::env::var_os("CRYPT_RUNC_SHELL");
+        let prior = std::env::var_os("CORTEX_RUNC_SHELL");
         unsafe {
-            std::env::remove_var("CRYPT_RUNC_SHELL");
+            std::env::remove_var("CORTEX_RUNC_SHELL");
         }
         let dir = tempfile::tempdir().unwrap();
 
@@ -1118,8 +1147,8 @@ mod tests {
 
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("CRYPT_RUNC_SHELL", v),
-                None => std::env::remove_var("CRYPT_RUNC_SHELL"),
+                Some(v) => std::env::set_var("CORTEX_RUNC_SHELL", v),
+                None => std::env::remove_var("CORTEX_RUNC_SHELL"),
             }
         }
     }

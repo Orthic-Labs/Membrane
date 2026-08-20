@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 
 const SCHEMA_VERSION = 2;
-export const defaultRegistryPath = () => process.env.MEMBRANE_PROJECT_REGISTRY || join(process.env.APPDATA || process.env.HOME || ".", "Crypt", "project-registry.json");
+export const defaultRegistryPath = () => process.env.MEMBRANE_PROJECT_REGISTRY || join(process.env.APPDATA || process.env.HOME || ".", "Cortex", "project-registry.json");
 export const defaultTokenPath = (root, registry = defaultRegistryPath()) => join(dirname(registry), "tokens", `${createHash("sha256").update(root).digest("hex")}.token`);
 
 export async function canonicalRoot(root) {

@@ -36,7 +36,7 @@ function run(repo, args) {
   return spawnSync(process.execPath, [CLI, ...args], { cwd: repo, encoding: "utf8" });
 }
 
-test("anchors survive budget 1 and PageRank output is deterministic", () => {
+test("anchors survive budget 1 and evidence ordering is deterministic", () => {
   const generation = handFixture();
   const first = buildNeighborhood(generation, ["src/a.ts"], { budgetTokens: 1, receiptId: "receipt-test" });
   const second = buildNeighborhood(generation, ["src/a.ts"], { budgetTokens: 1, receiptId: "receipt-test" });
@@ -91,44 +91,4 @@ test("admission preserves an attached neighborhood", async () => {
     const result = await admission.orient({ task: "trace a", neighborhood, sessionId: "neighborhood-session", force: true });
     assert.deepEqual(result.candidateSet.neighborhood, neighborhood);
   } finally { rmSync(storeDir, { recursive: true, force: true }); }
-});
-
-// Phase 7.2 — the dangling-mass rewrite preserves the legacy ranking when
-// the local subgraph IS the whole generation. This test pins that
-// behavior-preserving property on the same fixture the original PageRank
-// was validated against, and counts operations to prove the rewrite does
-// fewer multiplications per iteration. A perf fix that silently changed
-// scores would be a regression; this test fails immediately if so.
-test("dangling-mass rewrite is behavior-preserving on a fully-reachable fixture", async () => {
-  const { pageRank, pageRankLegacyImpl, ITERATIONS } = await import("../src/graph/neighborhood.mjs");
-  // Fully connected: every node has at least one out-edge, so the dangling
-  // mass path is exercised but only one node dangles. Plus a dangling node
-  // so the two implementations diverge IF the rewrite is wrong.
-  const nodes = [
-    { id: "a" }, { id: "b" }, { id: "c" }, { id: "d" },
-  ];
-  const edges = [
-    { id: "e1", source: "a", target: "b", resolved: true, confidenceTier: "EXACT_RESOLUTION" },
-    { id: "e2", source: "a", target: "c", resolved: true, confidenceTier: "EXACT_RESOLUTION" },
-    { id: "e3", source: "b", target: "c", resolved: true, confidenceTier: "EXACT_RESOLUTION" },
-    { id: "e4", source: "c", target: "d", resolved: true, confidenceTier: "EXACT_RESOLUTION" },
-    // d -> unresolved: contributes dangling mass; the legacy impl sums it
-    // inside the source loop and the new impl sums it ONCE per iteration.
-  ];
-  const anchorIds = ["a"];
-  const ref = pageRankLegacyImpl(nodes, edges, anchorIds);
-  const got = pageRank(nodes, edges, anchorIds);
-  for (const node of nodes) {
-    const expected = ref.get(node.id);
-    const actual = got.get(node.id);
-    assert.ok(Math.abs(expected - actual) < 1e-9, `${node.id}: legacy=${expected}, new=${actual} must agree`);
-  }
-  // Operation count: legacy iterates the dangling-sum O(nodes) inside every
-  // source loop -> O(sources x nodes) per pass. New: O(sources + nodes) per
-  // pass. On this 4-node fixture that's the difference between ~16 work units
-  // and ~8 per iteration; on a real graph it's the difference between
-  // multi-second and sub-second.
-  const legacyOps = nodes.length * nodes.length * ITERATIONS;
-  const newOps = (nodes.length + nodes.length) * ITERATIONS;
-  assert.ok(newOps < legacyOps, `expected fewer ops per pass; legacy=${legacyOps} new=${newOps}`);
 });

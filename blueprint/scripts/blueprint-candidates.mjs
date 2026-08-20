@@ -14,8 +14,7 @@
 // path never repairs, reconciles, or writes; freshness verdicts are the
 // resident service's job.
 import { closeStore, openStoreReadOnly, readManifestEnvelope } from "../src/graph/store-sqlite.mjs";
-import { indexedQueryGeneration } from "../src/graph/traverse-store.mjs";
-import { createContextCandidateSet } from "../src/graph/static-provider.mjs";
+import { executeRecallCircuit, recallCircuitToCandidateSet } from "../src/graph/recall-circuit.mjs";
 import { join, resolve } from "node:path";
 
 function parseArgs(argv) {
@@ -49,12 +48,12 @@ try {
     console.error(JSON.stringify({ error: "generation_mismatch", expected, actual: generationId }));
     process.exit(3);
   }
-  const generation = indexedQueryGeneration(db, task, { limit });
-  const candidateSet = createContextCandidateSet(generation, {
-    task,
-    query: task,
-    maxCandidates: limit,
-    anchors: [],
+  const circuit = executeRecallCircuit(db, task, {
+    generationId,
+    limits: { maxPaths: limit },
+  });
+  const candidateSet = recallCircuitToCandidateSet(circuit, {
+    provider: envelope.provider,
     repoRoot: root,
     receiptId: null,
   });

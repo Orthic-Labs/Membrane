@@ -23,9 +23,7 @@ pub mod resident;
 pub mod supervisor;
 
 pub use admission::{evaluate, AdmissionDecision};
-pub use config::{
-    RestartPolicy, SupervisorConfig, CONFIG_SCHEMA_VERSION, DEFAULT_LOOPBACK_PORT,
-};
+pub use config::{RestartPolicy, SupervisorConfig, CONFIG_SCHEMA_VERSION, DEFAULT_LOOPBACK_PORT};
 pub use error::{Result, SupervisorError};
 pub use heartbeat::{detect_conflation, summarize_status, HeartbeatTable};
 pub use lease::{

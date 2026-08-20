@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "blueprint_example",
-    "crypt_example",
+    "cortex_example",
 ]
 
 [workspace.package]

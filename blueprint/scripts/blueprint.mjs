@@ -58,6 +58,7 @@ import {
 import { normalizeIgnoredPrefixes, pathMatchesIgnoredPrefix } from "../src/graph/ignored-prefixes.mjs";
 import { leafDigestForFile } from "../src/graph/merkle-ledger.mjs";
 import { buildNeighborhood } from "../src/graph/neighborhood.mjs";
+import { executeRecallCircuit, recallCircuitToCandidateSet } from "../src/graph/recall-circuit.mjs";
 import { generateDocs, generatedDocsGenerationId } from "../src/lib/generated-docs.mjs";
 import { dispatchFacade } from "./cli/commands.mjs";
 import {
@@ -1189,8 +1190,8 @@ function plannedContextBudget(task, root) {
       "--query", task,
       "--record", CONTEXT_BUDGET_LOG,
     );
-    if (process.env.CRYPT_TRANSCRIPT_PATH) {
-      args.push("--transcript", process.env.CRYPT_TRANSCRIPT_PATH);
+    if (process.env.BLUEPRINT_TRANSCRIPT_PATH) {
+      args.push("--transcript", process.env.BLUEPRINT_TRANSCRIPT_PATH);
     }
     const budget = JSON.parse(execFileSync(command, args, { encoding: "utf8", windowsHide: true }));
     // The external context-budget planner is optional best-effort. Treat a
@@ -2179,15 +2180,17 @@ async function runGraphCommand(root, outDir, subcommand, args) {
   }
   if (subcommand === "candidates") {
     const query = String(args.query ?? args.task ?? args._.join(" ")).trim();
-    const candidateSet = withFreshIndexedGraph(root, outDir, { expectedGeneration: args["expected-generation"], allowStale: Boolean(args["allow-stale"]) }, ({ db }) => {
+    const candidateSet = withFreshIndexedGraph(root, outDir, { expectedGeneration: args["expected-generation"], allowStale: Boolean(args["allow-stale"]) }, ({ db, meta }) => {
       const anchors = args.anchors ? String(args.anchors).split(",").map((path) => path.trim()).filter(Boolean) : [];
-      const generation = indexedQueryGeneration(db, query, { limit: Number(args.limit ?? 40), anchors });
       const repoCodeScanStarted = process.hrtime.bigint();
-      const result = createContextCandidateSet(generation, {
-        task: String(args.task ?? query),
-        query,
-        maxCandidates: Number(args.limit ?? 40),
+      const circuit = executeRecallCircuit(db, String(args.task ?? query), {
+        generationId: meta.manifest.generationId,
         anchors,
+        policy: args.policy,
+        limits: { maxPaths: Number(args.limit ?? 40) },
+      });
+      const result = recallCircuitToCandidateSet(circuit, {
+        provider: meta.provider,
         ...repositoryIdentity(root),
         repoId: args["repo-id"] ?? repositoryIdentity(root).repoId,
         repoRoot: root,
@@ -2203,15 +2206,16 @@ async function runGraphCommand(root, outDir, subcommand, args) {
   if (subcommand === "planner-status") {
     const query = String(args.query ?? args.task ?? args._.join(" ")).trim();
     const result = withFreshIndexedGraph(root, outDir, {}, ({ db, meta }) => {
-      const generation = indexedQueryGeneration(db, query, { limit: Number(args.limit ?? 40) });
+      const circuit = executeRecallCircuit(db, String(args.task ?? query), {
+        generationId: meta.manifest.generationId,
+        limits: { maxPaths: Number(args.limit ?? 40) },
+      });
       return {
         schemaVersion: 1,
         provider: meta.provider.id ?? meta.provider,
-        planner: cryptPlannerStatus(),
-        candidateSet: createContextCandidateSet(generation, {
-          task: String(args.task ?? query),
-          query,
-          maxCandidates: Number(args.limit ?? 40),
+        planner: cortexPlannerStatus(),
+        candidateSet: recallCircuitToCandidateSet(circuit, {
+          provider: meta.provider,
           ...repositoryIdentity(root),
           repoId: args["repo-id"] ?? repositoryIdentity(root).repoId,
           repoRoot: root,
@@ -2546,13 +2550,14 @@ function orientPayload(root, outDir, args = {}) {
   const manifest = readJson(join(root, ".agent/manifest.json"), {});
   const flowInventory = readJson(join(root, outDir, "flows.json"), { flows: [] });
   const query = String(args.query ?? args.task ?? args._?.join(" ") ?? "").trim();
-  const candidateSet = withFreshIndexedGraph(root, outDir, {}, ({ db }) => {
-    const generation = indexedQueryGeneration(db, query, { limit: Number(args.limit ?? 40) });
+  const candidateSet = withFreshIndexedGraph(root, outDir, {}, ({ db, meta }) => {
     const identity = repositoryIdentity(root);
-    return createContextCandidateSet(generation, {
-      task: String(args.task ?? query),
-      query,
-      maxCandidates: Number(args.limit ?? 40),
+    const circuit = executeRecallCircuit(db, String(args.task ?? query), {
+      generationId: meta.manifest.generationId,
+      limits: { maxPaths: Number(args.limit ?? 40) },
+    });
+    return recallCircuitToCandidateSet(circuit, {
+      provider: meta.provider,
       ...identity,
       repoRoot: root,
       receiptId: args.freshnessReceipt?.receiptId ?? null,
@@ -2582,10 +2587,10 @@ function orientPayload(root, outDir, args = {}) {
 }
 
 // Peer binary candidates — vendor-neutral, config-driven (D-14, SEAM D-S11).
-// CRYPT_BIN env override is preserved for backwards compat.
-// New: BLUEPRINT_PEER_BIN_<NAME> (e.g. BLUEPRINT_PEER_BIN_CRYPT), blueprint.config.toml [peers] table,
+// CORTEX_BIN is the explicit Cortex durable-knowledge peer override.
+// New: BLUEPRINT_PEER_BIN_<NAME> (e.g. BLUEPRINT_PEER_BIN_CORTEX), blueprint.config.toml [peers] table,
 // and generic homedir shims. No hardcoded product name survives outside config-default context.
-function peerBinCandidates(peer = "crypt") {
+function peerBinCandidates(peer = "cortex") {
   const envPeer = process.env[`BLUEPRINT_PEER_BIN_${peer.toUpperCase()}`];
   const envGeneric = process.env.BLUEPRINT_PEER_BIN;
   // Optional TOML config: blueprint.config.toml [peers] peer = "/path/to/bin"
@@ -2599,7 +2604,7 @@ function peerBinCandidates(peer = "crypt") {
     }
   } catch {}
   return [
-    process.env.CRYPT_BIN, // legacy compat — CRYPT_BIN keeps working unchanged
+    process.env.CORTEX_BIN,
     envPeer,
     envGeneric,
     configPeer,
@@ -2609,7 +2614,7 @@ function peerBinCandidates(peer = "crypt") {
     peer,
   ].filter(Boolean);
 }
-function cryptBinCandidates(peer = "crypt") {
+function cortexBinCandidates(peer = "cortex") {
   return peerBinCandidates(peer);
 }
 
@@ -2646,20 +2651,20 @@ function plannerProbeCandidateSet() {
   };
 }
 
-// Prove the Blueprint -> Crypt join is actually LIVE by round-tripping a real
-// candidate set through `crypt plan-context` and validating the returned
-// ContextPacket. The old probe only grepped `crypt help` for the string
+// Prove the Blueprint -> Cortex join is actually LIVE by round-tripping a real
+// candidate set through `cortex plan-context` and validating the returned
+// ContextPacket. The old probe only grepped `cortex help` for the string
 // "plan-context" — a check that could not fail while the join was, in fact, never
 // wired. It reported "ready" for a hand-off nothing exercised. This one runs it.
-function cryptPlannerStatus() {
-  const result = { service: "crypt", command: "crypt plan-context" };
+function cortexPlannerStatus() {
+  const result = { service: "cortex", command: "cortex plan-context" };
   let tmp;
   try {
     tmp = mkdtempSync(join(tmpdir(), "bp-planner-"));
     const csPath = join(tmp, "candidate-set.json");
     writeFileSync(csPath, JSON.stringify(plannerProbeCandidateSet()));
-    let lastError = "no crypt executable found on any known path";
-    for (const bin of cryptBinCandidates()) {
+    let lastError = "no cortex executable found on any known path";
+    for (const bin of cortexBinCandidates()) {
       try {
         const out = execFileSync(bin, ["plan-context", "--candidate-set", csPath, "--max-tokens", "2000"], {
           encoding: "utf8",

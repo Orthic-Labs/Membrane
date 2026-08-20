@@ -7,7 +7,7 @@
   "properties": {
     "schema": { "const": "orthic.membrane.release-generation.v1" },
     "product": { "type": "string", "minLength": 1 },
-    "vector_dispatch": { "const": "CRYPT_VECTOR_DISPATCH_V2" },
+    "vector_dispatch": { "const": "CORTEX_VECTOR_DISPATCH_V2" },
     "publish": { "const": false },
     "release": {
       "type": "object",

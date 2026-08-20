@@ -1,4 +1,4 @@
-# Crypt Vector Backend Bake-off
+# Cortex Vector Backend Bake-off
 
 One committed generator, config, dependency locks, harness, and receipt contract run independently on macOS and Windows. Arms are serialized per host; both hosts may run simultaneously.
 

@@ -1,4 +1,4 @@
-//! MBR-210: conservative import of source-coupled Crypt layouts.
+//! MBR-210: conservative import of source-coupled Cortex layouts.
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -7,11 +7,11 @@ pub const MIGRATION_RECEIPT_SCHEMA_VERSION: u32 = 1;
 pub const MIGRATION_RECEIPT_FILE_NAME: &str = "migration-receipt.json";
 const LEGACY_LAYOUTS: [(&str, &str); 2] = [
     ("workspace-cache", "tools/.cache/memory"),
-    ("home-crypt", ".claude/crypt"),
+    ("home-cortex", ".claude/cortex"),
 ];
 const PID_FILES: [&str; 3] = [
     "supervisor.pid",
-    "crypt-service.pid",
+    "cortex-service.pid",
     "membrane-supervisor.pid",
 ];
 
@@ -169,11 +169,11 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let source = temp.path().join("source");
         let target = temp.path().join("target");
-        for relative in ["tools/.cache/memory", ".claude/crypt"] {
+        for relative in ["tools/.cache/memory", ".claude/cortex"] {
             let dir = source.join(relative);
             std::fs::create_dir_all(&dir).unwrap();
             for file in [
-                "crypt-engine.db",
+                "cortex-engine.db",
                 "grants.json",
                 "events.jsonl",
                 "aliases.json",
@@ -182,11 +182,11 @@ mod tests {
             }
         }
         let receipt = migrate(&source, &target).unwrap();
-        assert_eq!(receipt.layouts, ["workspace-cache", "home-crypt"]);
+        assert_eq!(receipt.layouts, ["workspace-cache", "home-cortex"]);
         assert!(target.join(MIGRATION_RECEIPT_FILE_NAME).is_file());
         for (name, _) in LEGACY_LAYOUTS {
             for file in [
-                "crypt-engine.db",
+                "cortex-engine.db",
                 "grants.json",
                 "events.jsonl",
                 "aliases.json",
@@ -195,7 +195,7 @@ mod tests {
             }
         }
         assert!(!source.join("tools/.cache/memory").exists());
-        assert!(!source.join(".claude/crypt").exists());
+        assert!(!source.join(".claude/cortex").exists());
     }
     #[test]
     fn active_legacy_marker_refuses_before_any_data_moves() {
@@ -247,14 +247,14 @@ mod tests {
         let outside = temp.path().join("outside");
         std::fs::create_dir_all(source.join("tools/.cache")).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
-        std::fs::write(outside.join("crypt-engine.db"), "outside").unwrap();
+        std::fs::write(outside.join("cortex-engine.db"), "outside").unwrap();
         std::os::unix::fs::symlink(&outside, source.join("tools/.cache/memory")).unwrap();
         assert!(migrate(&source, &target).unwrap_err().contains("symlink"));
         assert!(source
             .join("tools/.cache/memory")
             .symlink_metadata()
             .is_ok());
-        assert!(outside.join("crypt-engine.db").is_file());
+        assert!(outside.join("cortex-engine.db").is_file());
         assert!(!target.exists());
     }
     #[cfg(unix)]
@@ -266,11 +266,11 @@ mod tests {
         let outside = temp.path().join("outside");
         std::fs::create_dir_all(&source).unwrap();
         std::fs::create_dir_all(outside.join(".cache/memory")).unwrap();
-        std::fs::write(outside.join(".cache/memory/crypt-engine.db"), "outside").unwrap();
+        std::fs::write(outside.join(".cache/memory/cortex-engine.db"), "outside").unwrap();
         std::os::unix::fs::symlink(&outside, source.join("tools")).unwrap();
         assert!(migrate(&source, &target).unwrap_err().contains("symlink"));
         assert!(source.join("tools").symlink_metadata().is_ok());
-        assert!(outside.join(".cache/memory/crypt-engine.db").is_file());
+        assert!(outside.join(".cache/memory/cortex-engine.db").is_file());
         assert!(!target.exists());
     }
 }

@@ -16,7 +16,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from providers import canonical_repository_id  # noqa: E402
+from providers import canonical_repository_id, workspace_tools_path  # noqa: E402
 
 # A bare `D:/Claude` is an ABSOLUTE path only on Windows. On POSIX it is a
 # relative path whose `.resolve()` is cwd-dependent, so the drive-letter slug
@@ -94,3 +94,9 @@ def test_never_returns_a_machine_path():
 
 def test_is_stable_across_calls():
     assert canonical_repository_id("D:/Claude") == canonical_repository_id("D:/Claude")
+
+
+def test_workspace_tools_override_is_authoritative(monkeypatch, tmp_path):
+    tools = tmp_path / "tools"
+    monkeypatch.setenv("MEMBRANE_TOOLS_ROOT", str(tools))
+    assert workspace_tools_path("lib", "example.py") == tools / "lib" / "example.py"

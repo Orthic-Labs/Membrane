@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { BENCHMARKS, COMPONENT } from './contracts.mjs';
 import { verifyMemoryBenchmark } from '../../scripts/qualification/verify-memory-benchmark.mjs';
 
-// This module never downloads a dataset and never invokes the Crypt engine
+// This module never downloads a dataset and never invokes the Cortex engine
 // itself. It only wires: (1) local dataset presence, (2) a caller-supplied
 // executor that performs the actual benchmark run, and (3) the existing
 // MBR-805 contract/verifier so a run can never report a Membrane/managed

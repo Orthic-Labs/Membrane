@@ -174,10 +174,10 @@ pub(crate) struct Runtime {
 fn build_info() -> serde_json::Value {
     serde_json::json!({
         "product_version": env!("CARGO_PKG_VERSION"),
-        "crypt_source_commit": option_env!("CRYPT_SOURCE_COMMIT").unwrap_or("unknown"),
-        "source_tree_sha256": option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown"),
-        "release_generation": crypt::release_identity::release_generation(),
-        "target": crypt::release_identity::target_triple(),
+        "cortex_source_commit": option_env!("CORTEX_SOURCE_COMMIT").unwrap_or("unknown"),
+        "source_tree_sha256": option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown"),
+        "release_generation": cortex::release_identity::release_generation(),
+        "target": cortex::release_identity::target_triple(),
     })
 }
 
@@ -185,8 +185,8 @@ pub(crate) fn prepare_runtime_identity(
     runtime: &Runtime,
 ) -> Result<
     (
-        crypt::installation_identity::InstallationIdentity,
-        crypt::installation_identity::StartupClaim,
+        cortex::installation_identity::InstallationIdentity,
+        cortex::installation_identity::StartupClaim,
     ),
     String,
 > {
@@ -195,7 +195,7 @@ pub(crate) fn prepare_runtime_identity(
         .ancestors()
         .nth(4)
         .ok_or_else(|| "resolve workspace root from database path".to_string())?;
-    crypt::installation_identity::prepare_service_start(workspace_root)
+    cortex::installation_identity::prepare_service_start(workspace_root)
         .map_err(|error| format!("prepare installation identity: {error}"))
 }
 
@@ -217,9 +217,9 @@ fn runtime_from_exe_at_workspace(
         }
         let bin = root.join("tools/bin");
         let service_names = if cfg!(windows) {
-            ["crypt-service.exe", "crypt-service.exe"]
+            ["cortex-service.exe", "cortex-service.exe"]
         } else {
-            ["crypt-service", "crypt-service"]
+            ["cortex-service", "cortex-service"]
         };
         let actual = std::fs::canonicalize(exe).ok()?;
         service_names.iter().find_map(|name| {
@@ -242,13 +242,13 @@ fn runtime_from_exe_at_workspace(
         .or(linked_bin)
         .or(membrane_owned_bin)
         .ok_or_else(|| {
-            "crypt-service must be Membrane-owned or run from its exact canonical tools/bin path"
+            "cortex-service must be Membrane-owned or run from its exact canonical tools/bin path"
                 .to_string()
         })?;
     let tools = bin
         .parent()
         .filter(|path| path.file_name().is_some_and(|name| name == "tools"))
-        .ok_or_else(|| "crypt-service could not locate the tools directory".to_string())?;
+        .ok_or_else(|| "cortex-service could not locate the tools directory".to_string())?;
     let config_path = tools.join("lib/memory/runtime.json");
     let config: RuntimeConfig = serde_json::from_slice(
         &std::fs::read(&config_path)
@@ -256,7 +256,7 @@ fn runtime_from_exe_at_workspace(
     )
     .map_err(|error| format!("parse {}: {error}", config_path.display()))?;
     if config.schema_version != 1
-        || config.service_id != "crypt-local-v1"
+        || config.service_id != "cortex-local-v1"
         || config.host != "127.0.0.1"
         || config.port < 1024
     {
@@ -273,7 +273,7 @@ fn runtime_from_exe_at_workspace(
         "libonnxruntime.so"
     };
     Ok(Runtime {
-        db: tools.join(".cache/memory/crypt-engine.db"),
+        db: tools.join(".cache/memory/cortex-engine.db"),
         token: tools.join(".cache/memory/api-token"),
         ort: bin.join(ort_name),
         hf_home: tools.join(".cache/fastembed"),
@@ -328,9 +328,9 @@ pub fn run_service() -> Result<(), String> {
     let runtime = runtime_from_exe(
         &std::env::current_exe().map_err(|error| format!("resolve service binary: {error}"))?,
     )?;
-    std::env::set_var("CRYPT_DB", &runtime.db);
-    std::env::set_var("CRYPT_PORT", runtime.port.to_string());
-    std::env::set_var("CRYPT_API_TOKEN_FILE", &runtime.token);
+    std::env::set_var("CORTEX_DB", &runtime.db);
+    std::env::set_var("CORTEX_PORT", runtime.port.to_string());
+    std::env::set_var("CORTEX_API_TOKEN_FILE", &runtime.token);
     std::env::set_var("ORT_DYLIB_PATH", &runtime.ort);
     std::env::set_var("HF_HOME", &runtime.hf_home);
     std::env::set_var("HF_HUB_OFFLINE", "1");
@@ -343,7 +343,7 @@ pub fn run_service() -> Result<(), String> {
             .ok_or_else(|| "resolve workspace root from database path".to_string())?,
     );
     let catalog_path = crate::catalog::default_catalog_path().map_err(|error| error.to_string())?;
-    std::env::set_var("RIGHTCONTEXT_CATALOG", catalog_path);
+    std::env::set_var("MEMBRANE_CATALOG", catalog_path);
     let (identity, claim) = prepare_runtime_identity(&runtime)?;
     let workspace_root = runtime
         .db
@@ -361,9 +361,9 @@ pub fn run_service() -> Result<(), String> {
         crate::installation_manifest::build_active_manifest(&identity, &claim, workspace_root);
     crate::installation_manifest::publish_active_manifest(active_manifest)
         .map_err(|error| format!("publish installation manifest: {error}"))?;
-    std::env::set_var("CRYPT_INSTALLATION_ID", &identity.installation_id);
-    std::env::set_var("CRYPT_SERVICE_INSTANCE_ID", &claim.service_instance_id);
-    crypt::serve::run(
+    std::env::set_var("CORTEX_INSTALLATION_ID", &identity.installation_id);
+    std::env::set_var("CORTEX_SERVICE_INSTANCE_ID", &claim.service_instance_id);
+    cortex::serve::run(
         runtime
             .db
             .to_str()
@@ -405,7 +405,7 @@ mod tests {
     fn build_info_exposes_source_commit_and_tree_identity_fields() {
         let info = build_info();
         assert_eq!(info["product_version"], env!("CARGO_PKG_VERSION"));
-        assert!(info.get("crypt_source_commit").is_some());
+        assert!(info.get("cortex_source_commit").is_some());
         assert!(info.get("source_tree_sha256").is_some());
         assert!(info.get("release_generation").is_some());
         assert!(info.get("target").is_some());
@@ -420,14 +420,14 @@ mod tests {
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(
             config_dir.join("runtime.json"),
-            r#"{"schemaVersion":1,"serviceId":"crypt-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"cortex-local-v1","host":"127.0.0.1","port":47851}"#,
         )
         .unwrap();
-        let runtime = runtime_from_exe(&bin.join("crypt-service.exe")).unwrap();
+        let runtime = runtime_from_exe(&bin.join("cortex-service.exe")).unwrap();
         assert_eq!(runtime.port, 47851);
         assert_eq!(
             runtime.db,
-            temp.path().join("tools/.cache/memory/crypt-engine.db")
+            temp.path().join("tools/.cache/memory/cortex-engine.db")
         );
         assert_eq!(
             runtime.token,
@@ -444,17 +444,17 @@ mod tests {
         let workspace = temp.path().join("workspace");
         let bin = workspace.join("tools/bin");
         let config_dir = workspace.join("tools/lib/memory");
-        let relocated = temp.path().join("resident/crypt-service");
+        let relocated = temp.path().join("resident/cortex-service");
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::create_dir_all(relocated.parent().unwrap()).unwrap();
         std::fs::write(&relocated, b"fixture").unwrap();
         std::fs::write(
             config_dir.join("runtime.json"),
-            r#"{"schemaVersion":1,"serviceId":"crypt-local-v1","host":"127.0.0.1","port":47851}"#,
+            r#"{"schemaVersion":1,"serviceId":"cortex-local-v1","host":"127.0.0.1","port":47851}"#,
         )
         .unwrap();
-        symlink(&relocated, bin.join("crypt-service")).unwrap();
+        symlink(&relocated, bin.join("cortex-service")).unwrap();
 
         let runtime = runtime_from_exe_at_workspace(&relocated, Some(&workspace)).unwrap();
         assert_eq!(runtime.port, 47851);
@@ -469,7 +469,7 @@ mod tests {
     fn resident_startup_advances_identity_and_publishes_claim_before_serve() {
         let temp = tempfile::tempdir().unwrap();
         let runtime = Runtime {
-            db: temp.path().join("tools/.cache/memory/crypt-engine.db"),
+            db: temp.path().join("tools/.cache/memory/cortex-engine.db"),
             token: temp.path().join("tools/.cache/memory/api-token"),
             ort: temp.path().join("tools/bin/onnxruntime.dll"),
             hf_home: temp.path().join("tools/.cache/fastembed"),

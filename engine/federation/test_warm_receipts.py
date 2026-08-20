@@ -22,7 +22,7 @@ RELEASE_GENERATION = "sha256:" + "6" * 64
 def _semantic_digest(packet: dict) -> str:
     semantic = json.loads(json.dumps(packet))
     semantic["freshness"]["indexedAt"] = "<time>"
-    telemetry = semantic["_rightcontext"]
+    telemetry = semantic["_membrane"]
     telemetry["repoRoot"] = "<repo>"
     for field in ("providerElapsedMs", "providerStageElapsedMs", "stageElapsedMs"):
         telemetry.pop(field, None)
@@ -66,12 +66,12 @@ def test_warm_receipts_bind_environment_measurements_and_stable_semantics(tmp_pa
             "toolchains": {"python": platform.python_version()},
             "sourceCommit": source_commit,
             "releaseGeneration": RELEASE_GENERATION,
-            "stageElapsedMs": packet["_rightcontext"]["stageElapsedMs"],
-            "providerElapsedMs": packet["_rightcontext"]["providerElapsedMs"],
+            "stageElapsedMs": packet["_membrane"]["stageElapsedMs"],
+            "providerElapsedMs": packet["_membrane"]["providerElapsedMs"],
             "wallElapsedMs": wall_ms,
             "peakRss": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
             "semanticDigest": _semantic_digest(packet),
-            "warningCount": len(packet["_rightcontext"]["providerWarnings"]),
+            "warningCount": len(packet["_membrane"]["providerWarnings"]),
             "omissionCount": len(packet["omissions"]),
             "exitCode": 0,
             "repetition": repetition + 1,

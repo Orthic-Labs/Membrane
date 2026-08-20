@@ -2,7 +2,7 @@
 //!
 //! `modes.rs` used to build `HubInputsV1::unavailable("source_not_connected")`
 //! unconditionally, so the popover showed "Offline" even while the local
-//! crypt-service was up and healthy. This module replaces that hardcoded
+//! cortex-service was up and healthy. This module replaces that hardcoded
 //! facade with a real (best-effort) read of the local service's
 //! unauthenticated `GET /health` endpoint, mapped into the same
 //! `HubInputsV1` contract the facade already understands. Any failure to
@@ -19,7 +19,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const IO_TIMEOUT: Duration = Duration::from_millis(300);
 pub const DEFAULT_LOCAL_SERVICE_PORT: u16 = 47851;
 
-/// Best-effort live read of the local crypt-service's `/health` endpoint,
+/// Best-effort live read of the local cortex-service's `/health` endpoint,
 /// mapped into `HubInputsV1`. Returns `None` on any connection, I/O, or
 /// parse failure so the caller can fall back to the honest "unavailable"
 /// facade rather than show a fabricated state.
@@ -32,17 +32,11 @@ pub fn live_inputs_from_local_service() -> Option<HubInputsV1> {
 }
 
 fn local_service_port() -> Option<u16> {
-    local_service_port_from(
-        std::env::var_os("CRYPT_PORT").as_deref(),
-        std::env::var_os("WORKSPACE_MEMORY_PORT").as_deref(),
-    )
+    local_service_port_from(std::env::var_os("CORTEX_PORT").as_deref())
 }
 
-fn local_service_port_from(
-    canonical: Option<&std::ffi::OsStr>,
-    compatibility: Option<&std::ffi::OsStr>,
-) -> Option<u16> {
-    match canonical.or(compatibility) {
+fn local_service_port_from(canonical: Option<&std::ffi::OsStr>) -> Option<u16> {
+    match canonical {
         None => Some(DEFAULT_LOCAL_SERVICE_PORT),
         Some(value) => value
             .to_str()?
@@ -57,25 +51,22 @@ fn local_service_port_from(
 /// so we replicate the same env-var precedence here rather than reach across
 /// a module boundary that wasn't designed to be shared.
 fn configured_workspace_root() -> std::path::PathBuf {
-    std::env::var_os("RIGHTCONTEXT_REPO_ROOT")
+    std::env::var_os("MEMBRANE_REPO_ROOT")
         .or_else(|| std::env::var_os("WORKSPACE_ROOT"))
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
+        .unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        })
 }
 
 fn fetch_health_json(port: u16) -> Option<serde_json::Value> {
     let addr = format!("127.0.0.1:{port}");
-    let mut stream = TcpStream::connect_timeout(
-        &addr.parse().ok()?,
-        CONNECT_TIMEOUT,
-    )
-    .ok()?;
+    let mut stream = TcpStream::connect_timeout(&addr.parse().ok()?, CONNECT_TIMEOUT).ok()?;
     stream.set_read_timeout(Some(IO_TIMEOUT)).ok()?;
     stream.set_write_timeout(Some(IO_TIMEOUT)).ok()?;
 
-    let request = format!(
-        "GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
-    );
+    let request =
+        format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
     stream.write_all(request.as_bytes()).ok()?;
 
     let mut raw = Vec::new();
@@ -106,11 +97,14 @@ fn now_unix_ms() -> u64 {
 /// Pure mapping from the raw `/health` JSON (and optional delivery-health
 /// JSON) to `HubInputsV1`. Kept separate from the networking so it can be
 /// unit-tested with fixture strings and no live service.
-fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::Value>) -> HubInputsV1 {
+fn inputs_from_health(
+    health: &serde_json::Value,
+    delivery: Option<&serde_json::Value>,
+) -> HubInputsV1 {
     let observed_at_unix_ms = now_unix_ms();
     let metadata = || HubMetadataV1 {
         resolver: Some("hub_inputs::live_inputs_from_local_service".into()),
-        source: Some("local_crypt_service".into()),
+        source: Some("local_cortex_service".into()),
         evidence: Some("GET /health".into()),
         observed_at_unix_ms,
         cache_age_ms: 0,
@@ -119,11 +113,12 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
     let catalog_ok = health["catalog"]["status"].as_str() == Some("ok");
     let database_ok = health["database"]["status"].as_str() == Some("ok");
     let database_status = health["database"]["status"].as_str().unwrap_or("unknown");
-    let memory_count = health["database"]["memoryCount"].as_i64();
-    let daily_analysis_status = health["dailyAnalysis"]["status"].as_str().unwrap_or("unknown");
+    let daily_analysis_status = health["dailyAnalysis"]["status"]
+        .as_str()
+        .unwrap_or("unknown");
     let daily_analysis_alert = health["dailyAnalysis"]["alert"].as_bool();
-    let daily_analysis_ok = matches!(daily_analysis_status, "fresh" | "ok")
-        && daily_analysis_alert != Some(true);
+    let daily_analysis_ok =
+        matches!(daily_analysis_status, "fresh" | "ok") && daily_analysis_alert != Some(true);
 
     let memory = if catalog_ok && database_ok {
         HubReadV1::Available {
@@ -155,7 +150,7 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
     };
 
     let providers_items = vec![
-        serde_json::json!({"service": "crypt-service", "ok": health["ok"]}),
+        serde_json::json!({"service": "cortex-service", "ok": health["ok"]}),
         serde_json::json!({"dailyAnalysis": daily_analysis_status}),
     ];
     let providers = if daily_analysis_ok {
@@ -211,11 +206,13 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
 
     let repositories = match crate::sources_producer::build_sources_payload() {
         Some(payload) => HubReadV1::Available {
-            items: vec![crate::sources_explorer::project_sources_explorer_json(&payload)],
+            items: vec![crate::sources_explorer::project_sources_explorer_json(
+                &payload,
+            )],
             metadata: producer_metadata(
                 "hub_inputs::live_inputs_from_local_service",
                 "doc_artifacts",
-                "sqlite read of crypt-engine.db doc_artifacts",
+                "sqlite read of cortex-engine.db doc_artifacts",
             ),
         },
         None => HubReadV1::Unavailable {
@@ -231,7 +228,7 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
                 metadata: producer_metadata(
                     "hub_inputs::live_inputs_from_local_service",
                     "memory_identity",
-                    "sqlite read of crypt-engine.db memory_identity/memory_event_log",
+                    "sqlite read of cortex-engine.db memory_identity/memory_event_log",
                 ),
             }
         }
@@ -262,7 +259,7 @@ fn inputs_from_health(health: &serde_json::Value, delivery: Option<&serde_json::
                     metadata: producer_metadata(
                         "hub_inputs::live_inputs_from_local_service",
                         "memories",
-                        "sqlite read of crypt-engine.db memories/memory_quarantine/context_feedback/transform_opportunity_log",
+                        "sqlite read of cortex-engine.db memories/memory_quarantine/context_feedback/transform_opportunity_log",
                     ),
                 }
             }
@@ -285,9 +282,9 @@ mod tests {
     use std::sync::{Mutex, MutexGuard};
 
     /// Every test in this module can implicitly read the process-global
-    /// `CRYPT_DB_PATH` / `WORKSPACE_ROOT` env vars through the sources,
+    /// `CORTEX_DB_PATH` / `WORKSPACE_ROOT` env vars through the sources,
     /// adapters, and sentinel producers. Tests that need a deterministic
-    /// "no database" result hold this lock and point `CRYPT_DB_PATH` at a
+    /// "no database" result hold this lock and point `CORTEX_DB_PATH` at a
     /// guaranteed-missing path so they never race a real workspace database.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -297,15 +294,18 @@ mod tests {
 
     fn with_missing_db<R>(f: impl FnOnce() -> R) -> R {
         let _guard = lock_env();
-        let prior = std::env::var_os("CRYPT_DB_PATH");
+        let prior = std::env::var_os("CORTEX_DB_PATH");
         unsafe {
-            std::env::set_var("CRYPT_DB_PATH", "/nonexistent/hub_inputs_test/crypt-engine.db");
+            std::env::set_var(
+                "CORTEX_DB_PATH",
+                "/nonexistent/hub_inputs_test/cortex-engine.db",
+            );
         }
         let result = f();
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("CRYPT_DB_PATH", v),
-                None => std::env::remove_var("CRYPT_DB_PATH"),
+                Some(v) => std::env::set_var("CORTEX_DB_PATH", v),
+                None => std::env::remove_var("CORTEX_DB_PATH"),
             }
         }
         result
@@ -313,23 +313,14 @@ mod tests {
 
     #[test]
     fn default_port_is_named_and_invalid_explicit_values_fail_closed() {
-        assert_eq!(local_service_port_from(None, None), Some(47851));
-        assert_eq!(
-            local_service_port_from(Some("47852".as_ref()), Some("47853".as_ref())),
-            Some(47852)
-        );
-        assert_eq!(
-            local_service_port_from(Some("0".as_ref()), Some("47853".as_ref())),
-            None
-        );
+        assert_eq!(local_service_port_from(None), Some(47851));
+        assert_eq!(local_service_port_from(Some("47852".as_ref())), Some(47852));
+        assert_eq!(local_service_port_from(Some("0".as_ref())), None);
         #[cfg(unix)]
         {
             use std::os::unix::ffi::OsStringExt;
             let non_unicode = std::ffi::OsString::from_vec(vec![0xff]);
-            assert_eq!(
-                local_service_port_from(Some(&non_unicode), Some("47853".as_ref())),
-                None
-            );
+            assert_eq!(local_service_port_from(Some(&non_unicode)), None);
         }
     }
 
@@ -480,7 +471,10 @@ mod tests {
         match inputs.memory {
             HubReadV1::Degraded { reason, items, .. } => {
                 assert_eq!(reason, "database_empty");
-                assert!(items[0].get("memoryCount").is_some(), "memoryCount must be present");
+                assert!(
+                    items[0].get("memoryCount").is_some(),
+                    "memoryCount must be present"
+                );
                 assert_eq!(items[0]["memoryCount"], 0);
                 assert_eq!(items[0]["database"]["status"], "empty");
             }
@@ -518,7 +512,7 @@ mod tests {
             now_unix_ms()
         ));
         std::fs::create_dir_all(&dir).unwrap();
-        let db_path = dir.join("crypt-engine.db");
+        let db_path = dir.join("cortex-engine.db");
         {
             let conn = rusqlite::Connection::open(&db_path).unwrap();
             conn.execute_batch(
@@ -568,9 +562,9 @@ mod tests {
             )
             .unwrap();
         }
-        let prior = std::env::var_os("CRYPT_DB_PATH");
+        let prior = std::env::var_os("CORTEX_DB_PATH");
         unsafe {
-            std::env::set_var("CRYPT_DB_PATH", &db_path);
+            std::env::set_var("CORTEX_DB_PATH", &db_path);
         }
         let health: serde_json::Value = serde_json::from_str(
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
@@ -579,8 +573,8 @@ mod tests {
         let inputs = inputs_from_health(&health, None);
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("CRYPT_DB_PATH", v),
-                None => std::env::remove_var("CRYPT_DB_PATH"),
+                Some(v) => std::env::set_var("CORTEX_DB_PATH", v),
+                None => std::env::remove_var("CORTEX_DB_PATH"),
             }
         }
         std::fs::remove_dir_all(&dir).ok();

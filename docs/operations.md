@@ -21,7 +21,7 @@ tool count (source truth: ten), or a stale platform status
 ```sh
 pnpm install        # Node >= 20, pnpm 11
 pnpm test           # MCP server + client + install-binding suites
-cargo build --workspace                          # Crypt engine
+cargo build --workspace                          # Cortex engine
 cargo test --workspace --features fastembed      # with real ONNX embeddings
 ```
 

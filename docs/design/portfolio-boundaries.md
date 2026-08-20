@@ -7,7 +7,7 @@
 - `docs/protocol.md` — generated MCP tool surface contract
 - `docs/membrane/capability-matrix.v1.json` — vendored host capability matrix
 - `mcp/server.mjs` — live MCP tool inventory
-- `engine/Cargo.toml` / `engine/crates/*` — Crypt engine source of truth
+- `engine/Cargo.toml` / `engine/crates/*` — Cortex engine source of truth
 
 This document is hand-written. It is **not** regenerated, and the book-gate
 `check-docs.mjs` check does not act on it. It is the single place that defines
@@ -44,7 +44,7 @@ What Membrane is **not**:
 - It is not a release pipeline, CI configuration, or hosted runner. This
   repository forbids CI workflows (see `MEMBRANE-NO-CI-WORKSPACE-CONSTRAINT.md`).
 - It is not a publisher. The MCP server, the federation gateway, and the
-  Crypt engine are local-only; no task adds push, publish, or remote-sync
+  Cortex engine are local-only; no task adds push, publish, or remote-sync
   verbs.
 
 ## 2. Owner-layer taxonomy
@@ -61,7 +61,7 @@ duplicate it.
 | **Protocol surface** | `PROTOCOL` | `docs/protocol.md`, `mcp/server.mjs` | MCP tool names, tool input/output schemas, behavioral contract bounds |
 | **Adapter surface** | `ADAPTER` | `docs/membrane/capability-matrix.v1.json` | Per-host honest capability levels, host-specific injection / receipt / gate hooks |
 | **Federation gateway** | `FEDERATION` | `mcp/server.mjs` (loopback `/federate`) | Cross-provider routing, concurrency / cancellation / deadline policy, provider fan-out |
-| **Crypt engine** | `ENGINE` | `engine/crates/*` | Durable memory, retrieval, telemetry records, on-disk schema, embedding model selection |
+| **Cortex engine** | `ENGINE` | `engine/crates/*` | Durable memory, retrieval, telemetry records, on-disk schema, embedding model selection |
 | **Generation / docs truth** | `GENERATION` | `scripts/tools/productization/*` | Regeneration of generated docs, product-truth gate, README link inventory |
 | **Workspace rules** | `RULES` | `.claude/AGENTS.md`, `.claude/CLAUDE.md`, `docs/agent-rules.md` | Workspace-level conduct, mandatory systems, locked invariants |
 
@@ -130,7 +130,7 @@ that a reviewer can verify every request against it in under a minute.
 | Add per-host injection / receipt / gate hooks | `ADAPTER` | The hook taxonomy is owned by the host adapter layer. |
 | Change the federation gateway route, concurrency, or deadline | `FEDERATION` | The gateway is the sole route from tools to memory/recall; the loopback `/federate` semantics belong here. |
 | Change provider fan-out policy (cancellable, deadline-bound) | `FEDERATION` | The federation layer is the only place that may mutate provider fan-out semantics. |
-| Add a new retrieval / memory provider | `ENGINE` | The Crypt engine owns durable memory, retrieval, and embedding work. |
+| Add a new retrieval / memory provider | `ENGINE` | The Cortex engine owns durable memory, retrieval, and embedding work. |
 | Change the on-disk schema, SQLite layout, or telemetry envelope | `ENGINE` | The engine is the source of truth for storage format. |
 | Add a new embedding model or change the embedding model selection | `ENGINE` | Embedding is a retrieval concern; the engine is the owner. |
 | Change the narrative product description, count claims, or positioning prose | `PRODUCT` | Positioning is owned by the product surface; the generated `docs/product.md` carries the source-derived facts. |
@@ -156,7 +156,7 @@ matrix. The contract is enforced by the cross-reference check in section 6.
 - `docs/architecture.md` is generated from the same source. The "Components"
   table is the block-level mirror of the owner-layer taxonomy above: MCP
   server → `PROTOCOL`, client adapters → `ADAPTER`, federation gateway →
-  `FEDERATION`, Crypt engine → `ENGINE`, generated docs → `GENERATION`.
+  `FEDERATION`, Cortex engine → `ENGINE`, generated docs → `GENERATION`.
 - `docs/protocol.md` is generated from the same tool list. The
   "Behavioral contract" bullets are the durable statements `PROTOCOL` must
   uphold.
@@ -192,7 +192,7 @@ node scripts/tools/productization/generate-product-truth.mjs --check
 grep -q "MCP server"      docs/architecture.md
 grep -q "Client adapters" docs/architecture.md
 grep -q "Federation gateway" docs/architecture.md
-grep -q "Crypt engine"    docs/architecture.md
+grep -q "Cortex engine"    docs/architecture.md
 
 # 4. The matrix must not claim ownership of tooling that lives outside the
 #    allowedPaths of any task. The tools the owner layer owns are exactly

@@ -1,5 +1,8 @@
 //! Deterministic, query-aware compression at the prep boundary.
-use crate::{code_batch::{ReservationV1, ResourceBudgetV1}, compress, skel};
+use crate::{
+    code_batch::{ReservationV1, ResourceBudgetV1},
+    compress, skel,
+};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -72,7 +75,13 @@ pub fn compress_query_aware(request: &CompressionRequest) -> CompressionResult {
         ..ReservationV1::ZERO
     };
     if budget.validate().is_err() || budget.reserve(&reservation).is_err() {
-        return CompressionResult { kind, text: String::new(), output_tokens: 0, admitted: false, refusal: Some("resource_budget_exceeded") };
+        return CompressionResult {
+            kind,
+            text: String::new(),
+            output_tokens: 0,
+            admitted: false,
+            refusal: Some("resource_budget_exceeded"),
+        };
     }
     if !request.authority_admitted || !request.freshness_valid {
         return CompressionResult {

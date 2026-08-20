@@ -7,11 +7,12 @@
   "packageManager": "pnpm@11.18.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Orthic-Labs/Blueprint.git"
+    "url": "git+https://github.com/Orthic-Labs/Membrane.git",
+    "directory": "blueprint"
   },
-  "homepage": "https://github.com/Orthic-Labs/Blueprint#readme",
+  "homepage": "https://github.com/Orthic-Labs/Membrane/tree/main/blueprint#readme",
   "bugs": {
-    "url": "https://github.com/Orthic-Labs/Blueprint/issues"
+    "url": "https://github.com/Orthic-Labs/Membrane/issues"
   },
   "keywords": [
     "code-graph",

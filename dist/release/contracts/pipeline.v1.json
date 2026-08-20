@@ -1,7 +1,7 @@
 {
   "schema": "orthic.membrane.release-pipeline.v1",
   "product": "Membrane",
-  "vector_dispatch": "CRYPT_VECTOR_DISPATCH_V2",
+  "vector_dispatch": "CORTEX_VECTOR_DISPATCH_V2",
   "targets": ["mac-arm64", "mac-x64", "windows-x64", "windows-arm64"],
   "stages": ["provenance", "sbom", "sign", "platform_trust", "verify"],
   "publish": false,

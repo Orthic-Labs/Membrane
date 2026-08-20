@@ -26,8 +26,8 @@ def write_json_atomic(path: Path, value: dict) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
-def run_crypt(args: list[str]) -> bool:
-    binary = shutil.which("crypt")
+def run_cortex(args: list[str]) -> bool:
+    binary = shutil.which("cortex")
     if not binary: return False
     command = list(args)
     if command and command[0] == "put": command.extend(["--artifact-family", "adapt", "--producer", "adapt", "--record-type", "preference"])
@@ -56,7 +56,7 @@ def multiwriter_context(*, manifest_body: dict, required: bool = False) -> tuple
     installation_id = cross_machine.load_installation_id(identity_path)
     db_path = rollback._discover_db_path(manifest_body)
     if db_path is None:
-        raise cross_machine.CrossMachineAdaptError("canonical Crypt DB is unavailable")
+        raise cross_machine.CrossMachineAdaptError("canonical Cortex DB is unavailable")
     return installation_id, cross_machine.load_canonical_rules(db_path)
 
 

@@ -1,6 +1,6 @@
 # Memory Sentinel
 
-Memory Sentinel is Crypt's memory-lifecycle read model: which memories are
+Memory Sentinel is Cortex's memory-lifecycle read model: which memories are
 currently authoritative (`active`) versus which have moved out of that state
 (`demoted`, `superseded`, `expired`), plus the pending queues around that
 lifecycle (`proposals`, `contradictions`) and expiry-tracked scratch state
@@ -40,7 +40,7 @@ either changes.
 ## Current status: producer wired in source, not yet in the running Hub
 
 A producer now exists. `engine/crates/membrane-runtime/src/memory_sentinel_producer.rs`
-(commit `a639ec44`) builds the report from the live Crypt database —
+(commit `a639ec44`) builds the report from the live Cortex database —
 `memories.lifecycle_state`, `memory_quarantine`, `transform_opportunity_log`,
 and `context_feedback` — and `hub_inputs.rs` now wires the Hub's `sentinel`
 input to it:

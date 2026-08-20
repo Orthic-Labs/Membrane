@@ -4,7 +4,7 @@
 The receipt binds one schema-v2 installation to the current canonical Adapt
 pool, exact implementation and test files, the installed resident binary and
 its authenticated atomic-batch route, local transcript discovery counts, the
-append-only Git mirror boundary, and a disabled ``crypt-daily`` scheduler.
+append-only Git mirror boundary, and a disabled ``cortex-daily`` scheduler.
 It never starts, stops, installs, or schedules anything.
 """
 
@@ -47,7 +47,7 @@ from adapt import taste_v2_pipeline  # noqa: E402
 from adapt import transcript_sources  # noqa: E402
 
 mirror_append_only = workspace_runtime.mirror_append_only()
-crypt_port = workspace_runtime.crypt_port
+cortex_port = workspace_runtime.cortex_port
 
 
 SCHEMA_VERSION = 1
@@ -64,25 +64,25 @@ DISCOVERY_FIELDS = ("discovered", *DISCOVERY_OUTCOMES, "pending")
 DEFAULT_IMPLEMENTATION_FILES = (
     "tools/pipelines/memory/context_session_adapters.py",
     "tools/pipelines/memory/context_session_inventory.py",
-    "adapt/src/adapt/taste_apply.py",
-    "adapt/src/adapt/taste_runtime.py",
-    "adapt/src/adapt/taste_v2_pipeline.py",
-    "adapt/src/adapt/transcript_sources.py",
-    "adapt/src/adapt/adapt_persistence.py",
-    "adapt/src/adapt/cross_machine.py",
-    "adapt/src/adapt/adjudicate_manifest.py",
-    "adapt/src/adapt/manifest.py",
-    "adapt/src/adapt/preference_record.py",
-    "adapt/src/adapt/preference-manifest.schema.json",
-    "adapt/src/adapt/multiwriter_conformance.py",
-    "adapt/src/adapt/run_incremental_multiwriter.py",
-    "adapt/src/adapt/adapt_event_learning.py",
+    "membrane/adapt/src/adapt/taste_apply.py",
+    "membrane/adapt/src/adapt/taste_runtime.py",
+    "membrane/adapt/src/adapt/taste_v2_pipeline.py",
+    "membrane/adapt/src/adapt/transcript_sources.py",
+    "membrane/adapt/src/adapt/adapt_persistence.py",
+    "membrane/adapt/src/adapt/cross_machine.py",
+    "membrane/adapt/src/adapt/adjudicate_manifest.py",
+    "membrane/adapt/src/adapt/manifest.py",
+    "membrane/adapt/src/adapt/preference_record.py",
+    "membrane/adapt/src/adapt/preference-manifest.schema.json",
+    "membrane/adapt/src/adapt/multiwriter_conformance.py",
+    "membrane/adapt/src/adapt/run_incremental_multiwriter.py",
+    "membrane/adapt/src/adapt/adapt_event_learning.py",
 )
 DEFAULT_TEST_FILES = (
     "tools/pipelines/memory/test_context_session_harnesses.py",
-    "adapt/tests/test_multiwriter_conformance.py",
-    "adapt/tests/test_run_incremental_multiwriter.py",
-    "adapt/tests/test_adapt_event_learning.py",
+    "membrane/adapt/tests/test_multiwriter_conformance.py",
+    "membrane/adapt/tests/test_run_incremental_multiwriter.py",
+    "membrane/adapt/tests/test_adapt_event_learning.py",
 )
 EVIDENCE_KEYS = {
     "installation_id",
@@ -334,13 +334,13 @@ def service_evidence(
         release_bytes = Path(release_manifest_path).read_bytes()
         release = json.loads(release_bytes)
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise ConformanceError("Crypt release manifest is unavailable or invalid") from exc
+        raise ConformanceError("Cortex release manifest is unavailable or invalid") from exc
     if not isinstance(release, dict):
-        raise ConformanceError("Crypt release manifest is unavailable or invalid")
-    role = "service" if binary.name.startswith("crypt-service") else "cli"
+        raise ConformanceError("Cortex release manifest is unavailable or invalid")
+    role = "service" if binary.name.startswith("cortex-service") else "cli"
     assets = release.get("assets")
     if not isinstance(assets, list):
-        raise ConformanceError("Crypt release manifest has no assets")
+        raise ConformanceError("Cortex release manifest has no assets")
     matches = [
         row
         for row in assets
@@ -387,13 +387,13 @@ def _read_json_response(request: urllib.request.Request, timeout: float) -> tupl
         status = exc.code
         raw = exc.read()
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise ConformanceError("resident Crypt service is unavailable") from exc
+        raise ConformanceError("resident Cortex service is unavailable") from exc
     try:
         payload = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConformanceError("resident Crypt response is not valid JSON") from exc
+        raise ConformanceError("resident Cortex response is not valid JSON") from exc
     if not isinstance(payload, dict):
-        raise ConformanceError("resident Crypt response is not an object")
+        raise ConformanceError("resident Cortex response is not an object")
     return status, payload
 
 
@@ -402,20 +402,20 @@ def probe_resident_service(
 ) -> dict[str, Any]:
     parsed = urllib.parse.urlsplit(service_url)
     if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"}:
-        raise ConformanceError("Crypt conformance probe must remain loopback-only")
+        raise ConformanceError("Cortex conformance probe must remain loopback-only")
     base = service_url.rstrip("/")
     health_request = urllib.request.Request(
         base + "/health", headers={"Accept": "application/json"}, method="GET"
     )
     health_status, health = _read_json_response(health_request, timeout)
     if health_status != 200 or health.get("ok") is not True:
-        raise ConformanceError("resident Crypt health is not green")
+        raise ConformanceError("resident Cortex health is not green")
     try:
         token = Path(token_file).read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise ConformanceError("Crypt API token is unavailable") from exc
+        raise ConformanceError("Cortex API token is unavailable") from exc
     if not token:
-        raise ConformanceError("Crypt API token is empty")
+        raise ConformanceError("Cortex API token is empty")
     route_request = urllib.request.Request(
         base + "/v1/memories:batch",
         data=b"{}",
@@ -458,7 +458,7 @@ def scheduler_evidence(
     current = system or platform.system()
     if current == "Windows":
         script = (
-            "$t=Get-ScheduledTask -TaskName 'crypt-daily' -ErrorAction SilentlyContinue "
+            "$t=Get-ScheduledTask -TaskName 'cortex-daily' -ErrorAction SilentlyContinue "
             "| Select-Object -First 1; if($null -eq $t){'absent'}else{$t.State.ToString().ToLowerInvariant()}"
         )
         result = command_runner([
@@ -472,21 +472,21 @@ def scheduler_evidence(
             script,
         ])
         if result.returncode != 0:
-            raise ConformanceError("cannot inspect crypt-daily scheduler")
+            raise ConformanceError("cannot inspect cortex-daily scheduler")
         state = result.stdout.strip().lower()
         disabled = state in {"absent", "disabled"}
     elif current == "Darwin":
         uid = str(os.getuid())
         result = command_runner([
-            "launchctl", "print", f"gui/{uid}/com.adrian.crypt-daily"
+            "launchctl", "print", f"gui/{uid}/com.adrian.cortex-daily"
         ])
         disabled = result.returncode != 0
         state = "unloaded" if disabled else "loaded"
     else:
         raise ConformanceError(f"unsupported Adapt scheduler platform: {current}")
     if not disabled:
-        raise ConformanceError("crypt-daily must remain disabled")
-    return {"name": "crypt-daily", "disabled": True, "state": state}
+        raise ConformanceError("cortex-daily must remain disabled")
+    return {"name": "cortex-daily", "disabled": True, "state": state}
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -625,7 +625,7 @@ def collect_evidence(
         if focused_tests is None
         else _validated_prior_tests(root, focused_tests)
     )
-    url = service_url or f"http://127.0.0.1:{crypt_port(os.environ)}"
+    url = service_url or f"http://127.0.0.1:{cortex_port(os.environ)}"
     token = Path(token_file) if token_file else Path(db_path).parent / "api-token"
     sessions = discover_session_evidence(
         state=state,
@@ -793,11 +793,11 @@ def _validate_evidence(evidence: Mapping[str, Any]) -> None:
     if (
         not isinstance(scheduler, Mapping)
         or set(scheduler) != {"name", "disabled", "state"}
-        or scheduler.get("name") != "crypt-daily"
+        or scheduler.get("name") != "cortex-daily"
         or scheduler.get("disabled") is not True
         or scheduler.get("state") not in {"absent", "disabled", "unloaded"}
     ):
-        raise ConformanceError("crypt-daily must remain disabled")
+        raise ConformanceError("cortex-daily must remain disabled")
     tests = evidence.get("focused_tests")
     if (
         not isinstance(tests, Mapping)
@@ -882,22 +882,22 @@ def validate_receipt_payload(
 def _defaults(repo_root: Path) -> dict[str, Path]:
     root = Path(repo_root).resolve()
     os_name = _normalized_os()
-    binary_name = "crypt-service.exe" if os_name == "windows" else "crypt"
+    binary_name = "cortex-service.exe" if os_name == "windows" else "cortex"
     db = Path(os.environ.get(
-        "CRYPT_DB", str(root / "tools/.cache/memory/crypt-engine.db")
+        "CORTEX_DB", str(root / "tools/.cache/memory/cortex-engine.db")
     ))
     return {
         "installation_file": root / "tools/.cache/memory/installation.json",
         "db_path": db,
         "binary_path": Path(os.environ.get(
-            "CRYPT_CONFORMANCE_BINARY", str(root / "tools/bin" / binary_name)
+            "CORTEX_CONFORMANCE_BINARY", str(root / "tools/bin" / binary_name)
         )),
         "release_manifest_path": Path(os.environ.get(
-            "CRYPT_CONFORMANCE_RELEASE_MANIFEST",
-            str(root / "tools/lib/crypt-release.json"),
+            "CORTEX_CONFORMANCE_RELEASE_MANIFEST",
+            str(root / "tools/lib/cortex-release.json"),
         )),
         "token_file": Path(os.environ.get(
-            "CRYPT_API_TOKEN_FILE", str(db.parent / "api-token")
+            "CORTEX_API_TOKEN_FILE", str(db.parent / "api-token")
         )),
     }
 

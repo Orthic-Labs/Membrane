@@ -1,7 +1,7 @@
 """ScopeGrant lookup — reads from the central context catalog.
 
 The catalog is a separate SQLite file at `<context-home>/catalog.db`. The
-Rust `crypt` service owns the authoritative grant store; this module
+Rust `cortex` service owns the authoritative grant store; this module
 reads from the same store via a small SQL helper.
 
 The gateway treats cross-root evidence as conditional on an active grant;
@@ -32,22 +32,22 @@ def _absolute(binding: str, value: str | None) -> Path | None:
 
 def _catalog_path() -> Path:
     explicit = _absolute(
-        "RIGHTCONTEXT_CATALOG", os.environ.get("RIGHTCONTEXT_CATALOG")
+        "MEMBRANE_CATALOG", os.environ.get("MEMBRANE_CATALOG")
     )
     if explicit:
         return explicit
     context_home = _absolute("CONTEXT_HOME", os.environ.get("CONTEXT_HOME"))
     if context_home:
         return context_home / "catalog.db"
-    crypt_db = _absolute("CRYPT_DB", os.environ.get("CRYPT_DB"))
-    if crypt_db:
-        return crypt_db.parent / "catalog.db"
+    cortex_db = _absolute("CORTEX_DB", os.environ.get("CORTEX_DB"))
+    if cortex_db:
+        return cortex_db.parent / "catalog.db"
     workspace = _absolute("WORKSPACE_ROOT", os.environ.get("WORKSPACE_ROOT"))
     if workspace:
         return workspace / "tools" / ".cache" / "memory" / "catalog.db"
     raise CatalogPathError(
-        "catalog path is unbound: set RIGHTCONTEXT_CATALOG, CONTEXT_HOME, "
-        "CRYPT_DB, or WORKSPACE_ROOT"
+        "catalog path is unbound: set MEMBRANE_CATALOG, CONTEXT_HOME, "
+        "CORTEX_DB, or WORKSPACE_ROOT"
     )
 
 

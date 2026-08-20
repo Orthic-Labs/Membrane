@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://membrane/schemas/context-candidate-set.v1.schema.json",
   "title": "ContextCandidateSetV1",
-  "description": "MBR-101: the federated set of candidates fed to the deterministic admission planner. Canonical Rust source of truth: engine/crates/membrane-protocol/src/types.rs (ContextCandidateSetV1). Mirrors the shapes parsed by crypt-core::planner.",
+  "description": "MBR-101: the federated set of candidates fed to the deterministic admission planner. Canonical Rust source of truth: engine/crates/membrane-protocol/src/types.rs (ContextCandidateSetV1). Mirrors the shapes parsed by cortex-core::planner.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "traceId", "task", "mode", "provider", "freshness", "providerCeiling", "candidates", "omissions"],

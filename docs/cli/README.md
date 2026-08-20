@@ -29,7 +29,7 @@ membrane <mode> [flags]
 ## Discovery order
 
 1. The binary itself parses argv with `clap`. Unknown modes are rejected before any runtime call.
-2. For `cli`, the runtime CLI parses the tail with the same `clap` schema the legacy `crypt`
+2. For `cli`, the runtime CLI parses the tail with the same `clap` schema the legacy `cortex`
    binary used, so existing scripts keep working.
 3. For `stdio-mcp` and `loopback-api`, the runtime owns its own transport framing. The binary
    is a thin dispatcher; it never buffers, splits, or reorders bytes.

@@ -15,12 +15,12 @@ test("F13 every probe's documented baseline value fails validation and current v
 });
 
 test("F13 runM0 fails a case when its owning suite fails, even if the literal is valid", () => {
-  const result = runM0({ runSuiteImpl: (owner) => ({ owner, status: owner === "crypt" ? 1 : 0, signal: null, output_sha256: "sha256:0", output_tail: "" }) });
+  const result = runM0({ runSuiteImpl: (owner) => ({ owner, status: owner === "cortex" ? 1 : 0, signal: null, output_sha256: "sha256:0", output_tail: "" }) });
   assert.equal(result.passed, false);
-  const crypt = result.cases.find((entry) => entry.id === "mcp-write-noop");
-  assert.equal(crypt.current.status, "fail");
-  assert.equal(crypt.current.suite_exit_status, 1);
-  const other = result.cases.find((entry) => entry.owner !== "crypt");
+  const cortex = result.cases.find((entry) => entry.id === "mcp-write-noop");
+  assert.equal(cortex.current.status, "fail");
+  assert.equal(cortex.current.suite_exit_status, 1);
+  const other = result.cases.find((entry) => entry.owner !== "cortex");
   assert.equal(other.current.status, "pass");
 });
 
@@ -34,7 +34,7 @@ test("F13 runM0 discloses every case as baseline-undrivable rather than silently
   assert.ok(result.cases.every((entry) => entry.baseline.live_reproduced === false && entry.current.live_reproduced === true));
 });
 
-// Slow, unmocked integration proof: actually spawn the real crypt/membrane-host/membrane/blueprint/
+// Slow, unmocked integration proof: actually spawn the real cortex/membrane-host/membrane/blueprint/
 // forge/adapt suites at current HEAD, on this machine, exactly as the CLI entrypoint does.
 // This is the test that makes "current_green" a live claim instead of a mocked one. It is slower
 // than the rest of this file (cross-repo pnpm/pytest runs) — that cost buys real evidence.

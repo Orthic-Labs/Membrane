@@ -279,12 +279,18 @@ mod tests {
             items: budget.items + 1,
             ..ReservationV1::ZERO
         };
-        assert_eq!(budget.reserve(&too_many_items), Err("budget_items_exceeded".to_string()));
+        assert_eq!(
+            budget.reserve(&too_many_items),
+            Err("budget_items_exceeded".to_string())
+        );
         let too_many_bytes = ReservationV1 {
             bytes: budget.bytes + 1,
             ..ReservationV1::ZERO
         };
-        assert_eq!(budget.reserve(&too_many_bytes), Err("budget_bytes_exceeded".to_string()));
+        assert_eq!(
+            budget.reserve(&too_many_bytes),
+            Err("budget_bytes_exceeded".to_string())
+        );
     }
 
     #[test]

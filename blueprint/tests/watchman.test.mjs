@@ -710,9 +710,9 @@ test("real Parcel watcher applies an edit within the debounce window", async () 
   const script = `import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildGraphGeneration } from "./graph/static-provider.mjs";
+import { buildGraphGeneration } from "./src/graph/static-provider.mjs";
 import { RepositoryActor } from "./watchman/repo-actor.mjs";
-import { closeStore, openStore } from "./graph/store-sqlite.mjs";
+import { closeStore, openStore } from "./src/graph/store-sqlite.mjs";
 const repo = mkdtempSync(join(tmpdir(), "blueprint-watchman-child-"));
 let actor;
 cpSync(${JSON.stringify(FIXTURE)}, repo, { recursive: true });

@@ -10,7 +10,7 @@
 // Every real-execution dependency (signed-build verification, scenario
 // execution, benchmark aggregation, host identity) is an injectable
 // parameter with a default that performs the real, installed-path work. The
-// defaults require a live installed host (crypt CLI, event-log database,
+// defaults require a live installed host (cortex CLI, event-log database,
 // running Membrane service, signed release-evidence manifest) and are meant
 // to run manually at the Book gate on macOS and Windows — never during task
 // implementation and never as part of an automated pipeline. See
@@ -68,7 +68,7 @@ function defaultGitCommit(workspaceRoot) {
 // Real client/model/host identity for the machine actually running the harness.
 export async function defaultResolveHostIdentity() {
   return {
-    client: process.env.CRYPT_CLIENT || "claude_code",
+    client: process.env.CORTEX_CLIENT || "claude_code",
     model: process.env.MEMBRANE_QUALIFICATION_MODEL || "",
     host: hostname() || "",
   };
@@ -104,7 +104,7 @@ export async function defaultVerifySignedBuild({ releaseManifestPath }) {
 // scenario runner (scripts/run-platform-scenarios.mjs) for exactly one
 // scenario, which drives an actual installed client host against the real
 // event-log database, provider stack, and outcome/feedback loop. Requires a
-// live installed Membrane service, a running installed client CLI, the crypt
+// live installed Membrane service, a running installed client CLI, the cortex
 // binary, and the event-log database — real-machine preconditions this
 // module never fabricates or substitutes.
 export async function defaultScenarioRunner({ scenario, platform, workspaceRoot, evidenceRoot }) {

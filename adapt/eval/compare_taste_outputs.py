@@ -13,8 +13,8 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 
-# Workspace root derived from this file's location.
-WS = Path(__file__).resolve().parents[2]
+# Workspace root owns shared tools/lib services.
+WS = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())
 REPLAY_DIR = WS / "tools/pipelines/memory/replay"
 sys.path.insert(0, str(REPLAY_DIR))
 from chunk_tournament import ExactEmbeddingGemma

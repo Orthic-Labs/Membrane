@@ -48,7 +48,7 @@ multi-channel publication remain in progress.
   `release/compatibility.template.json` `languageDepth`) are the public claim, not
   the raw grammar count.
 - **The do-not-absorb list.** "Do not turn Blueprint into general user memory
-  or final cross-layer context admission" (Membrane/Crypt boundary) and the
+  or final cross-layer context admission" (Membrane/Cortex boundary) and the
   other eight items in §8 of the runbook remain stable through 1.x.
 
 ## How to contribute

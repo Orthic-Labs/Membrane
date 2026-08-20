@@ -233,7 +233,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "crypt-core"
+name = "cortex-core"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -525,7 +525,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 name = "vector-bakeoff-common"
 version = "0.1.0"
 dependencies = [
- "crypt-core",
+ "cortex-core",
  "serde",
  "serde_json",
  "sha2",
@@ -535,7 +535,7 @@ dependencies = [
 name = "vector-bakeoff-sqlite-stable"
 version = "0.1.0"
 dependencies = [
- "crypt-core",
+ "cortex-core",
  "rusqlite",
  "serde_json",
  "sqlite-vec",

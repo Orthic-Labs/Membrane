@@ -40,11 +40,8 @@ pub mod reconcile;
 
 pub use budget::CrossProviderBudget;
 pub use fusion::{fuse, FusionBounds, FusionResult, DEFAULT_MAX_ITEMS, DEFAULT_RRF_K};
-pub use lane::{
-    lane_from_block, LaneAccounting, LaneAllocation, BUDGET_LANE_KINDS,
-};
+pub use lane::{lane_from_block, LaneAccounting, LaneAllocation, BUDGET_LANE_KINDS};
 pub use membrane_protocol::BudgetLaneKind;
 pub use reconcile::{
-    budget_from_reconciliation, reconcile, BudgetReconciliation,
-    BudgetReconciliationRowV1,
+    budget_from_reconciliation, reconcile, BudgetReconciliation, BudgetReconciliationRowV1,
 };

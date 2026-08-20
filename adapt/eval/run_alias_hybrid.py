@@ -1,4 +1,4 @@
-"""Evaluate compiled Adapt core plus source-alias Crypt retrieval (arm G)."""
+"""Evaluate compiled Adapt core plus source-alias Cortex retrieval (arm G)."""
 from __future__ import annotations
 
 import argparse
@@ -43,17 +43,17 @@ def combine_answers(primary: dict, arm_g: dict, cases: list[dict]) -> dict:
 
 
 def run_alias_retrieval(cases: list[dict], alias_db: Path, out: Path,
-                        crypt: Path) -> dict:
+                        cortex: Path) -> dict:
     path = out / "retrieval.json"
     input_hash = runner.sha_json({"db": str(alias_db), "cases": cases})
     before_ok, before_count, before_msg = runner.value_ab.integrity_check(alias_db)
     if not before_ok:
         raise RuntimeError(f"alias DB integrity failed: {before_msg}")
     port = runner.value_ab._free_port()
-    service = runner.value_ab._start_service(crypt, alias_db, port)
+    service = runner.value_ab._start_service(cortex, alias_db, port)
     try:
         runner.value_ab._wait_ready(port)
-        ranked = runner.replay_all(crypt, alias_db, port, cases,
+        ranked = runner.replay_all(cortex, alias_db, port, cases,
                                    out / "inputs/G.jsonl")
     finally:
         runner.value_ab._stop_service(service)
@@ -77,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--production-shape", action="store_true",
                         help="rebuild the alias DB through PreferenceRecord v1.2")
     parser.add_argument("--core-file", type=Path, default=DEFAULT_CORE)
-    parser.add_argument("--crypt-bin", type=Path, default=runner.DEFAULT_CRYPT)
+    parser.add_argument("--cortex-bin", type=Path, default=runner.DEFAULT_CORTEX)
     parser.add_argument("--grader-model", default=runner.DEFAULT_GRADER_MODEL)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
@@ -98,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.production_shape:
         alias_db = out / "production-alias.db"
         build = production.build_production_alias_db(
-            args.crypt_bin, runner.DEFAULT_LIVE_DB, alias_db, treatment
+            args.cortex_bin, runner.DEFAULT_LIVE_DB, alias_db, treatment
         )
         runner.write_json(out / "production-alias-build.json", build)
 
@@ -107,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
     grader_path = out / "grader-results.json"
     retrieval = combined = grades = None
     if args.stage in {"retrieval", "all"}:
-        retrieval = run_alias_retrieval(cases, alias_db, out, args.crypt_bin)
+        retrieval = run_alias_retrieval(cases, alias_db, out, args.cortex_bin)
     elif retrieval_path.exists():
         retrieval = runner.read_json(retrieval_path)
     if args.stage in {"actor", "all"}:

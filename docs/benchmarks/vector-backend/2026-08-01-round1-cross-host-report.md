@@ -1,4 +1,4 @@
-# MemRight vector-backend bake-off — Round 1 cross-host report (v1)
+# Cortex vector-backend bake-off — Round 1 cross-host report (v1)
 
 **Date:** 2026-08-01 · **Status:** Round 1 complete on both hosts; Round 2 (tuned shortlist) pending.
 **Benchmark commit:** `2f7e4c4f70d31462815155c3cd84717809db1e8a` · input digest `574943145f3502ca…` · config SHA `ad34773d19459744…` (identical on both hosts; per-(cell,runner) fixture SHA-256 verified equal across hosts, 24/24).

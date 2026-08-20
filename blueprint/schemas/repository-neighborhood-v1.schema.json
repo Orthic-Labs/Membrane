@@ -29,13 +29,13 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "kind", "path", "span", "score"],
+        "required": ["id", "kind", "path", "span", "evidenceTier"],
         "properties": {
           "id": { "type": "string" },
           "kind": { "type": "string" },
           "path": { "type": "string" },
           "span": { "type": ["array", "object", "null"], "items": { "type": "integer" } },
-          "score": { "type": "number" },
+          "evidenceTier": { "type": "integer", "minimum": 0 },
           "name": { "type": ["string", "null"] }
         }
       }

@@ -1,92 +1,25 @@
-"""Blueprint provider — spawns `blueprint.mjs graph candidates` and parses output.
-
-Reads a real ContextCandidateSet v1 produced by the existing static
-provider (Blueprint graph is the live machine-local generation). Output
-candidates carry provider="blueprint" and sourceGeneration = the
-manifest.generationId.
-"""
+"""Blueprint provider over resident daemon IPC."""
 from __future__ import annotations
 
-import json
 import hashlib
-import math
+import json
 import os
-import re
-import shutil
-import subprocess
+import socket
 import sys
-import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
-from . import workspace_tools_path
-
-BLUEPRINT_CLI_DEFAULT = Path(__file__).resolve().parents[4] / "blueprint/scripts/blueprint.mjs"
-BLUEPRINT_SKILLS_CLI_DEFAULT = workspace_tools_path(
-    "skills", "blueprint", "scripts", "blueprint.mjs"
-)
 BLUEPRINT_CANDIDATE_CAP_DEFAULT = 64
-# Blueprint runs inside the gateway's absolute fan-out deadline (1.5 s, see
-# gateway._PRODUCTION_FANOUT_TIMEOUT_S). The lean candidates entrypoint
-# (blueprint-candidates.mjs) answers in ~0.9 s at 150k-symbol scale; the previous
-# 0.35 s deadline was sized for the full CLI on a small graph and could never
-# be met at real workspace scale — every production packet lost its blueprint
-# lane to a spawn timeout, silently.
 BLUEPRINT_TIMEOUT_S = 1.2
 BLUEPRINT_CACHE_TTL_S = 300.0
 BLUEPRINT_CACHE_MAX_ENTRIES = 16
 
-# A successful candidate query can be reused only for its exact task, cap &
-# graph generation. This keeps a brief Node-spawn miss from discarding an
-# already-attested Blueprint answer, without treating manifest metadata as code
-# context or crossing a graph/source transition.
 _candidate_cache: dict[tuple[str, str, str, int], tuple[float, list[dict]]] = {}
-_candidate_cache_lock = threading.Lock()
-_QUERY_STOPWORDS = frozenset({
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is",
-    "it", "of", "on", "or", "that", "the", "this", "to", "verify", "with",
-    "implement", "implementation", "execution", "harness",
-})
-
-
-def _cache_key(repo_root: Path, generation: str, task: str, cap: int) -> tuple[str, str, str, int]:
-    return (
-        str(repo_root.resolve()),
-        generation,
-        hashlib.sha256(task.encode("utf-8")).hexdigest(),
-        cap,
-    )
-
-
-def _cached_candidates(key: tuple[str, str, str, int]) -> list[dict] | None:
-    now = time.monotonic()
-    with _candidate_cache_lock:
-        expired = [entry for entry, (until, _value) in _candidate_cache.items() if until <= now]
-        for entry in expired:
-            _candidate_cache.pop(entry, None)
-        cached = _candidate_cache.get(key)
-        if cached is None:
-            return None
-        return [dict(candidate) for candidate in cached[1]]
-
-
-def _cache_candidates(
-    key: tuple[str, str, str, int], candidates: list[dict], *, now: float | None = None
-) -> None:
-    now = time.monotonic() if now is None else now
-    with _candidate_cache_lock:
-        if len(_candidate_cache) >= BLUEPRINT_CACHE_MAX_ENTRIES:
-            oldest = min(_candidate_cache, key=lambda entry: _candidate_cache[entry][0])
-            _candidate_cache.pop(oldest, None)
-        _candidate_cache[key] = (
-            now + BLUEPRINT_CACHE_TTL_S,
-            [dict(candidate) for candidate in candidates],
-        )
 
 
 def candidate_cap(max_tokens: int, raw_override: str | None = None) -> int:
-    """Bound repo-code candidate generation independently of the total token budget."""
     raw = raw_override if raw_override is not None else os.environ.get("MEMBRANE_BLUEPRINT_CAP")
     try:
         configured = int(raw) if raw is not None else BLUEPRINT_CANDIDATE_CAP_DEFAULT
@@ -95,387 +28,137 @@ def candidate_cap(max_tokens: int, raw_override: str | None = None) -> int:
     return min(max(1, configured), 256, max(1, max_tokens))
 
 
-def _resolve_blueprint_cli() -> str:
-    """Locate the Blueprint CLI on this host.
+def _cache_key(repo_root: Path, generation: str, task: str, cap: int) -> tuple[str, str, str, int]:
+    return (str(repo_root.resolve()), generation, hashlib.sha256(task.encode()).hexdigest(), cap)
 
-    Honour an explicit BLUEPRINT_CLI override (CI / dev override) and
-    otherwise locate `blueprint.mjs` relative to this file. Return the
-    resolved path; raise FileNotFoundError if missing.
-    """
-    explicit = os.environ.get("BLUEPRINT_CLI")
+
+def _cached_candidates(key: tuple[str, str, str, int]) -> list[dict] | None:
+    cached = _candidate_cache.get(key)
+    if cached is None or cached[0] <= time.monotonic():
+        _candidate_cache.pop(key, None)
+        return None
+    return [dict(candidate) for candidate in cached[1]]
+
+
+def _cache_candidates(key: tuple[str, str, str, int], candidates: list[dict]) -> None:
+    if len(_candidate_cache) >= BLUEPRINT_CACHE_MAX_ENTRIES:
+        oldest = min(_candidate_cache, key=lambda entry: _candidate_cache[entry][0])
+        _candidate_cache.pop(oldest, None)
+    _candidate_cache[key] = (time.monotonic() + BLUEPRINT_CACHE_TTL_S, [dict(candidate) for candidate in candidates])
+
+
+def _daemon_endpoint() -> str:
+    explicit = os.environ.get("BLUEPRINT_DAEMON_ENDPOINT")
     if explicit:
         return explicit
-    for candidate in (BLUEPRINT_CLI_DEFAULT, BLUEPRINT_SKILLS_CLI_DEFAULT):
-        if candidate.exists():
-            return str(candidate)
-    return str(BLUEPRINT_CLI_DEFAULT)
+    if sys.platform == "win32":
+        suffix = hashlib.sha256(str(Path.home()).encode()).hexdigest()[:16]
+        return rf"\\.\pipe\orthic-blueprint-{suffix}"
+    return str(Path.home() / ".blueprint" / "blueprint.sock")
 
 
-def _resolve_node() -> str:
-    """Locate a Node.js binary that can run `blueprint.mjs`.
-
-    Honour NODE_BIN, then PATH lookup, then a Windows `node.exe` and
-    POSIX `node` fallback. Raise FileNotFoundError if missing.
-    """
-    env_override = os.environ.get("NODE_BIN")
-    if env_override and Path(env_override).exists():
-        return env_override
-    for name in ("node.exe", "node"):
-        found = shutil.which(name)
-        if found:
-            return found
-    # Last-resort fallback for hosts where the Node binary is installed
-    # but not on PATH (Windows installer often drops it under Program Files).
-    for guess in (
-        r"C:\Program Files\nodejs\node.exe",
-        r"C:\Program Files (x86)\nodejs\node.exe",
-        "/usr/bin/node",
-        "/usr/local/bin/node",
-        "/opt/homebrew/bin/node",
-    ):
-        if Path(guess).exists():
-            return guess
-    raise FileNotFoundError(
-        "node.js not found on PATH; install node and retry, or set NODE_BIN"
-    )
-
-
-def _read_manifest(repo_root: Path) -> dict | None:
-    """Read the sealed Blueprint generation, preferring the graph.db envelope.
-
-    Plan 3.2: direct sqlite3 access is deleted. The generation is read via
-    ``blueprint.mjs graph status --json`` (the Node CLI reads graph.db internally).
-    Falls back to manifest.json files for older Blueprint repos.
-    """
-    # Manifest files first: microseconds, refreshed by every `blueprint build`,
-    # and sufficient for the generation id this caller needs. The CLI probe
-    # below spawns the FULL blueprint.mjs module graph (~2.6 s at workspace
-    # scale) against a 2 s deadline — inside the federation fan-out it timed
-    # out on every call and silently spent the entire provider budget before
-    # the candidates spawn even started.
-    for path in (repo_root / ".agent" / "graph" / "manifest.json", repo_root / ".agent" / "manifest.json"):
-        if path.exists():
-            try:
-                manifest = json.loads(path.read_text(encoding="utf-8"))
-                if isinstance(manifest, dict) and manifest.get("generationId"):
-                    return manifest
-            except (OSError, json.JSONDecodeError):
-                pass
-
-    # Fallback: the CLI (reads graph.db through Blueprint's own reader).
-    cli = _resolve_blueprint_cli()
-    node_bin = _resolve_node()
-    if Path(cli).exists() and node_bin:
-        try:
-            proc = subprocess.run(
-                [node_bin, cli, "graph", "status", "--json"],
-                cwd=str(repo_root),
-                capture_output=True,
-                text=True,
-                timeout=2.0,
-                check=False,
-            )
-            if proc.returncode == 0 and proc.stdout.strip():
-                payload = json.loads(proc.stdout.strip())
-                manifest = payload.get("manifest") if isinstance(payload, dict) else None
-                if isinstance(manifest, dict) and manifest.get("generationId"):
-                    return manifest
-        except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, TypeError, ValueError):
-            pass
-
-    # Fallback: JSON manifest files (older Blueprint repos).
-    candidates = [
-        repo_root / ".agent" / "graph" / "manifest.json",
-        repo_root / ".agent" / "manifest.json",
-    ]
-    for path in candidates:
-        if path.exists():
-            try:
-                return json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                return None
-    return None
-
-
-def _blueprint_warning(reason_kind: str, message: str) -> dict:
-    return {
-        "provider": "blueprint",
-        "kind": reason_kind,
-        "severity": "warning",
-        "message": message[:400],
-    }
-
-
-def _query_tokens(task: str) -> list[str]:
-    """Small deterministic lexical query; task text never becomes SQL."""
-    tokens: list[str] = []
-    for raw in re.findall(r"[a-z0-9_][a-z0-9_-]{1,63}", task.lower()):
-        token = raw.replace("-", "_")
-        if token in _QUERY_STOPWORDS or token in tokens:
-            continue
-        tokens.append(token)
-    return sorted(tokens, key=lambda token: (-len(token), token))[:8]
-
-
-_ZERO_SHA256 = "sha256:" + "0" * 64
-
-
-def _normalise_source_hash(value: object) -> str:
-    """Plan 3.4 hash prefix: return a `sha256:`-prefixed 64-char hex digest.
-
-    Accepts the modern `sha256:<64hex>` shape (live.py / gateway.py:92-96),
-    a bare 64-hex digest, or the legacy 32-char unprefixed form. Any other
-    shape collapses to the zero digest so consumers always see a uniformly
-    self-describing, correctly-widthed identifier.
-    """
-    raw = str(value or "")
-    if raw.startswith("sha256:") and len(raw.removeprefix("sha256:")) == 64:
-        normalised = raw.removeprefix("sha256:").lower()
-        if re.fullmatch(r"[0-9a-f]{64}", normalised):
-            return "sha256:" + normalised
-    if re.fullmatch(r"[0-9a-fA-F]{64}", raw):
-        return "sha256:" + raw.lower()
-    if re.fullmatch(r"[0-9a-fA-F]{32}", raw):
-        return "sha256:" + raw.lower().ljust(64, "0")
-    return _ZERO_SHA256
-
-
-# Plan 3.2: _direct_index_candidates deleted — all candidate requests now
-# route through the Node CLI lane (blueprint.mjs graph candidates). The pinned
-# generation is passed via --expected-generation, not by querying sqlite.
-# Abstention detection moved to _produce (below).
-
-
-def _produce(
+def _read_daemon_request(
     repo_root: Path,
-    task: str,
-    max_tokens: int,
-    observability: dict[str, Any],
-    expected_generation: str | None = None,
-) -> tuple[list[dict], str, list[dict]]:
-    """Plan 3.3 contract:
+    method: str,
+    input_payload: dict[str, Any],
+    generation: str | None,
+    *,
+    deadline_s: float = BLUEPRINT_TIMEOUT_S,
+) -> dict[str, Any]:
+    request_id = str(uuid.uuid4())
+    request = {
+        "protocolVersion": 1,
+        "requestId": request_id,
+        "repoId": None,
+        "generation": generation,
+        "method": method,
+        "deadlineMs": max(10, int(deadline_s * 1000)),
+        "input": {"repoRoot": str(repo_root.resolve()), **input_payload},
+    }
+    wire = (json.dumps(request, separators=(",", ":")) + "\n").encode()
+    endpoint = _daemon_endpoint()
+    if sys.platform == "win32":
+        with open(endpoint, "r+b", buffering=0) as pipe:
+            pipe.write(wire)
+            line = pipe.readline()
+    else:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(deadline_s)
+            client.connect(endpoint)
+            client.sendall(wire)
+            chunks = bytearray()
+            while b"\n" not in chunks:
+                block = client.recv(65536)
+                if not block:
+                    break
+                chunks.extend(block)
+            line = bytes(chunks).split(b"\n", 1)[0]
+    if not line:
+        raise ConnectionError("Blueprint daemon returned no response")
+    response = json.loads(line)
+    if response.get("requestId") != request_id:
+        raise RuntimeError("Blueprint daemon response identity mismatch")
+    if not response.get("ok"):
+        error = response.get("error") or {}
+        raise RuntimeError(f"{error.get('code', 'daemon_error')}: {error.get('message', 'request failed')}")
+    return response
 
-    `(candidates, generation, warnings)` is the established 3-tuple return
-    shape retained for callers. The abstention signal is attached to the
-    observability dict already passed in (option B from plan 3.3) under the
-    key ``abstention`` so gateway.py can promote it to its own typed envelope
-    without breaking the existing tuple contract.
 
-    Abstention triggers ONLY when all of the following hold — every other
-    provider failure mode degrades to its prior empty-list path with a
-    typed warning:
+def _read_daemon_frame(repo_root: Path, task: str, cap: int, generation: str | None) -> dict[str, Any]:
+    return _read_daemon_request(repo_root, "orient", {"task": task, "limit": cap}, generation)
 
-    * the on-disk generation matches the centrally validated one (so the
-      graph is CURRENT, not stale);
-    * the Node CLI returned no candidates (no lexical evidence).
-    """
-    warnings: list[dict] = []
-    cli = _resolve_blueprint_cli()
-    if not Path(cli).exists():
-        warnings.append(_blueprint_warning("blueprint_cli_missing", f"blueprint CLI missing at {cli}"))
-        return [], "blueprint-missing", warnings
-    node_bin = _resolve_node()
-    # The lean entrypoint reports generationId itself, so the separate manifest
-    # probe (which pays the full blueprint.mjs module graph — ~2.6 s against a 2 s
-    # deadline — whenever manifest.json lacks a generationId) is skipped
-    # entirely on that path. The cache key is built after the run instead.
-    lean_cli = Path(cli).with_name("blueprint-candidates.mjs")
-    manifest = None if lean_cli.exists() else _read_manifest(repo_root)
-    generation_id = (manifest or {}).get("generationId") or ""
+
+def manifest_digest(repo_root: Path) -> str:
+    response = _read_daemon_request(repo_root, "status", {}, None)
+    manifest = ((response.get("result") or {}).get("manifest") or {})
+    digest = str(manifest.get("manifestDigest") or "")
+    if digest.startswith("sha256:") and len(digest) == 71:
+        return digest.lower()
+    if not manifest:
+        raise FileNotFoundError("Blueprint daemon returned no sealed manifest")
+    canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":")).encode()
+    return "sha256:" + hashlib.sha256(canonical).hexdigest()
+
+
+def _warning(kind: str, message: str) -> dict:
+    return {"provider": "blueprint", "kind": kind, "severity": "warning", "message": message[:400]}
+
+
+def _produce(repo_root: Path, task: str, max_tokens: int, observability: dict[str, Any], expected_generation: str | None = None) -> tuple[list[dict], str, list[dict]]:
     cap = candidate_cap(max_tokens)
-    cache_key = None
-    if generation_id and (not expected_generation or generation_id == expected_generation):
-        cache_key = _cache_key(repo_root, generation_id, task, cap)
+    cache_key = _cache_key(repo_root, expected_generation, task, cap) if expected_generation else None
+    if cache_key:
         cached = _cached_candidates(cache_key)
         if cached is not None:
-            return cached, generation_id, warnings
-    # Prefer the lean candidates entrypoint when the Blueprint checkout ships it:
-    # same ContextCandidateSet v1 stdout contract, ~2s less module-graph cost,
-    # and strictly read-only (no barrier, no reconcile, no writes).
-    if lean_cli.exists():
-        cmd = [
-            node_bin,
-            str(lean_cli),
-            "--task", task,
-            "--root", str(repo_root),
-            "--out", ".agent",
-            "--limit", str(cap),
-        ]
-    else:
-        cmd = [
-            node_bin,
-            cli,
-            "graph", "candidates",
-            "--task", task,
-            "--out", ".agent",
-            "--limit", str(cap),
-        ]
-    if expected_generation:
-        cmd.extend(["--expected-generation", expected_generation])
-    subprocess_started = time.monotonic()
+            return cached, expected_generation, []
+    started = time.monotonic()
     try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(repo_root),
-            capture_output=True,
-            text=True,
-            timeout=BLUEPRINT_TIMEOUT_S,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        if cache_key is not None:
-            cached = _cached_candidates(cache_key)
-            if cached is not None:
-                return cached, generation_id, warnings
-        warnings.append(
-            _blueprint_warning(
-                "provider_timeout",
-                f"blueprint exceeded {BLUEPRINT_TIMEOUT_S:.2f}s process deadline",
-            )
-        )
-        return [], "blueprint-timeout", warnings
-    subprocess_finished = time.monotonic()
-    subprocess_elapsed_ms = max(0.0, (subprocess_finished - subprocess_started) * 1000.0)
-    observability["stageElapsedMs"] = {
-        "blueprint_node_spawn": round(subprocess_elapsed_ms, 6),
-    }
-    if proc.returncode != 0:
-        warnings.append(_blueprint_warning("blueprint_nonzero_exit", f"exit={proc.returncode}; stderr={proc.stderr.strip()[:300]}"))
-        return [], "blueprint-failed", warnings
-    out = proc.stdout.strip()
-    if not out:
-        warnings.append(_blueprint_warning("blueprint_empty_output", "empty stdout"))
-        return [], "blueprint-failed", warnings
-    try:
-        payload = json.loads(out)
-    except json.JSONDecodeError as exc:
-        warnings.append(_blueprint_warning("blueprint_json_decode", str(exc)[:300]))
-        return [], "blueprint-failed", warnings
-    raw_membrane = payload.get("_membrane") if isinstance(payload, dict) else None
-    raw_stages = raw_membrane.get("stageElapsedMs") if isinstance(raw_membrane, dict) else None
-    raw_repo_scan = raw_stages.get("repo_code_scan") if isinstance(raw_stages, dict) else None
-    if (
-        isinstance(raw_repo_scan, (int, float))
-        and not isinstance(raw_repo_scan, bool)
-        and math.isfinite(float(raw_repo_scan))
-        and float(raw_repo_scan) >= 0
-    ):
-        repo_scan_ms = min(float(raw_repo_scan), subprocess_elapsed_ms)
-        observability["stageElapsedMs"] = {
-            "blueprint_node_spawn": round(subprocess_elapsed_ms - repo_scan_ms, 6),
-            "repo_code_scan": round(repo_scan_ms, 6),
-        }
-    # `graph candidates` returns a full ContextCandidateSet v1 object
-    # (schemaVersion + candidates[...]). Normalise to the candidate list.
-    if isinstance(payload, dict) and isinstance(payload.get("candidates"), list):
-        results = payload["candidates"]
-    elif isinstance(payload, list):
-        results = payload
-    else:
-        warnings.append(_blueprint_warning("blueprint_unexpected_shape", f"unexpected top-level shape; first 200 bytes: {out[:200]}"))
-        return [], "blueprint-failed", warnings
-
-    candidates: list[dict[str, Any]] = []
-    for entry in results:
-        # Blueprint CLI may emit candidates in two shapes:
-        # 1. Top-level (modern): sourceRef/sourceHash at root, no `evidence[]`
-        # 2. Evidence-wrapped (legacy): each candidate has `evidence[]` with
-        #    path/startLine/endLine/contentHash.
-        # We support BOTH. When evidence is present, prefer its path lines;
-        # otherwise build sourceRef from top-level sourceRef + layer info.
-        evidence_list = entry.get("evidence") or []
-        entry_id = entry.get("id") or entry.get("qualifiedName") or ""
-        if evidence_list:
-            first_ev = evidence_list[0]
-            ev_path = first_ev.get("path") or ""
-            ev_start = int(first_ev.get("startLine", 1))
-            ev_end = int(first_ev.get("endLine", ev_start))
-            source_ref = f"{ev_path}:{ev_start}-{ev_end}"
-            # Plan 3.4 hash prefix: every emitted sourceHash must be a
-            # `sha256:`-prefixed 64-char hex digest (gateway.py:92-96),
-            # never the legacy unprefixed `"0"*32`.
-            raw_ev_hash = first_ev.get("contentHash") or entry.get("sourceHash") or ""
-            source_hash = _normalise_source_hash(raw_ev_hash)
-        else:
-            source_ref = entry.get("sourceRef") or entry_id
-            source_hash = _normalise_source_hash(entry.get("sourceHash") or "")
-        if not source_ref:
-            # Skip if neither shape carries a usable reference; surface
-            # a ProviderWarning upstream instead of an empty candidate.
-            continue
-        declared_trust = entry.get("trustClass")
-        candidates.append({
-            "id": f"blueprint:{entry_id}",
-            "layer": int(entry.get("layer", 3)),
-            "sourceKind": entry.get("sourceKind", "repo_code"),
-            "sourceRef": source_ref,
-            "sourceHash": source_hash,
-            "trustClass": declared_trust or "workspace_tracked",
-            "instructionPolicy": entry.get("instructionPolicy", "data_only"),
-            "providerScore": float(entry.get("providerScore") or entry.get("confidence") or 0.0),
-            "scoreComponents": dict(entry.get("scoreComponents") or {"lexical": 0.0}),
-            "estimatedTokens": int(entry.get("estimatedTokens") or 100),
-            "protected": bool(entry.get("protected", False)),
-            "exact": bool(entry.get("exact", False)),
-            "recoverable": bool(entry.get("recoverable", True)),
-            # Plan 3.4 resolver drift: this lane actually executes
-            # `blueprint.mjs graph candidates`; the per-id re-fetch contract
-            # is the same `blueprint graph resolve --node <id>` shape used
-            # by anchors.py:91 and Blueprint at blueprint/scripts/blueprint.mjs:2501.
-            "resolver": entry.get("resolver") or f"blueprint graph resolve --node {entry_id}",
-            "text": entry.get("qualifiedName") or entry.get("name") or entry_id,
-        })
-    # The lean entrypoint reports its own generation (no manifest probe ran);
-    # adopt it and build the cache key that the pre-spawn path could not.
-    if not generation_id and isinstance(payload, dict) and payload.get("generationId"):
-        generation_id = str(payload["generationId"])
-        if not expected_generation or generation_id == expected_generation:
-            cache_key = _cache_key(repo_root, generation_id, task, cap)
-    if cache_key is not None and candidates:
+        response = _read_daemon_frame(repo_root, task, cap, expected_generation)
+    except (TimeoutError, socket.timeout):
+        return [], "blueprint-timeout", [_warning("provider_timeout", f"Blueprint daemon exceeded {BLUEPRINT_TIMEOUT_S:.2f}s deadline")]
+    except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:
+        return [], "blueprint-unavailable", [_warning("blueprint_daemon_unavailable", str(exc))]
+    observability["stageElapsedMs"] = {"blueprint_daemon": round(max(0.0, (time.monotonic() - started) * 1000), 6)}
+    result = response.get("result") or {}
+    generation = str(response.get("generation") or result.get("generationId") or expected_generation or "")
+    if expected_generation and generation != expected_generation:
+        return [], generation or "blueprint-generation-mismatch", [_warning("generation_mismatch", f"expected {expected_generation}; observed {generation}")]
+    candidate_set = result.get("candidateSet") or {}
+    candidates = [dict(candidate) for candidate in candidate_set.get("candidates") or []]
+    circuit = result.get("recallCircuit") or {}
+    warnings: list[dict] = []
+    if circuit.get("state") == "abstained":
+        warnings.append(_warning("blueprint_abstained_no_relevant_seed", "fresh graph has no relevant seed for task"))
+    if cache_key and candidates:
         _cache_candidates(cache_key, candidates)
-    generation_id = generation_id or "blueprint-federation-stub"
-    # Plan 3.3: when the graph is pinned (expected_generation matches) and the
-    # CLI returned zero candidates, this is abstention — not a failure. The
-    # graph is current but has no lexical evidence for this task.
-    if expected_generation and generation_id == expected_generation and not candidates:
-        observability["abstention"] = {
-            "abstained": True,
-            "reason": "no_relevant_seed",
-            "candidates": [],
-            "generationId": generation_id,
-        }
-        warnings.append(_blueprint_warning(
-            "blueprint_abstained_no_relevant_seed",
-            f"fresh graph {generation_id} has no relevant seed for task",
-        ))
-    if cache_key is not None and generation_id == (expected_generation or generation_id):
-        _cache_candidates(cache_key, candidates, now=subprocess_finished)
-    return candidates, generation_id, warnings
+    return candidates, generation, warnings
 
 
-def produce_with_observability(
-    repo_root: Path,
-    task: str,
-    max_tokens: int,
-    *,
-    expected_generation: str | None = None,
-) -> tuple[list[dict], str, list[dict], dict[str, Any]]:
-    """Produce candidates plus bounded, content-free provider stage timings."""
+def produce_with_observability(repo_root: Path, task: str, max_tokens: int, *, expected_generation: str | None = None) -> tuple[list[dict], str, list[dict], dict[str, Any]]:
     observability: dict[str, Any] = {"stageElapsedMs": {}}
-    return (*_produce(
-        repo_root, task, max_tokens, observability, expected_generation
-    ), observability)
+    return (*_produce(repo_root, task, max_tokens, observability, expected_generation), observability)
 
 
-def produce(
-    repo_root: Path,
-    task: str,
-    max_tokens: int,
-    *,
-    expected_generation: str | None = None,
-) -> tuple[list[dict], str, list[dict]]:
-    """Compatibility wrapper retaining the established three-tuple API."""
+def produce(repo_root: Path, task: str, max_tokens: int, *, expected_generation: str | None = None) -> tuple[list[dict], str, list[dict]]:
     observability: dict[str, Any] = {"stageElapsedMs": {}}
-    return _produce(
-        repo_root, task, max_tokens, observability, expected_generation
-    )
+    return _produce(repo_root, task, max_tokens, observability, expected_generation)

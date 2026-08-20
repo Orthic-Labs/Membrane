@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "artifact": "federation-freeze-v1",
-  "note": "Drift baseline for the RightContext contract surface. Regenerate with `context_contracts.py --freeze` after an INTENTIONAL contract change; test_freeze.py enforces it.",
+  "note": "Drift baseline for Membrane contract surface. Regenerate with `context_contracts.py --freeze` after an INTENTIONAL contract change; test_freeze.py enforces it.",
   "canonical": {
     "context-contracts.schema.json": "94934ac3d406c0a1e82b40d791da171fc5bb95b8005927e3a412bf429947e7f1"
   },

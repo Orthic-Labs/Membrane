@@ -3,13 +3,13 @@
 //! Strict storage boundary (locked 2026-07-12, dispatch §G3B):
 //!
 //! ```text
-//! Crypt DB               durable memories only
+//! Cortex DB               durable memories only
 //! <context-home>/catalog.db identities, handles, generations, scope grants,
 //!                           retrieval events, capabilities, receipts
 //! <context-home>/repos/...  separately attachable graph generations
 //! ```
 //!
-//! The catalog NEVER reuses or migrates the Crypt durable-memory DB. It owns a
+//! The catalog NEVER reuses or migrates the Cortex durable-memory DB. It owns a
 //! separate SQLite file, lives in a dedicated directory, runs its own
 //! additive migrations via `PRAGMA user_version`, and exposes a small,
 //! planner-specific surface (issuance / lookup / revoke for scope grants, plus
@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Schema-version of the catalog. Migrations are additive (`ALTER TABLE ADD` /
-/// `CREATE INDEX`) — never re-shape the Crypt DB, never delete a previously
+/// `CREATE INDEX`) — never re-shape the Cortex DB, never delete a previously
 /// persisted column.
 pub const CATALOG_SCHEMA_VERSION: i64 = 2;
 
@@ -70,7 +70,7 @@ pub enum CatalogPathError {
         value: String,
     },
     #[error(
-        "catalog path is unbound: set RIGHTCONTEXT_CATALOG, CONTEXT_HOME, CRYPT_DB, or WORKSPACE_ROOT"
+        "catalog path is unbound: set MEMBRANE_CATALOG, CONTEXT_HOME, CORTEX_DB, or WORKSPACE_ROOT"
     )]
     MissingBinding,
 }
@@ -93,18 +93,18 @@ fn absolute_binding(
 }
 
 pub fn resolve_catalog_path_from(
-    rightcontext_catalog: Option<std::ffi::OsString>,
+    membrane_catalog: Option<std::ffi::OsString>,
     context_home: Option<std::ffi::OsString>,
-    crypt_db: Option<std::ffi::OsString>,
+    cortex_db: Option<std::ffi::OsString>,
     workspace_root: Option<std::ffi::OsString>,
 ) -> Result<PathBuf, CatalogPathError> {
-    if let Some(path) = absolute_binding("RIGHTCONTEXT_CATALOG", rightcontext_catalog)? {
+    if let Some(path) = absolute_binding("MEMBRANE_CATALOG", membrane_catalog)? {
         return Ok(path);
     }
     if let Some(path) = absolute_binding("CONTEXT_HOME", context_home)? {
         return Ok(path.join("catalog.db"));
     }
-    if let Some(path) = absolute_binding("CRYPT_DB", crypt_db)? {
+    if let Some(path) = absolute_binding("CORTEX_DB", cortex_db)? {
         return Ok(path
             .parent()
             .expect("absolute database path has a parent")
@@ -119,9 +119,9 @@ pub fn resolve_catalog_path_from(
 /// Resolve one canonical catalog path without current-directory fallback.
 pub fn default_catalog_path() -> Result<PathBuf, CatalogPathError> {
     resolve_catalog_path_from(
-        std::env::var_os("RIGHTCONTEXT_CATALOG"),
+        std::env::var_os("MEMBRANE_CATALOG"),
         std::env::var_os("CONTEXT_HOME"),
-        std::env::var_os("CRYPT_DB"),
+        std::env::var_os("CORTEX_DB"),
         std::env::var_os("WORKSPACE_ROOT"),
     )
 }
@@ -138,7 +138,7 @@ pub struct ContextCatalog {
 impl ContextCatalog {
     /// Open (or create) the catalog at `path`, WAL + busy timeout, run
     /// migrations. The path is recorded so health/output can echo it; the
-    /// Crypt DB is never touched.
+    /// Cortex DB is never touched.
     pub fn open<P: AsRef<Path>>(path: P) -> rusqlite::Result<Self> {
         let path = path.as_ref().to_path_buf();
         if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
@@ -165,7 +165,7 @@ impl ContextCatalog {
 
     /// In-memory ephemeral catalog for tests. Mirrors MemDb::open_in_memory but
     /// lives in a separate connection so it can never accidentally write to
-    /// the Crypt DB.
+    /// the Cortex DB.
     pub fn open_in_memory() -> Self {
         let mut conn = Connection::open_in_memory().expect("open in-memory catalog");
         conn.execute_batch("PRAGMA busy_timeout=5000; PRAGMA temp_store=MEMORY;")
@@ -208,7 +208,7 @@ impl ContextCatalog {
 // ---- Migrations ----------------------------------------------------------
 //
 // Catalogs are append-only additive. The dispatcher commits to "additive only,
-// never rewrite the Crypt DB". Each migration step opens a transaction,
+// never rewrite the Cortex DB". Each migration step opens a transaction,
 // applies its change, then bumps `PRAGMA user_version`. Migrations must remain
 // idempotent so a partial application re-running the helper upgrades in place.
 
@@ -405,7 +405,7 @@ fn same_file(left: &Path, right: &Path) -> bool {
 
 fn known_catalog_candidates(canonical: &Path) -> Vec<PathBuf> {
     let mut candidates = BTreeSet::new();
-    if let Some(value) = std::env::var_os("RIGHTCONTEXT_CATALOG") {
+    if let Some(value) = std::env::var_os("MEMBRANE_CATALOG") {
         let path = PathBuf::from(value);
         if path.is_absolute() {
             candidates.insert(path);
@@ -417,7 +417,7 @@ fn known_catalog_candidates(canonical: &Path) -> Vec<PathBuf> {
             candidates.insert(path.join("catalog.db"));
         }
     }
-    if let Some(value) = std::env::var_os("CRYPT_DB") {
+    if let Some(value) = std::env::var_os("CORTEX_DB") {
         let path = PathBuf::from(value);
         if path.is_absolute() {
             if let Some(parent) = path.parent() {
@@ -438,7 +438,7 @@ fn known_catalog_candidates(canonical: &Path) -> Vec<PathBuf> {
     {
         let path = PathBuf::from(value);
         if path.is_absolute() {
-            candidates.insert(path.join(".claude/rightcontext/catalog.db"));
+            candidates.insert(path.join(".claude/membrane/catalog.db"));
         }
     }
     candidates
@@ -643,7 +643,7 @@ pub fn issue_scope_grant(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL)",
         params![
             id,
-            "rightcontext-gateway",
+            "membrane-gateway",
             client,
             repo_csv,
             edge_csv,
@@ -658,7 +658,7 @@ pub fn issue_scope_grant(
     )?;
     Ok(ScopeGrant {
         id: id.to_string(),
-        issuer: "rightcontext-gateway".into(),
+        issuer: "membrane-gateway".into(),
         client: client.to_string(),
         repository_ids: repository_ids.to_vec(),
         permitted_edge_types: permitted_edge_types.to_vec(),
@@ -863,7 +863,7 @@ pub fn health_snapshot(catalog: &ContextCatalog) -> serde_json::Value {
                 "receipts": serde_json::Value::Null,
                 "retrievalEvents": serde_json::Value::Null,
                 "activeGrants": serde_json::Value::Null,
-                "cryptDbUntouched": true,
+                "cortexDbUntouched": true,
                 "startup": startup_report,
             });
         }
@@ -890,7 +890,7 @@ pub fn health_snapshot(catalog: &ContextCatalog) -> serde_json::Value {
             "receipts": receipts,
             "retrievalEvents": events,
             "activeGrants": active_grants,
-            "cryptDbUntouched": true,
+            "cortexDbUntouched": true,
             "startup": startup_report,
         }),
         Err(_) => serde_json::json!({
@@ -900,7 +900,7 @@ pub fn health_snapshot(catalog: &ContextCatalog) -> serde_json::Value {
             "receipts": serde_json::Value::Null,
             "retrievalEvents": serde_json::Value::Null,
             "activeGrants": serde_json::Value::Null,
-            "cryptDbUntouched": true,
+            "cortexDbUntouched": true,
             "startup": startup_report,
         }),
     }
@@ -952,7 +952,7 @@ mod tests {
         assert_eq!(snapshot["receipts"], serde_json::Value::Null);
         assert_eq!(snapshot["retrievalEvents"], serde_json::Value::Null);
         assert_eq!(snapshot["activeGrants"], serde_json::Value::Null);
-        assert_eq!(snapshot["cryptDbUntouched"], true);
+        assert_eq!(snapshot["cortexDbUntouched"], true);
     }
 
     #[test]
@@ -969,20 +969,20 @@ mod tests {
     }
 
     #[test]
-    fn catalog_opens_without_touching_crypt_db() {
+    fn catalog_opens_without_touching_cortex_db() {
         // Distinct file paths. If the catalog implementation ever tried to open
-        // the Crypt DB, one of these paths would receive writes or schema
+        // the Cortex DB, one of these paths would receive writes or schema
         // changes — both detectable here.
         let dir = tempfile::tempdir().unwrap();
-        let crypt_path = dir.path().join("crypt-engine.db");
+        let cortex_path = dir.path().join("cortex-engine.db");
         let catalog_path = dir.path().join("catalog.db");
-        std::fs::write(&crypt_path, b"CRYPT_DB_FORGE").unwrap();
+        std::fs::write(&cortex_path, b"CORTEX_DB_FORGE").unwrap();
 
         let catalog = ContextCatalog::open(&catalog_path).unwrap();
         let _ = catalog; // touch handle
 
-        // Crypt DB must be byte-identical — the catalog never opened it.
-        assert_eq!(std::fs::read(&crypt_path).unwrap(), b"CRYPT_DB_FORGE");
+        // Cortex DB must be byte-identical — the catalog never opened it.
+        assert_eq!(std::fs::read(&cortex_path).unwrap(), b"CORTEX_DB_FORGE");
         // Catalog DB exists and has the current schema stamp.
         assert!(catalog_path.exists());
         let conn = rusqlite::Connection::open(&catalog_path).unwrap();

@@ -17,7 +17,7 @@ assert.equal(addonConfig.kind, "headless-addon", "release identity requires a he
 assert.equal(addonConfig.addon, "membrane", "release identity requires membrane add-on");
 assert.deepEqual(addonConfig.consumer.serviceStop, ["SIGTERM"], "add-on consumer stop contract drifted");
 assert.ok(roleBuilds.includes("membrane"), "add-on must build membrane command role");
-assert.ok(roleBuilds.includes("crypt-service"), "add-on must build crypt-service service role");
+assert.ok(roleBuilds.includes("cortex-service"), "add-on must build cortex-service service role");
 assert.equal(dirty, "", `release identity requires clean add-on sources:\n${dirty}`);
 
-console.log(`release identity OK: ${addonConfig.addon}@${addonConfig.version} command=membrane service=crypt-service`);
+console.log(`release identity OK: ${addonConfig.addon}@${addonConfig.version} command=membrane service=cortex-service`);

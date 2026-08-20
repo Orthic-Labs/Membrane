@@ -18,7 +18,7 @@ For the running platform it:
    apple-notary/windows-authenticode platform trust, installed platform
    receipts).
 2. Resolves the **real client, model, and host** identity running the
-   harness (`CRYPT_CLIENT`, `MEMBRANE_QUALIFICATION_MODEL`, machine
+   harness (`CORTEX_CLIENT`, `MEMBRANE_QUALIFICATION_MODEL`, machine
    hostname).
 3. Runs all ten canonical scenarios (`repository_orientation`,
    `cross_repo_impact`, `preference_application`,
@@ -64,7 +64,7 @@ harness:
 
 - a signed release-evidence manifest (`--release-manifest`) produced by the
   real signed release pipeline,
-- a running installed Membrane service and the installed `crypt` CLI,
+- a running installed Membrane service and the installed `cortex` CLI,
 - a live event-log database (`--event-db`),
 - a real installed client host reachable the way
   `scripts/run-platform-scenarios.mjs` expects.

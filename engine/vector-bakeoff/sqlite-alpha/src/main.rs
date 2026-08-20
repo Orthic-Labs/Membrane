@@ -110,7 +110,7 @@ fn query_projection(
         .filter(|row| eligible(row, query))
         .map(|row| Candidate {
             id: row.id,
-            cosine: crypt_core::cosine(&row.embedding, &query.embedding),
+            cosine: cortex_core::cosine(&row.embedding, &query.embedding),
             content_hash: hex(&row.content_hash),
         })
         .collect::<Vec<_>>();

@@ -37,7 +37,7 @@ export default {
       targetTriple: "aarch64-apple-darwin",
       files: [
         { role: "command", name: "membrane", source: "engine/target/aarch64-apple-darwin/release/membrane", executable: true },
-        { role: "service", name: "crypt-service", source: "engine/target/aarch64-apple-darwin/release/crypt-service", executable: true },
+        { role: "service", name: "cortex-service", source: "engine/target/aarch64-apple-darwin/release/cortex-service", executable: true },
         { role: "icon", name: "membrane-tab-icon.png", source: "dist/install/assets/membrane-tab-icon.png" },
         { role: "license", name: "LICENSE", source: "LICENSE" },
         { role: "eula", name: "EULA.txt", source: "docs/legal/EULA.txt" },
@@ -46,7 +46,7 @@ export default {
       ],
       build: {
         cmd: "node",
-        args: ["scripts/release/stage-addon-binaries.mjs", "build", "--manifest-path", "engine/Cargo.toml", "--workspace", "--locked", "--release", "--target", "aarch64-apple-darwin", "-p", "membrane", "--bin", "membrane", "-p", "crypt", "--bin", "crypt-service", "--", "membrane", "crypt-service"],
+        args: ["scripts/release/stage-addon-binaries.mjs", "build", "--manifest-path", "engine/Cargo.toml", "--workspace", "--locked", "--release", "--target", "aarch64-apple-darwin", "-p", "membrane", "--bin", "membrane", "-p", "cortex", "--bin", "cortex-service", "--", "membrane", "cortex-service"],
       },
       signing: { contract: "apple-developer-id-executable-v1", teamId: "6KLGD3LLKF" },
     },
@@ -54,7 +54,7 @@ export default {
       targetTriple: "x86_64-pc-windows-msvc",
       files: [
         { role: "command", name: "membrane.exe", source: "engine/target/x86_64-pc-windows-msvc/release/membrane.exe", executable: true },
-        { role: "service", name: "crypt-service.exe", source: "engine/target/x86_64-pc-windows-msvc/release/crypt-service.exe", executable: true },
+        { role: "service", name: "cortex-service.exe", source: "engine/target/x86_64-pc-windows-msvc/release/cortex-service.exe", executable: true },
         { role: "icon", name: "membrane-tab-icon.png", source: "dist/install/assets/membrane-tab-icon.png" },
         { role: "license", name: "LICENSE", source: "LICENSE" },
         { role: "eula", name: "EULA.txt", source: "docs/legal/EULA.txt" },
@@ -63,7 +63,7 @@ export default {
       ],
       build: {
         cmd: "node",
-        args: ["scripts/release/stage-addon-binaries.mjs", "build", "--manifest-path", "engine/Cargo.toml", "--workspace", "--locked", "--release", "--target", "x86_64-pc-windows-msvc", "-p", "membrane", "--bin", "membrane", "-p", "crypt", "--bin", "crypt-service", "--", "membrane.exe", "crypt-service.exe"],
+        args: ["scripts/release/stage-addon-binaries.mjs", "build", "--manifest-path", "engine/Cargo.toml", "--workspace", "--locked", "--release", "--target", "x86_64-pc-windows-msvc", "-p", "membrane", "--bin", "membrane", "-p", "cortex", "--bin", "cortex-service", "--", "membrane.exe", "cortex-service.exe"],
       },
       signing: { contract: "azure-artifact-signing-v1" },
     },

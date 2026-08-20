@@ -6,7 +6,7 @@ Technical overview of components, interfaces, classified flow inventory, and cap
 The deterministic Phase-1 graph supplies the evidence substrate; Phase-2 understanding supplies
 the human component names and operational flow. Raw file and symbol nodes are intentionally omitted.
 
-Adapt is a Python CLI and library for mining durable preferences from local session transcripts, producing scoped review-manifest candidates, and optionally applying admitted rules through the Crypt boundary. The architecture is split into session parsing, LLM/deterministic extraction, synthesis, authority/admission checks, persistence/conformance, and Taste application layers.
+Adapt is a Python CLI and library for mining durable preferences from local session transcripts, producing scoped review-manifest candidates, and optionally applying admitted rules through the Cortex boundary. The architecture is split into session parsing, LLM/deterministic extraction, synthesis, authority/admission checks, persistence/conformance, and Taste application layers.
 
 ## System workflow
 
@@ -54,7 +54,7 @@ _No synthesized component workflow yet; run Blueprint Phase 2 synthesis._
 | provenance-linked review manifests | covered | taste.py:349-390; preference_record.py:692-740 | Stable records, source hashes, evidence IDs, and payload hashes |
 | safe admission | covered | taste.py:320-332; admission.py:116-148; authority.py:389-420 | Taxonomy, shape, authority, and safety gates |
 | multiwriter conformance | covered | multiwriter_conformance.py:607-705; multiwriter_conformance.py:818-941 | Evidence collection, receipt issuance, and receipt validation |
-| Crypt persistence | partial | taste.py:399-414; adapt.py:3-9 | Repository contains a subprocess mutation boundary, not the Crypt storage implementation |
+| Cortex persistence | partial | taste.py:399-414; adapt.py:3-9 | Repository contains a subprocess mutation boundary, not the Cortex storage implementation |
 
 ## Health & Security (loud-partial when graph is missing)
 

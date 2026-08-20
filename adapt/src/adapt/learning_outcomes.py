@@ -25,9 +25,9 @@ OUTCOME_FILE = STATE_DIR / "event_learning_outcomes.jsonl"
 # proposed        — admitted as a quarantined candidate (lifecycle_state=candidate)
 # rejected        — admission or approval raised; not eligible for recall
 # approved        — a separate, later user-origin event supplied the exact
-#                    approval text; lifecycle_state=active, not yet in Crypt
+#                    approval text; lifecycle_state=active, not yet in Cortex
 # persisted       — approved AND durably written through adapt_persistence
-# persist_failed  — approved but the Crypt write did not complete
+# persist_failed  — approved but the Cortex write did not complete
 VALID_STATUSES = frozenset(
     {"proposed", "rejected", "approved", "persisted", "persist_failed"}
 )

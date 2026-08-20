@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "referenceHardware": "Apple Silicon developer workstation",
+  "fixtureScale": { "files": 5000, "symbols": 150000 },
+  "residentRecall": { "p50MsMax": 150, "p95MsMax": 350 },
+  "coldBuild": { "p95MsMax": 30000 },
+  "incrementalBuild": { "p95MsMax": 3000 },
+  "memoryResidentMbMax": 768,
+  "semanticParityRequired": true
+}

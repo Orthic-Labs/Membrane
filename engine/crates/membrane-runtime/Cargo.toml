@@ -6,9 +6,9 @@ license-file.workspace = true
 description = "Membrane federation, freshness, planning, and service runtime."
 
 [dependencies]
-crypt-store = { path = "../crypt-store" }
-crypt-core = { package = "crypt-core", path = "../crypt-core" }
-crypt-format = { package = "crypt-format", path = "../crypt-format" }
+cortex-store = { path = "../cortex-store" }
+cortex-core = { package = "cortex-core", path = "../cortex-core" }
+cortex-format = { package = "cortex-format", path = "../cortex-format" }
 membrane-protocol = { path = "../membrane-protocol" }
 membrane-core = { path = "../membrane-core" }
 membrane-mcp = { path = "../membrane-mcp" }
@@ -37,7 +37,7 @@ ort = { version = "=2.0.0-rc.12", optional = true, default-features = false, fea
 
 [features]
 default = ["llmlingua-onnx"]
-fastembed = ["crypt-core/fastembed", "dep:ort"]
+fastembed = ["cortex-core/fastembed", "dep:ort"]
 llmlingua-onnx = ["dep:tokenizers", "dep:ort"]
 
 [dev-dependencies]

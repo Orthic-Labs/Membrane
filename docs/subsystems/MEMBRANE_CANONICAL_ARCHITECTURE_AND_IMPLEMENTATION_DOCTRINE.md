@@ -2,23 +2,19 @@
 
 **Status:** Canonical · final architecture · implementation authority  
 **Repository:** `Orthic-Labs/Membrane`  
-**Pre-merge Membrane evidence baseline:** `50e6bb22ab7518a98d3b5bc730c6913d338c7d21`  
-**Pre-merge Blueprint evidence baseline:** former `Orthic-Labs/Blueprint` at `bd46965d6738657db6ed95afad1dc622ce1c5b95`  
 **Date:** 2026-08-19  
 **Supersedes:** `MEMBRANE-IMPLEMENTATION-GUIDE-FINAL.md`, earlier Membrane implementation/absorption guides, and the previous `MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`  
-**Companion authority:** `BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md` for repository truth/evidence semantics; `2026-08-19-monorepo-merge-and-subsystem-rename.md` for the physical merge/name migration only.
+**Companion authority:** `BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md` for repository truth/evidence semantics.
 
-**Canonical names after migration:**
+**Canonical subsystems:**
 - **Membrane** — the parent context system and context control plane.
-- **Blueprint** — repository truth/evidence subsystem, formerly named Blueprint.
-- **Blueprint** — durable-knowledge subsystem, formerly named Crypt.
+- **Blueprint** — repository truth/evidence subsystem.
+- **Cortex** — durable-knowledge subsystem.
 - **Guide** — document navigation and section-index subsystem, formerly named Spine.
 - **Adapt** — learning/proposal subsystem.
 - **Push** — reversible reduction subsystem.
 
-**System hierarchy:** Blueprint, Blueprint, Guide, Adapt, and Push are the five named Membrane subsystems. Planner, provider adapters, host adapters, and Hub integration are Membrane core/modules/surfaces, not peer subsystems.
-
-Historical V1 wire tokens are preserved only where compatibility requires them. A legacy serialized token does not redefine the canonical subsystem name or ownership.
+**System hierarchy:** Blueprint, Cortex, Guide, Adapt, and Push are the five named Membrane subsystems. Planner, provider adapters, host adapters, and Hub integration are Membrane core/modules/surfaces, not peer subsystems.
 
 ---
 
@@ -33,7 +29,7 @@ The repository already contains the differentiated spine:
 - Push / Pull / Persist as one context economy;
 - typed freshness, authority, degradation, omissions, and receipts;
 - one cross-provider attention ceiling;
-- local-first Blueprint storage and retrieval;
+- local-first Cortex storage and retrieval;
 - Blueprint as the repository/code evidence provider;
 - a resident federation path;
 - Application / Control / Data process planes;
@@ -44,9 +40,9 @@ The final system should make one idea mechanically true:
 > **Membrane decides what deserves the agent's limited attention now, in what form, under whose authority, and records exactly why.**
 
 Blueprint determines repository evidence and repository truth.  
-Blueprint preserves durable knowledge.  
+Cortex preserves durable knowledge.
 Guide indexes and resolves document sections without owning document truth or durable knowledge.  
-Adapt turns experience into governed knowledge proposals; it never bypasses Blueprint admission.  
+Adapt turns experience into governed knowledge proposals; it never bypasses Cortex admission.
 Push performs reversible reduction; the Membrane planner retains final attention and representation policy.  
 Other providers own their evidence.  
 Hub owns OS/process lifecycle.  
@@ -63,7 +59,7 @@ Blueprint is a named Membrane subsystem at the product/system level, while remai
 
 Blueprint and Membrane share one repository so their seam can evolve atomically. The parent/subsystem relationship does not authorize direct internal coupling.
 
-Blueprint has its own service/watcher and SQLite evidence store. Blueprint has its own durable-knowledge SQLite store. Membrane never opens Blueprint's database. Blueprint never opens Blueprint's database.
+Blueprint has its own service/watcher and SQLite evidence store. Cortex has its own durable-knowledge SQLite store. Membrane never opens Blueprint's database. Blueprint never opens Cortex's database.
 
 `engine/**` and `mcp/**` do not import `blueprint/src/**`. Membrane consumes Blueprint through Blueprint-owned schemas/service methods exactly as an external consumer would.
 
@@ -193,15 +189,15 @@ The architecture must reject scope growth that does not improve the core objecti
 | Representation choice | Membrane Push / planner boundary | Native/rendered/resolver/metadata and faithful reduction |
 | Publication revalidation | Membrane runtime | Recheck authority/policy immediately before bytes leave |
 | Omissions / receipts | Membrane | Explain every material decision |
-| Durable knowledge | Blueprint | Store governed long-lived knowledge |
-| Lexical/vector/temporal durable-memory retrieval | Blueprint | Produce typed evidence candidates |
-| Memory conflict / lifecycle / supersession | Blueprint | Persist and expose typed state |
+| Durable knowledge | Cortex | Store governed long-lived knowledge |
+| Lexical/vector/temporal durable-memory retrieval | Cortex | Produce typed evidence candidates |
+| Memory conflict / lifecycle / supersession | Cortex | Persist and expose typed state |
 | Code parsing / AST / symbols / references / calls / imports / types | Blueprint | Membrane consumes typed evidence only |
 | Repository stable identity / source spans / generations | Blueprint | Consume and policy-evaluate |
 | Code-anchor relocate / re-anchor / moved/ambiguous/missing | Blueprint | Call Blueprint resolution; do not reimplement |
 | Code/document truth comparison | Blueprint | Consume contradictions and coverage state |
 | Document navigation / section indexing | Guide | Consume typed document candidates and hash-bound section references; Guide does not decide document truth or durable memory |
-| Experience-to-knowledge proposals | Adapt | Accept proposals only through governed Blueprint admission; no direct durable write |
+| Experience-to-knowledge proposals | Adapt | Accept proposals only through governed Cortex admission; no direct durable write |
 | Faithful reduction mechanics | Push | Execute planner-selected reversible representations; never become a second admission/ranking owner |
 | Current Git/worktree facts | Git/live provider | Consume current evidence |
 | Rules / policy evidence | Rule provider / workspace policy owner | Consume without allowing text to self-authorize |
@@ -248,7 +244,7 @@ Breaking an invariant requires an explicit architecture decision, migration/comp
 8. **Blueprint owns repository semantics and re-anchoring.**
    Membrane never implements a second parser, symbol graph, structural fingerprint engine, or code re-anchor ladder.
 
-9. **Blueprint owns durable knowledge.**
+9. **Cortex owns durable knowledge.**
    Membrane does not turn every event, tool result, candidate, or transcript turn into durable memory.
 
 10. **Admission occurs before persistence.**
@@ -575,7 +571,7 @@ If a required dimension cannot be satisfied inside the deadline, return a typed 
 
 Only when coverage says more evidence is justified, invoke additional sources such as:
 
-- Blueprint durable knowledge;
+- Cortex durable knowledge;
 - skills;
 - audit findings;
 - prior architecture decisions;
@@ -1213,7 +1209,7 @@ Provider identity remains provenance, not budget ontology.
 
 A memory item that satisfies a required prior-decision requirement can receive coverage-floor protection.
 
-A useless memory item receives no tokens merely because `provider == blueprint`.
+A useless memory item receives no tokens merely because `provider == cortex`.
 
 ## 11.3 Promotion gate for lane removal
 
@@ -1857,16 +1853,16 @@ Verify paths against current `main` before tickets.
 | `engine/crates/membrane-protocol/src/types.rs` | public V1 protocol source of truth; version only deliberately |
 | `blueprint/schemas/**` | Blueprint wire-contract source of truth; consumer bindings are generated/validated projections |
 | `blueprint/src/sdk/**` | Blueprint SDK projection; must stay schema-equivalent |
-| `engine/crates/blueprint-core/src/planner.rs` | current admission control; converge toward final planner policy without parallel planner |
+| `engine/crates/cortex-core/src/planner.rs` | current admission control; converge toward final planner policy without parallel planner |
 | `engine/crates/membrane-core/` | global budget/reconciliation/final policy primitives |
 | `engine/federation/gateway.py` | acquisition execution under one deadline; staged provider execution |
 | `engine/federation/evidence_requirements.py` | versioned monotonic signal→requirement derivation; no exclusive task classifier |
 | `engine/federation/evidence_coverage.py` | pure requirement-coverage computation consumed by the one planner; never a second policy owner |
 | `engine/federation/providers/blueprint.py` | Blueprint adapter only; RecallCircuit + typed resolution consumption |
-| `engine/federation/providers/blueprint.py` | Blueprint evidence adapter |
+| `engine/federation/providers/cortex.py` | Cortex evidence adapter |
 | `engine/federation/providers/*` | evidence producers; no final budget/authority decisions |
-| `engine/crates/blueprint-core/` | durable-memory retrieval/admission/lifecycle/conflict policy |
-| `engine/crates/blueprint-store/` | canonical durable store + rebuildable projections |
+| `engine/crates/cortex-core/` | durable-memory retrieval/admission/lifecycle/conflict policy |
+| `engine/crates/cortex-store/` | canonical durable store + rebuildable projections |
 | `engine/crates/membrane-runtime/` | publication, Push/artifact/working context/runtime integration |
 | `engine/crates/membrane-runtime/src/{doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs` | current Guide implementation under legacy Spine-era identifiers; document navigation/index only, not document truth or durable knowledge |
 | `mcp/server.mjs` | thin MCP surface |
@@ -1889,7 +1885,7 @@ This is the file-exact core slice. The exact function bodies may evolve, but own
 ### Planner / outcome substrate
 
 **Modify**
-- `engine/crates/blueprint-core/src/planner.rs` — one final admission policy; consume requirement coverage and evidence-class floors; keep current reserved lanes as the frozen migration control until qualification.
+- `engine/crates/cortex-core/src/planner.rs` — one final admission policy; consume requirement coverage and evidence-class floors; keep current reserved lanes as the frozen migration control until qualification.
 - `engine/federation/gateway.py` — one deadline, staged capability execution, content-free stage timing and degradation.
 - `mcp/server.mjs` — bind packet/receipt ids to explicit feedback and resolver events; no raw durable-memory CRUD.
 
@@ -1927,13 +1923,11 @@ This is the file-exact core slice. The exact function bodies may evolve, but own
 - query-critical restore verifier;
 - token/byte balance accounting.
 
-### Protocol and rename discipline
+### Protocol discipline
 
-- Public Membrane V1 wire shapes stay stable.
-- Product rename alone does not justify V2.
-- Historical V1 field/reason/provider tokens are readable under an explicit rename ledger when required for compatibility.
-- New internal code/docs use `Blueprint` for repository truth and `Blueprint` for durable knowledge.
-- A frozen legacy wire token never changes semantic meaning because a product name was reassigned.
+- Public protocol names match current subsystem ownership.
+- Blueprint names repository truth; Cortex names durable knowledge.
+- No alias or fallback preserves superseded product identities.
 
 ### Early gate
 
@@ -1947,7 +1941,7 @@ The early slice is complete only when:
 6. each complete RecallCircuit path stays atomic;
 7. the Membrane planner remains the only final policy owner;
 8. Push is exercised on at least one real tool/MCP result path;
-9. current V1 compatibility fixtures remain green.
+9. current protocol fixtures remain green.
 
 ---
 
@@ -2049,7 +2043,7 @@ It is done when the product purpose is mechanically true.
 ## 23.1 Product identity
 
 - [ ] Membrane is demonstrably a context control plane/compiler, not a memory platform or orchestrator.
-- [ ] Blueprint, Blueprint, Guide, Adapt, and Push subsystem boundaries are explicit; Hub and host boundaries remain external/integration boundaries.
+- [ ] Blueprint, Cortex, Guide, Adapt, and Push subsystem boundaries are explicit; Hub and host boundaries remain external/integration boundaries.
 - [ ] Physical co-location in the monorepo does not permit direct `engine/**`/`mcp/**` imports from `blueprint/src/**`.
 - [ ] One active implementation authority exists.
 - [ ] Current product docs regenerate from landed source.
@@ -2227,6 +2221,6 @@ PERSIST
 
 The core ownership rule is:
 
-> **Membrane is the parent context system. Blueprint determines repository evidence and repository truth. Blueprint preserves durable knowledge. Guide navigates indexed documents. Adapt produces governed learning proposals. Push performs reversible reduction. The Membrane planner determines what deserves the agent's attention now, in what form, under whose authority, and records exactly why.**
+> **Membrane is the parent context system. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Guide navigates indexed documents. Adapt produces governed learning proposals. Push performs reversible reduction. The Membrane planner determines what deserves the agent's attention now, in what form, under whose authority, and records exactly why.**
 
 That is the canonical shape.

@@ -6,24 +6,23 @@
 //! reindex, or skills ingest assembled from different moments in time.
 
 use crate::MemoryStore;
-use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const FRESHNESS_SCHEMA_VERSION: u32 = 1;
 pub const MAX_FRESHNESS_ATTEMPTS: usize = 3;
 pub const MAX_RETURNED_OVERLAY_ENTRIES: usize = 64;
 const MAX_OVERLAY_FILES: usize = 512;
 const MAX_OVERLAY_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_MANIFEST_BYTES: u64 = 2 * 1024 * 1024;
-const GRAPH_HEADER_BYTES: u64 = 128 * 1024;
+const BLUEPRINT_FRAME_BYTES: usize = 16 * 1024;
+const BLUEPRINT_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 const MAX_GIT_STATUS_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_GIT_TEXT_BYTES: u64 = 64 * 1024;
 const GIT_CHILD_TIMEOUT: Duration = Duration::from_secs(2);
@@ -626,79 +625,60 @@ fn digest_bytes(bytes: &[u8]) -> String {
 pub struct FilesystemFreshnessProbe<'a> {
     repo_root: PathBuf,
     store: &'a MemoryStore,
+    blueprint_endpoint: Option<PathBuf>,
 }
 
 impl<'a> FilesystemFreshnessProbe<'a> {
     pub fn new(repo_root: PathBuf, store: &'a MemoryStore) -> Self {
-        Self { repo_root, store }
+        Self {
+            repo_root,
+            store,
+            blueprint_endpoint: None,
+        }
+    }
+
+    /// Bind a Blueprint endpoint explicitly for isolated conformance tests.
+    pub fn with_blueprint_endpoint(mut self, endpoint: PathBuf) -> Self {
+        self.blueprint_endpoint = Some(endpoint);
+        self
     }
 }
 
 impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
     fn read_epoch(&mut self) -> Result<FreshnessEpoch, String> {
         let head_commit = git_text(&self.repo_root, &["rev-parse", "HEAD"])?;
-        let portable_path = self.repo_root.join(".blueprint/manifest.json");
-        let graph_db_path = self.repo_root.join(".agent/graph/graph.db");
-        let graph_manifest_path = self.repo_root.join(".agent/graph/manifest.json");
-        let graph_body_path = self.repo_root.join(".agent/graph/graph.json");
-
-        let (manifest_digest, portable) = read_optional_json(&portable_path)?
-            .map(|(bytes, value)| (Some(digest_bytes(&bytes)), Some(value)))
-            .unwrap_or((None, None));
-        let graph_db = read_graph_db_metadata(&graph_db_path)?;
-        let graph_manifest = read_optional_json(&graph_manifest_path)?.map(|(_, value)| value);
-        let legacy_graph_body_generation = read_graph_body_generation(&graph_body_path)?;
-
-        // graph.db is the sealed generation wherever Blueprint has migrated to
-        // it; the JSON manifests are a compatibility fallback for repositories
-        // that predate the migration. The precedence must therefore be
-        // graph.db FIRST. Reading the legacy `.blueprint/manifest.json` first
-        // meant a stale doc-run generation outranked the freshly sealed store,
-        // so blueprint_generation and graph_body_generation disagreed and every
-        // verdict became a false `partial_reindex` that made the lane unusable.
-        let blueprint_generation = graph_db
+        let status = self
+            .blueprint_endpoint
+            .as_deref()
+            .map(|endpoint| read_blueprint_status_at(endpoint, &self.repo_root))
+            .unwrap_or_else(|| read_blueprint_status(&self.repo_root))
+            .ok();
+        let manifest = status
             .as_ref()
-            .and_then(|value| value.generation_id.clone())
-            .or_else(|| {
-                portable.as_ref().and_then(|value| {
-                    json_string(value, &[&["generation", "id"], &["generationId"]])
-                })
-            });
-        let base_commit = graph_db
-            .as_ref()
-            .and_then(|value| value.base_commit.clone())
-            .or_else(|| {
-                portable.as_ref().and_then(|value| {
-                    json_string(
-                        value,
-                        &[
-                            &["generation", "baseCommit"],
-                            &["baseCommit"],
-                            &["repo", "baseCommit"],
-                        ],
-                    )
-                })
-            });
-        let graph_manifest_generation = graph_db
-            .as_ref()
-            .and_then(|value| value.generation_id.clone())
-            .or_else(|| {
-                graph_manifest
-                    .as_ref()
-                    .and_then(|value| json_string(value, &[&["generationId"]]))
-            });
-        let graph_body_generation = graph_db
-            .as_ref()
-            .and_then(|value| value.generation_id.clone())
-            .or(legacy_graph_body_generation);
+            .and_then(|value| value.get("result"))
+            .and_then(|value| value.get("manifest"));
+        let blueprint_generation = status.as_ref().and_then(|value| {
+            json_string(
+                value,
+                &[&["generation"], &["result", "manifest", "generationId"]],
+            )
+        });
+        let base_commit = manifest
+            .and_then(|value| json_string(value, &[&["baseCommit"], &["repo", "baseCommit"]]));
+        let manifest_digest = manifest.and_then(|value| {
+            json_string(value, &[&["manifestDigest"]]).or_else(|| {
+                serde_json::to_vec(value)
+                    .ok()
+                    .map(|bytes| digest_bytes(&bytes))
+            })
+        });
+        let graph_manifest_generation = blueprint_generation.clone();
+        let graph_body_generation = blueprint_generation.clone();
 
         Ok(FreshnessEpoch {
             head_commit: Some(head_commit.clone()),
             base_commit: base_commit.clone(),
-            manifest_digest: graph_db
-                .as_ref()
-                .and_then(|value| value.manifest_digest.clone())
-                .or(manifest_digest),
+            manifest_digest,
             blueprint_generation,
             graph_manifest_generation,
             graph_body_generation,
@@ -712,6 +692,129 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
     fn read_overlay(&mut self) -> Result<OverlayObservation, String> {
         read_stable_overlay(&self.repo_root)
     }
+}
+
+fn blueprint_daemon_endpoint() -> Result<PathBuf, String> {
+    if let Some(endpoint) = std::env::var_os("BLUEPRINT_DAEMON_ENDPOINT") {
+        return Ok(PathBuf::from(endpoint));
+    }
+    #[cfg(windows)]
+    {
+        let home =
+            std::env::var("USERPROFILE").map_err(|_| "USERPROFILE is unavailable".to_string())?;
+        let suffix = format!("{:x}", Sha256::digest(home.as_bytes()));
+        return Ok(PathBuf::from(format!(
+            r"\\.\pipe\orthic-blueprint-{}",
+            &suffix[..16]
+        )));
+    }
+    #[cfg(not(windows))]
+    {
+        let home = std::env::var_os("HOME").ok_or_else(|| "HOME is unavailable".to_string())?;
+        Ok(PathBuf::from(home).join(".blueprint/blueprint.sock"))
+    }
+}
+
+fn blueprint_status_request(repo_root: &Path) -> Result<Vec<u8>, String> {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let request = serde_json::json!({
+        "protocolVersion": 1,
+        "requestId": format!("membrane-freshness-{}-{nonce}", std::process::id()),
+        "repoId": serde_json::Value::Null,
+        "generation": serde_json::Value::Null,
+        "method": "status",
+        "deadlineMs": 2000,
+        "input": { "repoRoot": repo_root },
+    });
+    let mut bytes = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
+    bytes.push(b'\n');
+    Ok(bytes)
+}
+
+fn exchange_blueprint_status<T: Read + Write>(
+    stream: &mut T,
+    repo_root: &Path,
+) -> Result<serde_json::Value, String> {
+    stream
+        .write_all(&blueprint_status_request(repo_root)?)
+        .map_err(|error| error.to_string())?;
+    stream.flush().map_err(|error| error.to_string())?;
+    let mut frame = Vec::new();
+    let mut byte = [0_u8; 1];
+    while frame.len() < BLUEPRINT_FRAME_BYTES {
+        let count = stream.read(&mut byte).map_err(|error| error.to_string())?;
+        if count == 0 || byte[0] == b'\n' {
+            break;
+        }
+        frame.push(byte[0]);
+    }
+    if frame.is_empty() {
+        return Err("Blueprint daemon returned no status frame".to_string());
+    }
+    if frame.len() >= BLUEPRINT_FRAME_BYTES {
+        return Err("Blueprint status frame exceeds limit".to_string());
+    }
+    let value: serde_json::Value =
+        serde_json::from_slice(&frame).map_err(|error| error.to_string())?;
+    if value
+        .get("protocolVersion")
+        .and_then(serde_json::Value::as_u64)
+        != Some(1)
+    {
+        return Err("Blueprint protocol version mismatch".to_string());
+    }
+    if value.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+        return Err(format!(
+            "Blueprint status failed: {}",
+            value.get("error").unwrap_or(&serde_json::Value::Null)
+        ));
+    }
+    Ok(value)
+}
+
+#[cfg(unix)]
+fn read_blueprint_status_at(
+    endpoint: &Path,
+    repo_root: &Path,
+) -> Result<serde_json::Value, String> {
+    use std::os::unix::net::UnixStream;
+    let mut stream = UnixStream::connect(endpoint).map_err(|error| error.to_string())?;
+    stream
+        .set_read_timeout(Some(BLUEPRINT_REQUEST_TIMEOUT))
+        .map_err(|error| error.to_string())?;
+    stream
+        .set_write_timeout(Some(BLUEPRINT_REQUEST_TIMEOUT))
+        .map_err(|error| error.to_string())?;
+    exchange_blueprint_status(&mut stream, repo_root)
+}
+
+#[cfg(windows)]
+fn read_blueprint_status_at(
+    endpoint: &Path,
+    repo_root: &Path,
+) -> Result<serde_json::Value, String> {
+    let endpoint = endpoint.to_path_buf();
+    let repo_root = repo_root.to_path_buf();
+    let (sender, receiver) = mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let result = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(endpoint)
+            .map_err(|error| error.to_string())
+            .and_then(|mut pipe| exchange_blueprint_status(&mut pipe, &repo_root));
+        let _ = sender.send(result);
+    });
+    receiver
+        .recv_timeout(BLUEPRINT_REQUEST_TIMEOUT)
+        .map_err(|_| "Blueprint status request timed out".to_string())?
+}
+
+fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Value, String> {
+    read_blueprint_status_at(&blueprint_daemon_endpoint()?, repo_root)
 }
 
 pub fn evaluate_repository_freshness(store: &MemoryStore, repo_root: PathBuf) -> FreshnessVerdict {
@@ -741,24 +844,6 @@ pub fn canonical_repo_root(
     }
 }
 
-fn read_optional_json(path: &Path) -> Result<Option<(Vec<u8>, serde_json::Value)>, String> {
-    if !path.exists() {
-        return Ok(None);
-    }
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("manifest metadata unavailable: {error}"))?;
-    if metadata.file_type().is_symlink()
-        || !metadata.is_file()
-        || metadata.len() > MAX_MANIFEST_BYTES
-    {
-        return Err("manifest is not a bounded regular file".to_string());
-    }
-    let bytes = std::fs::read(path).map_err(|error| format!("manifest unavailable: {error}"))?;
-    let value =
-        serde_json::from_slice(&bytes).map_err(|_| "manifest is invalid JSON".to_string())?;
-    Ok(Some((bytes, value)))
-}
-
 fn json_string(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
     paths.iter().find_map(|path| {
         let mut cursor = value;
@@ -767,124 +852,6 @@ fn json_string(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
         }
         cursor.as_str().map(str::to_string)
     })
-}
-
-#[derive(Debug)]
-struct GraphDbMetadata {
-    manifest_digest: Option<String>,
-    generation_id: Option<String>,
-    base_commit: Option<String>,
-}
-
-/// Open a Blueprint graph store for reading without ever writing to it.
-///
-/// A WAL database opened READ_ONLY needs its `-shm` file to already exist,
-/// because a read-only connection is not allowed to create one. `blueprint
-/// graph build` checkpoints and removes the `-wal`/`-shm` sidecars when it
-/// finishes, so the store left behind by a *fresh* build cannot be opened
-/// read-only at all — the prompt path then degraded the blueprint lane with
-/// "graph database unavailable" precisely when the graph was most current.
-///
-/// Fall back to `immutable=1`, which reads the main database directly and
-/// needs no shared-memory file. Order matters: the read-only attempt comes
-/// first so that whenever sidecars DO exist we honour the WAL and observe the
-/// last committed generation rather than a pre-checkpoint main image.
-fn open_graph_db_read_only(path: &Path) -> Result<Connection, String> {
-    match Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY) {
-        Ok(connection) => Ok(connection),
-        Err(read_only_error) => {
-            let uri = format!(
-                "file:{}?immutable=1",
-                path.to_string_lossy()
-                    .replace('?', "%3f")
-                    .replace('#', "%23")
-            );
-            Connection::open_with_flags(
-                uri,
-                OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
-            )
-            .map_err(|immutable_error| {
-                format!(
-                    "graph database unavailable: {read_only_error}; \
-                     immutable retry failed: {immutable_error}"
-                )
-            })
-        }
-    }
-}
-
-fn read_graph_db_metadata(path: &Path) -> Result<Option<GraphDbMetadata>, String> {
-    if !path.exists() {
-        return Ok(None);
-    }
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("graph database metadata unavailable: {error}"))?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err("graph database is not a regular file".to_string());
-    }
-    let connection = open_graph_db_read_only(path)?;
-    let manifest: Option<String> = connection
-        .query_row(
-            "SELECT value FROM generation WHERE key='manifest'",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| format!("graph database manifest unavailable: {error}"))?;
-    let Some(manifest) = manifest else {
-        return Ok(Some(GraphDbMetadata {
-            manifest_digest: None,
-            generation_id: None,
-            base_commit: None,
-        }));
-    };
-    let manifest_digest = Some(digest_bytes(manifest.as_bytes()));
-    let manifest: serde_json::Value = serde_json::from_str(&manifest)
-        .map_err(|_| "graph database manifest is invalid JSON".to_string())?;
-    let source_observation: Option<String> = connection
-        .query_row(
-            "SELECT value FROM generation WHERE key='sourceObservation'",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|error| format!("graph database source observation unavailable: {error}"))?;
-    let base_commit = source_observation
-        .as_deref()
-        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
-        .and_then(|value| json_string(&value, &[&["head"], &["baseCommit"]]));
-    Ok(Some(GraphDbMetadata {
-        manifest_digest,
-        generation_id: json_string(&manifest, &[&["generationId"], &["generation", "id"]]),
-        base_commit,
-    }))
-}
-
-fn read_graph_body_generation(path: &Path) -> Result<Option<String>, String> {
-    if !path.exists() {
-        return Ok(None);
-    }
-    let metadata = std::fs::symlink_metadata(path)
-        .map_err(|error| format!("graph metadata unavailable: {error}"))?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err("graph body is not a regular file".to_string());
-    }
-    let mut file = File::open(path).map_err(|error| format!("graph body unavailable: {error}"))?;
-    let mut bytes = Vec::new();
-    file.by_ref()
-        .take(GRAPH_HEADER_BYTES)
-        .read_to_end(&mut bytes)
-        .map_err(|error| format!("graph header unavailable: {error}"))?;
-    let header = String::from_utf8_lossy(&bytes);
-    Ok(extract_json_string(&header, "generationId"))
-}
-
-fn extract_json_string(input: &str, key: &str) -> Option<String> {
-    let key = format!("\"{key}\"");
-    let after_key = input.split_once(&key)?.1;
-    let after_colon = after_key.split_once(':')?.1.trim_start();
-    let quoted = after_colon.strip_prefix('"')?;
-    Some(quoted.split_once('"')?.0.to_string())
 }
 
 fn read_stable_overlay(repo_root: &Path) -> Result<OverlayObservation, String> {
@@ -1345,13 +1312,13 @@ mod tests {
                 "freshness::tests::bounded_child_fixture",
                 "--nocapture",
             ])
-            .env("CRYPT_FRESHNESS_CHILD_FIXTURE", mode);
+            .env("CORTEX_FRESHNESS_CHILD_FIXTURE", mode);
         command
     }
 
     #[test]
     fn bounded_child_fixture() {
-        let Ok(mode) = std::env::var("CRYPT_FRESHNESS_CHILD_FIXTURE") else {
+        let Ok(mode) = std::env::var("CORTEX_FRESHNESS_CHILD_FIXTURE") else {
             return;
         };
         match mode.as_str() {
@@ -1456,7 +1423,7 @@ mod tests {
             verdict.release_generation,
             format!(
                 "sha256:{}",
-                option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown")
             )
         );
         assert_ne!(verdict.service_generation, verdict.release_generation);

@@ -46,8 +46,8 @@ test('team sync ships opt-in-gated & off by default (MBR-1007)', () => {
     runtime.indexOf('opt_in.enabled') < runtime.indexOf('admit_team_policy(policy, verifier)'),
   );
 });
-test('crypt-store persists team sync fail-closed & never touches learning-boundary tables (MBR-1007)', () => {
-  const store = text('engine/crates/crypt-store/src/team_sync.rs');
+test('cortex-store persists team sync fail-closed & never touches learning-boundary tables (MBR-1007)', () => {
+  const store = text('engine/crates/cortex-store/src/team_sync.rs');
   assert.match(store, /pub fn enable_team_sync_opt_in/);
   assert.match(store, /pub fn commit_team_policy_admission/);
   assert.match(store, /pub fn team_sync_audit_log/);

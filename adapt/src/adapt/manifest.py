@@ -11,7 +11,7 @@ requires that the loader refuses:
   An empty ``records`` array is allowed and commits as a no-op batch.
 
 The loader never makes LLM/provider calls. It is the gate that prevents
-silently altered content from reaching Crypt.
+silently altered content from reaching Cortex.
 
 Zero-record manifests are valid committed no-ops: a successfully mined batch
 may bind source sessions without emitting durable candidates.

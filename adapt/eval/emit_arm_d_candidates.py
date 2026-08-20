@@ -17,7 +17,7 @@ Switching from fixture to real LLM later is a one-line swap of the
 
 Usage::
 
-    py -3.11 tools/pipelines/memory/adapt/eval/emit_arm_d_candidates.py \\
+    py -3.11 membrane/adapt/eval/emit_arm_d_candidates.py \\
         --fixture path/to/fixture.json \\
         --out D:/Claude/.cache/adapt/review/10session.manifest.json
 

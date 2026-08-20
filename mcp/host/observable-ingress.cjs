@@ -6,7 +6,7 @@ const { validateObservableEvent } = require('./observable-event.cjs');
 
 const MAX_RECORD_BYTES = 256 * 1024;
 
-// Canonical workspace runtime config (host/port identity for the crypt-local-v1 service).
+// Canonical workspace runtime config (host/port identity for the cortex-local-v1 service).
 // Mirrors tools/lib/memory/runtime_config.py's identity check. Read-only reference — never edited here.
 const RUNTIME_CONFIG_PATH = path.join(__dirname, '..', '..', '..', 'tools', 'lib', 'memory', 'runtime.json');
 
@@ -25,29 +25,29 @@ function setCachedDefaultTargetForTest(value) {
   cachedDefaultTarget = value;
 }
 
-// Validates the config file identifies itself as the real crypt-local-v1 runtime config, the same
+// Validates the config file identifies itself as the real cortex-local-v1 runtime config, the same
 // identity check runtime_config.py performs before trusting its contents. Throws on any mismatch;
 // callers treat a throw as "config unresolvable".
 function resolveRuntimeConfigIdentity(configPath) {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  if (config.schemaVersion !== 1 || config.serviceId !== 'crypt-local-v1') {
-    throw new Error('invalid crypt runtime config identity');
+  if (config.schemaVersion !== 1 || config.serviceId !== 'cortex-local-v1') {
+    throw new Error('invalid cortex runtime config identity');
   }
   if (config.host !== '127.0.0.1') {
-    throw new Error('crypt runtime host must remain loopback-only');
+    throw new Error('cortex runtime host must remain loopback-only');
   }
   return config;
 }
 
-// Mirrors crypt-store/src/context_telemetry.rs::default_prompt_telemetry_ingress: the ingress
-// journal lives next to the crypt db (CRYPT_DB override, else the workspace-standard cache path
+// Mirrors cortex-store/src/context_telemetry.rs::default_prompt_telemetry_ingress: the ingress
+// journal lives next to the cortex db (CORTEX_DB override, else the workspace-standard cache path
 // derived from the same scripts/tools/ tree runtime.json lives in). Returns { ok:true, target, dbPath }
 // or { ok:false } when the config can't be trusted enough to derive a path from it.
 function resolveDefaultIngressTarget(configPath = RUNTIME_CONFIG_PATH, env = process.env) {
   try {
     resolveRuntimeConfigIdentity(configPath);
     const dbPath = path.resolve(
-      env.CRYPT_DB || path.join(path.dirname(configPath), '..', '..', '.cache', 'memory', 'crypt-engine.db'),
+      env.CORTEX_DB || path.join(path.dirname(configPath), '..', '..', '.cache', 'memory', 'cortex-engine.db'),
     );
     const target = path.join(path.dirname(dbPath), 'context-telemetry-ingress.jsonl');
     return { ok: true, target, dbPath };
@@ -64,7 +64,7 @@ function cachedResolveDefaultIngressTarget() {
 function appendObservableEvent(event) {
   validateObservableEvent(event);
 
-  const explicitTarget = process.env.CRYPT_TELEMETRY_INGRESS;
+  const explicitTarget = process.env.CORTEX_TELEMETRY_INGRESS;
   let target = explicitTarget;
   let requireDrainEvidence = false;
 
@@ -72,7 +72,7 @@ function appendObservableEvent(event) {
     const resolved = cachedResolveDefaultIngressTarget();
     if (!resolved.ok) return { status: 'unavailable', reason: 'telemetry_ingress_unconfigured' };
     target = resolved.target;
-    // Cheap, synchronous, no network/subprocess: the resident membrane-runtime "crypt-prompt-telemetry"
+    // Cheap, synchronous, no network/subprocess: the resident membrane-runtime "cortex-prompt-telemetry"
     // drain thread opens db_path before it ever drains this journal, so an absent db file is a reliable,
     // negligible-cost signal that the resident service has not run — never claim persisted in that case.
     requireDrainEvidence = !fs.existsSync(resolved.dbPath);

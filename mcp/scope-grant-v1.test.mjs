@@ -5,7 +5,7 @@ import { mintScopeGrantV1, scopeGrantSigningBytes, scopeGrantTrust, validateScop
 const binding = { root: "/workspace/repo", repository_id: "repo-123", scope_id: "scope-123" };
 const args = { task: "inspect exact source", taskId: "task-123", session: "session-123", budget: 800, intent: "diagnose", anchors: "src/app.ts" };
 const freshness = { graphState: "dirty_overlay", blueprintGeneration: "xxh128:graph-123", manifestDigest: "sha256:" + "a".repeat(64), providers: { blueprint: { usable: true } } };
-const packet = { blocks: [{ provider: "blueprint", sourceRef: "src/app.ts:4-18" }, { provider: "crypt", sourceRef: "memory:local" }] };
+const packet = { blocks: [{ provider: "blueprint", sourceRef: "src/app.ts:4-18" }, { provider: "cortex", sourceRef: "memory:local" }] };
 const now = Date.parse("2026-08-02T00:00:00.000Z");
 const signer = generateKeyPairSync("ed25519").privateKey;
 const forgedSigner = generateKeyPairSync("ed25519").privateKey;

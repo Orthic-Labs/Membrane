@@ -52,9 +52,9 @@ The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `Cont
 
 ## Inside
 
-- **Crypt** — the durable-memory engine: a Rust CLI plus loopback HTTP service over SQLite, with a quantized vector store and hybrid retriever. Its legacy name is **Crypt**, and the installed `crypt*` binaries remain the compatibility facade.
+- **Cortex** — the durable-memory engine: a Rust CLI plus loopback HTTP service over SQLite, with a quantized vector store and hybrid retriever.
 - **MCP server** — ten tools over stdio (`membrane_context`, `membrane_source_read`, `membrane_blueprint`, `membrane_knowledge_propose`, `membrane_checkpoint_save`, `membrane_checkpoint_load`, `membrane_working_context`, `membrane_temporal_fact`, `membrane_scratchpad`, `membrane_feedback`), serving both the 2025-03-26 and 2026-07-28 MCP discovery eras. The generated source of truth for this surface is [docs/product-truth.md](docs/product-truth.md).
-- **Federation gateway** — a supervised resident worker behind `POST /federate` that fans out to the providers in parallel; HTTP-first with automatic CLI fallback.
+- **Federation gateway** — a supervised resident worker behind `POST /federate` that fans out to providers in parallel.
 - **Prompt hooks** — per-host recall planners (Claude and Codex) that route candidates through admission on every prompt.
 - **Orthic Hub add-on** — this repository produces Membrane's portable command, service, icon, and legal inputs for Orthic Hub. Orthic owns its desktop installer; Membrane retains no desktop release lane.
 
@@ -64,27 +64,27 @@ The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `Cont
 pnpm install        # Node >= 20, pnpm 11
 pnpm test           # MCP server + client + install-binding suites
 
-cargo build --workspace                          # Crypt engine
+cargo build --workspace                          # Cortex engine
 cargo test --workspace --features fastembed      # with real ONNX embeddings
 ```
 
-Day-to-day surfaces are the installed shims: `crypt recall`, `crypt federate`, `crypt plan-context`, `crypt curate`, plus the compression trio `runc` (command output), `skel` (file skeletonization), and `compress` (prose).
+Day-to-day surfaces are the installed shims: `cortex recall`, `cortex federate`, `cortex plan-context`, `cortex curate`, plus the compression trio `runc` (command output), `skel` (file skeletonization), and `compress` (prose).
 
 ## Recent
 
-- **Vector backend bake-off (2026-08)** — reproducible Rust benchmark across Mac/Windows SIMD lanes; decision: keep vectors in Crypt, move to resident in-process f32 dispatch.
+- **Vector backend bake-off (2026-08)** — reproducible Rust benchmark across Mac/Windows SIMD lanes; decision: keep vectors in Cortex, move to resident in-process f32 dispatch.
 - **Resident federation gateway (2026-07)** — per-request spawns replaced by a supervised resident worker; warm-path latency dropped ~5×.
 - **MCP dual-era stdio (2026-07)** — exact `@modelcontextprotocol/server@2.0.0`, enforced I/O schemas, structured tool results, W3C trace propagation through `/federate`, caller authorization bound to exact repo/root/scope.
 - **Honesty pass (2026-08)** — reserved lanes documented as the explicit cross-provider score policy; write paths now refuse hand-typed scopes that would fork the corpus.
 
 ## Repository posture
 
-This checkout is an internal mirror of a workspace-coupled control plane for the author's studio machines — not a standalone public product. Runtime wiring (hooks, Crypt loopback, federation providers, install binding) depends on the parent workspace. Naming: **Membrane** is the public name; RightContext survives as an internal alias in headers and telemetry tokens. Conversation-history compaction still belongs to each host, and the structured cognition layers (`plan` / `think` / `verify`) are design targets, not shipped code.
+This checkout is an internal mirror of a workspace-coupled control plane for the author's studio machines — not a standalone public product. Runtime wiring (hooks, Cortex loopback, federation providers, install binding) depends on the parent workspace. Conversation-history compaction still belongs to each host, and the structured cognition layers (`plan` / `think` / `verify`) are design targets, not shipped code.
 
 ---
 
 <sub><b><a href="https://orthic-labs.github.io">Orthic Labs</a></b> — local-first infrastructure for AI-assisted development.<br>
-<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Blueprint">Blueprint</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/Adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
+<a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/blueprint">Blueprint</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/Roundtable">Roundtable</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
 
 <!-- blueprint:docs:start -->
 ## Support & pricing boundaries

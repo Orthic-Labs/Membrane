@@ -50,8 +50,8 @@ test("doc's enrollment env var is the one project-registry.mjs actually reads", 
 });
 
 test("doc's forced-degradation env var is the one client.mjs actually reads, with its real valid range", () => {
-  assert.match(doc, /CRYPT_PORT=59991/);
-  assert.match(clientSrc, /process\.env\.CRYPT_PORT/);
+  assert.match(doc, /CORTEX_PORT=59991/);
+  assert.match(clientSrc, /process\.env\.CORTEX_PORT/);
   assert.match(clientSrc, /n >= 1024 && n <= 65535/);
 });
 

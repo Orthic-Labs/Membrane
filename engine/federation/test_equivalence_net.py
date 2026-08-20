@@ -79,7 +79,7 @@ def test_packet_shape_order_precedence_dedup_freshness_and_typed_degradation(tmp
     ]
     assert list(packet["freshness"]) == FIXTURE["freshnessKeys"]
     assert packet["freshness"]["releaseGenerationStatus"] == "match"
-    warnings = packet["_rightcontext"]["providerWarnings"]
+    warnings = packet["_membrane"]["providerWarnings"]
     assert [warning["provider"] for warning in warnings] == providers
     assert [warning["failureKind"] for warning in warnings] == list(
         FIXTURE["warningKinds"].values()
@@ -121,4 +121,4 @@ def test_invalid_grant_aborts_before_fanout(monkeypatch: pytest.MonkeyPatch, tmp
     assert exit_code == 2
     assert packet["candidates"] == []
     assert packet["omissions"][0]["severity"] == "blocker"
-    assert packet["_rightcontext"]["abortReason"] == "scope_grant"
+    assert packet["_membrane"]["abortReason"] == "scope_grant"

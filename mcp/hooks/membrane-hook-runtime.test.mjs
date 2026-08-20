@@ -4,7 +4,7 @@ import { dispatchMembraneHookEvent, normalizeHookEvent, typedStatus } from "./me
 
 function operations(log) {
   return Object.freeze({
-    status: () => { log.push("status"); return typedStatus("available", "crypt_healthy"); },
+    status: () => { log.push("status"); return typedStatus("available", "cortex_healthy"); },
     recall: () => { log.push("recall"); return typedStatus("available", "memory_recalled"); },
     preCompact: () => { log.push("preCompact"); return typedStatus("available", "checkpoint_saved"); },
     postCompact: () => { log.push("postCompact"); return typedStatus("available", "checkpoint_captured"); },
@@ -18,13 +18,13 @@ test("normalizes host spellings through neutral HookHost", () => {
   assert.equal(event.sessionId, "thread-1");
 });
 
-test("dispatches Crypt status before memory behavior in declared order", async () => {
+test("dispatches Cortex status before memory behavior in declared order", async () => {
   const log = [];
   const result = await dispatchMembraneHookEvent({ event: "UserPromptSubmit" }, operations(log));
   assert.deepEqual(log, ["recall"]);
   assert.equal(result.schemaVersion, 1);
   assert.deepEqual(result.results.map(({ id }) => id), [
-    "membrane.crypt-status", "membrane.memory-rearm", "membrane.memory-recall",
+    "membrane.cortex-status", "membrane.memory-rearm", "membrane.memory-recall",
     "membrane.memory-pre-compact", "membrane.memory-post-compact", "membrane.memory-bump",
     "membrane.memory-conflict", "membrane.tool-observer", "membrane.memory-ingest", "membrane.memory-nag",
     "membrane.memory-failure", "membrane.memory-episode", "membrane.memory-session-end",
@@ -37,7 +37,7 @@ test("SessionStart performs health/status only and never invokes memory operatio
   const log = [];
   const result = await dispatchMembraneHookEvent({ event: "SessionStart" }, operations(log));
   assert.deepEqual(log, ["status"]);
-  assert.equal(result.results[0].output.reason, "crypt_healthy");
+  assert.equal(result.results[0].output.reason, "cortex_healthy");
   assert.equal(result.results[1].output.reason, "event_not_applicable");
 });
 

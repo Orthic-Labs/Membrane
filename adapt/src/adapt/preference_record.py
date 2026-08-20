@@ -6,7 +6,7 @@ Implements the load-bearing contract from the v2 plan's Gate 2:
   - ID = ``adapt-{category}-{slug}-{sha256(scope + NUL + category + NUL + normalized_rule)[:10]}``
   - Same input → same ID; distinct rule → distinct ID.
   - Updates keep the existing primary ID (in-place), matching Dream's rule.
-  - Serialized into the existing Crypt content envelope; no schema column added.
+  - Serialized into the existing Cortex content envelope; no schema column added.
 
 Why a cryptographic suffix: slug collisions are inevitable (multiple "always use
 JSONL"-style observations compress to the same kebab), and the model frequently
@@ -23,7 +23,7 @@ Exposed helpers:
   - ``PreferenceRecord.from_synthesis(action, *, scope, source_ids, existing=None)``
     — wraps a synthesis action into a PreferenceRecord, preserving the prior
     primary ID when ``existing`` is provided (update path).
-  - ``to_crypt_content(record)`` — formats into the existing
+  - ``to_cortex_content(record)`` — formats into the existing
     ``**[adapt/{cat}]** — {rule} ...`` envelope without touching the engine
     schema.
 """
@@ -632,7 +632,7 @@ def from_manifest_candidate(
     )
 
 
-# ----- Envelope (no Crypt schema change) -----
+# ----- Envelope (no Cortex schema change) -----
 
 def application_guidance(record_type: str) -> str:
     """Return delivery-safe guidance for a typed record."""
@@ -644,10 +644,10 @@ def application_guidance(record_type: str) -> str:
         return "apply as a procedure only when the record scope matches the task."
     return "use as supporting context only; this is not a standing instruction."
 
-def to_crypt_content(record: PreferenceRecord) -> str:
+def to_cortex_content(record: PreferenceRecord) -> str:
     """Format into the existing ``**[adapt/{cat}]** — ...`` body.
 
-    The engine-facing body is what Crypt stores. The category prefix and
+    The engine-facing body is what Cortex stores. The category prefix and
     confidence line mirror what `adapt.rule_body` already produced so prior
     rows read identically.
     """

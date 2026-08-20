@@ -1,4 +1,4 @@
-"""Offline tests for the adapt pipeline. No network, no crypt binary."""
+"""Offline tests for the adapt pipeline. No network, no cortex binary."""
 import json
 import sys
 from pathlib import Path
@@ -640,7 +640,7 @@ lt.adapt_persistence = _adapt_persistence
 lt.outcomes = _outcomes
 lt.run_journal = _run_journal
 lt.ts = ts
-lt._run_crypt = _taste_runtime.run_crypt
+lt._run_cortex = _taste_runtime.run_cortex
 lt._scanner_available = _taste_runtime.scanner_available
 lt._multiwriter_context = lt.taste_apply._multiwriter_context
 lt.WORKSPACE_ROOT = lt.taste_apply.WORKSPACE_ROOT
@@ -1277,14 +1277,14 @@ def test_pref_record_dict_round_trip_carries_all_required_fields():
     assert rec2 == rec
 
 
-def test_pref_record_to_crypt_content_uses_existing_envelope():
+def test_pref_record_to_cortex_content_uses_existing_envelope():
     rec = pr_mod.PreferenceRecord.from_synthesis(
         {"action": "add", "name": "x",
          "category": "tooling", "rule": "Prefer JSONL for structured logs.",
          "confidence": 0.7, "observations": 3},
         scope="D--Claude", source_ids=("s1",),
     )
-    body = pr_mod.to_crypt_content(rec)
+    body = pr_mod.to_cortex_content(rec)
     assert body.startswith("**[adapt/tooling]**")
     assert "Prefer JSONL for structured logs." in body
     assert "Confidence:" in body and "How to apply:" in body
@@ -1310,7 +1310,7 @@ def test_pref_record_bounded_retrieval_aliases_round_trip_and_embed():
     data["source_ids"] = tuple(data["source_ids"])
     data["retrieval_aliases"] = tuple(data["retrieval_aliases"])
     assert pr_mod.PreferenceRecord(**data) == rec
-    body = pr_mod.to_crypt_content(rec)
+    body = pr_mod.to_cortex_content(rec)
     assert "**Trigger phrases:**" in body
     assert "always use JSONL when the logs are machine readable" in body
 
@@ -1438,15 +1438,15 @@ def test_manifest_refuses_missing_required_field(tmp_path):
 
 
 def _isolate_journal(tmp_path, monkeypatch):
-    """Redirect STATE_DIR + run_journal.JOURNAL_FILE + scanner/crypt preflight
-    to test-only fakes. The apply path needs scanner_available + _run_crypt
+    """Redirect STATE_DIR + run_journal.JOURNAL_FILE + scanner/cortex preflight
+    to test-only fakes. The apply path needs scanner_available + _run_cortex
     to pass before it ever touches the journal.
     """
     monkeypatch.setattr(lt.ts, "STATE_DIR", tmp_path)
     monkeypatch.setattr(lt.ts, "STATE_FILE", tmp_path / "state.json")
     monkeypatch.setattr(lt.run_journal, "JOURNAL_FILE", tmp_path / "run_journal.jsonl")
     monkeypatch.setattr(lt, "_scanner_available", lambda: True)
-    monkeypatch.setattr(lt, "_run_crypt", lambda args: True)
+    monkeypatch.setattr(lt, "_run_cortex", lambda args: True)
     monkeypatch.setattr(
         lt, "_create_apply_safepoint",
         lambda manifest_body: tmp_path / "safepoint.json",
@@ -1465,7 +1465,7 @@ def test_apply_from_manifest_creates_safepoint_before_first_put(tmp_path, monkey
         lambda manifest_body: events.append("safepoint") or tmp_path / "sp.json",
     )
     monkeypatch.setattr(
-        lt, "_run_crypt",
+        lt, "_run_cortex",
         lambda args: events.append(args[0]) or True,
     )
     assert lt.apply_from_manifest(p) == 0
@@ -1482,7 +1482,7 @@ def test_apply_from_manifest_refuses_writes_when_safepoint_fails(tmp_path, monke
         lambda manifest_body: (_ for _ in ()).throw(RuntimeError("backup failed")),
     )
     monkeypatch.setattr(
-        lt, "_run_crypt",
+        lt, "_run_cortex",
         lambda args: puts.append(args) or True,
     )
     assert lt.apply_from_manifest(p) == 2
@@ -1498,11 +1498,11 @@ def test_apply_from_manifest_refuses_when_journal_missing(tmp_path, monkeypatch)
 
 
 def test_apply_from_manifest_atomic_rollback_on_write_failure(tmp_path, monkeypatch):
-    """If any crypt put fails, partial writes are rolled back and state does not advance."""
+    """If any cortex put fails, partial writes are rolled back and state does not advance."""
     p, body = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-rb")
     journal = _isolate_journal(tmp_path, monkeypatch)
     journal.record("batch-rb", "discovered", sessions=["s1", "s2"])
-    # Override _run_crypt: first put succeeds, second fails.
+    # Override _run_cortex: first put succeeds, second fails.
     state = {"phase": 0}
     deletes = []
     puts = []
@@ -1515,7 +1515,7 @@ def test_apply_from_manifest_atomic_rollback_on_write_failure(tmp_path, monkeypa
             deletes.append(args[1])
             return True
         return True
-    monkeypatch.setattr(lt, "_run_crypt", fake_run)
+    monkeypatch.setattr(lt, "_run_cortex", fake_run)
     rc = lt.apply_from_manifest(p)
     assert rc == 1, "expected non-zero exit on partial write failure"
     assert len(puts) == 2, "apply must fail fast after the first put failure"
@@ -1609,12 +1609,12 @@ def test_multiwriter_apply_uses_one_atomic_attributed_batch(tmp_path, monkeypatc
     thread.start()
     token = tmp_path / "api-token"
     token.write_text("test-token", encoding="utf-8")
-    monkeypatch.setenv("CRYPT_API_TOKEN_FILE", str(token))
+    monkeypatch.setenv("CORTEX_API_TOKEN_FILE", str(token))
     monkeypatch.setenv("ADAPT_STATE_DIR", str(tmp_path / "runtime"))
     monkeypatch.setattr(lt.adapt_persistence, "_base_url", lambda: f"http://127.0.0.1:{server.server_port}")
-    crypt_calls = []
+    cortex_calls = []
     monkeypatch.setattr(
-        lt, "_run_crypt", lambda args: crypt_calls.append(args) or True
+        lt, "_run_cortex", lambda args: cortex_calls.append(args) or True
     )
 
     try:
@@ -1643,7 +1643,7 @@ def test_multiwriter_apply_uses_one_atomic_attributed_batch(tmp_path, monkeypatc
     assert authorization == "Bearer test-token"
     assert len(request["items"]) == 2
     assert len(requests[1][2]["items"]) == 2
-    assert crypt_calls == []
+    assert cortex_calls == []
 
 
 def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
@@ -1704,7 +1704,7 @@ def test_multiwriter_apply_refuses_stale_canonical_pool_before_batch(
     assert safepoints == []
 
 
-def test_multiwriter_empty_accepted_set_safepoints_then_commits_without_crypt(
+def test_multiwriter_empty_accepted_set_safepoints_then_commits_without_cortex(
         tmp_path, monkeypatch):
     from adapt import cross_machine
 
@@ -1747,13 +1747,13 @@ def test_multiwriter_empty_accepted_set_safepoints_then_commits_without_crypt(
         lt.adapt_persistence, "persist_manifest_batch",
         lambda *args, **kwargs: batches.append((args, kwargs)),
     )
-    crypt_calls = []
-    monkeypatch.setattr(lt, "_run_crypt", lambda args: crypt_calls.append(args) or True)
+    cortex_calls = []
+    monkeypatch.setattr(lt, "_run_cortex", lambda args: cortex_calls.append(args) or True)
 
     assert lt.apply_from_manifest(path) == 0
     assert events == ["safepoint"]
     assert batches == []
-    assert crypt_calls == []
+    assert cortex_calls == []
     state = json.loads((tmp_path / "runtime" / "taste-v2-state.json").read_text())
     assert state["learned"][qualified_source] == "sha256:" + "a" * 64
     assert journal.last_stage(body["batch_id"]) == "committed"
@@ -1772,7 +1772,7 @@ def test_apply_from_manifest_writes_only_accepted(tmp_path, monkeypatch):
         if args and args[0] == "put":
             puts.append(args[1])
         return True
-    monkeypatch.setattr(lt, "_run_crypt", fake_run)
+    monkeypatch.setattr(lt, "_run_cortex", fake_run)
     rc = lt.apply_from_manifest(p)
     assert rc == 0
     assert len(puts) == 2
@@ -1789,7 +1789,7 @@ def test_apply_from_manifest_all_rejected_advances_state_without_put(
     journal.record("batch-rejected", "discovered", sessions=["s1", "s2"])
     calls = []
     monkeypatch.setattr(
-        lt, "_run_crypt", lambda args: calls.append(args) or True
+        lt, "_run_cortex", lambda args: calls.append(args) or True
     )
 
     assert lt.apply_from_manifest(p) == 0
@@ -1845,7 +1845,7 @@ def test_apply_from_manifest_no_llm_call(tmp_path, monkeypatch):
     p, _ = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-nollm")
     journal = _isolate_journal(tmp_path, monkeypatch)
     journal.record("batch-nollm", "discovered", sessions=["s1", "s2"])
-    monkeypatch.setattr(lt, "_run_crypt", lambda args: True)
+    monkeypatch.setattr(lt, "_run_cortex", lambda args: True)
     forge = {"llm": 0}
     def fake_llm(*args, **kwargs):
         forge["llm"] += 1
@@ -1877,7 +1877,7 @@ def test_apply_from_manifest_rechecks_permission_expansion(tmp_path, monkeypatch
             puts.append(args[1])
         return True
 
-    monkeypatch.setattr(lt, "_run_crypt", fake_run)
+    monkeypatch.setattr(lt, "_run_cortex", fake_run)
 
     rc = lt.apply_from_manifest(p)
 
@@ -1918,7 +1918,7 @@ def test_apply_from_manifest_enforces_embedded_authority_snapshot(tmp_path, monk
             puts.append(args[1])
         return True
 
-    monkeypatch.setattr(lt, "_run_crypt", fake_run)
+    monkeypatch.setattr(lt, "_run_cortex", fake_run)
 
     rc = lt.apply_from_manifest(p)
 
@@ -1950,7 +1950,7 @@ def _make_sqlite_db(path):
 
 def test_rollback_db_discovery_is_installation_relative(tmp_path, monkeypatch):
     monkeypatch.setattr(rk, "WS", tmp_path)
-    db = tmp_path / "tools" / ".cache" / "memory" / "crypt-engine.db"
+    db = tmp_path / "tools" / ".cache" / "memory" / "cortex-engine.db"
     db.parent.mkdir(parents=True)
     _make_sqlite_db(db)
 
@@ -2014,7 +2014,7 @@ def test_rollback_dry_run_does_not_modify(tmp_path):
     assert state_path.read_text(encoding="utf-8") == "MODIFIED"
 
 
-def test_rollback_apply_deletes_via_crypt(tmp_path, monkeypatch):
+def test_rollback_apply_deletes_via_cortex(tmp_path, monkeypatch):
     p, body = _build_valid_manifest(tmp_path, status="accepted", batch_id="batch-app")
     db = tmp_path / "engine.db"
     _make_sqlite_db(db)
@@ -2035,8 +2035,8 @@ def test_rollback_apply_deletes_via_crypt(tmp_path, monkeypatch):
     state.write_text("post-apply-bad", encoding="utf-8")
     rules.write_text("post-apply-rules", encoding="utf-8")
     core.write_text("post-apply-core", encoding="utf-8")
-    # Patch shutil.which for sqlite3 (none) and crypt delete (stub).
-    monkeypatch.setattr(rk, "_resolve_crypt", lambda: "crypt")
+    # Patch shutil.which for sqlite3 (none) and cortex delete (stub).
+    monkeypatch.setattr(rk, "_resolve_cortex", lambda: "cortex")
     monkeypatch.setattr(rk.shutil, "which", lambda name: None)
     captured = {"deleted": []}
     class FakeRun:
@@ -2044,7 +2044,7 @@ def test_rollback_apply_deletes_via_crypt(tmp_path, monkeypatch):
         stdout = ""
         stderr = ""
     def fake_run(args, **kwargs):
-        if args and args[0] == "crypt":
+        if args and args[0] == "cortex":
             captured["deleted"].append(args[2])
         return FakeRun()
     monkeypatch.setattr(rk.subprocess, "run", fake_run)
@@ -2079,24 +2079,24 @@ def test_rollback_integrity_uses_python_sqlite(tmp_path):
     assert message
 
 
-def test_crypt_mutation_timeouts_exceed_resident_read_timeout(monkeypatch):
+def test_cortex_mutation_timeouts_exceed_resident_read_timeout(monkeypatch):
     seen = []
 
     def fake_run(command, **kwargs):
         seen.append(kwargs["timeout"])
         return __import__("subprocess").CompletedProcess(command, 0, "{}", "")
 
-    monkeypatch.setattr(_taste_runtime.shutil, "which", lambda _name: "crypt")
+    monkeypatch.setattr(_taste_runtime.shutil, "which", lambda _name: "cortex")
     monkeypatch.setattr(_taste_runtime.subprocess, "run", fake_run)
     monkeypatch.setattr(rk.subprocess, "run", fake_run)
-    assert lt._run_crypt(["delete", "x"])
-    assert rk._delete_via_crypt("x", crypt_bin="crypt")
+    assert lt._run_cortex(["delete", "x"])
+    assert rk._delete_via_cortex("x", cortex_bin="cortex")
     assert seen == [150, 150]
 
 
 def test_rollback_delete_treats_already_absent_row_as_success(monkeypatch):
     error = (
-        'Error: "resident crypt service failed /delete; refusing direct DB '
+        'Error: "resident cortex service failed /delete; refusing direct DB '
         'fallback: resident service returned HTTP/1.1 404 Not Found: '
         '{\\"deleted\\":false}"'
     )
@@ -2107,7 +2107,7 @@ def test_rollback_delete_treats_already_absent_row_as_success(monkeypatch):
             args[0], 1, "", error
         ),
     )
-    assert rk._delete_via_crypt("missing", crypt_bin="crypt")
+    assert rk._delete_via_cortex("missing", cortex_bin="cortex")
 
 
 def test_rollback_refuses_corrupt_backup_before_delete(tmp_path, monkeypatch):
@@ -2128,8 +2128,8 @@ def test_rollback_refuses_corrupt_backup_before_delete(tmp_path, monkeypatch):
     Path(sp["db_backup_path"]).write_bytes(b"corrupt")
     deleted = []
     monkeypatch.setattr(
-        rk, "_delete_via_crypt",
-        lambda name, crypt_bin=None: deleted.append(name) or True,
+        rk, "_delete_via_cortex",
+        lambda name, cortex_bin=None: deleted.append(name) or True,
     )
     assert rk.revert(
         sp_path, apply=True, state_path=state, rules_path=rules, core_path=core
@@ -2434,7 +2434,7 @@ def test_apply_from_manifest_embeds_signed_retrieval_aliases(tmp_path, monkeypat
         if args and args[0] == "put":
             written.append(Path(args[args.index("--file") + 1]).read_text(encoding="utf-8"))
         return True
-    monkeypatch.setattr(lt, "_run_crypt", fake_run)
+    monkeypatch.setattr(lt, "_run_cortex", fake_run)
     assert lt.apply_from_manifest(p) == 0
     assert "**Trigger phrases:** the exact phrase Adrian normally uses" in written[0]
 
@@ -2599,7 +2599,7 @@ def test_grade_arm_C_no_overlap_scores_zero():
 
 def test_lifecycle_emit_schema_review_apply_roundtrip(tmp_path, monkeypatch):
     """End-to-end: emit a manifest from a fixture -> schema-validate -> flip
-    status -> apply-time validate -> apply via crypt (mocked)."""
+    status -> apply-time validate -> apply via cortex (mocked)."""
     import emit_arm_d_candidates as emit_mod
     import gate3_review as g3
 
@@ -2640,7 +2640,7 @@ def test_lifecycle_emit_schema_review_apply_roundtrip(tmp_path, monkeypatch):
         if args and args[0] == "put":
             puts.append(args[1])
         return True
-    monkeypatch.setattr(lt, "_run_crypt", fake_run)
+    monkeypatch.setattr(lt, "_run_cortex", fake_run)
     rc2 = lt.apply_from_manifest(manifest_path)
     assert rc2 == 0
     assert len(puts) == len(m_apply["records"])
@@ -2649,9 +2649,9 @@ def test_lifecycle_emit_schema_review_apply_roundtrip(tmp_path, monkeypatch):
     assert written_ids == expected_ids
 
 
-def test_apply_idempotent_runs_each_id_through_crypt_once(tmp_path, monkeypatch):
-    """Each apply pass writes every accepted id exactly once through crypt.
-    Crypt put is upsert by design, so a second run is safe."""
+def test_apply_idempotent_runs_each_id_through_cortex_once(tmp_path, monkeypatch):
+    """Each apply pass writes every accepted id exactly once through cortex.
+    Cortex put is upsert by design, so a second run is safe."""
     import emit_arm_d_candidates as emit_mod
     manifest_path = tmp_path / "idem.manifest.json"
     emit_mod.main(["--out", str(manifest_path)])
@@ -2671,7 +2671,7 @@ def test_apply_idempotent_runs_each_id_through_crypt_once(tmp_path, monkeypatch)
         if args and args[0] == "put":
             puts_per_run.append(args[1])
         return True
-    monkeypatch.setattr(lt, "_run_crypt", fake_run)
+    monkeypatch.setattr(lt, "_run_cortex", fake_run)
     rc = lt.apply_from_manifest(manifest_path)
     assert rc == 0
     n = len(puts_per_run)
@@ -2680,7 +2680,7 @@ def test_apply_idempotent_runs_each_id_through_crypt_once(tmp_path, monkeypatch)
 
 def test_rollback_create_then_dryrun_does_not_modify(tmp_path, monkeypatch):
     """Create captures live invariants; dry-run prints the plan without
-    touching anything. The dry-run path does not require crypt or
+    touching anything. The dry-run path does not require cortex or
     sqlite3."""
     from adapt import rollback as rk
     state = tmp_path / "state.json"

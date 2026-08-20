@@ -1,4 +1,4 @@
-use crypt_core::{cosine, QuantizedVector};
+use cortex_core::{cosine, QuantizedVector};
 use std::time::Instant;
 use vector_bakeoff_common::{
     eligible, generate_fixture, hex, load_config, measure, parse_runner_args, quantized_candidates,

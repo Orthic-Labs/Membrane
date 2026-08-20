@@ -45,7 +45,7 @@ pub struct CapabilityV1 {
 /// The typed Membrane provider contract.
 ///
 /// The three required methods are the only surface area an adapter must
-/// implement. Adapters MAY add helper methods (for example, a Crypt
+/// implement. Adapters MAY add helper methods (for example, a Cortex
 /// `MemoryStore` accessor) but those helpers are not part of the SDK.
 pub trait Provider: Send + Sync {
     /// Initialize the provider with a configuration document.

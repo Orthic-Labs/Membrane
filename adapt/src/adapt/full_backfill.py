@@ -157,10 +157,10 @@ def _verify_committed(manifest_body: dict, journal: run_journal.RunJournal) -> N
         raise BackfillError(f"batch {batch_id} committed but source state did not advance")
     db_path = rollback._discover_db_path(manifest_body)
     if not db_path:
-        raise BackfillError("cannot discover live Crypt DB for integrity check")
+        raise BackfillError("cannot discover live Cortex DB for integrity check")
     ok, message = rollback._verify_integrity(db_path)
     if not ok:
-        raise BackfillError(f"Crypt integrity check failed: {message}")
+        raise BackfillError(f"Cortex integrity check failed: {message}")
 
 
 def _run_with_retries(

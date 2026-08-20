@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/crypt-core",
-    "crates/crypt-format",
-    "crates/crypt",
-    "crates/crypt-store",
+    "crates/cortex-core",
+    "crates/cortex-format",
+    "crates/cortex",
+    "crates/cortex-store",
     "crates/membrane",
     "crates/membrane-runtime",
     "crates/membrane-protocol",
@@ -19,7 +19,7 @@ members = [
 
 [workspace.package]
 edition = "2021"
-authors = ["Crypt"]
+authors = ["Cortex"]
 # MBR-014: one controlling license for every crate — the proprietary Orthic Labs
 # Source Use License in the repository-root LICENSE file (not an SPDX id, so it
 # is named via license-file). Member crates inherit it via license-file.workspace.

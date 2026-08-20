@@ -11,7 +11,7 @@
 - `dsv4proMEMBRANE-CANONICAL-IMPLEMENTATION-GUIDE.md`
 - `qwenmembrane-canonical-implementation-guide.md`
 
-**Repository truth used to reconcile the guides:** current `main`, especially `AGENTS.md`, `docs/architecture.md`, `docs/MEMBRANE-CURRENT-STATE-MANIFEST.json`, the August 12 plan, the protocol/core/runtime/Crypt source, and the current provider/store layout.
+**Repository truth used to reconcile the guides:** current `main`, especially `AGENTS.md`, `docs/architecture.md`, `docs/MEMBRANE-CURRENT-STATE-MANIFEST.json`, the August 12 plan, the protocol/core/runtime/Cortex source, and the current provider/store layout.
 
 > This is a semantic synthesis, not a fifth pass that blindly re-ranks all 600-ish donor recommendations. The source guides disagree on raw candidate counts (roughly 588–600) because their upstream memo coverage differed. Coverage authority in this master is the exact 60-repository `competitor.md` index, while implementation decisions are resolved against the current Membrane codebase.
 
@@ -28,7 +28,7 @@ Membrane does **not** need a new top-level architecture. It already has the diff
 - one global attention budget with `native`, `rendered`, `resolver_backed`, and `metadata_only` lanes;
 - typed omissions, degradation, and receipts;
 - repository confinement and signed grants;
-- local-first SQLite-backed Crypt persistence;
+- local-first SQLite-backed Cortex persistence;
 - deterministic context transforms and compression primitives;
 - resident federation and local vector retrieval;
 - temporal facts with immutable supersession semantics;
@@ -39,7 +39,7 @@ The competitor corpus does not justify replacing those foundations. It says Memb
 
 The canonical target is:
 
-> **Keep Membrane's contract and planner spine. Make Crypt a selective, lifecycle-aware, evidence-addressed knowledge substrate; make Pull a real indexed, explainable, multi-channel evidence retriever; make Push reversible through governed artifact references; let Blueprint own code semantics and source drift; and make every inclusion, omission, transformation, lifecycle transition, recovery action, and adaptive policy measurable and reversible.**
+> **Keep Membrane's contract and planner spine. Make Cortex a selective, lifecycle-aware, evidence-addressed knowledge substrate; make Pull a real indexed, explainable, multi-channel evidence retriever; make Push reversible through governed artifact references; let Blueprint own code semantics and source drift; and make every inclusion, omission, transformation, lifecycle transition, recovery action, and adaptive policy measurable and reversible.**
 
 The work therefore collapses into twelve programs:
 
@@ -194,14 +194,14 @@ One provider timing out or being unavailable must not silently claim full contex
 |---|---|---|
 | Scope grant validation, authorization, final freshness/authority policy | Membrane planner/runtime | Keep central and fail closed |
 | Cross-provider fusion, budget, lanes, omissions, publication, receipts | `membrane-core` + runtime/MCP | Strengthen; never delegate to providers |
-| Durable knowledge records, temporal facts, lifecycle, feedback, memory relations | Crypt | Implement in `crypt-core` / `crypt-store` |
-| Production lexical + semantic + temporal memory retrieval | Crypt | Implement/refine locally |
+| Durable knowledge records, temporal facts, lifecycle, feedback, memory relations | Cortex | Implement in `cortex-core` / `cortex-store` |
+| Production lexical + semantic + temporal memory retrieval | Cortex | Implement/refine locally |
 | AST/symbol/reference/call/type graph, stable code identity, blast radius | Blueprint | Consume through `engine/federation/providers/blueprint.py`; do not duplicate |
 | Code/document claim validation | Blueprint + Audit | Feed evidence/resolution status to planner |
 | Large immutable raw payload/object storage | Membrane runtime under Hub-controlled local storage | Add governed content-addressed artifact abstraction |
 | Tool-result/context reduction | Membrane Push/runtime | Converge existing `runc`/`skel`/`compress`/truncation behavior under one transform contract |
-| Session working/hot context | Membrane runtime + Crypt episodic persistence | Bound it; do not own full host conversation history |
-| Background memory curation | Crypt jobs, scheduled/supervised by Hub lifecycle | Bounded, idempotent, never prompt-critical |
+| Session working/hot context | Membrane runtime + Cortex episodic persistence | Bound it; do not own full host conversation history |
+| Background memory curation | Cortex jobs, scheduled/supervised by Hub lifecycle | Bounded, idempotent, never prompt-critical |
 | OS start-at-login, child process ownership, restart/backoff | Hub | Membrane exposes readiness/drain/health/identity only |
 | Agent execution, PTYs, autonomous coding loop | Legion/harness | Out of Membrane scope |
 | Generic model routing | OmniRouter/harness | Out of Membrane scope except optional internal gated inference |
@@ -231,7 +231,7 @@ ScopeGrant + task + session identity
         │ parallel candidate generation
         ├──────────┬──────────┬──────────┬──────────┬───────────┐
         ▼          ▼          ▼          ▼          ▼           ▼
-     Blueprint      Crypt      Live/Git   Rules      Docs       Audit/etc.
+     Blueprint      Cortex      Live/Git   Rules      Docs       Audit/etc.
  code semantics knowledge  current     policy    evidence    findings
                    │
                    ├─ exact / ID / anchor
@@ -478,7 +478,7 @@ The signal classifier cannot widen scope or authority.
 
 ## Stage 1 — candidate generation
 
-Crypt canonical channels:
+Cortex canonical channels:
 
 1. **exact** — canonical IDs, exact anchors, exact paths/entities/fact subjects, exact error/quoted text where indexed;
 2. **lexical** — production FTS5/BM25 with code-aware tokenization where appropriate;
@@ -568,7 +568,7 @@ Use stable delivered IDs so later verified feedback updates the signal sidecar w
 
 # 7. Production lexical retrieval
 
-Current Crypt hybrid retrieval is already better than vector-only RAG because it combines lexical ranking, vector similarity, RRF, an indexed vector path, and fallback. The gap is that the lexical arm is still keyword equality + substring occurrence + stored score.
+Current Cortex hybrid retrieval is already better than vector-only RAG because it combines lexical ranking, vector similarity, RRF, an indexed vector path, and fallback. The gap is that the lexical arm is still keyword equality + substring occurrence + stored score.
 
 ## 7.1 Implement FTS5/BM25 as the first production sparse index
 
@@ -956,7 +956,7 @@ Change concurrency only after full-provider profiling shows a bottleneck and the
 
 ## 13.3 Provider-level degradation
 
-A Blueprint freshness timeout should not automatically erase healthy Crypt/rules/live candidates unless the requested answer explicitly requires current Blueprint semantics.
+A Blueprint freshness timeout should not automatically erase healthy Cortex/rules/live candidates unless the requested answer explicitly requires current Blueprint semantics.
 
 Normalize failures such as:
 
@@ -1007,7 +1007,7 @@ Do not add a competing standalone “Membrane daemon manager” product surface.
 
 ## 14.1 One storage resolver
 
-Rust runtime, installer, Hub, doctor, backup, and operations should agree on one absolute canonical Crypt/catalog/artifact location and installation/store identity.
+Rust runtime, installer, Hub, doctor, backup, and operations should agree on one absolute canonical Cortex/catalog/artifact location and installation/store identity.
 
 ## 14.2 Derived projections are disposable; canonical data is not
 
@@ -1161,7 +1161,7 @@ The order below reconciles all four guides and the current codebase. Security an
 **Do:**
 
 1. adopt this guide as `docs/MEMBRANE-IMPLEMENTATION-GUIDE.md`;
-2. add a short supersession header to `docs/plans/2026-08-12-membrane-crypt-database-hygiene-and-performance.md` rather than resurrecting deleted `sol.md` lineage;
+2. add a short supersession header to `docs/plans/2026-08-12-membrane-cortex-database-hygiene-and-performance.md` rather than resurrecting deleted `sol.md` lineage;
 3. regenerate `docs/MEMBRANE-CURRENT-STATE-MANIFEST.json` from current source/installed truth—it is older than the inspected baseline;
 4. freeze current V1 protocol JSON/golden fixtures;
 5. freeze packet/order/omission/grant/budget/reconciliation behavior;
@@ -1172,10 +1172,10 @@ The order below reconciles all four guides and the current codebase. Security an
 **Primary paths:**
 
 - `docs/MEMBRANE-IMPLEMENTATION-GUIDE.md` — new canonical plan;
-- `docs/plans/2026-08-12-membrane-crypt-database-hygiene-and-performance.md` — supersession marker only;
+- `docs/plans/2026-08-12-membrane-cortex-database-hygiene-and-performance.md` — supersession marker only;
 - `docs/MEMBRANE-CURRENT-STATE-MANIFEST.json` — regenerate, do not hand-invent;
 - `engine/crates/membrane-testkit/`;
-- `engine/crates/crypt-core/src/eval_gate.rs`;
+- `engine/crates/cortex-core/src/eval_gate.rs`;
 - new `tests/context-quality/` or the nearest existing canonical fixture surface.
 
 **Gate:** baseline is reproducible; security/anchor/budget invariants fail the candidate build if regressed.
@@ -1229,18 +1229,18 @@ The order below reconciles all four guides and the current codebase. Security an
 
 **Likely new internal modules:**
 
-- `engine/crates/crypt-core/src/record.rs`
-- `engine/crates/crypt-core/src/ranking_signals.rs`
-- `engine/crates/crypt-core/src/conflict.rs`
+- `engine/crates/cortex-core/src/record.rs`
+- `engine/crates/cortex-core/src/ranking_signals.rs`
+- `engine/crates/cortex-core/src/conflict.rs`
 
 **Existing paths:**
 
-- `engine/crates/crypt-core/src/types.rs`
-- `engine/crates/crypt-store/src/memdb.rs`
-- `engine/crates/crypt-store/src/temporal.rs`
-- `engine/crates/crypt-store/src/scope.rs`
-- `engine/crates/crypt-store/src/installation_identity.rs`
-- `engine/crates/crypt-store/src/context_telemetry.rs`
+- `engine/crates/cortex-core/src/types.rs`
+- `engine/crates/cortex-store/src/memdb.rs`
+- `engine/crates/cortex-store/src/temporal.rs`
+- `engine/crates/cortex-store/src/scope.rs`
+- `engine/crates/cortex-store/src/installation_identity.rs`
+- `engine/crates/cortex-store/src/context_telemetry.rs`
 - `adapters/provenance/index.mjs`
 
 **Gate:** any recalled durable record can mechanically explain content identity, evidence origin, current resolution state, authority, derivation status, and supersession without depending on mutable ranking fields.
@@ -1263,12 +1263,12 @@ The order below reconciles all four guides and the current codebase. Security an
 
 **Primary paths:**
 
-- new `engine/crates/crypt-core/src/lifecycle.rs`
-- `engine/crates/crypt-core/src/dream.rs`
-- `engine/crates/crypt-core/src/effectiveness.rs`
-- `engine/crates/crypt-core/src/calibration.rs`
-- `engine/crates/crypt-core/src/planner.rs`
-- `engine/crates/crypt-store/src/memdb.rs`
+- new `engine/crates/cortex-core/src/lifecycle.rs`
+- `engine/crates/cortex-core/src/dream.rs`
+- `engine/crates/cortex-core/src/effectiveness.rs`
+- `engine/crates/cortex-core/src/calibration.rs`
+- `engine/crates/cortex-core/src/planner.rs`
+- `engine/crates/cortex-store/src/memdb.rs`
 
 **Gate:** duplicate writes are no-op; conflicts preserve evidence; lifecycle transitions are versioned/reversible; no derived summary silently becomes authoritative truth.
 
@@ -1293,13 +1293,13 @@ The order below reconciles all four guides and the current codebase. Security an
 
 **Primary paths:**
 
-- `engine/crates/crypt-core/src/retriever.rs`
-- new `engine/crates/crypt-core/src/lexical.rs`
-- new `engine/crates/crypt-core/src/retrieval_trace.rs`
-- `engine/crates/crypt-core/src/embed.rs`
-- `engine/crates/crypt-core/src/graph.rs`
-- `engine/crates/crypt-store/src/memdb.rs`
-- `engine/crates/crypt-store/src/context_telemetry.rs`
+- `engine/crates/cortex-core/src/retriever.rs`
+- new `engine/crates/cortex-core/src/lexical.rs`
+- new `engine/crates/cortex-core/src/retrieval_trace.rs`
+- `engine/crates/cortex-core/src/embed.rs`
+- `engine/crates/cortex-core/src/graph.rs`
+- `engine/crates/cortex-store/src/memdb.rs`
+- `engine/crates/cortex-store/src/context_telemetry.rs`
 
 **Gate:** lexical quality improves on frozen cases; vector-unavailable fallback is deterministic; stale/forbidden evidence does not improve rank through similarity; p95/RSS stay inside gate.
 
@@ -1323,7 +1323,7 @@ The order below reconciles all four guides and the current codebase. Security an
 - `engine/federation/providers/blueprint.py`
 - `engine/federation/providers/test_blueprint_provider.py`
 - `engine/crates/membrane-provider-sdk/`
-- Crypt evidence/record persistence from Phase 2.
+- Cortex evidence/record persistence from Phase 2.
 
 **Gate:** changed/renamed/missing/ambiguous code evidence produces deterministic resolution state; no Membrane parser/index stack is introduced.
 
@@ -1377,11 +1377,11 @@ The order below reconciles all four guides and the current codebase. Security an
 
 **Primary paths:**
 
-- `engine/crates/crypt-core/src/graph.rs`
-- new `engine/crates/crypt-core/src/relations.rs`
-- new `engine/crates/crypt-store/src/relations.rs`
-- `engine/crates/crypt-store/src/temporal.rs`
-- `engine/crates/crypt-store/src/memdb.rs`
+- `engine/crates/cortex-core/src/graph.rs`
+- new `engine/crates/cortex-core/src/relations.rs`
+- new `engine/crates/cortex-store/src/relations.rs`
+- `engine/crates/cortex-store/src/temporal.rs`
+- `engine/crates/cortex-store/src/memdb.rs`
 
 **Gate:** relation expansion is scoped, capped, cycle-safe, evidence-bearing, and can be disabled with deterministic fallback.
 
@@ -1404,9 +1404,9 @@ The order below reconciles all four guides and the current codebase. Security an
 
 - `engine/crates/membrane-runtime/src/checkpoint.rs`
 - current working-context/scratchpad runtime surfaces
-- `engine/crates/crypt-core/src/lifecycle.rs`
-- `engine/crates/crypt-core/src/dream.rs`
-- `engine/crates/crypt-store/src/maintenance_exec.rs`
+- `engine/crates/cortex-core/src/lifecycle.rs`
+- `engine/crates/cortex-core/src/dream.rs`
+- `engine/crates/cortex-store/src/maintenance_exec.rs`
 
 **Gate:** session resume improves without transcript duplication; lifecycle cannot oscillate rapidly; maintenance never blocks prompt-critical path.
 
@@ -1429,8 +1429,8 @@ The order below reconciles all four guides and the current codebase. Security an
 **Primary paths:**
 
 - `engine/crates/membrane-runtime/src/admission_policy.rs`
-- `engine/crates/crypt-store/src/scope.rs`
-- `engine/crates/crypt-store/src/memdb.rs`
+- `engine/crates/cortex-store/src/scope.rs`
+- `engine/crates/cortex-store/src/memdb.rs`
 - `mcp/authorization.mjs`
 - source/artifact resolver surfaces
 - security tests/threat model.
@@ -1458,11 +1458,11 @@ The order below reconciles all four guides and the current codebase. Security an
 
 **Primary paths:**
 
-- `engine/crates/crypt-store/src/installation_identity.rs`
-- `engine/crates/crypt-store/src/maintenance_exec.rs`
-- `engine/crates/crypt-store/src/db.rs`
-- `engine/crates/crypt-store/src/memdb.rs`
-- `engine/crates/crypt-store/src/team_sync.rs`
+- `engine/crates/cortex-store/src/installation_identity.rs`
+- `engine/crates/cortex-store/src/maintenance_exec.rs`
+- `engine/crates/cortex-store/src/db.rs`
+- `engine/crates/cortex-store/src/memdb.rs`
+- `engine/crates/cortex-store/src/team_sync.rs`
 - runtime doctor/diagnostic bundle surfaces.
 
 **Gate:** backup/restore preserves logical key sets, evidence/supersession/event continuity, and recall equivalence; corruption is a typed repairable state, not a reason to delete the DB.
@@ -1560,27 +1560,27 @@ The map below is intentionally conservative: it names verified existing source f
 | `engine/crates/membrane-core/src/lane.rs` | existing | Represent artifact/context-edit results through existing delivery lanes |
 | `engine/crates/membrane-core/src/budget.rs` | existing | Account for protected content and resolver-backed economics without second budget |
 | `engine/crates/membrane-core/src/reconcile.rs` | existing | Reconcile new omission/resolution/transform states |
-| `engine/crates/crypt-core/src/retriever.rs` | existing | Stage exact/lexical/vector/temporal/relation/working retrieval; preserve fallback/RRF baseline |
-| `engine/crates/crypt-core/src/lexical.rs` | **new** | FTS5/BM25 adapter, code-aware lexical normalization, deterministic fallback integration |
-| `engine/crates/crypt-core/src/retrieval_trace.rs` | **new** | Local per-channel ranks/latency/explanation trace |
-| `engine/crates/crypt-core/src/record.rs` | **new** | Canonical rich knowledge-record model separate from hot retrieval projection |
-| `engine/crates/crypt-core/src/ranking_signals.rs` | **new** | Mutable usefulness/retention sidecar policy |
-| `engine/crates/crypt-core/src/conflict.rs` | **new** | Duplicate/no-op/conflict/supersession dispositions |
-| `engine/crates/crypt-core/src/lifecycle.rs` | **new** | Pure versioned lifecycle/retention decisions and hysteresis |
-| `engine/crates/crypt-core/src/dream.rs` | existing | Reversible consolidation/proposal phase only |
-| `engine/crates/crypt-core/src/effectiveness.rs` | existing | Bind verified outcomes to sidecar usefulness, not canonical content |
-| `engine/crates/crypt-core/src/calibration.rs` | existing | Calibrate policy thresholds from held-out data |
-| `engine/crates/crypt-core/src/graph.rs` | existing | Keep bounded memory relation projection; do not absorb code graph |
-| `engine/crates/crypt-core/src/relations.rs` | **new if graph.rs cannot cleanly own typed policy** | Small relation vocabulary/query controls; avoid duplicate graph layers |
-| `engine/crates/crypt-core/src/eval_gate.rs` | existing | Membrane-level regression promotion gate |
-| `engine/crates/crypt-store/src/memdb.rs` | existing | Migrations for record/evidence/signal/FTS/relation projections |
-| `engine/crates/crypt-store/src/temporal.rs` | existing | Preserve temporal fact semantics; integrate with richer record/evidence model |
-| `engine/crates/crypt-store/src/relations.rs` | **new** | Durable typed temporal relation rows if not kept in `memdb.rs` initially |
-| `engine/crates/crypt-store/src/scope.rs` | existing | Scope/influence/sensitivity support and publication checks |
-| `engine/crates/crypt-store/src/context_telemetry.rs` | existing | Content-free retrieval/lifecycle/economics telemetry |
-| `engine/crates/crypt-store/src/maintenance_exec.rs` | existing | Bounded lifecycle/index/backup jobs |
-| `engine/crates/crypt-store/src/installation_identity.rs` | existing | Canonical storage/artifact identity in receipts/backup/import |
-| `engine/crates/crypt-store/src/team_sync.rs` | existing | Keep event/op semantics; no P2P expansion before local gates |
+| `engine/crates/cortex-core/src/retriever.rs` | existing | Stage exact/lexical/vector/temporal/relation/working retrieval; preserve fallback/RRF baseline |
+| `engine/crates/cortex-core/src/lexical.rs` | **new** | FTS5/BM25 adapter, code-aware lexical normalization, deterministic fallback integration |
+| `engine/crates/cortex-core/src/retrieval_trace.rs` | **new** | Local per-channel ranks/latency/explanation trace |
+| `engine/crates/cortex-core/src/record.rs` | **new** | Canonical rich knowledge-record model separate from hot retrieval projection |
+| `engine/crates/cortex-core/src/ranking_signals.rs` | **new** | Mutable usefulness/retention sidecar policy |
+| `engine/crates/cortex-core/src/conflict.rs` | **new** | Duplicate/no-op/conflict/supersession dispositions |
+| `engine/crates/cortex-core/src/lifecycle.rs` | **new** | Pure versioned lifecycle/retention decisions and hysteresis |
+| `engine/crates/cortex-core/src/dream.rs` | existing | Reversible consolidation/proposal phase only |
+| `engine/crates/cortex-core/src/effectiveness.rs` | existing | Bind verified outcomes to sidecar usefulness, not canonical content |
+| `engine/crates/cortex-core/src/calibration.rs` | existing | Calibrate policy thresholds from held-out data |
+| `engine/crates/cortex-core/src/graph.rs` | existing | Keep bounded memory relation projection; do not absorb code graph |
+| `engine/crates/cortex-core/src/relations.rs` | **new if graph.rs cannot cleanly own typed policy** | Small relation vocabulary/query controls; avoid duplicate graph layers |
+| `engine/crates/cortex-core/src/eval_gate.rs` | existing | Membrane-level regression promotion gate |
+| `engine/crates/cortex-store/src/memdb.rs` | existing | Migrations for record/evidence/signal/FTS/relation projections |
+| `engine/crates/cortex-store/src/temporal.rs` | existing | Preserve temporal fact semantics; integrate with richer record/evidence model |
+| `engine/crates/cortex-store/src/relations.rs` | **new** | Durable typed temporal relation rows if not kept in `memdb.rs` initially |
+| `engine/crates/cortex-store/src/scope.rs` | existing | Scope/influence/sensitivity support and publication checks |
+| `engine/crates/cortex-store/src/context_telemetry.rs` | existing | Content-free retrieval/lifecycle/economics telemetry |
+| `engine/crates/cortex-store/src/maintenance_exec.rs` | existing | Bounded lifecycle/index/backup jobs |
+| `engine/crates/cortex-store/src/installation_identity.rs` | existing | Canonical storage/artifact identity in receipts/backup/import |
+| `engine/crates/cortex-store/src/team_sync.rs` | existing | Keep event/op semantics; no P2P expansion before local gates |
 | `engine/crates/membrane-runtime/src/admission_policy.rs` | existing | Persist/publish influence, sensitivity, and policy epoch enforcement |
 | `engine/crates/membrane-runtime/src/compress.rs` | existing | Integrate under one reversible transform ladder |
 | `engine/crates/membrane-runtime/src/compression_provider.rs` | existing | Keep optional/bounded and receipt-visible |
@@ -1595,7 +1595,7 @@ The map below is intentionally conservative: it names verified existing source f
 | `mcp/authorization.mjs` | existing/current surface expected | Publication/root/scope authorization seam; keep policy centralized |
 | `docs/MEMBRANE-CURRENT-STATE-MANIFEST.json` | existing but stale to inspected main | Regenerate from source/installed state |
 | `docs/architecture.md` | generated existing | Never hand-edit; regenerate after implementation |
-| `docs/plans/2026-08-12-membrane-crypt-database-hygiene-and-performance.md` | existing, dangling retired authority | Mark superseded by this guide |
+| `docs/plans/2026-08-12-membrane-cortex-database-hygiene-and-performance.md` | existing, dangling retired authority | Mark superseded by this guide |
 | `tests/context-quality/` | **new or merge into existing canonical eval tree** | Frozen context-quality/behavior fixtures and baseline results |
 
 Before creating any “new” module, Phase 0 must check whether the current repo already has the same ownership under another filename. Reuse wins over taxonomy.
@@ -1654,7 +1654,7 @@ This ledger is the coverage proof. It maps every exact entry from `competitor.md
 | `AlmanacCode/codealmanac` | scheduled knowledge lifecycle, transcript mining, evidence per claim, validation, no-op success | Strong absorb into lifecycle/retain/provenance |
 | `Brain0-ai/brain0` | line/source provenance, drift detection, DLP, stable symbol identity, attestations, crypto-shred | Absorb provenance/DLP; stable code symbols via Blueprint |
 | `Consiliency/treesitter-chunker` | AST chunks, token budgets, stable symbol graph, incremental/parallel chunking, packing priority | Blueprint owner; Membrane consumes outputs |
-| `DeusData/codebase-memory-mcp` | deep semantic code extraction, graph analysis, coverage honesty, incremental reindex | Absorb through Blueprint, not Crypt |
+| `DeusData/codebase-memory-mcp` | deep semantic code extraction, graph analysis, coverage honesty, incremental reindex | Absorb through Blueprint, not Cortex |
 | `Ivy-Interactive/Ivy-Tendril` | process/job supervision, retries, usage accounting, health | Absorb through Hub; agent execution itself out of scope |
 | `James-Chahwan/repo-graph` | failure-signal resolution, blast radius, cross-stack tracing, entry points, coverage honesty, PageRank | High-value via Blueprint; PageRank benchmark-gated |
 | `LangbaseInc/baseai` | local resident server, unified local/prod pipe, typed boundaries, streaming | Adapt resident/typed runtime concepts; generic agent loop/UI out of scope |
@@ -1667,7 +1667,7 @@ This ledger is the coverage proof. It maps every exact entry from `competitor.md
 | `RasaHQ/rasa` | event-sourced session state, lifecycle events, brokers, locks, export, scope | Strong operational model for session/event/sync semantics |
 | `Supercompress/Supercompress` | reversible CCR, query-critical verifier, content-specific preprocessors, budget policies, cross-encoder option | Core source for reversible Push; neural rerank benchmark-gated |
 | `SynaLinks/synalinks` | typed knowledge schema, retrieval taxonomy, modular reranking, programs tested like code | Absorb retrieval taxonomy/testing; RL program framework out of scope |
-| `byterover-cli` | sidecar ranking signals, hysteresis maturity, conflict-safe writes, HITL review, reversible dream | Strong absorb into Crypt lifecycle |
+| `byterover-cli` | sidecar ranking signals, hysteresis maturity, conflict-safe writes, HITL review, reversible dream | Strong absorb into Cortex lifecycle |
 | `caura-ai/caura` | recall gating, atomic-fact enrichment, DLP, degrade-safe ranking, typed event bus | Absorb policy/retain/fallback patterns |
 | `claude-subconscious` | lifecycle hooks, mid-task injection, sync dedup, nonblocking session push | Adapt hook reliability; do not depend on one host |
 | `cline/cline` | projection-based compaction, Git checkpoints, staleness watchers, context mention expansion | Absorb projection fidelity/freshness concepts; editing checkpoints belong harness |
@@ -1680,7 +1680,7 @@ This ledger is the coverage proof. It maps every exact entry from `competitor.md
 | `getzep/zep` | ingest pipeline, boundary-aware splitting, provenance episodes, alias canonicalization, injection hardening, indexing-lag tolerance | Strong absorb retain/entity/security/retrieval-fallback concepts |
 | `greplica` | code-anchored claims, fingerprints/drift, parent-chain memory commits, proposal writes, reconciliation | Absorb evidence/claim lifecycle; code anchors via Blueprint |
 | `headroomlabs-ai/headroom` | CCR reversible compression, per-tool interception, proactive context expansion, fidelity eval, savings audit | Core source for ArtifactRef/query verifier/Push economics |
-| `hindsight` | sentence/fact typing, temporal ranges, entity resolution, causal links, DLP, async retain, export/audit | Strong absorb into Crypt model/lifecycle/security |
+| `hindsight` | sentence/fact typing, temporal ranges, entity resolution, causal links, DLP, async retain, export/audit | Strong absorb into Cortex model/lifecycle/security |
 | `honcho` | explicit vs derived observations, bounded derivation/Dreamer, trigger gates, telemetry | Absorb derived-record distinction + schedule gates |
 | `juspay/code-review-graph-rescript` | typed code graph, diff impact, graph snapshots, flow tracing, RRF, graph evals | Absorb through Blueprint; RRF/eval concepts in Membrane |
 | `kingjulio8238/Memary` | graph neighborhood recall, synonym expansion, graph-first routing | Relation retrieval idea only; graph-first default rejected |
@@ -1699,7 +1699,7 @@ This ledger is the coverage proof. It maps every exact entry from `competitor.md
 | `neuml/txtai` | score-aware hybrid fusion, sparse scoring family, explain search | Absorb lexical/explain/fusion ideas; workflow/agent/cloud surface rejected |
 | `qualixar/superlocalmemory` | admission journal, hash-chain audit, ABAC, retention rules, erasure fence, multi-channel retrieval | Absorb journal/erasure/retrieval/security; P2P mesh later/optional |
 | `quantmew/context8` | AST hierarchical chunks, hash-based incremental indexing, cancellation, commit pinning | Absorb through Blueprint; cancellation/freshness into provider contract |
-| `rohitg00/agentmemory` | validated observation compression, hard working-memory budgets, leases, provenance verification, eval discipline | Absorb compression/eval/locking patterns; Crypt/runtime |
+| `rohitg00/agentmemory` | validated observation compression, hard working-memory budgets, leases, provenance verification, eval discipline | Absorb compression/eval/locking patterns; Cortex/runtime |
 | `rtk-ai/rtk` | never-worse filters, data-class truncation, savings economics, hook integrity | Strong absorb Push guards/economics/security |
 | `run-llama/llama_index` | memory blocks, transformation hashes, ingestion cache, property-graph subretrievers | Absorb transformation identity; backend/LLM graph zoo rejected |
 | `semantic` | generic AST, scope/reference resolution, LSP tags | Blueprint-only; do not absorb parser into Membrane |

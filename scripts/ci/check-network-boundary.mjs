@@ -17,12 +17,12 @@ assert.doesNotMatch(ingressSource, /node:(?:net|http|https)|\bfetch\s*\(|\bspawn
 const directory = mkdtempSync(path.join(os.tmpdir(), "membrane-network-boundary-"));
 try {
   const remoteConfig = path.join(directory, "runtime.json");
-  writeFileSync(remoteConfig, JSON.stringify({ schemaVersion: 1, serviceId: "crypt-local-v1", host: "0.0.0.0" }));
+  writeFileSync(remoteConfig, JSON.stringify({ schemaVersion: 1, serviceId: "cortex-local-v1", host: "0.0.0.0" }));
   assert.deepEqual(ingress._internal.resolveDefaultIngressTarget(remoteConfig), { ok: false });
 
   const target = path.join(directory, "telemetry.jsonl");
-  const previous = process.env.CRYPT_TELEMETRY_INGRESS;
-  process.env.CRYPT_TELEMETRY_INGRESS = target;
+  const previous = process.env.CORTEX_TELEMETRY_INGRESS;
+  process.env.CORTEX_TELEMETRY_INGRESS = target;
   try {
     const event = buildObservableEvent({
       installationId: "installation-ci", clientId: "codex", sessionId: "session-ci",
@@ -32,8 +32,8 @@ try {
     assert.deepEqual(ingress.appendObservableEvent(event), { status: "persisted", target: "membrane_prompt_ingress" });
     assert.deepEqual(JSON.parse(readFileSync(target, "utf8")).observable_events[0], event);
   } finally {
-    if (previous === undefined) delete process.env.CRYPT_TELEMETRY_INGRESS;
-    else process.env.CRYPT_TELEMETRY_INGRESS = previous;
+    if (previous === undefined) delete process.env.CORTEX_TELEMETRY_INGRESS;
+    else process.env.CORTEX_TELEMETRY_INGRESS = previous;
   }
 } finally {
   rmSync(directory, { recursive: true, force: true });

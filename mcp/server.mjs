@@ -91,7 +91,7 @@ const TOOL_OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-const protocol = `# Membrane MCP v1\n\nmembrane_context routes through the loopback /federate endpoint, never raw recall, and injects exact session/task working context when supplied. Knowledge and feedback require durable Crypt persistence with LifecycleReceiptV1 readback; unavailable persistence is a tool error unless explicit advisory policy is selected. Working context is durable only when explicitly configured. Scratchpads are ephemeral, non-searchable, non-authoritative, and never consolidated. Temporal supersession requires an explicit single-valued predicate policy. Checkpoints are A0 session orientation state. Source reads require a hash-bound DocReadV1 reference.`;
+const protocol = `# Membrane MCP v1\n\nmembrane_context routes through the loopback /federate endpoint, never raw recall, and injects exact session/task working context when supplied. Knowledge and feedback require durable Cortex persistence with LifecycleReceiptV1 readback; unavailable persistence is a tool error unless explicit advisory policy is selected. Working context is durable only when explicitly configured. Scratchpads are ephemeral, non-searchable, non-authoritative, and never consolidated. Temporal supersession requires an explicit single-valued predicate policy. Checkpoints are A0 session orientation state. Source reads require a hash-bound DocReadV1 reference.`;
 
 function text(value) {
   if (typeof value !== "string") return value;
@@ -349,8 +349,8 @@ async function currentFreshness(binding, install, sessionId, worktreePath) {
   }
 }
 
-function cryptArgs(args, bindingRecord) {
-  const db = bindingRecord?.db || process.env.CRYPT_DB || "";
+function cortexArgs(args, bindingRecord) {
+  const db = bindingRecord?.db || process.env.CORTEX_DB || "";
   return ["--db", db, ...args].filter((v, i) => !(i === 1 && !v));
 }
 async function bindingEnv(binding) {
@@ -390,8 +390,8 @@ async function durableFeedback(binding, args) {
     const eventId = receiptId("event", { operation: "feedback", feedbackId });
     const installation = await resolveInstallation(binding);
     const env = { ...process.env, ...installationEnv(installation) };
-    const binary = process.env.CRYPT_BIN || "crypt";
-    const out = await run(binary, cryptArgs([
+    const binary = process.env.CORTEX_BIN || "cortex";
+    const out = await run(binary, cortexArgs([
       "feedback", "--trace", eventId, "--candidate", args.receiptId,
       "--sha", digest(args.receiptId).slice("sha256:".length), "--outcome", args.outcome,
       "--source", source, "--scope", binding.scope_id,
@@ -712,7 +712,7 @@ async function callTool(name, args, trace = {}, lifecycle) {
   if (name === "membrane_source_read") {
     const binding = await authorize(args, "source_read");
     const install = await installationBindingFor(binding);
-    const out = await run(process.env.CRYPT_BIN || "crypt", cryptArgs(["doc", "read", "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash], install), "", await bindingEnv(binding));
+    const out = await run(process.env.CORTEX_BIN || "cortex", cortexArgs(["doc", "read", "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash], install), "", await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "source_read_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_blueprint") {
@@ -725,7 +725,7 @@ async function callTool(name, args, trace = {}, lifecycle) {
     const install = await installationBindingFor(binding);
     bounded(args.checkpoint, MAX_PROPOSAL_BYTES, "checkpoint");
     takeRate(binding, "checkpoint");
-    const out = await run(process.env.CRYPT_BIN || "crypt", cryptArgs(["checkpoint", "save"], install), JSON.stringify(args.checkpoint), await bindingEnv(binding));
+    const out = await run(process.env.CORTEX_BIN || "cortex", cortexArgs(["checkpoint", "save"], install), JSON.stringify(args.checkpoint), await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "checkpoint_save_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_checkpoint_load") {
@@ -733,7 +733,7 @@ async function callTool(name, args, trace = {}, lifecycle) {
     const install = await installationBindingFor(binding);
     const params = ["checkpoint", "load", args.id];
     if (Number.isInteger(args.asOfMs)) params.push("--as-of-ms", String(args.asOfMs));
-    const out = await run(process.env.CRYPT_BIN || "crypt", cryptArgs(params, install), "", await bindingEnv(binding));
+    const out = await run(process.env.CORTEX_BIN || "cortex", cortexArgs(params, install), "", await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "checkpoint_load_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_working_context") {

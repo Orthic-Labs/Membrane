@@ -70,12 +70,12 @@ class _ImmediateExecutor:
 
 
 def _planner_command(candidate_set: Path) -> list[str]:
-    override = os.environ.get("CRYPT_BIN", "").strip()
+    override = os.environ.get("CORTEX_BIN", "").strip()
     if override:
         return [override, "plan-context", "--candidate-set", str(candidate_set), "--max-tokens", "4096"]
 
     binary = ROOT / "membrane" / "engine" / "target" / "debug" / (
-        "crypt.exe" if os.name == "nt" else "crypt"
+        "cortex.exe" if os.name == "nt" else "cortex"
     )
     if binary.is_file():
         return [str(binary), "plan-context", "--candidate-set", str(candidate_set), "--max-tokens", "4096"]
@@ -87,9 +87,9 @@ def _planner_command(candidate_set: Path) -> list[str]:
         "--manifest-path",
         str(ROOT / "membrane" / "engine" / "Cargo.toml"),
         "-p",
-        "crypt",
+        "cortex",
         "--bin",
-        "crypt",
+        "cortex",
         "--",
         "plan-context",
         "--candidate-set",
@@ -101,19 +101,19 @@ def _planner_command(candidate_set: Path) -> list[str]:
 
 def _semantic_candidate_set(ccs: dict) -> dict:
     semantic = copy.deepcopy(ccs)
-    telemetry = semantic.get("_rightcontext", {})
+    telemetry = semantic.get("_membrane", {})
     for field in ("providerElapsedMs", "providerStageElapsedMs", "stageElapsedMs"):
         telemetry.pop(field, None)
     return semantic
 
 
-def test_planner_fallback_selects_crypt_cli_binary(monkeypatch, tmp_path: Path):
-    monkeypatch.delenv("CRYPT_BIN", raising=False)
+def test_planner_fallback_selects_cortex_cli_binary(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("CORTEX_BIN", raising=False)
     monkeypatch.setitem(globals(), "ROOT", tmp_path)
 
     command = _planner_command(tmp_path / "candidate-set.json")
 
-    assert command[command.index("--bin") + 1] == "crypt"
+    assert command[command.index("--bin") + 1] == "cortex"
 
 
 def test_completion_permutations_keep_precedence_receipts_and_packet_hash_stable(
@@ -150,9 +150,9 @@ def test_completion_permutations_keep_precedence_receipts_and_packet_hash_stable
     )
     monkeypatch.setattr(gateway.architect, "produce", lambda *_args: [candidates["architect"]])
     monkeypatch.setattr(
-        gateway.crypt,
+        gateway.cortex,
         "produce_with_observability",
-        lambda *_args: ([candidates["crypt"]], "fixture", {"stageElapsedMs": {}}),
+        lambda *_args: ([candidates["cortex"]], "fixture", {"stageElapsedMs": {}}),
     )
     monkeypatch.setattr(gateway.git_provider, "produce", lambda *_args: [candidates["git"]])
     monkeypatch.setattr(gateway.live, "produce", lambda *_args, **_kwargs: [candidates["live"]])
@@ -207,7 +207,7 @@ def test_completion_permutations_keep_precedence_receipts_and_packet_hash_stable
             4096,
         )
         assert [candidate["provider"] for candidate in ccs["candidates"]] == declared_order
-        assert [warning["provider"] for warning in ccs["_rightcontext"]["providerWarnings"]] == FIXTURE[
+        assert [warning["provider"] for warning in ccs["_membrane"]["providerWarnings"]] == FIXTURE[
             "warningProviderOrder"
         ]
 

@@ -41,13 +41,13 @@ def test_two_requests_yield_two_ccs_lines_and_blank_lines_are_ignored(tmp_path):
         assert envelope["schemaVersion"] == 1
         assert envelope["task"] == "stdio probe"
         assert isinstance(envelope["candidates"], list)
-        assert "_rightcontext" in envelope
+        assert "_membrane" in envelope
 
 
 def test_malformed_request_yields_abort_envelope_and_worker_survives(tmp_path):
     good = json.dumps({"task": "after crash", "repo": str(tmp_path)})
     payloads = _run_stdio(["{not json", good])
-    abort = payloads[1]["_rightcontext"]
+    abort = payloads[1]["_membrane"]
     assert abort["abortReason"] == "worker_request_failed"
     assert payloads[2]["task"] == "after crash"
 
@@ -55,7 +55,7 @@ def test_malformed_request_yields_abort_envelope_and_worker_survives(tmp_path):
 def test_missing_repo_field_aborts_that_request_only(tmp_path):
     good = json.dumps({"task": "still alive", "repo": str(tmp_path)})
     payloads = _run_stdio([json.dumps({"task": "no repo"}), good])
-    assert payloads[1]["_rightcontext"]["abortReason"] == "worker_request_failed"
+    assert payloads[1]["_membrane"]["abortReason"] == "worker_request_failed"
     assert payloads[2]["task"] == "still alive"
 
 
@@ -77,7 +77,7 @@ def test_argv_forwards_exact_virtual_scope_descriptor_without_mcp(monkeypatch, t
 
     def assemble(**kwargs):
         seen.update(kwargs)
-        return {"schemaVersion": 1, "task": kwargs["task"], "candidates": [], "_rightcontext": {}}, 0
+        return {"schemaVersion": 1, "task": kwargs["task"], "candidates": [], "_membrane": {}}, 0
 
     monkeypatch.setattr(gateway, "assemble_candidate_set", assemble)
     descriptor = {"kind": "virtual", "id": "thread:abc-123", "tenant_id": "tenant-a", "parents": [], "inherit_global": False}

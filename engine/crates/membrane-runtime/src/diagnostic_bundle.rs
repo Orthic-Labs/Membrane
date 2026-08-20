@@ -78,7 +78,7 @@ pub fn build(report: &doctor::DoctorReportV0, db_path: &Path) -> DiagnosticBundl
         .collect::<BTreeMap<_, _>>();
     let release_digest = release_identity::release_generation();
     let identity_ok = sha256(&release_digest) && release_identity::target_triple() != "unsupported";
-    let token_path = std::env::var_os("CRYPT_API_TOKEN_FILE")
+    let token_path = std::env::var_os("CORTEX_API_TOKEN_FILE")
         .map(std::path::PathBuf::from)
         .or_else(|| db_path.parent().map(|parent| parent.join("api-token")));
     let token = match token_path {
@@ -88,7 +88,7 @@ pub fn build(report: &doctor::DoctorReportV0, db_path: &Path) -> DiagnosticBundl
         Some(_) => json!({"state": "invalid", "reason": "token-file-missing-or-invalid"}),
         None => json!({"state": "unavailable", "reason": "token-file-path-unavailable"}),
     };
-    let port = match std::env::var("CRYPT_PORT") {
+    let port = match std::env::var("CORTEX_PORT") {
         Ok(value) => match value.parse::<u16>() {
             Ok(port) if port >= 1024 => json!({"state": "ok", "port": port, "reason": null}),
             _ => {
@@ -172,7 +172,7 @@ mod tests {
 
     fn report() -> doctor::DoctorReportV0 {
         doctor::DoctorReportV0 {
-            schema_version: "CryptDoctorV0",
+            schema_version: "CortexDoctorV0",
             system: "Membrane",
             status: "warning",
             checks: vec![doctor::DoctorCheckV0 {

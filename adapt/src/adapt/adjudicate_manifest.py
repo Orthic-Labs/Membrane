@@ -319,7 +319,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             planned_calls <= args.max_provider_calls
             and planned_chars <= args.max_input_chars
         ),
-        "live_crypt_writes": 0,
+        "live_cortex_writes": 0,
         "live_state_writes": 0,
     }
     if args.dry_run:

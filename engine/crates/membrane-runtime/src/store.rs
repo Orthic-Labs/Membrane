@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Instant, SystemTime};
 
-use crypt_core::{
+use cortex_core::{
     consolidate_dream_memories, cosine, ContextTokenAccounting, DreamAgentPolicy, DreamStatus,
     EffectivenessGate, Embedder, HashEmbedder, MemoryEntry, MemoryRegistry,
     MemoryRetrievalEvalGate, MemoryRetriever, MemoryTier, MemoryUsageRecord, Outcome,
@@ -59,7 +59,7 @@ const PROTECTED_PRIORITY_BONUS: f32 = 0.04;
 
 fn protected_priority_bonus_enabled() -> bool {
     matches!(
-        std::env::var("CRYPT_PROTECTED_PRIORITY_BONUS")
+        std::env::var("CORTEX_PROTECTED_PRIORITY_BONUS")
             .ok()
             .as_deref()
             .map(str::trim),
@@ -72,12 +72,12 @@ fn protected_priority_bonus_enabled() -> bool {
 mod causal_promotion;
 
 /// Vector dispatch v2 (resident in-process f32 index) is default-on. Set
-/// `CRYPT_VECTOR_DISPATCH_V2` to `0`/`false`/`off`/`legacy` for an immediate
+/// `CORTEX_VECTOR_DISPATCH_V2` to `0`/`false`/`off`/`legacy` for an immediate
 /// fallback to the legacy scalar-A `retrieve_hybrid` routing (restored on next
 /// store open). Any other value, or unset, keeps v2 active.
 fn vector_dispatch_v2_enabled() -> bool {
     !matches!(
-        std::env::var("CRYPT_VECTOR_DISPATCH_V2")
+        std::env::var("CORTEX_VECTOR_DISPATCH_V2")
             .ok()
             .as_deref()
             .map(str::trim),
@@ -585,7 +585,7 @@ pub enum RecallResult {
         score: f32,
     },
     Temporal {
-        fact: crypt_store::TemporalFact,
+        fact: cortex_store::TemporalFact,
         score: f32,
     },
 }
@@ -640,16 +640,16 @@ impl MemoryEventContext {
     }
 
     /// Resolve a content-free decision identity from the process environment. Codex exposes its
-    /// provider thread as `CODEX_THREAD_ID`; other clients can provide the portable CRYPT_*
+    /// provider thread as `CODEX_THREAD_ID`; other clients can provide the portable CORTEX_*
     /// variables. Missing values receive unique opaque fallbacks rather than collapsing unrelated
     /// invocations into one synthetic session.
     pub fn from_environment(fallback_surface: &str) -> Self {
-        let surface = std::env::var("CRYPT_CLIENT")
+        let surface = std::env::var("CORTEX_CLIENT")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| fallback_surface.to_string());
         let mut context = Self::new(&surface);
-        let session = std::env::var("CRYPT_SESSION_ID")
+        let session = std::env::var("CORTEX_SESSION_ID")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .or_else(|| {
@@ -661,7 +661,7 @@ impl MemoryEventContext {
         if let Some(session) = session.as_deref() {
             context = context.with_session(session);
         }
-        let trace = std::env::var("CRYPT_TRACE_ID")
+        let trace = std::env::var("CORTEX_TRACE_ID")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .or_else(|| new_uuid_v4().ok())
@@ -669,7 +669,7 @@ impl MemoryEventContext {
         if let Some(trace) = trace.as_deref() {
             context = context.with_trace(trace);
         }
-        let turn = std::env::var("CRYPT_TURN_ID")
+        let turn = std::env::var("CORTEX_TURN_ID")
             .ok()
             .filter(|value| !value.trim().is_empty())
             .or_else(|| trace.clone());
@@ -841,7 +841,7 @@ fn lifecycle_event(
         span_id: opaque_correlation_token(&event_id, "span"),
         parent_span_id: None,
         artifact_family: registry_token(&metadata.artifact_family, "memory"),
-        provider: "crypt".to_string(),
+        provider: "cortex".to_string(),
         provider_version: Some(env!("CARGO_PKG_VERSION").to_string()),
         release_generation: Some(crate::release_identity::release_generation()),
         phase: phase.to_string(),
@@ -1247,7 +1247,7 @@ fn log_memory_event(
 /// embeddings; otherwise the dependency-free hash embedder.
 ///
 /// FAIL-LOUD: when the binary was built WITH fastembed, a failed init ABORTS unless
-/// `CRYPT_ALLOW_HASH=1` explicitly opts into the degraded hash embedder. The old
+/// `CORTEX_ALLOW_HASH=1` explicitly opts into the degraded hash embedder. The old
 /// silent eprintln-and-continue fallback quietly filled the workspace DB with 256-dim
 /// hash vectors (467 of 512 rows by 2026-07-02) while recall looked healthy on the
 /// lexical channel — a corpus-corrupting failure mode, not a graceful degradation.
@@ -1281,16 +1281,16 @@ pub struct SkillsSnapshot {
 fn default_embedder() -> (Arc<dyn Embedder>, Option<String>, bool) {
     #[cfg(feature = "fastembed")]
     {
-        if std::env::var("CRYPT_ALLOW_HASH").as_deref() == Ok("1") {
-            let issue = "CRYPT_ALLOW_HASH=1 enabled hash embedder".to_string();
+        if std::env::var("CORTEX_ALLOW_HASH").as_deref() == Ok("1") {
+            let issue = "CORTEX_ALLOW_HASH=1 enabled hash embedder".to_string();
             eprintln!("[memory] {issue}");
             return (Arc::new(HashEmbedder::new()), Some(issue), true);
         }
-        match crypt_core::FastEmbedder::new() {
+        match cortex_core::FastEmbedder::new() {
             Ok(f) => (Arc::new(f), None, true),
             Err(e) => {
                 let issue = format!(
-                    "fastembed init failed ({e}); memory writes disabled to avoid hash-vector corruption. Fix ORT_DYLIB_PATH/model cache, or set CRYPT_ALLOW_HASH=1 to accept degraded embeddings."
+                    "fastembed init failed ({e}); memory writes disabled to avoid hash-vector corruption. Fix ORT_DYLIB_PATH/model cache, or set CORTEX_ALLOW_HASH=1 to accept degraded embeddings."
                 );
                 eprintln!("[memory] {issue}");
                 (Arc::new(HashEmbedder::new()), Some(issue), false)
@@ -1312,13 +1312,13 @@ fn blob_to_embedding(b: &[u8]) -> Vec<f32> {
 /// Encode an embedding as a quantized (i8 TurboQuant) blob — ~4× smaller than
 /// the f32 representation, near-lossless at 8-bit.
 fn embedding_to_quantized_blob(v: &[f32]) -> Vec<u8> {
-    crypt_core::QuantizedVector::quantize(v).to_bytes()
+    cortex_core::QuantizedVector::quantize(v).to_bytes()
 }
 
 /// Decode a quantized embedding blob back to f32, or `None` if it isn't a valid
 /// quantized blob (lets the caller fall back to the legacy f32 column).
 fn quantized_blob_to_embedding(b: &[u8]) -> Option<Vec<f32>> {
-    crypt_core::QuantizedVector::from_bytes(b).map(|q| q.dequantize())
+    cortex_core::QuantizedVector::from_bytes(b).map(|q| q.dequantize())
 }
 
 fn validate_embedding(vector: Vec<f32>, expected_dim: usize) -> Result<Vec<f32>, String> {
@@ -1339,8 +1339,8 @@ fn validate_embedding(vector: Vec<f32>, expected_dim: usize) -> Result<Vec<f32>,
 
 impl MemoryStore {
     /// Durable temporal-fact lane sharing this store's admission database.
-    pub fn temporal_facts(&self) -> crypt_store::TemporalFactStore {
-        crypt_store::TemporalFactStore::new(self.db.clone())
+    pub fn temporal_facts(&self) -> cortex_store::TemporalFactStore {
+        cortex_store::TemporalFactStore::new(self.db.clone())
     }
 
     /// Compose ordinary memory recall with an explicitly scoped temporal query.
@@ -1354,7 +1354,7 @@ impl MemoryStore {
         scopes: &[String],
         as_of_ms: i64,
         include_expired: bool,
-        temporal: Option<crypt_store::TemporalFactQuery>,
+        temporal: Option<cortex_store::TemporalFactQuery>,
     ) -> Vec<RecallResult> {
         let mut out = Vec::new();
         if let Some(mut request) = temporal {
@@ -1725,11 +1725,11 @@ pub fn operation_attribution_for_store(
     let paths = crate::installation_identity::InstallationPaths::for_workspace(&workspace_root);
     let identity = crate::installation_identity::load_or_create_installation(&paths.identity, &[])
         .map_err(|error| format!("load operation installation identity: {error}"))?;
-    let service_instance_id = std::env::var("CRYPT_SERVICE_INSTANCE_ID")
+    let service_instance_id = std::env::var("CORTEX_SERVICE_INSTANCE_ID")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .map_or_else(new_uuid_v4, Ok)?;
-    let workspace_seed = std::env::var("CRYPT_WORKSPACE_ID")
+    let workspace_seed = std::env::var("CORTEX_WORKSPACE_ID")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| {
@@ -1790,7 +1790,7 @@ pub struct MemoryStore {
     effectiveness_history: Arc<Mutex<Vec<MemoryUsageRecord>>>,
     pending_injections: Arc<Mutex<Vec<String>>>,
     last_recall_status: Arc<Mutex<Option<String>>>,
-    last_route: Arc<Mutex<Option<(crypt_core::QueryFeatures, RetrievalTier)>>>,
+    last_route: Arc<Mutex<Option<(cortex_core::QueryFeatures, RetrievalTier)>>>,
     dream_status: Arc<Mutex<DreamStatus>>,
     embedder_issue: Option<String>,
     writes_enabled: bool,
@@ -2141,7 +2141,7 @@ impl MemoryStore {
             rusqlite::params![entry.id],
         )
         .map_err(|e| self.persist_error(format!("link cleanup failed for {}: {e}", entry.id)))?;
-        for dst in crypt_core::wikilinks(&entry.content) {
+        for dst in cortex_core::wikilinks(&entry.content) {
             conn.execute(
                 "INSERT INTO links (src_id, dst_slug) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
                 rusqlite::params![entry.id, dst],
@@ -2169,7 +2169,7 @@ impl MemoryStore {
         };
         let mut edges = 0usize;
         for (id, content) in &rows {
-            for dst in crypt_core::wikilinks(content) {
+            for dst in cortex_core::wikilinks(content) {
                 if conn
                     .execute(
                         "INSERT INTO links (src_id, dst_slug) VALUES (?1, ?2) ON CONFLICT DO NOTHING",
@@ -2877,7 +2877,7 @@ impl MemoryStore {
             created_at: crate::time::now_iso(),
             access_count: 0,
             // P2 will thread the active project; default 'global' until then.
-            scope_id: crypt_core::default_scope(),
+            scope_id: cortex_core::default_scope(),
         };
         if self.persist_entry(&entry).is_ok() {
             self.registry
@@ -3058,7 +3058,7 @@ impl MemoryStore {
             span_id: opaque_correlation_token(&event_id, "span"),
             parent_span_id: None,
             artifact_family: registry_token(&metadata.artifact_family, "memory"),
-            provider: "crypt".to_string(),
+            provider: "cortex".to_string(),
             provider_version: Some(env!("CARGO_PKG_VERSION").to_string()),
             release_generation: Some(crate::release_identity::release_generation()),
             phase: "feedback.recorded".to_string(),
@@ -3127,7 +3127,7 @@ impl MemoryStore {
                 span_id: opaque_correlation_token(&value_event_id, "span"),
                 parent_span_id: Some(opaque_correlation_token(&event_id, "span")),
                 artifact_family: registry_token(&metadata.artifact_family, "memory"),
-                provider: "crypt".to_string(),
+                provider: "cortex".to_string(),
                 provider_version: Some(env!("CARGO_PKG_VERSION").to_string()),
                 release_generation: Some(crate::release_identity::release_generation()),
                 phase: phase.to_string(),
@@ -3522,7 +3522,7 @@ impl MemoryStore {
     /// Without this the row outlives its source forever and the skills provider keeps advertising
     /// a skill whose body, pipeline, and vocabulary are all gone (observed with `adapt`, which
     /// survived its own deletion and kept pointing at a removed pipeline and the retired name
-    /// "Crypt"). Pruning is skipped entirely when the workspace yielded no skills, so a machine
+    /// "Cortex"). Pruning is skipped entirely when the workspace yielded no skills, so a machine
     /// checked out without `tools/skills/` cannot wipe the portability store it was meant to carry.
     pub fn ingest_skills(&self, workspace: &Path) -> (usize, usize, usize) {
         let skills_dir = workspace.join("tools").join("skills");
@@ -3825,7 +3825,7 @@ impl MemoryStore {
             created_at: crate::time::now_iso(),
             access_count: 0,
             // P2 will thread the active project; default 'global' until then.
-            scope_id: crypt_core::default_scope(),
+            scope_id: cortex_core::default_scope(),
         };
         if self.persist_entry(&entry).is_ok() {
             self.registry
@@ -3837,12 +3837,12 @@ impl MemoryStore {
     }
 
     /// Ingest a markdown memory file under `scope` (the workspace's durable `.md` corpus → CR's
-    /// engine). Parses frontmatter + `[[wikilinks]]` with the shared `crypt_core` parser, embeds
+    /// engine). Parses frontmatter + `[[wikilinks]]` with the shared `cortex_core` parser, embeds
     /// `"{name} {description} {body}"`, and stores a scope-qualified Semantic entry. Returns its id.
     pub fn ingest_markdown(&self, path: &std::path::Path, scope: &str) -> Option<String> {
         let raw = std::fs::read_to_string(path).ok()?;
         let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("x");
-        let doc = crypt_core::parse_markdown(stem, &raw);
+        let doc = cortex_core::parse_markdown(stem, &raw);
         let embed_text = format!("{} {} {}", doc.name, doc.description, doc.body);
         let id = format!("{scope}/{}", doc.id);
         let mut keywords = vec![doc.type_.clone()];
@@ -3903,7 +3903,7 @@ impl MemoryStore {
             created_at: crate::time::now_iso(),
             access_count: 0,
             // P2 will thread the active project; default 'global' until then.
-            scope_id: crypt_core::default_scope(),
+            scope_id: cortex_core::default_scope(),
         };
         if self.persist_entry(&entry).is_err() {
             return None;
@@ -4277,7 +4277,7 @@ impl MemoryStore {
             return (Vec::new(), elapsed);
         }
         let link_enabled = !scopes.is_empty()
-            && std::env::var("RIGHTCONTEXT_LINK_RECALL")
+            && std::env::var("MEMBRANE_LINK_RECALL")
                 .map(|value| {
                     !matches!(
                         value.trim().to_ascii_lowercase().as_str(),
@@ -4520,7 +4520,7 @@ impl MemoryStore {
         s
     }
 
-    fn retrieval_tier_for(&self, goal: &str) -> (crypt_core::QueryFeatures, RetrievalTier) {
+    fn retrieval_tier_for(&self, goal: &str) -> (cortex_core::QueryFeatures, RetrievalTier) {
         let features = RoutingPolicy::features(goal);
         let tier = self.routing_policy.lock().unwrap().route(&features);
         (features, tier)
@@ -4649,7 +4649,7 @@ impl MemoryStore {
     }
 
     /// Record one recall's full-corpus-vs-injected-skeleton size for the savings report
-    /// (`crypt metrics`). Best-effort: never fails the recall it's measuring.
+    /// (`cortex metrics`). Best-effort: never fails the recall it's measuring.
     ///
     /// 2026-07-09 (add-now plan, Phase 1): `client`/`session_id`/`cwd_scope`/`hook_event`/
     /// `trace_id`/`client_visibility` are optional attribution fields — when None the DB
@@ -5196,7 +5196,7 @@ impl MemoryStore {
         Ok(receipt)
     }
 
-    /// Token-savings report for `crypt metrics`. `None` if nothing has been recalled yet.
+    /// Token-savings report for `cortex metrics`. `None` if nothing has been recalled yet.
     pub fn recall_metrics(&self) -> Option<crate::memdb::RecallMetrics> {
         self.db.recall_metrics()
     }
@@ -5766,7 +5766,7 @@ impl MemoryStore {
     }
 
     /// The metrics report (recall savings + per-verb transforms + curate counts) as JSON —
-    /// shared by `crypt metrics` and the serve `GET /metrics` route / dashboard.
+    /// shared by `cortex metrics` and the serve `GET /metrics` route / dashboard.
     pub fn metrics_json(&self) -> serde_json::Value {
         let mut out = match self.recall_metrics() {
             None => serde_json::json!({"recalls": 0, "note": "no recalls logged yet"}),
@@ -6735,7 +6735,7 @@ impl MemoryStore {
         }
         drop(conn);
         let report = serde_json::json!({
-            "schemaVersion":1, "kind":"crypt.vault-review", "contentIncluded":include_content,
+            "schemaVersion":1, "kind":"cortex.vault-review", "contentIncluded":include_content,
             "ordering":"reviewAfterMs asc nulls-last, protected first, id bytewise",
             "sections":{"memories":{"status":"available","source":"memories"},"events":{"status":"available","source":"memory_event_log"},"reviewEvidence":{"status":"available","source":"context_feedback"},"approvals":{"status":"unavailable","reason":"authoritative_table_absent"},"contextPackRefs":{"status":"unavailable","reason":"authoritative_table_absent"}},
             "memories":memories
@@ -6864,7 +6864,7 @@ impl MemoryStore {
             };
             let text = |value: Option<String>| value.unwrap_or_else(|| "null".to_string());
             let body = format!(
-                "---\nid: {id}\nscope: {scope}\nscore: {score}\ncreated_at: {created_at}\nlifecycle_state: {lifecycle_state}\neffective_from_ms: {}\neffective_until_ms: {}\nexpires_at_ms: {}\nreview_after_ms: {}\nsuperseded_by: {}\npriority_class: {priority_class}\nconfidence: {}\nconfidence_basis: {}\nexported_by: crypt export-md\n---\n\n{content}\n",
+                "---\nid: {id}\nscope: {scope}\nscore: {score}\ncreated_at: {created_at}\nlifecycle_state: {lifecycle_state}\neffective_from_ms: {}\neffective_until_ms: {}\nexpires_at_ms: {}\nreview_after_ms: {}\nsuperseded_by: {}\npriority_class: {priority_class}\nconfidence: {}\nconfidence_basis: {}\nexported_by: cortex export-md\n---\n\n{content}\n",
                 integer(effective_from_ms), integer(effective_until_ms), integer(expires_at_ms),
                 integer(review_after_ms), text(superseded_by), decimal(confidence), text(confidence_basis),
             );
@@ -6973,7 +6973,7 @@ impl MemoryStore {
         Ok((content, access_count))
     }
 
-    /// Record one transform's before/after size (per-layer savings, `crypt metrics`). Best-effort.
+    /// Record one transform's before/after size (per-layer savings, `cortex metrics`). Best-effort.
     pub fn log_transform(
         &self,
         ts: &str,
@@ -7003,7 +7003,7 @@ impl MemoryStore {
         );
     }
 
-    /// Per-verb transform savings for `crypt metrics`.
+    /// Per-verb transform savings for `cortex metrics`.
     pub fn transform_metrics(&self) -> Vec<crate::memdb::TransformVerbMetrics> {
         self.db.transform_metrics()
     }
@@ -7011,7 +7011,7 @@ impl MemoryStore {
 
 fn vault_review_markdown(report: &serde_json::Value) -> String {
     let mut out = format!(
-        "# Crypt vault review\n\nSchema: 1\n\nContent included: {}\n\n## Section availability\n\n",
+        "# Cortex vault review\n\nSchema: 1\n\nContent included: {}\n\n## Section availability\n\n",
         report["contentIncluded"]
     );
     for name in [
@@ -7770,8 +7770,8 @@ mod tests {
                 "counting-cache-test"
             }
 
-            fn pipeline_fingerprint(&self) -> crypt_core::PipelineFingerprint {
-                crypt_core::PipelineFingerprint::compute(
+            fn pipeline_fingerprint(&self) -> cortex_core::PipelineFingerprint {
+                cortex_core::PipelineFingerprint::compute(
                     2,
                     "document",
                     "query",
@@ -8080,7 +8080,7 @@ mod tests {
     #[test]
     fn recall_scored_filters_scope_before_candidate_generation() {
         let store = MemoryStore::new();
-        let query = "alpha zebra installed crypt exact marker";
+        let query = "alpha zebra installed cortex exact marker";
         for index in 0..32 {
             let content = format!("{query} global distractor {index}");
             store
@@ -8255,7 +8255,7 @@ mod tests {
     #[test]
     fn recall_scored_prioritizes_self_scope_over_global_chain() {
         let store = MemoryStore::new();
-        let query = "alpha zebra installed crypt exact marker";
+        let query = "alpha zebra installed cortex exact marker";
         for index in 0..32 {
             let content = format!("{query} global distractor {index}");
             store
@@ -8281,11 +8281,11 @@ mod tests {
     #[test]
     fn recall_scored_uses_scope_as_soft_bonus_not_hard_sort() {
         let store = MemoryStore::new();
-        let query = "crypt codex hook hybrid retrieval observability logs";
+        let query = "cortex codex hook hybrid retrieval observability logs";
         store
             .try_put(
                 "weak-local",
-                "crypt codex hook hybrid retrieval logs local note about old status naming",
+                "cortex codex hook hybrid retrieval logs local note about old status naming",
                 "qa-scope",
                 MemoryTier::Semantic,
             )
@@ -9189,10 +9189,10 @@ mod tests {
     fn context_policy_assignment_is_deterministic_and_persisted() {
         let m = MemoryStore::new();
         let first = m
-            .assign_context_policy("session-42", "codex", "crypt-v1", 10, "code")
+            .assign_context_policy("session-42", "codex", "cortex-v1", 10, "code")
             .unwrap();
         let second = m
-            .assign_context_policy("session-42", "codex", "crypt-v1", 10, "code")
+            .assign_context_policy("session-42", "codex", "cortex-v1", 10, "code")
             .unwrap();
         assert_eq!(first, second);
         assert!(matches!(first.as_str(), "control" | "candidate"));
@@ -9201,7 +9201,7 @@ mod tests {
                 .query_row(
                     "SELECT COUNT(*) FROM context_policy_assignment
                  WHERE session_id='session-42' AND surface='codex'
-                   AND policy_version='crypt-v1'",
+                   AND policy_version='cortex-v1'",
                     [],
                     |row| row.get(0),
                 )
@@ -9212,17 +9212,17 @@ mod tests {
                 .query_row(
                     "SELECT task_class FROM context_policy_assignment
                  WHERE session_id='session-42' AND surface='codex'
-                   AND policy_version='crypt-v1'",
+                   AND policy_version='cortex-v1'",
                     [],
                     |row| row.get(0),
                 )
                 .unwrap();
         assert_eq!(task_class, "code");
         assert!(m
-            .assign_context_policy("", "codex", "crypt-v1", 10, "code")
+            .assign_context_policy("", "codex", "cortex-v1", 10, "code")
             .is_err());
         assert!(m
-            .assign_context_policy("s", "codex", "crypt-v1", 101, "code")
+            .assign_context_policy("s", "codex", "cortex-v1", 101, "code")
             .is_err());
     }
 
@@ -9770,7 +9770,7 @@ mod tests {
 
     /// L8 dream_now on an empty store should still return a well-formed
     /// status — no panic, no missing fields, zero counts. This is the entry
-    /// point for the `crypt curate` CLI verb (L8 in the plan); without
+    /// point for the `cortex curate` CLI verb (L8 in the plan); without
     /// this test, regressions in the no-op path would only surface when a
     /// user actually runs the CLI on a fresh DB.
     #[test]

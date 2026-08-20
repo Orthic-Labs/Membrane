@@ -1,7 +1,7 @@
 # Rust vector optimization bakeoff 2 — final cross-host report
 
 **Date:** 2026-08-02
-**Decision:** keep vectors inside Crypt/Membrane; implement resident in-process f32 dispatch.
+**Decision:** keep vectors inside Cortex/Membrane; implement resident in-process f32 dispatch.
 **Evidence:** Windows `f20f5ab`; Mac unified rerun from same source; 38 bundles,
 25,410 measurements across both hosts.
 
@@ -113,13 +113,13 @@ measured upgrade rather than v1 requirement.
 
 ### Build status
 
-Core dispatcher & live recall wiring are default-on. `CRYPT_VECTOR_DISPATCH_V2`
+Core dispatcher & live recall wiring are default-on. `CORTEX_VECTOR_DISPATCH_V2`
 set to `0`/`false`/`off`/`legacy` is an immediate fallback that restores scalar-A
 `retrieve_hybrid` routing on next store open; unset or any other value keeps v2
 active and builds the resident projection at store startup. Mixed dimensions,
 absent projection or query mismatch fail closed to scalar A.
 
-Mac validation: 175 `crypt-core` tests, 269 `membrane-runtime` tests, core
+Mac validation: 175 `cortex-core` tests, 269 `membrane-runtime` tests, core
 Clippy `-D warnings`, plus flag-on scoped & unscoped acceptance passed. Production
 source commit is `4bd2f9d9af5817d496925b8b36b6488e417d8d4a`; default-on integration
 is `4089a8f29ce098f162ede83c96c12ec5305e0c93`; both are ancestors of the

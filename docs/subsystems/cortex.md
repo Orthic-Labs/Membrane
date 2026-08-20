@@ -2,9 +2,9 @@
 
 **Status:** derived subsystem reference · non-normative  
 **Canonical name:** Cortex  
-**Historical implementation name:** MemRight → Crypt  
 **Parent system:** Membrane  
-**Authority:** `../MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`; naming/store migration is governed by `../plans/2026-08-19-monorepo-merge-and-subsystem-rename.md`.
+**Implementation path:** `engine/crates/cortex*`
+**Authority:** `MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`.
 
 ## Purpose
 
@@ -47,7 +47,7 @@ Knowledge writes are governed operations such as proposal/temporal-fact/feedback
 
 Adapt may submit proposals. It cannot write Cortex truth directly.
 
-## Canonical runtime namespace after the rename
+## Canonical runtime namespace
 
 ```text
 Rust crates:
@@ -57,37 +57,14 @@ Rust crates:
   cortex-format
 
 binaries:
-  membrane-cortex
-  membrane-cortex-service
+  cortex
+  cortex-service
 
 environment:
-  MEMBRANE_CORTEX_*
+  CORTEX_*
 
 store:
   cortex-engine.db
-```
-
-The durable Cortex subsystem does not claim the bare global `cortex` executable and never uses old repository-truth `CORTEX_*` variables as fallback.
-
-A bounded migration window may read legacy `CRYPT_*` variables because those cannot be confused with old Blueprint/Cortex repository-truth configuration.
-
-## Store migration
-
-Do not rename an open SQLite file in place.
-
-Canonical migration:
-
-```text
-drain writer/service
-→ resolve authoritative legacy store path/identity
-→ verified backup/copy to temp
-→ integrity + schema + identity verification
-→ fsync
-→ atomic adopt as cortex-engine.db
-→ update store identity
-→ restart/readback
-→ recall-equivalence check
-→ retain rollback copy until qualification
 ```
 
 ## Invariants
@@ -101,7 +78,7 @@ drain writer/service
 7. Repeated selection never makes a memory immortal.
 8. Erasure must remove payload from every Cortex-owned projection/cache/artifact path.
 9. Guide index tables and Push artifact state do not live in the Cortex durable store.
-10. Repository truth never migrates into Cortex merely because the old repository product once used the name Cortex.
+10. Repository truth never enters Cortex; Blueprint owns it.
 
 ## Definition of Done
 
@@ -111,5 +88,4 @@ drain writer/service
 - [ ] Lifecycle is deterministic/versioned/reversible where possible.
 - [ ] Dream is undoable and never creates authority.
 - [ ] Backup/restore preserves logical identities, lineage, and recall equivalence.
-- [ ] Canonical runtime uses `membrane-cortex*`, `MEMBRANE_CORTEX_*`, and `cortex-engine.db`.
-- [ ] Legacy `CRYPT_*` compatibility is bounded and old repository-truth `CORTEX_*` is never consumed by durable Cortex.
+- [ ] Canonical runtime uses `cortex*`, `CORTEX_*`, and `cortex-engine.db` exclusively.

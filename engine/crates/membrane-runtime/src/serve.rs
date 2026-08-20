@@ -26,7 +26,7 @@ use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{any, get};
 use axum::Router;
-use crypt_core::planner::{
+use cortex_core::planner::{
     plan as plan_context, ContextCandidateSetV1, PlannerError, PlannerInput,
 };
 use serde_json::{json, Value};
@@ -199,7 +199,7 @@ fn analysis_response(directory: &std::path::Path) -> (u16, String) {
 }
 
 fn configured_analysis_directory() -> std::path::PathBuf {
-    std::env::var_os("CRYPT_DAILY_ANALYSIS_DIR")
+    std::env::var_os("CORTEX_DAILY_ANALYSIS_DIR")
         .map(std::path::PathBuf::from)
         .or_else(|| {
             std::env::var_os("WORKSPACE_ROOT")
@@ -210,7 +210,7 @@ fn configured_analysis_directory() -> std::path::PathBuf {
 }
 
 fn configured_workspace_root() -> std::path::PathBuf {
-    std::env::var_os("RIGHTCONTEXT_REPO_ROOT")
+    std::env::var_os("MEMBRANE_REPO_ROOT")
         .or_else(|| std::env::var_os("WORKSPACE_ROOT"))
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
@@ -219,7 +219,7 @@ fn configured_workspace_root() -> std::path::PathBuf {
 }
 
 fn configured_anchor_directory() -> std::path::PathBuf {
-    std::env::var_os("CRYPT_ANCHOR_DIR")
+    std::env::var_os("CORTEX_ANCHOR_DIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| configured_workspace_root().join("tools/.cache/runc"))
 }
@@ -554,7 +554,7 @@ impl DiagnosticsExecutor {
         let (sender, receiver) = std::sync::mpsc::sync_channel::<DiagnosticsJob>(1);
         let (worker_exit_sender, worker_exit) = std::sync::mpsc::sync_channel(1);
         match std::thread::Builder::new()
-            .name("crypt-diagnostics".to_string())
+            .name("cortex-diagnostics".to_string())
             .spawn(move || {
                 while let Ok(job) = receiver.recv() {
                     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
@@ -924,8 +924,8 @@ pub(crate) fn configured_api_token(db_path: &std::path::Path) -> Result<String, 
         .unwrap_or_else(|| std::path::Path::new("."))
         .join("api-token");
     configured_api_token_from_sources(
-        std::env::var_os("CRYPT_API_TOKEN"),
-        std::env::var_os("CRYPT_API_TOKEN_FILE").map(std::path::PathBuf::from),
+        std::env::var_os("CORTEX_API_TOKEN"),
+        std::env::var_os("CORTEX_API_TOKEN_FILE").map(std::path::PathBuf::from),
         &fallback,
     )
 }
@@ -938,7 +938,7 @@ fn configured_api_token_from_sources(
     if let Some(raw) = raw {
         let token = raw.to_string_lossy().trim().to_string();
         if token.is_empty() {
-            return Err("CRYPT_API_TOKEN is set but empty".to_string());
+            return Err("CORTEX_API_TOKEN is set but empty".to_string());
         }
         validate_api_token(&token)?;
         return Ok(token);
@@ -952,7 +952,7 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
         Ok(token) => return Ok(token),
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
             return Err(format!(
-                "read CRYPT_API_TOKEN_FILE {}: {error}",
+                "read CORTEX_API_TOKEN_FILE {}: {error}",
                 path.display()
             ));
         }
@@ -965,7 +965,7 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
     if let Some(parent) = parent {
         std::fs::create_dir_all(parent).map_err(|error| {
             format!(
-                "create CRYPT_API_TOKEN_FILE directory {}: {error}",
+                "create CORTEX_API_TOKEN_FILE directory {}: {error}",
                 parent.display()
             )
         })?;
@@ -973,12 +973,12 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
 
     let mut random = [0u8; 32];
     getrandom::getrandom(&mut random)
-        .map_err(|error| format!("generate Crypt API token: {error}"))?;
+        .map_err(|error| format!("generate Cortex API token: {error}"))?;
     let token = hex(&random);
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or("crypt-token");
+        .unwrap_or("cortex-token");
     let temp_path = path.with_file_name(format!(
         ".{file_name}.{}.{}.tmp",
         std::process::id(),
@@ -994,7 +994,7 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
     }
     let mut file = options.open(&temp_path).map_err(|error| {
         format!(
-            "create temporary Crypt API token {}: {error}",
+            "create temporary Cortex API token {}: {error}",
             temp_path.display()
         )
     })?;
@@ -1003,7 +1003,7 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
         file.write_all(token.as_bytes())
             .and_then(|_| file.write_all(b"\n"))
             .and_then(|_| file.sync_all())
-            .map_err(|error| format!("write Crypt API token: {error}"))?;
+            .map_err(|error| format!("write Cortex API token: {error}"))?;
         std::fs::hard_link(&temp_path, path).map_err(|error| error.to_string())?;
         Ok(())
     })();
@@ -1014,12 +1014,12 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
         Ok(()) => Ok(token),
         Err(_) if path.exists() => read_token_file(path).map_err(|error| {
             format!(
-                "read concurrently-created CRYPT_API_TOKEN_FILE {}: {error}",
+                "read concurrently-created CORTEX_API_TOKEN_FILE {}: {error}",
                 path.display()
             )
         }),
         Err(error) => Err(format!(
-            "atomically publish CRYPT_API_TOKEN_FILE {}: {error}",
+            "atomically publish CORTEX_API_TOKEN_FILE {}: {error}",
             path.display()
         )),
     }
@@ -1079,7 +1079,7 @@ fn hex(bytes: &[u8]) -> String {
 
 fn validate_api_token(token: &str) -> Result<(), String> {
     if token.contains(['\r', '\n']) {
-        return Err("Crypt API token contains a newline".to_string());
+        return Err("Cortex API token contains a newline".to_string());
     }
     Ok(())
 }
@@ -1401,7 +1401,7 @@ fn digest_framed(hasher: &mut Sha256, value: &[u8]) {
 
 fn idempotency_key_digest(key: &str, api_token: Option<&str>) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hasher.update(b"crypt-idempotency-key-v1");
+    hasher.update(b"cortex-idempotency-key-v1");
     digest_framed(
         &mut hasher,
         api_token.unwrap_or("loopback-without-api-token").as_bytes(),
@@ -1412,7 +1412,7 @@ fn idempotency_key_digest(key: &str, api_token: Option<&str>) -> [u8; 32] {
 
 fn idempotency_request_digest(method: &Method, path_and_query: &str, body: &str) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hasher.update(b"crypt-idempotency-request-v1");
+    hasher.update(b"cortex-idempotency-request-v1");
     digest_framed(&mut hasher, method.as_str().as_bytes());
     digest_framed(&mut hasher, path_and_query.as_bytes());
     digest_framed(&mut hasher, body.as_bytes());
@@ -1483,7 +1483,9 @@ async fn dispatch(
     }
     let path = uri.path();
     if method == Method::GET && path == "/snapshot" {
-        if !orthic_capability_authorized(&headers) { return reject(StatusCode::UNAUTHORIZED, "valid Orthic capability required"); }
+        if !orthic_capability_authorized(&headers) {
+            return reject(StatusCode::UNAUTHORIZED, "valid Orthic capability required");
+        }
         return match orthic_snapshot_v2() {
             Ok(value) => json_response(StatusCode::OK, value.to_string()),
             Err(reason) => reject(StatusCode::SERVICE_UNAVAILABLE, &reason),
@@ -1512,7 +1514,7 @@ async fn dispatch(
         );
     }
     if method == Method::GET && matches!(path, "/" | "/index.html") {
-        let html = DASHBOARD_HTML.replace("__CRYPT_API_TOKEN_JSON__", "null");
+        let html = DASHBOARD_HTML.replace("__CORTEX_API_TOKEN_JSON__", "null");
         return (
             [
                 (header::CONTENT_TYPE, "text/html; charset=utf-8"),
@@ -2404,7 +2406,7 @@ const FEDERATE_MAX_WAIT_MS: u64 = 2_000;
 const FEDERATE_MIN_WAIT_MS: u64 = 100;
 
 fn resolve_federation_script() -> Option<std::path::PathBuf> {
-    let configured = std::env::var("CRYPT_FEDERATION_SCRIPT").unwrap_or_default();
+    let configured = std::env::var("CORTEX_FEDERATION_SCRIPT").unwrap_or_default();
     if !configured.trim().is_empty() {
         let path = std::path::PathBuf::from(configured.trim());
         return path.is_file().then_some(path);
@@ -2570,7 +2572,8 @@ fn orthic_snapshot_v2() -> Result<Value, String> {
     let live = crate::hub_inputs::live_inputs_from_local_service();
     let facade = crate::hub::HubFacadeV1::new(hub_stream_from_live_probe(live.is_some()));
     let observed_at_unix_ms = now_unix_ms();
-    let inputs = live.unwrap_or_else(|| crate::hub::HubInputsV1::unavailable("source_not_connected"));
+    let inputs =
+        live.unwrap_or_else(|| crate::hub::HubInputsV1::unavailable("source_not_connected"));
     let legacy = facade.dispatch_json("hub.snapshot", observed_at_unix_ms, inputs)?;
     let sections = legacy
         .get("sections")
@@ -2738,7 +2741,11 @@ fn route_with_context_ingest_lease(
     if method == "GET" && path == "/hub/capabilities" {
         let live = crate::hub_inputs::live_inputs_from_local_service();
         let facade = crate::hub::HubFacadeV1::new(hub_stream_from_live_probe(live.is_some()));
-        return match facade.dispatch_json("hub.capabilities", now_unix_ms(), crate::hub::HubInputsV1::unavailable("source_not_connected")) {
+        return match facade.dispatch_json(
+            "hub.capabilities",
+            now_unix_ms(),
+            crate::hub::HubInputsV1::unavailable("source_not_connected"),
+        ) {
             Ok(value) => (200, value.to_string()),
             Err(error) => (500, serde_json::json!({"error": error}).to_string()),
         };
@@ -2746,7 +2753,8 @@ fn route_with_context_ingest_lease(
     if method == "GET" && path == "/hub/snapshot" {
         let live = crate::hub_inputs::live_inputs_from_local_service();
         let facade = crate::hub::HubFacadeV1::new(hub_stream_from_live_probe(live.is_some()));
-        let inputs = live.unwrap_or_else(|| crate::hub::HubInputsV1::unavailable("source_not_connected"));
+        let inputs =
+            live.unwrap_or_else(|| crate::hub::HubInputsV1::unavailable("source_not_connected"));
         return match facade.dispatch_json("hub.snapshot", now_unix_ms(), inputs) {
             Ok(value) => (200, value.to_string()),
             Err(error) => (500, serde_json::json!({"error": error}).to_string()),
@@ -3156,9 +3164,9 @@ fn route_with_context_ingest_lease(
             return (400, serde_json::json!({ "error": message }).to_string());
         }
         let tier = match v.get("tier").and_then(|x| x.as_str()).unwrap_or("Working") {
-            t if t.eq_ignore_ascii_case("working") => crypt_core::MemoryTier::Working,
-            t if t.eq_ignore_ascii_case("episodic") => crypt_core::MemoryTier::Episodic,
-            _ => crypt_core::MemoryTier::Semantic,
+            t if t.eq_ignore_ascii_case("working") => cortex_core::MemoryTier::Working,
+            t if t.eq_ignore_ascii_case("episodic") => cortex_core::MemoryTier::Episodic,
+            _ => cortex_core::MemoryTier::Semantic,
         };
         let artifact_family = v
             .get("artifactFamily")
@@ -3847,7 +3855,7 @@ fn route_with_context_ingest_lease(
     } else if method == "POST" && path == "/add" {
         (
             410,
-            "{\"error\":\"/add disabled; use the crypt CLI for file ingestion\"}".to_string(),
+            "{\"error\":\"/add disabled; use the cortex CLI for file ingestion\"}".to_string(),
         )
     } else if method == "POST" && path == "/use" {
         let id = match v.get("id").and_then(|x| x.as_str()) {
@@ -3964,7 +3972,7 @@ fn route_with_context_ingest_lease(
     } else if method == "POST" && path == "/memory-candidates" {
         // Warm federation memory-candidate generation IN-PROCESS (the resident serve's embedder is
         // already loaded). The federation gateway's memory provider POSTs here instead of spawning
-        // a cold `crypt memory-candidates` CLI, which reloads ONNX/fastembed (~3.6s) on every
+        // a cold `cortex memory-candidates` CLI, which reloads ONNX/fastembed (~3.6s) on every
         // prompt and blew the on-mode hook timeout. Same payload as the CLI verb.
         let task = v.get("task").and_then(|x| x.as_str()).unwrap_or("").trim();
         if task.is_empty() {
@@ -3992,8 +4000,8 @@ fn route_with_context_ingest_lease(
             .get("max_candidates")
             .and_then(|x| x.as_u64())
             .unwrap_or(64) as usize;
-        // F11: no `repoRoot` travels on this hot path (the federation gateway's `crypt.py`
-        // provider never sends one — verified against `providers/crypt.py`), and this route's
+        // F11: no `repoRoot` travels on this hot path (the federation gateway's `cortex.py`
+        // provider never sends one — verified against `providers/cortex.py`), and this route's
         // whole reason to exist is the sub-350ms warm-serve budget the cold CLI blew (see the
         // comment above) — spending a real `git status` + graph-db read on every call to compute
         // a genuine freshness verdict would reintroduce that latency. Passing `None` here is the
@@ -4010,7 +4018,7 @@ fn route_with_context_ingest_lease(
             Err(error) => return (400, serde_json::json!({"error": error}).to_string()),
         };
         if let Some(stages) = payload
-            .get_mut("_rightcontext")
+            .get_mut("_membrane")
             .and_then(|value| value.get_mut("stageElapsedMs"))
             .and_then(serde_json::Value::as_object_mut)
         {
@@ -4610,7 +4618,7 @@ fn sha256_hex(s: &str) -> String {
 /// Open the DB and serve the contract forever on IPv4 loopback only.
 ///
 /// Opens a separate catalog SQLite at `<context-home>/catalog.db` for G3B
-/// planner routes. The catalog lives on its own connection — the Crypt DB
+/// planner routes. The catalog lives on its own connection — the Cortex DB
 /// is untouched. `CONTEXT_HOME` overrides the catalog parent directory.
 pub fn run(
     db_path: &str,
@@ -4620,10 +4628,10 @@ pub fn run(
 ) -> Result<(), String> {
     let db_path = std::path::Path::new(db_path);
     if !db_path.is_absolute() {
-        return Err(format!("CRYPT_DB must be absolute: {}", db_path.display()));
+        return Err(format!("CORTEX_DB must be absolute: {}", db_path.display()));
     }
     let catalog_path = crate::catalog::resolve_catalog_path_from(
-        std::env::var_os("RIGHTCONTEXT_CATALOG"),
+        std::env::var_os("MEMBRANE_CATALOG"),
         std::env::var_os("CONTEXT_HOME"),
         Some(db_path.as_os_str().to_os_string()),
         std::env::var_os("WORKSPACE_ROOT"),
@@ -4646,13 +4654,13 @@ pub fn run(
     }
     let store = MemoryStore::try_open(MemDb::open(db_path).map_err(|e| e.to_string())?)?;
     let telemetry_event_db = store.db().event_db_path().ok_or_else(|| {
-        "resident Crypt store has no physical telemetry event database".to_string()
+        "resident Cortex store has no physical telemetry event database".to_string()
     })?;
     if configured_event_db
         .as_deref()
         .is_some_and(|configured| configured != telemetry_event_db)
     {
-        return Err("resident Crypt telemetry event binding changed during startup".to_string());
+        return Err("resident Cortex telemetry event binding changed during startup".to_string());
     }
     let runtime_receipt = crate::runtime_receipt::RuntimeReceiptV2::new(
         &workspace_root,
@@ -4671,7 +4679,7 @@ pub fn run(
     let prompt_telemetry_ingress =
         crate::context_telemetry::default_prompt_telemetry_ingress(db_path);
     std::thread::Builder::new()
-        .name("crypt-prompt-telemetry".to_string())
+        .name("cortex-prompt-telemetry".to_string())
         .spawn(move || {
             let mut failed = false;
             loop {
@@ -4682,13 +4690,13 @@ pub fn run(
                 ) {
                     Ok(_) => {
                         if failed {
-                            eprintln!("crypt prompt telemetry drain recovered");
+                            eprintln!("cortex prompt telemetry drain recovered");
                         }
                         failed = false;
                     }
                     Err(_) => {
                         if !failed {
-                            eprintln!("crypt prompt telemetry drain unavailable");
+                            eprintln!("cortex prompt telemetry drain unavailable");
                         }
                         failed = true;
                     }
@@ -4702,10 +4710,10 @@ pub fn run(
     let runtime_receipt_path = runtime_receipt
         .persist()
         .map_err(|error| error.to_string())?;
-    std::env::set_var("CRYPT_RUNTIME_RECEIPT", &runtime_receipt_path);
+    std::env::set_var("CORTEX_RUNTIME_RECEIPT", &runtime_receipt_path);
     crate::runtime_receipt::publish_current(runtime_receipt);
     eprintln!(
-        "crypt serve on 127.0.0.1:{port} db={} catalog={}",
+        "cortex serve on 127.0.0.1:{port} db={} catalog={}",
         db_path.display(),
         catalog_path.display()
     );
@@ -5165,7 +5173,7 @@ mod tests {
             payload["releaseGeneration"],
             format!(
                 "sha256:{}",
-                option_env!("CRYPT_SOURCE_TREE_SHA256").unwrap_or("unknown")
+                option_env!("CORTEX_SOURCE_TREE_SHA256").unwrap_or("unknown")
             )
         );
         assert_ne!(payload["serviceGeneration"], payload["releaseGeneration"]);
@@ -5216,7 +5224,7 @@ mod tests {
             2,
             "verified + advisory rows persisted; malformed dropped"
         );
-        let gate = crypt_core::EffectivenessGate::default();
+        let gate = cortex_core::EffectivenessGate::default();
         assert!(
             !gate.should_inject(&rows, "mem-1"),
             "verified contradicted vetoes"
@@ -5325,13 +5333,13 @@ mod tests {
         assert!(payload.get("body").is_none());
     }
 
-    /// Serializes access to the process-global `CRYPT_PORT`/`WORKSPACE_MEMORY_PORT`
+    /// Serializes access to process-global `CORTEX_PORT`
     /// env vars that `hub_inputs::live_inputs_from_local_service` reads, the same
     /// pattern `hub_inputs.rs`'s own test module uses for its env-touching tests.
     static HUB_ROUTE_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     /// Binds a background TCP listener that answers exactly one `GET /health`
-    /// with the given JSON body, mimicking the local crypt-service well enough
+    /// with the given JSON body, mimicking the local cortex-service well enough
     /// for `hub_inputs::live_inputs_from_local_service` to parse it as healthy.
     /// Returns the bound port; the listener thread exits after serving one request.
     fn spawn_mock_health_server(health_json: &'static str) -> u16 {
@@ -5362,7 +5370,9 @@ mod tests {
         let store = MemoryStore::new();
 
         // Unreachable: pick a port nothing is listening on.
-        unsafe { std::env::set_var("CRYPT_PORT", "1"); }
+        unsafe {
+            std::env::set_var("CORTEX_PORT", "1");
+        }
         let (code_down, body_down) = route_for_tests(&store, "GET", "/hub/capabilities", "");
         assert_eq!(code_down, 200, "body: {body_down}");
         let payload_down: serde_json::Value = serde_json::from_str(&body_down).unwrap();
@@ -5372,14 +5382,24 @@ mod tests {
         let port = spawn_mock_health_server(
             r#"{"ok":true,"catalog":{"status":"ok"},"database":{"status":"ok"},"dailyAnalysis":{"status":"fresh","alert":false}}"#,
         );
-        unsafe { std::env::set_var("CRYPT_PORT", port.to_string()); }
+        unsafe {
+            std::env::set_var("CORTEX_PORT", port.to_string());
+        }
         let (code_up, body_up) = route_for_tests(&store, "GET", "/hub/capabilities", "");
-        unsafe { std::env::remove_var("CRYPT_PORT"); }
+        unsafe {
+            std::env::remove_var("CORTEX_PORT");
+        }
         assert_eq!(code_up, 200, "body: {body_up}");
         let payload_up: serde_json::Value = serde_json::from_str(&body_up).unwrap();
-        assert_eq!(payload_up["stream"]["state"], "available", "body: {body_up}");
+        assert_eq!(
+            payload_up["stream"]["state"], "available",
+            "body: {body_up}"
+        );
 
-        assert_ne!(payload_down, payload_up, "capabilities response must differ by backend health");
+        assert_ne!(
+            payload_down, payload_up,
+            "capabilities response must differ by backend health"
+        );
     }
 
     #[test]
@@ -5387,7 +5407,9 @@ mod tests {
         let _guard = HUB_ROUTE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let store = MemoryStore::new();
 
-        unsafe { std::env::set_var("CRYPT_PORT", "1"); }
+        unsafe {
+            std::env::set_var("CORTEX_PORT", "1");
+        }
         let (code_down, body_down) = route_for_tests(&store, "GET", "/hub/snapshot", "");
         assert_eq!(code_down, 200, "body: {body_down}");
         let payload_down: serde_json::Value = serde_json::from_str(&body_down).unwrap();
@@ -5405,9 +5427,13 @@ mod tests {
         let port = spawn_mock_health_server(
             r#"{"ok":true,"catalog":{"status":"ok"},"database":{"status":"ok"},"dailyAnalysis":{"status":"fresh","alert":false}}"#,
         );
-        unsafe { std::env::set_var("CRYPT_PORT", port.to_string()); }
+        unsafe {
+            std::env::set_var("CORTEX_PORT", port.to_string());
+        }
         let (code_up, body_up) = route_for_tests(&store, "GET", "/hub/snapshot", "");
-        unsafe { std::env::remove_var("CRYPT_PORT"); }
+        unsafe {
+            std::env::remove_var("CORTEX_PORT");
+        }
         assert_eq!(code_up, 200, "body: {body_up}");
         let payload_up: serde_json::Value = serde_json::from_str(&body_up).unwrap();
 
@@ -5420,17 +5446,24 @@ mod tests {
     #[test]
     fn orthic_snapshot_is_closed_v2_while_hub_snapshot_stays_v1() {
         let _guard = HUB_ROUTE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        unsafe { std::env::set_var("CRYPT_PORT", "1"); }
+        unsafe {
+            std::env::set_var("CORTEX_PORT", "1");
+        }
 
         let snapshot = orthic_snapshot_v2().unwrap();
-        unsafe { std::env::remove_var("CRYPT_PORT"); }
+        unsafe {
+            std::env::remove_var("CORTEX_PORT");
+        }
 
         assert_eq!(snapshot["schemaVersion"], 2);
         assert_eq!(snapshot["productId"], "membrane");
         let sections = snapshot["sections"].as_object().unwrap();
         assert!(!sections.is_empty() && sections.len() <= SNAPSHOT_MAX_SECTIONS);
         for section in sections.values() {
-            assert!(matches!(section["state"].as_str(), Some("available" | "degraded" | "unavailable")));
+            assert!(matches!(
+                section["state"].as_str(),
+                Some("available" | "degraded" | "unavailable")
+            ));
             assert!(!section["reason"].as_str().unwrap().is_empty());
             assert!(section["reason"].as_str().unwrap().len() <= SNAPSHOT_MAX_REASON_BYTES);
             let items = section["items"].as_array().unwrap();
@@ -5438,7 +5471,16 @@ mod tests {
             for item in items {
                 let fields = item.as_object().unwrap();
                 assert_eq!(fields.len(), 8);
-                for field in ["label", "kind", "count", "severity", "evidence", "resolver", "observedAtUnixMs", "stale"] {
+                for field in [
+                    "label",
+                    "kind",
+                    "count",
+                    "severity",
+                    "evidence",
+                    "resolver",
+                    "observedAtUnixMs",
+                    "stale",
+                ] {
                     assert!(fields.contains_key(field));
                 }
             }
@@ -5446,7 +5488,10 @@ mod tests {
 
         let store = MemoryStore::new();
         let (_, hub) = route_for_tests(&store, "GET", "/hub/snapshot", "");
-        assert_eq!(serde_json::from_str::<Value>(&hub).unwrap()["schemaVersion"], 1);
+        assert_eq!(
+            serde_json::from_str::<Value>(&hub).unwrap()["schemaVersion"],
+            1
+        );
     }
 
     #[tokio::test]
@@ -5584,8 +5629,8 @@ mod tests {
             .unwrap();
         let html = String::from_utf8(html.to_vec()).unwrap();
         assert!(!html.contains("top-secret"));
-        assert!(html.contains("let CRYPT_API_TOKEN = dashboardToken();"));
-        assert!(!html.contains("__CRYPT_API_TOKEN_JSON__"));
+        assert!(html.contains("let CORTEX_API_TOKEN = dashboardToken();"));
+        assert!(!html.contains("__CORTEX_API_TOKEN_JSON__"));
         assert!(html.contains("new URLSearchParams(location.hash.slice(1))"));
         assert!(html
             .contains("history.replaceState(null, '', `${location.pathname}${location.search}`)"));
@@ -5704,7 +5749,7 @@ mod tests {
     #[test]
     fn missing_token_file_is_generated_once_without_exposing_weak_material() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("auth").join("crypt.token");
+        let path = dir.path().join("auth").join("cortex.token");
         let first = token_from_file_or_create(&path).unwrap();
         let second = token_from_file_or_create(&path).unwrap();
         assert_eq!(first, second);
@@ -5888,7 +5933,7 @@ mod tests {
         use tower::ServiceExt;
 
         let dir = tempfile::tempdir().unwrap();
-        let database = dir.path().join("crypt.db");
+        let database = dir.path().join("cortex.db");
         let fallback = database.parent().unwrap().join("api-token");
 
         let token = configured_api_token_from_sources(None, None, &fallback).unwrap();
@@ -6112,7 +6157,7 @@ mod tests {
                 "health-test",
                 "force a persistence failure",
                 "global",
-                crypt_core::MemoryTier::Semantic,
+                cortex_core::MemoryTier::Semantic,
             )
             .is_err());
 
@@ -6215,7 +6260,7 @@ mod tests {
                 "health-corpus-test",
                 "a memory that proves the corpus is non-empty",
                 "global",
-                crypt_core::MemoryTier::Semantic,
+                cortex_core::MemoryTier::Semantic,
             )
             .unwrap();
         let app = build_router(store, None, None, 8765, None, Duration::from_secs(1), 1);
@@ -6726,7 +6771,7 @@ mod tests {
             "untrusted",
             "unique route authority marker",
             "global",
-            crypt_core::MemoryTier::Semantic,
+            cortex_core::MemoryTier::Semantic,
         );
         db.lock()
             .execute(
@@ -6778,13 +6823,13 @@ mod tests {
             "first",
             "deploy cloudflare worker",
             "global",
-            crypt_core::MemoryTier::Semantic,
+            cortex_core::MemoryTier::Semantic,
         );
         store.put(
             "second",
             "deploy cloudflare worker",
             "global",
-            crypt_core::MemoryTier::Semantic,
+            cortex_core::MemoryTier::Semantic,
         );
         let response = route(&store, "GET", "/graph", "");
         assert_eq!(response.0, 200);
@@ -6911,7 +6956,7 @@ mod tests {
     #[test]
     fn policy_assignment_route_is_stable_and_requires_attribution() {
         let store = MemoryStore::new();
-        let body = r#"{"session":"s-42","client":"codex","policy_version":"crypt-v1","control_pct":10,"task_class":"code"}"#;
+        let body = r#"{"session":"s-42","client":"codex","policy_version":"cortex-v1","control_pct":10,"task_class":"code"}"#;
         let first = route(&store, "POST", "/policy/assign", body);
         let second = route(&store, "POST", "/policy/assign", body);
         assert_eq!(first.0, 200);
@@ -6923,7 +6968,7 @@ mod tests {
                 &store,
                 "POST",
                 "/policy/assign",
-                r#"{"client":"codex","policy_version":"crypt-v1"}"#,
+                r#"{"client":"codex","policy_version":"cortex-v1"}"#,
             )
             .0,
             400
@@ -6932,7 +6977,7 @@ mod tests {
 
     #[test]
     fn add_route_is_disabled_and_prefix_routes_do_not_match() {
-        let dir = std::env::temp_dir().join(format!("crypt-serve-add-off-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("cortex-serve-add-off-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let md = dir.join("secret.md");
         std::fs::write(&md, "PRIVATE SECRET SHOULD NOT INGEST").unwrap();
@@ -7063,11 +7108,11 @@ mod tests {
         );
         assert_eq!(response.0, 200, "{}", response.1);
         let payload: serde_json::Value = serde_json::from_str(&response.1).unwrap();
-        let rightcontext = payload
-            .get("_rightcontext")
+        let membrane = payload
+            .get("_membrane")
             .and_then(serde_json::Value::as_object)
             .expect("content-free timing envelope");
-        let stages = rightcontext
+        let stages = membrane
             .get("stageElapsedMs")
             .and_then(serde_json::Value::as_object)
             .expect("stage timing map");
@@ -7079,7 +7124,7 @@ mod tests {
                 .is_some_and(|elapsed| elapsed.is_finite() && elapsed >= 0.0)
         }));
         assert!(
-            !serde_json::Value::Object(rightcontext.clone())
+            !serde_json::Value::Object(membrane.clone())
                 .to_string()
                 .contains(secret_task),
             "observability must not expose task content"
@@ -7094,7 +7139,7 @@ mod tests {
                 "thread-memory",
                 "typed virtual scope candidate",
                 "virtual:tenant-a:thread:abc-123",
-                crypt_core::MemoryTier::Semantic,
+                cortex_core::MemoryTier::Semantic,
             )
             .unwrap();
         let response = route(
@@ -7510,7 +7555,7 @@ mod tests {
                 "curate-a",
                 "Duplicate resident curate memory.",
                 "global",
-                crypt_core::MemoryTier::Episodic,
+                cortex_core::MemoryTier::Episodic,
             )
             .unwrap();
         store
@@ -7518,7 +7563,7 @@ mod tests {
                 "curate-b",
                 "Duplicate resident curate memory!",
                 "global",
-                crypt_core::MemoryTier::Episodic,
+                cortex_core::MemoryTier::Episodic,
             )
             .unwrap();
 

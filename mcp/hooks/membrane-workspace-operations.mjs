@@ -1,4 +1,4 @@
-// Membrane-owned workspace memory behavior. This layer invokes Crypt's public
+// Membrane-owned workspace memory behavior. This layer invokes Cortex's public
 // contracts; it contains no Arcane or research admission policy.
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
@@ -55,11 +55,11 @@ function frontmatterField(text, key) {
 }
 
 function observablePort(root) {
-  const configured = Number(process.env.CRYPT_PORT || 47851);
+  const configured = Number(process.env.CORTEX_PORT || 47851);
   if (Number.isInteger(configured) && configured >= 1024 && configured <= 65535) return configured;
   try {
     const runtime = JSON.parse(readFileSync(join(root, "tools", "lib", "memory", "runtime.json"), "utf8"));
-    if (runtime.schemaVersion === 1 && runtime.serviceId === "crypt-local-v1" && Number.isInteger(runtime.port)) return runtime.port;
+    if (runtime.schemaVersion === 1 && runtime.serviceId === "cortex-local-v1" && Number.isInteger(runtime.port)) return runtime.port;
   } catch {}
   return 47851;
 }
@@ -72,7 +72,7 @@ function activeTrace(root, sessionId) {
 
 function postObservable(root, event, trace, { signal } = {}) {
   let token;
-  try { token = readFileSync(process.env.CRYPT_API_TOKEN_FILE || join(root, "tools", ".cache", "memory", "api-token"), "utf8").trim(); } catch { return Promise.resolve(false); }
+  try { token = readFileSync(process.env.CORTEX_API_TOKEN_FILE || join(root, "tools", ".cache", "memory", "api-token"), "utf8").trim(); } catch { return Promise.resolve(false); }
   const session = String(event.sessionId);
   const responseDigest = createHash("sha256").update(JSON.stringify(event.payload.tool_response ?? null)).digest("hex");
   const policyPath = join(root, "tools", ".cache", "memory", "active-policy.json");
@@ -81,7 +81,7 @@ function postObservable(root, event, trace, { signal } = {}) {
   const body = JSON.stringify({ events: [{
     schema: "orthic.observable-event.v1",
     installation_id: "tool-observer",
-    client_id: process.env.CRYPT_CLIENT === "claude" ? "claude_code" : (process.env.CRYPT_CLIENT || "codex"),
+    client_id: process.env.CORTEX_CLIENT === "claude" ? "claude_code" : (process.env.CORTEX_CLIENT || "codex"),
     session_id: session,
     task_id: `task-${createHash("sha256").update(`${session}:${trace}`).digest("hex").slice(0, 24)}`,
     turn_id: `turn-${trace}`,
@@ -155,8 +155,8 @@ function memoryScope(root, file) {
   return rel.startsWith("memory/") ? "global" : `repo:${createHash("sha256").update(root).digest("hex").slice(0, 16)}`;
 }
 
-function defaultRunCrypt(root, args, input, { signal } = {}) {
-  const binary = process.env.CRYPT_BIN || join(root, "tools", "bin", "crypt");
+function defaultRunCortex(root, args, input, { signal } = {}) {
+  const binary = process.env.CORTEX_BIN || join(root, "tools", "bin", "cortex");
   return new Promise((resolveRun) => {
     let child;
     let settled = false;
@@ -172,10 +172,10 @@ function defaultRunCrypt(root, args, input, { signal } = {}) {
 }
 
 function defaultProbeStatus(root) {
-  let port = Number(process.env.CRYPT_PORT || 47851);
+  let port = Number(process.env.CORTEX_PORT || 47851);
   try {
     const runtime = JSON.parse(readFileSync(join(root, "tools", "lib", "memory", "runtime.json"), "utf8"));
-    if (runtime.schemaVersion === 1 && runtime.serviceId === "crypt-local-v1" && Number.isInteger(runtime.port)) port = runtime.port;
+    if (runtime.schemaVersion === 1 && runtime.serviceId === "cortex-local-v1" && Number.isInteger(runtime.port)) port = runtime.port;
   } catch {}
   if (!Number.isInteger(port) || port < 1024 || port > 65535) return Promise.resolve(false);
   return new Promise((resolveProbe) => {
@@ -229,17 +229,17 @@ function ingestArgs(root, file, event) {
   return args;
 }
 
-export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, runCrypt = defaultRunCrypt, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable } = {}) {
+export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, runCortex = defaultRunCortex, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable } = {}) {
   return Object.freeze({
     async status(event) {
       const healthy = await probeStatus(rootFor(event));
-      return typedStatus(healthy ? "available" : "unavailable", healthy ? "crypt_healthy" : "crypt_unavailable", { lifecycle: SERVICE_LIFECYCLE });
+      return typedStatus(healthy ? "available" : "unavailable", healthy ? "cortex_healthy" : "cortex_unavailable", { lifecycle: SERVICE_LIFECYCLE });
     },
     async rearm(event) {
       if (event.payload.source !== "compact" || !event.sessionId) return typedStatus("skipped", "rearm_not_applicable");
       const root = rootFor(event);
       const safeSession = String(event.sessionId).replace(/[^A-Za-z0-9_-]/g, "_");
-      const database = process.env.CRYPT_DB || join(root, "tools", ".cache", "memory", "crypt-engine.db");
+      const database = process.env.CORTEX_DB || join(root, "tools", ".cache", "memory", "cortex-engine.db");
       try { unlinkSync(join(dirname(database), "recall-seen", `${safeSession}.json`)); } catch {}
       return typedStatus("available", "recall_rearmed");
     },
@@ -265,7 +265,7 @@ export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTE
       try { checkpoint = JSON.parse(readFileSync(path, "utf8")); } catch { return typedStatus("unavailable", "checkpoint_invalid"); }
       checkpoint.summary = redactSummary(event.payload.compact_summary);
       checkpoint.expires_at_ms = Date.now() + 86_400_000;
-      const saved = await runCrypt(root, ["checkpoint", "save"], JSON.stringify(checkpoint), context);
+      const saved = await runCortex(root, ["checkpoint", "save"], JSON.stringify(checkpoint), context);
       if (saved) unlinkSync(path);
       return typedStatus(saved ? "available" : "unavailable", saved ? "checkpoint_captured" : "checkpoint_save_failed");
     },
@@ -273,7 +273,7 @@ export function createWorkspaceMemoryOperations({ contextAdapter = DEFAULT_CONTE
       const root = rootFor(event);
       const file = durableWorkspaceFile(root, event.payload.tool_input?.file_path || event.payload.file_path, home);
       if (!file) return typedStatus("skipped", "ingest_not_applicable");
-      const saved = await runCrypt(root, ingestArgs(root, file, event), "", context);
+      const saved = await runCortex(root, ingestArgs(root, file, event), "", context);
       return typedStatus(saved ? "available" : "unavailable", saved ? "memory_ingested" : "memory_ingest_failed");
     },
     async bump(event) {

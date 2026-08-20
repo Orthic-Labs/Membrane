@@ -11,7 +11,7 @@ The captured shape is::
       "batch_id":       "<journal batch id>",
       "accepted_ids":   ["D--Claude/adapt-workflow-...", ...],
       "manifest_digest": "<sha256 over the immutable manifest payload>",
-      "db_path":        "<absolute path to the live Crypt DB>",
+      "db_path":        "<absolute path to the live Cortex DB>",
       "db_checksum":    "<sha256 of the live DB at capture time>",
       "db_backup_path": "<consistent SQLite backup>",
       "db_backup_checksum": "<sha256 of backup>",
@@ -24,20 +24,20 @@ The captured shape is::
 
 Usage::
 
-    python tools/pipelines/memory/adapt/rollback.py create \
-        --manifest path/to/manifest.json --db /path/to/crypt-engine.db
+    python3 membrane/adapt/adapt.py rollback create \
+        --manifest path/to/manifest.json --db /path/to/cortex-engine.db
 
-    py -3.11 tools/pipelines/memory/adapt/rollback.py revert path/to/safepoint.json
+    py -3.11 membrane/adapt/adapt.py rollback revert path/to/safepoint.json
                                       # default: DRY RUN
 
-    py -3.11 tools/pipelines/memory/adapt/rollback.py revert \
+    py -3.11 membrane/adapt/adapt.py rollback revert \
         path/to/safepoint.json --apply
 
 The revert phase:
   - reads the safe-point,
   - prints the plan (which IDs would be deleted),
   - on ``--apply``: verifies the bound backup, deletes ONLY the recorded IDs
-    via the resident crypt service (never raw SQL on the live DB), restores
+    via the resident cortex service (never raw SQL on the live DB), restores
     Adapt's state/rules/core snapshots, and verifies ``PRAGMA integrity_check``.
 
 This module is intentionally conservative — it does NOT have a ``--force``
@@ -66,7 +66,7 @@ STATE_FILE = STATE_DIR / "state.json"
 RULES_FILE = STATE_DIR / "rules.json"
 CORE_FILE = STATE_DIR / "core.json"
 SAFEPOINT_DIR = STATE_DIR / "safepoints"
-CRYPT_MUTATION_TIMEOUT_SECONDS = 150
+CORTEX_MUTATION_TIMEOUT_SECONDS = 150
 
 
 # ----- small helpers -----
@@ -109,9 +109,9 @@ def _record_rollback(batch_id: str, deleted_count: int, integrity: str,
         print(f"  warning: rollback audit write failed: {exc}", file=sys.stderr)
 
 
-def _resolve_crypt() -> str | None:
-    """Locate the `crypt` shim; return None if unavailable."""
-    return shutil.which("crypt")
+def _resolve_cortex() -> str | None:
+    """Locate the `cortex` shim; return None if unavailable."""
+    return shutil.which("cortex")
 
 
 def _snapshot_text(path: Path) -> tuple[bool, str]:
@@ -197,7 +197,7 @@ def create_safe_point(manifest: dict, db_path: Path,
     manifest_digest = _sha256_text(json.dumps(manifest, sort_keys=True,
                                               ensure_ascii=False))
     if not db_path.exists():
-        raise FileNotFoundError(f"Crypt DB does not exist: {db_path}")
+        raise FileNotFoundError(f"Cortex DB does not exist: {db_path}")
     target = out_path or (SAFEPOINT_DIR / f"{manifest['batch_id']}.json")
     backup_path = target.with_suffix(".db")
     _backup_sqlite(db_path, backup_path)
@@ -263,7 +263,7 @@ def cmd_create(args: argparse.Namespace) -> int:
 
 
 def _discover_db_path(manifest: dict) -> Path | None:
-    """Best-effort: read the live DB path from crypt runtime config."""
+    """Best-effort: read the live DB path from cortex runtime config."""
     runtime = WS / "tools" / "lib" / "memory" / "runtime.json"
     if runtime.exists():
         try:
@@ -274,7 +274,7 @@ def _discover_db_path(manifest: dict) -> Path | None:
         except Exception:
             pass
     # The repo-relative cache location is portable to every installation.
-    candidate = WS / "tools" / ".cache" / "memory" / "crypt-engine.db"
+    candidate = WS / "tools" / ".cache" / "memory" / "cortex-engine.db"
     if candidate.exists():
         return candidate
     return None
@@ -325,29 +325,29 @@ def _verify_backup(sp: dict) -> tuple[bool, str]:
     return _verify_integrity(backup)
 
 
-def _delete_via_crypt(name: str, crypt_bin: str | Path | None = None) -> bool:
-    bin_path = str(crypt_bin) if crypt_bin else _resolve_crypt()
+def _delete_via_cortex(name: str, cortex_bin: str | Path | None = None) -> bool:
+    bin_path = str(cortex_bin) if cortex_bin else _resolve_cortex()
     if not bin_path:
-        print(f"  error: crypt shim not on PATH; cannot delete {name}",
+        print(f"  error: cortex shim not on PATH; cannot delete {name}",
               file=sys.stderr)
         return False
     try:
         res = subprocess.run(
             [bin_path, "delete", name], capture_output=True, text=True,
-            timeout=CRYPT_MUTATION_TIMEOUT_SECONDS,
+            timeout=CORTEX_MUTATION_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired:
-        print(f"  error: crypt delete {name} timed out", file=sys.stderr)
+        print(f"  error: cortex delete {name} timed out", file=sys.stderr)
         return False
     except OSError as exc:
-        print(f"  error: crypt delete {name} failed: {exc}",
+        print(f"  error: cortex delete {name} failed: {exc}",
               file=sys.stderr)
         return False
     if res.returncode != 0:
         response = f"{res.stdout}\n{res.stderr}".replace("\\", "").lower()
         if "404 not found" in response and '"deleted":false' in response:
             return True
-        print(f"  error: crypt delete {name} rc={res.returncode}: "
+        print(f"  error: cortex delete {name} rc={res.returncode}: "
               f"{res.stderr.strip()}", file=sys.stderr)
         return False
     return True
@@ -357,7 +357,7 @@ def revert(safe_point_path: Path, apply: bool = False,
            *, state_path: Path | None = None,
            rules_path: Path | None = None,
            core_path: Path | None = None,
-           crypt_bin: str | Path | None = None) -> int:
+           cortex_bin: str | Path | None = None) -> int:
     """Revert a previously-applied manifest.
 
     Default: dry-run prints the plan. ``apply=True`` deletes the recorded
@@ -381,10 +381,10 @@ def revert(safe_point_path: Path, apply: bool = False,
         print(f"error: refusing rollback: {backup_message}", file=sys.stderr)
         return 2
 
-    # 1. Delete each ID via the resident crypt service.
+    # 1. Delete each ID via the resident cortex service.
     failed = []
     for name in accepted_ids:
-        if _delete_via_crypt(name, crypt_bin=crypt_bin):
+        if _delete_via_cortex(name, cortex_bin=cortex_bin):
             print(f"  deleted {name}")
         else:
             failed.append(name)

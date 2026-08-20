@@ -27,7 +27,7 @@ today:
 
 - `ScopeGrantV1` mirrors `mcp/scope-grant-v1.mjs` (`mintScopeGrantV1`).
 - The candidate-set / packet / receipt shapes mirror the admission planner in
-  `crypt-core::planner` (which itself mirrors the versioned contract schema).
+  `cortex-core::planner` (which itself mirrors the versioned contract schema).
 - `KnowledgeEmissionV1` mirrors the `membrane_knowledge_propose` body persisted
   verbatim by `ProposalStore`.
 

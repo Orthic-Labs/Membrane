@@ -74,7 +74,7 @@ Machine entry point (portable, content-hashable):
 - `<repo>/.agent/manifest.json` — the canonical Blueprint manifest. Points at every other artifact,
   carries the `GraphGenerationDescriptorV1`-shaped generation block (matches
   `ContextCandidateSet.freshness.revision` and `ScopeGrantV1.manifestDigest`), and is the contract
-  downstream consumers (RightContext, audit, agent handoffs) bind to. Repo-relative paths only; no
+  downstream consumers (Membrane, audit, agent handoffs) bind to. Repo-relative paths only; no
   absolute Windows/Mac paths. **This is the only machine entry point.** `map.json.entrypoint`
   references this path.
 
@@ -189,18 +189,18 @@ for the missing deterministic/semantic substrate. The storage/provider is implem
 an embedded graph, SQLite-backed provider, or external local adapter is valid when measured, but the
 capability cannot be deferred and still called whole-repo understanding.
 
-For this workspace's context engine, preserve the canonical product boundary while mapping it:
-Crypt means the three-family/eight-layer context economy (Compaction/PUSH layers 1–6,
-Retrieval/PULL layer 7, Curation/PERSIST layer 8), not merely the durable recall store.
+For this workspace's context system, preserve the canonical product boundary while mapping it:
+Membrane owns acquisition, attention policy, Push reduction, and governed persistence routing.
+Cortex is the durable-knowledge subsystem, not the parent context system.
 
 ### Runtime ownership and current implementation truth
 
 Blueprint is installed once by the workspace setup, then run **separately from the root of each
 repository**. Its `.agent/` artifacts and any derived index/cache belong to that repository, are
-regenerable, and are not Crypt storage. The only allowed integration is a bounded, source-backed
-`ContextCandidateSet v1` submitted to Crypt's global admission planner, which combines it with
-durable recall/other layers and emits the final `ContextPacket v1`; verified `KnowledgeEmission v1`
-may enter the durable output path. **Crypt never stores** raw graph nodes, embeddings, edges, or
+regenerable, and are not Cortex storage. The allowed integration is a bounded, source-backed
+`ContextCandidateSet v1` submitted to Membrane's global admission planner, which combines it with
+other provider evidence and emits the final `ContextPacket v1`; verified `KnowledgeEmission v1`
+may enter Cortex's governed admission. **Cortex never stores** raw graph nodes, embeddings, edges, or
 visual layouts — those stay repo-local and regenerable. Blueprint never owns the final cross-layer
 token budget.
 
@@ -251,7 +251,7 @@ retired.** Per-command semantics and the full parsed-language list: `references/
 Blueprint is **PARTIAL** for whole-repository understanding: some languages retain lexical coverage and
 doc-code contradiction joins remain incomplete. The authenticated loopback-only interactive Explorer
 is live through `blueprint explore` and the desktop tray; it reads the canonical SQLite graph and creates
-no second truth store. Raw graph ingestion into Crypt is not live and must not be advertised as shipped.
+no second truth store. Raw graph ingestion into Cortex is forbidden and must not be advertised.
 
 ## Phase 1 — deterministic map (always run first)
 
@@ -270,10 +270,10 @@ blueprint hygiene refresh --json  # targeted reusable facts; network-backed chec
 Canonical state definitions, diagnosis, recovery, safeguards, and incident evidence live in
 `references/IMPLEMENTATION-STATUS.md`.
 
-- RightContext's resident `/freshness` verdict is the sole prompt-time authority. The provider
+- Membrane's resident `/freshness` verdict is the sole prompt-time authority. The provider
   passes that exact generation to `graph candidates`; Node verifies manifest/body identity without
   rescanning the repository. Standalone commands retain the full fail-closed source-hash check.
-- `dirty_overlay` is healthy: RightContext uses the verified committed snapshot plus tracked
+- `dirty_overlay` is healthy: Membrane uses the verified committed snapshot plus tracked
   working-tree context from the live overlay. A standalone `blueprint doctor --json` result of
   `stale_graph` on a dirty tree does not by itself mean prompt-time Blueprint is unusable.
 - Every build runs its freshness postcondition. Workspace setup installs the reconcile hook as
@@ -504,8 +504,8 @@ Per-repo `.agent/config.json` (written on first run) controls `budgets` (e.g. ra
   is the best shape or complete, Blueprint's deliverable is the evidenced coverage-gap inventory;
   hand every material gap to `architect` for the mandatory external prior-art decision matrix before
   anyone makes an optimality claim.
-- Never reduce a multi-family product to the subsystem currently under inspection. For Crypt,
-  explicitly verify all three families and eight layers before describing its purpose or coverage.
+- Never reduce Membrane to the subsystem currently under inspection. Verify parent-system boundaries
+  across Blueprint, Cortex, Guide, Adapt, and Push before describing Membrane's purpose or coverage.
 - A user-requested Blueprint run never pauses for phase permission. Phase 1 is an internal checkpoint;
   continue through Phase 2–4 and the full doctor gate automatically unless the user explicitly scoped
   the request to a Phase-1-only map/brief.

@@ -15,7 +15,7 @@ pub const TELEMETRY_OUTBOX_TABLE: &str = "membrane_event_outbox";
 pub struct RuntimeReceiptV2 {
     pub schema_version: u32,
     pub workspace_root: PathBuf,
-    pub crypt_db: PathBuf,
+    pub cortex_db: PathBuf,
     pub catalog_db: PathBuf,
     pub telemetry_event_db: PathBuf,
     pub telemetry_outbox_db: PathBuf,
@@ -33,7 +33,7 @@ pub enum RuntimeReceiptError {
         binding: &'static str,
         value: String,
     },
-    #[error("workspace root cannot be derived from CRYPT_DB: {0}")]
+    #[error("workspace root cannot be derived from CORTEX_DB: {0}")]
     WorkspaceUnbound(PathBuf),
     #[error("runtime identity and startup claim do not match")]
     IdentityMismatch,
@@ -77,13 +77,13 @@ fn require_absolute(
 
 pub fn resolve_workspace_root(
     configured: Option<std::ffi::OsString>,
-    crypt_db: &Path,
+    cortex_db: &Path,
 ) -> Result<PathBuf, RuntimeReceiptError> {
     if let Some(configured) = configured.filter(|value| !value.is_empty()) {
         return require_absolute("WORKSPACE_ROOT", PathBuf::from(configured));
     }
-    let crypt_db = require_absolute("CRYPT_DB", crypt_db)?;
-    let memory = crypt_db.parent();
+    let cortex_db = require_absolute("CORTEX_DB", cortex_db)?;
+    let memory = cortex_db.parent();
     let cache = memory.and_then(Path::parent);
     let tools = cache.and_then(Path::parent);
     if memory
@@ -99,9 +99,9 @@ pub fn resolve_workspace_root(
         return tools
             .and_then(Path::parent)
             .map(Path::to_path_buf)
-            .ok_or_else(|| RuntimeReceiptError::WorkspaceUnbound(crypt_db));
+            .ok_or_else(|| RuntimeReceiptError::WorkspaceUnbound(cortex_db));
     }
-    Err(RuntimeReceiptError::WorkspaceUnbound(crypt_db))
+    Err(RuntimeReceiptError::WorkspaceUnbound(cortex_db))
 }
 
 pub fn validate_telemetry_event_binding(
@@ -116,7 +116,7 @@ pub fn validate_telemetry_event_binding(
 impl RuntimeReceiptV2 {
     pub fn new(
         workspace_root: &Path,
-        crypt_db: &Path,
+        cortex_db: &Path,
         catalog_db: &Path,
         telemetry_event_db: &Path,
         identity: &InstallationIdentity,
@@ -131,14 +131,14 @@ impl RuntimeReceiptV2 {
         {
             return Err(RuntimeReceiptError::IdentityMismatch);
         }
-        let crypt_db = require_absolute("CRYPT_DB", crypt_db)?;
+        let cortex_db = require_absolute("CORTEX_DB", cortex_db)?;
         Ok(Self {
             schema_version: RUNTIME_RECEIPT_SCHEMA_VERSION,
             workspace_root: require_absolute("WORKSPACE_ROOT", workspace_root)?,
-            crypt_db: crypt_db.clone(),
-            catalog_db: require_absolute("RIGHTCONTEXT_CATALOG", catalog_db)?,
+            cortex_db: cortex_db.clone(),
+            catalog_db: require_absolute("MEMBRANE_CATALOG", catalog_db)?,
             telemetry_event_db: require_absolute("MEMBRANE_EVENT_DB", telemetry_event_db)?,
-            telemetry_outbox_db: crypt_db,
+            telemetry_outbox_db: cortex_db,
             telemetry_outbox_table: TELEMETRY_OUTBOX_TABLE.to_string(),
             installation_id: identity.installation_id.clone(),
             startup_generation: claim.startup_generation,
@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn workspace_resolver_requires_absolute_binding_and_uses_canonical_parent() {
         let root = std::env::temp_dir().join("runtime-receipt-resolver");
-        let db = root.join("tools/.cache/memory/crypt-engine.db");
+        let db = root.join("tools/.cache/memory/cortex-engine.db");
         assert_eq!(resolve_workspace_root(None, &db).unwrap(), root);
         assert!(matches!(
             resolve_workspace_root(None, Path::new("relative.db")),
@@ -312,12 +312,12 @@ mod tests {
     fn receipt_is_immutable_and_binds_every_runtime_path() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
-        let crypt_db = root.join("tools/.cache/memory/crypt-engine.db");
+        let cortex_db = root.join("tools/.cache/memory/cortex-engine.db");
         let catalog_db = root.join("tools/.cache/memory/catalog.db");
-        let event_db = root.join("tools/.cache/memory/crypt-engine.membrane-events.sqlite3");
+        let event_db = root.join("tools/.cache/memory/cortex-engine.membrane-events.sqlite3");
         let (identity, claim) = identity();
         let receipt =
-            RuntimeReceiptV2::new(root, &crypt_db, &catalog_db, &event_db, &identity, &claim)
+            RuntimeReceiptV2::new(root, &cortex_db, &catalog_db, &event_db, &identity, &claim)
                 .unwrap();
         let path = receipt.persist().unwrap();
         assert_eq!(receipt.persist().unwrap(), path);
@@ -325,7 +325,7 @@ mod tests {
         assert_eq!(decoded, receipt);
         assert_eq!(decoded.schema_version, 2);
         assert_eq!(decoded.telemetry_event_db, event_db);
-        assert_eq!(decoded.telemetry_outbox_db, crypt_db);
+        assert_eq!(decoded.telemetry_outbox_db, cortex_db);
         assert_eq!(decoded.telemetry_outbox_table, TELEMETRY_OUTBOX_TABLE);
         assert!(path.is_file());
         assert!(fs::read_dir(path.parent().unwrap())
@@ -344,7 +344,7 @@ mod tests {
         claim.startup_generation += 1;
         let result = RuntimeReceiptV2::new(
             temp.path(),
-            &temp.path().join("crypt.db"),
+            &temp.path().join("cortex.db"),
             &temp.path().join("catalog.db"),
             &temp.path().join("outbox.db"),
             &identity,
@@ -367,9 +367,9 @@ mod tests {
         let (identity, claim) = identity();
         let receipt = RuntimeReceiptV2::new(
             root,
-            &root.join("tools/.cache/memory/crypt-engine.db"),
+            &root.join("tools/.cache/memory/cortex-engine.db"),
             &root.join("tools/.cache/memory/catalog.db"),
-            &root.join("tools/.cache/memory/crypt-engine.membrane-events.sqlite3"),
+            &root.join("tools/.cache/memory/cortex-engine.membrane-events.sqlite3"),
             &identity,
             &claim,
         )

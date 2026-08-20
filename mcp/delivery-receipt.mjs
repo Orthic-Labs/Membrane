@@ -75,7 +75,7 @@ export function buildDeliveryReceipt({ traceId, digest, at } = {}) {
 // the pure-JS projection when the service is unavailable so tests stay deterministic.
 export async function fetchDeliveryTrace(report, { endpoint, token } = {}) {
   const body = JSON.stringify(report ?? {});
-  const url = endpoint ?? `http://127.0.0.1:${process.env.CRYPT_PORT ?? process.env.WORKSPACE_MEMORY_PORT ?? '47851'}/delivery/trace`;
+  const url = endpoint ?? `http://127.0.0.1:${process.env.CORTEX_PORT ?? '47851'}/delivery/trace`;
   try {
     const headers = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;

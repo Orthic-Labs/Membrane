@@ -14,7 +14,7 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_TASTE = ROOT / "docs/evidence/commandcode-taste-bakeoff-2026-07-13/minimax-m3/root-taste.md"
 DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
 DEFAULT_PRODUCTION_DB = ROOT / ".cache/adapt-delivery-parity/production-g-deepseek/production-alias.db"
-DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/crypt-engine.db"
+DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/cortex-engine.db"
 DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/full-treatment-census"
 
 
@@ -60,26 +60,26 @@ def build_taste_cases(rules) -> list[dict]:
     ]
 
 
-def _run_taste(crypt: Path, live_db: Path, db: Path, rules, cases, out: Path):
+def _run_taste(cortex: Path, live_db: Path, db: Path, rules, cases, out: Path):
     runner.value_ab.snapshot_live_db(live_db, db)
     port = runner.value_ab._free_port()
-    service = runner.value_ab._start_service(crypt, db, port)
+    service = runner.value_ab._start_service(cortex, db, port)
     try:
         runner.value_ab._wait_ready(port)
         for rule in rules:
-            runner.value_ab.put_rule(crypt, db, port, rule)
-        return runner.replay_all(crypt, db, port, cases, out / "taste-queries.jsonl")
+            runner.value_ab.put_rule(cortex, db, port, rule)
+        return runner.replay_all(cortex, db, port, cases, out / "taste-queries.jsonl")
     finally:
         runner.value_ab._stop_service(service)
 
 
-def _run_existing(crypt: Path, source_db: Path, db: Path, cases, out: Path):
+def _run_existing(cortex: Path, source_db: Path, db: Path, cases, out: Path):
     runner.value_ab.snapshot_live_db(source_db, db)
     port = runner.value_ab._free_port()
-    service = runner.value_ab._start_service(crypt, db, port)
+    service = runner.value_ab._start_service(cortex, db, port)
     try:
         runner.value_ab._wait_ready(port)
-        return runner.replay_all(crypt, db, port, cases, out / "adapt-queries.jsonl")
+        return runner.replay_all(cortex, db, port, cases, out / "adapt-queries.jsonl")
     finally:
         runner.value_ab._stop_service(service)
 
@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--treatment", type=Path, default=DEFAULT_TREATMENT)
     parser.add_argument("--production-db", type=Path, default=DEFAULT_PRODUCTION_DB)
     parser.add_argument("--live-db", type=Path, default=DEFAULT_LIVE_DB)
-    parser.add_argument("--crypt-bin", type=Path, default=runner.DEFAULT_CRYPT)
+    parser.add_argument("--cortex-bin", type=Path, default=runner.DEFAULT_CORTEX)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args(argv)
@@ -129,10 +129,10 @@ def main(argv: list[str] | None = None) -> int:
     if not pre_ok:
         raise RuntimeError(f"live DB integrity failed before census: {pre_msg}")
     taste_ranked = _run_taste(
-        args.crypt_bin, args.live_db, args.out / "taste.db", taste, taste_cases, args.out
+        args.cortex_bin, args.live_db, args.out / "taste.db", taste, taste_cases, args.out
     )
     adapt_ranked = _run_existing(
-        args.crypt_bin, args.production_db, args.out / "adapt.db", adapt_cases, args.out
+        args.cortex_bin, args.production_db, args.out / "adapt.db", adapt_cases, args.out
     )
     post_ok, post_count, post_msg = runner.value_ab.integrity_check(args.live_db)
     if not post_ok or post_count != pre_count:

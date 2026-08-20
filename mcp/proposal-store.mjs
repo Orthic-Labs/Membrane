@@ -7,7 +7,7 @@ const digest = (value) => `sha256:${createHash("sha256").update(typeof value ===
 export function eventDbFor(memoryDb) {
   if (process.env.MEMBRANE_EVENT_DB?.trim()) return process.env.MEMBRANE_EVENT_DB.trim();
   const extension = extname(memoryDb);
-  const stem = basename(memoryDb, extension) || "crypt";
+  const stem = basename(memoryDb, extension) || "cortex";
   return join(dirname(memoryDb), `${stem}.membrane-events.sqlite3`);
 }
 

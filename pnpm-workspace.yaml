@@ -1,3 +1,9 @@
+packages:
+  - blueprint
+
+allowBuilds:
+  '@parcel/watcher': true
+
 minimumReleaseAgeExclude:
   - '@rightkit/ax@0.1.1'
   - '@rightkit/git@0.2.0'

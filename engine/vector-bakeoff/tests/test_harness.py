@@ -18,7 +18,7 @@ SPEC.loader.exec_module(harness)
 def bundle(runner="control", cell="smoke", fixture="f" * 64):
     return {
         "schemaVersion": 1,
-        "generatorId": "crypt-vector-fixture-v1",
+        "generatorId": "cortex-vector-fixture-v1",
         "runner": runner,
         "runnerVersion": "0.1.0",
         "cellId": cell,

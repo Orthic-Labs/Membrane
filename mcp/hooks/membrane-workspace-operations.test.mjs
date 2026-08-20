@@ -26,7 +26,7 @@ function operations(root, calls) {
       runClient: () => ({ state: "context_enforced", payload: { packet: {} } }),
       render: () => "recalled context",
     },
-    runCrypt: async (_root, args) => { calls.push(args.join(" ")); return true; },
+    runCortex: async (_root, args) => { calls.push(args.join(" ")); return true; },
   });
 }
 
@@ -67,19 +67,19 @@ test("ingest accepts only durable memory & Blueprint artifacts, including host m
   assert.equal(durableWorkspaceFile(root, unrelated, home), null);
 });
 
-test("checkpoint summaries redact secret-bearing lines before Crypt", async () => {
+test("checkpoint summaries redact secret-bearing lines before Cortex", async () => {
   const { root } = fixture(); const inputs = [];
   const ops = createWorkspaceMemoryOperations({
     rootFor: () => root,
     contextAdapter: {}, probeStatus: async () => true,
-    runCrypt: async (_root, _args, input) => { inputs.push(input); return true; },
+    runCortex: async (_root, _args, input) => { inputs.push(input); return true; },
   });
   await dispatchMembraneHookEvent({ event: "PreCompact", cwd: root, session_id: "redact" }, ops);
   await dispatchMembraneHookEvent({ event: "PostCompact", cwd: root, session_id: "redact", compact_summary: "safe\ntoken=private\nsafe too" }, ops);
   assert.equal(JSON.parse(inputs[0]).summary, "safe\n[redacted sensitive summary line]\nsafe too");
 });
 
-test("SessionStart performs health only & never starts or kicks Crypt", async () => {
+test("SessionStart performs health only & never starts or kicks Cortex", async () => {
   const { root } = fixture(); const calls = [];
   const result = await runHook({ hook_event_name: "SessionStart", cwd: root }, { operations: operations(root, calls) });
   assert.deepEqual(calls, ["status"]);
@@ -107,16 +107,16 @@ test("Membrane owns rearm, access bump, conflict, observer, & nag behavior", asy
   writeFileSync(transcript, `${JSON.stringify({ type: "user", message: { content: "From now on use this process." } })}\n`, "utf8");
   const observed = [];
   const ops = createWorkspaceMemoryOperations({ rootFor: () => root, home, contextAdapter: {}, probeStatus: async () => true,
-    runCrypt: async () => true, postObservation: async (_root, _event, trace) => { observed.push(trace); return true; } });
+    runCortex: async () => true, postObservation: async (_root, _event, trace) => { observed.push(trace); return true; } });
 
-  const database = join(root, "crypt-engine.db");
+  const database = join(root, "cortex-engine.db");
   const seen = join(root, "recall-seen", `${session}.json`);
   mkdirSync(join(seen, ".."), { recursive: true });
   writeFileSync(seen, "{}\n", "utf8");
-  const priorDatabase = process.env.CRYPT_DB;
-  process.env.CRYPT_DB = database;
+  const priorDatabase = process.env.CORTEX_DB;
+  process.env.CORTEX_DB = database;
   const rearm = await dispatchMembraneHookEvent({ event: "SessionStart", source: "compact", session_id: session }, ops);
-  if (priorDatabase === undefined) delete process.env.CRYPT_DB; else process.env.CRYPT_DB = priorDatabase;
+  if (priorDatabase === undefined) delete process.env.CORTEX_DB; else process.env.CORTEX_DB = priorDatabase;
   assert.equal(rearm.results.find(({ id }) => id === "membrane.memory-rearm").output.reason, "recall_rearmed");
   assert.equal(existsSync(seen), false);
 
@@ -141,7 +141,7 @@ test("PostToolUseFailure, TaskCompleted, and SessionEnd are covered with typed, 
     rootFor: () => root,
     contextAdapter: {},
     probeStatus: async () => true,
-    runCrypt: async () => true,
+    runCortex: async () => true,
   });
 
   const failure = await dispatchMembraneHookEvent({

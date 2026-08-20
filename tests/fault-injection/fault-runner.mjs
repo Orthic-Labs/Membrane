@@ -11,9 +11,9 @@ const digest = (value) => `sha256:${createHash('sha256').update(JSON.stringify(v
 const crateRoot = dirname(fileURLToPath(import.meta.url));
 const manifest = resolve(crateRoot, 'Cargo.toml');
 const canonicalBinary = resolve(crateRoot, 'target', 'debug', process.platform === 'win32' ? 'membrane-fault-injection.exe' : 'membrane-fault-injection');
-// This crate depends on membrane-protocol, membrane-runtime, and crypt-store (see Cargo.toml) --
+// This crate depends on membrane-protocol, membrane-runtime, and cortex-store (see Cargo.toml) --
 // only those crates (plus this crate's own src) can affect the built binary's behavior.
-const dependencyCrateRoots = ['membrane-protocol', 'membrane-runtime', 'crypt-store']
+const dependencyCrateRoots = ['membrane-protocol', 'membrane-runtime', 'cortex-store']
   .map((name) => resolve(crateRoot, '..', '..', 'engine', 'crates', name));
 
 // Walks the given directories' own sources (skipping build output and non-build-affecting

@@ -31,7 +31,7 @@ export function verifyReleaseEvidence(manifest, root = process.cwd()) {
   if (!/^v\d+\.\d+\.\d+$/.test(field(release, "tag"))) fail("tag must be immutable semver");
   if (!HEX40.test(field(release, "commit")) || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(field(release, "tree"))) fail("release source identity invalid");
   if (!HEX64.test(field(release, "generation")) || !HEX64.test(field(release, "artifact_sha256"))) fail("release generation or artifact hash invalid");
-  if (!TARGETS.has(field(release, "target")) || release.vector_dispatch !== "CRYPT_VECTOR_DISPATCH_V2") fail("unsupported target or vector dispatch");
+  if (!TARGETS.has(field(release, "target")) || release.vector_dispatch !== "CORTEX_VECTOR_DISPATCH_V2") fail("unsupported target or vector dispatch");
   for (const [name, value] of Object.entries({ artifact: manifest.artifact, sbom: manifest.sbom, provenance: manifest.provenance, toolchain: manifest.toolchain, compatibility: manifest.compatibility, event_history: manifest.event_history?.receipt })) receipt(root, value, name);
   if (manifest.artifact.sha256 !== release.artifact_sha256) fail("artifact must bind release artifact_sha256");
   if (!Array.isArray(manifest.tests) || !manifest.tests.length) fail("test receipts required");
@@ -49,7 +49,7 @@ export function verifyReleaseEvidence(manifest, root = process.cwd()) {
   if (!Array.isArray(manifest.install_receipts)) fail("installed platform receipts required");
   const installed = new Set();
   for (const item of manifest.install_receipts) {
-    if (!item || !["macos", "windows"].includes(item.os) || item.vector_dispatch !== "CRYPT_VECTOR_DISPATCH_V2") fail("invalid installed vector-dispatch receipt");
+    if (!item || !["macos", "windows"].includes(item.os) || item.vector_dispatch !== "CORTEX_VECTOR_DISPATCH_V2") fail("invalid installed vector-dispatch receipt");
     const result = verifyPair(json(root, item.contract, `${item.os} platform contract`), json(root, item.receipt, `${item.os} installed receipt`));
     if (result.platform !== item.os) fail("installed receipt platform mismatch");
     installed.add(item.os);

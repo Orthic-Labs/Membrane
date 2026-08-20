@@ -74,7 +74,16 @@ pub(crate) fn build_sources_payload_from(conn: &rusqlite::Connection) -> Option<
              ORDER BY updated_at_ms DESC
              LIMIT 1",
             [&repository_root],
-            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            },
         )
         .ok();
 

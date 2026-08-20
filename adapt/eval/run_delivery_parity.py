@@ -1,9 +1,9 @@
 """Run the five-arm CommandCode Taste versus Adapt delivery experiment.
 
 Arms:
-  A  current Crypt retrieval only
+  A  current Cortex retrieval only
   T  A + the real 52-rule CommandCode Taste file always loaded
-  B  copied Crypt + all 57 raw usable Adapt records, retrieved normally
+  B  copied Cortex + all 57 raw usable Adapt records, retrieved normally
   C  A + the complete 57-record Adapt digest always loaded
   D  B + the complete 57-record Adapt digest always loaded
 
@@ -31,8 +31,8 @@ HERE = Path(__file__).resolve().parent
 ADAPT_DIR = HERE.parent
 PACKAGE_DIR = ADAPT_DIR / "src" / "adapt"
 DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/full"
-DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/crypt-engine.db"
-DEFAULT_CRYPT = ROOT / "tools/bin/crypt.exe"
+DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/cortex-engine.db"
+DEFAULT_CORTEX = ROOT / "tools/bin/cortex.exe"
 API_WORKER = ROOT / "legion/skills/coder/scripts/api-worker.py"
 DEFAULT_GRADER_MODEL = "deepseek-ai/deepseek-v4-pro"
 TOP_K = 5
@@ -98,7 +98,7 @@ def memory_rows(db: Path) -> dict[str, dict]:
         return {mid: {"text": text or "", "scope": ""} for mid, text in rows}
 
 
-def replay_all(crypt: Path, db: Path, port: int, cases: list[dict],
+def replay_all(cortex: Path, db: Path, port: int, cases: list[dict],
                input_path: Path) -> dict[str, dict]:
     """One replay subprocess for the whole arm, followed by direct DB lookup."""
     input_path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,7 +107,7 @@ def replay_all(crypt: Path, db: Path, port: int, cases: list[dict],
     }, ensure_ascii=False) + "\n" for row in cases), encoding="utf-8")
     started = time.monotonic()
     output = _run_via_port(
-        crypt, db, port, ["replay", "--input", str(input_path), "-k", str(TOP_K)])
+        cortex, db, port, ["replay", "--input", str(input_path), "-k", str(TOP_K)])
     wall_ms = int((time.monotonic() - started) * 1000)
     parsed = [json.loads(line) for line in output.splitlines() if line.strip()]
     if {row["row_id"] for row in parsed} != {row["case_id"] for row in cases}:
@@ -126,19 +126,19 @@ def replay_all(crypt: Path, db: Path, port: int, cases: list[dict],
     return result
 
 
-def _run_replay_db(crypt: Path, live_db: Path, db: Path, cases: list[dict],
+def _run_replay_db(cortex: Path, live_db: Path, db: Path, cases: list[dict],
                    input_path: Path, records: list[dict] | None = None) -> tuple[dict, dict]:
     before = value_ab.snapshot_live_db(live_db, db)
     port = value_ab._free_port()
-    service = value_ab._start_service(crypt, db, port)
+    service = value_ab._start_service(cortex, db, port)
     try:
         value_ab._wait_ready(port)
         for record in records or []:
             value_ab.put_pref_record(
-                crypt, db, port, record["id"], record.get("scope", "D--Claude"),
+                cortex, db, port, record["id"], record.get("scope", "D--Claude"),
                 value_ab.adapt_record_envelope(record),
             )
-        ranked = replay_all(crypt, db, port, cases, input_path)
+        ranked = replay_all(cortex, db, port, cases, input_path)
     finally:
         value_ab._stop_service(service)
     ok, count, msg = value_ab.integrity_check(db)
@@ -148,7 +148,7 @@ def _run_replay_db(crypt: Path, live_db: Path, db: Path, cases: list[dict],
 
 
 def run_retrieval(value_set: dict, treatment: dict, cases: list[dict], out: Path,
-                  live_db: Path, crypt: Path, resume: bool) -> dict:
+                  live_db: Path, cortex: Path, resume: bool) -> dict:
     path = out / "retrieval.json"
     input_hash = sha_json({"value": value_set["content_sha256"],
                            "cases": [row["case_id"] for row in cases],
@@ -161,13 +161,13 @@ def run_retrieval(value_set: dict, treatment: dict, cases: list[dict], out: Path
     if not pre_ok:
         raise RuntimeError(f"live DB integrity failed before experiment: {pre_msg}")
     ranked_a, integrity_a = _run_replay_db(
-        crypt, live_db, out / "A.db", cases, out / "inputs/A.jsonl")
+        cortex, live_db, out / "A.db", cases, out / "inputs/A.jsonl")
     ranked_b, integrity_b = _run_replay_db(
-        crypt, live_db, out / "B.db", cases, out / "inputs/B.jsonl",
+        cortex, live_db, out / "B.db", cases, out / "inputs/B.jsonl",
         treatment["records"])
     post_ok, post_count, post_msg = value_ab.integrity_check(live_db)
     if not post_ok or post_count != pre_count:
-        raise RuntimeError("live Crypt DB changed during isolated experiment")
+        raise RuntimeError("live Cortex DB changed during isolated experiment")
     result = {
         "input_sha256": input_hash,
         "live_db": {"path": str(live_db), "rows_before": pre_count,
@@ -618,7 +618,7 @@ def analyze(value_set: dict, cases: list[dict], retrieval: dict, actor: dict,
                      f"[{ci[0]:+.1f}, {ci[1]:+.1f}] | "
                      f"{disc['left_only']} left / {disc['right_only']} right | "
                      f"{disc['mcnemar_exact_p']:.6f} |")
-    lines += ["", "A=Crypt; T=A+CommandCode Taste; B=Adapt retrieved; "
+    lines += ["", "A=Cortex; T=A+CommandCode Taste; B=Adapt retrieved; "
               "C=Adapt digest loaded; D=Adapt digest+retrieval.", "",
               "Raw retrieval, actor responses, blind grades, hashes, and provider metadata are beside this report."]
     (out / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -647,7 +647,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--adapt-variant", choices=("raw", "curated"), default="raw")
     parser.add_argument("--grader-model", default=DEFAULT_GRADER_MODEL)
     parser.add_argument("--live-db", type=Path, default=DEFAULT_LIVE_DB)
-    parser.add_argument("--crypt-bin", type=Path, default=DEFAULT_CRYPT)
+    parser.add_argument("--cortex-bin", type=Path, default=DEFAULT_CORTEX)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
     out = args.out or (ROOT / ".cache/adapt-delivery-parity" /
@@ -663,7 +663,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.stage in {"retrieval", "all"}:
         print(f"retrieval: {len(cases)} cases, two copied DB arms")
         retrieval = run_retrieval(value_set, treatment, cases, out, args.live_db,
-                                  args.crypt_bin, args.resume)
+                                  args.cortex_bin, args.resume)
     elif retrieval_path.exists():
         retrieval = read_json(retrieval_path)
     if args.stage in {"actor", "all"}:

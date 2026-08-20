@@ -56,7 +56,7 @@ const cargo = process.platform === "win32"
   ? { program: process.env.ComSpec || "cmd.exe", prefix: ["/d", "/s", "/c", "cargo.cmd"] }
   : { program: "cargo", prefix: [] };
 // rightkit-allow-cargo-target-dir: sets CARGO_TARGET_DIR for the spawned cargo child using the metadata-resolved engineTarget, not a location read
-const result = spawnSync(cargo.program, [...cargo.prefix, "build", "--manifest-path", engine, "--release", "--target", target, "-p", "crypt", "-p", "membrane", "--bin", "crypt", "--bin", "crypt-service", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CARGO_TARGET_DIR: engineTarget, CRYPT_SOURCE_COMMIT: identity.commit, CRYPT_SOURCE_TREE_SHA256: identity.sourceTreeSha256 } });
+const result = spawnSync(cargo.program, [...cargo.prefix, "build", "--manifest-path", engine, "--release", "--target", target, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "cortex-service", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CARGO_TARGET_DIR: engineTarget, CORTEX_SOURCE_COMMIT: identity.commit, CORTEX_SOURCE_TREE_SHA256: identity.sourceTreeSha256 } });
 if (result.error) throw result.error;
 if (result.status !== 0) throw new Error(`Membrane sidecar build failed with exit ${result.status}`);
 // The consumer of the baked value is the workspace release manifest; writing it
@@ -64,7 +64,7 @@ if (result.status !== 0) throw new Error(`Membrane sidecar build failed with exi
 writeFileSync(new URL("../dist/release-identity.json", import.meta.url), `${JSON.stringify(identity, null, 2)}\n`);
 const binaries = fileURLToPath(new URL("../src-tauri/binaries/", import.meta.url));
 mkdirSync(binaries, { recursive: true });
-for (const name of ["crypt", "crypt-service", "membrane"]) {
+for (const name of ["cortex", "cortex-service", "membrane"]) {
   const suffix = target.includes("windows") ? ".exe" : "";
   const source = join(engineTarget, target, "release", `${name}${suffix}`);
   if (!existsSync(source)) throw new Error(`missing sidecar: ${source}`);

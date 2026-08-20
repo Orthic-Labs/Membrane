@@ -404,7 +404,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
 
 [[package]]
-name = "crypt-core"
+name = "cortex-core"
 version = "0.1.0"
 dependencies = [
  "rayon",
@@ -416,7 +416,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "crypt-format"
+name = "cortex-format"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -425,7 +425,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "crypt-store"
+name = "cortex-store"
 version = "0.1.0"
 dependencies = [
  "getrandom 0.2.17",
@@ -1061,7 +1061,7 @@ dependencies = [
 name = "membrane-fault-injection"
 version = "0.1.0"
 dependencies = [
- "crypt-store",
+ "cortex-store",
  "membrane-protocol",
  "membrane-runtime",
  "serde_json",
@@ -1097,9 +1097,9 @@ dependencies = [
  "axum",
  "clap",
  "comrak",
- "crypt-core",
- "crypt-format",
- "crypt-store",
+ "cortex-core",
+ "cortex-format",
+ "cortex-store",
  "getrandom 0.2.17",
  "membrane-core",
  "membrane-mcp",

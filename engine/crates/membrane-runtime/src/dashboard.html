@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>crypt — memory dashboard</title>
+<title>cortex — memory dashboard</title>
 <style>
   :root { --bg:#111722; --panel:#1a2130; --border:#2b3340; --text:#f2f5ea; --muted:#9097a3;
           --accent:#e53855; --good:#5bbe86; }
@@ -118,7 +118,7 @@
 </main>
 <script>
 const $ = s => document.querySelector(s);
-const DASHBOARD_TOKEN_KEY = 'crypt.dashboard.apiToken.v1';
+const DASHBOARD_TOKEN_KEY = 'cortex.dashboard.apiToken.v1';
 const normalizeDashboardToken = supplied => {
   const token = supplied.trim();
   return token && !/[\r\n]/.test(token) ? token : null;
@@ -141,29 +141,29 @@ const dashboardToken = () => {
   try { return normalizeDashboardToken(sessionStorage.getItem(DASHBOARD_TOKEN_KEY) || ''); }
   catch { return null; }
 };
-let CRYPT_API_TOKEN = dashboardToken();
-const renderAuthState = () => { $('#auth-state').textContent = CRYPT_API_TOKEN ? 'token set for this session' : 'token required'; };
+let CORTEX_API_TOKEN = dashboardToken();
+const renderAuthState = () => { $('#auth-state').textContent = CORTEX_API_TOKEN ? 'token set for this session' : 'token required'; };
 function setDashboardToken() {
-  const supplied = window.prompt('Paste the Crypt API token. Leave blank to clear this browser session.');
+  const supplied = window.prompt('Paste the Cortex API token. Leave blank to clear this browser session.');
   if (supplied === null) return;
   if (/[\r\n]/.test(supplied)) return window.alert('API token must not contain a newline.');
-  CRYPT_API_TOKEN = normalizeDashboardToken(supplied);
+  CORTEX_API_TOKEN = normalizeDashboardToken(supplied);
   try {
-    if (CRYPT_API_TOKEN) sessionStorage.setItem(DASHBOARD_TOKEN_KEY, CRYPT_API_TOKEN);
+    if (CORTEX_API_TOKEN) sessionStorage.setItem(DASHBOARD_TOKEN_KEY, CORTEX_API_TOKEN);
     else sessionStorage.removeItem(DASHBOARD_TOKEN_KEY);
   } catch {}
   renderAuthState();
   chips(); browse(); activity(); analysis(); loadGraph();
 }
-const PENDING_PUTS_KEY = 'crypt.pendingPuts.v1';
-const PENDING_PUTS_LOCK = 'crypt.pendingPuts.v1.lock';
+const PENDING_PUTS_KEY = 'cortex.pendingPuts.v1';
+const PENDING_PUTS_LOCK = 'cortex.pendingPuts.v1.lock';
 const MAX_PENDING_PUTS = 64;
 const MAX_PENDING_CLOCK_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_PUT_RETRY_MS = 25;
 const MAX_PUT_RETRY_MS = 2000;
 const api = (p, b) => {
   const headers = {};
-  if (CRYPT_API_TOKEN) headers.Authorization = `Bearer ${CRYPT_API_TOKEN}`;
+  if (CORTEX_API_TOKEN) headers.Authorization = `Bearer ${CORTEX_API_TOKEN}`;
   if (b) headers['Content-Type'] = 'application/json';
   return fetch(p, b ? {method:'POST', headers, body:JSON.stringify(b)} : {headers}).then(r => r.json());
 };
@@ -252,16 +252,16 @@ const sha256Hex = async value => {
   const hash = await crypto.subtle.digest('SHA-256', bytes);
   return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('');
 };
-const putIdentity = async (requestBody, apiToken = CRYPT_API_TOKEN) => {
+const putIdentity = async (requestBody, apiToken = CORTEX_API_TOKEN) => {
   const principal = apiToken == null ? ['anonymous'] : ['token', apiToken];
   const [authFingerprint, bodyFingerprint] = await Promise.all([
-    sha256Hex(JSON.stringify(['crypt-dashboard-auth-v1', ...principal])),
-    sha256Hex(JSON.stringify(['crypt-dashboard-body-v1', requestBody])),
+    sha256Hex(JSON.stringify(['cortex-dashboard-auth-v1', ...principal])),
+    sha256Hex(JSON.stringify(['cortex-dashboard-body-v1', requestBody])),
   ]);
-  const digest = await sha256Hex(JSON.stringify(['crypt-dashboard-put-v3', authFingerprint, bodyFingerprint]));
+  const digest = await sha256Hex(JSON.stringify(['cortex-dashboard-put-v3', authFingerprint, bodyFingerprint]));
   return {digest, authFingerprint, bodyFingerprint};
 };
-const putDigest = async (requestBody, apiToken = CRYPT_API_TOKEN) =>
+const putDigest = async (requestBody, apiToken = CORTEX_API_TOKEN) =>
   (await putIdentity(requestBody, apiToken)).digest;
 const retryablePutStatus = status => status === 408 || status === 429 || (status >= 500 && status < 600);
 const putRetryDelay = value => {
@@ -279,7 +279,7 @@ const putResult = async response => {
   try { return JSON.parse(text); }
   catch { return {error: text}; }
 };
-async function apiPut(body, apiToken = CRYPT_API_TOKEN, now = Date.now()) {
+async function apiPut(body, apiToken = CORTEX_API_TOKEN, now = Date.now()) {
   const requestBody = JSON.stringify(body);
   const identity = await putIdentity(requestBody, apiToken), entry = await reservePendingPut(identity, now);
   const headers = {'Content-Type':'application/json', 'Idempotency-Key':entry.key};
@@ -361,7 +361,7 @@ async function analysis() {
     $('#census-kpi').textContent = census.availability === 'observed'
       ? `${n(census.known_row_count)}/${n(census.row_count)} known · ${census.priced_cost_usd == null ? '$ unavailable' : '$' + census.priced_cost_usd}`
       : 'unavailable';
-    const memory=report.crypt||{}, diagnostics=report.diagnostics||{}, lifecycle=memory.lifecycle||{};
+    const memory=report.cortex||{}, diagnostics=report.diagnostics||{}, lifecycle=memory.lifecycle||{};
     const cohortRows=[];for(const [surface,groups] of Object.entries(report.cohorts||{}))for(const [cohort,row] of Object.entries(groups||{})){
       const q=row.quality||{};cohortRows.push(`<tr><td>${surface}/${cohort}</td><td class="n">${n(row.matched_sessions)}/${n(row.assigned_sessions)}</td><td class="n">${n(q.clean_completed)}/${n(q.completed)}</td><td class="n">${n(q.aborted)}</td><td class="n">${n(q.unrecovered_tool_error_turns)}</td></tr>`);}
     const lifecycleRows=Object.entries(lifecycle.by_surface||{}).map(([surface,events])=>`<tr><td>${surface}</td><td colspan="4">${Object.entries(events).map(([kind,count])=>`${kind} ${n(count)}`).join(' · ')}</td></tr>`);

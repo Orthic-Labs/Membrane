@@ -191,7 +191,14 @@ pub fn skeletonize_to_budget(path: &Path, src: &str, budget_tokens: usize) -> Bu
     let input_tokens = crate::compress::estimate_tokens(src);
     let signature = skeletonize(path, src);
     if crate::compress::estimate_tokens(&signature) <= budget_tokens {
-        return budget_result(signature, src, path, input_tokens, budget_tokens, "signature");
+        return budget_result(
+            signature,
+            src,
+            path,
+            input_tokens,
+            budget_tokens,
+            "signature",
+        );
     }
 
     let public = signature
@@ -206,7 +213,14 @@ pub fn skeletonize_to_budget(path: &Path, src: &str, budget_tokens: usize) -> Bu
         .collect::<Vec<_>>()
         .join("\n");
     if !public.is_empty() && crate::compress::estimate_tokens(&public) <= budget_tokens {
-        return budget_result(public, src, path, input_tokens, budget_tokens, "public-signature");
+        return budget_result(
+            public,
+            src,
+            path,
+            input_tokens,
+            budget_tokens,
+            "public-signature",
+        );
     }
 
     let comment = if matches!(
@@ -218,9 +232,9 @@ pub fn skeletonize_to_budget(path: &Path, src: &str, budget_tokens: usize) -> Bu
         '/'
     };
     let stub = if comment == '#' {
-        format!("# crypt: {} elided; retrieve original", path.display())
+        format!("# cortex: {} elided; retrieve original", path.display())
     } else {
-        format!("// crypt: {} elided; retrieve original", path.display())
+        format!("// cortex: {} elided; retrieve original", path.display())
     };
     budget_result(stub, src, path, input_tokens, budget_tokens, "path-stub")
 }

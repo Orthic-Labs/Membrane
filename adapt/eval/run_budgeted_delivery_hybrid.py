@@ -1,4 +1,4 @@
-"""Evaluate an 800-token Adapt core digest plus scoped Crypt retrieval (arm E)."""
+"""Evaluate an 800-token Adapt core digest plus scoped Cortex retrieval (arm E)."""
 from __future__ import annotations
 
 import argparse

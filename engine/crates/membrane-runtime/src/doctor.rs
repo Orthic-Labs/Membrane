@@ -111,7 +111,7 @@ pub fn run_with_policy(
         "ok"
     };
     Ok(DoctorReportV0 {
-        schema_version: "CryptDoctorV0",
+        schema_version: "CortexDoctorV0",
         system: "Membrane",
         status,
         checks,
@@ -291,7 +291,7 @@ mod tests {
         drop(connection);
         let before = std::fs::read(&db).unwrap();
         let report = run(&db).unwrap();
-        assert_eq!(report.schema_version, "CryptDoctorV0");
+        assert_eq!(report.schema_version, "CortexDoctorV0");
         assert!(report
             .checks
             .iter()

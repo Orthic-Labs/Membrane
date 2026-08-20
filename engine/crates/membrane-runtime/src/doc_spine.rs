@@ -335,7 +335,7 @@ fn classify(path: &str) -> (&'static str, &'static str, &'static str, bool) {
 }
 
 /// Read-only Doc Spine recall result. Document text stays in source; callers receive only a
-/// hash-bound pointer consumable by `crypt doc read`.
+/// hash-bound pointer consumable by `cortex doc read`.
 #[derive(Clone, Debug, serde::Serialize, PartialEq)]
 pub struct DocRecallHitV1 {
     pub doc_id: String,

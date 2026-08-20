@@ -26,8 +26,8 @@ from memory import adapt_core
 
 DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
 DEFAULT_CORE = ROOT / "docs/evidence/adapt-taste-parity-2026-07-14/compiled-core.json"
-DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/crypt-engine.db"
-DEFAULT_CRYPT = ROOT / "tools/bin/crypt.exe"
+DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/cortex-engine.db"
+DEFAULT_CORTEX = ROOT / "tools/bin/cortex.exe"
 DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/production-smoke"
 
 
@@ -88,7 +88,7 @@ def build_smoke_items(treatment: dict, limit: int = 5) -> tuple[list[dict], list
     return records, cases
 
 
-def build_production_alias_db(crypt: Path, live_db: Path, db: Path,
+def build_production_alias_db(cortex: Path, live_db: Path, db: Path,
                               treatment: dict) -> dict:
     """Create an isolated full-treatment DB through the production serializer."""
     records = enrich_delivery_records(treatment)
@@ -100,12 +100,12 @@ def build_production_alias_db(crypt: Path, live_db: Path, db: Path,
         raise RuntimeError("secret scanner blocked production alias payload")
     runner.value_ab.snapshot_live_db(live_db, db)
     port = runner.value_ab._free_port()
-    service = runner.value_ab._start_service(crypt, db, port)
+    service = runner.value_ab._start_service(cortex, db, port)
     try:
         runner.value_ab._wait_ready(port)
         for record in records:
             runner.value_ab.put_pref_record(
-                crypt, db, port, record["id"], record.get("scope", "D--Claude"),
+                cortex, db, port, record["id"], record.get("scope", "D--Claude"),
                 _body(record, True),
             )
     finally:
@@ -134,22 +134,22 @@ def _body(source: dict, with_aliases: bool) -> str:
         action, scope=source.get("scope", "D--Claude"), source_ids=(source["id"],),
         existing={"id": source["id"], "created_at": "2026-07-14T00:00:00+00:00"},
     )
-    return preference_record.to_crypt_content(record)
+    return preference_record.to_cortex_content(record)
 
 
-def _run_arm(crypt: Path, live_db: Path, db: Path, cases: list[dict],
+def _run_arm(cortex: Path, live_db: Path, db: Path, cases: list[dict],
              records: list[dict], input_path: Path, *, aliases: bool):
     runner.value_ab.snapshot_live_db(live_db, db)
     port = runner.value_ab._free_port()
-    service = runner.value_ab._start_service(crypt, db, port)
+    service = runner.value_ab._start_service(cortex, db, port)
     try:
         runner.value_ab._wait_ready(port)
         for record in records:
             runner.value_ab.put_pref_record(
-                crypt, db, port, record["id"], record.get("scope", "D--Claude"),
+                cortex, db, port, record["id"], record.get("scope", "D--Claude"),
                 _body(record, aliases),
             )
-        ranked = runner.replay_all(crypt, db, port, cases, input_path)
+        ranked = runner.replay_all(cortex, db, port, cases, input_path)
     finally:
         runner.value_ab._stop_service(service)
     ok, count, msg = runner.value_ab.integrity_check(db)
@@ -175,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--treatment", type=Path, default=DEFAULT_TREATMENT)
     parser.add_argument("--core", type=Path, default=DEFAULT_CORE)
     parser.add_argument("--live-db", type=Path, default=DEFAULT_LIVE_DB)
-    parser.add_argument("--crypt-bin", type=Path, default=DEFAULT_CRYPT)
+    parser.add_argument("--cortex-bin", type=Path, default=DEFAULT_CORTEX)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--limit", type=int, default=5)
     args = parser.parse_args(argv)
@@ -196,11 +196,11 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError(f"live DB integrity failed before smoke: {pre_msg}")
     args.out.mkdir(parents=True, exist_ok=True)
     baseline, baseline_integrity = _run_arm(
-        args.crypt_bin, args.live_db, args.out / "baseline.db", cases, records,
+        args.cortex_bin, args.live_db, args.out / "baseline.db", cases, records,
         args.out / "baseline-queries.jsonl", aliases=False,
     )
     alias, alias_integrity = _run_arm(
-        args.crypt_bin, args.live_db, args.out / "alias.db", cases, records,
+        args.cortex_bin, args.live_db, args.out / "alias.db", cases, records,
         args.out / "alias-queries.jsonl", aliases=True,
     )
     post_ok, post_count, post_msg = runner.value_ab.integrity_check(args.live_db)

@@ -9,16 +9,16 @@
 //!
 //! This Rust module is the dispatcher: it spawns the Python federation
 //! implementation at `engine/federation/gateway.py` (resolved by walking
-//! up from the repo through the layouts in `GATEWAY_LAYOUTS`), parses the
+//! up from the repo through current Membrane layouts), parses the
 //! assembled ContextCandidateSet v1, runs the existing pure-in-process
 //! planner, and prints the final planner envelope to stdout.
 //!
 //! Provider payload formats and SQLite details never enter client
-//! adapters. Crypt durable storage is never modified. Bearer tokens
-//! are passed via the standard `CRYPT_API_TOKEN_FILE` env, never in
+//! adapters. Cortex durable storage is never modified. Bearer tokens
+//! are passed via the standard `CORTEX_API_TOKEN_FILE` env, never in
 //! argv or stdout. ScopeGrant enforcement happens in the Python script.
 
-use crypt_core::planner::{plan, ContextCandidateSetV1, PlannerInput};
+use cortex_core::planner::{plan, ContextCandidateSetV1, PlannerInput};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -29,17 +29,12 @@ fn federation_session_id(session: Option<String>) -> String {
         .unwrap_or_else(|| crate::store::opaque_correlation_token("anonymous-session", "session"))
 }
 
-/// Known gateway layouts relative to a candidate ancestor directory,
-/// preferred first. The membrane consolidation moved the gateway out of
-/// `tools/crypt/`; the legacy layout stays last so older checkouts and
-/// frozen evidence hosts keep resolving.
-const GATEWAY_LAYOUTS: [&[&str]; 3] = [
+/// Current gateway layouts relative to a candidate ancestor directory.
+const GATEWAY_LAYOUTS: [&[&str]; 2] = [
     // Parent workspace holding membrane as a nested checkout.
     &["membrane", "engine", "federation", "gateway.py"],
-    // Standalone membrane checkout.
+    // Membrane checkout itself.
     &["engine", "federation", "gateway.py"],
-    // Pre-consolidation workspace layout.
-    &["tools", "crypt", "federation", "gateway.py"],
 ];
 
 fn gateway_layout_path(dir: &Path, layout: &[&str]) -> PathBuf {
@@ -190,16 +185,16 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
             ));
         }
     };
-    if raw_value.get("_rightcontext").is_some() {
+    if raw_value.get("_membrane").is_some() {
         if let Some(abort_reason) = raw_value
-            .get("_rightcontext")
+            .get("_membrane")
             .and_then(|v| v.get("abortReason"))
             .and_then(|v| v.as_str())
         {
             return Err(format!(
                 "federation aborted by gateway: abortReason={abort_reason}; abortDetail={}",
                 raw_value
-                    .get("_rightcontext")
+                    .get("_membrane")
                     .and_then(|v| v.get("abortDetail"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("(none)")
@@ -271,7 +266,7 @@ pub fn envelope_from_ccs(stdout: &str, input: EnvelopeInput) -> Result<Value, St
     Ok(payload)
 }
 
-/// Membrane Crypt durable-memory candidate provider. Pure in-process
+/// Membrane Cortex durable-memory candidate provider. Pure in-process
 /// read of eligible MemoryEntry rows normalised into ContextCandidateSet v1
 /// records (Layer 7, sourceKind "memory", trustClass "agent_verified").
 #[allow(clippy::too_many_arguments)]
@@ -291,7 +286,7 @@ pub fn run_memory_candidates(
         .to_path_buf();
     let db_path = db_path_for(&workspace);
     let db = crate::MemDb::open(&db_path)
-        .map_err(|e| format!("open crypt db at {}: {e}", db_path.display()))?;
+        .map_err(|e| format!("open cortex db at {}: {e}", db_path.display()))?;
     let store = crate::MemoryStore::try_open(db).map_err(|e| format!("open MemoryStore: {e}"))?;
 
     let scope_id = scope.clone().unwrap_or_else(|| "D--Claude".to_string());
@@ -313,7 +308,7 @@ pub fn run_memory_candidates(
     Ok(())
 }
 
-/// Testable core: build the Crypt ContextCandidateSet from REAL relevance-ranked memories.
+/// Testable core: build the Cortex ContextCandidateSet from REAL relevance-ranked memories.
 ///
 /// Uses `recall_scored` (the same full-corpus hybrid retriever that backs live `context_for`),
 /// not an arbitrary `entries(max)` slice — so results are relevant. Emits `text` = a bounded
@@ -399,7 +394,7 @@ pub fn memory_candidates_payload_for_descriptor(
                 "protected": false,
                 "exact": false,
                 "recoverable": true,
-                "resolver": format!("crypt get {}", e.id),
+                "resolver": format!("cortex get {}", e.id),
                 "text": preview,
             })
         })
@@ -430,9 +425,9 @@ pub fn memory_candidates_payload_for_descriptor(
         "traceId": new_trace_id(),
         "task": task,
         "mode": "verify",
-        "provider": "crypt",
+        "provider": "cortex",
         "freshness": {
-            "revision": crypt_revision(),
+            "revision": cortex_revision(),
             "indexedAt": iso_now(),
             "stale": stale,
         },
@@ -443,7 +438,7 @@ pub fn memory_candidates_payload_for_descriptor(
         "candidates": candidates,
         "omissions": omissions,
         "scope": scopes.first().cloned().unwrap_or_default(),
-        "_rightcontext": {
+        "_membrane": {
             "stageElapsedMs": {
                 "embed": stage_elapsed.embed_ms,
                 "recall": stage_elapsed.recall_ms,
@@ -471,7 +466,7 @@ fn sha256_hex(s: &str) -> String {
 }
 
 fn db_path_for(workspace: &Path) -> PathBuf {
-    std::env::var("CRYPT_DB")
+    std::env::var("CORTEX_DB")
         .ok()
         .map(PathBuf::from)
         .or_else(|| {
@@ -480,14 +475,14 @@ fn db_path_for(workspace: &Path) -> PathBuf {
             } else {
                 std::env::var_os("HOME").map(PathBuf::from)
             };
-            home.map(|p| p.join(".claude").join("crypt").join("crypt.db"))
+            home.map(|p| p.join(".claude").join("cortex").join("cortex.db"))
         })
         .unwrap_or_else(|| {
             workspace
                 .join("tools")
                 .join(".cache")
-                .join("crypt")
-                .join("crypt.db")
+                .join("cortex")
+                .join("cortex.db")
         })
 }
 
@@ -516,13 +511,13 @@ fn iso_now() -> String {
     format!("1970-01-01T00:00:00Z+{days}T{h:02}:{m:02}:{s:02}Z")
 }
 
-fn crypt_revision() -> String {
-    std::env::var("CRYPT_REVISION").unwrap_or_else(|_| "crypt-0.1.1-federation".to_string())
+fn cortex_revision() -> String {
+    std::env::var("CORTEX_REVISION").unwrap_or_else(|_| "cortex-0.1.1-federation".to_string())
 }
 
 fn gateway_observability(raw: &Value) -> Value {
     let mut fields = serde_json::Map::new();
-    if let Some(rightcontext) = raw.get("_rightcontext") {
+    if let Some(membrane) = raw.get("_membrane") {
         for field in [
             "providerCounts",
             "providerWarnings",
@@ -533,7 +528,7 @@ fn gateway_observability(raw: &Value) -> Value {
             "idleGapMs",
             "stageElapsedMs",
         ] {
-            if let Some(value) = rightcontext.get(field) {
+            if let Some(value) = membrane.get(field) {
                 fields.insert(field.to_string(), value.clone());
             }
         }
@@ -555,11 +550,11 @@ mod observability_tests {
     fn preserves_content_free_gateway_observability_for_clients() {
         let raw = serde_json::json!({
             "freshness": {"graphState": "dirty_overlay"},
-            "_rightcontext": {
+            "_membrane": {
                 "providerCounts": {"git": 2},
                 "providerWarnings": [],
                 "providerElapsedMs": {"git": 1.25},
-                "providerStageElapsedMs": {"crypt": {"embed": 2.5, "recall": 3.5}},
+                "providerStageElapsedMs": {"cortex": {"embed": 2.5, "recall": 3.5}},
                 "stageElapsedMs": {"freshness": 2.0, "provider_fanout": 3.0},
                 "idleGapMs": 300001,
                 "serviceGeneration": "svc-test",
@@ -573,7 +568,7 @@ mod observability_tests {
                 "providerCounts": {"git": 2},
                 "providerWarnings": [],
                 "providerElapsedMs": {"git": 1.25},
-                "providerStageElapsedMs": {"crypt": {"embed": 2.5, "recall": 3.5}},
+                "providerStageElapsedMs": {"cortex": {"embed": 2.5, "recall": 3.5}},
                 "stageElapsedMs": {"freshness": 2.0, "provider_fanout": 3.0},
                 "idleGapMs": 300001,
                 "graphState": "dirty_overlay",
@@ -753,7 +748,7 @@ mod tests {
         );
         // text is CONTENT, not an id/slug (the bug this fixes).
         assert!(!text.starts_with("memory:role:") && !text.starts_with("mem-"));
-        assert!(top["resolver"].as_str().unwrap().starts_with("crypt get "));
+        assert!(top["resolver"].as_str().unwrap().starts_with("cortex get "));
     }
 
     fn touch_gateway(root: &Path, layout: &[&str]) -> PathBuf {
@@ -778,24 +773,6 @@ mod tests {
     fn gateway_resolves_a_standalone_membrane_checkout() {
         let tmp = tempfile::tempdir().unwrap();
         let expected = touch_gateway(tmp.path(), GATEWAY_LAYOUTS[1]);
-
-        assert_eq!(find_federation_gateway(tmp.path()), Some(expected));
-    }
-
-    #[test]
-    fn gateway_prefers_membrane_over_the_legacy_layout_when_both_exist() {
-        let tmp = tempfile::tempdir().unwrap();
-        let membrane = touch_gateway(tmp.path(), GATEWAY_LAYOUTS[0]);
-        let legacy = touch_gateway(tmp.path(), GATEWAY_LAYOUTS[2]);
-        assert!(legacy.exists(), "legacy fixture must exist for the contest");
-
-        assert_eq!(find_federation_gateway(tmp.path()), Some(membrane));
-    }
-
-    #[test]
-    fn gateway_still_resolves_a_pre_consolidation_workspace() {
-        let tmp = tempfile::tempdir().unwrap();
-        let expected = touch_gateway(tmp.path(), GATEWAY_LAYOUTS[2]);
 
         assert_eq!(find_federation_gateway(tmp.path()), Some(expected));
     }

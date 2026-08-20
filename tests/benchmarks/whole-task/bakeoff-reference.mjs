@@ -23,7 +23,7 @@ import { resolve } from 'node:path';
 // the completed bakeoff. Recomputed at call time from disk and compared —
 // never trusted blindly, never used to regenerate a result.
 export const BAKEOFF_REFERENCE = Object.freeze({
-  decision: 'keep vectors inside Crypt/Membrane; implement resident in-process f32 dispatch',
+  decision: 'keep vectors inside Cortex/Membrane; implement resident in-process f32 dispatch',
   gitHead: '2f7e4c4f70d31462815155c3cd84717809db1e8a',
   artifacts: Object.freeze({
     config: Object.freeze({ path: 'engine/vector-bakeoff/config/round1-v1.json', sha256: 'ad34773d194597444f07b2a12b0ac40c647476d1483d4122a9f571ad1def6bdf' }),

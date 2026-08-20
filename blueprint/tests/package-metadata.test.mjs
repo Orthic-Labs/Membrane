@@ -11,9 +11,10 @@ const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 test("package identity fields are consistent", () => {
   assert.equal(pkg.name, "@orthic-labs/blueprint");
   assert.equal(pkg.version, "0.2.0");
-  assert.equal(pkg.repository.url, "git+https://github.com/Orthic-Labs/Blueprint.git");
-  assert.equal(pkg.homepage, "https://github.com/Orthic-Labs/Blueprint#readme");
-  assert.equal(pkg.bugs.url, "https://github.com/Orthic-Labs/Blueprint/issues");
+  assert.equal(pkg.repository.url, "git+https://github.com/Orthic-Labs/Membrane.git");
+  assert.equal(pkg.repository.directory, "blueprint");
+  assert.equal(pkg.homepage, "https://github.com/Orthic-Labs/Membrane/tree/main/blueprint#readme");
+  assert.equal(pkg.bugs.url, "https://github.com/Orthic-Labs/Membrane/issues");
   assert.equal(pkg.mcpName, "io.github.Orthic-Labs/blueprint");
 });
 

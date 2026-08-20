@@ -17,7 +17,7 @@ Outputs::
     <out>/adapt.report.md      human-readable summary
 
 Every Adapt run writes audit entries with the same shape; the report extracts
-rejection reasons, admission decisions, crypt-write failures, manifest
+rejection reasons, admission decisions, cortex-write failures, manifest
 applications, and rollback events. Latency is the wall-clock difference
 between ``discovered`` and ``committed`` journal entries per batch.
 """
@@ -39,8 +39,8 @@ JOURNAL = ADAPT_STATE / "run_journal.jsonl"
 STATE_FILE = ADAPT_STATE / "state.json"
 RULES_FILE = ADAPT_STATE / "rules.json"
 SAFEPOINTS = ADAPT_STATE / "safepoints"
-HEARTBEAT = WS / "tools/.cache/metrics/crypt-heartbeat.jsonl"
-CRYPT_DB = WS / "tools/.cache/memory/crypt-engine.db"
+HEARTBEAT = WS / "tools/.cache/metrics/cortex-heartbeat.jsonl"
+CORTEX_DB = WS / "tools/.cache/memory/cortex-engine.db"
 
 
 def _load_jsonl(path: Path) -> list[dict]:
@@ -123,7 +123,7 @@ def _effectiveness(db_path: Path | None) -> dict:
 
 def build_report(state_dir: Path = ADAPT_STATE,
                  heartbeat_path: Path = HEARTBEAT,
-                 db_path: Path | None = CRYPT_DB) -> dict:
+                 db_path: Path | None = CORTEX_DB) -> dict:
     audit = _load_jsonl(state_dir / "audit.jsonl")
     journal = _load_jsonl(state_dir / "run_journal.jsonl")
     state = _safe_load(state_dir / "state.json")
@@ -143,7 +143,7 @@ def build_report(state_dir: Path = ADAPT_STATE,
             actions[action] += 1
         if ev == "admission_rejected":
             rejection_reasons[entry.get("why", "unknown")] += 1
-        elif ev == "crypt_write_failed":
+        elif ev == "cortex_write_failed":
             write_failures.append(entry)
         elif ev in ("manifest_applied", "manifest_apply_failed",
                     "manifest_rollback_deleted"):
@@ -211,7 +211,7 @@ def build_report(state_dir: Path = ADAPT_STATE,
         "batches_incomplete": incomplete,
         "actions": dict(actions),
         "admission_rejection_reasons": dict(rejection_reasons),
-        "crypt_write_failures": len(write_failures),
+        "cortex_write_failures": len(write_failures),
         "llm_call_failures": len(llm_failures),
         "manifest_events": len(manifest_events),
         "rollback_events": len(rollback_events),
@@ -253,7 +253,7 @@ def _format_report(rep: dict) -> str:
     L.append("")
     L.append("## Failure signals")
     L.append("")
-    L.append(f"- crypt write failures: {rep['crypt_write_failures']}")
+    L.append(f"- cortex write failures: {rep['cortex_write_failures']}")
     L.append(f"- llm call failures:        {rep['llm_call_failures']}")
     L.append(f"- manifest events:         {rep['manifest_events']}")
     L.append(f"- rollback events:         {rep['rollback_events']}")
@@ -286,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--state-dir", type=Path, default=ADAPT_STATE)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--heartbeat", type=Path, default=HEARTBEAT)
-    ap.add_argument("--db", type=Path, default=CRYPT_DB)
+    ap.add_argument("--db", type=Path, default=CORTEX_DB)
     args = ap.parse_args(argv)
 
     rep = build_report(

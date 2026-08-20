@@ -2,7 +2,7 @@
   "name": "blueprint",
   "version": "__VERSION__",
   "platforms": ["linux-x64", "linux-arm64"],
-  "archiveBase": "https://github.com/Orthic-Labs/Blueprint/releases/download/v__VERSION__/blueprint-{platform}.tar.gz",
+  "archiveBase": "https://github.com/Orthic-Labs/Membrane/releases/download/v__VERSION__/blueprint-{platform}.tar.gz",
   "checksums": {
     "linux-x64": "__LINUX_X64_SHA256__",
     "linux-arm64": "__LINUX_ARM64_SHA256__"

@@ -1,4 +1,4 @@
-export const COMPONENT = 'crypt-memory';
+export const COMPONENT = 'cortex-memory';
 export const BENCHMARKS = ['LoCoMo', 'LongMemEval', 'BEAM'];
 export const ROLES = ['input', 'result', 'baseline', 'holdout'];
 

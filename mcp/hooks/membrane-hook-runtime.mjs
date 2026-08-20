@@ -1,7 +1,7 @@
 import { dispatchHookEvent, normalizeHookEvent } from "@rightkit/hooks";
 
 const HOOK_MODULES = Object.freeze([
-  ["membrane.crypt-status", "SessionStart", "status"],
+  ["membrane.cortex-status", "SessionStart", "status"],
   ["membrane.memory-rearm", "SessionStart", "rearm", (event) => event.payload.source === "compact"],
   ["membrane.memory-recall", "UserPromptSubmit", "recall"],
   ["membrane.memory-pre-compact", "PreCompact", "preCompact"],
@@ -29,7 +29,7 @@ function requireOperation(operations, name) {
 /**
  * Membrane owns memory-hook policy; HookHost owns event normalization, ordering,
  * deadlines, and result envelopes. Lifecycle management is intentionally absent:
- * the Hub is the sole owner of Crypt start, restart, shutdown, and singleton
+ * the Hub is the sole owner of Cortex start, restart, shutdown, and singleton
  * ownership.
  */
 export function createMembraneHookModules(operations) {

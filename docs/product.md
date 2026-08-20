@@ -13,10 +13,10 @@ narrative overview; this file carries the source-derived facts.
 
 - **MCP server** — ten tools over stdio:
 
+| `membrane_blueprint` |
 | `membrane_checkpoint_load` |
 | `membrane_checkpoint_save` |
 | `membrane_context` |
-| `membrane_blueprint` |
 | `membrane_feedback` |
 | `membrane_knowledge_propose` |
 | `membrane_scratchpad` |

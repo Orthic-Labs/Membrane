@@ -16,16 +16,16 @@ wire together three things:
    only ever calls `existsSync` on it — it never fetches, clones, or
    downloads a dataset over the network.
 2. A caller-supplied `execute({ benchmark, datasetRoot })` function that
-   performs the actual benchmark run against `crypt-memory` and returns a
+   performs the actual benchmark run against `cortex-memory` and returns a
    raw result payload. The runner does not implement this function and does
-   not build or invoke the Crypt engine itself; wiring a real executor is a
+   not build or invoke the Cortex engine itself; wiring a real executor is a
    book-gate-time integration step, consistent with the no-CI execution
    rules (`docs/plans/.../MEMBRANE-BOOK-MODE-EXECUTION-RULES.md`), which
    keep heavy/engine commands out of task-time changes.
 3. The existing MBR-805 verifier (`scripts/qualification/verify-memory-benchmark.mjs`),
    which every executor result is passed through before it can be reported
    as `ran`. This is the same check that rejects `componentUnderTest`
-   values other than `crypt-memory` and any `membraneScore`/`managedScore`/
+   values other than `cortex-memory` and any `membraneScore`/`managedScore`/
    `attribution`/`marketingClaim` field, so a real run cannot conflate a
    third-party benchmark result with a Membrane or managed-service claim.
 
@@ -43,7 +43,7 @@ Every call to `runMemoryBenchmark` returns exactly one of:
   rejection message.
 - `status: "ran"` — the payload passed verification. The result carries the
   verified `identity`, `metrics` (grouped into `retrieval`, `admission`, and
-  `product`, per the contract), and `componentUnderTest: "crypt-memory"`.
+  `product`, per the contract), and `componentUnderTest: "cortex-memory"`.
 
 Degrading one benchmark never blocks the others: `runAllMemoryBenchmarks`
 (and the CLI's default of running every declared benchmark) reports one

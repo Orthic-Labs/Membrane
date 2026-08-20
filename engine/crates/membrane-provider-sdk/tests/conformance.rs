@@ -1,9 +1,9 @@
 //! Conformance test for the Membrane provider SDK.
 //!
-//! Runs the canonical Blueprint-shaped and Crypt-shaped adapters through the
+//! Runs the canonical Blueprint-shaped and Cortex-shaped adapters through the
 //! SDK's `run_conformance` harness, against the golden fixture set from
 //! `membrane-testkit`. The shapes are identical to the reference adapters
-//! in `docs/examples/providers/{blueprint,crypt}_example/`. Those reference crates
+//! in `docs/examples/providers/{blueprint,cortex}_example/`. Those reference crates
 //! live in a separate workspace (`docs/examples/providers/Cargo.toml`); the
 //! SDK's conformance test therefore uses inline stub adapters with the
 //! SAME shape and the SAME wire behavior. The Book 1 gate can verify
@@ -160,26 +160,26 @@ impl Provider for BlueprintAdapter {
     }
 }
 
-/// A Crypt-shaped provider. Serves `membrane_knowledge_propose` and
+/// A Cortex-shaped provider. Serves `membrane_knowledge_propose` and
 /// `membrane_checkpoint_save` with deterministic responses.
-struct CryptAdapter {
+struct CortexAdapter {
     ready: bool,
 }
 
-impl CryptAdapter {
+impl CortexAdapter {
     fn new() -> Self {
         Self { ready: false }
     }
 }
 
-impl Provider for CryptAdapter {
+impl Provider for CortexAdapter {
     fn initialize(&mut self, _config: &Value) -> Result<()> {
         self.ready = true;
         Ok(())
     }
 
     fn readiness(&self) -> ProviderReadinessV1 {
-        readiness("crypt", self.ready)
+        readiness("cortex", self.ready)
     }
 
     fn list_capabilities(&self) -> Vec<CapabilityV1> {
@@ -199,7 +199,7 @@ impl Provider for CryptAdapter {
 
     fn handle_operation(&self, operation: &str, request: &Value) -> Result<Value> {
         if !self.ready {
-            return Err(ProviderError::Uninitialized("crypt-adapter".into()));
+            return Err(ProviderError::Uninitialized("cortex-adapter".into()));
         }
         match operation {
             "membrane_knowledge_propose" => {
@@ -219,7 +219,7 @@ impl Provider for CryptAdapter {
                     "kind": "success",
                     "data": {
                         "ok": true,
-                        "proposalId": "prop-mbr-104-crypt",
+                        "proposalId": "prop-mbr-104-cortex",
                         "status": "stored",
                         "durable": true,
                         "taskEnvelope": task_envelope,
@@ -244,7 +244,7 @@ impl Provider for CryptAdapter {
                 let checkpoint_id = request
                     .pointer("/checkpoint/id")
                     .and_then(Value::as_str)
-                    .unwrap_or("ckpt-mbr-104-crypt");
+                    .unwrap_or("ckpt-mbr-104-cortex");
                 Ok(json!({
                     "kind": "success",
                     "data": {
@@ -267,7 +267,7 @@ impl Provider for CryptAdapter {
 /// `membrane-testkit::golden_fixtures()` must round-trip through one of
 /// the two reference adapters, byte-for-byte.
 #[test]
-fn blueprint_and_crypt_fixtures_round_trip_through_the_sdk() {
+fn blueprint_and_cortex_fixtures_round_trip_through_the_sdk() {
     let fixtures = golden_fixtures();
     assert!(
         !fixtures.is_empty(),
@@ -278,10 +278,10 @@ fn blueprint_and_crypt_fixtures_round_trip_through_the_sdk() {
     blueprint
         .initialize(&json!({}))
         .expect("blueprint-adapter initialize");
-    let mut crypt = CryptAdapter::new();
-    crypt
+    let mut cortex = CortexAdapter::new();
+    cortex
         .initialize(&json!({}))
-        .expect("crypt-adapter initialize");
+        .expect("cortex-adapter initialize");
 
     let blueprint_fixtures: Vec<_> = fixtures
         .iter()
@@ -296,23 +296,23 @@ fn blueprint_and_crypt_fixtures_round_trip_through_the_sdk() {
     );
     assert_eq!(blueprint_report.passed.len(), blueprint_fixtures.len());
 
-    let crypt_fixtures: Vec<_> = fixtures
+    let cortex_fixtures: Vec<_> = fixtures
         .iter()
         .filter(|f| {
             f.operation == "membrane_knowledge_propose" || f.operation == "membrane_checkpoint_save"
         })
         .cloned()
         .collect();
-    let crypt_report = run_conformance(&crypt, &crypt_fixtures);
+    let cortex_report = run_conformance(&cortex, &cortex_fixtures);
     assert!(
-        crypt_report.is_conformant(),
-        "Crypt adapter failed conformance: {:#?}",
-        crypt_report.failed
+        cortex_report.is_conformant(),
+        "Cortex adapter failed conformance: {:#?}",
+        cortex_report.failed
     );
-    assert_eq!(crypt_report.passed.len(), crypt_fixtures.len());
+    assert_eq!(cortex_report.passed.len(), cortex_fixtures.len());
 
     // The union: every fixture in `golden_fixtures()` must be served
     // by exactly one of the two reference adapters.
-    let total = blueprint_report.passed.len() + crypt_report.passed.len();
+    let total = blueprint_report.passed.len() + cortex_report.passed.len();
     assert_eq!(total, fixtures.len());
 }

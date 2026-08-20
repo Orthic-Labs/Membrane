@@ -4,7 +4,7 @@
 The runner creates a unique work directory, generates a pending manifest,
 adjudicates only when pending candidates exist, validates conformance again,
 and applies only through ``--apply-from-manifest``. It never changes the
-resident service or ``crypt-daily`` scheduler.
+resident service or ``cortex-daily`` scheduler.
 """
 
 from __future__ import annotations

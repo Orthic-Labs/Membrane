@@ -4,15 +4,15 @@ import { join, resolve } from "node:path";
 const root = resolve(import.meta.dirname, "../..");
 const workspaceInstall = join(root, "install", "workspace");
 const registrationFiles = [
-  "crypt_service_" + "launchd.py",
-  "crypt_service_" + "registrars.py",
+  "cortex_service_" + "launchd.py",
+  "cortex_service_" + "registrars.py",
 ];
 const prohibited = ["launch" + "d", "system" + "d", "scht" + "asks"];
 
 for (const file of registrationFiles.map((name) => join(workspaceInstall, name))) {
   if (existsSync(file)) throw new Error(`OS lifecycle registration file must not exist: ${file}`);
 }
-const source = readFileSync(join(workspaceInstall, "crypt_service.py"), "utf8").toLowerCase();
+const source = readFileSync(join(workspaceInstall, "cortex_service.py"), "utf8").toLowerCase();
 for (const token of prohibited) {
   if (source.includes(token)) throw new Error(`OS lifecycle registration must not return: ${token}`);
 }

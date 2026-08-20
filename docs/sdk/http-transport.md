@@ -33,7 +33,7 @@ function must send.
   - `Origin` — must exactly match the policy's allowed origin (e.g.
     `http://127.0.0.1:<port>`).
   - `Authorization: Bearer <token>` — the same on-disk credential the
-    loopback Crypt API already uses (`serve::configured_api_token`). Compared
+    loopback Cortex API already uses (`serve::configured_api_token`). Compared
     in constant time; a missing header is `missing_bearer`, a wrong value is
     `invalid_bearer`.
   - `x-membrane-installation-id` (`membrane_runtime::mcp_http::INSTALLATION_HEADER`)

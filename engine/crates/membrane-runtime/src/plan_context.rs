@@ -1,8 +1,8 @@
-//! `crypt plan-context` CLI handler.
+//! `cortex plan-context` CLI handler.
 //!
 //! Reads a ContextCandidateSet v1 (from --candidate-set path or stdin when the
 //! path is "-"), invokes the deterministic pure-in-process planner from
-//! `crypt_core::planner`, and emits a JSON payload to stdout with:
+//! `cortex_core::planner`, and emits a JSON payload to stdout with:
 //!   - `packet`: the bounded ContextPacket v1
 //!   - `receipts`: content-free ContextReceipt v2 list
 //!   - `providerStatus`, `fallbackMode`, `degradationReason`, `sourceGeneration`
@@ -12,7 +12,9 @@
 //! payload so callers (test harnesses, the orchestrator) can distinguish
 //! planner-rejected input from CLI misuse. Exit code is non-zero on error.
 
-use crypt_core::planner::{plan, ContextCandidateSetV1, PlannerError, PlannerInput, PlannerOutput};
+use cortex_core::planner::{
+    plan, ContextCandidateSetV1, PlannerError, PlannerInput, PlannerOutput,
+};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 

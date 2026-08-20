@@ -9,8 +9,8 @@ ALLOWED_FIELDS={"schemaVersion","productId","displayName","productVersion","hubC
 HUB_COMPAT_RANGE=">=0.1.11 <0.2.0"
 ICON_REL=Path("install/assets/membrane-tab-icon.png")
 WORKSPACE_ICON_REL=Path("membrane/install/assets/membrane-tab-icon.png")
-SVC_REL=Path("tools/bin/crypt-service")
-SVC_REL_WIN=Path("tools/bin/crypt-service.exe")
+SVC_REL=Path("tools/bin/cortex-service")
+SVC_REL_WIN=Path("tools/bin/cortex-service.exe")
 TOKEN_REL=Path("tools/.cache/memory/api-token")
 def _is_inside(root:Path,target:Path)->bool:
     try: target.resolve().relative_to(root.resolve()); return True
@@ -48,7 +48,7 @@ def build_manifest_dict(root:Path,port:int,product_version:str,*,win:bool|None=N
     if not str(product_version).strip(): raise ValueError("productVersion must be nonempty")
     if not 1<=int(port)<=65535: raise ValueError("statusEndpoint.port must be within 1..=65535")
     svc=_svc_bin(root,win=win); icon=_icon(root); token=root/TOKEN_REL
-    if not svc.is_file(): raise FileNotFoundError(f"crypt-service binary not found: {svc}")
+    if not svc.is_file(): raise FileNotFoundError(f"cortex-service binary not found: {svc}")
     if not icon.is_file(): raise FileNotFoundError(f"icon not found: {icon}")
     if not _is_inside(root,svc): raise ValueError(f"serviceStart outside installRoot: {svc}")
     if not _is_inside(root,icon): raise ValueError(f"icon outside installRoot: {icon}")

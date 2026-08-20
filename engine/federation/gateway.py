@@ -6,7 +6,7 @@ Subcommand: `py -3.11 membrane/engine/federation/gateway.py --task T --repo R
                     [--anchors a,b,c] [--scope-grant-id G]`
 
 Writes a fully-assembled ContextCandidateSet v1 to stdout. The Rust
-dispatcher (`crypt federate`) parses this, runs the deterministic
+dispatcher (`cortex federate`) parses this, runs the deterministic
 in-process admission, and emits the final envelope.
 
 Hard rules (per dispatch):
@@ -37,7 +37,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-# The Rust dispatcher (`crypt federate`) launches this script with cwd =
+# The Rust dispatcher (`cortex federate`) launches this script with cwd =
 # the user's repo root, not the workspace. Make sure `federation.providers.*`
 # is importable regardless of cwd by adding the script's PARENT (the workspace
 # dir that contains the `federation` package) to sys.path.
@@ -47,8 +47,8 @@ if str(_PARENT) not in sys.path:
     sys.path.insert(0, str(_PARENT))
 
 # Local providers — all in-process or short subprocess. None of them touch
-# the Crypt DB schema, all read-only or pure.
-from federation.providers import blueprint, audit, architect, crypt, git_provider  # noqa: E402
+# the Cortex DB schema, all read-only or pure.
+from federation.providers import blueprint, audit, architect, cortex, git_provider  # noqa: E402
 from federation.providers import live, rules, anchors, scope_grant  # noqa: E402
 from federation.providers import skills  # noqa: E402
 
@@ -61,28 +61,15 @@ _LANE_FAILURE_KINDS = frozenset({
     "stale_snapshot", "generation_mismatch", "cancellation_budget_drop", "circuit_open",
 })
 def _resolve_release_manifest() -> Path:
-    """Locate tools/lib/crypt-release.json across both repo layouts.
-
-    Before the membrane consolidation this script lived at
-    `tools/crypt/federation/`, so `parents[1]/lib` WAS `tools/lib`. It now
-    lives at `membrane/engine/federation/`, where that same expression points
-    at a `membrane/lib` that holds no release manifest — which silently
-    degraded every packet to `release_generation_unavailable`. Probe the real
-    layouts instead of assuming a fixed depth; first hit wins.
-    """
-    override = os.environ.get("CRYPT_RELEASE_MANIFEST", "").strip()
+    """Locate current workspace's Cortex release manifest."""
+    override = os.environ.get("CORTEX_RELEASE_MANIFEST", "").strip()
     if override:
         return Path(override)
-    candidates = (
-        # membrane nested inside the parent workspace
-        _THIS_DIR.parents[2] / "tools" / "lib" / "crypt-release.json",
-        # pre-consolidation tools/crypt layout
-        _THIS_DIR.parents[1] / "lib" / "crypt-release.json",
+    workspace = next(
+        (candidate for candidate in _THIS_DIR.parents if (candidate / "tools" / "lib").is_dir()),
+        _THIS_DIR.parents[2],
     )
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    return candidates[0]
+    return workspace / "tools" / "lib" / "cortex-release.json"
 
 
 _RELEASE_MANIFEST = _resolve_release_manifest()
@@ -200,7 +187,7 @@ def _expected_release_generation() -> str | None:
     Falls back to recomputing it directly from the local git working tree
     (see `_expected_release_generation_from_source`) when the fleet manifest
     is absent or invalid — e.g. local Mac development where
-    `tools/lib/crypt-release.json` was never written.
+    `tools/lib/cortex-release.json` was never written.
     """
     try:
         document = json.loads(_RELEASE_MANIFEST.read_text(encoding="utf-8"))
@@ -239,10 +226,10 @@ def _trace_id() -> str:
 
 
 def _freshness_token(repo_root: Path) -> str:
-    raw = os.environ.get("CRYPT_API_TOKEN", "").strip()
+    raw = os.environ.get("CORTEX_API_TOKEN", "").strip()
     if raw:
         return raw
-    override = os.environ.get("CRYPT_API_TOKEN_FILE", "").strip()
+    override = os.environ.get("CORTEX_API_TOKEN_FILE", "").strip()
     candidates = [Path(override)] if override else []
     workspace = os.environ.get("WORKSPACE_ROOT", "").strip()
     if workspace:
@@ -281,7 +268,7 @@ def _fetch_freshness_verdict(repo_root: Path, session: str | None = None) -> dic
     produced here rather than by any real staleness. A caller with no session still needs a
     verdict, so an explicit anonymous marker is sent instead of omitting the field.
     """
-    port = os.environ.get("CRYPT_PORT") or os.environ.get("WORKSPACE_MEMORY_PORT") or "47851"
+    port = os.environ.get("CORTEX_PORT") or "47851"
     token = _freshness_token(repo_root)
     body = json.dumps(
         {
@@ -296,7 +283,7 @@ def _fetch_freshness_verdict(repo_root: Path, session: str | None = None) -> dic
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
     )
     try:
-        timeout = max(0.1, float(os.environ.get("RIGHTCONTEXT_FRESHNESS_TIMEOUT_S", "2.0")))
+        timeout = max(0.1, float(os.environ.get("MEMBRANE_FRESHNESS_TIMEOUT_S", "2.0")))
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = json.loads(response.read().decode("utf-8", errors="replace"))
     except (OSError, ValueError, json.JSONDecodeError):
@@ -395,14 +382,14 @@ def _safe_emit_warning(provider_name: str, exc: Exception) -> dict[str, Any]:
 def _fanout_timeout_seconds() -> float:
     if (
         os.environ.get("REPLAY_NO_LEGACY", "").strip() == "1"
-        and os.environ.get("RIGHTCONTEXT_SAMPLE_SOURCE", "").strip().lower()
+        and os.environ.get("MEMBRANE_SAMPLE_SOURCE", "").strip().lower()
         in {"replay", "test"}
     ):
         return _REPLAY_FANOUT_TIMEOUT_S
     try:
         configured = float(
             os.environ.get(
-                "RIGHTCONTEXT_PROVIDER_FANOUT_TIMEOUT_S",
+                "MEMBRANE_PROVIDER_FANOUT_TIMEOUT_S",
                 str(_PRODUCTION_FANOUT_TIMEOUT_S),
             )
         )
@@ -496,14 +483,12 @@ def _collect_tasks_bounded(
 
 
 def _manifest_digest(repo_root: Path) -> str:
-    manifest_path = repo_root / ".blueprint" / "manifest.json"
     try:
-        content = manifest_path.read_bytes()
-    except OSError as exc:
+        return blueprint.manifest_digest(repo_root)
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
         raise PermissionError(
-            f"scope_grant_invalid: blueprint manifest unavailable at {manifest_path}"
+            "scope_grant_invalid: Blueprint sealed manifest is unavailable from its resident service"
         ) from exc
-    return "sha256:" + hashlib.sha256(content).hexdigest()
 
 
 def _enforce_scope_grant(
@@ -770,8 +755,8 @@ def _gather_all_parallel(
     tasks = [
         ("audit", lambda: _adapter("audit", audit.produce, repo_root, task)),
         ("architect", lambda: _adapter("architect", architect.produce, repo_root, task)),
-        ("crypt", lambda: _adapter(
-            "crypt", crypt.produce_with_observability, repo_root, task, scope_grant_id, scope_descriptor
+        ("cortex", lambda: _adapter(
+            "cortex", cortex.produce_with_observability, repo_root, task, scope_grant_id, scope_descriptor
         )),
         ("git", lambda: _adapter("git", git_provider.produce, repo_root)),
         ("rules", lambda: _adapter("rules", rules.produce, repo_root, task, client)),
@@ -807,7 +792,7 @@ def _gather_all_parallel(
             )
         )
     if bool(skills_state.get("usable")):
-        # Ninth producer: engine-owned skill snapshot (index only; bodies resolve via `crypt
+        # Ninth producer: engine-owned skill snapshot (index only; bodies resolve via `cortex
         # skill-read`). The adapter checks the exact returned generation against `/freshness`.
         tasks.append(
             ("skills", lambda: _adapter("skills", skills.produce, repo_root, task, scope_grant_id))
@@ -857,7 +842,7 @@ def _gather_all_parallel(
     }
 
     order = {name: index for index, name in enumerate(
-        ("blueprint", "audit", "architect", "crypt", "git", "live", "rules", "anchors", "skills")
+        ("blueprint", "audit", "architect", "cortex", "git", "live", "rules", "anchors", "skills")
     )}
     out.sort(key=lambda item: order.get(item[0], len(order)))
     freshness["_providerElapsedMs"] = {
@@ -985,7 +970,7 @@ def _merge_candidates(
         "providerCeiling": {"maxCandidates": 256, "maxEstimatedTokens": max_tokens},
         "candidates": merged,
         "omissions": omissions,
-        "_rightcontext": {
+        "_membrane": {
             "providerCounts": provider_counts,
             "providerWarnings": provider_warnings,
             "providerElapsedMs": dict(freshness.get("_providerElapsedMs") or {}),
@@ -1049,7 +1034,7 @@ def assemble_candidate_set(
                     "severity": "blocker",
                 }
             ],
-            "_rightcontext": {
+            "_membrane": {
                 "abortReason": "scope_grant",
                 "abortDetail": str(exc)[:400],
                 "providerCounts": {},
@@ -1074,7 +1059,7 @@ def assemble_candidate_set(
     ccs = _merge_candidates(
         per_provider, freshness, repo_root, task, trace_id, max_tokens
     )
-    ccs["_rightcontext"]["stageElapsedMs"]["merge"] = max(
+    ccs["_membrane"]["stageElapsedMs"]["merge"] = max(
         0.0, (time.monotonic() - merge_started) * 1000.0
     )
     return ccs, 0
@@ -1130,7 +1115,7 @@ def serve_stdio() -> int:
         except Exception as exc:  # noqa: BLE001 — a bad request must not kill the worker
             payload = json.dumps(
                 {
-                    "_rightcontext": {
+                    "_membrane": {
                         "abortReason": "worker_request_failed",
                         "abortDetail": str(exc)[:200],
                     }
@@ -1177,7 +1162,7 @@ def main(argv: list[str] | None = None) -> int:
         scope_grant_id=args.scope_grant_id,
         scope_descriptor=scope_descriptor,
     )
-    # Emit the assembled envelope with the `_rightcontext` federation
+    # Emit the assembled envelope with the `_membrane` federation
     # detail block intact. The planner strict-deserializes the canonical
     # CCS fields only; the dispatcher surfaces the warnings and provider
     # counts to the client envelope.

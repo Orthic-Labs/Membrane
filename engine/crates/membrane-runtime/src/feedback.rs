@@ -13,7 +13,7 @@
 //!   - `Advisory` — agent self-report or an uncited verdict. Persisted for observability but
 //!     NEVER drives ranking (GhostWriter write-time defense).
 
-use crypt_core::Outcome;
+use cortex_core::Outcome;
 
 /// How a feedback row's outcome was established. Determines whether it can affect ranking.
 #[derive(Debug, Clone, PartialEq, Eq)]

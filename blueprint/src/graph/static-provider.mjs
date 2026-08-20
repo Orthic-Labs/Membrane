@@ -555,7 +555,11 @@ export function queryGraph(generation, options = {}) {
   }));
 }
 
-// Build a ContextCandidateSet with REAL tiering, anchor reservation, and omission
+// Compatibility candidate adapter for callers that still hold an in-memory
+// generation rather than using the resident service. Production service, CLI,
+// and Membrane federation all use RecallCircuit. This adapter preserves the V1
+// candidate protocol only; it does not define Blueprint's retrieval semantics.
+// Build a ContextCandidateSet with real tiering, anchor reservation, and omission
 // receipts. The previous version hardcoded protected:false, exact:true, and
 // omissions:[] for every candidate — a schema-valid shape with no admission logic
 // behind it. Honest tiers, in priority order:
@@ -1911,7 +1915,7 @@ function normalizePath(value) {
 
 // XXH3-128 (via hash-wasm) — content hashing for change detection and
 // dedup only (file bytes, source-tree fingerprint, generation id). No trust
-// boundary depends on collision resistance here: the blueprint→Crypt
+// boundary depends on collision resistance here: the blueprint→Cortex
 // federation provider reads only the generation identity, never validates it
 // cryptographically (membrane/engine/federation/providers/blueprint.py).
 // The hasher's construction is async (WASM init); init()/update()/digest()

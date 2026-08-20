@@ -13,36 +13,26 @@ from pathlib import Path
 
 __all__ = ["canonical_repository_id", "workspace_tools_path"]
 
-# `providers/` sits at <workspace>/membrane/engine/federation/providers.
-# parents[3] used to be the `tools` directory (old tools/crypt/federation
-# layout) and is now `membrane`; parents[4] is the workspace root under BOTH
-# layouts, which is why skills.py/crypt.py survived the move untouched.
-_WORKSPACE_ROOT = Path(__file__).resolve().parents[4]
-_LEGACY_TOOLS_ROOT = Path(__file__).resolve().parents[3]
+_WORKSPACE_ROOT = next(
+    (
+        candidate
+        for candidate in Path(__file__).resolve().parents
+        if (candidate / "tools" / "lib").is_dir()
+    ),
+    None,
+)
 
 
 def workspace_tools_path(*parts: str) -> Path:
-    """Resolve a path under the workspace `scripts/tools/` tree across both layouts.
-
-    The membrane consolidation moved this package from `tools/crypt/` to
-    `membrane/engine/`, which silently repointed every `parents[3] / "skills"`
-    expression at a non-existent `membrane/skills/...`. The blueprint, audit,
-    architect, and anchors lanes then failed instantly with `unavailable` on
-    every prompt. Probe the real layouts; first existing hit wins, and the
-    canonical location is returned when neither exists so the caller's own
-    "missing at <path>" warning names the path an operator should create.
-    """
-    override = os.environ.get("RIGHTCONTEXT_TOOLS_ROOT", "").strip()
-    roots = (
-        [Path(override)]
-        if override
-        else [_WORKSPACE_ROOT / "tools", _LEGACY_TOOLS_ROOT]
-    )
-    candidates = [root.joinpath(*parts) for root in roots]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return candidates[0]
+    """Resolve a path under current workspace's `tools/` tree."""
+    override = os.environ.get("MEMBRANE_TOOLS_ROOT", "").strip()
+    if override:
+        root = Path(override)
+    elif _WORKSPACE_ROOT is not None:
+        root = _WORKSPACE_ROOT / "tools"
+    else:
+        raise RuntimeError("workspace tools root unavailable; set MEMBRANE_TOOLS_ROOT")
+    return root.joinpath(*parts)
 
 
 def canonical_repository_id(repo_root: Path | str) -> str:
@@ -51,7 +41,7 @@ def canonical_repository_id(repo_root: Path | str) -> str:
     `D:\\Claude` -> `D--Claude`; `D:\\Claude\\heardright` -> `D--Claude-heardright`.
 
     This is the one identity space the whole system already shares: the engine's
-    `memories.scope_id`, `crypt/src/scope.rs::canonical_scope_chain`, and
+    `memories.scope_id`, `cortex/src/scope.rs::canonical_scope_chain`, and
     `tools/hooks/ingest_memory.py::_scope_for_path` all use this slug. The typed
     stores derive record IDs from it (`audit_store.derive_finding_id` hashes it
     into every finding ID), so it must stay stable across runs and machines —

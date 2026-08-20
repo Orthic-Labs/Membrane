@@ -3,7 +3,7 @@
 The package contains selected raw transcripts, parsed/redacted corpus rows,
 exact extraction payloads, authority source copies, recursive initial-rule
 artifacts, and a strict content-hashed manifest. Nothing is sent externally and
-no Crypt service is contacted.
+no Cortex service is contacted.
 """
 from __future__ import annotations
 

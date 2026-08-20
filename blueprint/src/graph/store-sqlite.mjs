@@ -442,6 +442,8 @@ const MIGRATIONS = [
       );
       CREATE INDEX IF NOT EXISTS idx_symbols_path ON symbols(path);
       CREATE INDEX IF NOT EXISTS idx_symbols_generation ON symbols(generation_id);
+      CREATE INDEX IF NOT EXISTS idx_symbols_generation_name ON symbols(generation_id, name);
+      CREATE INDEX IF NOT EXISTS idx_symbols_generation_qualified ON symbols(generation_id, qualified_name);
 
       CREATE TABLE IF NOT EXISTS edges (
         id TEXT PRIMARY KEY,

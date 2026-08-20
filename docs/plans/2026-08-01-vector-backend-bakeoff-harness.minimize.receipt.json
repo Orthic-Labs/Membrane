@@ -1,9 +1,0 @@
-{
-  "decision": "docs/plans/2026-08-01-vector-backend-bakeoff-harness.minimize.json",
-  "decision_id": "vector-backend-bakeoff-harness-20260801",
-  "decision_sha256": "4a282d411f8948d19efa991bd1ffc2623a446fcdd2dae4c4551125d21cd5b08d",
-  "policy_sha256": "1f941eb00ec6974705bc299e4cae2a01c031c51fb699fff310882f86f1c321f7",
-  "schema": "minimize-decision-receipt.v1",
-  "selected_rung": "MIN_CUSTOM",
-  "validator_sha256": "514f21acf463eed860ae4de30f68a6b1eb73c95b468aa2e2a936b400b7232651"
-}

@@ -28,7 +28,7 @@ function stableValue(value) {
 
 // XXH3-128 (via hash-wasm) — content/change-detection fingerprints for Phase 2
 // verdict and dimension reuse. No trust boundary depends on collision
-// resistance: the Blueprint→Crypt federation provider reads only the
+// resistance: the Blueprint→Cortex federation provider reads only the
 // generation identity, never validates it cryptographically
 // (membrane/engine/federation/providers/blueprint.py). hash-wasm's own
 // constructor is async (WASM init), but init()/update()/digest() are

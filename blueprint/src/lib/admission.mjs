@@ -1,7 +1,7 @@
 // Blueprint admission — decision-only library.
 //
 // Operations: orient / expand / status / revoke.
-// Returns a neutral decision contract Crypt (or any host) can consume.
+// Returns a neutral decision contract Cortex (or any host) can consume.
 // Does NOT install hooks, classify shell, or fail-closed on tool use.
 
 import { createHash } from "node:crypto";

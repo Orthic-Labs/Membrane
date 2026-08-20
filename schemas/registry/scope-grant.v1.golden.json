@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "sgv1-3f6b1c2a-9d4e-4a1b-8c7d-2e5f6a7b8c9d",
-  "issuer": "rightcontext-gateway",
+  "issuer": "membrane-gateway",
   "client": "mcp",
   "repositoryIds": ["/Volumes/D/claude/membrane"],
   "permittedEdgeTypes": ["source_read"],
@@ -25,7 +25,7 @@
   "sourceReadBytesMax": 32768,
   "uniqueFilesMax": 2,
   "resultsMax": 2,
-  "cryptStatus": "available",
+  "cortexStatus": "available",
   "degraded": false,
   "signatureAlgorithm": "Ed25519",
   "keyId": "scope-grant-ed25519-v1:0123456789abcdef0123456789abcdef",

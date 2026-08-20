@@ -7,15 +7,15 @@ boundary.
 
 ## Workspace mode (what actually runs today)
 
-Binaries: `crypt` / `crypt-service`.
+Binaries: `cortex` / `cortex-service`.
 
 Resolved by `deployed_runtime_from_exe()` in
 `engine/crates/membrane-runtime/src/cli.rs:242-278`, which recognizes
 **only** a tree shaped:
 
-- `<root>/tools/bin/{crypt,crypt-service}`
-- `<root>/tools/lib/memory/runtime.json` (`serviceId: "crypt-local-v1"`)
-- `<root>/tools/.cache/memory/{crypt-engine.db,api-token}`
+- `<root>/tools/bin/{cortex,cortex-service}`
+- `<root>/tools/lib/memory/runtime.json` (`serviceId: "cortex-local-v1"`)
+- `<root>/tools/.cache/memory/{cortex-engine.db,api-token}`
 - `<root>/tools/.cache/fastembed`
 
 Root is declared via `WORKSPACE_ROOT` / `MEMBRANE_WORKSPACE_ROOT`. Any tree
@@ -24,8 +24,8 @@ runtime — there is no fuzzy match.
 
 Service labels:
 
-- macOS (launchd): `com.membrane.workspace.crypt-serve`,
-  `com.membrane.workspace.crypt-daily`, `com.membrane.workspace.crypt-replication`
+- macOS (launchd): `com.membrane.workspace.cortex-serve`,
+  `com.membrane.workspace.cortex-daily`, `com.membrane.workspace.cortex-replication`
 - Windows (Task Scheduler): `\Membrane\Workspace\...`
 
 Installer: `membrane/install/workspace/` — this is the owning location for

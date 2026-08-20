@@ -297,7 +297,7 @@ pub fn build_outline_page(
                 token_estimates: TokenEstimatesV1 {
                     per_model: std::collections::BTreeMap::from([(
                         "o200k_base".to_owned(),
-                        crypt_core::estimate_tokens(span),
+                        cortex_core::estimate_tokens(span),
                     )]),
                 },
                 truncated: false,

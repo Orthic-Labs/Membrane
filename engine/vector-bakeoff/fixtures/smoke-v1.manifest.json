@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatorId": "crypt-vector-fixture-v1",
+  "generatorId": "cortex-vector-fixture-v1",
   "config": "../config/round1-v1.json",
   "cellId": "smoke",
   "rows": 256,

@@ -15,7 +15,7 @@ def test_freshness_uses_workspace_default_token_file(monkeypatch, tmp_path: Path
     token_file = workspace / "tools" / ".cache" / "memory" / "api-token"
     token_file.parent.mkdir(parents=True)
     token_file.write_text("default-token\n", encoding="utf-8")
-    monkeypatch.delenv("CRYPT_API_TOKEN_FILE", raising=False)
+    monkeypatch.delenv("CORTEX_API_TOKEN_FILE", raising=False)
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace))
 
     # The route validates a source-barrier receipt, so the payload must carry an
@@ -98,9 +98,9 @@ def _verdict(graph_state: str = "dirty_overlay", *, blueprint_usable: bool = Fal
 def _stub_non_blueprint_providers(monkeypatch) -> None:
     monkeypatch.setattr(gateway.audit, "produce", lambda *_args: [])
     monkeypatch.setattr(gateway.architect, "produce", lambda *_args: [])
-    monkeypatch.setattr(gateway.crypt, "produce", lambda *_args: ([{"id": "memory:one"}], "g"))
+    monkeypatch.setattr(gateway.cortex, "produce", lambda *_args: ([{"id": "memory:one"}], "g"))
     monkeypatch.setattr(
-        gateway.crypt,
+        gateway.cortex,
         "produce_with_observability",
         lambda *_args: ([{"id": "memory:one"}], "g", {"stageElapsedMs": {}}),
     )
@@ -128,7 +128,7 @@ def test_stale_blueprint_is_lane_local_and_other_providers_fan_out(monkeypatch, 
         scope_grant_id=None,
     )
 
-    assert any(name == "crypt" for name, _candidates, _warnings in providers)
+    assert any(name == "cortex" for name, _candidates, _warnings in providers)
     blueprint_lane = next(item for item in providers if item[0] == "blueprint")
     assert blueprint_lane[1] == []
     assert blueprint_lane[2][0]["kind"] == "blueprint_lane_degraded"
@@ -146,7 +146,7 @@ def test_stale_blueprint_is_lane_local_and_other_providers_fan_out(monkeypatch, 
     assert freshness["_stageElapsedMs"]["git_status"] == 4.0
     assert all(value >= 0 for value in freshness["_stageElapsedMs"].values())
     assert set(freshness["_providerElapsedMs"]) == {
-        "blueprint", "audit", "architect", "crypt", "git", "live", "rules", "anchors", "skills"
+        "blueprint", "audit", "architect", "cortex", "git", "live", "rules", "anchors", "skills"
     }
     assert all(value >= 0 for value in freshness["_providerElapsedMs"].values())
 
@@ -176,7 +176,7 @@ def test_dirty_worktree_delivers_overlay_and_non_blueprint_lanes(monkeypatch, tm
     )
 
     assert any(name == "live" and candidates for name, candidates, _warnings in providers)
-    assert any(name == "crypt" and candidates for name, candidates, _warnings in providers)
+    assert any(name == "cortex" and candidates for name, candidates, _warnings in providers)
     assert freshness["stale"] is False
     assert live_calls == [{
         "base_commit": verdict["baseCommit"],
@@ -189,7 +189,7 @@ def test_dirty_worktree_delivers_overlay_and_non_blueprint_lanes(monkeypatch, tm
 def test_unavailable_freshness_service_degrades_before_fanout(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: None, raising=False)
     monkeypatch.setattr(
-        gateway.crypt,
+        gateway.cortex,
         "produce",
         lambda *_args: (_ for _ in ()).throw(AssertionError("provider must not run")),
     )
@@ -214,7 +214,7 @@ def test_release_generation_mismatch_degrades_before_fanout(monkeypatch, tmp_pat
     verdict["releaseGeneration"] = "sha256:" + "8" * 64
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
     monkeypatch.setattr(
-        gateway.crypt,
+        gateway.cortex,
         "produce_with_observability",
         lambda *_args: (_ for _ in ()).throw(AssertionError("provider must not run")),
     )
@@ -240,7 +240,7 @@ def test_invalid_release_manifest_degrades_before_fanout(monkeypatch, tmp_path: 
         gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: _verdict(), raising=False
     )
     monkeypatch.setattr(
-        gateway.crypt,
+        gateway.cortex,
         "produce_with_observability",
         lambda *_args: (_ for _ in ()).throw(AssertionError("provider must not run")),
     )
@@ -279,7 +279,7 @@ def test_unusable_skills_lane_is_skipped_without_disabling_other_providers(monke
     skills_lane = next(item for item in providers if item[0] == "skills")
     assert skills_lane[1] == []
     assert skills_lane[2][0]["kind"] == "skills_lane_degraded"
-    assert any(name == "crypt" for name, _candidates, _warnings in providers)
+    assert any(name == "cortex" for name, _candidates, _warnings in providers)
     assert freshness["stale"] is False
 
 
@@ -309,7 +309,7 @@ def test_blueprint_generation_change_after_verdict_omits_lane(monkeypatch, tmp_p
     blueprint_lane = next(item for item in providers if item[0] == "blueprint")
     assert blueprint_lane[1] == []
     assert blueprint_lane[2][0]["kind"] == "blueprint_generation_changed"
-    assert any(name == "crypt" for name, _candidates, _warnings in providers)
+    assert any(name == "cortex" for name, _candidates, _warnings in providers)
     assert freshness["stale"] is False
 
 
@@ -357,17 +357,17 @@ def test_filesystem_skills_generation_cannot_pass_unchanged_db_verdict(monkeypat
     skills_lane = next(item for item in providers if item[0] == "skills")
     assert skills_lane[1] == []
     assert skills_lane[2][0]["kind"] == "skills_generation_changed"
-    assert any(name == "crypt" for name, _candidates, _warnings in providers)
+    assert any(name == "cortex" for name, _candidates, _warnings in providers)
     assert freshness["stale"] is False
 
 
 def test_merge_candidates_stamps_provider_and_freshness_provenance(tmp_path: Path):
     blueprint_candidate = {"id": "a", "sourceKind": "repo_code"}
-    crypt_candidate = {"id": "b", "sourceKind": "repo_code", "provider": "blueprint"}
+    cortex_candidate = {"id": "b", "sourceKind": "repo_code", "provider": "blueprint"}
     merged = gateway._merge_candidates(
         [
             ("blueprint", [blueprint_candidate], []),
-            ("crypt", [crypt_candidate], []),
+            ("cortex", [cortex_candidate], []),
         ],
         {
             "indexedAt": "2026-07-16T00:00:00Z",
@@ -390,7 +390,7 @@ def test_merge_candidates_stamps_provider_and_freshness_provenance(tmp_path: Pat
 
     assert [(c["id"], c["provider"]) for c in merged["candidates"]] == [
         ("a", "blueprint"),
-        ("b", "crypt"),
+        ("b", "cortex"),
     ]
     assert merged["candidates"][0]["freshnessClass"] == "stale_snapshot"
     assert merged["candidates"][1]["freshnessClass"] == "current"
@@ -400,30 +400,30 @@ def test_merge_candidates_stamps_provider_and_freshness_provenance(tmp_path: Pat
     assert merged["freshness"]["graphState"] == "dirty_overlay"
     assert merged["freshness"]["cacheAgeMs"] == 37
     assert merged["freshness"]["refreshInFlight"] is True
-    assert merged["_rightcontext"]["providerElapsedMs"] == {}
-    assert merged["_rightcontext"]["serviceGeneration"] == "svc-test-generation"
-    assert merged["_rightcontext"]["firstAfterIdle"] is True
-    assert merged["_rightcontext"]["cacheAgeMs"] == 37
-    assert merged["_rightcontext"]["refreshInFlight"] is True
-    assert merged["_rightcontext"]["stageElapsedMs"] == {}
+    assert merged["_membrane"]["providerElapsedMs"] == {}
+    assert merged["_membrane"]["serviceGeneration"] == "svc-test-generation"
+    assert merged["_membrane"]["firstAfterIdle"] is True
+    assert merged["_membrane"]["cacheAgeMs"] == 37
+    assert merged["_membrane"]["refreshInFlight"] is True
+    assert merged["_membrane"]["stageElapsedMs"] == {}
     assert blueprint_candidate == {"id": "a", "sourceKind": "repo_code"}
-    assert crypt_candidate == {
+    assert cortex_candidate == {
         "id": "b",
         "sourceKind": "repo_code",
         "provider": "blueprint",
     }
 
 
-def test_crypt_stage_timing_is_nested_and_content_free(monkeypatch, tmp_path: Path):
+def test_cortex_stage_timing_is_nested_and_content_free(monkeypatch, tmp_path: Path):
     verdict = _verdict()
     monkeypatch.setattr(gateway, "_fetch_freshness_verdict", lambda _repo, _session=None: verdict, raising=False)
     _stub_non_blueprint_providers(monkeypatch)
     monkeypatch.setattr(
-        gateway.crypt,
+        gateway.cortex,
         "produce_with_observability",
         lambda *_args: (
             [{"id": "memory:one"}],
-            "crypt-serve",
+            "cortex-serve",
             {
                 "stageElapsedMs": {
                     "request_parse": 1.0,
@@ -448,16 +448,16 @@ def test_crypt_stage_timing_is_nested_and_content_free(monkeypatch, tmp_path: Pa
         providers, freshness, tmp_path, "secret prompt content", "trace-1", 4096
     )
 
-    assert merged["_rightcontext"]["providerStageElapsedMs"] == {
-        "crypt": {
+    assert merged["_membrane"]["providerStageElapsedMs"] == {
+        "cortex": {
             "request_parse": 1.0,
             "embed": 2.0,
             "recall": 3.0,
             "rank": 4.0,
         }
     }
-    assert "must-not-propagate" not in str(merged["_rightcontext"])
-    assert "secret prompt content" not in str(merged["_rightcontext"])
+    assert "must-not-propagate" not in str(merged["_membrane"])
+    assert "secret prompt content" not in str(merged["_membrane"])
 
 
 def test_blueprint_stage_timing_uses_tuple4_observability_and_is_sanitized(
@@ -495,9 +495,9 @@ def test_blueprint_stage_timing_uses_tuple4_observability_and_is_sanitized(
         providers, freshness, tmp_path, "secret prompt content", "trace-1", 4096
     )
 
-    assert merged["_rightcontext"]["providerStageElapsedMs"]["blueprint"] == {
+    assert merged["_membrane"]["providerStageElapsedMs"]["blueprint"] == {
         "blueprint_node_spawn": 7.0,
         "repo_code_scan": 11.0,
     }
-    assert "must-not-propagate" not in str(merged["_rightcontext"])
-    assert "secret prompt content" not in str(merged["_rightcontext"])
+    assert "must-not-propagate" not in str(merged["_membrane"])
+    assert "secret prompt content" not in str(merged["_membrane"])

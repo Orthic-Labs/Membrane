@@ -12,11 +12,6 @@ from pathlib import Path
 from typing import Sequence
 
 
-# `workspace_root()` resolves both the top-level submodule layout and the
-# historical nested one. A bare ``parents[4]`` assumes the nested depth: it
-# raises IndexError on a shallow checkout (``D:\claude\adapt``) before the
-# fallback below can run, and silently resolves to the filesystem root on a
-# deeper one. Never index a fixed number of parents to find the workspace.
 try:
     from adapt import workspace_runtime  # noqa: E402
     WORKSPACE_ROOT = workspace_runtime.workspace_root()
@@ -39,21 +34,21 @@ class AdaptPersistenceError(RuntimeError):
 
 
 def _token_file() -> Path:
-    configured = os.environ.get("CRYPT_API_TOKEN_FILE", "").strip()
+    configured = os.environ.get("CORTEX_API_TOKEN_FILE", "").strip()
     if configured:
         return Path(configured)
     db = Path(os.environ.get(
-        "CRYPT_DB", str(WORKSPACE_ROOT / "tools/.cache/memory/crypt-engine.db")
+        "CORTEX_DB", str(WORKSPACE_ROOT / "tools/.cache/memory/cortex-engine.db")
     ))
     return db.parent / "api-token"
 
 
 def _base_url() -> str:
-    return f"http://127.0.0.1:{workspace_runtime.crypt_port(os.environ)}"
+    return f"http://127.0.0.1:{workspace_runtime.cortex_port(os.environ)}"
 
 
 def _normalize_scope(scope: str) -> str:
-    """Mirror Crypt's leading Windows drive-token normalization."""
+    """Mirror Cortex's leading Windows drive-token normalization."""
     if len(scope) >= 2 and scope[0].islower() and scope[0].isascii() and scope[0].isalpha() and scope[1] == "-":
         return scope[0].upper() + scope[1:]
     return scope
@@ -83,7 +78,7 @@ def _request_body(
     trace_id = f"adapt-trace-{installation_id}-{batch_digest[:24]}"
     items = []
     for ordinal, record in enumerate(records):
-        content = preference_record.to_crypt_content(record)
+        content = preference_record.to_cortex_content(record)
         canonical = json.dumps(
             {
                 "name": record.id,
@@ -140,9 +135,9 @@ def persist_manifest_batch(
     try:
         token = path.read_text(encoding="utf-8").strip()
     except OSError as exc:
-        raise AdaptPersistenceError("Crypt API token is unavailable") from exc
+        raise AdaptPersistenceError("Cortex API token is unavailable") from exc
     if not token:
-        raise AdaptPersistenceError("Crypt API token is empty")
+        raise AdaptPersistenceError("Cortex API token is empty")
     request = urllib.request.Request(
         f"{(base_url or _base_url()).rstrip('/')}/v1/memories:batch",
         data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
@@ -157,11 +152,11 @@ def persist_manifest_batch(
             status = response.status
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        raise AdaptPersistenceError(f"Crypt batch rejected with HTTP {exc.code}") from exc
+        raise AdaptPersistenceError(f"Cortex batch rejected with HTTP {exc.code}") from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        raise AdaptPersistenceError("Crypt batch service is unavailable") from exc
+        raise AdaptPersistenceError("Cortex batch service is unavailable") from exc
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise AdaptPersistenceError("Crypt batch receipt is not valid JSON") from exc
+        raise AdaptPersistenceError("Cortex batch receipt is not valid JSON") from exc
 
     receipts = payload.get("receipts")
     expected_item_ids = {item["item_id"] for item in body["items"]}
@@ -185,5 +180,5 @@ def persist_manifest_batch(
             for row in receipts
         )
     ):
-        raise AdaptPersistenceError("Crypt batch receipt is incomplete or inconsistent")
+        raise AdaptPersistenceError("Cortex batch receipt is incomplete or inconsistent")
     return payload

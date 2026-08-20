@@ -92,11 +92,11 @@ pub const PLANE_BOUNDARIES: &[PlaneBoundary] = &[
         name: "data",
         owns_process: false,
         owns_files: &[
-            "engine/crates/crypt-store/src/db.rs",
-            "engine/crates/crypt-store/src/memdb.rs",
-            "engine/crates/crypt-store/src/scope.rs",
-            "engine/crates/crypt-store/src/context_telemetry.rs",
-            "engine/crates/crypt-store/src/installation_identity.rs",
+            "engine/crates/cortex-store/src/db.rs",
+            "engine/crates/cortex-store/src/memdb.rs",
+            "engine/crates/cortex-store/src/scope.rs",
+            "engine/crates/cortex-store/src/context_telemetry.rs",
+            "engine/crates/cortex-store/src/installation_identity.rs",
         ],
         reads_from: &[],
         writes_to: &[],
@@ -117,8 +117,8 @@ pub fn plane_for_path(path: &std::path::Path) -> Option<Plane> {
                 "membrane-runtime" | "membrane-mcp" => return Some(Plane::Application),
                 // Control plane: anything inside the supervisor crate.
                 "membrane-supervisor" => return Some(Plane::Control),
-                // Data plane: anything inside the crypt-store crate.
-                "crypt-store" => return Some(Plane::Data),
+                // Data plane: anything inside the cortex-store crate.
+                "cortex-store" => return Some(Plane::Data),
                 _ => {}
             }
         }
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn plane_for_path_classifies_data_store_files() {
-        let path = Path::new("/x/crypt-store/src/db.rs");
+        let path = Path::new("/x/cortex-store/src/db.rs");
         assert_eq!(plane_for_path(path), Some(Plane::Data));
     }
 

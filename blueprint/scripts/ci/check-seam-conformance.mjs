@@ -38,23 +38,23 @@ try {
   else { console.error(`✗ grep-gate ${MEMBRANE} error: ${e.message}`); failed = true; }
 }
 
-check("grep-gate: no hardcoded crypt outside config-default in scripts/blueprint.mjs", () => {
+check("grep-gate: no hardcoded cortex outside config-default in scripts/blueprint.mjs", () => {
   const src = readFileSync(join(ROOT, "scripts/blueprint.mjs"), "utf8");
   const lines = src.split("\n");
-  // Config-default contexts: peer = "crypt" or service: "crypt" or comment
+  // Config-default contexts: peer = "cortex" or service: "cortex" or comment
   const bad = [];
   lines.forEach((line, idx) => {
-    if (!line.includes('"crypt"') && !line.includes("'crypt'")) return;
-    // Allow if line is config-default: peer = "crypt" or service: "crypt" or comment
-    if (/peer\s*=\s*["']crypt["']/.test(line)) return;
-    if (/service:\s*["']crypt["']/.test(line)) return;
+    if (!line.includes('"cortex"') && !line.includes("'cortex'")) return;
+    // Allow if line is config-default: peer = "cortex" or service: "cortex" or comment
+    if (/peer\s*=\s*["']cortex["']/.test(line)) return;
+    if (/service:\s*["']cortex["']/.test(line)) return;
     if (line.trim().startsWith("//")) return;
     if (line.includes("peerBinCandidates")) return;
     // Otherwise, consider hardcoded outside config-default
     // Currently we allow only the two config-default lines; any other is bad
-    if (line.includes('join(homedir(), "bin", "crypt"')) bad.push(`${idx + 1}:${line.trim()}`);
+    if (line.includes('join(homedir(), "bin", "cortex"')) bad.push(`${idx + 1}:${line.trim()}`);
   });
-  if (bad.length) throw new Error(`hardcoded crypt outside config-default:\n${bad.join("\n")}`);
+  if (bad.length) throw new Error(`hardcoded cortex outside config-default:\n${bad.join("\n")}`);
 });
 
 check("manifest shape validates", () => {

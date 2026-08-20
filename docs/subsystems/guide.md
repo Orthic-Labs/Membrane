@@ -30,7 +30,7 @@ Guide does not own the canonical document bytes. It indexes them into stable, re
 ## Does not own
 
 - document truth or code-vs-doc verification — Blueprint;
-- durable learned knowledge from documents — Blueprint;
+- durable learned knowledge from documents — Cortex;
 - final relevance/admission/attention policy — Membrane planner;
 - source document authority or canonical content bytes;
 - reduction/compression — Push.
@@ -49,7 +49,7 @@ Guide never upgrades source authority merely because a section was indexed.
 2. Hash mismatch returns `stale`; stale content is never silently served as current.
 3. Per-document projections update transactionally so readers do not observe mixed revisions.
 4. Trust/influence/sensitivity metadata constrains eligibility; Guide does not assign authority.
-5. Guide's index is rebuildable from source documents and does not share Blueprint's authored durable store.
+5. Guide's index is rebuildable from source documents and does not share Cortex's authored durable store.
 6. Guide does not decide whether a document claim is true against code.
 7. New documentation uses `Guide`; legacy `Spine` identifiers may remain only as implementation/history until deliberately renamed.
 

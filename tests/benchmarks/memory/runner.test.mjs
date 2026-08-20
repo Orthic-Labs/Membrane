@@ -15,7 +15,7 @@ test('degrades explicitly when no dataset root is configured (no network, no fab
   const result = await runMemoryBenchmark({ benchmark: 'LoCoMo' });
   assert.equal(result.status, 'degraded');
   assert.equal(result.reason, 'dataset-root-not-configured');
-  assert.equal(result.componentUnderTest, 'crypt-memory');
+  assert.equal(result.componentUnderTest, 'cortex-memory');
   assert.equal('metrics' in result, false);
 });
 
@@ -41,7 +41,7 @@ test('runs and reports a verified result when dataset root and executor are both
   try {
     const result = await runMemoryBenchmark({ benchmark: 'LoCoMo', datasetRoot: dir, execute: async () => validRaw });
     assert.equal(result.status, 'ran');
-    assert.equal(result.componentUnderTest, 'crypt-memory');
+    assert.equal(result.componentUnderTest, 'cortex-memory');
     assert.equal(result.benchmark, 'LoCoMo');
     assert.deepEqual(result.metrics.retrieval, { recall: 1 });
   } finally {

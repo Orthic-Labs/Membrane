@@ -5,10 +5,10 @@
 [peers]
 # peer = "/absolute/path/to/bin"
 # Example:
-# crypt = "/Users/you/bin/crypt"
+# cortex = "/Users/you/bin/cortex"
 # my-peer = "/usr/local/bin/my-peer"
 
 # Env overrides (highest priority):
-# CRYPT_BIN (legacy compat, still works)
-# BLUEPRINT_PEER_BIN_<NAME> e.g. BLUEPRINT_PEER_BIN_CRYPT=/path/to/crypt
+# CORTEX_BIN for the canonical Cortex durable-knowledge peer
+# BLUEPRINT_PEER_BIN_<NAME> e.g. BLUEPRINT_PEER_BIN_CORTEX=/path/to/cortex
 # BLUEPRINT_PEER_BIN=/path/to/peer

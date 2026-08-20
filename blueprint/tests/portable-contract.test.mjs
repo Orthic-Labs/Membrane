@@ -228,7 +228,7 @@ test("bootstrap rejects manifests that bake in absolute machine paths", () => {
         rootName: "typescript-commerce",
         sourceHash: sourceHash(scanSources(repo).files),
         fileCount: 0,
-        absolutePath: "D:/CodexWorktrees/Claude/crypt-main",
+        absolutePath: "D:/CodexWorktrees/Claude/blueprint-main",
       },
       frozen: true,
     };

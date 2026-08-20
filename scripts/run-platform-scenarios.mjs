@@ -29,10 +29,10 @@ const workspaceRoot = resolve(valueFor("--workspace-root") || new URL("../../", 
 const evidenceRoot = resolve(valueFor("--evidence-root") || join(workspaceRoot, "tasks", "evidence", "membrane-competitor-parity-completion"));
 const platform = valueFor("--platform") || (process.platform === "win32" ? "windows" : "mac");
 const selected = valueFor("--scenario") ? SCENARIOS.filter(([name]) => name === valueFor("--scenario")) : SCENARIOS;
-const dbPath = process.env.MEMBRANE_EVENT_DB || join(workspaceRoot, "tools", ".cache", "memory", "crypt-engine.membrane-events.sqlite3");
-const memoryDb = process.env.CRYPT_DB || join(workspaceRoot, "tools", ".cache", "memory", "crypt-engine.db");
-const tokenPath = process.env.CRYPT_API_TOKEN_FILE || join(workspaceRoot, "tools", ".cache", "memory", "api-token");
-const cli = process.env.CRYPT_BIN || join(workspaceRoot, "tools", "bin", process.platform === "win32" ? "crypt.exe" : "crypt");
+const dbPath = process.env.MEMBRANE_EVENT_DB || join(workspaceRoot, "tools", ".cache", "memory", "cortex-engine.membrane-events.sqlite3");
+const memoryDb = process.env.CORTEX_DB || join(workspaceRoot, "tools", ".cache", "memory", "cortex-engine.db");
+const tokenPath = process.env.CORTEX_API_TOKEN_FILE || join(workspaceRoot, "tools", ".cache", "memory", "api-token");
+const cli = process.env.CORTEX_BIN || join(workspaceRoot, "tools", "bin", process.platform === "win32" ? "cortex.exe" : "cortex");
 
 function sha(value) { return createHash("sha256").update(value).digest("hex"); }
 function opaque(prefix, value, length = 64) { return `${prefix}-${sha(value).slice(0, length)}`; }
@@ -49,12 +49,12 @@ function command(commandName, commandArgs, timeout = 180_000, input) {
     env: {
       ...process.env,
       WORKSPACE_ROOT: workspaceRoot,
-      CRYPT_CLIENT: "claude_code",
-      RIGHTCONTEXT_POLICY_ENV_OVERRIDE: "1",
-      RIGHTCONTEXT_CONTEXT_SOURCE: "smoke",
-      RIGHTCONTEXT_MODE: "on",
-      RIGHTCONTEXT_COHORTS: "off",
-      CRYPT_TELEMETRY_INGRESS: join(workspaceRoot, "tools", ".cache", "memory", "context-telemetry-ingress.jsonl"),
+      CORTEX_CLIENT: "claude_code",
+      MEMBRANE_POLICY_ENV_OVERRIDE: "1",
+      MEMBRANE_CONTEXT_SOURCE: "smoke",
+      MEMBRANE_MODE: "on",
+      MEMBRANE_COHORTS: "off",
+      CORTEX_TELEMETRY_INGRESS: join(workspaceRoot, "tools", ".cache", "memory", "context-telemetry-ingress.jsonl"),
     },
   });
 }

@@ -6,7 +6,7 @@
   "Publisher": "Orthic Labs",
   "Author": "Orthic Labs",
   "PackageName": "Blueprint",
-  "PackageUrl": "https://github.com/Orthic-Labs/Blueprint",
+  "PackageUrl": "https://github.com/Orthic-Labs/Membrane",
   "License": "SEE LICENSE IN LICENSE",
   "ShortDescription": "Local evidence-backed repository map for documents, claims, and code.",
   "ManifestType": "defaultLocale",

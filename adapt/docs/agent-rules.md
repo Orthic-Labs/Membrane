@@ -7,7 +7,7 @@ It never retrains models or stores private chain-of-thought.
 ## Canonical sources
 - Read `README.md` for pipeline and authority rules.
 - Read `docs/architecture.md` for components and flows.
-- Treat reviewed manifests and Crypt records as runtime authority.
+- Treat reviewed manifests and Cortex records as runtime authority.
 
 ## Commands
 - Run `python3 adapt.py --smoke` for a dry-run pipeline smoke.
@@ -21,7 +21,7 @@ It never retrains models or stores private chain-of-thought.
 - Keep standing preferences, scoped decisions, playbooks, and episodic facts distinct.
 - Require immutable reviewed payload hashes before apply.
 - Keep apply opt-in, transactional, journaled, integrity-checked, and reversible.
-- Prevent standalone or offline stubs from performing live applies.
+- Fail closed when required workspace services are unavailable.
 - Compile only root-scoped standing preferences into bounded always-on context.
 
 ## Verification

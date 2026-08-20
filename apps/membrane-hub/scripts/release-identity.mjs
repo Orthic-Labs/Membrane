@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 // The release generation is baked into the engine at compile time via
-// `option_env!("CRYPT_SOURCE_TREE_SHA256")` (engine/crates/membrane-runtime/src/release_identity.rs).
+// `option_env!("CORTEX_SOURCE_TREE_SHA256")` (engine/crates/membrane-runtime/src/release_identity.rs).
 // When the build does not export it the binary reports `sha256:unknown` forever,
 // the gateway refuses to fan out, and every packet ships empty. Computing the
 // identity here — one implementation, two consumers (the sidecar build and the
