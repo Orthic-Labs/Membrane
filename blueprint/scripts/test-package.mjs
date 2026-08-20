@@ -13,7 +13,7 @@ import { verifyMcpInitialize } from "./release/mcp-client-smoke.mjs";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 
-const requiredBins = ["blueprint", "orthic-blueprint", "blueprint-watch", "blueprint-mcp", "blueprint-install"];
+const requiredBins = ["blueprint", "blueprint-watch", "blueprint-mcp", "blueprint-install"];
 for (const name of requiredBins) {
   if (!pkg.bin?.[name]) throw new Error(`package missing bin ${name}`);
 }

@@ -51,15 +51,15 @@ test("SBOM CLI emits SPDX for a candidate", () => {
 test("release check CLI reports a valid candidate", () => {
   const dir = mkdtempSync(join(tmpdir(), "blueprint-release-cli-"));
   try {
-    const tarball = "orthic-labs-blueprint-0.0.0.tgz", files = { "SBOM.spdx.json": JSON.stringify({ spdxVersion: "SPDX-2.3" }), THIRD_PARTY_NOTICES: "fixture notices" };
+    const tarball = "membrane-blueprint-0.0.0.tgz", files = { "SBOM.spdx.json": JSON.stringify({ spdxVersion: "SPDX-2.3" }), THIRD_PARTY_NOTICES: "fixture notices" };
     for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content);
     mkdirSync(join(dir, "package"));
-    writeFileSync(join(dir, "package", "package.json"), JSON.stringify({ name: "@orthic-labs/blueprint", version: "0.0.0" }));
+    writeFileSync(join(dir, "package", "package.json"), JSON.stringify({ name: "@membrane/blueprint", version: "0.0.0" }));
     execFileSync("tar", ["-czf", tarball, "package"], { cwd: dir });
     rmSync(join(dir, "package"), { recursive: true, force: true });
     const artifacts = [tarball, ...Object.keys(files)].map((name) => ({ name, sha256: createHash("sha256").update(readFileSync(join(dir, name))).digest("hex") }));
     const commit = "a".repeat(40);
-    writeFileSync(join(dir, "compatibility.json"), JSON.stringify({ packageName: "@orthic-labs/blueprint", version: "0.0.0", commit, platform: `${process.platform}-${process.arch}`, artifacts }));
+    writeFileSync(join(dir, "compatibility.json"), JSON.stringify({ packageName: "@membrane/blueprint", version: "0.0.0", commit, platform: `${process.platform}-${process.arch}`, artifacts }));
     writeFileSync(join(dir, "checksums.txt"), `${artifacts.map((artifact) => `${artifact.sha256}  ${artifact.name}`).join("\n")}\n`);
     writeFileSync(join(dir, "artifact-catalog.json"), JSON.stringify({ version: "0.0.0", platform: `${process.platform}-${process.arch}`, files: artifacts.map((artifact) => artifact.name), checksums: "checksums.txt" }));
     writeFileSync(join(dir, "update-manifest.json"), JSON.stringify({ schemaVersion: 1, channel: "stable", version: "0.0.0", commit, publishedAt: "2026-08-08T00:00:00Z", artifacts, signatureAlgorithm: "Ed25519", keyId: "fixture", signature: "pending" }));

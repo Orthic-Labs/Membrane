@@ -58,7 +58,7 @@ function removeBlock(content) {
   return content.replace(new RegExp(`\\n?${escapedStart}[\\s\\S]*?${escapedEnd}\\n?`, "g"), "\n").replace(/^\n+$/, "");
 }
 function mergeBlock(content) {
-  const block = `${START}\n## Blueprint Graph\nBefore reading repository files, call \`blueprint_orient\` with current repository root. Use \`blueprint_expand\` for bounded context and \`blueprint_search\` for queries.\n${END}`;
+  const block = `${START}\n## Blueprint Graph\nBefore reading repository files, call \`blueprint_recall\` with current repository root. Use \`blueprint_expand\` for bounded context and \`blueprint_search\` for queries.\n${END}`;
   const without = removeBlock(content);
   return `${without.trimEnd()}${without.trimEnd() ? "\n\n" : ""}${block}\n`;
 }

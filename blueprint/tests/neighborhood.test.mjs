@@ -88,7 +88,7 @@ test("admission preserves an attached neighborhood", async () => {
   });
   try {
     const neighborhood = buildNeighborhood(generation, ["src/a.ts"], { receiptId: "receipt-test" });
-    const result = await admission.orient({ task: "trace a", neighborhood, sessionId: "neighborhood-session", force: true });
+    const result = await admission.recall({ task: "trace a", neighborhood, sessionId: "neighborhood-session", force: true });
     assert.deepEqual(result.candidateSet.neighborhood, neighborhood);
   } finally { rmSync(storeDir, { recursive: true, force: true }); }
 });

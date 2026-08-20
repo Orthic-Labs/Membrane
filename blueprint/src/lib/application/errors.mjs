@@ -21,15 +21,24 @@ const ERROR_METADATA = Object.freeze({
     summary: "No graph store exists for this repository; build the graph to enable queries.",
     nextOperation: "blueprint build",
   }),
+  schema_mismatch: Object.freeze({
+    retryable: true,
+    summary: "The sealed Blueprint generation does not match the current schema; rebuild it.",
+    nextOperation: "blueprint build",
+  }),
+  service_unavailable: Object.freeze({
+    retryable: false,
+    summary: "The requested Blueprint service operation is unavailable.",
+  }),
   stale_blocked: Object.freeze({
     retryable: true,
-    summary: "Re-orient against the current generation, or pass allowStale to accept known-stale evidence.",
-    nextOperation: "blueprint_orient",
+    summary: "Recall against the current generation, or pass allowStale to accept known-stale evidence.",
+    nextOperation: "blueprint_recall",
   }),
   generation_mismatch: Object.freeze({
     retryable: true,
-    summary: "The graph advanced after orientation; re-orient to obtain a current receipt.",
-    nextOperation: "blueprint_orient",
+    summary: "The graph advanced after recall; recall to obtain a current receipt.",
+    nextOperation: "blueprint_recall",
   }),
   anchor_not_found: Object.freeze({
     retryable: false,
@@ -63,7 +72,7 @@ const ERROR_METADATA = Object.freeze({
   // --- lib/admission.mjs reasonCode values ---
   missing_graph: Object.freeze({
     retryable: true,
-    summary: "No complete graph generation is available for orientation; build the graph first.",
+    summary: "No complete graph generation is available for recall; build the graph first.",
     nextOperation: "blueprint build",
   }),
   missing_generation: Object.freeze({
@@ -74,33 +83,33 @@ const ERROR_METADATA = Object.freeze({
   receipt_reuse: Object.freeze({
     retryable: false,
   }),
-  oriented: Object.freeze({
+  recalled: Object.freeze({
     retryable: false,
   }),
-  oriented_stale: Object.freeze({
+  recalled_stale: Object.freeze({
     retryable: true,
-    summary: "Orientation established under stale graph state; rebuild to refresh the generation.",
+    summary: "Recall established under stale graph state; rebuild to refresh the generation.",
     nextOperation: "blueprint build",
   }),
-  oriented_indeterminate: Object.freeze({
+  recalled_indeterminate: Object.freeze({
     retryable: true,
-    summary: "Orientation established under indeterminate graph state; rebuild to get a determinate generation.",
+    summary: "Recall established under indeterminate graph state; rebuild to get a determinate generation.",
     nextOperation: "blueprint build",
   }),
   missing_receipt_id: Object.freeze({
     retryable: false,
-    summary: "expand/revoke requires a receiptId; call orient first and pass the returned receiptId.",
-    nextOperation: "blueprint orient",
+    summary: "expand/revoke requires a receiptId; call recall first and pass the returned receiptId.",
+    nextOperation: "blueprint recall",
   }),
   receipt_not_found: Object.freeze({
     retryable: false,
-    summary: "No receipt matches the receiptId; call orient to establish one.",
-    nextOperation: "blueprint orient",
+    summary: "No receipt matches the receiptId; call recall to establish one.",
+    nextOperation: "blueprint recall",
   }),
   receipt_revoked: Object.freeze({
     retryable: false,
-    summary: "Receipt is revoked; re-orient with force=true or a new session/task.",
-    nextOperation: "blueprint orient",
+    summary: "Receipt is revoked; recall with force=true or a new session/task.",
+    nextOperation: "blueprint recall",
   }),
   absolute_path_rejected: Object.freeze({
     retryable: false,
@@ -114,16 +123,16 @@ const ERROR_METADATA = Object.freeze({
   }),
   generation_changed: Object.freeze({
     retryable: true,
-    summary: "Graph generation changed after orientation; re-orient against the current generation before expanding.",
-    nextOperation: "blueprint orient",
+    summary: "Graph generation changed after recall; recall against the current generation before expanding.",
+    nextOperation: "blueprint recall",
   }),
   expanded: Object.freeze({
     retryable: false,
   }),
   no_receipt: Object.freeze({
     retryable: false,
-    summary: "No orientation receipt found for the active session/task/repo; call orient.",
-    nextOperation: "blueprint orient",
+    summary: "No recall receipt found for the active session/task/repo; call recall.",
+    nextOperation: "blueprint recall",
   }),
   receipt_active: Object.freeze({
     retryable: false,
@@ -133,8 +142,8 @@ const ERROR_METADATA = Object.freeze({
   }),
   revoked: Object.freeze({
     retryable: false,
-    summary: "Orientation receipt revoked; call orient before further orientation-dependent work.",
-    nextOperation: "blueprint orient",
+    summary: "Recall receipt revoked; call recall before further recall-dependent work.",
+    nextOperation: "blueprint recall",
   }),
 });
 

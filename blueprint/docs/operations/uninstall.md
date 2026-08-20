@@ -18,7 +18,7 @@ every file they modified in an install-state record
 - Refuses to restore (`state_conflict`) if a managed file was modified
   outside Blueprint since install, so uninstall never silently discards
   unrelated edits.
-- Removes orientation session markers under `.agent/graph/`.
+- Removes recall session markers under `.agent/graph/`.
 - Removes the install-state record itself.
 
 Repository graph data (`.agent/graph/graph.db` and related store files) is
@@ -28,9 +28,9 @@ Repository graph data (`.agent/graph/graph.db` and related store files) is
 
 | Platform | Service mechanism removed | Registration file |
 |---|---|---|
-| macOS | `launchctl unload` | `~/Library/LaunchAgents/io.orthic.blueprint.plist` |
+| macOS | `launchctl unload` | `~/Library/LaunchAgents/io.membrane.blueprint.plist` |
 | Linux | `systemctl --user disable --now blueprint.service` | `~/.config/systemd/user/blueprint.service` |
-| Windows | `schtasks /Delete /F /TN OrthicBlueprint` | scheduled task `OrthicBlueprint` |
+| Windows | `schtasks /Delete /F /TN MembraneBlueprint` | scheduled task `MembraneBlueprint` |
 
 The service registration file/target is always removed. Repository data
 (`.agent/`) is preserved unless `--purge-data` is passed explicitly, in
@@ -41,16 +41,16 @@ which case the data directory is also removed.
 - **macOS** (`release/macos/uninstall.sh`): removes
   `${INSTALL_LOCATION:-/usr/local/lib/blueprint}`. User data under `~/.blueprint`
   is explicitly preserved.
-- **Windows** (per-user installer under `%LOCALAPPDATA%\Orthic\Blueprint`,
+- **Windows** (per-user installer under `%LOCALAPPDATA%\Membrane\Blueprint`,
   checked by `release/windows/uninstall-check.ps1`): removes the install
-  directory, the user `PATH` entry pointing at it, the `OrthicBlueprint`
-  scheduled task (if present), and the `HKCU:\Software\Orthic\Blueprint`
+  directory, the user `PATH` entry pointing at it, the `MembraneBlueprint`
+  scheduled task (if present), and the `HKCU:\Software\Membrane\Blueprint`
   registry key.
 
 ## npm/pnpm and Homebrew/WinGet installs
 
 Uninstall follows the owning package manager (`npm uninstall -g`,
-`brew uninstall blueprint`, `winget uninstall OrthicLabs.Blueprint`); Blueprint never
+`brew uninstall blueprint`, `winget uninstall Membrane.Blueprint`); Blueprint never
 self-removes files outside its own package footprint for these owners.
 
 ## What is preserved by default

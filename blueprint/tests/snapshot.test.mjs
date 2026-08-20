@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { SNAPSHOT_SCHEMA_VERSION, buildSnapshot, startSnapshotServer, validateSnapshot } from "../src/lib/orthic-snapshot.mjs";
+import { SNAPSHOT_SCHEMA_VERSION, buildSnapshot, startSnapshotServer, validateSnapshot } from "../src/lib/snapshot.mjs";
 
 test("snapshot builds with required fields", () => {
   const snap = buildSnapshot({ root: process.cwd(), outDir: ".agent" });
@@ -17,7 +17,7 @@ test("snapshot builds with required fields", () => {
 
 test("payload validates against schema", async () => {
   const snap = buildSnapshot({ root: process.cwd() });
-  const schema = JSON.parse(readFileSync("schemas/orthic-product-snapshot-v2.schema.json", "utf8"));
+  const schema = JSON.parse(readFileSync("schemas/blueprint-snapshot-v2.schema.json", "utf8"));
   const { default: Ajv } = await import("ajv");
   const ajv = new Ajv();
   const validate = ajv.compile(schema);
@@ -51,16 +51,14 @@ test("production snapshot server authenticates loopback requests", async () => {
 test("snapshot validates against pinned released schema", async () => {
   const { readFileSync } = await import("node:fs");
   const { default: Ajv } = await import("ajv");
-  const validate = new Ajv().compile(JSON.parse(readFileSync("schemas/orthic-product-snapshot-v2.schema.json", "utf8")));
+  const validate = new Ajv().compile(JSON.parse(readFileSync("schemas/blueprint-snapshot-v2.schema.json", "utf8")));
   const snapshot = buildSnapshot({ root: "/nonexistent/path/that/does/not/exist" });
   assert.equal(validate(snapshot), true, JSON.stringify(validate.errors));
 });
 
-test("dogfood check: no productId branching", async () => {
+test("snapshot has no productId branching", async () => {
   const { readFileSync } = await import("node:fs");
-  const manifestSrc = readFileSync("src/lib/init/manifest.mjs", "utf8");
-  const snapSrc = readFileSync("src/lib/orthic-snapshot.mjs", "utf8");
-  // No product-conditional branching in code meant to be product-generic (SEAM Unit 3c)
-  assert.equal(/productId\s*===/.test(manifestSrc), false, "manifest must not branch on productId");
+  const snapSrc = readFileSync("src/lib/snapshot.mjs", "utf8");
+  // No product-conditional branching in the snapshot producer (SEAM Unit 3c)
   assert.equal(/productId\s*===/.test(snapSrc), false, "snapshot must not branch on productId");
 });

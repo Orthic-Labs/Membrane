@@ -8,7 +8,6 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { WatchSupervisor } from "../watchman/supervisor.mjs";
-import { writeProductManifest } from "../src/lib/init/manifest.mjs";
 import { buildFingerprint, createBuildSingleflight } from "../src/service/build-singleflight.mjs";
 import { DaemonClient } from "../src/service/client.mjs";
 import { temporaryDaemonEndpoint } from "../src/service/paths.mjs";
@@ -16,7 +15,7 @@ import { validateDeadlineMs } from "../src/service/protocol.mjs";
 import { createDaemonServer } from "../src/service/server.mjs";
 import { computeManifestDigest, detectHubIdentityFields, detectShadowManifestKeys, assertBuildIdentityClean } from "../src/graph/generation-identity.mjs";
 import { classifyMutablePath, assertSafeMutableStorePath, openStore, closeStore } from "../src/graph/store-sqlite.mjs";
-import { validateSnapshot } from "../src/lib/orthic-snapshot.mjs";
+import { validateSnapshot } from "../src/lib/snapshot.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts", "blueprint.mjs");
@@ -208,28 +207,10 @@ test("blueprint service install --dry-run does not register OS service", () => {
   assert.ok(Array.isArray(payload.serviceStart));
 });
 
-test("blueprint service install writes only its Orthic product manifest", () => {
-  const home = mkdtempSync(join(tmpdir(), "blueprint-install-home-"));
-  try {
-    const result = spawnSync(process.execPath, [CLI, "service", "install", "--root", ROOT, "--json"], {
-      encoding: "utf8", env: { ...process.env, HOME: home, USERPROFILE: home },
-    });
-    assert.equal(result.status, 0, result.stderr);
-    const payload = JSON.parse(result.stdout);
-    assert.equal(payload.target, null);
-    assert.equal(payload.installed, true);
-    assert.equal(payload.manifest, join(home, ".orthic", "hub", "products.d", "blueprint.json"));
-  } finally {
-    rmSync(home, { recursive: true, force: true });
-  }
-});
-
 test("blueprint service run starts in foreground and exits when Hub owner pipe closes", async () => {
   const home = mkdtempSync(join(tmpdir(), "blueprint-service-home-"));
   try {
-    const manifestPath = join(home, ".orthic", "hub", "products.d", "blueprint.json");
-    const { manifest } = writeProductManifest({ installRoot: ROOT, outPath: manifestPath });
-    const child = spawn(process.execPath, [CLI, "service", "run", "--json"], { cwd: ROOT, env: { ...process.env, HOME: home, USERPROFILE: home, ORTHIC_HUB_CHILD: "1" }, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(process.execPath, [CLI, "service", "run", "--json"], { cwd: ROOT, env: { ...process.env, HOME: home, USERPROFILE: home, BLUEPRINT_SNAPSHOT_TOKEN: "test-token", MEMBRANE_HUB_CHILD: "1" }, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     child.stdout.on("data", (d) => (stdout += d.toString()));
     await new Promise((resolve, reject) => {
@@ -252,7 +233,7 @@ test("blueprint service run starts in foreground and exits when Hub owner pipe c
     const payload = JSON.parse(stdout.trim().split(/\r?\n/)[0]);
     assert.ok(Number.isInteger(payload.watcherPid) && payload.watcherPid > 0, "service run must own a Blueprint watcher child");
     assert.doesNotThrow(() => process.kill(payload.watcherPid, 0), "watcher child must be alive while service runs");
-    const response = await fetch(`http://${payload.statusEndpoint.host}:${payload.statusEndpoint.port}/snapshot`, { headers: { [manifest.statusEndpoint.authHeader]: manifest.statusEndpoint.authToken } });
+    const response = await fetch(`http://${payload.statusEndpoint.host}:${payload.statusEndpoint.port}/snapshot`, { headers: { [payload.statusEndpoint.authHeader]: "Bearer test-token" } });
     assert.equal(response.status, 200);
     const snapshot = await response.json();
     assert.equal(snapshot.productId, "blueprint");
@@ -310,7 +291,7 @@ test("build identity: Hub protocol/lease/endpoint/instance/fence never enter man
     ...base,
     hub: { lease: "l", endpoint: "e" },
     fence: 42,
-    protocol: "orthic.lifecycle.v1",
+    protocol: "blueprint.lifecycle.v1",
     instance: "i",
   }, null);
   assert.equal(contaminated, clean, "Hub lifecycle fields must not change the manifest digest");

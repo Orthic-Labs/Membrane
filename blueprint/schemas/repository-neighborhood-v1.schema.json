@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://orthic.labs/schemas/repository-neighborhood-v1.json",
+  "$id": "https://membrane/schemas/repository-neighborhood-v1.json",
   "title": "RepositoryNeighborhoodV1",
   "type": "object",
   "required": ["schemaVersion", "kind", "repoId", "repoRoot", "generationId", "receiptId", "anchors", "neurons", "synapses", "circuits", "bounds", "omissions"],

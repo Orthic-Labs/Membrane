@@ -1,12 +1,12 @@
 {
-  "name": "io.github.Orthic-Labs/blueprint",
+  "name": "io.github.Membrane/blueprint",
   "version": "0.2.0",
   "description": "Local evidence-backed repository map — MCP server",
   "command": "npx",
-  "args": ["-y", "@orthic-labs/blueprint", "mcp", "serve"],
+  "args": ["-y", "@membrane/blueprint", "mcp", "serve"],
   "env": {},
   "metadata": {
-    "publisher": "Orthic Labs",
+    "publisher": "Membrane",
     "repository": "https://github.com/Orthic-Labs/Membrane",
     "license": "SEE LICENSE IN LICENSE"
   }

@@ -3,9 +3,9 @@
 
 export const PROMPTS = Object.freeze([
   {
-    name: "orient-before-change",
+    name: "recall-before-change",
     description: "Establish current repository context before changing code.",
-    toolRefs: ["blueprint_orient", "blueprint_search", "blueprint_impact"],
+    toolRefs: ["blueprint_recall", "blueprint_search", "blueprint_impact"],
   },
   {
     name: "debug",
@@ -20,7 +20,7 @@ export const PROMPTS = Object.freeze([
   {
     name: "architecture-validation",
     description: "Validate an architecture decision against the graph.",
-    toolRefs: ["blueprint_orient", "blueprint_search", "blueprint_impact"],
+    toolRefs: ["blueprint_recall", "blueprint_search", "blueprint_impact"],
   },
   {
     name: "documentation-reconciliation",
@@ -30,7 +30,7 @@ export const PROMPTS = Object.freeze([
   {
     name: "onboarding",
     description: "Onboard to a repository's structure and truth.",
-    toolRefs: ["blueprint_orient", "blueprint_status", "blueprint_search"],
+    toolRefs: ["blueprint_recall", "blueprint_status", "blueprint_search"],
   },
 ]);
 

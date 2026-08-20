@@ -108,7 +108,7 @@ test("live handshake: initialize -> list -> call -> close (6 tools, >=8 resource
     const resources = await client.listResources();
     const prompts = await client.listPrompts();
     const names = tools.tools.map((tool) => tool.name).sort();
-    assert.deepEqual(names, ["blueprint_doc_truth", "blueprint_expand", "blueprint_impact", "blueprint_orient", "blueprint_search", "blueprint_status"]);
+    assert.deepEqual(names, ["blueprint_doc_truth", "blueprint_expand", "blueprint_impact", "blueprint_recall", "blueprint_search", "blueprint_status"]);
     assert.ok(resources.resources.length >= 8, `expected >=8 resources, got ${resources.resources.length}`);
     assert.equal(prompts.prompts.length, 6);
     assert.deepEqual(prompts.prompts.map((prompt) => prompt.name).sort(), PROMPT_NAMES);
@@ -121,9 +121,9 @@ test("live handshake: initialize -> list -> call -> close (6 tools, >=8 resource
       assert.equal(tool.annotations?.idempotentHint, true, `${tool.name} must be idempotent`);
       assert.equal(tool.annotations?.openWorldHint, false, `${tool.name} must be closed-world`);
     }
-    const oriented = payload(await client.callTool({ name: "blueprint_orient", arguments: { task: "placeOrder" } }));
-    assert.equal(oriented.action, "allow");
-    assert.ok(oriented.freshnessReceipt?.receiptId);
+    const recalled = payload(await client.callTool({ name: "blueprint_recall", arguments: { task: "placeOrder" } }));
+    assert.equal(recalled.action, "allow");
+    assert.ok(recalled.freshnessReceipt?.receiptId);
     const search = payload(await client.callTool({ name: "blueprint_search", arguments: { query: "placeOrder", limit: 5 } }));
     assert.ok(Array.isArray(search.results));
     assert.ok(search.freshnessReceipt?.receiptId);
@@ -157,7 +157,7 @@ test("live handshake: initialize -> list -> call -> close (6 tools, >=8 resource
 });
 
 const TOOL_ARGS = {
-  blueprint_orient: { task: "placeOrder" },
+  blueprint_recall: { task: "placeOrder" },
   blueprint_search: { query: "placeOrder", limit: 5 },
   blueprint_expand: { anchor: "src/service.ts", depth: 1, budget: 512 },
   blueprint_impact: { anchor: "src/service.ts", depth: 1, budget: 512 },
@@ -189,7 +189,7 @@ test("all six tools return schema-valid structuredContent", async () => {
       const text = result.content.find((block) => block.type === "text")?.text;
       assert.ok(text, `${tool.name} must return text content`);
       assert.deepEqual(JSON.parse(text), result.structuredContent, `${tool.name} text must serialize the same redacted payload`);
-      if (tool.name === "blueprint_orient" || tool.name === "blueprint_status") {
+      if (tool.name === "blueprint_recall" || tool.name === "blueprint_status") {
         assert.deepEqual(Object.keys(result.structuredContent.claimBoundary).sort(), ["cleanClaimAllowed", "gaps", "prohibitedClaims", "safeClaims", "status"]);
         assert.equal(result.structuredContent.claimBoundary.status, "clear");
         assert.equal(result.structuredContent.claimBoundary.cleanClaimAllowed, true);

@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="1">
   <title>Blueprint</title>
-  <organization>io.orthic</organization>
+  <organization>io.membrane</organization>
   <domains enable_localSystem="true" />
   <options customize="never" require-scripts="true" rootVolumeOnly="true" />
-  <pkg-ref id="io.orthic.blueprint" version="0.2.0" onConclusion="none">component.pkg</pkg-ref>
+  <pkg-ref id="io.membrane.blueprint" version="0.2.0" onConclusion="none">component.pkg</pkg-ref>
   <choices-outline>
     <line choice="default">
-      <line choice="io.orthic.blueprint"/>
+      <line choice="io.membrane.blueprint"/>
     </line>
   </choices-outline>
   <choice id="default"/>
-  <choice id="io.orthic.blueprint" visible="false">
-    <pkg-ref id="io.orthic.blueprint"/>
+  <choice id="io.membrane.blueprint" visible="false">
+    <pkg-ref id="io.membrane.blueprint"/>
   </choice>
 </installer-gui-script>

@@ -1,4 +1,4 @@
-// D04: shared service query methods (orient/expand/impact/architecture/
+// D04: shared service query methods (recall/expand/impact/architecture/
 // documentTruth) must match current CLI semantics for the same fixture
 // generation.
 
@@ -33,15 +33,15 @@ function cliJson(repo, args) {
   return JSON.parse(result.stdout);
 }
 
-test("orient service result matches CLI orient semantics", async () => {
+test("recall service result matches CLI recall semantics", async () => {
   const repo = buildRepo();
   try {
     const service = createBlueprintApplicationService();
-    const serviceResult = await service.orient({ repoRoot: repo, query: "placeOrder", limit: 10 });
+    const serviceResult = await service.recall({ repoRoot: repo, query: "placeOrder", limit: 10 });
     const cliResult = cliJson(repo, ["graph", "candidates", "--query", "placeOrder", "--limit", "10", "--json"]);
     assert.equal(serviceResult.schemaVersion, 1);
     assert.equal(serviceResult.action, "allow");
-    assert.equal(serviceResult.reasonCode, "oriented");
+    assert.equal(serviceResult.reasonCode, "recalled");
     assert.ok(serviceResult.candidateSet);
     // Both derive from the same indexed generation and repository identity.
     assert.ok(Array.isArray(cliResult.candidates ?? cliResult.candidateSet?.candidates ?? []));
@@ -153,7 +153,7 @@ test("expand with an ambiguous anchor raises anchor_ambiguous", async () => {
       insert.run("symbol:a.ts:dup", JSON.stringify(["Function"]), "dup", "a.dup", "src/a.ts", generationId);
       insert.run("symbol:b.ts:dup", JSON.stringify(["Function"]), "dup", "b.dup", "src/b.ts", generationId);
       db.prepare("INSERT OR REPLACE INTO symbol_search (id, generation_id, name, qualified_name, path) VALUES ('symbol:a.ts:dup', ?, 'dup', 'a.dup', 'src/a.ts'), ('symbol:b.ts:dup', ?, 'dup', 'b.dup', 'src/b.ts')").run(generationId, generationId);
-      db.prepare("INSERT OR REPLACE INTO generation (key, value) VALUES ('manifest', ?)").run(JSON.stringify({ generationId, provider: "blueprint-static" }));
+      db.prepare("INSERT OR REPLACE INTO generation (key, value) VALUES ('manifest', ?)").run(JSON.stringify({ generationId, manifestDigest: "sha256:ambiguous", provider: "blueprint-static" }));
     } finally {
       closeStore(db);
     }

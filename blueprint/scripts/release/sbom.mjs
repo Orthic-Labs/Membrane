@@ -12,7 +12,7 @@ export function buildSbom({ root, version, commit, packages = [] }) {
     dataLicense: "CC0-1.0",
     SPDXID: "SPDXRef-DOCUMENT",
     name: `blueprint-${version}`,
-    documentNamespace: `https://orthic-labs.github.io/spdx/blueprint-${version}-${String(commit).slice(0, 12)}`,
+    documentNamespace: `https://membrane.dev/spdx/blueprint-${version}-${String(commit).slice(0, 12)}`,
     creationInfo: { created: new Date().toISOString(), creators: ["Tool: blueprint sbom builder"] },
     packages: [
       { name: "blueprint", SPDXID: "SPDXRef-Package-Blueprint", versionInfo: version, downloadLocation: "NOASSERTION", filesAnalyzed: false },

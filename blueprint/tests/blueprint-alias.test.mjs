@@ -9,7 +9,7 @@ const ROOT = join(import.meta.dirname, "..");
 const CLI = join(ROOT, "scripts/blueprint.mjs");
 const FIXTURE = join(ROOT, "evals/fixture-repos/typescript-commerce");
 
-test("Blueprint CLI exposes the orient contract and branded help", () => {
+test("Blueprint CLI exposes the recall contract and branded help", () => {
   const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
   assert.equal(pkg.bin.blueprint, "./scripts/blueprint.mjs");
   assert.equal(pkg.bin["blueprint-watch"], "./scripts/blueprint-watch.mjs");
@@ -24,9 +24,9 @@ test("Blueprint CLI exposes the orient contract and branded help", () => {
   try {
     const build = spawnSync(process.execPath, [CLI, "graph", "build", "--out", ".agent"], { cwd: repo, encoding: "utf8" });
     assert.equal(build.status, 0, build.stderr || build.stdout);
-    const orient = spawnSync(process.execPath, [CLI, "orient", "--json", "--out", ".agent"], { cwd: repo, encoding: "utf8" });
-    assert.equal(orient.status, 0, orient.stderr || orient.stdout);
-    const payload = JSON.parse(orient.stdout);
+    const recall = spawnSync(process.execPath, [CLI, "recall", "--json", "--out", ".agent"], { cwd: repo, encoding: "utf8" });
+    assert.equal(recall.status, 0, recall.stderr || recall.stdout);
+    const payload = JSON.parse(recall.stdout);
     assert.deepEqual(Object.keys(payload).sort(), ["candidates", "entrypoint", "freshness", "freshnessReceipt", "generationId", "manifestDigest", "product", "schemaVersion", "topCircuits"].sort());
     assert.equal(payload.schemaVersion, 1);
     assert.equal(payload.product, "blueprint");

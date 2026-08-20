@@ -77,13 +77,13 @@ function makeIsolatedAdmission(overrides = {}) {
   return { api, storeDir, evidenceDir, repoRoot, generation, candidateSet };
 }
 
-test("orient blocks when graph is missing — decision only, no hooks", async () => {
+test("recall blocks when graph is missing — decision only, no hooks", async () => {
   const { api, storeDir, evidenceDir } = makeIsolatedAdmission({
     graphStatus: () => ({ state: "missing" }),
     readGeneration: () => null,
   });
   try {
-    const result = await api.orient({
+    const result = await api.recall({
       task: "inspect auth",
       sessionId: "sess",
       repoRoot: "/tmp/demo-repo",
@@ -99,10 +99,10 @@ test("orient blocks when graph is missing — decision only, no hooks", async ()
   }
 });
 
-test("orient issues a host receipt and Forge evidence file", async () => {
+test("recall issues a host receipt and Forge evidence file", async () => {
   const { api, storeDir, evidenceDir } = makeIsolatedAdmission();
   try {
-    const result = await api.orient({
+    const result = await api.recall({
       task: "find alpha",
       sessionId: "sess-1",
       taskId: "find alpha",
@@ -110,7 +110,7 @@ test("orient issues a host receipt and Forge evidence file", async () => {
       anchors: ["src/b.ts"],
     });
     assert.equal(result.action, "allow");
-    assert.equal(result.reasonCode, "oriented");
+    assert.equal(result.reasonCode, "recalled");
     assert.ok(result.receiptId);
     assert.ok(result.allowedScopes.includes("src/a.ts"));
     assert.ok(result.allowedScopes.includes("src/b.ts"));
@@ -122,7 +122,7 @@ test("orient issues a host receipt and Forge evidence file", async () => {
     assert.equal(result.receipt.generationId, "xxh128:gen-fixed");
     assert.equal(result.receipt.sessionId, "sess-1");
 
-    const reused = await api.orient({
+    const reused = await api.recall({
       task: "find alpha",
       sessionId: "sess-1",
       taskId: "find alpha",
@@ -140,21 +140,21 @@ test("orient issues a host receipt and Forge evidence file", async () => {
 test("expand unions graph-supported paths and rejects absolute self-approval", async () => {
   const { api, storeDir, evidenceDir } = makeIsolatedAdmission();
   try {
-    const oriented = await api.orient({
+    const recalled = await api.recall({
       task: "base",
       sessionId: "s",
       taskId: "base",
       repoRoot: "/tmp/demo-repo",
     });
     const blocked = await api.expand({
-      receiptId: oriented.receiptId,
+      receiptId: recalled.receiptId,
       paths: ["/etc/passwd"],
       repoRoot: "/tmp/demo-repo",
     });
     assert.equal(blocked.action, "block");
     assert.equal(blocked.reasonCode, "absolute_path_rejected");
     const blockedWindows = await api.expand({
-      receiptId: oriented.receiptId,
+      receiptId: recalled.receiptId,
       paths: ["C:\\Windows\\System32"],
       repoRoot: "/tmp/demo-repo",
     });
@@ -162,7 +162,7 @@ test("expand unions graph-supported paths and rejects absolute self-approval", a
     assert.equal(blockedWindows.reasonCode, "absolute_path_rejected");
 
     const expanded = await api.expand({
-      receiptId: oriented.receiptId,
+      receiptId: recalled.receiptId,
       query: "expand-me",
       path: "src/extra.ts",
       repoRoot: "/tmp/demo-repo",
@@ -170,7 +170,7 @@ test("expand unions graph-supported paths and rejects absolute self-approval", a
     assert.equal(expanded.action, "continue");
     assert.equal(expanded.reasonCode, "expanded");
     assert.ok(expanded.allowedScopes.includes("src/extra.ts"));
-    assert.equal(expanded.receipt.overlayRevision, oriented.receipt.overlayRevision + 1);
+    assert.equal(expanded.receipt.overlayRevision, recalled.receipt.overlayRevision + 1);
     assert.equal(
       expanded.evidence.invalidation_key,
       `${expanded.receipt.manifestDigest}:${expanded.receipt.overlayRevision}`,
@@ -184,27 +184,27 @@ test("expand unions graph-supported paths and rejects absolute self-approval", a
 test("status and revoke round-trip", async () => {
   const { api, storeDir, evidenceDir } = makeIsolatedAdmission();
   try {
-    const oriented = await api.orient({
+    const recalled = await api.recall({
       task: "status task",
       sessionId: "s2",
       taskId: "status task",
       repoRoot: "/tmp/demo-repo",
     });
-    const st = await api.status({ receiptId: oriented.receiptId });
+    const st = await api.status({ receiptId: recalled.receiptId });
     assert.equal(st.action, "continue");
     assert.equal(st.reasonCode, "receipt_active");
 
-    const revoked = await api.revoke({ receiptId: oriented.receiptId });
+    const revoked = await api.revoke({ receiptId: recalled.receiptId });
     assert.equal(revoked.action, "allow");
     assert.equal(revoked.reasonCode, "revoked");
     assert.equal(revoked.receipt.status, "revoked");
 
-    const after = await api.status({ receiptId: oriented.receiptId });
+    const after = await api.status({ receiptId: recalled.receiptId });
     assert.equal(after.action, "block");
     assert.equal(after.reasonCode, "receipt_revoked");
 
     const expandBlocked = await api.expand({
-      receiptId: oriented.receiptId,
+      receiptId: recalled.receiptId,
       query: "anything",
       repoRoot: "/tmp/demo-repo",
     });
@@ -215,10 +215,10 @@ test("status and revoke round-trip", async () => {
   }
 });
 
-test("generation mismatch blocks orient", async () => {
+test("generation mismatch blocks recall", async () => {
   const { api, storeDir, evidenceDir } = makeIsolatedAdmission();
   try {
-    const result = await api.orient({
+    const result = await api.recall({
       task: "pin",
       sessionId: "s",
       repoRoot: "/tmp/demo-repo",
@@ -249,7 +249,7 @@ test("createAdmission store is injectable for Cortex-style hosts", () => {
 });
 
 // CX-B3: every admission decision must carry the exact five-key claimBoundary
-// block, and orient/status branches must derive it from the live graph state.
+// block, and recall/status branches must derive it from the live graph state.
 
 function assertClaimBoundaryShape(claimBoundary) {
   assert.deepEqual(Object.keys(claimBoundary).sort(), CLAIM_BOUNDARY_KEYS);
@@ -260,16 +260,16 @@ function assertClaimBoundaryShape(claimBoundary) {
   assert.ok(Array.isArray(claimBoundary.gaps));
 }
 
-test("fresh orient allows clean claims and derives gaps from omission reasons", async () => {
+test("fresh recall allows clean claims and derives gaps from omission reasons", async () => {
   const { api, storeDir, evidenceDir, repoRoot } = makeIsolatedAdmission();
   try {
-    const result = await api.orient({
+    const result = await api.recall({
       task: "find alpha",
       sessionId: "sess-cb-fresh",
       taskId: "find alpha",
     });
     assert.equal(result.action, "allow");
-    assert.equal(result.reasonCode, "oriented");
+    assert.equal(result.reasonCode, "recalled");
     assertClaimBoundaryShape(result.claimBoundary);
     assert.equal(result.claimBoundary.status, "clear");
     assert.equal(result.claimBoundary.cleanClaimAllowed, true);
@@ -283,18 +283,18 @@ test("fresh orient allows clean claims and derives gaps from omission reasons", 
   }
 });
 
-test("stale orient restricts clean claims with a non-empty prohibited list", async () => {
+test("stale recall restricts clean claims with a non-empty prohibited list", async () => {
   const { api, storeDir, evidenceDir, repoRoot } = makeIsolatedAdmission({
     graphStatus: () => ({ state: "stale", capabilities: { dirtyOverlayFileCount: 1 } }),
   });
   try {
-    const result = await api.orient({
+    const result = await api.recall({
       task: "find alpha",
       sessionId: "sess-cb-stale",
       taskId: "find alpha",
     });
     assert.equal(result.action, "continue");
-    assert.equal(result.reasonCode, "oriented_stale");
+    assert.equal(result.reasonCode, "recalled_stale");
     assertClaimBoundaryShape(result.claimBoundary);
     assert.equal(result.claimBoundary.status, "restricted");
     assert.equal(result.claimBoundary.cleanClaimAllowed, false);
@@ -311,18 +311,18 @@ test("stale orient restricts clean claims with a non-empty prohibited list", asy
   }
 });
 
-test("indeterminate orient restricts clean claims", async () => {
+test("indeterminate recall restricts clean claims", async () => {
   const { api, storeDir, evidenceDir, repoRoot } = makeIsolatedAdmission({
     graphStatus: () => ({ state: "indeterminate", capabilities: { dirtyOverlayFileCount: 0 } }),
   });
   try {
-    const result = await api.orient({
+    const result = await api.recall({
       task: "find alpha",
       sessionId: "sess-cb-indeterminate",
       taskId: "find alpha",
     });
     assert.equal(result.action, "continue");
-    assert.equal(result.reasonCode, "oriented_indeterminate");
+    assert.equal(result.reasonCode, "recalled_indeterminate");
     assertClaimBoundaryShape(result.claimBoundary);
     assert.equal(result.claimBoundary.status, "restricted");
     assert.equal(result.claimBoundary.cleanClaimAllowed, false);
@@ -334,14 +334,14 @@ test("indeterminate orient restricts clean claims", async () => {
   }
 });
 
-test("orient early branches carry a restricted claimBoundary", async () => {
+test("recall early branches carry a restricted claimBoundary", async () => {
   const missing = makeIsolatedAdmission({
     graphStatus: () => ({ state: "missing" }),
     readGeneration: () => null,
   });
   const mismatched = makeIsolatedAdmission();
   try {
-    const missingResult = await missing.api.orient({
+    const missingResult = await missing.api.recall({
       task: "inspect auth",
       sessionId: "sess",
     });
@@ -352,7 +352,7 @@ test("orient early branches carry a restricted claimBoundary", async () => {
     assert.equal(missingResult.claimBoundary.cleanClaimAllowed, false);
     assert.deepEqual(missingResult.claimBoundary.gaps, ["missing_graph"]);
 
-    const mismatchResult = await mismatched.api.orient({
+    const mismatchResult = await mismatched.api.recall({
       task: "pin",
       sessionId: "s",
       expectedGeneration: "xxh128:other",
@@ -375,13 +375,13 @@ test("orient early branches carry a restricted claimBoundary", async () => {
 test("status on a fresh active receipt allows clean claims via worktreeIdentity root", async () => {
   const { api, storeDir, evidenceDir, repoRoot } = makeIsolatedAdmission();
   try {
-    const oriented = await api.orient({
+    const recalled = await api.recall({
       task: "status task",
       sessionId: "s2",
       taskId: "status task",
     });
-    assert.ok(oriented.receipt.worktreeIdentity.startsWith("file:"));
-    const st = await api.status({ receiptId: oriented.receiptId });
+    assert.ok(recalled.receipt.worktreeIdentity.startsWith("file:"));
+    const st = await api.status({ receiptId: recalled.receiptId });
     assert.equal(st.action, "continue");
     assert.equal(st.reasonCode, "receipt_active");
     assertClaimBoundaryShape(st.claimBoundary);
@@ -407,13 +407,13 @@ test("status honors an explicit repoRoot before the receipt worktree identity", 
   });
   const statusRepoRoot = resolve(mkdtempSync(join(tmpdir(), "bp-admission-status-repo-")));
   try {
-    const oriented = await api.orient({
+    const recalled = await api.recall({
       task: "status root precedence",
       sessionId: "s-root-precedence",
       taskId: "status root precedence",
       repoRoot,
     });
-    const st = await api.status({ receiptId: oriented.receiptId, repoRoot: statusRepoRoot });
+    const st = await api.status({ receiptId: recalled.receiptId, repoRoot: statusRepoRoot });
     assert.equal(st.claimBoundary.cleanClaimAllowed, true);
     assert.equal(observedRoots.at(-1), statusRepoRoot);
   } finally {
@@ -429,12 +429,12 @@ test("status on a stale active receipt restricts clean claims", async () => {
     graphStatus: () => ({ state: "stale", capabilities: { dirtyOverlayFileCount: 1 } }),
   });
   try {
-    const oriented = await api.orient({
+    const recalled = await api.recall({
       task: "status task",
       sessionId: "s2",
       taskId: "status task",
     });
-    const st = await api.status({ receiptId: oriented.receiptId });
+    const st = await api.status({ receiptId: recalled.receiptId });
     assert.equal(st.action, "continue");
     assert.equal(st.reasonCode, "receipt_active");
     assertClaimBoundaryShape(st.claimBoundary);
@@ -460,13 +460,13 @@ test("status early branches carry a restricted claimBoundary", async () => {
     assert.equal(noReceipt.claimBoundary.cleanClaimAllowed, false);
     assert.deepEqual(noReceipt.claimBoundary.gaps, ["no_receipt"]);
 
-    const oriented = await api.orient({
+    const recalled = await api.recall({
       task: "status task",
       sessionId: "s3",
       taskId: "status task",
     });
-    await api.revoke({ receiptId: oriented.receiptId });
-    const revoked = await api.status({ receiptId: oriented.receiptId });
+    await api.revoke({ receiptId: recalled.receiptId });
+    const revoked = await api.status({ receiptId: recalled.receiptId });
     assert.equal(revoked.action, "block");
     assert.equal(revoked.reasonCode, "receipt_revoked");
     assertClaimBoundaryShape(revoked.claimBoundary);
@@ -483,8 +483,8 @@ test("status early branches carry a restricted claimBoundary", async () => {
 
 test("BlueprintError carries required metadata for mapped codes", () => {
   const required = [
-    { code: "stale_blocked", retryable: true, nextOperation: "blueprint_orient" },
-    { code: "generation_mismatch", retryable: true, nextOperation: "blueprint_orient" },
+    { code: "stale_blocked", retryable: true, nextOperation: "blueprint_recall" },
+    { code: "generation_mismatch", retryable: true, nextOperation: "blueprint_recall" },
     { code: "missing_generation", retryable: true, nextOperation: "blueprint build" },
     { code: "missing_graph", retryable: true, nextOperation: "blueprint build" },
     { code: "root_not_enrolled", retryable: false, nextOperation: "blueprint init" },

@@ -143,11 +143,11 @@ test("host configs generate for all seven hosts", () => {
 });
 
 test("hook policies have explicit fail-open/fail-closed and recovery", () => {
-  assert.deepEqual(HOOK_POLICY_MODES, ["advisory", "orient-before-read", "task-grants"]);
+  assert.deepEqual(HOOK_POLICY_MODES, ["advisory", "recall-before-read", "task-grants"]);
   assert.equal(HOOK_POLICIES.advisory.failClosed, false);
-  assert.equal(HOOK_POLICIES["orient-before-read"].failClosed, true);
+  assert.equal(HOOK_POLICIES["recall-before-read"].failClosed, true);
   assert.equal(HOOK_POLICIES["task-grants"].failClosed, true);
-  assert.match(policyBehavior("orient-before-read").recoveryCommand, /blueprint orient/);
+  assert.match(policyBehavior("recall-before-read").recoveryCommand, /blueprint recall/);
   assert.match(policyBehavior("task-grants").recoveryCommand, /blueprint grant issue/);
   assert.equal(policyBehavior("advisory").recoveryCommand, null);
 });

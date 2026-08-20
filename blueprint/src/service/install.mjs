@@ -6,7 +6,6 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeProductManifest } from "../lib/init/manifest.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const CLI_SCRIPT = join(SCRIPT_DIR, "..", "..", "scripts", "blueprint.mjs");
@@ -21,8 +20,7 @@ export function installService({ root = process.cwd(), logDir = null, dryRun = f
   const target = null; // no OS target — Hub spawns as child
   const body = `# Hub-owned lifecycle (D-S03): run \`blueprint service run\` or let Hub spawn:\n# ${serviceStart.join(" ")}\n`;
   if (dryRun) return { platform: process.platform, target, body, serviceStart, serviceStop, forbidden: "OS registration forbidden per D-S03" };
-  const manifest = writeProductManifest({ installRoot: resolve(root) });
-  return { platform: process.platform, target, installed: true, manifest: manifest.path, serviceStart, serviceStop, note: "Product manifest installed; OS service registration forbidden per D-S03 — Hub owns lifecycle" };
+  return { platform: process.platform, target, installed: true, serviceStart, serviceStop, note: "Blueprint does not register products or OS services; Hub owns lifecycle" };
 }
 
 export function serviceTarget() {

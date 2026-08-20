@@ -36,7 +36,7 @@ export class BlueprintClient {
   status(input?: BlueprintServiceInput): Promise<BlueprintResult>;
   search(input: SearchInput): Promise<BlueprintSearchResult>;
   resolve(input: { nodeId: string } & BlueprintServiceInput): Promise<BlueprintResult>;
-  orient(input: BlueprintServiceInput & { task?: string; query?: string; limit?: number }): Promise<BlueprintResult>;
+  recall(input: BlueprintServiceInput & { task?: string; query?: string; limit?: number }): Promise<BlueprintResult>;
   expand(input: AnchorInput): Promise<BlueprintResult>;
   impact(input: AnchorInput): Promise<BlueprintResult>;
   architecture(input: BlueprintServiceInput & { budget?: number }): Promise<BlueprintResult>;

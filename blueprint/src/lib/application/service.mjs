@@ -61,6 +61,13 @@ export function createBlueprintApplicationService({
     try {
       const meta = readIndexedMeta(db);
       if (!meta?.manifest?.generationId) fail("graph_missing", "No sealed generation is available.");
+      if (meta.schemaVersion !== 1 || (!meta.provider || (typeof meta.provider !== "string" && typeof meta.provider.id !== "string")) || !meta.manifest.manifestDigest) {
+        fail("schema_mismatch", "Sealed Blueprint generation schema does not match the current service.", {
+          schemaVersion: meta.schemaVersion ?? null,
+          provider: meta.provider ?? null,
+          manifestDigest: meta.manifest.manifestDigest ?? null,
+        });
+      }
       if (input.generation && input.generation !== meta.manifest.generationId) {
         fail("generation_mismatch", "Requested generation is not current.", {
           expected: input.generation,
@@ -157,7 +164,7 @@ export function createBlueprintApplicationService({
       }, options);
     },
 
-    async orient(input = {}, options = {}) {
+    async recall(input = {}, options = {}) {
       return withCurrentDb(input, ({ root, db, meta, receipt }) => {
         const query = String(input.query ?? input.task ?? "").trim();
         const circuit = executeRecallCircuit(db, String(input.task ?? query), {
@@ -176,7 +183,7 @@ export function createBlueprintApplicationService({
         return {
           schemaVersion: 1,
           action: "allow",
-          reasonCode: "oriented",
+          reasonCode: "recalled",
           generationId: meta.manifest.generationId,
           candidateSet: candidates,
           recallCircuit: circuit,

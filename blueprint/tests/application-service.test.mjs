@@ -191,7 +191,7 @@ test("search on a seeded generation without building works read-only", async () 
   const repo = tempRepo();
   try {
     seedStore(repo, {
-      manifest: { generationId: "xxh128:seed-1", provider: "blueprint-static" },
+      manifest: { generationId: "xxh128:seed-1", manifestDigest: "sha256:seed-1", provider: "blueprint-static" },
       provider: { id: "blueprint-static", version: "0.2.0", precisionTier: "LEXICAL" },
       nodes: [
         {

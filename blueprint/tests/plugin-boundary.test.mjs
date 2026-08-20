@@ -49,7 +49,7 @@ test("definePlugin rejects escalated permissions instead of silently accepting t
 
 test("defineProvider requires the full provider contract and defaults to repo-read/no-network", () => {
   const provider = defineProvider({
-    id: "orthic.x",
+    id: "membrane.x",
     version: "1.0.0",
     kind: "compiler",
     protocolRange: ">=1 <2",

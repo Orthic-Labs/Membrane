@@ -11,7 +11,7 @@ export function daemonEndpoint({ platform = process.platform, identity = homedir
   if (process.env.BLUEPRINT_DAEMON_ENDPOINT) return process.env.BLUEPRINT_DAEMON_ENDPOINT;
   if (platform === "win32") {
     const userHash = createHash("sha256").update(String(identity)).digest("hex").slice(0, 16);
-    return `\\\\.\\pipe\\orthic-blueprint-${userHash}`;
+    return `\\\\.\\pipe\\membrane-blueprint-${userHash}`;
   }
   return join(homedir(), ".blueprint", "blueprint.sock");
 }
@@ -22,5 +22,5 @@ export function daemonPidPath() {
 
 export function temporaryDaemonEndpoint(name) {
   const suffix = `${name}-${process.pid}-${Date.now()}-${temporaryEndpointCounter++}`;
-  return process.platform === "win32" ? `\\\\.\\pipe\\orthic-blueprint-${suffix}` : join(tmpdir(), `${suffix}.sock`);
+  return process.platform === "win32" ? `\\\\.\\pipe\\membrane-blueprint-${suffix}` : join(tmpdir(), `${suffix}.sock`);
 }

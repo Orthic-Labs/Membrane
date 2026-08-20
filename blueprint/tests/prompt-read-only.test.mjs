@@ -26,7 +26,7 @@ test("read commands never open graph.db writable", () => {
       ["graph", "architecture", "--out", ".agent"],
       ["graph", "flows", "--out", ".agent"],
       ["graph", "candidates", "--query", "placeOrder", "--out", ".agent"],
-      ["orient", "--query", "placeOrder", "--out", ".agent"],
+      ["recall", "--query", "placeOrder", "--out", ".agent"],
     ];
     for (const args of commands) {
       const result = spawnSync(process.execPath, [CLI, ...args], { cwd: repo, encoding: "utf8" });

@@ -43,7 +43,7 @@ test("installer is idempotent and uninstall restores project files byte-for-byte
     const denied = spawnSync(process.execPath, [INSTALLER, "--redirect-check", "--root", repo], { input: JSON.stringify({ session_id: "s1" }), encoding: "utf8" });
     assert.equal(JSON.parse(denied.stdout).hookSpecificOutput.permissionDecision, "deny");
     mkdirSync(join(repo, ".agent", "graph"), { recursive: true });
-    writeFileSync(join(repo, ".agent", "graph", "blueprint-orient-session-s1.marker"), "1\n");
+    writeFileSync(join(repo, ".agent", "graph", "blueprint-recall-session-s1.marker"), "1\n");
     const allowed = spawnSync(process.execPath, [INSTALLER, "--redirect-check", "--root", repo], { input: JSON.stringify({ session_id: "s1" }), encoding: "utf8" });
     assert.equal(JSON.parse(allowed.stdout).hookSpecificOutput.permissionDecision, "allow");
     const afterFirst = snapshot(tracked.concat([join(repo, ".git", "hooks", "post-checkout.cmd")]));

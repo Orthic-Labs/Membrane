@@ -148,10 +148,10 @@ export async function runCleanHostSmoke({ candidate } = {}) {
     mkdirSync(app); mkdirSync(update);
     writeFileSync(join(app, "version.txt"), "before\n");
     writeFileSync(join(update, "version.txt"), "after\n");
-    writeFileSync(join(app, "package.json"), JSON.stringify({ name: "@orthic-labs/blueprint-target", version: "0.2.0" }));
-    writeFileSync(join(update, "package.json"), JSON.stringify({ name: "@orthic-labs/blueprint-target", version: "0.3.0" }));
+    writeFileSync(join(app, "package.json"), JSON.stringify({ name: "@membrane/blueprint-target", version: "0.2.0" }));
+    writeFileSync(join(update, "package.json"), JSON.stringify({ name: "@membrane/blueprint-target", version: "0.3.0" }));
     const keys = generateKeyPairSync("ed25519"), manifestPath = join(temp, "manifest.json");
-    const manifest = { schemaVersion: 1, channel: "stable", version: "0.3.0", commit: "a".repeat(40), publishedAt: "2026-08-08T00:00:00Z", artifacts: [{ name: "local", packageName: "@orthic-labs/blueprint-target", platform: process.platform, arch: process.arch, sha256: treeDigest(update) }], signatureAlgorithm: "Ed25519", keyId: "ephemeral", signature: "" };
+    const manifest = { schemaVersion: 1, channel: "stable", version: "0.3.0", commit: "a".repeat(40), publishedAt: "2026-08-08T00:00:00Z", artifacts: [{ name: "local", packageName: "@membrane/blueprint-target", platform: process.platform, arch: process.arch, sha256: treeDigest(update) }], signatureAlgorithm: "Ed25519", keyId: "ephemeral", signature: "" };
     const shippedRootPath = join(packageRoot, "src", "lib", "update", "trusted-update-keys.json");
     const lifecycle = await runUpdateTrustLifecycle({
       blueprint, packageRoot, repo, app, prior, update, manifestPath, manifest,

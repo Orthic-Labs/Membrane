@@ -11,7 +11,7 @@ export class EmbeddedBlueprintClient {
   async status(input = {}) { return this.service.status(input); }
   async search(input = {}) { return this.service.search(input); }
   async resolve(input = {}) { return this.service.resolve(input); }
-  async orient(input = {}) { return this.service.orient(input); }
+  async recall(input = {}) { return this.service.recall(input); }
   async expand(input = {}) { return this.service.expand(input); }
   async impact(input = {}) { return this.service.impact(input); }
   async architecture(input = {}) { return this.service.architecture(input); }

@@ -4,7 +4,7 @@
 // execution, no network, no installs, no destruction, safe to repeat, and
 // safe for a host to run without asking the user first.
 export const TOOL_EFFECTS = Object.freeze({
-  blueprint_orient: Object.freeze({
+  blueprint_recall: Object.freeze({
     reads: ["repository-graph"],
     writes: [],
     executesProjectCode: false,

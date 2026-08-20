@@ -1,6 +1,6 @@
 {
   "$schema": "https://aka.ms/winget-manifest.installer.1.6.0.schema.json",
-  "PackageIdentifier": "OrthicLabs.Blueprint",
+  "PackageIdentifier": "Membrane.Blueprint",
   "PackageVersion": "__VERSION__",
   "InstallerType": "exe",
   "InstallModes": ["silent", "interactive"],

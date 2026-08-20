@@ -17,7 +17,7 @@ function xxh3Hex(bytes) {
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { execFile as execFileCb } from "node:child_process";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -335,6 +335,30 @@ export function makeBlueprintStaticProvider(opts = {}) {
         rankStaticEvidence({ query: term }, snapshot);
         queryDurations.push(performance.now() - qStart);
       }
+      // Measure the complete Blueprint build in an isolated copy. The build
+      // writes generated docs and graph artifacts, so running it in the real
+      // checkout would contaminate source state and falsify the qualification
+      // receipt. Copy overhead is outside the timed interval.
+      const isolatedRoot = mkdtempSync(join(tmpdir(), "blueprint-b0-real-"));
+      let fullBlueprintGenerationMs = null;
+      try {
+        cpSync(absoluteRoot, isolatedRoot, {
+          recursive: true,
+          filter(source) {
+            const rel = relative(absoluteRoot, source);
+            if (!rel) return true;
+            return !rel.split(/[\\/]/).some((part) => [".git", ".agent", "node_modules", "dist", "build", "target"].includes(part));
+          },
+        });
+        const buildStarted = performance.now();
+        await execFile(process.execPath, [
+          resolve(dirname(fileURLToPath(import.meta.url)), "../scripts/blueprint.mjs"),
+          "build", "--root", isolatedRoot, "--out", ".agent/qualification",
+        ], { cwd: isolatedRoot, timeout: 600000, maxBuffer: 16 * 1024 * 1024 });
+        fullBlueprintGenerationMs = roundMs(performance.now() - buildStarted);
+      } finally {
+        rmSync(isolatedRoot, { recursive: true, force: true });
+      }
       const afterState = await gitSourceState(absoluteRoot);
       const unchanged = beforeState.fingerprint === afterState.fingerprint;
       return {
@@ -353,8 +377,8 @@ export function makeBlueprintStaticProvider(opts = {}) {
         querySamples: queryDurations.map(roundMs),
         indexBytes: JSON.stringify(snapshot).length,
         peakRssBytes: process.memoryUsage().rss,
-        fullBlueprintGenerationMs: null,
-        fullBlueprintGenerationState: "unavailable_in_provider_harness",
+        fullBlueprintGenerationMs,
+        fullBlueprintGenerationState: fullBlueprintGenerationMs === null ? "measurement_failed" : "measured_isolated_build",
         incrementalEditState: "measured_no_op_refresh",
         indexJsonlBytes: null,
         compressedProviderDbBytes: null,

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://orthic.labs/schemas/architecture-rule-result-v1.json",
+  "$id": "https://membrane/schemas/architecture-rule-result-v1.json",
   "title": "ArchitectureRuleResultV1",
   "type": "object",
   "additionalProperties": false,

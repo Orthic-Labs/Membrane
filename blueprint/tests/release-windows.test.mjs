@@ -13,7 +13,7 @@ const ROOT = join(import.meta.dirname, "..");
 test("Inno Setup installer targets per-user install and user PATH", () => {
   const iss = readFileSync(join(ROOT, "release/windows/Blueprint.iss"), "utf8");
   assert.ok(iss.includes("PrivilegesRequired=lowest"));
-  assert.ok(iss.includes("{localappdata}\\Orthic\\Blueprint"));
+  assert.ok(iss.includes("{localappdata}\\Membrane\\Blueprint"));
   assert.ok(iss.includes("RegWriteExpandStringValue(HKCU, 'Environment', 'Path'"));
 });
 

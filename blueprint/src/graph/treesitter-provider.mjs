@@ -890,10 +890,6 @@ function countErrorNodes(rootNode) {
   return count;
 }
 
-export function genericEngineEnabled() {
-  return process.env.BLUEPRINT_AST_ENGINE !== "legacy";
-}
-
 export async function loadLanguageTable(languageId) {
   let grammar;
   try {
@@ -920,128 +916,48 @@ export async function extractFile(file) {
   const extension = path.includes(".") ? path.slice(path.lastIndexOf(".") + 1).toLowerCase() : "";
   const fileNode = buildFileNode(normalizedFile);
 
-  if (genericEngineEnabled()) {
-    let entry;
-    try { entry = catalogExtension(extension); } catch (error) {
-      return { path, language: null, provider: PROVIDER.id, grammar: null, parseStatus: "failed", errorNodeCount: 0, error: `generic_catalog_unavailable:${error?.message ?? error}`, nodes: [fileNode], edges: [], rawImports: [], rawCalls: [], configuresTargets: [], generic: true };
-    }
-    if (!entry) return { path, language: null, provider: PROVIDER.id, grammar: null, parseStatus: "unsupported", errorNodeCount: 0, nodes: [fileNode], edges: [], generic: true };
-    const tableResult = await loadLanguageTable(entry.language);
-    const record = await loadLanguageRecord(entry.language);
-    const failed = (error, grammar = record.grammar ?? null) => ({
-      path, language: entry.language, provider: PROVIDER.id, grammar,
-      parseStatus: "failed", errorNodeCount: 0, error, nodes: [fileNode], edges: [],
-      rawImports: [], rawCalls: [], configuresTargets: [],
-      reports: [{ kind: "parse_failed", path, message: error }], generic: true,
-    });
-    if (!tableResult.table) return failed(tableResult.error);
-    if (!record.language) return failed(`generic_grammar_unavailable:${record.error}`);
-    let tree;
-    try {
-      const { walkTable } = await import("./generic-ast-walker.mjs");
-      tree = record.parser.parse(normalizedFile.text ?? "");
-      const errorNodeCount = countErrorNodes(tree.rootNode);
-      const extracted = walkTable({ table: tableResult.table, tree, filePath: path, file: normalizedFile, providerId: PROVIDER.id, grammarHash: record.grammar?.hash ?? null, precisionTier: "AST" });
-      const parseStatus = errorNodeCount === 0 ? "ok" : extracted.nodes.length ? "partial" : "failed";
-      const symbolNodes = parseStatus === "failed" ? [] : extracted.nodes;
-      const containsEdges = parseStatus === "failed" ? [] : extracted.containsEdges;
-      const definesEdges = parseStatus === "failed" ? [] : extracted.definesEdges;
-      const rawImports = parseStatus === "failed" ? [] : extracted.rawImports;
-      const configuresTargets = parseStatus === "failed" ? [] : (extracted.configuresTargets ?? []);
-      const rawCalls = parseStatus === "failed" ? [] : extracted.rawCalls;
-      return {
-        path, language: entry.language, provider: PROVIDER.id, grammar: record.grammar,
-        parseStatus, errorNodeCount, configuresTargets,
-        nodes: [fileNode, ...symbolNodes],
-        edges: [
-          ...containsEdges.map((edge) => edgeRecord("CONTAINS", edge.source, edge.target, edge.evidence)),
-          ...definesEdges.map((edge) => edgeRecord("DEFINES", edge.source, edge.target, edge.evidence)),
-        ].map((edge) => ({ ...edge, provider: PROVIDER.id, grammarHash: record.grammar?.hash ?? null, precisionTier: "AST" })),
-        rawImports, rawCalls, reports: extracted.reports, generic: true,
-      };
-    } catch (error) {
-      return failed(`generic_walk_failed:${error?.message ?? error}`, record.grammar);
-    } finally {
-      tree?.delete();
-    }
+  let entry;
+  try { entry = catalogExtension(extension); } catch (error) {
+    return { path, language: null, provider: PROVIDER.id, grammar: null, parseStatus: "failed", errorNodeCount: 0, error: `generic_catalog_unavailable:${error?.message ?? error}`, nodes: [fileNode], edges: [], rawImports: [], rawCalls: [], configuresTargets: [], generic: true };
   }
-
-  const entry = LANGUAGES[extension];
-  if (!entry) {
-    return {
-      path, language: null, provider: PROVIDER.id, grammar: null,
-      parseStatus: "unsupported", errorNodeCount: 0,
-      nodes: [fileNode], edges: [],
-    };
-  }
-
-  const record = await loadLanguageRecord(entry.id);
-  if (!record.language) {
-    return {
-      path, language: entry.id, provider: PROVIDER.id, grammar: record.grammar,
-      parseStatus: "failed", errorNodeCount: 0, error: record.error,
-      nodes: [fileNode], edges: [],
-    };
-  }
-
+  if (!entry) return { path, language: null, provider: PROVIDER.id, grammar: null, parseStatus: "unsupported", errorNodeCount: 0, nodes: [fileNode], edges: [], generic: true };
+  const tableResult = await loadLanguageTable(entry.language);
+  const record = await loadLanguageRecord(entry.language);
+  const failed = (error, grammar = record.grammar ?? null) => ({
+    path, language: entry.language, provider: PROVIDER.id, grammar,
+    parseStatus: "failed", errorNodeCount: 0, error, nodes: [fileNode], edges: [],
+    rawImports: [], rawCalls: [], configuresTargets: [],
+    reports: [{ kind: "parse_failed", path, message: error }], generic: true,
+  });
+  if (!tableResult.table) return failed(tableResult.error);
+  if (!record.language) return failed(`generic_grammar_unavailable:${record.error}`);
   let tree;
   try {
+    const { walkTable } = await import("./generic-ast-walker.mjs");
     tree = record.parser.parse(normalizedFile.text ?? "");
-  } catch (error) {
+    const errorNodeCount = countErrorNodes(tree.rootNode);
+    const extracted = walkTable({ table: tableResult.table, tree, filePath: path, file: normalizedFile, providerId: PROVIDER.id, grammarHash: record.grammar?.hash ?? null, precisionTier: "AST" });
+    const parseStatus = errorNodeCount === 0 ? "ok" : extracted.nodes.length ? "partial" : "failed";
+    const symbolNodes = parseStatus === "failed" ? [] : extracted.nodes;
+    const containsEdges = parseStatus === "failed" ? [] : extracted.containsEdges;
+    const definesEdges = parseStatus === "failed" ? [] : extracted.definesEdges;
+    const rawImports = parseStatus === "failed" ? [] : extracted.rawImports;
+    const configuresTargets = parseStatus === "failed" ? [] : (extracted.configuresTargets ?? []);
+    const rawCalls = parseStatus === "failed" ? [] : extracted.rawCalls;
     return {
-      path, language: entry.id, provider: PROVIDER.id, grammar: record.grammar,
-      parseStatus: "failed", errorNodeCount: 0, error: String(error?.message || error),
-      nodes: [fileNode], edges: [],
+      path, language: entry.language, provider: PROVIDER.id, grammar: record.grammar,
+      parseStatus, errorNodeCount, configuresTargets,
+      nodes: [fileNode, ...symbolNodes],
+      edges: [
+        ...containsEdges.map((edge) => edgeRecord("CONTAINS", edge.source, edge.target, edge.evidence)),
+        ...definesEdges.map((edge) => edgeRecord("DEFINES", edge.source, edge.target, edge.evidence)),
+      ].map((edge) => ({ ...edge, provider: PROVIDER.id, grammarHash: record.grammar?.hash ?? null, precisionTier: "AST" })),
+      rawImports, rawCalls, reports: extracted.reports, generic: true,
     };
-  }
-
-  try {
-  const errorNodeCount = countErrorNodes(tree.rootNode);
-  // Two-pass: extract once (confidence irrelevant yet) to see whether ANY
-  // symbol node is recoverable, then decide parseStatus, then re-tag
-  // confidence only for the "partial" case (re-running extraction is cheap —
-  // these are single-file, already-parsed trees, not re-parses). "ok" reuses
-  // the probe as-is (already confidence 1); "failed" reuses it too (already
-  // zero nodes, so confidence is moot).
-  const probe = runDialectExtractor(normalizedFile, tree, entry, 1);
-  const gotSymbols = probe.nodes.length > 0;
-  const parseStatus = errorNodeCount === 0 ? "ok" : gotSymbols ? "partial" : "failed";
-  const confidence = parseStatus === "ok" ? 1 : parseStatus === "partial" ? 0.6 : 0;
-  const extracted = parseStatus === "partial" ? runDialectExtractor(normalizedFile, tree, entry, confidence) : probe;
-
-  const symbolNodes = parseStatus === "failed" ? [] : extracted.nodes;
-  const containsEdges = parseStatus === "failed" ? [] : extracted.containsEdges;
-  const definesEdges = parseStatus === "failed" ? [] : extracted.definesEdges;
-  const rawImports = parseStatus === "failed" ? [] : extracted.rawImports;
-  const callSources = parseStatus === "failed" ? [] : extracted.callSources;
-  const configuresTargets = parseStatus === "failed" ? [] : (extracted.configuresTargets ?? []);
-
-  const edges = [
-    ...containsEdges.map((e) => edgeRecord("CONTAINS", e.source, e.target, e.evidence)),
-    ...definesEdges.map((e) => edgeRecord("DEFINES", e.source, e.target, e.evidence)),
-  ];
-
-  const rawCalls = [];
-  for (const source of callSources) {
-    const names = collectCallNames(source.node, entry.dialect);
-    for (const calleeName of names) rawCalls.push({ sourceId: source.symbolId, calleeName, isTest: source.isTest });
-  }
-
-  return {
-    path,
-    language: entry.id,
-    provider: PROVIDER.id,
-    grammar: record.grammar,
-    parseStatus,
-    errorNodeCount,
-    configuresTargets,
-    nodes: [fileNode, ...symbolNodes],
-    edges,
-    rawImports,
-    rawCalls,
-  };
+  } catch (error) {
+    return failed(`generic_walk_failed:${error?.message ?? error}`, record.grammar);
   } finally {
-    tree.delete();
+    tree?.delete();
   }
 }
 

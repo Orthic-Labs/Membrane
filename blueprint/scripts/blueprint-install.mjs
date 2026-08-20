@@ -6,12 +6,11 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { removeInstallStateKey, sealInstallState, verifyInstallState } from "../src/lib/init/state-integrity.mjs";
-import { writeProductManifest } from "../src/lib/init/manifest.mjs";
 import { isConfinedPath, resolvePhysicalPath } from "../src/lib/path-confinement.mjs";
 
 const START = "<!-- blueprint:start -->";
 const END = "<!-- blueprint:end -->";
-const MESSAGE = "Run blueprint_orient first — Blueprint Graph has current repository truth.";
+const MESSAGE = "Run blueprint_recall first — Blueprint Graph has current repository truth.";
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const SERVER_SCRIPT = join(SCRIPT_DIR, "blueprint-mcp.mjs");
 const BLUEPRINT_SCRIPT = join(SCRIPT_DIR, "blueprint.mjs");
@@ -85,7 +84,7 @@ function removeBlock(content) {
   return content.replace(new RegExp(`\\n?${escapedStart}[\\s\\S]*?${escapedEnd}\\n?`, "g"), "\n").replace(/^\n+$/, "");
 }
 function mergeBlock(content) {
-  const block = `${START}\n## Blueprint Graph\nBefore reading repository files, call \`blueprint_orient\` with current repository root. Use \`blueprint_expand\` for bounded context and \`blueprint_resolve\` for search with graph neighbors.\n${END}`;
+  const block = `${START}\n## Blueprint Graph\nBefore reading repository files, call \`blueprint_recall\` with current repository root. Use \`blueprint_expand\` for bounded context and \`blueprint_resolve\` for search with graph neighbors.\n${END}`;
   const without = removeBlock(content);
   return `${without.trimEnd()}${without.trimEnd() ? "\n\n" : ""}${block}\n`;
 }
@@ -168,7 +167,7 @@ function restore(root, state) {
     } else rmSync(path, { force: true });
   }
   const markerDir = join(root, ".agent", "graph");
-  if (existsSync(markerDir)) for (const name of readdirSync(markerDir)) if (name.startsWith("blueprint-orient-session-") && name.endsWith(".marker")) rmSync(join(markerDir, name), { force: true });
+  if (existsSync(markerDir)) for (const name of readdirSync(markerDir)) if (name.startsWith("blueprint-recall-session-") && name.endsWith(".marker")) rmSync(join(markerDir, name), { force: true });
   rmSync(statePath(root), { force: true });
 }
 
@@ -176,9 +175,9 @@ function redirectCheck(root) {
   let request = {};
   try { request = JSON.parse(readFileSync(0, "utf8") || "{}"); } catch {}
   const session = String(request.session_id ?? request.sessionId ?? "default").replace(/[^a-zA-Z0-9._-]/g, "_");
-  const marker = join(root, ".agent", "graph", `blueprint-orient-session-${session}.marker`);
+  const marker = join(root, ".agent", "graph", `blueprint-recall-session-${session}.marker`);
   const allowed = existsSync(marker);
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: allowed ? "allow" : "deny", permissionDecisionReason: allowed ? "Blueprint orientation receipt present." : MESSAGE } }));
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: allowed ? "allow" : "deny", permissionDecisionReason: allowed ? "Blueprint recall receipt present." : MESSAGE } }));
   return 0;
 }
 
@@ -211,8 +210,6 @@ function install(root, host, args) {
   if (host === "claude-code" && args.scope !== "global") installMcpEntry(state, root);
   if (args.redirect) installRedirect(state, root, { grants: args.redirect === "grants" });
   if (args.scope !== "global") installGitHooks(state, root, hookPaths);
-  // U56: use the sole manifest producer so install and package flows cannot drift.
-  try { writeProductManifest({ installRoot: root }); } catch {}
   saveState(root, state);
   const output = { action: "installed", host, scope: args.scope, root, instruction, redirect: Boolean(args.redirect) };
   if (host === "claude-code" && args.scope === "global") output.advice = `claude mcp add blueprint -- ${shellQuote(process.execPath)} ${shellQuote(SERVER_SCRIPT)}`;

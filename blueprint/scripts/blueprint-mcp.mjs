@@ -69,11 +69,11 @@ const COMMON_FIELDS = {
 // fields are typed; required fields are enforced per tool below.
 const TOOL_DEFINITIONS = Object.freeze([
   Object.freeze({
-    name: "blueprint_orient",
+    name: "blueprint_recall",
     description: "Establish current repository and generation context.",
     strict: z.strictObject({ ...COMMON_FIELDS, task: z.string().optional(), query: z.string().optional(), limit: z.number().int().min(1).max(100).optional() }),
     outputKeys: ["schemaVersion", "action", "reasonCode", "generationId", "candidateSet", "freshnessReceipt", "omissions", "claimBoundary"],
-    call: (service) => (input) => service.orient(input),
+    call: (service) => (input) => service.recall(input),
   }),
   Object.freeze({
     name: "blueprint_search",
@@ -170,7 +170,7 @@ function claimBoundaryFor(value) {
 }
 
 function enrichResult(tool, value) {
-  return tool.name === "blueprint_orient" || tool.name === "blueprint_status" ? { ...value, claimBoundary: claimBoundaryFor(value) } : value;
+  return tool.name === "blueprint_recall" || tool.name === "blueprint_status" ? { ...value, claimBoundary: claimBoundaryFor(value) } : value;
 }
 
 function successResult(value) {

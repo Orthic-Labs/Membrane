@@ -52,7 +52,7 @@ for (const host of ["claude-code", "codex", "cursor", "generic"]) {
       assert.equal(applied.ok, true, applied.error ?? "");
       const afterApply = readFileSync(instruction, "utf8");
       assert.notEqual(afterApply, original, "instruction file should be modified");
-      assert.ok(afterApply.includes("blueprint_orient"));
+      assert.ok(afterApply.includes("blueprint_recall"));
       const restored = uninstall(root);
       assert.equal(restored.ok, true);
       assert.equal(readFileSync(instruction, "utf8"), original, "byte-for-byte restore");
@@ -72,10 +72,10 @@ test("applyInitPlan writes the managed instruction block", () => {
     const content = readFileSync(join(root, "BLUEPRINT-AGENT.md"), "utf8");
     assert.ok(content.includes("<!-- blueprint:start -->"));
     assert.ok(content.includes("<!-- blueprint:end -->"));
-    assert.ok(content.includes("blueprint_orient"));
+    assert.ok(content.includes("blueprint_recall"));
     // removeBlock must strip exactly the managed block.
     const stripped = removeBlock(content);
-    assert.ok(!stripped.includes("blueprint_orient"));
+    assert.ok(!stripped.includes("blueprint_recall"));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

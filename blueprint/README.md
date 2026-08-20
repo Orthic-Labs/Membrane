@@ -40,8 +40,8 @@ The store is Node's built-in `node:sqlite` — no database server, no native pac
 ## Asking it questions
 
 ```sh
-blueprint                       # orient in the current repo
-blueprint "add rate limiting"   # orient around a task
+blueprint                       # recall current repo context
+blueprint "add rate limiting"   # recall around a task
 blueprint doctor --full --json  # health + coverage
 ```
 
@@ -55,7 +55,7 @@ blueprint doctor --full --json  # health + coverage
 | `blueprint graph doc-truth` | which doc claims hold against source |
 | `blueprint graph mermaid` | render the graph as a diagram |
 
-Beyond queries: `blueprint phase2 plan|seal` (incremental verification), `blueprint grant issue|check` (task-scoped path grants with TTL), `blueprint neighborhood <anchor>` (bounded, token-budgeted graph slices), `blueprint orient` (decision-only admission API returning `allow | continue | block | noop`), and a resident watch daemon (`blueprint-watch`) that keeps freshness barriers warm across enrolled repos.
+Beyond queries: `blueprint phase2 plan|seal` (incremental verification), `blueprint grant issue|check` (task-scoped path grants with TTL), `blueprint neighborhood <anchor>` (bounded, token-budgeted graph slices), `blueprint recall` (decision-only admission API returning `allow | continue | block | noop`), and a resident watch daemon (`blueprint-watch`) that keeps freshness barriers warm across enrolled repos.
 
 ## Trust model
 
@@ -70,7 +70,7 @@ This repo maps itself. Run `blueprint doctor --full --json` for current file, do
 Install and run from npm (no source checkout needed):
 
 ```sh
-npx -y @orthic-labs/blueprint init    # enroll Blueprint in the current repository
+npx -y @membrane/blueprint init    # enroll Blueprint in the current repository
 blueprint status                       # freshness + coverage
 blueprint search "placeOrder"          # query the graph
 ```
@@ -112,7 +112,7 @@ Trademarks: see [TRADEMARKS.md](docs/TRADEMARKS.md).
 
 ---
 
-<sub><b><a href="https://orthic-labs.github.io">Orthic Labs</a></b> — local-first infrastructure for AI-assisted development.<br>
+<sub><b>Membrane</b> — local-first infrastructure for AI-assisted development.<br>
 <a href="https://github.com/Orthic-Labs/Membrane">Membrane</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/blueprint">Blueprint</a> · <a href="https://github.com/Orthic-Labs/Membrane/tree/main/adapt">Adapt</a> · <a href="https://github.com/Orthic-Labs/Forge">Forge</a> · <a href="https://github.com/Orthic-Labs/CutRight">CutRight</a> · <a href="https://github.com/Orthic-Labs/claudecodeX">claudecodeX</a></sub>
 
 <!-- blueprint:docs:start -->

@@ -10,7 +10,6 @@ import test from "node:test";
 
 import { defineLanguageTable } from "../src/graph/language-table.mjs";
 import { walkTable } from "../src/graph/generic-ast-walker.mjs";
-import { genericEngineEnabled } from "../src/graph/treesitter-provider.mjs";
 
 function fakeTree(rootNode) {
   return { rootNode };
@@ -111,18 +110,6 @@ test("nested same-name generic functions retain distinct qualified IDs", () => {
   const root = node("program", { children: [fn("same", [fn("same", [], 1)]), fn("same", [], 2)] });
   const result = walkTable({ table, tree: fakeTree(root), filePath: "nested.test" });
   assert.deepEqual(result.nodes.map((item) => item.qualifiedName), ["same", "same.same", "same#3-2"]);
-});
-
-test("BLUEPRINT_AST_ENGINE=legacy retains explicit compatibility mode", () => {
-  assert.equal(genericEngineEnabled(), true);
-  const previous = process.env.BLUEPRINT_AST_ENGINE;
-  process.env.BLUEPRINT_AST_ENGINE = "legacy";
-  try {
-    assert.equal(genericEngineEnabled(), false);
-  } finally {
-    if (previous === undefined) delete process.env.BLUEPRINT_AST_ENGINE;
-    else process.env.BLUEPRINT_AST_ENGINE = previous;
-  }
 });
 
 test("walker emits comment nodes bound to file", () => {

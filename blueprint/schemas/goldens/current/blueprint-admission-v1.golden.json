@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "action": "allow",
-  "reason": "oriented against current generation",
-  "reasonCode": "oriented",
+  "reason": "recalled against current generation",
+  "reasonCode": "recalled",
   "receiptId": "xxh128:cafe01234567890abcdef01234567890abcdef01234567890abcdef01234567890",
   "candidateSet": {
     "id": "cs-1",

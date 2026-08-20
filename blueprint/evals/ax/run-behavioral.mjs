@@ -186,14 +186,14 @@ function stubTrial(scenario) {
   let reasonCodes = [];
 
   switch (stub.branch) {
-    case "happy": // routing-fuzzy: orient first, then impact
-      operations = ["blueprint_orient", "blueprint_impact"];
+    case "happy": // routing-fuzzy: recall first, then impact
+      operations = ["blueprint_recall", "blueprint_impact"];
       reasonCodes = [stub.orientDecision?.reasonCode].filter(Boolean);
       if (stub.orientDecision?.generationId) finalEnvironment.generationId = stub.orientDecision.generationId;
       finalEnvironment.receiptId = "present";
       break;
-    case "happy-chain": // multi-tool-chain: orient -> doc-truth -> impact
-      operations = ["blueprint_orient", "blueprint_doc_truth", "blueprint_impact"];
+    case "happy-chain": // multi-tool-chain: recall -> doc-truth -> impact
+      operations = ["blueprint_recall", "blueprint_doc_truth", "blueprint_impact"];
       reasonCodes = [stub.orientResult?.reasonCode].filter(Boolean);
       if (stub.orientResult?.generationId) finalEnvironment.generationId = stub.orientResult.generationId;
       finalEnvironment.docConflictCount = stub.docTruthResult?.conflicts?.length ?? finalEnvironment.docConflictCount;
@@ -213,8 +213,8 @@ function stubTrial(scenario) {
       finalEnvironment.staleClaimCount = verdicts.filter((entry) => entry.verdict === "stale").length;
       break;
     }
-    case "failure-then-recovery": // missing-arg-recovery: invalid expand, orient, retry
-      operations = ["blueprint_expand", "blueprint_orient", "blueprint_expand"];
+    case "failure-then-recovery": // missing-arg-recovery: invalid expand, recall, retry
+      operations = ["blueprint_expand", "blueprint_recall", "blueprint_expand"];
       reasonCodes = [
         stub.firstExpandResult?.error?.code,
         stub.orientResult?.reasonCode,
@@ -225,7 +225,7 @@ function stubTrial(scenario) {
       finalEnvironment.invalidCallCount = 1;
       break;
     case "generation-mismatch": {
-      operations = ["blueprint_orient", "blueprint_build", "blueprint_orient"];
+      operations = ["blueprint_recall", "blueprint_build", "blueprint_recall"];
       reasonCodes = [stub.orientDecision?.reasonCode].filter(Boolean);
       finalEnvironment.generationId = stub.liveGenerationId ?? finalEnvironment.generationId;
       finalEnvironment.answeredFromGeneration = stub.rebuildResult?.generationId ?? stub.liveGenerationId ?? null;

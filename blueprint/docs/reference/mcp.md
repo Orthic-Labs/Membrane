@@ -12,7 +12,7 @@ Surface is frozen at 6 tools, 9 resources (8 static plus `blueprint://effects`),
 
 | Tool | reads | writes | executesProjectCode | network | installsSoftware | destructive | idempotent | approval |
 |---|---|---|---|---|---|---|---|---|
-| `blueprint_orient` | `["repository-graph"]` | `[]` | `false` | `none` | `false` | `false` | `true` | `not_required` |
+| `blueprint_recall` | `["repository-graph"]` | `[]` | `false` | `none` | `false` | `false` | `true` | `not_required` |
 | `blueprint_search` | `["repository-graph"]` | `[]` | `false` | `none` | `false` | `false` | `true` | `not_required` |
 | `blueprint_expand` | `["repository-graph"]` | `[]` | `false` | `none` | `false` | `false` | `true` | `not_required` |
 | `blueprint_impact` | `["repository-graph"]` | `[]` | `false` | `none` | `false` | `false` | `true` | `not_required` |
@@ -25,7 +25,7 @@ idempotent, no tool requires user approval to invoke.
 
 ## Tools
 
-### blueprint_orient
+### blueprint_recall
 
 - **Purpose:** establish the current repository and generation context before
   acting. Returns an admission decision (typically `action: "allow"`), the
@@ -57,7 +57,7 @@ idempotent, no tool requires user approval to invoke.
 - **Do NOT use when:** you need the neighborhood around one anchor
   (`blueprint_expand`), upstream impact of a change (`blueprint_impact`), document
   claim verdicts (`blueprint_doc_truth`), or an admission/candidate decision
-  (`blueprint_orient`).
+  (`blueprint_recall`).
 - **Input fields:** `repoId?`, `generation?`, `allowStale?`, `query`
   (string, required, minimum 1), `limit?` (integer 1–100).
 - **Output schema:** adapter-registered inline schema (no shipped schema
@@ -129,7 +129,7 @@ idempotent, no tool requires user approval to invoke.
 
 - **Purpose:** return freshness, coverage, service health, and repair actions for the selected repository graph.
 - **Use when:** checking whether a graph exists and is fresh before trusting results; after a build; diagnosing a missing/corrupt/stale store.
-- **Do NOT use when:** you need context or candidates (`blueprint_orient`), a
+- **Do NOT use when:** you need context or candidates (`blueprint_recall`), a
   query (`blueprint_search`), or claim truth (`blueprint_doc_truth`). Status reports
   repair actions; it does not perform them (build/repair are CLI operations).
 - **Input fields:** `repoId?`, `generation?`, `allowStale?` — common fields
@@ -150,8 +150,8 @@ in the CX-B3 mapping carry the envelope defaults (`retryable: false`,
 
 | Code | Raised when | `retryable` | Envelope remediation | Operator action |
 |---|---|---|---|---|
-| `stale_blocked` | Freshness barrier did not catch up and `allowStale` was falsy | `true` | `blueprint_orient` with `{ allowStale: true }` | Re-orient to the current generation, or re-run the query with `allowStale: true` |
-| `generation_mismatch` | Requested `generation` is not the current sealed generation | `true` | Re-orient (`blueprint_orient`) to obtain the current `generationId` | Re-orient, then retry with the current generation |
+| `stale_blocked` | Freshness barrier did not catch up and `allowStale` was falsy | `true` | `blueprint_recall` with `{ allowStale: true }` | Recall to the current generation, or re-run the query with `allowStale: true` |
+| `generation_mismatch` | Requested `generation` is not the current sealed generation | `true` | Recall (`blueprint_recall`) to obtain the current `generationId` | Recall, then retry with the current generation |
 | `root_not_enrolled` | `repoId` (or `repoRoot`) does not match an enrolled root | `false` | Names enrollment | Start the server with `--root`/`--repo-id`/`BLUEPRINT_REPO_ROOTS` covering the repository |
 | `root_escape` | `repoId` and `repoRoot` resolve to different enrollments | `false` | — | Pass only one selector; never combine mismatched ones |
 | `graph_missing` | No `.agent/graph/graph.db`, or no sealed generation | `false` | — | Build the graph (`blueprint build`) and retry |
@@ -166,4 +166,4 @@ Never trust a result or error that carries a stack trace: the adapter strips
 stacks and redacts `details` before egress.
 
 ## Resources & prompts
-Static resources are `manifest`, `languages`, `providers`, `architecture`, `claims`, `conflicts`, `rules`, & `receipts`; `blueprint://effects` exposes `TOOL_EFFECTS`. Prompts are `orient-before-change`, `debug`, `review`, `architecture-validation`, `documentation-reconciliation`, & `onboarding`; they reference tools, never repository prose.
+Static resources are `manifest`, `languages`, `providers`, `architecture`, `claims`, `conflicts`, `rules`, & `receipts`; `blueprint://effects` exposes `TOOL_EFFECTS`. Prompts are `recall-before-change`, `debug`, `review`, `architecture-validation`, `documentation-reconciliation`, & `onboarding`; they reference tools, never repository prose.

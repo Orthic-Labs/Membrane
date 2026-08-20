@@ -14,7 +14,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 const GOLDENS = join(ROOT, "schemas/goldens");
 const CURRENT = join(GOLDENS, "current");
-const COMPAT = join(GOLDENS, "compat", "0.2.0");
 
 function loadJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -48,21 +47,6 @@ test("every current golden validates against its contract", () => {
     const payload = loadJson(join(CURRENT, goldenName));
     const result = validateContractResult(entry.name, payload);
     assert.equal(result.ok, true, `${entry.name}: ${JSON.stringify(result.error ?? null)}`);
-  }
-});
-
-test("every compatibility golden is readable and schema-valid", () => {
-  const files = readdirSync(COMPAT).filter((f) => f.endsWith(".compat.json"));
-  assert.ok(files.length >= 5, "at least the five original contracts have compat fixtures");
-  for (const file of files) {
-    // Compat filenames use the schema file basename (e.g. context-candidate-set-v1);
-    // map back to the catalog entry by schema file.
-    const schemaFile = `${file.replace(/\.compat\.json$/, "")}.schema.json`;
-    const entry = CONTRACT_CATALOG.find((item) => item.file === schemaFile);
-    assert.ok(entry, `no catalog entry for ${file}`);
-    const payload = loadJson(join(COMPAT, file));
-    const result = validateContractResult(entry.name, payload);
-    assert.equal(result.ok, true, `${file}: ${JSON.stringify(result.error ?? null)}`);
   }
 });
 

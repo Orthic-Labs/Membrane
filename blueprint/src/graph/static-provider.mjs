@@ -726,7 +726,7 @@ export function repositoryIdentity(repoRoot, options = {}) {
   // a local UUIDv5 fallback when no remote is configured. Path-dependent
   // identity (the old "xxh128(absolute_root + origin)") made the same repo
   // a different identity at every checkout path; consumers downstream
-  // (federation cache, scope grants, orientation receipts) now treat the
+  // (federation cache, scope grants, recall receipts) now treat the
   // GitHub repo "foo/bar" the same regardless of clone location. Keep
   // `repoRoot` as a SEPARATE field — it still describes WHERE the operation
   // is anchored, even though it no longer hashes into the id.
@@ -751,10 +751,6 @@ export function repositoryIdentity(repoRoot, options = {}) {
     originOwner: parsed?.owner ?? null,
     originRepo: parsed?.repo ?? null,
     installationId,
-    // Legacy identity (path-derived): retained so callers that compared
-    // against an older receipt still resolve. Marked deprecated; new code
-    // MUST read `repoId` and `repoRoot` independently.
-    legacyRepoId: `xxh128:${xxh128(`${root}\n${origin}`)}`,
   };
 }
 

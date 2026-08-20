@@ -14,7 +14,7 @@
    updater metadata from sealed bytes under ignored `.right-release/` output.
    Generate channel manifests from immutable GitHub Release assets.
 5. Publish and redownload-verify immutable bytes in order: GitHub Release,
-   npm OIDC, MCP Registry, Orthic Homebrew tap, Scoop, then WinGet.
+   npm OIDC, MCP Registry, Membrane Homebrew tap, Scoop, then WinGet.
 
 Apple and Azure signing are provisioned workspace capabilities owned by
 RightRelease. Product workflows do not implement signing or carry secrets.
@@ -63,7 +63,7 @@ the signing doctrine fixed by CU-17/CU-18. Per D-18:
   Apple/Azure secrets in `.github/workflows/*.yml`.
 - **Clean-host verification** is the `clean-host-smoke` matrix already
   present in CU-17/CU-18 (`PKG install → {blueprint,watch,MCP,update,uninstall}`
-  on macOS; `%LOCALAPPDATA%\Orthic\Blueprint` round-trip on Windows).
+  on macOS; `%LOCALAPPDATA%\Membrane\Blueprint` round-trip on Windows).
 
 Orchestration lives in `.github/workflows/release-candidate.yml` (extended
 by v4-U53, not a resurrected in-repo signing workflow): it runs
@@ -90,12 +90,12 @@ grep -rn "immutable-release" .agent .github docs --include="*.json" --include="*
 ## Hub installer — byte-identical attachment (v4-U60 / D-S07)
 
 Blueprint does not build the Hub app. The Hub's installer is built once in
-`orthic-hub` and attached byte-identical to blueprint's own GitHub Release:
+`membrane-hub` and attached byte-identical to blueprint's own GitHub Release:
 
 - Workflow step in `release-candidate.yml`:
   `node scripts/release/verify-hub-installer.mjs --hub-version "${{ vars.HUB_APP_VERSION }}" --checksum "${{ vars.HUB_INSTALLER_CHECKSUM }}" --out "${{ runner.temp }}/hub-installer"`
   downloads the pinned Hub artifact
-  (`https://github.com/Orthic-Labs/orthic-hub/releases/download/v${HUB_APP_VERSION}/Orthic-${HUB_APP_VERSION}.dmg`),
+  (`https://github.com/Orthic-Labs/Membrane/releases/download/v${HUB_APP_VERSION}/Membrane-${HUB_APP_VERSION}.dmg`),
   verifies `sha256`, and attaches the file. Mismatched checksums throw
   `checksum_mismatch` and fail the job — never a blueprint-side rebuild.
 - Catalog pin: `release/catalog.template.json` carries `hubAppVersion` and

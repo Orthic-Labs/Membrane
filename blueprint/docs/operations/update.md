@@ -14,7 +14,7 @@ blueprint update rollback [--json]
 |---|---|
 | npm / pnpm | Prints `npm update -g <pkg>`; never self-replaces. |
 | Homebrew | Prints `brew upgrade blueprint`; never self-replaces. |
-| WinGet | Prints `winget upgrade OrthicLabs.Blueprint`; never self-replaces. |
+| WinGet | Prints `winget upgrade Membrane.Blueprint`; never self-replaces. |
 | Portable / native | Requires a signed release manifest and matching checksum before staging. |
 
 ## Safety rules

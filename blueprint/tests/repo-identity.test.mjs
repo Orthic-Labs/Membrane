@@ -35,7 +35,6 @@ test("repositoryIdentity derives repoId from host/owner/repo, not from the absol
     const idA = repositoryIdentity(rootA);
     const idB = repositoryIdentity(rootB);
     assert.equal(idA.repoId, idB.repoId, "same origin at different paths must produce the same repoId");
-    assert.notEqual(idA.repoId, idA.legacyRepoId, "legacy path-derived id must differ from new host/owner/repo id");
     // repoRoot is canonicalized, so compare against the resolved path: on macOS
     // `tmpdir()` is the /var -> /private/var symlink and the raw mkdtemp path never matches.
     assert.equal(idA.repoRoot, realpathSync(rootA).replaceAll("\\", "/"));
@@ -58,11 +57,6 @@ test("repositoryIdentity synthesizes a stable local id for repos without a remot
     // produces the same id (process-stable local fallback).
     const id2 = repositoryIdentity(root);
     assert.equal(id.repoId, id2.repoId);
-    // The legacy path-derived form disagrees by design: the new local-id
-    // derivation prefixes `local\n` so a repo with no remote never collides
-    // with one whose origin happened to hash to the same value. This is the
-    // behavior change documented in Phase 7.5.
-    assert.notEqual(id.legacyRepoId, id.repoId);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

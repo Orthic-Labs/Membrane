@@ -203,7 +203,7 @@ function usage() {
   console.log(`Blueprint — repository truth and evidence map.
 usage:
   ${command}
-  ${command} "task to orient around"
+  ${command} "task to recall around"
   ${command} build [--out .agent] [--limit N] [--check] [--no-readme-link]
   ${command} brief --task "..." [--out .agent] [--refresh] [--limit N]
   ${command} doctor [--out .agent] [--json] [--full] [--limit N]
@@ -211,7 +211,7 @@ usage:
   ${command} hygiene status|refresh [--out .agent] [--only check,...] [--offline] [--json]
   ${command} graph build|status|schema|search|neighbors|path|impact|resolve|architecture|flows|doc-truth|mermaid|planner-status|candidates [--out .agent] [--limit N] [--budget TOKENS] [--json]
   ${command} candidates --repo-id <id> [--query TEXT] [--json]
-  ${command} orient [--out .agent] [--query TEXT] [--json]
+  ${command} recall [--out .agent] [--query TEXT] [--json]
   ${command} explore [--out .agent] [--no-open] [--duration-ms N] [--json]
   ${command} reconcile [--out .agent] [--json]
   ${command} hooks install-git [--out .agent]
@@ -2544,7 +2544,7 @@ function installGitHooks(root) {
   return { hooksDir, installed, node, watchScript };
 }
 
-function orientPayload(root, outDir, args = {}) {
+function recallPayload(root, outDir, args = {}) {
   const status = graphStatus(root, outDir);
   const map = readJson(join(root, outDir, "map.json"), {});
   const manifest = readJson(join(root, ".agent/manifest.json"), {});
@@ -3169,7 +3169,7 @@ async function main() {
     usage();
     return 0;
   }
-  const knownCommands = new Set(["build", "brief", "doctor", "graph", "hygiene", "phase2", "orient", "delta", "reconcile", "hooks", "neighborhood", "grant", "candidates", "status", "search", "show", "expand", "impact", "docs", "explore", "rules", "mcp", "service", "languages", "update", "init", "uninstall", "support-bundle"]);
+  const knownCommands = new Set(["build", "brief", "doctor", "graph", "hygiene", "phase2", "recall", "delta", "reconcile", "hooks", "neighborhood", "grant", "candidates", "status", "search", "show", "expand", "impact", "docs", "explore", "rules", "mcp", "service", "languages", "update", "init", "uninstall", "support-bundle"]);
   if (!knownCommands.has(command)) {
     const args = parseArgs(argv);
     const task = String(args.task ?? args._.join(" ")).trim();
@@ -3287,13 +3287,13 @@ async function main() {
     console.log(JSON.stringify(bundle, null, 2));
     return 0;
   }
-  if (command === "orient") {
+  if (command === "recall") {
     const freshnessReceipt = await queryFreshnessBarrier(root, outDir, args);
     if (freshnessReceipt.barrierResult !== "caught_up" && !args["allow-stale"]) {
       console.error(JSON.stringify({ error: "stale_blocked", barrier: freshnessReceipt }, null, 2));
       return 3;
     }
-    console.log(JSON.stringify(orientPayload(root, outDir, { ...args, freshnessReceipt }), null, 2));
+    console.log(JSON.stringify(recallPayload(root, outDir, { ...args, freshnessReceipt }), null, 2));
     return 0;
   }
   if (command === "reconcile") return await runReconcile(root, outDir, args);

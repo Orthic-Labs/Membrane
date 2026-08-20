@@ -14,7 +14,7 @@ agents that work in it. Everything it does is reversible with
 | `--mcp` | `auto\|on\|off` | `auto` | Install the MCP server entry. `auto` enables for Claude Code. |
 | `--watch` | `auto\|on\|off` | `auto` | Enroll the resident watcher. `auto` enables for project scope. |
 | `--hooks` | `none\|git\|host\|all` | `none` | Install git/host hooks. |
-| `--policy` | `advisory\|orient-before-read\|task-grants` | `advisory` | Hook policy mode. |
+| `--policy` | `advisory\|recall-before-read\|task-grants` | `advisory` | Hook policy mode. |
 | `--dry-run` | flag | off | Print the plan without writing. |
 | `--yes` | flag | off | Skip confirmation. |
 | `--json` | flag | off | Machine-readable output. |
@@ -37,7 +37,7 @@ Never more than the selected host set is installed.
 - Optionally merges a `blueprint` entry into `.mcp.json`.
 - Optionally enrolls the resident watcher.
 - Optionally installs hooks.
-- Builds the generation (`.agent/`), runs `status`, runs one orient query,
+- Builds the generation (`.agent/`), runs `status`, runs one recall query,
   and prints `blueprint uninstall` plus `blueprint doctor --repair-plan`.
 
 ## Reversibility

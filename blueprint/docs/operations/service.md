@@ -6,9 +6,9 @@ service:
 
 | OS | Service | Target |
 |---|---|---|
-| macOS | LaunchAgent | `~/Library/LaunchAgents/io.orthic.blueprint.plist` |
+| macOS | LaunchAgent | `~/Library/LaunchAgents/io.membrane.blueprint.plist` |
 | Linux | systemd `--user` | `~/.config/systemd/user/blueprint.service` |
-| Windows | per-user scheduled task | `%LOCALAPPDATA%\Orthic\Blueprint\blueprint-task.xml` |
+| Windows | per-user scheduled task | `%LOCALAPPDATA%\Membrane\Blueprint\blueprint-task.xml` |
 
 ## Commands
 

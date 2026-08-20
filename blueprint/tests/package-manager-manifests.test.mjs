@@ -20,9 +20,9 @@ test("Homebrew template uses immutable release URL and exact hash", () => {
 });
 
 test("WinGet manifests carry the stable package ID", () => {
-  for (const file of ["release/winget/OrthicLabs.Blueprint.version.template.json", "release/winget/OrthicLabs.Blueprint.installer.template.json", "release/winget/OrthicLabs.Blueprint.locale.template.json"]) {
+  for (const file of ["release/winget/Membrane.Blueprint.version.template.json", "release/winget/Membrane.Blueprint.installer.template.json", "release/winget/Membrane.Blueprint.locale.template.json"]) {
     const manifest = JSON.parse(read(file));
-    assert.equal(manifest.PackageIdentifier, "OrthicLabs.Blueprint");
+    assert.equal(manifest.PackageIdentifier, "Membrane.Blueprint");
   }
 });
 
@@ -43,7 +43,7 @@ test("Linux archive metadata honors XDG paths", () => {
 test("MCP server.json launches blueprint mcp serve from npm", () => {
   const server = JSON.parse(read("server.json"));
   assert.equal(server.command, "npx");
-  assert.ok(server.args.includes("@orthic-labs/blueprint"));
+  assert.ok(server.args.includes("@membrane/blueprint"));
   assert.ok(server.args.includes("mcp"));
   assert.ok(server.args.includes("serve"));
 });
@@ -60,7 +60,7 @@ test("all manifests reference versioned identities, not latest", () => {
 });
 
 test("tracked release tree contains templates, never final instances", () => {
-  for (const path of ["release/catalog.json", "release/compatibility.json", "release/homebrew/blueprint.rb", "release/scoop/blueprint.json", "release/winget/OrthicLabs.Blueprint.version.json", "release/winget/OrthicLabs.Blueprint.installer.json", "release/winget/OrthicLabs.Blueprint.locale.json"]) {
+  for (const path of ["release/catalog.json", "release/compatibility.json", "release/homebrew/blueprint.rb", "release/scoop/blueprint.json", "release/winget/Membrane.Blueprint.version.json", "release/winget/Membrane.Blueprint.installer.json", "release/winget/Membrane.Blueprint.locale.json"]) {
     assert.equal(existsSync(join(ROOT, path)), false, path);
   }
   assert.equal(JSON.parse(read("release/catalog.template.json")).publishable, false);

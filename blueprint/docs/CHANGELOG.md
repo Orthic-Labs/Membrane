@@ -6,10 +6,10 @@
   Blueprint naming; prose brands nodes/edges/flows as Neurons/Synapses/Circuits. No unshipped
   executable alias is claimed.
 
-- P1 orientation admission library: `lib/admission.mjs` (`orient`/`expand`/`status`/`revoke`),
+- P1 recall admission library: `lib/admission.mjs` (`recall`/`expand`/`status`/`revoke`),
   host-owned `lib/receipt-store.mjs`, Forge-consumable `lib/orientation-evidence.mjs` (no hooks /
   shell classifier / MCP).
-- Standalone package surface: `@orthic-labs/blueprint@0.2.0` with `bin`, `files`, `engines`,
+- Standalone package surface: `@membrane/blueprint@0.2.0` with `bin`, `files`, `engines`,
   `exports`; workspace contract tests moved to `tests/workspace/`.
 - Reconciled the portable manifest producer and bootstrap consumer around one nested generation contract.
 - Corrected every portable graph artifact reference to the sole SQLite store at `.agent/graph/graph.db`.

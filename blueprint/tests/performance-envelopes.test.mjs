@@ -88,9 +88,9 @@ test("small class envelopes: cold build, no-op barrier, search, db size", async 
     closeStore(db);
     assert.ok(barrier.ms <= small.noopBarrierMs * ENVELOPES.ciSlackMultiplier, `no-op barrier ${barrier.ms.toFixed(0)}ms > budget`);
 
-    const orient = elapsed(() => runCli(repo, ["orient", "--query", "config", "--json"]));
-    assert.equal(orient.value.status, 0, orient.value.stderr?.slice(-500));
-    assert.ok(orient.ms <= small.searchImpactMs * ENVELOPES.ciSlackMultiplier, `search ${orient.ms.toFixed(0)}ms > budget`);
+    const recall = elapsed(() => runCli(repo, ["recall", "--query", "config", "--json"]));
+    assert.equal(recall.value.status, 0, recall.value.stderr?.slice(-500));
+    assert.ok(recall.ms <= small.searchImpactMs * ENVELOPES.ciSlackMultiplier, `search ${recall.ms.toFixed(0)}ms > budget`);
 
     const rssMb = process.memoryUsage().rss / 1024 / 1024;
     assert.ok(rssMb <= small.rssMb * ENVELOPES.ciSlackMultiplier, `rss ${rssMb.toFixed(0)}MB > budget`);

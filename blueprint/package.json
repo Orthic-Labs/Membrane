@@ -1,5 +1,5 @@
 {
-  "name": "@orthic-labs/blueprint",
+  "name": "@membrane/blueprint",
   "version": "0.2.0",
   "description": "Blueprint: local evidence-backed repository map \u2014 documents, claims, code graph (Neurons/Synapses/Circuits), and orientation admission library.",
   "license": "SEE LICENSE IN LICENSE",
@@ -27,13 +27,12 @@
   "publishConfig": {
     "access": "public"
   },
-  "mcpName": "io.github.Orthic-Labs/blueprint",
+  "mcpName": "io.github.Membrane/blueprint",
   "engines": {
     "node": ">=22.22.3"
   },
   "bin": {
     "blueprint": "./scripts/blueprint.mjs",
-    "orthic-blueprint": "./scripts/blueprint.mjs",
     "blueprint-watch": "./scripts/blueprint-watch.mjs",
     "blueprint-mcp": "./scripts/blueprint-mcp.mjs",
     "blueprint-install": "./scripts/blueprint-install.mjs"

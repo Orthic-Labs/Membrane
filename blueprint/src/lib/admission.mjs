@@ -1,6 +1,6 @@
 // Blueprint admission — decision-only library.
 //
-// Operations: orient / expand / status / revoke.
+// Operations: recall / expand / status / revoke.
 // Returns a neutral decision contract Cortex (or any host) can consume.
 // Does NOT install hooks, classify shell, or fail-closed on tool use.
 
@@ -177,9 +177,9 @@ export function createAdmission(options = {}) {
   }
 
   /**
-   * Establish task-scoped orientation. Decision-only — does not block hosts.
+   * Establish task-scoped recall. Decision-only — does not block hosts.
    */
-  async function orient(input = {}) {
+  async function recall(input = {}) {
     const task = String(input.task ?? input.query ?? "").trim();
     const sessionId = String(input.sessionId ?? "default");
     const taskId = String(input.taskId ?? (task || "untasked"));
@@ -192,7 +192,7 @@ export function createAdmission(options = {}) {
     if (!status || status.state === "missing" || status.state === "incomplete") {
       return decision({
         action: "block",
-        reason: "No complete Blueprint graph generation is available for orientation.",
+        reason: "No complete Blueprint graph generation is available for recall.",
         reasonCode: "missing_graph",
         nextAction: `blueprint build --out ${outDir}`,
         omissions: [{ reason: "missing_graph" }],
@@ -209,7 +209,7 @@ export function createAdmission(options = {}) {
     if (!generation?.manifest?.generationId) {
       return decision({
         action: "block",
-        reason: "Graph store could not load a sealed generation for orientation.",
+        reason: "Graph store could not load a sealed generation for recall.",
         reasonCode: "missing_generation",
         nextAction: `blueprint build --out ${outDir}`,
         claimBoundary: claimBoundaryFor({
@@ -229,7 +229,7 @@ export function createAdmission(options = {}) {
         action: "block",
         reason: `Pinned generation ${input.expectedGeneration} does not match live ${generationId}.`,
         reasonCode: "generation_mismatch",
-        nextAction: "Re-run orient against the current generation, or rebuild the graph.",
+        nextAction: "Re-run recall against the current generation, or rebuild the graph.",
         claimBoundary: claimBoundaryFor({
           permitClean: false,
           state: status.state,
@@ -244,7 +244,7 @@ export function createAdmission(options = {}) {
       const { evidence, evidencePath } = attachEvidence(existing);
       return decision({
         action: "continue",
-        reason: "Active orientation receipt already exists for this session/task/repo/generation.",
+        reason: "Active recall receipt already exists for this session/task/repo/generation.",
         reasonCode: "receipt_reuse",
         receiptId: existing.receiptId,
         allowedScopes: existing.allowedPaths ?? [],
@@ -308,9 +308,9 @@ export function createAdmission(options = {}) {
     return decision({
       action,
       reason: action === "allow"
-        ? "Orientation established against the sealed graph generation."
-        : `Orientation established under ${status.state} graph state; overlay/freshness is explicit on the receipt.`,
-      reasonCode: action === "allow" ? "oriented" : `oriented_${status.state}`,
+        ? "Recall established against the sealed graph generation."
+        : `Recall established under ${status.state} graph state; overlay/freshness is explicit on the receipt.`,
+      reasonCode: action === "allow" ? "recalled" : `recalled_${status.state}`,
       receiptId: receipt.receiptId,
       candidateSet,
       allowedScopes: allowedPaths,
@@ -338,7 +338,7 @@ export function createAdmission(options = {}) {
         action: "block",
         reason: "expand requires receiptId.",
         reasonCode: "missing_receipt_id",
-        nextAction: "Call orient first, then expand with the returned receiptId.",
+        nextAction: "Call recall first, then expand with the returned receiptId.",
       });
     }
     const receipt = store.get(receiptId);
@@ -347,16 +347,16 @@ export function createAdmission(options = {}) {
         action: "block",
         reason: `No receipt found for ${receiptId}.`,
         reasonCode: "receipt_not_found",
-        nextAction: "Call orient to establish a receipt.",
+        nextAction: "Call recall to establish a receipt.",
       });
     }
     if (receipt.status === "revoked") {
       return decision({
         action: "block",
-        reason: "Receipt is revoked; re-orient before expanding.",
+        reason: "Receipt is revoked; recall again before expanding.",
         reasonCode: "receipt_revoked",
         receiptId,
-        nextAction: "Call orient with force=true or a new session/task.",
+        nextAction: "Call recall with force=true or a new session/task.",
       });
     }
 
@@ -414,10 +414,10 @@ export function createAdmission(options = {}) {
     if (receipt.generationId && receipt.generationId !== generation.manifest.generationId) {
       return decision({
         action: "block",
-        reason: "Graph generation changed after orientation; re-orient before expand.",
+        reason: "Graph generation changed after recall; recall again before expand.",
         reasonCode: "generation_changed",
         receiptId,
-        nextAction: "Call orient against the current generation.",
+        nextAction: "Call recall against the current generation.",
       });
     }
 
@@ -457,7 +457,7 @@ export function createAdmission(options = {}) {
 
     return decision({
       action: "continue",
-      reason: `Expanded orientation with ${addedPaths.length} graph-supported path(s).`,
+      reason: `Expanded recall with ${addedPaths.length} graph-supported path(s).`,
       reasonCode: "expanded",
       receiptId: updated.receiptId,
       candidateSet,
@@ -471,7 +471,7 @@ export function createAdmission(options = {}) {
   }
 
   /**
-   * Inspect the current receipt / graph orientation state.
+   * Inspect the current receipt / graph recall state.
    */
   async function status(input = {}) {
     let receipt = null;
@@ -503,9 +503,9 @@ export function createAdmission(options = {}) {
     if (!receipt) {
       return decision({
         action: "noop",
-        reason: "No orientation receipt found.",
+        reason: "No recall receipt found.",
         reasonCode: "no_receipt",
-        nextAction: "Call orient for the active session/task/repo.",
+        nextAction: "Call recall for the active session/task/repo.",
         claimBoundary: claimBoundaryFor({
           permitClean: false,
           state: "missing",
@@ -518,11 +518,11 @@ export function createAdmission(options = {}) {
     if (receipt.status === "revoked") {
       return decision({
         action: "block",
-        reason: "Orientation receipt is revoked.",
+        reason: "Recall receipt is revoked.",
         reasonCode: "receipt_revoked",
         receiptId: receipt.receiptId,
         receipt,
-        nextAction: "Call orient to establish a new receipt.",
+        nextAction: "Call recall to establish a new receipt.",
         claimBoundary: claimBoundaryFor({
           permitClean: false,
           state: "revoked",
@@ -544,7 +544,7 @@ export function createAdmission(options = {}) {
     graphState = graphStatus(repoRoot, outDir, input.statusOptions ?? {})?.state ?? "missing";
     return decision({
       action: "continue",
-      reason: "Active orientation receipt.",
+      reason: "Active recall receipt.",
       reasonCode: "receipt_active",
       receiptId: receipt.receiptId,
       allowedScopes: receipt.allowedPaths ?? [],
@@ -597,19 +597,19 @@ export function createAdmission(options = {}) {
     const { evidence, evidencePath } = attachEvidence(revoked);
     return decision({
       action: "allow",
-      reason: "Orientation receipt revoked.",
+      reason: "Recall receipt revoked.",
       reasonCode: "revoked",
       receiptId,
       evidence,
       evidencePath,
       receipt: revoked,
-      nextAction: "Call orient before further repository orientation-dependent work.",
+      nextAction: "Call recall before further repository recall-dependent work.",
     });
   }
 
   return {
     store,
-    orient,
+    recall,
     expand,
     status,
     revoke,
@@ -618,8 +618,8 @@ export function createAdmission(options = {}) {
 }
 
 /** Convenience singleton factory using default host store. */
-export function orient(input, options) {
-  return createAdmission(options).orient(input);
+export function recall(input, options) {
+  return createAdmission(options).recall(input);
 }
 export function expand(input, options) {
   return createAdmission(options).expand(input);

@@ -198,7 +198,7 @@ test("candidate inventories one installable npm tarball", () => {
     const result = buildCandidate({ out, allowDirty: true });
     const tarballs = result.compatibility.artifacts.filter((artifact) => artifact.name.endsWith(".tgz"));
     assert.equal(tarballs.length, 1);
-    assert.equal(result.compatibility.packageName, "@orthic-labs/blueprint");
+    assert.equal(result.compatibility.packageName, "@membrane/blueprint");
     assert.equal(result.compatibility.platform, `${process.platform}-${process.arch}`);
     assert.ok(existsSync(join(out, tarballs[0].name)));
     assert.equal(verifyCandidate(out).ok, true);

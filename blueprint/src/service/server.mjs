@@ -241,6 +241,9 @@ export function createDaemonServer({ service = null, endpoint = null, registryEn
         entry.work = builds.build({ root, outDir: mergedInput.outDir, options: mergedInput.options ?? mergedInput }, { signal: controller.signal });
       } else {
         const method = appService[message.method];
+        if (typeof method !== "function") {
+          throw endpointError("service_unavailable", `Blueprint service operation is unavailable: ${message.method}`);
+        }
         entry.work = (async () => {
           const session = typeof appService.openFreshnessSession === "function"
             ? await queueFreshness(root, () => appService.openFreshnessSession(mergedInput, { signal: controller.signal }))

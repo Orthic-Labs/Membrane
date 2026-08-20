@@ -48,15 +48,15 @@ test("PR11 performance budgets stay within four-times CI slack", async () => {
     writeFileSync(source, `${readFileSync(source, "utf8")}\nexport const performanceProbe = true;\n`);
     const delta = await elapsedAsync(() => new BlueprintRepositoryWorker({ root: repo }).ingest("src/service.ts"));
     assert.equal(delta.value.applied, true);
-    const orient = elapsed(() => run(repo, ["orient", "--query", "placeOrder", "--json"]));
-    assert.equal(orient.value.status, 0, orient.value.stderr);
+    const recall = elapsed(() => run(repo, ["recall", "--query", "placeOrder", "--json"]));
+    assert.equal(recall.value.status, 0, recall.value.stderr);
     const issued = issueScopeGrant({ repoRoot: repo, generationId: "gen:test", taskId: "perf", paths: ["src/**"] });
     const grant = elapsed(() => checkScopeGrant({ repoRoot: repo, generationId: "gen:test", taskId: "perf", path: "src/service.ts" }));
     assert.equal(grant.value.allowed, true);
-    const measured = { barrierMs, deltaMs: delta.ms, orientMs: orient.ms, grantMs: grant.ms, grantReceiptId: issued.grant.receiptId };
+    const measured = { barrierMs, deltaMs: delta.ms, recallMs: recall.ms, grantMs: grant.ms, grantReceiptId: issued.grant.receiptId };
     assert.ok(measured.barrierMs <= 100, `healthy no-op barrier exceeded 4x budget: ${measured.barrierMs.toFixed(1)}ms`);
     assert.ok(measured.deltaMs <= 1000, `one-file delta exceeded 4x budget: ${measured.deltaMs.toFixed(1)}ms`);
-    assert.ok(measured.orientMs <= 1400, `orient exceeded 4x budget: ${measured.orientMs.toFixed(1)}ms`);
+    assert.ok(measured.recallMs <= 1400, `recall exceeded 4x budget: ${measured.recallMs.toFixed(1)}ms`);
     assert.ok(measured.grantMs <= 200, `grant check exceeded 4x budget: ${measured.grantMs.toFixed(1)}ms`);
     console.log(`performance-budget ${JSON.stringify(measured)}`);
   } finally { rmSync(repo, { recursive: true, force: true }); }

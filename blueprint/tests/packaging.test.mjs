@@ -9,7 +9,7 @@ const ROOT = join(HERE, "..");
 const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 
 test("package.json exposes standalone version, bin, engines, and files", () => {
-  assert.equal(pkg.name, "@orthic-labs/blueprint");
+  assert.equal(pkg.name, "@membrane/blueprint");
   assert.equal(pkg.bin?.blueprint, "./scripts/blueprint.mjs");
   assert.match(String(pkg.version), /^\d+\.\d+\.\d+/);
   assert.equal(pkg.type, "module");

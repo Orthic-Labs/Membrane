@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://orthic.labs/schemas/scope-grant-v1.json",
+  "$id": "https://membrane/schemas/scope-grant-v1.json",
   "title": "ScopeGrantV1",
   "description": "A task-scoped cooperating-host grant. HMAC is tamper-evidence for cooperating hosts, not cryptographic security against a hostile local user.",
   "type": "object",

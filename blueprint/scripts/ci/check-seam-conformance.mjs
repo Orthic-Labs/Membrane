@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-// U61: SEAM-CONTRACT §8 conformance for blueprint — vendor-neutral naming, manifest shape, watcher single-ownership
+// U61: SEAM-CONTRACT §8 conformance for blueprint — vendor-neutral naming, snapshot shape, watcher single-ownership
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
-import { buildProductManifest, validateProductManifest } from "../../src/lib/init/manifest.mjs";
-import { buildSnapshot, boundUtf8, validateSnapshot, SNAPSHOT_MAX_REASON_BYTES } from "../../src/lib/orthic-snapshot.mjs";
+import { buildSnapshot, boundUtf8, validateSnapshot, SNAPSHOT_MAX_REASON_BYTES } from "../../src/lib/snapshot.mjs";
 import { computeManifestDigest, detectHubIdentityFields, detectShadowManifestKeys, assertBuildIdentityClean } from "../../src/graph/generation-identity.mjs";
 import { classifyMutablePath, assertSafeMutableStorePath } from "../../src/graph/store-sqlite.mjs";
 
@@ -57,23 +56,10 @@ check("grep-gate: no hardcoded cortex outside config-default in scripts/blueprin
   if (bad.length) throw new Error(`hardcoded cortex outside config-default:\n${bad.join("\n")}`);
 });
 
-check("manifest shape validates", () => {
-  const localSchemaPath = join(ROOT, "schemas/orthic-product-manifest-v1.schema.json");
-  // The released contract is pinned into Blueprint at publish time. Never read a
-  // sibling checkout: its presence/version is mutable and would make CI
-  // silently validate against an unrelated source tree.
-  if (!existsSync(localSchemaPath)) throw new Error("pinned manifest schema missing");
-  const manifest = buildProductManifest({ installRoot: ROOT });
-  const validate = new Ajv().compile(JSON.parse(readFileSync(localSchemaPath, "utf8")));
-  if (!validate(manifest)) throw new Error(`manifest schema: ${JSON.stringify(validate.errors)}`);
-  const local = validateProductManifest(manifest);
-  if (!local.ok) throw new Error(`manifest security: ${local.errors.join(", ")}`);
-});
-
 check("snapshot shape validates", () => {
-  const localSchemaPath = join(ROOT, "schemas/orthic-product-snapshot-v2.schema.json");
+  const localSchemaPath = join(ROOT, "schemas/blueprint-snapshot-v2.schema.json");
   // Validate only against the pinned released artifact copied into this
-  // package. A sibling ../orthic schema is explicitly not a fallback.
+  // package. An external schema is explicitly not a fallback.
   if (!existsSync(localSchemaPath)) throw new Error("pinned snapshot schema missing");
   const snapshot = buildSnapshot({ root: ROOT });
   const validate = new Ajv().compile(JSON.parse(readFileSync(localSchemaPath, "utf8")));
@@ -120,7 +106,7 @@ check("build identity: Hub protocol/lease/endpoint/instance/fence never enter ma
     ...base,
     hub: { lease: "l", endpoint: "e" },
     fence: 42,
-    protocol: "orthic.lifecycle.v1",
+    protocol: "blueprint.lifecycle.v1",
     instance: "i",
   }, null);
   if (clean !== contaminated) throw new Error("Hub fields changed the manifest digest");

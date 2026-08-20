@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://orthic.labs/schemas/repository-subgraph-slice-v1.json",
+  "$id": "https://membrane/schemas/repository-subgraph-slice-v1.json",
   "title": "RepositorySubgraphSliceV1",
   "description": "Canonical subgraph slice contract (plan 3.1). One versioned query spec + JSON Schema + golden fixtures shared JS/Python. Replaces the internal ContextCandidateSetV1 and RepositoryNeighborhoodV1 naming with a single public surface.",
   "type": "object",

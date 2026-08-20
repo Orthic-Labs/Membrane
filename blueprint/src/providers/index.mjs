@@ -14,7 +14,7 @@ export function defineProvider(provider) {
 }
 
 export const example = defineProvider({
-  id: "orthic.typescript",
+  id: "membrane.typescript",
   version: "1.0.0",
   kind: "compiler",
   protocolRange: ">=1 <2",

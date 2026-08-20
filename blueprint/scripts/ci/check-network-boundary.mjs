@@ -34,7 +34,7 @@ const ALLOWED = [
   "src/lib/update/apply.mjs",
   // The local explorer binds loopback only (127.0.0.1) — not egress.
   "src/lib/http-server.mjs",
-  "src/lib/orthic-snapshot.mjs",
+  "src/lib/snapshot.mjs",
   "src/lib/session-token.mjs",
   "src/lib/explorer/static.mjs",
   // Telemetry is off by default and documented as opt-in.

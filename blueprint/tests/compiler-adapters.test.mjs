@@ -18,7 +18,7 @@ const PYTHON_FIXTURE = join(dirname(fileURLToPath(import.meta.url)), "fixtures",
 
 test("defineProvider enforces the S-20 contract", () => {
   assert.throws(() => defineProvider({ id: "x" }), /missing/);
-  assert.equal(example.id, "orthic.typescript");
+  assert.equal(example.id, "membrane.typescript");
   assert.equal(example.permissions.filesystem, "repo-read");
   assert.equal(example.permissions.network, "none");
   assert.deepEqual(example.capabilities, ["definitions", "references", "types"]);
@@ -238,7 +238,7 @@ test("python SCIP adapter never spawns a process", () => {
 
 test("provider absence never makes Blueprint unavailable (typed degradation)", async () => {
   const provider = defineProvider({
-    id: "orthic.missing-compiler",
+    id: "membrane.missing-compiler",
     version: "1.0.0",
     kind: "compiler",
     protocolRange: ">=1 <2",

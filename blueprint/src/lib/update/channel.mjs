@@ -26,7 +26,7 @@ export function detectInstallOwner() {
   }
   // WinGet: %LOCALAPPDATA%\Microsoft\WinGet\Packages
   if (process.platform === "win32" && self.includes("WinGet")) {
-    return { owner: "winget", command: "winget upgrade OrthicLabs.Blueprint", root: self };
+    return { owner: "winget", command: "winget upgrade Membrane.Blueprint", root: self };
   }
   // Portable archive / native installer: identifiable by our own launcher layout.
   if (existsSync(join(self, "lib", process.platform === "win32" ? "node.exe" : "node")) && existsSync(join(self, "app", "package"))) {

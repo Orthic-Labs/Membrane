@@ -3,7 +3,7 @@ import { timingSafeEqual, randomBytes } from "node:crypto";
 import { graphStatus } from "../graph/static-provider.mjs";
 import { serviceStatus } from "../service/status.mjs";
 
-// The suite contract is orthic.snapshot.v2. v1 is not selected implicitly;
+// The suite contract is blueprint.snapshot.v2. v1 is not selected implicitly;
 // callers needing historical data must pass an explicit versioned adapter.
 export const SNAPSHOT_SCHEMA_VERSION = 2;
 

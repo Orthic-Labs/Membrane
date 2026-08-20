@@ -1,6 +1,6 @@
 {
   "$schema": "https://aka.ms/winget-manifest.version.1.6.0.schema.json",
-  "PackageIdentifier": "OrthicLabs.Blueprint",
+  "PackageIdentifier": "Membrane.Blueprint",
   "PackageVersion": "__VERSION__",
   "DefaultLocale": "en-US",
   "ManifestType": "version",

@@ -46,5 +46,5 @@ export function decodeLine(line) {
 }
 
 export const METHODS = Object.freeze([
-  "status", "search", "resolve", "orient", "expand", "impact", "architecture", "documentTruth", "build",
+  "status", "search", "resolve", "recall", "expand", "impact", "architecture", "documentTruth", "build",
 ]);

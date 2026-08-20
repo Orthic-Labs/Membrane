@@ -1,10 +1,10 @@
 {
   "$schema": "https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json",
-  "PackageIdentifier": "OrthicLabs.Blueprint",
+  "PackageIdentifier": "Membrane.Blueprint",
   "PackageVersion": "__VERSION__",
   "PackageLocale": "en-US",
-  "Publisher": "Orthic Labs",
-  "Author": "Orthic Labs",
+  "Publisher": "Membrane",
+  "Author": "Membrane",
   "PackageName": "Blueprint",
   "PackageUrl": "https://github.com/Orthic-Labs/Membrane",
   "License": "SEE LICENSE IN LICENSE",

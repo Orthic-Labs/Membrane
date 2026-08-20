@@ -45,7 +45,7 @@ test("MCP exposes exactly six task-shaped tools", async () => {
     await withServer(repo, async (client) => {
       const tools = await client.listTools();
       const names = tools.tools.map((tool) => tool.name).sort();
-      assert.deepEqual(names, ["blueprint_doc_truth", "blueprint_expand", "blueprint_impact", "blueprint_orient", "blueprint_search", "blueprint_status"]);
+      assert.deepEqual(names, ["blueprint_doc_truth", "blueprint_expand", "blueprint_impact", "blueprint_recall", "blueprint_search", "blueprint_status"]);
       // No tool accepts an unrestricted repoRoot.
       for (const tool of tools.tools) {
         const schema = tool.inputSchema ?? {};
@@ -58,11 +58,11 @@ test("MCP exposes exactly six task-shaped tools", async () => {
   }
 });
 
-test("blueprint_orient returns generation context with receipt", async () => {
+test("blueprint_recall returns generation context with receipt", async () => {
   const repo = buildRepo();
   try {
     await withServer(repo, async (client) => {
-      const result = payload(await client.callTool({ name: "blueprint_orient", arguments: { task: "placeOrder" } }));
+      const result = payload(await client.callTool({ name: "blueprint_recall", arguments: { task: "placeOrder" } }));
       assert.equal(result.schemaVersion, 1);
       assert.equal(result.action, "allow");
       assert.ok(result.generationId);

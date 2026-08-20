@@ -5,7 +5,7 @@
   "receiptId": "xxh128:cafe01234567890abcdef01234567890abcdef01234567890abcdef01234567890",
   "traceId": "trace-01",
   "task": "add rate limiting",
-  "mode": "orient",
+  "mode": "recall",
   "provider": "blueprint-static",
   "freshness": {
     "state": "current",

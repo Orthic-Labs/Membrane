@@ -54,12 +54,12 @@ test("protocol envelopes round-trip", () => {
   assert.equal(cancel.method, "cancel");
   assert.equal(cancel.input.targetRequestId, "r1");
   const pipe = daemonEndpoint({ platform: "win32", identity: "local-user" });
-  assert.match(pipe, /^\\\\\.\\pipe\\orthic-blueprint-[a-f0-9]{16}$/);
+  assert.match(pipe, /^\\\\\.\\pipe\\membrane-blueprint-[a-f0-9]{16}$/);
   assert.equal(pipe, daemonEndpoint({ platform: "win32", identity: "local-user" }));
 });
 
 test("METHODS covers the six-tool surface plus read verbs", () => {
-  for (const method of ["status", "search", "resolve", "orient", "expand", "impact", "architecture", "documentTruth"]) {
+  for (const method of ["status", "search", "resolve", "recall", "expand", "impact", "architecture", "documentTruth"]) {
     assert.ok(METHODS.includes(method));
   }
 });

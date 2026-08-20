@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://orthic.labs/schemas/context-candidate-set-v1.json",
+  "$id": "https://membrane/schemas/context-candidate-set-v1.json",
   "title": "ContextCandidateSetV1",
   "type": "object",
   "required": ["schemaVersion", "repoId", "repoRoot", "receiptId", "traceId", "task", "mode", "provider", "freshness", "providerCeiling", "candidates", "omissions"],

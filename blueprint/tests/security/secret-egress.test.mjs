@@ -52,7 +52,7 @@ function bundleText(bundleRoot) {
   return parts.join("\n");
 }
 
-test("no corpus secret appears in CLI status, search, or orient output", () => {
+test("no corpus secret appears in CLI status, search, or recall output", () => {
   const repo = makeHostileRepo();
   try {
     run(repo, ["build", "--out", ".agent", "--json"]);
@@ -60,7 +60,7 @@ test("no corpus secret appears in CLI status, search, or orient output", () => {
     for (const args of [
       ["status", "--json"],
       ["graph", "status", "--json"],
-      ["orient", "--query", "welcome", "--json", "--allow-stale"],
+      ["recall", "--query", "welcome", "--json", "--allow-stale"],
     ]) {
       const result = run(repo, args);
       surfaces.push(`cmd:${args.join(" ")}\n${result.stdout ?? ""}\n${result.stderr ?? ""}`);
@@ -124,4 +124,3 @@ test("indexing never executes repository-provided commands", () => {
     rmSync(repo, { recursive: true, force: true });
   }
 });
-

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://orthic.labs/schemas/claim-verdict-v1.json",
+  "$id": "https://membrane/schemas/claim-verdict-v1.json",
   "title": "ClaimVerdictV1",
   "type": "object",
   "additionalProperties": false,

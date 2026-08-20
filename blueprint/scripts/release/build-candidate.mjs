@@ -119,7 +119,7 @@ export function buildCandidate({ out = null, platform = null, version = null, al
   const sbom = {
     spdxVersion: "SPDX-2.3", dataLicense: "CC0-1.0", SPDXID: "SPDXRef-DOCUMENT",
     name: `blueprint-${pkg.version}`,
-    documentNamespace: `https://orthic-labs.github.io/spdx/blueprint-${pkg.version}-${commit.slice(0, 12)}`,
+    documentNamespace: `https://membrane.dev/spdx/blueprint-${pkg.version}-${commit.slice(0, 12)}`,
     creationInfo: { created: new Date().toISOString(), creators: ["Tool: blueprint release candidate builder"] },
     packages: [{ name: pkg.name, SPDXID: "SPDXRef-Package-Blueprint", versionInfo: pkg.version, downloadLocation: "NOASSERTION", filesAnalyzed: false }],
   };

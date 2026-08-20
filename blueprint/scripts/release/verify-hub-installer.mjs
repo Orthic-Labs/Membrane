@@ -18,9 +18,9 @@ export function downloadHubInstaller({ hubVersion, checksum, outDir, fetcher = n
   if (!hubVersion) throw new Error("hubVersion_required");
   if (!checksum) throw new Error("checksum_required");
   mkdirSync(outDir, { recursive: true });
-  // In CI, this would fetch from orthic-hub release: https://github.com/Orthic-Labs/orthic-hub/releases/download/v${hubVersion}/Orthic-${hubVersion}.dmg
+  // In CI, this would fetch from Membrane Hub release: https://github.com/Orthic-Labs/Membrane/releases/download/v${hubVersion}/Membrane-${hubVersion}.dmg
   // For local dry-run, create a fixture if fetcher is mocked.
-  const dest = join(resolve(outDir), `Orthic-${hubVersion}.dmg`);
+  const dest = join(resolve(outDir), `Membrane-${hubVersion}.dmg`);
   if (fetcher) {
     fetcher(dest);
   } else if (!existsSync(dest)) {

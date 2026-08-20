@@ -14,7 +14,7 @@ gate.
 | `coldBuildMs` | `blueprint build` on a fresh checkout to a sealed generation |
 | `incrementalUpdateMs` | one-file delta ingest and journal drain |
 | `noopBarrierMs` | `syncToCurrentSource` on a store with no pending events |
-| `searchImpactMs` | `blueprint orient --json` freshness barrier + canned query |
+| `searchImpactMs` | `blueprint recall --json` freshness barrier + canned query |
 | `mcpResponseMs` | equivalent read path as served to MCP/UI (status) |
 | `rssMb` | peak process RSS during the measured paths |
 | `dbSizeMb` | on-disk `graph.db` size for the seeded fixture |

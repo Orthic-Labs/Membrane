@@ -31,7 +31,7 @@ export class BlueprintClient {
   async status(input = {}) { return this.#call("status", input); }
   async search(input = {}) { return this.#call("search", input); }
   async resolve(input = {}) { return this.#call("resolve", input); }
-  async orient(input = {}) { return this.#call("orient", input); }
+  async recall(input = {}) { return this.#call("recall", input); }
   async expand(input = {}) { return this.#call("expand", input); }
   async impact(input = {}) { return this.#call("impact", input); }
   async architecture(input = {}) { return this.#call("architecture", input); }

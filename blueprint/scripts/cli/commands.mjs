@@ -144,20 +144,15 @@ async function runFacadeCommand(command, args, { root, outDir }) {
       }
       if (subcommand === "run") {
         // D-S04 headless carve-out — foreground mode, Hub spawns as child (D-S03)
-        const { readFileSync } = await import("node:fs");
         const { spawn } = await import("node:child_process");
         const { resolve } = await import("node:path");
-        const { buildProductManifest, manifestPath } = await import("../../src/lib/init/manifest.mjs");
-        const { startSnapshotServer } = await import("../../src/lib/orthic-snapshot.mjs");
+        const { startSnapshotServer } = await import("../../src/lib/snapshot.mjs");
         let endpoint;
         let daemon;
         let daemonAddress;
         let watcher;
         try {
-          let manifest;
-          try { manifest = JSON.parse(readFileSync(manifestPath(), "utf8")); }
-          catch (error) { if (error.code !== "ENOENT") throw error; manifest = buildProductManifest({ installRoot: root }); }
-          endpoint = await startSnapshotServer({ root, port: manifest.statusEndpoint.port, authHeader: manifest.statusEndpoint.authHeader, authToken: manifest.statusEndpoint.authToken });
+          endpoint = await startSnapshotServer({ root, authToken: process.env.BLUEPRINT_SNAPSHOT_TOKEN });
           daemon = createDaemonServer({ registryEntries: readWatchConfig().repos });
           daemonAddress = await daemon.listen();
           // Blueprint, not any peer, owns its watcher. Keep it attached to this
@@ -189,7 +184,7 @@ async function runFacadeCommand(command, args, { root, outDir }) {
           };
           process.once("SIGTERM", shutdown);
           process.once("SIGINT", shutdown);
-          if (process.env.ORTHIC_HUB_CHILD === "1") {
+          if (process.env.MEMBRANE_HUB_CHILD === "1") {
             process.stdin.resume();
             process.stdin.once("end", shutdown);
             process.stdin.once("error", shutdown);

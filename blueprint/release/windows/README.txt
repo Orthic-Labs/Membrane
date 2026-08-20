@@ -1,6 +1,6 @@
 Blueprint for Windows
 
-- Per-user installer (Inno Setup): installs to %LOCALAPPDATA%\Orthic\Blueprint,
+- Per-user installer (Inno Setup): installs to %LOCALAPPDATA%\Membrane\Blueprint,
   adds a user PATH entry, records uninstall metadata.
 - The watcher can be registered as a per-user background scheduled task
   (optional, hidden console).
