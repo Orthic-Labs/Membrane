@@ -3,7 +3,7 @@
   "command": "node scripts/benchmark-storage.mjs --fixture-files 550 --samples 5",
   "source": {
     "commit": "590593de3e3708ab7081b5c2b7a9617310a35426",
-    "root": "/Volumes/D/claude/blueprint",
+    "root": "/Volumes/D/claude/membrane/blueprint",
     "worktree": "dirty"
   },
   "fixture": {

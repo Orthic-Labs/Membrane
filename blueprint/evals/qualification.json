@@ -10551,7 +10551,7 @@
       "probe": {
         "available": false,
         "reason": "missing_export",
-        "exportPath": "/Volumes/D/claude/blueprint/evals/fixture-repos/.agent/graph.json"
+        "exportPath": "/Volumes/D/claude/membrane/blueprint/evals/fixture-repos/.agent/graph.json"
       },
       "qualificationSuites": {
         "execution": {

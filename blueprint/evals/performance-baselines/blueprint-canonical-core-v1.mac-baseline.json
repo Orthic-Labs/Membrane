@@ -3,7 +3,7 @@
   "command": "node scripts/benchmark-canonical-core.mjs --samples 1 --report <path>",
   "source": {
     "head": "0f518ab4f6a0c81f411e55f72f59a293287898c9",
-    "root": "/Volumes/D/claude/blueprint",
+    "root": "/Volumes/D/claude/membrane/blueprint",
     "worktree": {
       "state": "dirty",
       "statusSha256": "f0f577acf57822f3e0bc75d6b7d60847ebb266749a96201225d7286ac1dc7491",

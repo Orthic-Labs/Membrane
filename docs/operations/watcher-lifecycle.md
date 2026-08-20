@@ -13,4 +13,5 @@ Blueprint only through published APIs.
 
 ## See also
 
-- `docs/plans/orthic/SEAM-CONTRACT.md` — D-S09 watcher ownership.
+- `blueprint/docs/operations/service.md` — integrated service lifecycle.
+- `blueprint/docs/FEDERATION-CONTRACT.md` — Blueprint↔Membrane boundary.

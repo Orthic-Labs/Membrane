@@ -1,7 +1,7 @@
 import tempfile
 import json
 from pathlib import Path
-from version_gate import check_blueprint_version, parse_version
+from version_gate import check_blueprint_version, parse_version, resolve_blueprint_root
 
 def make_blueprint(tmp: Path, version: str | None):
     if version is None:
@@ -49,7 +49,18 @@ def test_absent():
         ok, code, _ = check_blueprint_version(Path(td) / "nope")
         assert code == "blueprint_not_installed"
 
-if __name__ == "__main__":
-    test_below(); test_in_range_low(); test_in_range_mid(); test_at_ceiling(); test_above(); test_absent()
-    print("all version_gate tests passed")
+def test_resolve_blueprint_root_uses_absorbed_layout_only():
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        membrane = workspace / "membrane"
+        absorbed = membrane / "blueprint"
+        standalone = workspace / "blueprint"
+        absorbed.mkdir(parents=True)
+        standalone.mkdir()
+        assert resolve_blueprint_root(membrane) == absorbed
+        absorbed.rmdir()
+        assert resolve_blueprint_root(membrane) is None
 
+if __name__ == "__main__":
+    test_below(); test_in_range_low(); test_in_range_mid(); test_at_ceiling(); test_above(); test_absent(); test_resolve_blueprint_root_uses_absorbed_layout_only()
+    print("all version_gate tests passed")

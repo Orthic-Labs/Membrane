@@ -46,13 +46,7 @@ def ensure_blueprint_compatible(blueprint_root: Path | None) -> None:
             raise RuntimeError(f"blueprint_not_installed: blueprint not found at {blueprint_root} — required range >=0.2.0 <0.3.0")
         raise RuntimeError(f"blueprint_version_incompatible: detected {ver} — required range >=0.2.0 <0.3.0")
 
-def resolve_blueprint_root(from_repo: Path) -> Path | None:
-    # Same resolution Membrane uses for IPC: sibling ../blueprint from repo root
-    # Caller supplies repo root; we try sibling blueprint
-    candidate = from_repo.parent / "blueprint" if from_repo.name == "membrane" else from_repo / "blueprint"
-    # Also try workspace root's blueprint
-    if candidate.exists():
-        return candidate
-    # Fallback: try /Volumes/D/claude/blueprint
-    fallback = Path("/Volumes/D/claude/blueprint")
-    return fallback if fallback.exists() else None
+def resolve_blueprint_root(membrane_root: Path) -> Path | None:
+    """Resolve only Blueprint absorbed into this Membrane checkout."""
+    candidate = membrane_root / "blueprint"
+    return candidate if candidate.exists() else None

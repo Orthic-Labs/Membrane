@@ -1156,7 +1156,7 @@ Blueprint service
     phase2 seal
 ```
 
-and through equivalent explicit CLI commands for standalone/offline operation.
+Operator CLI commands use the same integrated Blueprint implementation and do not provide a separate standalone fallback.
 
 Every invocation is bounded by:
 
@@ -1738,7 +1738,7 @@ The SLO file must cover at least:
 - 10-file edit;
 - 100-file edit;
 - warm resident recall;
-- daemon-unavailable CLI fallback.
+- daemon-unavailable typed failure with no subprocess fallback.
 
 Targets may tighten through normal changes.
 
@@ -2005,7 +2005,7 @@ Deliver:
 - server/client support;
 - persistent resident query path;
 - Membrane daemon-first seam;
-- CLI subprocess fallback;
+- typed daemon-unavailable failure with no subprocess fallback;
 - candidate compatibility adapter;
 - admission consumes RecallCircuit + truth;
 - generation/freshness/claim boundaries in admission receipts.
@@ -2230,7 +2230,7 @@ Blueprint is complete only when every item below is true.
 - [ ] Deadlines/cancellation/queues are bounded.
 - [ ] Watcher is not the query server.
 - [ ] Normal Membrane recall does not spawn Node per query.
-- [ ] CLI fallback remains functional.
+- [ ] Daemon unavailability fails typed; no subprocess fallback runs.
 - [ ] Provider crashes/hangs are isolated and typed.
 - [ ] Last-known-good survives failures.
 

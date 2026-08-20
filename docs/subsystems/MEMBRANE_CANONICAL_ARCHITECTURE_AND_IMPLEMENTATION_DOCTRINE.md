@@ -1137,7 +1137,7 @@ Membrane
 → RecallCircuit
 ```
 
-Per-query Node subprocess execution is not the normal path. It exists only as a bounded bootstrap/version-skew/emergency standalone fallback and must emit a degradation/transport reason when used.
+Per-query Node subprocess execution is not part of the end-state path. Daemon unavailability fails closed for the Blueprint lane with a typed degradation/transport reason.
 
 An incomplete path cannot masquerade as exact complete evidence.
 
@@ -1145,7 +1145,7 @@ Generation/schema mismatch fails closed for that Blueprint lane.
 
 No relevant seed produces a typed abstention, not generic repository filler.
 
-Legacy flattened Blueprint candidates remain only a bounded version-skew/rollback path during migration.
+Legacy flattened Blueprint candidates and version-skew/rollback adapters are absent from the greenfield path.
 
 ## 10.2 Code-anchor resolution
 
@@ -1903,7 +1903,7 @@ This is the file-exact core slice. The exact function bodies may evolve, but own
 - validate schema/generation before conversion;
 - convert one complete path into one atomic evidence unit/candidate;
 - obtain code-anchor resolution from Blueprint;
-- keep subprocess only as typed fallback.
+- remove subprocess fallback; daemon unavailability stays typed and fail-closed.
 
 **Do not add**
 - Blueprint graph traversal;
@@ -2078,7 +2078,7 @@ It is done when the product purpose is mechanically true.
 - [ ] Generation mismatch fails closed for Blueprint.
 - [ ] A `no_relevant_seed` Blueprint result emits no fake repository context.
 - [ ] Code anchor relocation/re-anchoring is delegated to Blueprint.
-- [ ] Normal Blueprint recall uses a persistent daemon client; subprocess use is typed fallback only.
+- [ ] Blueprint recall uses a persistent daemon client with no subprocess fallback.
 - [ ] Membrane contains no duplicate structural re-anchor implementation.
 - [ ] Unsupported/ambiguous/missing are not collapsed.
 - [ ] Repository evidence remains `data_only`.
