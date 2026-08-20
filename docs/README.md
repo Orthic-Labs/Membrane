@@ -6,9 +6,9 @@ Start here. This folder is organized around reader intent, not history.
 
 Exactly three architecture/planning documents are normative for the current convergence:
 
-- [MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md](MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md) — Membrane architecture/implementation authority.
+- [MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md](subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md) — Membrane architecture/implementation authority.
 - [subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md](subsystems/BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md) — pre-merge Blueprint authority; moves with Blueprint to `blueprint/docs/` during the monorepo migration.
-- [plans/2026-08-19-monorepo-merge-and-subsystem-rename.md](plans/2026-08-19-monorepo-merge-and-subsystem-rename.md) — physical merge/name migration authority only.
+- [plans/2026-08-19-monorepo-merge-and-subsystem-rename.md](subsystems/2026-08-19-monorepo-merge-and-subsystem-rename.md) — physical merge/name migration authority only.
 
 Derived navigation/reference docs live under [subsystems/](subsystems/):
 

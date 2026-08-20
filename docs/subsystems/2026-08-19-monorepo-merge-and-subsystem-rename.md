@@ -242,8 +242,8 @@ membrane/
 ├── tests/
 │   └── integration/
 ├── docs/
-│   ├── MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md
-│   └── plans/
+│   └── subsystems/
+│       ├── MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md
 │       └── 2026-08-19-monorepo-merge-and-subsystem-rename.md
 ├── package.json                       # private root
 ├── pnpm-workspace.yaml                # actual pnpm workspace definition
