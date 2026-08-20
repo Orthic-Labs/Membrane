@@ -1,7 +1,7 @@
 {
-  "name": "@orthic/membrane-win32-x64",
+  "name": "@membrane/membrane-win32-x64",
   "version": "0.0.0-source",
-  "description": "Membrane native runtime for Windows x64. Installed automatically as an optionalDependency of @orthic/membrane; not for direct use. Contains no native binary until a real signed release is published (see docs/install-npm.md).",
+  "description": "Membrane native runtime for Windows x64. Installed automatically as an optionalDependency of @membrane/membrane; not for direct use. Contains no native binary until a real signed release is published (see docs/install-npm.md).",
   "os": ["win32"],
   "cpu": ["x64"],
   "license": "SEE LICENSE IN LICENSE",

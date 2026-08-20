@@ -4,7 +4,7 @@ Per consolidated contract D-C09 and dead-surface disposition §2, the following 
 
 ## S-4: `fleet.rs` + legacy fleet renderer
 
-Both halves' only consumer was the legacy Hub, which M-2 removes after external gates. `fleet.rs` stays orphaned-but-compiling in the membrane engine. Whether "fleet" (installation/replication projection) becomes an `orthic-hub` tab is a product decision for `Orthic-Labs/orthic-hub`'s own contract, not membrane's to make unilaterally post-migration. No `fleet` logic is wired in CU-20; the facade's `devices`/`alerts` sections remain `not_instrumented`. Revisit when `orthic-hub` defines its fleet tab contract.
+Both halves' only consumer was the legacy Hub, which M-2 removes after external gates. `fleet.rs` stays orphaned-but-compiling in the membrane engine. Whether "fleet" (installation/replication projection) becomes a Membrane Hub tab is a product decision for a future Hub contract, not one to invent in this repair. No `fleet` logic is wired in CU-20; the facade's `devices`/`alerts` sections remain `not_instrumented`. Revisit when Membrane Hub defines its fleet tab contract.
 
 ## S-7: `mcp_http.rs`
 
@@ -12,7 +12,7 @@ Already honestly disclosed as intentionally out of scope: `evidence/productizati
 
 ## S-8: `notifications.rs` (MBR-711) + `devices`/`alerts`
 
-`notifications.rs` would back `devices`/`alerts` hub sections, which stay `not_instrumented` per seam §6 and D-P04 — no backing concept exists in membrane's data model. Wiring the alert tracker without a product decision on what `alerts` means would reproduce the false-clean failure documented in state-of-truth §1. Deferred until open question O-4 ("`devices`/`alerts` decision") gets a product decision in `orthic-hub`. Recorded here, not dropped; CU-20's facade asserts `not_instrumented` for these sections as a regression guard.
+`notifications.rs` would back `devices`/`alerts` Hub sections, which stay `not_instrumented` per seam §6 and D-P04 — no backing concept exists in Membrane's data model. Wiring the alert tracker without a product decision on what `alerts` means would reproduce the false-clean failure documented in state-of-truth §1. Deferred until open question O-4 ("`devices`/`alerts` decision") gets a product decision in Membrane Hub. Recorded here, not dropped; CU-20's facade asserts `not_instrumented` for these sections as a regression guard.
 
 ## S-9: cross-provider fusion/reconciliation (`federation.rs::registered_providers`, `serve.rs::cross_provider_reconciled_context`)
 
@@ -24,11 +24,11 @@ Both functions were unreachable in both directions: `plan_with_doc_shadow` (the 
 
 ## S-11: release-channel compatibility state
 
-The retained migration-source UI can evaluate release-channel compatibility, but `HubSnapshotV1` has no section or Rust producer for that state. Adding one requires Orthic to decide whether compatibility belongs in Hub snapshot data or remains client-local update policy. Membrane does not invent that product contract.
+The retained migration-source UI can evaluate release-channel compatibility, but `HubSnapshotV1` has no section or Rust producer for that state. Adding one requires Membrane Hub to decide whether compatibility belongs in Hub snapshot data or remains client-local update policy. Membrane does not invent that product contract.
 
 ## S-12: Hub actions
 
-The retained migration-source UI can construct action requests, but `HubSnapshotV1` is read-only and has no actions section or facade producer. Adding action transport would change the Hub's authority boundary, so it remains an Orthic product decision rather than a Membrane repair.
+The retained migration-source UI can construct action requests, but `HubSnapshotV1` is read-only and has no actions section or facade producer. Adding action transport would change the Hub's authority boundary, so it remains a Membrane Hub product decision rather than a repair here.
 
 ## Summary
 

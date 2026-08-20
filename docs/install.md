@@ -2,11 +2,15 @@
 
 > See also: [installation/](installation/) for the manifest/IPC handshake contract and stable-roots reference.
 
-Orthic owns desktop installation. Membrane's portable add-on supplies only
-the signed `membrane` command, `cortex-service`, icon, legal files, and sealed
-manifest; it is adopted by Orthic before Orthic packages its own installer.
+Membrane Hub owns desktop installation, runtime supervision, release builds,
+updates, & install cleanup. Membrane's signed package supplies `membrane`,
+`cortex-service`, Blueprint/Cortex contracts, icons, legal files, & release
+evidence as one self-contained product.
 
 For headless use, run the installed `membrane service run` command. No
-Homebrew, WinGet, Scoop, DMG, NSIS, or Membrane-local updater lane is active.
+No external product manifest, add-on handoff, or retired installer lane is
+active. Membrane Hub is the only desktop runtime/build/release/install
+authority; its native DMG/NSIS lanes are enabled only by signed release
+evidence.
 OCI metadata remains evaluation-only until independently published evidence
 exists.

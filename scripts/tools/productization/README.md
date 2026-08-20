@@ -4,6 +4,10 @@ Deterministic, locally invoked productization utilities. Nothing in this directo
 adds or modifies `.github/workflows/**` or any CI configuration; every entry is
 either a node script or a manual command runner.
 
+Membrane Hub is the sole runtime/build/release/install authority. These tools
+derive Membrane package, support, & product truth; they do not create an
+Orthic product manifest, add-on, installer, or compatibility lane.
+
 ## Entries in this directory
 
 | File | Owner task | Purpose |
@@ -19,7 +23,7 @@ either a node script or a manual command runner.
 Reads:
 
 - `docs/evidence/qualification/mbr801/<platform>/receipt.json` — real MBR-801
-  installed-path conformance receipts (`orthic.mbr801-installed-receipt.v1`),
+  installed-path conformance receipts (`membrane.mbr801-installed-receipt.v1`),
   produced by `node scripts/qualification/run.mjs` and validated here through
   the existing `scripts/qualification/verify-mbr801-evidence.mjs` (never
   re-implemented).

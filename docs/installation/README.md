@@ -4,8 +4,8 @@ Cross-repository index for install/bootstrap paths and the installation contract
 original top-level paths (`docs/install*.md`) because packaged npm artifacts reference those exact
 paths in published prose; this directory holds the underlying contract and root documents.
 
-- [../install.md](../install.md) — Membrane's portable add-on contract with the Orthic desktop installer
-- [../install-npm.md](../install-npm.md) — `@orthic/membrane` npm bootstrap loader
+- [../install.md](../install.md) — Membrane Hub's native install/runtime authority
+- [../install-npm.md](../install-npm.md) — `@membrane/membrane` npm bootstrap loader
 - [../install-oci.md](../install-oci.md) — optional headless Docker/OCI image
 - [../install-registry.md](../install-registry.md) — MCP Registry metadata (MBR-907)
 - [contract.md](contract.md) — installation manifest and IPC handshake contract (MBR-105)

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// MBR-906: `npx @orthic/membrane install` -- the thin bootstrapper's only
+// MBR-906: `npx @membrane/membrane install` -- the thin bootstrapper's only
 // user-facing entry point. It never bundles or executes an unverified
 // native artifact: it locates the optionalDependency platform package that
 // `npm install` already selected for this host (via that package's own
@@ -24,7 +24,7 @@ export class SigningTrustNotConfiguredError extends Error {}
 // `verifySignature` (see docs/install-npm.md).
 async function defaultVerifySignature() {
   throw new SigningTrustNotConfiguredError(
-    "declared gap: no trusted Membrane signing key is configured in @orthic/membrane; artifact signature verification cannot proceed. Signing-key trust is a release gate (see docs/install-npm.md), not something this package fabricates.",
+    "declared gap: no trusted Membrane signing key is configured in @membrane/membrane; artifact signature verification cannot proceed. Signing-key trust is a release gate (see docs/install-npm.md), not something this package fabricates.",
   );
 }
 

@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 
 /** Fixture/template registry. Entries become real package releases only after registry approval. */
 export const PLATFORM_PACKAGES = Object.freeze({
-  "darwin-arm64": "@orthic/membrane-darwin-arm64",
-  "darwin-x64": "@orthic/membrane-darwin-x64",
-  "linux-arm64": "@orthic/membrane-linux-arm64",
-  "linux-x64": "@orthic/membrane-linux-x64",
-  "win32-arm64": "@orthic/membrane-win32-arm64",
-  "win32-x64": "@orthic/membrane-win32-x64"
+  "darwin-arm64": "@membrane/membrane-darwin-arm64",
+  "darwin-x64": "@membrane/membrane-darwin-x64",
+  "linux-arm64": "@membrane/membrane-linux-arm64",
+  "linux-x64": "@membrane/membrane-linux-x64",
+  "win32-arm64": "@membrane/membrane-win32-arm64",
+  "win32-x64": "@membrane/membrane-win32-x64"
 });
 
 const digest = bytes => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;

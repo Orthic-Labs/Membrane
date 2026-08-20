@@ -13,7 +13,7 @@ Live-path prerequisites, stated up front so no step below fails silently:
 - This exact Membrane checkout, in place — `mcp/install.mjs init`/`install`
   resolve installation binding by walking up from the target root for a
   `tools/lib/memory/runtime.json` service descriptor. That file lives in the
-  parent Orthic Labs workspace, not inside a standalone clone of this
+  parent workspace, not inside a standalone clone of this
   repository; see [README's "Repository posture"](../README.md#repository-posture).
   Outside that workspace, enrollment (`init`, non-dry-run) and activation
   (`install`) fail closed with `installation binding unavailable`, not a

@@ -6,7 +6,7 @@ import { runInstall, PlatformPackageMissingError, SigningTrustNotConfiguredError
 const artifact = Buffer.from("native-fixture-cli");
 const metadata = {
   sha256: artifactDigest(artifact),
-  packageName: "@orthic/membrane-linux-x64",
+  packageName: "@membrane/membrane-linux-x64",
   platform: "linux-x64",
   version: "0.1.0",
   signature: { algorithm: "ed25519", keyId: "fixture-key", value: "fixture-signature", digest: artifactDigest(artifact) },
@@ -28,9 +28,9 @@ test("runInstall verifies and dispatches the co-installed platform package", asy
   });
   assert.equal(result.dispatch("ok"), "dispatched:ok");
   // The platform package is imported exactly once, then reused for bootstrap()'s own load.
-  assert.deepEqual(calls, ["@orthic/membrane-linux-x64"]);
+  assert.deepEqual(calls, ["@membrane/membrane-linux-x64"]);
   assert.equal(logs.length, 1);
-  assert.match(logs[0], /@orthic\/membrane-linux-x64/);
+  assert.match(logs[0], /@membrane\/membrane-linux-x64/);
 });
 
 test("unsupported host tuples fail closed before any package is loaded", async () => {
@@ -46,10 +46,10 @@ test("a missing optional platform package is a declared gap, not a crash", async
   await assert.rejects(
     () => runInstall({
       platform: "linux", arch: "x64",
-      load: async () => { throw new Error("Cannot find package '@orthic/membrane-linux-x64'"); },
+      load: async () => { throw new Error("Cannot find package '@membrane/membrane-linux-x64'"); },
       verifySignature: async () => true,
     }),
-    (error) => error instanceof PlatformPackageMissingError && /@orthic\/membrane-linux-x64/.test(error.message),
+    (error) => error instanceof PlatformPackageMissingError && /@membrane\/membrane-linux-x64/.test(error.message),
   );
 });
 

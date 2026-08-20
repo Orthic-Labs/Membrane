@@ -1,17 +1,19 @@
-# Hub handoff (CU-H01)
+# Membrane Hub runtime authority (CU-H01)
 
-Orthic owns its desktop installer. Membrane produces a signed portable add-on
-containing only `membrane`, `cortex-service`, icon, legal files, and its sealed
-manifest. Existing Hub sources remain until RightKit publication, both
-platform uploads, and remote Orthic adoption have receipts.
+Membrane Hub is Membrane's sole desktop runtime, installer, supervisor, update,
+release, & install-cleanup authority. It launches `membrane` & `cortex-service`
+from its own self-contained package; no external product manifest, add-on
+handoff, or retired Hub installer is part of current operation.
 
-## Cortex-service start-up after handoff
+## Cortex-service startup
 
-- **Hub-spawn via manifest (while Hub runs):** Orthic Hub reads the atomic
-  v1 manifest at `~/.orthic/hub/products.d/membrane.json`, verifies its
-  compatible Hub range, then launches the declared `cortex-service` argv with
-  its inline authentication token.
+- **Hub-managed:** Membrane Hub starts `cortex-service` through its authenticated
+  local supervisor & binds the exact current release evidence.
+- **Headless/standalone:** `membrane service run` starts the service for servers,
+  CI, or SSH-only hosts.
+- **No implicit OS registration:** service startup is explicit or Hub-managed;
+  no separate product scheduler or compatibility shim is installed.
 
-- **Headless/standalone:** `membrane service run` (existing CLI entry point `engine/crates/membrane/src/cli.rs`) starts cortex-service headless/standalone for servers/CI/SSH-only hosts without a Hub.
-
-- **No OS registration:** No launchd/systemd/Task Scheduler registration for cortex-service itself. CU-H05 removes the supervisor's own OS-service auto-registration capability; cortex-service was never separately registered, only spawned as the Hub's child. Standalone use is an explicit `service run` invocation, not a persistent OS service.
+All install, update, uninstall, release, & cleanup actions remain receipt-bound
+to current Membrane Hub contracts. Historical migration records stay archival
+evidence and do not create an active runtime path.

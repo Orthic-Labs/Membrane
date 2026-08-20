@@ -50,7 +50,7 @@ test("no per-platform package declares a bundled native binary (this task resolv
   }
 });
 
-test("the root @orthic/membrane package depends on every platform package as an optionalDependency", () => {
+test("the root @membrane/membrane package depends on every platform package as an optionalDependency", () => {
   for (const name of Object.values(PLATFORM_PACKAGES)) {
     assert.ok(name in (ROOT_PACKAGE.optionalDependencies ?? {}), `root package.json must list ${name} as an optionalDependency`);
   }

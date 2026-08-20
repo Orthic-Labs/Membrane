@@ -19,6 +19,10 @@ Derived navigation/reference docs live under [subsystems/](subsystems/):
 
 Derived subsystem docs cannot override these authorities.
 
+Membrane Hub is sole runtime, desktop install, release-build, publication, &
+cleanup authority. No external product manifest, add-on handoff, or retired
+installer path is active.
+
 ## Generated (code-grounded, never hand-edit)
 
 Regenerate with the current productization tooling under `scripts/tools/productization/`.
