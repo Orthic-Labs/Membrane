@@ -1,11 +1,24 @@
 # Membrane — Canonical Architecture and Implementation Doctrine
 
-**Status:** proposed successor canonical authority for `Orthic-Labs/Membrane`  
-**Architecture review baseline:** `main` at `50e6bb22ab7518a98d3b5bc730c6913d338c7d21` (2026-08-19 review)  
-**Baseline policy:** the SHA above is an evidence snapshot, not a permanent “current main” claim. Re-read the tree and freeze a new baseline before implementation tickets.  
-**Supersedes as architecture/implementation authority:** prior Membrane improvement guides, absorption guides, workplans, and the attached `MEMBRANE-IMPLEMENTATION-GUIDE-FINAL.md` once this successor is adopted.  
-**Does not replace runtime product truth:** `README.md`, generated `docs/product.md`, generated `docs/architecture.md`, `docs/protocol.md`, or `AGENTS.md`. Those must continue to describe landed code.  
-**Research provenance:** earlier competitor ledgers and research documents remain evidence inputs, not parallel implementation authorities.
+**Status:** Canonical · final architecture · implementation authority  
+**Repository:** `Orthic-Labs/Membrane`  
+**Pre-merge Membrane evidence baseline:** `50e6bb22ab7518a98d3b5bc730c6913d338c7d21`  
+**Pre-merge Blueprint evidence baseline:** former `Orthic-Labs/Cortex` at `bd46965d6738657db6ed95afad1dc622ce1c5b95`  
+**Date:** 2026-08-19  
+**Supersedes:** `MEMBRANE-IMPLEMENTATION-GUIDE-FINAL.md`, earlier Membrane implementation/absorption guides, and the previous `MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`  
+**Companion authority:** `BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md` for repository truth/evidence semantics; `2026-08-19-monorepo-merge-and-subsystem-rename.md` for the physical merge/name migration only.
+
+**Canonical names after migration:**
+- **Membrane** — the parent context system and context control plane.
+- **Blueprint** — repository truth/evidence subsystem, formerly named Cortex.
+- **Cortex** — durable-knowledge subsystem, formerly named Crypt.
+- **Guide** — document navigation and section-index subsystem, formerly named Spine.
+- **Adapt** — learning/proposal subsystem.
+- **Push** — reversible reduction subsystem.
+
+**System hierarchy:** Blueprint, Cortex, Guide, Adapt, and Push are the five named Membrane subsystems. Planner, provider adapters, host adapters, and Hub integration are Membrane core/modules/surfaces, not peer subsystems.
+
+Historical V1 wire tokens are preserved only where compatibility requires them. A legacy serialized token does not redefine the canonical subsystem name or ownership.
 
 ---
 
@@ -20,8 +33,8 @@ The repository already contains the differentiated spine:
 - Push / Pull / Persist as one context economy;
 - typed freshness, authority, degradation, omissions, and receipts;
 - one cross-provider attention ceiling;
-- local-first Crypt storage and retrieval;
-- Cortex as the repository/code evidence provider;
+- local-first Cortex storage and retrieval;
+- Blueprint as the repository/code evidence provider;
 - a resident federation path;
 - Application / Control / Data process planes;
 - host adapters, MCP, hooks, and CLI surfaces.
@@ -30,16 +43,40 @@ The final system should make one idea mechanically true:
 
 > **Membrane decides what deserves the agent's limited attention now, in what form, under whose authority, and records exactly why.**
 
-Cortex determines repository evidence and repository truth.  
-Crypt preserves durable knowledge.  
+Blueprint determines repository evidence and repository truth.  
+Cortex preserves durable knowledge.  
+Guide indexes and resolves document sections without owning document truth or durable knowledge.  
+Adapt turns experience into governed knowledge proposals; it never bypasses Cortex admission.  
+Push performs reversible reduction; the Membrane planner retains final attention and representation policy.  
 Other providers own their evidence.  
 Hub owns OS/process lifecycle.  
 Legion / OmniRouter / hosts own agent execution and orchestration.  
-Membrane owns context policy.
+Membrane owns context policy and is the parent system for the five named subsystems.
 
 The product objective is:
 
 > **Return the smallest sufficient, current, authoritative evidence set for the task, under a hard attention and deadline budget, with a receipt for every material inclusion, omission, transformation, and degradation.**
+
+### 0.1 Physical co-location does not imply semantic ownership
+
+Blueprint is a named Membrane subsystem at the product/system level, while remaining independently runnable and separately bounded at package, process, protocol, storage, testing, and responsibility layers.
+
+Blueprint and Membrane share one repository so their seam can evolve atomically. The parent/subsystem relationship does not authorize direct internal coupling.
+
+Blueprint has its own service/watcher and SQLite evidence store. Cortex has its own durable-knowledge SQLite store. Membrane never opens Blueprint's database. Blueprint never opens Cortex's database.
+
+`engine/**` and `mcp/**` do not import `blueprint/src/**`. Membrane consumes Blueprint through Blueprint-owned schemas/service methods exactly as an external consumer would.
+
+### 0.2 Binary architecture rule
+
+This document contains required IN capabilities and explicit OUT capabilities. There is no architectural research backlog hidden inside the implementation sequence.
+
+A mechanism is either:
+
+- **IN** — required for the completed Membrane system; or
+- **OUT** — not part of the canonical architecture.
+
+Reintroducing an OUT mechanism requires a new architecture decision backed by a frozen measured gap.
 
 Memory is one context source. Retrieval is one mechanism. Compression is one mechanism. The product is the governed context decision.
 
@@ -126,7 +163,7 @@ Membrane is not:
 - a multi-agent orchestrator;
 - a PTY/runtime framework;
 - a second code parser or code graph;
-- a second Cortex;
+- a second Blueprint;
 - a general graph database;
 - a remote RAG platform;
 - a conversation-transcript owner;
@@ -156,13 +193,16 @@ The architecture must reject scope growth that does not improve the core objecti
 | Representation choice | Membrane Push / planner boundary | Native/rendered/resolver/metadata and faithful reduction |
 | Publication revalidation | Membrane runtime | Recheck authority/policy immediately before bytes leave |
 | Omissions / receipts | Membrane | Explain every material decision |
-| Durable knowledge | Crypt | Store governed long-lived knowledge |
-| Lexical/vector/temporal durable-memory retrieval | Crypt | Produce typed evidence candidates |
-| Memory conflict / lifecycle / supersession | Crypt | Persist and expose typed state |
-| Code parsing / AST / symbols / references / calls / imports / types | Cortex | Membrane consumes typed evidence only |
-| Repository stable identity / source spans / generations | Cortex | Consume and policy-evaluate |
-| Code-anchor relocate / re-anchor / moved/ambiguous/missing | Cortex | Call Cortex resolution; do not reimplement |
-| Code/document truth comparison | Cortex | Consume contradictions and coverage state |
+| Durable knowledge | Cortex | Store governed long-lived knowledge |
+| Lexical/vector/temporal durable-memory retrieval | Cortex | Produce typed evidence candidates |
+| Memory conflict / lifecycle / supersession | Cortex | Persist and expose typed state |
+| Code parsing / AST / symbols / references / calls / imports / types | Blueprint | Membrane consumes typed evidence only |
+| Repository stable identity / source spans / generations | Blueprint | Consume and policy-evaluate |
+| Code-anchor relocate / re-anchor / moved/ambiguous/missing | Blueprint | Call Blueprint resolution; do not reimplement |
+| Code/document truth comparison | Blueprint | Consume contradictions and coverage state |
+| Document navigation / section indexing | Guide | Consume typed document candidates and hash-bound section references; Guide does not decide document truth or durable memory |
+| Experience-to-knowledge proposals | Adapt | Accept proposals only through governed Cortex admission; no direct durable write |
+| Faithful reduction mechanics | Push | Execute planner-selected reversible representations; never become a second admission/ranking owner |
 | Current Git/worktree facts | Git/live provider | Consume current evidence |
 | Rules / policy evidence | Rule provider / workspace policy owner | Consume without allowing text to self-authorize |
 | Audit findings | Audit | Consume typed findings |
@@ -189,13 +229,15 @@ Breaking an invariant requires an explicit architecture decision, migration/comp
    - `ContextReceiptV1`
    - `KnowledgeEmissionV1`
 
+   Product renaming alone is not a sufficient reason to mutate V1 field names or serialized reason tokens. Frozen legacy names are recorded in the rename ledger and retain their historical meaning until an independently justified protocol version replaces them.
+
 3. **Use a richer internal IR instead of casually expanding the public protocol.**
 
 4. **Hard policy precedes relevance.**
    Scope, authority, freshness, validity, revocation, quarantine, influence, and sensitivity cannot be repaired by a high similarity score.
 
 5. **Unrelated scores are never flattened into one probability.**
-   BM25, cosine, Cortex confidence, rule priority, graph completeness, feedback, and freshness are different signals.
+   BM25, cosine, Blueprint confidence, rule priority, graph completeness, feedback, and freshness are different signals.
 
 6. **One attention ceiling.**
    Provider caps bound acquisition cost. Final admission is global.
@@ -203,10 +245,10 @@ Breaking an invariant requires an explicit architecture decision, migration/comp
 7. **Final attention protection is evidence-class based, not permanently provider-name based.**
    Existing memory/skill reserved lanes remain a migration control until the evidence-class policy is qualified.
 
-8. **Cortex owns repository semantics and re-anchoring.**
+8. **Blueprint owns repository semantics and re-anchoring.**
    Membrane never implements a second parser, symbol graph, structural fingerprint engine, or code re-anchor ladder.
 
-9. **Crypt owns durable knowledge.**
+9. **Cortex owns durable knowledge.**
    Membrane does not turn every event, tool result, candidate, or transcript turn into durable memory.
 
 10. **Admission occurs before persistence.**
@@ -259,7 +301,7 @@ Instead the planner derives a multidimensional requirement set.
 EvidenceRequirement
 ├─ id
 ├─ dimension
-├─ necessity: required | useful | optional | irrelevant
+├─ necessity: required | useful | irrelevant
 ├─ acceptable authority classes
 ├─ acceptable freshness classes
 ├─ exactness requirement
@@ -296,7 +338,7 @@ current_code       required
 document_truth     required
 policy             useful
 prior_decision     useful
-history            optional
+history            useful
 ```
 
 A diagnostic `taskClass` may still exist for telemetry, fixtures, and conservative defaults. It is not the canonical semantic routing primitive.
@@ -309,7 +351,7 @@ AcquisitionPlan
 ├─ provider capabilities selected
 ├─ stage order
 ├─ provider bounds
-├─ Cortex policy/hops/paths
+├─ Blueprint policy/hops/paths
 ├─ acquisition cost ceilings
 ├─ deadline reserve
 └─ fallback policy
@@ -346,7 +388,7 @@ EvidenceUnit
 └─ provenance / derivation
 ```
 
-A complete Cortex path is one atomic `EvidenceUnit`, not independent graph nodes.
+A complete Blueprint path is one atomic `EvidenceUnit`, not independent graph nodes.
 
 ## 5.4 EvidenceCoverage
 
@@ -398,6 +440,40 @@ Build the multidimensional `EvidenceRequirement[]`.
 
 No LLM in the hot path.
 
+Requirement derivation is a **versioned monotonic rule system**, not a mutually-exclusive classifier.
+
+Each rule has the form:
+
+```text
+rule_id
+version
+signals[]
+adds_or_strengthens[]
+negative_guards[]
+evidence_reason
+```
+
+Signals include only deterministic request/context facts such as:
+
+- explicit path/file/symbol/anchor;
+- stack trace, error code, failing test;
+- quoted identifier/hash;
+- change/impact/rename/migration language;
+- documentation/ADR/plan target;
+- security/auth/policy language;
+- "why / previous / decision / changed" history signals;
+- requested exact citation/source proof.
+
+Rules may add or strengthen several requirements at once. A rule never suppresses another matched requirement merely because a higher-priority task label matched.
+
+The result is the union of all matched requirements.
+
+Ambiguity is monotonic: when the rule engine cannot prove that a dimension is irrelevant, it broadens to `useful` or `required` according to the conservative fallback table rather than narrowing the plan.
+
+The rule-set version and matched rule IDs are content-free receipt metadata. Changes to rules are calibrated against the frozen outcome ledger and requirement-coverage fixtures.
+
+A diagnostic `taskClass` may be derived after requirements for telemetry. It never drives provider selection by itself.
+
 The safe fallback for ambiguity is broader evidence requirements, not a confidently wrong single label.
 
 ## Stage 2 — Build acquisition plan
@@ -408,7 +484,7 @@ The plan declares:
 
 - initial providers;
 - staged providers;
-- Cortex traversal policy if needed;
+- Blueprint traversal policy if needed;
 - per-provider acquisition bounds;
 - fallback behavior;
 - deadline reserve.
@@ -423,7 +499,7 @@ Start with low-cost, high-authority evidence that commonly satisfies hard requir
 - applicable rules/policy;
 - live Git/worktree identity;
 - exact-path/identifier evidence;
-- Cortex structural recall when repository semantics are required.
+- Blueprint structural recall when repository semantics are required.
 
 Do not blindly fan out to every provider because the provider exists.
 
@@ -495,11 +571,11 @@ Do not retrieve more merely because budget remains.
 
 If a required dimension cannot be satisfied inside the deadline, return a typed incomplete/degraded state rather than filling the packet with generic text.
 
-## Stage 8 — Conditional escalation
+## Stage 8 — Evidence-driven escalation
 
 Only when coverage says more evidence is justified, invoke additional sources such as:
 
-- Crypt durable knowledge;
+- Cortex durable knowledge;
 - skills;
 - audit findings;
 - prior architecture decisions;
@@ -517,7 +593,7 @@ Rules:
 - provider-local scores remain provider-local;
 - exact evidence flags are preserved;
 - rank fusion is deterministic;
-- absent optional channels are score-neutral;
+- unavailable/non-required channels are score-neutral;
 - canonical IDs break ties deterministically;
 - adaptive modifiers apply only within equivalent policy classes.
 
@@ -688,6 +764,43 @@ The ledger enables later calibration of:
 
 No adaptive mechanism may pretend to optimize “usefulness” before this substrate exists.
 
+## 7.1 How outcome events are observed
+
+Journey events have explicit observation strength.
+
+```text
+delivered
+    observed directly by Membrane publication/reconciliation
+
+resolved / refetched
+    observed directly when a resolver-backed unit is fetched
+
+used
+    strong when a resolver-backed unit is fetched for the task;
+    otherwise explicit receipt/unit-bound feedback only
+
+ignored
+    explicit feedback only;
+    absence of a citation or resolver fetch is NOT proof of ignore
+
+contradicted
+    advisory when self-reported;
+    verified only when bound to a resolvable verdict/evidence reference
+
+verified_used / verified_helped
+    requires a host/verifier outcome binding to packet/candidate ids;
+    model self-report alone cannot create these states
+
+superseded
+    observed from source/knowledge lifecycle state, not inferred from silence
+```
+
+The existing `membrane_feedback` surface is the explicit feedback ingress. It remains receipt-bound and distinguishes advisory reports from verdict-backed verification.
+
+Inline rendered evidence is not marked `used` by scraping model prose unless the host supplies an explicit unit/citation binding. Unknown remains unknown.
+
+Every outcome record carries its observation class so adaptive ranking/lifecycle code cannot silently treat advisory feedback as verified behavior.
+
 ---
 
 # 8. Persist — durable knowledge, selectively
@@ -739,6 +852,8 @@ KnowledgeRecord
 ```
 
 Mutable retrieval/usefulness signals live in a sidecar.
+
+Evidence/provenance relations such as `supports`, `contradicts`, `supersedes`, and `derived_from` are IN because they are required to explain truth and lifecycle. Generic relation-neighborhood retrieval/graph expansion is OUT; Pull does not become a second graph-retrieval platform.
 
 Do not create orthogonal taxonomies merely because a donor system used them.
 
@@ -882,7 +997,7 @@ This is the primary portable integration point.
 
 ### B. Host post-tool hook
 
-When a host exposes `PostToolUse` or an equivalent tool-result hook, route large result payloads through the same Push transform contract.
+When a host exposes a post-tool hook capable of replacing or reducing the tool result before the model consumes it, route large payloads through the same Push transform contract. Host adapters capability-probe this behavior; they never assume every host exposes an equivalent rewrite surface.
 
 Host adapters remain thin; they do not implement separate compression algorithms.
 
@@ -978,9 +1093,9 @@ An excellent unused primitive is not a finished Push system.
 
 ---
 
-# 10. Cortex boundary — no duplicate drift engine
+# 10. Blueprint boundary — no duplicate drift engine
 
-Cortex owns code/repository identity and current repository truth.
+Blueprint owns code/repository identity and current repository truth.
 
 Membrane consumes:
 
@@ -1006,7 +1121,7 @@ Membrane:
     task-shaped recall request
     policy / bounds / expected generation
 
-Cortex:
+Blueprint:
     generation-bound RecallCircuit
     complete paths + evidence
     unresolved/omission states
@@ -1015,15 +1130,26 @@ Membrane:
     treats each complete path as one atomic EvidenceUnit
 ```
 
-Membrane does not traverse the Cortex graph itself.
+Membrane does not traverse the Blueprint graph itself.
+
+The normal machine-to-machine transport is the persistent Blueprint service daemon over local IPC through a long-lived Membrane-side client.
+
+```text
+Membrane
+→ persistent Blueprint client
+→ Blueprint service `recall`
+→ RecallCircuit
+```
+
+Per-query Node subprocess execution is not the normal path. It exists only as a bounded bootstrap/version-skew/emergency standalone fallback and must emit a degradation/transport reason when used.
 
 An incomplete path cannot masquerade as exact complete evidence.
 
-Generation/schema mismatch fails closed for that Cortex lane.
+Generation/schema mismatch fails closed for that Blueprint lane.
 
 No relevant seed produces a typed abstention, not generic repository filler.
 
-Legacy flattened Cortex candidates remain only a bounded version-skew/rollback path during migration.
+Legacy flattened Blueprint candidates remain only a bounded version-skew/rollback path during migration.
 
 ## 10.2 Code-anchor resolution
 
@@ -1042,17 +1168,17 @@ inaccessible
 revoked
 ```
 
-but for a code anchor it obtains the resolution from Cortex.
+but for a code anchor it obtains the resolution from Blueprint.
 
 Membrane may decide:
 
 ```text
-Cortex says resolved/current   → eligible under policy
-Cortex says moved              → update current locator, preserve historical evidence identity
-Cortex says ambiguous          → cannot satisfy required exact evidence
-Cortex says missing            → treat as missing only when Cortex reports sufficient coverage
-Cortex says unsupported        → indeterminate / blind spot
-Cortex unavailable             → typed degraded Cortex lane
+Blueprint says resolved/current   → eligible under policy
+Blueprint says moved              → update current locator, preserve historical evidence identity
+Blueprint says ambiguous          → cannot satisfy required exact evidence
+Blueprint says missing            → treat as missing only when Blueprint reports sufficient coverage
+Blueprint says unsupported        → indeterminate / blind spot
+Blueprint unavailable             → typed degraded Blueprint lane
 ```
 
 Do not implement structural matching twice.
@@ -1087,7 +1213,7 @@ Provider identity remains provenance, not budget ontology.
 
 A memory item that satisfies a required prior-decision requirement can receive coverage-floor protection.
 
-A useless memory item receives no tokens merely because `provider == crypt`.
+A useless memory item receives no tokens merely because `provider == cortex`.
 
 ## 11.3 Promotion gate for lane removal
 
@@ -1124,7 +1250,7 @@ front:
 
 middle:
     current code evidence
-    Cortex circuits
+    Blueprint circuits
     documents
     prior decisions
     memory
@@ -1224,7 +1350,7 @@ sensitivity
 
 Repository source, README text, memory, generated docs, audit prose, and model output are data unless an external trusted policy grants instruction authority.
 
-A Cortex relationship does not upgrade source text into an instruction.
+A Blueprint relationship does not upgrade source text into an instruction.
 
 ## 14.2 DLP at both boundaries
 
@@ -1484,9 +1610,7 @@ Do not move thresholds to make a candidate pass.
 
 The sequence is deliberately core-first.
 
-Phases 0–8 produce the finished Membrane product.  
-Phases 9–10 are conditional breadth/experiments and are not completion prerequisites unless frozen evaluation proves the need.  
-Phase 11 qualifies the installed product.
+Phases 0–8 produce the finished Membrane product. Phase 9 qualifies the installed product. OUT mechanisms are not implementation phases.
 
 ## Phase 0 — Authority and frozen baseline
 
@@ -1502,7 +1626,7 @@ Do:
 - build context-quality fixtures;
 - freeze current latency/RSS/token/provider-call baseline;
 - inventory duplicate policy decisions;
-- freeze feature flags/experimental controls.
+- freeze feature flags/OUT controls.
 
 Gate:
 
@@ -1577,18 +1701,18 @@ Gate:
 - no starvation of required durable knowledge/skills;
 - global budget exact.
 
-## Phase 4 — Cortex bridge, RecallCircuit, and delegated resolution
+## Phase 4 — Blueprint bridge, RecallCircuit, and delegated resolution
 
-Goal: obtain complete repository evidence without duplicating Cortex.
+Goal: obtain complete repository evidence without duplicating Blueprint.
 
 Do:
 
 - prefer generation-bound RecallCircuit when available;
 - complete path → one atomic internal EvidenceUnit / V1 candidate adapter;
 - legacy flattened candidates only for rollback/version skew;
-- generation/schema fail closed for Cortex lane;
+- generation/schema fail closed for Blueprint lane;
 - no-seed abstention;
-- call Cortex-owned locate/re-anchor for code references;
+- call Blueprint-owned locate/re-anchor for code references;
 - remove end-state Membrane structural re-anchor ladder;
 - preserve memory-side resolution state and historical evidence identity.
 
@@ -1697,41 +1821,7 @@ Gate:
 - maintenance never blocks prompt path;
 - retained knowledge is inspectable.
 
-## Phase 9 — Conditional relations / curation expansion
-
-Not a prerequisite unless evaluation demonstrates a gap.
-
-Candidate work:
-
-- narrow evidence-backed relations;
-- aliases;
-- depth-1 bounded relation expansion;
-- more sophisticated session curation.
-
-Promote only when an ablation shows whole-task value.
-
-## Phase 10 — Gated experiments
-
-Not architecture backlog.
-
-Examples only when a frozen gap exists:
-
-- alternative diversity method;
-- retrieve/no-retrieve heuristic;
-- local reranker;
-- query expansion;
-- other adaptive retrieval mechanisms.
-
-Explicitly not pre-authorized:
-
-- community/PageRank/DRIFT graph platform;
-- HyDE by default;
-- automatic self-improvement;
-- remote vector/graph services;
-- multimedia ingestion pipeline;
-- general agent framework.
-
-## Phase 11 — Installed-product qualification
+## Phase 9 — Installed-product qualification
 
 Qualify supported hosts/platforms using current artifacts.
 
@@ -1754,6 +1844,8 @@ Require:
 
 No public capability is called shipped without installed-path proof.
 
+Experiments such as local cross-encoders, HyDE, generic query expansion, MMR as a default, community/PageRank/DRIFT retrieval, automatic self-improvement, remote vector/graph services and multimedia ingestion are OUT of this architecture. They require a future architecture decision rather than occupying a dormant implementation phase.
+
 ---
 
 # 20. Canonical file-level ownership map
@@ -1763,28 +1855,99 @@ Verify paths against current `main` before tickets.
 | Area | Current / target ownership |
 |---|---|
 | `engine/crates/membrane-protocol/src/types.rs` | public V1 protocol source of truth; version only deliberately |
-| `engine/crates/crypt-core/src/planner.rs` | current admission control; converge toward final planner policy without parallel planner |
+| `blueprint/schemas/**` | Blueprint wire-contract source of truth; consumer bindings are generated/validated projections |
+| `blueprint/src/sdk/**` | Blueprint SDK projection; must stay schema-equivalent |
+| `engine/crates/cortex-core/src/planner.rs` | current admission control; converge toward final planner policy without parallel planner |
 | `engine/crates/membrane-core/` | global budget/reconciliation/final policy primitives |
 | `engine/federation/gateway.py` | acquisition execution under one deadline; staged provider execution |
-| `engine/federation/context_plan.py` | if retained as file, implements requirement/capability plan, not single-label semantic authority |
-| `engine/federation/retrieval_evaluator.py` | if retained as file, computes evidence coverage for planner; not second policy owner |
-| `engine/federation/providers/cortex.py` | Cortex adapter only; RecallCircuit + typed resolution consumption |
-| `engine/federation/providers/crypt.py` | Crypt evidence adapter |
+| `engine/federation/evidence_requirements.py` | versioned monotonic signal→requirement derivation; no exclusive task classifier |
+| `engine/federation/evidence_coverage.py` | pure requirement-coverage computation consumed by the one planner; never a second policy owner |
+| `engine/federation/providers/blueprint.py` | Blueprint adapter only; RecallCircuit + typed resolution consumption |
+| `engine/federation/providers/cortex.py` | Cortex evidence adapter |
 | `engine/federation/providers/*` | evidence producers; no final budget/authority decisions |
-| `engine/crates/crypt-core/` | durable-memory retrieval/admission/lifecycle/conflict policy |
-| `engine/crates/crypt-store/` | canonical durable store + rebuildable projections |
+| `engine/crates/cortex-core/` | durable-memory retrieval/admission/lifecycle/conflict policy |
+| `engine/crates/cortex-store/` | canonical durable store + rebuildable projections |
 | `engine/crates/membrane-runtime/` | publication, Push/artifact/working context/runtime integration |
+| `engine/crates/membrane-runtime/src/{doc_spine,doc_projection,doc_shadow,doc_candidate_provider}.rs` | current Guide implementation under legacy Spine-era identifiers; document navigation/index only, not document truth or durable knowledge |
 | `mcp/server.mjs` | thin MCP surface |
 | `mcp/context-renderer-lib.cjs` | deterministic execution of planner-selected representation/layout; no hidden ranking |
 | `mcp/working-context.mjs` | bounded active working context; schema changes mirrored with Rust |
 | `schemas/*receipt*` | content-free explanations/reconciliation |
 | `docs/architecture.md` | generated only |
 | `docs/product.md` | generated only |
-| `docs/MEMBRANE-IMPLEMENTATION-GUIDE.md` | canonical implementation authority after adoption |
+| `docs/subsystems/MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md` | canonical Membrane architecture/implementation authority |
 | `tests/context-quality/` | frozen semantic/authority/safety fixtures |
 | qualification/evidence paths | installed-artifact proof |
 
 Do not add a new module until the tree is searched for an existing owner.
+
+
+## 20.1 Normative early implementation slice
+
+This is the file-exact core slice. The exact function bodies may evolve, but ownership and effects do not.
+
+### Planner / outcome substrate
+
+**Modify**
+- `engine/crates/cortex-core/src/planner.rs` — one final admission policy; consume requirement coverage and evidence-class floors; keep current reserved lanes as the frozen migration control until qualification.
+- `engine/federation/gateway.py` — one deadline, staged capability execution, content-free stage timing and degradation.
+- `mcp/server.mjs` — bind packet/receipt ids to explicit feedback and resolver events; no raw durable-memory CRUD.
+
+**Add**
+- `engine/federation/evidence_requirements.py` — versioned monotonic signal→requirement rules.
+- `engine/federation/evidence_coverage.py` — pure coverage computation; returns requirement states, never a second final policy decision.
+- focused tests beside both files covering multi-signal union, ambiguity broadening, and no exclusive-class suppression.
+
+### Blueprint seam
+
+**Rename / modify**
+- `engine/federation/providers/blueprint.py` — final name of the former repository-truth adapter.
+- use a long-lived Blueprint daemon client for the normal path;
+- request generation-bound `RecallCircuit`;
+- validate schema/generation before conversion;
+- convert one complete path into one atomic evidence unit/candidate;
+- obtain code-anchor resolution from Blueprint;
+- keep subprocess only as typed fallback.
+
+**Do not add**
+- Blueprint graph traversal;
+- Blueprint SQLite reads;
+- structural re-anchoring logic in Membrane.
+
+### Push
+
+**Modify**
+- `mcp/context-renderer-lib.cjs` — execute planner-selected representation/layout only.
+- host hook adapter(s) under `mcp/host/` — route rewrite-capable post-tool output through the common Push contract.
+- `membrane_source_read` path in `mcp/server.mjs` — exact/hash-bound reduction and resolver behavior.
+
+**Add/complete under `engine/crates/membrane-runtime/src/`**
+- artifact identity/store owner;
+- transform/reduction contract;
+- query-critical restore verifier;
+- token/byte balance accounting.
+
+### Protocol and rename discipline
+
+- Public Membrane V1 wire shapes stay stable.
+- Product rename alone does not justify V2.
+- Historical V1 field/reason/provider tokens are readable under an explicit rename ledger when required for compatibility.
+- New internal code/docs use `Blueprint` for repository truth and `Cortex` for durable knowledge.
+- A frozen legacy wire token never changes semantic meaning because a product name was reassigned.
+
+### Early gate
+
+The early slice is complete only when:
+
+1. multi-signal requirements are deterministic and unioned;
+2. broad fallback is exercised on ambiguity;
+3. outcome rows join to delivered candidate/packet ids;
+4. normal Blueprint recall uses the resident daemon;
+5. Blueprint generation mismatch fails closed;
+6. each complete RecallCircuit path stays atomic;
+7. the Membrane planner remains the only final policy owner;
+8. Push is exercised on at least one real tool/MCP result path;
+9. current V1 compatibility fixtures remain green.
 
 ---
 
@@ -1814,7 +1977,7 @@ staged sufficiency regresses
     → disable staging, preserve unified final planner
 
 RecallCircuit unavailable/version skew
-    → bounded legacy Cortex candidate adapter
+    → bounded legacy Blueprint candidate adapter
 
 evidence-class coverage floor regresses
     → retain current reserved-lane control
@@ -1834,9 +1997,9 @@ adaptive feature regresses
 
 ---
 
-# 22. Rejected / deferred scope
+# 22. OUT — excluded from the canonical architecture
 
-## Reject from canonical core
+## 22.1 Excluded mechanisms
 
 - second code parser/indexer;
 - second code re-anchor ladder;
@@ -1858,15 +2021,22 @@ adaptive feature regresses
 - multimedia ingestion as Membrane core;
 - automatic self-improvement.
 
-## Conditional only behind a measured gap
+## 22.2 Also OUT
 
-- local cross-encoder;
-- query expansion;
-- MMR alternative;
-- relation expansion variants;
-- more complex lifecycle curves;
-- more complex semantic summarization;
-- multimodal support if the product boundary itself changes through a new architecture decision.
+The following are OUT rather than dormant backlog:
+
+- local cross-encoder reranking;
+- generic LLM/query expansion in the prompt-critical path;
+- MMR as the canonical default;
+- generic relation-neighborhood retrieval expansion;
+- community detection, PageRank, DRIFT or spreading activation;
+- automatic self-improvement;
+- remote vector/graph services required for correctness;
+- multimedia ingestion/embedding pipelines;
+- peer-to-peer memory federation;
+- generic autonomous agent/runtime capabilities.
+
+A future measured gap may justify a new architecture decision. Until then these mechanisms are not implementation work.
 
 ---
 
@@ -1879,7 +2049,8 @@ It is done when the product purpose is mechanically true.
 ## 23.1 Product identity
 
 - [ ] Membrane is demonstrably a context control plane/compiler, not a memory platform or orchestrator.
-- [ ] Cortex, Crypt, Hub, and host boundaries are explicit and enforced.
+- [ ] Blueprint, Cortex, Guide, Adapt, and Push subsystem boundaries are explicit; Hub and host boundaries remain external/integration boundaries.
+- [ ] Physical co-location in the monorepo does not permit direct `engine/**`/`mcp/**` imports from `blueprint/src/**`.
 - [ ] One active implementation authority exists.
 - [ ] Current product docs regenerate from landed source.
 
@@ -1904,14 +2075,16 @@ It is done when the product purpose is mechanically true.
 - [ ] Delivered candidates can be joined to later use/ignore/contradiction/help signals.
 - [ ] Feedback never changes authority.
 - [ ] Any adaptive usefulness/lifecycle feature can cite the exact signal substrate it consumes.
+- [ ] `used`, `ignored`, `contradicted` and verified outcome states have explicit observation-strength rules; silence is never treated as use/ignore evidence.
 
-## 23.4 Cortex boundary
+## 23.4 Blueprint boundary
 
-- [ ] Cortex RecallCircuit is preferred when compatible.
+- [ ] Blueprint RecallCircuit is the normal structural repository-evidence unit when compatible.
 - [ ] Complete paths stay atomic.
-- [ ] Generation mismatch fails closed for Cortex.
-- [ ] No relevant seed emits no fake repository context.
-- [ ] Code anchor relocation/re-anchoring is delegated to Cortex.
+- [ ] Generation mismatch fails closed for Blueprint.
+- [ ] A `no_relevant_seed` Blueprint result emits no fake repository context.
+- [ ] Code anchor relocation/re-anchoring is delegated to Blueprint.
+- [ ] Normal Blueprint recall uses a persistent daemon client; subprocess use is typed fallback only.
 - [ ] Membrane contains no duplicate structural re-anchor implementation.
 - [ ] Unsupported/ambiguous/missing are not collapsed.
 - [ ] Repository evidence remains `data_only`.
@@ -2054,6 +2227,6 @@ PERSIST
 
 The core ownership rule is:
 
-> **Cortex determines repository evidence and repository truth. Crypt preserves durable knowledge. Providers produce typed evidence. Membrane determines what deserves the agent's attention now, in what form, under whose authority, and records exactly why.**
+> **Membrane is the parent context system. Blueprint determines repository evidence and repository truth. Cortex preserves durable knowledge. Guide navigates indexed documents. Adapt produces governed learning proposals. Push performs reversible reduction. The Membrane planner determines what deserves the agent's attention now, in what form, under whose authority, and records exactly why.**
 
 That is the canonical shape.

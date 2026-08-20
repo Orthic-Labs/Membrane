@@ -1,34 +1,57 @@
 # Adapt — Learning Loop
 
-**Status:** canonical subsystem doctrine · draft for adoption
-**Code today:** separate repo `/Volumes/D/claude/adapt` (Python) — to be subtree-merged as `adapt/`
-**Parent:** `docs/subsystems/SYSTEM.md`
+**Status:** derived subsystem reference · non-normative  
+**Canonical name:** Adapt  
+**Parent system:** Membrane  
+**Authority:** Membrane's canonical doctrine governs context policy, authority, influence, and Cortex admission. This file summarizes Adapt's subsystem boundary.
 
 ## Purpose
-Answer one question: **what should we have learned?** Turn experience (transcripts, observable events, outcomes) into *proposals* for durable knowledge. It is the only path by which experience becomes memory — and it goes through Cortex admission like everything else.
+
+Answer one question:
+
+> **What should we have learned?**
+
+Adapt turns experience — transcripts, observable events, and outcome evidence — into governed proposals for durable knowledge.
+
+Experience becomes durable knowledge only through Cortex admission.
 
 ## Owns
-- Transcript ingestion (Claude/Codex), canonicalization, provenance filter, origin quarantine.
-- **Taste:** durable-preference mining → immutable review manifest (accepted/rejected/pending) → conformance gate → transactional apply via Cortex. Ships.
-- **Insights:** 19 deterministic failure detectors over `TranscriptEventV1` → `FailureCardV1` (stable card id, evidence excerpt, honesty limit). Built; report-only today.
-- Learning outcomes / run journal / rollback.
+
+- Transcript/event ingestion, canonicalization, provenance filtering, and origin quarantine.
+- Taste-style durable-preference mining into reviewable proposals/manifests.
+- Insights-style deterministic failure detection into evidence-backed failure/gotcha proposals.
+- Learning-run audit/rollback metadata needed to explain what was proposed and why.
 
 ## Does not own
-Any store · any direct write · authority (only user-origin evidence can create preference authority) · context policy.
 
-## Public contract
-- Reads: transcripts on disk; Cortex observable events via the scoped read paths (`TasteUserOnly` for Taste, `InsightsFullStream` for Insights). Never intercepts live tokens.
-- Writes: **proposals only** into Cortex admission. Taste → `preference` records. Insights → `gotcha` records (`trigger, applies_to, avoid, prefer, severity, confidence, source, verification`).
-- Manifests are the audit/undo unit.
+- any canonical truth store;
+- direct durable writes;
+- final authority decisions;
+- final context/attention policy;
+- repository truth;
+- document indexing;
+- reduction.
+
+## Public seam
+
+- Reads only explicitly permitted transcript/event sources.
+- Emits proposals into Cortex admission.
+- Model-assisted extraction may propose; deterministic policy decides durable effects.
+- Adapt cannot upgrade influence/authority class.
+
+Physical repository placement is independent of semantic ownership. The Blueprint/Cortex monorepo migration plan does not decide whether Adapt's code is physically subtree-merged.
 
 ## Invariants
-1. Mining never writes; only an adjudicated manifest applies; apply is transactional with rollback.
-2. Insights states its limit in-product: only observable failure signals are detectable.
-3. Model-assisted extraction proposes; deterministic policy decides.
-4. Adapt cannot upgrade influence class; memory stays descriptive by default.
+
+1. Mining/proposal generation never bypasses Cortex admission.
+2. User-origin evidence is required before a preference can gain user-authoritative status.
+3. Observable failure detection states its evidence limits.
+4. Apply/adoption operations are auditable and reversible where supported.
+5. Adapt is a Membrane subsystem even if its implementation remains physically separate.
 
 ## Definition of Done
-- [ ] Repo merged as `adapt/`; CI runs its suite.
-- [ ] Insights → gotcha proposal path exists and is admission-gated; gotchas surface in the Planner when a planned action matches `trigger`.
-- [ ] README no longer says Insights is "deferred".
-- [ ] Doctor covers Adapt ↔ Cortex wiring.
+
+- [ ] Taste proposals remain evidence-backed and reviewable.
+- [ ] Insights/failure findings can become Cortex proposals through admission, never direct writes.
+- [ ] Learned gotchas/preferences surface only when Membrane policy deems them relevant and eligible.
+- [ ] Doctor/qualification covers the Adapt → Cortex proposal seam.

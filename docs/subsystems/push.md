@@ -1,33 +1,105 @@
 # Push — Reversible Reduction
 
-**Status:** canonical subsystem doctrine · draft for adoption
-**Code today:** `runc` / `skel` / `compress` inside the `crypt` crate; compress/spill store in `membrane-runtime` — **misplaced**
-**Parent:** `docs/subsystems/SYSTEM.md` · Membrane doctrine §9
+**Status:** derived subsystem reference · non-normative  
+**Canonical name:** Push  
+**Parent system:** Membrane  
+**Authority:** Membrane canonical doctrine §9 and its implementation phases.
 
 ## Purpose
-Answer one question: **how do we shrink what is already flowing to the agent without losing anything we might need back?**
+
+Answer one question:
+
+> **How can context already flowing toward the agent be made smaller without destroying anything the task may need back?**
+
+Push owns faithful reduction mechanics. The Membrane planner owns the final decision about whether a representation is admitted and which representation is selected.
 
 ## Owns
-- One transform contract; the ordered ladder: dedupe → content-address raw artifact → noise strip → structure-preserving reduction → extractive reduction → valid precomputed summary → resolver-backed ref → truncation last.
-- `ArtifactRefV1` content-addressed raw store (own store; regenerable by re-capture).
-- Query-critical verifier (identifiers, errors, test names, cited spans, policy text, tool-call/result pairs, diff header/hunk) with exact restore.
-- `TokenBalanceV1 { original ≥ materialized ≥ delivered, provider_billed }` + typed `skip_reason`.
-- Adoption telemetry: opportunities, executions, passthrough reasons, bytes avoided, restores, failures.
+
+- One transform/reduction contract.
+- Ordered reversible ladder:
+  1. exact dedupe;
+  2. content-address raw artifact;
+  3. deterministic noise removal;
+  4. structure-preserving reduction;
+  5. extractive faithful reduction;
+  6. valid precomputed provenance-bound summary when already available;
+  7. resolver-backed reference/metadata;
+  8. explicit truncation last.
+- Content-addressed recoverability artifacts.
+- Query-critical protected-span verification and exact restoration.
+- Token/byte balance accounting.
+- Adoption telemetry: opportunities, executions, passthrough reasons, bytes/tokens avoided, resolver refetches, restores, failures, task non-regression.
 
 ## Does not own
-Ranking or admission (Planner) · what is delivered (Planner) · memory (Cortex).
 
-## Public contract
-Interception points: (A) MCP/tool result egress — primary; (B) host post-tool hook where the host supports result rewriting (Claude Code does not; `additionalContext` only); (C) large source/file reads; (D) provider→planner payload cap; (E) final renderer executes the selected representation only.
+- final ranking/admission — Membrane planner;
+- the decision that a piece of evidence deserves attention — Membrane planner;
+- durable knowledge — Cortex;
+- repository truth — Blueprint;
+- document indexing — Guide.
+
+## Interception points
+
+### A. Tool/MCP result egress
+
+Primary portable integration point before a large result becomes rendered agent context.
+
+### B. Host post-tool rewrite
+
+When a host exposes a capability that can replace/reduce tool output before model consumption, the host adapter routes through the same Push contract.
+
+Adapters capability-probe this behavior. No host-specific rewrite capability is assumed universally.
+
+### C. Source/document reads
+
+Large reads may remain native, be exact-span excerpted, be structure-preserving reduced, or be externalized behind resolver-backed references.
+
+### D. Provider-to-planner acquisition boundary
+
+Providers may bound acquisition and externalize raw artifacts. They do not decide final attention.
+
+### E. Final renderer
+
+Executes only the planner-selected deterministic representation and final size enforcement. It does not invent ranking/policy.
+
+## Protected material
+
+At minimum:
+
+- identifiers;
+- exact errors/codes;
+- failing test names;
+- explicitly requested values;
+- cited spans;
+- policy/constraint text;
+- task entities;
+- tool-call/result integrity pairs;
+- decision/rationale integrity pairs;
+- diff headers/hunks.
+
+If required material is lost, restore it exactly from the raw artifact/resolver or return a typed incomplete/unachievable result.
 
 ## Invariants
-1. Never worse than raw; savings never claimed without a paired fidelity assertion.
-2. Protected spans survive or restore exactly; otherwise typed `budget_unachievable_with_protections`.
-3. No model call in the prompt-critical path to summarize.
-4. Artifact write fails → keep raw; reducer fails → less reduction; verifier uncertain → restore.
+
+1. No prompt-critical model call merely to summarize.
+2. Savings are never claimed without paired fidelity evidence.
+3. Reducer failure falls back toward less reduction/raw/resolver-backed delivery.
+4. Verifier uncertainty restores protected source material.
+5. Push never becomes a second planner.
+
+## Implementation ownership
+
+The canonical Membrane doctrine currently places Push/artifact/runtime integration under `engine/crates/membrane-runtime/`.
+
+Do not create a standalone `push` crate merely to make the subsystem name feel architecturally real. Split it only if an implementation reason independently justifies the boundary.
 
 ## Definition of Done
-- [ ] Extracted to `engine/crates/push/` before the Crypt→Cortex rename.
-- [ ] Wired at MCP egress and source reads; adoption measured on receipts (baseline 1-in-7).
-- [ ] Zero protected corruption on fixtures; raw resolvable.
-- [ ] `TokenBalanceV1` inequalities property-tested.
+
+- [ ] One transform contract is exercised on real MCP/tool egress.
+- [ ] Large source/document reads use the same reduction/recovery semantics where applicable.
+- [ ] Host post-tool rewrite is used only after capability probing.
+- [ ] Zero protected corruption on frozen fixtures.
+- [ ] Raw evidence remains resolvable.
+- [ ] Token/byte balance invariants are property-tested.
+- [ ] Push adoption is measured on real eligible events.
+- [ ] Task quality does not regress against raw control.

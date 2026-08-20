@@ -1,58 +1,85 @@
-# Cortex — Canonical Source of Truth
+# Blueprint — Canonical Source of Truth
 
 **Status:** Canonical · final architecture · implementation authority  
-**Repository:** `Orthic-Labs/Cortex`  
-**Architecture review baseline:** `bd46965d6738657db6ed95afad1dc622ce1c5b95`  
-**Tree:** `541046eebab5fca67e487ce87f88047626e414da`  
+**Repository:** `Orthic-Labs/Membrane`  
+**Subsystem path after monorepo migration:** `blueprint/`  
+**Standalone package:** `@orthic-labs/blueprint`  
+**Pre-merge evidence baseline:** former `Orthic-Labs/Cortex` at `bd46965d6738657db6ed95afad1dc622ce1c5b95`  
+**Companion Membrane evidence baseline:** `Orthic-Labs/Membrane` at `50e6bb22ab7518a98d3b5bc730c6913d338c7d21`  
 **Date:** 2026-08-19  
-**Supersedes:** `CORTEX_SOURCE_OF_TRUTH_REVISED.md` and all earlier Cortex absorption / implementation planning documents
+**Companion migration authority:** `2026-08-19-monorepo-merge-and-subsystem-rename.md` for physical merge/name migration only  
+**Supersedes:** `CORTEX_SOURCE_OF_TRUTH_REVISED.md`, `CORTEX_CANONICAL_SOURCE_OF_TRUTH.md`, and all earlier Cortex/Blueprint absorption or implementation planning documents
+
+**Naming:** `Blueprint` is the repository truth/evidence subsystem formerly named `Cortex`. The durable-knowledge subsystem formerly named `Crypt` is now named `Cortex`. Historical wire tokens remain readable only where a frozen protocol requires them; they do not change semantic ownership.
 
 ---
 
 ## 0. Authority
 
-This document is the single architectural and implementation authority for Cortex.
+This document is the single architectural and implementation authority for Blueprint.
 
 It defines:
 
-- what Cortex is;
-- what Cortex is not;
+- what Blueprint is;
+- what Blueprint is not;
 - the required end-state architecture;
 - the canonical ownership of each concern;
 - the required runtime and consumer seams;
 - the required implementation sequence;
-- the capabilities that are part of Cortex;
-- the capabilities that are excluded from Cortex;
+- the capabilities that are part of Blueprint;
+- the capabilities that are excluded from Blueprint;
 - the qualification gates that define completion.
 
 Earlier planning documents are provenance only. They may explain why a decision was considered, but they do not create requirements after this document is adopted.
 
 The repository remains the authority for current implementation reality. When the repository and this document diverge, the divergence is a defect: either the code must be brought back to this architecture or this document must be deliberately replaced in the same architectural decision.
 
-There are no hidden companion specifications. A missing external document is never a Cortex-local prerequisite.
+There are no hidden companion specifications. A missing external document is never a Blueprint-local prerequisite.
 
 ### 0.1 Binary architecture rule
 
 Every capability in this document is assigned a binary architectural state:
 
-- **IN** — required in the completed Cortex system;
-- **OUT** — excluded from Cortex.
+- **IN** — required in the completed Blueprint system;
+- **OUT** — excluded from Blueprint.
 
-An OUT capability does not become part of Cortex because an implementation agent finds it interesting, a competitor has it, or a library makes it easy. Adding an OUT capability requires a new canonical architectural decision that replaces the relevant decision here.
+An OUT capability does not become part of Blueprint because an implementation agent finds it interesting, a competitor has it, or a library makes it easy. Adding an OUT capability requires a new canonical architectural decision that replaces the relevant decision here.
 
 A capability marked IN is not complete because a stub, schema, flag, or unused module exists. It is complete only when its behavior, integration, failure semantics, measurement, and consumer path are qualified.
+
+### 0.2 Physical co-location does not change ownership
+
+Blueprint is one of the five named subsystems within the Membrane system. That product/system hierarchy does not make Blueprint an in-process module: Blueprint remains independently runnable and retains its own package, process, protocol, storage, watcher/service, testing, and qualification boundaries.
+
+Blueprint and Membrane share one repository so their seam can evolve atomically.
+
+They retain separate:
+
+- package and publish surfaces;
+- process/runtime boundaries;
+- protocol ownership;
+- SQLite stores;
+- watcher/service responsibilities;
+- tests and qualification;
+- semantic ownership.
+
+Membrane may consume Blueprint only through Blueprint-owned public protocol/service surfaces. `engine/**` and `mcp/**` do not import `blueprint/src/**`. Blueprint does not import Membrane engine internals.
+
+The sibling subsystem named Cortex is Membrane's durable-knowledge engine. Blueprint does not read or write the Cortex store and does not depend on Cortex memory semantics.
+
+> **Physical co-location does not imply semantic ownership.** Blueprint and Membrane share a repository so their seam can evolve atomically; they retain separate package, process, protocol, storage, testing, and responsibility boundaries.
 
 ---
 
 # 1. Product purpose
 
-Cortex is a local repository truth and evidence engine for agents and developer tooling.
+Blueprint is a local repository truth and evidence engine for agents and developer tooling.
 
 The core user interaction is:
 
-> Ask one task-shaped question about a repository and receive the smallest complete, fresh, evidence-backed answer Cortex can prove — including relevant relationships, source evidence, uncertainty, and disagreement between declared intent and current code.
+> Ask one task-shaped question about a repository and receive the smallest complete, fresh, evidence-backed answer Blueprint can prove — including relevant relationships, source evidence, uncertainty, and disagreement between declared intent and current code.
 
-Cortex exists to make repository understanding:
+Blueprint exists to make repository understanding:
 
 - more accurate than ad hoc grep/search;
 - cheaper than repeated model-driven exploration;
@@ -62,13 +89,13 @@ Cortex exists to make repository understanding:
 - sensitive to the current worktree, not only the last index;
 - capable of distinguishing what documentation declares from what the code currently does.
 
-Cortex is not primarily a graph database product. The graph is its canonical evidence substrate.
+Blueprint is not primarily a graph database product. The graph is its canonical evidence substrate.
 
-Cortex is not primarily a search product. Search is one seed mechanism.
+Blueprint is not primarily a search product. Search is one seed mechanism.
 
-Cortex is not primarily a documentation generator. Generated understanding is a derived view over evidence.
+Blueprint is not primarily a documentation generator. Generated understanding is a derived view over evidence.
 
-Cortex is not an agent harness. Agents consume Cortex.
+Blueprint is not an agent harness. Agents consume Blueprint.
 
 The completed product loop is:
 
@@ -88,15 +115,15 @@ agent or host action
 measured task outcome
 ```
 
-If Cortex builds an excellent graph but does not improve that loop, Cortex is not complete.
+If Blueprint builds an excellent graph but does not improve that loop, Blueprint is not complete.
 
 ---
 
 # 2. Architecture decisions — IN / OUT
 
-## 2.1 IN — required Cortex capabilities
+## 2.1 IN — required Blueprint capabilities
 
-The completed Cortex system includes all of the following:
+The completed Blueprint system includes all of the following:
 
 1. VCS-aware repository observation, dirty-worktree awareness, treeish/baseline inputs and deterministic discovery accounting.
 2. Stable repository, file, entity, occurrence, claim and evidence identity.
@@ -109,7 +136,7 @@ The completed Cortex system includes all of the following:
 9. One bounded graph traversal primitive.
 10. RecallCircuit as the canonical task-shaped retrieval/execution primitive.
 11. Complete evidence paths as the semantic recall unit.
-12. Deterministic ranking and result bounding owned by Cortex.
+12. Deterministic ranking and result bounding owned by Blueprint.
 13. Phase 2 claim verification, declared-vs-done truth, component synthesis and flow synthesis.
 14. Explicit fact-to-claim truth binding.
 15. Typed contradictions, stale declarations, unsupported declarations, ambiguous declarations and citation failures.
@@ -118,9 +145,9 @@ The completed Cortex system includes all of the following:
 18. Lower-authority co-change evidence for change reasoning.
 19. Explainable change risk composed from named evidence-backed factors.
 20. Task-scoped admission/orientation decisions that consume recall and truth.
-21. A resident Cortex service daemon as the primary machine-to-machine query path.
+21. A resident Blueprint service daemon as the primary machine-to-machine query path.
 22. CLI, SDK, MCP and legacy-candidate adapters over the same application behavior.
-23. A watcher/freshness subsystem owned by Cortex but separate from query serving.
+23. A watcher/freshness subsystem owned by Blueprint but separate from query serving.
 24. Incremental builds proven semantically equivalent to full builds.
 25. Crash-safe generation publication, last-known-good recovery and provider isolation.
 26. Security boundaries for repository text, paths, external processes, configuration and data export.
@@ -128,21 +155,22 @@ The completed Cortex system includes all of the following:
 28. Frozen correctness benchmarks, query-plan benchmarks, resource benchmarks and agent-outcome evaluation.
 29. Product SLOs and release ratchets.
 30. Generated architecture/understanding artifacts as disposable, evidence-cited views — never as truth stores.
+31. Bounded cross-repository federation of independently scoped repository slices with independent `repoId`, generation, omissions and receipts.
 
-## 2.2 OUT — excluded from Cortex
+## 2.2 OUT — excluded from Blueprint
 
-The following are not part of the canonical Cortex architecture:
+The following are not part of the canonical Blueprint architecture:
 
 1. A second production graph/store backend.
 2. A generic graph database abstraction intended to support Neo4j, Kùzu, FalkorDB, RocksDB or other production stores.
-3. Vector/embedding retrieval as a Cortex retrieval lane.
+3. Vector/embedding retrieval as a Blueprint retrieval lane.
 4. Learned rankers.
-5. Spectral clustering, graph communities or PageRank-like global ML substitutes for evidence.
+5. Spectral clustering, graph communities, PageRank/centrality ranking — global or local — as a production evidence-priority mechanism.
 6. Model-driven graph traversal.
 7. LLM extraction that can create observed code facts.
 8. LLM-generated facts that can override deterministic evidence.
 9. Live language-server or compiler process invocation as a required query/build dependency.
-10. A generic LSP runtime inside Cortex.
+10. A generic LSP runtime inside Blueprint.
 11. A full CodeQL/Joern-style program analysis platform.
 12. General statement-level taint/dataflow analysis.
 13. A generic structural query language.
@@ -163,6 +191,7 @@ The following are not part of the canonical Cortex architecture:
 28. Popularity telemetry as ranking authority.
 29. Cross-machine mutable graph sharing.
 30. Generic generated wikis as an authoritative source.
+31. Semantic/hybrid additive weighted ranking that lets vector similarity, centrality or other soft scores compensate for weaker evidence.
 
 If evidence later shows one of these capabilities is necessary, the correct action is an architectural revision, not a hidden sidecar implementation.
 
@@ -170,9 +199,9 @@ If evidence later shows one of these capabilities is necessary, the correct acti
 
 # 3. System boundary
 
-## 3.1 Cortex owns
+## 3.1 Blueprint owns
 
-Cortex owns:
+Blueprint owns:
 
 - repository/source observation;
 - source identity;
@@ -208,9 +237,9 @@ Cortex owns:
 - service/CLI/SDK/MCP contracts;
 - qualification of its own product value.
 
-## 3.2 Cortex does not own
+## 3.2 Blueprint does not own
 
-Cortex does not own:
+Blueprint does not own:
 
 - the caller's final context selection;
 - final prompt rendering;
@@ -230,9 +259,9 @@ The primary end-state contract is:
 
 ```text
 caller / Membrane / host
-    → task-shaped Cortex request
+    → task-shaped Blueprint request
 
-Cortex resident service
+Blueprint resident service
     → generation-bound RecallCircuit
     → truth findings
     → change/admission information when requested
@@ -244,7 +273,9 @@ caller / Membrane / host
     → executes the agent/tool action
 ```
 
-Cortex and Membrane remain separate systems.
+Blueprint remains an independently bounded subsystem within the Membrane system.
+
+The parent-system relationship does not collapse runtime or semantic boundaries.
 
 They do not share a store.
 
@@ -253,6 +284,23 @@ They do not duplicate ranking policy.
 They do not duplicate traversal policy.
 
 They do not merge memory semantics.
+
+## 3.4 Cross-repository federation
+
+Cross-repository use is IN only as bounded federation of independent repository slices.
+
+Each repository retains:
+
+- its own graph generation;
+- its own `repoId`;
+- its own freshness state;
+- its own evidence identities;
+- its own omissions and coverage;
+- its own receipt boundary.
+
+A caller may request several independently scoped slices and combine them at the consumer layer. Blueprint does not raw-merge node spaces, collapse identities across repositories, compute cross-repository PageRank/centrality, or create a shared mutable graph.
+
+When Membrane is the consumer, Membrane owns the cross-repository attention decision.
 
 ---
 
@@ -278,9 +326,9 @@ These are architectural invariants, not tuning suggestions.
 16. Partial independent successes survive independent failures.
 17. Historical evidence never mutates current truth.
 18. Generated understanding never becomes observed truth.
-19. Cortex traverses the graph; the model does not infer missing hops.
+19. Blueprint traverses the graph; the model does not infer missing hops.
 20. Complete evidence paths outrank disconnected high-scoring fragments.
-21. Cortex may bound its own output but does not own final prompt budgeting.
+21. Blueprint may bound its own output but does not own final prompt budgeting.
 22. There is one canonical owner for each semantic concern.
 23. Adapters may translate contracts; they may not duplicate policy.
 24. Incremental execution may reduce work; it may never reduce soundness.
@@ -295,7 +343,7 @@ These are architectural invariants, not tuning suggestions.
 
 # 5. Canonical architecture
 
-Cortex is organized as interacting planes, not one linear pipeline.
+Blueprint is organized as interacting planes, not one linear pipeline.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -438,7 +486,7 @@ The required migration is:
 
 ## 7.1 One provider system
 
-Cortex currently contains two overlapping provider concepts:
+Blueprint currently contains two overlapping provider concepts:
 
 - extraction/provider logic under `src/graph/`;
 - a newer capability/permission provider system under `src/providers/` and `src/sdk/providers.mjs`.
@@ -487,7 +535,7 @@ ProviderResult {
 }
 ```
 
-Capabilities include the semantic operations Cortex actually uses:
+Capabilities include the semantic operations Blueprint actually uses:
 
 ```text
 definitions
@@ -510,7 +558,7 @@ A provider must explicitly report a capability as supported or unsupported. Miss
 
 ## 7.3 Required provider families
 
-The completed Cortex system contains:
+The completed Blueprint system contains:
 
 - deterministic lexical extraction;
 - Tree-sitter structural extraction;
@@ -519,7 +567,7 @@ The completed Cortex system contains:
 - schema/IaC providers that emit deterministic repository evidence;
 - rules/document providers that emit declarations/claims with source evidence.
 
-Cortex does not require live compiler or LSP processes.
+Blueprint does not require live compiler or LSP processes.
 
 SCIP is the exact-analysis upgrade path where an index exists.
 
@@ -534,7 +582,7 @@ The trusted provider path defaults to:
 - explicit timeouts;
 - typed crash/hang/cancel outcomes.
 
-A provider that requires behavior outside that trust boundary is not part of canonical Cortex.
+A provider that requires behavior outside that trust boundary is not part of canonical Blueprint.
 
 ---
 
@@ -566,7 +614,7 @@ A failed or cancelled build never replaces the last-known-good generation.
 
 ## 8.2 Identity
 
-Cortex distinguishes:
+Blueprint distinguishes:
 
 ```text
 repository identity
@@ -635,7 +683,7 @@ Provenance is set-valued. Independent evidence is preserved rather than overwrit
 
 ## 8.4 Source address and span
 
-Cortex uses one source-address grammar and one span algebra.
+Blueprint uses one source-address grammar and one span algebra.
 
 A reusable span records:
 
@@ -695,13 +743,13 @@ Rules:
 
 ## 9.2 Language/module semantics
 
-Cortex supports the exact module semantics required for the languages it claims at each declared capability level.
+Blueprint supports the exact module semantics required for the languages it claims at each declared capability level.
 
 The provider capability matrix is the product truth.
 
-Cortex does not pretend that one universal import/MRO heuristic works across languages.
+Blueprint does not pretend that one universal import/MRO heuristic works across languages.
 
-Where a language/provider cannot prove a semantic relationship, Cortex reports the lower capability rather than guessing.
+Where a language/provider cannot prove a semantic relationship, Blueprint reports the lower capability rather than guessing.
 
 ## 9.3 SCIP
 
@@ -749,7 +797,7 @@ Every public answer includes generation and freshness state.
 
 An edit followed immediately by a query must not silently return "fresh" old evidence.
 
-Cortex achieves honest edit→query behavior through:
+Blueprint achieves honest edit→query behavior through:
 
 - dirty overlay awareness;
 - bounded read-repair/freshness verification;
@@ -793,7 +841,7 @@ Required proof includes:
 - 1/10/100-file changes;
 - repeated no-op builds.
 
-Tree-sitter subtree changed-range optimization is OUT. Cortex uses deterministic file/entity-level incremental invalidation and closure repair rather than introducing a second correctness path whose value has not been established.
+Tree-sitter subtree changed-range optimization is OUT. Blueprint uses deterministic file/entity-level incremental invalidation and closure repair rather than introducing a second correctness path whose value has not been established.
 
 ---
 
@@ -828,7 +876,7 @@ Critical seed/traversal SQL paths are protected by `EXPLAIN QUERY PLAN` tests.
 
 ## 12.1 Purpose
 
-RecallCircuit is Cortex's canonical query execution primitive.
+RecallCircuit is Blueprint's canonical query execution primitive.
 
 It replaces:
 
@@ -869,7 +917,7 @@ generation-valid node/entity IDs
 
 Task text is not converted into an unbounded wildcard scan.
 
-Unknown vocabulary does not justify a vector lane. Cortex uses its indexed lexical, structural, documentation, component/flow and graph evidence.
+Unknown vocabulary does not justify a vector lane. Blueprint uses its indexed lexical, structural, documentation, component/flow and graph evidence.
 
 ## 12.3 Policies
 
@@ -956,11 +1004,13 @@ No ranking signal may convert unresolved to exact.
 
 No ranking signal may cross an admission boundary.
 
-No learned ranker exists in Cortex.
+No learned ranker exists in Blueprint.
+
+No vector similarity, hybrid weighted sum, PageRank or centrality score exists in the canonical RecallCircuit ranking path. Current semantic/hybrid ranking stubs and local-PageRank neighborhood ranking are migration residue and are removed under §27.
 
 ## 12.7 Bounds
 
-Cortex owns the size of the evidence structure it returns.
+Blueprint owns the size of the evidence structure it returns.
 
 When a cap binds:
 
@@ -973,7 +1023,7 @@ complete high-authority path
 
 Omissions are reported by reason.
 
-Cortex does not reserve answer tokens or decide the caller's final prompt layout.
+Blueprint does not reserve answer tokens or decide the caller's final prompt layout.
 
 ---
 
@@ -1042,7 +1092,7 @@ The truth-binding owner is responsible for:
 
 ## 13.5 Declared-vs-done
 
-Cortex preserves both sides:
+Blueprint preserves both sides:
 
 ```text
 declared intent
@@ -1067,7 +1117,7 @@ Component/flow synthesis is a derived evidence-backed layer.
 
 Every synthesized component or flow must expose the evidence from which it was derived.
 
-If Cortex cannot support a synthesized relationship with evidence, it is omitted or marked unsupported.
+If Blueprint cannot support a synthesized relationship with evidence, it is omitted or marked unsupported.
 
 Generated `architecture.md` / understanding views are read surfaces over the derived state. They are never the canonical truth store.
 
@@ -1087,11 +1137,60 @@ A model judgment remains `derived`.
 
 The absence/failure of a judgment provider produces a typed incomplete Phase 2 result; it does not change Phase 1 truth.
 
+## 13.8 Phase 2 judgment execution contract
+
+Phase 2 execution is bounded and explicit.
+
+The deterministic substrate:
+
+1. pins one sealed Phase 1 generation;
+2. identifies the claims/dimensions whose inputs changed;
+3. builds the exact evidence pack for each judgment;
+4. computes input fingerprints;
+5. reuses only judgments whose fingerprints remain valid.
+
+Fresh judgment is executed by exactly one configured Phase 2 judgment provider for that run. The provider may be a local or remote model/provider, but it is never allowed to inspect arbitrary repository state outside the supplied evidence pack.
+
+The execution owner is the Blueprint application/service layer. It is reachable through:
+
+```text
+Blueprint service
+    phase2 plan
+    phase2 verify
+    phase2 synthesize
+    phase2 seal
+```
+
+and through equivalent explicit CLI commands for standalone/offline operation.
+
+Every invocation is bounded by:
+
+- absolute deadline;
+- maximum claims/dimensions per run;
+- maximum input evidence bytes/tokens;
+- provider/model allowlist;
+- maximum retry count;
+- cancellation;
+- structured output schema.
+
+Failure states are typed:
+
+```text
+judgment_provider_unavailable
+judgment_timeout
+judgment_cancelled
+judgment_invalid_output
+judgment_budget_exhausted
+judgment_incomplete
+```
+
+A failed or absent judgment produces incomplete Phase 2 output with receipts. It never creates Phase 1 facts, never silently reuses stale judgments, and never blocks deterministic Phase 1 publication.
+
 ---
 
 # 14. Change intelligence
 
-Cortex includes change reasoning because the consumer is an agent that edits code.
+Blueprint includes change reasoning because the consumer is an agent that edits code.
 
 ## 14.1 Change seeds
 
@@ -1136,7 +1235,7 @@ Zero inbound edges are not dead-code proof.
 
 ## 14.4 Test selection
 
-Cortex returns `recommendedTestSet`, never "minimal tests" without proof.
+Blueprint returns `recommendedTestSet`, never "minimal tests" without proof.
 
 The result includes:
 
@@ -1181,7 +1280,7 @@ History is included, but it is evidence, not current truth.
 
 ## 15.1 Required history capabilities
 
-Cortex supports:
+Blueprint supports:
 
 - named sealed generations;
 - named Git treeishes;
@@ -1212,9 +1311,9 @@ Lifecycle timestamps are used only for records whose own lifecycle requires them
 
 ## 16.1 Purpose
 
-Admission is Cortex's task/change decision surface.
+Admission is Blueprint's task/change decision surface.
 
-Cortex answers:
+Blueprint answers:
 
 > Given this task, repository state, requested scope and relevant truth, is the evidence state sufficient to proceed, does scope need expansion, or is there an evidence-backed reason to block?
 
@@ -1259,7 +1358,7 @@ Task orientation can therefore include:
 
 ## 16.4 Blocking semantics
 
-Cortex may return `block` for evidence-backed conditions such as:
+Blueprint may return `block` for evidence-backed conditions such as:
 
 - missing/incomplete graph;
 - generation mismatch;
@@ -1272,7 +1371,7 @@ Informational contradictions do not automatically become policy.
 
 The host owns whether an admission action is enforced in the editor, shell, CI or agent runtime.
 
-Cortex returns the decision.
+Blueprint returns the decision.
 
 The host enforces it.
 
@@ -1282,7 +1381,7 @@ The host enforces it.
 
 ## 17.1 Resident service is primary
 
-The primary machine-to-machine Cortex path is the resident service daemon.
+The primary machine-to-machine Blueprint path is the resident service daemon.
 
 The daemon owns:
 
@@ -1310,7 +1409,7 @@ The watcher owns:
 
 The daemon owns queries.
 
-The watcher and daemon may share lifecycle under `cortex service run`, but they remain separate responsibilities.
+The watcher and daemon may share lifecycle under `blueprint service run`, but they remain separate responsibilities.
 
 ## 17.3 Required daemon methods
 
@@ -1331,6 +1430,8 @@ build
 
 `recall` is a first-class protocol method.
 
+Blueprint-owned wire schemas are canonical under `blueprint/schemas/**` after the monorepo migration. SDK/type bindings and any consumer-side generated bindings are projections of those schemas, not independent contract authorities.
+
 ## 17.4 Application service
 
 `src/lib/application/service.mjs` is the canonical public application behavior.
@@ -1343,19 +1444,19 @@ Business/query policy is not copied into transport adapters.
 
 CLI remains a supported human/machine adapter.
 
-`scripts/cortex-recall.mjs` is a lean command-line adapter over the canonical recall behavior.
+`scripts/blueprint-recall.mjs` is a lean command-line adapter over the canonical recall behavior.
 
-`scripts/cortex-candidates.mjs` remains only as a compatibility adapter and must flatten/translate RecallCircuit rather than maintain an independent candidate algorithm.
+`scripts/blueprint-candidates.mjs` remains only as a compatibility adapter and must flatten/translate RecallCircuit rather than maintain an independent candidate algorithm.
 
 There is one recall implementation.
 
 ## 17.6 Membrane seam
 
-Membrane's primary Cortex path is:
+Membrane's primary Blueprint path is:
 
 ```text
 Membrane
-→ persistent Cortex daemon client
+→ persistent Blueprint daemon client
 → recall
 → RecallCircuit
 ```
@@ -1366,7 +1467,7 @@ The subprocess path is the compatibility fallback for:
 - version skew;
 - explicit standalone execution.
 
-The end state does not spawn a new Node process for every normal Cortex query.
+The end state does not spawn a new Node process for every normal Blueprint query.
 
 The seam remains generation-pinned and fail-closed on mismatch.
 
@@ -1379,7 +1480,7 @@ The seam remains generation-pinned and fail-closed on mismatch.
 All bounded application responses converge on a result envelope equivalent to:
 
 ```text
-CortexResult<T> {
+BlueprintResult<T> {
   invocation {
     status: ok | partial | failed | cancelled
     generation
@@ -1447,9 +1548,9 @@ Retryability and partial-result availability are fields, not guessed from prose.
 
 # 19. Diagnostics and doctor
 
-Cortex diagnostics answer:
+Blueprint diagnostics answer:
 
-> What can Cortex currently prove about this repository, and exactly where are the blind spots?
+> What can Blueprint currently prove about this repository, and exactly where are the blind spots?
 
 Doctor reports findings, not only counts.
 
@@ -1502,7 +1603,7 @@ They obey:
 - hand-edit detection;
 - stale output reconciliation.
 
-Generated files are never imported back as authoritative evidence merely because Cortex generated them.
+Generated files are never imported back as authoritative evidence merely because Blueprint generated them.
 
 The canonical truth remains the evidence graph plus receipt-backed derived truth state.
 
@@ -1510,7 +1611,7 @@ The canonical truth remains the evidence graph plus receipt-backed derived truth
 
 # 21. Security and trust boundary
 
-Cortex is local-first and treats repository content as untrusted input.
+Blueprint is local-first and treats repository content as untrusted input.
 
 Required controls:
 
@@ -1556,7 +1657,7 @@ Verification before adoption includes:
 
 Recovery distinguishes lock/race from corruption.
 
-Cortex exhausts a bounded retry/recovery path before destructive rebuild.
+Blueprint exhausts a bounded retry/recovery path before destructive rebuild.
 
 Durable operation state records enough information to recover or report the interrupted operation.
 
@@ -1568,11 +1669,11 @@ Cancellation reaches long provider loops and is awaited before cleanup.
 
 # 23. Product measurement and SLOs
 
-Measurement is part of the architecture because Cortex is an agent tool.
+Measurement is part of the architecture because Blueprint is an agent tool.
 
 ## 23.1 Frozen evaluation
 
-Cortex maintains frozen fixture repositories and task corpora with:
+Blueprint maintains frozen fixture repositories and task corpora with:
 
 - checksums;
 - pinned upstream SHAs;
@@ -1635,7 +1736,7 @@ Required metrics include:
 
 ## 23.5 Product SLO file
 
-Before release, Cortex maintains a versioned `evals/slo.json` (or one equivalently canonical SLO artifact) containing numeric acceptance targets for the frozen reference hardware and fixture scales.
+Before release, Blueprint maintains a versioned `evals/slo.json` (or one equivalently canonical SLO artifact) containing numeric acceptance targets for the frozen reference hardware and fixture scales.
 
 A release cannot be declared complete without numeric targets.
 
@@ -1670,23 +1771,23 @@ The subprocess path is not accepted as the normal performance baseline after dae
 
 ## 23.7 Agent outcome gate
 
-Cortex maintains an A/B harness:
+Blueprint maintains an A/B harness:
 
 ```text
 same task corpus
 same model
 same starting repository
-same tool policy except Cortex availability
+same tool policy except Blueprint availability
 
-A: no Cortex
-B: Cortex
+A: no Blueprint
+B: Blueprint
 ```
 
 Measure:
 
 - task accuracy;
 - input tokens;
-- Cortex calls;
+- Blueprint calls;
 - total tool calls;
 - wall-clock;
 - citation fidelity;
@@ -1771,9 +1872,9 @@ It must consume canonical RecallCircuit + truth findings.
 
 ## 24.7 Phantom seam dependency
 
-No Cortex rule may claim a missing `docs/plans/orthic/SEAM-CONTRACT.md` is a required local dependency.
+No Blueprint rule may claim a missing `docs/plans/orthic/SEAM-CONTRACT.md` is a required local dependency.
 
-Cortex's side of every consumer seam is specified in-repo.
+Blueprint's side of every consumer seam is specified in-repo.
 
 ## 24.8 Generated architecture truth
 
@@ -1784,6 +1885,8 @@ Completion requires the Phase 2 implementation and qualification in this documen
 ---
 
 # 25. Canonical file ownership
+
+All Blueprint-internal paths in this document are subsystem-relative. In the monorepo, prefix them with `blueprint/`.
 
 One semantic concern has one canonical owner.
 
@@ -1813,9 +1916,9 @@ One semantic concern has one canonical owner.
 | public application API | `src/lib/application/service.mjs` |
 | daemon | `src/service/**` |
 | watcher | watcher subsystem; no query policy |
-| CLI | `scripts/cortex.mjs`, lean adapters |
+| CLI | `scripts/blueprint.mjs`, lean adapters |
 | MCP | MCP adapter only |
-| candidate compatibility | `scripts/cortex-candidates.mjs` translating RecallCircuit |
+| candidate compatibility | `scripts/blueprint-candidates.mjs` translating RecallCircuit |
 | security/redaction/path confinement | `src/lib/**` security owners |
 | generated artifacts | generated-artifact owner |
 | qualification | `tests/**`, `evals/**`, `bench/**` |
@@ -1905,27 +2008,7 @@ Exit:
 - no model performs graph traversal;
 - legacy candidate logic is no longer independent.
 
-## Train D — full Phase 2 understanding
-
-Deliver:
-
-- claim ingestion/evaluation;
-- contradiction/staleness/unsupported/ambiguity findings;
-- component synthesis;
-- flow synthesis;
-- architecture understanding;
-- evidence-cited generated views;
-- Phase 2 provider receipts;
-- invalidation from Phase 1 evidence changes.
-
-Exit:
-
-- generated architecture/component/flow views are populated on the frozen corpus;
-- every synthesized statement has evidence;
-- Phase 2 failure cannot corrupt Phase 1;
-- declared-vs-done fidelity benchmark is green.
-
-## Train E — resident seam + admission
+## Train D — resident seam + admission
 
 Deliver:
 
@@ -1944,6 +2027,30 @@ Exit:
 - resident path beats subprocess path;
 - admission uses no independent ranking/candidate policy;
 - host-enforcement boundary is preserved.
+
+## Train E — full Phase 2 understanding
+
+Deliver:
+
+- claim ingestion/evaluation;
+- contradiction/staleness/unsupported/ambiguity findings;
+- component synthesis;
+- flow synthesis;
+- architecture understanding;
+- evidence-cited generated views;
+- Phase 2 provider receipts;
+- invalidation from Phase 1 evidence changes;
+- bounded Phase 2 execution owner in the application/service layer;
+- exact evidence-pack construction;
+- provider/model allowlist and schema validation;
+- typed timeout/unavailable/invalid-output/incomplete states.
+
+Exit:
+
+- generated architecture/component/flow views are populated on the frozen corpus;
+- every synthesized statement has evidence;
+- Phase 2 failure cannot corrupt Phase 1;
+- declared-vs-done fidelity benchmark is green.
 
 ## Train F — change and history intelligence
 
@@ -2020,7 +2127,7 @@ Exit:
 
 After migration and qualification, remove or neutralize the following duplicate semantics:
 
-- independent candidate ranking in `cortex-candidates`;
+- independent candidate ranking in `blueprint-candidates`;
 - candidate planning inside `src/sources`;
 - provider registration duplicated under graph and provider trees;
 - provider-specific resolution finalization;
@@ -2030,7 +2137,10 @@ After migration and qualification, remove or neutralize the following duplicate 
 - opaque truncation;
 - duplicate evidence/result shapes;
 - any missing-file seam prerequisite;
-- any generated document treated as authoritative truth.
+- any generated document treated as authoritative truth;
+- `src/providers/ranking/semantic.mjs` and the semantic vector retrieval lane;
+- `src/providers/ranking/hybrid.mjs` as an additive weighted ranking algorithm;
+- local PageRank/centrality ranking in neighborhood/recall production paths, replaced by evidence tier, path completeness, exactness, coverage and bounded hop ordering.
 
 Compatibility adapters may remain only when they call canonical owners.
 
@@ -2038,7 +2148,7 @@ Compatibility adapters may remain only when they call canonical owners.
 
 # 28. Definition of Done
 
-Cortex is complete only when every item below is true.
+Blueprint is complete only when every item below is true.
 
 ## 28.1 Evidence and graph
 
@@ -2087,7 +2197,7 @@ Cortex is complete only when every item below is true.
 - [ ] Ranking is deterministic and non-compensatory.
 - [ ] No learned/vector ranking path exists.
 - [ ] No model performs graph traversal.
-- [ ] `cortex-candidates` has no independent recall algorithm.
+- [ ] `blueprint-candidates` has no independent recall algorithm.
 
 ## 28.5 Truth / understanding
 
@@ -2100,6 +2210,7 @@ Cortex is complete only when every item below is true.
 - [ ] Architecture understanding is evidence-backed.
 - [ ] Generated understanding is derived, not truth.
 - [ ] Phase 2 receipts bind judgment to provider/version/generation/input evidence.
+- [ ] Phase 2 judgment execution is bounded, schema-validated, deadline/cancellation aware, and reachable through the canonical service/application owner.
 - [ ] Recall can return relevant truth findings on the main consumer path.
 
 ## 28.6 Change / history
@@ -2120,7 +2231,7 @@ Cortex is complete only when every item below is true.
 - [ ] Decisions are allow/continue/block/noop with reason codes.
 - [ ] Receipts bind task/repo/generation/scope/evidence.
 - [ ] Missing/ambiguous/unsafe evidence can block when the contract requires it.
-- [ ] Cortex does not enforce host behavior.
+- [ ] Blueprint does not enforce host behavior.
 
 ## 28.8 Runtime
 
@@ -2164,6 +2275,10 @@ Cortex is complete only when every item below is true.
 
 - [ ] Every concern has one canonical owner.
 - [ ] No OUT capability exists in the production architecture.
+- [ ] No semantic/vector retrieval provider remains in the production Blueprint tree.
+- [ ] No additive hybrid weighted ranker remains in the production Blueprint tree.
+- [ ] No PageRank/centrality ranking participates in production recall/neighborhood admission.
+- [ ] Cross-repository federation returns independently scoped slices and never a merged node space.
 - [ ] No duplicate store, provider system, recall algorithm, ranking policy or truth system exists.
 - [ ] No hidden prerequisite points to a missing file.
 - [ ] No IN capability exists only as an unused module/schema.
@@ -2174,46 +2289,46 @@ Cortex is complete only when every item below is true.
 # 29. Final architecture statement
 
 ```text
-Cortex observes repository state deterministically.
+Blueprint observes repository state deterministically.
 
-Cortex records what it saw, what produced it, how fresh it is,
+Blueprint records what it saw, what produced it, how fresh it is,
 and what it could not prove.
 
-Cortex preserves identity conservatively.
+Blueprint preserves identity conservatively.
 
-Cortex resolves exact-first and fails closed on ambiguity.
+Blueprint resolves exact-first and fails closed on ambiguity.
 
-Cortex stores one local generation-bound evidence graph in SQLite.
+Blueprint stores one local generation-bound evidence graph in SQLite.
 
-Cortex traverses that graph itself.
+Blueprint traverses that graph itself.
 
-Cortex returns complete evidence paths through RecallCircuit.
+Blueprint returns complete evidence paths through RecallCircuit.
 
-Cortex binds declarations to code evidence explicitly.
+Blueprint binds declarations to code evidence explicitly.
 
-Cortex reports where declared intent and current implementation disagree.
+Blueprint reports where declared intent and current implementation disagree.
 
-Cortex synthesizes components and flows only as evidence-backed derived understanding.
+Blueprint synthesizes components and flows only as evidence-backed derived understanding.
 
-Cortex understands diffs, failures, impact, tests, liveness and history
+Blueprint understands diffs, failures, impact, tests, liveness and history
 because its consumer is an agent that changes code.
 
-Cortex uses a resident service for repeated agent queries.
+Blueprint uses a resident service for repeated agent queries.
 
-Cortex makes admission decisions from the same recall and truth primitives,
+Blueprint makes admission decisions from the same recall and truth primitives,
 while the host owns enforcement.
 
-Cortex treats historical evidence as evidence, not current truth.
+Blueprint treats historical evidence as evidence, not current truth.
 
-Cortex exposes uncertainty, omissions and partial failure as data.
+Blueprint exposes uncertainty, omissions and partial failure as data.
 
-Cortex does not own prompt assembly, memory, orchestration, model selection,
+Blueprint does not own prompt assembly, memory, orchestration, model selection,
 code rewriting or host enforcement.
 
-Cortex contains no vector retrieval, learned ranker, second graph backend,
+Blueprint contains no vector retrieval, additive hybrid/learned ranker, PageRank/centrality production ranking, second graph backend,
 generic LSP/compiler runtime, deep taint engine, rewrite DSL or merged
 cross-repository graph.
 
-Cortex is complete only when it measurably improves agent work at equal or
+Blueprint is complete only when it measurably improves agent work at equal or
 better correctness — not merely when the graph is sophisticated.
 ```

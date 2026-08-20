@@ -1,154 +1,116 @@
 # Membrane — System Map
 
-**Status:** canonical system map · one page · the only place the subsystem list lives
-**Date:** 2026-08-19
-**Rule:** a subsystem owns a store, a process, or a public contract. Anything else is a module of one. New subsystems require an edit to this file.
+**Status:** derived system map · non-normative  
+**Date:** 2026-08-20  
+**Parent system:** Membrane  
+**Authority:** this file summarizes the canonical Membrane doctrine, Blueprint SSOT, and monorepo/rename migration plan. If it conflicts with one of those three authorities, the authority wins.
 
-Detailed doctrine per subsystem lives in `docs/subsystems/<name>.md`. Those docs share one shape: purpose · owns / does not own · public contract · invariants · Definition of Done. This file never duplicates them.
+## 1. System rule
 
----
+> **Membrane is the parent context system. Blueprint, Cortex, Guide, Adapt, and Push are its five named subsystems.**
 
-## 1. One sentence
+Planner, provider adapters, host adapters, MCP, supervisor/updater, and Hub integration are Membrane core/modules/surfaces. They are not peer semantic subsystems.
 
-> Membrane decides what deserves the agent's limited attention now, in what form, under whose authority, and records exactly why. Everything else either produces evidence for that decision or learns from its outcome.
+A subsystem may retain its own process, package, protocol, or store. Being under Membrane does not imply in-process coupling.
 
----
+## 2. One question per subsystem
 
-## 2. The map
+| Subsystem | The question it answers | Owns | Does not own |
+|---|---|---|---|
+| **Blueprint** | What is true in this repository? | repository observation, evidence graph, generations, source identity, RecallCircuit, truth/drift/change intelligence, own SQLite/service/watcher | final context policy, durable knowledge, host enforcement |
+| **Cortex** | What do we durably know? | governed durable knowledge, admission-before-write, conflict/supersession, temporal/lifecycle semantics, memory retrieval, own SQLite | repository truth, document index, final attention policy, reduction |
+| **Guide** | Where in the documents is the relevant material? | document/section index, stable anchors, hash-bound references, document navigation, rebuildable index store | source-document authority, document truth, durable knowledge, final admission |
+| **Adapt** | What should we have learned? | transcript/event mining, Taste/Insights-style learning, evidence-backed proposals | any canonical truth store, direct durable writes, final context policy |
+| **Push** | How can flowing context be reduced faithfully? | reversible transform mechanics, content-addressed artifacts, protected-span verification, token/byte accounting | ranking, final admission, durable knowledge |
 
-```
-                         ┌──────────────────────────────────┐
-                         │             HOSTS                │
-                         │ MCP · hooks · Claude/Codex       │
-                         │ supervisor · updater · Hub       │
-                         └───────────────┬──────────────────┘
-                                         │ ScopeGrant + task
-                                         ▼
-                         ┌──────────────────────────────────┐
-                         │            PLANNER               │
-                         │ requirements · acquisition       │
-                         │ eligibility · sufficiency        │
-                         │ fusion · admission · receipt     │
-                         └──┬──────┬──────┬──────┬──────┬───┘
-                            │      │      │      │      │
-              ┌─────────────┘      │      │      │      └─────────────┐
-              ▼                    ▼      ▼      ▼                    ▼
-        ┌───────────┐       ┌────────┐ ┌──────┐ ┌─────────┐   ┌────────────┐
-        │ BLUEPRINT │       │ CORTEX │ │SPINE │ │PROVIDERS│   │    PUSH    │
-        │ repo truth│       │durable │ │ md   │ │git/live │   │ reduction  │
-        │           │       │knowl.  │ │index │ │rules    │   │ artifacts  │
-        │ own db    │       │ own db │ │own db│ │skills   │   │ TokenBal.  │
-        │ own daemon│       │        │ │      │ │audit    │   │            │
-        └───────────┘       └───▲────┘ └──────┘ │architect│   └────────────┘
-                                │               │anchors  │
-                                │ proposals     └─────────┘
-                          ┌─────┴─────┐
-                          │   ADAPT   │
-                          │ Taste     │  ← transcripts, Cortex observable events
-                          │ Insights  │
-                          └───────────┘
+## 3. Membrane core
+
+Membrane core owns the governed context decision:
+
+```text
+task + ScopeGrant + state + deadline + attention budget
+    ↓
+evidence requirements
+    ↓
+bounded acquisition from Blueprint / Cortex / Guide / providers
+    ↓
+hard eligibility + authority + freshness
+    ↓
+sufficiency
+    ↓
+fusion + attention admission
+    ↓
+Push-selected faithful representation
+    ↓
+publication + ContextPacket + ContextReceipt
+    ↓
+outcome signals
 ```
 
----
+Adapt consumes experience and emits proposals into Cortex admission; it does not bypass the planner or write durable truth directly.
 
-## 3. Subsystems
+## 4. Store ownership
 
-| Subsystem | The one question it answers | Owns | Does not own | Contract consumed by planner | Status |
-|---|---|---|---|---|---|
-| **Planner** | What deserves attention now? | final policy: grant → eligibility → authority → freshness → sufficiency → fusion → admission → representation → publication → receipt | any evidence store; any parser | — (it *is* the consumer) | live; converging to one path |
-| **Blueprint** (ex-Cortex) | What is true in this repository? | repo SQLite (`.agent/graph/graph.db`), resident daemon, watcher, generations, code+doc-claim graph, RecallCircuit, declared-vs-done, impact/tests/history, admission decisions | prompt budget, memory, host enforcement | `blueprint-protocol` (RecallCircuit, resolution/freshness states, truth findings) via daemon IPC; CLI fallback | live; canonical doc adopted; RecallCircuit/daemon `recall` pending |
-| **Cortex** (ex-Crypt) | What do we durably know? | memory SQLite; record model; admission-before-write; conflict/supersession; temporal facts; lifecycle; Dream; observable-event telemetry | context policy; repo facts; compression | typed candidates via `providers/cortex` adapter; `membrane_temporal_fact`, `membrane_knowledge_propose` | live; **no subsystem doc yet** |
-| **Spine** | Where in the markdown is it? | section-anchor index: `DocArtifactV1` registry, `Lexical/WholeDocument/Section` projections, `recall → doc_id + source_ref + anchor_id + expected_hash` | doc *truth* (Blueprint), doc *memory* (Cortex) | doc-candidate provider | built, **shadow-only** (never admitted); storage currently inside Cortex's `MemDb` |
-| **Adapt** | What should we have learned? | transcript mining; Taste (preferences → proposals); Insights (19 failure detectors → `FailureCardV1`) | any store; any direct write | proposals into Cortex admission only | Taste ships; Insights built, **report-only**, not wired |
-| **Push** | How do we shrink what's flowing without losing it? | one transform contract; `runc/skel/compress`; content-addressed raw artifacts; query-critical verifier; `TokenBalanceV1` | ranking; what is delivered | transform contract at MCP result egress, source reads, host post-tool hook | live primitives; **misplaced inside the `crypt` crate**; adoption 1-in-7 |
-| **Providers** | Current worktree / rules / skills / audit / architect / anchors | thin adapters, typed candidates | final budget, authority, ranking | `membrane-provider-sdk` conformance | live |
-| **Hosts** | How does a client reach Membrane? | MCP server (10 tools), hooks, Claude/Codex adapters, supervisor, updater, Hub handoff, install/doctor | policy | `membrane-protocol` five shapes | live |
-
----
-
-## 4. Stores — one owner each, enforced
-
-| Store | Owner | Durability | Rebuildable? | Who may open it |
-|---|---|---|---|---|
-| `.agent/graph/graph.db` (per repo) | Blueprint | derived from repo | yes, from repo | `blueprint/**` only |
-| Cortex memory db | Cortex | **authored, irreplaceable** | no | `engine/crates/cortex-store/**` only |
-| Spine index db | Spine | derived from markdown files | yes, from files | Spine modules only |
-| Push artifact store | Push | content-addressed raw payloads | yes (re-capture) | Push modules only |
-
-**Decision:** Spine gets its own SQLite file. It is a regenerable projection; Cortex is irreplaceable truth. Different backup, erasure, and rebuild semantics — they must not share a file. (Today Spine tables live in Cortex's `MemDb`; this is a migration item.)
-
----
-
-## 5. Dependency direction (DAG, CI-enforced)
-
-```
-hosts      → planner
-planner    → blueprint-protocol · cortex · spine · push · providers
-adapt      → cortex (proposals through admission only)
-push       → nothing below it
-blueprint  → nothing in this tree
-```
-
-- `engine/**`, `mcp/**` MUST NOT import `blueprint/src/**`; they consume `packages/blueprint-protocol` + the Blueprint service, as an external consumer would.
-- `blueprint/**` MUST NOT import `engine/**`, `mcp/**`, `membrane-protocol`.
-- `blueprint-protocol` is **generated** from Blueprint's schemas/types; CI fails on `generate && git diff --exit-code`.
-- Blueprint is the only subsystem published standalone (`@orthic-labs/blueprint`).
-
----
-
-## 6. Target layout
-
-```
-membrane/
-  docs/subsystems/SYSTEM.md               ← this file
-  docs/subsystems/{planner,blueprint,cortex,spine,adapt,push,providers,hosts}.md
-  blueprint/                    ← ex-Cortex repo (subtree), own package.json
-  engine/crates/
-    cortex/ cortex-core/ cortex-store/ cortex-format/      ← ex-crypt-*
-    membrane-core/ membrane-runtime/ membrane-protocol/ membrane-provider-sdk/ …
-    push/                       ← extracted from crypt crate
-    spine/                      ← extracted from membrane-runtime/doc_*.rs
-  engine/federation/providers/  ← blueprint.py (ex-cortex.py), cortex.py (ex-crypt.py), git, live, rules, skills, audit, architect, anchors
-  adapt/                        ← ex-Adapt repo (subtree), Python
-  mcp/  hooks/                  ← hosts
-  packages/membrane-protocol/  packages/blueprint-protocol/
-  tests/integration/            ← real Blueprint daemon + real Membrane stack
-  docs/design/                  ← archived rationale (read-only)
-```
-
----
-
-## 7. Open wiring — the gaps that make the system feel unmanaged
-
-| Gap | Owner | Closes when |
+| Store | Owner | Nature |
 |---|---|---|
-| Spine is shadow-only | Spine + Planner | doc candidates admitted under the evidence-class coverage floor; frozen fixtures prove non-regression |
-| Insights is report-only | Adapt → Cortex | `FailureCardV1` → gotcha proposal → Cortex admission; gotchas surface when planned action matches trigger |
-| Push lives in the memory crate; 1-in-7 adoption | Push | extracted crate; wired at MCP egress + source reads; adoption metric on receipts |
-| Blueprint consumed via per-query Node spawn | Blueprint + Providers | daemon `recall` + persistent client in `providers/blueprint.py` |
-| Cortex has no doctrine | Cortex | `docs/subsystems/cortex.md` adopted |
-| Spine tables inside Cortex db | Spine | own file + migration |
-| No outcome ledger | Planner | content-free candidate journey ledger joins delivered → used/ignored/contradicted |
+| `.agent/graph/graph.db` | Blueprint | derived repository evidence; rebuildable |
+| `cortex-engine.db` after rename | Cortex | authored durable knowledge; irreplaceable |
+| Guide index store | Guide | derived document/section projection; rebuildable |
+| content-addressed raw reduction artifacts | Push | recoverability substrate; reproducible by re-capture where source remains available |
 
----
+No subsystem opens another subsystem's store as an implementation shortcut.
 
-## 8. Named and not built (so they stop resurfacing)
+## 5. Boundary direction
 
-- **Cognition family** (layers 9–11: decompose / thought-graph / claim-verify) — named 2026-07-18, unbuilt, not a subsystem.
-- Relation graph in Cortex beyond depth-1 bounded expansion.
-- Second re-anchor ladder in Membrane (Blueprint owns it).
-- Vector lane in Blueprint.
-- Shared "contracts" bucket.
-- Remote/hosted store of any kind.
+```text
+hosts / MCP / Hub integration
+            ↓
+      Membrane core planner
+       ↙      ↓       ↘
+Blueprint  Cortex    Guide
+                   ↘
+                    Push executes selected representation
 
----
+Adapt ── proposals ──→ Cortex admission
+```
 
-## 9. Historical names
+Rules:
 
-| Historical | Current | Note |
+- `engine/**` and `mcp/**` do not import `blueprint/src/**`.
+- Membrane consumes Blueprint through Blueprint-owned public schemas/service/client surfaces.
+- Blueprint does not open Cortex storage.
+- Guide indexes source documents but does not become their authority.
+- Cortex does not absorb Guide's document-index semantics.
+- Push executes reduction; it does not become a second ranking/admission owner.
+- Adapt writes proposals only through Cortex admission.
+
+## 6. Current-to-canonical naming
+
+| Current/historical name | Canonical name | Meaning |
 |---|---|---|
-| RightContext / Unified Context Engine | Membrane | product |
-| Cortex | Blueprint | repo truth engine (rename pending, see `docs/plans/2026-08-19-monorepo-merge-and-subsystem-rename.md`) |
-| MemRight → Crypt | Cortex | durable knowledge (rename pending; `crypt*` remains the compat facade) |
-| Markdown Doc Spine / RMS D1–D4 | Spine | section index |
-| four families / eight layers (`tools/lib/CONTEXT-ENGINEERING.md`) | Push · Planner · Cortex · (Cognition) | Compaction=Push, Retrieval=Planner pull, Curation=Cortex lifecycle, Cognition=unbuilt |
+| repository-truth Cortex | **Blueprint** | repository evidence/truth |
+| Crypt / MemRight | **Cortex** | durable knowledge |
+| Spine / Markdown Doc Spine | **Guide** | document navigation/index |
+| Adapt | **Adapt** | learning/proposals |
+| Push | **Push** | reversible reduction |
+| RightContext / Unified Context Engine | **Membrane** | parent context system |
+
+Legacy serialized names retain historical meaning where frozen compatibility requires them. New documentation uses the canonical names.
+
+## 7. Physical placement is separate from semantic hierarchy
+
+- Blueprint may be independently packaged, runnable, and published while remaining a Membrane subsystem.
+- Cortex is a Membrane-owned durable subsystem.
+- Guide may remain implemented inside Membrane runtime code while still having distinct semantic ownership.
+- Adapt's physical repository placement is not decided by the Blueprint/Cortex monorepo migration plan.
+- Push may remain implemented within Membrane runtime modules; a separate crate is not required merely to justify subsystem status.
+
+## 8. Normative authorities
+
+Exactly three architecture/planning authorities govern the migration:
+
+1. `BLUEPRINT_CANONICAL_SOURCE_OF_TRUTH.md`
+2. `MEMBRANE_CANONICAL_ARCHITECTURE_AND_IMPLEMENTATION_DOCTRINE.md`
+3. `docs/subsystems/2026-08-19-monorepo-merge-and-subsystem-rename.md`
+
+This map and the subsystem reference files are derived navigation aids, not parallel authorities.
