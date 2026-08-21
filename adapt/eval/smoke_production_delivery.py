@@ -27,7 +27,7 @@ from memory import adapt_core
 DEFAULT_TREATMENT = ROOT / ".cache/adapt-delivery-parity/full/frozen/adapt-treatment.json"
 DEFAULT_CORE = ROOT / "docs/evidence/adapt-taste-parity-2026-07-14/compiled-core.json"
 DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/cortex-engine.db"
-DEFAULT_CORTEX = ROOT / "tools/bin/cortex.exe"
+DEFAULT_MEMBRANE = ROOT / "tools/bin/membrane"
 DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/production-smoke"
 
 
@@ -175,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--treatment", type=Path, default=DEFAULT_TREATMENT)
     parser.add_argument("--core", type=Path, default=DEFAULT_CORE)
     parser.add_argument("--live-db", type=Path, default=DEFAULT_LIVE_DB)
-    parser.add_argument("--cortex-bin", type=Path, default=DEFAULT_CORTEX)
+    parser.add_argument("--membrane-bin", type=Path, default=DEFAULT_MEMBRANE)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--limit", type=int, default=5)
     args = parser.parse_args(argv)
@@ -196,11 +196,11 @@ def main(argv: list[str] | None = None) -> int:
         raise RuntimeError(f"live DB integrity failed before smoke: {pre_msg}")
     args.out.mkdir(parents=True, exist_ok=True)
     baseline, baseline_integrity = _run_arm(
-        args.cortex_bin, args.live_db, args.out / "baseline.db", cases, records,
+        args.membrane_bin, args.live_db, args.out / "baseline.db", cases, records,
         args.out / "baseline-queries.jsonl", aliases=False,
     )
     alias, alias_integrity = _run_arm(
-        args.cortex_bin, args.live_db, args.out / "alias.db", cases, records,
+        args.membrane_bin, args.live_db, args.out / "alias.db", cases, records,
         args.out / "alias-queries.jsonl", aliases=True,
     )
     post_ok, post_count, post_msg = runner.value_ab.integrity_check(args.live_db)

@@ -4,6 +4,7 @@ node_modules/
 **/dist/
 /.right-release/
 /apps/membrane-hub/src-tauri/binaries/
+/apps/membrane-hub/src-tauri/runtime/
 
 # Local runtime state (never belongs in the repo)
 *.db

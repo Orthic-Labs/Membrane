@@ -67,6 +67,10 @@ impl LifecycleControl {
             == 0
     }
 
+    fn hub_bound(&self) -> bool {
+        self.snapshot_capability.is_some()
+    }
+
     pub fn admission_open(&self) -> bool {
         self.admission_open.load(Ordering::Acquire)
     }
@@ -202,6 +206,7 @@ pub(crate) fn prepare_runtime_identity(
 fn runtime_from_exe_at_workspace(
     exe: &Path,
     workspace_root: Option<&Path>,
+    allow_hub_bundle: bool,
 ) -> Result<Runtime, String> {
     let direct_bin = exe
         .parent()
@@ -216,32 +221,32 @@ fn runtime_from_exe_at_workspace(
             return None;
         }
         let bin = root.join("tools/bin");
-        let service_names = if cfg!(windows) {
-            ["membrane.exe", "membrane.exe"]
+        let service_name = if cfg!(windows) {
+            "membrane.exe"
         } else {
-            ["membrane", "membrane"]
+            "membrane"
         };
         let actual = std::fs::canonicalize(exe).ok()?;
-        service_names.iter().find_map(|name| {
-            let service = bin.join(name);
-            let metadata = std::fs::symlink_metadata(&service).ok()?;
-            if !metadata.file_type().is_symlink() {
-                return None;
-            }
-            let linked = std::fs::canonicalize(service).ok()?;
-            (linked == actual).then_some(bin.clone())
-        })
+        let service = bin.join(service_name);
+        let metadata = std::fs::symlink_metadata(&service).ok()?;
+        if !metadata.file_type().is_symlink() {
+            return None;
+        }
+        let linked = std::fs::canonicalize(service).ok()?;
+        (linked == actual).then_some(bin)
     });
-    let membrane_owned_bin = workspace_root
-        .filter(|root| root.is_absolute())
-        .map(|root| root.join("tools/bin"))
-        .filter(|bin| bin.is_dir());
+    let bundled_bin = workspace_root.and_then(|root| {
+        if !allow_hub_bundle || !root.is_absolute() || !is_hub_bundled_membrane(exe) {
+            return None;
+        }
+        Some(root.join("tools/bin"))
+    });
     let bin = direct_bin
         .map(Path::to_path_buf)
         .or(linked_bin)
-        .or(membrane_owned_bin)
+        .or(bundled_bin)
         .ok_or_else(|| {
-            "membrane resident must be Membrane-owned or run from its exact canonical tools/bin path"
+            "membrane resident must be Hub-owned or run from its exact canonical tools/bin path"
                 .to_string()
         })?;
     let tools = bin
@@ -280,9 +285,42 @@ fn runtime_from_exe_at_workspace(
     })
 }
 
+fn is_hub_bundled_membrane(exe: &Path) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let Some(macos) = exe.parent() else {
+            return false;
+        };
+        let Some(contents) = macos.parent() else {
+            return false;
+        };
+        let Some(bundle) = contents.parent() else {
+            return false;
+        };
+        return exe.file_name().is_some_and(|name| name == "membrane")
+            && macos.file_name().is_some_and(|name| name == "MacOS")
+            && contents.file_name().is_some_and(|name| name == "Contents")
+            && bundle
+                .file_name()
+                .is_some_and(|name| name == "Membrane Hub.app")
+            && macos.join("membrane-hub").is_file();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return exe.file_name().is_some_and(|name| name == "membrane.exe")
+            && exe
+                .parent()
+                .is_some_and(|directory| directory.join("membrane-hub.exe").is_file());
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        false
+    }
+}
+
 pub(crate) fn runtime_from_exe(exe: &Path) -> Result<Runtime, String> {
     let workspace = std::env::var_os("WORKSPACE_ROOT").map(PathBuf::from);
-    runtime_from_exe_at_workspace(exe, workspace.as_deref())
+    runtime_from_exe_at_workspace(exe, workspace.as_deref(), lifecycle_control().hub_bound())
 }
 
 /// Headless supervisor-child entrypoint. Inherited stdio mode binds an authenticated lifecycle
@@ -294,9 +332,7 @@ pub fn run_service_from() -> Result<(), String> {
 /// Starts a lifecycle-managed resident with its snapshot capability held only
 /// in memory. The lifecycle dispatcher validates the inherited channel before
 /// constructing this control object.
-pub fn run_service_with_lifecycle(
-    lifecycle: LifecycleControl,
-) -> Result<(), String> {
+pub fn run_service_with_lifecycle(lifecycle: LifecycleControl) -> Result<(), String> {
     install_lifecycle_control(lifecycle)?;
     run_service()
 }
@@ -437,13 +473,42 @@ mod tests {
         .unwrap();
         symlink(&relocated, bin.join("membrane")).unwrap();
 
-        let runtime = runtime_from_exe_at_workspace(&relocated, Some(&workspace)).unwrap();
+        let runtime = runtime_from_exe_at_workspace(&relocated, Some(&workspace), false).unwrap();
         assert_eq!(runtime.port, 47851);
         assert_eq!(runtime.ort, bin.join("libonnxruntime.dylib"));
 
         let other = temp.path().join("resident/other-service");
         std::fs::write(&other, b"other").unwrap();
-        assert!(runtime_from_exe_at_workspace(&other, Some(&workspace)).is_err());
+        assert!(runtime_from_exe_at_workspace(&other, Some(&workspace), false).is_err());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn bundled_service_requires_authenticated_hub_lifecycle() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = temp.path().join("workspace");
+        let bin = workspace.join("tools/bin");
+        let config_dir = workspace.join("tools/lib/memory");
+        let app_bin = temp.path().join("Membrane Hub.app/Contents/MacOS");
+        let membrane = app_bin.join("membrane");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&app_bin).unwrap();
+        std::fs::write(&membrane, b"fixture").unwrap();
+        std::fs::write(app_bin.join("membrane-hub"), b"fixture").unwrap();
+        std::fs::write(
+            config_dir.join("runtime.json"),
+            r#"{"schemaVersion":1,"serviceId":"membrane-local-v1","host":"127.0.0.1","port":47851}"#,
+        )
+        .unwrap();
+
+        assert!(runtime_from_exe_at_workspace(&membrane, Some(&workspace), false).is_err());
+        let runtime = runtime_from_exe_at_workspace(&membrane, Some(&workspace), true).unwrap();
+        assert_eq!(runtime.port, 47851);
+        assert_eq!(
+            runtime.db,
+            workspace.join("tools/.cache/memory/cortex-engine.db")
+        );
     }
 
     #[test]

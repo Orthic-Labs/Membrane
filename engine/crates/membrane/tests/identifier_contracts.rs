@@ -94,7 +94,7 @@ fn anchor_identifier_compatibility_corpus() {
     let spill = root.path().join("spill");
     std::fs::create_dir(&spill).unwrap();
     let content = "exact anchor content\n";
-    let digest = format!("{:x}", sha2::Sha256::digest(content.as_bytes()));
+    let digest = hex::encode(sha2::Sha256::digest(content.as_bytes()));
     std::fs::write(spill.join(format!("{digest}.log")), content).unwrap();
 
     let output = run_restore(&spill, &format!("mr://anchor/{digest}"));

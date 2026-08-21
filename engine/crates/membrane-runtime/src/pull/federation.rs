@@ -464,7 +464,7 @@ fn memory_preview(content: &str) -> String {
 
 fn sha256_hex(s: &str) -> String {
     use sha2::{Digest, Sha256};
-    format!("{:x}", Sha256::digest(s.as_bytes()))
+    hex::encode(Sha256::digest(s.as_bytes()))
 }
 
 fn db_path_for(workspace: &Path) -> PathBuf {
@@ -813,18 +813,18 @@ mod tests {
         ]);
     }
 
-    /// F11 — `stale` must reflect a real freshness verdict, not a hardcoded literal. A real,
-    /// coherent git repository (even with no Blueprint/graph snapshot yet — `MissingSnapshot` is
-    /// still a stable observation per `freshness::classify`) must report `stale: false`.
+    /// F11 — Git presence alone is not repository-truth evidence. Blueprint owns current
+    /// repository truth, so a coherent Git repository without a Blueprint observation must fail
+    /// closed as stale.
     #[test]
-    fn stale_is_false_for_a_real_coherent_repository() {
+    fn git_repository_without_blueprint_evidence_is_stale() {
         let repo = tempfile::tempdir().unwrap();
         init_git_repo(repo.path());
         let store = crate::MemoryStore::new();
         let payload = memory_candidates_payload(&store, "any task", "global", 5, Some(repo.path()));
         assert_eq!(
-            payload["freshness"]["stale"], false,
-            "a real, coherent repository must report stale=false, payload={payload}"
+            payload["freshness"]["stale"], true,
+            "Git presence without Blueprint evidence must report stale=true, payload={payload}"
         );
     }
 

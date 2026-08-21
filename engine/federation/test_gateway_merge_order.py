@@ -5,6 +5,7 @@ import functools
 import hashlib
 import json
 import os
+import platform
 import shutil
 import subprocess
 from pathlib import Path
@@ -18,6 +19,21 @@ FIXTURE = json.loads(
     (HERE / "fixtures" / "provider-merge-order-v1.json").read_text(encoding="utf-8")
 )
 RELEASE_GENERATION = "sha256:" + "4" * 64
+
+
+def _host_triple() -> str:
+    triples = {
+        ("Darwin", "arm64"): "aarch64-apple-darwin",
+        ("Darwin", "x86_64"): "x86_64-apple-darwin",
+        ("Linux", "aarch64"): "aarch64-unknown-linux-gnu",
+        ("Linux", "x86_64"): "x86_64-unknown-linux-gnu",
+        ("Windows", "ARM64"): "aarch64-pc-windows-msvc",
+        ("Windows", "AMD64"): "x86_64-pc-windows-msvc",
+    }
+    triple = triples.get((platform.system(), platform.machine()))
+    if triple is None:
+        raise FileNotFoundError("unsupported host for Membrane planner test binary")
+    return triple
 
 
 def _candidate(provider: str, precedence: int) -> dict:
@@ -80,18 +96,16 @@ def _planner_binary() -> Path:
     if override:
         binary = Path(override)
         if not binary.is_file():
-            raise FileNotFoundError(f"configured Cortex test binary is missing: {binary}")
+            raise FileNotFoundError(f"configured Membrane test binary is missing: {binary}")
         return binary
 
-    binary = ROOT / "membrane" / "engine" / "target" / "debug" / (
-        "cortex.exe" if os.name == "nt" else "cortex"
-    )
+    binary = ROOT / "tools" / "bin" / ("membrane.exe" if os.name == "nt" else "membrane")
     if binary.is_file():
         return binary
 
     rightkit = shutil.which("rightkit")
     if not rightkit:
-        raise FileNotFoundError("Cortex planner binary is missing & RightKit is unavailable")
+        raise FileNotFoundError("Membrane planner binary is missing & RightKit is unavailable")
     manifest = ROOT / "membrane" / "engine" / "Cargo.toml"
     metadata = subprocess.run(
         [rightkit, "cargo", "metadata", "--manifest-path", str(manifest), "--format-version", "1", "--no-deps"],
@@ -103,21 +117,22 @@ def _planner_binary() -> Path:
     )
     target = Path(json.loads(metadata.stdout)["target_directory"])
     subprocess.run(
-        [rightkit, "cargo", "build", "--manifest-path", str(manifest), "-p", "cortex", "--bin", "cortex", "--locked"],
+        [rightkit, "cargo", "build", "--manifest-path", str(manifest), "-p", "membrane", "--bin", "membrane", "--locked"],
         cwd=ROOT,
         capture_output=True,
         text=True,
         timeout=15 * 60,
         check=True,
     )
-    binary = target / "debug" / ("cortex.exe" if os.name == "nt" else "cortex")
+    binary = target / _host_triple() / "debug" / ("membrane.exe" if os.name == "nt" else "membrane")
     if not binary.is_file():
-        raise FileNotFoundError(f"RightKit build completed without Cortex binary: {binary}")
+        raise FileNotFoundError(f"RightKit build completed without Membrane binary: {binary}")
     return binary
 
 def _planner_command(candidate_set: Path) -> list[str]:
     return [
         str(_planner_binary()),
+        "pull",
         "plan-context",
         "--candidate-set",
         str(candidate_set),
@@ -134,12 +149,12 @@ def _semantic_candidate_set(ccs: dict) -> dict:
     return semantic
 
 
-def test_planner_fallback_builds_cortex_cli_through_rightkit(monkeypatch, tmp_path: Path):
+def test_planner_fallback_builds_membrane_cli_through_rightkit(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("MEMBRANE_BIN", raising=False)
     monkeypatch.delenv("MEMBRANE_TEST_BIN", raising=False)
     monkeypatch.setitem(globals(), "ROOT", tmp_path)
-    expected = tmp_path / "managed-target" / "debug" / (
-        "cortex.exe" if os.name == "nt" else "cortex"
+    expected = tmp_path / "managed-target" / _host_triple() / "debug" / (
+        "membrane.exe" if os.name == "nt" else "membrane"
     )
     monkeypatch.setattr(
         subprocess,
@@ -156,6 +171,7 @@ def test_planner_fallback_builds_cortex_cli_through_rightkit(monkeypatch, tmp_pa
     command = _planner_command(tmp_path / "candidate-set.json")
 
     assert command[0] == str(expected)
+    assert command[1:3] == ["pull", "plan-context"]
     _planner_binary.cache_clear()
 
 

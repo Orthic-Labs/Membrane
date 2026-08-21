@@ -2,9 +2,8 @@ use std::{env, fs, path::PathBuf, process::Command};
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("manifest dir"));
-    let index = manifest_dir.join(
-        "../../../schemas/registry/operations/operations-index.v1.golden.json",
-    );
+    let index =
+        manifest_dir.join("../../../schemas/registry/operations/operations-index.v1.golden.json");
     println!("cargo:rerun-if-changed={}", index.display());
     let generator = manifest_dir.join("scripts/generate-cli-subcommands.mjs");
     println!("cargo:rerun-if-changed={}", generator.display());
@@ -27,6 +26,9 @@ fn main() {
         .lines()
         .find_map(|line| line.strip_prefix("// operation_registry_version: "))
         .expect("generated CLI projection has registry version marker");
-    assert!(digest.starts_with("sha256:"), "invalid operation registry digest");
+    assert!(
+        digest.starts_with("sha256:"),
+        "invalid operation registry digest"
+    );
     println!("cargo:rustc-env=MEMBRANE_OPERATION_REGISTRY_VERSION={digest}");
 }

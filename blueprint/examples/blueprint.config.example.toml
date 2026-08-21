@@ -9,6 +9,6 @@
 # my-peer = "/usr/local/bin/my-peer"
 
 # Env overrides (highest priority):
-# CORTEX_BIN for the canonical Cortex durable-knowledge peer
-# BLUEPRINT_PEER_BIN_<NAME> e.g. BLUEPRINT_PEER_BIN_CORTEX=/path/to/cortex
+# MEMBRANE_BIN for the canonical Membrane peer
+# BLUEPRINT_PEER_BIN_<NAME> e.g. BLUEPRINT_PEER_BIN_MEMBRANE=/path/to/membrane
 # BLUEPRINT_PEER_BIN=/path/to/peer

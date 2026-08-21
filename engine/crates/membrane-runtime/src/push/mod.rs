@@ -9,8 +9,8 @@ pub mod compression_provider;
 pub mod prep;
 pub mod runc;
 pub mod skel;
-pub mod truncate;
 pub mod telemetry;
+pub mod truncate;
 
 /// Push's stable operation identity, used by diagnostics and capability
 /// reports so every surface exposes the same six-axis vocabulary.

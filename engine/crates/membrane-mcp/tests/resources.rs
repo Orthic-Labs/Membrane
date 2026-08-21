@@ -44,7 +44,7 @@ fn resource_payload_by_name(name: &str) -> Value {
     // compiled-in resource definitions agree.
     let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let path = here
-        .join("../../../../schemas/registry/resources")
+        .join("../../../schemas/registry/resources")
         .join(format!("{name}.v1.json"));
     let raw = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
     serde_json::from_str(&raw).expect("canonical resource parses")

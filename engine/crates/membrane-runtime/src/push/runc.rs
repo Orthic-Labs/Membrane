@@ -271,7 +271,7 @@ fn capture_ordered(
             byte_count,
             newline_count,
             ends_with_newline,
-            digest: format!("{:x}", hasher.finalize()),
+            digest: hex::encode(hasher.finalize()),
         },
         stdout_thread,
         stderr_thread,
@@ -368,7 +368,7 @@ impl LineWindow {
         lines.push(format!("… {elided} lines elided …"));
         lines.extend(self.tail.into_iter().map(display));
         let rendered = lines.join("\n");
-        let dropped_digest = format!("{:x}", self.dropped_hasher.finalize());
+        let dropped_digest = hex::encode(self.dropped_hasher.finalize());
         (
             rendered,
             dropped_digest,
@@ -397,7 +397,7 @@ fn hash_file_range(path: &Path, start: u64, length: usize) -> Result<String, Str
         hasher.update(&chunk[..read]);
         remaining -= read;
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex::encode(hasher.finalize()))
 }
 
 fn byte_preview(capture: &OrderedCapture) -> Result<(String, String, usize, usize, usize), String> {
@@ -449,7 +449,15 @@ fn publish_spill(
     head: usize,
     tail: usize,
     spill_dir: &Path,
-) -> Result<(String, PathBuf, String, crate::push::compress::RecoveryMarkerV1), String> {
+) -> Result<
+    (
+        String,
+        PathBuf,
+        String,
+        crate::push::compress::RecoveryMarkerV1,
+    ),
+    String,
+> {
     let (capped, dropped_digest, dropped_len, head_bytes, tail_bytes) =
         line_preview(capture, head, tail)?;
     let digest = capture.digest.clone();
@@ -1091,7 +1099,7 @@ mod tests {
         let (preview, spill, digest, marker) =
             publish_spill(&capture, 100, 100, dir.path()).expect("publish exact spill");
         assert_eq!(std::fs::read(&spill).unwrap(), source);
-        assert_eq!(digest, format!("{:x}", Sha256::digest(&source)));
+        assert_eq!(digest, hex::encode(Sha256::digest(&source)));
         assert!(preview.len() <= (MAX_PREVIEW_EDGE_BYTES * 2) + 64);
         let dropped_end = source.len() - marker.kept_tail_bytes;
         assert_eq!(
@@ -1116,7 +1124,7 @@ mod tests {
         assert!(ordered.spill_path.is_none());
         assert_eq!(
             ordered.anchor,
-            format!("mr://anchor/{:x}", Sha256::digest(b"outerr"))
+            format!("mr://anchor/{}", hex::encode(Sha256::digest(b"outerr")))
         );
 
         let invalid = run_capped("printf '\\377'", 100, 100, dir.path()).expect("invalid utf8");

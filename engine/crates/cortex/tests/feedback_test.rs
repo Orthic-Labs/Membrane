@@ -2,11 +2,11 @@
 //! `contradicted` vetoes the entry, a cited verdict without a ref is rejected fail-closed, and the
 //! upsert is idempotent by `(trace_id, candidate_id)`.
 
+use cortex_core::{EffectivenessGate, Outcome};
 use membrane_runtime::context_telemetry::{parse_context_event, ContextEventBatch};
 use membrane_runtime::feedback::{FeedbackRecord, FeedbackSource};
 use membrane_runtime::memdb::MemDb;
 use membrane_runtime::store::{MemoryEventContext, MemoryStore};
-use cortex_core::{EffectivenessGate, Outcome};
 use sha2::{Digest, Sha256};
 
 fn temp_path(tag: &str) -> std::path::PathBuf {
@@ -142,7 +142,7 @@ fn explicit_feedback_links_to_the_canonical_retrieval_trace() {
 fn feedback_links_to_full_hash_provider_delivery_identity() {
     let m = MemoryStore::new();
     let candidate = "git:meta:branch:main";
-    let digest = format!("{:x}", Sha256::digest(candidate.as_bytes()));
+    let digest = hex::encode(Sha256::digest(candidate.as_bytes()));
     let trace = "trace-11111111111111111111111111111111";
     let event = parse_context_event(serde_json::json!({
         "schema_version": 1,

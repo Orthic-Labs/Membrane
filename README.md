@@ -58,7 +58,7 @@ The contract is five typed shapes — `ScopeGrant`, `ContextCandidateSet`, `Cont
 
 - **Pull** — bounded acquisition, eligibility, fusion, admission, and packet publication.
 - **Push** — faithful reduction for command output, file reads, source/provider payloads, and delegated evidence.
-- **Cortex / Persist** — the durable-memory engine: a Rust CLI plus loopback HTTP service over SQLite, with a quantized vector store and hybrid retriever.
+- **Cortex / Persist** — the durable-memory engine: a durable library and CLI projection owned by Membrane, backed by SQLite with a quantized vector store and hybrid retriever. Membrane Hub owns the single resident service.
 - **Blueprint** — repository truth and evidence graph.
 - **Guide** — hash-bound document navigation.
 - **Adapt** — governed experience-to-knowledge proposals.
@@ -91,7 +91,7 @@ commands such as `membrane cli recall` and `membrane cli curate`.
 
 ## Repository posture
 
-This checkout is an internal mirror of a workspace-coupled control plane for the author's studio machines — not a standalone public product. Runtime wiring (hooks, Cortex loopback, federation providers, install binding) depends on the parent workspace. Conversation-history compaction still belongs to each host, and the structured cognition layers (`plan` / `think` / `verify`) are design targets, not shipped code.
+This checkout is an internal mirror of a workspace-coupled control plane for the author's studio machines — not a standalone public product. Runtime wiring (hooks, Membrane resident service, federation providers, install binding) depends on the parent workspace. Conversation-history compaction still belongs to each host, and the structured cognition layers (`plan` / `think` / `verify`) are design targets, not shipped code.
 
 ---
 

@@ -1,13 +1,14 @@
 # Cortex — Rust memory SDK (parity tracker)
 
-Productizable, OS-independent memory engine. Replaces the workspace Python `mem.py`
-(`tools/lib/memory/mem.py`) with **full feature parity**, in Rust. Anyone can `cargo install` it;
+Productizable, OS-independent durable-memory engine. Replaces workspace Python memory persistence
+with a Rust-owned Cortex library & CLI projection inside Membrane. Anyone can embed the library;
 `rusqlite` bundles SQLite (no system dep) and `fastembed` pulls BGE-small on first use — cross-platform.
 
 `coderight-memory` stays the inner primitives library (embed, graph, effectiveness, dream, no I/O);
-`cortex` is the product: store + scope model + scoring + ingest + serve + CLI. CR-the-app keeps using
-`coderight-memory` in-process (single scope); the workspace uses `cortex serve` over the existing
-`:8765` JSON contract, so the hooks need no contract change. Full architecture: `tools/lib/CONTEXT-ENGINEERING.md`.
+`cortex` is the durable subsystem: store + scope model + scoring + ingest + CLI. CR-the-app keeps using
+`coderight-memory` in-process (single scope); the workspace uses Membrane resident's authenticated
+loopback contract, so hooks need no independent Cortex service.
+Full architecture: `docs/subsystems/cortex.md`.
 
 ## Parity checklist (vs mem.py)
 
@@ -21,13 +22,13 @@ Productizable, OS-independent memory engine. Replaces the workspace Python `mem.
 | Serve | HTTP `/health` `/recall` `/add` `/use` — identical JSON contract | P4 | DONE |
 | CLI | `serve migrate-all migrate-blueprint reindex add recall use metrics curate` | P4 | DONE |
 | Curate | normalize relative dates → dedupe(0.97) → contradiction-merge(0.90, supersede) → reversible quarantine of low-effectiveness, never-used rows; duplicate losers remain permanent prunes with provenance + tombstones | P5 | DONE |
-| Migrate + cutover | `migrate-all` over real markdown, recall parity vs Python, flip hooks to `cortex serve`, retire mem.py | P6 | **DONE — Rust is live, mem.py retired** |
+| Migrate + cutover | migrate durable rows, verify recall parity, route hooks through Membrane resident, retire legacy Python memory | P6 | **DONE — Rust durable subsystem is live** |
 
 ## Status (2026-06-30) — CUTOVER COMPLETE
 
-All six phases done. The workspace recall engine is the Rust `cortex` binary on `:8765`; **Python
-`mem.py` is deleted**. The hooks (`recall_memory.py`/`ingest_memory.py`) lazy-start `cortex` with
-`ORT_DYLIB_PATH`; recall was verified through the actual hook.
+All six phases done. Cortex owns durable memory while Membrane Hub owns one resident service on
+the authenticated loopback contract; **Python `mem.py` is deleted**. Hooks use Membrane's resident
+identity and never start an independent Cortex service.
 
 **The onnxruntime link wall** (ort `download-binaries` needs newer MSVC STL symbols than this toolset
 has → `LNK1120`) was solved with ort **`load-dynamic`**: onnxruntime loads at runtime from
@@ -37,7 +38,7 @@ has → `LNK1120`) was solved with ort **`load-dynamic`**: onnxruntime loads at 
 (`[-0.08282,-0.05044,…]` vs `[-0.08277,-0.05045,…]`). The mid-cutover "regression" (cos 0.34 vs 0.65)
 was a **build-artifact bug** — a `cargo build` (default features = hash embedder) had clobbered
 `target/debug/cortex.exe`, so the migration + serve ran on the hash embedder. Fixed by building the
-fastembed binary to a **stable path** (`tools/bin/cortex.exe`). With the real BGE binary, recall
+fastembed runtime to a stable Membrane installation. With the real BGE binary, recall
 matched Python: same retrieved set, cos within ~0.02.
 
 **Operational requirements — onnxruntime bundled (2026-06-30).** Running Cortex needs (1) the compiled
@@ -61,8 +62,8 @@ features with Cortex's scope/kind/markdown recall — a real product decision, n
 
 **Cutover steps (after parity holds — production-mutating, repoints the live recall system):**
 1. Migrate the production store (`migrate-all` + `migrate-blueprint`, real BGE) into `cortex.db`.
-2. Run `cortex serve` on `:8765` (with `ORT_DYLIB_PATH` set); stop `mem.py serve`.
-3. Repoint the hook lazy-start to launch the `cortex` binary (set `ORT_DYLIB_PATH`).
+2. Start the Membrane resident through Hub with its authenticated runtime identity.
+3. Repoint hooks to the Membrane resident client; never launch a separate Cortex service.
 4. Retire `mem.py`; update `CONTEXT-ENGINEERING.md` (engine = Rust).
 
 **Operational note for distribution:** running Cortex needs the compiled binary + an `onnxruntime.dll`

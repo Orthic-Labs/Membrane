@@ -54,6 +54,10 @@ export function stageRuntime({ out = null } = {}) {
   // production install (never the source checkout).
   const appPackageDir = join(appDir, "package");
   cpSync(packageDir, appPackageDir, { recursive: true });
+  // Runtime imports packages directly; npm command shims are not used.
+  // Removing `.bin` prevents links into the temporary install root from
+  // surviving after that root is deleted in `finally` below.
+  rmSync(join(appPackageDir, "node_modules", ".bin"), { recursive: true, force: true });
   const schemasSrc = join(appPackageDir, "schemas");
   const schemas = join(appDir, "schemas");
   if (existsSync(schemasSrc)) cpSync(schemasSrc, schemas, { recursive: true });

@@ -4,7 +4,10 @@
 //! doc). This module writes prepared files under `out_dir` and returns a JSON
 //! manifest whose entry shape is branch-specific.
 
-use crate::{guide::outline, push::{compress, compression_provider, skel}};
+use crate::{
+    guide::outline,
+    push::{compress, compression_provider, skel},
+};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 

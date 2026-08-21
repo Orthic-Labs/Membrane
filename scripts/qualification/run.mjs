@@ -68,7 +68,7 @@ function defaultGitCommit(workspaceRoot) {
 // Real client/model/host identity for the machine actually running the harness.
 export async function defaultResolveHostIdentity() {
   return {
-    client: process.env.CORTEX_CLIENT || "claude_code",
+    client: process.env.MEMBRANE_CLIENT || "claude_code",
     model: process.env.MEMBRANE_QUALIFICATION_MODEL || "",
     host: hostname() || "",
   };

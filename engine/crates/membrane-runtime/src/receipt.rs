@@ -198,6 +198,9 @@ impl UninstallReceipt {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn outside_path(label: &str) -> PathBuf {
         // Use a path under `/tmp` (or the platform equivalent) so the
@@ -210,6 +213,7 @@ mod tests {
 
     #[test]
     fn registering_then_querying_returns_true() {
+        let _guard = TEST_LOCK.lock().unwrap();
         clear_receipt_registry();
         let path = outside_path("basic");
         register_receipt_owned_path(&path).expect("outside root");
@@ -220,6 +224,7 @@ mod tests {
 
     #[test]
     fn registering_inside_stable_root_is_rejected() {
+        let _guard = TEST_LOCK.lock().unwrap();
         clear_receipt_registry();
         let inside = config_root().join("receipt-should-not-track-this");
         let err = register_receipt_owned_path(&inside).unwrap_err();
@@ -229,6 +234,7 @@ mod tests {
 
     #[test]
     fn remove_receipt_owned_only_removes_receipt_owned_paths() {
+        let _guard = TEST_LOCK.lock().unwrap();
         clear_receipt_registry();
         let keep = outside_path("keep");
         let drop = outside_path("drop");
@@ -243,6 +249,7 @@ mod tests {
 
     #[test]
     fn uninstall_receipt_captures_anchored_snapshot() {
+        let _guard = TEST_LOCK.lock().unwrap();
         clear_receipt_registry();
         let a = outside_path("audit-a");
         let b = outside_path("audit-b");

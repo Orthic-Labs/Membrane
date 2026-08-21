@@ -615,18 +615,19 @@ fn markdown_link_at(line: &str, start: usize) -> Option<(usize, &str)> {
 }
 
 fn is_source_span(token: &str) -> bool {
-    let token = token.trim_matches(|ch: char| {
-        matches!(ch, ',' | ';' | '.' | ')' | '(' | '"' | '\'' | ']')
-    });
+    let token =
+        token.trim_matches(|ch: char| matches!(ch, ',' | ';' | '.' | ')' | '(' | '"' | '\'' | ']'));
     let lower = token.to_ascii_lowercase();
     if has_path_line_suffix(&lower) {
         return true;
     }
     const EXTENSIONS: &[&str] = &[
-        ".rs", ".py", ".ts", ".tsx", ".js", ".mjs", ".md", ".json", ".toml", ".yaml",
-        ".yml", ".sh", ".rb", ".go", ".java", ".cpp", ".hpp", ".h", ".c",
+        ".rs", ".py", ".ts", ".tsx", ".js", ".mjs", ".md", ".json", ".toml", ".yaml", ".yml",
+        ".sh", ".rb", ".go", ".java", ".cpp", ".hpp", ".h", ".c",
     ];
-    EXTENSIONS.iter().any(|extension| lower.ends_with(extension))
+    EXTENSIONS
+        .iter()
+        .any(|extension| lower.ends_with(extension))
 }
 
 fn has_path_line_suffix(token: &str) -> bool {

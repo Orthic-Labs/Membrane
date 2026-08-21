@@ -175,7 +175,7 @@ pub(crate) fn chain_digest(
     h.update(canonical.as_bytes());
     h.update([0]);
     h.update(prev.as_bytes());
-    format!("{:x}", h.finalize())
+    hex::encode(h.finalize())
 }
 pub(crate) fn segment_digest(
     segment: &str,
@@ -328,7 +328,7 @@ pub fn canonical_delivery_metrics(text: &str) -> DeliveryMetrics {
     let bytes = text.as_bytes().len() as u64;
     let chars = text.chars().count() as u64;
     let tokens = (bytes + 3) / 4;
-    let sha256 = format!("sha256:{:x}", Sha256::digest(text.as_bytes()));
+    let sha256 = format!("sha256:{}", hex::encode(Sha256::digest(text.as_bytes())));
     DeliveryMetrics {
         bytes,
         chars,
@@ -790,7 +790,7 @@ struct LifecycleEventBuilder<'a> {
 fn sha256_text(value: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(value.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 fn lifecycle_bounded_id(value: &str, prefix: &str) -> String {
@@ -971,7 +971,7 @@ impl<'a> LifecycleEventBuilder<'a> {
             .map_err(|_| invalid("event", "could not be canonically serialized"))?;
         let mut hasher = Sha256::new();
         hasher.update(preimage);
-        event.event_id = format!("evt-{:x}", hasher.finalize());
+        event.event_id = format!("evt-{}", hex::encode(hasher.finalize()));
         validate_context_event(&event)?;
         let reference = LifecycleEventRef {
             event_id: event.event_id.clone(),
@@ -1716,10 +1716,7 @@ fn canonical_row_hash(
     }
     let event: ContextEvent = serde_json::from_value(value)
         .map_err(|_| invalid("context_event_log", "cannot reconstruct canonical event"))?;
-    Ok(format!(
-        "{:x}",
-        Sha256::digest(canonical_event_bytes(&event)?)
-    ))
+    Ok(hex::encode(Sha256::digest(canonical_event_bytes(&event)?)))
 }
 
 /// Remove one complete sealed segment, leaving a hash receipt as its retention anchor.
@@ -2349,7 +2346,7 @@ fn prepare_batch(
         if *count > budget.max_events_per_turn {
             return Err(invalid("events", "exceeds phase turn cardinality"));
         }
-        let canonical_sha256 = format!("{:x}", Sha256::digest(canonical));
+        let canonical_sha256 = hex::encode(Sha256::digest(canonical));
         let meta_json = match event.meta.as_ref() {
             Some(meta) => serde_json::to_string(meta)
                 .map_err(|_| invalid("meta", "could not be serialized"))?,
@@ -2619,7 +2616,7 @@ fn persist_ingress_rejection(
     let payload = serde_json::to_vec(&serde_json::json!({
         "schema_version": 1,
         "offset": offset,
-        "record_sha256": format!("{:x}", hasher.finalize()),
+        "record_sha256": hex::encode(hasher.finalize()),
         "reason_code": reason_code,
         "event_count": event_count,
     }))

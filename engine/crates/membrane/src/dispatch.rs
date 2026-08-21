@@ -467,7 +467,9 @@ impl LifecycleChannel {
             LifecycleCommand::OwnershipLoss => "ownership_loss",
             LifecycleCommand::ParentEof => return Ok(()),
         };
-        emit_lifecycle_frame(serde_json::json!({"kind":"ack","command":command,"fence":self.fence,"capability":self.capability}))
+        emit_lifecycle_frame(
+            serde_json::json!({"kind":"ack","command":command,"fence":self.fence,"capability":self.capability}),
+        )
     }
 
     pub fn failed(&self) -> Result<(), String> {
@@ -588,14 +590,14 @@ fn is_sha256_digest(value: &str) -> bool {
 fn sha256_text(value: &str) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(value.as_bytes());
-    format!("sha256:{digest:x}")
+    format!("sha256:{}", hex::encode(digest))
 }
 
 fn sha256_file(path: &std::path::Path) -> std::io::Result<String> {
     use sha2::{Digest, Sha256};
     let bytes = std::fs::read(path)?;
     let digest = Sha256::digest(bytes);
-    Ok(format!("sha256:{digest:x}"))
+    Ok(format!("sha256:{}", hex::encode(digest)))
 }
 
 pub fn monitor_lifecycle_channel(
@@ -705,8 +707,13 @@ mod tests {
     fn supervisor_child_has_no_filesystem_lease_argument() {
         let inv = parse_mode(["membrane", "supervisor-child"].iter().copied()).unwrap();
         assert_eq!(inv.mode, MembraneMode::SupervisorChild);
-        assert!(parse_mode(["membrane", "supervisor-child", "--retired-binding", "/tmp/x"])
-            .is_err());
+        assert!(parse_mode([
+            "membrane",
+            "supervisor-child",
+            "--retired-binding",
+            "/tmp/x"
+        ])
+        .is_err());
     }
 
     #[test]

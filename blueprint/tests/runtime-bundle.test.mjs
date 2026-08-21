@@ -30,6 +30,7 @@ test("stageRuntime produces the S-12 layout", () => {
     assert.equal(result.version, "0.2.0");
     assert.ok(result.layout.includes("app/package/node_modules"));
     assert.equal(result.layout.includes("app/node_modules"), false);
+    assert.equal(existsSync(join(out, "app", "package", "node_modules", ".bin")), false, "unused npm shims leaked temporary install links");
   } finally {
     rmSync(out, { recursive: true, force: true });
   }

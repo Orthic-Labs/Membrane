@@ -1,8 +1,7 @@
-//! G5 Lane B — Cortex durable-memory provider contract tests.
+//! G5 Lane B — Pull's Cortex durable-memory provider contract tests.
 //!
 //! These tests exercise the public API the planner will consume. The new
-//! `memory_provider` is owned by Membrane runtime & re-exported through
-//! Cortex API as `membrane_runtime::memory_provider`.
+//! `memory_provider` is owned by Membrane runtime.
 
 use membrane_runtime::memdb::MemDb;
 use membrane_runtime::memory_provider::{

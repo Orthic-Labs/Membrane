@@ -640,7 +640,7 @@ impl MemoryEventContext {
     }
 
     /// Resolve a content-free decision identity from the process environment. Codex exposes its
-    /// provider thread as `CODEX_THREAD_ID`; other clients can provide the portable CORTEX_*
+    /// provider thread as `CODEX_THREAD_ID`; other clients can provide portable MEMBRANE_*
     /// variables. Missing values receive unique opaque fallbacks rather than collapsing unrelated
     /// invocations into one synthetic session.
     pub fn from_environment(fallback_surface: &str) -> Self {
@@ -1492,7 +1492,7 @@ fn content_hash(content: &str) -> String {
     use sha2::{Digest, Sha256};
     let mut h = Sha256::new();
     h.update(content.as_bytes());
-    format!("{:x}", h.finalize())
+    hex::encode(h.finalize())
 }
 
 fn valid_opaque_id(value: &str, max: usize) -> bool {
@@ -1519,7 +1519,7 @@ fn memory_batch_request_hash(request: &MemoryBatchRequest) -> Result<String, Mem
 
     let encoded = serde_json::to_vec(request)
         .map_err(|_| MemoryBatchError::Invalid("request is not canonical JSON".into()))?;
-    Ok(format!("{:x}", Sha256::digest(encoded)))
+    Ok(hex::encode(Sha256::digest(encoded)))
 }
 
 fn memory_batch_item_hash(item: &MemoryBatchItem) -> Result<String, MemoryBatchError> {
@@ -1527,7 +1527,7 @@ fn memory_batch_item_hash(item: &MemoryBatchItem) -> Result<String, MemoryBatchE
 
     let encoded = serde_json::to_vec(item)
         .map_err(|_| MemoryBatchError::Invalid("item is not canonical JSON".into()))?;
-    Ok(format!("{:x}", Sha256::digest(encoded)))
+    Ok(hex::encode(Sha256::digest(encoded)))
 }
 
 fn memory_batch_tier(value: &str) -> Result<MemoryTier, MemoryBatchError> {
@@ -1560,7 +1560,7 @@ fn dream_snapshot_digest(mut rows: Vec<DreamSnapshotRow>) -> String {
         field(&access_count.to_le_bytes());
         field(scope_id.as_bytes());
     }
-    format!("{:x}", hash.finalize())
+    hex::encode(hash.finalize())
 }
 
 fn dream_registry_digest(entries: &[MemoryEntry]) -> Result<String, String> {
@@ -1680,8 +1680,7 @@ fn detailed_database_status(
 
 fn new_uuid_v4() -> Result<String, String> {
     let mut bytes = [0u8; 16];
-    getrandom::getrandom(&mut bytes)
-        .map_err(|error| format!("generate operation UUID: {error}"))?;
+    getrandom::fill(&mut bytes).map_err(|error| format!("generate operation UUID: {error}"))?;
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     Ok(format!(
@@ -3648,7 +3647,7 @@ impl MemoryStore {
         }
         Ok(SkillsSnapshot {
             schema_version: 1,
-            generation: format!("sha256:{:x}", hasher.finalize()),
+            generation: format!("sha256:{}", hex::encode(hasher.finalize())),
             skills,
         })
     }
@@ -4075,7 +4074,7 @@ impl MemoryStore {
             .collect::<std::collections::HashMap<_, _>>();
         let mut scope_hashes = nodes
             .iter()
-            .map(|node| format!("{:x}", sha2::Sha256::digest(node.scope.as_bytes())))
+            .map(|node| hex::encode(sha2::Sha256::digest(node.scope.as_bytes())))
             .collect::<Vec<_>>();
         scope_hashes.sort();
         scope_hashes.dedup();
@@ -4088,7 +4087,7 @@ impl MemoryStore {
             .iter()
             .enumerate()
             .map(|(index, node)| {
-                let digest = format!("{:x}", sha2::Sha256::digest(node.scope.as_bytes()));
+                let digest = hex::encode(sha2::Sha256::digest(node.scope.as_bytes()));
                 serde_json::json!({
                     "i": index,
                     "tier": node.tier.to_lowercase(),
@@ -6947,7 +6946,6 @@ impl MemoryStore {
         let access_count = self.record_use_observed(id, context)?;
         Ok((content, access_count))
     }
-
 }
 
 fn vault_review_markdown(report: &serde_json::Value) -> String {
@@ -9055,7 +9053,7 @@ mod tests {
                 },
             )
             .unwrap();
-        assert!(row.0.starts_with("recall."));
+        assert!(row.0.starts_with("event."));
         assert_eq!(row.1, "047e84c2-0c46-4a73-a0fc-41e9a3d25d10");
         assert_eq!(row.2, "a4881e30-22fe-4f89-9f5b-3fe891993617");
         assert_eq!(row.3, "codex");

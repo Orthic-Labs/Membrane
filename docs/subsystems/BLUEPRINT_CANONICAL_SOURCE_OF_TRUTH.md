@@ -349,8 +349,8 @@ Blueprint is organized as interacting planes, not one linear pipeline.
                                 ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │                      APPLICATION / ADMISSION                         │
-│ service API · orient · impact · documentTruth · architecture         │
-│                     recall · status · resolve                        │
+│ service API · recall · impact · documentTruth · architecture         │
+│                         status · resolve                             │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │
                                 ▼
@@ -1338,7 +1338,7 @@ A decision exposes:
 
 ## 16.3 Recall + truth integration
 
-`orient()` consumes the same canonical RecallCircuit and truth findings used elsewhere.
+`recall()` consumes the same canonical RecallCircuit and truth findings used elsewhere.
 
 It does not build an independent candidate/ranking system.
 
@@ -1414,7 +1414,6 @@ The service protocol includes at minimum:
 status
 search
 resolve
-orient
 expand
 impact
 architecture
@@ -2216,7 +2215,7 @@ Blueprint is complete only when every item below is true.
 
 ## 28.7 Admission
 
-- [ ] `orient` consumes canonical recall and truth.
+- [ ] `recall` consumes canonical recall and truth.
 - [ ] Decisions are allow/continue/block/noop with reason codes.
 - [ ] Receipts bind task/repo/generation/scope/evidence.
 - [ ] Missing/ambiguous/unsafe evidence can block when the contract requires it.

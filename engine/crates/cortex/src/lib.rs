@@ -9,8 +9,8 @@ pub use membrane_runtime::{MemDb, MemoryStore};
 /// intentionally not re-exported from Cortex.
 pub mod durable {
     pub use membrane_runtime::{
-        context_telemetry, feedback, memdb, memory_provider, scope,
-        CheckpointError, CheckpointSourceRefV1, CheckpointSourceResolutionV1, CheckpointV1,
+        context_telemetry, feedback, memdb, memory_provider, scope, CheckpointError,
+        CheckpointSourceRefV1, CheckpointSourceResolutionV1, CheckpointV1,
     };
 }
 

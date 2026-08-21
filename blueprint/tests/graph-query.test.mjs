@@ -70,7 +70,7 @@ test("graph query primitives return typed, evidence-backed JSON", () => {
     assert.equal(planner.provider, "blueprint-treesitter");
     assert.ok(["ready", "missing_command", "unavailable", "broken"].includes(planner.planner.state));
     // A "ready" verdict must be earned by actually round-tripping a ContextPacket
-    // through `cortex plan-context`, not by grepping help text (the old probe).
+    // through `membrane cli plan-context`, not by grepping help text (the old probe).
     if (planner.planner.state === "ready") {
       assert.match(planner.planner.evidence, /round-tripped a ContextPacket/);
     }

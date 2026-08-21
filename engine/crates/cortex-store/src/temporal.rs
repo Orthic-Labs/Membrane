@@ -79,7 +79,7 @@ fn valid_instant(value: &str) -> bool {
 
 fn digest<T: Serialize>(value: &T) -> Result<String, String> {
     let bytes = serde_json::to_vec(value).map_err(|e| e.to_string())?;
-    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
+    Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
 }
 
 impl TemporalFactStore {

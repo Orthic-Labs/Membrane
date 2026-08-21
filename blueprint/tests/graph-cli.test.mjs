@@ -64,6 +64,45 @@ test("blueprint graph build/status/search works from a repo root", () => {
   }
 });
 
+test("graph audit-projection emits compact current working-tree discovery", () => {
+  const repo = copyFixture();
+  try {
+    const git = (...args) => spawnSync("git", args, { cwd: repo, encoding: "utf8" });
+    assert.equal(git("init").status, 0);
+    assert.equal(git("config", "user.email", "blueprint@example.invalid").status, 0);
+    assert.equal(git("config", "user.name", "Blueprint Test").status, 0);
+    assert.equal(git("add", ".").status, 0);
+    assert.equal(git("commit", "-m", "fixture").status, 0);
+    fs.appendFileSync(path.join(repo, "src/service.ts"), "\nexport const dirty = true;\n");
+    fs.writeFileSync(path.join(repo, "src/untracked.ts"), "export const untracked = true;\n");
+    fs.rmSync(path.join(repo, "resources/orders.json"));
+
+    const build = run(["graph", "build", "--out", ".agent"], repo);
+    assert.equal(build.status, 0, build.stderr || build.stdout);
+    const projectionResult = run(["graph", "audit-projection", "--out", ".agent", "--json"], repo);
+    assert.equal(projectionResult.status, 0, projectionResult.stderr || projectionResult.stdout);
+    const projection = JSON.parse(projectionResult.stdout);
+    assert.equal(projection.schema, "membrane.blueprint-packet.v1");
+    assert.equal(projection.status, "ready");
+    assert.equal(projection.state, "ready");
+    assert.match(projection.generationId, /^xxh128:/);
+    assert.match(projection.manifestDigest, /^sha256:/);
+    assert.equal(projection.sourceObservation.dirty, true);
+    assert.ok(projection.files.includes("src/service.ts"));
+    assert.ok(projection.files.includes("src/untracked.ts"));
+    assert.ok(!projection.files.includes("resources/orders.json"));
+    assert.deepEqual(projection.files, [...projection.files].sort());
+    assert.equal(projection.fileCount, projection.files.length);
+    assert.ok(projection.sourceFileCount >= 5);
+    assert.ok(projection.parsedExtensions.includes("ts"));
+    assert.equal(projection.overlay.state, "ready");
+    assert.ok(projection.overlay.dirtyTracked >= 1);
+    assert.equal(projection.overlay.untracked, 1);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
 test("doctor degrades for unsupported source while catalog coverage remains ready", () => {
   const repo = copyFixture();
   try {

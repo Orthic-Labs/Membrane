@@ -1,9 +1,9 @@
 //! Membrane CLI — serve the memory contract, or migrate a markdown corpus into the engine.
 //! Real BGE embeddings need `--features fastembed` + `$ORT_DYLIB_PATH`.
 
-use clap::{Parser, Subcommand};
 use crate::scope::{normalize_scope, path_to_scope};
 use crate::{CheckpointV1, MemDb, MemoryStore};
+use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
@@ -180,7 +180,7 @@ fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
             std::fs::read_to_string(&resolved).map_err(|e| format!("skill-read {name}: {e}"))?;
         let hash = {
             use sha2::{Digest, Sha256};
-            format!("{:x}", Sha256::digest(body.as_bytes()))
+            hex::encode(Sha256::digest(body.as_bytes()))
         };
         eprintln!("[skill-read] {name} bodyHash={hash} source=disk");
         write_skill_body(&name, &body)?;
@@ -194,7 +194,7 @@ fn run_skill_read(name: String, root: Option<String>) -> Result<(), String> {
                 if let Some((body, _stored_sha)) = store.skill_from_db(&name) {
                     let hash = {
                         use sha2::{Digest, Sha256};
-                        format!("{:x}", Sha256::digest(body.as_bytes()))
+                        hex::encode(Sha256::digest(body.as_bytes()))
                     };
                     eprintln!("[skill-read] {name} bodyHash={hash} source=engine");
                     write_skill_body(&name, &body)?;
@@ -933,7 +933,7 @@ fn storage_key_digest(
         digest.update([255]);
     }
     Ok(
-        serde_json::json!({"table":table,"row_count":count,"key_set_sha256":format!("sha256:{:x}", digest.finalize())}),
+        serde_json::json!({"table":table,"row_count":count,"key_set_sha256":format!("sha256:{}", hex::encode(digest.finalize()))}),
     )
 }
 
@@ -1553,7 +1553,10 @@ fn service_api_token() -> Result<Option<String>, String> {
             .trim()
             .to_string();
         if token.is_empty() {
-            return Err(format!("MEMBRANE_API_TOKEN_FILE {} is empty", path.display()));
+            return Err(format!(
+                "MEMBRANE_API_TOKEN_FILE {} is empty",
+                path.display()
+            ));
         }
         if token.contains(['\r', '\n']) {
             return Err("MEMBRANE_API_TOKEN_FILE contains a newline".to_string());
@@ -1661,7 +1664,7 @@ fn pending_state_like_name(name: &str) -> bool {
 
 fn put_digest(body: &str) -> String {
     use sha2::{Digest, Sha256};
-    format!("{:x}", Sha256::digest(body.as_bytes()))
+    hex::encode(Sha256::digest(body.as_bytes()))
 }
 
 fn auth_principal_digest(api_token: Option<&str>) -> String {
@@ -1672,7 +1675,7 @@ fn auth_principal_digest(api_token: Option<&str>) -> String {
     hasher.update(b"cortex-cli-auth-principal-v1");
     hasher.update((principal.len() as u64).to_be_bytes());
     hasher.update(principal);
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 fn privacy_digest_is_valid(digest: &str) -> bool {
@@ -1681,8 +1684,7 @@ fn privacy_digest_is_valid(digest: &str) -> bool {
 
 fn fresh_idempotency_key() -> Result<String, String> {
     let mut bytes = [0_u8; 16];
-    getrandom::getrandom(&mut bytes)
-        .map_err(|error| format!("generate idempotency key: {error}"))?;
+    getrandom::fill(&mut bytes).map_err(|error| format!("generate idempotency key: {error}"))?;
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
@@ -2778,7 +2780,10 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                     ),
                 )
             } else {
-                (crate::push::skel::skeletonize(&file, &src), "status=ok".to_string())
+                (
+                    crate::push::skel::skeletonize(&file, &src),
+                    "status=ok".to_string(),
+                )
             };
             let drop_meta = crate::push::compress::drop_manifest_meta(
                 &crate::push::compress::drop_manifest(&src, &out),
@@ -2822,9 +2827,8 @@ fn run_push(command: PushCmd) -> Result<(), String> {
                 }
             }
             let (out, meta) = if let Some(budget) = budget {
-                let result = crate::push::compress::compress_to_budget_with_options(
-                    &input, budget, no_onnx,
-                );
+                let result =
+                    crate::push::compress::compress_to_budget_with_options(&input, budget, no_onnx);
                 (
                     result.text,
                     format!(
@@ -4174,18 +4178,42 @@ mod tests {
 
     #[test]
     fn push_cli_accepts_token_budgets() {
-        let compress =
-            super::Cli::try_parse_from(["membrane", "push", "compress", "--budget", "128", "--no-onnx"])
-                .unwrap();
+        let compress = super::Cli::try_parse_from([
+            "membrane",
+            "push",
+            "compress",
+            "--budget",
+            "128",
+            "--no-onnx",
+        ])
+        .unwrap();
         assert!(matches!(
             compress.cmd,
-            super::Cmd::Push { command: super::PushCmd::Compress { budget: Some(128), no_onnx: true, .. } }
+            super::Cmd::Push {
+                command: super::PushCmd::Compress {
+                    budget: Some(128),
+                    no_onnx: true,
+                    ..
+                }
+            }
         ));
-        let skel =
-            super::Cli::try_parse_from(["membrane", "push", "skel", "--budget", "64", "src/lib.rs"]).unwrap();
+        let skel = super::Cli::try_parse_from([
+            "membrane",
+            "push",
+            "skel",
+            "--budget",
+            "64",
+            "src/lib.rs",
+        ])
+        .unwrap();
         assert!(matches!(
             skel.cmd,
-            super::Cmd::Push { command: super::PushCmd::Skel { budget: Some(64), .. } }
+            super::Cmd::Push {
+                command: super::PushCmd::Skel {
+                    budget: Some(64),
+                    ..
+                }
+            }
         ));
     }
 
@@ -4562,18 +4590,23 @@ mod tests {
         let expected = 9_007_199_254_740_991usize;
 
         let plan = plan_context_cli_with_budget(MAX_SAFE_PACKET_CHAR_BUDGET).unwrap();
-        let super::Cmd::Pull { command: super::PullCmd::PlanContext {
-            packet_char_budget, ..
-        }} = plan.cmd
+        let super::Cmd::Pull {
+            command:
+                super::PullCmd::PlanContext {
+                    packet_char_budget, ..
+                },
+        } = plan.cmd
         else {
             panic!("expected plan-context command");
         };
         assert_eq!(packet_char_budget, Some(expected));
 
         let federate = federate_cli_with_budget(MAX_SAFE_PACKET_CHAR_BUDGET).unwrap();
-        let super::Cmd::Pull { command: super::PullCmd::Federate {
-            packet_char_budget, ..
-        }} = federate.cmd
+        let super::Cmd::Pull {
+            command: super::PullCmd::Federate {
+                packet_char_budget, ..
+            },
+        } = federate.cmd
         else {
             panic!("expected federate command");
         };
@@ -4588,10 +4621,13 @@ mod tests {
         };
         assert!(!apply);
 
-        assert!(
-            super::Cli::try_parse_from(["membrane", "isolate-smoke-recalls", "--expected", "2"])
-                .is_err()
-        );
+        assert!(super::Cli::try_parse_from([
+            "membrane",
+            "isolate-smoke-recalls",
+            "--expected",
+            "2"
+        ])
+        .is_err());
         let parsed =
             super::Cli::try_parse_from(["membrane", "isolate-smoke-recalls", "--apply"]).unwrap();
         let super::Cmd::IsolateSmokeRecalls { apply } = parsed.cmd else {
@@ -4733,7 +4769,7 @@ mod tests {
     fn build_info_exposes_source_commit_and_tree_identity_fields() {
         let info = super::build_info();
         assert_eq!(info["product_version"], env!("CARGO_PKG_VERSION"));
-        assert!(info.get("cortex_source_commit").is_some());
+        assert!(info.get("membrane_source_commit").is_some());
         assert!(info.get("source_tree_sha256").is_some());
         assert_eq!(
             info["release_generation"],
@@ -5907,7 +5943,11 @@ pub fn run_cli() {
         .stack_size(16 * 1024 * 1024)
         .spawn(run_main)
         .map_err(|error| format!("start Membrane CLI: {error}"))
-        .and_then(|thread| thread.join().map_err(|_| "Membrane CLI panicked".to_string()))
+        .and_then(|thread| {
+            thread
+                .join()
+                .map_err(|_| "Membrane CLI panicked".to_string())
+        })
         .and_then(|result| result);
     if let Err(error) = result {
         eprintln!("{error}");

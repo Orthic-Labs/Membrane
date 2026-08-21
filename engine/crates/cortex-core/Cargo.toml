@@ -9,8 +9,9 @@ description = "Cortex durable-memory core primitives."
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-sha2 = "0.10"
-fastembed = { version = "5", optional = true }
+sha2 = "0.11"
+hex = { workspace = true }
+fastembed = { version = "6", optional = true }
 tiktoken-rs = { workspace = true }
 rayon = "=1.12.0"
 

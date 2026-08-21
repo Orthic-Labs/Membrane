@@ -9,12 +9,13 @@ const worstPresentation = sections => { let worst = 'available'; for (const sect
 const worstReason = sections => { const worst = worstPresentation(sections); if (worst === 'offline') return 'No cached snapshot'; return sections.find(section => presentationStatus(section) === worst)?.reason || 'No reason provided'; };
 export function viewModel(snapshot) {
   const p = snapshot?.payload || {};
-  const sections = SECTION_ORDER.map(key => p[key]);
+  const sectionMap = p.sections && typeof p.sections === 'object' ? p.sections : {};
+  const sections = SECTION_ORDER.map(key => sectionMap[key]);
   const overallPS = worstPresentation(sections);
   const reason = worstReason(sections);
   const observed = snapshot?.observed_at_unix_ms ?? p.observedAtUnixMs ?? null;
   const stale = Boolean(Number(snapshot?.cache_age_ms) > 0 || sections.some(section => Number(section?.cacheAgeMs) > 0));
-  return { overall: label(overallPS), reason: String(reason), delivery: label(worstPresentation([p.deliveries])), sources: label(worstPresentation([p.providers, p.repositories])), fleet: label(worstPresentation([p.adapters, p.devices])), traceId: typeof p.traceId === 'string' && p.traceId ? p.traceId : null, observed, stale };
+  return { overall: label(overallPS), reason: String(reason), delivery: label(worstPresentation([sectionMap.deliveries])), sources: label(worstPresentation([sectionMap.providers, sectionMap.repositories])), fleet: label(worstPresentation([sectionMap.adapters, sectionMap.devices])), traceId: typeof p.traceId === 'string' && p.traceId ? p.traceId : null, observed, stale };
 }
 export function diagnostics(vm) { return JSON.stringify({ overall: vm.overall, delivery: vm.delivery, sources: vm.sources, fleet: vm.fleet, traceAvailable: Boolean(vm.traceId) }); }
 
@@ -25,8 +26,8 @@ if (typeof document !== 'undefined') (async () => {
   function render(snapshot) { const vm = viewModel(snapshot); document.body.dataset.status=vm.overall.toLowerCase(); $('overall').textContent=vm.overall; $('reason').textContent=vm.reason; $('delivery').textContent=vm.delivery; $('sources').textContent=vm.sources; $('fleet').textContent=vm.fleet; $('observed').textContent=vm.observed ? `Observed ${new Date(vm.observed).toISOString()}${vm.stale ? ' · cached/stale' : ''}` : (vm.stale ? 'Cached/stale' : ''); $('trace').disabled=!vm.traceId; $('trace').dataset.traceId=vm.traceId||''; $('announce').textContent=`${vm.overall}. ${vm.reason}`; }
   async function refresh() { try { render(await invoke('snapshot')); } catch { render(null); } }
   const hide=()=>invoke('hide_popover');
-  $('close').setAttribute('aria-label', windowLabels.close); $('close').onclick=hide; $('quit').onclick=()=>invoke('quit_app');
-  $('diagnostics').onclick=async()=>{ try { await navigator.clipboard?.writeText(diagnostics(viewModel(await invoke('snapshot')))); $('announce').textContent='Diagnostics copied'; } catch { $('announce').textContent='Diagnostics unavailable'; } };
+  $('close').setAttribute('aria-label', windowLabels.close); $('close').onclick=hide; $('open-hub').onclick=()=>invoke('open_dashboard'); $('quit').onclick=()=>invoke('quit_app');
+  $('diagnostics').onclick=async()=>{ try { const [runtime,snapshot]=await Promise.all([invoke('diagnostics_report'),invoke('snapshot')]); await navigator.clipboard?.writeText(JSON.stringify({runtime,presentation:JSON.parse(diagnostics(viewModel(snapshot)))})); $('announce').textContent='Diagnostics copied'; } catch { $('announce').textContent='Diagnostics unavailable'; } };
   $('trace').onclick=async()=>{ const id=$('trace').dataset.traceId; if(id) { try { await navigator.clipboard?.writeText(id); $('announce').textContent='Latest trace copied'; } catch { $('announce').textContent='Trace unavailable'; } } };
   listen('popover-diagnostics', ()=>$('diagnostics').click()); listen('popover-trace', ()=>$('trace').click());
   window.addEventListener('keydown', e=>{ if(e.key==='Escape') hide(); });

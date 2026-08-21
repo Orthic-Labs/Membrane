@@ -286,7 +286,8 @@ fn freshness_route_returns_versioned_content_free_service_metadata() {
         "worktreePath": repo_root.to_string_lossy(),
     })
     .to_string();
-    let (status, payload) = membrane_runtime::serve::route_for_tests(&store, "POST", "/freshness", &body);
+    let (status, payload) =
+        membrane_runtime::serve::route_for_tests(&store, "POST", "/freshness", &body);
     assert_eq!(status, 200, "{payload}");
     let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
     assert_eq!(value["schemaVersion"], 1);

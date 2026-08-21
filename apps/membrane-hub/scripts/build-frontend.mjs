@@ -1,4 +1,4 @@
-import { chmodSync, cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,8 +6,10 @@ import { engineReleaseIdentity } from "./release-identity.mjs";
 import { resolveManagedCargoTarget } from "./lib/target-root.mjs";
 
 const output = new URL("../dist/", import.meta.url);
-rmSync(output, { recursive: true, force: true });
 mkdirSync(output, { recursive: true });
+for (const name of readdirSync(output)) {
+  if (name !== "release-identity.json") rmSync(join(fileURLToPath(output), name), { recursive: true, force: true });
+}
 for (const name of ["index.html", "popover.html", "src"]) {
   cpSync(new URL(`../${name}`, import.meta.url), new URL(name, output), { recursive: true });
 }
@@ -15,7 +17,7 @@ cpSync(new URL("../assets/tray", import.meta.url), new URL("assets/tray", output
 cpSync(
   new URL("../node_modules/@tauri-apps/api", import.meta.url),
   new URL("vendor/@tauri-apps/api", output),
-  { recursive: true },
+  { recursive: true, dereference: true },
 );
 cpSync(
   new URL("../node_modules/@tauri-apps/plugin-os/dist-js", import.meta.url),
@@ -50,12 +52,17 @@ console.log(
   `[membrane] release generation ${identity.releaseGeneration} `
   + `(commit ${identity.commit.slice(0, 8)}${identity.dirty ? ", working tree" : ""}, ${identity.fileCount} files)`,
 );
-const result = spawnSync("rightkit", ["cargo", "build", "--manifest-path", engine, "--release", "--target", target, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane"], { cwd: repo, stdio: "inherit", env: { ...process.env, CORTEX_SOURCE_COMMIT: identity.commit, CORTEX_SOURCE_TREE_SHA256: identity.sourceTreeSha256 } });
+// RightKit intentionally strips arbitrary ambient environment from managed
+// Cargo requests. Write one build input outside the hashed engine subtree;
+// membrane-runtime/build.rs validates it & emits compile-time identity.
+const identityPath = new URL("../dist/release-identity.json", import.meta.url);
+const identityText = `${JSON.stringify(identity, null, 2)}\n`;
+if (!existsSync(identityPath) || readFileSync(identityPath, "utf8") !== identityText) {
+  writeFileSync(identityPath, identityText);
+}
+const result = spawnSync("rightkit", ["cargo", "build", "--manifest-path", engine, "--release", "--target", target, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane"], { cwd: repo, stdio: "inherit" });
 if (result.error) throw result.error;
 if (result.status !== 0) throw new Error(`Membrane sidecar build failed with exit ${result.status}`);
-// The consumer of the baked value is the workspace release manifest; writing it
-// beside the binaries keeps expected and observed in one step instead of two.
-writeFileSync(new URL("../dist/release-identity.json", import.meta.url), `${JSON.stringify(identity, null, 2)}\n`);
 const binaries = fileURLToPath(new URL("../src-tauri/binaries/", import.meta.url));
 mkdirSync(binaries, { recursive: true });
 for (const name of ["cortex", "membrane"]) {

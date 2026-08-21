@@ -93,7 +93,7 @@ fn canonical_digest_is_stable_for_a_known_manifest() {
     let mut hasher = Sha256::new();
     hasher.update(canonical.as_bytes());
     let expected = format!("sha256:{}", sha256_hex(&canonical));
-    let actual = format!("sha256:{:x}", hasher.finalize());
+    let actual = format!("sha256:{}", hex::encode(hasher.finalize()));
     assert_eq!(actual, expected);
 }
 
@@ -247,5 +247,5 @@ fn hand_shake_error_precedence_is_installation_then_schema_then_data_root() {
 fn sha256_hex(text: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(text.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }

@@ -66,7 +66,8 @@ fn resolve_source_ref(
     reference: &CheckpointSourceRefV1,
     workspace_root: &std::path::Path,
 ) -> String {
-    let Ok(source_ref) = crate::guide::identifier::WorktreeDocRef::parse(&reference.source_ref) else {
+    let Ok(source_ref) = crate::guide::identifier::WorktreeDocRef::parse(&reference.source_ref)
+    else {
         return "deny".into();
     };
     let relative = std::path::Path::new(source_ref.relative_path());

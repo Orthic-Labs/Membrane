@@ -353,6 +353,13 @@ function cortexArgs(args, bindingRecord) {
   const db = bindingRecord?.db || process.env.CORTEX_DB || "";
   return ["--db", db, ...args].filter((v, i) => !(i === 1 && !v));
 }
+function durableCli(binding, installation, args) {
+  // Cortex remains the durable-memory owner, but its resident binary was retired.
+  // Membrane's single binary exposes the durable projection behind `cli`.
+  if (process.env.MEMBRANE_BIN) return { binary: process.env.MEMBRANE_BIN, args: ["cli", ...cortexArgs(args, installation)] };
+  const binary = join(installation.workspaceRoot, "tools", "bin", process.platform === "win32" ? "membrane.exe" : "membrane");
+  return { binary, args: ["cli", ...cortexArgs(args, installation)] };
+}
 async function bindingEnv(binding) {
   const installation = await installationBindingFor(binding);
   return { ...process.env, ...installationEnv(installation) };
@@ -390,13 +397,13 @@ async function durableFeedback(binding, args) {
     const eventId = receiptId("event", { operation: "feedback", feedbackId });
     const installation = await resolveInstallation(binding);
     const env = { ...process.env, ...installationEnv(installation) };
-    const binary = process.env.CORTEX_BIN || "cortex";
-    const out = await run(binary, cortexArgs([
+    const command = durableCli(binding, installation, [
       "feedback", "--trace", eventId, "--candidate", args.receiptId,
       "--sha", digest(args.receiptId).slice("sha256:".length), "--outcome", args.outcome,
       "--source", source, "--scope", binding.scope_id,
       ...(source === "cited_verdict" ? ["--verdict-ref", args.verdictRef] : []),
-    ], installation), "", env);
+    ]);
+    const out = await run(command.binary, command.args, "", env);
     if (out.code !== 0) throw new Error(out.stderr.trim() || out.stdout.trim());
     let response;
     try { response = JSON.parse(out.stdout.trim()); } catch { throw new Error("returned invalid JSON"); }
@@ -712,7 +719,8 @@ async function callTool(name, args, trace = {}, lifecycle) {
   if (name === "membrane_source_read") {
     const binding = await authorize(args, "source_read");
     const install = await installationBindingFor(binding);
-    const out = await run(process.env.CORTEX_BIN || "cortex", cortexArgs(["doc", "read", "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash], install), "", await bindingEnv(binding));
+    const command = durableCli(binding, install, ["doc", "read", "--source-ref", args.sourceRef, "--anchor", args.anchorId, "--expected-hash", args.expectedContentHash]);
+    const out = await run(command.binary, command.args, "", await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "source_read_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_blueprint") {
@@ -725,7 +733,8 @@ async function callTool(name, args, trace = {}, lifecycle) {
     const install = await installationBindingFor(binding);
     bounded(args.checkpoint, MAX_PROPOSAL_BYTES, "checkpoint");
     takeRate(binding, "checkpoint");
-    const out = await run(process.env.CORTEX_BIN || "cortex", cortexArgs(["checkpoint", "save"], install), JSON.stringify(args.checkpoint), await bindingEnv(binding));
+    const command = durableCli(binding, install, ["checkpoint", "save"]);
+    const out = await run(command.binary, command.args, JSON.stringify(args.checkpoint), await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "checkpoint_save_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_checkpoint_load") {
@@ -733,7 +742,8 @@ async function callTool(name, args, trace = {}, lifecycle) {
     const install = await installationBindingFor(binding);
     const params = ["checkpoint", "load", args.id];
     if (Number.isInteger(args.asOfMs)) params.push("--as-of-ms", String(args.asOfMs));
-    const out = await run(process.env.CORTEX_BIN || "cortex", cortexArgs(params, install), "", await bindingEnv(binding));
+    const command = durableCli(binding, install, params);
+    const out = await run(command.binary, command.args, "", await bindingEnv(binding));
     return text(out.stdout.trim() || { error: "checkpoint_load_unavailable", detail: out.stderr.slice(0, 240) });
   }
   if (name === "membrane_working_context") {

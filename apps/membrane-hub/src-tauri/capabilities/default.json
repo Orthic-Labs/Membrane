@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "hub-local-ui",
+  "description": "Allow Membrane Tray & Hub to use their local Tauri command, event, & window bridge.",
+  "windows": ["hub", "dashboard"],
+  "permissions": ["core:default"]
+}

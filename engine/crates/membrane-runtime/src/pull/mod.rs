@@ -6,11 +6,11 @@
 //! depend on.
 
 pub mod admission;
+pub mod cli;
 pub mod federation;
 pub mod federation_worker;
 pub mod metrics;
 pub mod publication;
-pub mod cli;
 
 /// Pull is the only runtime namespace that exposes final evidence admission.
 /// The pure policy remains implemented by `cortex-core`; this is its single

@@ -24,7 +24,7 @@ fn skill_read_resolves_body_and_guards_traversal() {
     // Valid: prints the exact body on stdout, bodyHash on stderr.
     let ok = Command::new(bin)
         .env("MEMBRANE_SKILL_EVENT_PATH", &event_path)
-        .env("CORTEX_CLIENT", "codex")
+        .env("MEMBRANE_CLIENT", "codex")
         .args(["skill-read", "demo", "--root", root])
         .output()
         .unwrap();
@@ -51,7 +51,7 @@ fn skill_read_resolves_body_and_guards_traversal() {
     assert_eq!(row["bytes_returned"], body.len());
     assert_eq!(
         row["body_sha256"],
-        format!("{:x}", Sha256::digest(body.as_bytes()))
+        hex::encode(Sha256::digest(body.as_bytes()))
     );
     let keys: std::collections::BTreeSet<&str> = row
         .as_object()
@@ -151,7 +151,7 @@ fn skill_read_serves_from_engine_without_skills_directory() {
     let out = std::process::Command::new(bin)
         .env("CORTEX_DB", db.to_str().unwrap())
         .env("MEMBRANE_SKILL_EVENT_PATH", &event_path)
-        .env("CORTEX_CLIENT", "claude")
+        .env("MEMBRANE_CLIENT", "claude")
         .args(["skill-read", "dbskill", "--root", empty.to_str().unwrap()])
         .output()
         .unwrap();

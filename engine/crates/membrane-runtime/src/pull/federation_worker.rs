@@ -284,7 +284,7 @@ fn source_fingerprint(script: &Path) -> String {
             }
         }
     }
-    format!("{:x}|{newest_mtime}", hasher.finalize())
+    format!("{}|{newest_mtime}", hex::encode(hasher.finalize()))
 }
 
 fn kill_child_tree(process: &mut Child) -> std::io::Result<()> {

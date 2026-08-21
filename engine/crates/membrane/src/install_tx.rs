@@ -325,7 +325,7 @@ fn compute_commit_digest(plan: &InstallPlan) -> String {
     .unwrap_or_default();
     let mut hasher = sha2::Sha256::new();
     sha2::Digest::update(&mut hasher, &bytes);
-    format!("sha256:{:x}", sha2::Digest::finalize(hasher))
+    format!("sha256:{}", hex::encode(sha2::Digest::finalize(hasher)))
 }
 
 #[cfg(test)]

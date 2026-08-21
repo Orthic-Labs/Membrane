@@ -32,7 +32,7 @@ ADAPT_DIR = HERE.parent
 PACKAGE_DIR = ADAPT_DIR / "src" / "adapt"
 DEFAULT_OUT = ROOT / ".cache/adapt-delivery-parity/full"
 DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/cortex-engine.db"
-DEFAULT_CORTEX = ROOT / "tools/bin/cortex.exe"
+DEFAULT_MEMBRANE = ROOT / "tools/bin/membrane"
 API_WORKER = ROOT / "legion/skills/coder/scripts/api-worker.py"
 DEFAULT_GRADER_MODEL = "deepseek-ai/deepseek-v4-pro"
 TOP_K = 5
@@ -647,7 +647,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--adapt-variant", choices=("raw", "curated"), default="raw")
     parser.add_argument("--grader-model", default=DEFAULT_GRADER_MODEL)
     parser.add_argument("--live-db", type=Path, default=DEFAULT_LIVE_DB)
-    parser.add_argument("--cortex-bin", type=Path, default=DEFAULT_CORTEX)
+    parser.add_argument("--membrane-bin", type=Path, default=DEFAULT_MEMBRANE)
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args(argv)
     out = args.out or (ROOT / ".cache/adapt-delivery-parity" /
@@ -663,7 +663,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.stage in {"retrieval", "all"}:
         print(f"retrieval: {len(cases)} cases, two copied DB arms")
         retrieval = run_retrieval(value_set, treatment, cases, out, args.live_db,
-                                  args.cortex_bin, args.resume)
+                                  args.membrane_bin, args.resume)
     elif retrieval_path.exists():
         retrieval = read_json(retrieval_path)
     if args.stage in {"actor", "all"}:

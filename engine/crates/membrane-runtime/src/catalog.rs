@@ -302,7 +302,7 @@ CREATE TABLE IF NOT EXISTS catalog_metadata (
 
 fn new_catalog_installation_id() -> rusqlite::Result<String> {
     let mut bytes = [0u8; 16];
-    getrandom::getrandom(&mut bytes).map_err(|error| {
+    getrandom::fill(&mut bytes).map_err(|error| {
         rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(error.to_string())))
     })?;
     bytes[6] = (bytes[6] & 0x0f) | 0x40;

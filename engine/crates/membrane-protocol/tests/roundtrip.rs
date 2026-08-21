@@ -24,7 +24,7 @@ use sha2::{Digest, Sha256};
 fn sha256_hex(text: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(text.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 /// Canonical digest of a fixture, computed by canonicalizing the raw JSON.

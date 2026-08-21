@@ -4,11 +4,11 @@
 //! operational replay harness & must not be used to claim production-trace
 //! equivalence, live refetch behaviour, or a P2 gate pass by itself.
 
+use cortex_core::MemoryTier;
 use membrane_runtime::{
     pull::admission::{admit, AdmissionRequest, Authority, InstructionPolicy, Origin},
     MemDb, MemoryLifecycleEventV1, MemoryStore,
 };
-use cortex_core::MemoryTier;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -58,7 +58,7 @@ struct Manifest {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 fn insert(store: &MemoryStore, id: &str, scope: &str) {

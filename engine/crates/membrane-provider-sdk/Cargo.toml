@@ -21,7 +21,7 @@ membrane-protocol = { version = "0.1", path = "../membrane-protocol" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-sha2 = "0.10"
+sha2 = "0.11"
 
 [dev-dependencies]
 membrane-testkit = { path = "../membrane-testkit" }

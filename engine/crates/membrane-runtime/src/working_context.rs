@@ -271,8 +271,8 @@ pub fn verify_envelope(env: &WorkingContextEnvelopeV1) -> Result<(), String> {
 /// case, matching `observable_event::mint_v4_uuid`).
 fn mint_v4_uuid() -> String {
     let mut bytes = [0u8; 16];
-    getrandom::getrandom(&mut bytes).unwrap_or_else(|_| {
-        let _ = getrandom::getrandom(&mut bytes);
+    getrandom::fill(&mut bytes).unwrap_or_else(|_| {
+        let _ = getrandom::fill(&mut bytes);
     });
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;

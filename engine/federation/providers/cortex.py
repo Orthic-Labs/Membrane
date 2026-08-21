@@ -1,7 +1,7 @@
-"""Cortex provider — invokes the Rust `cortex memory-candidates` CLI.
+"""Cortex provider — reads durable candidates from Membrane's resident service.
 
 Per dispatch: Cortex remains durable memory only. This provider reads
-eligible MemoryEntry rows via the CLI and emits them as Layer 7 candidates
+eligible durable rows via Membrane's authenticated resident route and emits them as Layer 7 candidates
 for the planner.
 """
 from __future__ import annotations
@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import subprocess
 import urllib.request
 from pathlib import Path
 
@@ -81,33 +80,16 @@ def _ccs_from_serve(task: str, scope: str, max_candidates: int, scope_descriptor
         return None
 
 
-def _default_bin() -> str:
-    """Resolve durable Cortex binary. Bare `cortex` is a shim that Python's subprocess cannot
-    resolve in the gateway's interpreter on Windows (no PATHEXT/.cmd resolution) — that silently
-    returned 0 memory candidates. Default to the real workspace binary; an explicit MEMBRANE_BIN
-    env still wins. cortex.py -> providers -> federation -> Membrane -> tools -> <workspace>."""
-    env = os.environ.get("MEMBRANE_BIN")
-    if env:
-        return env
-    workspace = Path(__file__).resolve().parents[4]
-    exe = workspace / "tools" / "bin" / ("cortex.exe" if os.name == "nt" else "cortex")
-    return str(exe) if exe.exists() else "cortex"
-
-
 def produce_with_observability(
     repo_root: Path, task: str, scope_grant_id: str | None, scope_descriptor: dict | None = None
 ) -> tuple[list[dict], str, dict]:
     # Prompt path is resident-only. Cold ONNX startup is diagnostics/setup work, never recall work.
     ccs = _ccs_from_serve(task, str(repo_root), 64, scope_descriptor)
-    source = "cortex-serve"
+    source = "membrane-resident-cortex"
     if ccs is None:
         if _replay_no_legacy():
-            raise RuntimeError(
-                "replay cortex serve unavailable; CLI fallback disabled"
-            )
-        raise RuntimeError(
-            "cortex serve unavailable; prompt-path CLI fallback disabled"
-        )
+            raise RuntimeError("replay Membrane resident unavailable")
+        raise RuntimeError("Membrane resident unavailable")
     raw_candidates = ccs.get("candidates", []) if isinstance(ccs, dict) else []
     candidates = []
     for c in raw_candidates:

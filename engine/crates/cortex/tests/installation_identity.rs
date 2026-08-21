@@ -150,8 +150,8 @@ fn shipped_cli_rotates_the_selected_installation_without_a_database() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_cortex"))
         .args(["installation", "rotate", "--reason", "clone"])
-        .env("CORTEX_INSTALLATION_FILE", &path)
-        .env("CORTEX_MIRROR", &mirror)
+        .env("MEMBRANE_INSTALLATION_FILE", &path)
+        .env("MEMBRANE_MIRROR", &mirror)
         .env_remove("CORTEX_DB")
         .output()
         .unwrap();

@@ -20,6 +20,7 @@ import {
   repositoryIdentity,
 } from "../../graph/static-provider.mjs";
 import { executeRecallCircuit, recallCircuitToCandidateSet } from "../../graph/recall-circuit.mjs";
+import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
 import { fail } from "./errors.mjs";
 
 function databasePath(root, outDir) {
@@ -128,9 +129,16 @@ export function createBlueprintApplicationService({
       throwIfAborted(signal);
       const root = resolveRoot(input);
       const status = graphStatus(root, outDir);
+      const overlay = observeRepositoryFreshness(root, {
+        baseCommit: status.manifest?.repo?.baseCommit ?? null,
+      });
       return {
         schemaVersion: 1,
-        repository: repositoryIdentity(root),
+        repository: {
+          ...repositoryIdentity(root),
+          revision: overlay.revision,
+        },
+        overlay,
         ...status,
       };
     },

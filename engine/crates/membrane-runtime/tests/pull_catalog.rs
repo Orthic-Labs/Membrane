@@ -16,7 +16,9 @@ use membrane_runtime::catalog::{
 };
 use membrane_runtime::memdb::MemDb;
 use membrane_runtime::pull::metrics::{LastFallback, PlannerLatency};
-use membrane_runtime::serve::{route_with_catalog_and_metrics_for_tests, route_with_catalog_for_tests};
+use membrane_runtime::serve::{
+    route_with_catalog_and_metrics_for_tests, route_with_catalog_for_tests,
+};
 use membrane_runtime::store::MemoryStore;
 use rusqlite::Connection;
 use serde_json::json;
@@ -679,6 +681,30 @@ fn scope_grant_persists_in_catalog_not_cortex_db() {
         .unwrap()
         .expect("grant present");
     assert_eq!(grant.id, "sg-cross");
+}
+
+#[test]
+fn scope_grant_lookup_returns_service_owned_binding() {
+    let catalog = new_catalog();
+    issue_grant(&catalog, "sg-cross");
+    let store = MemoryStore::open(MemDb::open_in_memory());
+    let (status, payload) = route_with_catalog_for_tests(
+        &store,
+        &catalog,
+        "POST",
+        "/scope_grants",
+        r#"{"operation":"lookup","id":"sg-cross"}"#,
+    );
+    assert_eq!(status, 200);
+    let value: serde_json::Value = serde_json::from_str(&payload).unwrap();
+    assert_eq!(value["id"], "sg-cross");
+    assert_eq!(value["status"], "active");
+    assert!(value["taskId"].is_string());
+    assert!(value["sessionId"].is_string());
+    assert!(value["manifestDigest"]
+        .as_str()
+        .unwrap()
+        .starts_with("sha256:"));
 }
 
 // ---- 7. Frozen-fixture smoke: 100 warm-process runs, p95 within budget ---

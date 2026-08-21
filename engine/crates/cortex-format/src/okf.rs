@@ -132,7 +132,6 @@ pub fn emit_bundle(
     })
 }
 
-
 fn parse_markdown_concept(path: &Path) -> Result<OkfConcept, OkfError> {
     let content = fs::read_to_string(path).map_err(|err| io_error(path, err))?;
     let (fields, body) = parse_frontmatter(path, &content)?;
@@ -296,10 +295,7 @@ fn split_related_section(body: &str) -> (String, Vec<OkfLink>) {
     (body.trim_end().to_string(), Vec::new())
 }
 
-fn render_concept(
-    concept: &OkfConcept,
-    path: &Path,
-) -> Result<String, OkfError> {
+fn render_concept(concept: &OkfConcept, path: &Path) -> Result<String, OkfError> {
     if concept.kind.trim().is_empty() {
         return Err(OkfError::MissingType(path.to_path_buf()));
     }
@@ -420,7 +416,6 @@ fn extract_markdown_links(text: &str) -> Vec<OkfLink> {
     links
 }
 
-
 fn validate_concept_name(name: &str) -> Result<(), OkfError> {
     if name.trim().is_empty()
         || name == "."
@@ -465,11 +460,7 @@ mod tests {
         }];
         let details = concept("details", "reference", "Implementation notes.");
 
-        let stats = emit_bundle(
-            dir.path(),
-            &[overview.clone(), details.clone()],
-        )
-        .unwrap();
+        let stats = emit_bundle(dir.path(), &[overview.clone(), details.clone()]).unwrap();
         assert_eq!(stats.files, 3);
 
         let bundle = parse_bundle(dir.path()).unwrap();
@@ -510,6 +501,4 @@ mod tests {
 
         assert!(matches!(err, OkfError::MissingType(path) if path.ends_with("missing-type.md")));
     }
-
-
 }

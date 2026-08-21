@@ -40,9 +40,9 @@ either changes.
 ## Current status: producer wired in source, not yet in the running Hub
 
 A producer now exists. `engine/crates/membrane-runtime/src/memory_sentinel_producer.rs`
-(commit `a639ec44`) builds the report from the live Cortex database —
-`memories.lifecycle_state`, `memory_quarantine`, `transform_opportunity_log`,
-and `context_feedback` — and `hub_inputs.rs` now wires the Hub's `sentinel`
+(commit `a639ec44`) builds the report from Cortex durable-memory tables —
+`memories.lifecycle_state`, `memory_quarantine`, and `context_feedback` — and
+`hub_inputs.rs` now wires the Hub's `sentinel`
 input to it:
 
 ```rust

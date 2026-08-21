@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:net";
@@ -161,6 +161,8 @@ test("C1 durable proposal/feedback returns readback receipts across MCP restart"
     WORKSPACE_ROOT: root,
   };
   const binary = await currentMembrane();
+  await symlink(binary, join(tools, "bin", process.platform === "win32" ? "membrane.exe" : "membrane"));
+  env.MEMBRANE_BIN = binary;
   env.MEMBRANE_PORT = String(port);
   const resident = await startMembrane(binary, root, port, env);
   let active = resident;

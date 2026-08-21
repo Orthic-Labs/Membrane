@@ -4,8 +4,8 @@ Pinned: 2026-07-13. Adapted from the sealed CommandCode A/B at
 ``.cache/adapt-taste-ab/evaluate.py``; this script keeps the isolated-service
 machinery and replaces the 2-arm comparison with the v2 plan's 4 arms:
 
-  A: current Cortex recall only (baseline).
-  B: copied Cortex + the 16 CommandCode rules injected via `cortex put`,
+  A: current Cortex durable recall only (baseline).
+  B: copied durable store + the 16 CommandCode rules injected via `membrane cli put`,
      retrieved normally (proves retrieval value alone).
   C: copied Cortex + the same 16 CommandCode rules as an ALWAYS-INJECTED
      static policy block (proves the value comes from retrieval vs always-on).
@@ -25,7 +25,7 @@ Usage::
 
     py -3.11 membrane/adapt/eval/run_value_ab.py \\
         --live-db D:/Claude/tools/.cache/memory/cortex-engine.db \\
-        --cortex-bin D:/Claude/tools/bin/cortex.exe \\
+    --membrane-bin D:/Claude/tools/bin/membrane \\
         --taste-md D:/Claude/.commandcode/taste/taste.md \\
         --adapt-manifest D:/Claude/.cache/adapt/review/10session.manifest.json \\
         --out D:/Claude/.cache/adapt-value-ab/
@@ -72,7 +72,7 @@ from pathlib import Path
 
 ROOT = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 DEFAULT_LIVE_DB = ROOT / "tools/.cache/memory/cortex-engine.db"
-DEFAULT_CORTEX = ROOT / "tools/bin/cortex.exe"
+DEFAULT_MEMBRANE = ROOT / "tools/bin/membrane"
 DEFAULT_TASTE_MD = ROOT / ".commandcode/taste/taste.md"
 DEFAULT_OUT = ROOT / ".cache/adapt-value-ab"
 SCOPE = "D--Claude"
@@ -151,7 +151,7 @@ class TasteRule:
         return slugify(self.text)
 
     def as_envelope(self) -> str:
-        """Body to feed into cortex put. Mirrors evaluate.py."""
+        """Body to feed into Membrane durable put. Mirrors evaluate.py."""
         return (
             f"Standing preference [{self.category}]: {self.text} "
             f"Source: CommandCode learn-taste. Confidence: {self.confidence:.2f}."
@@ -209,18 +209,38 @@ def _free_port() -> int:
         return probe.getsockname()[1]
 
 
-def _start_service(cortex: Path, db: Path, port: int) -> subprocess.Popen:
+def _start_service(membrane: Path, db: Path, port: int) -> subprocess.Popen:
+    workspace = db.parent / f"{db.stem}-membrane-workspace"
+    bin_dir = workspace / "tools" / "bin"
+    memory_dir = workspace / "tools" / ".cache" / "memory"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(db, memory_dir / "cortex-engine.db")
+    (memory_dir / "api-token").write_text("adapt-eval-token\n", encoding="utf-8")
+    (workspace / "tools" / "lib" / "memory").mkdir(parents=True, exist_ok=True)
+    (workspace / "tools" / "lib" / "memory" / "runtime.json").write_text(
+        json.dumps({"schemaVersion": 1, "serviceId": "membrane-local-v1", "host": "127.0.0.1", "port": port}),
+        encoding="utf-8",
+    )
+    service_binary = bin_dir / membrane.name
+    service_binary.symlink_to(membrane)
+    ort = membrane.parent / "libonnxruntime.dylib"
+    if ort.exists(): (bin_dir / "libonnxruntime.dylib").symlink_to(ort)
     env = os.environ.copy()
+    env["WORKSPACE_ROOT"] = str(workspace)
     env["MEMBRANE_PORT"] = str(port)
+    env["MEMBRANE_API_TOKEN_FILE"] = str(memory_dir / "api-token")
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    return subprocess.Popen(
-        [str(cortex), "--db", str(db), "serve", "--port", str(port)],
+    service = subprocess.Popen(
+        [str(service_binary), "supervisor-child"],
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
         text=True,
         creationflags=flags,
     )
+    service._membrane_eval_workspace = workspace
+    return service
 
 
 def _wait_ready(port: int, deadline_s: float = SERVICE_READY_TIMEOUT) -> None:
@@ -231,19 +251,19 @@ def _wait_ready(port: int, deadline_s: float = SERVICE_READY_TIMEOUT) -> None:
             if client.connect_ex(("127.0.0.1", port)) == 0:
                 return
         time.sleep(0.05)
-    raise RuntimeError(f"cortex service on port {port} did not become ready")
+    raise RuntimeError(f"Membrane resident on port {port} did not become ready")
 
 
-def _run_via_port(cortex: Path, db: Path, port: int,
+def _run_via_port(membrane: Path, db: Path, port: int,
                   cmd: list[str], input_text: str | None = None) -> str:
     env = os.environ.copy()
     env["MEMBRANE_PORT"] = str(port)
-    res = subprocess.run([str(cortex), "--db", str(db), *cmd],
+    res = subprocess.run([str(membrane), "cli", "--db", str(db), *cmd],
                          input=input_text, text=True, encoding="utf-8",
                          capture_output=True, check=False, env=env)
     if res.returncode != 0:
         raise RuntimeError(
-            f"cortex {cmd[0]} failed rc={res.returncode}: {res.stderr.strip()}"
+            f"Membrane CLI {cmd[0]} failed rc={res.returncode}: {res.stderr.strip()}"
         )
     return res.stdout
 
@@ -255,6 +275,8 @@ def _stop_service(svc: subprocess.Popen) -> None:
     except subprocess.TimeoutExpired:
         svc.kill()
         svc.wait(timeout=5)
+    workspace = getattr(svc, "_membrane_eval_workspace", None)
+    if workspace: shutil.rmtree(workspace, ignore_errors=True)
 
 
 def put_rule(cortex: Path, db: Path, port: int, rule: TasteRule) -> None:
@@ -430,7 +452,7 @@ def live_db_unchanged(live: Path, baseline_count: int) -> tuple[bool, str]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--live-db", type=Path, default=DEFAULT_LIVE_DB)
-    ap.add_argument("--cortex-bin", type=Path, default=DEFAULT_CORTEX)
+    ap.add_argument("--membrane-bin", type=Path, default=DEFAULT_MEMBRANE)
     ap.add_argument("--taste-md", type=Path, default=DEFAULT_TASTE_MD)
     ap.add_argument("--adapt-manifest", type=Path, default=None,
                     help="Reviewed 10-session Adapt manifest; populates arm D")
@@ -442,8 +464,8 @@ def main(argv: list[str] | None = None) -> int:
     if not args.live_db.exists():
         print(f"error: live DB not found: {args.live_db}", file=sys.stderr)
         return 2
-    if not args.cortex_bin.exists():
-        print(f"error: cortex binary not found: {args.cortex_bin}",
+    if not args.membrane_bin.exists():
+        print(f"error: Membrane binary not found: {args.membrane_bin}",
               file=sys.stderr)
         return 2
     if not args.taste_md.exists():
@@ -473,14 +495,14 @@ def main(argv: list[str] | None = None) -> int:
 
     # ----- Arm A: baseline -----
     print("arm A: baseline...")
-    arms.append(run_arm_a(args.cortex_bin, args.out / "A.db", rows, tmp))
+    arms.append(run_arm_a(args.membrane_bin, args.out / "A.db", rows, tmp))
 
     # ----- Arm B: + 16 CommandCode rules -----
     def _inject_b(cortex, db, port):
         for r in rules:
             put_rule(cortex, db, port, r)
     print("arm B: +16 CommandCode rules...")
-    arms.append(run_arm_with_inject(args.cortex_bin, args.out / "B.db",
+    arms.append(run_arm_with_inject(args.membrane_bin, args.out / "B.db",
                                     rows, tmp, "B", _inject_b))
 
     # ----- Arm C: + 16 rules as static block; engine unchanged -----
@@ -488,7 +510,7 @@ def main(argv: list[str] | None = None) -> int:
     # The arm records the block alongside the ranked output so graders can
     # apply the always-injected scoring rule consistently.
     print("arm C: +16 static-block (no DB change)...")
-    arms_c = run_arm_a(args.cortex_bin, args.out / "C.db", rows, tmp)
+    arms_c = run_arm_a(args.membrane_bin, args.out / "C.db", rows, tmp)
     arms_c.arm = "C"
     arms_c.static_block = "\n".join(r.as_static_block() for r in rules)
     arms_c.notes.append("static policy block composed at grader layer; "
@@ -504,7 +526,7 @@ def main(argv: list[str] | None = None) -> int:
         for rec in adapt_records:
             put_pref_record(cortex, db, port, rec["id"], rec.get("scope", SCOPE),
                             adapt_record_envelope(rec))
-    arms.append(run_arm_with_inject(args.cortex_bin, args.out / "D.db",
+    arms.append(run_arm_with_inject(args.membrane_bin, args.out / "D.db",
                                     rows, tmp, "D", _inject_d))
 
     # Post-arm: verify live DB unchanged + per-snapshot integrity.

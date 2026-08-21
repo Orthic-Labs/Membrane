@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--treatment", type=Path, default=DEFAULT_TREATMENT)
     parser.add_argument("--production-db", type=Path, default=DEFAULT_PRODUCTION_DB)
     parser.add_argument("--live-db", type=Path, default=DEFAULT_LIVE_DB)
-    parser.add_argument("--cortex-bin", type=Path, default=runner.DEFAULT_CORTEX)
+    parser.add_argument("--membrane-bin", type=Path, default=runner.DEFAULT_MEMBRANE)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--limit", type=int, default=None)
     args = parser.parse_args(argv)
@@ -129,10 +129,10 @@ def main(argv: list[str] | None = None) -> int:
     if not pre_ok:
         raise RuntimeError(f"live DB integrity failed before census: {pre_msg}")
     taste_ranked = _run_taste(
-        args.cortex_bin, args.live_db, args.out / "taste.db", taste, taste_cases, args.out
+        args.membrane_bin, args.live_db, args.out / "taste.db", taste, taste_cases, args.out
     )
     adapt_ranked = _run_existing(
-        args.cortex_bin, args.production_db, args.out / "adapt.db", adapt_cases, args.out
+        args.membrane_bin, args.production_db, args.out / "adapt.db", adapt_cases, args.out
     )
     post_ok, post_count, post_msg = runner.value_ab.integrity_check(args.live_db)
     if not post_ok or post_count != pre_count:

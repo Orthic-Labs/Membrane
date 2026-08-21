@@ -386,7 +386,7 @@ pub fn persist_receipt(
 fn synthesize_installation_id(receipt_root: &Path) -> String {
     let mut hasher = sha2::Sha256::new();
     sha2::Digest::update(&mut hasher, receipt_root.to_string_lossy().as_bytes());
-    format!("sha256:{:x}", sha2::Digest::finalize(hasher))
+    format!("sha256:{}", hex::encode(sha2::Digest::finalize(hasher)))
 }
 
 #[cfg(test)]

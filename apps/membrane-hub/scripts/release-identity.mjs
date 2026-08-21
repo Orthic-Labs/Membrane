@@ -3,8 +3,10 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 // The release generation is baked into the engine at compile time via
-// `option_env!("CORTEX_SOURCE_TREE_SHA256")` (engine/crates/membrane-runtime/src/release_identity.rs).
-// When the build does not export it the binary reports `sha256:unknown` forever,
+// `option_env!("MEMBRANE_SOURCE_TREE_SHA256")` (engine/crates/membrane-runtime/src/release_identity.rs).
+// RightKit strips arbitrary ambient build environment, so build-frontend writes
+// this identity outside the hashed engine subtree & membrane-runtime/build.rs
+// validates it before exporting compile-time values. Without that input the binary reports `sha256:unknown` forever,
 // the gateway refuses to fan out, and every packet ships empty. Computing the
 // identity here — one implementation, two consumers (the sidecar build and the
 // release manifest writer) — is what keeps the baked value and the manifest from

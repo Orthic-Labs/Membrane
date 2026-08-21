@@ -317,7 +317,7 @@ const perBindingCaller = { root: perBindingEnrolled, repositoryId: "repo-per-bin
 const perBindingFeedback = await rpc([{
   jsonrpc: "2.0", id: 42, method: "tools/call",
   params: { name: "membrane_feedback", arguments: { repository: perBindingEnrolled, caller: perBindingCaller, receiptId: "receipt-per-binding", outcome: "used" } },
-}], { MEMBRANE_PROJECT_REGISTRY: perBindingRegistry, CORTEX_BIN: bogusCortex }); // no MEMBRANE_DURABILITY_MODE env at all
+}], { MEMBRANE_PROJECT_REGISTRY: perBindingRegistry, MEMBRANE_BIN: bogusCortex }); // no MEMBRANE_DURABILITY_MODE env at all
 const perBindingReceipt = JSON.parse(perBindingFeedback[0].result.content[0].text);
 assert.equal(perBindingFeedback[0].result.isError, false, toolError(perBindingFeedback[0]));
 assert.equal(perBindingReceipt.status, "accepted_advisory", "grant_policy.durability=advisory downgrades a store-write failure without the env var");
@@ -336,7 +336,7 @@ await writeFile(perBindingDurableRegistry, JSON.stringify({
 const perBindingDurableFeedback = await rpc([{
   jsonrpc: "2.0", id: 43, method: "tools/call",
   params: { name: "membrane_feedback", arguments: { repository: perBindingDurableEnrolled, caller: { root: perBindingDurableEnrolled, repositoryId: "repo-per-binding-durable", scopeId: "scope-per-binding-durable" }, receiptId: "receipt-per-binding-durable", outcome: "used" } },
-}], { MEMBRANE_PROJECT_REGISTRY: perBindingDurableRegistry, MEMBRANE_DURABILITY_MODE: "advisory", CORTEX_BIN: bogusCortex });
+}], { MEMBRANE_PROJECT_REGISTRY: perBindingDurableRegistry, MEMBRANE_DURABILITY_MODE: "advisory", MEMBRANE_BIN: bogusCortex });
 assert.equal(perBindingDurableFeedback[0].result.isError, true, "grant_policy.durability=durable must never be masked by the process-wide advisory env override");
 assert.match(toolError(perBindingDurableFeedback[0]), /durable feedback write failed/i);
 
@@ -366,7 +366,7 @@ await writeFile(catalogRegistry, JSON.stringify({
     [await realpath(ungrantedChildDir)]: { repository_id: ungrantedEntry.repoId, scope_id: catalogScope(ungrantedEntry), provider_config: {}, grant_policy: { level: "write-proposed", parent_repository_id: workspaceEntry.repoId } },
   },
 }), "utf8");
-const catalogEnv = { MEMBRANE_PROJECT_REGISTRY: catalogRegistry, MEMBRANE_DURABILITY_MODE: "advisory", CORTEX_BIN: bogusCortex };
+const catalogEnv = { MEMBRANE_PROJECT_REGISTRY: catalogRegistry, MEMBRANE_DURABILITY_MODE: "advisory", MEMBRANE_BIN: bogusCortex };
 const workspaceCaller = { root: catalogWorkspace, repositoryId: workspaceEntry.repoId, scopeId: catalogScope(workspaceEntry) };
 const grantedAccess = await rpc([{
   jsonrpc: "2.0", id: 44, method: "tools/call",
@@ -636,7 +636,7 @@ await writeFile(mbr2Registry, JSON.stringify({
     },
   },
 }), "utf8");
-const mbr2Env = { MEMBRANE_PROJECT_REGISTRY: mbr2Registry, MEMBRANE_DURABILITY_MODE: "advisory", CORTEX_BIN: "/nonexistent/membrane-test-cortex-binary" };
+const mbr2Env = { MEMBRANE_PROJECT_REGISTRY: mbr2Registry, MEMBRANE_DURABILITY_MODE: "advisory", MEMBRANE_BIN: "/nonexistent/membrane-test-binary" };
 const mbr2Caller = { root: mbr2Workspace, repositoryId: mbr2WsEntry.repoId, scopeId: catalogScope(mbr2WsEntry) };
 const mbr2Denied = await rpc([{
   jsonrpc: "2.0", id: 80, method: "tools/call",

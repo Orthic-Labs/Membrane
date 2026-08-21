@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "cortex.doc_spine_shadow_replay_fixture.v1",
+  "schemaVersion": "guide.doc_spine_shadow_replay_fixture.v1",
   "fixtureStatus": "synthetic_test_fixture_not_operational_evidence",
   "repositoryId": "fixture/doc-spine-shadow-v1",
   "revision": "fixture@doc-spine-shadow-v1",

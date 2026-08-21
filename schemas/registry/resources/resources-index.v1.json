@@ -9,7 +9,7 @@
   "accessGrants": ["protocol.read"],
   "authorityEscalation": false,
   "authorityNotes": "The index exposes resource metadata only — never the body of any resource. It cannot be used to widen authority beyond `protocol.read`.",
-  "body": { "schemaVersion": 1, "resourceCount": 3 },
+  "body": { "schemaVersion": 1, "resourceCount": 4 },
   "resources": [
     {
       "name": "resources-index",
@@ -28,6 +28,14 @@
       "accessGrants": ["installation.read"]
     },
     {
+      "name": "lease-status",
+      "version": 1,
+      "uri": "membrane://resource/lease-status/v1",
+      "mimeType": "application/json",
+      "description": "The active Membrane component lease. Bounded to the caller's lease.read grant.",
+      "accessGrants": ["lease.read"]
+    },
+    {
       "name": "operation-registry",
       "version": 1,
       "uri": "membrane://resource/operation-registry/v1",
@@ -40,6 +48,10 @@
     {
       "name": "installation.read",
       "description": "Read access to the bound installation identity (manifest, release generation, components, bound API schemas). Issued by the Membrane supervisor at install/startup time."
+    },
+    {
+      "name": "lease.read",
+      "description": "Read access to the active Membrane component lease. Issued by the Membrane supervisor at startup time."
     },
     {
       "name": "protocol.read",

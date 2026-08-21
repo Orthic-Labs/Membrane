@@ -140,8 +140,8 @@ def produce(
             "recoverable": True,
             "resolver": c["resolver"],  # "cortex skill-read <name>"
             "text": desc,
-            # Carve-out fields (recall_planner._format_packet_block): a skill block is delivered into
-            # model-visible context ONLY when verify_skill(name, text, bodyHash) matches the audited skill.
+            # A skill reaches model-visible context only when its body hash matches
+            # the audited resolver payload.
             "name": name,
             "bodyHash": body_hash,
         })

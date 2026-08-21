@@ -74,7 +74,7 @@ pub fn canonical_digest_of<T: Serialize + ?Sized>(value: &T) -> String {
 pub fn digest_str(text: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(text.as_bytes());
-    format!("sha256:{:x}", hasher.finalize())
+    format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
 #[cfg(test)]

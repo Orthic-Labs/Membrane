@@ -110,7 +110,8 @@ fn serve_routes_put_get_list_delete_dashboard() {
         r#"{"name":"r1","content":"route made memory","scope":"global"}"#,
     );
     assert_eq!(c, 200, "{b}");
-    let (c, b) = membrane_runtime::serve::route_for_tests(&s, "POST", "/get", r#"{"id":"global/r1"}"#);
+    let (c, b) =
+        membrane_runtime::serve::route_for_tests(&s, "POST", "/get", r#"{"id":"global/r1"}"#);
     assert_eq!(c, 200);
     assert!(b.contains("route made memory"));
     let (c, b) = membrane_runtime::serve::route_for_tests(&s, "POST", "/list", "{}");
@@ -118,9 +119,11 @@ fn serve_routes_put_get_list_delete_dashboard() {
     assert!(b.contains("global/r1"));
     let (c, _) = membrane_runtime::serve::route_for_tests(&s, "GET", "/", "");
     assert_eq!(c, 200);
-    let (c, b) = membrane_runtime::serve::route_for_tests(&s, "POST", "/delete", r#"{"id":"global/r1"}"#);
+    let (c, b) =
+        membrane_runtime::serve::route_for_tests(&s, "POST", "/delete", r#"{"id":"global/r1"}"#);
     assert_eq!(c, 200);
     assert!(b.contains("true"));
-    let (c, _) = membrane_runtime::serve::route_for_tests(&s, "POST", "/put", r#"{"name":"","content":""}"#);
+    let (c, _) =
+        membrane_runtime::serve::route_for_tests(&s, "POST", "/put", r#"{"name":"","content":""}"#);
     assert_eq!(c, 400);
 }

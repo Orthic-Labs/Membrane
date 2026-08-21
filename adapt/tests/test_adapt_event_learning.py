@@ -169,7 +169,7 @@ def _free_port() -> int:
 def _run(binary: Path, db: Path, port: int, args: list[str]) -> str:
     env = {**os.environ, "MEMBRANE_PORT": str(port)}
     result = subprocess.run(
-        [str(binary), "--db", str(db), *args],
+        [str(binary), "cli", "--db", str(db), *args],
         env=env,
         capture_output=True,
         text=True,
@@ -203,7 +203,7 @@ def _recall(port: int, token: str, query: str, scope: str) -> str:
 
 def _start_service(binary: Path, db: Path, port: int, env: dict[str, str]) -> subprocess.Popen:
     service = subprocess.Popen(
-        [str(binary), "--db", str(db), "serve", "--port", str(port)],
+        [str(binary), "supervisor-child"],
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
@@ -237,7 +237,7 @@ def test_real_persistence_readback_and_next_use(
     if sys.platform == "darwin":
         tmp_path = Path(tempfile.mkdtemp(prefix="adapt-e2e-", dir=Path.home()))
         request.addfinalizer(lambda: shutil.rmtree(tmp_path, ignore_errors=True))
-    binary = Path(os.environ["CORTEX_BIN"]).resolve()
+    binary = Path(os.environ["MEMBRANE_BIN"]).resolve()
     db = tmp_path / "adapt.db"
     live_db = Path(
         os.environ.get(
@@ -256,7 +256,7 @@ def test_real_persistence_readback_and_next_use(
     monkeypatch.setenv("WORKSPACE_ROOT", str(workspace_root))
     monkeypatch.setenv("CONTEXT_HOME", str(tmp_path))
     monkeypatch.setenv("MEMBRANE_API_TOKEN_FILE", str(token_file))
-    monkeypatch.setenv("CORTEX_ALLOW_HASH", "1")
+    monkeypatch.setenv("MEMBRANE_ALLOW_HASH", "1")
     if sys.platform == "darwin":
         runtime = tmp_path / "libonnxruntime.dylib"
         shutil.copy2(binary.parent / "libonnxruntime.dylib", runtime)

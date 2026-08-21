@@ -12,7 +12,7 @@ cortex-format = { package = "cortex-format", path = "../cortex-format" }
 membrane-protocol = { path = "../membrane-protocol" }
 membrane-core = { path = "../membrane-core" }
 membrane-mcp = { path = "../membrane-mcp" }
-rusqlite = { version = "0.40.1", features = ["bundled"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -20,20 +20,21 @@ clap = { version = "4", features = ["derive"] }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros"] }
 tower = { version = "0.5", features = ["limit", "util"] }
-tower-http = { version = "0.6", features = ["limit", "timeout"] }
-getrandom = "0.2"
-sha2 = "0.10"
+tower-http = { version = "0.7", features = ["limit", "timeout"] }
+getrandom = "0.4"
+sha2 = "0.11"
+hex = { workspace = true }
 comrak = "0.54"
-tree-sitter = "0.22"
-tree-sitter-rust = "0.21"
-tree-sitter-python = "0.21"
-tree-sitter-javascript = "0.23.1"
-tree-sitter-typescript = "0.21"
-tokenizers = { version = "0.15", optional = true }
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
+tree-sitter-python = "0.25"
+tree-sitter-javascript = "0.25"
+tree-sitter-typescript = "0.23"
+tokenizers = { version = "0.23", optional = true }
 [target."cfg(windows)".dependencies]
-ort = { version = "=2.0.0-rc.12", optional = true, default-features = false, features = ["std", "api-24", "load-dynamic", "directml", "ndarray"] }
+ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["std", "api-24", "load-dynamic", "directml", "ndarray"] }
 [target."cfg(not(windows))".dependencies]
-ort = { version = "=2.0.0-rc.12", optional = true, default-features = false, features = ["std", "api-24", "load-dynamic", "ndarray"] }
+ort = { version = "=2.0.0-rc.13", optional = true, default-features = false, features = ["std", "api-24", "load-dynamic", "ndarray"] }
 
 [features]
 default = ["llmlingua-onnx"]
@@ -42,3 +43,6 @@ llmlingua-onnx = ["dep:tokenizers", "dep:ort"]
 
 [dev-dependencies]
 tempfile = "3"
+
+[build-dependencies]
+serde_json.workspace = true

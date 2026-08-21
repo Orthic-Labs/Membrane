@@ -83,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--treatment", type=Path, default=DEFAULT_TREATMENT)
     parser.add_argument("--source-db", type=Path, default=DEFAULT_DB)
-    parser.add_argument("--cortex-bin", type=Path, default=runner.DEFAULT_CORTEX)
+    parser.add_argument("--membrane-bin", type=Path, default=runner.DEFAULT_MEMBRANE)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args(argv)
     treatment = json.loads(args.treatment.read_text(encoding="utf-8"))
@@ -96,11 +96,11 @@ def main(argv: list[str] | None = None) -> int:
     eval_db = args.out / "evidence-recall.db"
     runner.value_ab.snapshot_live_db(args.source_db, eval_db)
     port = runner.value_ab._free_port()
-    service = runner.value_ab._start_service(args.cortex_bin, eval_db, port)
+    service = runner.value_ab._start_service(args.membrane_bin, eval_db, port)
     try:
         runner.value_ab._wait_ready(port)
         ranked = runner.replay_all(
-            args.cortex_bin, eval_db, port, cases, args.out / "queries.jsonl")
+            args.membrane_bin, eval_db, port, cases, args.out / "queries.jsonl")
     finally:
         runner.value_ab._stop_service(service)
     result = {"record_count": len(records), "case_count": len(cases),

@@ -54,8 +54,8 @@ impl FreshnessEpoch {
             head_commit: Some(head.to_string()),
             base_commit: Some(head.to_string()),
             manifest_digest: Some(format!(
-                "sha256:{:x}",
-                Sha256::digest(generation.as_bytes())
+                "sha256:{}",
+                hex::encode(Sha256::digest(generation.as_bytes()))
             )),
             blueprint_generation: Some(generation.to_string()),
             graph_manifest_generation: Some(generation.to_string()),
@@ -597,7 +597,7 @@ fn digest_overlay(entries: &[OverlayEntry]) -> String {
         update_field(&mut hasher, entry.status.as_bytes());
         update_field(&mut hasher, entry.content_hash.as_bytes());
     }
-    format!("sha256:{:x}", hasher.finalize())
+    format!("sha256:{}", hex::encode(hasher.finalize()))
 }
 
 fn update_field(hasher: &mut Sha256, bytes: &[u8]) {
@@ -606,13 +606,14 @@ fn update_field(hasher: &mut Sha256, bytes: &[u8]) {
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 pub struct FilesystemFreshnessProbe<'a> {
     repo_root: PathBuf,
     store: &'a MemoryStore,
     blueprint_endpoint: Option<PathBuf>,
+    pending_overlay: Option<OverlayObservation>,
 }
 
 impl<'a> FilesystemFreshnessProbe<'a> {
@@ -621,6 +622,7 @@ impl<'a> FilesystemFreshnessProbe<'a> {
             repo_root,
             store,
             blueprint_endpoint: None,
+            pending_overlay: None,
         }
     }
 
@@ -638,16 +640,16 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
             .as_deref()
             .map(|endpoint| read_blueprint_status_at(endpoint, &self.repo_root))
             .unwrap_or_else(|| read_blueprint_status(&self.repo_root))?;
-        let head_commit = json_string(
-            &status,
-            &[
-                &["result", "repository", "revision"],
-                &["result", "manifest", "generationId"],
-            ],
-        );
-        let manifest = status
+        self.pending_overlay = status
             .get("result")
-            .and_then(|value| value.get("manifest"));
+            .and_then(|value| value.get("overlay"))
+            .filter(|value| {
+                value.get("available").and_then(serde_json::Value::as_bool) == Some(true)
+            })
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok());
+        let head_commit = json_string(&status, &[&["result", "repository", "revision"]]);
+        let manifest = status.get("result").and_then(|value| value.get("manifest"));
         let blueprint_generation = json_string(
             &status,
             &[
@@ -675,15 +677,20 @@ impl FreshnessProbe for FilesystemFreshnessProbe<'_> {
             blueprint_generation,
             graph_manifest_generation,
             graph_body_generation,
-            // Commit distance is repository truth owned by Blueprint. This endpoint does not
-            // expose a comparable commit pair, so retain typed unknown rather than invoking Git.
-            commit_distance: None,
+            commit_distance: status
+                .get("result")
+                .and_then(|value| value.get("overlay"))
+                .and_then(|value| value.get("commitDistance"))
+                .and_then(serde_json::Value::as_u64)
+                .and_then(|value| u32::try_from(value).ok()),
             skills_generation: Some(self.store.skills_generation()?),
         })
     }
 
     fn read_overlay(&mut self) -> Result<OverlayObservation, String> {
-        Err("Blueprint overlay evidence unavailable".to_string())
+        self.pending_overlay
+            .take()
+            .ok_or_else(|| "Blueprint overlay evidence unavailable".to_string())
     }
 }
 
@@ -695,7 +702,7 @@ fn blueprint_daemon_endpoint() -> Result<PathBuf, String> {
     {
         let home =
             std::env::var("USERPROFILE").map_err(|_| "USERPROFILE is unavailable".to_string())?;
-        let suffix = format!("{:x}", Sha256::digest(home.as_bytes()));
+        let suffix = hex::encode(Sha256::digest(home.as_bytes()));
         return Ok(PathBuf::from(format!(
             r"\\.\pipe\membrane-blueprint-{}",
             &suffix[..16]

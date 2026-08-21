@@ -232,9 +232,15 @@ pub fn skeletonize_to_budget(path: &Path, src: &str, budget_tokens: usize) -> Bu
         '/'
     };
     let stub = if comment == '#' {
-        format!("# membrane.push: {} elided; retrieve original", path.display())
+        format!(
+            "# membrane.push: {} elided; retrieve original",
+            path.display()
+        )
     } else {
-        format!("// membrane.push: {} elided; retrieve original", path.display())
+        format!(
+            "// membrane.push: {} elided; retrieve original",
+            path.display()
+        )
     };
     budget_result(stub, src, path, input_tokens, budget_tokens, "path-stub")
 }

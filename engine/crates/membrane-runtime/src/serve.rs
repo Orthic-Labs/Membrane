@@ -13,6 +13,9 @@
 
 use crate::catalog::{self, ContextCatalog, CATALOG_SCHEMA_VERSION};
 use crate::memdb::MemDb;
+use crate::pull::planner::{
+    plan as plan_context, ContextCandidateSetV1, PlannerError, PlannerInput,
+};
 use crate::scope::{normalize_scope, scope_chain};
 use crate::store::{
     ExternalLifecycleStage, MemoryBatchError, MemoryBatchRequest, MemoryEventContext,
@@ -26,9 +29,6 @@ use axum::middleware::Next;
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{any, get};
 use axum::Router;
-use crate::pull::planner::{
-    plan as plan_context, ContextCandidateSetV1, PlannerError, PlannerInput,
-};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, VecDeque};
@@ -972,8 +972,7 @@ fn token_from_file_or_create(path: &std::path::Path) -> Result<String, String> {
     }
 
     let mut random = [0u8; 32];
-    getrandom::getrandom(&mut random)
-        .map_err(|error| format!("generate Cortex API token: {error}"))?;
+    getrandom::fill(&mut random).map_err(|error| format!("generate Cortex API token: {error}"))?;
     let token = hex(&random);
     let file_name = path
         .file_name()
@@ -1484,7 +1483,10 @@ async fn dispatch(
     let path = uri.path();
     if method == Method::GET && path == "/snapshot" {
         if !membrane_capability_authorized(&headers) {
-            return reject(StatusCode::UNAUTHORIZED, "valid Membrane capability required");
+            return reject(
+                StatusCode::UNAUTHORIZED,
+                "valid Membrane capability required",
+            );
         }
         return match membrane_snapshot_v2() {
             Ok(value) => json_response(StatusCode::OK, value.to_string()),
@@ -3804,22 +3806,20 @@ fn route_with_context_ingest_lease(
             .unwrap_or_else(|| crate::time::now_iso().chars().take(10).collect());
         let context = event_context(&v, "curate");
         match store.dream_now_observed(&today, &context) {
-            Ok(status) => {
-                (
-                    200,
-                    serde_json::json!({
-                        "agent_id": status.agent_id,
-                        "status": status.status,
-                        "model": status.model,
-                        "shell_allowed": status.shell_allowed,
-                        "read_count": status.read_count,
-                        "consolidated_count": status.consolidated_count,
-                        "pruned_count": status.pruned_count,
-                        "quarantined_count": status.quarantined_count,
-                    })
-                    .to_string(),
-                )
-            }
+            Ok(status) => (
+                200,
+                serde_json::json!({
+                    "agent_id": status.agent_id,
+                    "status": status.status,
+                    "model": status.model,
+                    "shell_allowed": status.shell_allowed,
+                    "read_count": status.read_count,
+                    "consolidated_count": status.consolidated_count,
+                    "pruned_count": status.pruned_count,
+                    "quarantined_count": status.quarantined_count,
+                })
+                .to_string(),
+            ),
             Err(error) => (500, serde_json::json!({ "error": error }).to_string()),
         }
     } else if method == "POST" && path == "/quarantine/list" {
@@ -4239,6 +4239,41 @@ fn planner_route(
 
 fn planner_post_scope_grants(catalog: &ContextCatalog, v: &Value) -> (u16, String) {
     let id = v.get("id").and_then(|s| s.as_str()).unwrap_or("").trim();
+    if v.get("operation").and_then(|value| value.as_str()) == Some("lookup") {
+        if id.is_empty() {
+            return (400, json!({"error": "id required"}).to_string());
+        }
+        return match catalog::lookup_grant(catalog, id) {
+            Ok(Some(grant)) => {
+                let repository_root = grant
+                    .repository_ids
+                    .iter()
+                    .find(|value| std::path::Path::new(value).is_absolute())
+                    .cloned();
+                (
+                    200,
+                    json!({
+                        "id": grant.id,
+                        "status": grant.status.as_str(),
+                        "client": grant.client,
+                        "taskId": grant.task_id,
+                        "sessionId": grant.session_id,
+                        "repositoryIds": grant.repository_ids,
+                        "repositoryRoot": repository_root,
+                        "manifestDigest": grant.manifest_digest,
+                        "nonce": grant.nonce,
+                        "expiresAtUnix": grant.expires_at_unix,
+                    })
+                    .to_string(),
+                )
+            }
+            Ok(None) => (404, json!({"error": "scope_grant not found"}).to_string()),
+            Err(error) => (
+                503,
+                json!({"error": format!("catalog lookup failed: {error}")}).to_string(),
+            ),
+        };
+    }
     let client = v
         .get("client")
         .and_then(|s| s.as_str())
@@ -4691,7 +4726,7 @@ pub fn run(
     std::env::set_var("MEMBRANE_RUNTIME_RECEIPT", &runtime_receipt_path);
     crate::runtime_receipt::publish_current(runtime_receipt);
     eprintln!(
-        "cortex serve on 127.0.0.1:{port} db={} catalog={}",
+        "membrane resident on 127.0.0.1:{port} db={} catalog={}",
         db_path.display(),
         catalog_path.display()
     );

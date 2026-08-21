@@ -6,7 +6,7 @@ use std::process::Command;
 use std::time::Instant;
 
 fn digest(content: &str) -> String {
-    format!("{:x}", Sha256::digest(content.as_bytes()))
+    hex::encode(Sha256::digest(content.as_bytes()))
 }
 
 fn insert_projection(

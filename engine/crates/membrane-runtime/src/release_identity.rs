@@ -3,7 +3,7 @@
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
 
-/// Stable across every process built from the same verified Cortex source tree.
+/// Stable across every process built from the same verified Membrane source tree.
 pub fn release_generation() -> String {
     format!(
         "sha256:{}",
@@ -40,14 +40,14 @@ pub fn service_generation() -> &'static str {
     GENERATION
         .get_or_init(|| {
             let mut random = [0u8; 32];
-            if getrandom::getrandom(&mut random).is_ok() {
-                format!("sha256:{:x}", Sha256::digest(random))
+            if getrandom::fill(&mut random).is_ok() {
+                format!("sha256:{}", hex::encode(Sha256::digest(random)))
             } else {
                 format!(
-                    "sha256:{:x}",
-                    Sha256::digest(
+                    "sha256:{}",
+                    hex::encode(Sha256::digest(
                         format!("{}:{}", std::process::id(), crate::time::now_iso()).as_bytes()
-                    )
+                    ))
                 )
             }
         })

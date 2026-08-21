@@ -47,6 +47,8 @@ test("status works on a built graph and reports repository identity", async () =
     assert.equal(result.schemaVersion, 1);
     assert.ok(result.repository);
     assert.ok(typeof result.state === "string");
+    assert.ok(result.overlay);
+    assert.equal(typeof result.overlay.available, "boolean");
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }

@@ -215,12 +215,12 @@ impl ObservableEventV1 {
 /// infallible at the type level (we retry once on the rare zero-byte case).
 fn mint_v4_uuid() -> String {
     let mut bytes = [0u8; 16];
-    // getrandom::getrandom returns Result but in practice never fails on
+    // getrandom::fill returns Result but in practice never fails on
     // supported platforms. We swallow the error and re-try once with a
     // fresh buffer; a runtime failure still produces a valid v4-shaped
     // id so callers cannot observe a poison value through the envelope.
-    getrandom::getrandom(&mut bytes).unwrap_or_else(|_| {
-        let _ = getrandom::getrandom(&mut bytes);
+    getrandom::fill(&mut bytes).unwrap_or_else(|_| {
+        let _ = getrandom::fill(&mut bytes);
     });
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;

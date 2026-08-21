@@ -127,7 +127,7 @@ pub fn generate_cli_subcommands(operations: &[OperationSpec]) -> String {
     let canonical_ids = serde_json::to_string(&ids).expect("operation ids serialize");
     let mut hasher = Sha256::new();
     hasher.update(canonical_ids.as_bytes());
-    let digest = format!("sha256:{:x}", hasher.finalize());
+    let digest = format!("sha256:{}", hex::encode(hasher.finalize()));
 
     let mut source =
         format!("{GENERATED_BANNER}\n// operation_registry_version: {digest}\nmatch name {{\n");

@@ -18,6 +18,41 @@
   },
   "app": {
     "macOSPrivateApi": true,
-    "withGlobalTauri": false
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "hub",
+        "title": "Membrane Hub",
+        "url": "popover.html",
+        "width": 360,
+        "height": 330,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false
+      },
+      {
+        "label": "dashboard",
+        "title": "Membrane Hub",
+        "url": "index.html",
+        "width": 1120,
+        "height": 760,
+        "minWidth": 820,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "maximizable": true,
+        "minimizable": true,
+        "decorations": true,
+        "transparent": false,
+        "alwaysOnTop": false,
+        "skipTaskbar": false,
+        "visible": false
+      }
+    ]
   }
 }

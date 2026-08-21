@@ -182,7 +182,7 @@ async function startMembraneSupervisor(sidecarDir) {
   const port = await freePort(); const config = join(root, "tools", "lib", "memory", "runtime.json"); mkdirSync(dirname(config), { recursive: true }); mkdirSync(join(root, "tools", ".cache", "memory"), { recursive: true });
   writeFileSync(config, `${JSON.stringify({ schemaVersion: 1, serviceId: "membrane-local-v1", host: "127.0.0.1", port })}\n`);
   const declaredDataRoot = realpathSync(root);
-  const { stdout } = await run(executable, ["build-info"]);
+  const { stdout } = await run(executable, ["cli", "build-info"]);
   const releaseGeneration = JSON.parse(stdout).release_generation;
   if (!/^sha256:[0-9a-f]{64}$/.test(releaseGeneration ?? "")) throw new Error("membrane supervisor release invalid");
   const lease = { fence: 1, instanceId: `sha256:${randomBytes(32).toString("hex")}`, capability: randomBytes(32).toString("hex"), releaseGeneration, declaredDataRoot, artifactDigest: `sha256:${digest(executable)}` };

@@ -177,7 +177,7 @@ pub struct DocSyncReport {
 const DOC_PARSER_VERSION: &str = "comrak-0.54.0";
 
 fn digest(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 fn query_terms(query: &str) -> Vec<String> {
@@ -335,7 +335,7 @@ fn classify(path: &str) -> (&'static str, &'static str, &'static str, bool) {
 }
 
 /// Read-only Guide recall result. Document text stays in source; callers receive only a
-    /// hash-bound pointer consumable by `membrane cli doc read`.
+/// hash-bound pointer consumable by `membrane cli doc read`.
 #[derive(Clone, Debug, serde::Serialize, PartialEq)]
 pub struct DocRecallHitV1 {
     pub doc_id: String,

@@ -11,10 +11,11 @@ const SECTIONS: [&str; 8] = [
     "alerts",
 ];
 fn snapshot(state: &str, reason: &str) -> CachedSnapshot {
-    let mut value = serde_json::json!({"schemaVersion":1,"observedAtUnixMs":1});
+    let mut sections = serde_json::Map::new();
     for key in SECTIONS {
-        value[key] = serde_json::json!({"state":state,"reason":reason,"items":[],"resolver":null,"source":null,"evidence":null,"observedAtUnixMs":1,"cacheAgeMs":0});
+        sections.insert(key.into(), serde_json::json!({"state":state,"reason":reason,"items":[],"resolver":null,"evidence":null,"observedAtUnixMs":1}));
     }
+    let value = serde_json::json!({"schemaVersion":1,"productId":"membrane","observedAtUnixMs":1,"sections":sections});
     CachedSnapshot {
         schema_version: 1,
         observed_at_unix_ms: 1,
@@ -29,7 +30,7 @@ fn gate_is_passive_and_predicate_is_exact() {
     assert!(gate.masks(Some(&sentinel)));
     assert!(gate.masks(Some(&sentinel)));
     let mut wrong = sentinel.clone();
-    wrong.payload["alerts"]["state"] = serde_json::json!("degraded");
+    wrong.payload["sections"]["alerts"]["state"] = serde_json::json!("degraded");
     assert!(!source_not_connected_snapshot(&wrong));
     assert!(!gate.masks(Some(&wrong)));
     gate.finish();

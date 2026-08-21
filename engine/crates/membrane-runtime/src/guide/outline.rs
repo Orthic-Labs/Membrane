@@ -419,7 +419,7 @@ fn line_for_byte(starts: &[usize], byte: usize) -> usize {
     starts.partition_point(|start| *start <= byte).max(1)
 }
 fn hash(text: &str) -> String {
-    format!("{:x}", Sha256::digest(text.as_bytes()))
+    hex::encode(Sha256::digest(text.as_bytes()))
 }
 fn slugify(text: &str) -> String {
     let slug = text

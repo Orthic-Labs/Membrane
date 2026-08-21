@@ -27,9 +27,10 @@ use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectStat
 // gated on it without further plumbing changes.
 #[cfg(test)]
 mod hub_contract_tests;
+mod hub_telemetry;
+mod supervisor;
 mod update_admission;
 mod workspace;
-mod supervisor;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CachedSnapshot {
@@ -44,7 +45,27 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 const POLL_TIMEOUT: Duration = Duration::from_secs(2);
 const STARTUP_GRACE: Duration = Duration::from_secs(3);
 const STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(100);
+const STARTUP_AGENT_LABEL: &str = "com.membrane.hub";
+const HUB_SECTION_NAMES: [&str; 8] = [
+    "deliveries",
+    "providers",
+    "repositories",
+    "adapters",
+    "devices",
+    "memory",
+    "sentinel",
+    "alerts",
+];
 type ServiceState = Arc<supervisor::Supervisor>;
+type TelemetryState = Arc<hub_telemetry::HubTelemetry>;
+
+fn service_status_name(status: supervisor::ServiceStatus) -> &'static str {
+    match status {
+        supervisor::ServiceStatus::Running => "running",
+        supervisor::ServiceStatus::Unavailable => "unavailable",
+        supervisor::ServiceStatus::CrashLoop => "crash_loop",
+    }
+}
 
 /// Two-Sentinels decision: `StartupGate` is deliberately NOT backed by
 /// `memory_sentinel_view`/`memory_sentinel_producer` (engine/crates/membrane-runtime).
@@ -208,7 +229,9 @@ fn bundled_binary(name: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(format!("{name}{suffix}")))
 }
 
-fn membrane_service_supervisor() -> Result<supervisor::Supervisor, String> {
+fn membrane_service_supervisor(
+    resident_log_path: PathBuf,
+) -> Result<supervisor::Supervisor, String> {
     let program = bundled_binary("membrane");
     if !program.is_file() {
         return Err("membrane_hub_resident_missing".into());
@@ -216,7 +239,11 @@ fn membrane_service_supervisor() -> Result<supervisor::Supervisor, String> {
     let root = workspace::resolve()
         .map_err(|_| "workspace_root_unavailable")?
         .root;
-    Ok(supervisor::Supervisor::new(program, root))
+    Ok(supervisor::Supervisor::new(
+        program,
+        root,
+        resident_log_path,
+    ))
 }
 
 fn stop_membrane_service(service: &ServiceState) {
@@ -254,19 +281,10 @@ fn source_not_connected_snapshot(snapshot: &CachedSnapshot) -> bool {
     let Ok(snapshot) = serde_json::from_value::<HubSnapshotV1>(snapshot.payload.clone()) else {
         return false;
     };
-    [
-        &snapshot.deliveries,
-        &snapshot.providers,
-        &snapshot.repositories,
-        &snapshot.adapters,
-        &snapshot.devices,
-        &snapshot.memory,
-        &snapshot.sentinel,
-        &snapshot.alerts,
-    ]
-    .iter()
-    .all(|section| {
-        section.state == HubStateV1::Unavailable && section.reason == "source_not_connected"
+    HUB_SECTION_NAMES.iter().all(|name| {
+        snapshot.sections.get(*name).is_some_and(|section| {
+            section.state == HubStateV1::Unavailable && section.reason == "source_not_connected"
+        })
     })
 }
 
@@ -278,20 +296,14 @@ pub fn tray_status(snapshot: Option<&CachedSnapshot>) -> TrayStatus {
     }) else {
         return TrayStatus::Offline;
     };
-    let worst = [
-        &snapshot.deliveries,
-        &snapshot.providers,
-        &snapshot.repositories,
-        &snapshot.adapters,
-        &snapshot.devices,
-        &snapshot.memory,
-        &snapshot.sentinel,
-        &snapshot.alerts,
-    ]
-    .into_iter()
-    .map(presentation_rank)
-    .min()
-    .expect("canonical HubSnapshotV1 has eight sections");
+    let Some(worst) = HUB_SECTION_NAMES
+        .iter()
+        .map(|name| snapshot.sections.get(*name).map(presentation_rank))
+        .collect::<Option<Vec<_>>>()
+        .and_then(|ranks| ranks.into_iter().min())
+    else {
+        return TrayStatus::Offline;
+    };
     match worst {
         0 => TrayStatus::Unavailable,
         1 => TrayStatus::Degraded,
@@ -463,48 +475,157 @@ fn snapshot(
 }
 
 #[tauri::command]
-fn set_startup(enabled: bool, app: tauri::AppHandle) -> Result<(), String> {
-    let path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("startup.json");
-    fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    write_cache(
-        &path,
-        &CachedSnapshot {
-            schema_version: 1,
-            observed_at_unix_ms: 0,
-            payload: serde_json::json!({"launchAtLogin": enabled}),
-        },
-    )
+fn diagnostics_report(
+    telemetry: tauri::State<'_, TelemetryState>,
+) -> hub_telemetry::HubDiagnostics {
+    telemetry.report()
 }
 
 #[tauri::command]
-fn startup_setting(app: tauri::AppHandle) -> Result<bool, String> {
-    let path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("startup.json");
-    Ok(read_cache(&path)
-        .ok()
-        .and_then(|v| v.payload.get("launchAtLogin").and_then(|v| v.as_bool()))
-        .unwrap_or(false))
+fn set_startup(enabled: bool) -> Result<(), String> {
+    set_platform_startup(enabled)
+}
+
+#[tauri::command]
+fn startup_setting() -> Result<bool, String> {
+    platform_startup_setting()
+}
+
+#[cfg(target_os = "macos")]
+fn launch_agent_path() -> Result<PathBuf, String> {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| "membrane_hub_home_unavailable".to_string())?;
+    Ok(home
+        .join("Library")
+        .join("LaunchAgents")
+        .join(format!("{STARTUP_AGENT_LABEL}.plist")))
+}
+
+#[cfg(target_os = "macos")]
+fn current_app_bundle() -> Result<PathBuf, String> {
+    let executable = std::env::current_exe().map_err(|_| "membrane_hub_executable_unavailable")?;
+    let bundle = executable
+        .parent()
+        .and_then(Path::parent)
+        .and_then(Path::parent)
+        .filter(|path| path.extension().is_some_and(|extension| extension == "app"))
+        .ok_or("membrane_hub_bundle_unavailable")?;
+    Ok(bundle.to_path_buf())
+}
+
+#[cfg(target_os = "macos")]
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+#[cfg(target_os = "macos")]
+fn startup_agent_plist(bundle: &Path) -> String {
+    format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
+<plist version=\"1.0\"><dict>\n\
+  <key>Label</key><string>{STARTUP_AGENT_LABEL}</string>\n\
+  <key>ProgramArguments</key><array><string>/usr/bin/open</string><string>{}</string></array>\n\
+  <key>RunAtLoad</key><true/>\n\
+  <key>ProcessType</key><string>Interactive</string>\n\
+</dict></plist>\n",
+        xml_escape(&bundle.to_string_lossy())
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn set_platform_startup(enabled: bool) -> Result<(), String> {
+    let path = launch_agent_path()?;
+    if enabled {
+        let bundle = current_app_bundle()?;
+        fs::create_dir_all(
+            path.parent()
+                .ok_or("membrane_hub_launch_agent_parent_missing")?,
+        )
+        .map_err(|_| "membrane_hub_launch_agent_write_failed")?;
+        atomic_write(&path, startup_agent_plist(&bundle).as_bytes())
+            .map_err(|_| "membrane_hub_launch_agent_write_failed".to_string())
+    } else if path.exists() {
+        fs::remove_file(path).map_err(|_| "membrane_hub_launch_agent_remove_failed".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn platform_startup_setting() -> Result<bool, String> {
+    Ok(launch_agent_path()?.is_file())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_platform_startup(_enabled: bool) -> Result<(), String> {
+    Err("membrane_hub_startup_unsupported".into())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn platform_startup_setting() -> Result<bool, String> {
+    Err("membrane_hub_startup_unsupported".into())
 }
 
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle, service: tauri::State<'_, ServiceState>) {
+    if let Some(telemetry) = app.try_state::<TelemetryState>() {
+        telemetry.event("hub_quit", "requested", None);
+    }
     stop_membrane_service(&service);
     app.exit(0);
 }
 
 #[tauri::command]
 fn hide_popover(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(telemetry) = app.try_state::<TelemetryState>() {
+        telemetry.event("popover", "hidden", None);
+    }
     app.get_webview_window("hub")
         .ok_or_else(|| "popover_unavailable".to_string())?
         .hide()
         .map_err(|_| "popover_hide_failed".to_string())
+}
+
+fn show_dashboard(app: &tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    app.set_activation_policy(tauri::ActivationPolicy::Regular)
+        .map_err(|_| "dashboard_activation_failed".to_string())?;
+    let dashboard = app
+        .get_webview_window("dashboard")
+        .ok_or_else(|| "dashboard_unavailable".to_string())?;
+    dashboard
+        .show()
+        .map_err(|_| "dashboard_show_failed".to_string())?;
+    dashboard
+        .set_focus()
+        .map_err(|_| "dashboard_focus_failed".to_string())
+}
+
+#[tauri::command]
+fn open_dashboard(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(popover) = app.get_webview_window("hub") {
+        let _ = popover.hide();
+    }
+    let result = show_dashboard(&app);
+    if let Some(telemetry) = app.try_state::<TelemetryState>() {
+        telemetry.event(
+            "dashboard",
+            if result.is_ok() {
+                "opened"
+            } else {
+                "unavailable"
+            },
+            result.as_ref().err().map(String::as_str),
+        );
+    }
+    result
 }
 
 fn main() {
@@ -512,16 +633,15 @@ fn main() {
         .manage(Arc::new(Mutex::new(PathBuf::from("snapshot.json"))))
         .manage(Arc::new(StartupGate::new()))
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(w) = app.get_webview_window("hub") {
-                let _ = w.show();
-                let _ = w.set_focus();
-            }
+            let _ = show_dashboard(app);
         }))
         .invoke_handler(tauri::generate_handler![
             snapshot,
             set_startup,
             startup_setting,
+            diagnostics_report,
             hide_popover,
+            open_dashboard,
             quit_app
         ])
         .setup(|app| {
@@ -534,6 +654,11 @@ fn main() {
                 .map_err(|e| e.to_string())?
                 .join("snapshot.json");
             fs::create_dir_all(cache.parent().unwrap())?;
+            let telemetry = Arc::new(hub_telemetry::HubTelemetry::new(
+                cache.with_file_name("hub.jsonl"),
+            ));
+            telemetry.event("hub_start", "starting", None);
+            app.manage(telemetry.clone());
             *app.state::<Arc<Mutex<PathBuf>>>().lock().unwrap() = cache.clone();
             let diagnostics =
                 MenuItemBuilder::with_id("diagnostics", "Copy diagnostics").build(app)?;
@@ -565,7 +690,12 @@ fn main() {
                             let _ = app.emit("popover-trace", ());
                         }
                     }
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        if let Some(service) = app.try_state::<ServiceState>() {
+                            stop_membrane_service(&service);
+                        }
+                        app.exit(0);
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -604,11 +734,30 @@ fn main() {
                 });
                 w.hide()?;
             }
+            if let Some(dashboard) = app.get_webview_window("dashboard") {
+                let dashboard_window = dashboard.clone();
+                let dashboard_app = app.handle().clone();
+                dashboard.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = dashboard_window.hide();
+                        #[cfg(target_os = "macos")]
+                        let _ =
+                            dashboard_app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    }
+                });
+                dashboard.hide()?;
+            }
             if let Ok(workspace) = workspace::resolve() {
                 std::env::set_var("WORKSPACE_ROOT", workspace.root);
             }
-            let supervisor = Arc::new(membrane_service_supervisor().map_err(std::io::Error::other)?);
-            if supervisor.start().map_err(std::io::Error::other)? != supervisor::ServiceStatus::Running {
+            let supervisor = Arc::new(
+                membrane_service_supervisor(cache.with_file_name("resident.log"))
+                    .map_err(std::io::Error::other)?,
+            );
+            let started = supervisor.start().map_err(std::io::Error::other)?;
+            telemetry.service(service_status_name(started), None);
+            if started != supervisor::ServiceStatus::Running {
                 return Err(std::io::Error::other("membrane_hub_resident_unavailable").into());
             }
             app.manage(supervisor.clone());
@@ -618,8 +767,16 @@ fn main() {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| bundled_binary("membrane"));
             std::thread::spawn(move || loop {
-                if supervisor.supervise() != supervisor::ServiceStatus::Running {
-                    let _ = supervisor.start();
+                let service_status = supervisor.supervise();
+                if service_status != supervisor::ServiceStatus::Running {
+                    telemetry.service(
+                        service_status_name(service_status),
+                        Some("resident_not_running"),
+                    );
+                    match supervisor.start() {
+                        Ok(status) => telemetry.service(service_status_name(status), None),
+                        Err(error) => telemetry.service("unavailable", Some(&error)),
+                    }
                 }
                 let current = if gate.active() {
                     initial_poll(&cache, &program, &gate)
@@ -627,6 +784,10 @@ fn main() {
                     poll_snapshot(&cache, fetch_snapshot(&program, POLL_TIMEOUT), &gate)
                 };
                 let status = tray_status(current.as_ref().ok());
+                match &current {
+                    Ok(_) => telemetry.snapshot("available", None),
+                    Err(error) => telemetry.snapshot("unavailable", Some(error)),
+                }
                 if let Ok(icon) = tray_icon(status) {
                     let _ = tray.set_icon(Some(icon));
                     let _ = tray.set_icon_as_template(false);
@@ -647,11 +808,7 @@ fn main() {
 mod tests {
     use super::*;
     fn canonical_payload(overrides: &[(&str, &str)]) -> serde_json::Value {
-        let mut payload = serde_json::json!({
-            "schemaVersion": 1,
-            "observedAtUnixMs": 1,
-        });
-        let sections = payload.as_object_mut().unwrap();
+        let mut sections = serde_json::Map::new();
         for name in [
             "deliveries",
             "providers",
@@ -673,14 +830,17 @@ mod tests {
                     "reason": format!("{name}_{state}"),
                     "items": [],
                     "resolver": null,
-                    "source": null,
                     "evidence": null,
                     "observedAtUnixMs": 1,
-                    "cacheAgeMs": 0,
                 }),
             );
         }
-        payload
+        serde_json::json!({
+            "schemaVersion": 1,
+            "productId": "membrane",
+            "observedAtUnixMs": 1,
+            "sections": sections,
+        })
     }
     #[test]
     fn cache_round_trip_is_atomic_shape() {
@@ -710,8 +870,15 @@ mod tests {
     }
     #[test]
     fn startup_setting_shape_is_explicit() {
-        let setting = serde_json::json!({"launchAtLogin":true});
-        assert_eq!(setting["launchAtLogin"], true);
+        #[cfg(target_os = "macos")]
+        {
+            let plist = startup_agent_plist(Path::new("/Applications/Membrane Hub.app"));
+            assert!(plist.contains("<string>com.membrane.hub</string>"));
+            assert!(plist.contains("<string>/Applications/Membrane Hub.app</string>"));
+            assert!(plist.contains("<key>RunAtLoad</key><true/>"));
+            assert!(plist.contains("<key>ProcessType</key><string>Interactive</string>"));
+            assert!(!plist.contains("KeepAlive"));
+        }
     }
     #[test]
     fn polling_keeps_last_valid_then_accepts_service_restart() {
@@ -871,6 +1038,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(snapshot.observed_at_unix_ms, 1);
-        assert_eq!(snapshot.payload["deliveries"]["state"], "available");
+        assert_eq!(
+            snapshot.payload["sections"]["deliveries"]["state"],
+            "available"
+        );
     }
 }

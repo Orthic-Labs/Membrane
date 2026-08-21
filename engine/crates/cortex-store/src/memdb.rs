@@ -279,11 +279,11 @@ fn digest_query_rows(conn: &Connection, sql: &str) -> rusqlite::Result<String> {
             }
         }
     }
-    Ok(format!("sha256:{:x}", hasher.finalize()))
+    Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
 }
 
 fn opaque_legacy_identity(prefix: &str, memory_id: &str) -> String {
-    let digest = format!("{:x}", Sha256::digest(memory_id.as_bytes()));
+    let digest = hex::encode(Sha256::digest(memory_id.as_bytes()));
     format!("{prefix}{}", &digest[..32])
 }
 
@@ -308,7 +308,7 @@ fn backfill_legacy_memory_identity(conn: &mut Connection) -> rusqlite::Result<()
     }
     let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
     for (memory_id, created_at) in missing {
-        let digest = format!("{:x}", Sha256::digest(memory_id.as_bytes()));
+        let digest = hex::encode(Sha256::digest(memory_id.as_bytes()));
         tx.execute(
             "INSERT OR IGNORE INTO memory_identity
              (memory_id, artifact_id, origin_event_uid, installation_id, client,
@@ -377,7 +377,7 @@ fn backfill_legacy_recall_identity(conn: &mut Connection) -> rusqlite::Result<()
 
 fn event_uid() -> Option<String> {
     let mut bytes = [0u8; 16];
-    getrandom::getrandom(&mut bytes).ok()?;
+    getrandom::fill(&mut bytes).ok()?;
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     Some(format!(
@@ -1361,6 +1361,8 @@ pub fn backout_v20_to_v19<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
 
 /// Remove only the causal-learning v23 tables and feedback qualification marker.
 pub fn backout_v23_to_v22<P: AsRef<Path>>(path: P) -> rusqlite::Result<()> {
+    let path = path.as_ref();
+    backout_v24_to_v23(path)?;
     let conn = Connection::open(path)?;
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     if version < 23 {

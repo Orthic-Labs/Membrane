@@ -147,8 +147,8 @@ function runPlatformPhase(platform) {
   const healthJson = parseJsonOutput(health);
   const hostCoverage = parseJsonOutput(hostEvents) || [];
   const expectedCommit = git(membraneRoot, ["rev-parse", "HEAD"]);
-  const engineCurrent = identity?.cortex_source_commit
-    ? spawnSync("git", ["diff", "--quiet", identity.cortex_source_commit, "HEAD", "--", "engine"], { cwd: membraneRoot }).status === 0
+  const engineCurrent = identity?.membrane_source_commit
+    ? spawnSync("git", ["diff", "--quiet", identity.membrane_source_commit, "HEAD", "--", "engine"], { cwd: membraneRoot }).status === 0
     : false;
   const coveredClients = new Set(hostCoverage.filter((row) => Number(row.events) > 0).map((row) => row.client));
   const rollback = loadHostArtifact(platform, "rollback", identity?.release_generation);
@@ -163,7 +163,7 @@ function runPlatformPhase(platform) {
     && (scenarios.value?.telemetry?.feedback || 0) > 0;
   const identityMatch = source?.status === "source_passed"
     && sameSourceFingerprint(source.fingerprint, base.fingerprint)
-    && (identity?.cortex_source_commit === expectedCommit || engineCurrent)
+    && (identity?.membrane_source_commit === expectedCommit || engineCurrent)
     && healthJson?.releaseGeneration === identity?.release_generation
     && ["claude_code", "codex", "ccx"].every((client) => coveredClients.has(client))
     && (!has("--require-rollback") || rollback.valid)

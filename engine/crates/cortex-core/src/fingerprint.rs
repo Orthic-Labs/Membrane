@@ -39,7 +39,7 @@ impl PipelineFingerprint {
         hasher.update([normalize as u8]);
         hasher.update(pipeline_version.to_le_bytes());
 
-        let digest = format!("{:x}", hasher.finalize());
+        let digest = hex::encode(hasher.finalize());
         let label = format!("pf:v1:{digest}");
 
         Self {

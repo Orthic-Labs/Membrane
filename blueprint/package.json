@@ -1,7 +1,7 @@
 {
   "name": "@membrane/blueprint",
   "version": "0.2.0",
-  "description": "Blueprint: local evidence-backed repository map \u2014 documents, claims, code graph (Neurons/Synapses/Circuits), and orientation admission library.",
+  "description": "Blueprint: local evidence-backed repository map — documents, claims, code graph (Neurons/Synapses/Circuits), and orientation admission library.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "packageManager": "pnpm@11.18.0",
@@ -83,13 +83,13 @@
     "soak": "node scripts/run-soak.mjs --seed 1 --duration-events 500 --report /tmp/blueprint-soak.json"
   },
   "dependencies": {
-    "@rightkit/hooks": "0.1.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@parcel/watcher": "2.6.0",
+    "@rightkit/hooks": "0.1.0",
     "ajv": "8.20.0",
     "hash-wasm": "4.12.0",
     "tree-sitter-wasms": "0.1.13",
-    "web-tree-sitter": "0.26.11",
+    "web-tree-sitter": "0.26.12",
     "zod": "4.4.3"
   }
 }

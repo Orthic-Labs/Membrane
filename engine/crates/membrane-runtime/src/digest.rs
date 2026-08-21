@@ -4,12 +4,12 @@ use sha2::{Digest, Sha256};
 
 /// `sha256:<hex>` of an arbitrary UTF-8 string.
 pub fn digest_str(text: &str) -> String {
-    format!("sha256:{:x}", Sha256::digest(text.as_bytes()))
+    format!("sha256:{}", hex::encode(Sha256::digest(text.as_bytes())))
 }
 
 /// `sha256:<hex>` of an arbitrary byte slice.
 pub fn digest_bytes(bytes: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(bytes))
+    format!("sha256:{}", hex::encode(Sha256::digest(bytes)))
 }
 
 #[cfg(test)]

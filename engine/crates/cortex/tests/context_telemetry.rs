@@ -208,8 +208,11 @@ fn committed_event_outbox_replays_after_process_restart() {
 
 fn event(event_id: &str) -> Value {
     let digest32 =
-        |value: &str| format!("{:x}", sha2::Sha256::digest(value.as_bytes()))[..32].to_string();
-    let opaque_event_id = format!("evt-{:x}", sha2::Sha256::digest(event_id.as_bytes()));
+        |value: &str| hex::encode(sha2::Sha256::digest(value.as_bytes()))[..32].to_string();
+    let opaque_event_id = format!(
+        "evt-{}",
+        hex::encode(sha2::Sha256::digest(event_id.as_bytes()))
+    );
     json!({
         "schema_version": 1,
         "event_id": opaque_event_id,
@@ -428,10 +431,7 @@ fn shared_fixture_validates_and_matches_language_neutral_canonical_digest() {
         validate_context_event(&event).unwrap();
     }
     let first = parse_context_event(valid[0].clone()).unwrap();
-    let digest = format!(
-        "{:x}",
-        sha2::Sha256::digest(canonical_event_bytes(&first).unwrap())
-    );
+    let digest = hex::encode(sha2::Sha256::digest(canonical_event_bytes(&first).unwrap()));
     assert_eq!(digest, fixture["expected_canonical_sha256"]);
 
     for case in fixture["invalid_events"].as_array().unwrap() {
@@ -449,7 +449,7 @@ fn checked_in_registry_matches_canonical_parent_workspace_registry() {
         .join("../../fixtures/context-telemetry-registry.json");
     let local = std::fs::read(&local_path).unwrap();
     let local_normalized = String::from_utf8(local).unwrap().replace("\r\n", "\n");
-    let local_sha = format!("{:x}", sha2::Sha256::digest(&local_normalized));
+    let local_sha = hex::encode(sha2::Sha256::digest(&local_normalized));
     assert_eq!(
         local_sha,
         "03ab73429cb56a826d900a8aa7f2124c705759bc5aa268d761d6f7a74ee099ce"
@@ -920,8 +920,12 @@ fn http_batch_endpoint_maps_created_replay_conflict_and_content_rejection() {
 fn telemetry_endpoint_requires_an_active_startup_lease() {
     let store = MemoryStore::open(MemDb::open_in_memory());
     let body = json!({"events": [local_event("evt-no-lease", FIRST_SERVICE_ID)]}).to_string();
-    let (status, _) =
-        membrane_runtime::serve::route_for_tests(&store, "POST", "/v1/telemetry/events:batch", &body);
+    let (status, _) = membrane_runtime::serve::route_for_tests(
+        &store,
+        "POST",
+        "/v1/telemetry/events:batch",
+        &body,
+    );
     assert_eq!(status, 503);
     assert_eq!(
         store
@@ -1067,8 +1071,8 @@ fn operation_store() -> MemoryStore {
 
 #[test]
 fn manual_put_get_delete_dual_write_complete_canonical_attribution() {
-    use membrane_runtime::store::MemoryEventContext;
     use cortex_core::MemoryTier;
+    use membrane_runtime::store::MemoryEventContext;
 
     let store = operation_store();
     let context = MemoryEventContext::new("codex")
@@ -1276,8 +1280,8 @@ fn memory_batch_dual_write_preserves_each_items_family_producer_and_session() {
 
 #[test]
 fn canonical_telemetry_failure_rolls_back_legacy_event_and_memory_mutation() {
-    use membrane_runtime::store::MemoryEventContext;
     use cortex_core::MemoryTier;
+    use membrane_runtime::store::MemoryEventContext;
 
     let store = operation_store();
     store
@@ -1311,8 +1315,8 @@ fn canonical_telemetry_failure_rolls_back_legacy_event_and_memory_mutation() {
 
 #[test]
 fn feedback_write_emits_content_free_canonical_event() {
-    use membrane_runtime::feedback::{FeedbackRecord, FeedbackSource};
     use cortex_core::Outcome;
+    use membrane_runtime::feedback::{FeedbackRecord, FeedbackSource};
 
     let store = operation_store();
     store

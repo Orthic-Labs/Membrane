@@ -17,7 +17,7 @@ For the running platform it:
    Apple notarization platform trust, installed platform
    receipts).
 2. Resolves the **real client, model, and host** identity running the
-   harness (`CORTEX_CLIENT`, `MEMBRANE_QUALIFICATION_MODEL`, machine
+   harness (`MEMBRANE_CLIENT`, `MEMBRANE_QUALIFICATION_MODEL`, machine
    hostname).
 3. Runs all ten canonical scenarios (`repository_orientation`,
    `cross_repo_impact`, `preference_application`,

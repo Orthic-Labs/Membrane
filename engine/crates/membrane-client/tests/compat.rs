@@ -1,7 +1,7 @@
 //! MBR-308 compatibility tests.
 //!
 //! The Rust client is validated against the exact same canonical v1 golden
-//! envelopes (`schemas/operations/operations/*.golden.json`) and the exact same
+//! envelopes (`schemas/registry/operations/*.golden.json`) and the exact same
 //! `operations-index.v1.golden.json` error taxonomy that the TypeScript
 //! (`tests/sdk/cross-language-compat.test.mjs`) and Python
 //! (`tests/sdk/python_client_test.py`) clients are tested against. All three
@@ -24,7 +24,7 @@ fn repo_root() -> PathBuf {
 }
 
 fn golden(name: &str) -> Value {
-    let path = repo_root().join("schemas/operations/operations").join(name);
+    let path = repo_root().join("schemas/registry/operations").join(name);
     let text = fs::read_to_string(&path)
         .unwrap_or_else(|error| panic!("read {}: {error}", path.display()));
     serde_json::from_str(&text).unwrap_or_else(|error| panic!("parse {}: {error}", path.display()))

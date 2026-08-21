@@ -9,17 +9,18 @@ const membraneRoot = resolve(dirname(new URL(import.meta.url).pathname), "..");
 const root = resolve(membraneRoot, "..");
 const python = join(root, ".venv-tools", "bin", "python");
 const candidates = [
-  join(root, "tools", "bin", process.platform === "win32" ? "cortex.exe" : "cortex"),
-  join(membraneRoot, "engine", "target", "debug", "cortex"),
-];
-const cortex = candidates.find(existsSync);
+  process.env.MEMBRANE_BIN,
+  join(root, "tools", "bin", process.platform === "win32" ? "membrane.exe" : "membrane"),
+  join(membraneRoot, "engine", "target", "debug", "membrane"),
+].filter(Boolean);
+const membrane = candidates.find(existsSync);
 const sourceRunner = join(membraneRoot, "adapt", "src", "adapt", "run_incremental_multiwriter.py");
 const dailySync = join(root, "tools", "pipelines", "memory", "daily-sync.sh");
 const installedShim = join(homedir(), "bin", process.platform === "win32" ? "adapt.cmd" : "adapt");
 const sourceCli = join(membraneRoot, "adapt", "src", "adapt", "cli.py");
 const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-if (!cortex) throw new Error("current Cortex binary is unavailable");
+if (!membrane) throw new Error("current Membrane binary is unavailable");
 for (const path of [python, sourceRunner, dailySync, installedShim, sourceCli]) {
   if (!existsSync(path)) throw new Error(`required Adapt authority path missing: ${path}`);
 }
@@ -39,7 +40,7 @@ const execution = spawnSync(
     env: {
       ...process.env,
       ADAPT_E2E: "1",
-      CORTEX_BIN: cortex,
+      MEMBRANE_BIN: membrane,
       CORTEX_LIVE_DB: process.env.CORTEX_DB || join(root, "tools", ".cache", "memory", "cortex-engine.db"),
     },
   },

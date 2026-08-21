@@ -209,7 +209,7 @@ usage:
   ${command} doctor [--out .agent] [--json] [--full] [--limit N]
   ${command} phase2 plan|seal [--out .agent] [--json] [--no-readme-link]
   ${command} hygiene status|refresh [--out .agent] [--only check,...] [--offline] [--json]
-  ${command} graph build|status|schema|search|neighbors|path|impact|resolve|architecture|flows|doc-truth|mermaid|planner-status|candidates [--out .agent] [--limit N] [--budget TOKENS] [--json]
+  ${command} graph build|status|manifest|export|audit-projection|schema|search|neighbors|path|impact|resolve|architecture|flows|doc-truth|mermaid|planner-status|candidates [--out .agent] [--limit N] [--budget TOKENS] [--json]
   ${command} candidates --repo-id <id> [--query TEXT] [--json]
   ${command} recall [--out .agent] [--query TEXT] [--json]
   ${command} explore [--out .agent] [--no-open] [--duration-ms N] [--json]
@@ -2212,7 +2212,7 @@ async function runGraphCommand(root, outDir, subcommand, args) {
       return {
         schemaVersion: 1,
         provider: meta.provider.id ?? meta.provider,
-        planner: cortexPlannerStatus(),
+        planner: membranePlannerStatus(),
         candidateSet: recallCircuitToCandidateSet(circuit, {
           provider: meta.provider,
           ...repositoryIdentity(root),
@@ -2246,6 +2246,82 @@ async function runGraphCommand(root, outDir, subcommand, args) {
       const envelope = readManifestEnvelope(db);
       if (!envelope) throw graphReadError("graph_missing", "Graph store holds no generation; run blueprint build");
       console.log(JSON.stringify({ schemaVersion: 1, storePath: `${outDir}/graph/graph.db`, ...envelope }, null, 2));
+    } finally {
+      closeStore(db);
+    }
+    return 0;
+  }
+  // Compact, read-only discovery packet for Legion Audit. Blueprint remains
+  // sole owner of repository discovery: consumers receive paths, language
+  // coverage, & generation binding without loading or reconstructing graph
+  // semantics. Current dirty paths are overlaid so a signed audit denominator
+  // covers exact working-tree state, including files changed after generation.
+  if (subcommand === "audit-projection") {
+    const status = graphStatus(root, outDir);
+    if (status.state !== "fresh") {
+      throw graphReadError(
+        status.state === "missing" ? "graph_missing" : "graph_stale",
+        status.state === "missing"
+          ? "Graph store is missing; run blueprint build"
+          : "Graph store is stale; run blueprint build",
+      );
+    }
+    const dbPath = join(root, outDir, "graph", "graph.db");
+    const db = openStoreReadOnly(dbPath);
+    try {
+      const envelope = readManifestEnvelope(db);
+      if (!envelope?.generationId) {
+        throw graphReadError("graph_missing", "Graph store holds no generation; run blueprint build");
+      }
+      const ownPaths = new Set(["docs/product.md", "docs/architecture.md"]);
+      const outPrefix = `${normalizePath(outDir)}/`;
+      const includePath = (path) => {
+        const normalized = normalizePath(path);
+        return normalized
+          && !normalized.startsWith(outPrefix)
+          && !ownPaths.has(normalized)
+          && existsSync(join(root, normalized));
+      };
+      const files = new Set(
+        db.prepare("SELECT path FROM generation_leaf WHERE kind='file' ORDER BY path")
+          .all()
+          .map((row) => normalizePath(row.path))
+          .filter(includePath),
+      );
+      const overlay = workingTreeSummary(root);
+      const overlayDirtyTracked = overlay.available ? overlay.dirtyTracked.filter(includePath) : [];
+      const overlayUntracked = overlay.available ? overlay.untracked.filter(includePath) : [];
+      if (overlay.available) {
+        for (const path of [...overlay.dirtyTracked, ...overlay.untracked]) {
+          const normalized = normalizePath(path);
+          if (includePath(normalized)) files.add(normalized);
+          else files.delete(normalized);
+        }
+      }
+      const sortedFiles = [...files].sort();
+      const parsedExtensions = [...new Set(status.capabilities?.parsedExtensions ?? [])].sort();
+      const parsed = new Set(parsedExtensions);
+      const sourceFileCount = sortedFiles.filter((path) => {
+        const base = path.split("/").at(-1) ?? path;
+        const dot = base.lastIndexOf(".");
+        return dot >= 0 && parsed.has(base.slice(dot + 1).toLowerCase());
+      }).length;
+      console.log(JSON.stringify({
+        schema: "membrane.blueprint-packet.v1",
+        status: "ready",
+        state: "ready",
+        generationId: envelope.generationId,
+        manifestDigest: envelope.manifestDigest ?? null,
+        sourceObservation: gitSourceObservation(root),
+        files: sortedFiles,
+        fileCount: sortedFiles.length,
+        sourceFileCount,
+        parsedExtensions,
+        unsupportedExtensions: [...new Set(status.capabilities?.unsupportedExtensions ?? [])].sort(),
+        overlay: overlay.available
+          ? { state: "ready", dirtyTracked: overlayDirtyTracked.length, untracked: overlayUntracked.length }
+          : { state: "unavailable", dirtyTracked: 0, untracked: 0 },
+      }, null, 2));
     } finally {
       closeStore(db);
     }
@@ -2588,10 +2664,10 @@ function recallPayload(root, outDir, args = {}) {
 }
 
 // Peer binary candidates — vendor-neutral, config-driven (D-14, SEAM D-S11).
-// CORTEX_BIN is the explicit Cortex durable-knowledge peer override.
-// New: BLUEPRINT_PEER_BIN_<NAME> (e.g. BLUEPRINT_PEER_BIN_CORTEX), blueprint.config.toml [peers] table,
+// MEMBRANE_BIN is the explicit Membrane peer override.
+// New: BLUEPRINT_PEER_BIN_<NAME> (e.g. BLUEPRINT_PEER_BIN_MEMBRANE), blueprint.config.toml [peers] table,
 // and generic homedir shims. No hardcoded product name survives outside config-default context.
-function peerBinCandidates(peer = "cortex") {
+function peerBinCandidates(peer = "membrane") {
   const envPeer = process.env[`BLUEPRINT_PEER_BIN_${peer.toUpperCase()}`];
   const envGeneric = process.env.BLUEPRINT_PEER_BIN;
   // Optional TOML config: blueprint.config.toml [peers] peer = "/path/to/bin"
@@ -2605,7 +2681,7 @@ function peerBinCandidates(peer = "cortex") {
     }
   } catch {}
   return [
-    process.env.CORTEX_BIN,
+    process.env.MEMBRANE_BIN,
     envPeer,
     envGeneric,
     configPeer,
@@ -2615,7 +2691,7 @@ function peerBinCandidates(peer = "cortex") {
     peer,
   ].filter(Boolean);
 }
-function cortexBinCandidates(peer = "cortex") {
+function membraneBinCandidates(peer = "membrane") {
   return peerBinCandidates(peer);
 }
 
@@ -2654,21 +2730,21 @@ function plannerProbeCandidateSet() {
 }
 
 // Prove the Blueprint -> Cortex join is actually LIVE by round-tripping a real
-// candidate set through `cortex plan-context` and validating the returned
+// candidate set through `membrane cli plan-context` and validating the returned
 // ContextPacket. The old probe only grepped `cortex help` for the string
 // "plan-context" — a check that could not fail while the join was, in fact, never
 // wired. It reported "ready" for a hand-off nothing exercised. This one runs it.
-function cortexPlannerStatus() {
-  const result = { service: "cortex", command: "cortex plan-context" };
+function membranePlannerStatus() {
+  const result = { service: "membrane", command: "membrane cli plan-context" };
   let tmp;
   try {
     tmp = mkdtempSync(join(tmpdir(), "bp-planner-"));
     const csPath = join(tmp, "candidate-set.json");
     writeFileSync(csPath, JSON.stringify(plannerProbeCandidateSet()));
-    let lastError = "no cortex executable found on any known path";
-    for (const bin of cortexBinCandidates()) {
+    let lastError = "no Membrane executable found on any known path";
+    for (const bin of membraneBinCandidates()) {
       try {
-        const out = execFileSync(bin, ["plan-context", "--candidate-set", csPath, "--max-tokens", "2000"], {
+        const out = execFileSync(bin, ["cli", "plan-context", "--candidate-set", csPath, "--max-tokens", "2000"], {
           encoding: "utf8",
           timeout: 8000,
           stdio: ["ignore", "pipe", "pipe"],

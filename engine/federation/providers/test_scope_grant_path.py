@@ -5,8 +5,19 @@ import pytest
 from federation.providers import scope_grant
 
 
-def test_lookup_requires_service_transport_and_performs_no_local_io(tmp_path: Path) -> None:
-    assert scope_grant.lookup(tmp_path, "sg-missing") is None
+def test_lookup_uses_resident_transport_by_default(tmp_path: Path, monkeypatch) -> None:
+    observed = {}
+
+    def resident(repo_root: Path, grant_id: str) -> dict:
+        observed.update(repo_root=repo_root, grant_id=grant_id)
+        return {"id": grant_id, "repositoryRoot": str(repo_root)}
+
+    monkeypatch.setattr(scope_grant, "_resident_lookup", resident)
+    assert scope_grant.lookup(tmp_path, "sg-resident") == {
+        "id": "sg-resident",
+        "repositoryRoot": str(tmp_path),
+    }
+    assert observed == {"repo_root": tmp_path, "grant_id": "sg-resident"}
 
 
 def test_lookup_delegates_to_service_transport_without_aliases(tmp_path: Path) -> None:

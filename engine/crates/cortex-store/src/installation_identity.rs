@@ -132,7 +132,7 @@ fn require_uuid4(value: &str, field: &str) -> Result<(), InstallationIdentityErr
 
 fn new_uuid4() -> Result<String, InstallationIdentityError> {
     let mut bytes = [0u8; 16];
-    getrandom::getrandom(&mut bytes)
+    getrandom::fill(&mut bytes)
         .map_err(|error| InstallationIdentityError::Invalid(format!("generate UUIDv4: {error}")))?;
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;

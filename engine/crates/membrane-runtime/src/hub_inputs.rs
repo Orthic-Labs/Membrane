@@ -272,9 +272,9 @@ mod tests {
     use std::sync::{Mutex, MutexGuard};
 
     /// Every test in this module can implicitly read the process-global
-    /// `CORTEX_DB_PATH` / `WORKSPACE_ROOT` env vars through the sources,
+    /// `MEMBRANE_DB_PATH` / `WORKSPACE_ROOT` env vars through the sources,
     /// adapters, and sentinel producers. Tests that need a deterministic
-    /// "no database" result hold this lock and point `CORTEX_DB_PATH` at a
+    /// "no database" result hold this lock and point `MEMBRANE_DB_PATH` at a
     /// guaranteed-missing path so they never race a real workspace database.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -284,18 +284,18 @@ mod tests {
 
     fn with_missing_db<R>(f: impl FnOnce() -> R) -> R {
         let _guard = lock_env();
-        let prior = std::env::var_os("CORTEX_DB_PATH");
+        let prior = std::env::var_os("MEMBRANE_DB_PATH");
         unsafe {
             std::env::set_var(
-                "CORTEX_DB_PATH",
+                "MEMBRANE_DB_PATH",
                 "/nonexistent/hub_inputs_test/cortex-engine.db",
             );
         }
         let result = f();
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("CORTEX_DB_PATH", v),
-                None => std::env::remove_var("CORTEX_DB_PATH"),
+                Some(v) => std::env::set_var("MEMBRANE_DB_PATH", v),
+                None => std::env::remove_var("MEMBRANE_DB_PATH"),
             }
         }
         result
@@ -533,9 +533,9 @@ mod tests {
             )
             .unwrap();
         }
-        let prior = std::env::var_os("CORTEX_DB_PATH");
+        let prior = std::env::var_os("MEMBRANE_DB_PATH");
         unsafe {
-            std::env::set_var("CORTEX_DB_PATH", &db_path);
+            std::env::set_var("MEMBRANE_DB_PATH", &db_path);
         }
         let health: serde_json::Value = serde_json::from_str(
             r#"{"ok": true, "catalog": {"status": "ok"}, "database": {"status": "ok"}, "dailyAnalysis": {"status": "ok"}}"#,
@@ -544,8 +544,8 @@ mod tests {
         let inputs = inputs_from_health(&health, None);
         unsafe {
             match prior {
-                Some(v) => std::env::set_var("CORTEX_DB_PATH", v),
-                None => std::env::remove_var("CORTEX_DB_PATH"),
+                Some(v) => std::env::set_var("MEMBRANE_DB_PATH", v),
+                None => std::env::remove_var("MEMBRANE_DB_PATH"),
             }
         }
         std::fs::remove_dir_all(&dir).ok();

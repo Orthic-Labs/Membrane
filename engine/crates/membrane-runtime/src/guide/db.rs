@@ -66,7 +66,10 @@ impl GuideDb {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, String> {
         let path = path.as_ref();
         if path != Path::new(":memory:") {
-            if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+            if let Some(parent) = path
+                .parent()
+                .filter(|parent| !parent.as_os_str().is_empty())
+            {
                 std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             }
         }
@@ -97,7 +100,9 @@ impl GuideDb {
     }
 
     pub fn lock(&self) -> MutexGuard<'_, Connection> {
-        self.connection.lock().unwrap_or_else(|error| error.into_inner())
+        self.connection
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
     }
 }
 

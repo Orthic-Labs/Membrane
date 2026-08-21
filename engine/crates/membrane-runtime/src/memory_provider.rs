@@ -211,7 +211,7 @@ struct Considered {
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 /// Reuse the dream consolidation dedup key so the provider's view of
@@ -563,7 +563,7 @@ fn trace_id_for(task: &str, scope: &str) -> String {
     h.update(task.as_bytes());
     h.update([0u8]);
     h.update(scope.as_bytes());
-    format!("{:x}", h.finalize())
+    hex::encode(h.finalize())
 }
 
 #[cfg(test)]

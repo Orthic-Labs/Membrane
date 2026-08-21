@@ -1,8 +1,8 @@
-"""Gate 5 — curation diagnostic for Cortex preference rows.
+"""Gate 5 — curation diagnostic for Cortex durable-memory preference rows.
 
 Implements v2 plan Gate 5 step 1 + step 2:
 
-  Step 1. On a copied DB, run current Dream (``cortex curate``) and
+  Step 1. On a copied DB, run current Dream (``membrane cli curate``) and
           assert every accepted preference either survives under its primary
           ID or is consolidated into a recorded primary with source provenance.
           Compare exact duplicate counts before/after; never assume semantic
@@ -15,8 +15,8 @@ Implements v2 plan Gate 5 step 1 + step 2:
 
 This script is fully standalone and safe-by-construction: it copies the live
 DB via SQLite's backup API (read-only source), runs Dream against the COPY
-through a temporary isolated Cortex service, and never touches the live
-DB or the global Cortex config. Token/embedding pipelines are not invoked
+through a temporary isolated Membrane resident, and never touches the live
+DB or the global durable-memory config. Token/embedding pipelines are not invoked
 in step 1's pre/post comparison.
 
 Outputs::
@@ -28,7 +28,7 @@ Usage::
 
     py -3.11 membrane/adapt/eval/curation_diagnostic.py \\
         --live-db D:/Claude/tools/.cache/memory/cortex-engine.db \\
-        --cortex-bin D:/Claude/tools/bin/cortex.exe \\
+        --membrane-bin D:/Claude/tools/bin/membrane \\
         --out /tmp/curation
 """
 from __future__ import annotations
@@ -48,7 +48,7 @@ from pathlib import Path
 
 WS = next(p for p in Path(__file__).resolve().parents if (p / "tools" / "lib").is_dir())  # workspace root: the dir that owns tools/lib (never a fixed parent depth)
 DEFAULT_LIVE = WS / "tools/.cache/memory/cortex-engine.db"
-DEFAULT_CORTEX = WS / "tools/bin/cortex.exe"
+DEFAULT_MEMBRANE = WS / "tools/bin/membrane"
 DEFAULT_OUT = WS / ".cache/adapt-curation"
 SERVICE_READY_TIMEOUT = 20.0
 
@@ -77,15 +77,35 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-def _start_service(cortex: Path, db: Path, port: int) -> subprocess.Popen:
+def _start_service(membrane: Path, db: Path, port: int) -> subprocess.Popen:
+    workspace = db.parent / f"{db.stem}-membrane-workspace"
+    bin_dir = workspace / "tools" / "bin"
+    memory_dir = workspace / "tools" / ".cache" / "memory"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(db, memory_dir / "cortex-engine.db")
+    (memory_dir / "api-token").write_text("adapt-eval-token\n", encoding="utf-8")
+    (workspace / "tools" / "lib" / "memory").mkdir(parents=True, exist_ok=True)
+    (workspace / "tools" / "lib" / "memory" / "runtime.json").write_text(
+        json.dumps({"schemaVersion": 1, "serviceId": "membrane-local-v1", "host": "127.0.0.1", "port": port}),
+        encoding="utf-8",
+    )
+    service_binary = bin_dir / membrane.name
+    service_binary.symlink_to(membrane)
+    ort = membrane.parent / "libonnxruntime.dylib"
+    if ort.exists(): (bin_dir / "libonnxruntime.dylib").symlink_to(ort)
     env = __import__("os").environ.copy()
+    env["WORKSPACE_ROOT"] = str(workspace)
     env["MEMBRANE_PORT"] = str(port)
+    env["MEMBRANE_API_TOKEN_FILE"] = str(memory_dir / "api-token")
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    return subprocess.Popen(
-        [str(cortex), "--db", str(db), "serve", "--port", str(port)],
+    service = subprocess.Popen(
+        [str(service_binary), "supervisor-child"],
         env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
         text=True, creationflags=flags,
     )
+    service._membrane_eval_workspace = workspace
+    return service
 
 
 def _wait_ready(port: int) -> None:
@@ -96,7 +116,7 @@ def _wait_ready(port: int) -> None:
             if c.connect_ex(("127.0.0.1", port)) == 0:
                 return
         time.sleep(0.05)
-    raise RuntimeError(f"cortex on port {port} did not become ready")
+    raise RuntimeError(f"Membrane resident on port {port} did not become ready")
 
 
 def _stop_service(svc: subprocess.Popen) -> None:
@@ -106,13 +126,15 @@ def _stop_service(svc: subprocess.Popen) -> None:
     except subprocess.TimeoutExpired:
         svc.kill()
         svc.wait(timeout=5)
+    workspace = getattr(svc, "_membrane_eval_workspace", None)
+    if workspace: shutil.rmtree(workspace, ignore_errors=True)
 
 
-def _run(cortex: Path, db: Path, port: int, cmd: list[str],
+def _run(membrane: Path, db: Path, port: int, cmd: list[str],
          timeout: float = 30.0) -> tuple[int, str, str]:
     env = __import__("os").environ.copy()
     env["MEMBRANE_PORT"] = str(port)
-    res = subprocess.run([str(cortex), "--db", str(db), *cmd],
+    res = subprocess.run([str(membrane), "cli", "--db", str(db), *cmd],
                          text=True, encoding="utf-8",
                          capture_output=True, check=False, env=env,
                          timeout=timeout)
@@ -188,7 +210,7 @@ def near_duplicate_candidates(rows: list[dict],
 
 # ----- Curation driver -----
 
-def diagnose(live_db: Path, cortex: Path, out: Path) -> int:
+def diagnose(live_db: Path, membrane: Path, out: Path) -> int:
     out.mkdir(parents=True, exist_ok=True)
     snap = out / "snapshot.db"
     pre_count = snapshot_live(live_db, snap)
@@ -197,12 +219,12 @@ def diagnose(live_db: Path, cortex: Path, out: Path) -> int:
     pre_clusters = near_duplicate_candidates(pre_rows)
 
     port = _free_port()
-    svc = _start_service(cortex, snap, port)
+    svc = _start_service(membrane, snap, port)
     curate_ok = False
     curate_error = None
     try:
         _wait_ready(port)
-        rc, _out, err = _run(cortex, snap, port, ["curate"], timeout=120.0)
+        rc, _out, err = _run(membrane, snap, port, ["curate"], timeout=120.0)
         if rc != 0:
             curate_error = err.strip() or f"rc={rc}"
         else:
@@ -310,19 +332,19 @@ def diagnose(live_db: Path, cortex: Path, out: Path) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--live-db", type=Path, default=DEFAULT_LIVE)
-    ap.add_argument("--cortex-bin", type=Path, default=DEFAULT_CORTEX)
+    ap.add_argument("--membrane-bin", type=Path, default=DEFAULT_MEMBRANE)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = ap.parse_args(argv)
 
     if not args.live_db.exists():
         print(f"error: live DB missing: {args.live_db}", file=sys.stderr)
         return 2
-    if not args.cortex_bin.exists():
-        print(f"error: cortex binary missing: {args.cortex_bin}",
+    if not args.membrane_bin.exists():
+        print(f"error: Membrane binary missing: {args.membrane_bin}",
               file=sys.stderr)
         return 2
 
-    return diagnose(args.live_db, args.cortex_bin, args.out)
+    return diagnose(args.live_db, args.membrane_bin, args.out)
 
 
 if __name__ == "__main__":

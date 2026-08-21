@@ -1,6 +1,8 @@
 use std::{collections::HashSet, fs, path::Path};
 
-use membrane_runtime::guide::doc_shadow::{evaluate_frozen_shadow_replay, ShadowReplayCaseV1, ShadowReplayReportV1};
+use membrane_runtime::guide::doc_shadow::{
+    evaluate_frozen_shadow_replay, ShadowReplayCaseV1, ShadowReplayReportV1,
+};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -52,7 +54,7 @@ fn fixture_root() -> std::path::PathBuf {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 #[test]
@@ -65,7 +67,7 @@ fn frozen_doc_spine_shadow_replay_corpus_v1_is_deterministic_shadow_only_and_saf
 
     assert_eq!(
         manifest.schema_version,
-        "cortex.doc_spine_shadow_replay_fixture.v1"
+        "guide.doc_spine_shadow_replay_fixture.v1"
     );
     assert_eq!(
         manifest.fixture_status,

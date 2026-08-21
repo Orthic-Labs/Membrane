@@ -98,8 +98,8 @@ const suites = {
 
 function runSuite(owner) {
   const [command, args, cwd] = suites[owner];
-  const defaultCortexBin = join(membraneRoot, "engine/target/debug", process.platform === "win32" ? "cortex.exe" : "cortex");
-  const cortexTestBin = process.env.CORTEX_TEST_BIN || (existsSync(defaultCortexBin) ? defaultCortexBin : "");
+  const defaultMembraneBin = join(membraneRoot, "engine/target/debug", process.platform === "win32" ? "membrane.exe" : "membrane");
+  const membraneTestBin = process.env.MEMBRANE_TEST_BIN || (existsSync(defaultMembraneBin) ? defaultMembraneBin : "");
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
@@ -108,7 +108,7 @@ function runSuite(owner) {
     env: {
       ...process.env,
       CI: "1",
-      ...(cortexTestBin ? { CORTEX_TEST_BIN: cortexTestBin } : {}),
+      ...(membraneTestBin ? { MEMBRANE_TEST_BIN: membraneTestBin } : {}),
     },
   });
   const output = `${result.stdout || ""}${result.stderr || ""}`;

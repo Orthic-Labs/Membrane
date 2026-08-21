@@ -1,8 +1,8 @@
+use cortex_core::MemoryTier;
 use membrane_runtime::{
     MemDb, MemoryEventContext, MemoryLifecycleEventV1, MemoryLifecycleInputV1, MemoryPriorityError,
     MemoryStore,
 };
-use cortex_core::MemoryTier;
 
 fn insert_memory(store: &MemoryStore, id: &str, scope: &str) {
     store

@@ -3,8 +3,8 @@
 //! Guide owns document indexes and source-bound section references. It does not own
 //! canonical repository truth (Blueprint) or durable learned memory (Cortex).
 
-pub mod doc_candidate_provider;
 pub mod db;
+pub mod doc_candidate_provider;
 pub mod doc_projection;
 pub mod doc_shadow;
 pub mod doc_spine;

@@ -8,11 +8,50 @@ request-context validation; it never opens either subsystem's storage.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+import json
+import os
 from pathlib import Path
 from typing import Any
+import urllib.request
 
 
 GrantLookup = Callable[[Path, str], Mapping[str, Any] | None]
+
+
+def _resident_lookup(repo_root: Path, grant_id: str) -> Mapping[str, Any] | None:
+    port = os.environ.get("MEMBRANE_PORT", "47851").strip() or "47851"
+    token = os.environ.get("MEMBRANE_API_TOKEN", "").strip()
+    token_file = os.environ.get("MEMBRANE_API_TOKEN_FILE", "").strip()
+    candidates = [Path(token_file)] if token_file else []
+    candidates.extend(
+        parent / "tools" / ".cache" / "memory" / "api-token"
+        for parent in (repo_root, *repo_root.parents)
+    )
+    if not token:
+        for candidate in candidates:
+            try:
+                token = candidate.read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if token:
+                break
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/scope_grants",
+        data=json.dumps({"operation": "lookup", "id": grant_id}).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=0.35) as response:
+            if response.status != 200:
+                return None
+            value = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, Mapping) else None
 
 
 def lookup(
@@ -26,9 +65,7 @@ def lookup(
     Transport is deliberately injected by the service owner. Without an
     owner-provided transport, lookup fails closed and performs no I/O.
     """
-    if transport is None:
-        return None
-    grant = transport(repo_root, grant_id)
+    grant = (transport or _resident_lookup)(repo_root, grant_id)
     if grant is None:
         return None
     if not isinstance(grant, Mapping):

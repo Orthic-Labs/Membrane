@@ -1,9 +1,9 @@
 //! The shared client fixture labels raw-path and pre-slug gateway inputs. Canonicalization is owned
 //! here at the Rust memory boundary; adapters must consume the same post-gateway envelope.
 
+use cortex_core::MemoryTier;
 use membrane_runtime::scope::canonical_scope_chain;
 use membrane_runtime::MemoryStore;
-use cortex_core::MemoryTier;
 use std::collections::BTreeMap;
 
 #[test]

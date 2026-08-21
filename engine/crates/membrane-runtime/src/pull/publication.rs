@@ -6,4 +6,3 @@
 //! is one publication policy, not parallel serializers.
 
 pub use super::federation::{envelope_from_ccs, EnvelopeInput};
-

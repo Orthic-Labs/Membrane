@@ -19,8 +19,9 @@ llmlingua-onnx = ["membrane-runtime/llmlingua-onnx"]
 
 [dev-dependencies]
 cortex-core = { path = "../cortex-core" }
-rusqlite = { version = "0.40.1", features = ["bundled"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha2 = "0.10"
+sha2 = "0.11"
+hex = { workspace = true }
 tempfile = "3"

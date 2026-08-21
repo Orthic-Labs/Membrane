@@ -1,5 +1,4 @@
-"""Cortex provider: the binary defaults to the resolvable workspace exe, not bare `cortex`
-(bare is unresolvable in the gateway's Python subprocess on Windows -> 0 memory candidates)."""
+"""Cortex provider: durable candidates come only from Membrane's resident route."""
 import importlib.util
 import json
 import os
@@ -15,27 +14,6 @@ def _load():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
-
-
-def test_default_bin_resolves_workspace_binary_when_present():
-    mod = _load()
-    os.environ.pop("MEMBRANE_BIN", None)
-    workspace = Path(__file__).resolve().parents[4]
-    exe = workspace / "tools" / "bin" / ("cortex.exe" if os.name == "nt" else "cortex")
-    resolved = mod._default_bin()
-    if exe.exists():
-        assert resolved == str(exe), "must resolve the real workspace binary, not bare 'cortex'"
-    else:
-        assert resolved == "cortex"  # graceful fallback in a bare CI checkout
-
-
-def test_explicit_env_wins():
-    mod = _load()
-    os.environ["MEMBRANE_BIN"] = "/custom/cortex"
-    try:
-        assert mod._default_bin() == "/custom/cortex"
-    finally:
-        os.environ.pop("MEMBRANE_BIN", None)
 
 
 def test_produce_with_observability_allowlists_content_free_stage_timing(monkeypatch, tmp_path):
@@ -66,7 +44,7 @@ def test_produce_with_observability_allowlists_content_free_stage_timing(monkeyp
     )
 
     assert candidates == []
-    assert source == "cortex-serve"
+    assert source == "membrane-resident-cortex"
     assert observability == {
         "stageElapsedMs": {
             "request_parse": 1.25,
@@ -112,7 +90,6 @@ def test_replay_uses_observer_timeout_and_preserves_serve_timing(monkeypatch, tm
     monkeypatch.setenv("MEMBRANE_SAMPLE_SOURCE", "replay")
     monkeypatch.setenv("REPLAY_NO_LEGACY", "1")
     monkeypatch.setattr(mod.urllib.request, "urlopen", fake_urlopen)
-    monkeypatch.setattr(mod.subprocess, "run", forbid_legacy)
 
     candidates, source, observability = mod.produce_with_observability(
         tmp_path, "observer replay", None
@@ -120,7 +97,7 @@ def test_replay_uses_observer_timeout_and_preserves_serve_timing(monkeypatch, tm
 
     assert seen == [45.0]
     assert candidates == []
-    assert source == "cortex-serve"
+    assert source == "membrane-resident-cortex"
     assert observability == {
         "stageElapsedMs": {
             "request_parse": 0.1,
@@ -171,11 +148,9 @@ def test_replay_no_legacy_rejects_serve_failure_without_cli_fallback(
     monkeypatch.setenv("MEMBRANE_SAMPLE_SOURCE", "replay")
     monkeypatch.setenv("REPLAY_NO_LEGACY", "1")
     monkeypatch.setattr(mod, "_ccs_from_serve", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(mod.subprocess, "run", forbid_legacy)
-
     with pytest.raises(
         RuntimeError,
-        match="replay cortex serve unavailable; CLI fallback disabled",
+        match="replay Membrane resident unavailable",
     ):
         mod.produce_with_observability(tmp_path, "observer replay", None)
 
@@ -188,7 +163,5 @@ def test_real_serve_failure_rejects_without_prompt_path_cli_fallback(monkeypatch
     monkeypatch.setenv("MEMBRANE_SAMPLE_SOURCE", "real")
     monkeypatch.setenv("REPLAY_NO_LEGACY", "1")
     monkeypatch.setattr(mod, "_ccs_from_serve", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(mod.subprocess, "run", forbid_cli)
-
-    with pytest.raises(RuntimeError, match="prompt-path CLI fallback disabled"):
+    with pytest.raises(RuntimeError, match="Membrane resident unavailable"):
         mod.produce_with_observability(tmp_path, "production request", None)
