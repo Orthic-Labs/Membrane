@@ -87,6 +87,11 @@ test("runtime closure records generated Blueprint, compiled sidecars & six axes"
   assert.match(runtimeSigner, /"--options", "runtime", "--timestamp", "--sign"/);
   assert.match(runtimeSigner, /TeamIdentifier=6KLGD3LLKF/);
   assert.match(runtimeSigner, /\^Timestamp=/);
+  const releaseBuild = readFileSync(new URL("../scripts/release-build-mac.mjs", import.meta.url), "utf8");
+  assert.match(releaseBuild, /src-tauri\/runtime/);
+  assert.match(releaseBuild, /rmSync[\s\S]*recursive: true[\s\S]*right-release/);
+  const releaseConfig = readFileSync(new URL("../right-release.config.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(releaseConfig, /src-tauri\/runtime\/\*\*/);
 });
 
 test("runtime inventory hashes generated runtime, install manifest & rejects missing/extra/retired", () => {

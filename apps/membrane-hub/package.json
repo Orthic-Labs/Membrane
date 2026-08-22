@@ -11,7 +11,7 @@
     "rightkit:package:mac": "node scripts/build-mac-release.mjs",
     "runtime:inventory": "node scripts/runtime-inventory.mjs check",
     "release:doctor": "right-release doctor",
-    "release:build:mac": "right-release build --platform mac"
+    "release:build:mac": "node scripts/release-build-mac.mjs"
   },
   "dependencies": {
     "@rightkit/platform-ui": "0.1.0",

@@ -5,7 +5,7 @@ const version = packageJson.version;
 const buildInputs = {
   include: [
     "index.html", "popover.html", "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "scripts/**", "src/**", "assets/**",
-    "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs", "src-tauri/tauri.conf.json", "src-tauri/src/**", "src-tauri/runtime/**",
+    "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs", "src-tauri/tauri.conf.json", "src-tauri/src/**",
     "../../engine/Cargo.toml", "../../engine/Cargo.lock", "../../engine/crates/**",
     // Blueprint's own canonical stager derives runtime from this complete
     // source tree; no raw Blueprint or Adapt source is a Tauri resource.
