@@ -46,14 +46,10 @@ fn lang_for_path(path: &Path) -> Option<Lang> {
 
 fn ts_language(lang: Lang) -> Language {
     match lang {
-        Lang::Rust => tree_sitter_rust::language(),
-        Lang::Python => tree_sitter_python::language(),
-        Lang::JavaScript => unsafe {
-            std::mem::transmute::<*const (), tree_sitter::Language>(
-                (tree_sitter_javascript::LANGUAGE.into_raw())(),
-            )
-        },
-        Lang::TypeScript => tree_sitter_typescript::language_typescript(),
+        Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
+        Lang::Python => tree_sitter_python::LANGUAGE.into(),
+        Lang::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
+        Lang::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
     }
 }
 
