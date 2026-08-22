@@ -35,6 +35,7 @@ run("node", ["scripts/write-release-manifest.mjs", "check", "--require-committed
 run("pnpm", ["run", "build"], env);
 run("node", ["scripts/release-assets.mjs", "prepare", "--platform", "mac"], env);
 run("node", ["scripts/stage-runtime.mjs"], env);
+run("node", ["scripts/sign-macos-runtime.mjs"], env);
 run("pnpm", ["exec", "tauri", "build", "--target", target, "--bundles", "app,dmg"], { ...env, MEMBRANE_SIDECARS_READY: "1" });
 run("node", ["scripts/release-assets.mjs", "check-built", "--platform", "mac"], env);
 run("node", ["scripts/release-assets.mjs", "finalize", "--platform", "mac"], env);

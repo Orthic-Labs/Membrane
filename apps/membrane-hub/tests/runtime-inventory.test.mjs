@@ -81,6 +81,12 @@ test("runtime closure records generated Blueprint, compiled sidecars & six axes"
   const stager = readFileSync(new URL("../scripts/stage-runtime.mjs", import.meta.url), "utf8");
   assert.match(stager, /blueprint\/scripts\/release\/stage-runtime\.mjs/);
   assert.match(stager, /writeRuntimeInventory/);
+  const macRelease = readFileSync(new URL("../scripts/build-mac-release.mjs", import.meta.url), "utf8");
+  assert.match(macRelease, /stage-runtime\.mjs[\s\S]*sign-macos-runtime\.mjs[\s\S]*tauri/);
+  const runtimeSigner = readFileSync(new URL("../scripts/sign-macos-runtime.mjs", import.meta.url), "utf8");
+  assert.match(runtimeSigner, /"--options", "runtime", "--timestamp", "--sign"/);
+  assert.match(runtimeSigner, /TeamIdentifier=6KLGD3LLKF/);
+  assert.match(runtimeSigner, /\^Timestamp=/);
 });
 
 test("runtime inventory hashes generated runtime, install manifest & rejects missing/extra/retired", () => {
