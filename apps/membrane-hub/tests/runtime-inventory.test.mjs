@@ -17,7 +17,7 @@ function fixture() {
   make(join(root, "dist", "install", "workspace-manifest.json"), `${JSON.stringify({ schemaVersion: "membrane-install-workspace-v1", packageVersion: "1.0.0", source: "membrane/install/workspace", generated: "source-to-dist", runtime, files, packageSha256 })}\n`);
   make(join(root, "src-tauri", "runtime", "blueprint", "bin", "blueprint"));
   make(join(root, "src-tauri", "runtime", "blueprint", "lib", "node"));
-  for (const name of ["membrane-aarch64-apple-darwin", "cortex-aarch64-apple-darwin"]) make(join(root, name));
+  for (const name of ["membrane-universal-apple-darwin", "cortex-universal-apple-darwin"]) make(join(root, name));
   return { root, make, runtime: join(root, "src-tauri", "runtime") };
 }
 function specs() {
@@ -71,6 +71,9 @@ test("runtime closure records generated Blueprint, compiled sidecars & six axes"
   assert.doesNotMatch(probes, /win32|windows|\.exe\b|blueprint\.cmd/);
   const frontendBuild = readFileSync(new URL("../scripts/build-frontend.mjs", import.meta.url), "utf8");
   assert.match(frontendBuild, /dist\/release-identity\.json/);
+  assert.match(frontendBuild, /universal-apple-darwin/);
+  assert.match(frontendBuild, /lipo/);
+  assert.match(frontendBuild, /MEMBRANE_SIDECARS_READY/);
   const runtimeBuild = readFileSync(new URL("../../../engine/crates/membrane-runtime/build.rs", import.meta.url), "utf8");
   assert.match(runtimeBuild, /cargo:rustc-env=MEMBRANE_SOURCE_COMMIT/);
   assert.match(runtimeBuild, /cargo:rustc-env=MEMBRANE_SOURCE_TREE_SHA256/);
@@ -83,14 +86,14 @@ test("runtime closure records generated Blueprint, compiled sidecars & six axes"
 test("runtime inventory hashes generated runtime, install manifest & rejects missing/extra/retired", () => {
   const { root, make, runtime } = fixture();
   try {
-    writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "aarch64-apple-darwin" });
+    writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "universal-apple-darwin" });
     const manifest = verifyStagedInventory({ runtimeDir: runtime });
     assert.equal(manifest.schemaVersion, 3); assert.ok(manifest.axes.every(({ entries }) => entries === 1));
     assert.ok(manifest.entries.some((entry) => entry.component === "install-workspace-manifest"));
     assert.match(readFileSync(join(runtime, "resources", "install-workspace", "workspace-manifest.json"), "utf8"), /membrane-install-workspace-v1/);
     writeFileSync(join(runtime, "blueprint", "lib", "node"), "mutated");
     assert.throws(() => verifyStagedInventory({ runtimeDir: runtime }), /hash mismatch/);
-    make(join(runtime, "blueprint", "lib", "node")); writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "aarch64-apple-darwin" });
+    make(join(runtime, "blueprint", "lib", "node")); writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "universal-apple-darwin" });
     make(join(runtime, "resources", "extra.txt")); assert.throws(() => verifyStagedInventory({ runtimeDir: runtime }), /unexpected staged/);
     assert.throws(() => runtimeInventory({ hubDir: root, specs: [...specs(), { id: "retired", axis: "pull", component: "retired", delivery: "resource", path: "orthic/crypt-service" }] }), /retired runtime asset/);
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -99,7 +102,7 @@ test("runtime inventory hashes generated runtime, install manifest & rejects mis
 test("unpacked artifact requires executable bootstrap, Membrane supervisor health, Blueprint & Hub probes", async () => {
   const { root, make, runtime } = fixture(); const sidecars = join(root, "sidecars");
   try {
-    writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "aarch64-apple-darwin" });
+    writeRuntimeInventory({ hubDir: root, runtimeDir: runtime, specs: specs(), target: "universal-apple-darwin" });
     for (const name of ["membrane", "cortex"]) make(join(sidecars, name));
     assert.match(readFileSync(new URL("../scripts/runtime-inventory.mjs", import.meta.url), "utf8"), /function nativeUnpackedProbes/);
     const called = [];

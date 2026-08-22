@@ -60,15 +60,46 @@ const identityText = `${JSON.stringify(identity, null, 2)}\n`;
 if (!existsSync(identityPath) || readFileSync(identityPath, "utf8") !== identityText) {
   writeFileSync(identityPath, identityText);
 }
-const result = spawnSync("rightkit", ["cargo", "build", "--manifest-path", engine, "--release", "--target", target, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane"], { cwd: repo, stdio: "inherit" });
-if (result.error) throw result.error;
-if (result.status !== 0) throw new Error(`Membrane sidecar build failed with exit ${result.status}`);
 const binaries = fileURLToPath(new URL("../src-tauri/binaries/", import.meta.url));
 mkdirSync(binaries, { recursive: true });
-for (const name of ["cortex", "membrane"]) {
-  const source = join(engineTarget, target, "release", name);
+
+if (process.env.MEMBRANE_SIDECARS_READY === "1") {
+  for (const name of ["cortex", "membrane"]) {
+    const ready = join(binaries, `${name}-${target}`);
+    if (!existsSync(ready)) throw new Error(`prepared sidecar missing: ${ready}`);
+  }
+} else if (target === "universal-apple-darwin") {
+  const architectureTargets = ["aarch64-apple-darwin", "x86_64-apple-darwin"];
+  for (const architectureTarget of architectureTargets) buildSidecars(architectureTarget);
+  for (const name of ["cortex", "membrane"]) {
+    const inputs = architectureTargets.map((architectureTarget) => stageSidecar(name, architectureTarget));
+    const destination = join(binaries, `${name}-${target}`);
+    run("lipo", ["-create", "-output", destination, ...inputs]);
+    run("lipo", [destination, "-verify_arch", "x86_64", "arm64"]);
+    chmodSync(destination, 0o755);
+  }
+} else {
+  buildSidecars(target);
+  for (const name of ["cortex", "membrane"]) stageSidecar(name, target);
+}
+
+function buildSidecars(architectureTarget) {
+  const result = spawnSync("rightkit", ["cargo", "build", "--manifest-path", engine, "--release", "--target", architectureTarget, "-p", "cortex", "-p", "membrane", "--bin", "cortex", "--bin", "membrane"], { cwd: repo, stdio: "inherit" });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`Membrane sidecar build failed for ${architectureTarget} with exit ${result.status}`);
+}
+
+function stageSidecar(name, architectureTarget) {
+  const source = join(engineTarget, architectureTarget, "release", name);
   if (!existsSync(source)) throw new Error(`missing sidecar: ${source}`);
-  const destination = join(binaries, `${name}-${target}`);
+  const destination = join(binaries, `${name}-${architectureTarget}`);
   cpSync(source, destination);
   chmodSync(destination, 0o755);
+  return destination;
+}
+
+function run(command, args) {
+  const result = spawnSync(command, args, { cwd: repo, stdio: "inherit" });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`${command} failed with exit ${result.status}`);
 }
