@@ -13,7 +13,7 @@ const buildInputs = {
   ],
   exclude: ["**/tests/**", "dist/**", "node_modules/**", "src-tauri/target/**", "src-tauri/gen/**"],
 };
-const macDmg = `Membrane Hub_${version}_universal.dmg`;
+const macDmg = `Membrane Hub_${version}_aarch64.dmg`;
 
 export default {
   schema: 1,

@@ -15,7 +15,7 @@ const composition = ["membrane", "cortex", "blueprint", "guide", "pull", "push",
 const retired = /(?:^|[\\/])(crypt(?:-service)?|orthic(?:[_-]manifest)?|product-addons?)(?:[\\/]|$)/i;
 const ignored = /(?:^|[\\/])(?:\.git|node_modules|__pycache__|tests?|\.pytest_cache)(?:[\\/]|$)/;
 const digest = (file) => createHash("sha256").update(readFileSync(file)).digest("hex");
-const MAC_TARGET = "universal-apple-darwin";
+const MAC_TARGET = "aarch64-apple-darwin";
 
 // `preStagedResource` is emitted by Blueprint's own tested release stager.
 // `externalBin` & `tauriBundle` record ownership without copying source or

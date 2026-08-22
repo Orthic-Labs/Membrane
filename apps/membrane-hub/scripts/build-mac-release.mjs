@@ -1,5 +1,5 @@
 // build-mac-release.mjs — never assembles/writes the release manifest.
-// Bracket: writer pre-check -> universal sidecars -> source receipt -> tauri build -> release-assets check-built ->
+// Bracket: writer pre-check -> sidecars -> source receipt -> tauri build -> release-assets check-built ->
 // release-assets finalize -> release-assets check-packaged -> writer pre-check ->
 // notarytool/stapler/validate/spctl.
 // `finalize` must run here: it is the only thing that writes this platform's
@@ -18,14 +18,13 @@ import { notarytoolAuthArgs } from "@rightkit/release/notary-auth.mjs";
 import { resolveManagedCargoTarget } from "./lib/target-root.mjs";
 
 const version = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
-const target = "universal-apple-darwin";
+const target = "aarch64-apple-darwin";
 // A managed build owns the target root, so src-tauri/target is not a valid
 // assumption; `cargo metadata` against the src-tauri manifest is the sole
 // source of truth for where the build actually lands (see lib/target-root.mjs).
 const manifestPath = fileURLToPath(new URL("../src-tauri/Cargo.toml", import.meta.url));
 const bundleRoot = resolveManagedCargoTarget(manifestPath);
-const app = `${bundleRoot}/${target}/release/bundle/macos/Membrane Hub.app`;
-const dmg = `${bundleRoot}/${target}/release/bundle/dmg/Membrane Hub_${version}_universal.dmg`;
+const dmg = `${bundleRoot}/${target}/release/bundle/dmg/Membrane Hub_${version}_aarch64.dmg`;
 const env = {
   ...process.env,
   APPLE_SIGNING_IDENTITY: process.env.APPLE_SIGNING_IDENTITY || "Developer ID Application: Adrian D'souza (6KLGD3LLKF)",
@@ -37,7 +36,6 @@ run("pnpm", ["run", "build"], env);
 run("node", ["scripts/release-assets.mjs", "prepare", "--platform", "mac"], env);
 run("node", ["scripts/stage-runtime.mjs"], env);
 run("pnpm", ["exec", "tauri", "build", "--target", target, "--bundles", "app,dmg"], { ...env, MEMBRANE_SIDECARS_READY: "1" });
-run("lipo", [`${app}/Contents/MacOS/membrane-hub`, "-verify_arch", "x86_64", "arm64"], env);
 run("node", ["scripts/release-assets.mjs", "check-built", "--platform", "mac"], env);
 run("node", ["scripts/release-assets.mjs", "finalize", "--platform", "mac"], env);
 run("node", ["scripts/release-assets.mjs", "check-packaged", "--platform", "mac"], env);
