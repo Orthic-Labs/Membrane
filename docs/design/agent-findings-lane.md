@@ -1,6 +1,6 @@
 # The Findings Lane — cheapest-tier deterministic error signal for coding agents
 
-**Status:** design proposal · not yet adopted doctrine · revision 2 (prior-art researched)
+**Status:** design proposal · revision 3 · **phase 0 implemented** in `blueprint/src/lib/findings/`
 **Scope:** Blueprint (tier-0 producer) + Membrane planner (routing/policy) + hook host (transport)
 **Problem owner:** agents that edit code without an editor, then pay a build to find out
 
@@ -152,8 +152,8 @@ Derived only from graph facts, each with a **precision floor**, each either *blo
 |---|---|---|---|
 | `BP001` | Imported symbol is not exported by the module it resolves to | EXACT | block |
 | `BP002` | Import specifier resolves to no repository file and no package | EXACT | block |
-| `BP003` | Reference/call to an entity that no longer exists in this generation | EXACT | block |
-| `BP004` | Export removed while exact inbound consumers remain (half-done rename) | EXACT | block |
+| `BP003` | Re-export names a binding the target module does not export (barrel break) | AST | block |
+| `BP004` | Export removed or renamed while exact inbound consumers remain, incl. dangling references to a deleted entity | EXACT | block |
 | `BP005` | Same-tier ambiguous export — two resolutions, neither dominates | EXACT | block |
 | `BP006` | Arity/signature drift against exact call sites | SCIP/tier-1 | block |
 | `BP007` | Import cycle introduced among changed files | AST | advisory |
@@ -168,6 +168,12 @@ error would be the fastest way to destroy trust in the channel.
 
 `BP010` is not an error at all and is arguably the most valuable row: it is what turns a
 whole-workspace tier-3 check into a scoped tier-1 one.
+
+Revision 3 note: `BP003` was originally specified as "reference to an entity that no longer
+exists". Building phase 0 showed that finding and `BP004` are the same fact seen from two
+sides, and both need a baseline generation. `BP003` now carries the barrel-re-export break —
+provable from a single snapshot, and the failure mode agents hit most often when moving code
+behind an index file.
 
 ## 8. The two invariants that decide whether this works
 
@@ -253,9 +259,15 @@ The channel dies from volume as surely as from false positives.
 
 ## 12. Build order
 
-0. **Registry + `BP001`/`BP002`/`BP003`**, CLI only, over existing exact resolution.
-   *Proof:* one deliberately broken import yields exactly one finding; clean fixture yields
-   zero; **zero false positives on the Membrane repo itself.**
+0. ~~**Registry + `BP001`/`BP002`/`BP003`**, CLI only.~~ **Done.**
+   `blueprint/src/graph/module-surface.mjs` (AST export/import surface),
+   `blueprint/src/lib/findings/` (registry, specifier resolution, detection),
+   `blueprint findings` CLI with `--json`/`--sarif`/`--baseline`, 30 tests.
+   *Result:* `blueprint/` — 619 files, 354 parsed, 1.6s, **0 findings**.
+   Membrane whole repo — 1845 files, 597 parsed, 2.2s, **2 findings, both true positives**
+   (a real broken specifier in `tests/benchmarks/memory/`, confirmed against Node's own
+   resolver). Zero false positives on both. Spec:
+   [`blueprint/docs/design/BP001-import-binding-resolution.md`](../../blueprint/docs/design/BP001-import-binding-resolution.md).
 1. **Baseline delta + overlay incrementality** — findings become edit-scoped.
 2. **`PostToolUse` injection**, dumbest possible payload, through the existing hook table.
    *Proof:* the agent fixes it in the same turn without running tests.
