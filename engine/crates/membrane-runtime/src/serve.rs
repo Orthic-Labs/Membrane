@@ -2416,7 +2416,7 @@ fn resolve_federation_script() -> Option<std::path::PathBuf> {
     crate::pull::federation::find_federation_gateway(&configured_workspace_root())
 }
 
-fn federate_route_response(body: &str) -> (u16, String) {
+fn legacy_federate_route_response(body: &str) -> (u16, String) {
     let value = match json_body(body) {
         Ok(value) => value,
         Err(resp) => return resp,
@@ -2531,6 +2531,12 @@ fn federate_route_response(body: &str) -> (u16, String) {
                 .to_string(),
         ),
     }
+}
+
+/// Production federation route is native and same-process. The resident
+/// Python worker remains available only to the shadow qualification adapter.
+fn federate_route_response(body: &str) -> (u16, String) {
+    crate::pull::federation::native_route_response(body)
 }
 
 fn now_unix_ms() -> u64 {
