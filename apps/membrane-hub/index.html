@@ -4,7 +4,7 @@ const app = document.querySelector('#app'); const snapshot = document.querySelec
 const message=error=>error?.message||String(error||'Hub controls unavailable');
 let invoke;
 try { ({invoke}=await import('./vendor/@tauri-apps/api/core.js')); } catch(error) { startup.disabled=true; startupStatus.value=message(error); }
-async function refresh(){if(!invoke)return;try{renderOverview(await invoke('snapshot'),snapshot);}catch(error){renderOverview({result:{kind:'error',code:'snapshot_unavailable',message:message(error)}},snapshot);}}
+async function refresh(){if(!invoke)return;const [runtime,snapshotResult]=await Promise.allSettled([invoke('diagnostics_report'),invoke('snapshot')]);const runtimeValue=runtime.status==='fulfilled'?runtime.value:null;if(snapshotResult.status==='fulfilled'){renderOverview(snapshotResult.value,snapshot,runtimeValue);}else{renderOverview({result:{kind:'error',code:'snapshot_unavailable',message:message(snapshotResult.reason)}},snapshot,runtimeValue);}}
 if(invoke){
   await refresh();
   try { startup.checked=await invoke('startup_setting'); startup.addEventListener('change',async()=>{startup.disabled=true; startupStatus.value='Saving…'; try{await invoke('set_startup',{enabled:startup.checked}); startupStatus.value=startup.checked?'Hub will launch at login':'Hub will not launch at login';}catch(error){startup.checked=!startup.checked; startupStatus.value=message(error);}finally{startup.disabled=false;}}); } catch(error) { startup.disabled=true; startupStatus.value=message(error); }

@@ -28,7 +28,12 @@ pub fn live_inputs_from_local_service() -> Option<HubInputsV1> {
     let health = fetch_health_json(port)?;
     let workspace_root = configured_workspace_root();
     let delivery = read_delivery_health_json(&workspace_root);
-    Some(inputs_from_health(&health, delivery.as_ref()))
+    let blueprint = crate::freshness::read_blueprint_status(&workspace_root);
+    Some(inputs_from_health_with_blueprint(
+        &health,
+        delivery.as_ref(),
+        blueprint,
+    ))
 }
 
 fn local_service_port() -> Option<u16> {
@@ -100,6 +105,18 @@ fn now_unix_ms() -> u64 {
 fn inputs_from_health(
     health: &serde_json::Value,
     delivery: Option<&serde_json::Value>,
+) -> HubInputsV1 {
+    inputs_from_health_with_blueprint(
+        health,
+        delivery,
+        Err("Blueprint daemon status unavailable".into()),
+    )
+}
+
+fn inputs_from_health_with_blueprint(
+    health: &serde_json::Value,
+    delivery: Option<&serde_json::Value>,
+    blueprint: Result<serde_json::Value, String>,
 ) -> HubInputsV1 {
     let observed_at_unix_ms = now_unix_ms();
     let metadata = || HubMetadataV1 {
@@ -204,11 +221,7 @@ fn inputs_from_health(
         cache_age_ms: 0,
     };
 
-    // Guide's rebuildable index is not repository truth. Keep Hub's
-    // repositories surface closed until it consumes Blueprint's public seam.
-    let repositories = HubReadV1::Unavailable {
-        reason: "blueprint_seam_pending".into(),
-    };
+    let repositories = blueprint_hub_read(blueprint);
 
     let adapters = match crate::agent_adapter_producer::build_adapters_report() {
         Some(report) => {
@@ -263,6 +276,140 @@ fn inputs_from_health(
         // folded into `providers`. Not yet a real concept — do not invent
         // one; `not_instrumented` is truthful.
         alerts: not_instrumented(),
+    }
+}
+
+/// Map the Blueprint status seam to the repositories card only. Blueprint
+/// failures never alter resident health or any sibling Hub section.
+fn blueprint_hub_read(status: Result<serde_json::Value, String>) -> HubReadV1 {
+    let envelope = match status {
+        Ok(status) => status,
+        Err(error) => {
+            return HubReadV1::Unavailable {
+                reason: if error.contains("stale_blocked") {
+                    "stale_blocked"
+                } else {
+                    "blueprint_unavailable"
+                }
+                .into(),
+            };
+        }
+    };
+    let result = envelope.get("result").unwrap_or(&envelope);
+    let state = result.get("state").and_then(serde_json::Value::as_str);
+    // The daemon's application-service status uses graphStatus directly
+    // (`state: fresh`), while the CLI doctor envelope uses
+    // `state: ready` + `artifacts.graphState: fresh`. Accept both public
+    // representations without treating either as a liveness claim.
+    let graph_state = result
+        .get("artifacts")
+        .and_then(|artifacts| artifacts.get("graphState"))
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| result.get("graphState").and_then(serde_json::Value::as_str));
+    let graph_state = graph_state.or(state.filter(|value| *value == "fresh"));
+    let graph_complete = result
+        .get("manifest")
+        .and_then(|manifest| manifest.get("complete"))
+        .and_then(serde_json::Value::as_bool)
+        .or_else(|| {
+            result
+                .get("completion")
+                .and_then(|completion| completion.get("state"))
+                .and_then(serde_json::Value::as_str)
+                .map(|value| value == "complete")
+        })
+        .unwrap_or(false);
+
+    let runtime = result
+        .get("runtime")
+        .or_else(|| result.get("serviceStatus"));
+    let daemon_running = runtime
+        .and_then(|value| value.get("daemonRunning").or_else(|| value.get("running")))
+        .and_then(serde_json::Value::as_bool);
+    let watcher_running = runtime
+        .and_then(|value| {
+            value
+                .get("watcherRunning")
+                .or_else(|| value.get("watcherAlive"))
+        })
+        .and_then(serde_json::Value::as_bool);
+    let enrolled_count = runtime
+        .and_then(|value| value.get("enrolledRepoCount"))
+        .and_then(serde_json::Value::as_u64)
+        .or_else(|| {
+            runtime
+                .and_then(|value| value.get("enrolledRepos"))
+                .and_then(serde_json::Value::as_array)
+                .map(|repos| repos.len() as u64)
+        });
+
+    if matches!(state, Some("stale" | "incomplete" | "indeterminate"))
+        || matches!(graph_state, Some("stale" | "incomplete" | "indeterminate"))
+    {
+        return HubReadV1::Unavailable {
+            reason: "stale_blocked".into(),
+        };
+    }
+
+    // A successful IPC response proves only that the daemon accepted this
+    // request. Require explicit watcher liveness + enrollment evidence before
+    // exposing repository readiness; absent evidence stays local unavailable.
+    if daemon_running == Some(false)
+        || enrolled_count.is_none()
+        || enrolled_count == Some(0)
+        || watcher_running.is_none()
+    {
+        return HubReadV1::Unavailable {
+            reason: "blueprint_unavailable".into(),
+        };
+    }
+    if watcher_running == Some(false) {
+        return HubReadV1::Degraded {
+            reason: "blueprint_watcher_unhealthy".into(),
+            items: vec![serde_json::json!({"runtime": runtime})],
+            metadata: HubMetadataV1 {
+                resolver: Some("hub_inputs::live_inputs_from_local_service".into()),
+                source: Some("blueprint_daemon".into()),
+                evidence: Some("Blueprint status IPC".into()),
+                observed_at_unix_ms: now_unix_ms(),
+                cache_age_ms: 0,
+            },
+        };
+    }
+
+    if (state == Some("ready") || state == Some("fresh"))
+        && graph_state == Some("fresh")
+        && graph_complete
+    {
+        let generation_id = result
+            .get("artifacts")
+            .and_then(|artifacts| artifacts.get("generationId"))
+            .or_else(|| {
+                result
+                    .get("manifest")
+                    .and_then(|manifest| manifest.get("generationId"))
+            })
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        return HubReadV1::Available {
+            items: vec![serde_json::json!({
+                "state": state,
+                "graphState": graph_state,
+                "generationId": generation_id,
+                "repository": result["repository"],
+            })],
+            metadata: HubMetadataV1 {
+                resolver: Some("hub_inputs::live_inputs_from_local_service".into()),
+                source: Some("blueprint_daemon".into()),
+                evidence: Some("Blueprint status IPC".into()),
+                observed_at_unix_ms: now_unix_ms(),
+                cache_age_ms: 0,
+            },
+        };
+    }
+
+    HubReadV1::Unavailable {
+        reason: "blueprint_unavailable".into(),
     }
 }
 
@@ -337,7 +484,7 @@ mod tests {
         ));
         assert!(matches!(
             inputs.repositories,
-            HubReadV1::Unavailable { ref reason } if reason == "blueprint_seam_pending"
+            HubReadV1::Unavailable { ref reason } if reason == "blueprint_unavailable"
         ));
         assert!(matches!(
             inputs.adapters,
@@ -362,6 +509,122 @@ mod tests {
         .unwrap();
         let inputs = inputs_from_health(&health, None);
         assert!(matches!(inputs.providers, HubReadV1::Available { .. }));
+    }
+
+    #[test]
+    fn blueprint_status_maps_absent_stale_and_fresh_complete_without_affecting_peers() {
+        let absent = blueprint_hub_read(Err("connect: no such file".into()));
+        assert!(matches!(
+            absent,
+            HubReadV1::Unavailable { ref reason } if reason == "blueprint_unavailable"
+        ));
+
+        let stale_error = blueprint_hub_read(Err("Blueprint status failed: stale_blocked".into()));
+        assert!(matches!(
+            stale_error,
+            HubReadV1::Unavailable { ref reason } if reason == "stale_blocked"
+        ));
+
+        let stale = blueprint_hub_read(Ok(serde_json::json!({
+            "protocolVersion": 1,
+            "ok": true,
+            "result": {
+                "state": "stale",
+                "artifacts": {"graphState": "stale"}
+            }
+        })));
+        assert!(matches!(
+            stale,
+            HubReadV1::Unavailable { ref reason } if reason == "stale_blocked"
+        ));
+
+        let incomplete = blueprint_hub_read(Ok(serde_json::json!({
+            "protocolVersion": 1,
+            "ok": true,
+            "result": {"state": "incomplete"}
+        })));
+        assert!(matches!(
+            incomplete,
+            HubReadV1::Unavailable { ref reason } if reason == "stale_blocked"
+        ));
+
+        let fresh = blueprint_hub_read(Ok(serde_json::json!({
+            "protocolVersion": 1,
+            "ok": true,
+            "result": {
+                "state": "ready",
+                "artifacts": {"graphState": "fresh", "generationId": "gen-1"},
+                "manifest": {"complete": true},
+                "repository": {"revision": "abc123"},
+                "runtime": {
+                    "watcherRunning": true,
+                    "enrolledRepoCount": 1
+                }
+            }
+        })));
+        assert!(matches!(fresh, HubReadV1::Available { .. }));
+
+        let missing_runtime = blueprint_hub_read(Ok(serde_json::json!({
+            "protocolVersion": 1,
+            "ok": true,
+            "result": {
+                "state": "fresh",
+                "manifest": {"complete": true}
+            }
+        })));
+        assert!(matches!(
+            missing_runtime,
+            HubReadV1::Unavailable { ref reason } if reason == "blueprint_unavailable"
+        ));
+
+        let daemon_status = blueprint_hub_read(Ok(serde_json::json!({
+            "protocolVersion": 1,
+            "ok": true,
+            "result": {
+                "state": "fresh",
+                "manifest": {"complete": true},
+                "runtime": {
+                    "daemonRunning": true,
+                    "watcherRunning": true,
+                    "enrolledRepoCount": 1
+                }
+            }
+        })));
+        assert!(matches!(daemon_status, HubReadV1::Available { .. }));
+
+        let unwatched = blueprint_hub_read(Ok(serde_json::json!({
+            "protocolVersion": 1,
+            "ok": true,
+            "result": {
+                "state": "fresh",
+                "manifest": {"complete": true},
+                "runtime": {
+                    "watcherRunning": false,
+                    "enrolledRepoCount": 1
+                }
+            }
+        })));
+        assert!(matches!(
+            unwatched,
+            HubReadV1::Degraded { ref reason, .. } if reason == "blueprint_watcher_unhealthy"
+        ));
+
+        let unenrolled = blueprint_hub_read(Ok(serde_json::json!({
+            "protocolVersion": 1,
+            "ok": true,
+            "result": {
+                "state": "fresh",
+                "manifest": {"complete": true},
+                "runtime": {
+                    "watcherRunning": true,
+                    "enrolledRepoCount": 0
+                }
+            }
+        })));
+        assert!(matches!(
+            unenrolled,
+            HubReadV1::Unavailable { ref reason } if reason == "blueprint_unavailable"
+        ));
     }
 
     #[test]
@@ -552,7 +815,7 @@ mod tests {
 
         assert!(matches!(
             inputs.repositories,
-            HubReadV1::Unavailable { ref reason } if reason == "blueprint_seam_pending"
+            HubReadV1::Unavailable { ref reason } if reason == "blueprint_unavailable"
         ));
         assert!(matches!(inputs.adapters, HubReadV1::Available { .. }));
         assert!(matches!(inputs.sentinel, HubReadV1::Available { .. }));

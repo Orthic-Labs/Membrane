@@ -21,6 +21,7 @@ import {
 } from "../../graph/static-provider.mjs";
 import { executeRecallCircuit, recallCircuitToCandidateSet } from "../../graph/recall-circuit.mjs";
 import { observeRepositoryFreshness } from "../../sources/freshness-observation.mjs";
+import { serviceStatus } from "../../service/status.mjs";
 import { fail } from "./errors.mjs";
 
 function databasePath(root, outDir) {
@@ -132,6 +133,7 @@ export function createBlueprintApplicationService({
       const overlay = observeRepositoryFreshness(root, {
         baseCommit: status.manifest?.repo?.baseCommit ?? null,
       });
+      const runtimeStatus = serviceStatus({ target: root });
       return {
         schemaVersion: 1,
         repository: {
@@ -139,6 +141,10 @@ export function createBlueprintApplicationService({
           revision: overlay.revision,
         },
         overlay,
+        runtime: {
+          watcherRunning: runtimeStatus.running,
+          enrolledRepoCount: runtimeStatus.enrolledRepos.length,
+        },
         ...status,
       };
     },

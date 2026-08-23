@@ -254,27 +254,11 @@ fn stop_membrane_service(service: &ServiceState) {
 /// differs by colour only, using the palette in `src/popover.css`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayStatus {
-    Available,
+    Running,
     Degraded,
-    Unavailable,
     /// No snapshot at all. Carries its own muted grey and a distinct tooltip,
     /// so "we don't know" is never rendered as "we're healthy".
     Offline,
-}
-
-fn state_rank(state: HubStateV1) -> u8 {
-    match state {
-        HubStateV1::Unavailable => 0,
-        HubStateV1::Degraded => 1,
-        HubStateV1::Available => 2,
-    }
-}
-
-fn presentation_rank(section: &membrane_protocol::HubSectionV1) -> u8 {
-    match section.state {
-        HubStateV1::Unavailable if section.reason == "not_instrumented" => 1,
-        state => state_rank(state),
-    }
 }
 
 fn source_not_connected_snapshot(snapshot: &CachedSnapshot) -> bool {
@@ -288,35 +272,22 @@ fn source_not_connected_snapshot(snapshot: &CachedSnapshot) -> bool {
     })
 }
 
-/// Mirrors popover aggregation: all eight canonical sections must parse, then
-/// their worst state controls the tray.
-pub fn tray_status(snapshot: Option<&CachedSnapshot>) -> TrayStatus {
-    let Some(snapshot) = snapshot.and_then(|snapshot| {
-        serde_json::from_value::<HubSnapshotV1>(snapshot.payload.clone()).ok()
-    }) else {
-        return TrayStatus::Offline;
-    };
-    let Some(worst) = HUB_SECTION_NAMES
-        .iter()
-        .map(|name| snapshot.sections.get(*name).map(presentation_rank))
-        .collect::<Option<Vec<_>>>()
-        .and_then(|ranks| ranks.into_iter().min())
-    else {
-        return TrayStatus::Offline;
-    };
-    match worst {
-        0 => TrayStatus::Unavailable,
-        1 => TrayStatus::Degraded,
-        2 => TrayStatus::Available,
-        _ => unreachable!("HubStateV1 has three variants"),
+/// Membrane status is resident-local. Child resource state never changes it.
+pub fn tray_status(
+    service_status: supervisor::ServiceStatus,
+    live_snapshot_available: bool,
+) -> TrayStatus {
+    match (service_status, live_snapshot_available) {
+        (supervisor::ServiceStatus::Running, true) => TrayStatus::Running,
+        (supervisor::ServiceStatus::Running, false) => TrayStatus::Degraded,
+        _ => TrayStatus::Offline,
     }
 }
 
 pub fn tray_tooltip(status: TrayStatus) -> &'static str {
     match status {
-        TrayStatus::Available => "Membrane — available",
+        TrayStatus::Running => "Membrane — running",
         TrayStatus::Degraded => "Membrane — degraded",
-        TrayStatus::Unavailable => "Membrane — unavailable",
         TrayStatus::Offline => "Membrane — offline, no cached snapshot",
     }
 }
@@ -340,9 +311,8 @@ macro_rules! tray_asset {
 
 fn tray_icon(status: TrayStatus) -> tauri::Result<tauri::image::Image<'static>> {
     let bytes: &[u8] = match status {
-        TrayStatus::Available => tray_asset!("membrane-available"),
+        TrayStatus::Running => tray_asset!("membrane-available"),
         TrayStatus::Degraded => tray_asset!("membrane-degraded"),
-        TrayStatus::Unavailable => tray_asset!("membrane-unavailable"),
         TrayStatus::Offline => tray_asset!("membrane-offline"),
     };
     tauri::image::Image::from_bytes(bytes).map(tauri::image::Image::to_owned)
@@ -432,7 +402,11 @@ fn startup_step(
         Err(_) => None,
     }
 }
-fn initial_poll(path: &Path, program: &Path, gate: &StartupGate) -> Result<CachedSnapshot, String> {
+fn initial_poll(
+    path: &Path,
+    program: &Path,
+    gate: &StartupGate,
+) -> (Result<CachedSnapshot, String>, bool) {
     let deadline = std::time::Instant::now() + STARTUP_GRACE;
     let mut latest = None;
     loop {
@@ -446,15 +420,16 @@ fn initial_poll(path: &Path, program: &Path, gate: &StartupGate) -> Result<Cache
             )
             .unwrap();
             gate.finish();
-            return output;
+            return (output, false);
         }
         let result = fetch_snapshot(program, POLL_TIMEOUT.min(remaining));
+        let live_snapshot_available = result.is_ok();
         let expired = deadline
             .saturating_duration_since(std::time::Instant::now())
             .is_zero();
         if let Some(output) = startup_step(path, result, expired, &mut latest) {
             gate.finish();
-            return output;
+            return (output, live_snapshot_available);
         }
         thread::sleep(
             STARTUP_POLL_INTERVAL
@@ -767,25 +742,40 @@ fn main() {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| bundled_binary("membrane"));
             std::thread::spawn(move || loop {
-                let service_status = supervisor.supervise();
-                if service_status != supervisor::ServiceStatus::Running {
-                    telemetry.service(
-                        service_status_name(service_status),
-                        Some("resident_not_running"),
-                    );
-                    match supervisor.start() {
-                        Ok(status) => telemetry.service(service_status_name(status), None),
-                        Err(error) => telemetry.service("unavailable", Some(&error)),
-                    }
-                }
-                let current = if gate.active() {
+                let observed_service_status = supervisor.supervise();
+                let service_status =
+                    if observed_service_status != supervisor::ServiceStatus::Running {
+                        telemetry.service(
+                            service_status_name(observed_service_status),
+                            Some("resident_not_running"),
+                        );
+                        match supervisor.start() {
+                            Ok(status) => {
+                                telemetry.service(service_status_name(status), None);
+                                status
+                            }
+                            Err(error) => {
+                                telemetry.service("unavailable", Some(&error));
+                                supervisor::ServiceStatus::Unavailable
+                            }
+                        }
+                    } else {
+                        observed_service_status
+                    };
+                let (current, live_snapshot_available) = if gate.active() {
                     initial_poll(&cache, &program, &gate)
                 } else {
-                    poll_snapshot(&cache, fetch_snapshot(&program, POLL_TIMEOUT), &gate)
+                    let fetched = fetch_snapshot(&program, POLL_TIMEOUT);
+                    let live = fetched.is_ok();
+                    (poll_snapshot(&cache, fetched, &gate), live)
                 };
-                let status = tray_status(current.as_ref().ok());
+                let status = tray_status(
+                    service_status,
+                    live_snapshot_available && current.is_ok(),
+                );
                 match &current {
-                    Ok(_) => telemetry.snapshot("available", None),
+                    Ok(_) if live_snapshot_available => telemetry.snapshot("available", None),
+                    Ok(_) => telemetry.snapshot("degraded", Some("cached_snapshot")),
                     Err(error) => telemetry.snapshot("unavailable", Some(error)),
                 }
                 if let Ok(icon) = tray_icon(status) {
@@ -920,23 +910,32 @@ mod tests {
     }
 
     #[test]
-    fn tray_status_never_promotes_missing_data_to_healthy() {
-        assert_eq!(tray_status(None), TrayStatus::Offline);
-        // No explicit overall: unknown, not available.
-        let implicit = snapshot_with(serde_json::json!({"deliveries":{"state":"available"}}));
-        assert_eq!(tray_status(Some(&implicit)), TrayStatus::Offline);
-        let empty = snapshot_with(serde_json::json!({}));
-        assert_eq!(tray_status(Some(&empty)), TrayStatus::Offline);
+    fn tray_status_requires_resident_and_live_snapshot() {
+        assert_eq!(
+            tray_status(supervisor::ServiceStatus::Running, true),
+            TrayStatus::Running
+        );
+        assert_eq!(
+            tray_status(supervisor::ServiceStatus::Running, false),
+            TrayStatus::Degraded
+        );
+        assert_eq!(
+            tray_status(supervisor::ServiceStatus::Unavailable, true),
+            TrayStatus::Offline
+        );
+        assert_eq!(
+            tray_status(supervisor::ServiceStatus::CrashLoop, true),
+            TrayStatus::Offline
+        );
     }
 
     #[test]
-    fn tray_status_takes_the_worst_present_state() {
-        let healthy = snapshot_with(canonical_payload(&[]));
-        assert_eq!(tray_status(Some(&healthy)), TrayStatus::Available);
-        let mixed = snapshot_with(canonical_payload(&[("deliveries", "degraded")]));
-        assert_eq!(tray_status(Some(&mixed)), TrayStatus::Degraded);
-        let broken = snapshot_with(canonical_payload(&[("providers", "unavailable")]));
-        assert_eq!(tray_status(Some(&broken)), TrayStatus::Unavailable);
+    fn child_failure_does_not_change_membrane_status() {
+        let _broken = snapshot_with(canonical_payload(&[("providers", "unavailable")]));
+        assert_eq!(
+            tray_status(supervisor::ServiceStatus::Running, true),
+            TrayStatus::Running
+        );
     }
 
     /// Locks the three properties the tray art has to keep: it is always the
@@ -945,9 +944,8 @@ mod tests {
     #[test]
     fn every_status_shares_one_mark_and_differs_only_by_colour() {
         let statuses = [
-            TrayStatus::Available,
+            TrayStatus::Running,
             TrayStatus::Degraded,
-            TrayStatus::Unavailable,
             TrayStatus::Offline,
         ];
         let mut colours = Vec::new();
@@ -1010,8 +1008,8 @@ mod tests {
             );
         }
         assert_ne!(
-            tray_tooltip(TrayStatus::Offline),
-            tray_tooltip(TrayStatus::Unavailable)
+            tray_tooltip(TrayStatus::Running),
+            tray_tooltip(TrayStatus::Offline)
         );
     }
 

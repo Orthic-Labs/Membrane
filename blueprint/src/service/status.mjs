@@ -10,19 +10,34 @@ function pidAlive(pid) {
   try { process.kill(Number(pid), 0); return true; } catch { return false; }
 }
 
-function readFleetStatus(configPath = join(homedir(), ".blueprint", "watch.json")) {
+function residentWatcherPid() {
+  try {
+    return Number(readFileSync(join(homedir(), ".blueprint", "watchman.pid"), "utf8").trim()) || null;
+  } catch {
+    return null;
+  }
+}
+
+function readFleetStatus(target = null, configPath = join(homedir(), ".blueprint", "watch.json")) {
   if (!existsSync(configPath)) return { repos: [] };
   const config = JSON.parse(readFileSync(configPath, "utf8"));
+  const targetRoot = target ? resolve(target) : null;
   const repos = [];
   for (const item of config.repos ?? []) {
     if (!item?.root || item.enabled === false) continue;
     const root = resolve(item.root);
+    if (targetRoot && root !== targetRoot) continue;
     let db;
     let pid = null;
     try {
       db = openStoreReadOnly(join(root, ".agent", "graph", "graph.db"));
       pid = Number(db.prepare("SELECT value FROM watch_state WHERE key='watcher_pid'").get()?.value ?? 0) || null;
-    } catch {} finally { if (db) closeStore(db); }
+    } catch {
+      // A live actor may hold the graph writer while status is requested.
+      // The resident pidfile still gives us bounded liveness evidence without
+      // treating an enrolled repository as absent.
+      pid = residentWatcherPid();
+    } finally { if (db) closeStore(db); }
     repos.push({ root, pid, alive: Boolean(pid && pidAlive(pid)) });
   }
   return { repos };
@@ -30,7 +45,7 @@ function readFleetStatus(configPath = join(homedir(), ".blueprint", "watch.json"
 
 export function serviceStatus({ target = null, fleetStatus = readFleetStatus } = {}) {
   let fleet = { repos: [] };
-  try { fleet = fleetStatus(); } catch {}
+  try { fleet = fleetStatus(target); } catch {}
   const enrolledRepos = (fleet.repos ?? []).map((repo) => ({ root: repo.root, enabled: true }));
   const active = (fleet.repos ?? []).find((repo) => repo.alive);
   return {

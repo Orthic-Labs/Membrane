@@ -1,18 +1,55 @@
 import test from 'node:test'; import assert from 'node:assert/strict';
 import { SECTION_ORDER, viewModel, diagnostics } from '../src/popover.mjs';
+
 const section = (state = 'available', reason = `${state}_reason`) => ({ state, reason, items: [], resolver: null, source: null, evidence: null, observedAtUnixMs: 1, cacheAgeMs: 0 });
-const golden = (overrides = {}) => ({ schemaVersion: 1, observedAtUnixMs: 1, sections: { ...Object.fromEntries(SECTION_ORDER.map(key => [key, section()])), ...overrides } });
-test('canonical golden snapshot reduces all eight sections in protocol order',()=>{ const vm=viewModel({payload:golden({deliveries:section('degraded','delivery delayed'),providers:section('unavailable','provider unavailable'),repositories:section('unavailable','repository unavailable'),adapters:section('degraded'),devices:section('unavailable','device unavailable'),alerts:section('degraded')})}); assert.equal(vm.overall,'Unavailable'); assert.equal(vm.delivery,'Degraded'); assert.equal(vm.sources,'Unavailable'); assert.equal(vm.fleet,'Unavailable'); assert.equal(vm.reason,'provider unavailable'); });
-test('missing canonical evidence never promotes a snapshot',()=>{ const vm=viewModel({payload:golden({sentinel:undefined})}); assert.equal(vm.overall,'Offline'); assert.equal(vm.delivery,'Available'); assert.equal(vm.sources,'Available'); assert.equal(vm.fleet,'Available'); assert.equal(vm.reason,'No cached snapshot'); });
-test('trace is unavailable without explicit id and diagnostics contain no payload',()=>{ const vm=viewModel({payload:{sections:{devices:{state:'unavailable'}},secret:'nope'}}); assert.equal(vm.traceId,null); assert.doesNotMatch(diagnostics(vm),/nope/); });
-test('tray panel stays compact and opens full Hub explicitly', async()=>{ const fs=await import('node:fs/promises'); const [html,css,popover]=await Promise.all([fs.readFile(new URL('../popover.html',import.meta.url),'utf8'),fs.readFile(new URL('../src/popover.css',import.meta.url),'utf8'),fs.readFile(new URL('../src/popover.mjs',import.meta.url),'utf8')]); assert.match(html,/id="open-hub">Open Hub/); assert.match(html,/brand-mark/); assert.match(html,/id="close"/); assert.match(html,/Quit Membrane/); assert.match(html,/"@tauri-apps\/plugin-os":"\.\/vendor\/@tauri-apps\/plugin-os\/index\.js"/); assert.match(popover,/invoke\('open_dashboard'\)/); assert.match(popover,/vendor\/@rightkit\/platform-ui\/index\.js/); assert.match(popover,/createWindowControlLabels\(\{ close: 'Close status panel' \}\)/); assert.match(css,/background:#a86bff/); for(const state of ['available','degraded','unavailable']) assert.match(css,new RegExp(`data-status=${state}`)); });
-test('all available sections reduce to Available',()=>{ const vm=viewModel({payload:golden()}); assert.equal(vm.overall,'Available'); assert.equal(vm.delivery,'Available'); assert.equal(vm.sources,'Available'); assert.equal(vm.fleet,'Available'); assert.equal(vm.reason,'available_reason'); });
-test('not_instrumented-only coverage gaps reduce to Degraded',()=>{ const vm=viewModel({payload:golden({repositories:section('unavailable','not_instrumented'),adapters:section('unavailable','not_instrumented'),devices:section('unavailable','not_instrumented'),sentinel:section('unavailable','not_instrumented'),alerts:section('unavailable','not_instrumented')})}); assert.equal(vm.overall,'Degraded'); assert.equal(vm.delivery,'Available'); assert.equal(vm.sources,'Degraded'); assert.equal(vm.fleet,'Degraded'); assert.equal(vm.reason,'not_instrumented'); });
-test('daily-analysis degraded+gaps keeps first worst-contributing reason',()=>{ const vm=viewModel({payload:golden({providers:section('degraded','daily_analysis_unhealthy'),repositories:section('unavailable','not_instrumented'),adapters:section('unavailable','not_instrumented'),devices:section('unavailable','not_instrumented'),sentinel:section('unavailable','not_instrumented'),alerts:section('unavailable','not_instrumented')})}); assert.equal(vm.overall,'Degraded'); assert.equal(vm.delivery,'Available'); assert.equal(vm.sources,'Degraded'); assert.equal(vm.fleet,'Degraded'); assert.equal(vm.reason,'daily_analysis_unhealthy'); });
-test('source_not_connected unavailable reduces to Unavailable',()=>{ const vm=viewModel({payload:golden({providers:section('unavailable','source_not_connected'),repositories:section('unavailable','source_not_connected')})}); assert.equal(vm.overall,'Unavailable'); assert.equal(vm.sources,'Unavailable'); assert.equal(vm.fleet,'Available'); assert.equal(vm.reason,'source_not_connected'); });
-test('other unavailable reasons reduce to Unavailable',()=>{ const vm=viewModel({payload:golden({devices:section('unavailable','other reason')})}); assert.equal(vm.overall,'Unavailable'); assert.equal(vm.fleet,'Unavailable'); assert.equal(vm.sources,'Available'); assert.equal(vm.reason,'other reason'); });
-test('not_instrumented unavailable contributes Degraded',()=>{ const vm=viewModel({payload:golden({providers:section('unavailable','not_instrumented'),adapters:section('degraded','provider degraded')})}); assert.equal(vm.overall,'Degraded'); assert.equal(vm.sources,'Degraded'); assert.equal(vm.fleet,'Degraded'); assert.equal(vm.reason,'not_instrumented'); });
-test('missing sections offline never Available',()=>{ const vm=viewModel({payload:golden({memory:undefined,sentinel:undefined})}); assert.equal(vm.overall,'Offline'); assert.equal(vm.reason,'No cached snapshot'); });
-test('invalid nonobject raw-state offline never Available',()=>{ const vm=viewModel({payload:golden({alerts:null,devices:true,adapters:42,repositories:'raw'})}); assert.equal(vm.overall,'Offline'); assert.equal(vm.delivery,'Available'); assert.equal(vm.sources,'Offline'); assert.equal(vm.fleet,'Offline'); assert.equal(vm.reason,'No cached snapshot'); });
-test('invalid object state alone remains Offline',()=>{ const vm=viewModel({payload:golden({alerts:section('garbage','bad state')})}); assert.equal(vm.overall,'Offline'); assert.equal(vm.reason,'No cached snapshot'); });
-test('sources and fleet parity with their constituent sections',()=>{ const vm=viewModel({payload:golden({providers:section('degraded'),repositories:section('available'),adapters:section('available'),devices:section('available')})}); assert.equal(vm.sources,'Degraded'); assert.equal(vm.fleet,'Available'); });
+const golden = (overrides = {}, service = { state: 'running', reason: 'ok', ok: true }) => ({ schemaVersion: 1, observedAtUnixMs: 1, service, sections: { ...Object.fromEntries(SECTION_ORDER.map(key => [key, section()])), ...overrides } });
+const running = snapshot => viewModel(snapshot, { serviceState: 'running', snapshotState: 'available', lastReason: 'ok' });
+
+test('canonical snapshot keeps exactly eight independent resource sections', () => {
+  const vm = running({ payload: golden({ providers: section('degraded', 'daily_analysis_stale'), repositories: section('unavailable', 'blueprint_unavailable'), devices: section('unavailable', 'not_instrumented'), alerts: section('unavailable', 'not_instrumented') }) });
+  assert.deepEqual(Object.keys(vm.resources), SECTION_ORDER);
+  assert.equal(vm.overall, 'Running'); assert.equal(vm.providers, 'Degraded'); assert.equal(vm.blueprint, 'Unavailable');
+  assert.equal(vm.devices, 'Not configured'); assert.equal(vm.alerts, 'Not configured');
+});
+
+test('child failure never promotes or demotes resident Membrane status', () => {
+  const vm = running({ payload: golden({ providers: section('unavailable', 'provider_failed'), repositories: section('unavailable', 'blueprint_unavailable') }) });
+  assert.equal(vm.overall, 'Running'); assert.equal(vm.reason, 'ok'); assert.equal(vm.sources, 'Unavailable');
+});
+
+test('resident health drives Membrane status independently of resources', () => {
+  const degraded = viewModel({ payload: golden() }, { serviceState: 'degraded', snapshotState: 'available', lastReason: 'health_failed' });
+  assert.equal(degraded.overall, 'Degraded'); assert.equal(degraded.reason, 'health_failed');
+  assert.equal(viewModel(null, { serviceState: 'running', snapshotState: 'unavailable' }).overall, 'Degraded');
+  const offline = viewModel(null); assert.equal(offline.overall, 'Offline'); assert.equal(offline.reason, 'Resident service offline');
+});
+
+test('fresh Blueprint remains local while Membrane remains Running', () => {
+  const vm = running({ payload: golden({ repositories: section('available', 'graph_fresh') }) });
+  assert.equal(vm.overall, 'Running'); assert.equal(vm.blueprint, 'Available');
+});
+
+test('not_instrumented is presented as Not configured, never Degraded', () => {
+  const vm = running({ payload: golden({ devices: section('unavailable', 'not_instrumented'), alerts: section('unavailable', 'not_instrumented') }) });
+  assert.equal(vm.resources.devices.status, 'Not configured'); assert.equal(vm.resources.alerts.status, 'Not configured'); assert.equal(vm.overall, 'Running');
+});
+
+test('all resource states remain local, including invalid or missing sections', () => {
+  const vm = running({ payload: golden({ memory: undefined, sentinel: undefined, devices: true, adapters: 42 }) });
+  assert.equal(vm.overall, 'Running'); assert.equal(vm.resources.memory.status, 'Unavailable'); assert.equal(vm.resources.sentinel.status, 'Unavailable');
+  assert.equal(vm.resources.devices.status, 'Unavailable'); assert.equal(vm.resources.adapters.status, 'Unavailable');
+});
+
+test('trace is unavailable without explicit id and diagnostics contain no payload', () => {
+  const vm = running({ payload: { sections: { devices: section('unavailable') }, secret: 'nope' } });
+  assert.equal(vm.traceId, null); assert.doesNotMatch(diagnostics(vm), /nope/); assert.match(diagnostics(vm), /resources/);
+});
+
+test('popover rendering names resident service, Blueprint, providers, and configured gaps', async () => {
+  const fs = await import('node:fs/promises');
+  const [html, css, popover] = await Promise.all([fs.readFile(new URL('../popover.html', import.meta.url), 'utf8'), fs.readFile(new URL('../src/popover.css', import.meta.url), 'utf8'), fs.readFile(new URL('../src/popover.mjs', import.meta.url), 'utf8')]);
+  assert.match(html, /id="open-hub">Open Hub/); assert.match(html, /brand-mark/); assert.match(html, /id="close"/); assert.match(html, /Quit Membrane/);
+  assert.match(popover, /Membrane \$\{vm\.overall\}/); assert.match(popover, /Providers \$\{vm\.providers\}/); assert.match(popover, /Blueprint \$\{vm\.blueprint\}/); assert.match(popover, /Not configured/);
+  assert.match(popover, /invoke\('open_dashboard'\)/); assert.match(popover, /vendor\/@rightkit\/platform-ui\/index\.js/); assert.match(popover, /createWindowControlLabels\(\{ close: 'Close status panel' \}\)/);
+  assert.match(css, /background:#a86bff/); for (const state of ['available', 'degraded', 'unavailable']) assert.match(css, new RegExp(`data-status=${state}`));
+});

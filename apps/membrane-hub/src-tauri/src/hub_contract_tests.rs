@@ -60,22 +60,21 @@ fn startup_step_masks_then_caches_live_or_deadline_sentinel() {
     assert_eq!(deadline, sentinel);
 }
 #[test]
-fn tray_matrix_keeps_unknown_offline_and_not_instrumented_degraded() {
-    assert_eq!(tray_status(None), TrayStatus::Offline);
+fn tray_matrix_depends_only_on_resident_and_snapshot() {
     assert_eq!(
-        tray_status(Some(&snapshot("available", "ready"))),
-        TrayStatus::Available
+        tray_status(supervisor::ServiceStatus::Running, true),
+        TrayStatus::Running
     );
     assert_eq!(
-        tray_status(Some(&snapshot("degraded", "slow"))),
+        tray_status(supervisor::ServiceStatus::Running, false),
         TrayStatus::Degraded
     );
     assert_eq!(
-        tray_status(Some(&snapshot("unavailable", "down"))),
-        TrayStatus::Unavailable
+        tray_status(supervisor::ServiceStatus::Unavailable, true),
+        TrayStatus::Offline
     );
     assert_eq!(
-        tray_status(Some(&snapshot("unavailable", "not_instrumented"))),
-        TrayStatus::Degraded
+        tray_status(supervisor::ServiceStatus::CrashLoop, false),
+        TrayStatus::Offline
     );
 }

@@ -813,7 +813,7 @@ fn read_blueprint_status_at(
         .map_err(|_| "Blueprint status request timed out".to_string())?
 }
 
-fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Value, String> {
+pub(crate) fn read_blueprint_status(repo_root: &Path) -> Result<serde_json::Value, String> {
     read_blueprint_status_at(&blueprint_daemon_endpoint()?, repo_root)
 }
 
