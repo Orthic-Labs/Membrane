@@ -9,6 +9,7 @@ import { get as httpGet } from "node:http";
 import { request as httpRequest } from "node:http";
 import { typedStatus } from "./membrane-hook-runtime.mjs";
 import { createContinuityClient } from "../host/continuity.mjs";
+import { diagnosticsRequest } from "../lib/diagnostics-client.mjs";
 
 const require = createRequire(import.meta.url);
 const DEFAULT_CONTEXT_ADAPTER = require("../host/context-adapter.cjs");
@@ -216,7 +217,7 @@ function ingestArgs(root, file, event) {
 }
 
 export function createWorkspaceMemoryOperations(options = {}) {
-  const { contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, continuityService, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable } = options;
+  const { contextAdapter = DEFAULT_CONTEXT_ADAPTER, rootFor = workspaceRoot, continuityService, probeStatus = defaultProbeStatus, home = homedir(), postObservation = postObservable, diagnosticsPost = diagnosticsRequest } = options;
   // Cortex subprocess execution is never an installed-hook default. Tests may
   // inject a seam; production must provide the current continuity service.
   const runCortex = typeof options.runCortex === "function" ? options.runCortex : null;
@@ -328,6 +329,44 @@ export function createWorkspaceMemoryOperations(options = {}) {
       if (!trace) return typedStatus("skipped", "observe_no_trace");
       const posted = await postObservation(root, event, trace, context);
       return typedStatus(posted ? "available" : "unavailable", posted ? "tool_observed" : "tool_observe_failed");
+    },
+    async observeMutation(event) {
+      const root = rootFor(event);
+      const target = event.payload.tool_input?.file_path || event.payload.file_path;
+      if (typeof target !== "string" || !target.trim()) return typedStatus("skipped", "diagnostics_not_applicable");
+      let bytes;
+      try { bytes = readFileSync(target); } catch { return typedStatus("skipped", "diagnostics_target_unreadable"); }
+      const hash = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+      const path = relative(root, resolve(target)).replaceAll("\\", "/") || basename(target);
+      const env = process.env;
+      const repoId = env.MEMBRANE_DIAGNOSTICS_REPO_ID || basename(root);
+      const worktreeId = env.MEMBRANE_DIAGNOSTICS_WORKTREE_ID || createHash("sha256").update(resolve(root)).digest("hex").slice(0, 16);
+      const configuredEpoch = Number.parseInt(env.MEMBRANE_DIAGNOSTICS_EPOCH ?? "", 10);
+      const epoch = {
+        schemaVersion: "workspace-epoch.v1",
+        repoId,
+        worktreeId,
+        epoch: Number.isInteger(configuredEpoch) && configuredEpoch >= 0 ? configuredEpoch : 0,
+        sourceManifestDigest: hash,
+        changedPaths: [path],
+        changedFileHashes: [{ path, hash }],
+        projectConfigDigest: "",
+        toolchainDigest: "",
+        sandboxPolicyDigest: "",
+        origin: "observed_hook",
+      };
+      let posted;
+      try {
+        posted = await diagnosticsPost("/diagnostics/mutation/registerObserved", { method: "POST", body: { repoId, worktreeId, epoch }, timeoutMs: 1200 });
+      } catch {
+        audit("diagnostics-registerObserved", "degraded", { code: "diagnostics_register_failed", path });
+        return typedStatus("unavailable", "diagnostics_register_failed", { path, hash });
+      }
+      if (!posted.ok) {
+        audit("diagnostics-registerObserved", "degraded", { code: posted.error.code, path });
+        return typedStatus("unavailable", posted.error.code, { path, hash });
+      }
+      return typedStatus("available", "mutation_observed", { path, hash });
     },
     async nag(event) {
       const root = rootFor(event);

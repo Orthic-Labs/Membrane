@@ -47,4 +47,7 @@ export function decodeLine(line) {
 
 export const METHODS = Object.freeze([
   "status", "search", "resolve", "recall", "expand", "impact", "architecture", "documentTruth", "build",
+  // Findings lane (design §7.1 items 5–7) — dispatched to the findings service
+  // adapter (src/lib/findings/service.mjs), which owns its freshness model.
+  "findings.get", "findings.baseline.capture", "findings.baseline.list", "findings.sarif",
 ]);

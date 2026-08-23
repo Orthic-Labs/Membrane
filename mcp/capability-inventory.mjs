@@ -47,7 +47,7 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
         contract: Boolean(TOOL_OUTPUT_SCHEMA),
       };
       const gates_passed = countPassed(gates);
-      return { capability: `mcp.${name}`, claim_class: "mcp_tool", status: statusFromGates(gates_passed, REQUIRED_GATES), gates, gates_passed, gates_required: REQUIRED_GATES, test_ids, artifact, platforms };
+      return { capability: `mcp.${name}`, claim_class: "mcp_tool", status: statusFromGates(gates_passed, REQUIRED_GATES), gates, gates_passed, gates_required: REQUIRED_GATES, test_ids, artifact, platforms, cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" };
     }),
     ...Object.entries(matrix.hosts).map(([id, host]) => {
       const test_ids = id === "generic_mcp" ? ["mcp/adapters.test.mjs"] : [];
@@ -62,6 +62,37 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
       };
       const gates_passed = countPassed(gates);
       return { capability: `adapter.${id}`, claim_class: "adapter", status: statusFromGates(gates_passed, REQUIRED_GATES), gates, gates_passed, gates_required: REQUIRED_GATES, test_ids, artifact, platforms };
+    }),
+    // Provider capabilities — Blueprint findings + module-surface (pure analysis, instant cost)
+    ...[
+      { capability: "findings.bp001", claim_class: "finding", artifact: "blueprint/src/lib/findings/detect.mjs", test_ids: ["blueprint/tests/findings-detect.test.mjs", "blueprint/tests/resolution-owner.test.mjs"], cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
+      { capability: "findings.bp002", claim_class: "finding", artifact: "blueprint/src/lib/findings/detect.mjs", test_ids: ["blueprint/tests/findings-detect.test.mjs", "blueprint/tests/resolution-owner.test.mjs"], cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
+      { capability: "findings.bp003", claim_class: "finding", artifact: "blueprint/src/lib/findings/detect.mjs", test_ids: ["blueprint/tests/findings-detect.test.mjs", "blueprint/tests/resolution-owner.test.mjs"], cost: "instant", convergence: "pull_exact", side_effect: "pure_analysis" },
+      { capability: "module_surface.parse", claim_class: "provider", artifact: "blueprint/src/graph/module-surface.mjs", test_ids: ["blueprint/tests/findings-detect.test.mjs"], cost: "instant", convergence: "snapshot_checker_exact", side_effect: "pure_analysis" },
+    ].map((entry) => {
+      const platforms = ["macOS", "Windows"];
+      const gates = {
+        exercised_test: entry.test_ids.length > 0,
+        artifact: Boolean(entry.artifact),
+        platforms: platforms.length > 0,
+        documented: true,
+        contract: true,
+      };
+      const gates_passed = countPassed(gates);
+      return {
+        capability: entry.capability,
+        claim_class: entry.claim_class,
+        status: statusFromGates(gates_passed, REQUIRED_GATES),
+        gates,
+        gates_passed,
+        gates_required: REQUIRED_GATES,
+        test_ids: entry.test_ids,
+        artifact: entry.artifact,
+        platforms,
+        cost: entry.cost,
+        convergence: entry.convergence,
+        side_effect: entry.side_effect,
+      };
     }),
   ];
   // MBR-016 invariant: nothing is shipped unless every required gate passes.
@@ -85,6 +116,6 @@ export async function buildCapabilityInventory({ matrixPath, freezePath } = {}) 
     support_tiers: matrix.support_tiers,
     contract_freeze: freeze.canonical,
     capabilities,
-    source_files: ["mcp/server.mjs", "docs/membrane/capability-matrix.v1.json", "docs/membrane/federation-freeze-v1.json"],
+    source_files: ["mcp/server.mjs", "docs/membrane/capability-matrix.v1.json", "docs/membrane/federation-freeze-v1.json", "blueprint/src/lib/findings/detect.mjs", "blueprint/src/graph/module-surface.mjs", "blueprint/src/graph/resolution/index.mjs"],
   };
 }

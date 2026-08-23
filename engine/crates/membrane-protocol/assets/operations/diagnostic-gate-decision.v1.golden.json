@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "diagnostics-gate-decision.v1",
+  "snapshotId": "snap-e7-9f2c",
+  "policyProfile": "changed-files-zero",
+  "policyVersion": "1.0.0",
+  "policyDigest": "sha256:fc01c66d30386ddc91d4ccfa559751b8d86940ef75c9ed9b1e8f897614be2844",
+  "outcome": "dirty_exact",
+  "blockingIssueIds": ["issue-run-policy-export"],
+  "requiredObligations": [
+    {
+      "capability": "syntax",
+      "languageDialect": "typescript",
+      "projectIdentity": "membrane",
+      "requiredScope": {
+        "paths": [
+          "src/policy/index.ts",
+          "src/policy/run-policy.ts"
+        ]
+      },
+      "exactnessRequirement": "exact",
+      "acceptableProviderAlternatives": [
+        "blueprint.d0",
+        "typescript.native_language_service"
+      ],
+      "maximumCost": "instant",
+      "state": "satisfied_exact",
+      "omissions": []
+    },
+    {
+      "capability": "import_export_binding",
+      "languageDialect": "typescript",
+      "projectIdentity": "membrane",
+      "requiredScope": {
+        "paths": [
+          "src/policy/index.ts",
+          "src/policy/run-policy.ts"
+        ]
+      },
+      "exactnessRequirement": "exact",
+      "acceptableProviderAlternatives": [
+        "blueprint.d0",
+        "typescript.native_language_service"
+      ],
+      "maximumCost": "instant",
+      "state": "satisfied_exact",
+      "omissions": []
+    },
+    {
+      "capability": "type_semantics",
+      "languageDialect": "typescript",
+      "projectIdentity": "membrane",
+      "requiredScope": {
+        "paths": [
+          "src/policy/index.ts",
+          "src/policy/run-policy.ts"
+        ]
+      },
+      "exactnessRequirement": "exact",
+      "acceptableProviderAlternatives": [
+        "typescript.native_language_service"
+      ],
+      "maximumCost": "interactive",
+      "state": "unavailable",
+      "omissions": [
+        {"code": "native_language_service_unavailable", "detail": "TypeScript language service failed to qualify for this worktree; type_semantics coverage is unavailable, never clean."}
+      ]
+    }
+  ],
+  "reasonCodes": ["exact_blocker"],
+  "omissions": []
+}

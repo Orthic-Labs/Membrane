@@ -23,6 +23,7 @@ import { boundedLifecycleId, createLifecycle, withCancellationGrace } from "./li
 import { toolsetNames } from "./toolsets.mjs";
 import { executeCodeBatch } from "../schemas/registry/code/mbr402-batch.mjs";
 import { requestBlueprint } from "./blueprint-readiness.mjs";
+import { diagnosticsRequest } from "./lib/diagnostics-client.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLIENT = join(HERE, "client.mjs");
@@ -43,6 +44,11 @@ const INSTALLATION_AUTHORITY_LEVEL = "write-proposed";
 const WORKSPACE_TIMEOUT_MS = 2500;
 const WORKSPACE_CONCURRENCY = 2;
 const scratchpadStore = new ScratchpadStore();
+const DIAGNOSTIC_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const CAPABILITY_VOCABULARY = ["syntax", "repository_module_resolution", "import_export_binding", "name_resolution", "type_semantics", "configured_static_policy", "compiler_project_semantics", "generated_source_awareness"];
+const COST_CLASSES = ["instant", "interactive", "verification", "build", "test"];
+const EPOCH_ORIGINS = ["transactional", "observed_hook", "reconciliation"];
+const LAST_SNAPSHOTS = new Map();
 const CALLER_SCHEMA = {
   type: "object",
   required: ["root", "repositoryId", "scopeId"],
@@ -65,6 +71,13 @@ const TOOL_DEFINITIONS = [
   { name: "membrane_temporal_fact", description: "Record or query provenance-bound temporal facts with explicit single-valued predicate policy.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["record", "query"] }, fact: { type: "object" }, singleValuedPredicates: { type: "array", items: { type: "string" } }, scopeId: { type: "string" }, subject: { type: "string" }, predicate: { type: "string" }, asOf: { type: "string" } } } },
   { name: "membrane_scratchpad", description: "Save, load, or clear ephemeral non-searchable session/task scratchpad state.", inputSchema: { type: "object", required: ["repository", "caller", "operation"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, operation: { type: "string", enum: ["save", "load", "clear"] }, scratchpad: { type: "object" }, sessionId: { type: "string" }, taskId: { type: "string" }, asOf: { type: "string" } } } },
   { name: "membrane_feedback", description: "Record bounded receipt-bound outcome feedback for quarantine review. Self-reported outcomes are advisory (non-ranking) unless verdictRef names a resolvable cited verdict.", inputSchema: { type: "object", required: ["repository", "caller", "receiptId", "outcome"], properties: { repository: { type: "string" }, caller: CALLER_SCHEMA, receiptId: { type: "string" }, outcome: { type: "string", enum: ["used", "ignored", "contradicted"] }, verdictRef: { type: "string", minLength: 1 } } } },
+  { name: "membrane_diagnostic_workspace", description: "Open, close, inspect, or reconcile one live-diagnostics workspace session on the resident Membrane service. status reads session state; reconcile proves exact current worktree bytes for reconciliation_only hosts and any mismatch against the latest cleared epoch classifies unknown_conflict or superseded, invalidating prior clearance.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["open", "close", "status", "reconcile"] }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, manifestDigest: { type: "string", minLength: 1, maxLength: 256 }, hashes: { type: "array", minItems: 0, maxItems: 4096, items: { type: "object", required: ["path", "hash"], additionalProperties: false, properties: { path: { type: "string", minLength: 1 }, hash: { type: "string", minLength: 1 } } } } }, oneOf: [{ properties: { operation: { enum: ["open", "close"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["manifestDigest"] }, { required: ["hashes"] }] } }, { properties: { operation: { enum: ["status"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["manifestDigest"] }, { required: ["hashes"] }] } }, { properties: { operation: { const: "reconcile" } }, required: ["repoId", "worktreeId", "manifestDigest", "hashes"] }] } },
+  { name: "membrane_diagnostic_mutation", description: "Transactionally begin or seal one coherent mutation batch, or register exact observed resulting bytes (registerObserved with observed_hook origin) for hosts without edit transactions. Seal/register invalidate stale clearance. Never blocks or rolls back writes: the fence gates semantic acceptance, not disk persistence.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation", "repoId", "worktreeId"], additionalProperties: false, properties: { operation: { type: "string", enum: ["begin", "seal", "registerObserved"] }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, epoch: { type: "object", description: "WorkspaceEpochV1 envelope (workspace-epoch.v1) bound to this repoId/worktreeId; origin transactional for seal, observed_hook for registerObserved." } }, oneOf: [{ properties: { operation: { const: "begin" } }, not: { required: ["epoch"] } }, { properties: { operation: { enum: ["seal", "registerObserved"] } }, required: ["epoch"] }] } },
+  { name: "membrane_diagnostic_snapshot", description: "Await a mutation-bound evidence snapshot plus planner gate decision (the operational fence path), or read get/explain/delta views of the last awaited snapshot cached per repoId:worktreeId in this server process. Events and presentation never clear the fence; only snapshot-await (and resident-side fence evaluation) produces operational decisions. get/explain/delta are cached views, never re-evaluation.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["await", "get", "explain", "delta"] }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, policyProfileName: { type: "string", minLength: 1, maxLength: 128 }, requiredCapabilities: { type: "array", minItems: 0, maxItems: 8, items: { type: "string", enum: CAPABILITY_VOCABULARY } }, maxCost: { type: "string", enum: COST_CLASSES, description: "Hard acquisition ceiling; defaults to interactive." }, deadlineMs: { type: "integer", minimum: 1, maximum: 60000, description: "Absolute wait budget for await; defaults to 10000." } }, oneOf: [{ properties: { operation: { const: "await" } }, required: ["repoId", "worktreeId", "policyProfileName"] }, { properties: { operation: { enum: ["get", "explain", "delta"] } }, required: ["repoId", "worktreeId"], not: { anyOf: [{ required: ["policyProfileName"] }, { required: ["requiredCapabilities"] }, { required: ["maxCost"] }, { required: ["deadlineMs"] }] } }] } },
+  { name: "membrane_diagnostic_fence", description: "Pure Semantic Edit Fence evaluation: sends the exact DiagnosticEvidenceSnapshotV1, expected WorkspaceEpochV1 envelope, and planner-owned GatePolicyProfileV1 to the resident deterministic evaluator and returns DiagnosticGateDecisionV1 verbatim. It invents no policy, performs no provider acquisition, and never clears the resident fence by itself; the coding host enforces the returned decision.", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: { type: "object", required: ["snapshot", "expectedEpoch", "policy"], additionalProperties: false, properties: { snapshot: { type: "object", description: "diagnostic-evidence-snapshot.v1 envelope." }, expectedEpoch: { type: "object", description: "workspace-epoch.v1 envelope the snapshot must match exactly." }, policy: { type: "object", description: "Planner-owned GatePolicyProfileV1: profileName, policyVersion, policyDigest, blockingCodes, requiredCapabilities." } } } },
+  { name: "membrane_diagnostic_capabilities", description: "Read the resident live-diagnostics capability advertisement: qualified providers, cost classes, and supported semantic capabilities. Read-only.", annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }, inputSchema: { type: "object", required: [], additionalProperties: false, properties: {} } },
+  { name: "membrane_diagnostic_baseline", description: "Capture or update a named diagnostics baseline for a workspace session; subsequent snapshot deltas classify issues as new, persistent, resolved, moved, changed, or unknown_baseline against it.", annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true }, inputSchema: { type: "object", required: ["operation", "repoId", "worktreeId", "name"], additionalProperties: false, properties: { operation: { type: "string", enum: ["capture", "update"] }, repoId: { type: "string", minLength: 1, maxLength: 128 }, worktreeId: { type: "string", minLength: 1, maxLength: 128 }, name: { type: "string", minLength: 1, maxLength: 128 } } } },
+  { name: "membrane_diagnostic_provider", description: "List qualified providers (capabilities view), read resident supervisor health/status, or restart one supervised engine by workspace-engine key digest. list/status are read-only views; restart is a lifecycle action performed by the resident supervisor.", annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false }, inputSchema: { type: "object", required: ["operation"], additionalProperties: false, properties: { operation: { type: "string", enum: ["list", "status", "restart"] }, keyDigest: { type: "string", minLength: 1, maxLength: 256, description: "WorkspaceEngineKey digest identifying the engine to restart." } }, oneOf: [{ properties: { operation: { const: "restart" } }, required: ["keyDigest"] }, { properties: { operation: { enum: ["list", "status"] } }, not: { required: ["keyDigest"] } }] } },
 ];
 const TOOLS = TOOL_DEFINITIONS.map((tool) => ({
   ...tool,
@@ -592,6 +605,152 @@ export async function blueprintCapability(binding, args, signal, { request = req
   try { return sanitizeBlueprintPayload(payload, operation); }
   catch { throw new Error("blueprint_unavailable"); }
 }
+
+const SNAPSHOT_CACHE_LIMIT = 64;
+function diagnosticIdentity(args) {
+  if (!args || typeof args !== "object") throw new Error("invalid_diagnostic_identity");
+  for (const value of [args.repoId, args.worktreeId]) {
+    if (typeof value !== "string" || !DIAGNOSTIC_ID.test(value)) throw new Error("invalid_diagnostic_identity");
+  }
+  return { repoId: args.repoId, worktreeId: args.worktreeId };
+}
+function validateWorkspaceEpoch(epoch, { repoId, worktreeId, origin } = {}) {
+  bounded(epoch, MAX_REQUEST_BYTES, "workspace epoch");
+  if (epoch.schemaVersion !== "workspace-epoch.v1" || typeof epoch.repoId !== "string" || !DIAGNOSTIC_ID.test(epoch.repoId) || typeof epoch.worktreeId !== "string" || !DIAGNOSTIC_ID.test(epoch.worktreeId)) throw new Error("invalid_workspace_epoch");
+  if ((repoId !== undefined && epoch.repoId !== repoId) || (worktreeId !== undefined && epoch.worktreeId !== worktreeId)) throw new Error("invalid_workspace_epoch");
+  if (!Number.isInteger(epoch.epoch) || epoch.epoch < 0) throw new Error("invalid_workspace_epoch");
+  if (typeof epoch.sourceManifestDigest !== "string" || !epoch.sourceManifestDigest || epoch.sourceManifestDigest.length > 256) throw new Error("invalid_workspace_epoch");
+  if (!EPOCH_ORIGINS.includes(epoch.origin)) throw new Error("invalid_workspace_epoch");
+  if (origin && epoch.origin !== origin) throw new Error("invalid_workspace_epoch");
+  return epoch;
+}
+function validateReconcileHashes(hashes) {
+  if (!Array.isArray(hashes) || hashes.length > 4096) throw new Error("invalid_reconcile_hashes");
+  for (const entry of hashes) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry) || typeof entry.path !== "string" || !entry.path || typeof entry.hash !== "string" || !entry.hash) throw new Error("invalid_reconcile_hashes");
+  }
+  return hashes;
+}
+function validateGatePolicy(policy) {
+  bounded(policy, MAX_REQUEST_BYTES, "gate policy");
+  if (typeof policy.profileName !== "string" || !policy.profileName.trim() || policy.profileName.length > 128) throw new Error("invalid_gate_policy");
+  if (typeof policy.policyVersion !== "string" || typeof policy.policyDigest !== "string") throw new Error("invalid_gate_policy");
+  if (!Array.isArray(policy.blockingCodes) || policy.blockingCodes.some((code) => typeof code !== "string")) throw new Error("invalid_gate_policy");
+  if (!Array.isArray(policy.requiredCapabilities) || policy.requiredCapabilities.some((capability) => !CAPABILITY_VOCABULARY.includes(capability))) throw new Error("invalid_gate_policy");
+  return policy;
+}
+function rememberSnapshot(snapshots, key, record) {
+  snapshots.set(key, record);
+  if (snapshots.size > SNAPSHOT_CACHE_LIMIT) snapshots.delete(snapshots.keys().next().value);
+}
+function normalizeAwaitRecord(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { decision: null, snapshot: null };
+  if (body.decision && typeof body.decision === "object" && !Array.isArray(body.decision)) return { decision: body.decision, snapshot: body.snapshot && typeof body.snapshot === "object" && !Array.isArray(body.snapshot) ? body.snapshot : null };
+  if (typeof body.outcome === "string") return { decision: body, snapshot: null };
+  return { decision: null, snapshot: null };
+}
+const FENCE_GUIDANCE = {
+  clean_exact: "continue or escalate proportionally; nothing additional is blocked",
+  dirty_exact: "repair first: unrelated implementation, ordinary tests/builds, and completion stay blocked until a re-await proves the bytes clean; inspect/search/explain/rerun diagnostics remain allowed",
+  superseded: "await the newest workspace epoch; decisions based on old evidence stay invalid",
+};
+function unknownGuidance() { return "repair the provider/service/config or run an approved V1 verifier; clean claims, completion, and escalation assuming semantic cleanliness stay blocked"; }
+
+export async function diagnosticsCapability(name, args = {}, { request = diagnosticsRequest, snapshots = LAST_SNAPSHOTS } = {}) {
+  if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error("invalid_diagnostic_operation");
+  const operation = args.operation;
+  const outcome = async (promise) => {
+    const response = await promise;
+    return response.ok
+      ? { delivered: true, status: response.status ?? null, result: response.body }
+      : { delivered: false, status: response.status ?? null, error: response.error };
+  };
+  if (name === "membrane_diagnostic_workspace") {
+    const identity = diagnosticIdentity(args);
+    if (operation === "open") return outcome(request("/diagnostics/workspace/open", { method: "POST", body: identity }));
+    if (operation === "close") return outcome(request("/diagnostics/workspace/close", { method: "POST", body: identity }));
+    if (operation === "status") return outcome(request(`/diagnostics/workspace/status?repoId=${encodeURIComponent(identity.repoId)}&worktreeId=${encodeURIComponent(identity.worktreeId)}`, { method: "GET" }));
+    if (operation === "reconcile") {
+      if (typeof args.manifestDigest !== "string" || !args.manifestDigest || args.manifestDigest.length > 256) throw new Error("invalid_reconcile_manifest_digest");
+      return outcome(request("/diagnostics/reconcile", { method: "POST", body: { ...identity, manifestDigest: args.manifestDigest, hashes: validateReconcileHashes(args.hashes) } }));
+    }
+    throw new Error("invalid_diagnostic_operation");
+  }
+  if (name === "membrane_diagnostic_mutation") {
+    const identity = diagnosticIdentity(args);
+    if (operation === "begin") return outcome(request("/diagnostics/mutation/begin", { method: "POST", body: identity }));
+    if (operation === "seal") return outcome(request("/diagnostics/mutation/seal", { method: "POST", body: { ...identity, epoch: validateWorkspaceEpoch(args.epoch, { repoId: identity.repoId, worktreeId: identity.worktreeId }) } }));
+    if (operation === "registerObserved") return outcome(request("/diagnostics/mutation/registerObserved", { method: "POST", body: { ...identity, epoch: validateWorkspaceEpoch(args.epoch, { repoId: identity.repoId, worktreeId: identity.worktreeId, origin: "observed_hook" }) } }));
+    throw new Error("invalid_diagnostic_operation");
+  }
+  if (name === "membrane_diagnostic_snapshot") {
+    const identity = diagnosticIdentity(args);
+    const key = `${identity.repoId}:${identity.worktreeId}`;
+    if (operation === "await") {
+      if (typeof args.policyProfileName !== "string" || !args.policyProfileName.trim() || args.policyProfileName.length > 128) throw new Error("invalid_policy_profile_name");
+      const requiredCapabilities = args.requiredCapabilities ?? [];
+      if (!Array.isArray(requiredCapabilities) || requiredCapabilities.some((capability) => !CAPABILITY_VOCABULARY.includes(capability))) throw new Error("invalid_required_capabilities");
+      const maxCost = args.maxCost ?? "interactive";
+      if (!COST_CLASSES.includes(maxCost)) throw new Error("invalid_max_cost");
+      const deadlineMs = args.deadlineMs ?? 10000;
+      if (!Number.isInteger(deadlineMs) || deadlineMs < 1 || deadlineMs > 60000) throw new Error("invalid_deadline_ms");
+      const response = await outcome(request("/diagnostics/snapshot/await", { method: "POST", body: { ...identity, policyProfileName: args.policyProfileName, requiredCapabilities, maxCost, deadlineMs } }));
+      if (response.delivered) rememberSnapshot(snapshots, key, normalizeAwaitRecord(response.result));
+      return response;
+    }
+    if (!snapshots.has(key)) throw new Error("snapshot_not_awaited");
+    const record = snapshots.get(key);
+    if (operation === "get") return { delivered: true, status: null, result: record };
+    if (operation === "explain") {
+      const decision = record?.decision;
+      if (!decision) throw new Error("snapshot_not_awaited");
+      return {
+        delivered: true,
+        status: null,
+        result: {
+          snapshotId: decision.snapshotId ?? null,
+          outcome: decision.outcome ?? null,
+          policyProfile: decision.policyProfile ?? args.policyProfileName ?? null,
+          blockingIssueIds: decision.blockingIssueIds ?? [],
+          reasonCodes: decision.reasonCodes ?? [],
+          omissions: decision.omissions ?? [],
+          guidance: FENCE_GUIDANCE[decision.outcome] || unknownGuidance(),
+          note: "events and presentation cannot clear the fence; only snapshot-await or fence-evaluation produces an operational decision and only exact outcomes prove state",
+        },
+      };
+    }
+    if (operation === "delta") {
+      const snapshot = record?.snapshot;
+      if (!snapshot) {
+        return { delivered: true, status: null, result: { blueprintDelta: null, aggregateDelta: null, omissions: [{ code: "snapshot_body_not_cached", detail: "the awaited decision carried no evidence snapshot; delta views need it" }] } };
+      }
+      return { delivered: true, status: null, result: { blueprintDelta: snapshot.blueprintDelta ?? null, aggregateDelta: snapshot.aggregateDelta ?? null, omissions: [] } };
+    }
+    throw new Error("invalid_diagnostic_operation");
+  }
+  if (name === "membrane_diagnostic_fence") {
+    bounded(args.snapshot, MAX_REQUEST_BYTES, "evidence snapshot");
+    validateWorkspaceEpoch(args.expectedEpoch);
+    return outcome(request("/diagnostics/fence/evaluate", { method: "POST", body: { snapshot: args.snapshot, expectedEpoch: args.expectedEpoch, policy: validateGatePolicy(args.policy) } }));
+  }
+  if (name === "membrane_diagnostic_capabilities") return outcome(request("/diagnostics/capabilities", { method: "GET" }));
+  if (name === "membrane_diagnostic_baseline") {
+    const identity = diagnosticIdentity(args);
+    if (operation !== "capture" && operation !== "update") throw new Error("invalid_diagnostic_operation");
+    if (typeof args.name !== "string" || !args.name.trim() || args.name.length > 128) throw new Error("invalid_baseline_name");
+    return outcome(request(`/diagnostics/baseline/${operation}`, { method: "POST", body: { ...identity, name: args.name } }));
+  }
+  if (name === "membrane_diagnostic_provider") {
+    if (operation === "list") return outcome(request("/diagnostics/capabilities", { method: "GET" }));
+    if (operation === "status") return outcome(request("/diagnostics/status", { method: "GET" }));
+    if (operation === "restart") {
+      if (typeof args.keyDigest !== "string" || !args.keyDigest || args.keyDigest.length > 256) throw new Error("invalid_provider_key_digest");
+      return outcome(request("/diagnostics/provider/restart", { method: "POST", body: { keyDigest: args.keyDigest } }));
+    }
+    throw new Error("invalid_diagnostic_operation");
+  }
+  throw new Error("invalid_diagnostic_operation");
+}
 async function callTool(name, args, trace = {}, lifecycle) {
   if (name === "membrane_context") {
     await lifecycle?.checkpoint("authorization", 10);
@@ -836,6 +995,7 @@ async function callTool(name, args, trace = {}, lifecycle) {
       return text({ status: "accepted_advisory", durable: false, feedbackId, receiptId: args.receiptId, outcome: args.outcome, lifecycleReceipt: lifecycleReceipt("feedback", "accepted_advisory", feedbackId, receiptId("event", { operation: "feedback", feedbackId }), { receiptId: args.receiptId, outcome: args.outcome }), feedbackEvent: feedbackEvent({ eventId: receiptId("event", { operation: "feedback", feedbackId }), receiptId: args.receiptId, outcome: args.outcome }), feedbackPolicy: feedbackPolicy(feedbackEvent({ eventId: receiptId("event", { operation: "feedback", feedbackId }), receiptId: args.receiptId, outcome: args.outcome })), provenance: { repositoryId: binding.repository_id, scopeId: binding.scope_id, callerLevel: callerLevel(binding) } });
     }
   }
+  if (name.startsWith("membrane_diagnostic_")) return diagnosticsCapability(name, args);
   throw new Error("unknown tool");
 }
 

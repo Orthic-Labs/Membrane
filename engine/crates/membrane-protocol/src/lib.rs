@@ -26,6 +26,7 @@
 pub mod canonical;
 pub mod compatibility_policy;
 pub mod compression;
+pub mod diagnostics;
 pub mod fusion;
 pub mod federation;
 pub mod heartbeat;
@@ -50,6 +51,16 @@ pub use compatibility_policy::{
 pub use compression::{
     CompressionReceiptV1, DroppedSpanV1, ImmutableSourceError, ImmutableSourceReason,
     NonEmptyString, SpanV1, COMPRESSION_RECEIPT_SCHEMA_VERSION,
+};
+pub use diagnostics::{
+    evaluate_gate, AggregateDeltaV1, AggregateIssueDelta, BlueprintDeltaV1, BlueprintFreshness,
+    CapabilityVocabulary, ChangedFileHashV1, ConvergenceClass, CostClass, CoverageLaneV1,
+    CoverageObligationV1, DeltaClassification, DiagnosticEvidenceSnapshotV1,
+    DiagnosticGateDecisionV1, DiagnosticIssueV1, ExactnessRequirement, GateOutcome,
+    GatePolicyProfileV1, LaneState, ObservationV1, ObligationState, RequiredScope, SeverityHint,
+    SourceClass, SourceRange, TypedOmission, WorkspaceEpochOrigin, WorkspaceEpochV1,
+    DIAGNOSTIC_EVIDENCE_SNAPSHOT_SCHEMA_VERSION, DIAGNOSTIC_GATE_DECISION_SCHEMA_VERSION,
+    WORKSPACE_EPOCH_SCHEMA_VERSION,
 };
 pub use fusion::{FusionDecisionV1, FusionReceiptV1};
 pub use federation::{
@@ -203,6 +214,26 @@ pub const SHAPES: &[ContractShape] = &[
         "ObservableEventV1",
         "observable-event.v1.schema.json",
         "observable-event.v1.golden.json"
+    ),
+    shape!(
+        "WorkspaceEpochV1",
+        "workspace-epoch.v1.schema.json",
+        "workspace-epoch.v1.golden.json"
+    ),
+    shape!(
+        "DiagnosticEvidenceSnapshotV1",
+        "diagnostic-evidence-snapshot.v1.schema.json",
+        "diagnostic-evidence-snapshot.v1.golden.json"
+    ),
+    shape!(
+        "DiagnosticGateDecisionV1",
+        "diagnostic-gate-decision.v1.schema.json",
+        "diagnostic-gate-decision.v1.golden.json"
+    ),
+    shape!(
+        "CoverageObligationV1",
+        "coverage-obligation.v1.schema.json",
+        "coverage-obligation.v1.golden.json"
     ),
 ];
 

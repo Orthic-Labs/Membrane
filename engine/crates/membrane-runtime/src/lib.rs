@@ -21,6 +21,9 @@ pub mod hub;
 pub mod hub_inputs;
 pub mod hub_readonly_db;
 pub mod installation_manifest;
+pub mod live_diagnostics;
+pub mod live_diagnostics_service;
+pub mod providers;
 pub mod mcp_http;
 pub mod memory_provider;
 pub mod memory_sentinel_producer;
@@ -85,4 +88,8 @@ pub use store::{
 pub use team_policy::{
     admit_team_policy, admit_team_policy_with_opt_in, TeamPolicyAdmission,
     TeamPolicyAdmissionReason, TeamPolicyTrustVerifier, TrustedPolicyVerification,
+};
+pub use live_diagnostics_service::{
+    diagnostics_router, evaluate_fence, resident_diagnostics_routes, static_capabilities,
+    DiagnosticsService, FenceEvaluateRequest, LiveDiagnosticsServiceError, SnapshotAwaitRequest,
 };

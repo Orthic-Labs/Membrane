@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://membrane/schemas/coverage-obligation.v1.schema.json",
+  "title": "CoverageObligationV1",
+  "description": "One semantic capability the fence must cover for a request, derived by the Membrane planner from repository configuration, language/dialect, touched scope, Blueprint topology/impact, gate profile, and cost policy.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["capability", "languageDialect", "projectIdentity", "requiredScope", "exactnessRequirement", "acceptableProviderAlternatives", "maximumCost", "state", "omissions"],
+  "properties": {
+    "capability": {"enum": ["syntax", "repository_module_resolution", "import_export_binding", "name_resolution", "type_semantics", "configured_static_policy", "compiler_project_semantics", "generated_source_awareness"]},
+    "languageDialect": {"type": "string"},
+    "projectIdentity": {"type": "string"},
+    "requiredScope": {"$ref": "#/$defs/requiredScope"},
+    "exactnessRequirement": {"enum": ["exact", "advisory"]},
+    "acceptableProviderAlternatives": {"type": "array", "items": {"type": "string"}},
+    "maximumCost": {"enum": ["instant", "interactive", "verification", "build", "test"]},
+    "state": {"enum": ["unsatisfied", "satisfied_exact", "satisfied_advisory", "unavailable", "timed_out", "unsupported"]},
+    "omissions": {"type": "array", "items": {"$ref": "#/$defs/typedOmission"}}
+  },
+  "$defs": {
+    "requiredScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths"],
+      "properties": {
+        "paths": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "typedOmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "detail"],
+      "properties": {
+        "code": {"type": "string"},
+        "detail": {"type": "string"}
+      }
+    }
+  }
+}

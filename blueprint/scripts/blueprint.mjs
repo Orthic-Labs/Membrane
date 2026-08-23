@@ -3159,6 +3159,67 @@ function findingsToolVersion() {
   return optionalJson(new URL("../package.json", import.meta.url).pathname).value?.version ?? "0.0.0";
 }
 
+// §7.1 item 7 — CLI/SARIF are adapters over the resident findings service.
+// When the daemon is reachable, the command consumes generation/hash-bound
+// bundles through it; otherwise it falls back to direct detection and prints
+// a typed degradation notice (same pattern as runBuildThroughDaemon).
+function findingsDaemonUnavailable(reason) {
+  console.warn(`degraded_findings_direct: ${reason ?? "daemon_unreachable"} — resident daemon did not serve findings; running direct detection`);
+  return null;
+}
+
+async function runFindingsThroughDaemon(root, outDir, args) {
+  if (process.env.BLUEPRINT_LOCAL_FINDINGS === "1") return null;
+  // File-based baselines, baseline writing and scan limits are not expressed
+  // by the resident surface yet; those invocations stay on the direct path.
+  if (args.baseline || args["write-baseline"] || Number(args.limit ?? 0) > 0) return null;
+  const client = new DaemonClient();
+  try {
+    const paths = args.path ? [normalizePath(String(args.path))] : [];
+    if (args.sarif) {
+      const response = await client.findingsSarif({
+        repoRoot: root,
+        outDir,
+        paths,
+        toolVersion: findingsToolVersion(),
+      });
+      if (!response.ok) return findingsDaemonUnavailable(response?.error?.code);
+      console.log(JSON.stringify(response.result.sarif, null, 2));
+      return response.result.findingCount ? 2 : 0;
+    }
+    const started = Date.now();
+    const response = await client.findingsGet({ repoRoot: root, outDir, paths });
+    if (!response.ok) return findingsDaemonUnavailable(response?.error?.code);
+    const payload = response.result;
+    if (args.json) {
+      console.log(JSON.stringify({ ...payload, omissionSummary: summarizeOmissions(payload.omissions) }, null, 2));
+      return payload.findings.length ? 2 : 0;
+    }
+    const findings = payload.findings;
+    const errors = findings.filter((finding) => finding.severity === "error").length;
+    const coverage = payload.coverage ?? {};
+    const freshness = payload.freshness === "stale" ? " · stale generation" : "";
+    console.log(`findings ${findings.length} (${errors} error) · ${coverage.filesParsed ?? 0} parsed · ${coverage.surfacesClosed ?? 0} closed surfaces · ${Date.now() - started}ms${freshness}`);
+    for (const finding of findings.slice(0, Number(args.top ?? 10))) {
+      console.log(`  ${finding.severity.toUpperCase().padEnd(5)} ${finding.ruleId} ${finding.path}:${finding.startLine}`);
+      console.log(`        ${finding.message}`);
+    }
+    if (findings.length > Number(args.top ?? 10)) console.log(`  +${findings.length - Number(args.top ?? 10)} more — rerun with --json`);
+    const omissionSummary = summarizeOmissions(payload.omissions);
+    if (omissionSummary.length) {
+      console.log(`  omitted: ${omissionSummary.map((entry) => `${entry.reason}=${entry.count}`).join(" ")}`);
+    }
+    return findings.length ? 2 : 0;
+  } catch (error) {
+    if (["ENOENT", "ECONNREFUSED", "EPIPE", "socket_closed", "connect_timeout"].includes(error?.code)) {
+      return findingsDaemonUnavailable(error.code);
+    }
+    throw error;
+  } finally {
+    await client.close().catch(() => {});
+  }
+}
+
 function summarizeOmissions(omissions) {
   const byReason = new Map();
   for (const entry of omissions) byReason.set(entry.reason, (byReason.get(entry.reason) ?? 0) + 1);
@@ -3168,6 +3229,10 @@ function summarizeOmissions(omissions) {
 }
 
 async function runFindingsCommand(root, outDir, args) {
+  // Resident-service adapter first (§7.1 item 7); direct detection is the
+  // typed-degradation fallback.
+  const daemonExitCode = await runFindingsThroughDaemon(root, outDir, args);
+  if (daemonExitCode !== null) return daemonExitCode;
   const { detectFindings } = await import("../src/lib/findings/detect.mjs");
   const { candidatePaths } = await import("../src/lib/findings/specifier.mjs");
   const { SUPPORTED_SURFACE_EXTENSIONS } = await import("../src/graph/module-surface.mjs");

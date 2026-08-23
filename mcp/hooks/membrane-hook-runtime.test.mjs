@@ -26,7 +26,8 @@ test("dispatches Cortex status before memory behavior in declared order", async 
   assert.deepEqual(result.results.map(({ id }) => id), [
     "membrane.cortex-status", "membrane.memory-rearm", "membrane.memory-recall",
     "membrane.memory-pre-compact", "membrane.memory-post-compact", "membrane.memory-bump",
-    "membrane.memory-conflict", "membrane.tool-observer", "membrane.memory-ingest", "membrane.memory-nag",
+    "membrane.memory-conflict", "membrane.tool-observer", "membrane.memory-ingest",
+    "membrane.diagnostics-observe", "membrane.memory-nag",
     "membrane.memory-failure", "membrane.memory-episode", "membrane.memory-session-end",
   ]);
   assert.equal(result.results[0].output.reason, "event_not_applicable");

@@ -2037,7 +2037,7 @@ fn build_router_inner(
         context_ingest_lease: context_ingest_lease.map(Arc::new),
         freshness: Arc::new(crate::freshness::FreshnessCoordinator::default()),
         catalog: catalog.map(Arc::new),
-        api_token: api_token.map(Arc::<str>::from),
+        api_token: api_token.clone().map(Arc::<str>::from),
         allowed_origins: Arc::from([
             format!("http://127.0.0.1:{port}"),
             format!("http://localhost:{port}"),
@@ -2066,15 +2066,25 @@ fn build_router_inner(
             Arc::clone(&state.workers),
             workload_ingress,
         ));
-    Router::new()
+    let app = Router::new()
         .route("/livez", get(livez))
         .route("/health", get(detailed_health))
         .with_state(state)
-        .merge(workload)
-        // The handshake gate applies to every route, including the liveness
-        // probes, so a garbage X-Membrane-Manifest header is rejected with
-        // 400 before the request reaches the handler.
-        .layer(axum::middleware::from_fn(handshake_ingress))
+        .merge(workload);
+    // Live Diagnostics operational surface (design §12). Explicit routes
+    // bypass the `dispatch` fallback where every other non-public route
+    // authenticates, so the merged router carries its own bearer gate fed
+    // from the same API token. Construction cannot fail under the default
+    // configuration; if it ever does, the surface stays absent and the
+    // fallback answers 404 instead of half-serving it.
+    let app = match crate::live_diagnostics_service::resident_diagnostics_routes(api_token) {
+        Some(diagnostics) => app.merge(diagnostics),
+        None => app,
+    };
+    // The handshake gate applies to every route, including the liveness
+    // probes, so a garbage X-Membrane-Manifest header is rejected with
+    // 400 before the request reaches the handler.
+    app.layer(axum::middleware::from_fn(handshake_ingress))
 }
 
 #[cfg(test)]

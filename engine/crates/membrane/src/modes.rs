@@ -105,6 +105,9 @@ fn dispatch_cli(tail: &[String]) -> DispatchOutcome {
     if is_doctor_paths_invocation(tail) {
         return run_doctor_paths(&tail[2..]);
     }
+    if matches!(tail.first().map(String::as_str), Some("diagnostics")) {
+        return dispatch_diagnostics(&tail[1..]);
+    }
     if matches!(tail, [operation] if operation == "hub-capabilities" || operation == "hub-snapshot")
     {
         let operation = if tail[0] == "hub-capabilities" {
@@ -144,6 +147,589 @@ fn dispatch_hub(
     inputs: membrane_runtime::hub::HubInputsV1,
 ) -> Result<serde_json::Value, String> {
     membrane_runtime::hub::HubFacadeV1::new(None).dispatch_json(operation, now_unix_ms(), inputs)
+}
+
+// ---------------------------------------------------------------------------
+// Live Diagnostics CLI (design §12 operational surface)
+//
+// Two offline paths need no resident: `fence-evaluate` (pure gate evaluation
+// over stdin/file JSON) and `capabilities` (static support info). Every other
+// subcommand mirrors one REST route on the resident loopback API using a
+// minimal blocking HTTP client over std::net — the same mechanism
+// `membrane-runtime`'s own CLI verbs use. When no resident is listening the
+// service-bound commands print a typed degradation envelope instead of
+// inventing hidden network behavior.
+// ---------------------------------------------------------------------------
+
+const DIAGNOSTICS_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(400);
+const DIAGNOSTICS_MAX_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+
+#[derive(Debug, clap::Parser)]
+#[command(
+    name = "membrane diagnostics",
+    bin_name = "membrane diagnostics",
+    about = "Live Diagnostics operational surface: workspace epochs, mutation fence, and gate decisions.",
+    disable_help_subcommand = true,
+    subcommand_required = true,
+    arg_required_else_help = true
+)]
+struct DiagnosticsCli {
+    #[command(subcommand)]
+    command: DiagnosticsCommand,
+}
+
+#[derive(Debug, clap::Subcommand)]
+enum DiagnosticsCommand {
+    /// Print static support information for the diagnostics surface.
+    Capabilities,
+    /// Purely evaluate {snapshot, expectedEpoch, policy} JSON from --file or stdin and print the decision. No resident required.
+    FenceEvaluate {
+        /// Path to the request JSON, or `-` for stdin.
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+    },
+    /// Service-bound: print the resident diagnostics status snapshot.
+    Status {
+        /// Resident loopback port override (default $MEMBRANE_PORT or 47851).
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound placeholder: prints the same status snapshot as `status`.
+    Subscribe {
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound: open the diagnostics workspace session.
+    WorkspaceOpen {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        worktree: String,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound: close the diagnostics workspace session.
+    WorkspaceClose {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        worktree: String,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound: report one workspace's fence state.
+    WorkspaceStatus {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        worktree: String,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound: open one coherent mutation batch.
+    MutationBegin {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        worktree: String,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound: seal the batch with the resulting workspace epoch JSON supplied via --file or stdin (`-`).
+    MutationSeal {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        worktree: String,
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound: register observed resulting bytes; epoch JSON via --file or stdin (`-`).
+    MutationRegisterObserved {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        worktree: String,
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound: reconcile current bytes; {manifestDigest, hashes} JSON via --file or stdin (`-`).
+    Reconcile {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        worktree: String,
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound: acquire evidence and evaluate planner policy; optional request JSON via --file or stdin (`-`).
+    SnapshotAwait {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        worktree: String,
+        /// Override the planner policy profile name (default changed-files-zero).
+        #[arg(long)]
+        profile: Option<String>,
+        #[arg(long)]
+        file: Option<std::path::PathBuf>,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound: record the cleared decision as a named baseline.
+    BaselineCapture {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        worktree: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound: refresh a named baseline to the current cleared decision.
+    BaselineUpdate {
+        #[arg(long)]
+        repo: String,
+        #[arg(long)]
+        worktree: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+    /// Service-bound: targeted provider restart by workspace-engine-key digest.
+    ProviderRestart {
+        #[arg(long = "key-digest")]
+        key_digest: String,
+        #[arg(long)]
+        port: Option<u16>,
+    },
+}
+
+fn dispatch_diagnostics(args: &[String]) -> DispatchOutcome {
+    use clap::Parser as _;
+    let parsed = match DiagnosticsCli::try_parse_from(
+        std::iter::once("diagnostics").chain(args.iter().map(String::as_str)),
+    ) {
+        Ok(parsed) => parsed,
+        Err(error) => return DispatchOutcome::UserError(error.to_string()),
+    };
+    execute_diagnostics_command(parsed.command)
+}
+
+fn execute_diagnostics_command(command: DiagnosticsCommand) -> DispatchOutcome {
+    use membrane_runtime::live_diagnostics_service::{evaluate_fence, static_capabilities};
+    match command {
+        DiagnosticsCommand::Capabilities => {
+            print_diagnostics_json(&static_capabilities())
+        }
+        DiagnosticsCommand::FenceEvaluate { file } => {
+            let request: Result<
+                membrane_runtime::live_diagnostics_service::FenceEvaluateRequest,
+                DispatchOutcome,
+            > = read_diagnostics_input(&file, true).and_then(|input| {
+                serde_json::from_str(&input).map_err(|error| {
+                    DispatchOutcome::UserError(format!(
+                        "diagnostics fence-evaluate: input must be {{snapshot, expectedEpoch, policy}} JSON: {error}"
+                    ))
+                })
+            });
+            match request {
+                Ok(request) => print_diagnostics_json(&evaluate_fence(
+                    &request.snapshot,
+                    &request.expected_epoch,
+                    &request.policy,
+                )),
+                Err(outcome) => outcome,
+            }
+        }
+        DiagnosticsCommand::Status { port } | DiagnosticsCommand::Subscribe { port } => {
+            run_diagnostics_service_call(
+                diagnostics_loopback_port(port),
+                "GET",
+                "/diagnostics/status",
+                None,
+            )
+        }
+        DiagnosticsCommand::WorkspaceOpen { repo, worktree, port } => {
+            run_diagnostics_service_call(
+                diagnostics_loopback_port(port),
+                "POST",
+                "/diagnostics/workspace/open",
+                Some(diagnostics_workspace_body(&repo, &worktree)),
+            )
+        }
+        DiagnosticsCommand::WorkspaceClose { repo, worktree, port } => {
+            run_diagnostics_service_call(
+                diagnostics_loopback_port(port),
+                "POST",
+                "/diagnostics/workspace/close",
+                Some(diagnostics_workspace_body(&repo, &worktree)),
+            )
+        }
+        DiagnosticsCommand::WorkspaceStatus { repo, worktree, port } => {
+            let query = format!(
+                "/diagnostics/workspace/status?repoId={}&worktreeId={}",
+                percent_encode_component(&repo),
+                percent_encode_component(&worktree)
+            );
+            run_diagnostics_service_call(diagnostics_loopback_port(port), "GET", &query, None)
+        }
+        DiagnosticsCommand::MutationBegin { repo, worktree, port } => {
+            run_diagnostics_service_call(
+                diagnostics_loopback_port(port),
+                "POST",
+                "/diagnostics/mutation/begin",
+                Some(diagnostics_workspace_body(&repo, &worktree)),
+            )
+        }
+        DiagnosticsCommand::MutationSeal { repo, worktree, file, port } => {
+            match epoch_request_body(&repo, &worktree, &file) {
+                Ok(body) => run_diagnostics_service_call(
+                    diagnostics_loopback_port(port),
+                    "POST",
+                    "/diagnostics/mutation/seal",
+                    Some(body),
+                ),
+                Err(outcome) => outcome,
+            }
+        }
+        DiagnosticsCommand::MutationRegisterObserved { repo, worktree, file, port } => {
+            match epoch_request_body(&repo, &worktree, &file) {
+                Ok(body) => run_diagnostics_service_call(
+                    diagnostics_loopback_port(port),
+                    "POST",
+                    "/diagnostics/mutation/registerObserved",
+                    Some(body),
+                ),
+                Err(outcome) => outcome,
+            }
+        }
+        DiagnosticsCommand::Reconcile { repo, worktree, file, port } => {
+            match object_request_body(&file, &mut |object| {
+                if !object
+                    .get("manifestDigest")
+                    .map(serde_json::Value::is_string)
+                    .unwrap_or(false)
+                {
+                    return Err(
+                        "reconcile input JSON requires a string manifestDigest field".to_string()
+                    );
+                }
+                object.insert("repoId".to_string(), serde_json::json!(repo));
+                object.insert("worktreeId".to_string(), serde_json::json!(worktree));
+                Ok(())
+            }) {
+                Ok(body) => run_diagnostics_service_call(
+                    diagnostics_loopback_port(port),
+                    "POST",
+                    "/diagnostics/reconcile",
+                    Some(body),
+                ),
+                Err(outcome) => outcome,
+            }
+        }
+        DiagnosticsCommand::SnapshotAwait { repo, worktree, profile, file, port } => {
+            match object_request_body(&file, &mut |object| {
+                object.insert("repoId".to_string(), serde_json::json!(repo));
+                object.insert("worktreeId".to_string(), serde_json::json!(worktree));
+                if let Some(profile) = &profile {
+                    object.insert("policyProfileName".to_string(), serde_json::json!(profile));
+                }
+                Ok(())
+            }) {
+                Ok(body) => run_diagnostics_service_call(
+                    diagnostics_loopback_port(port),
+                    "POST",
+                    "/diagnostics/snapshot/await",
+                    Some(body),
+                ),
+                Err(outcome) => outcome,
+            }
+        }
+        DiagnosticsCommand::BaselineCapture { repo, worktree, name, port } => {
+            run_diagnostics_service_call(
+                diagnostics_loopback_port(port),
+                "POST",
+                "/diagnostics/baseline/capture",
+                Some(diagnostics_named_body(&repo, &worktree, &name)),
+            )
+        }
+        DiagnosticsCommand::BaselineUpdate { repo, worktree, name, port } => {
+            run_diagnostics_service_call(
+                diagnostics_loopback_port(port),
+                "POST",
+                "/diagnostics/baseline/update",
+                Some(diagnostics_named_body(&repo, &worktree, &name)),
+            )
+        }
+        DiagnosticsCommand::ProviderRestart { key_digest, port } => {
+            run_diagnostics_service_call(
+                diagnostics_loopback_port(port),
+                "POST",
+                "/diagnostics/provider/restart",
+                Some(serde_json::json!({ "keyDigest": key_digest }).to_string()),
+            )
+        }
+    }
+}
+
+fn print_diagnostics_json<T: serde::Serialize>(value: &T) -> DispatchOutcome {
+    match serde_json::to_string_pretty(value) {
+        Ok(json) => {
+            println!("{json}");
+            DispatchOutcome::Ok
+        }
+        Err(error) => DispatchOutcome::InternalError(format!("diagnostics serialize: {error}")),
+    }
+}
+
+/// Resolve the resident loopback port: explicit flag, then $MEMBRANE_PORT,
+/// then the documented default the resident binds.
+fn diagnostics_loopback_port(explicit: Option<u16>) -> u16 {
+    explicit
+        .or_else(|| {
+            std::env::var("MEMBRANE_PORT")
+                .ok()
+                .and_then(|port| port.trim().parse::<u16>().ok())
+        })
+        .unwrap_or(membrane_runtime::hub_inputs::DEFAULT_LOCAL_SERVICE_PORT)
+}
+
+/// Bearer token resolution mirroring the runtime CLI: $MEMBRANE_API_TOKEN,
+/// then the file named by $MEMBRANE_API_TOKEN_FILE.
+fn diagnostics_api_token() -> Result<Option<String>, String> {
+    if let Some(raw) = std::env::var_os("MEMBRANE_API_TOKEN") {
+        let token = raw.to_string_lossy().trim().to_string();
+        if token.is_empty() {
+            return Err("MEMBRANE_API_TOKEN is set but empty".to_string());
+        }
+        if token.contains(['\r', '\n']) {
+            return Err("MEMBRANE_API_TOKEN contains a newline".to_string());
+        }
+        return Ok(Some(token));
+    }
+    if let Some(path) = std::env::var_os("MEMBRANE_API_TOKEN_FILE").map(std::path::PathBuf::from) {
+        let token = std::fs::read_to_string(&path)
+            .map_err(|error| format!("read MEMBRANE_API_TOKEN_FILE {}: {error}", path.display()))?
+            .trim()
+            .to_string();
+        if token.is_empty() {
+            return Err(format!("MEMBRANE_API_TOKEN_FILE {} is empty", path.display()));
+        }
+        if token.contains(['\r', '\n']) {
+            return Err("MEMBRANE_API_TOKEN_FILE contains a newline".to_string());
+        }
+        return Ok(Some(token));
+    }
+    Ok(None)
+}
+
+fn diagnostics_workspace_body(repo: &str, worktree: &str) -> String {
+    serde_json::json!({ "repoId": repo, "worktreeId": worktree }).to_string()
+}
+
+fn diagnostics_named_body(repo: &str, worktree: &str, name: &str) -> String {
+    serde_json::json!({ "repoId": repo, "worktreeId": worktree, "name": name }).to_string()
+}
+
+/// Read the optional/required JSON payload source: `--file -` reads stdin, a
+/// path reads the file, absent means an empty object when not required.
+fn read_diagnostics_input(
+    file: &Option<std::path::PathBuf>,
+    required: bool,
+) -> Result<String, DispatchOutcome> {
+    match file {
+        None => {
+            if required {
+                Err(DispatchOutcome::UserError(
+                    "--file PATH (or `-` for stdin) is required for this subcommand".to_string(),
+                ))
+            } else {
+                Ok("{}".to_string())
+            }
+        }
+        Some(source) if source.as_os_str() == "-" => {
+            let mut buffer = String::new();
+            use std::io::Read as _;
+            std::io::stdin()
+                .read_to_string(&mut buffer)
+                .map_err(|error| DispatchOutcome::UserError(format!("read stdin: {error}")))?;
+            Ok(buffer)
+        }
+        Some(path) => std::fs::read_to_string(path).map_err(|error| {
+            DispatchOutcome::UserError(format!("read {}: {error}", path.display()))
+        }),
+    }
+}
+
+/// Build `{repoId, worktreeId, epoch}` where `epoch` comes from --file/stdin
+/// and must be a JSON object.
+fn epoch_request_body(
+    repo: &str,
+    worktree: &str,
+    file: &Option<std::path::PathBuf>,
+) -> Result<String, DispatchOutcome> {
+    let input = read_diagnostics_input(file, true)?;
+    let epoch: serde_json::Value = serde_json::from_str(&input).map_err(|error| {
+        DispatchOutcome::UserError(format!("diagnostics: epoch input must be JSON: {error}"))
+    })?;
+    if !epoch.is_object() {
+        return Err(DispatchOutcome::UserError(
+            "diagnostics: epoch input must be a JSON object".to_string(),
+        ));
+    }
+    Ok(serde_json::json!({
+        "repoId": repo,
+        "worktreeId": worktree,
+        "epoch": epoch,
+    })
+    .to_string())
+}
+
+/// Load a JSON object from --file/stdin, let the caller inject identity
+/// fields into it, and return the serialized request body.
+fn object_request_body(
+    file: &Option<std::path::PathBuf>,
+    inject: &mut dyn FnMut(
+        &mut serde_json::Map<String, serde_json::Value>,
+    ) -> Result<(), String>,
+) -> Result<String, DispatchOutcome> {
+    let input = read_diagnostics_input(file, false)?;
+    let mut object: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&input).map_err(|error| {
+            DispatchOutcome::UserError(format!(
+                "diagnostics: request input must be a JSON object: {error}"
+            ))
+        })?;
+    inject(&mut object).map_err(|message| DispatchOutcome::UserError(message))?;
+    Ok(serde_json::Value::Object(object).to_string())
+}
+
+fn percent_encode_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char)
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
+}
+
+fn print_typed_degradation(detail: &str) -> DispatchOutcome {
+    let payload = serde_json::json!({
+        "error": {
+            "code": "resident_unavailable",
+            "detail": detail,
+        }
+    });
+    println!("{payload}");
+    DispatchOutcome::Ok
+}
+
+/// One blocking loopback call to the resident diagnostics surface. `Ok(None)`
+/// means nothing is listening on the port (typed degradation upstream); every
+/// response body is printed verbatim so server-side typed omission envelopes
+/// reach the caller unchanged.
+fn run_diagnostics_service_call(
+    port: u16,
+    method: &str,
+    path_and_query: &str,
+    body: Option<String>,
+) -> DispatchOutcome {
+    match diagnostics_http_request(port, method, path_and_query, body.as_deref()) {
+        Ok(None) => print_typed_degradation(&format!(
+            "no membrane resident is listening on 127.0.0.1:{port}; start one with `membrane loopback-api`"
+        )),
+        Ok(Some((status, response_body))) => {
+            println!("{response_body}");
+            if status == 200 {
+                DispatchOutcome::Ok
+            } else {
+                DispatchOutcome::UserError(format!(
+                    "resident returned HTTP {status} for {method} {path_and_query}"
+                ))
+            }
+        }
+        Err(error) => DispatchOutcome::UserError(format!("diagnostics: {error}")),
+    }
+}
+
+/// Minimal blocking HTTP client over std::net, mirroring the resident-facing
+/// request shape used by membrane-runtime's own CLI verbs (loopback only,
+/// bearer token from the environment, Connection: close).
+fn diagnostics_http_request(
+    port: u16,
+    method: &str,
+    path_and_query: &str,
+    body: Option<&str>,
+) -> Result<Option<(u16, String)>, String> {
+    use std::io::{Read as _, Write as _};
+    let address = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    let mut stream = match std::net::TcpStream::connect_timeout(&address, DIAGNOSTICS_CONNECT_TIMEOUT)
+    {
+        Ok(stream) => stream,
+        Err(error) if error.kind() == std::io::ErrorKind::ConnectionRefused => return Ok(None),
+        Err(error) => return Err(format!("connect to resident failed: {error}")),
+    };
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(30)))
+        .map_err(|error| format!("set read timeout: {error}"))?;
+    stream
+        .set_write_timeout(Some(std::time::Duration::from_secs(5)))
+        .map_err(|error| format!("set write timeout: {error}"))?;
+    let authorization = diagnostics_api_token()?
+        .map(|token| format!("Authorization: Bearer {token}\r\n"))
+        .unwrap_or_default();
+    let payload = body.unwrap_or("");
+    let content_headers = if method == "POST" {
+        format!(
+            "Content-Type: application/json\r\nContent-Length: {}\r\n",
+            payload.len()
+        )
+    } else {
+        String::new()
+    };
+    let request = format!(
+        "{method} {path_and_query} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{authorization}{content_headers}Connection: close\r\n\r\n{payload}"
+    );
+    stream
+        .write_all(request.as_bytes())
+        .map_err(|error| format!("write to resident failed: {error}"))?;
+    let mut raw = Vec::new();
+    let mut chunk = [0_u8; 4096];
+    loop {
+        let read = stream
+            .read(&mut chunk)
+            .map_err(|error| format!("read resident response: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        raw.extend_from_slice(&chunk[..read]);
+        if raw.len() > DIAGNOSTICS_MAX_RESPONSE_BYTES {
+            return Err("resident response exceeded limit".to_string());
+        }
+    }
+    let text = String::from_utf8_lossy(&raw);
+    let (head, response_body) = text
+        .split_once("\r\n\r\n")
+        .ok_or_else(|| "resident returned malformed HTTP response".to_string())?;
+    let status = head
+        .split_whitespace()
+        .nth(1)
+        .and_then(|status| status.parse::<u16>().ok())
+        .ok_or_else(|| "resident returned malformed HTTP status".to_string())?;
+    Ok(Some((status, response_body.trim().to_string())))
 }
 
 /// MBR-106: returns `true` when `cli doctor paths [--json]` was requested. Only

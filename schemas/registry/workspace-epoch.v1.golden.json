@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "workspace-epoch.v1",
+  "repoId": "membrane",
+  "worktreeId": "wt-blueprint-findings",
+  "epoch": 7,
+  "parentEpoch": 6,
+  "mutationId": "mut-9f2c-run-policy-export",
+  "sourceManifestDigest": "sha256:cc78b5e6f91ba502d178f856a5af187f4ed8e316822e030a49ab0731add513e7",
+  "changedPaths": [
+    "src/policy/index.ts",
+    "src/policy/run-policy.ts"
+  ],
+  "changedFileHashes": [
+    {"path": "src/policy/index.ts", "hash": "sha256:40f5c1a5abbcedfee752aa3e73fc9706eb72f7a47570c626fba9cb51403e7d6a"},
+    {"path": "src/policy/run-policy.ts", "hash": "sha256:7d8559162d86c9c314f97ead275c96310785ecaa0753de39125f3c2abacb1b52"}
+  ],
+  "projectConfigDigest": "sha256:b249dbc9430ee5ad4aa72aa71949aa1a67c7551db7937d92804d21c1157d0cbe",
+  "toolchainDigest": "sha256:878fae9f25732429064a43d6a2f021c74db6f9c5a7d2b70d9564d0d44adf8b2f",
+  "sandboxPolicyDigest": "sha256:47cf9afeb62598b587f784903f4b7b527071af45aa8d69fa627cc3837cef4ec6",
+  "origin": "transactional"
+}

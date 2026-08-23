@@ -9,6 +9,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, rmd
 import { dirname, join } from "node:path";
 import { createBlueprintApplicationService } from "../lib/application/service.mjs";
 import { RootRegistry } from "../lib/application/root-registry.mjs";
+import { createFindingsService, FINDINGS_SERVICE_METHODS } from "../lib/findings/service.mjs";
 import { createBuildSingleflight } from "./build-singleflight.mjs";
 import { PROTOCOL_VERSION, decodeLine, encodeResponse, METHODS, validateDeadlineMs, validateProtocolVersion } from "./protocol.mjs";
 import { daemonEndpoint } from "./paths.mjs";
@@ -104,10 +105,11 @@ function releaseUnixLock(lock) {
   }
 }
 
-export function createDaemonServer({ service = null, endpoint = null, registryEntries = [], rootRegistry = null, buildSingleflight = null } = {}) {
+export function createDaemonServer({ service = null, findingsService = null, endpoint = null, registryEntries = [], rootRegistry = null, buildSingleflight = null } = {}) {
   const registry = rootRegistry ?? (service || registryEntries.length === 0 ? null : new RootRegistry(registryEntries));
   const queueRegistry = rootRegistry ?? (registryEntries.length > 0 ? new RootRegistry(registryEntries) : null);
   const appService = service ?? createBlueprintApplicationService({ rootRegistry: registry, allowEmbeddedRoot: false });
+  const findingsMethods = findingsService ?? createFindingsService();
   const builds = buildSingleflight ?? createBuildSingleflight();
   const socketPath = endpoint ?? daemonEndpoint();
   const isWindows = process.platform === "win32";
@@ -239,6 +241,10 @@ export function createDaemonServer({ service = null, endpoint = null, registryEn
       if (root) mergedInput.repoRoot = root;
       if (message.method === "build") {
         entry.work = builds.build({ root, outDir: mergedInput.outDir, options: mergedInput.options ?? mergedInput }, { signal: controller.signal });
+      } else if (FINDINGS_SERVICE_METHODS.includes(message.method)) {
+        // Findings own their freshness model (§7.1): they serve the pinned
+        // sealed generation directly instead of opening a freshness session.
+        entry.work = findingsMethods[message.method](mergedInput, { signal: controller.signal });
       } else {
         const method = appService[message.method];
         if (typeof method !== "function") {
