@@ -549,6 +549,24 @@ pub fn evaluate_gate(
         );
     }
 
+    // Guard: empty policy + empty obligations + empty lanes must never be clean (rejected shape: empty arrays as clean).
+    if policy.required_capabilities.is_empty()
+        && snapshot.coverage_obligations.is_empty()
+    {
+        if snapshot.coverage_lanes.is_empty() {
+            return finish(
+                decision,
+                GateOutcome::UnknownIncomplete,
+                vec!["empty_coverage_no_evidence".to_string()],
+            );
+        }
+        return finish(
+            decision,
+            GateOutcome::UnknownIncomplete,
+            vec!["no_required_capabilities".to_string()],
+        );
+    }
+
     // 3./4. Exact coverage of every required capability decides clean vs unknown
     //       (§5.3 steps 3–4, §8).
     let bound_epoch = snapshot.workspace_epoch.epoch;
