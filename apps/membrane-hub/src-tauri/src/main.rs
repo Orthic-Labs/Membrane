@@ -1,4 +1,6 @@
-use membrane_protocol::{HubSnapshotV1, HubStateV1, HUB_SCHEMA_VERSION};
+use membrane_protocol::{
+    membrane_parent_state, HubSnapshotV1, HubStateV1, MembraneParentState, HUB_SCHEMA_VERSION,
+};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
@@ -273,15 +275,45 @@ fn source_not_connected_snapshot(snapshot: &CachedSnapshot) -> bool {
 }
 
 /// Membrane status is resident-local. Child resource state never changes it.
+/// Frozen mapping: supervisor liveness + resident /health ok + snapshot validity.
 pub fn tray_status(
     service_status: supervisor::ServiceStatus,
+    health_ok: Option<bool>,
     live_snapshot_available: bool,
 ) -> TrayStatus {
-    match (service_status, live_snapshot_available) {
-        (supervisor::ServiceStatus::Running, true) => TrayStatus::Running,
-        (supervisor::ServiceStatus::Running, false) => TrayStatus::Degraded,
-        _ => TrayStatus::Offline,
+    let supervisor_running = service_status == supervisor::ServiceStatus::Running;
+    match membrane_parent_state(supervisor_running, health_ok, live_snapshot_available) {
+        MembraneParentState::Running => TrayStatus::Running,
+        MembraneParentState::Degraded => TrayStatus::Degraded,
+        MembraneParentState::Offline => TrayStatus::Offline,
     }
+}
+
+fn resident_health_ok() -> Option<bool> {
+    let port = std::env::var("MEMBRANE_PORT")
+        .ok()
+        .and_then(|value| value.trim().parse::<u16>().ok())
+        .unwrap_or(47851);
+    let addr = format!("127.0.0.1:{port}");
+    let mut stream = std::net::TcpStream::connect_timeout(
+        &addr.parse().ok()?,
+        std::time::Duration::from_millis(300),
+    )
+    .ok()?;
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(300)));
+    let _ = stream.set_write_timeout(Some(std::time::Duration::from_millis(300)));
+    use std::io::{Read, Write};
+    let request = format!("GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).ok()?;
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).ok()?;
+    let text = String::from_utf8_lossy(&raw);
+    let body = text
+        .split_once("\r\n\r\n")
+        .or_else(|| text.split_once("\n\n"))
+        .map(|(_, body)| body)?;
+    let json: serde_json::Value = serde_json::from_str(body.trim()).ok()?;
+    json.get("ok").and_then(|value| value.as_bool())
 }
 
 pub fn tray_tooltip(status: TrayStatus) -> &'static str {
@@ -769,10 +801,9 @@ fn main() {
                     let live = fetched.is_ok();
                     (poll_snapshot(&cache, fetched, &gate), live)
                 };
-                let status = tray_status(
-                    service_status,
-                    live_snapshot_available && current.is_ok(),
-                );
+                let health_ok = resident_health_ok();
+                let live_available = live_snapshot_available && current.is_ok();
+                let status = tray_status(service_status, health_ok, live_available);
                 match &current {
                     Ok(_) if live_snapshot_available => telemetry.snapshot("available", None),
                     Ok(_) => telemetry.snapshot("degraded", Some("cached_snapshot")),
@@ -912,19 +943,27 @@ mod tests {
     #[test]
     fn tray_status_requires_resident_and_live_snapshot() {
         assert_eq!(
-            tray_status(supervisor::ServiceStatus::Running, true),
+            tray_status(supervisor::ServiceStatus::Running, Some(true), true),
             TrayStatus::Running
         );
         assert_eq!(
-            tray_status(supervisor::ServiceStatus::Running, false),
+            tray_status(supervisor::ServiceStatus::Running, Some(true), false),
             TrayStatus::Degraded
         );
         assert_eq!(
-            tray_status(supervisor::ServiceStatus::Unavailable, true),
+            tray_status(supervisor::ServiceStatus::Running, Some(false), true),
+            TrayStatus::Degraded
+        );
+        assert_eq!(
+            tray_status(supervisor::ServiceStatus::Running, None, true),
             TrayStatus::Offline
         );
         assert_eq!(
-            tray_status(supervisor::ServiceStatus::CrashLoop, true),
+            tray_status(supervisor::ServiceStatus::Unavailable, Some(true), true),
+            TrayStatus::Offline
+        );
+        assert_eq!(
+            tray_status(supervisor::ServiceStatus::CrashLoop, Some(true), true),
             TrayStatus::Offline
         );
     }
@@ -933,8 +972,16 @@ mod tests {
     fn child_failure_does_not_change_membrane_status() {
         let _broken = snapshot_with(canonical_payload(&[("providers", "unavailable")]));
         assert_eq!(
-            tray_status(supervisor::ServiceStatus::Running, true),
+            tray_status(supervisor::ServiceStatus::Running, Some(true), true),
             TrayStatus::Running
+        );
+    }
+
+    #[test]
+    fn health_unhealthy_plus_valid_snapshot_is_degraded_via_real_producer_path() {
+        assert_eq!(
+            tray_status(supervisor::ServiceStatus::Running, Some(false), true),
+            TrayStatus::Degraded
         );
     }
 

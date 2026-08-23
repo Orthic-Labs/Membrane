@@ -2791,13 +2791,19 @@ fn route_with_context_ingest_lease(
         };
     }
     if method == "GET" && path == "/hub/snapshot" {
-        let live = crate::hub_inputs::live_inputs_from_local_service();
-        let facade = crate::hub::HubFacadeV1::new(hub_stream_from_live_probe(live.is_some()));
-        let inputs =
-            live.unwrap_or_else(|| crate::hub::HubInputsV1::unavailable("source_not_connected"));
-        return match facade.dispatch_json("hub.snapshot", now_unix_ms(), inputs) {
+        let parts = crate::hub_inputs::live_snapshot_parts_from_local_service()
+            .unwrap_or_else(crate::hub_inputs::offline_snapshot_parts);
+        let reachable = parts.membrane_state != "offline";
+        let facade = crate::hub::HubFacadeV1::new(hub_stream_from_live_probe(reachable));
+        let snapshot = facade.snapshot_with_subsystems(
+            now_unix_ms(),
+            parts.inputs,
+            Some(parts.membrane_state),
+            Some(parts.subsystems),
+        );
+        return match serde_json::to_value(snapshot) {
             Ok(value) => (200, value.to_string()),
-            Err(error) => (500, serde_json::json!({"error": error}).to_string()),
+            Err(error) => (500, serde_json::json!({"error": error.to_string()}).to_string()),
         };
     }
     if method == "POST" && path == "/delivery/trace" {

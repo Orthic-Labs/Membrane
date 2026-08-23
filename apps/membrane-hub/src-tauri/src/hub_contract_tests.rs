@@ -62,19 +62,27 @@ fn startup_step_masks_then_caches_live_or_deadline_sentinel() {
 #[test]
 fn tray_matrix_depends_only_on_resident_and_snapshot() {
     assert_eq!(
-        tray_status(supervisor::ServiceStatus::Running, true),
+        tray_status(supervisor::ServiceStatus::Running, Some(true), true),
         TrayStatus::Running
     );
     assert_eq!(
-        tray_status(supervisor::ServiceStatus::Running, false),
+        tray_status(supervisor::ServiceStatus::Running, Some(true), false),
         TrayStatus::Degraded
     );
     assert_eq!(
-        tray_status(supervisor::ServiceStatus::Unavailable, true),
+        tray_status(supervisor::ServiceStatus::Running, Some(false), true),
+        TrayStatus::Degraded
+    );
+    assert_eq!(
+        tray_status(supervisor::ServiceStatus::Running, None, true),
         TrayStatus::Offline
     );
     assert_eq!(
-        tray_status(supervisor::ServiceStatus::CrashLoop, false),
+        tray_status(supervisor::ServiceStatus::Unavailable, Some(true), true),
+        TrayStatus::Offline
+    );
+    assert_eq!(
+        tray_status(supervisor::ServiceStatus::CrashLoop, Some(true), false),
         TrayStatus::Offline
     );
 }
